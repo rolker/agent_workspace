@@ -1,0 +1,136 @@
+#!/bin/bash
+# .agent/scripts/agent
+# Unified entry point for agent task operations with enforced isolation
+#
+# This wrapper enforces the worktree-based workflow to prevent agents from
+# accidentally working in the main source tree and risking workspace pollution.
+#
+# Usage:
+#   agent start-task <issue> [--type workspace|project]
+#   agent --help
+#
+# Examples:
+#   agent start-task 125              # Workspace worktree (infrastructure)
+#   agent start-task 42 --type project  # Project repo worktree
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+export ROOT_DIR
+
+show_usage() {
+    cat << 'EOF'
+agent - Enforced Task Isolation for AI Agents
+
+USAGE:
+    agent start-task <issue> [options]
+    agent --help
+
+COMMANDS:
+    start-task <issue>    Start work on an issue in isolated worktree
+                          Automatically creates worktree and sets up environment
+
+OPTIONS:
+    --type <type>         Worktree type: 'workspace' (default) or 'project'
+                          workspace — infrastructure work (.agent/, docs/, skills/)
+                          project   — work in the managed project repo
+    --help, -h            Show this help message
+
+EXAMPLES:
+    # Infrastructure work (scripts, docs, skills)
+    agent start-task 125
+
+    # Project repo work
+    agent start-task 42 --type project
+
+ENFORCEMENT:
+    This wrapper is the ONLY approved way for agents to start work.
+    Direct git checkout or working in main source tree is prohibited
+    to prevent workspace pollution and enable multi-agent coordination.
+
+SEE ALSO:
+    CLAUDE.md                    - Claude Code operational rules
+    .agent/AI_RULES.md           - Universal agent rules
+    worktree_create.sh --help    - Low-level worktree creation
+EOF
+}
+
+start_task() {
+    local issue_num="$1"
+    shift
+
+    local worktree_type="workspace"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --type)
+                worktree_type="$2"
+                shift 2
+                ;;
+            *)
+                echo "Error: Unknown option: $1"
+                echo "Run 'agent --help' for usage"
+                exit 1
+                ;;
+        esac
+    done
+
+    if [ -z "$issue_num" ]; then
+        echo "Error: Issue number required"
+        echo "Usage: agent start-task <issue> [--type workspace|project]"
+        exit 1
+    fi
+
+    if ! [[ "$issue_num" =~ ^[0-9]+$ ]]; then
+        echo "Error: Issue number must be numeric, got: $issue_num"
+        exit 1
+    fi
+
+    if [ "$worktree_type" != "workspace" ] && [ "$worktree_type" != "project" ]; then
+        echo "Error: --type must be 'workspace' or 'project', got: $worktree_type"
+        exit 1
+    fi
+
+    echo "========================================="
+    echo "Agent Task Isolation"
+    echo "========================================="
+    echo "Issue: #$issue_num"
+    echo "Type:  $worktree_type worktree"
+    echo ""
+
+    "$SCRIPT_DIR/worktree_create.sh" --issue "$issue_num" --type "$worktree_type"
+
+    echo ""
+    echo "========================================="
+    echo "✅ Worktree Ready"
+    echo "========================================="
+    echo ""
+    echo "Next steps:"
+    echo "  1. Enter worktree:"
+    echo "     source .agent/scripts/worktree_enter.sh --issue $issue_num"
+    echo ""
+    echo "  2. When done:"
+    echo "     .agent/scripts/worktree_remove.sh --issue $issue_num"
+    echo ""
+}
+
+case "${1:-}" in
+    start-task)
+        shift
+        start_task "$@"
+        ;;
+    --help|-h|help)
+        show_usage
+        ;;
+    "")
+        echo "Error: Command required"
+        echo "Run 'agent --help' for usage"
+        exit 1
+        ;;
+    *)
+        echo "Error: Unknown command: $1"
+        echo "Run 'agent --help' for usage"
+        exit 1
+        ;;
+esac

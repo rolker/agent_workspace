@@ -1,0 +1,39 @@
+# Project directory (managed externally — cloned or symlinked)
+project/
+
+# Workspace worktrees (for infrastructure work)
+.workspace-worktrees/
+
+# Make stamp files (setup state tracking — see ADR-0007)
+.make/
+
+# Dev-tools virtual environment (pre-commit, linters)
+.venv/
+
+# IDE settings
+.vscode/
+*.code-workspace
+
+# Generated Claude Code skills (regenerate with: make generate-skills)
+.claude/skills/make_*/
+
+# Agent Scratchpad (Temporary files and artifacts)
+.agent/scratchpad/*
+!.agent/scratchpad/README.md
+
+# Agent Identity (Runtime-generated, not template)
+.agent/.identity
+
+# Project config (per-developer, per-project — not committed)
+.agent/project_config.sh
+
+.env
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# CodeQL generated files
+_codeql_detected_source_root

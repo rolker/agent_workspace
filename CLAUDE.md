@@ -1,0 +1,30 @@
+# Claude Code — Workspace Rules
+
+@AGENTS.md
+
+## Environment Setup
+
+```bash
+source .agent/scripts/set_git_identity_env.sh "Claude Code Agent" "roland+claude-code@ccom.unh.edu"
+```
+
+After sourcing, verify `$AGENT_MODEL` matches your actual model (from your system prompt).
+If stale, update the default in `.agent/scripts/framework_config.sh` and commit the one-line fix.
+
+## Claude-Specific Notes
+
+- Makefile `.PHONY` targets (excluding `help`) are available as `/make_*` slash commands
+  (e.g., `/make_build`, `/make_test`, `/make_dashboard`). After adding or removing eligible
+  `.PHONY` targets, run `make generate-skills` to regenerate the slash commands.
+
+## References
+
+- [`AGENTS.md`](AGENTS.md) — Shared workspace rules (all agents)
+- [`README.md`](README.md) — Workspace purpose and goals
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design
+- [`docs/decisions/`](docs/decisions/) — Architecture Decision Records
+- [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) — Detailed worktree patterns
+- [`.agent/AI_IDENTITY_STRATEGY.md`](.agent/AI_IDENTITY_STRATEGY.md) — Multi-framework identity
+- [`.agent/WORKFORCE_PROTOCOL.md`](.agent/WORKFORCE_PROTOCOL.md) — Multi-agent coordination
+- [`.agent/knowledge/`](.agent/knowledge/) — Development patterns, CLI best practices, skill workflows
+- [`.agent/templates/`](.agent/templates/) — Issue and PR templates

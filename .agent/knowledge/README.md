@@ -1,0 +1,35 @@
+# Workspace Knowledge
+
+Workspace-level guidance for AI agents. All files in this directory are
+version-controlled and apply regardless of which project repositories are
+checked out in `layers/`.
+
+## ROS 2 Development
+- **[ROS 2 CLI Best Practices](ros2_cli_best_practices.md)**: Using the `ros2` CLI effectively as an automated agent.
+- **[ROS 2 Development Patterns](ros2_development_patterns.md)**: Package structure and build patterns for the layered workspace.
+- **[Launch Tooling](launch_tooling.md)**: Using `ros2launch_session` and `ros2launch_gui` for programmatic launch management and visual monitoring.
+- **[Gazebo + ROS 2 Launch Patterns](gazebo_ros_launch_patterns.md)**: Lifecycle coupling, instance management, and common pitfalls when launching Gazebo with ROS 2.
+
+## IDE Setup
+- **[VS Code Setup Guide](vscode_setup.md)**: Multi-root workspace configuration, Makefile tasks, C++/Python IntelliSense, and Claude Code extension integration.
+
+## Agent Workflows
+- **[Skill Workflows](skill_workflows.md)**: Per-issue lifecycle sequence, governance skill index, and utility skill catalog.
+- **[Principles Review Guide](principles_review_guide.md)**: Evaluation criteria for workspace principles and ADRs. Used by lifecycle skills (triage, planning, review) and as a manual checklist.
+- **[Documentation Verification](documentation_verification.md)**: Mandatory verification workflow for writing accurate ROS 2 package documentation. Includes command cookbook and hallucination anti-patterns.
+
+## Project-Specific Knowledge
+
+Project-specific conventions and architecture docs are available via
+`.agent/project_knowledge/` (a symlink to the manifest repo's
+`.agents/workspace-context/` directory, created by `setup_layers.sh`). This symlink
+may not exist if the manifest repo has not set up `.agents/workspace-context/`.
+
+## Project-Level Agent Guides
+
+Project repositories may contain a `.agents/README.md` at their root with repo-specific
+guidance for agents. To create one, use the template at
+[`../templates/project_agents_guide.md`](../templates/project_agents_guide.md).
+
+---
+*Note: This index is manually maintained. Update it when adding new knowledge files.*

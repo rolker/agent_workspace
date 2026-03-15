@@ -1,0 +1,104 @@
+# Agent Workforce Protocol
+
+**Goal**: Enable multiple AI agents to work accurately and safely within the same workspace without stepping on each other's toes.
+
+**Supported frameworks**: GitHub Copilot, Gemini CLI, Antigravity, Claude Code. All agents follow the same isolation, visibility, and handover rules below.
+
+## 1. Task Isolation with Git Worktrees (Recommended)
+
+For parallel work by multiple agents, use **git worktrees** for complete isolation:
+
+### Quick Start
+```bash
+# Create isolated worktree for an issue
+.agent/scripts/worktree_create.sh --issue 42 --type project
+
+# Enter the worktree
+source .agent/scripts/worktree_enter.sh --issue 42
+
+# Work in complete isolation - no conflicts with other agents
+# Build, test, commit, push - all isolated
+
+# When done, clean up
+.agent/scripts/worktree_remove.sh 42
+```
+
+### Worktree Types
+- **Project worktree** (`--type project`): For project repo work. Created in `project/worktrees/issue-N/`
+- **Workspace worktree** (`--worktree workspace`): For infrastructure work (.agent/, configs/, docs). Created in `.workspace-worktrees/issue-N/`
+
+### Benefits
+- **Complete isolation**: Each agent works in a separate directory
+- **No conflicts**: Agents can build/test simultaneously without interference
+- **Parallel development**: Multiple issues can be worked on at once
+- **Clean handover**: Worktrees maintain their own state
+
+## 2. Work Visibility (Draft PR Workflow)
+
+To prevent duplicate work and enable collaboration, agents must make work-in-progress visible:
+
+*   **Before Starting Work on an Issue**:
+    *   Check for existing draft PRs (indicates another agent is working)
+    *   Use `worktree_create.sh` with `--plan-file <path>` to automate the draft PR step:
+        ```bash
+        # Workspace work — creates worktree, pushes, and opens draft PR with plan summary
+        .agent/scripts/worktree_create.sh --issue <N> --type workspace --plan-file /path/to/plan.md
+
+        # Project repo work — creates worktree, pushes, and opens draft PR in project repo
+        .agent/scripts/worktree_create.sh --issue <N> --type project --plan-file /path/to/plan.md
+        ```
+    *   `--plan-file` takes a path to an approved plan file and:
+        - Creates a draft PR with a structured summary body (including `Closes #<N>`)
+        - Posts the full plan as a PR comment
+        - No template file is committed to the repository
+    *   Commit and push updates as you work
+
+*   **During Work**:
+    *   Update the work plan as you progress (check off tasks, document decisions)
+    *   Commit plan updates regularly with atomic commits
+    *   The plan serves as handover documentation if another agent needs to take over
+
+*   **Finishing**:
+    *   Update plan status to "Ready for Review"
+    *   Mark draft PR as ready: `gh pr ready`
+
+**Benefits**:
+-   Draft PRs show active work on GitHub (visible to all agents/users)
+-   Branch naming prevents collisions (git rejects duplicate branches)
+-   Plans enable seamless handover between agents
+-   Approach is reviewable before code implementation
+
+## 3. Task Locking (GitHub Issues Authority)
+GitHub Issues are the **Source of Truth** for what is being worked on.
+
+*   **Before Starting**:
+    *   Search for open issues or projects.
+    *   **Check for draft PRs** - they indicate active work
+    *   **Verify the issue number**: Run `gh issue view <N> --json title --jq '.title'` and confirm the title matches your task. If it doesn't, stop — you may have inherited the wrong issue copied from a plan or status report.
+    *   **Do not** pick up an issue assigned to another user/agent unless explicitly instructed to "Join" or "Collaborate".
+*   **During Work**:
+    *   Assign the issue to yourself (if possible) or comment "Taking this".
+    *   Create draft PR with work plan (see "Work Visibility" above).
+*   **Finishing**:
+    *   Reference the issue in your PR (e.g., "Closes #123").
+    *   Mark draft PR as ready for review.
+
+## 4. The "Clean Handover" Standard
+Every agent invocation is a "shift". When your shift ends (you call `notify_user` or terminate), the workspace must be in a clean state.
+
+*   **The Golden Rule**: *Leave the campsite cleaner than you found it.*
+*   **Requirement**:
+    *   Run `dashboard.sh --quick` or `vcs status` before finishing.
+    *   **Alert**: If you see modifications in repositories you didn't touch, **WARN THE USER**. Do not commit them blindly.
+    *   **Action**: Commit your own work to a `feature/` branch.
+
+## 5. Git Discipline
+*   **Feature Branches**: Always.
+*   **Atomic Commits**: One logical change per commit.
+*   **Bundled Changes**: Do not mix "Refactoring the entire Navigation Stack" with "Fixing a typo in README".
+
+## 6. Conflict Resolution
+If you discover you are modifying a file that has uncommitted changes from another process:
+1.  **Stop**.
+2.  **Diff** the changes.
+3.  **Notify User**: "I see uncommitted changes in `foo.cpp`. Should I include them, revert them, or stash them?"

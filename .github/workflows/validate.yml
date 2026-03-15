@@ -1,0 +1,43 @@
+name: Workspace Validation
+
+"on":
+  push:
+    branches: [main, 'feature/**', 'fix/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-scripts:
+    name: Lint (pre-commit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Lint
+        env:
+          SKIP: check-commit-identity,no-commit-to-branch,check-branch-updates,verify-issue-branch
+        run: make lint
+
+  validate-documentation:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for required documentation
+        run: |
+          required_files="README.md ARCHITECTURE.md AGENTS.md"
+          for file in $required_files; do
+            if [ ! -f "$file" ]; then
+              echo "Missing required file: $file"
+              exit 1
+            fi
+          done
+          echo "All required documentation files present"
