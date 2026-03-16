@@ -71,11 +71,5 @@ What stays the same:
   filesystem is modified outside Make (e.g., manually deleting `configs/manifest`)
 - Make syntax remains less readable than `just` for simple command definitions
 - Stamp invalidation strategy (simple touch vs hash-based) adds implementation
-  complexity — details tracked in [#332](https://github.com/rolker/ros2_agent_workspace/issues/332)
+  complexity
 
-**Follow-up work:**
-
-- [#332](https://github.com/rolker/ros2_agent_workspace/issues/332) — Refactor Makefile
-  with stamp-file dependencies (implementation of this decision)
-- [#330](https://github.com/rolker/ros2_agent_workspace/issues/330) — Improve first-run
-  initialization UX with interactive manifest setup

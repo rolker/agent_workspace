@@ -40,9 +40,8 @@ Two principles guide where a rule is implemented:
 2. Anything that can be checked locally should be, to avoid discovering it in remote
    review. The tighter the feedback loop, the less time wasted.
 
-Container isolation has been implemented but not yet tested in practice. Its role is
-undecided — it may become an optional tool for specific scenarios or part of every
-workflow. That decision will be informed by real usage.
+Container isolation is under active development in the ros2_agent_workspace. It has not
+been brought to this workspace yet but may be migrated as that feature matures.
 
 ## Consequences
 

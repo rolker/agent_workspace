@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -27,20 +27,10 @@ reproducibility, and no documentation of the decision criteria.
 
 ## Decision
 
-**Use a three-tier placement model for Python packages, with PEP 668 as the
+**Use a two-tier placement model for Python packages, with PEP 668 as the
 OS-level guardrail and `requirements.txt` as the reproducible baseline.**
 
-### Tier 1: System packages (`apt` / `rosdep`)
-
-Use for ROS 2 build and runtime dependencies.
-
-- **Criteria**: package is a ROS 2 dependency, available via `apt` or `rosdep`,
-  and needed at build or runtime
-- **Examples**: `python3-colcon-common-extensions`, `python3-rosdep`,
-  `python3-pytest`
-- **Managed by**: `rosdep install` or `apt install` in bootstrap scripts
-
-### Tier 2: Workspace `.venv` (dev tools)
+### Tier 1: Workspace `.venv` (dev tools)
 
 Use for workspace-level developer tools that are wired into `make` targets.
 
@@ -54,7 +44,7 @@ Use for workspace-level developer tools that are wired into `make` targets.
   `.venv/bin/pip install`. If the tool should persist, add it to
   `requirements.txt` via PR.
 
-### Tier 3: `pipx` (user-facing CLI tools)
+### Tier 2: `pipx` (user-facing CLI tools)
 
 Use for standalone CLI tools that a developer wants available globally but
 isolated from system Python.
@@ -73,9 +63,9 @@ isolated from system Python.
 
 ### Project repos are independent
 
-Project repos under `layers/main/*/src/` manage their own Python dependencies
-(e.g., their own `requirements.txt`, `setup.py`, or `pyproject.toml`). This
-ADR governs the workspace repo only.
+Project repos manage their own Python dependencies (e.g., their own
+`requirements.txt`, `setup.py`, or `pyproject.toml`). This ADR governs the
+workspace repo only.
 
 ## Consequences
 
@@ -86,8 +76,8 @@ ADR governs the workspace repo only.
 - PEP 668 provides OS-level enforcement against the most dangerous action
   (bare `pip install` on system Python); AGENTS.md rules provide agent-level
   awareness
-- The three-tier model is simple enough to remember: apt for ROS deps, .venv
-  for dev tools, pipx for personal CLIs
+- The two-tier model is simple enough to remember: .venv for dev tools,
+  pipx for personal CLIs
 
 **Negative:**
 - Agents must activate `.venv` (or use `.venv/bin/pip`) to install packages,
