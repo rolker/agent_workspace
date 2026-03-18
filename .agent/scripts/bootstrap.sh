@@ -57,9 +57,26 @@ else
 fi
 
 echo ""
+echo "Checking for git-bug..."
+GIT_BUG_VERSION="0.10.1"
+GIT_BUG_BIN="/usr/local/bin/git-bug"
+if [ ! -x "$GIT_BUG_BIN" ] || ! "$GIT_BUG_BIN" version 2>/dev/null | grep -q "$GIT_BUG_VERSION"; then
+    ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+    GIT_BUG_URL="https://github.com/git-bug/git-bug/releases/download/v${GIT_BUG_VERSION}/git-bug_linux_${ARCH}"
+    echo "Installing git-bug v${GIT_BUG_VERSION}..."
+    run curl -fL -o /tmp/git-bug "$GIT_BUG_URL"
+    run chmod +x /tmp/git-bug
+    run mv /tmp/git-bug "$GIT_BUG_BIN"
+    echo "  ✅ git-bug v${GIT_BUG_VERSION} installed"
+else
+    echo "  ✅ git-bug v${GIT_BUG_VERSION} already installed"
+fi
+
+echo ""
 echo "Bootstrap complete."
 echo ""
 echo "Next steps:"
 echo "  1. Authenticate GitHub CLI: gh auth login"
 echo "  2. Run setup: make setup"
 echo "  3. Configure build/test: edit .agent/project_config.sh"
+echo "  Note: To skip git-bug setup, run: make skip-git-bug"
