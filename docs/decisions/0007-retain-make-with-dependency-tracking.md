@@ -72,4 +72,3 @@ What stays the same:
 - Make syntax remains less readable than `just` for simple command definitions
 - Stamp invalidation strategy (simple touch vs hash-based) adds implementation
   complexity
-

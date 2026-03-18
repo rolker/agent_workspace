@@ -5,7 +5,7 @@
 ## Environment Setup
 
 ```bash
-source .agent/scripts/set_git_identity_env.sh "Claude Code Agent" "roland+claude-code@ccom.unh.edu"
+source .agent/scripts/set_git_identity_env.sh "Claude Code Agent" "roland+claude-code@rolker.net"
 ```
 
 After sourcing, verify `$AGENT_MODEL` matches your actual model (from your system prompt).

@@ -25,8 +25,8 @@ declare -A FRAMEWORK_EMAILS=(
     ["copilot"]="roland+copilot-cli@ccom.unh.edu"
     ["gemini"]="roland+gemini-cli@ccom.unh.edu"
     ["antigravity"]="roland+antigravity@ccom.unh.edu"
-    ["claude"]="roland+claude-code@ccom.unh.edu"
-    ["claude-code"]="roland+claude-code@ccom.unh.edu"
+    ["claude"]="roland+claude-code@rolker.net"
+    ["claude-code"]="roland+claude-code@rolker.net"
 )
 
 # Framework default model lookup table
@@ -37,6 +37,6 @@ declare -A FRAMEWORK_MODELS=(
     ["copilot"]="GPT-4o"
     ["gemini"]="Gemini 2.0 Flash"
     ["antigravity"]="Gemini 2.5 Pro"
-    ["claude"]="Claude Opus 4.6"
-    ["claude-code"]="Claude Opus 4.6"
+    ["claude"]="claude-sonnet-4-6"
+    ["claude-code"]="claude-sonnet-4-6"
 )
