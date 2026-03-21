@@ -197,14 +197,14 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/worktree_create.sh` | Create isolated worktree |
 | `.agent/scripts/worktree_enter.sh` | Enter worktree **(source)** |
 | `.agent/scripts/worktree_remove.sh` | Remove worktree |
-| `.agent/scripts/worktree_list.sh` | List active worktrees |
+| `.agent/scripts/worktree_list.sh` | List active worktrees (`--json` for structured output) |
 | `.agent/scripts/agent start-task <N>` | High-level wrapper: create worktree |
 | `.agent/scripts/dashboard.sh` | Unified workspace status (supports `--quick`) |
 | `.agent/scripts/build.sh` | Run BUILD_CMD from project_config.sh |
 | `.agent/scripts/test.sh` | Run TEST_CMD from project_config.sh |
 | `.agent/scripts/setup_project.sh` | Configure project/ directory |
 | `.agent/scripts/check_branch_updates.sh` | Check if branch is behind default |
-| `.agent/scripts/gh_create_issue.sh` | Create issue with label validation |
+| `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
 | `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
 | `.agent/scripts/sync_project.py` | Sync workspace + project repos |
 | `.agent/scripts/validate_workspace.py` | Validate project/ configuration |
