@@ -100,7 +100,9 @@ def sync_repo(repo_path, repo_name, dry_run=False):
 
 def main():
     parser = argparse.ArgumentParser(description="Safely sync workspace and project repositories.")
-    parser.add_argument("--dry-run", action="store_true", help="Simulate actions without executing.")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Simulate actions without executing."
+    )
     args = parser.parse_args()
 
     root_dir = Path(get_workspace_root())

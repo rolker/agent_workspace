@@ -18,7 +18,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR / "lib"))
 
-from workspace import get_workspace_root, get_project_path, is_project_configured, get_project_remote_url
+from workspace import get_workspace_root, get_project_path, get_project_remote_url
 
 
 def get_git_branch(repo_path):
@@ -39,7 +39,7 @@ def get_git_branch(repo_path):
 
 def validate_workspace(verbose=False):
     """Validate workspace configuration. Returns True if valid."""
-    root = get_workspace_root()
+    get_workspace_root()  # validate we're in a workspace
     project = get_project_path()
 
     print("Validating workspace...")
