@@ -5,11 +5,12 @@
 ## Environment Setup
 
 ```bash
-source .agent/scripts/set_git_identity_env.sh "Claude Code Agent" "roland+claude-code@rolker.net"
+source .agent/scripts/set_git_identity_env.sh "Claude Code Agent" "roland+claude-code@rolker.net" "<your-model-id>"
 ```
 
-After sourcing, verify `$AGENT_MODEL` matches your actual model (from your system prompt).
-If stale, update the default in `.agent/scripts/framework_config.sh` and commit the one-line fix.
+Replace `<your-model-id>` with your actual model ID from your system prompt
+(e.g., `claude-opus-4-6`, `claude-sonnet-4-6`). The 3-arg form skips all
+detection and uses exactly what you provide — do NOT edit `framework_config.sh`.
 
 ## Claude-Specific Notes
 
