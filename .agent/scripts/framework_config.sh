@@ -31,12 +31,14 @@ declare -A FRAMEWORK_EMAILS=(
 
 # Framework default model lookup table
 # Maps framework key to typical/default model name
-# NOTE: These are defaults - actual runtime model may differ
-# Agents should detect their actual model when possible
+# NOTE: These are FALLBACK defaults only, used when the agent does not
+# self-report its model (e.g., 2-arg call to set_git_identity_env.sh).
+# Agents that know their model should pass it directly — do not edit
+# this table to match a specific session's model.
 declare -A FRAMEWORK_MODELS=(
     ["copilot"]="GPT-4o"
     ["gemini"]="Gemini 2.0 Flash"
     ["antigravity"]="Gemini 2.5 Pro"
-    ["claude"]="claude-sonnet-4-6"
-    ["claude-code"]="claude-sonnet-4-6"
+    ["claude"]="Claude Opus 4.6"
+    ["claude-code"]="Claude Opus 4.6"
 )

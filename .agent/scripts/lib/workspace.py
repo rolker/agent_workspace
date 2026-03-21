@@ -5,6 +5,7 @@ Provides common functions for discovering and managing repositories in the
 general-purpose Agent Workspace (single-repo model).
 """
 
+import subprocess
 from pathlib import Path
 
 
@@ -37,8 +38,6 @@ def get_project_remote_url():
     """
     Return the remote URL of the project repo, or None if not configured.
     """
-    import subprocess
-
     project = get_project_path()
     if not is_project_configured():
         return None
