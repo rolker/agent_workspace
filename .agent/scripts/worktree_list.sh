@@ -3,7 +3,7 @@
 # List all git worktrees for this workspace
 #
 # Usage:
-#   ./worktree_list.sh [--verbose]
+#   ./worktree_list.sh [--verbose] [--json]
 #
 # Shows all active worktrees including:
 #   - Issue number / skill name
@@ -11,6 +11,9 @@
 #   - Branch name
 #   - Path
 #   - Status (clean/dirty)
+#
+# Options:
+#   --json    Output structured JSON to stdout (diagnostics to stderr)
 
 set -e
 
@@ -20,33 +23,80 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 
 VERBOSE=false
+JSON_OUTPUT=false
 
+# Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -v|--verbose)
             VERBOSE=true
             shift
             ;;
+        --json)
+            JSON_OUTPUT=true
+            shift
+            ;;
         -h|--help)
-            echo "Usage: $0 [--verbose]"
+            echo "Usage: $0 [--verbose] [--json]"
             echo ""
             echo "Options:"
             echo "  -v, --verbose    Show detailed status for each worktree"
+            echo "      --json       Output structured JSON to stdout"
             exit 0
             ;;
         *)
-            echo "Error: Unknown option $1"
+            echo "Error: Unknown option $1" >&2
             exit 1
             ;;
     esac
 done
 
+# JSON array accumulator
+JSON_ENTRIES=()
+DIRTY_COUNT=0
+
+# Helper: escape a string for JSON (handles quotes, backslashes, newlines)
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+# Helper: build a JSON object for one worktree
+# Arguments: type issue skill path branch status repo files_changed
+build_json_entry() {
+    local type="$1" issue="$2" skill="$3" path="$4" branch="$5"
+    local status="$6" repo="$7" files_changed="$8"
+
+    local issue_val="null"
+    [ -n "$issue" ] && issue_val="$issue"
+
+    local skill_val="null"
+    [ -n "$skill" ] && skill_val="\"$(json_escape "$skill")\""
+
+    local repo_val="null"
+    [ -n "$repo" ] && repo_val="\"$(json_escape "$repo")\""
+
+    local branch_val="null"
+    [ -n "$branch" ] && branch_val="\"$(json_escape "$branch")\""
+
+    printf '{"type":"%s","issue":%s,"skill":%s,"path":"%s","branch":%s,"status":"%s","repo":%s,"files_changed":%s}' \
+        "$type" "$issue_val" "$skill_val" \
+        "$(json_escape "$path")" "$branch_val" "$status" \
+        "$repo_val" "${files_changed:-0}"
+}
+
 cd "$ROOT_DIR"
 
-echo "========================================"
-echo "Git Worktrees"
-echo "========================================"
-echo ""
+if [ "$JSON_OUTPUT" = false ]; then
+    echo "========================================"
+    echo "Git Worktrees"
+    echo "========================================"
+    echo ""
+fi
 
 # Get worktree list from git (workspace repo: main + workspace worktrees)
 WORKTREES=$(git worktree list --porcelain)
@@ -96,36 +146,54 @@ print_worktree() {
         ((WORKSPACE_COUNT++)) || true
     fi
 
+    # Check if clean or dirty and count changed files
     local status="clean"
+    local files_changed=0
     if [ -d "$path" ]; then
-        if [ -n "$(git -C "$path" status --porcelain 2>/dev/null)" ]; then
+        local porcelain
+        porcelain="$(git -C "$path" status --porcelain 2>/dev/null || true)"
+        if [ -n "$porcelain" ]; then
             status="dirty"
+            files_changed=$(echo "$porcelain" | wc -l)
+            files_changed=$((files_changed + 0))  # strip whitespace
         fi
     fi
 
-    if [ "$type" == "main" ]; then
-        echo "[main] Main Workspace"
-        echo "   Path:   $path"
-        echo "   Branch: ${branch:-detached at $head}"
-        echo "   Status: $status"
-    elif [ -n "$skill" ]; then
-        echo "[workspace] Skill: $skill - Repository: $repo"
-        echo "   Path:   $path"
-        echo "   Branch: ${branch:-detached at $head}"
-        echo "   Status: $status"
-        if [ "$VERBOSE" = true ] && [ -d "$path" ]; then
-            echo "   Files changed: $(git -C "$path" status --porcelain 2>/dev/null | wc -l)"
-        fi
-    else
-        echo "[workspace] Issue #$issue - Repository: $repo"
-        echo "   Path:   $path"
-        echo "   Branch: ${branch:-detached at $head}"
-        echo "   Status: $status"
-        if [ "$VERBOSE" = true ] && [ -d "$path" ]; then
-            echo "   Files changed: $(git -C "$path" status --porcelain 2>/dev/null | wc -l)"
-        fi
+    # Track dirty count (exclude main — summary.total excludes main too)
+    if [ "$status" = "dirty" ] && [ "$type" != "main" ]; then
+        ((DIRTY_COUNT++)) || true
     fi
-    echo ""
+
+    # Collect JSON entry
+    local display_branch="${branch:-detached at $head}"
+    JSON_ENTRIES+=("$(build_json_entry "$type" "$issue" "$skill" "$path" "$display_branch" "$status" "$repo" "$files_changed")")
+
+    # Format text output
+    if [ "$JSON_OUTPUT" = false ]; then
+        if [ "$type" == "main" ]; then
+            echo "[main] Main Workspace"
+            echo "   Path:   $path"
+            echo "   Branch: $display_branch"
+            echo "   Status: $status"
+        elif [ -n "$skill" ]; then
+            echo "[workspace] Skill: $skill - Repository: $repo"
+            echo "   Path:   $path"
+            echo "   Branch: $display_branch"
+            echo "   Status: $status"
+            if [ "$VERBOSE" = true ] && [ -d "$path" ]; then
+                echo "   Files changed: $files_changed"
+            fi
+        else
+            echo "[workspace] Issue #$issue - Repository: $repo"
+            echo "   Path:   $path"
+            echo "   Branch: $display_branch"
+            echo "   Status: $status"
+            if [ "$VERBOSE" = true ] && [ -d "$path" ]; then
+                echo "   Files changed: $files_changed"
+            fi
+        fi
+        echo ""
+    fi
 }
 
 # Parse and display workspace worktrees from git worktree list
@@ -164,28 +232,65 @@ if [ -d "$PROJECT_WT_DIR" ]; then
         local_skill="$WT_SKILL"
 
         local_branch=$(git -C "$proj_wt" branch --show-current 2>/dev/null || echo "")
+
+        # Check dirty status and count changed files
         local_status="clean"
-        if [ -n "$(git -C "$proj_wt" status --porcelain 2>/dev/null)" ]; then
+        local_changed=0
+        local_porcelain
+        local_porcelain="$(git -C "$proj_wt" status --porcelain 2>/dev/null || true)"
+        if [ -n "$local_porcelain" ]; then
             local_status="dirty"
+            local_changed=$(echo "$local_porcelain" | wc -l)
+            local_changed=$((local_changed + 0))
+            ((DIRTY_COUNT++)) || true
         fi
 
-        if [ -n "$local_skill" ]; then
-            echo "[project] Skill: $local_skill - Repository: $local_repo"
-        else
-            echo "[project] Issue #$local_issue - Repository: $local_repo"
-        fi
-        echo "   Path:   $proj_wt"
-        echo "   Branch: ${local_branch:-unknown}"
-        echo "   Status: $local_status"
+        # Collect JSON entry
+        JSON_ENTRIES+=("$(build_json_entry "project" "$local_issue" "$local_skill" "$proj_wt" "${local_branch:-}" "$local_status" "$local_repo" "$local_changed")")
 
-        if [ "$VERBOSE" = true ]; then
-            echo "   Files changed: $(git -C "$proj_wt" status --porcelain 2>/dev/null | wc -l)"
-        fi
+        # Format text output
+        if [ "$JSON_OUTPUT" = false ]; then
+            if [ -n "$local_skill" ]; then
+                echo "[project] Skill: $local_skill - Repository: $local_repo"
+            else
+                echo "[project] Issue #$local_issue - Repository: $local_repo"
+            fi
+            echo "   Path:   $proj_wt"
+            echo "   Branch: ${local_branch:-unknown}"
+            echo "   Status: $local_status"
 
-        echo ""
+            if [ "$VERBOSE" = true ]; then
+                echo "   Files changed: $local_changed"
+            fi
+
+            echo ""
+        fi
         ((PROJECT_COUNT++)) || true
     done
 fi
+
+# --- Output ---
+
+if [ "$JSON_OUTPUT" = true ]; then
+    TOTAL=$(( PROJECT_COUNT + WORKSPACE_COUNT ))
+
+    # Build JSON array
+    printf '{"worktrees":['
+    first=true
+    for entry in "${JSON_ENTRIES[@]}"; do
+        if [ "$first" = true ]; then
+            first=false
+        else
+            printf ','
+        fi
+        printf '%s' "$entry"
+    done
+    printf '],"summary":{"total":%d,"project":%d,"workspace":%d,"dirty":%d}}\n' \
+        "$TOTAL" "$PROJECT_COUNT" "$WORKSPACE_COUNT" "$DIRTY_COUNT"
+    exit 0
+fi
+
+# Text output continues below
 
 if [ -z "$WORKTREES" ] && [ "$WORKSPACE_COUNT" -eq 0 ] && [ "$PROJECT_COUNT" -eq 0 ]; then
     echo "No worktrees found."
