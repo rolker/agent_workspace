@@ -1,0 +1,30 @@
+# Inspiration Tracker — Project Registry
+#
+# Tracked external projects for discovering portable enhancements and patterns.
+# Managed by the /inspiration-tracker skill. Add entries here or use
+# /inspiration-tracker add to add interactively.
+#
+# Two project types:
+#   fork:        File-level diff for repos with shared structure
+#   inspiration: Structured survey + changelog for unrelated projects
+
+projects:
+  ros2_agent_workspace:
+    type: fork
+    repo: rolker/ros2_agent_workspace
+    description: Original ROS2 agent workspace this repo was forked from
+    domain_patterns:
+      - ros2
+      - colcon
+      - layer
+      - overlay
+      - gazebo
+      - launch
+    categories:
+      - scripts
+      - skills
+      - adrs
+      - templates
+      - knowledge
+      - makefile
+      - config
