@@ -106,7 +106,7 @@ full `owner/repo#NNN` syntax for cross-repo references.
 ### Skill Worktree Exception
 
 Skills maintaining living documents may use `--skill <name>` instead of `--issue <N>`.
-**Allowed skills**: `research` (enforced by allowlist in `worktree_create.sh`).
+**Allowed skills**: `research`, `inspiration-tracker` (enforced by allowlist in `worktree_create.sh`).
 
 Branch naming: `skill/{name}-{YYYYMMDD-HHMMSS}`.
 

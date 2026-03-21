@@ -99,7 +99,14 @@ fi
 UPSTREAM_SHA=$(cd "$CLONE_DIR" && git rev-parse HEAD)
 ```
 
-### 3. Gather GitHub context
+### 3. Load digest state
+
+Read `.agent/knowledge/inspiration_<name>_digest.md` (if it exists) to check
+which items have already been reviewed and what decisions were made (ported,
+skipped, deferred). The digest also records the last-checked commit SHA,
+needed for changelog mode in step 5.
+
+### 4. Gather GitHub context
 
 For both project types, query the upstream repo for activity:
 
@@ -122,7 +129,7 @@ gh pr list -R <repo> --state merged --json number,title,labels,updatedAt \
 Present a summary: "What's happening in `<name>`" — grouped by theme
 (infrastructure, skills, docs, etc.).
 
-### 4. Run type-specific comparison
+### 5. Run type-specific comparison
 
 #### Fork type — file-level diff
 
@@ -156,22 +163,20 @@ Auto-classify items matching `domain_patterns` as "domain-specific — probably 
 - Record the summary in the digest
 
 **Subsequent runs** (digest exists): Changelog mode.
-- Compare current HEAD against the SHA recorded in the digest
-- Review recent commits: `git log <last-sha>..HEAD --oneline`
-- Cross-reference with GitHub activity from step 3
+- Use the GitHub compare API to see what changed since the last-checked SHA:
+  ```bash
+  gh api repos/<owner>/<repo>/compare/<last-sha>...<current-sha> \
+    --jq '{commits: [.commits[].commit.message], files: [.files[].filename]}'
+  ```
+- Cross-reference with GitHub activity from step 4
 - Highlight changes relevant to `interest_areas`
+- Read changed files in the local clone for detailed understanding
 - Summarize what's new since last check
-
-### 5. Load digest state
-
-Read `.agent/knowledge/inspiration_<name>_digest.md` to check which items
-have already been reviewed and what decisions were made (ported, skipped,
-deferred).
 
 ### 6. Present findings interactively
 
 **Section 1: Upstream Activity**
-- Summary of open/recent issues and PRs from step 3
+- Summary of open/recent issues and PRs from step 4
 
 **Section 2: Findings**
 - Fork type: new/changed files with domain-specific auto-tags
@@ -294,9 +299,15 @@ When invoked with `add` or `add <url>`:
 - **Scratchpad clones are ephemeral** — all clones in
   `.agent/scratchpad/inspiration/<name>/` (gitignored). Registry and digests
   are git-tracked and portable across machines.
-- **Shallow clones** — use `--depth=1` for speed. Full history isn't needed.
+- **Shallow clones for reading, GitHub API for history** — local clones use
+  `--depth=1` for speed; changelog tracking uses the GitHub compare API
+  instead of local git history. This keeps clones lightweight.
+- **GitHub API rate limits** — the skill uses ~6-7 API calls per project per
+  run (issues, PRs, compare). Authenticated GitHub API allows 5000 calls/hour,
+  so periodic manual use is well within limits.
 - **Domain pattern filtering** — fork type only. Reduces noise for repos that
   share structure but have domain-specific content.
-- **GitHub context enriches comparison** — issues and PRs show what's in flight,
-  not just what's landed. Helps prioritize what to look at.
+- **Skill worktree for digest commits** — use `--skill inspiration-tracker`
+  worktrees for digest-only updates (no issue needed). For porting items,
+  create an issue and use an issue worktree.
 - **Commit digest updates** — so decisions are shared across agents and sessions.

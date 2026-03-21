@@ -48,7 +48,7 @@ PLAN_FILE=""
 PARENT_ISSUE_NUM=""
 
 # Skills allowed to create worktrees without a GitHub issue
-ALLOWED_SKILLS=("research")
+ALLOWED_SKILLS=("research" "inspiration-tracker")
 
 show_usage() {
     echo "Usage: $0 (--issue <number> | --skill <name>) [--type workspace|project] [options]"
