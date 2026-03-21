@@ -101,6 +101,18 @@ release engineer). 21 skills, TypeScript/Bun-based, MIT license.
 
 ## Pending Review
 
+(none)
+
+## Issued
+
+- `gstack-inspiration-revisit` — Issue #19: revisit all 11 deferred gstack findings (2026-03-21)
+
+## Skipped
+
+(none)
+
+## Deferred
+
 - `review-log-system` — JSONL-based review tracking with staleness detection and readiness dashboard (2026-03-21)
 - `fix-first-heuristic` — AUTO-FIX mechanical issues, ASK for judgment calls in review workflow (2026-03-21)
 - `diff-aware-qa` — QA that auto-detects affected pages from branch changes (2026-03-21)
@@ -112,15 +124,3 @@ release engineer). 21 skills, TypeScript/Bun-based, MIT license.
 - `completeness-principle` — "Boil the lake" — prefer complete implementation when AI compresses cost (2026-03-21)
 - `skill-chaining-pipeline` — Structured skill pipeline where each stage reads outputs from previous stages (2026-03-21)
 - `design-review-ai-slop-detection` — Explicit AI slop detection in design review (generic cards, hero sections) (2026-03-21)
-
-## Issued
-
-(none yet)
-
-## Skipped
-
-(none yet)
-
-## Deferred
-
-(none yet)
