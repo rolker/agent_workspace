@@ -16,7 +16,8 @@ checked out in `layers/`.
 ## Agent Workflows
 - **[Skill Workflows](skill_workflows.md)**: Per-issue lifecycle sequence, governance skill index, and utility skill catalog.
 - **[Principles Review Guide](principles_review_guide.md)**: Evaluation criteria for workspace principles and ADRs. Used by lifecycle skills (triage, planning, review) and as a manual checklist.
-- **[Documentation Verification](documentation_verification.md)**: Mandatory verification workflow for writing accurate ROS 2 package documentation. Includes command cookbook and hallucination anti-patterns.
+- **[Documentation Verification](documentation_verification.md)**: Mandatory verification workflow for writing accurate package documentation. Includes command cookbook and hallucination anti-patterns.
+- **[Inspiration Registry](inspiration_registry.yml)**: Tracked external projects for the `/inspiration-tracker` skill. Per-project digests are created alongside this file on first run.
 
 ## Project-Specific Knowledge
 
