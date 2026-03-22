@@ -39,3 +39,13 @@ projects:
       - release engineering (/ship, /document-release automation)
       - safety controls (/careful, /freeze, /guard hooks)
       - agent friction reporting (how agents surface workflow friction)
+
+  superpowers:
+    type: inspiration
+    repo: obra/superpowers
+    description: Agentic skills framework and software development methodology
+    interest_areas:
+      - skills architecture and composability
+      - TDD methodology and testing patterns
+      - subagent patterns and orchestration
+      - development methodology and workflows
