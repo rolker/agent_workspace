@@ -1,14 +1,14 @@
 # Inspiration Digest: gstack
 
 Type: inspiration
-Last checked: 2026-03-21
-Repo: garrytan/gstack @ 709bed9f4d7d419ef4f806f8b3e91fa53f6c0945
+Last checked: 2026-03-22
+Repo: garrytan/gstack @ dbd98aff32e3e68f4976dcc38e76a007a2c4a08a
 
 ## Survey Summary
 
 gstack is an opinionated Claude Code skills framework that organizes AI-assisted
 development into role-based slash commands (CEO, eng manager, designer, QA lead,
-release engineer). 21 skills, TypeScript/Bun-based, MIT license.
+release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 
 ### Review & QA Workflow
 
@@ -89,19 +89,61 @@ release engineer). 21 skills, TypeScript/Bun-based, MIT license.
 - **Key innovation**: Agents self-report tooling friction with reproduction steps
   pre-written. Barrier to contribution is removed.
 
+## Changelog Since Last Check (v0.9.5.0 - v0.9.9.0)
+
+6 commits, 89 files changed, +12,023/-3,441 lines.
+
+### v0.9.9.0 — Harder Office Hours
+- `/office-hours` now pushes back harder on confident founders
+- Anti-sycophancy rules: banned phrases like "that's an interesting approach"
+- 5 worked pushback patterns (BAD vs GOOD responses)
+- Post-Q1 framing check challenges undefined terms and hidden assumptions
+- Gated escape hatch: asks 2 more questions before letting founders skip
+
+### v0.9.8.0 — Deploy Pipeline + Pre-Merge Readiness
+- **`/land-and-deploy`** — merge, deploy, verify in one command. Auto-detects deploy platform (Fly.io, Render, Vercel, Netlify, Heroku, GH Actions). Offers revert at every failure point.
+- **`/canary`** — post-deploy monitoring loop with screenshots, baseline comparison, anomaly alerts
+- **`/benchmark`** — performance regression detection: Core Web Vitals, bundle sizes, page load baselines
+- **`/setup-deploy`** — one-time deploy config written to CLAUDE.md
+- `/review` now includes Performance & Bundle Impact analysis
+- E2E tests 3-5x faster (Sonnet for structure, Opus for quality)
+- `--retry 2` on all E2E tests
+
+### v0.9.7.0 — Plan File Review Report
+- Every plan file now shows which reviews have run (appended markdown table)
+- Richer review log data: scope proposals, issue counts, before/after scores
+
+### v0.9.6.0 — Auto-Scaled Adversarial Review
+- Review thoroughness scales with diff size automatically
+  - <50 lines: skip adversarial
+  - 50-199: cross-model adversarial challenge
+  - 200+: four full passes (Claude structured, Codex structured, Claude adversarial, Codex adversarial)
+- Claude adversarial subagent mode (attacker perspective)
+- Dashboard shows "Adversarial" instead of "Codex Review"
+
+### v0.9.5.0 — Builder Ethos (Search Before Building)
+- ETHOS.md: four principles (Golden Age, Boil the Lake, Search Before Building, Build for Yourself)
+- Three layers of knowledge: tried-and-true, new-and-popular, first-principles
+- Every workflow skill now searches before recommending patterns
+- "Eureka moments" — when first-principles reasoning reveals conventional wisdom is wrong
+- `/office-hours` adds Landscape Awareness phase
+- `/plan-eng-review` adds search check for architectural patterns
+- `/investigate` searches on hypothesis failure
+- CEO review saves context on `/office-hours` handoff
+
 ## Activity Snapshot
 
-- 20 open issues, 20 open PRs (very active, ~10 days old project)
-- Notable open: multi-host adapter RFC (#289), skill namespace pollution (#267),
-  skill chain state detection broken (#280), Windows browse issues (#276)
-- Notable merged: adversarial spec review loop (v0.9.1.0), multi-agent support
-  (v0.9.0), safety hook skills (v0.7.1), test failure ownership triage,
-  CEO review handoff context, test coverage catalog
-- Rapid versioning: v0.7.x -> v0.9.5.x in ~10 days
+- 20 open issues, 10 open PRs
+- Active development: deploy pipeline, adversarial review, office-hours rigor
+- Rapid versioning: v0.9.5.0 -> v0.9.9.0 in ~2 days
 
 ## Pending Review
 
-(none)
+- `deploy-pipeline-automation` — /land-and-deploy + /canary + /benchmark: full merge-to-production-verified pipeline with auto-detected platforms and revert-at-every-step. (2026-03-22)
+- `auto-scaled-adversarial-review` — Review thoroughness scales with diff size: skip adversarial for <50 lines, full 4-pass for 200+. Claude adversarial subagent mode. (2026-03-22)
+- `anti-sycophancy-patterns` — Hardened office-hours: banned phrases, worked pushback examples (BAD vs GOOD), gated escape hatch. Pattern for making AI skills push back harder. (2026-03-22)
+- `plan-file-review-report` — Review status appended directly to plan files as markdown table. Anyone reading the plan sees review status at a glance. (2026-03-22)
+- `search-before-building-integration` — Skills search before recommending: runtime built-ins, current best practices, first-principles reasoning. Three-layer knowledge framework. (2026-03-22)
 
 ## Issued
 
