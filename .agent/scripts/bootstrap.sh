@@ -68,24 +68,35 @@ if [ ! -x "$GIT_BUG_BIN" ] || ! "$GIT_BUG_BIN" version 2>/dev/null | grep -q "$G
     )
     GIT_BUG_URL="https://github.com/git-bug/git-bug/releases/download/v${GIT_BUG_VERSION}/git-bug_linux_${ARCH}"
     echo "Installing git-bug v${GIT_BUG_VERSION}..."
-    run curl -fL -o /tmp/git-bug "$GIT_BUG_URL"
-    EXPECTED="${GIT_BUG_SHA256[$ARCH]:-}"
-    if [ -n "$EXPECTED" ]; then
-        ACTUAL=$(sha256sum /tmp/git-bug | awk '{print $1}')
-        if [ "$ACTUAL" != "$EXPECTED" ]; then
-            echo "  ❌ Checksum mismatch for git-bug_linux_${ARCH}"
-            echo "     Expected: $EXPECTED"
-            echo "     Got:      $ACTUAL"
-            rm -f /tmp/git-bug
-            exit 1
+    if [ "$DRY_RUN" = "1" ]; then
+        echo "[DRY-RUN] Would download git-bug from ${GIT_BUG_URL}"
+        EXPECTED="${GIT_BUG_SHA256[$ARCH]:-}"
+        if [ -n "$EXPECTED" ]; then
+            echo "[DRY-RUN] Would verify checksum '${EXPECTED}' for git-bug_linux_${ARCH}"
+        else
+            echo "  ⚠️  No pinned checksum for arch '${ARCH}' — would skip verification"
         fi
-        echo "  ✅ Checksum verified"
+        echo "[DRY-RUN] Would install git-bug to ${GIT_BUG_BIN}"
     else
-        echo "  ⚠️  No pinned checksum for arch '${ARCH}' — skipping verification"
+        curl -fL -o /tmp/git-bug "$GIT_BUG_URL"
+        EXPECTED="${GIT_BUG_SHA256[$ARCH]:-}"
+        if [ -n "$EXPECTED" ]; then
+            ACTUAL=$(sha256sum /tmp/git-bug | awk '{print $1}')
+            if [ "$ACTUAL" != "$EXPECTED" ]; then
+                echo "  ❌ Checksum mismatch for git-bug_linux_${ARCH}"
+                echo "     Expected: $EXPECTED"
+                echo "     Got:      $ACTUAL"
+                rm -f /tmp/git-bug
+                exit 1
+            fi
+            echo "  ✅ Checksum verified"
+        else
+            echo "  ⚠️  No pinned checksum for arch '${ARCH}' — skipping verification"
+        fi
+        chmod +x /tmp/git-bug
+        mv /tmp/git-bug "$GIT_BUG_BIN"
+        echo "  ✅ git-bug v${GIT_BUG_VERSION} installed"
     fi
-    run chmod +x /tmp/git-bug
-    run mv /tmp/git-bug "$GIT_BUG_BIN"
-    echo "  ✅ git-bug v${GIT_BUG_VERSION} installed"
 else
     echo "  ✅ git-bug v${GIT_BUG_VERSION} already installed"
 fi
