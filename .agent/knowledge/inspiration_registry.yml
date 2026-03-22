@@ -49,3 +49,12 @@ projects:
       - TDD methodology and testing patterns
       - subagent patterns and orchestration
       - development methodology and workflows
+
+  gastown:
+    type: inspiration
+    repo: steveyegge/gastown
+    description: Multi-agent workspace manager
+    interest_areas:
+      - multi-agent coordination and workspace management
+      - task orchestration and dispatching
+      - agent isolation and context management
