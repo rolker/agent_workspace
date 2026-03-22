@@ -10,6 +10,7 @@ Usage:
     python3 sync_project.py [--dry-run]
 """
 
+import shutil
 import sys
 import subprocess
 import argparse
@@ -98,6 +99,43 @@ def sync_repo(repo_path, repo_name, dry_run=False):
     return True
 
 
+def sync_gitbug(repo_path, dry_run=False):
+    """Sync git-bug issues for a repo if git-bug is installed and a bridge is configured."""
+    if not shutil.which("git-bug"):
+        return
+
+    # Check if a bridge is configured in this repo
+    try:
+        result = subprocess.run(
+            ["git", "bug", "bridge", "list"],
+            cwd=str(repo_path),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return
+    except OSError:
+        return
+
+    repo_name = repo_path.name
+    if dry_run:
+        print(f"  [DRY-RUN] {repo_name}: git bug pull")
+        print(f"  [DRY-RUN] {repo_name}: git bug push")
+        return
+
+    print(f"  Syncing git-bug issues for {repo_name}...")
+    for cmd in [["git", "bug", "pull"], ["git", "bug", "push"]]:
+        result = subprocess.run(
+            cmd, cwd=str(repo_path), capture_output=True, text=True, check=False
+        )
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            print(f"     ⚠️  {' '.join(cmd)} failed: {stderr}")
+            return
+    print("     ✅ git-bug synced.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Safely sync workspace and project repositories.")
     parser.add_argument(
@@ -109,11 +147,13 @@ def main():
     project_dir = get_project_path()
 
     # Sync workspace repo
-    sync_repo(root_dir, "agent_workspace (workspace)", args.dry_run)
+    if sync_repo(root_dir, "agent_workspace (workspace)", args.dry_run):
+        sync_gitbug(root_dir, args.dry_run)
 
     # Sync project repo
     if is_project_configured():
-        sync_repo(project_dir, f"project ({project_dir.resolve().name})", args.dry_run)
+        if sync_repo(project_dir, f"project ({project_dir.resolve().name})", args.dry_run):
+            sync_gitbug(project_dir, args.dry_run)
     else:
         print("Checking project...")
         print("  ⚠️  project/ not configured. Run: make setup")

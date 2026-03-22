@@ -13,10 +13,12 @@ import sys
 
 # Accepted email patterns
 # - roland+*@ccom.unh.edu: any agent identity (copilot, gemini, claude, etc.)
+# - roland+*@rolker.net: agent identity (personal domain)
 # - roland@ccom.unh.edu: human (work)
 # - roland@rolker.net: human (personal)
 ACCEPTED_PATTERNS = [
     "roland+*@ccom.unh.edu",
+    "roland+*@rolker.net",
     "roland@ccom.unh.edu",
     "roland@rolker.net",
 ]

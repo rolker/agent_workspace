@@ -5,6 +5,7 @@
 #
 # Stamp chain:
 #   setup-dev.done  — venv + pre-commit installed
+#   git-bug.done    — git-bug identity + GitHub bridge configured
 #   project.done    — project/ configured (cloned or symlinked)
 #
 # Target tiers:
@@ -33,7 +34,7 @@ VENV_BIN := $(VENV_DIR)/bin
 PRE_COMMIT := $(VENV_BIN)/pre-commit
 
 # --- Phony targets ---
-.PHONY: help setup build test lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills
+.PHONY: help setup build test lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug
 
 # =============================================================================
 # Tier 2 — Developer workflow
@@ -64,10 +65,11 @@ help:
 	@echo "  make pr-triage        Show PR status across workspace + project"
 	@echo "  make revert-feature ISSUE=<N>   Revert commits for issue <N>"
 	@echo "  make generate-skills  Regenerate /make_* slash commands"
+	@echo "  make skip-git-bug     Skip git-bug setup (mark stamp without running configuration)"
 	@echo "  make clean            Remove stamp files (forces re-setup)"
 	@echo ""
 
-setup: $(STAMP)/project.done
+setup: $(STAMP)/project.done $(STAMP)/git-bug.done
 	@echo "✅ Setup complete."
 
 build: $(STAMP)/setup-dev.done
@@ -108,6 +110,11 @@ revert-feature:
 generate-skills:
 	@$(MAIN_ROOT)/.agent/scripts/generate_make_skills.sh
 
+skip-git-bug:
+	@mkdir -p $(STAMP)
+	@touch $(STAMP)/git-bug.done
+	@echo "git-bug setup marked as done. Run 'make clean' to reset."
+
 # =============================================================================
 # Tier 1 — Setup chain (stamp-based)
 # =============================================================================
@@ -123,6 +130,12 @@ $(STAMP)/setup-dev.done: requirements.txt | $(STAMP)
 	$(VENV_BIN)/pip install --quiet -r $(MAIN_ROOT)/requirements.txt
 	$(PRE_COMMIT) install
 	touch $@
+
+# git-bug: configure identity + GitHub bridge
+$(STAMP)/git-bug.done: $(STAMP)/setup-dev.done
+	@mkdir -p $(STAMP)
+	@$(MAIN_ROOT)/.agent/scripts/git_bug_setup.sh
+	@touch $@
 
 # project: configure project/ directory
 $(STAMP)/project.done: $(STAMP)/setup-dev.done

@@ -120,6 +120,13 @@ else
     check_warn "pre-commit not found. Run: make lint (auto-installs)"
 fi
 
+# git-bug (optional)
+if command -v git-bug &>/dev/null; then
+    check_pass "git-bug found ($(git-bug version 2>/dev/null | head -1))"
+else
+    check_warn "git-bug not installed (optional: offline issue tracking — run: make skip-git-bug to suppress)"
+fi
+
 # Project directory
 PROJECT_DIR="${MAIN_ROOT:-$ROOT_DIR}/project"
 if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
@@ -362,7 +369,20 @@ if [ "$SKIP_GITHUB" = false ]; then
         ISSUE_OUTPUT=""
         for repo in $REPOS; do
             [ -z "$repo" ] && continue
-            count=$(gh api -X GET search/issues -f q="repo:$repo is:issue is:open" --jq '.total_count' 2>/dev/null || echo "0")
+            count=""
+            # Try git-bug for the workspace repo (where a bridge is configured)
+            if [ "$repo" = "$WS_REMOTE" ] && command -v git-bug &>/dev/null \
+                && git -C "$MAIN_ROOT" bug bridge list &>/dev/null 2>&1; then
+                _gb_output=$(git -C "$MAIN_ROOT" bug ls status:open 2>/dev/null)
+                _gb_rc=$?
+                if [ $_gb_rc -eq 0 ]; then
+                    count=$(printf '%s\n' "$_gb_output" | grep -c . || true)
+                fi
+            fi
+            # Fall back to gh API
+            if [ -z "$count" ] || ! [[ "$count" =~ ^[0-9]+$ ]]; then
+                count=$(gh api -X GET search/issues -f q="repo:$repo is:issue is:open" --jq '.total_count' 2>/dev/null || echo "0")
+            fi
             [[ "$count" =~ ^[0-9]+$ ]] || count=0
             if [ "$count" -gt 0 ]; then
                 repo_name=$(basename "$repo")
