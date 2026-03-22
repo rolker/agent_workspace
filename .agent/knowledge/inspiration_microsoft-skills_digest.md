@@ -85,21 +85,20 @@ plugin marketplace. Cross-platform: GitHub Copilot, Claude Code, OpenCode.
 
 ## Pending Review
 
-- `progressive-skill-disclosure` — Three-level skill loading (metadata -> body -> references) with explicit token budget guidance (2026-03-22)
-- `agent-handoff-protocol` — Structured agent-to-agent handoffs with tool scoping and role specialization (2026-03-22)
-- `skill-test-harness` — YAML scenario-based testing with acceptance criteria for skills (2026-03-22)
-- `continual-learning-hook` — Session-aware hook with two-tier SQLite memory and TTL-based decay (2026-03-22)
-- `context-rot-awareness` — Explicit guidance against loading too many skills, with selective loading as default (2026-03-22)
-- `success-indicators-pattern` — Observable behaviors section in Agents.md that confirms principles are working (2026-03-22)
+(none)
 
 ## Issued
 
-(none yet)
+- `progressive-skill-disclosure` — Issue #39: Explore progressive skill disclosure with token budget guidance (2026-03-22)
+- `agent-handoff-protocol` — Issue #40: Explore structured agent handoffs with tool scoping (2026-03-22)
+- `skill-test-harness` — Issue #41: Explore YAML scenario-based skill testing (2026-03-22)
+- `continual-learning-hook` — Issue #42: Explore automated continual learning across sessions (2026-03-22)
+- `success-indicators-pattern` — Issue #43: Add success indicators section to AGENTS.md (2026-03-22)
 
 ## Skipped
 
-(none yet)
+(none)
 
 ## Deferred
 
-(none yet)
+- `context-rot-awareness` — Guidance against loading too many skills — revisit as skill count grows (2026-03-22)
