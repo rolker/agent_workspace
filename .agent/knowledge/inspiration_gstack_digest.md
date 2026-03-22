@@ -1,14 +1,14 @@
 # Inspiration Digest: gstack
 
 Type: inspiration
-Last checked: 2026-03-21
-Repo: garrytan/gstack @ 709bed9f4d7d419ef4f806f8b3e91fa53f6c0945
+Last checked: 2026-03-22
+Repo: garrytan/gstack @ dbd98aff32e3e68f4976dcc38e76a007a2c4a08a
 
 ## Survey Summary
 
 gstack is an opinionated Claude Code skills framework that organizes AI-assisted
 development into role-based slash commands (CEO, eng manager, designer, QA lead,
-release engineer). 21 skills, TypeScript/Bun-based, MIT license.
+release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 
 ### Review & QA Workflow
 
@@ -61,6 +61,10 @@ release engineer). 21 skills, TypeScript/Bun-based, MIT license.
 - **/document-release**: Post-ship documentation updater. Per-file audit of README,
   ARCHITECTURE, CONTRIBUTING, CLAUDE.md, CHANGELOG. Auto-updates factual corrections,
   asks about risky narrative changes.
+- **/land-and-deploy**: Post-merge deployment. Auto-detects platform, runs canary
+  verification. Offers revert at every failure point.
+- **/canary**: Post-deploy monitoring loop. Screenshots, baseline comparison, anomaly alerts.
+- **/benchmark**: Performance regression detection. Core Web Vitals, bundle sizes.
 
 ### Safety Controls
 
@@ -82,22 +86,24 @@ release engineer). 21 skills, TypeScript/Bun-based, MIT license.
 - **Report template**: Title, what tried, what happened, rating, repro steps,
   raw output, "what would make this a 10", date/version/skill metadata.
 - **Constraints**: Max 3 reports per session, non-blocking, skip existing slugs.
-- **Calibration**: File for reasonable-input-unexpected-error. Don't file for
-  user's own app bugs, network errors, auth failures.
-- **Feedback loop**: Agents report friction -> reports accumulate locally ->
-  developer forks gstack -> fixes issues using pre-written reports -> opens PR.
 - **Key innovation**: Agents self-report tooling friction with reproduction steps
   pre-written. Barrier to contribution is removed.
 
+## Changelog Since Last Check (v0.9.5.0 - v0.9.9.0)
+
+6 commits, 89 files changed, +12,023/-3,441 lines.
+
+- v0.9.9.0: Hardened /office-hours anti-sycophancy
+- v0.9.8.0: /land-and-deploy, /canary, /benchmark, /setup-deploy, perf review
+- v0.9.7.0: Plan file review report + enriched JSONL logging
+- v0.9.6.0: Auto-scaled adversarial review by diff size
+- v0.9.5.0: ETHOS.md, search-before-building integration, eureka moments
+
 ## Activity Snapshot
 
-- 20 open issues, 20 open PRs (very active, ~10 days old project)
-- Notable open: multi-host adapter RFC (#289), skill namespace pollution (#267),
-  skill chain state detection broken (#280), Windows browse issues (#276)
-- Notable merged: adversarial spec review loop (v0.9.1.0), multi-agent support
-  (v0.9.0), safety hook skills (v0.7.1), test failure ownership triage,
-  CEO review handoff context, test coverage catalog
-- Rapid versioning: v0.7.x -> v0.9.5.x in ~10 days
+- 20 open issues, 10 open PRs
+- Active development: deploy pipeline, adversarial review, office-hours rigor
+- Rapid versioning: v0.9.5.0 -> v0.9.9.0 in ~2 days
 
 ## Pending Review
 
@@ -105,6 +111,21 @@ release engineer). 21 skills, TypeScript/Bun-based, MIT license.
 
 ## Issued
 
+- `auto-scaled-adversarial-review` — Issue #47: adaptive review depth based on diff size (2026-03-22)
+- `anti-sycophancy-patterns` — Issue #48: anti-sycophancy patterns for brainstorm/review skills (2026-03-22)
+- `plan-file-review-report` — Issue #49: embed review status in work plan files (2026-03-22)
+- `search-before-building` — Issue #50: search-before-building step in recommendation skills (2026-03-22)
+- `review-log-system` — Issue #51: JSONL review tracking with staleness detection (2026-03-22)
+- `fix-first-heuristic` — Issue #52: fix-first heuristic for review skills (2026-03-22)
+- `diff-aware-qa` — Issue #53: diff-aware test targeting from branch changes (2026-03-22)
+- `cognitive-patterns-for-review` — Issue #54: cognitive pattern lists for review personas (2026-03-22)
+- `adversarial-spec-review` — Issue #55: adversarial spec review subagent for plan review (2026-03-22)
+- `scope-mode-selection` — Issue #56: explicit scope modes for planning reviews (2026-03-22)
+- `safety-hooks-careful-freeze` — Issue #57: PreToolUse safety hooks hierarchy (2026-03-22)
+- `agent-friction-reporting` — Issue #58: agent friction self-reporting with field reports (2026-03-22)
+- `completeness-principle` — Issue #59: completeness principle for AI-assisted development (2026-03-22)
+- `skill-chaining-pipeline` — Issue #60: skill chaining pipeline with handoff context (2026-03-22)
+- `design-review-ai-slop-detection` — Issue #61: AI slop detection in design review (2026-03-22)
 - `gstack-inspiration-revisit` — Issue #19: revisit all 11 deferred gstack findings (2026-03-21)
 
 ## Skipped
@@ -113,14 +134,4 @@ release engineer). 21 skills, TypeScript/Bun-based, MIT license.
 
 ## Deferred
 
-- `review-log-system` — JSONL-based review tracking with staleness detection and readiness dashboard (2026-03-21)
-- `fix-first-heuristic` — AUTO-FIX mechanical issues, ASK for judgment calls in review workflow (2026-03-21)
-- `diff-aware-qa` — QA that auto-detects affected pages from branch changes (2026-03-21)
-- `cognitive-patterns-for-review` — Role-specific cognitive pattern lists (15-18 per role) guiding review personas (2026-03-21)
-- `adversarial-spec-review` — Independent subagent for adversarial spec review scoring on 5 dimensions (2026-03-21)
-- `scope-mode-selection` — Four explicit scope modes (expand/selective/hold/reduce) for planning reviews (2026-03-21)
-- `safety-hooks-careful-freeze` — PreToolUse hooks for destructive command warnings and edit boundary enforcement (2026-03-21)
-- `agent-friction-reporting` — "See something, say something" — agents self-report tooling friction with field reports (2026-03-21)
-- `completeness-principle` — "Boil the lake" — prefer complete implementation when AI compresses cost (2026-03-21)
-- `skill-chaining-pipeline` — Structured skill pipeline where each stage reads outputs from previous stages (2026-03-21)
-- `design-review-ai-slop-detection` — Explicit AI slop detection in design review (generic cards, hero sections) (2026-03-21)
+- `deploy-pipeline-automation` — /land-and-deploy + /canary + /benchmark full deploy pipeline (2026-03-22)
