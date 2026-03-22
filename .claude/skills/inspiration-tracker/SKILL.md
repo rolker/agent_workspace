@@ -324,9 +324,21 @@ When invoked with `add` or `add <url>`:
    - Fork: ask which categories to compare, any domain patterns to filter
    - Inspiration: ask which interest areas to focus on
 
-5. **Add to registry**: Append the new entry to `inspiration_registry.yml`.
+5. **Create/enter skill worktree**: The registry is git-tracked, so edits
+   must go through a PR. Create (or enter) the skill worktree before writing:
+   ```bash
+   .agent/scripts/worktree_create.sh --skill inspiration-tracker --type workspace
+   source .agent/scripts/worktree_enter.sh --skill inspiration-tracker
+   ```
+   If a skill worktree already exists (from a previous run), just enter it.
 
-6. **Optionally run first check**: Offer to immediately check the newly added project.
+6. **Add to registry**: Append the new entry to `inspiration_registry.yml`
+   and commit in the skill worktree.
+
+7. **Optionally run first check**: Offer to immediately check the newly added
+   project (reuses the skill worktree created in step 5). If the user declines,
+   push the branch and create a PR for the registry commit (per main workflow
+   step 10).
 
 ## Guidelines
 
