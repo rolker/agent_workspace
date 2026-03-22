@@ -58,3 +58,12 @@ projects:
       - multi-agent coordination and workspace management
       - task orchestration and dispatching
       - agent isolation and context management
+
+  microsoft-skills:
+    type: inspiration
+    repo: microsoft/skills
+    description: Skills, MCP servers, Custom Agents, and Agents.md for grounding coding agents
+    interest_areas:
+      - skills architecture and SDK grounding
+      - custom agent patterns
+      - Agents.md conventions
