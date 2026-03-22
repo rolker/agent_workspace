@@ -66,13 +66,14 @@ Repo: rolker/ros2_agent_workspace @ 54a2ef469eeaddc7aa30f11ff34078aa94836e74
 
 ## Pending Review
 
-- `web-dashboard-phase1` — Local Python stdlib web dashboard for monitoring concurrent agent sessions via tmux. Tabbed UI with terminal, plan, and context panels. PR #402, +3498 lines. (2026-03-22)
-- `tmux-session-strategy` — Two-use-case tmux model: agent sessions (bidirectional) and app sessions (read-only). Named session conventions and lifecycle rules. Issue #403. (2026-03-22)
-- `agent-start-task-tmux` — Enhanced agent start-task: create worktree + tmux session + launch agent in one command. Part of #385. (2026-03-22)
-- `worktree-list-json` — --json flag for worktree_list.sh enabling programmatic consumption by dashboard. (2026-03-22)
-- `local-orchestration-modes` — Workflow modes (autonomous/collaborative/pair) and task-scoped permission profiles. Issue #385. (2026-03-22)
-- `post-merge-skill` — Automate "merged, cleanup and make sync" as a skill. Part of #385. (2026-03-22)
-- `dashboard-sh-enhancements` — Upstream dashboard.sh has +172 lines: additional tool checks, layer sync status. Non-domain portions may be portable. (2026-03-22)
+(none)
+
+## Issued
+
+- `web-dashboard-phase1` — Issue #64: port web-based agent dashboard from upstream (2026-03-22)
+- `tmux-session-strategy` — Issue #65: tmux session strategy for agents and applications (2026-03-22)
+- `agent-start-task-tmux` — Issue #66: enhanced agent start-task with tmux session creation (2026-03-22)
+- `local-orchestration-modes` — Issue #67: workflow modes autonomous/collaborative/pair (2026-03-22)
 
 ## Ported/Adapted
 
@@ -85,6 +86,7 @@ Repo: rolker/ros2_agent_workspace @ 54a2ef469eeaddc7aa30f11ff34078aa94836e74
 
 ## Deferred
 
+- `dashboard-sh-enhancements` — Upstream dashboard.sh has +172 lines: additional tool checks, layer sync status. Non-domain portions may be portable. (2026-03-22)
 - `tests/` directory for scripts — upstream has tests for generic scripts (2026-03-21)
 - `ci_workflow.yml` template — CI workflow template for project repos (2026-03-21)
 - `pre-commit-config.yaml` template — pre-commit config template for project repos (2026-03-21)
