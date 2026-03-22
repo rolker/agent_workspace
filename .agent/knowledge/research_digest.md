@@ -1,6 +1,6 @@
 # Research Digest: Workspace
 
-<!-- Last updated: 2026-03-11 -->
+<!-- Last updated: 2026-03-22 -->
 <!-- If older than 30 days, consider running /research --refresh; entries older than 90 days should be flagged for review -->
 
 ## Command Runner Alternatives to Make
@@ -232,3 +232,29 @@ Key takeaways:
 - The bottleneck has shifted from "can AI write code?" to "how do I run multiple agents in parallel without chaos?" — orchestration is the 2026 scaling lever
 
 **Relevance**: This workspace already has the foundational primitives that all orchestrators build on: worktree isolation scripts, draft-PR visibility, workforce protocol, and multi-framework identity. The gaps relative to agent-orchestrator are: (1) **no reaction system** — CI failures and review comments require manual agent re-engagement; (2) **no dashboard** — `worktree_list.sh` shows status but lacks a unified view of agent progress, CI, and PRs; (3) **no automated task decomposition** — issues are manually assigned to agents; (4) **no inter-agent messaging** — agents can't coordinate or hand off work. Of these, a reaction system for CI failures and review feedback would deliver the most immediate value, since agents already create PRs but can't respond to CI/review events autonomously. See [#375](https://github.com/rolker/ros2_agent_workspace/issues/375).
+
+---
+
+## Potential Inspiration Tracker Candidates
+
+**Added**: 2026-03-22 | **Sources**: [obra/superpowers](https://github.com/obra/superpowers), [obra/superpowers-lab](https://github.com/obra/superpowers-lab), [steveyegge/gastown](https://github.com/steveyegge/gastown), [microsoft/skills](https://github.com/microsoft/skills), [wshobson/agents](https://github.com/wshobson/agents), [hesreallyhim/awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code), [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator)
+
+Survey of repos that could be tracked via `/inspiration-tracker add` for portable patterns and enhancements. Assessed against this workspace's concerns: skills architecture, governance, worktree isolation, multi-agent coordination, and multi-framework identity.
+
+### Strong candidates (inspiration type)
+
+- **obra/superpowers** (~99k stars) — The dominant Claude Code skills framework. TDD-enforced workflow, composable skills, subagent-driven review, skill authoring skill. Interest areas: skills architecture, TDD methodology, subagent patterns, review workflows. Already listed as an example in the skill's SKILL.md but not yet in the registry.
+- **steveyegge/gastown** — Multi-agent workspace manager with git-backed persistent work tracking, web dashboard, and hook-based coordination. Interest areas: multi-agent coordination, work state persistence, dashboard patterns, hook-based propulsion.
+- **microsoft/skills** — 126 modular skills + MCP server configs + agent persona definitions. Official reference for the Agent Skills open standard. Interest areas: skill format conventions, MCP server configuration patterns, agent persona definitions, skill discovery/registry.
+
+### Worth monitoring (inspiration type)
+
+- **obra/superpowers-lab** — Experimental skills incubator for superpowers. New techniques tested here before promotion. Interest areas: emerging skill patterns, experimental workflows.
+- **wshobson/agents** — 112 agents, 146 skills, 79 tools in 72 plugins. Massive but well-organized plugin architecture with model-tier optimization (Sonnet/Haiku routing). Interest areas: plugin organization, model routing patterns, agent team presets.
+- **ComposioHQ/agent-orchestrator** — Already covered in research digest (Agent Orchestrators entry). Pluggable adapters for runtime/agent/workspace/tracker/notifier. Interest areas: reaction system for CI/review, adapter architecture, task decomposition.
+
+### Reference only (not worth tracking)
+
+- **hesreallyhim/awesome-claude-code**, **VoltAgent/awesome-claude-code-subagents**, **rohitg00/awesome-claude-code-toolkit** — Curated lists / catalogs. Useful for one-off browsing but too broad and fast-churning for structured tracking. Better used as discovery sources when searching for a specific pattern.
+
+**Relevance**: The inspiration tracker currently only tracks `ros2_agent_workspace` (fork) and `gstack` (inspiration). Adding 2–3 of the strong candidates would broaden the workspace's awareness of evolving patterns in skills architecture, multi-agent coordination, and governance enforcement. Recommended priority: **superpowers** first (most relevant to skills and review workflows), then **gastown** (most relevant to multi-agent coordination).
