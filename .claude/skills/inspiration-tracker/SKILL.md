@@ -336,7 +336,9 @@ When invoked with `add` or `add <url>`:
    and commit in the skill worktree.
 
 7. **Optionally run first check**: Offer to immediately check the newly added
-   project (continues in the same skill worktree — step 3 is already satisfied).
+   project (reuses the skill worktree created in step 5). If the user declines,
+   push the branch and create a PR for the registry commit (per main workflow
+   step 10).
 
 ## Guidelines
 
