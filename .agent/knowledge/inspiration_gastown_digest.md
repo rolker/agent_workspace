@@ -98,23 +98,22 @@ concurrently.
 
 ## Pending Review
 
-- `git-backed-work-state` — Beads system: persistent issue/work tracking in git that survives agent crashes (2026-03-22)
-- `tiered-supervisor-hierarchy` — Three-tier monitoring (Witness/Deacon/Dogs) with escalation chain and automatic stall detection (2026-03-22)
-- `inter-agent-mail-protocol` — Structured message types with routing (nudge for immediate, mail for persistent); typed formats for coordination (2026-03-22)
-- `session-continuity-seance` — Querying predecessor agent sessions via JSONL logs for context recovery across restarts (2026-03-22)
-- `convoy-batch-tracking` — Grouping related work items into trackable units with progress monitoring and completion notification (2026-03-22)
-- `polecat-reuse-pattern` — Persistent agent identity with ephemeral sessions; worktree preserved between assignments for faster turnaround (2026-03-22)
-- `capacity-scheduling` — Config-driven concurrency governor for agent dispatch to prevent API rate limit exhaustion (2026-03-22)
-- `agent-attribution-model` — BD_ACTOR slash-path format for universal agent provenance in git commits and work tracking (2026-03-22)
+(none)
 
 ## Issued
 
-(none yet)
+- `git-backed-work-state` — Issue #33: Explore git-backed persistent work state for agents (2026-03-22)
+- `tiered-supervisor-hierarchy` — Issue #34: Explore agent health monitoring and supervision (2026-03-22)
+- `inter-agent-mail-protocol` — Issue #35: Explore structured inter-agent messaging protocol (2026-03-22)
+- `session-continuity-seance` — Issue #36: Explore session continuity and cross-session context recovery (2026-03-22)
 
 ## Skipped
 
-(none yet)
+(none)
 
 ## Deferred
 
-(none yet)
+- `convoy-batch-tracking` — Batch work tracking with progress monitoring — revisit when managing more concurrent work (2026-03-22)
+- `polecat-reuse-pattern` — Persistent agent identity with worktree reuse — revisit as optimization when scale warrants (2026-03-22)
+- `capacity-scheduling` — Concurrency governor for agent dispatch — revisit when running more agents concurrently (2026-03-22)
+- `agent-attribution-model` — BD_ACTOR slash-path provenance format — revisit as agent team grows (2026-03-22)
