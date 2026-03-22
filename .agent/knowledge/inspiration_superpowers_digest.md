@@ -96,23 +96,22 @@ process as mandatory workflow rather than optional suggestions.
 
 ## Pending Review
 
-- `skills-as-mandatory-gates` — Pattern of using a meta-skill to enforce skill invocation before any response (2026-03-22)
-- `two-stage-subagent-review` — Spec compliance review + code quality review as separate passes with different prompts (2026-03-22)
-- `headless-integration-tests` — Testing skills by running actual agent sessions and parsing JSONL transcripts (2026-03-22)
-- `verification-before-completion` — Skill that enforces evidence-before-claims, preventing premature success declarations (2026-03-22)
-- `model-selection-for-subagents` — Guidance on using cheaper models for mechanical tasks, capable models for design (2026-03-22)
-- `visual-brainstorming` — Browser-based visual companion for brainstorming sessions via WebSocket (2026-03-22)
-- `systematic-debugging-skill` — Four-phase root cause investigation process enforced as a mandatory skill (2026-03-22)
-- `iron-law-pattern` — Documentation pattern using absolute rules + rationalization detection for critical processes (2026-03-22)
+(none)
 
 ## Issued
 
-(none yet)
+- `skills-as-mandatory-gates` — Issue #26: Explore auto-triggering skills based on context (2026-03-22)
+- `two-stage-subagent-review` — Issue #27: Split subagent review into spec-compliance and code-quality passes (2026-03-22)
+- `headless-integration-tests` — Issue #28: Add headless integration tests for skills (2026-03-22)
+- `verification-before-completion` — Issue #29: Create verification-before-completion skill (2026-03-22)
+- `visual-brainstorming` — Issue #30: Explore visual companion UI for interactive skills (2026-03-22)
+- `systematic-debugging-skill` — Issue #31: Add systematic debugging skill (2026-03-22)
 
 ## Skipped
 
-(none yet)
+(none)
 
 ## Deferred
 
-(none yet)
+- `model-selection-for-subagents` — Guidance on using cheaper models for mechanical tasks, capable models for design — revisit when subagent usage increases (2026-03-22)
+- `iron-law-pattern` — Documentation pattern using absolute rules + rationalization detection for critical processes — keep in mind for future skill writing (2026-03-22)
