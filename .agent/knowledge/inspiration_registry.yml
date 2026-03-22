@@ -28,3 +28,14 @@ projects:
       - knowledge
       - makefile
       - config
+
+  gstack:
+    type: inspiration
+    repo: garrytan/gstack
+    description: Opinionated Claude Code skills framework with role-based slash commands
+    interest_areas:
+      - review and QA workflow (multi-role review, browser-based QA)
+      - planning methodology (CEO/eng/design review roles)
+      - release engineering (/ship, /document-release automation)
+      - safety controls (/careful, /freeze, /guard hooks)
+      - agent friction reporting (how agents surface workflow friction)
