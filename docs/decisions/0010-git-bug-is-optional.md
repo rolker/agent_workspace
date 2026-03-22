@@ -15,7 +15,7 @@ per-worktree API latency and enable offline operation.
 
 The implementation risks that originally justified keeping git-bug optional are already
 mitigated:
-- `git_bug_setup.sh` is idempotent and skips silently if git-bug is not installed
+- `git_bug_setup.sh` is idempotent and skips with a brief status message if git-bug is not installed
 - `worktree_create.sh` tries git-bug first, falls back to `gh` — nothing breaks without it
 - A `skip-git-bug` Makefile escape hatch exists for opt-out
 - CI is detected and the setup step skips automatically
@@ -45,5 +45,5 @@ git-bug **is installed by default** in this workspace.
 - Bridge setup requires a valid GitHub token at first run
 
 **Opt-out:**
-Run `make skip-git-bug` to mark the stamp without installing. The workspace degrades to
-gh-only (identical to previous behavior).
+Run `make skip-git-bug` to mark the stamp without running git-bug setup/configuration.
+The workspace degrades to gh-only (identical to previous behavior).

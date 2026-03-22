@@ -62,9 +62,27 @@ GIT_BUG_VERSION="0.10.1"
 GIT_BUG_BIN="/usr/local/bin/git-bug"
 if [ ! -x "$GIT_BUG_BIN" ] || ! "$GIT_BUG_BIN" version 2>/dev/null | grep -q "$GIT_BUG_VERSION"; then
     ARCH=$(dpkg --print-architecture 2>/dev/null || uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+    # Pinned checksums — git-bug releases don't publish .sha256 files
+    declare -A GIT_BUG_SHA256=(
+        [amd64]="3ba2f8b41e526fef1b6e825d5030823be65bb6521a287b1139bd609fed0d54a1"
+    )
     GIT_BUG_URL="https://github.com/git-bug/git-bug/releases/download/v${GIT_BUG_VERSION}/git-bug_linux_${ARCH}"
     echo "Installing git-bug v${GIT_BUG_VERSION}..."
     run curl -fL -o /tmp/git-bug "$GIT_BUG_URL"
+    EXPECTED="${GIT_BUG_SHA256[$ARCH]:-}"
+    if [ -n "$EXPECTED" ]; then
+        ACTUAL=$(sha256sum /tmp/git-bug | awk '{print $1}')
+        if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "  ❌ Checksum mismatch for git-bug_linux_${ARCH}"
+            echo "     Expected: $EXPECTED"
+            echo "     Got:      $ACTUAL"
+            rm -f /tmp/git-bug
+            exit 1
+        fi
+        echo "  ✅ Checksum verified"
+    else
+        echo "  ⚠️  No pinned checksum for arch '${ARCH}' — skipping verification"
+    fi
     run chmod +x /tmp/git-bug
     run mv /tmp/git-bug "$GIT_BUG_BIN"
     echo "  ✅ git-bug v${GIT_BUG_VERSION} installed"

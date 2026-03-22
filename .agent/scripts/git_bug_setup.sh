@@ -99,12 +99,13 @@ if [ "$BRIDGE_EXISTS" -eq 0 ]; then
     fi
 
     echo "Configuring GitHub bridge for $OWNER/$REPO..."
-    if git bug bridge new \
+    # Pass token via stdin to avoid exposing it in process listings
+    if echo "$GH_TOKEN" | git bug bridge new \
         --name github \
         --target github \
         --owner "$OWNER" \
         --project "$REPO" \
-        --token "$GH_TOKEN" \
+        --token-stdin \
         --non-interactive 2>/dev/null; then
         echo "✅ GitHub bridge configured."
     else

@@ -65,7 +65,7 @@ help:
 	@echo "  make pr-triage        Show PR status across workspace + project"
 	@echo "  make revert-feature ISSUE=<N>   Revert commits for issue <N>"
 	@echo "  make generate-skills  Regenerate /make_* slash commands"
-	@echo "  make skip-git-bug     Skip git-bug setup (mark stamp without installing)"
+	@echo "  make skip-git-bug     Skip git-bug setup (mark stamp without running configuration)"
 	@echo "  make clean            Remove stamp files (forces re-setup)"
 	@echo ""
 

@@ -258,7 +258,7 @@ if [ -n "$ISSUE_NUM" ]; then
             exit 1
         fi
 
-        # Fall back to gh for title/state if git-bug didn't provide them
+        # Fall back to gh for title/state individually if git-bug didn't provide them
         if [ -z "$ISSUE_TITLE" ] || [ -z "$ISSUE_STATE" ]; then
             if [ -n "$GH_REPO_SLUG" ]; then
                 _ISSUE_INFO=$(gh issue view "$ISSUE_NUM" --repo "$GH_REPO_SLUG" --json title,state --jq '.title + "||" + .state' 2>/dev/null || echo "")
@@ -266,8 +266,8 @@ if [ -n "$ISSUE_NUM" ]; then
                 _ISSUE_INFO=$(gh issue view "$ISSUE_NUM" --json title,state --jq '.title + "||" + .state' 2>/dev/null || echo "")
             fi
             if [[ "$_ISSUE_INFO" == *"||"* ]]; then
-                ISSUE_TITLE="${_ISSUE_INFO%||*}"
-                ISSUE_STATE="${_ISSUE_INFO##*||}"
+                [ -z "$ISSUE_TITLE" ] && ISSUE_TITLE="${_ISSUE_INFO%||*}"
+                [ -z "$ISSUE_STATE" ] && ISSUE_STATE="${_ISSUE_INFO##*||}"
             fi
         fi
     fi
