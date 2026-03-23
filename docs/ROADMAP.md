@@ -80,7 +80,24 @@ Items considered and rejected, with reasons.
 
 New findings from inspiration tracker, not yet discussed in a brainstorm session.
 
-(Empty — all current findings have been triaged.)
+### Review & Quality Patterns
+- **Anti-sycophancy patterns** (#48) — Banned phrases, worked pushback examples for brainstorm/review skills. Source: gstack
+- **Explicit scope modes for planning** (#56) — Four modes: expansion, selective expansion, hold, reduction. Source: gstack plan-ceo-review
+- **AI slop detection in design review** (#61) — Check for generic AI patterns (hero sections, card grids, stock imagery). Source: gstack design-review
+- **Diff-aware test targeting** (#53) — Map git diff to affected test targets, focus QA on what changed. Source: gstack
+
+### Agent Discipline & Self-Improvement
+- **Search-before-building step** (#50) — Search for runtime built-ins and best practices before recommending infrastructure. Three-layer knowledge framework. Source: gstack
+- **Completeness principle** (#59) — Prefer full implementation when AI compresses effort 10-100x. "Lake vs ocean" distinction. Source: gstack
+- **Agent friction self-reporting** (#58) — Agent rates experience 0-10 after workflow steps, files field reports when not 10. Source: gstack
+
+### Safety & Guardrails
+- **PreToolUse safety hooks** (#57) — Three-tier hierarchy: careful (warn), freeze (block edits outside path), guard (both). Source: gstack
+
+### Multi-Agent Infrastructure
+- **tmux session strategy** (#65) — Named sessions for agents (`agent-issue-N`) and applications, dashboard integration. Source: ros2_agent_workspace
+- **Enhanced start-task with tmux** (#66) — Worktree + tmux session + agent launch in one command. Source: ros2_agent_workspace
+- **Workflow modes** (#67) — Autonomous / collaborative / pair per-session, with permission implications. Source: ros2_agent_workspace
 
 ## Cross-cutting Decisions
 
