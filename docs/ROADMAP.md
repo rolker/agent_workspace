@@ -5,6 +5,39 @@ Maintained through `/brainstorm` sessions; fed by `/inspiration-tracker` finding
 
 See [#63](https://github.com/rolker/agent_workspace/issues/63) for brainstorm history.
 
+## User Scenarios
+
+These scenarios describe the target experience. Roadmap items are prioritized
+by how much they improve these workflows.
+
+### 1. Feature implementation (end-to-end)
+
+Agent searches before recommending, pushes back honestly, carries context
+through brainstorm -> plan -> implement. Runs local pre-flight review before
+pushing. When Copilot finds something local review missed, it becomes a
+learning signal that improves future local reviews. PRs open clean.
+
+### 2. Design iteration (symptom-driven)
+
+Triggered by issue accumulation suggesting the higher-level design has gaps.
+Agent reads design docs + open issues, identifies root causes across issues
+(not treating them individually), challenges assumptions, updates the design
+doc, and opens issues for fixes.
+
+### 3. Managing concurrent agents
+
+Dashboard replaces terminal tabs + browser for monitoring. Permission profiles
+reduce interrupts. Agents self-manage review loops. One place to look instead
+of 5 terminals + a browser.
+
+### 4. Monday morning bootstrap
+
+Start of day: need to figure out what to work on. Currently requires manually
+checking PRs, reviews, issues, worktree state, and uncommitted changes across
+repos. A morning status skill gathers all state, surfaces pending decisions
+(PRs needing review response, stale worktrees, ready-to-start issues), and
+suggests a prioritized work plan for the day.
+
 ## Priority: Improve Local Reviews
 
 The biggest actionable time sink: push -> wait for Copilot review -> triage
@@ -37,6 +70,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | Inter-agent messaging | #35 | planned | Structured communication between agents |
 | Structured agent handoffs | #40 | planned | Tool scoping per agent role |
 | Permission prompt reduction | — | in progress | #1 friction point; tool-use logging hook deployed, analyze then build targeted allowlist |
+| Morning status / standup skill | — | planned | Gather PR, review, issue, worktree state; suggest prioritized work plan (scenario 4) |
 | Crash recovery skill | #70 | planned | Session-specific scratchpad subdirs |
 
 ## Priority: Improve How Agents Think
@@ -68,7 +102,6 @@ Small fixes that can be done anytime.
 | Item | Issue | Status | Notes |
 |------|-------|--------|-------|
 | Research skill worktree fix | #45 | planned | Fix project worktree path + staleness tracking |
-| Tag skill-generated issues | #46 | planned | Better labels for inspiration-tracker/research issues |
 
 ## Decided Against
 
