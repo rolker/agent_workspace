@@ -112,6 +112,11 @@ Decisions that apply across multiple items:
 - **Roadmap over issues for planning**: Inspiration tracker adds findings to the
   "To Consider" section instead of creating GitHub issues. Issues are created only
   when work is ready to begin.
+- **Triage-and-fix sessions**: During brainstorm or triage sessions, obviously
+  correct fixes (doc updates, config, skill text) can be included in the same PR
+  rather than opening separate issues. Harder fixes that need verification stay as
+  issues. The draft PR serves as the review checkpoint — review the diff and let
+  Copilot check it before merging. Review layers are batched, not bypassed.
 - **Permission prompt reduction strategy**: (1) Log all tool use via PreToolUse
   hook to `~/.claude/tool-use-log.jsonl`. (2) After a week, analyze patterns to
   find always-approve commands. (3) Build targeted allowlist (e.g., read-only git
