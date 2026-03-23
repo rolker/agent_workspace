@@ -220,9 +220,9 @@ Repo: <owner>/<repo> @ <commit-sha>
 
 - `item` — <brief description> (YYYY-MM-DD)
 
-## Issued
+## Roadmapped
 
-- `feature` — Issue #N (YYYY-MM-DD)
+- `feature` — added to ROADMAP.md (YYYY-MM-DD)
 
 ## Skipped
 
@@ -245,7 +245,7 @@ Research checkpoint — findings gathered, decisions pending."
 Then, for each **new or changed** item not already decided in the digest,
 ask the user to choose:
 
-- **Open issue** — create a workspace issue to track it
+- **Add to roadmap** — append to the "To Consider" section of `docs/ROADMAP.md`
 - **Skip** (with reason) — record in digest, won't be re-prompted
 - **Defer** — record in digest, will be re-prompted on next run
 
@@ -253,25 +253,15 @@ Items with existing decisions are shown as a summary at the end.
 
 ### 8. Act on decisions
 
-**Open issue**: Create an issue on the workspace repo for each item.
+**Add to roadmap**: Append items to the "To Consider" section of `docs/ROADMAP.md`,
+grouped under a heading for this project and date. Do NOT create GitHub issues —
+issues are created later when work is ready to begin, typically during a
+`/brainstorm` session that reviews the roadmap.
 
-```bash
-BODY_FILE=$(mktemp /tmp/gh_body.XXXXXX.md)
-cat << EOF > "$BODY_FILE"
-## Enhancement from <name>
+```markdown
+### From <name> (YYYY-MM-DD)
 
-<description of what to port/adapt>
-
-Source: <repo> — <file or pattern>
-
-Identified by the \`inspiration-tracker\` skill.
-
----
-**Authored-By**: \`$AGENT_NAME\`
-**Model**: \`$AGENT_MODEL\`
-EOF
-gh issue create --title "<title>" --body-file "$BODY_FILE" --label "enhancement"
-rm "$BODY_FILE"
+- **<title>** — <brief description>. Source: <repo> — <file or pattern>
 ```
 
 **Skip/Defer**: Record in digest only.
@@ -279,7 +269,7 @@ rm "$BODY_FILE"
 ### 9. Update digest with decisions
 
 Update the digest to move items from "Pending Review" to their final
-sections (Issued, Skipped, or Deferred). Commit the update:
+sections (Roadmapped, Skipped, or Deferred). Commit the update:
 
 ```bash
 git add .agent/knowledge/inspiration_<name>_digest.md
@@ -343,9 +333,10 @@ When invoked with `add` or `add <url>`:
 ## Guidelines
 
 - **Interactive, not autonomous** — always present findings and let the user
-  decide. Never create issues without confirmation.
+  decide. Never add to roadmap without confirmation.
 - **Discovery, not implementation** — this skill identifies and triages
-  enhancements. Implementation happens later via the issues it creates.
+  enhancements. Findings go to the roadmap's "To Consider" section. GitHub
+  issues are created later (during `/brainstorm`) when work is ready to begin.
 - **One project per run** — check one project at a time for focused review.
 - **Single PR per run** — each run produces at most one PR (the digest
   update in the skill worktree). Implementation work gets its own issues

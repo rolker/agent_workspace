@@ -42,6 +42,14 @@ setup (environment, identity, features), see your framework's adapter file:
 - Construct GitHub URLs from directory names — use `gh` CLI to look them up
 - Run bare `pip install` or use `--break-system-packages` — use `.venv` for dev tools (see ADR-0009)
 
+## Communication Standards
+
+- Don't use filler phrases that signal agreement without substance
+  ("great question", "that's an interesting approach", "absolutely")
+- Challenge vague terms and hidden assumptions — ask for clarification
+- Push back when something seems wrong rather than agreeing too readily
+- Lead with the answer or action, not the reasoning
+
 ## Worktree Workflow
 
 Every task must use an isolated worktree. Two types are available:
