@@ -36,7 +36,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | Session continuity | #36 | planned | Cross-session context recovery |
 | Inter-agent messaging | #35 | planned | Structured communication between agents |
 | Structured agent handoffs | #40 | planned | Tool scoping per agent role |
-| Permission prompt reduction | — | planned | #1 friction point; needs investigation |
+| Permission prompt reduction | — | in progress | #1 friction point; tool-use logging hook deployed, analyze then build targeted allowlist |
 | Crash recovery skill | #70 | planned | Session-specific scratchpad subdirs |
 
 ## Priority: Improve How Agents Think
@@ -95,3 +95,9 @@ Decisions that apply across multiple items:
 - **Roadmap over issues for planning**: Inspiration tracker adds findings to the
   "To Consider" section instead of creating GitHub issues. Issues are created only
   when work is ready to begin.
+- **Permission prompt reduction strategy**: (1) Log all tool use via PreToolUse
+  hook to `~/.claude/tool-use-log.jsonl`. (2) After a week, analyze patterns to
+  find always-approve commands. (3) Build targeted allowlist (e.g., read-only git
+  commands). (4) Migrate multi-step skill sequences to scripts (fewer permission
+  checks + fewer tokens). (5) Add explicit progress reporting to skills to replace
+  the visibility lost from fewer prompts.
