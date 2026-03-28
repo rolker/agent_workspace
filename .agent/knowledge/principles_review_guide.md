@@ -47,6 +47,9 @@ humans use it as a checklist.
 | Workflow skill list (add/remove a skill) | Skill list in non-Claude adapters (`.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md`) |
 | Package interfaces (`.msg`/`.srv`) | Downstream packages, documentation, tests |
 | Worktree scripts | `.agent/WORKTREE_GUIDE.md`; `AGENTS.md` worktree section |
+| `review-code` skill | `.agent/knowledge/review_depth_classification.md`; `.agent/scripts/cross_model_review.sh` |
+| Review depth classification doc | `review-code` skill (if tier definitions change) |
+| Work-plan directory convention | `plan-task`, `review-plan`, `triage-reviews`, `review-code` skills |
 
 ## Governance Layering
 
