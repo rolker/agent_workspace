@@ -1,6 +1,6 @@
 ---
 name: review-code
-description: Lead reviewer that orchestrates specialist sub-reviews (static analysis, governance, plan drift) to evaluate a PR. Produces a unified structured report.
+description: Lead reviewer that orchestrates specialist sub-reviews (static analysis, governance, plan drift, adversarial) to evaluate a PR. Scales review depth to change risk. Produces a unified structured report.
 ---
 
 # Review Code
@@ -8,22 +8,32 @@ description: Lead reviewer that orchestrates specialist sub-reviews (static anal
 ## Usage
 
 ```
-/review-code <pr-number-or-url>
+/review-code <pr-number-or-url> [light|standard|deep]
 ```
+
+Optional depth keyword overrides automatic classification.
 
 ## Overview
 
 **Lifecycle position**: review-issue → plan-task → review-plan → implement → **review-code**
 
-Multi-specialist code review system. A lead reviewer gathers context, dispatches
-specialist sub-reviews in parallel, collects findings, deduplicates, applies a
-silence filter, and produces a unified report. Does not post comments or modify
-the PR unless the user asks.
+Multi-specialist code review system. A lead reviewer gathers context,
+classifies review depth based on change risk, dispatches specialist
+sub-reviews in parallel, collects findings, deduplicates, applies a
+silence filter, and produces a unified report. Does not post comments or
+modify the PR unless the user asks.
 
-**Specialists** (Phase 1):
+**Depth tiers** (see `.agent/knowledge/review_depth_classification.md`):
+- **Light** — static analysis only (small, low-risk changes)
+- **Standard** — all specialists + Claude adversarial (medium or governance-touching)
+- **Deep** — all specialists + Claude adversarial + Gemini adversarial (large, security, or cross-layer)
+
+**Specialists**:
 - **Static Analysis** — runs linters with ament-aligned configs on changed files
 - **Governance** — evaluates against principles, ADRs, and consequences
 - **Plan Drift** — compares implementation against the work plan (if one exists)
+- **Claude Adversarial** — fresh subagent, independent review for missed issues (Standard + Deep)
+- **Gemini Adversarial** — cross-model review via Gemini CLI in tmux (Deep only)
 
 ## Steps
 
@@ -44,12 +54,29 @@ Identify:
 - What repo the PR targets (workspace or project repo?)
 - What files changed and in which directories
 - The linked issue and its requirements
-- Whether a work plan exists (`.agent/work-plans/PLAN_ISSUE-*.md` in the PR's target repo)
+- Whether a work plan exists (`.agent/work-plans/issue-*/plan.md` in the PR's target repo)
 
 Read the **full content** of each changed file (not just the diff hunks) to
 understand surrounding context.
 
-### 2. Load project context
+### 2. Classify review depth
+
+Load `.agent/knowledge/review_depth_classification.md` and apply the risk
+signals from step 1:
+
+1. Count total lines changed (additions + deletions)
+2. Count files changed
+3. Check file paths against override-trigger lists (enforcement + governance files)
+4. Check for Deep promotion triggers (security-relevant, cross-layer)
+5. Apply tier promotion logic — highest tier wins
+
+**User override**: If the `/review-code` invocation includes a depth keyword
+(`light`, `standard`, or `deep`), use that tier instead of the automatic
+classification.
+
+Record the tier and the primary signal that determined it for the report header.
+
+### 3. Load project context
 
 For project repo PRs:
 - Read `.agents/README.md` for architecture overview, key files, cross-layer
@@ -70,7 +97,7 @@ For project repo PRs:
 - Read project `PRINCIPLES.md` if it exists
 - Check `.agent/project_knowledge/` symlink for workspace-level project summaries
 
-### 3. Classify changed files
+### 4. Classify changed files
 
 Determine the review profile for each changed file:
 
@@ -85,21 +112,42 @@ Determine the review profile for each changed file:
 
 See `.agent/knowledge/review_static_analysis.md` for full tool configs.
 
-### 4. Dispatch specialists
+### 5. Dispatch specialists
 
-Run specialists in parallel (use Task tool with subagents when available,
-otherwise evaluate sequentially):
+Dispatch specialists based on the depth tier from step 2. Run independent
+specialists in parallel (use Agent tool with subagents when available,
+otherwise evaluate sequentially).
 
-#### 4a. Static Analysis Specialist
+#### Light tier
 
-Run linters on **changed files only**, using the config profile from step 3.
+Run only:
+- **5a. Static Analysis Specialist**
+
+#### Standard tier
+
+Run all of:
+- **5a. Static Analysis Specialist**
+- **5b. Governance Specialist**
+- **5c. Plan Drift Specialist**
+- **5d. Claude Adversarial Specialist**
+
+#### Deep tier
+
+Run all of Standard, plus:
+- **5e. Gemini Adversarial Specialist** (via cross-model review script)
+
+---
+
+#### 5a. Static Analysis Specialist
+
+Run linters on **changed files only**, using the config profile from step 4.
 See `.agent/knowledge/review_static_analysis.md` for exact commands and flags.
 
 Report each finding as:
 - File, line number, tool name, message
 - Skip findings on lines not touched by this PR (context-only lines)
 
-#### 4b. Governance Specialist
+#### 5b. Governance Specialist
 
 Load governance context:
 - `.agent/knowledge/principles_review_guide.md` — evaluation criteria
@@ -134,9 +182,9 @@ items addressed? Mark each as Done or Missing.
 Note unresolved human comments (high priority), valid bot findings, and false
 positives.
 
-#### 4c. Plan Drift Specialist
+#### 5c. Plan Drift Specialist
 
-If a work plan exists (`.agent/work-plans/PLAN_ISSUE-*.md`):
+If a work plan exists (`.agent/work-plans/issue-*/plan.md`):
 - Read the plan's "Approach" and "Files to Change" sections
 - Compare against the actual diff:
   - Files listed in plan but not changed? (incomplete)
@@ -146,12 +194,59 @@ If a work plan exists (`.agent/work-plans/PLAN_ISSUE-*.md`):
 
 If no work plan exists, skip this specialist.
 
-### 5. Apply silence filter
+#### 5d. Claude Adversarial Specialist
 
-Collect all findings from specialists and filter:
+**Activates at**: Standard, Deep
 
-1. **Deduplicate** — if static analysis and governance flag the same issue,
-   keep the more specific one
+Launch as a **fresh subagent** with no context from the other specialists.
+The adversarial reviewer reads the diff and full changed files independently.
+
+Focus areas:
+- Missed edge cases and boundary conditions
+- Security implications (injection, auth bypass, data exposure)
+- Assumption violations (what does the code assume that might not hold?)
+- Subtle bugs (off-by-one, race conditions, resource leaks)
+- Logic errors (does the code actually do what the PR claims?)
+
+Report findings in the same format as other specialists (file, line, severity,
+description). The silence filter will deduplicate any overlap with other
+specialists' findings.
+
+The fresh-context model is deliberate: an independent reviewer that agrees
+with the governance specialist is a stronger signal than one told what to
+look for.
+
+#### 5e. Gemini Adversarial Specialist
+
+**Activates at**: Deep only
+
+Launch the cross-model review script:
+
+```bash
+.agent/scripts/cross_model_review.sh --pr <N>
+```
+
+This starts a Gemini CLI session in a tmux window. The script:
+1. Writes a review prompt to `.agent/work-plans/issue-<N>/review-gemini-prompt.md`
+2. Launches Gemini in tmux session `review-gemini-<N>`
+3. Gemini writes findings to `.agent/work-plans/issue-<N>/review-gemini-findings.md`
+
+**If the script exits non-zero** (tmux or gemini unavailable), note in the
+report: "Cross-model review unavailable — proceeding with Claude-only
+adversarial." Do not fail the review.
+
+**Collecting findings**: After other specialists complete, check if the Gemini
+findings file has been populated (look for the `--- Review complete ---`
+marker at the end). If the review is still running, note this in the report
+and tell the user they can check the tmux session. If complete, read the
+findings file and incorporate results into the unified report.
+
+### 6. Apply silence filter
+
+Collect all findings from all dispatched specialists and filter:
+
+1. **Deduplicate** — if multiple specialists flag the same issue (common
+   between adversarial and governance), keep the more specific one
 2. **Drop linter-enforced nits** — if pre-commit or CI already catches it,
    don't report it again (the author will see it when they commit/push)
 3. **Merge related findings** — group findings about the same logical issue
@@ -164,7 +259,7 @@ Collect all findings from specialists and filter:
    found." Do not invent feedback to fill the report. Target: >=85% of
    reported findings should be actionable.
 
-### 6. Produce the report
+### 7. Produce the report
 
 ```markdown
 ## Code Review: #<N> — <title>
@@ -173,6 +268,7 @@ Collect all findings from specialists and filter:
 **Issue**: #<issue> — <issue-title>
 **Repo**: workspace | <project-repo>
 **Files changed**: <count> (+<additions> -<deletions>)
+**Review depth**: <Light|Standard|Deep> (reason: <primary signal>)
 **Context**: <status of review-context.yaml — fresh / stale / not found>
 
 ### Must-Fix
@@ -205,6 +301,10 @@ Collect all findings from specialists and filter:
 
 <comparison summary, or "No work plan found">
 
+### Cross-Model Review (Gemini)
+
+<Gemini findings if Deep tier and review completed, or status note>
+
 ### Existing Review Comments
 
 - <summary of unresolved comments, if any>
@@ -218,12 +318,31 @@ Collect all findings from specialists and filter:
 - [ ] <specific action items, if any>
 ```
 
-If no findings exist across all sections, output:
+**Light tier condensed format** — skip Governance, Plan Adherence, Cross-Model,
+and Existing Review Comments sections. Use:
 
 ```markdown
 ## Code Review: #<N> — <title>
 
 **PR**: <url>
+**Review depth**: Light (reason: <primary signal>)
+
+### Static Analysis
+
+| # | File | Line | Finding |
+|---|------|------|---------|
+| 1 | `path` | 42 | Description |
+
+No governance concerns for a change of this scope.
+```
+
+**No findings format** — if no findings exist across all sections:
+
+```markdown
+## Code Review: #<N> — <title>
+
+**PR**: <url>
+**Review depth**: <tier> (reason: <signal>)
 No issues found. LGTM.
 ```
 
@@ -243,3 +362,9 @@ No issues found. LGTM.
   suggestion. Unclassified findings are noise.
 - **Context-aware linting** — use ament configs for ROS package code, pre-commit
   configs for workspace infrastructure code. Never mix them.
+- **Depth is transparent** — always show the tier and reason in the report
+  header. If the user disagrees with the classification, they can re-run with
+  an explicit depth keyword.
+- **Graceful degradation** — if Gemini is unavailable at Deep tier, proceed
+  with Claude-only adversarial. Never fail a review because an optional
+  tool is missing.
