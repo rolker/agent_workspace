@@ -84,7 +84,7 @@ file count.
 - `.github/workflows/*.yml` (CI)
 - `.pre-commit-config.yaml`
 - `.claude/settings.json`, `.claude/hooks/*`
-- Branch protection configuration
+- Branch-protection-as-code files (e.g., `.github/settings.yml`, `.github/branch-protection.yml`)
 
 ### Governance files
 

@@ -25,8 +25,8 @@ modify the PR unless the user asks.
 
 **Depth tiers** (see `.agent/knowledge/review_depth_classification.md`):
 - **Light** — static analysis only (small, low-risk changes)
-- **Standard** — all specialists + Claude adversarial (medium or governance-touching)
-- **Deep** — all specialists + Claude adversarial + Gemini adversarial (large, security, or cross-layer)
+- **Standard** — Static Analysis, Governance, Plan Drift + Claude adversarial (medium or governance-touching)
+- **Deep** — Standard tier + Gemini adversarial (large, security, or cross-layer)
 
 **Specialists**:
 - **Static Analysis** — runs linters with ament-aligned configs on changed files

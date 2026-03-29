@@ -29,6 +29,11 @@ PR_NUMBER=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: Missing value for --pr" >&2
+                echo "Usage: $0 --pr <N>" >&2
+                exit 2
+            fi
             PR_NUMBER="$2"
             shift 2
             ;;
@@ -47,6 +52,11 @@ if [[ -z "$PR_NUMBER" ]]; then
 fi
 
 # --- Dependency checks ---
+if ! command -v gh &>/dev/null; then
+    echo "WARNING: GitHub CLI (gh) not installed — required for PR metadata" >&2
+    exit 1
+fi
+
 if ! command -v tmux &>/dev/null; then
     echo "WARNING: tmux not installed — Gemini adversarial review unavailable" >&2
     exit 1
@@ -61,10 +71,11 @@ fi
 ISSUE_NUMBER=""
 PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body' 2>/dev/null || echo "")
 if [[ -n "$PR_BODY" ]]; then
-    # Look for "Closes #N" or just "#N" at the start
-    ISSUE_NUMBER=$(echo "$PR_BODY" | grep -oP '(?:Closes |Fixes |Resolves )#\K[0-9]+' | head -1)
+    # Look for "Closes #N", "Fixes #N", or "Resolves #N" first (portable, no PCRE)
+    ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | sed -nE 's/.*(Closes|Fixes|Resolves)[[:space:]]+#([0-9]+).*/\2/p' | head -n1)
     if [[ -z "$ISSUE_NUMBER" ]]; then
-        ISSUE_NUMBER=$(echo "$PR_BODY" | grep -oP '#\K[0-9]+' | head -1)
+        # Fallback: first occurrence of "#N" anywhere in the body
+        ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | sed -nE 's/.*#([0-9]+).*/\1/p' | head -n1)
     fi
 fi
 
@@ -156,10 +167,10 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
 fi
 
 # --- Launch Gemini in tmux ---
-# Use headless mode (-p) with the prompt file content piped via stdin.
-# Redirect output to findings file.
+# Pipe the prompt file via stdin to avoid shell injection from diff content
+# and command-length limits for large diffs.
 tmux new-session -d -s "$SESSION_NAME" \
-    "gemini -p \"$(cat "$PROMPT_FILE")\" > \"${FINDINGS_FILE}\" 2>&1; echo '--- Review complete ---' >> \"${FINDINGS_FILE}\""
+    "gemini -p < \"${PROMPT_FILE}\" > \"${FINDINGS_FILE}\" 2>&1; echo '--- Review complete ---' >> \"${FINDINGS_FILE}\""
 
 if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     echo "ERROR: Failed to launch tmux session '${SESSION_NAME}'" >&2
