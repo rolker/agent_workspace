@@ -17,7 +17,7 @@ agent_workspace/
 │   │   └── ...
 │   ├── knowledge/         # Agent knowledge documents
 │   ├── project_config.sh  # BUILD_CMD / TEST_CMD (gitignored, per-developer)
-│   ├── work-plans/        # PLAN_ISSUE-<N>.md files
+│   ├── work-plans/        # issue-<N>/plan.md and review artifacts
 │   ├── work-artifacts/    # Generated outputs
 │   ├── scratchpad/        # Temp workspace (gitignored)
 │   ├── templates/         # Issue/PR/ADR templates

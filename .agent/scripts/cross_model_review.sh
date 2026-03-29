@@ -85,7 +85,7 @@ if [[ -z "$ISSUE_NUMBER" ]]; then
 fi
 
 # --- Set up artifact directory (absolute paths for tmux session) ---
-WORK_PLANS_DIR="$(pwd)/.agent/work-plans/issue-${ISSUE_NUMBER}"
+WORK_PLANS_DIR="$(git rev-parse --show-toplevel)/.agent/work-plans/issue-${ISSUE_NUMBER}"
 mkdir -p "$WORK_PLANS_DIR"
 
 PROMPT_FILE="${WORK_PLANS_DIR}/review-gemini-prompt.md"
