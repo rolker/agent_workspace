@@ -41,7 +41,7 @@ modify the PR unless the user asks.
 
 ```bash
 # PR metadata
-gh pr view <N> --json title,body,baseRefName,headRefName,files,additions,deletions,url,comments,reviews
+gh pr view <N> --json title,body,baseRefName,headRefName,headRefOid,files,additions,deletions,url,comments,reviews
 
 # Full diff
 gh pr diff <N>
@@ -348,10 +348,60 @@ No governance concerns for a change of this scope.
 No issues found. LGTM.
 ```
 
+### 8. Persist review summary to plan file
+
+After outputting the report to the conversation, append a compact review
+summary to the plan file so findings persist across sessions.
+
+**Locate the plan file**: Use the issue number resolved in step 1. Determine
+which repo owns the linked issue (workspace repo for workspace issues,
+project repo for project issues). Check `.agent/work-plans/issue-<issue>/plan.md`
+in the owning repo's worktree first. If not found there, fall back to the
+current worktree. If both locations have a plan file, prefer the copy in the
+repo that owns the issue and note the duplicate in the conversation.
+
+**If no plan file exists**: Skip with a note in the conversation: "No plan
+file found — review summary not persisted." Do not create a plan file.
+
+**If a plan file exists**: Read it and check for existing review blocks
+(sections starting with `## Review:`). For each existing review block whose
+`**Status**:` is not already `Superseded`, change its `**Status**:` line to
+`**Status**: Superseded by review on <YYYY-MM-DD>`.
+
+Then append this block to the end of the plan file:
+
+```markdown
+
+## Review: <tier> — <YYYY-MM-DD>
+
+**PR**: #<N> at `<short-sha>` (use `headRefOid` from step 1, truncated to 7 chars)
+**Must-fix**: <count> | **Suggestions**: <count>
+**Status**: Pending
+
+### Findings
+- [ ] (must-fix) <one-line summary> — `file:line`
+- [ ] (suggestion) <one-line summary> — `file:line`
+```
+
+Key points:
+- Use `- [ ]` checkboxes so findings can be checked off as addressed
+- Include only the one-line summary and location, not the full description
+  (the full report is in the conversation and optionally posted as a PR comment)
+- If no findings survived the silence filter, use `**Must-fix**: 0 |
+  **Suggestions**: 0`, set `**Status**: Approved`, and write under Findings:
+  ```
+  No issues found. LGTM.
+  ```
+- **Do not commit** the updated plan file automatically. The author decides
+  when to commit (they may want to address findings first and commit the
+  checked-off version).
+
 ## Guidelines
 
-- **Report, don't act** — output the review in the conversation. The user
-  decides whether to post it as a PR comment, request changes, or act on it.
+- **Report first, then persist** — output the review in the conversation and
+  append a summary to the plan file (step 8). The plan-file write is the only
+  autonomous side effect; the user decides whether to post it as a PR comment,
+  request changes, or act on findings.
 - **Be specific** — "Must-fix: null check missing before `result.data` access
   at line 42" is useful. "Watch: could add more error handling" is not.
 - **Read the code** — don't just check file names. Read full files and the diff
