@@ -19,12 +19,13 @@ All feature work uses git worktrees — separate working directory checkouts tha
 their own branch, build artifacts, and uncommitted changes, while sharing the same git
 history.
 
-Two worktree types:
+Two worktree types (both require explicit `--type`):
 - `workspace` — for workspace infrastructure (`.agent/`, `docs/`, skills). Created in
-  `.workspace-worktrees/issue-<slug>-<N>/` as a git worktree of the workspace repo.
+  `worktrees/workspace/issue-<slug>-<N>/` as a git worktree of the workspace repo.
 - `project` — for changes to the managed project repo. Created in
-  `project/worktrees/issue-<slug>-<N>/` as a git worktree of the project repo.
+  `worktrees/project/<repo>/issue-<slug>-<N>/` as a git worktree of the project repo.
   Draft PRs target the project repo with `-R <project-remote>`.
+  The repo-name tier supports future multi-project workspaces.
 
 Worktree lifecycle is managed through dedicated scripts: `worktree_create.sh`,
 `worktree_enter.sh`, `worktree_list.sh`, `worktree_remove.sh`.

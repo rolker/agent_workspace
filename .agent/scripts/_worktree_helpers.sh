@@ -5,6 +5,95 @@
 # Source this file from other worktree scripts:
 #   source "$SCRIPT_DIR/_worktree_helpers.sh"
 
+# --- Worktree base directory helpers ---
+# New layout (issue #25):
+#   worktrees/workspace/          — workspace worktrees
+#   worktrees/project/<repo>/     — project worktrees (per-repo)
+# Legacy layout (deprecated):
+#   .workspace-worktrees/         — old workspace worktrees
+#   project/worktrees/            — old project worktrees
+
+# Resolve the workspace worktree base directory.
+# Usage: dir=$(wt_workspace_base "$root_dir")
+wt_workspace_base() {
+    echo "$1/worktrees/workspace"
+}
+
+# Resolve the project worktree base directory for a given repo.
+# Usage: dir=$(wt_project_base "$root_dir" "$repo_name")
+wt_project_base() {
+    local root_dir="$1"
+    local repo_name="$2"
+    echo "$root_dir/worktrees/project/$repo_name"
+}
+
+# Resolve the project worktree base glob (all repos).
+# Usage: for dir in $(wt_project_base_glob "$root_dir"); do ...
+wt_project_base_glob() {
+    echo "$1/worktrees/project"
+}
+
+# Legacy base directories (for migration/deprecation warnings)
+wt_legacy_workspace_base() {
+    echo "$1/.workspace-worktrees"
+}
+
+wt_legacy_project_base() {
+    echo "$1/project/worktrees"
+}
+
+# Find an issue worktree in a given base directory.
+# Returns the path if found, exits 1 if not found.
+# On multiple matches, prints disambiguation help to stderr and exits 1.
+# Usage: path=$(find_worktree "$base_dir" "$issue_num" "$repo_slug")
+find_worktree() {
+    local base_dir="$1"
+    local issue_num="$2"
+    local repo_slug="$3"
+
+    if [ -n "$repo_slug" ]; then
+        local exact_path="$base_dir/issue-${repo_slug}-${issue_num}"
+        if [ -d "$exact_path" ]; then
+            echo "$exact_path"
+            return 0
+        fi
+        return 1
+    fi
+
+    local matches=()
+    for path in "$base_dir"/issue-*-"${issue_num}"; do
+        if [ -d "$path" ] && [ "$path" != "$base_dir/issue-*-${issue_num}" ]; then
+            matches+=( "$path" )
+        fi
+    done
+
+    # Legacy format: issue-{NUMBER}
+    local legacy_path="$base_dir/issue-${issue_num}"
+    if [ -d "$legacy_path" ]; then
+        matches+=( "$legacy_path" )
+    fi
+
+    if [ "${#matches[@]}" -eq 1 ]; then
+        echo "${matches[0]}"
+        return 0
+    elif [ "${#matches[@]}" -gt 1 ]; then
+        echo "Error: Multiple worktrees found for issue ${issue_num}:" >&2
+        for path in "${matches[@]}"; do
+            echo "  - $(basename "$path")" >&2
+        done
+        echo "" >&2
+        echo "Use --repo-slug to specify which one:" >&2
+        for path in "${matches[@]}"; do
+            local slug
+            slug=$(basename "$path" | sed -E 's/^issue-(.+)-[0-9]+$/\1/')
+            echo "  --issue ${issue_num} --repo-slug ${slug}" >&2
+        done
+        return 1
+    fi
+
+    return 1
+}
+
 # Get branch name from the first inner package git worktree in a layer worktree.
 # Returns empty string if no inner git worktree is found.
 # Usage: branch=$(wt_layer_branch "$worktree_dir")

@@ -3,8 +3,8 @@
 # Enter a worktree and set up the environment
 #
 # Usage:
-#   source ./worktree_enter.sh --issue <number> [--repo-slug <slug>]
-#   source ./worktree_enter.sh --skill <name> [--repo-slug <slug>]
+#   source ./worktree_enter.sh --issue <number> --type workspace|project [--repo <name>] [--repo-slug <slug>]
+#   source ./worktree_enter.sh --skill <name> --type workspace|project [--repo <name>] [--repo-slug <slug>]
 #
 # This script should be SOURCED (not executed) to affect the current shell.
 # It will:
@@ -12,8 +12,9 @@
 #   2. Set helpful environment variables
 #
 # Examples:
-#   source ./.agent/scripts/worktree_enter.sh --issue 123
-#   source ./.agent/scripts/worktree_enter.sh --skill research
+#   source ./.agent/scripts/worktree_enter.sh --issue 123 --type workspace
+#   source ./.agent/scripts/worktree_enter.sh --issue 123 --type project
+#   source ./.agent/scripts/worktree_enter.sh --skill research --type workspace
 
 # Don't use set -e since we're sourced
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,24 +24,26 @@ source "$SCRIPT_DIR/_worktree_helpers.sh"
 
 ISSUE_NUM=""
 SKILL_NAME=""
+WORKTREE_TYPE=""
 REPO_SLUG=""
+PROJECT_REPO=""
 
 show_usage() {
-    echo "Usage: source $0 (--issue <number> | --skill <name>) [--repo-slug <slug>]"
-    echo "   or: source $0 <number>"
+    echo "Usage: source $0 (--issue <number> | --skill <name>) --type workspace|project [options]"
     echo ""
     echo "Options:"
     echo "  --issue <number>        Issue number (required, unless --skill is used)"
     echo "  --skill <name>          Skill name (alternative to --issue)"
+    echo "  --type <type>           Worktree type: 'workspace' or 'project' (required)"
+    echo "  --repo <name>           Project repo name (for multi-project disambiguation)"
     echo "  --repo-slug <slug>      Repository slug (optional, for disambiguation)"
-    echo "  <number>                Issue number as positional argument"
     echo ""
     echo "Note: This script must be SOURCED to affect your current shell."
     echo ""
     echo "Examples:"
-    echo "  source $0 --issue 123"
-    echo "  source $0 123"
-    echo "  source $0 --skill research"
+    echo "  source $0 --issue 123 --type workspace"
+    echo "  source $0 --issue 123 --type project"
+    echo "  source $0 --skill research --type workspace"
 }
 
 # Parse arguments
@@ -59,6 +62,14 @@ while [[ $# -gt 0 ]]; do
             SKILL_NAME="$2"
             shift 2
             ;;
+        --type)
+            WORKTREE_TYPE="$2"
+            shift 2
+            ;;
+        --repo)
+            PROJECT_REPO="$2"
+            shift 2
+            ;;
         --repo-slug)
             REPO_SLUG="$2"
             shift 2
@@ -66,10 +77,6 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             show_usage
             return 0 2>/dev/null || exit 0
-            ;;
-        [0-9]*)
-            ISSUE_NUM="$1"
-            shift
             ;;
         *)
             echo "Error: Unknown option $1"
@@ -89,105 +96,88 @@ if [ -z "$ISSUE_NUM" ] && [ -z "$SKILL_NAME" ]; then
     show_usage
     return 1 2>/dev/null || exit 1
 fi
+if [ -z "$WORKTREE_TYPE" ]; then
+    echo "Error: --type is required (workspace or project)"
+    show_usage
+    return 1 2>/dev/null || exit 1
+fi
+if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; then
+    echo "Error: --type must be 'workspace' or 'project'"
+    return 1 2>/dev/null || exit 1
+fi
 
 # Sanitize repo slug
 if [ -n "$REPO_SLUG" ]; then
     REPO_SLUG=$(echo "$REPO_SLUG" | sed 's/[^A-Za-z0-9_]/_/g')
 fi
 
-# Function to find worktree directory
-find_worktree() {
-    local base_dir="$1"
-    local issue_num="$2"
-    local repo_slug="$3"
+# Resolve base directory for the specified type
+_resolve_base_dirs() {
+    local type="$1"
+    NEW_BASE=""
+    LEGACY_BASE=""
 
-    if [ -n "$repo_slug" ]; then
-        local exact_path="$base_dir/issue-${repo_slug}-${issue_num}"
-        if [ -d "$exact_path" ]; then
-            echo "$exact_path"
-            return 0
+    if [ "$type" == "workspace" ]; then
+        NEW_BASE="$(wt_workspace_base "$ROOT_DIR")"
+        LEGACY_BASE="$(wt_legacy_workspace_base "$ROOT_DIR")"
+    else
+        # Project type: resolve repo-specific directory
+        if [ -n "$PROJECT_REPO" ]; then
+            NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"
+        else
+            # Auto-detect: find the single project repo directory, or scan all
+            local proj_base
+            proj_base="$(wt_project_base_glob "$ROOT_DIR")"
+            if [ -d "$proj_base" ]; then
+                local repo_dirs=()
+                for d in "$proj_base"/*/; do
+                    [ -d "$d" ] && repo_dirs+=("$d")
+                done
+                if [ "${#repo_dirs[@]}" -eq 1 ]; then
+                    NEW_BASE="${repo_dirs[0]%/}"
+                elif [ "${#repo_dirs[@]}" -gt 1 ]; then
+                    echo "Error: Multiple project repos found. Use --repo to specify:" >&2
+                    for d in "${repo_dirs[@]}"; do
+                        echo "  --repo $(basename "${d%/}")" >&2
+                    done
+                    return 1
+                fi
+            fi
         fi
-        return 1
+        LEGACY_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
     fi
-
-    local matches=()
-    for path in "$base_dir"/issue-*-"${issue_num}"; do
-        if [ -d "$path" ] && [ "$path" != "$base_dir/issue-*-${issue_num}" ]; then
-            matches+=( "$path" )
-        fi
-    done
-
-    # Legacy format: issue-{NUMBER}
-    local legacy_path="$base_dir/issue-${issue_num}"
-    if [ -d "$legacy_path" ]; then
-        matches+=( "$legacy_path" )
-    fi
-
-    if [ "${#matches[@]}" -eq 1 ]; then
-        echo "${matches[0]}"
-        return 0
-    elif [ "${#matches[@]}" -gt 1 ]; then
-        echo "Error: Multiple worktrees found for issue ${issue_num}:" >&2
-        for path in "${matches[@]}"; do
-            echo "  - $(basename "$path")" >&2
-        done
-        echo "" >&2
-        echo "Use --repo-slug to specify which one:" >&2
-        for path in "${matches[@]}"; do
-            local slug
-            slug=$(basename "$path" | sed -E 's/^issue-(.+)-[0-9]+$/\1/')
-            echo "  source ${BASH_SOURCE[0]} --issue ${issue_num} --repo-slug ${slug}" >&2
-        done
-        return 1
-    fi
-
-    return 1
 }
 
 WORKTREE_DIR=""
-WORKTREE_TYPE=""
+
+_resolve_base_dirs "$WORKTREE_TYPE" || { return 1 2>/dev/null || exit 1; }
 
 if [ -n "$SKILL_NAME" ]; then
-    # Skill mode: search project worktrees first, then workspace
-    if FOUND=$(find_worktree_by_skill "$ROOT_DIR/project/worktrees" "$SKILL_NAME" "$REPO_SLUG"); then
+    # Skill mode: search new location, then legacy
+    if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_skill "$NEW_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-        WORKTREE_TYPE="project"
-    elif FOUND=$(find_worktree_by_skill "$ROOT_DIR/.workspace-worktrees" "$SKILL_NAME" "$REPO_SLUG"); then
+    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_skill "$LEGACY_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-        WORKTREE_TYPE="workspace"
+        echo "⚠️  Found worktree in legacy location. Remove and recreate to use new layout." >&2
     else
-        echo "Error: No worktree found for skill '$SKILL_NAME'"
-        echo ""
-        echo "Checked locations:"
-        echo "  - $ROOT_DIR/project/worktrees/skill-*-${SKILL_NAME}-*"
-        echo "  - $ROOT_DIR/.workspace-worktrees/skill-*-${SKILL_NAME}-*"
+        echo "Error: No $WORKTREE_TYPE worktree found for skill '$SKILL_NAME'"
         echo ""
         echo "Create one with:"
-        echo "  .agent/scripts/worktree_create.sh --skill $SKILL_NAME --type workspace"
+        echo "  .agent/scripts/worktree_create.sh --skill $SKILL_NAME --type $WORKTREE_TYPE"
         return 1 2>/dev/null || exit 1
     fi
 else
-    # Issue mode: check project worktrees first, then workspace
-    if FOUND=$(find_worktree "$ROOT_DIR/project/worktrees" "$ISSUE_NUM" "$REPO_SLUG"); then
+    # Issue mode: search new location, then legacy
+    if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree "$NEW_BASE" "$ISSUE_NUM" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-        WORKTREE_TYPE="project"
-    elif FOUND=$(find_worktree "$ROOT_DIR/.workspace-worktrees" "$ISSUE_NUM" "$REPO_SLUG"); then
+    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree "$LEGACY_BASE" "$ISSUE_NUM" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-        WORKTREE_TYPE="workspace"
+        echo "⚠️  Found worktree in legacy location. Remove and recreate to use new layout." >&2
     else
-        echo "Error: No worktree found for issue #$ISSUE_NUM"
-        echo ""
-        echo "Checked locations:"
-        if [ -n "$REPO_SLUG" ]; then
-            echo "  - $ROOT_DIR/project/worktrees/issue-${REPO_SLUG}-$ISSUE_NUM"
-            echo "  - $ROOT_DIR/.workspace-worktrees/issue-${REPO_SLUG}-$ISSUE_NUM"
-        else
-            echo "  - $ROOT_DIR/project/worktrees/issue-*-$ISSUE_NUM"
-            echo "  - $ROOT_DIR/.workspace-worktrees/issue-*-$ISSUE_NUM"
-        fi
+        echo "Error: No $WORKTREE_TYPE worktree found for issue #$ISSUE_NUM"
         echo ""
         echo "Create one with:"
-        echo "  ./.agent/scripts/worktree_create.sh --issue $ISSUE_NUM --type workspace"
+        echo "  .agent/scripts/worktree_create.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
         return 1 2>/dev/null || exit 1
     fi
 fi
@@ -286,7 +276,7 @@ echo "Helpful commands:"
 echo "  git status                    # Check changes"
 echo "  git diff                      # See what changed"
 if [ -n "$SKILL_NAME" ]; then
-    echo "  \"$ROOT_DIR/.agent/scripts/worktree_remove.sh\" --skill $SKILL_NAME  # Remove worktree"
+    echo "  \"$ROOT_DIR/.agent/scripts/worktree_remove.sh\" --skill $SKILL_NAME --type $WORKTREE_TYPE  # Remove worktree"
 else
-    echo "  \"$ROOT_DIR/.agent/scripts/worktree_remove.sh\" $ISSUE_NUM  # Remove worktree"
+    echo "  \"$ROOT_DIR/.agent/scripts/worktree_remove.sh\" --issue $ISSUE_NUM --type $WORKTREE_TYPE  # Remove worktree"
 fi

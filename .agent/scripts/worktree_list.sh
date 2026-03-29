@@ -137,7 +137,7 @@ print_worktree() {
     local repo=""
     local skill=""
 
-    if [[ "$path" == *"/.workspace-worktrees/"* ]]; then
+    if [[ "$path" == *"/worktrees/workspace/"* ]] || [[ "$path" == *"/.workspace-worktrees/"* ]]; then
         type="workspace"
         extract_issue_repo "$(basename "$path")"
         issue="$WT_ISSUE"
@@ -220,10 +220,14 @@ if [ -n "$CURRENT_PATH" ]; then
     print_worktree "$CURRENT_PATH" "$CURRENT_BRANCH" "$CURRENT_HEAD"
 fi
 
-# Discover project worktrees by scanning project/worktrees/
-PROJECT_WT_DIR="$ROOT_DIR/project/worktrees"
-if [ -d "$PROJECT_WT_DIR" ]; then
-    for proj_wt in "$PROJECT_WT_DIR"/issue-* "$PROJECT_WT_DIR"/skill-*; do
+# Discover project worktrees by scanning worktrees/project/*/ (new) and project/worktrees/ (legacy)
+_scan_project_worktrees() {
+    local search_dir="$1"
+    local is_legacy="$2"
+
+    [ -d "$search_dir" ] || return 0
+
+    for proj_wt in "$search_dir"/issue-* "$search_dir"/skill-*; do
         [ -d "$proj_wt" ] || continue
 
         extract_issue_repo "$(basename "$proj_wt")"
@@ -250,6 +254,9 @@ if [ -d "$PROJECT_WT_DIR" ]; then
 
         # Format text output
         if [ "$JSON_OUTPUT" = false ]; then
+            if [ "$is_legacy" = true ]; then
+                echo "[project] ⚠️  LEGACY LOCATION"
+            fi
             if [ -n "$local_skill" ]; then
                 echo "[project] Skill: $local_skill - Repository: $local_repo"
             else
@@ -267,7 +274,20 @@ if [ -d "$PROJECT_WT_DIR" ]; then
         fi
         ((PROJECT_COUNT++)) || true
     done
+}
+
+# New location: worktrees/project/<repo>/
+NEW_PROJECT_BASE="$(wt_project_base_glob "$ROOT_DIR")"
+if [ -d "$NEW_PROJECT_BASE" ]; then
+    for repo_dir in "$NEW_PROJECT_BASE"/*/; do
+        [ -d "$repo_dir" ] || continue
+        _scan_project_worktrees "${repo_dir%/}" false
+    done
 fi
+
+# Legacy location: project/worktrees/
+LEGACY_PROJECT_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
+_scan_project_worktrees "$LEGACY_PROJECT_BASE" true
 
 # --- Output ---
 
@@ -307,5 +327,5 @@ echo "  Workspace worktrees: $WORKSPACE_COUNT"
 echo "  Project worktrees:   $PROJECT_COUNT"
 echo ""
 echo "Locations:"
-echo "  Workspace: .workspace-worktrees/"
-echo "  Project:   project/worktrees/"
+echo "  Workspace: worktrees/workspace/"
+echo "  Project:   worktrees/project/<repo>/"

@@ -6,23 +6,25 @@ separate from the main workspace.
 
 ## Quick Start
 
+`--type` is **required** on all worktree scripts (create, enter, remove).
+
 ```bash
 # Infrastructure work (docs, scripts, skills)
 .agent/scripts/worktree_create.sh --issue 42 --type workspace
-source .agent/scripts/worktree_enter.sh 42
+source .agent/scripts/worktree_enter.sh --issue 42 --type workspace
 # work, commit, push
-.agent/scripts/worktree_remove.sh 42
+.agent/scripts/worktree_remove.sh --issue 42 --type workspace
 
 # Project repo work
 .agent/scripts/worktree_create.sh --issue 42 --type project
-source .agent/scripts/worktree_enter.sh 42
+source .agent/scripts/worktree_enter.sh --issue 42 --type project
 # work in the project/ worktree, commit, push to project repo
-.agent/scripts/worktree_remove.sh 42
+.agent/scripts/worktree_remove.sh --issue 42 --type project
 
 # Skill worktrees (no GitHub issue needed)
 .agent/scripts/worktree_create.sh --skill research --type workspace
-source .agent/scripts/worktree_enter.sh --skill research
-.agent/scripts/worktree_remove.sh --skill research
+source .agent/scripts/worktree_enter.sh --skill research --type workspace
+.agent/scripts/worktree_remove.sh --skill research --type workspace
 ```
 
 ## Why Worktrees?
@@ -37,15 +39,17 @@ Git worktrees create separate checkouts of the same repository:
 
 ```
 agent_workspace/
-├── .workspace-worktrees/          # Workspace repo worktrees
-│   └── issue-<slug>-<N>/          # e.g. issue-workspace-42/
-│       └── ... (workspace files)
-│
-project/
-├── worktrees/                     # Project repo worktrees
-│   └── issue-<slug>-<N>/          # e.g. issue-myproject-42/
-│       └── ... (project files)
+├── worktrees/
+│   ├── workspace/                 # Workspace repo worktrees
+│   │   └── issue-workspace-42/
+│   │       └── ... (workspace files)
+│   └── project/                   # Project repo worktrees (per-repo)
+│       └── daddy_camp/
+│           └── issue-daddy_camp-42/
+│               └── ... (project files)
 ```
+
+The repo-name tier under `project/` supports multiple managed project repos.
 
 ## Worktree Types
 
@@ -57,7 +61,7 @@ For infrastructure changes: `.agent/`, `docs/`, `.claude/skills/`, `Makefile`, e
 .agent/scripts/worktree_create.sh --issue <N> --type workspace
 ```
 
-- Created in: `.workspace-worktrees/issue-<slug>-<N>/`
+- Created in: `worktrees/workspace/issue-<slug>-<N>/`
 - Git worktree of the **workspace repo**
 - Branch: `feature/issue-<N>` in the workspace repo
 - PRs target the workspace repo
@@ -70,7 +74,7 @@ For changes to the managed project repo (`project/`).
 .agent/scripts/worktree_create.sh --issue <N> --type project
 ```
 
-- Created in: `project/worktrees/issue-<slug>-<N>/`
+- Created in: `worktrees/project/<repo>/issue-<slug>-<N>/`
 - Git worktree of the **project repo**
 - Branch: `feature/issue-<N>` in the project repo
 - PRs target the project repo with `-R <project-remote>`
@@ -87,11 +91,19 @@ Use `--repo-slug` to override.
 
 ## Disambiguation
 
-If multiple worktrees match the same issue number, use `--repo-slug`:
+Since `--type` is mandatory, workspace vs. project is never ambiguous.
+
+For multiple project repos, use `--repo`:
 
 ```bash
-source .agent/scripts/worktree_enter.sh --issue 42 --repo-slug myproject
-.agent/scripts/worktree_remove.sh --issue 42 --repo-slug workspace
+source .agent/scripts/worktree_enter.sh --issue 42 --type project --repo daddy_camp
+.agent/scripts/worktree_remove.sh --issue 42 --type project --repo daddy_camp
+```
+
+For multiple worktrees of the same type with different repo slugs, use `--repo-slug`:
+
+```bash
+source .agent/scripts/worktree_enter.sh --issue 42 --type workspace --repo-slug workspace
 ```
 
 ## Draft PRs with Plan File
@@ -120,7 +132,7 @@ to enter it, or `worktree_remove.sh` to clean it up.
 **"Your shell is currently inside this worktree"**: `cd` to the workspace root first:
 ```bash
 cd ~/agent_workspace
-.agent/scripts/worktree_remove.sh --issue 42
+.agent/scripts/worktree_remove.sh --issue 42 --type workspace
 ```
 
 **"No worktree found"**: Check `worktree_list.sh` to see what exists. The slug
@@ -128,3 +140,7 @@ may differ from what you expect — use `--repo-slug` to disambiguate.
 
 **Branch already exists**: The script reuses an existing local branch, or tracks
 the remote branch if one exists.
+
+**"Found worktree in legacy location"**: Worktrees created before issue #25 live in
+`.workspace-worktrees/` or `project/worktrees/`. They still work but should be removed
+(`git worktree remove <path>`) and recreated to use the new `worktrees/` layout.
