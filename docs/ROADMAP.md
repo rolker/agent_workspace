@@ -78,14 +78,16 @@ would flag, PRs pass on first try.
 
 | Item | Issue | Status | Source | Notes |
 |------|-------|--------|--------|-------|
-| Adaptive review depth | #47 | in progress | gstack | Scale effort to change risk; cross-model via Gemini CLI |
+| Adaptive review depth | #47 | done | gstack | Scale effort to change risk; cross-model via Gemini CLI (PR #76) |
 | Cognitive review patterns | #54 | planned | gstack | Reusable checklists for common mistake types |
 | Fix-first review workflow | #52 | planned | gstack | Fix issues during review, don't just report |
 | Spec compliance vs quality split | #27 | planned | superpowers | Separate "does it meet spec" from "is it good" |
 | Adversarial self-review | #55 | planned | gstack | Agent challenges its own work |
-| JSONL review tracking | #51 | planned | gstack | Track findings for learning; start with JSONL, migrate to git refs later |
+| Review summary in plan files | #83 | planned | brainstorm | Append review findings to plan file; lighter alternative to JSONL |
+| JSONL review tracking | #51 | deferred | gstack | Machine-queryable layer; reconsider if plan-file approach (#83) isn't sufficient |
 | Plan status tracking in reviews | #49 | planned | gstack | Reviews check progress against the plan |
 | Continual learning from reviews | #42 | planned | microsoft/skills | Misses feed back into local review patterns |
+| JS/web static analysis profile | #81 | planned | review session | review-code linter table missing vanilla JS; silent skip with no report |
 | Copilot review loop automation | #69 | planned | brainstorm | Autonomous push/review/fix cycle (after local review is solid) |
 
 ## Priority: Reduce Agent Coordination Overhead
@@ -134,6 +136,7 @@ Small fixes that can be done anytime.
 | Item | Issue | Status | Notes |
 |------|-------|--------|-------|
 | Research skill worktree fix | #45 | planned | Fix project worktree path + staleness tracking |
+| Gemini CLI PATH resilience | #82 | planned | cross_model_review.sh fails when gemini not on session PATH |
 
 ## Decided Against
 
@@ -170,8 +173,8 @@ Decisions that apply across multiple items.
 
 ### Storage model
 
-JSONL first for review tracking (#51), migrate to git refs later when the
-schema stabilizes.
+Plan file first for review tracking (#83), with JSONL (#51) as a future
+machine-queryable layer if needed.
 
 Considered 6 approaches: gstack JSONL, gstack friction reports, gstack
 analytics, microsoft SQLite, gastown git beads, workspace markdown. Chose
@@ -179,9 +182,13 @@ three-layer hybrid: plan file summaries (markdown, git-tracked) + JSONL
 detail (local, queryable with jq) + curated knowledge docs (markdown,
 git-tracked).
 
+Starting with the plan-file layer alone (#83) — review-code appends a
+structured summary to the plan file after each run. This gives human-readable
+persistence with no new tooling. If cross-cutting queries ("which PRs have
+stale reviews?") become a pain point, add the JSONL layer (#51) on top.
+
 Git refs (`refs/agent-state/issue-N/reviews`) explored in depth — crash-safe,
 worktree-shared, per-issue scoped — but deferred as premature complexity.
-JSONL is simpler to start; migration path exists when schema stabilizes.
 
 ### Review architecture (5-layer model)
 
