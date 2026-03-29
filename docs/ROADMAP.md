@@ -177,9 +177,9 @@ Plan file first for review tracking (#83), with JSONL (#51) as a future
 machine-queryable layer if needed.
 
 Considered 6 approaches: gstack JSONL, gstack friction reports, gstack
-analytics, microsoft SQLite, gastown git beads, workspace markdown. Chose
-three-layer hybrid: plan file summaries (markdown, git-tracked) + JSONL
-detail (local, queryable with jq) + curated knowledge docs (markdown,
+analytics, microsoft SQLite, gastown git beads, workspace markdown. Originally
+designed as a three-layer hybrid: plan file summaries (markdown, git-tracked) +
+JSONL detail (local, queryable with jq) + curated knowledge docs (markdown,
 git-tracked).
 
 Starting with the plan-file layer alone (#83) — review-code appends a

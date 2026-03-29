@@ -25,7 +25,7 @@ Add a new step after step 7 in `.claude/skills/review-code/SKILL.md`:
 
 After outputting the report to the conversation, locate the plan file for the
 reviewed issue. If found, append a structured review block. If not found,
-skip silently (not all PRs have plans).
+skip with a note in the conversation (not all PRs have plans).
 
 The appended block format:
 
