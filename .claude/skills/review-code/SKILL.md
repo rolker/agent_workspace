@@ -226,10 +226,11 @@ Launch the cross-model review script:
 .agent/scripts/cross_model_review.sh --pr <N>
 ```
 
-This starts a Gemini CLI session in a tmux window. The script:
-1. Writes a review prompt to `.agent/work-plans/issue-<N>/review-gemini-prompt.md`
-2. Launches Gemini in tmux session `review-gemini-<N>`
-3. Gemini writes findings to `.agent/work-plans/issue-<N>/review-gemini-findings.md`
+This starts a Gemini CLI session in a tmux window. The script resolves the
+issue number from the PR body (falling back to the PR number). It then:
+1. Writes a review prompt to `.agent/work-plans/issue-<issue>/review-gemini-prompt.md`
+2. Launches Gemini in tmux session `review-gemini-<issue>`
+3. Gemini writes findings to `.agent/work-plans/issue-<issue>/review-gemini-findings.md`
 
 **If the script exits non-zero** (tmux or gemini unavailable), note in the
 report: "Cross-model review unavailable — proceeding with Claude-only
@@ -237,9 +238,10 @@ adversarial." Do not fail the review.
 
 **Collecting findings**: After other specialists complete, check if the Gemini
 findings file has been populated (look for the `--- Review complete ---`
-marker at the end). If the review is still running, note this in the report
-and tell the user they can check the tmux session. If complete, read the
-findings file and incorporate results into the unified report.
+marker or `--- Review failed ---` marker at the end). If the review is still
+running, note this in the report and tell the user they can check the tmux
+session. If it failed, note the failure. If complete, read the findings file
+and incorporate results into the unified report.
 
 ### 6. Apply silence filter
 

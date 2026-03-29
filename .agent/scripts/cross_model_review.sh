@@ -3,7 +3,7 @@
 #
 # Launches a Gemini CLI session in tmux to provide an independent adversarial
 # review of a PR. Writes prompt and findings to .agent/work-plans/issue-<N>/
-# so they persist as git-tracked artifacts alongside the work plan.
+# alongside the work plan. These files can be committed as review artifacts.
 #
 # Usage:
 #   .agent/scripts/cross_model_review.sh --pr <N>
@@ -84,8 +84,8 @@ if [[ -z "$ISSUE_NUMBER" ]]; then
     ISSUE_NUMBER="$PR_NUMBER"
 fi
 
-# --- Set up artifact directory ---
-WORK_PLANS_DIR=".agent/work-plans/issue-${ISSUE_NUMBER}"
+# --- Set up artifact directory (absolute paths for tmux session) ---
+WORK_PLANS_DIR="$(pwd)/.agent/work-plans/issue-${ISSUE_NUMBER}"
 mkdir -p "$WORK_PLANS_DIR"
 
 PROMPT_FILE="${WORK_PLANS_DIR}/review-gemini-prompt.md"
@@ -96,15 +96,11 @@ SESSION_NAME="review-gemini-${ISSUE_NUMBER}"
 PR_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq '.title' 2>/dev/null || echo "PR #${PR_NUMBER}")
 PR_URL=$(gh pr view "$PR_NUMBER" --json url --jq '.url' 2>/dev/null || echo "")
 
-# --- Get diff ---
-PR_DIFF=$(gh pr diff "$PR_NUMBER" 2>/dev/null || echo "")
-if [[ -z "$PR_DIFF" ]]; then
-    echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
-    exit 3
-fi
-
 # --- Write prompt ---
-cat > "$PROMPT_FILE" << PROMPT_EOF
+# Use a quoted heredoc for the static header to prevent shell expansion,
+# then stream the diff directly from gh to avoid storing it in a variable
+# (which could hit shell limits for large Deep-tier PRs).
+cat > "$PROMPT_FILE" << 'PROMPT_HEADER'
 # Adversarial Code Review
 
 ## Your Role
@@ -124,16 +120,22 @@ everything. Focus on:
 
 ## PR Under Review
 
-**Title**: ${PR_TITLE}
-**URL**: ${PR_URL}
-**PR Number**: #${PR_NUMBER}
+PROMPT_HEADER
 
-## Diff
+# Append PR metadata (needs expansion)
+printf '**Title**: %s\n**URL**: %s\n**PR Number**: #%s\n\n' \
+    "$PR_TITLE" "$PR_URL" "$PR_NUMBER" >> "$PROMPT_FILE"
 
-\`\`\`diff
-${PR_DIFF}
-\`\`\`
+# Stream diff directly into the prompt file
+printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
+if ! gh pr diff "$PR_NUMBER" >> "$PROMPT_FILE" 2>/dev/null; then
+    echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
+    exit 3
+fi
+printf '```\n\n' >> "$PROMPT_FILE"
 
+# Append output format instructions (quoted heredoc, no expansion)
+cat >> "$PROMPT_FILE" << 'PROMPT_FOOTER'
 ## Output Format
 
 Write your findings to this exact format so they can be parsed:
@@ -142,7 +144,7 @@ Write your findings to this exact format so they can be parsed:
 
 | # | Severity | File | Line | Finding |
 |---|----------|------|------|---------|
-| 1 | must-fix / suggestion | \`path/to/file\` | line number | Description of the issue |
+| 1 | must-fix / suggestion | `path/to/file` | line number | Description of the issue |
 
 If you find no issues, write:
 
@@ -153,7 +155,7 @@ No issues found.
 ### Summary
 
 Write a 1-3 sentence overall assessment after the findings table.
-PROMPT_EOF
+PROMPT_FOOTER
 
 # --- Initialize findings file ---
 cat > "$FINDINGS_FILE" << 'FINDINGS_EOF'
@@ -167,10 +169,11 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
 fi
 
 # --- Launch Gemini in tmux ---
-# Pipe the prompt file via stdin to avoid shell injection from diff content
-# and command-length limits for large diffs.
+# Pipe the prompt file via stdin. Paths are absolute (resolved above) so the
+# tmux session works regardless of CWD. On Gemini failure, an error marker is
+# written so downstream consumers can distinguish "crashed" from "still running".
 tmux new-session -d -s "$SESSION_NAME" \
-    "gemini -p < \"${PROMPT_FILE}\" > \"${FINDINGS_FILE}\" 2>&1; echo '--- Review complete ---' >> \"${FINDINGS_FILE}\""
+    "gemini -p < \"${PROMPT_FILE}\" > \"${FINDINGS_FILE}\" 2>&1 && echo '--- Review complete ---' >> \"${FINDINGS_FILE}\" || echo '--- Review failed ---' >> \"${FINDINGS_FILE}\""
 
 if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     echo "ERROR: Failed to launch tmux session '${SESSION_NAME}'" >&2

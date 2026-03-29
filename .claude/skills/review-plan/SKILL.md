@@ -114,7 +114,7 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 
 **PR**: <url>
 **Issue**: #<issue> — <issue-title>
-**Plan file**: `.agent/work-plans/issue-<N>/plan.md`
+**Plan file**: `.agent/work-plans/issue-<issue>/plan.md`
 
 ### Evaluation
 

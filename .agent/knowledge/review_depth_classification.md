@@ -44,7 +44,7 @@ governance note ("No governance concerns for a change of this scope").
 
 **Criteria**: Any of the following (and no Deep triggers):
 - 50–199 changed lines
-- 4–10 files
+- 4–9 files
 - Any override-trigger file present
 
 **Specialists dispatched**:
