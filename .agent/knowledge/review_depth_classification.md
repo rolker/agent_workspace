@@ -13,6 +13,7 @@ Collect these from PR metadata (`gh pr view` output):
 | File count | `files` array length | Number of files in the diff |
 | File types | File paths | Categorize each file (see below) |
 | Override triggers | File paths | Check against override-trigger list |
+| Tests included | File paths | Whether the diff includes files in `test/`, `tests/`, or named `test_*`, `*_test.*` — absence of tests for code changes is a risk signal (does not affect tier, but noted in review) |
 
 ### File type categories
 

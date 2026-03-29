@@ -12,12 +12,13 @@
 # Workspace issues run in workspace worktrees, project issues in project worktrees.
 #
 # Output (stdout):
-#   TMUX_SESSION=<session-name>
-#   FINDINGS_FILE=<path-to-findings>
+#   TMUX_SESSION=<session-name>    (machine-parseable)
+#   FINDINGS_FILE=<path-to-findings> (machine-parseable)
+#   followed by informational lines for human consumption
 #
 # Exit codes:
 #   0 — tmux session launched successfully
-#   1 — missing dependencies (tmux or gemini)
+#   1 — missing dependencies (gh, tmux, or gemini)
 #   2 — invalid arguments
 #   3 — failed to create prompt or launch session
 
