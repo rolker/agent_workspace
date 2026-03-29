@@ -78,7 +78,7 @@ would flag, PRs pass on first try.
 
 | Item | Issue | Status | Source | Notes |
 |------|-------|--------|--------|-------|
-| Adaptive review depth | #47 | planned | gstack | Scale effort to change risk |
+| Adaptive review depth | #47 | in progress | gstack | Scale effort to change risk; cross-model via Gemini CLI |
 | Cognitive review patterns | #54 | planned | gstack | Reusable checklists for common mistake types |
 | Fix-first review workflow | #52 | planned | gstack | Fix issues during review, don't just report |
 | Spec compliance vs quality split | #27 | planned | superpowers | Separate "does it meet spec" from "is it good" |

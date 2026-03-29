@@ -32,7 +32,7 @@ gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*' | head -1
 ```
 
 Find the plan file in the PR's changed files — it will be at
-`.agent/work-plans/PLAN_ISSUE-*.md`. Read it in full.
+`.agent/work-plans/issue-*/plan.md`. Read it in full.
 
 ### 2. Read the issue and any review-issue comments
 
@@ -114,7 +114,7 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 
 **PR**: <url>
 **Issue**: #<issue> — <issue-title>
-**Plan file**: `.agent/work-plans/PLAN_ISSUE-<N>.md`
+**Plan file**: `.agent/work-plans/issue-<issue>/plan.md`
 
 ### Evaluation
 

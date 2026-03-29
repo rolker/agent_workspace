@@ -118,7 +118,7 @@ d. **Assess the comment** against the actual code:
    - Is the concern valid? Does the code actually have the issue flagged?
    - Is it a false positive? (e.g., comparing against stale `main`, or
      misunderstanding the intent)
-   - **Plan files** (`PLAN_ISSUE-*.md`): If the comment targets a file in
+   - **Plan files** (`issue-*/plan.md`): If the comment targets a file in
      `.agent/work-plans/`, it is a planning artifact. Check whether the
      concern is addressed in the implementation files changed in the same PR.
      If so, classify as "Addressed" and note that the concern is satisfied
@@ -213,7 +213,7 @@ Output a structured report:
   dismiss reviews, or modify the PR in any way.
 - **Plan-first workflow PRs** — In the plan-first workflow, a PR starts with a
   plan commit and later receives implementation commits. When triaging these PRs:
-  - Comments on `.agent/work-plans/PLAN_ISSUE-*.md` files are low priority —
+  - Comments on `.agent/work-plans/issue-*/plan.md` files are low priority —
     the plan is a pre-implementation artifact and the implementation is the
     source of truth.
   - Reviews submitted against the plan-only commit (`commit_id` differs from

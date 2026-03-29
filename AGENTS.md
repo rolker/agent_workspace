@@ -218,6 +218,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/validate_workspace.py` | Validate project/ configuration |
 | `.agent/scripts/detect_agent_identity.sh` | Auto-detect agent framework + model |
 | `.agent/scripts/fetch_pr_reviews.sh` | Fetch all PR reviews and CI status |
+| `.agent/scripts/cross_model_review.sh` | Launch Gemini CLI adversarial review in tmux |
 
 ## References (Read When Needed, Not Upfront)
 
