@@ -353,12 +353,12 @@ No issues found. LGTM.
 After outputting the report to the conversation, append a compact review
 summary to the plan file so findings persist across sessions.
 
-**Locate the plan file**: Use the issue number resolved in step 1. Check
-`.agent/work-plans/issue-<issue>/plan.md` in the current worktree. If the
-PR targets a project repo, also check the workspace repo's work-plans
-directory. If both locations have a plan file, prefer the workspace copy
-(canonical location for workspace issues) and note the duplicate in the
-conversation.
+**Locate the plan file**: Use the issue number resolved in step 1. Determine
+which repo owns the linked issue (workspace repo for workspace issues,
+project repo for project issues). Check `.agent/work-plans/issue-<issue>/plan.md`
+in the owning repo's worktree first. If not found there, fall back to the
+current worktree. If both locations have a plan file, prefer the copy in the
+repo that owns the issue and note the duplicate in the conversation.
 
 **If no plan file exists**: Skip with a note in the conversation: "No plan
 file found — review summary not persisted." Do not create a plan file.
@@ -366,7 +366,7 @@ file found — review summary not persisted." Do not create a plan file.
 **If a plan file exists**: Read it and check for existing review blocks
 (sections starting with `## Review:`). For each existing review block whose
 `**Status**:` is not already `Superseded`, change its `**Status**:` line to
-`Superseded by review on <YYYY-MM-DD>`.
+`**Status**: Superseded by review on <YYYY-MM-DD>`.
 
 Then append this block to the end of the plan file:
 
