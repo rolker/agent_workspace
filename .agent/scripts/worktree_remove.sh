@@ -17,14 +17,11 @@
 #   3. Prune the git worktree reference
 #   4. Show branch deletion instructions
 
-set -e
+set -eo pipefail
 
 CALLER_PWD="$(pwd -P)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-
-source "$SCRIPT_DIR/_worktree_helpers.sh"
 
 ISSUE_NUM=""
 SKILL_NAME=""
@@ -81,6 +78,15 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Resolve ROOT_DIR via git, not relative paths. When called from inside a
+# worktree, SCRIPT_DIR points to the worktree's copy of .agent/scripts/,
+# so dirname-based resolution gives the worktree root instead of the main
+# workspace. The main worktree is always the first entry in git worktree list.
+# Deferred until after arg parsing so --help works without a git repo.
+ROOT_DIR="$(git worktree list --porcelain | head -1 | sed 's/^worktree //')"
+
+source "$SCRIPT_DIR/_worktree_helpers.sh"
 
 if [ -n "$REPO_SLUG" ]; then
     REPO_SLUG=$(echo "$REPO_SLUG" | sed 's/[^A-Za-z0-9_]/_/g')
