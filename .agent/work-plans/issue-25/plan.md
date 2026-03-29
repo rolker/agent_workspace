@@ -87,19 +87,24 @@ Update all path references. The search logic stays the same (glob for
 - `docs/decisions/0002-worktree-isolation-over-branch-switching.md` — update path
   references in the Decision section
 
-### 10. Migration note
+### 10. Remove `--type` default from `worktree_create.sh`
 
-Add a comment block at top of `worktree_create.sh` noting that worktrees created
-before this change live in the old locations. `worktree_list.sh` should check both
-old and new locations during a transition period (with a deprecation warning for
-old-location worktrees). Remove the legacy fallback in a follow-up.
+Currently defaults to `workspace` (line 44). Remove the default so all three
+scripts consistently require explicit `--type`. Update usage/help text.
+
+### 11. Migration note
+
+No migration script. Document in WORKTREE_GUIDE that existing worktrees in old
+locations should be removed (`git worktree remove`) and recreated. `worktree_list.sh`
+should check both old and new locations during a transition period (with a deprecation
+warning for old-location worktrees). Remove the legacy fallback in a follow-up.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
 | `.agent/scripts/_worktree_helpers.sh` | Update base paths, `find_worktree`, `find_worktree_by_skill` |
-| `.agent/scripts/worktree_create.sh` | New output paths with repo-name tier |
+| `.agent/scripts/worktree_create.sh` | New output paths with repo-name tier, remove `--type` default |
 | `.agent/scripts/worktree_enter.sh` | Require `--type`, add `--repo`, update search paths |
 | `.agent/scripts/worktree_remove.sh` | Require `--type`, add `--repo`, update search paths |
 | `.agent/scripts/worktree_list.sh` | Update search paths, scan `worktrees/project/*/` |
@@ -133,22 +138,19 @@ old-location worktrees). Remove the legacy fallback in a follow-up.
 | `--type` becomes mandatory | AGENTS.md usage examples, WORKTREE_GUIDE | Yes |
 | `.workspace-worktrees/` removed | `.gitignore`, ADR-0002 | Yes |
 | New `--repo` flag | Help text in scripts, AGENTS.md | Yes |
-| Existing worktrees in old locations | Migration/legacy fallback in list script | Yes |
+| Existing worktrees in old locations | Deprecation warning in list script | Yes |
+| `--type` default removed from create | AGENTS.md examples, help text | Yes |
 
-## Open Questions
+## Resolved Questions
 
-1. **Legacy worktree migration**: Should we provide a migration script that moves
-   existing worktrees, or just document that old worktrees should be removed and
-   recreated? (Migration is tricky because git tracks worktree paths internally.)
+1. **Legacy worktree migration**: No migration script. Document that old worktrees
+   should be removed and recreated. List script gets temporary legacy fallback with
+   deprecation warning.
 
-2. **ADR-0003 scope**: ADR-0003 says "any single-repo project." The multi-project
-   directory structure doesn't violate this (it's forward-compatible), but should we
-   update ADR-0003 to acknowledge multi-project as a future direction, or leave that
-   for when multi-project is actually implemented?
+2. **ADR-0003 scope**: Leave as-is. Update when multi-project is actually implemented.
 
-3. **`--type` on `worktree_create.sh`**: It already requires `--type` but defaults
-   to `workspace`. Should we remove the default so all three scripts behave
-   consistently (explicit `--type` required everywhere)?
+3. **`--type` default on create**: Remove the default. All three scripts require
+   explicit `--type`.
 
 ## Estimated Scope
 
