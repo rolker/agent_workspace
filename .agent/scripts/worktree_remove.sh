@@ -3,13 +3,13 @@
 # Remove a git worktree and clean up
 #
 # Usage:
-#   ./worktree_remove.sh --issue <number> [--repo-slug <slug>] [--force]
-#   ./worktree_remove.sh --skill <name> [--repo-slug <slug>] [--force]
+#   ./worktree_remove.sh --issue <number> --type workspace|project [--repo <name>] [--repo-slug <slug>] [--force]
+#   ./worktree_remove.sh --skill <name> --type workspace|project [--repo <name>] [--repo-slug <slug>] [--force]
 #
 # Examples:
-#   ./worktree_remove.sh --issue 123
-#   ./worktree_remove.sh --issue 123 --force
-#   ./worktree_remove.sh --skill research
+#   ./worktree_remove.sh --issue 123 --type workspace
+#   ./worktree_remove.sh --issue 123 --type project --force
+#   ./worktree_remove.sh --skill research --type workspace
 #
 # This will:
 #   1. Check for uncommitted changes (unless --force)
@@ -25,17 +25,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ISSUE_NUM=""
 SKILL_NAME=""
+WORKTREE_TYPE=""
 FORCE=false
 REPO_SLUG=""
+PROJECT_REPO=""
 
 show_usage() {
-    echo "Usage: $0 (--issue <number> | --skill <name>) [--repo-slug <slug>] [--force]"
-    echo "   or: $0 <number> [--force]"
+    echo "Usage: $0 (--issue <number> | --skill <name>) --type workspace|project [options]"
     echo ""
     echo "Options:"
     echo "  --issue <number>        Issue number (required, unless --skill is used)"
     echo "  --skill <name>          Skill name (alternative to --issue)"
-    echo "  <number>                Issue number as positional argument"
+    echo "  --type <type>           Worktree type: 'workspace' or 'project' (required)"
+    echo "  --repo <name>           Project repo name (for multi-project disambiguation)"
     echo "  --repo-slug <slug>      Repository slug (optional, for disambiguation)"
     echo "  --force                 Force removal even with uncommitted changes"
 }
@@ -55,6 +57,14 @@ while [[ $# -gt 0 ]]; do
             SKILL_NAME="$2"
             shift 2
             ;;
+        --type)
+            WORKTREE_TYPE="$2"
+            shift 2
+            ;;
+        --repo)
+            PROJECT_REPO="$2"
+            shift 2
+            ;;
         --repo-slug)
             REPO_SLUG="$2"
             shift 2
@@ -67,10 +77,6 @@ while [[ $# -gt 0 ]]; do
             show_usage
             exit 0
             ;;
-        [0-9]*)
-            ISSUE_NUM="$1"
-            shift
-            ;;
         *)
             echo "Error: Unknown option $1"
             show_usage
@@ -79,12 +85,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Resolve ROOT_DIR via git, not relative paths. When called from inside a
-# worktree, SCRIPT_DIR points to the worktree's copy of .agent/scripts/,
-# so dirname-based resolution gives the worktree root instead of the main
-# workspace. The main worktree is always the first entry in git worktree list.
-# Deferred until after arg parsing so --help works without a git repo.
-ROOT_DIR="$(git worktree list --porcelain | head -1 | sed 's/^worktree //')"
+# Derive ROOT_DIR from the script's location, consistent with all other
+# worktree scripts. This works regardless of CWD — even if called from
+# inside a project worktree (where git context is the project repo, not
+# the workspace repo).
+ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 
@@ -102,94 +107,81 @@ if [ -z "$ISSUE_NUM" ] && [ -z "$SKILL_NAME" ]; then
     show_usage
     exit 1
 fi
+if [ -z "$WORKTREE_TYPE" ]; then
+    echo "Error: --type is required (workspace or project)"
+    show_usage
+    exit 1
+fi
+if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; then
+    echo "Error: --type must be 'workspace' or 'project'"
+    exit 1
+fi
+if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" == "workspace" ]; then
+    echo "Error: --repo is only valid with --type project"
+    exit 1
+fi
 
-# Function to find worktree directory
-find_worktree() {
-    local base_dir="$1"
-    local issue_num="$2"
-    local repo_slug="$3"
+# Resolve base directories for the specified type
+_resolve_base_dirs() {
+    local type="$1"
+    NEW_BASE=""
+    LEGACY_BASE=""
 
-    if [ -n "$repo_slug" ]; then
-        local exact_path="$base_dir/issue-${repo_slug}-${issue_num}"
-        if [ -d "$exact_path" ]; then
-            echo "$exact_path"
-            return 0
+    if [ "$type" == "workspace" ]; then
+        NEW_BASE="$(wt_workspace_base "$ROOT_DIR")"
+        LEGACY_BASE="$(wt_legacy_workspace_base "$ROOT_DIR")"
+    else
+        if [ -n "$PROJECT_REPO" ]; then
+            if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then
+                exit 1
+            fi
+        else
+            local proj_base
+            proj_base="$(wt_project_base_glob "$ROOT_DIR")"
+            if [ -d "$proj_base" ]; then
+                local repo_dirs=()
+                for d in "$proj_base"/*/; do
+                    [ -d "$d" ] && repo_dirs+=("$d")
+                done
+                if [ "${#repo_dirs[@]}" -eq 1 ]; then
+                    NEW_BASE="${repo_dirs[0]%/}"
+                elif [ "${#repo_dirs[@]}" -gt 1 ]; then
+                    echo "Error: Multiple project repos found. Use --repo to specify:" >&2
+                    for d in "${repo_dirs[@]}"; do
+                        echo "  --repo $(basename "${d%/}")" >&2
+                    done
+                    return 1
+                fi
+            fi
         fi
-        return 1
+        LEGACY_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
     fi
-
-    local matches=()
-    for path in "$base_dir"/issue-*-"${issue_num}"; do
-        if [ -d "$path" ] && [ "$path" != "$base_dir/issue-*-${issue_num}" ]; then
-            matches+=( "$path" )
-        fi
-    done
-
-    local legacy_path="$base_dir/issue-${issue_num}"
-    if [ -d "$legacy_path" ]; then
-        matches+=( "$legacy_path" )
-    fi
-
-    if [ "${#matches[@]}" -eq 1 ]; then
-        echo "${matches[0]}"
-        return 0
-    elif [ "${#matches[@]}" -gt 1 ]; then
-        echo "Error: Multiple worktrees found for issue ${issue_num}:" >&2
-        for path in "${matches[@]}"; do
-            echo "  - $(basename "$path")" >&2
-        done
-        echo "" >&2
-        echo "Use --repo-slug to specify which one:" >&2
-        for path in "${matches[@]}"; do
-            local slug
-            slug=$(basename "$path" | sed -E 's/^issue-(.+)-[0-9]+$/\1/')
-            echo "  $0 --issue ${issue_num} --repo-slug ${slug}" >&2
-        done
-        return 1
-    fi
-
-    return 1
 }
 
 WORKTREE_DIR=""
-WORKTREE_TYPE=""
+
+_resolve_base_dirs "$WORKTREE_TYPE" || exit 1
 
 if [ -n "$SKILL_NAME" ]; then
-    # Check project worktrees first, then workspace
-    if FOUND=$(find_worktree_by_skill "$ROOT_DIR/project/worktrees" "$SKILL_NAME" "$REPO_SLUG"); then
+    if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_skill "$NEW_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-        WORKTREE_TYPE="project"
-    elif FOUND=$(find_worktree_by_skill "$ROOT_DIR/.workspace-worktrees" "$SKILL_NAME" "$REPO_SLUG"); then
+    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_skill "$LEGACY_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-        WORKTREE_TYPE="workspace"
+        echo "⚠️  Found worktree in legacy location." >&2
     else
-        echo "Error: No worktree found for skill '$SKILL_NAME'"
-        echo ""
-        echo "Checked locations:"
-        echo "  - $ROOT_DIR/project/worktrees/skill-*-${SKILL_NAME}-*"
-        echo "  - $ROOT_DIR/.workspace-worktrees/skill-*-${SKILL_NAME}-*"
+        echo "Error: No $WORKTREE_TYPE worktree found for skill '$SKILL_NAME'"
         echo ""
         echo "List worktrees with: ./.agent/scripts/worktree_list.sh"
         exit 1
     fi
 else
-    if FOUND=$(find_worktree "$ROOT_DIR/project/worktrees" "$ISSUE_NUM" "$REPO_SLUG"); then
+    if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree "$NEW_BASE" "$ISSUE_NUM" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-        WORKTREE_TYPE="project"
-    elif FOUND=$(find_worktree "$ROOT_DIR/.workspace-worktrees" "$ISSUE_NUM" "$REPO_SLUG"); then
+    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree "$LEGACY_BASE" "$ISSUE_NUM" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-        WORKTREE_TYPE="workspace"
+        echo "⚠️  Found worktree in legacy location." >&2
     else
-        echo "Error: No worktree found for issue #$ISSUE_NUM"
-        echo ""
-        echo "Checked locations:"
-        if [ -n "$REPO_SLUG" ]; then
-            echo "  - $ROOT_DIR/project/worktrees/issue-${REPO_SLUG}-$ISSUE_NUM"
-            echo "  - $ROOT_DIR/.workspace-worktrees/issue-${REPO_SLUG}-$ISSUE_NUM"
-        else
-            echo "  - $ROOT_DIR/project/worktrees/issue-*-$ISSUE_NUM"
-            echo "  - $ROOT_DIR/.workspace-worktrees/issue-*-$ISSUE_NUM"
-        fi
+        echo "Error: No $WORKTREE_TYPE worktree found for issue #$ISSUE_NUM"
         echo ""
         echo "List worktrees with: ./.agent/scripts/worktree_list.sh"
         exit 1
@@ -226,9 +218,9 @@ if [[ "$CALLER_PWD" == "$WORKTREE_DIR" || "$CALLER_PWD" == "$WORKTREE_DIR/"* ]];
     echo ""
     echo "   Run this first:  cd $ROOT_DIR"
     if [ -n "$SKILL_NAME" ]; then
-        echo "   Then re-run:     $0 --skill $SKILL_NAME"
+        echo "   Then re-run:     $0 --skill $SKILL_NAME --type $WORKTREE_TYPE"
     else
-        echo "   Then re-run:     $0 --issue $ISSUE_NUM"
+        echo "   Then re-run:     $0 --issue $ISSUE_NUM --type $WORKTREE_TYPE"
     fi
     exit 1
 fi

@@ -1,7 +1,10 @@
 # Project directory (managed externally — cloned or symlinked)
 project/
 
-# Workspace worktrees (for infrastructure work)
+# Worktrees (workspace and project, see issue #25)
+worktrees/
+
+# Legacy worktree location (deprecated — remove after migration)
 .workspace-worktrees/
 
 # Make stamp files (setup state tracking — see ADR-0007)

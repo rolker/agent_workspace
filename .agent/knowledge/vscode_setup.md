@@ -194,7 +194,7 @@ folders to the main workspace. VS Code's source control targets whichever
 in one window causes commits to land in the wrong place.
 
 ```bash
-source .agent/scripts/worktree_enter.sh --issue <N>
+source .agent/scripts/worktree_enter.sh --issue <N> --type workspace  # or --type project
 code .
 ```
 

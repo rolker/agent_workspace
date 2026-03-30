@@ -3,16 +3,16 @@
 # Create a git worktree for isolated task development
 #
 # Usage:
-#   ./worktree_create.sh --issue <number> [--type workspace|project] [--branch <name>] [--plan-file <path>]
+#   ./worktree_create.sh --issue <number> --type workspace|project [--branch <name>] [--plan-file <path>]
 #   ./worktree_create.sh --skill <name> --type workspace
 #
 # Worktree Types:
 #   workspace - For infrastructure work (.agent/, docs/, skills/)
-#               Created in: .workspace-worktrees/issue-<slug>-<N>/
+#               Created in: worktrees/workspace/issue-<slug>-<N>/
 #               Git worktree of the workspace repo
 #
 #   project   - For changes to the managed project repo
-#               Created in: project/worktrees/issue-<slug>-<N>/
+#               Created in: worktrees/project/<repo>/issue-<slug>-<N>/
 #               Git worktree of the project/ repo
 #               Draft PRs target the project repo (-R <project-remote>)
 
@@ -20,6 +20,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
+source "$SCRIPT_DIR/_worktree_helpers.sh"
 
 # Try to fetch a specific branch from origin.
 fetch_remote_branch() {
@@ -41,7 +43,7 @@ extract_gh_slug() {
 # Defaults
 ISSUE_NUM=""
 SKILL_NAME=""
-WORKTREE_TYPE="workspace"
+WORKTREE_TYPE=""
 BRANCH_NAME=""
 REPO_SLUG=""
 PLAN_FILE=""
@@ -51,12 +53,12 @@ PARENT_ISSUE_NUM=""
 ALLOWED_SKILLS=("research" "inspiration-tracker")
 
 show_usage() {
-    echo "Usage: $0 (--issue <number> | --skill <name>) [--type workspace|project] [options]"
+    echo "Usage: $0 (--issue <number> | --skill <name>) --type workspace|project [options]"
     echo ""
     echo "Options:"
     echo "  --issue <number>      Issue number (required, unless --skill is used)"
     echo "  --skill <name>        Skill name (alternative to --issue; allowed: ${ALLOWED_SKILLS[*]})"
-    echo "  --type <type>         Worktree type: 'workspace' (default) or 'project'"
+    echo "  --type <type>         Worktree type: 'workspace' or 'project' (required)"
     echo "  --repo-slug <slug>    Repository slug for naming (auto-detected if not provided)"
     echo "  --branch <name>       Custom branch name (default: feature/issue-<N>)"
     echo "  --parent-issue <N>    Parent issue number; branches from parent's feature branch"
@@ -163,7 +165,12 @@ if [ -n "$SKILL_NAME" ]; then
     unset _SKILL_TS _SKILL_NANO
 fi
 
-# Validate worktree type
+# Validate worktree type (required)
+if [ -z "$WORKTREE_TYPE" ]; then
+    echo "Error: --type is required (workspace or project)"
+    show_usage
+    exit 1
+fi
 if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; then
     echo "Error: --type must be 'workspace' or 'project'"
     exit 1
@@ -309,20 +316,20 @@ else
 fi
 
 if [ "$WORKTREE_TYPE" == "project" ]; then
-    WORKTREE_DIR="$ROOT_DIR/project/worktrees/${DIR_PREFIX}"
+    WORKTREE_DIR="$(wt_project_base "$ROOT_DIR" "$REPO_SLUG")/${DIR_PREFIX}"
 else
-    WORKTREE_DIR="$ROOT_DIR/.workspace-worktrees/${DIR_PREFIX}"
+    WORKTREE_DIR="$(wt_workspace_base "$ROOT_DIR")/${DIR_PREFIX}"
 fi
 
 # Check if worktree already exists
 if [ -d "$WORKTREE_DIR" ]; then
     echo "Error: Worktree already exists at $WORKTREE_DIR"
     if [ -n "$SKILL_NAME" ]; then
-        echo "Use 'worktree_enter.sh --skill $SKILL_NAME' to enter it"
-        echo "Or  'worktree_remove.sh --skill $SKILL_NAME' to remove it"
+        echo "Use 'worktree_enter.sh --skill $SKILL_NAME --type $WORKTREE_TYPE' to enter it"
+        echo "Or  'worktree_remove.sh --skill $SKILL_NAME --type $WORKTREE_TYPE' to remove it"
     else
-        echo "Use 'worktree_enter.sh --issue $ISSUE_NUM' to enter it"
-        echo "Or  'worktree_remove.sh --issue $ISSUE_NUM' to remove it"
+        echo "Use 'worktree_enter.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE' to enter it"
+        echo "Or  'worktree_remove.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE' to remove it"
     fi
     exit 1
 fi
@@ -611,15 +618,15 @@ fi
 # --- Next steps ---
 if [ -n "$SKILL_NAME" ]; then
     echo "To enter this worktree:"
-    echo "  source $SCRIPT_DIR/worktree_enter.sh --skill $SKILL_NAME"
+    echo "  source $SCRIPT_DIR/worktree_enter.sh --skill $SKILL_NAME --type $WORKTREE_TYPE"
     echo ""
     echo "When done, remove with:"
-    echo "  $SCRIPT_DIR/worktree_remove.sh --skill $SKILL_NAME"
+    echo "  $SCRIPT_DIR/worktree_remove.sh --skill $SKILL_NAME --type $WORKTREE_TYPE"
 else
     echo "To enter this worktree:"
-    echo "  source $SCRIPT_DIR/worktree_enter.sh --issue $ISSUE_NUM"
+    echo "  source $SCRIPT_DIR/worktree_enter.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
     echo ""
     echo "When done, remove with:"
-    echo "  $SCRIPT_DIR/worktree_remove.sh --issue $ISSUE_NUM"
+    echo "  $SCRIPT_DIR/worktree_remove.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
 fi
 echo ""

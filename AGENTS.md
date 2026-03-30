@@ -52,13 +52,14 @@ setup (environment, identity, features), see your framework's adapter file:
 
 ## Worktree Workflow
 
-Every task must use an isolated worktree. Two types are available:
+Every task must use an isolated worktree. `--type` is **required** on all
+worktree scripts (create, enter, remove). Two types are available:
 
 **Workspace worktrees** — for changes to workspace infrastructure (`.agent/`, `docs/`, skills):
 
 ```bash
 .agent/scripts/worktree_create.sh --issue <N> --type workspace [--plan-file <path>]
-source .agent/scripts/worktree_enter.sh --issue <N>
+source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
 # work here; this is a git worktree of the workspace repo
 ```
 
@@ -66,7 +67,7 @@ source .agent/scripts/worktree_enter.sh --issue <N>
 
 ```bash
 .agent/scripts/worktree_create.sh --issue <N> --type project [--plan-file <path>]
-source .agent/scripts/worktree_enter.sh --issue <N>
+source .agent/scripts/worktree_enter.sh --issue <N> --type project
 # work here; this is a git worktree of project/
 # PRs target the project repo (created with -R <project-remote>)
 ```
@@ -82,15 +83,22 @@ source .agent/scripts/worktree_enter.sh --issue <N>
 
 ```bash
 .agent/scripts/worktree_create.sh --skill research --type workspace
-source .agent/scripts/worktree_enter.sh --skill research
-.agent/scripts/worktree_remove.sh --skill research
+source .agent/scripts/worktree_enter.sh --skill research --type workspace
+.agent/scripts/worktree_remove.sh --skill research --type workspace
 ```
 
 **List / remove**:
 
 ```bash
 .agent/scripts/worktree_list.sh
-.agent/scripts/worktree_remove.sh --issue <N>
+.agent/scripts/worktree_remove.sh --issue <N> --type workspace
+.agent/scripts/worktree_remove.sh --issue <N> --type project
+```
+
+**Multi-project** — use `--repo` when multiple project repos are configured:
+
+```bash
+.agent/scripts/worktree_enter.sh --issue <N> --type project --repo <repo_name>
 ```
 
 See [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) for disambiguation and troubleshooting.

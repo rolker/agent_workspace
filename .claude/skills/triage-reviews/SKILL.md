@@ -40,7 +40,8 @@ If they don't match:
    `feature/issue-<N>` or `feature/ISSUE-<N>-<description>`).
 2. Auto-enter the worktree:
    ```bash
-   source .agent/scripts/worktree_enter.sh --issue <N>
+   source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
+   # or: source .agent/scripts/worktree_enter.sh --issue <N> --type project
    ```
 3. After entering, verify the branch now matches. If it still doesn't (worktree
    doesn't exist or branch mismatch), stop and inform the user with instructions
@@ -48,7 +49,7 @@ If they don't match:
    ```
    Worktree for issue #<N> not found. Create it with:
      .agent/scripts/worktree_create.sh --issue <N> --type project
-     source .agent/scripts/worktree_enter.sh --issue <N>
+     source .agent/scripts/worktree_enter.sh --issue <N> --type project
    ```
 
 ### 2. Sync local branch

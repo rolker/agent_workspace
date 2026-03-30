@@ -28,9 +28,8 @@ commits content. Use the
 to create the issue, then:
 
 ```bash
-.agent/scripts/worktree_create.sh --issue <N> --type project --packages <target-repo>
-source .agent/scripts/worktree_enter.sh --issue <N>
-cd project/<target-repo>
+.agent/scripts/worktree_create.sh --issue <N> --type project
+source .agent/scripts/worktree_enter.sh --issue <N> --type project
 ```
 
 ## Workflow

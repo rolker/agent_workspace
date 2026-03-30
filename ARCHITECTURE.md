@@ -63,11 +63,12 @@ remote configured.
 
 ## Worktree Strategy
 
-Two worktree types replace the ROS `layer` type:
+Two worktree types replace the ROS `layer` type. `--type` is required on all
+worktree scripts (create, enter, remove):
 
 ### Workspace Worktrees
 
-Location: `.workspace-worktrees/issue-<slug>-<N>/`
+Location: `worktrees/workspace/issue-<slug>-<N>/`
 
 Git worktrees of the **workspace repo**. Used for:
 - Changes to `.agent/` (scripts, hooks, knowledge)
@@ -76,12 +77,12 @@ Git worktrees of the **workspace repo**. Used for:
 
 ### Project Worktrees
 
-Location: `project/worktrees/issue-<slug>-<N>/`
+Location: `worktrees/project/<repo>/issue-<slug>-<N>/`
 
 Git worktrees of the **project repo**. Used for all changes to the managed project.
 Draft PRs target the project repo using `gh pr create -R <project-remote>`.
 
-`project/worktrees/` is implicitly gitignored since `project/` is in `.gitignore`.
+`worktrees/` is gitignored at the workspace root.
 
 ## Stamp-Based Setup (ADR-0007)
 
