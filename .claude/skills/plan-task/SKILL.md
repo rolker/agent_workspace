@@ -60,14 +60,14 @@ Check `$WORKTREE_ISSUE` (set by `worktree_enter.sh`). If it does not match
 
 ```bash
 .agent/scripts/worktree_create.sh --issue <N> --type workspace
-source .agent/scripts/worktree_enter.sh --issue <N>
+source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
 ```
 
-**Project repo issues** (changes to ROS packages in `layers/main/`):
+**Project repo issues** (changes to the managed project repo):
 
 ```bash
-.agent/scripts/worktree_create.sh --issue <N> --type layer --layer <layer> --packages <project_repo>
-source .agent/scripts/worktree_enter.sh --issue <N>
+.agent/scripts/worktree_create.sh --issue <N> --type project
+source .agent/scripts/worktree_enter.sh --issue <N> --type project
 ```
 
 To determine the worktree type and parameters:

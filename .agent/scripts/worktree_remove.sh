@@ -133,7 +133,9 @@ _resolve_base_dirs() {
         LEGACY_BASE="$(wt_legacy_workspace_base "$ROOT_DIR")"
     else
         if [ -n "$PROJECT_REPO" ]; then
-            NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"
+            if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then
+                exit 1
+            fi
         else
             local proj_base
             proj_base="$(wt_project_base_glob "$ROOT_DIR")"

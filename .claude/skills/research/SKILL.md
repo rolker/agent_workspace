@@ -91,9 +91,8 @@ The worktree type depends on the scope:
 - **Project scope** (`--scope project`): the project digest lives in the manifest
   repo, so you need a GitHub issue and a layer worktree targeting that repo.
   ```bash
-  .agent/scripts/worktree_create.sh --issue <N> --type layer --layer <layer> --packages <manifest-repo>
-  source .agent/scripts/worktree_enter.sh --issue <N>
-  cd <layer>_ws/src/<manifest-repo>
+  .agent/scripts/worktree_create.sh --issue <N> --type project
+  source .agent/scripts/worktree_enter.sh --issue <N> --type project
   ```
 
 ### Adding research (`/research <topic>`)

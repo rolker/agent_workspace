@@ -127,7 +127,9 @@ _resolve_base_dirs() {
     else
         # Project type: resolve repo-specific directory
         if [ -n "$PROJECT_REPO" ]; then
-            NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"
+            if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then
+                return 1 2>/dev/null || exit 1
+            fi
         else
             # Auto-detect: find the single project repo directory, or scan all
             local proj_base

@@ -31,9 +31,8 @@ Regenerate project knowledge summaries in `.agents/workspace-context/`.
 
 1. Create a layer worktree for this issue targeting this repo:
    ```bash
-   .agent/scripts/worktree_create.sh --issue <N> --type layer --layer <layer> --packages <this-repo>
-   source .agent/scripts/worktree_enter.sh --issue <N>
-   cd <layer>_ws/src/<this-repo>
+   .agent/scripts/worktree_create.sh --issue <N> --type project
+   source .agent/scripts/worktree_enter.sh --issue <N> --type project
    ```
 
 2. Run the `gather-project-knowledge` skill (Claude Code) or follow its

@@ -65,15 +65,16 @@ All work happens in isolated git worktrees:
 ```bash
 # Infrastructure work (docs, scripts, skills)
 .agent/scripts/worktree_create.sh --issue 42 --type workspace
-source .agent/scripts/worktree_enter.sh --issue 42
+source .agent/scripts/worktree_enter.sh --issue 42 --type workspace
 
 # Project repo work
 .agent/scripts/worktree_create.sh --issue 42 --type project
-source .agent/scripts/worktree_enter.sh --issue 42
+source .agent/scripts/worktree_enter.sh --issue 42 --type project
 
 # List / remove
 .agent/scripts/worktree_list.sh
-.agent/scripts/worktree_remove.sh --issue 42
+.agent/scripts/worktree_remove.sh --issue 42 --type workspace
+.agent/scripts/worktree_remove.sh --issue 42 --type project
 ```
 
 ## For AI Agents

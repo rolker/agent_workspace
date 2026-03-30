@@ -157,9 +157,8 @@ ISSUE_NUM=$(echo "$ISSUE_URL" | grep -o '[0-9]*$')
 
 **Create a project worktree** on the project repo using the new issue number:
 ```bash
-.agent/scripts/worktree_create.sh --issue "$ISSUE_NUM" --type project --packages <repo-name>
-source .agent/scripts/worktree_enter.sh --issue "$ISSUE_NUM"
-cd project/<repo-name>
+.agent/scripts/worktree_create.sh --issue "$ISSUE_NUM" --type project
+source .agent/scripts/worktree_enter.sh --issue "$ISSUE_NUM" --type project
 ```
 
 **Apply fixes** (in the worktree, on the project repo):

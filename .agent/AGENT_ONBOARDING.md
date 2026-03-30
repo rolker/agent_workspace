@@ -38,11 +38,11 @@ Key points:
 # Create isolated worktree for your issue
 # Workspace infrastructure work:
 .agent/scripts/worktree_create.sh --issue <N> --type workspace
-source .agent/scripts/worktree_enter.sh --issue <N>
+source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
 
 # Project repo work:
 .agent/scripts/worktree_create.sh --issue <N> --type project
-source .agent/scripts/worktree_enter.sh --issue <N>
+source .agent/scripts/worktree_enter.sh --issue <N> --type project
 ```
 
 ## Workflow Skills

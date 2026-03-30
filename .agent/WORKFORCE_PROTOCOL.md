@@ -14,18 +14,18 @@ For parallel work by multiple agents, use **git worktrees** for complete isolati
 .agent/scripts/worktree_create.sh --issue 42 --type project
 
 # Enter the worktree
-source .agent/scripts/worktree_enter.sh --issue 42
+source .agent/scripts/worktree_enter.sh --issue 42 --type project
 
 # Work in complete isolation - no conflicts with other agents
 # Build, test, commit, push - all isolated
 
 # When done, clean up
-.agent/scripts/worktree_remove.sh 42
+.agent/scripts/worktree_remove.sh --issue 42 --type project
 ```
 
 ### Worktree Types
-- **Project worktree** (`--type project`): For project repo work. Created in `project/worktrees/issue-N/`
-- **Workspace worktree** (`--worktree workspace`): For infrastructure work (.agent/, configs/, docs). Created in `.workspace-worktrees/issue-N/`
+- **Project worktree** (`--type project`): For project repo work. Created in `worktrees/project/<repo>/issue-<slug>-N/`
+- **Workspace worktree** (`--type workspace`): For infrastructure work (.agent/, configs/, docs). Created in `worktrees/workspace/issue-<slug>-N/`
 
 ### Benefits
 - **Complete isolation**: Each agent works in a separate directory

@@ -49,11 +49,17 @@ done
 
 # --- Worktree detection ---
 WORKTREE_INFO=""
-if [[ "$ROOT_DIR" == *"/project/worktrees/"* ]]; then
+if [[ "$ROOT_DIR" == *"/worktrees/project/"* ]]; then
     WORKTREE_INFO="project worktree"
+    MAIN_ROOT="$(dirname "$(dirname "$(dirname "$(dirname "$ROOT_DIR")")")")"
+elif [[ "$ROOT_DIR" == *"/worktrees/workspace/"* ]]; then
+    WORKTREE_INFO="workspace worktree"
+    MAIN_ROOT="$(dirname "$(dirname "$(dirname "$ROOT_DIR")")")"
+elif [[ "$ROOT_DIR" == *"/project/worktrees/"* ]]; then
+    WORKTREE_INFO="project worktree (legacy)"
     MAIN_ROOT="$(dirname "$(dirname "$(dirname "$ROOT_DIR")")")"
 elif [[ "$ROOT_DIR" == *"/.workspace-worktrees/"* ]]; then
-    WORKTREE_INFO="workspace worktree"
+    WORKTREE_INFO="workspace worktree (legacy)"
     MAIN_ROOT="$(dirname "$(dirname "$ROOT_DIR")")"
 else
     MAIN_ROOT="$ROOT_DIR"
