@@ -108,10 +108,10 @@ start_task() {
     echo ""
     echo "Next steps:"
     echo "  1. Enter worktree:"
-    echo "     source .agent/scripts/worktree_enter.sh --issue $issue_num"
+    echo "     source .agent/scripts/worktree_enter.sh --issue $issue_num --type $worktree_type"
     echo ""
     echo "  2. When done:"
-    echo "     .agent/scripts/worktree_remove.sh --issue $issue_num"
+    echo "     .agent/scripts/worktree_remove.sh --issue $issue_num --type $worktree_type"
     echo ""
 }
 
