@@ -105,6 +105,10 @@ if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; the
     echo "Error: --type must be 'workspace' or 'project'"
     return 1 2>/dev/null || exit 1
 fi
+if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" == "workspace" ]; then
+    echo "Error: --repo is only valid with --type project"
+    return 1 2>/dev/null || exit 1
+fi
 
 # Sanitize repo slug
 if [ -n "$REPO_SLUG" ]; then

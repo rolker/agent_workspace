@@ -117,6 +117,10 @@ if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; the
     echo "Error: --type must be 'workspace' or 'project'"
     exit 1
 fi
+if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" == "workspace" ]; then
+    echo "Error: --repo is only valid with --type project"
+    exit 1
+fi
 
 # Resolve base directories for the specified type
 _resolve_base_dirs() {

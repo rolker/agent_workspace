@@ -24,6 +24,21 @@ wt_workspace_base() {
 wt_project_base() {
     local root_dir="$1"
     local repo_name="$2"
+
+    # Validate repo_name to prevent path traversal
+    if [[ -z "$repo_name" ]]; then
+        echo "Error: repo name must not be empty." >&2
+        return 1
+    fi
+    if [[ "$repo_name" == *"/"* ]] || [[ "$repo_name" == *".."* ]] || [[ "$repo_name" == "." ]]; then
+        echo "Error: invalid repo name '$repo_name': must not contain '/' or '..'." >&2
+        return 1
+    fi
+    if [[ ! "$repo_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        echo "Error: invalid repo name '$repo_name': only letters, numbers, '.', '_', and '-' are allowed." >&2
+        return 1
+    fi
+
     echo "$root_dir/worktrees/project/$repo_name"
 }
 
@@ -43,8 +58,8 @@ wt_legacy_project_base() {
 }
 
 # Find an issue worktree in a given base directory.
-# Returns the path if found, exits 1 if not found.
-# On multiple matches, prints disambiguation help to stderr and exits 1.
+# Returns the path if found, returns 1 if not found.
+# On multiple matches, prints disambiguation help to stderr and returns 1.
 # Usage: path=$(find_worktree "$base_dir" "$issue_num" "$repo_slug")
 find_worktree() {
     local base_dir="$1"

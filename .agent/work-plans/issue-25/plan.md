@@ -54,8 +54,9 @@ directory.
 
 ### 5. Add `--repo` flag for multi-project disambiguation
 
-Add an optional `--repo <name>` flag to `worktree_enter.sh`, `worktree_remove.sh`,
-and `worktree_list.sh`. For `--type project`:
+Add an optional `--repo <name>` flag to `worktree_enter.sh` and `worktree_remove.sh`.
+(`worktree_list.sh` scans all repos via glob by design — no `--repo` filter needed.)
+For `--type project`:
 - If `--repo` provided: search `worktrees/project/<repo>/`
 - If `--repo` omitted and only one project configured: use it (current behavior)
 - If `--repo` omitted and multiple projects exist: error with available repos

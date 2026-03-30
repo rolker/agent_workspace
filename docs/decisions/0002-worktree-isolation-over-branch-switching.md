@@ -19,7 +19,7 @@ All feature work uses git worktrees — separate working directory checkouts tha
 their own branch, build artifacts, and uncommitted changes, while sharing the same git
 history.
 
-Two worktree types (both require explicit `--type`):
+Worktree scripts require explicit `--type` (`workspace` | `project`):
 - `workspace` — for workspace infrastructure (`.agent/`, `docs/`, skills). Created in
   `worktrees/workspace/issue-<slug>-<N>/` as a git worktree of the workspace repo.
 - `project` — for changes to the managed project repo. Created in
