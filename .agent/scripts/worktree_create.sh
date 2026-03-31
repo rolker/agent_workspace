@@ -48,6 +48,7 @@ BRANCH_NAME=""
 REPO_SLUG=""
 PLAN_FILE=""
 PARENT_ISSUE_NUM=""
+WORKFLOW=""
 
 # Skills allowed to create worktrees without a GitHub issue
 ALLOWED_SKILLS=("research" "inspiration-tracker")
@@ -63,10 +64,11 @@ show_usage() {
     echo "  --branch <name>       Custom branch name (default: feature/issue-<N>)"
     echo "  --parent-issue <N>    Parent issue number; branches from parent's feature branch"
     echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
+    echo "  --workflow <name>     Workflow template; initializes progress.md (e.g., collaborative)"
     echo ""
     echo "Examples:"
     echo "  $0 --issue 123 --type workspace"
-    echo "  $0 --issue 123 --type project"
+    echo "  $0 --issue 123 --type project --workflow collaborative"
     echo "  $0 --skill research --type workspace"
 }
 
@@ -112,6 +114,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --plan-file)
             PLAN_FILE="$2"
+            shift 2
+            ;;
+        --workflow)
+            WORKFLOW="$2"
             shift 2
             ;;
         -h|--help)
@@ -174,6 +180,23 @@ fi
 if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; then
     echo "Error: --type must be 'workspace' or 'project'"
     exit 1
+fi
+
+# Validate workflow template if provided
+if [ -n "$WORKFLOW" ]; then
+    WORKFLOW_FILE="$ROOT_DIR/.agent/workflows/${WORKFLOW}.md"
+    if [ ! -f "$WORKFLOW_FILE" ]; then
+        echo "Error: Workflow template not found: $WORKFLOW_FILE"
+        echo "Available workflows:"
+        for wf in "$ROOT_DIR"/.agent/workflows/*.md; do
+            [ -f "$wf" ] && [ "$(basename "$wf")" != "README.md" ] && echo "  $(basename "$wf" .md)"
+        done
+        exit 1
+    fi
+    if [ -n "$SKILL_NAME" ]; then
+        echo "Error: --workflow cannot be used with --skill"
+        exit 1
+    fi
 fi
 
 # For project type, project/ must be configured
@@ -444,6 +467,23 @@ if [ -n "$PARENT_ISSUE_NUM" ]; then
     echo "$PARENT_ISSUE_NUM" > "$WORKTREE_DIR/.agent/scratchpad/.parent_issue"
 fi
 
+# Initialize progress.md if --workflow was provided
+if [ -n "$WORKFLOW" ] && [ -n "$ISSUE_NUM" ]; then
+    PROGRESS_DIR="$WORKTREE_DIR/.agent/work-plans/issue-${ISSUE_NUM}"
+    mkdir -p "$PROGRESS_DIR"
+    PROGRESS_FILE="$PROGRESS_DIR/progress.md"
+    _PROGRESS_TITLE="${ISSUE_TITLE:-Issue #$ISSUE_NUM}"
+    cat > "$PROGRESS_FILE" << PROGRESS_EOF
+---
+workflow: $WORKFLOW
+issue: $ISSUE_NUM
+---
+
+# Issue #$ISSUE_NUM — $_PROGRESS_TITLE
+PROGRESS_EOF
+    echo "Initialized progress.md (workflow: $WORKFLOW)"
+fi
+
 echo ""
 echo "========================================"
 echo "✅ Worktree Created Successfully"
@@ -454,6 +494,7 @@ elif [ -n "$ISSUE_TITLE" ]; then
     echo "  Issue #$ISSUE_NUM: $ISSUE_TITLE"
 fi
 [ -n "$PARENT_BRANCH" ] && echo "  Parent: #$PARENT_ISSUE_NUM ($PARENT_BRANCH)"
+[ -n "$WORKFLOW" ] && echo "  Workflow: $WORKFLOW"
 echo ""
 
 # --- Create draft PR if --plan-file given ---

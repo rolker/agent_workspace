@@ -85,7 +85,7 @@ would flag, PRs pass on first try.
 | Adversarial self-review | #55 | planned | gstack | Agent challenges its own work |
 | Review summary in plan files | #83 | planned | brainstorm | Append review findings to plan file; lighter alternative to JSONL |
 | JSONL review tracking | #51 | deferred | gstack | Machine-queryable layer; reconsider if plan-file approach (#83) isn't sufficient |
-| Plan status tracking in reviews | #49 | planned | gstack | Reviews check progress against the plan |
+| Plan status tracking in reviews | #49 | subsumed by #88 | gstack | Reviews update progress.md instead of tracking in plan file |
 | Continual learning from reviews | #42 | planned | microsoft/skills | Misses feed back into local review patterns |
 | JS/web static analysis profile | #81 | planned | review session | review-code linter table missing vanilla JS; silent skip with no report |
 | Copilot review loop automation | #69 | planned | brainstorm | Autonomous push/review/fix cycle (after local review is solid) |
@@ -99,8 +99,9 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 |------|-------|--------|--------|-------|
 | Web dashboard | #64 | planned | ros2_agent_workspace | Anchor for multi-agent visibility; inspired by upstream #398 |
 | Agent health monitoring | #34 | planned | gastown | Dashboard surfaces agent status |
-| Persistent work state | #33 | planned | gastown | Survives crashes; feeds into crash recovery |
-| Session continuity | #36 | planned | gastown + brainstorm | Cross-session context recovery; also feeds #70 |
+| **Lifecycle progress tracking** | **#88** | **in progress** | **brainstorm** | **progress.md + workflow templates by involvement level; consolidates #33, #36, #49** |
+| Persistent work state | #33 | subsumed by #88 | gastown | Survives crashes; progress.md is the persistent state |
+| Session continuity | #36 | subsumed by #88 | gastown + brainstorm | progress.md gives new sessions full context |
 | Inter-agent messaging | #35 | planned | gastown | Structured communication between agents |
 | Structured agent handoffs | #40 | planned | microsoft/skills | Tool scoping per agent role |
 | Permission prompt reduction | — | in progress | brainstorm | #1 friction point; tool-use logging hook deployed, analyze then build targeted allowlist |
@@ -173,19 +174,16 @@ Decisions that apply across multiple items.
 
 ### Storage model
 
-Plan file first for review tracking (#83), with JSONL (#51) as a future
-machine-queryable layer if needed.
+Two files per issue in `.agent/work-plans/issue-N/`:
+- `plan.md` — what we're going to do (reference document, stable after approval)
+- `progress.md` — what actually happened (append-only log, updated by skills)
 
-Considered 6 approaches: gstack JSONL, gstack friction reports, gstack
-analytics, microsoft SQLite, gastown git beads, workspace markdown. Originally
-designed as a three-layer hybrid: plan file summaries (markdown, git-tracked) +
-JSONL detail (local, queryable with jq) + curated knowledge docs (markdown,
-git-tracked).
+Previously (#83), review-code appended summaries to plan.md. Going forward,
+all lifecycle tracking moves to progress.md. Plan.md stays clean as a
+reference. Review summaries in plan.md continue to work until skills are
+updated to write to progress.md instead.
 
-Starting with the plan-file layer alone (#83) — review-code appends a
-structured summary to the plan file after each run. This gives human-readable
-persistence with no new tooling. If cross-cutting queries ("which PRs have
-stale reviews?") become a pain point, add the JSONL layer (#51) on top.
+JSONL (#51) remains a future option for machine-queryable cross-issue queries.
 
 Git refs (`refs/agent-state/issue-N/reviews`) explored in depth — crash-safe,
 worktree-shared, per-issue scoped — but deferred as premature complexity.
@@ -216,11 +214,13 @@ Layer 5: Continual learning (#42 -> #69)
   that local review missed become learning signals.
 ```
 
-### Plan as review accumulator
+### Progress as lifecycle record
 
-All review types append status to the plan file — not just plan reviews.
-The plan becomes the single artifact showing the full story from planning
-through implementation through review.
+progress.md replaces the plan-as-accumulator pattern. All lifecycle steps
+(brainstorm, plan, implement, review, test) append to progress.md rather
+than to plan.md. The plan stays a stable reference; progress tells the
+full story. Workflow templates (`.agent/workflows/`) define the available
+steps and human involvement level per workflow type.
 
 ### Roadmap over issues for planning
 
