@@ -72,6 +72,17 @@ code being changed:
 - Push back when something seems wrong rather than agreeing too readily
 - Lead with the answer or action, not the reasoning
 
+## Tool Usage
+
+- **Prefer dedicated tools over shell equivalents** — Use Glob instead of
+  `ls`/`find`, Grep instead of `grep`/`rg`, Read instead of `cat`/`head`/`tail`,
+  Edit instead of `sed`/`awk`. Dedicated tools are auto-approved and provide
+  better audit trails.
+- **Chain shell commands only when state depends on it** — Use `&&` when the
+  second command needs shell state from the first (sourced environments, directory
+  changes). For independent commands, use separate tool calls so each can match
+  allowlist patterns independently.
+
 ## Worktree Workflow
 
 Every task must use an isolated worktree. `--type` is **required** on all
