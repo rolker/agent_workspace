@@ -189,6 +189,10 @@ fi
 
 # Validate workflow template if provided
 if [ -n "$WORKFLOW" ]; then
+    if [ -n "$SKILL_NAME" ]; then
+        echo "Error: --workflow cannot be used with --skill"
+        exit 1
+    fi
     if ! [[ "$WORKFLOW" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
         echo "Error: Invalid workflow name '$WORKFLOW' — must match [a-z0-9][a-z0-9_-]*"
         exit 1
@@ -200,10 +204,6 @@ if [ -n "$WORKFLOW" ]; then
         for wf in "$ROOT_DIR"/.agent/workflows/*.md; do
             [ -f "$wf" ] && [ "$(basename "$wf")" != "README.md" ] && echo "  $(basename "$wf" .md)"
         done
-        exit 1
-    fi
-    if [ -n "$SKILL_NAME" ]; then
-        echo "Error: --workflow cannot be used with --skill"
         exit 1
     fi
 fi
