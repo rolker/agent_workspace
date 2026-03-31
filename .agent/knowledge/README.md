@@ -5,7 +5,7 @@ version-controlled and apply regardless of which project repository is
 checked out in `project/`.
 
 ## IDE Setup
-- **[VS Code Setup Guide](vscode_setup.md)**: Multi-root workspace configuration, Makefile tasks, C++/Python IntelliSense, and Claude Code extension integration.
+- **[VS Code Setup Guide](vscode_setup.md)**: Makefile tasks, C++/Python IntelliSense, worktree workflow, and Claude Code extension integration.
 
 ## Agent Workflows
 - **[Skill Workflows](skill_workflows.md)**: Per-issue lifecycle sequence, governance skill index, and utility skill catalog.
@@ -17,8 +17,8 @@ checked out in `project/`.
 
 Project-specific conventions and architecture docs are available via
 `.agent/project_knowledge/` (a symlink to the manifest repo's
-`.agents/workspace-context/` directory, created by `setup_layers.sh`). This symlink
-may not exist if the manifest repo has not set up `.agents/workspace-context/`.
+`.agents/workspace-context/` directory, created by `setup_project.sh`). This symlink
+may not exist if the project repo has not set up `.agents/workspace-context/`.
 
 ## Project-Level Agent Guides
 
