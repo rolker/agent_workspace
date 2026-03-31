@@ -1,44 +1,37 @@
 # Static Analysis Specialist Reference
 
 Tool configurations for the static analysis specialist in `/review-code`.
-Configs are split by domain: **ament** (ROS package code) and **workspace**
-(infrastructure scripts and configs).
+
+## Config Detection
+
+Before applying defaults, check for project-specific configuration:
+
+1. If `.pre-commit-config.yaml` exists, extract tool settings from it
+   (line lengths, ignore lists, tool versions) and use those as the
+   authoritative config for workspace files.
+2. If a project-specific lint config exists (`pyproject.toml`, `setup.cfg`,
+   `.flake8`, `.clang-tidy`, `.pylintrc`), use it for project files.
+3. Fall back to the defaults below only when no config is found.
 
 ## File Classification
 
-| File location | Domain | Language |
+Classify by file extension. Use directory location to distinguish workspace
+infrastructure from project code:
+
+| File pattern | Location | Language |
 |---|---|---|
-| `layers/*/src/**/*.py` | ament | Python |
-| `layers/*/src/**/*.cpp`, `*.hpp`, `*.h` | ament | C++ |
-| `layers/*/src/**/*.xml` | ament | XML |
-| `layers/*/src/**/*.yaml`, `*.yml` | ament | YAML |
-| `layers/*/src/**/CMakeLists.txt` | ament | CMake |
-| `.agent/scripts/*.py` | workspace | Python |
-| `.agent/scripts/*.sh`, `scripts/*.sh` | workspace | Shell |
-| Root `*.yaml`, `*.yml` | workspace | YAML |
-| Root `*.md` | — | skip (no linting) |
+| `*.py` | `.agent/scripts/`, `.agent/hooks/` | Python (workspace) |
+| `*.py` | `project/` or other | Python (project) |
+| `*.cpp`, `*.hpp`, `*.h`, `*.cc`, `*.cxx` | any | C++ |
+| `*.sh` | any | Shell |
+| `*.yaml`, `*.yml` | any | YAML |
+| `*.xml` | any | XML |
+| `*.js`, `*.ts`, `*.jsx`, `*.tsx` | any | JavaScript/TypeScript |
+| `*.md`, `*.rst`, `*.txt` | any | skip (no linting) |
 
-## Python — Ament Profile (ROS packages)
+## Python — Workspace
 
-Matches `ament_flake8` defaults from `/opt/ros/jazzy/lib/python3.12/site-packages/ament_flake8/configuration/ament_flake8.ini`.
-
-```bash
-flake8 --max-line-length=99 \
-  --import-order-style=google \
-  --extend-ignore="B902,C816,D100,D101,D102,D103,D104,D105,D106,D107,D203,D212,D404,I202" \
-  --show-source --statistics \
-  <changed-py-files>
-```
-
-Optional deeper check (if mypy is available):
-
-```bash
-mypy --ignore-missing-imports --no-error-summary <changed-py-files>
-```
-
-## Python — Workspace Profile
-
-Matches pre-commit config (`.pre-commit-config.yaml`).
+Defaults match the workspace `.pre-commit-config.yaml`:
 
 ```bash
 flake8 --max-line-length=100 \
@@ -46,22 +39,27 @@ flake8 --max-line-length=100 \
   <changed-py-files>
 ```
 
-## C++ — Ament Profile
+The E203/W503 ignores compensate for Black formatting. E402 allows late
+imports in scripts that modify `sys.path`.
 
-### cpplint
-
-Matches `ament_cpplint` defaults.
+Optional deeper check (if mypy is available):
 
 ```bash
-cpplint --counting=detailed \
-  --linelength=100 \
-  --filter=-build/c++11,-runtime/references,-whitespace/braces,-whitespace/indent,-whitespace/parens,-whitespace/semicolon \
-  <changed-cpp-files>
+mypy --ignore-missing-imports --no-error-summary <changed-py-files>
 ```
 
-### cppcheck
+## Python — Project
 
-Matches `ament_cppcheck` defaults.
+Use the project's own config if available (`pyproject.toml`, `setup.cfg`,
+`.flake8`). If none exists, fall back to sensible defaults:
+
+```bash
+flake8 --max-line-length=100 <changed-py-files>
+```
+
+## C++
+
+### cppcheck
 
 ```bash
 cppcheck -f --inline-suppr -q \
@@ -70,26 +68,35 @@ cppcheck -f --inline-suppr -q \
   <changed-cpp-files>
 ```
 
-### clang-tidy (optional, not run by ament by default)
+### clang-tidy (optional)
 
 ```bash
 clang-tidy <changed-cpp-files> -- -std=c++17
 ```
 
-Note: clang-tidy requires a compilation database (`compile_commands.json`).
-Only run if one exists in the build directory. Skip otherwise.
+Requires a compilation database (`compile_commands.json`). Only run if one
+exists in the build directory. Skip otherwise.
 
-## Shell — Workspace Profile
+If a `.clang-tidy` config exists in the project, clang-tidy will use it
+automatically.
 
-Matches pre-commit shellcheck config.
+## Shell
 
 ```bash
 shellcheck --severity=warning <changed-sh-files>
 ```
 
-## YAML
+## JavaScript / TypeScript
 
-Matches pre-commit yamllint config.
+Use the project's ESLint config if available:
+
+```bash
+npx eslint <changed-js-files>
+```
+
+If no ESLint config exists, skip (no sensible universal default).
+
+## YAML
 
 ```bash
 yamllint -d '{extends: default, rules: {line-length: {max: 120}, document-start: disable}}' \
@@ -102,39 +109,17 @@ yamllint -d '{extends: default, rules: {line-length: {max: 120}, document-start:
 xmllint --noout <changed-xml-files>
 ```
 
-## CMake — Ament Profile
-
-Matches `ament_lint_cmake` defaults.
-
-```bash
-# ament_lint_cmake is a Python tool, not a standalone command.
-# If available in the ROS environment:
-python3 -m ament_lint_cmake <changed-cmake-files>
-```
-
 ## Running the Specialist
 
-1. Classify each changed file using the table above
-2. Group files by domain + language
-3. Run the appropriate tool with the matching config
-4. Collect output — each finding should include:
+1. Check for project-specific lint configs (see Config Detection above)
+2. Classify each changed file using the table above
+3. Group files by location + language
+4. Run the appropriate tool with the matching config
+5. Collect output — each finding should include:
    - **file**: relative path
    - **line**: line number
    - **tool**: which tool found it
    - **message**: the finding text
-5. Filter: only report findings on lines **touched by this PR** (added or
+6. Filter: only report findings on lines **touched by this PR** (added or
    modified lines in the diff). Findings on unchanged context lines are noise.
-6. Pass findings to the lead reviewer for deduplication and severity classification
-
-## Key Alignment Notes
-
-- **Python line length**: ament uses 99, workspace uses 100. This is intentional —
-  ament_flake8 has used 99 since inception despite the ROS 2 style guide saying
-  "up to 100 characters."
-- **flake8 ignore lists are complementary**: ament ignores docstring rules (D100-D107)
-  and import order (I202); workspace ignores Black compat rules (E203, W503) and
-  import ordering (E402). Neither is a superset of the other.
-- **C++ linting is ament-only**: no C++ linters in pre-commit (expected — C++ lives
-  in project repos, not workspace infrastructure).
-- **Black is workspace-only**: ROS 2 does not use Black. The E203/W503 ignores in
-  workspace profile compensate for Black's formatting.
+7. Pass findings to the lead reviewer for deduplication and severity classification
