@@ -116,10 +116,10 @@ else
     echo "GitHub bridge already configured."
 fi
 
-# 4. Initial sync
+# 4. Initial sync via GitHub bridge (uses API token, not SSH transport)
 echo "Pulling issues from GitHub..."
-if git bug pull 2>/dev/null; then
+if git bug bridge pull github 2>/dev/null; then
     echo "✅ git-bug sync complete."
 else
-    echo "⚠️  git bug pull failed — issues may not be up to date."
+    echo "⚠️  git bug bridge pull failed — issues may not be up to date."
 fi
