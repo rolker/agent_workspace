@@ -9,6 +9,27 @@ setup (environment, identity, features), see your framework's adapter file:
 | GitHub Copilot | [`.github/copilot-instructions.md`](.github/copilot-instructions.md) |
 | Other | [`.agent/AGENT_ONBOARDING.md`](.agent/AGENT_ONBOARDING.md) |
 
+## Terminology
+
+- **Project**: the managed product in `project/` — what's actually being built.
+  Product features, deployment, and user-facing behavior are project scope.
+- **Workspace**: the agent infrastructure in this repo — skills, governance,
+  scripts, worktrees, docs, and configuration.
+
+When scope is ambiguous, default to **project** (the thing being built) unless
+the topic is clearly about agent tooling or workspace internals.
+
+**Repo ownership**: The working directory contains files from both repos
+(workspace infrastructure is layered onto the project checkout). Don't assume
+which GitHub repo you're in based on directory contents — use `gh repo view` or
+`git remote -v` to confirm. Issues and PRs must target the repo that owns the
+code being changed:
+
+| Scope | Repo | What lives there |
+|-------|------|-----------------|
+| Workspace | `agent_workspace` | `AGENTS.md`, `.agent/`, skills, scripts, docs |
+| Project | project repo (e.g. `daddy_camp`) | Product source code in `project/` |
+
 ## Boundaries
 
 ### Always (proceed autonomously)
