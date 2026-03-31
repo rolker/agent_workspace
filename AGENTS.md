@@ -16,8 +16,9 @@ setup (environment, identity, features), see your framework's adapter file:
 - **Workspace**: the agent infrastructure in this repo — skills, governance,
   scripts, worktrees, docs, and configuration.
 
-When scope is ambiguous, default to **project** (the thing being built) unless
-the topic is clearly about agent tooling or workspace internals.
+When scope is ambiguous in conversation, default to **project** (the thing
+being built) unless the topic is clearly about agent tooling or workspace
+internals.
 
 **Repo ownership**: The working directory contains files from both repos
 (workspace infrastructure is layered onto the project checkout). Don't assume
@@ -28,7 +29,7 @@ code being changed:
 | Scope | Repo | What lives there |
 |-------|------|-----------------|
 | Workspace | `agent_workspace` | `AGENTS.md`, `.agent/`, skills, scripts, docs |
-| Project | project repo (e.g. `daddy_camp`) | Product source code in `project/` |
+| Project | project repo (e.g. `daddy_camp`) | The product being built (`project/`) |
 
 ## Boundaries
 
