@@ -120,12 +120,15 @@ def sync_gitbug(repo_path, dry_run=False):
 
     repo_name = repo_path.name
     if dry_run:
-        print(f"  [DRY-RUN] {repo_name}: git bug pull")
-        print(f"  [DRY-RUN] {repo_name}: git bug push")
+        print(f"  [DRY-RUN] {repo_name}: git bug bridge pull github")
+        print(f"  [DRY-RUN] {repo_name}: git bug bridge push github")
         return
 
     print(f"  Syncing git-bug issues for {repo_name}...")
-    for cmd in [["git", "bug", "pull"], ["git", "bug", "push"]]:
+    for cmd in [
+        ["git", "bug", "bridge", "pull", "github"],
+        ["git", "bug", "bridge", "push", "github"],
+    ]:
         result = subprocess.run(
             cmd, cwd=str(repo_path), capture_output=True, text=True, check=False
         )
