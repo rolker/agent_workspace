@@ -1,6 +1,6 @@
 # Agent Guide: {REPO_NAME}
 
-> One-line description from README or `package.xml`.
+> One-line description from README.
 
 ## Package Inventory
 
@@ -39,20 +39,19 @@ Prioritized list for agents new to this repo:
 ## Build & Test
 
 ```bash
-# From the layer workspace directory (e.g., layers/main/core_ws/)
-colcon build --packages-select pkg_name
-# Testing requires setup.bash in the same shell
-source ../../../.agent/scripts/setup.bash && colcon test --packages-select pkg_name && colcon test-result --verbose
+# Use the project's build/test commands (configured in .agent/project_config.sh)
+make build
+make test
 ```
 
 Known build issues or special requirements:
 - (List any non-obvious dependencies, build flags, or environment setup)
 
-## Cross-Layer Dependencies
+## Dependencies
 
-| Package | Depends On | Layer | What It Imports |
-|---------|-----------|-------|-----------------|
-| `pkg_name` | `other_pkg` | core | `other_pkg/msg/SomeMessage` |
+| Component | Depends On | What It Imports |
+|-----------|-----------|-----------------|
+| `component_name` | `other_component` | Key imports or interfaces |
 
 ## Common Pitfalls
 
@@ -82,15 +81,15 @@ The `.agents/` directory at a project repo root can contain:
 ```
 
 - `README.md` and `work-plans/` are standalone — useful with or without the workspace.
-- `workspace-context/` is only relevant if this repo participates in a
-  [ROS 2 Agent Workspace](https://github.com/rolker/ros2_agent_workspace).
+- `workspace-context/` is only relevant if this repo participates in an
+  [Agent Workspace](https://github.com/rolker/agent_workspace).
   The workspace symlinks this directory to `.agent/project_knowledge/`.
 
 ## Verification Checklist
 
-- [ ] Every package listed has a `package.xml` in the repo
-- [ ] Language column matches actual `CMakeLists.txt` / `setup.py` / `setup.cfg`
+- [ ] Every component listed actually exists in the repo
+- [ ] Language column matches actual build configuration
 - [ ] Architecture summary verified against source, not just existing docs
-- [ ] Cross-layer dependencies verified with grep for message imports
+- [ ] Dependencies verified with grep for imports
 - [ ] Key files actually exist at the listed paths
 - [ ] Sections with no applicable content have been removed (not left empty)

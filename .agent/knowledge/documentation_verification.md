@@ -4,8 +4,8 @@
 
 In PR [rolker/unh_marine_autonomy#37](https://github.com/rolker/unh_marine_autonomy/pull/37),
 AI-generated package documentation contained 13 factual errors: fabricated parameters,
-wrong message types, non-existent API signatures, and incorrect topic names. The root
-cause was that the agent documented from assumptions instead of reading source code.
+wrong types, non-existent API signatures, and incorrect names. The root cause was that
+the agent documented from assumptions instead of reading source code.
 
 This workflow prevents that class of error.
 
@@ -13,115 +13,57 @@ This workflow prevents that class of error.
 
 > **No fact without reading the source.**
 >
-> Every parameter name, topic name, message type, service type, action type, default
-> value, and API signature in documentation must be verified against the actual source
+> Every parameter name, function signature, configuration key, default value,
+> and API endpoint in documentation must be verified against the actual source
 > code. If you cannot find it in the source, do not write the claim.
 
 ## Step-by-Step Process
 
-### 1. Inventory the Package
+### 1. Inventory the Component
 
 ```bash
-# List all source files in the package
-find <package_path> -name '*.py' -o -name '*.cpp' -o -name '*.hpp' -o -name '*.h' | sort
+# List all source files
+find <component_path> -name '*.py' -o -name '*.cpp' -o -name '*.hpp' \
+  -o -name '*.h' -o -name '*.js' -o -name '*.ts' | sort
 
-# List message, service, and action definitions
-find <package_path> -name '*.msg' -o -name '*.srv' -o -name '*.action' | sort
+# List configuration files
+find <component_path> -name '*.yaml' -o -name '*.yml' -o -name '*.json' \
+  -o -name '*.toml' | sort
 
-# List launch files
-find <package_path> -name '*.launch.py' -o -name '*.launch.xml' -o -name '*.launch.yaml' | sort
-
-# Read package.xml for dependencies and description
-cat <package_path>/package.xml
+# Read package metadata (package.json, setup.py, Cargo.toml, etc.)
 ```
 
 ### 2. Extract Facts via Grep
 
-Use the command cookbook below to find every parameter, topic, service, and action
-declared in the source. Record each finding with its file and line number.
+Search for the specific patterns relevant to your project's language and
+framework. Record each finding with its file and line number. Examples:
 
-### 3. Cross-Reference Launch Files
+```bash
+# Python: find class definitions, function signatures, config keys
+grep -rn 'def \|class \|config\[' <component_path>/
 
-Launch files may remap topics, set parameter overrides, or compose multiple nodes.
-Read every launch file in the package and verify that your documentation matches
-the launch-time configuration, not just the source defaults.
+# JavaScript/TypeScript: find exports, route definitions
+grep -rn 'export \|router\.\|app\.' <component_path>/
+
+# C++: find public API, class declarations
+grep -rn 'public:\|class \|namespace ' <component_path>/
+```
+
+### 3. Cross-Reference Configuration
+
+Configuration files may override defaults or rename parameters. Read every
+config file in the component and verify that your documentation matches
+the configured behavior, not just the source defaults.
 
 ### 4. Self-Review Checklist
 
-Before submitting documentation, verify each row in every table:
+Before submitting documentation, verify each claim:
 
-- [ ] Parameter name matches `declare_parameter` call exactly
-- [ ] Default value matches the source (or "none" if no default is provided)
-- [ ] Topic name matches `create_publisher` / `create_subscription` call exactly
-- [ ] Message type matches the template argument or string, including the package prefix
-- [ ] Service/action types match their definition files
-- [ ] No section is present for a category the package does not use (omit, don't leave empty)
-
-## Command Cookbook
-
-### Parameters (C++)
-
-```bash
-# Find all declared parameters
-grep -rn 'declare_parameter' <package_path>/src/ <package_path>/include/
-```
-
-### Parameters (Python)
-
-```bash
-# Find all declared parameters
-grep -rn 'declare_parameter\|declare_parameters' <package_path>/<package_name>/
-```
-
-### Publishers and Subscribers (C++)
-
-```bash
-# Publishers
-grep -rn 'create_publisher' <package_path>/src/ <package_path>/include/
-
-# Subscribers
-grep -rn 'create_subscription' <package_path>/src/ <package_path>/include/
-```
-
-### Publishers and Subscribers (Python)
-
-```bash
-# Publishers
-grep -rn 'create_publisher' <package_path>/<package_name>/
-
-# Subscribers
-grep -rn 'create_subscription' <package_path>/<package_name>/
-```
-
-### Services
-
-```bash
-# Service servers
-grep -rn 'create_service' <package_path>/src/ <package_path>/include/ <package_path>/<package_name>/
-
-# Service clients
-grep -rn 'create_client' <package_path>/src/ <package_path>/include/ <package_path>/<package_name>/
-```
-
-### Actions
-
-```bash
-# Action servers
-grep -rn 'rclcpp_action::create_server' <package_path>/src/ <package_path>/include/
-
-# Action clients
-grep -rn 'rclcpp_action::create_client' <package_path>/src/ <package_path>/include/
-```
-
-### Message / Service / Action Definitions
-
-```bash
-# List all interface definitions
-find <package_path> -name '*.msg' -o -name '*.srv' -o -name '*.action'
-
-# Check CMakeLists.txt for generated interfaces
-grep -n 'rosidl_generate_interfaces\|find_package.*_interfaces' <package_path>/CMakeLists.txt
-```
+- [ ] Names match source code exactly (function names, config keys, etc.)
+- [ ] Default values match the source (or "none" if no default is provided)
+- [ ] Types match the actual declarations, including module/package prefixes
+- [ ] No section is present for a category the component does not use
+- [ ] API signatures match the actual function/method definitions
 
 ## Common Hallucination Anti-Patterns
 
@@ -129,18 +71,14 @@ These are the mistakes agents make most often. Check your documentation against 
 
 | Anti-Pattern | Example | How to Avoid |
 |---|---|---|
-| **Fabricated parameters** | Documenting `max_speed` when the code only declares `speed_limit` | Grep for `declare_parameter`; use exact names |
-| **Assumed topic names** | Writing `/cmd_vel` when the code publishes on `helm/cmd_vel` | Grep for `create_publisher`; use exact strings |
-| **Wrong message types** | Claiming `std_msgs/Float64` when the code uses `geometry_msgs/Twist` | Check the template argument in the publisher call |
-| **Omitted interfaces** | Skipping a service that the node actually provides | Grep for `create_service`; document all matches |
-| **Invented default values** | Writing "default: 1.0" when the parameter has no default | Copy the default from the `declare_parameter` call |
-| **Wrong package prefix** | Writing `sensor_msgs/Imu` when it is `sensor_msgs/msg/Imu` | Use the full qualified type from the include/import |
+| **Fabricated parameters** | Documenting `max_speed` when the code only declares `speed_limit` | Grep for config declarations; use exact names |
+| **Assumed names** | Writing `/api/users` when the code defines `/api/v1/users` | Grep for route/endpoint definitions; use exact strings |
+| **Wrong types** | Claiming `string` when the code uses `number` | Check the actual type annotation or declaration |
+| **Omitted interfaces** | Skipping a public method that the class actually provides | Grep for all public methods; document all matches |
+| **Invented default values** | Writing "default: 1.0" when the parameter has no default | Copy the default from the source declaration |
 
 ## Workspace-Specific Notes
 
-- **`layers/` is gitignored** -- Git-aware tools (`git grep`, `rg`) will skip it by
-  default when searching from the workspace root. Shell `find` and globbing will still
-  traverse it. Use `rg --no-ignore` or search within a specific layer path
-  (e.g., `layers/main/core_ws/src/<package>/`).
-- **Interface packages** may live in a different layer than the node package. Check
-  `package.xml` dependencies to find where message/service/action types are defined.
+- **`project/` may be a symlink** — Git-aware tools (`git grep`, `rg`) may
+  behave differently when searching through symlinks. Use `rg --no-ignore`
+  or search within the project directory directly.

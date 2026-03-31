@@ -1,48 +1,13 @@
 # VS Code Setup Guide
 
-How to use VS Code with the ROS 2 Agent Workspace. All VS Code configuration
+How to use VS Code with the Agent Workspace. All VS Code configuration
 files are gitignored — this guide describes how to generate them locally.
 
 ## Quick Start
 
 ```bash
-code /path/to/ros2_agent_workspace
+code /path/to/workspace
 ```
-
-## Multi-Root Workspace (Recommended)
-
-A multi-root workspace lets you work across the root and all layers with
-per-layer settings. Create a `.code-workspace` file at the repo root:
-
-```jsonc
-// ros2_agent.code-workspace
-{
-  "folders": [
-    { "path": ".", "name": "Workspace Root" },
-    { "path": "layers/main/underlay_ws", "name": "Underlay" },
-    { "path": "layers/main/core_ws", "name": "Core" },
-    { "path": "layers/main/platforms_ws", "name": "Platforms" },
-    { "path": "layers/main/sensors_ws", "name": "Sensors" },
-    { "path": "layers/main/simulation_ws", "name": "Simulation" },
-    { "path": "layers/main/ui_ws", "name": "UI" }
-  ],
-  "settings": {},
-  "tasks": {
-    "version": "2.0.0",
-    "tasks": []
-  }
-}
-```
-
-Open it with `code ros2_agent.code-workspace`. Each layer appears as a
-top-level folder in the Explorer sidebar. Layers that haven't been set up
-yet will appear grayed out.
-
-> **Note**: The `.code-workspace` file references paths under `layers/`
-> which is gitignored. This file is local to your machine.
-
-> **Tip**: The layer list is project-specific — it comes from
-> `configs/manifest/layers.txt`. Adjust the folders list to match your workspace.
 
 ## Makefile Tasks
 
@@ -55,14 +20,14 @@ create `.vscode/tasks.json` at the workspace root:
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Build All",
+      "label": "Build",
       "type": "shell",
       "command": "make build",
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": "$gcc"
     },
     {
-      "label": "Test All",
+      "label": "Test",
       "type": "shell",
       "command": "make test",
       "group": "test"
@@ -74,15 +39,9 @@ create `.vscode/tasks.json` at the workspace root:
       "problemMatcher": []
     },
     {
-      "label": "Status",
+      "label": "Dashboard",
       "type": "shell",
-      "command": "make status",
-      "problemMatcher": []
-    },
-    {
-      "label": "Clean",
-      "type": "shell",
-      "command": "make clean",
+      "command": "make dashboard",
       "problemMatcher": []
     }
   ]
@@ -94,36 +53,16 @@ create `.vscode/tasks.json` at the workspace root:
 
 ## C++ IntelliSense
 
-The build script generates `compile_commands.json` for each CMake-based **package**
-(via `CMAKE_EXPORT_COMPILE_COMMANDS=ON`). After building, CMake packages will have files at
-`build/<package>/compile_commands.json` (Python-only packages will not).
-
-To merge them into a single file for IntelliSense, run from a layer
-workspace (e.g., `layers/main/core_ws`):
-
-```bash
-if [ -d build ]; then
-  mapfile -t compdb_files < <(find build -name compile_commands.json -not -path build/compile_commands.json -print)
-  if [ "${#compdb_files[@]}" -gt 0 ]; then
-    jq -s 'add' "${compdb_files[@]}" > /tmp/compile_commands_merged.json
-    mv /tmp/compile_commands_merged.json build/compile_commands.json
-  else
-    echo "No compile_commands.json files found. Build CMake packages first."
-  fi
-else
-  echo "No compile_commands.json files found. Build CMake packages first."
-fi
-```
-
-Then create `.vscode/c_cpp_properties.json` in the layer directory
-(e.g., `layers/main/core_ws/.vscode/c_cpp_properties.json`):
+If the project uses CMake, enable `compile_commands.json` generation
+(`CMAKE_EXPORT_COMPILE_COMMANDS=ON`). Then create
+`.vscode/c_cpp_properties.json`:
 
 ```jsonc
 {
   "configurations": [
     {
-      "name": "ROS 2",
-      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+      "name": "Default",
+      "compileCommands": "${workspaceFolder}/project/build/compile_commands.json",
       "intelliSenseMode": "linux-gcc-x64"
     }
   ],
@@ -131,39 +70,25 @@ Then create `.vscode/c_cpp_properties.json` in the layer directory
 }
 ```
 
-Re-run the `jq` merge after each build, or add it as a post-build
-VS Code task. Verify per-package files exist after building:
+If multiple `compile_commands.json` files exist across build directories,
+merge them:
 
 ```bash
-ls build/*/compile_commands.json
+jq -s 'add' build/*/compile_commands.json > build/compile_commands.json
 ```
 
 ## Python IntelliSense
 
-For Python ROS packages, add the install space to your analysis paths.
-With `colcon build --symlink-install` (the default), packages are installed
-at `install/<package>/lib/python3.XX/site-packages/`. In the layer's
-`.vscode/settings.json`:
+If the project has a virtual environment or installed packages, configure
+extra analysis paths in `.vscode/settings.json`:
 
 ```jsonc
 {
   "python.analysis.extraPaths": [
-    "${workspaceFolder}/install/<package>/lib/python3.12/site-packages"
+    "${workspaceFolder}/project/src"
   ]
 }
 ```
-
-> **Note**: Add one entry per Python package. Pylance does not expand glob
-> patterns in `extraPaths`. Use the discovery command below to find installed
-> package names.
-
-To discover the correct Python version for your environment:
-
-```bash
-ls install/*/lib/python*/site-packages/ 2>/dev/null | head -1
-```
-
-Adjust `python3.12` to match your distribution if different.
 
 ## Claude Code Integration
 
@@ -183,8 +108,8 @@ to continue an extension conversation.
 - **C/C++** (`ms-vscode.cpptools`) — IntelliSense, debugging
 - **Python** (`ms-python.python`) — Python language support
 - **Claude Code** (`anthropic.claude-code`) — AI assistant integration
-- **XML** (`redhat.vscode-xml`) — For `package.xml` and launch files
-- **YAML** (`redhat.vscode-yaml`) — For ROS config files
+- **XML** (`redhat.vscode-xml`) — For XML files
+- **YAML** (`redhat.vscode-yaml`) — For config files
 
 ## Working in Worktrees
 
@@ -198,48 +123,26 @@ source .agent/scripts/worktree_enter.sh --issue <N> --type workspace  # or --typ
 code .
 ```
 
-### Workspace worktrees
-
-Workspace worktrees (`.workspace-worktrees/issue-workspace-<N>/`) are full
-checkouts of the workspace repo with `layers/main` symlinked back to the
-main tree. The `.code-workspace` file works here because the layer paths
-resolve through the symlink.
-
-### Layer worktrees
-
-Layer worktrees (`layers/worktrees/issue-<slug>-<N>/`) use a hybrid layout:
-real git worktrees for modified project repos and symlinks for the rest.
-Open `code .` from the worktree root; the multi-root `.code-workspace` file
-doesn't apply here since only a subset of packages are checked out.
-
 ### IntelliSense paths
 
 `compile_commands.json` records absolute paths at build time. If you build
 in the main tree but edit in a worktree (or vice versa), IntelliSense won't
-resolve headers. Always build in the same context you're editing:
-
-```bash
-# Inside the worktree's layer directory
-cd core_ws && colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-```
+resolve headers. Always build in the same context you're editing.
 
 ### File watching and search
 
 VS Code follows symlinks by default, which causes duplicate search results
-and high file-watcher load in worktrees. Add these to the layer-level
-`.vscode/settings.json` (or the `.code-workspace` settings block):
+and high file-watcher load in worktrees. Add these to `.vscode/settings.json`:
 
 ```jsonc
 {
   "files.watcherExclude": {
     "**/build/**": true,
-    "**/install/**": true,
-    "**/log/**": true
+    "**/node_modules/**": true
   },
   "search.exclude": {
     "**/build/**": true,
-    "**/install/**": true,
-    "**/log/**": true
+    "**/node_modules/**": true
   }
 }
 ```
