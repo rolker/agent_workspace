@@ -74,14 +74,15 @@ code being changed:
 
 ## Tool Usage
 
-- **Prefer dedicated tools over shell equivalents** — Use Glob instead of
-  `ls`/`find`, Grep instead of `grep`/`rg`, Read instead of `cat`/`head`/`tail`,
-  Edit instead of `sed`/`awk`. Dedicated tools are auto-approved and provide
-  better audit trails.
+- **Prefer dedicated tools over shell equivalents** — When your framework
+  provides built-in tools for file search, content search, file reading, or
+  file editing, use those instead of shell commands (`ls`, `find`, `grep`,
+  `cat`, `sed`, etc.). Dedicated tools provide better audit trails and
+  typically require fewer permission prompts.
 - **Chain shell commands only when state depends on it** — Use `&&` when the
   second command needs shell state from the first (sourced environments, directory
-  changes). For independent commands, use separate tool calls so each can match
-  allowlist patterns independently.
+  changes). For independent commands, use separate tool calls so each can be
+  evaluated independently.
 
 ## Worktree Workflow
 

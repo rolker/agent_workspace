@@ -12,6 +12,21 @@ Replace `<your-model-id>` with your actual model ID from your system prompt
 (e.g., `claude-opus-4-6`, `claude-sonnet-4-6`). The 3-arg form skips all
 detection and uses exactly what you provide — do NOT edit `framework_config.sh`.
 
+## Tool Mapping
+
+The AGENTS.md "Tool Usage" section applies to all frameworks. In Claude Code,
+the dedicated tools are:
+
+| Instead of | Use |
+|------------|-----|
+| `ls`, `find` | Glob |
+| `grep`, `rg` | Grep |
+| `cat`, `head`, `tail` | Read |
+| `sed`, `awk` | Edit |
+| `echo >`, heredoc redirection | Write |
+
+These are auto-approved and don't consume permission prompts.
+
 ## Claude-Specific Notes
 
 - Makefile `.PHONY` targets (excluding `help`) are available as `/make_*` slash commands
