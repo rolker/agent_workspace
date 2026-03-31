@@ -29,7 +29,7 @@ modify the PR unless the user asks.
 - **Deep** — Standard tier + Gemini adversarial (large, security, or cross-layer)
 
 **Specialists**:
-- **Static Analysis** — runs linters with ament-aligned configs on changed files
+- **Static Analysis** — runs linters on changed files using project or workspace configs
 - **Governance** — evaluates against principles, ADRs, and consequences
 - **Plan Drift** — compares implementation against the work plan (if one exists)
 - **Claude Adversarial** — fresh subagent, independent review for missed issues (Standard + Deep)
@@ -103,12 +103,13 @@ Determine the review profile for each changed file:
 
 | File location | Language detection | Linter config profile |
 |---|---|---|
-| `layers/*/src/**/*.py` | Python | ament (max-line-length=99, ament ignores) |
-| `layers/*/src/**/*.cpp`, `*.hpp` | C++ | ament (cpplint, cppcheck) |
-| `.agent/scripts/*.py` | Python | workspace (max-line-length=100, Black compat) |
-| `.agent/scripts/*.sh` | Shell | workspace (shellcheck --severity=warning) |
+| `.agent/scripts/*.py`, `.agent/hooks/*.py` | Python | workspace (max-line-length=100, Black compat) |
+| `project/**/*.py` | Python | project config or workspace defaults |
+| `*.cpp`, `*.hpp`, `*.h`, `*.cc`, `*.cxx` | C++ | cppcheck; clang-tidy if compile_commands.json exists |
+| `*.sh` | Shell | shellcheck --severity=warning |
 | `*.yaml`, `*.yml` | YAML | yamllint (max-line-length=120) |
-| `*.xml`, `*.launch.xml` | XML | xmllint |
+| `*.xml` | XML | xmllint |
+| `*.js`, `*.ts`, `*.jsx`, `*.tsx` | JS/TS | project ESLint config if available |
 
 See `.agent/knowledge/review_static_analysis.md` for full tool configs.
 
@@ -412,8 +413,8 @@ Key points:
   governance. Note conflicts between them if any.
 - **Severity matters** — every finding must be classified as must-fix or
   suggestion. Unclassified findings are noise.
-- **Context-aware linting** — use ament configs for ROS package code, pre-commit
-  configs for workspace infrastructure code. Never mix them.
+- **Context-aware linting** — use project-specific configs for project code,
+  pre-commit configs for workspace infrastructure code. Never mix them.
 - **Depth is transparent** — always show the tier and reason in the report
   header. If the user disagrees with the classification, they can re-run with
   an explicit depth keyword.
