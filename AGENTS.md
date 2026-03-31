@@ -72,6 +72,18 @@ code being changed:
 - Push back when something seems wrong rather than agreeing too readily
 - Lead with the answer or action, not the reasoning
 
+## Tool Usage
+
+- **Prefer dedicated tools over shell equivalents** — When your framework
+  provides built-in tools for file search, content search, file reading, or
+  file editing, use those instead of shell commands (`ls`, `find`, `grep`,
+  `cat`, `sed`, etc.). Dedicated tools provide better audit trails and
+  typically require fewer permission prompts.
+- **Chain shell commands only when state depends on it** — Use `&&` when the
+  second command needs shell state from the first (sourced environments, directory
+  changes). For independent commands, use separate tool calls so each can be
+  evaluated independently.
+
 ## Worktree Workflow
 
 Every task must use an isolated worktree. `--type` is **required** on all
