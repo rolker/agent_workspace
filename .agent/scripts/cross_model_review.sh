@@ -63,8 +63,31 @@ if ! command -v tmux &>/dev/null; then
     exit 1
 fi
 
-if ! command -v gemini &>/dev/null; then
-    echo "WARNING: gemini CLI not installed — Gemini adversarial review unavailable" >&2
+# Find gemini CLI — check PATH first, then common install locations
+GEMINI_BIN=""
+if command -v gemini &>/dev/null; then
+    GEMINI_BIN="$(command -v gemini)"
+else
+    # Common install paths for npm/nvm global installs
+    FALLBACK_PATHS=(
+        "${HOME}/.nvm/versions/node"/*/bin/gemini
+        "${HOME}/.local/bin/gemini"
+        "${HOME}/.npm-global/bin/gemini"
+        /usr/local/bin/gemini
+    )
+    for candidate in "${FALLBACK_PATHS[@]}"; do
+        if [[ -x "$candidate" ]]; then
+            GEMINI_BIN="$candidate"
+            echo "INFO: gemini not in PATH, found at: ${GEMINI_BIN}" >&2
+            break
+        fi
+    done
+fi
+
+if [[ -z "$GEMINI_BIN" ]]; then
+    echo "WARNING: gemini CLI not found — Gemini adversarial review unavailable" >&2
+    echo "  PATH searched: ${PATH}" >&2
+    echo "  Also checked: ~/.nvm/versions/node/*/bin/, ~/.local/bin/, ~/.npm-global/bin/, /usr/local/bin/" >&2
     exit 1
 fi
 
@@ -174,7 +197,7 @@ fi
 # tmux session works regardless of CWD. On Gemini failure, an error marker is
 # written so downstream consumers can distinguish "crashed" from "still running".
 tmux new-session -d -s "$SESSION_NAME" \
-    "gemini -p < \"${PROMPT_FILE}\" > \"${FINDINGS_FILE}\" 2>&1 && echo '--- Review complete ---' >> \"${FINDINGS_FILE}\" || echo '--- Review failed ---' >> \"${FINDINGS_FILE}\""
+    "\"${GEMINI_BIN}\" -p < \"${PROMPT_FILE}\" > \"${FINDINGS_FILE}\" 2>&1 && echo '--- Review complete ---' >> \"${FINDINGS_FILE}\" || echo '--- Review failed ---' >> \"${FINDINGS_FILE}\""
 
 if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     echo "ERROR: Failed to launch tmux session '${SESSION_NAME}'" >&2
