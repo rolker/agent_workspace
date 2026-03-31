@@ -105,7 +105,7 @@ Determine the review profile for each changed file:
 |---|---|---|
 | `.agent/scripts/*.py`, `.agent/hooks/*.py` | Python | workspace (max-line-length=100, Black compat) |
 | `project/**/*.py` | Python | project config or workspace defaults |
-| `*.cpp`, `*.hpp`, `*.h` | C++ | cppcheck; clang-tidy if compile_commands.json exists |
+| `*.cpp`, `*.hpp`, `*.h`, `*.cc`, `*.cxx` | C++ | cppcheck; clang-tidy if compile_commands.json exists |
 | `*.sh` | Shell | shellcheck --severity=warning |
 | `*.yaml`, `*.yml` | YAML | yamllint (max-line-length=120) |
 | `*.xml` | XML | xmllint |
