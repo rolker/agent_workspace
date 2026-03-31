@@ -15,7 +15,7 @@ humans use it as a checklist.
 | Only what's needed | Minimal files, process, and resource use; solves a concrete pain | Speculative features, bloated context, unnecessary abstraction, premature tooling |
 | Improve incrementally | Small, reviewable change; workspace is better after than before | Large rewrites, all-or-nothing PRs, scope creep beyond the issue |
 | Test what breaks | Tests target regressions that matter — timing, sensors, degraded conditions | Coverage-chasing, testing framework glue, no tests for risky logic |
-| Workspace vs. project separation | Workspace infra is generic ROS 2; project content in project repos | Project-specific config leaking into workspace; workspace depending on a project |
+| Workspace vs. project separation | Workspace infra is project-agnostic; project content in project repos | Project-specific config leaking into workspace; workspace depending on a project |
 | Workspace improvements cascade to projects | New workflow pattern is portable; workspace is the reference implementation | Improvements locked to one repo; patterns that can't be adopted downstream |
 | Primary framework first, portability where free | Full use of active framework; rules naturally portable are expressed portably | Hobbling the primary tool for hypothetical frameworks; framework lock-in where avoidable |
 
@@ -24,14 +24,13 @@ humans use it as a checklist.
 | ADR | Triggered when | Key requirement |
 |---|---|---|
 | 0001 — Adopt ADRs | A design decision is made that future agents/humans need to understand | Record in `docs/decisions/` with context, decision, and consequences |
-| 0002 — Worktree isolation | Any feature work begins | Use worktree, not branch switch; enforced by `setup.bash` guardrail |
-| 0003 — Project-agnostic workspace | Adding content to the workspace repo | Content must be generic ROS 2 infra, not project-specific |
+| 0002 — Worktree isolation | Any feature work begins | Use worktree, not branch switch; enforced by worktree scripts and pre-commit hooks |
+| 0003 — Project-agnostic workspace | Adding content to the workspace repo | Content must be project-agnostic, not tied to a specific project |
 | 0004 — Enforcement hierarchy | A new compliance rule is proposed | Enforce at multiple layers (instructions → hooks → CI); no single layer sufficient |
 | 0005 — Layered enforcement | Adding or modifying enforcement | CI/branch protection is authoritative; pre-commit provides local feedback; framework hooks provide early feedback |
 | 0006 — Shared AGENTS.md | Changing agent instructions | Shared rules in `AGENTS.md`; framework adapters are thin wrappers |
 | 0007 — Retain Make with Dependency Tracking | Changing the Makefile or proposing a different task runner | Keep Make; use stamp-file dependencies for incremental setup and build |
-| 0008 — Follow ROS 2 Official Conventions | Creating or modifying ROS 2 packages, launch files, `package.xml`, or license headers | Follow ROS 2 conventions (target Rolling); deviations require their own ADR; check `.agent/knowledge/ros2_development_patterns.md` |
-| 0009 — Python package management | Installing Python packages or modifying `.venv` | Use apt/rosdep for build/runtime; .venv for dev tools; never bare pip install |
+| 0009 — Python package management | Installing Python packages or modifying `.venv` | Use .venv for dev tools; never bare pip install |
 | 0010 — git-bug for local issue tracking | Adding or modifying issue lookup scripts, bootstrap, or sync | git-bug is optional; scripts try git-bug first, fall back to `gh`; graceful degradation required |
 
 ## Consequences Map
@@ -45,7 +44,7 @@ humans use it as a checklist.
 | A template in `.agent/templates/` | Docs that reference the template; skills that use it |
 | A framework skill (e.g., `.claude/skills/`) | That framework's adapter file; regenerate skills if needed |
 | Workflow skill list (add/remove a skill) | Skill list in non-Claude adapters (`.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md`) |
-| Package interfaces (`.msg`/`.srv`) | Downstream packages, documentation, tests |
+| Project interfaces or public APIs | Downstream consumers, documentation, tests |
 | Worktree scripts | `.agent/WORKTREE_GUIDE.md`; `AGENTS.md` worktree section |
 | `review-code` skill | `.agent/knowledge/review_depth_classification.md`; `.agent/scripts/cross_model_review.sh` |
 | Review depth classification doc | `review-code` skill (if tier definitions change) |

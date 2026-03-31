@@ -14,8 +14,8 @@ checklist items are ones where forgetting to update something causes real
 problems downstream — broken interfaces, silent behavior changes, stale docs.
 
 Examples by project type:
-- **ROS 2 multi-package repo**: message/service definitions, node interfaces
-  (topics, parameters, services), inter-package dependencies, launch structure
+- **Multi-package repo**: shared interface definitions, inter-package
+  dependencies, configuration formats
 - **Single-package repo**: public API changes, configuration format, dependencies
 - **Library repo**: API surface, ABI compatibility, versioning
 
@@ -43,7 +43,7 @@ Closes #
 
 ## Testing
 
-<!-- How was this tested? colcon test, manual verification, etc. -->
+<!-- How was this tested? Unit tests, integration tests, manual verification, etc. -->
 
 -
 
@@ -53,10 +53,9 @@ Closes #
 
 - [ ] No architecture impact (routine change within existing patterns)
 - [ ] Architecture-relevant change (check all that apply below):
-  - [ ] Changes message, service, or action definitions
-  - [ ] Changes node interfaces (topics, parameters, services)
-  - [ ] Changes inter-package dependencies
-  - [ ] Changes launch file structure or default configuration
+  - [ ] Changes public API or shared interfaces
+  - [ ] Changes inter-package or inter-module dependencies
+  - [ ] Changes configuration format or defaults
 
 ### If architecture-relevant:
 - [ ] README or package documentation updated

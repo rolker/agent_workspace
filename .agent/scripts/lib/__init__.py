@@ -1,5 +1,5 @@
 """
-Library for ROS2 Agent Workspace Scripts
+Library for Agent Workspace Scripts
 
 This package provides reusable functions for workspace management scripts.
 """
