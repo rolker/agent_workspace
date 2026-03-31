@@ -117,6 +117,11 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --workflow)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                echo "Error: --workflow requires a workflow name"
+                show_usage
+                exit 1
+            fi
             WORKFLOW="$2"
             shift 2
             ;;
@@ -184,6 +189,10 @@ fi
 
 # Validate workflow template if provided
 if [ -n "$WORKFLOW" ]; then
+    if ! [[ "$WORKFLOW" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+        echo "Error: Invalid workflow name '$WORKFLOW' — must match [a-z0-9][a-z0-9_-]*"
+        exit 1
+    fi
     WORKFLOW_FILE="$ROOT_DIR/.agent/workflows/${WORKFLOW}.md"
     if [ ! -f "$WORKFLOW_FILE" ]; then
         echo "Error: Workflow template not found: $WORKFLOW_FILE"
@@ -472,14 +481,18 @@ if [ -n "$WORKFLOW" ] && [ -n "$ISSUE_NUM" ]; then
     PROGRESS_DIR="$WORKTREE_DIR/.agent/work-plans/issue-${ISSUE_NUM}"
     mkdir -p "$PROGRESS_DIR"
     PROGRESS_FILE="$PROGRESS_DIR/progress.md"
-    _PROGRESS_TITLE="${ISSUE_TITLE:-Issue #$ISSUE_NUM}"
+    if [ -n "${ISSUE_TITLE:-}" ]; then
+        _PROGRESS_HEADING="# Issue #$ISSUE_NUM — $ISSUE_TITLE"
+    else
+        _PROGRESS_HEADING="# Issue #$ISSUE_NUM"
+    fi
     cat > "$PROGRESS_FILE" << PROGRESS_EOF
 ---
 workflow: $WORKFLOW
 issue: $ISSUE_NUM
 ---
 
-# Issue #$ISSUE_NUM — $_PROGRESS_TITLE
+$_PROGRESS_HEADING
 PROGRESS_EOF
     echo "Initialized progress.md (workflow: $WORKFLOW)"
 fi
