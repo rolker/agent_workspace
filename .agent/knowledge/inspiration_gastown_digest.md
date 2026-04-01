@@ -1,8 +1,8 @@
 # Inspiration Digest: gastown
 
 Type: inspiration
-Last checked: 2026-03-22
-Repo: steveyegge/gastown @ a328f4284a497166a1c25d5215c22a63f7e27714
+Last checked: 2026-03-31
+Repo: steveyegge/gastown @ 4894b0d
 
 ## Survey Summary
 
@@ -85,16 +85,22 @@ concurrently.
 7. **Capacity scheduling** — concurrency governor to prevent API rate exhaustion
 8. **Agent attribution** — BD_ACTOR slash-path format for universal provenance
 
+## Changelog Since Last Check
+
+207 commits, 300 files changed. Very high velocity.
+
+- Refinery judgment controls: judgment_enabled + review_depth wired from rig config
+- Disabled patrols setting: disable without editing daemon.json
+- Merge queue panel in convoy view
+- Plugin dispatch mail cleanup via hourly reaper
+- Dolt 1.83+ compatibility fix
+- Numerous bug fixes: patrol molecules, agent state sync, workspace nesting
+
 ## Activity Snapshot
 
-- 20 open issues, 5 open PRs (active development)
-- Notable themes:
-  - Agent pool strategies (#3147), Telegram bridge (#3143)
-  - Receipt-gated completions design (#3142)
-  - Race condition fixes (#3140, #3114)
-  - Cross-machine nudge via session registry (#3066)
-  - Stuck agent detection improvements (#3055, #3133)
-  - Non-Claude agent support (#3080)
+- 3,436+ open issues (all needs-triage), extremely high velocity
+- 10+ PRs merged in last 24 hours
+- Self-hosting: project develops itself using its own multi-agent system
 
 ## Pending Review
 
@@ -117,3 +123,4 @@ concurrently.
 - `polecat-reuse-pattern` — Persistent agent identity with worktree reuse — revisit as optimization when scale warrants (2026-03-22)
 - `capacity-scheduling` — Concurrency governor for agent dispatch — revisit when running more agents concurrently (2026-03-22)
 - `agent-attribution-model` — BD_ACTOR slash-path provenance format — revisit as agent team grows (2026-03-22)
+- `configurable-review-depth-per-project` — Per-project review depth defaults instead of auto-classification only; revisit when multi-project is real (2026-03-31)

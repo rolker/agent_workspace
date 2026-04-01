@@ -1,8 +1,8 @@
 # Inspiration Digest: gstack
 
 Type: inspiration
-Last checked: 2026-03-22
-Repo: garrytan/gstack @ dbd98aff32e3e68f4976dcc38e76a007a2c4a08a
+Last checked: 2026-03-31
+Repo: garrytan/gstack @ db35b8e
 
 ## Survey Summary
 
@@ -89,21 +89,25 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 - **Key innovation**: Agents self-report tooling friction with reproduction steps
   pre-written. Barrier to contribution is removed.
 
-## Changelog Since Last Check (v0.9.5.0 - v0.9.9.0)
+## Changelog Since Last Check (v0.9.9.0 - v0.11.6.0)
 
-6 commits, 89 files changed, +12,023/-3,441 lines.
+68 commits, 291 files changed.
 
-- v0.9.9.0: Hardened /office-hours anti-sycophancy
-- v0.9.8.0: /land-and-deploy, /canary, /benchmark, /setup-deploy, perf review
-- v0.9.7.0: Plan file review report + enriched JSONL logging
-- v0.9.6.0: Auto-scaled adversarial review by diff size
-- v0.9.5.0: ETHOS.md, search-before-building integration, eureka moments
+- v0.10.0.0: /autoplan — auto-review pipeline
+- v0.10.1.0: Test coverage catalog — shared audit across plan/ship/review
+- v0.10.2.0: /retro global — cross-project AI coding retrospective
+- v0.11.1.1: Plan files always show review status
+- v0.11.2.0: Codex compatibility (1024-char cap, Kiro support)
+- v0.11.3.0: Design outside voices — cross-model design critique
+- v0.11.4.0: Codex second opinion in /office-hours
+- v0.11.6.0: /cso v2 — infrastructure-first security audit
+- v0.9.9.1: Cross-model outside voice in plan reviews
 
 ## Activity Snapshot
 
-- 20 open issues, 10 open PRs
-- Active development: deploy pipeline, adversarial review, office-hours rigor
-- Rapid versioning: v0.9.5.0 -> v0.9.9.0 in ~2 days
+- 700+ issues, very active community
+- Rapid versioning: v0.9.9.0 -> v0.11.6.0 in ~9 days
+- Multi-model integration (Codex, cross-model critique) is a major theme
 
 ## Pending Review
 
@@ -132,6 +136,16 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 
 (none)
 
+## Roadmapped
+
+- `cross-project-retrospective` — Cross-workspace retrospective analyzing friction patterns across repos, starting with fork sources (2026-03-31)
+- `test-coverage-catalog` — Shared audit of test status across skills and scripts as dashboard layer (2026-03-31)
+
+## Skipped
+
+- `/autoplan` — Automated plan generation pipeline; already covered by workflow templates from #88 (2026-03-31)
+
 ## Deferred
 
 - `deploy-pipeline-automation` — /land-and-deploy + /canary + /benchmark full deploy pipeline (2026-03-22)
+- `cross-model-outside-voices` — Using second model for design critique and plan review; investigate Codex as reviewer separately (2026-03-31)

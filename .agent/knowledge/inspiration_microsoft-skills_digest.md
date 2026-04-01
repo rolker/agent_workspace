@@ -1,8 +1,8 @@
 # Inspiration Digest: microsoft-skills
 
 Type: inspiration
-Last checked: 2026-03-22
-Repo: microsoft/skills @ 949a48d50f0c3289f72a61c653bf8cb0cd148e07
+Last checked: 2026-03-31
+Repo: microsoft/skills @ a8af084
 
 ## Survey Summary
 
@@ -73,15 +73,19 @@ plugin marketplace. Cross-platform: GitHub Copilot, Claude Code, OpenCode.
 - **Auto-sync workflows**: GitHub Actions that sync skills from upstream repos
   (e.g., Copilot for Azure)
 
+## Changelog Since Last Check
+
+35 commits, 179 files changed. Mostly automated sync.
+
+- Entra Agent ID sidecar: SDK sidecar reference for polyglot agent auth
+- Plugin install path fix for Copilot CLI
+- CODEOWNERS file added
+- 15+ automated plugin syncs from Copilot for Azure pipeline
+
 ## Activity Snapshot
 
-- 11 open issues, 17 open PRs (moderately active)
-- Notable themes:
-  - Block --no-verify hook (#202, #204)
-  - Agent Framework skills (#191)
-  - Credential-free dev skills (#196, #199)
-  - Entra Agent ID skill (#195)
-  - Auto-sync from Copilot for Azure (#206, #207)
+- 3 open issues, moderate PR activity
+- Mostly maintenance and upstream sync; no major new patterns
 
 ## Pending Review
 

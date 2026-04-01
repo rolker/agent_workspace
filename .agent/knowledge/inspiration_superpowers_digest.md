@@ -1,8 +1,8 @@
 # Inspiration Digest: superpowers
 
 Type: inspiration
-Last checked: 2026-03-22
-Repo: obra/superpowers @ 8ea39819eed74fe2a0338e71789f06b30e953041
+Last checked: 2026-03-31
+Repo: obra/superpowers @ dd23728
 
 ## Survey Summary
 
@@ -84,15 +84,20 @@ process as mandatory workflow rather than optional suggestions.
 7. **"Iron Law" pattern** — critical rules stated as absolutes with explicit
    rationalization-detection ("thinking X? Stop.")
 
+## Changelog Since Last Check
+
+27 commits, 30 files changed.
+
+- Codex App compatibility: full design spec + implementation plan
+- Replaced subagent review loops with lightweight inline self-review (applied, reverted, reapplied — architecture in flux)
+- Brainstorm server reorg: separating content and state into peer directories
+- Named agent dispatch mapping for Codex
+- Fixed false frontmatter claim in writing-skills
+
 ## Activity Snapshot
 
-- 20 open issues, 30 open PRs (very active development)
-- Notable themes:
-  - Multi-agent coordination improvements (#801 agent-teams, #777 multi-agent collab)
-  - Brainstorming enhancements (#849 context awareness, #834 Option Zero)
-  - Cross-platform support (Cursor #871, Copilot #850, Trae IDE #811)
-  - Subagent improvements (#846 memory override for strategy, #793 CLAUDE.md in subagents)
-  - Plan execution fixes (#789 checkbox updates, #809 timeout issues)
+- Very active, focused on subagent/TDD skill chain and Codex compat
+- Notable: plan-staleness in parallel sessions (#989), two-stage review silently skipped (#995), brainstorm research-first step (#983), WebSocket origin-validation security issue (#1014)
 
 ## Pending Review
 
@@ -115,3 +120,4 @@ process as mandatory workflow rather than optional suggestions.
 
 - `model-selection-for-subagents` — Guidance on using cheaper models for mechanical tasks, capable models for design — revisit when subagent usage increases (2026-03-22)
 - `iron-law-pattern` — Documentation pattern using absolute rules + rationalization detection for critical processes — keep in mind for future skill writing (2026-03-22)
+- `inline-self-review-vs-subagent` — Superpowers pivoting from subagent review to inline self-review (applied, reverted, reapplied); want to understand reasoning before acting (2026-03-31)
