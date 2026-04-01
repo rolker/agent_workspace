@@ -132,10 +132,6 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 - `design-review-ai-slop-detection` — Issue #61: AI slop detection in design review (2026-03-22)
 - `gstack-inspiration-revisit` — Issue #19: revisit all 11 deferred gstack findings (2026-03-21)
 
-## Skipped
-
-(none)
-
 ## Roadmapped
 
 - `cross-project-retrospective` — Cross-workspace retrospective analyzing friction patterns across repos, starting with fork sources (2026-03-31)
