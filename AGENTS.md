@@ -256,6 +256,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/check_branch_updates.sh` | Check if branch is behind default |
 | `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
 | `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
+| `.agent/scripts/merge_pr.sh` | Merge PR, remove worktree, delete branch, sync main |
 | `.agent/scripts/sync_project.py` | Sync workspace + project repos |
 | `.agent/scripts/validate_workspace.py` | Validate project/ configuration |
 | `.agent/scripts/detect_agent_identity.sh` | Auto-detect agent framework + model |
