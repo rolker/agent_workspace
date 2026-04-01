@@ -94,8 +94,8 @@ validate:
 
 repair:
 	@echo "--- Repairing venv and pre-commit hook ---"
-	$(MAIN_ROOT)/.venv/bin/python3 -m pip install --quiet --force-reinstall -r $(MAIN_ROOT)/requirements.txt
-	$(PRE_COMMIT) install
+	$(VENV_BIN)/python3 -m pip install --quiet --force-reinstall -r $(MAIN_ROOT)/requirements.txt
+	cd $(MAIN_ROOT) && $(PRE_COMMIT) install
 	@rm -f $(STAMP)/setup-dev.done
 	@$(MAKE) --no-print-directory $(STAMP)/setup-dev.done
 	@echo "✅ Repair complete. Run 'make validate' to verify."

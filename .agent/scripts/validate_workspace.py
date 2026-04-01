@@ -81,11 +81,16 @@ def validate_workspace(verbose=False):
     if venv_pip.exists():
         try:
             shebang = venv_pip.read_text().split("\n", 1)[0]
-            if shebang.startswith("#!") and str(workspace_root) not in shebang:
-                issues.append("venv has stale shebangs (workspace was renamed/moved)")
-                issues.append("  Run: make repair")
+            if shebang.startswith("#!"):
+                interpreter = shebang[2:].strip().split()[0]
+                expected_prefix = str(workspace_root / ".venv" / "bin" / "python")
+                if not interpreter.startswith(expected_prefix):
+                    issues.append("venv has stale shebangs (workspace was renamed/moved)")
+                    issues.append("  Run: make repair")
+                elif verbose:
+                    print("  venv shebangs: OK")
             elif verbose:
-                print("  venv shebangs: OK")
+                print("  venv shebangs: OK (no shebang found)")
         except OSError:
             pass
     elif verbose:
@@ -99,8 +104,10 @@ def validate_workspace(verbose=False):
             for line in hook_content.split("\n"):
                 if line.startswith("INSTALL_PYTHON="):
                     hook_python = line.split("=", 1)[1].strip().strip("'\"")
-                    if not Path(hook_python).exists():
-                        issues.append(f"pre-commit hook points to stale path: {hook_python}")
+                    expected_hook = str(workspace_root / ".venv" / "bin" / "python3")
+                    if hook_python != expected_hook:
+                        issues.append(f"pre-commit hook points to wrong path: {hook_python}")
+                        issues.append(f"  Expected: {expected_hook}")
                         issues.append("  Run: make repair")
                     elif verbose:
                         print("  pre-commit hook: OK")
