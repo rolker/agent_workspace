@@ -34,7 +34,7 @@ VENV_BIN := $(VENV_DIR)/bin
 PRE_COMMIT := $(VENV_BIN)/pre-commit
 
 # --- Phony targets ---
-.PHONY: help setup build test lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug repair
+.PHONY: help setup build test lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug repair merge-pr
 
 # =============================================================================
 # Tier 2 — Developer workflow
@@ -63,6 +63,7 @@ help:
 	@echo "Utilities:"
 	@echo "  make lock             Lock workspace (prevent concurrent agent work)"
 	@echo "  make unlock           Unlock workspace"
+	@echo "  make merge-pr PR=<N>  Merge PR, remove worktree, delete branch, sync"
 	@echo "  make pr-triage        Show PR status across workspace + project"
 	@echo "  make revert-feature ISSUE=<N>   Revert commits for issue <N>"
 	@echo "  make generate-skills  Regenerate /make_* slash commands"
@@ -115,6 +116,10 @@ pr-triage:
 revert-feature:
 	@if [ -z "$(ISSUE)" ]; then echo "Usage: make revert-feature ISSUE=<N>"; exit 1; fi
 	@$(MAIN_ROOT)/.agent/scripts/revert_feature.sh --issue $(ISSUE)
+
+merge-pr:
+	@if [ -z "$(PR)" ]; then echo "Usage: make merge-pr PR=<N>"; exit 1; fi
+	@$(MAIN_ROOT)/.agent/scripts/merge_pr.sh --pr $(PR)
 
 generate-skills:
 	@$(MAIN_ROOT)/.agent/scripts/generate_make_skills.sh

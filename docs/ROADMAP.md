@@ -106,6 +106,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | Structured agent handoffs | #40 | planned | microsoft/skills | Tool scoping per agent role |
 | Permission prompt reduction | — | in progress | brainstorm | #1 friction point; tool-use logging hook deployed, analyze then build targeted allowlist |
 | Morning status / standup skill | — | planned | brainstorm | Gather PR, review, issue, worktree state; suggest prioritized work plan (scenario 4) |
+| Post-PR merge/cleanup/sync | #38 | done | session friction | `merge_pr.sh` + `make merge-pr PR=<N>` automates merge, worktree removal, branch cleanup, and sync |
 | Crash recovery skill | #70 | planned | brainstorm | Session-specific scratchpad subdirs |
 
 ## Priority: Improve How Agents Think
@@ -138,6 +139,7 @@ Small fixes that can be done anytime.
 |------|-------|--------|-------|
 | Research skill worktree fix | #45 | planned | Fix project worktree path + staleness tracking |
 | Gemini CLI PATH resilience | #82 | done | Fallback path detection added (PR #99) |
+| Stale venv/hook detection after rename | #13 | done | `make validate` detects, `make repair` fixes (PR #101) |
 
 ## Decided Against
 
