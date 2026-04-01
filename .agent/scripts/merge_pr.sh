@@ -147,9 +147,13 @@ fi
 
 # --- Step 3: Delete branches ---
 echo "  Cleaning up branches..."
-cd "$ROOT_DIR"
-git branch -d "$PR_BRANCH" 2>/dev/null && echo "  ✅ Local branch deleted" || true
-git push origin --delete "$PR_BRANCH" 2>/dev/null && echo "  ✅ Remote branch deleted" || true
+if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -d "$ROOT_DIR/project/.git" ]]; then
+    BRANCH_REPO="$ROOT_DIR/project"
+else
+    BRANCH_REPO="$ROOT_DIR"
+fi
+git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>/dev/null && echo "  ✅ Local branch deleted" || true
+git -C "$BRANCH_REPO" push origin --delete "$PR_BRANCH" 2>/dev/null && echo "  ✅ Remote branch deleted" || true
 
 # --- Step 4: Sync ---
 echo "  Syncing main..."
