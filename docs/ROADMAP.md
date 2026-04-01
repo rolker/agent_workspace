@@ -170,6 +170,10 @@ New findings from inspiration tracker, not yet discussed in a brainstorm session
 - **Enhanced start-task with tmux** (#66) — Worktree + tmux session + agent launch in one command. Source: ros2_agent_workspace
 - **Workflow modes** (#67) — Autonomous / collaborative / pair per-session, with permission implications. Source: ros2_agent_workspace
 
+### Cross-Workspace Analysis
+- **Cross-project retrospective** — Analyze git history, PR reviews, and issue patterns across workspaces to surface recurring friction and coordination issues. Start with fork-type sources (ros2_agent_workspace) where history is deeper. Source: gstack /retro global
+- **Test coverage catalog** — Shared audit showing test status across skills and scripts. Aggregates what's tested, what's missing, as a dashboard layer on top of skill testing (#41). Source: gstack test coverage catalog
+
 ## Cross-cutting Decisions
 
 Decisions that apply across multiple items.
