@@ -5,6 +5,8 @@ Validate workspace configuration.
 Checks that:
 1. project/ exists and is a valid git repo
 2. project/ has a remote configured
+3. .venv shebangs match the current workspace path
+4. pre-commit hook points to a valid Python path
 
 Usage:
     python3 validate_workspace.py [--verbose]
@@ -72,6 +74,41 @@ def validate_workspace(verbose=False):
             issues.append("project/ has no remote 'origin' configured")
         elif verbose:
             print(f"  project remote: {remote_url}")
+
+    # Check venv shebangs for stale paths (workspace was renamed/moved)
+    workspace_root = Path(get_workspace_root())
+    venv_pip = workspace_root / ".venv" / "bin" / "pip"
+    if venv_pip.exists():
+        try:
+            shebang = venv_pip.read_text().split("\n", 1)[0]
+            if shebang.startswith("#!") and str(workspace_root) not in shebang:
+                issues.append("venv has stale shebangs (workspace was renamed/moved)")
+                issues.append("  Run: make repair")
+            elif verbose:
+                print("  venv shebangs: OK")
+        except OSError:
+            pass
+    elif verbose:
+        print("  venv: not installed (run make setup)")
+
+    # Check pre-commit hook for stale Python path
+    hook_file = workspace_root / ".git" / "hooks" / "pre-commit"
+    if hook_file.exists():
+        try:
+            hook_content = hook_file.read_text()
+            for line in hook_content.split("\n"):
+                if line.startswith("INSTALL_PYTHON="):
+                    hook_python = line.split("=", 1)[1].strip().strip("'\"")
+                    if not Path(hook_python).exists():
+                        issues.append(f"pre-commit hook points to stale path: {hook_python}")
+                        issues.append("  Run: make repair")
+                    elif verbose:
+                        print("  pre-commit hook: OK")
+                    break
+        except OSError:
+            pass
+    elif verbose:
+        print("  pre-commit hook: not installed (run make setup)")
 
     print("=" * 60)
     print("Workspace Validation Results")

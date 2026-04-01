@@ -34,7 +34,7 @@ VENV_BIN := $(VENV_DIR)/bin
 PRE_COMMIT := $(VENV_BIN)/pre-commit
 
 # --- Phony targets ---
-.PHONY: help setup build test lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug
+.PHONY: help setup build test lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug repair
 
 # =============================================================================
 # Tier 2 — Developer workflow
@@ -47,6 +47,7 @@ help:
 	@echo "  make setup            Full setup (venv + pre-commit + project clone)"
 	@echo "  make lint             Install and run pre-commit on all files"
 	@echo "  make validate         Check workspace configuration is valid"
+	@echo "  make repair           Fix stale venv/hooks after workspace rename"
 	@echo ""
 	@echo "Development:"
 	@echo "  make build            Run BUILD_CMD from .agent/project_config.sh"
@@ -90,6 +91,14 @@ dashboard:
 
 validate:
 	python3 $(MAIN_ROOT)/.agent/scripts/validate_workspace.py --verbose
+
+repair:
+	@echo "--- Repairing venv and pre-commit hook ---"
+	$(MAIN_ROOT)/.venv/bin/python3 -m pip install --quiet --force-reinstall -r $(MAIN_ROOT)/requirements.txt
+	$(PRE_COMMIT) install
+	@rm -f $(STAMP)/setup-dev.done
+	@$(MAKE) --no-print-directory $(STAMP)/setup-dev.done
+	@echo "✅ Repair complete. Run 'make validate' to verify."
 
 sync:
 	python3 $(MAIN_ROOT)/.agent/scripts/sync_project.py
