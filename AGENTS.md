@@ -193,6 +193,21 @@ gh pr view <N> --json url --jq '.url'
 gh repo view --json url --jq '.url'
 ```
 
+### Merging PRs from Worktrees
+
+Never use `gh pr merge --delete-branch` from a worktree — `gh` tries to
+checkout `main` locally, which fails because the main tree already has it
+checked out. Use `--merge` without `--delete-branch` and let worktree
+cleanup handle branch deletion:
+
+```bash
+# Preferred: use the merge script (handles worktree removal + sync)
+make merge-pr PR=<N>
+
+# Manual alternative:
+gh pr merge <N> --merge          # no --delete-branch
+```
+
 ## Build & Test
 
 Build and test commands are project-specific. Configure them in `.agent/project_config.sh`
