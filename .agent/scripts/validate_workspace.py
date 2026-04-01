@@ -5,6 +5,8 @@ Validate workspace configuration.
 Checks that:
 1. project/ exists and is a valid git repo
 2. project/ has a remote configured
+3. .venv shebangs match the current workspace path
+4. pre-commit hook points to a valid Python path
 
 Usage:
     python3 validate_workspace.py [--verbose]
@@ -72,6 +74,48 @@ def validate_workspace(verbose=False):
             issues.append("project/ has no remote 'origin' configured")
         elif verbose:
             print(f"  project remote: {remote_url}")
+
+    # Check venv shebangs for stale paths (workspace was renamed/moved)
+    workspace_root = Path(get_workspace_root())
+    venv_pip = workspace_root / ".venv" / "bin" / "pip"
+    if venv_pip.exists():
+        try:
+            shebang = venv_pip.read_text().split("\n", 1)[0]
+            if shebang.startswith("#!"):
+                interpreter = shebang[2:].strip().split()[0]
+                expected_prefix = str(workspace_root / ".venv" / "bin" / "python")
+                if not interpreter.startswith(expected_prefix):
+                    issues.append("venv has stale shebangs (workspace was renamed/moved)")
+                    issues.append("  Run: make repair")
+                elif verbose:
+                    print("  venv shebangs: OK")
+            elif verbose:
+                print("  venv shebangs: OK (no shebang found)")
+        except OSError:
+            pass
+    elif verbose:
+        print("  venv: not installed (run make setup)")
+
+    # Check pre-commit hook for stale Python path
+    hook_file = workspace_root / ".git" / "hooks" / "pre-commit"
+    if hook_file.exists():
+        try:
+            hook_content = hook_file.read_text()
+            for line in hook_content.split("\n"):
+                if line.startswith("INSTALL_PYTHON="):
+                    hook_python = line.split("=", 1)[1].strip().strip("'\"")
+                    expected_hook = str(workspace_root / ".venv" / "bin" / "python3")
+                    if hook_python != expected_hook:
+                        issues.append(f"pre-commit hook points to wrong path: {hook_python}")
+                        issues.append(f"  Expected: {expected_hook}")
+                        issues.append("  Run: make repair")
+                    elif verbose:
+                        print("  pre-commit hook: OK")
+                    break
+        except OSError:
+            pass
+    elif verbose:
+        print("  pre-commit hook: not installed (run make setup)")
 
     print("=" * 60)
     print("Workspace Validation Results")
