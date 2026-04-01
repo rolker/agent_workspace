@@ -144,6 +144,11 @@ Run all of Standard, plus:
 Run linters on **changed files only**, using the config profile from step 4.
 See `.agent/knowledge/review_static_analysis.md` for exact commands and flags.
 
+If **no linter profile matches any changed file**, report this explicitly:
+"No static analysis profile configured for these file types (`.ext1`, `.ext2`)."
+Do not silently produce an empty findings section — the reviewer and user need
+to know that absence of findings means "not checked", not "code is clean."
+
 Report each finding as:
 - File, line number, tool name, message
 - Skip findings on lines not touched by this PR (context-only lines)

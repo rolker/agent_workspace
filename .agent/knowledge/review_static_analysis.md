@@ -122,4 +122,7 @@ xmllint --noout <changed-xml-files>
    - **message**: the finding text
 6. Filter: only report findings on lines **touched by this PR** (added or
    modified lines in the diff). Findings on unchanged context lines are noise.
-7. Pass findings to the lead reviewer for deduplication and severity classification
+7. If no changed files matched any profile, report explicitly:
+   "No static analysis profile configured for these file types (`.ext1`, `.ext2`)."
+   Do not silently return an empty result.
+8. Pass findings to the lead reviewer for deduplication and severity classification

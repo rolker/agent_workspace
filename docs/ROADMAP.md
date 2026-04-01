@@ -83,11 +83,11 @@ would flag, PRs pass on first try.
 | Fix-first review workflow | #52 | planned | gstack | Fix issues during review, don't just report |
 | Spec compliance vs quality split | #27 | planned | superpowers | Separate "does it meet spec" from "is it good" |
 | Adversarial self-review | #55 | planned | gstack | Agent challenges its own work |
-| Review summary in plan files | #83 | planned | brainstorm | Append review findings to plan file; lighter alternative to JSONL |
+| Review summary in plan files | #83 | done | brainstorm | Append review findings to plan file; lighter alternative to JSONL |
 | JSONL review tracking | #51 | deferred | gstack | Machine-queryable layer; reconsider if plan-file approach (#83) isn't sufficient |
 | Plan status tracking in reviews | #49 | subsumed by #88 | gstack | Reviews update progress.md instead of tracking in plan file |
 | Continual learning from reviews | #42 | planned | microsoft/skills | Misses feed back into local review patterns |
-| JS/web static analysis profile | #81 | planned | review session | review-code linter table missing vanilla JS; silent skip with no report |
+| JS/web static analysis profile | #81 | done | review session | JS/TS added to linter tables (PR #94); no-match fallback message added (PR #100) |
 | Copilot review loop automation | #69 | planned | brainstorm | Autonomous push/review/fix cycle (after local review is solid) |
 
 ## Priority: Reduce Agent Coordination Overhead
@@ -99,7 +99,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 |------|-------|--------|--------|-------|
 | Web dashboard | #64 | planned | ros2_agent_workspace | Anchor for multi-agent visibility; inspired by upstream #398 |
 | Agent health monitoring | #34 | planned | gastown | Dashboard surfaces agent status |
-| **Lifecycle progress tracking** | **#88** | **in progress** | **brainstorm** | **progress.md + workflow templates by involvement level; consolidates #33, #36, #49** |
+| Lifecycle progress tracking | #88 | done | brainstorm | progress.md + workflow templates by involvement level; consolidates #33, #36, #49 |
 | Persistent work state | #33 | subsumed by #88 | gastown | Survives crashes; progress.md is the persistent state |
 | Session continuity | #36 | subsumed by #88 | gastown + brainstorm | progress.md gives new sessions full context |
 | Inter-agent messaging | #35 | planned | gastown | Structured communication between agents |
@@ -137,7 +137,7 @@ Small fixes that can be done anytime.
 | Item | Issue | Status | Notes |
 |------|-------|--------|-------|
 | Research skill worktree fix | #45 | planned | Fix project worktree path + staleness tracking |
-| Gemini CLI PATH resilience | #82 | planned | cross_model_review.sh fails when gemini not on session PATH |
+| Gemini CLI PATH resilience | #82 | done | Fallback path detection added (PR #99) |
 
 ## Decided Against
 
