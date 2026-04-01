@@ -138,6 +138,10 @@ cd ~/agent_workspace
 **"No worktree found"**: Check `worktree_list.sh` to see what exists. The slug
 may differ from what you expect — use `--repo-slug` to disambiguate.
 
+**`gh pr merge --delete-branch` fails with "main is already used by worktree"**:
+`gh` tries to checkout `main` after merging, but the main tree already has it.
+Use `make merge-pr PR=<N>` or `gh pr merge <N> --merge` (without `--delete-branch`).
+
 **Branch already exists**: The script reuses an existing local branch, or tracks
 the remote branch if one exists.
 
