@@ -16,6 +16,7 @@ worktrees/
 # IDE settings
 .vscode/
 *.code-workspace
+.codex
 
 # Generated Claude Code skills (regenerate with: make generate-skills)
 .claude/skills/make_*/
