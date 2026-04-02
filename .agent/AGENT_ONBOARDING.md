@@ -4,6 +4,7 @@ For agents without a framework-specific instruction file.
 
 **If your framework has a dedicated file, use that instead:**
 - Claude Code: [`CLAUDE.md`](../CLAUDE.md) (auto-loaded)
+- Codex CLI: [`CODEX.md`](../CODEX.md)
 - GitHub Copilot: [`.github/copilot-instructions.md`](../.github/copilot-instructions.md)
 - Gemini CLI: [`instructions/gemini-cli.instructions.md`](instructions/gemini-cli.instructions.md)
 
@@ -39,18 +40,25 @@ Key points:
 # Workspace infrastructure work:
 .agent/scripts/worktree_create.sh --issue <N> --type workspace
 source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
+# For tools with per-command shells:
+WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --print-path)
+eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --shell-snippet)"
 
 # Project repo work:
 .agent/scripts/worktree_create.sh --issue <N> --type project
 source .agent/scripts/worktree_enter.sh --issue <N> --type project
+# For tools with per-command shells:
+WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type project --print-path)
+eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type project --shell-snippet)"
 ```
 
 ## Workflow Skills
 
 Reusable workflow procedures are documented at the repo root in `.claude/skills/*/SKILL.md`.
-These are plain markdown — not Claude Code-specific. When asked to review an
-issue, plan a task, review a PR, brainstorm, or run research, read the
-corresponding SKILL.md and follow its steps.
+Despite the directory name, these are plain markdown and can be read by Codex,
+Copilot, Gemini, or any other agent. When asked to review an issue, plan a
+task, review a PR, brainstorm, or run research, read the corresponding
+`SKILL.md` and follow its steps.
 
 Available workflow skills: `review-issue`, `plan-task`, `review-plan`,
 `review-code`, `brainstorm`, `research`, `audit-workspace`, `audit-project`,

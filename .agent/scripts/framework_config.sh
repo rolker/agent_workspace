@@ -13,6 +13,7 @@
 # Maps framework key to display name
 declare -A FRAMEWORK_NAMES=(
     ["copilot"]="Copilot CLI Agent"
+    ["codex"]="Codex CLI Agent"
     ["gemini"]="Gemini CLI Agent"
     ["antigravity"]="Antigravity Agent"
     ["claude"]="Claude Code Agent"
@@ -23,6 +24,7 @@ declare -A FRAMEWORK_NAMES=(
 # Maps framework key to email address
 declare -A FRAMEWORK_EMAILS=(
     ["copilot"]="roland+copilot-cli@ccom.unh.edu"
+    ["codex"]="roland+codex@rolker.net"
     ["gemini"]="roland+gemini-cli@ccom.unh.edu"
     ["antigravity"]="roland+antigravity@ccom.unh.edu"
     ["claude"]="roland+claude-code@rolker.net"
@@ -37,6 +39,7 @@ declare -A FRAMEWORK_EMAILS=(
 # this table to match a specific session's model.
 declare -A FRAMEWORK_MODELS=(
     ["copilot"]="GPT-4o"
+    ["codex"]="gpt-5.4"
     ["gemini"]="Gemini 2.0 Flash"
     ["antigravity"]="Gemini 2.5 Pro"
     ["claude"]="Claude Opus 4.6"

@@ -27,6 +27,17 @@ source .agent/scripts/worktree_enter.sh --skill research --type workspace
 .agent/scripts/worktree_remove.sh --skill research --type workspace
 ```
 
+For Codex or any tool that runs each shell command independently, use one of
+the execution-safe entry modes:
+
+```bash
+WT_PATH=$(.agent/scripts/worktree_enter.sh --issue 42 --type workspace --print-path)
+# WT_PATH is just the resolved path; it does not change directories:
+git -C "$WT_PATH" status
+
+eval "$(.agent/scripts/worktree_enter.sh --issue 42 --type workspace --shell-snippet)"
+```
+
 ## Why Worktrees?
 
 Git worktrees create separate checkouts of the same repository:

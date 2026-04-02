@@ -6,7 +6,9 @@ setup (environment, identity, features), see your framework's adapter file:
 | Framework | Adapter File |
 |-----------|-------------|
 | Claude Code | [`CLAUDE.md`](CLAUDE.md) |
+| Codex CLI | [`CODEX.md`](CODEX.md) |
 | GitHub Copilot | [`.github/copilot-instructions.md`](.github/copilot-instructions.md) |
+| Gemini CLI | [`.agent/instructions/gemini-cli.instructions.md`](.agent/instructions/gemini-cli.instructions.md) |
 | Other | [`.agent/AGENT_ONBOARDING.md`](.agent/AGENT_ONBOARDING.md) |
 
 ## Terminology
@@ -95,6 +97,11 @@ worktree scripts (create, enter, remove). Two types are available:
 .agent/scripts/worktree_create.sh --issue <N> --type workspace [--plan-file <path>]
 source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
 # work here; this is a git worktree of the workspace repo
+
+# Codex / per-command shells:
+WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --print-path)
+# or:
+eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --shell-snippet)"
 ```
 
 **Project worktrees** — for changes to the managed project repo:
@@ -104,6 +111,11 @@ source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
 source .agent/scripts/worktree_enter.sh --issue <N> --type project
 # work here; this is a git worktree of project/
 # PRs target the project repo (created with -R <project-remote>)
+
+# Codex / per-command shells:
+WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type project --print-path)
+# or:
+eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type project --shell-snippet)"
 ```
 
 **Sub-issue work** (branches from parent's feature branch):

@@ -12,10 +12,10 @@ Currently, AI agents operate using the user's personal GitHub credentials (PAT).
 ### Full Identity Components
 
 Each agent has a complete identity consisting of:
-1. **Framework Name** - e.g., "Copilot CLI Agent", "Gemini CLI Agent"
-2. **Email Address** - e.g., "roland+copilot-cli@ccom.unh.edu"
-3. **Model Name** - e.g., "GPT-4o", "Gemini 2.0 Flash", "Claude 3.5 Sonnet"
-4. **Framework ID** - e.g., "copilot", "gemini", "antigravity"
+1. **Framework Name** - e.g., "Codex CLI Agent", "Copilot CLI Agent", "Gemini CLI Agent"
+2. **Email Address** - e.g., "roland+codex@rolker.net"
+3. **Model Name** - e.g., "gpt-5.4", "GPT-4o", "Gemini 2.0 Flash"
+4. **Framework ID** - e.g., "codex", "copilot", "gemini", "antigravity"
 
 ### Identity Source of Truth
 
@@ -44,6 +44,7 @@ Agent identity is determined from these sources (in order of preference):
 
 **Example identities:**
 - Antigravity Agent: `Antigravity Agent` / `roland+antigravity@ccom.unh.edu` / `Gemini 2.5 Pro`
+- Codex CLI: `Codex CLI Agent` / `roland+codex@rolker.net` / `gpt-5.4`
 - GitHub Copilot CLI: `Copilot CLI Agent` / `roland+copilot-cli@ccom.unh.edu` / `GPT-4o`
 - Gemini CLI: `Gemini CLI Agent` / `roland+gemini-cli@ccom.unh.edu` / `Gemini 2.0 Flash`
 - Other agents: Follow the pattern `<Platform> Agent` / `roland+<platform>@ccom.unh.edu` / `<Model Name>`
@@ -52,7 +53,7 @@ Agent identity is determined from these sources (in order of preference):
 
 #### When to Use Ephemeral Identity (Host-Based Agents)
 
-**Use for**: Copilot CLI, Gemini CLI, or any agent running directly on the host that shares the working copy with the human user.
+**Use for**: Codex CLI, Copilot CLI, Gemini CLI, or any agent running directly on the host that shares the working copy with the human user.
 
 **Method**: Source the environment variable script:
 ```bash
@@ -60,10 +61,11 @@ Agent identity is determined from these sources (in order of preference):
 source .agent/scripts/set_git_identity_env.sh --detect
 
 # Or specify framework
+source .agent/scripts/set_git_identity_env.sh --agent codex
 source .agent/scripts/set_git_identity_env.sh --agent copilot
 
 # Or manual (not recommended)
-source .agent/scripts/set_git_identity_env.sh "Copilot CLI Agent" "roland+copilot-cli@ccom.unh.edu"
+source .agent/scripts/set_git_identity_env.sh "Codex CLI Agent" "roland+codex@rolker.net" "gpt-5.4"
 ```
 
 **Benefits**:
@@ -194,6 +196,17 @@ fi
 
 Details: See your framework's instruction file (e.g., `CLAUDE.md`, `.github/copilot-instructions.md`).
 
+### Codex-Specific Notes
+
+- Codex sessions expose `CODEX_THREAD_ID` in this workspace, which the
+  detection scripts use as the primary Codex runtime marker.
+- When available, model detection reads `CODEX_MODEL` or `OPENAI_MODEL`.
+  Otherwise it falls back to the `model` setting in `~/.codex/config.toml`.
+- Codex runs shell commands independently, so `source .agent/scripts/worktree_enter.sh`
+  does not persist across tool calls. Use
+  `.agent/scripts/worktree_enter.sh --print-path` or `--shell-snippet` for
+  Codex-friendly worktree entry.
+
 ## Proposed Plan
 
 ### Phase 1: Establish Authorship (The "Signed-By" Strategy)
@@ -202,14 +215,14 @@ We distinguish the **content** author from the **setup** author.
 
 **Agent Responsibilities:**
 1.  **Determine your complete identity** when first starting work in this workspace:
-    - **Framework name**: e.g., "Copilot CLI Agent", "Antigravity Agent", "Gemini CLI Agent"
+    - **Framework name**: e.g., "Codex CLI Agent", "Copilot CLI Agent", "Antigravity Agent"
     - **Email format**: `roland+<platform>@ccom.unh.edu`
     - **Model name**: Your actual runtime model (e.g., "GPT-4o", "Gemini 2.5 Pro")
     - **Auto-detect** using: `source .agent/scripts/set_git_identity_env.sh --detect`
     - **Or read from**: `.agent/.identity` file
     - **Ask the user** if auto-detection fails
 2.  **Choose the appropriate configuration method**:
-    - **Host-based agents (Copilot CLI, Gemini CLI)**: Use ephemeral identity (environment variables)
+    - **Host-based agents (Codex CLI, Copilot CLI, Gemini CLI)**: Use ephemeral identity (environment variables)
     - **Containerized agents (Antigravity)**: Use persistent identity (.git/config)
     - See "Configuration Methods: Ephemeral vs. Persistent" section above for details
 3.  **Configure git identity** before making any commits:

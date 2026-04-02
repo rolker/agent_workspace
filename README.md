@@ -77,6 +77,17 @@ source .agent/scripts/worktree_enter.sh --issue 42 --type project
 .agent/scripts/worktree_remove.sh --issue 42 --type project
 ```
 
+For Codex or any tool that runs each shell command in isolation, use the
+execution-safe worktree entry modes instead of relying on `source` to persist:
+
+```bash
+WT_PATH=$(.agent/scripts/worktree_enter.sh --issue 42 --type workspace --print-path)
+# WT_PATH does not change directories by itself:
+git -C "$WT_PATH" status
+
+eval "$(.agent/scripts/worktree_enter.sh --issue 42 --type workspace --shell-snippet)"
+```
+
 ## For AI Agents
 
 Read [`AGENTS.md`](AGENTS.md) before starting any task. The key rules:
@@ -89,6 +100,7 @@ Read [`AGENTS.md`](AGENTS.md) before starting any task. The key rules:
 
 - [`AGENTS.md`](AGENTS.md) — Rules for all agents
 - [`CLAUDE.md`](CLAUDE.md) — Claude Code specific setup
+- [`CODEX.md`](CODEX.md) — Codex CLI specific setup
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design
 - [`docs/decisions/`](docs/decisions/) — Architecture Decision Records
 - [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md) — Guiding principles
