@@ -192,17 +192,18 @@ Output a structured report:
 
 ### 7. Update progress.md
 
-Append an "External Review" step to `.agent/work-plans/issue-<N>/progress.md`
-(where N is the issue linked to the PR). If progress.md does not exist,
-create it with frontmatter first:
+Resolve the linked issue number from the PR body (same as step 5's issue
+resolution). Append an "External Review" step to
+`.agent/work-plans/issue-<issue>/progress.md`. If progress.md does not
+exist, create it with frontmatter first:
 
 ```yaml
 ---
 workflow: collaborative
-issue: <N>
+issue: <issue>
 ---
 
-# Issue #<N> — <issue title>
+# Issue #<issue> — <issue title>
 ```
 
 Then append the step entry:
@@ -214,7 +215,7 @@ Then append the step entry:
 **When**: <YYYY-MM-DD HH:MM>
 **By**: <agent name> (<model>)
 
-**PR**: #<N> — <total> review(s), <valid-count> valid, <false-positive-count> false positives
+**PR**: #<pr> — <total> review(s), <valid-count> valid, <false-positive-count> false positives
 **CI**: <all-pass|failures-noted>
 
 ### Actions
@@ -222,7 +223,7 @@ Then append the step entry:
 ```
 
 Commit progress.md after appending:
-`git add .agent/work-plans/issue-<N>/progress.md && git commit -m "progress: external review for #<N>"`
+`git add .agent/work-plans/issue-<issue>/progress.md && git commit -m "progress: external review for #<issue>"`
 
 ## Guidelines
 

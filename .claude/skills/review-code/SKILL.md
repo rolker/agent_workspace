@@ -379,9 +379,10 @@ Append this step entry:
 ```markdown
 
 ## Local Review
-**Status**: <pending|approved>
+**Status**: complete
 **When**: <YYYY-MM-DD HH:MM>
 **By**: <agent name> (<model>)
+**Verdict**: <approved|changes-requested>
 
 **PR**: #<N> at `<short-sha>`
 **Depth**: <tier> (reason: <signal>)
@@ -392,7 +393,7 @@ Append this step entry:
 - [ ] (suggestion) <one-line summary> — `file:line`
 ```
 
-If no findings survived the silence filter, set `**Status**: approved` and
+If no findings survived the silence filter, set `**Verdict**: approved` and
 write `No issues found. LGTM.` under Findings.
 
 Key points:
