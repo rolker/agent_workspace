@@ -42,10 +42,14 @@ Key points:
 source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
 # For tools with per-command shells:
 WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --print-path)
+eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type workspace --shell-snippet)"
 
 # Project repo work:
 .agent/scripts/worktree_create.sh --issue <N> --type project
 source .agent/scripts/worktree_enter.sh --issue <N> --type project
+# For tools with per-command shells:
+WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type project --print-path)
+eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type project --shell-snippet)"
 ```
 
 ## Workflow Skills

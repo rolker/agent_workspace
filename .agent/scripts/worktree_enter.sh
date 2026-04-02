@@ -8,8 +8,10 @@
 #   ./worktree_enter.sh --issue <number> --type workspace|project --print-path
 #   ./worktree_enter.sh --issue <number> --type workspace|project --shell-snippet
 #
-# This script should be SOURCED (not executed) to affect the current shell.
-# It will:
+# Source this script to affect the current shell.
+# Execute it only with --print-path or --shell-snippet when you need a
+# one-shot output for tools that do not preserve shell state.
+# When sourced, it will:
 #   1. Change to the worktree directory
 #   2. Set helpful environment variables
 #
@@ -244,7 +246,7 @@ if [ "$PRINT_PATH" = true ]; then
     return 0 2>/dev/null || exit 0
 fi
 
-if [ -z "$SKILL_NAME" ]; then
+if [ -z "$SKILL_NAME" ] && [ "$SHELL_SNIPPET" != true ]; then
 
     # Fetch and display issue title
     _ISSUE_TITLE=""

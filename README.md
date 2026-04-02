@@ -82,6 +82,9 @@ execution-safe worktree entry modes instead of relying on `source` to persist:
 
 ```bash
 WT_PATH=$(.agent/scripts/worktree_enter.sh --issue 42 --type workspace --print-path)
+# WT_PATH does not change directories by itself:
+git -C "$WT_PATH" status
+
 eval "$(.agent/scripts/worktree_enter.sh --issue 42 --type workspace --shell-snippet)"
 ```
 

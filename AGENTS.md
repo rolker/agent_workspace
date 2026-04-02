@@ -114,6 +114,8 @@ source .agent/scripts/worktree_enter.sh --issue <N> --type project
 
 # Codex / per-command shells:
 WT_PATH=$(.agent/scripts/worktree_enter.sh --issue <N> --type project --print-path)
+# or:
+eval "$(.agent/scripts/worktree_enter.sh --issue <N> --type project --shell-snippet)"
 ```
 
 **Sub-issue work** (branches from parent's feature branch):
