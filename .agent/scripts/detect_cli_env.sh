@@ -17,10 +17,11 @@ export AGENT_FRAMEWORK_VERSION=""
 # Detection logic (order matters - more specific checks first)
 
 # Codex CLI detection
-# CODEX_THREAD_ID is present in active Codex sessions. Other CODEX_* variables
-# are useful fallbacks when a subcommand does not preserve the full session
-# environment.
-if [ -n "$CODEX_THREAD_ID" ] || [ -n "$CODEX_CI" ] || [ -n "$CODEX_SANDBOX_NETWORK_DISABLED" ]; then
+# CODEX_THREAD_ID is the strongest session marker. Some subcommands preserve
+# only a subset of the CODEX_* environment, so allow CODEX_CI as a fallback
+# only when paired with another Codex-specific marker.
+if [ -n "$CODEX_THREAD_ID" ] || \
+   { [ -n "$CODEX_CI" ] && [ -n "$CODEX_SANDBOX_NETWORK_DISABLED" ]; }; then
     export AGENT_FRAMEWORK="codex"
     if command -v codex &> /dev/null; then
         VERSION=$(codex --version 2>/dev/null | head -n 1)

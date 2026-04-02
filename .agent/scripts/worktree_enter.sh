@@ -236,6 +236,15 @@ if [ -n "$SKILL_NAME" ]; then
 else
     WORKTREE_SKILL_VALUE=""
     WORKTREE_ISSUE_VALUE="$ISSUE_NUM"
+    WORKTREE_ISSUE_TITLE_VALUE=""
+fi
+
+if [ "$PRINT_PATH" = true ]; then
+    echo "$WORKTREE_DIR"
+    return 0 2>/dev/null || exit 0
+fi
+
+if [ -z "$SKILL_NAME" ]; then
 
     # Fetch and display issue title
     _ISSUE_TITLE=""
@@ -264,11 +273,6 @@ else
     WORKTREE_PARENT_ISSUE_VALUE=""
 fi
 unset _PARENT_ISSUE_FILE
-
-if [ "$PRINT_PATH" = true ]; then
-    echo "$WORKTREE_DIR"
-    return 0 2>/dev/null || exit 0
-fi
 
 if [ "$SHELL_SNIPPET" = true ]; then
     echo "cd $(shell_quote "$WORKTREE_DIR")"
