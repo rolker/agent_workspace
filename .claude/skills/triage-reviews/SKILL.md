@@ -190,6 +190,27 @@ Output a structured report:
 <1-3 sentence overall assessment>
 ```
 
+### 7. Update progress.md
+
+If `.agent/work-plans/issue-<N>/progress.md` exists (where N is the issue
+linked to the PR), append an "External Review" step entry:
+
+```markdown
+
+## External Review
+**Status**: complete
+**When**: <YYYY-MM-DD HH:MM>
+**By**: <agent name> (<model>)
+
+**PR**: #<N> — <total> review(s), <valid-count> valid, <false-positive-count> false positives
+**CI**: <all-pass|failures-noted>
+
+### Actions
+- [ ] <each recommended action from the triage>
+```
+
+If progress.md does not exist, skip this step silently.
+
 ## Guidelines
 
 - **Triage, don't fix** — output the classified plan in the conversation. The user
