@@ -192,8 +192,20 @@ Output a structured report:
 
 ### 7. Update progress.md
 
-If `.agent/work-plans/issue-<N>/progress.md` exists (where N is the issue
-linked to the PR), append an "External Review" step entry:
+Append an "External Review" step to `.agent/work-plans/issue-<N>/progress.md`
+(where N is the issue linked to the PR). If progress.md does not exist,
+create it with frontmatter first:
+
+```yaml
+---
+workflow: collaborative
+issue: <N>
+---
+
+# Issue #<N> — <issue title>
+```
+
+Then append the step entry:
 
 ```markdown
 
@@ -209,7 +221,8 @@ linked to the PR), append an "External Review" step entry:
 - [ ] <each recommended action from the triage>
 ```
 
-If progress.md does not exist, skip this step silently.
+Commit progress.md after appending:
+`git add .agent/work-plans/issue-<N>/progress.md && git commit -m "progress: external review for #<N>"`
 
 ## Guidelines
 

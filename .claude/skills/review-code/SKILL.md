@@ -361,10 +361,20 @@ No issues found. LGTM.
 After outputting the report to the conversation, append a "Local Review"
 step to `progress.md` so findings persist across sessions.
 
-**Locate progress.md**: Use the issue number resolved in step 1. Check
-`.agent/work-plans/issue-<issue>/progress.md` in the current worktree.
+**Locate or create progress.md**: Use the issue number resolved in step 1.
+Check `.agent/work-plans/issue-<issue>/progress.md` in the current worktree.
+If it does not exist, create it with frontmatter:
 
-**If progress.md exists**: Append this step entry:
+```yaml
+---
+workflow: collaborative
+issue: <issue>
+---
+
+# Issue #<issue> — <issue title>
+```
+
+Append this step entry:
 
 ```markdown
 
@@ -385,23 +395,17 @@ step to `progress.md` so findings persist across sessions.
 If no findings survived the silence filter, set `**Status**: approved` and
 write `No issues found. LGTM.` under Findings.
 
-**If no progress.md exists**: Fall back to appending to `plan.md` using
-the same format as above (as a `## Review: <tier> — <YYYY-MM-DD>` block).
-If neither file exists, skip with a note: "No progress.md or plan.md
-found — review summary not persisted."
-
 Key points:
 - Use `- [ ]` checkboxes so findings can be checked off as addressed
 - Include only the one-line summary and location, not the full description
-- **Do not commit** the updated file automatically. The author decides
-  when to commit.
+- Commit progress.md after appending:
+  `git add .agent/work-plans/issue-<issue>/progress.md && git commit -m "progress: local review for #<issue>"`
 
 ## Guidelines
 
-- **Report first, then persist** — output the review in the conversation and
-  append a step to progress.md (step 8). The file write is the only autonomous
-  side effect; the user decides whether to post it as a PR comment, request
-  changes, or act on findings.
+- **Report first, then persist** — output the review in the conversation,
+  append a step to progress.md, and commit it (step 8). The user decides
+  whether to post it as a PR comment, request changes, or act on findings.
 - **Be specific** — "Must-fix: null check missing before `result.data` access
   at line 42" is useful. "Watch: could add more error handling" is not.
 - **Read the code** — don't just check file names. Read full files and the diff

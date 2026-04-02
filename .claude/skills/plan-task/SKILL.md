@@ -154,8 +154,19 @@ git commit -m "Add work plan for #<N>
 
 ### 7. Update progress.md
 
-If `.agent/work-plans/issue-<N>/progress.md` exists (created by
-`worktree_create.sh --workflow`), append a "Plan" step entry:
+Append a "Plan" step entry to `.agent/work-plans/issue-<N>/progress.md`.
+If progress.md does not exist, create it with frontmatter first:
+
+```yaml
+---
+workflow: collaborative
+issue: <N>
+---
+
+# Issue #<N> — <issue title>
+```
+
+Then append the step entry:
 
 ```markdown
 
@@ -169,7 +180,8 @@ Committed as `.agent/work-plans/issue-<N>/plan.md`.
 <1-2 sentence summary of the approach>
 ```
 
-If progress.md does not exist, skip this step silently.
+Stage progress.md alongside plan.md in step 6's commit (add both files
+to the same `git add`).
 
 ### 8. Create or update a draft PR
 
