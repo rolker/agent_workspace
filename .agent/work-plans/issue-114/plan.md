@@ -19,10 +19,11 @@ modes.
 
 1. **Add agent config table to `cross_model_review.sh`** — Define a
    `declare -A` map of agent keys to binary names, discovery paths, and
-   invocation syntax. Three agents initially:
+   invocation syntax. Four agents:
    - `gemini`: `gemini -p < prompt > findings`
    - `codex`: `codex exec "$(cat prompt)" > findings` (needs verification)
    - `claude`: `claude -p < prompt > findings`
+   - `copilot`: needs invocation verification
 
 2. **Add `--agent <target>` flag** — New required-when-not-default argument.
    Default remains `gemini` for backward compatibility. The flag selects
@@ -40,8 +41,8 @@ modes.
 5. **Update review-code skill (step 5e)** — Replace the hardcoded Gemini
    dispatch with a dynamic loop:
    ```
-   CALLER=$AGENT_FRAMEWORK  # set by identity scripts
-   ALL_REVIEWERS=(gemini codex claude)
+   CALLER=$AGENT_FRAMEWORK  # check env first, fall back to detect_cli_env.sh
+   ALL_REVIEWERS=(gemini codex claude copilot)
    for agent in ALL_REVIEWERS where agent != CALLER:
        launch cross_model_review.sh --pr <N> --agent <agent>
    ```
@@ -87,13 +88,11 @@ modes.
 
 ## Open Questions
 
-- What is the exact non-interactive invocation syntax for Codex CLI? The
-  `codex exec` subcommand needs verification from a real Codex session.
-- Should the caller detection use `$AGENT_FRAMEWORK` (set by identity
-  scripts) or auto-detect via `detect_cli_env.sh`? The former is more
-  reliable if the agent has already set up identity.
-- Should Copilot be included as a potential reviewer target, or only the
-  three agents with standalone CLIs (Claude, Gemini, Codex)?
+- What is the exact non-interactive invocation syntax for Codex CLI and
+  GitHub Copilot CLI? Both need verification from real sessions.
+- Should dispatch pick exactly two non-caller agents, or all available
+  non-caller agents? Two keeps review cost bounded; all-available
+  maximizes coverage but adds cost as more agents are onboarded.
 
 ## Estimated Scope
 
