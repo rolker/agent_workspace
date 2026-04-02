@@ -13,7 +13,7 @@ import sys
 
 # Accepted email patterns
 # - roland+*@ccom.unh.edu: any agent identity (copilot, gemini, claude, etc.)
-# - roland+*@rolker.net: agent identity (personal domain)
+# - roland+*@rolker.net: any agent identity on the personal domain (codex, claude, etc.)
 # - roland@ccom.unh.edu: human (work)
 # - roland@rolker.net: human (personal)
 ACCEPTED_PATTERNS = [
@@ -74,6 +74,7 @@ def main():
     print()
     print("  To fix, run one of:")
     print("    source .agent/scripts/set_git_identity_env.sh --detect")
+    print("    source .agent/scripts/set_git_identity_env.sh --agent codex")
     print("    source .agent/scripts/set_git_identity_env.sh --agent <framework>")
     print()
     return 1

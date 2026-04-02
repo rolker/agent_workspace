@@ -78,6 +78,17 @@ detect_actual_model() {
     local detected_model=""
 
     case "$AGENT_FRAMEWORK" in
+        codex)
+            if [ -n "$CODEX_MODEL" ]; then
+                detected_model="$CODEX_MODEL"
+            elif [ -n "$OPENAI_MODEL" ]; then
+                detected_model="$OPENAI_MODEL"
+            elif [ -f "$HOME/.codex/config.toml" ]; then
+                detected_model="$(sed -n 's/^model = \"\\(.*\\)\"$/\\1/p' "$HOME/.codex/config.toml" | head -n 1)"
+            else
+                detected_model="${FRAMEWORK_MODELS[codex]}"
+            fi
+            ;;
         copilot*)
             # GitHub Copilot doesn't expose model info easily
             # Use default from config

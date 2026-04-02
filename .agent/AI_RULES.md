@@ -8,6 +8,7 @@
 | Framework | Instruction File |
 |-----------|-----------------|
 | Claude Code | [`CLAUDE.md`](../CLAUDE.md) (auto-loaded) |
+| Codex CLI | [`CODEX.md`](../CODEX.md) |
 | GitHub Copilot | [`.github/copilot-instructions.md`](../.github/copilot-instructions.md) |
 | Gemini CLI | [`.agent/instructions/gemini-cli.instructions.md`](instructions/gemini-cli.instructions.md) |
 | Other / Unknown | [`AGENT_ONBOARDING.md`](AGENT_ONBOARDING.md) |

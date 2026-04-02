@@ -5,6 +5,8 @@
 # Usage:
 #   source ./worktree_enter.sh --issue <number> --type workspace|project [--repo <name>] [--repo-slug <slug>]
 #   source ./worktree_enter.sh --skill <name> --type workspace|project [--repo <name>] [--repo-slug <slug>]
+#   ./worktree_enter.sh --issue <number> --type workspace|project --print-path
+#   ./worktree_enter.sh --issue <number> --type workspace|project --shell-snippet
 #
 # This script should be SOURCED (not executed) to affect the current shell.
 # It will:
@@ -27,6 +29,12 @@ SKILL_NAME=""
 WORKTREE_TYPE=""
 REPO_SLUG=""
 PROJECT_REPO=""
+PRINT_PATH=false
+SHELL_SNIPPET=false
+
+shell_quote() {
+    printf "%q" "$1"
+}
 
 show_usage() {
     echo "Usage: source $0 (--issue <number> | --skill <name>) --type workspace|project [options]"
@@ -37,8 +45,11 @@ show_usage() {
     echo "  --type <type>           Worktree type: 'workspace' or 'project' (required)"
     echo "  --repo <name>           Project repo name (for multi-project disambiguation)"
     echo "  --repo-slug <slug>      Repository slug (optional, for disambiguation)"
+    echo "  --print-path            Print the resolved worktree path and exit"
+    echo "  --shell-snippet         Print 'cd' and 'export' commands for one-shot eval"
     echo ""
-    echo "Note: This script must be SOURCED to affect your current shell."
+    echo "Note: source the script for interactive shells; use --print-path or"
+    echo "      --shell-snippet when your tool runs each command in a fresh shell."
     echo ""
     echo "Examples:"
     echo "  source $0 --issue 123 --type workspace"
@@ -74,6 +85,14 @@ while [[ $# -gt 0 ]]; do
             REPO_SLUG="$2"
             shift 2
             ;;
+        --print-path)
+            PRINT_PATH=true
+            shift
+            ;;
+        --shell-snippet)
+            SHELL_SNIPPET=true
+            shift
+            ;;
         -h|--help)
             show_usage
             return 0 2>/dev/null || exit 0
@@ -103,6 +122,10 @@ if [ -z "$WORKTREE_TYPE" ]; then
 fi
 if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; then
     echo "Error: --type must be 'workspace' or 'project'"
+    return 1 2>/dev/null || exit 1
+fi
+if [ "$PRINT_PATH" = true ] && [ "$SHELL_SNIPPET" = true ]; then
+    echo "Error: --print-path and --shell-snippet are mutually exclusive"
     return 1 2>/dev/null || exit 1
 fi
 if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" == "workspace" ]; then
@@ -180,12 +203,98 @@ else
         WORKTREE_DIR="$FOUND"
         echo "⚠️  Found worktree in legacy location. Remove and recreate to use new layout." >&2
     else
-        echo "Error: No $WORKTREE_TYPE worktree found for issue #$ISSUE_NUM"
-        echo ""
-        echo "Create one with:"
-        echo "  .agent/scripts/worktree_create.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
-        return 1 2>/dev/null || exit 1
+        CURRENT_TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+        if [ -n "$CURRENT_TOPLEVEL" ] && [[ "$(basename "$CURRENT_TOPLEVEL")" == issue-*-"$ISSUE_NUM" ]]; then
+            case "$WORKTREE_TYPE" in
+                workspace)
+                    if [[ "$CURRENT_TOPLEVEL" == */worktrees/workspace/* ]]; then
+                        WORKTREE_DIR="$CURRENT_TOPLEVEL"
+                    fi
+                    ;;
+                project)
+                    if [[ "$CURRENT_TOPLEVEL" == */worktrees/project/* ]]; then
+                        WORKTREE_DIR="$CURRENT_TOPLEVEL"
+                    fi
+                    ;;
+            esac
+        fi
+        unset CURRENT_TOPLEVEL
+        if [ -z "$WORKTREE_DIR" ]; then
+            echo "Error: No $WORKTREE_TYPE worktree found for issue #$ISSUE_NUM"
+            echo ""
+            echo "Create one with:"
+            echo "  .agent/scripts/worktree_create.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
+            return 1 2>/dev/null || exit 1
+        fi
     fi
+fi
+
+if [ -n "$SKILL_NAME" ]; then
+    WORKTREE_SKILL_VALUE="$SKILL_NAME"
+    WORKTREE_ISSUE_VALUE=""
+    WORKTREE_ISSUE_TITLE_VALUE=""
+else
+    WORKTREE_SKILL_VALUE=""
+    WORKTREE_ISSUE_VALUE="$ISSUE_NUM"
+
+    # Fetch and display issue title
+    _ISSUE_TITLE=""
+
+    if command -v gh &>/dev/null; then
+        _ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --json title --jq '.title' 2>/dev/null || echo "")
+        # Retry with workspace repo if needed
+        if [ -z "$_ISSUE_TITLE" ]; then
+            _WS_REMOTE=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
+            if [[ -n "$_WS_REMOTE" && "$_WS_REMOTE" == *"github.com"* ]]; then
+                _WS_SLUG=$(echo "$_WS_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
+                if [[ "$_WS_SLUG" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+                    _ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --repo "$_WS_SLUG" --json title --jq '.title' 2>/dev/null || echo "")
+                fi
+            fi
+        fi
+    fi
+    WORKTREE_ISSUE_TITLE_VALUE="$_ISSUE_TITLE"
+fi
+
+# Load parent issue from metadata file (written by worktree_create.sh)
+_PARENT_ISSUE_FILE="$WORKTREE_DIR/.agent/scratchpad/.parent_issue"
+if [ -f "$_PARENT_ISSUE_FILE" ]; then
+    WORKTREE_PARENT_ISSUE_VALUE="$(tr -d '[:space:]' < "$_PARENT_ISSUE_FILE")"
+else
+    WORKTREE_PARENT_ISSUE_VALUE=""
+fi
+unset _PARENT_ISSUE_FILE
+
+if [ "$PRINT_PATH" = true ]; then
+    echo "$WORKTREE_DIR"
+    return 0 2>/dev/null || exit 0
+fi
+
+if [ "$SHELL_SNIPPET" = true ]; then
+    echo "cd $(shell_quote "$WORKTREE_DIR")"
+    echo "export WORKTREE_TYPE=$(shell_quote "$WORKTREE_TYPE")"
+    echo "export WORKTREE_ROOT=$(shell_quote "$WORKTREE_DIR")"
+    if [ -n "$WORKTREE_SKILL_VALUE" ]; then
+        echo "export WORKTREE_SKILL=$(shell_quote "$WORKTREE_SKILL_VALUE")"
+        echo "unset WORKTREE_ISSUE"
+        echo "unset WORKTREE_ISSUE_TITLE"
+    else
+        echo "unset WORKTREE_SKILL"
+        echo "export WORKTREE_ISSUE=$(shell_quote "$WORKTREE_ISSUE_VALUE")"
+        echo "export WORKTREE_ISSUE_TITLE=$(shell_quote "$WORKTREE_ISSUE_TITLE_VALUE")"
+    fi
+    if [ -n "$WORKTREE_PARENT_ISSUE_VALUE" ]; then
+        echo "export WORKTREE_PARENT_ISSUE=$(shell_quote "$WORKTREE_PARENT_ISSUE_VALUE")"
+    else
+        echo "unset WORKTREE_PARENT_ISSUE"
+    fi
+    return 0 2>/dev/null || exit 0
+fi
+
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    echo "Error: This script must be sourced for interactive use."
+    echo "Use --print-path or --shell-snippet when running it as a command."
+    exit 1
 fi
 
 echo "========================================"
@@ -207,35 +316,18 @@ cd "$WORKTREE_DIR" || { echo "Error: Failed to cd to $WORKTREE_DIR"; return 1 2>
 export WORKTREE_TYPE="$WORKTREE_TYPE"
 export WORKTREE_ROOT="$WORKTREE_DIR"
 
-if [ -n "$SKILL_NAME" ]; then
-    export WORKTREE_SKILL="$SKILL_NAME"
+if [ -n "$WORKTREE_SKILL_VALUE" ]; then
+    export WORKTREE_SKILL="$WORKTREE_SKILL_VALUE"
     unset WORKTREE_ISSUE WORKTREE_ISSUE_TITLE
     echo "  Skill worktree — no issue to verify"
     echo ""
 else
-    export WORKTREE_ISSUE="$ISSUE_NUM"
+    export WORKTREE_ISSUE="$WORKTREE_ISSUE_VALUE"
+    export WORKTREE_ISSUE_TITLE="$WORKTREE_ISSUE_TITLE_VALUE"
     unset WORKTREE_SKILL
 
-    # Fetch and display issue title
-    _ISSUE_TITLE=""
-
-    if command -v gh &>/dev/null; then
-        _ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --json title --jq '.title' 2>/dev/null || echo "")
-        # Retry with workspace repo if needed
-        if [ -z "$_ISSUE_TITLE" ]; then
-            _WS_REMOTE=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
-            if [[ -n "$_WS_REMOTE" && "$_WS_REMOTE" == *"github.com"* ]]; then
-                _WS_SLUG=$(echo "$_WS_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
-                if [[ "$_WS_SLUG" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
-                    _ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --repo "$_WS_SLUG" --json title --jq '.title' 2>/dev/null || echo "")
-                fi
-            fi
-        fi
-    fi
-    export WORKTREE_ISSUE_TITLE="$_ISSUE_TITLE"
-
-    if [ -n "$_ISSUE_TITLE" ]; then
-        echo "  Title: $_ISSUE_TITLE"
+    if [ -n "$WORKTREE_ISSUE_TITLE_VALUE" ]; then
+        echo "  Title: $WORKTREE_ISSUE_TITLE_VALUE"
         echo "  >>> Verify this matches your task <<<"
         echo ""
     else
@@ -245,15 +337,11 @@ else
     fi
 fi
 
-# Load parent issue from metadata file (written by worktree_create.sh)
-_PARENT_ISSUE_FILE="$WORKTREE_DIR/.agent/scratchpad/.parent_issue"
-if [ -f "$_PARENT_ISSUE_FILE" ]; then
-    WORKTREE_PARENT_ISSUE="$(tr -d '[:space:]' < "$_PARENT_ISSUE_FILE")"
-    export WORKTREE_PARENT_ISSUE
+if [ -n "$WORKTREE_PARENT_ISSUE_VALUE" ]; then
+    export WORKTREE_PARENT_ISSUE="$WORKTREE_PARENT_ISSUE_VALUE"
 else
     unset WORKTREE_PARENT_ISSUE
 fi
-unset _PARENT_ISSUE_FILE
 
 # Show current branch
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)

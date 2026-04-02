@@ -3,7 +3,7 @@
 # Sets ephemeral git identity using environment variables (session-only, doesn't modify .git/config)
 # Also exports agent model identity for signatures
 #
-# USAGE FOR HOST-BASED AGENTS (Copilot CLI, Gemini CLI):
+# USAGE FOR HOST-BASED AGENTS (Codex CLI, Copilot CLI, Gemini CLI):
 #   source .agent/scripts/set_git_identity_env.sh "<Agent Name>" "<email>" ["<model>"]
 #   source .agent/scripts/set_git_identity_env.sh --agent <framework>
 #   source .agent/scripts/set_git_identity_env.sh --detect
@@ -51,8 +51,9 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     echo "  source $0 --detect"
     echo ""
     echo "Examples:"
-    echo "  source $0 \"Copilot CLI Agent\" \"roland+copilot-cli@ccom.unh.edu\" \"Claude Sonnet 4.5\""
+    echo "  source $0 \"Codex CLI Agent\" \"roland+codex@rolker.net\" \"gpt-5.4\""
     echo "  source $0 \"Copilot CLI Agent\" \"roland+copilot-cli@ccom.unh.edu\""
+    echo "  source $0 --agent codex"
     echo "  source $0 --agent copilot"
     echo "  source $0 --detect"
     exit 1
@@ -63,12 +64,13 @@ show_usage() {
     echo ""
     echo "Options:"
     echo "  --agent <framework>    Use predefined identity for framework"
-    echo "                         Supported: copilot, gemini, antigravity, claude"
+    echo "                         Supported: codex, copilot, gemini, antigravity, claude"
     echo "  --detect              Auto-detect framework from environment"
     echo ""
     echo "Examples:"
-    echo "  source $0 \"Copilot CLI Agent\" \"roland+copilot-cli@ccom.unh.edu\" \"Claude Sonnet 4.5\""
+    echo "  source $0 \"Codex CLI Agent\" \"roland+codex@rolker.net\" \"gpt-5.4\""
     echo "  source $0 \"Copilot CLI Agent\" \"roland+copilot-cli@ccom.unh.edu\""
+    echo "  source $0 --agent codex"
     echo "  source $0 --agent copilot"
     echo "  source $0 --detect"
     echo ""

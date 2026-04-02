@@ -3,7 +3,7 @@
 # Detects which AI CLI framework is currently running
 #
 # Exports:
-#   AGENT_FRAMEWORK - Framework identifier (copilot-cli, gemini-cli, antigravity, unknown)
+#   AGENT_FRAMEWORK - Framework identifier (copilot-cli, codex, gemini-cli, antigravity, unknown)
 #   AGENT_FRAMEWORK_VERSION - Version if detectable
 #
 # Usage:
@@ -15,6 +15,21 @@ export AGENT_FRAMEWORK="unknown"
 export AGENT_FRAMEWORK_VERSION=""
 
 # Detection logic (order matters - more specific checks first)
+
+# Codex CLI detection
+# CODEX_THREAD_ID is present in active Codex sessions. Other CODEX_* variables
+# are useful fallbacks when a subcommand does not preserve the full session
+# environment.
+if [ -n "$CODEX_THREAD_ID" ] || [ -n "$CODEX_CI" ] || [ -n "$CODEX_SANDBOX_NETWORK_DISABLED" ]; then
+    export AGENT_FRAMEWORK="codex"
+    if command -v codex &> /dev/null; then
+        VERSION=$(codex --version 2>/dev/null | head -n 1)
+        if [ -n "$VERSION" ]; then
+            export AGENT_FRAMEWORK_VERSION="$VERSION"
+        fi
+    fi
+    return 0
+fi
 
 # GitHub Copilot CLI detection
 # Only session-specific env vars are reliable — they are set by the Copilot
