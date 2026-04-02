@@ -1,24 +1,33 @@
 #!/usr/bin/env bash
 # Cross-model adversarial review via Gemini CLI
 #
-# Launches a Gemini CLI session in tmux to provide an independent adversarial
-# review of a PR. Writes prompt and findings to .agent/work-plans/issue-<N>/
+# Launches a Gemini CLI session to provide an independent adversarial review
+# of a PR. Writes prompt and findings to .agent/work-plans/issue-<N>/
 # alongside the work plan. These files can be committed as review artifacts.
 #
+# Two execution modes:
+#   tmux (default) — runs Gemini in a background tmux session
+#   sync           — runs Gemini synchronously (for sandboxed environments)
+#
+# Sync mode is selected automatically when tmux is unavailable, or explicitly
+# with --sync.
+#
 # Usage:
-#   .agent/scripts/cross_model_review.sh --pr <N>
+#   .agent/scripts/cross_model_review.sh --pr <N>          # tmux (or auto-sync)
+#   .agent/scripts/cross_model_review.sh --pr <N> --sync   # force sync mode
 #
 # The script runs in whichever repo worktree it's invoked from.
 # Workspace issues run in workspace worktrees, project issues in project worktrees.
 #
 # Output (stdout):
-#   TMUX_SESSION=<session-name>    (machine-parseable)
+#   MODE=tmux|sync                 (machine-parseable)
+#   TMUX_SESSION=<session-name>    (tmux mode only)
 #   FINDINGS_FILE=<path-to-findings> (machine-parseable)
 #   followed by informational lines for human consumption
 #
 # Exit codes:
-#   0 — tmux session launched successfully
-#   1 — missing dependencies (gh, tmux, or gemini)
+#   0 — review launched (tmux) or completed (sync) successfully
+#   1 — missing dependencies (gh or gemini)
 #   2 — invalid arguments
 #   3 — failed to create prompt or launch session
 
@@ -26,21 +35,26 @@ set -euo pipefail
 
 # --- Argument parsing ---
 PR_NUMBER=""
+FORCE_SYNC=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr)
             if [[ $# -lt 2 ]]; then
                 echo "ERROR: Missing value for --pr" >&2
-                echo "Usage: $0 --pr <N>" >&2
+                echo "Usage: $0 --pr <N> [--sync]" >&2
                 exit 2
             fi
             PR_NUMBER="$2"
             shift 2
             ;;
+        --sync)
+            FORCE_SYNC=true
+            shift
+            ;;
         *)
             echo "ERROR: Unknown argument: $1" >&2
-            echo "Usage: $0 --pr <N>" >&2
+            echo "Usage: $0 --pr <N> [--sync]" >&2
             exit 2
             ;;
     esac
@@ -48,7 +62,7 @@ done
 
 if [[ -z "$PR_NUMBER" ]]; then
     echo "ERROR: --pr <N> is required" >&2
-    echo "Usage: $0 --pr <N>" >&2
+    echo "Usage: $0 --pr <N> [--sync]" >&2
     exit 2
 fi
 
@@ -58,9 +72,13 @@ if ! command -v gh &>/dev/null; then
     exit 1
 fi
 
-if ! command -v tmux &>/dev/null; then
-    echo "WARNING: tmux not installed — Gemini adversarial review unavailable" >&2
-    exit 1
+# Determine execution mode
+USE_SYNC=false
+if [[ "$FORCE_SYNC" == true ]]; then
+    USE_SYNC=true
+elif ! command -v tmux &>/dev/null; then
+    echo "INFO: tmux not available — falling back to sync mode" >&2
+    USE_SYNC=true
 fi
 
 # Find gemini CLI — check PATH first, then common install locations
@@ -181,34 +199,55 @@ No issues found.
 Write a 1-3 sentence overall assessment after the findings table.
 PROMPT_FOOTER
 
-# --- Initialize findings file ---
-cat > "$FINDINGS_FILE" << 'FINDINGS_EOF'
+# --- Run Gemini review ---
+if [[ "$USE_SYNC" == true ]]; then
+    # --- Sync mode: run Gemini directly ---
+    echo "MODE=sync"
+    echo "FINDINGS_FILE=${FINDINGS_FILE}"
+    echo ""
+    echo "Running Gemini adversarial review synchronously for PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})..."
+    echo "  Prompt:  ${PROMPT_FILE}"
+    echo "  Results: ${FINDINGS_FILE}"
+
+    if "${GEMINI_BIN}" -p < "${PROMPT_FILE}" > "${FINDINGS_FILE}" 2>&1; then
+        echo '--- Review complete ---' >> "${FINDINGS_FILE}"
+        echo ""
+        echo "Review complete. Results: ${FINDINGS_FILE}"
+    else
+        echo '--- Review failed ---' >> "${FINDINGS_FILE}"
+        echo "ERROR: Gemini CLI exited with an error" >&2
+        exit 3
+    fi
+else
+    # --- Tmux mode: run Gemini in background session ---
+    # Initialize findings file
+    cat > "$FINDINGS_FILE" << 'FINDINGS_EOF'
 <!-- Gemini adversarial review findings — this file is populated by Gemini CLI -->
 <!-- Waiting for review to complete... -->
 FINDINGS_EOF
 
-# --- Kill existing session if present ---
-if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    tmux kill-session -t "$SESSION_NAME"
+    # Kill existing session if present
+    if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+        tmux kill-session -t "$SESSION_NAME"
+    fi
+
+    # Pipe the prompt file via stdin. Paths are absolute (resolved above) so the
+    # tmux session works regardless of CWD. On Gemini failure, an error marker is
+    # written so downstream consumers can distinguish "crashed" from "still running".
+    tmux new-session -d -s "$SESSION_NAME" \
+        "\"${GEMINI_BIN}\" -p < \"${PROMPT_FILE}\" > \"${FINDINGS_FILE}\" 2>&1 && echo '--- Review complete ---' >> \"${FINDINGS_FILE}\" || echo '--- Review failed ---' >> \"${FINDINGS_FILE}\""
+
+    if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+        echo "ERROR: Failed to launch tmux session '${SESSION_NAME}'" >&2
+        exit 3
+    fi
+
+    echo "MODE=tmux"
+    echo "TMUX_SESSION=${SESSION_NAME}"
+    echo "FINDINGS_FILE=${FINDINGS_FILE}"
+    echo ""
+    echo "Gemini adversarial review launched for PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
+    echo "  Monitor: tmux attach -t ${SESSION_NAME}"
+    echo "  Prompt:  ${PROMPT_FILE}"
+    echo "  Results: ${FINDINGS_FILE}"
 fi
-
-# --- Launch Gemini in tmux ---
-# Pipe the prompt file via stdin. Paths are absolute (resolved above) so the
-# tmux session works regardless of CWD. On Gemini failure, an error marker is
-# written so downstream consumers can distinguish "crashed" from "still running".
-tmux new-session -d -s "$SESSION_NAME" \
-    "\"${GEMINI_BIN}\" -p < \"${PROMPT_FILE}\" > \"${FINDINGS_FILE}\" 2>&1 && echo '--- Review complete ---' >> \"${FINDINGS_FILE}\" || echo '--- Review failed ---' >> \"${FINDINGS_FILE}\""
-
-if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    echo "ERROR: Failed to launch tmux session '${SESSION_NAME}'" >&2
-    exit 3
-fi
-
-# --- Report ---
-echo "TMUX_SESSION=${SESSION_NAME}"
-echo "FINDINGS_FILE=${FINDINGS_FILE}"
-echo ""
-echo "Gemini adversarial review launched for PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
-echo "  Monitor: tmux attach -t ${SESSION_NAME}"
-echo "  Prompt:  ${PROMPT_FILE}"
-echo "  Results: ${FINDINGS_FILE}"
