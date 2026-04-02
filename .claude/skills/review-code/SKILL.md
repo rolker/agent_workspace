@@ -393,8 +393,9 @@ Append this step entry:
 - [ ] (suggestion) <one-line summary> — `file:line`
 ```
 
-If no findings survived the silence filter, set `**Verdict**: approved` and
-write `No issues found. LGTM.` under Findings.
+If no findings survived the silence filter, set `**Verdict**: approved`,
+`**Must-fix**: 0 | **Suggestions**: 0`, and write `No issues found. LGTM.`
+under Findings.
 
 Key points:
 - Use `- [ ]` checkboxes so findings can be checked off as addressed
