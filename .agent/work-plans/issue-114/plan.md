@@ -43,6 +43,7 @@ modes.
    ```
    CALLER=$AGENT_FRAMEWORK  # check env first, fall back to detect_cli_env.sh
    ALL_REVIEWERS=(gemini codex claude copilot)
+   # Dispatch ALL available non-caller agents, not a fixed count
    for agent in ALL_REVIEWERS where agent != CALLER:
        launch cross_model_review.sh --pr <N> --agent <agent>
    ```
@@ -90,9 +91,6 @@ modes.
 
 - What is the exact non-interactive invocation syntax for Codex CLI and
   GitHub Copilot CLI? Both need verification from real sessions.
-- Should dispatch pick exactly two non-caller agents, or all available
-  non-caller agents? Two keeps review cost bounded; all-available
-  maximizes coverage but adds cost as more agents are onboarded.
 
 ## Estimated Scope
 
