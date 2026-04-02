@@ -21,9 +21,12 @@ modes.
    `declare -A` map of agent keys to binary names, discovery paths, and
    invocation syntax. Four agents:
    - `gemini`: `gemini -p < prompt > findings`
-   - `codex`: `codex exec "$(cat prompt)" > findings` (needs verification)
+   - `codex`: `codex exec "$(cat prompt)" > findings`
    - `claude`: `claude -p < prompt > findings`
-   - `copilot`: needs invocation verification
+   - `copilot`: `copilot -p "$(cat prompt)" > findings`
+   Note: Codex uses `exec` subcommand; Copilot and Claude use `-p` flag;
+   Gemini uses `-p` with stdin redirect. Codex and Copilot take the prompt
+   as an argument (stdin piping is unreliable), so use `"$(cat prompt)"`.
 
 2. **Add `--agent <target>` flag** — New required-when-not-default argument.
    Default remains `gemini` for backward compatibility. The flag selects
@@ -89,8 +92,7 @@ modes.
 
 ## Open Questions
 
-- What is the exact non-interactive invocation syntax for Codex CLI and
-  GitHub Copilot CLI? Both need verification from real sessions.
+None — invocation syntax verified for all four agents.
 
 ## Estimated Scope
 
