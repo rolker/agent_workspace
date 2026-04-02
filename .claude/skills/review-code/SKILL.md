@@ -356,60 +356,52 @@ No governance concerns for a change of this scope.
 No issues found. LGTM.
 ```
 
-### 8. Persist review summary to plan file
+### 8. Persist review summary to progress file
 
-After outputting the report to the conversation, append a compact review
-summary to the plan file so findings persist across sessions.
+After outputting the report to the conversation, append a "Local Review"
+step to `progress.md` so findings persist across sessions.
 
-**Locate the plan file**: Use the issue number resolved in step 1. Determine
-which repo owns the linked issue (workspace repo for workspace issues,
-project repo for project issues). Check `.agent/work-plans/issue-<issue>/plan.md`
-in the owning repo's worktree first. If not found there, fall back to the
-current worktree. If both locations have a plan file, prefer the copy in the
-repo that owns the issue and note the duplicate in the conversation.
+**Locate progress.md**: Use the issue number resolved in step 1. Check
+`.agent/work-plans/issue-<issue>/progress.md` in the current worktree.
 
-**If no plan file exists**: Skip with a note in the conversation: "No plan
-file found — review summary not persisted." Do not create a plan file.
-
-**If a plan file exists**: Read it and check for existing review blocks
-(sections starting with `## Review:`). For each existing review block whose
-`**Status**:` is not already `Superseded`, change its `**Status**:` line to
-`**Status**: Superseded by review on <YYYY-MM-DD>`.
-
-Then append this block to the end of the plan file:
+**If progress.md exists**: Append this step entry:
 
 ```markdown
 
-## Review: <tier> — <YYYY-MM-DD>
+## Local Review
+**Status**: <pending|approved>
+**When**: <YYYY-MM-DD HH:MM>
+**By**: <agent name> (<model>)
 
-**PR**: #<N> at `<short-sha>` (use `headRefOid` from step 1, truncated to 7 chars)
+**PR**: #<N> at `<short-sha>`
+**Depth**: <tier> (reason: <signal>)
 **Must-fix**: <count> | **Suggestions**: <count>
-**Status**: Pending
 
 ### Findings
 - [ ] (must-fix) <one-line summary> — `file:line`
 - [ ] (suggestion) <one-line summary> — `file:line`
 ```
 
+If no findings survived the silence filter, set `**Status**: approved` and
+write `No issues found. LGTM.` under Findings.
+
+**If no progress.md exists**: Fall back to appending to `plan.md` using
+the same format as above (as a `## Review: <tier> — <YYYY-MM-DD>` block).
+If neither file exists, skip with a note: "No progress.md or plan.md
+found — review summary not persisted."
+
 Key points:
 - Use `- [ ]` checkboxes so findings can be checked off as addressed
 - Include only the one-line summary and location, not the full description
-  (the full report is in the conversation and optionally posted as a PR comment)
-- If no findings survived the silence filter, use `**Must-fix**: 0 |
-  **Suggestions**: 0`, set `**Status**: Approved`, and write under Findings:
-  ```
-  No issues found. LGTM.
-  ```
-- **Do not commit** the updated plan file automatically. The author decides
-  when to commit (they may want to address findings first and commit the
-  checked-off version).
+- **Do not commit** the updated file automatically. The author decides
+  when to commit.
 
 ## Guidelines
 
 - **Report first, then persist** — output the review in the conversation and
-  append a summary to the plan file (step 8). The plan-file write is the only
-  autonomous side effect; the user decides whether to post it as a PR comment,
-  request changes, or act on findings.
+  append a step to progress.md (step 8). The file write is the only autonomous
+  side effect; the user decides whether to post it as a PR comment, request
+  changes, or act on findings.
 - **Be specific** — "Must-fix: null check missing before `result.data` access
   at line 42" is useful. "Watch: could add more error handling" is not.
 - **Read the code** — don't just check file names. Read full files and the diff
