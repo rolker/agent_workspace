@@ -232,10 +232,12 @@ Launch the cross-model review script:
 .agent/scripts/cross_model_review.sh --pr <N>
 ```
 
-This starts a Gemini CLI session in a tmux window. The script resolves the
-issue number from the PR body (falling back to the PR number). It then:
+The script auto-detects the execution mode: tmux (background) when available,
+sync (blocking) when tmux is unavailable or in sandboxed environments. Use
+`--sync` to force synchronous execution. The script resolves the issue number
+from the PR body (falling back to the PR number). It then:
 1. Writes a review prompt to `.agent/work-plans/issue-<issue>/review-gemini-prompt.md`
-2. Launches Gemini in tmux session `review-gemini-<issue>`
+2. Runs Gemini (in tmux session `review-gemini-<issue>` or synchronously)
 3. Gemini writes findings to `.agent/work-plans/issue-<issue>/review-gemini-findings.md`
 
 **If the script exits non-zero** (tmux or gemini unavailable), note in the
