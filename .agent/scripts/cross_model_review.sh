@@ -48,31 +48,44 @@ declare -A AGENT_BINS=(
 
 # Build the shell command string to invoke an agent.
 # Args: agent_key, bin_path, prompt_file, findings_file
-# Stdout: a shell command string safe for eval or tmux new-session.
+# Stdout: a shell command string safe for tmux new-session.
+# All agents use stdin-based invocation to avoid argv limits on large diffs.
 build_invoke_cmd() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
         gemini)
-            # Gemini reads stdin via -p flag
             echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
             ;;
         codex)
-            # Codex takes prompt as argument to exec subcommand
-            echo "\"${bin}\" exec \"\$(cat \"${prompt}\")\" > \"${findings}\" 2>&1"
+            # Codex exec reads prompt via stdin
+            echo "\"${bin}\" exec < \"${prompt}\" > \"${findings}\" 2>&1"
             ;;
         claude)
-            # Claude reads stdin via -p flag
             echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
             ;;
         copilot)
-            # Copilot takes prompt as argument to -p flag
-            echo "\"${bin}\" -p \"\$(cat \"${prompt}\")\" > \"${findings}\" 2>&1"
+            echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
             ;;
         *)
             # Unknown agent — try stdin style as fallback
             echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
             ;;
+    esac
+}
+
+# Run an agent directly (sync mode) without eval.
+# Args: agent_key, bin_path, prompt_file, findings_file
+# Returns: exit code from the agent CLI.
+run_agent_sync() {
+    local agent="$1" bin="$2" prompt="$3" findings="$4"
+
+    case "$agent" in
+        gemini)  "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        codex)   "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
+        claude)  "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        copilot) "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        *)       "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
     esac
 }
 
@@ -260,12 +273,9 @@ No issues found.
 Write a 1-3 sentence overall assessment after the findings table.
 PROMPT_FOOTER
 
-# --- Build invocation command ---
-INVOKE_CMD=$(build_invoke_cmd "$TARGET_AGENT" "$AGENT_BIN" "$PROMPT_FILE" "$FINDINGS_FILE")
-
 # --- Run review ---
 if [[ "$USE_SYNC" == true ]]; then
-    # --- Sync mode: run agent directly ---
+    # --- Sync mode: run agent directly (no eval) ---
     echo "MODE=sync"
     echo "AGENT=${TARGET_AGENT}"
     echo "FINDINGS_FILE=${FINDINGS_FILE}"
@@ -274,7 +284,7 @@ if [[ "$USE_SYNC" == true ]]; then
     echo "  Prompt:  ${PROMPT_FILE}"
     echo "  Results: ${FINDINGS_FILE}"
 
-    if eval "$INVOKE_CMD"; then
+    if run_agent_sync "$TARGET_AGENT" "$AGENT_BIN" "$PROMPT_FILE" "$FINDINGS_FILE"; then
         echo '--- Review complete ---' >> "${FINDINGS_FILE}"
         echo ""
         echo "Review complete. Results: ${FINDINGS_FILE}"
@@ -285,6 +295,9 @@ if [[ "$USE_SYNC" == true ]]; then
     fi
 else
     # --- Tmux mode: run agent in background session ---
+    # Build command string for tmux (tmux requires a single shell command string)
+    INVOKE_CMD=$(build_invoke_cmd "$TARGET_AGENT" "$AGENT_BIN" "$PROMPT_FILE" "$FINDINGS_FILE")
+
     # Initialize findings file
     cat > "$FINDINGS_FILE" << FINDINGS_EOF
 <!-- ${TARGET_AGENT} adversarial review findings — this file is populated by ${TARGET_AGENT} CLI -->
