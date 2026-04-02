@@ -164,7 +164,7 @@ Then append the step entry:
 **When**: <YYYY-MM-DD HH:MM>
 **By**: <agent name> (<model>)
 
-Committed as `.agent/work-plans/issue-<N>/plan.md`.
+Plan file: `.agent/work-plans/issue-<N>/plan.md`.
 
 <1-2 sentence summary of the approach>
 ```

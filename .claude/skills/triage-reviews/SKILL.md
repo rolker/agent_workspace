@@ -245,8 +245,9 @@ Commit progress.md after appending:
   issue, group them in the valid issues table.
 - **Governance alignment** — note when a comment aligns with or contradicts
   workspace principles or ADRs.
-- **No comments posted** — this skill is read-only. It does not post review comments,
-  dismiss reviews, or modify the PR in any way.
+- **No comments posted** — this skill does not post review comments, dismiss
+  reviews, or modify the PR. The only write side-effect is appending to
+  progress.md and committing it locally (step 7).
 - **Plan-first workflow PRs** — In the plan-first workflow, a PR starts with a
   plan commit and later receives implementation commits. When triaging these PRs:
   - Comments on `.agent/work-plans/issue-*/plan.md` files are low priority —
