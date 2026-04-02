@@ -86,7 +86,7 @@ The worktree type depends on the scope:
 - **Workspace scope** (default): use a `--skill research` worktree — no issue needed.
   ```bash
   .agent/scripts/worktree_create.sh --skill research --type workspace
-  source .agent/scripts/worktree_enter.sh --skill research
+  source .agent/scripts/worktree_enter.sh --skill research --type workspace
   ```
 
 - **Project scope** (`--scope project`): the project digest lives in the project
