@@ -1,51 +1,104 @@
 #!/usr/bin/env bash
-# Cross-model adversarial review via Gemini CLI
+# Cross-model adversarial review via external CLI agents
 #
-# Launches a Gemini CLI session to provide an independent adversarial review
+# Launches an external CLI agent to provide an independent adversarial review
 # of a PR. Writes prompt and findings to .agent/work-plans/issue-<N>/
 # alongside the work plan. These files can be committed as review artifacts.
 #
+# Supported agents: gemini, codex, claude, copilot
+#
 # Two execution modes:
-#   tmux (default) — runs Gemini in a background tmux session
-#   sync           — runs Gemini synchronously (for sandboxed environments)
+#   tmux (default) — runs the agent in a background tmux session
+#   sync           — runs the agent synchronously (for sandboxed environments)
 #
 # Sync mode is selected automatically when tmux is unavailable, or explicitly
 # with --sync.
 #
 # Usage:
-#   .agent/scripts/cross_model_review.sh --pr <N>          # tmux (or auto-sync)
-#   .agent/scripts/cross_model_review.sh --pr <N> --sync   # force sync mode
+#   .agent/scripts/cross_model_review.sh --pr <N>                       # gemini (default)
+#   .agent/scripts/cross_model_review.sh --pr <N> --agent codex         # specific agent
+#   .agent/scripts/cross_model_review.sh --pr <N> --agent claude --sync # force sync
 #
 # The script runs in whichever repo worktree it's invoked from.
 # Workspace issues run in workspace worktrees, project issues in project worktrees.
 #
 # Output (stdout):
 #   MODE=tmux|sync                 (machine-parseable)
+#   AGENT=<agent-key>              (machine-parseable)
 #   TMUX_SESSION=<session-name>    (tmux mode only)
 #   FINDINGS_FILE=<path-to-findings> (machine-parseable)
 #   followed by informational lines for human consumption
 #
 # Exit codes:
 #   0 — review launched (tmux) or completed (sync) successfully
-#   1 — missing dependencies (gh or gemini)
+#   1 — missing dependencies (gh or target agent CLI)
 #   2 — invalid arguments
 #   3 — failed to create prompt or launch session
 
 set -euo pipefail
 
+# --- Agent configuration ---
+# Binary name to search for in PATH and fallback locations.
+declare -A AGENT_BINS=(
+    ["gemini"]="gemini"
+    ["codex"]="codex"
+    ["claude"]="claude"
+    ["copilot"]="copilot"
+)
+
+# Build the shell command string to invoke an agent.
+# Args: agent_key, bin_path, prompt_file, findings_file
+# Stdout: a shell command string safe for eval or tmux new-session.
+build_invoke_cmd() {
+    local agent="$1" bin="$2" prompt="$3" findings="$4"
+
+    case "$agent" in
+        gemini)
+            # Gemini reads stdin via -p flag
+            echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
+            ;;
+        codex)
+            # Codex takes prompt as argument to exec subcommand
+            echo "\"${bin}\" exec \"\$(cat \"${prompt}\")\" > \"${findings}\" 2>&1"
+            ;;
+        claude)
+            # Claude reads stdin via -p flag
+            echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
+            ;;
+        copilot)
+            # Copilot takes prompt as argument to -p flag
+            echo "\"${bin}\" -p \"\$(cat \"${prompt}\")\" > \"${findings}\" 2>&1"
+            ;;
+        *)
+            # Unknown agent — try stdin style as fallback
+            echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
+            ;;
+    esac
+}
+
 # --- Argument parsing ---
 PR_NUMBER=""
 FORCE_SYNC=false
+TARGET_AGENT="gemini"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr)
             if [[ $# -lt 2 ]]; then
                 echo "ERROR: Missing value for --pr" >&2
-                echo "Usage: $0 --pr <N> [--sync]" >&2
+                echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
                 exit 2
             fi
             PR_NUMBER="$2"
+            shift 2
+            ;;
+        --agent)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: Missing value for --agent" >&2
+                echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+                exit 2
+            fi
+            TARGET_AGENT="${2,,}"  # lowercase
             shift 2
             ;;
         --sync)
@@ -54,7 +107,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "ERROR: Unknown argument: $1" >&2
-            echo "Usage: $0 --pr <N> [--sync]" >&2
+            echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
             exit 2
             ;;
     esac
@@ -62,7 +115,14 @@ done
 
 if [[ -z "$PR_NUMBER" ]]; then
     echo "ERROR: --pr <N> is required" >&2
-    echo "Usage: $0 --pr <N> [--sync]" >&2
+    echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+    exit 2
+fi
+
+# Validate agent
+if [[ -z "${AGENT_BINS[$TARGET_AGENT]+x}" ]]; then
+    echo "ERROR: Unknown agent '${TARGET_AGENT}'" >&2
+    echo "Supported agents: ${!AGENT_BINS[*]}" >&2
     exit 2
 fi
 
@@ -81,29 +141,30 @@ elif ! command -v tmux &>/dev/null; then
     USE_SYNC=true
 fi
 
-# Find gemini CLI — check PATH first, then common install locations
-GEMINI_BIN=""
-if command -v gemini &>/dev/null; then
-    GEMINI_BIN="$(command -v gemini)"
+# Find target agent CLI — check PATH first, then common install locations
+AGENT_BIN_NAME="${AGENT_BINS[$TARGET_AGENT]}"
+AGENT_BIN=""
+
+if command -v "$AGENT_BIN_NAME" &>/dev/null; then
+    AGENT_BIN="$(command -v "$AGENT_BIN_NAME")"
 else
-    # Common install paths for npm/nvm global installs
     FALLBACK_PATHS=(
-        "${HOME}/.nvm/versions/node"/*/bin/gemini
-        "${HOME}/.local/bin/gemini"
-        "${HOME}/.npm-global/bin/gemini"
-        /usr/local/bin/gemini
+        "${HOME}/.nvm/versions/node"/*/bin/"${AGENT_BIN_NAME}"
+        "${HOME}/.local/bin/${AGENT_BIN_NAME}"
+        "${HOME}/.npm-global/bin/${AGENT_BIN_NAME}"
+        /usr/local/bin/"${AGENT_BIN_NAME}"
     )
     for candidate in "${FALLBACK_PATHS[@]}"; do
         if [[ -x "$candidate" ]]; then
-            GEMINI_BIN="$candidate"
-            echo "INFO: gemini not in PATH, found at: ${GEMINI_BIN}" >&2
+            AGENT_BIN="$candidate"
+            echo "INFO: ${AGENT_BIN_NAME} not in PATH, found at: ${AGENT_BIN}" >&2
             break
         fi
     done
 fi
 
-if [[ -z "$GEMINI_BIN" ]]; then
-    echo "WARNING: gemini CLI not found — Gemini adversarial review unavailable" >&2
+if [[ -z "$AGENT_BIN" ]]; then
+    echo "WARNING: ${AGENT_BIN_NAME} CLI not found — ${TARGET_AGENT} adversarial review unavailable" >&2
     echo "  PATH searched: ${PATH}" >&2
     echo "  Also checked: ~/.nvm/versions/node/*/bin/, ~/.local/bin/, ~/.npm-global/bin/, /usr/local/bin/" >&2
     exit 1
@@ -130,9 +191,9 @@ fi
 WORK_PLANS_DIR="$(git rev-parse --show-toplevel)/.agent/work-plans/issue-${ISSUE_NUMBER}"
 mkdir -p "$WORK_PLANS_DIR"
 
-PROMPT_FILE="${WORK_PLANS_DIR}/review-gemini-prompt.md"
-FINDINGS_FILE="${WORK_PLANS_DIR}/review-gemini-findings.md"
-SESSION_NAME="review-gemini-${ISSUE_NUMBER}"
+PROMPT_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-prompt.md"
+FINDINGS_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-findings.md"
+SESSION_NAME="review-${TARGET_AGENT}-${ISSUE_NUMBER}"
 
 # --- Get PR metadata ---
 PR_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq '.title' 2>/dev/null || echo "PR #${PR_NUMBER}")
@@ -199,30 +260,34 @@ No issues found.
 Write a 1-3 sentence overall assessment after the findings table.
 PROMPT_FOOTER
 
-# --- Run Gemini review ---
+# --- Build invocation command ---
+INVOKE_CMD=$(build_invoke_cmd "$TARGET_AGENT" "$AGENT_BIN" "$PROMPT_FILE" "$FINDINGS_FILE")
+
+# --- Run review ---
 if [[ "$USE_SYNC" == true ]]; then
-    # --- Sync mode: run Gemini directly ---
+    # --- Sync mode: run agent directly ---
     echo "MODE=sync"
+    echo "AGENT=${TARGET_AGENT}"
     echo "FINDINGS_FILE=${FINDINGS_FILE}"
     echo ""
-    echo "Running Gemini adversarial review synchronously for PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})..."
+    echo "Running ${TARGET_AGENT} adversarial review synchronously for PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})..."
     echo "  Prompt:  ${PROMPT_FILE}"
     echo "  Results: ${FINDINGS_FILE}"
 
-    if "${GEMINI_BIN}" -p < "${PROMPT_FILE}" > "${FINDINGS_FILE}" 2>&1; then
+    if eval "$INVOKE_CMD"; then
         echo '--- Review complete ---' >> "${FINDINGS_FILE}"
         echo ""
         echo "Review complete. Results: ${FINDINGS_FILE}"
     else
         echo '--- Review failed ---' >> "${FINDINGS_FILE}"
-        echo "ERROR: Gemini CLI exited with an error" >&2
+        echo "ERROR: ${TARGET_AGENT} CLI exited with an error" >&2
         exit 3
     fi
 else
-    # --- Tmux mode: run Gemini in background session ---
+    # --- Tmux mode: run agent in background session ---
     # Initialize findings file
-    cat > "$FINDINGS_FILE" << 'FINDINGS_EOF'
-<!-- Gemini adversarial review findings — this file is populated by Gemini CLI -->
+    cat > "$FINDINGS_FILE" << FINDINGS_EOF
+<!-- ${TARGET_AGENT} adversarial review findings — this file is populated by ${TARGET_AGENT} CLI -->
 <!-- Waiting for review to complete... -->
 FINDINGS_EOF
 
@@ -231,11 +296,10 @@ FINDINGS_EOF
         tmux kill-session -t "$SESSION_NAME"
     fi
 
-    # Pipe the prompt file via stdin. Paths are absolute (resolved above) so the
-    # tmux session works regardless of CWD. On Gemini failure, an error marker is
-    # written so downstream consumers can distinguish "crashed" from "still running".
+    # Launch agent in tmux. On failure, an error marker is written so downstream
+    # consumers can distinguish "crashed" from "still running".
     tmux new-session -d -s "$SESSION_NAME" \
-        "\"${GEMINI_BIN}\" -p < \"${PROMPT_FILE}\" > \"${FINDINGS_FILE}\" 2>&1 && echo '--- Review complete ---' >> \"${FINDINGS_FILE}\" || echo '--- Review failed ---' >> \"${FINDINGS_FILE}\""
+        "${INVOKE_CMD} && echo '--- Review complete ---' >> \"${FINDINGS_FILE}\" || echo '--- Review failed ---' >> \"${FINDINGS_FILE}\""
 
     if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
         echo "ERROR: Failed to launch tmux session '${SESSION_NAME}'" >&2
@@ -243,10 +307,11 @@ FINDINGS_EOF
     fi
 
     echo "MODE=tmux"
+    echo "AGENT=${TARGET_AGENT}"
     echo "TMUX_SESSION=${SESSION_NAME}"
     echo "FINDINGS_FILE=${FINDINGS_FILE}"
     echo ""
-    echo "Gemini adversarial review launched for PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
+    echo "${TARGET_AGENT} adversarial review launched for PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
     echo "  Monitor: tmux attach -t ${SESSION_NAME}"
     echo "  Prompt:  ${PROMPT_FILE}"
     echo "  Results: ${FINDINGS_FILE}"
