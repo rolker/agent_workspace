@@ -69,10 +69,10 @@ governance note ("No governance concerns for a change of this scope").
 - Governance
 - Plan drift
 - Claude adversarial (fresh — no context from other specialists)
-- Gemini adversarial (cross-model, via `cross_model_review.sh` in tmux)
+- Cross-model adversarial (all available non-caller agents, via `cross_model_review.sh`)
 
-**Report format**: Full report with all sections plus a Cross-Model Review
-section for Gemini findings.
+**Report format**: Full report with all sections plus a Cross-Model Reviews
+section with per-agent findings.
 
 ## Override-Trigger Files
 
