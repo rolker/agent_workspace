@@ -190,6 +190,46 @@ Output a structured report:
 <1-3 sentence overall assessment>
 ```
 
+### 7. Update progress.md
+
+Resolve the linked issue number from the PR (same as step 1's branch-name
+extraction). Determine which repo owns the linked issue and check
+`.agent/work-plans/issue-<issue>/progress.md` in the owning repo's worktree
+first, falling back to the current worktree. If progress.md does not exist
+in either location, create it in the owning repo's worktree (or the current
+worktree if no owning worktree exists) with frontmatter. Fetch the issue
+title from the correct repo via
+`gh issue view <issue> --repo <owner/repo> --json title --jq '.title'`:
+
+```yaml
+---
+issue: <issue>
+---
+
+# Issue #<issue> — <issue title>
+```
+
+Then append the step entry:
+
+```markdown
+
+## External Review
+**Status**: complete
+**When**: <YYYY-MM-DD HH:MM>
+**By**: <agent name> (<model>)
+
+**PR**: #<pr> — <total> review(s), <valid-count> valid, <false-positive-count> false positives
+**CI**: <all-pass|failures-noted>
+
+### Actions
+- [ ] <each recommended action from the triage>
+```
+
+Commit progress.md after appending. Run `git add` and `git commit` in the
+worktree where progress.md was found or created (which may differ from the
+current working directory):
+`git -C <worktree-path> add .agent/work-plans/issue-<issue>/progress.md && git -C <worktree-path> commit -m "progress: external review for #<issue>"`
+
 ## Guidelines
 
 - **Triage, don't fix** — output the classified plan in the conversation. The user
@@ -210,8 +250,9 @@ Output a structured report:
   issue, group them in the valid issues table.
 - **Governance alignment** — note when a comment aligns with or contradicts
   workspace principles or ADRs.
-- **No comments posted** — this skill is read-only. It does not post review comments,
-  dismiss reviews, or modify the PR in any way.
+- **No GitHub review actions** — this skill does not post review comments,
+  dismiss reviews, or modify the PR on GitHub. The only side-effect is
+  appending to progress.md and committing it (step 7).
 - **Plan-first workflow PRs** — In the plan-first workflow, a PR starts with a
   plan commit and later receives implementation commits. When triaging these PRs:
   - Comments on `.agent/work-plans/issue-*/plan.md` files are low priority —

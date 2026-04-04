@@ -140,19 +140,47 @@ holds review artifacts (Gemini prompts/findings) alongside the plan:
 <single PR / multiple PRs / needs breakdown>
 ```
 
-### 6. Commit the plan
+### 6. Update progress.md
 
-The plan file path is relative to the current repo (workspace or project):
+Before committing, append a "Plan" step entry to
+`.agent/work-plans/issue-<N>/progress.md`. If progress.md does not exist,
+create it with frontmatter (use the issue title from step 1):
+
+```yaml
+---
+issue: <N>
+---
+
+# Issue #<N> — <issue title>
+```
+
+Then append the step entry:
+
+```markdown
+
+## Plan
+**Status**: complete
+**When**: <YYYY-MM-DD HH:MM>
+**By**: <agent name> (<model>)
+
+Plan file: `.agent/work-plans/issue-<N>/plan.md`.
+
+<1-2 sentence summary of the approach>
+```
+
+### 7. Commit the plan
+
+Stage both files and commit together:
 
 ```bash
 mkdir -p .agent/work-plans/issue-<N>
-git add .agent/work-plans/issue-<N>/plan.md
+git add .agent/work-plans/issue-<N>/plan.md .agent/work-plans/issue-<N>/progress.md
 git commit -m "Add work plan for #<N>
 
 <one-line summary of the approach>"
 ```
 
-### 7. Create or update a draft PR
+### 8. Create or update a draft PR
 
 Push the branch and create (or update) a draft PR with a `[PLAN]` title
 prefix and the plan as the body. The prefix prevents agents from confusing
@@ -183,7 +211,7 @@ fi
 rm -f "$BODY_FILE"
 ```
 
-### 8. Report to user
+### 9. Report to user
 
 Summarize:
 - What the plan proposes
