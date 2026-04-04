@@ -82,3 +82,16 @@ None.
 ## Estimated Scope
 
 Single PR.
+
+## Review: Standard — 2026-04-04
+
+**PR**: #124 at `9f987e0`
+**Must-fix**: 1 | **Suggestions**: 4
+**Status**: Pending
+
+### Findings
+- [x] (must-fix) Non-GitHub remotes produce junk slugs causing false-positive abort — `gh_create_issue.sh:101`
+- [x] (suggestion) `-R` without argument silently ignored instead of erroring — `gh_create_issue.sh:64`
+- [x] (suggestion) Exit code 2 overloaded (repo-mismatch vs GitHub CLI error) — `gh_create_issue.sh:133`
+- [ ] (suggestion) AGENTS.md implies broader enforcement than exists — `AGENTS.md:213`
+- [ ] (suggestion) `fetch_pr_reviews.sh` also lacks `-R` — deferred or oversight?

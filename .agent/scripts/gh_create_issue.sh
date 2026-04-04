@@ -20,7 +20,7 @@
 # Exit codes:
 #   0 - Success
 #   1 - Invalid label detected
-#   2 - GitHub CLI error
+#   2 - Invalid arguments (bad label, missing -R value, or repo mismatch)
 #   3 - Missing dependencies
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
@@ -66,7 +66,8 @@ while [ $# -gt 0 ]; do
                 EXPLICIT_REPO="$2"
                 shift 2
             else
-                shift
+                echo "❌ Error: -R/--repo requires a value (owner/repo)" >&2
+                exit 2
             fi
             ;;
         --repo=*)
@@ -113,17 +114,25 @@ if [ -z "$EXPLICIT_REPO" ]; then
         _PROJECT_SLUG=$(echo "$_PROJ_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
     fi
 
+    # Validate slug format (owner/repo) before comparing — non-GitHub remotes
+    # (enterprise hosts, SSH aliases, GitLab) produce slugs that won't match.
+    # Skip the safety check rather than false-positive aborting.
+    _SLUG_PATTERN='^[^/[:space:]]+/[^/[:space:]]+$'
+
     # Check if current repo matches workspace or project
     _REPO_OK=false
-    if [ -n "$_CURRENT_SLUG" ]; then
+    if [ -n "$_CURRENT_SLUG" ] && [[ "$_CURRENT_SLUG" =~ $_SLUG_PATTERN ]]; then
         if [ "$_CURRENT_SLUG" = "$_WS_SLUG" ]; then
             _REPO_OK=true
         elif [ -n "$_PROJECT_SLUG" ] && [ "$_CURRENT_SLUG" = "$_PROJECT_SLUG" ]; then
             _REPO_OK=true
         fi
+    else
+        # Slug is empty or not in owner/repo format — can't validate, allow through
+        _REPO_OK=true
     fi
 
-    if [ "$_REPO_OK" = false ] && [ -n "$_CURRENT_SLUG" ]; then
+    if [ "$_REPO_OK" = false ]; then
         echo "❌ Error: gh would target '${_CURRENT_SLUG}', which is not the workspace or project repo." >&2
         echo "   Workspace repo: ${_WS_SLUG:-<not detected>}" >&2
         echo "   Project repo:   ${_PROJECT_SLUG:-<not configured>}" >&2
