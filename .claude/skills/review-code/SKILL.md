@@ -403,8 +403,10 @@ under Findings.
 Key points:
 - Use `- [ ]` checkboxes so findings can be checked off as addressed
 - Include only the one-line summary and location, not the full description
-- Commit progress.md after appending:
-  `git add .agent/work-plans/issue-<issue>/progress.md && git commit -m "progress: local review for #<issue>"`
+- Commit progress.md after appending. Run `git add` and `git commit` in the
+  worktree where progress.md was found or created (which may differ from the
+  current working directory):
+  `git -C <worktree-path> add .agent/work-plans/issue-<issue>/progress.md && git -C <worktree-path> commit -m "progress: local review for #<issue>"`
 
 ## Guidelines
 

@@ -223,8 +223,10 @@ Then append the step entry:
 - [ ] <each recommended action from the triage>
 ```
 
-Commit progress.md after appending:
-`git add .agent/work-plans/issue-<issue>/progress.md && git commit -m "progress: external review for #<issue>"`
+Commit progress.md after appending. Run `git add` and `git commit` in the
+worktree where progress.md was found or created (which may differ from the
+current working directory):
+`git -C <worktree-path> add .agent/work-plans/issue-<issue>/progress.md && git -C <worktree-path> commit -m "progress: external review for #<issue>"`
 
 ## Guidelines
 
