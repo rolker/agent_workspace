@@ -140,8 +140,8 @@ $(STAMP):
 $(STAMP)/setup-dev.done: requirements.txt | $(STAMP)
 	@echo "--- Setting up dev tools ---"
 	python3 -m venv $(VENV_DIR)
-	$(VENV_BIN)/pip install --quiet --upgrade pip
-	$(VENV_BIN)/pip install --quiet -r $(MAIN_ROOT)/requirements.txt
+	$(VENV_BIN)/python3 -m pip install --quiet --upgrade pip
+	$(VENV_BIN)/python3 -m pip install --quiet -r $(MAIN_ROOT)/requirements.txt
 	$(PRE_COMMIT) install
 	touch $@
 
