@@ -63,16 +63,34 @@ Extract: `{phase, text, checked, issue_refs}` where `issue_refs` are any
 | Cognitive review patterns | #54 | planned | gstack | ... |
 ```
 
+Tables may have varying column counts (e.g., the Unphased section uses 4
+columns without `Source`). Find the `Item`, `Issue`, and `Status` columns
+by matching header names, not by column position.
+
 Extract: `{section, item, issue_ref, status}` where status is the value in
-the Status column.
+the `Status` column.
+
+**Sections to skip**: `Decided Against` (rejected items) and `To Consider`
+(unvetted inspiration-tracker findings, bullet-point format, not actionable
+roadmap entries). Only parse sections that contain checklist or table items.
 
 ### 3. Fetch open and recently closed issues
+
+Resolve the `<owner/repo>` slug for each repo:
+
+```bash
+# Workspace repo
+WS_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
+
+# Project repo (if project/ has its own .git)
+PJ_REPO=$(git -C project remote get-url origin 2>/dev/null | sed -nE 's|.*github\.com[:/](.+)(\.git)?$|\1|p')
+```
 
 For each repo that has a roadmap:
 
 ```bash
 # Open issues
-gh issue list --repo <owner/repo> --state open --json number,title,labels,url --limit 200
+gh issue list --repo <owner/repo> --state open --json number,title,labels,url,assignees --limit 200
 
 # Recently closed (last 30 days, to detect staleness)
 gh issue list --repo <owner/repo> --state closed --json number,title,closedAt,url --limit 100
@@ -87,9 +105,18 @@ For each roadmap item, classify it:
 | Item state | Issue state | Classification |
 |------------|-------------|----------------|
 | `- [ ]` | No issue ref | **Needs ticket** — unchecked, no tracking |
-| `- [ ]` | Open issue | **Ready to start** — has a ticket, work not begun |
+| `- [ ]` | Open issue, has assignee or linked PR | **In progress** — someone is working on it |
+| `- [ ]` | Open issue, no assignee or PR | **Ready to start** — has a ticket, not yet claimed |
 | `- [ ]` | Closed issue | **Stale** — issue closed but item not checked off |
 | `- [x]` | Any | **Done** — no action needed |
+
+To detect in-progress state for simple checklists (which lack a status column),
+check the open issue for assignees (from the `assignees` field fetched in
+step 3) or linked pull requests:
+```bash
+gh pr list --repo <owner/repo> --search "linked:issue:#<N>" --state open --json number --jq 'length'
+```
+If the issue has assignees or an open linked PR, classify as **In progress**.
 
 **Table items:**
 
