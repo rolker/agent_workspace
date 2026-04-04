@@ -92,7 +92,7 @@ For each repo that has a roadmap:
 # Open issues
 gh issue list --repo <owner/repo> --state open --json number,title,labels,url,assignees --limit 200
 
-# Recently closed (last 30 days, to detect staleness)
+# Recently closed (up to 100 most recent, to detect staleness)
 gh issue list --repo <owner/repo> --state closed --json number,title,closedAt,url --limit 100
 ```
 
@@ -127,6 +127,7 @@ If the issue has assignees or an open linked PR, classify as **In progress**.
 | `planned` | No issue | **Needs ticket** |
 | `planned` | Closed issue | **Stale** — issue closed but status not updated |
 | `in progress` | Open issue | **In progress** — someone is working on it |
+| `in progress` | No issue | **In progress (no ticket)** — work started but untracked; needs an issue |
 | `deferred` | Any | **Deferred** — intentionally postponed |
 | `subsumed by #N` | Any | **Subsumed** — covered by another item |
 
