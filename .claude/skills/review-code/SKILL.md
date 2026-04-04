@@ -222,34 +222,43 @@ The fresh-context model is deliberate: an independent reviewer that agrees
 with the governance specialist is a stronger signal than one told what to
 look for.
 
-#### 5e. Gemini Adversarial Specialist
+#### 5e. Cross-Model Adversarial Specialist(s)
 
 **Activates at**: Deep only
 
-Launch the cross-model review script:
+Determine the calling agent's framework and dispatch all available non-caller
+agents. Use `$AGENT_FRAMEWORK` if set; fall back to
+`source .agent/scripts/detect_cli_env.sh || true` if unset or "unknown". Normalize
+the framework key (lowercase) and apply explicit aliases to match the agent
+keys used by the script: `claude-code` → `claude`, `gemini-cli` → `gemini`,
+`codex-cli` → `codex`, `copilot-cli` → `copilot`. The canonical keys are:
+`gemini`, `codex`, `claude`, `copilot`.
+
+For each non-caller agent, launch the cross-model review script:
 
 ```bash
-.agent/scripts/cross_model_review.sh --pr <N>
+# Example: Claude is the caller, dispatch gemini, codex, and copilot
+.agent/scripts/cross_model_review.sh --pr <N> --agent gemini
+.agent/scripts/cross_model_review.sh --pr <N> --agent codex
+.agent/scripts/cross_model_review.sh --pr <N> --agent copilot
 ```
 
 The script auto-detects the execution mode: tmux (background) when available,
 sync (blocking) when tmux is unavailable or in sandboxed environments. Use
-`--sync` to force synchronous execution. The script resolves the issue number
-from the PR body (falling back to the PR number). It then:
-1. Writes a review prompt to `.agent/work-plans/issue-<issue>/review-gemini-prompt.md`
-2. Runs Gemini (in tmux session `review-gemini-<issue>` or synchronously)
-3. Gemini writes findings to `.agent/work-plans/issue-<issue>/review-gemini-findings.md`
+`--sync` to force synchronous execution. For each target agent, the script:
+1. Writes a review prompt to `.agent/work-plans/issue-<issue>/review-<agent>-prompt.md`
+2. Runs the agent (in tmux session `review-<agent>-<issue>` or synchronously)
+3. Agent writes findings to `.agent/work-plans/issue-<issue>/review-<agent>-findings.md`
 
-**If the script exits non-zero** (tmux or gemini unavailable), note in the
-report: "Cross-model review unavailable — proceeding with Claude-only
-adversarial." Do not fail the review.
+**If the script exits non-zero** for a given agent (CLI not installed or
+unavailable), note it in the report and continue with other agents. One
+agent's unavailability does not block the others. Do not fail the review.
 
-**Collecting findings**: After other specialists complete, check if the Gemini
-findings file has been populated (look for the `--- Review complete ---`
-marker or `--- Review failed ---` marker at the end). If the review is still
-running, note this in the report and tell the user they can check the tmux
-session. If it failed, note the failure. If complete, read the findings file
-and incorporate results into the unified report.
+**Collecting findings**: After other specialists complete, check each
+dispatched agent's findings file (look for `--- Review complete ---` or
+`--- Review failed ---` markers). If a review is still running, note this
+and tell the user which tmux session to check. Incorporate completed
+findings into the unified report.
 
 ### 6. Apply silence filter
 
@@ -311,9 +320,12 @@ Collect all findings from all dispatched specialists and filter:
 
 <comparison summary, or "No work plan found">
 
-### Cross-Model Review (Gemini)
+### Cross-Model Reviews
 
-<Gemini findings if Deep tier and review completed, or status note>
+<For each dispatched agent, a sub-section with its findings or status note>
+
+#### <Agent Name>
+<Findings if review completed, or status (running / unavailable / failed)>
 
 ### Existing Review Comments
 
