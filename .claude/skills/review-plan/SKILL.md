@@ -59,7 +59,7 @@ Read the plan file directly. Extract the issue number from the path
 
 Resolve to `.agent/work-plans/issue-<N>/plan.md`. If the file doesn't
 exist, check worktrees (`worktrees/workspace/issue-workspace-<N>/` and
-`worktrees/project/*/issue-project-<N>/`) for the plan file. If not
+`worktrees/project/*/issue-*-<N>/`) for the plan file. If not
 found, stop and inform the user.
 
 ### 2. Read the issue and any review-issue comments

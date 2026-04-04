@@ -35,7 +35,7 @@ Try git-bug first for offline-capable issue reading, then fall back to `gh`:
 ISSUE_TITLE=""
 ISSUE_BODY=""
 if command -v git-bug &>/dev/null; then
-    _BUG_JSON=$(git-bug bug show "$ISSUE_NUM" --format json 2>/dev/null || echo "")
+    _BUG_JSON=$(git-bug bug show "<N>" --format json 2>/dev/null || echo "")
     if [ -n "$_BUG_JSON" ]; then
         ISSUE_TITLE=$(echo "$_BUG_JSON" | jq -r '.title // empty')
         # The body is the first comment's message (comment index 0)
@@ -253,7 +253,7 @@ Summarize:
 - What the plan proposes
 - Which principles and ADRs were considered
 - Any open questions that need input
-- Link to the draft PR
+- Link to the draft PR (or note that PR creation was skipped)
 
 ## Guidelines
 
