@@ -174,7 +174,7 @@ if [[ -n "$ISSUE_TITLE" ]]; then
     # Extract significant keywords (3+ chars, skip common words)
     KEYWORDS=$(printf '%s\n' "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{3,}' \
         | grep -vxE '(the|and|for|with|from|that|this|into|when|also|not|but|are|was|has|have|will|can|its|all|new|add|use|get|set|fix|run)' \
-        | head -5 || true)
+        | head -n 5 || true)
     if [[ -n "$KEYWORDS" ]]; then
         for roadmap in "$ROOT_DIR/docs/ROADMAP.md" "$ROOT_DIR/project/ROADMAP.md"; do
             [[ -f "$roadmap" ]] || continue
