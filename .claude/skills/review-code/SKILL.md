@@ -367,8 +367,9 @@ issues, project repo for project issues). Check
 `.agent/work-plans/issue-<issue>/progress.md` in the owning repo's worktree
 first. If not found there, fall back to the current worktree. If it does not
 exist in either location, create it in the owning repo's worktree (or the
-current worktree if no owning worktree exists) with frontmatter (use the
-issue title from step 1):
+current worktree if no owning worktree exists) with frontmatter. Fetch the
+issue title via
+`gh issue view <issue> --repo <owner/repo> --json title --jq '.title'`:
 
 ```yaml
 ---
