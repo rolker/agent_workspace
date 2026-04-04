@@ -9,7 +9,15 @@ description: Independent evaluation of a committed work plan before implementati
 
 ```
 /review-plan <pr-number>
+/review-plan <path-to-plan.md>
+/review-plan --issue <N>
 ```
+
+- `<pr-number>` — read the plan from a draft PR (existing behavior)
+- `<path-to-plan.md>` — read the plan directly from a local file
+- `--issue <N>` — resolve to `.agent/work-plans/issue-<N>/plan.md`
+
+The file path and `--issue` forms enable offline plan review without a PR.
 
 ## Overview
 
@@ -17,11 +25,16 @@ description: Independent evaluation of a committed work plan before implementati
 
 Independent evaluation of a committed work plan. The planner should not grade
 their own work — this skill provides a second opinion before implementation
-begins. Runs on draft PRs created by `plan-task` (typically prefixed `[PLAN]`).
+begins. Accepts draft PRs created by `plan-task` (typically prefixed `[PLAN]`),
+local file paths, or issue numbers.
 
 ## Steps
 
-### 1. Read the plan and PR
+### 1. Read the plan
+
+Determine the input form and locate the plan file:
+
+**PR number** (e.g., `/review-plan 127`):
 
 ```bash
 # PR metadata and body (plan is in the PR body)
@@ -34,16 +47,53 @@ gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*' | head -1
 Find the plan file in the PR's changed files — it will be at
 `.agent/work-plans/issue-*/plan.md`. Read it in full.
 
+**File path** (e.g., `/review-plan .agent/work-plans/issue-45/plan.md`):
+
+Read the plan file directly. Extract the issue number from the path
+(the `issue-<N>` directory name).
+
+**Issue number** (e.g., `/review-plan --issue 45`):
+
+Resolve to `.agent/work-plans/issue-<N>/plan.md`. If the file doesn't
+exist, check worktrees (`worktrees/workspace/issue-workspace-<N>/` and
+`worktrees/project/*/issue-project-<N>/`) for the plan file. If not
+found, stop and inform the user.
+
 ### 2. Read the issue and any review-issue comments
 
+Try git-bug first for offline-capable issue reading, then fall back to `gh`:
+
 ```bash
-# The linked issue
-ISSUE_NUM=<extracted from step 1>
-gh issue view "$ISSUE_NUM" --json title,body,labels,comments,url
+# git-bug first (offline-capable) — provides title, body, and comments
+ISSUE_TITLE=""
+ISSUE_BODY=""
+if command -v git-bug &>/dev/null; then
+    _BUG_JSON=$(git-bug bug show "$ISSUE_NUM" --format json 2>/dev/null || echo "")
+    if [ -n "$_BUG_JSON" ]; then
+        ISSUE_TITLE=$(echo "$_BUG_JSON" | jq -r '.title // empty')
+        # The body is the first comment's message (comment index 0)
+        ISSUE_BODY=$(echo "$_BUG_JSON" | jq -r '.comments[0].message // empty')
+    fi
+fi
+
+# Fall back to gh if git-bug didn't provide the data
+if [ -z "$ISSUE_TITLE" ] || [ -z "$ISSUE_BODY" ]; then
+    _GH_JSON=$(gh issue view "$ISSUE_NUM" --json title,body,labels,comments,url 2>/dev/null || echo "")
+    if [ -n "$_GH_JSON" ]; then
+        [ -z "$ISSUE_TITLE" ] && ISSUE_TITLE=$(echo "$_GH_JSON" | jq -r '.title')
+        [ -z "$ISSUE_BODY" ] && ISSUE_BODY=$(echo "$_GH_JSON" | jq -r '.body')
+    fi
+fi
 ```
 
-Check for `review-issue` comments on the issue — they contain scope assessment,
-principle flags, and ADR notes that the plan should address.
+If neither source is available, the review can still proceed using only the
+plan file content — note in the report: "Issue context unavailable (offline,
+no git-bug cache). Review based on plan content only."
+
+Check for review-issue comments — they contain scope assessment, principle
+flags, and ADR notes that the plan should address. Comments are available from
+`gh` output (`.comments[]`) or from git-bug JSON (`.comments[1:]` — index 0
+is the issue body).
 
 ### 3. Load governance context
 

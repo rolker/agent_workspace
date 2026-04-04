@@ -8,8 +8,11 @@ description: Generate a principles-aware work plan for an issue. Saves to `.agen
 ## Usage
 
 ```
-/plan-task <issue-number>
+/plan-task <issue-number> [--no-pr]
 ```
+
+- `--no-pr` — skip draft PR creation (step 8). The plan is still committed
+  locally. Useful when working offline or when a PR isn't needed yet.
 
 ## Overview
 
@@ -25,12 +28,38 @@ principles, ADR compliance, and downstream consequences.
 
 ### 1. Read the issue and any review comments
 
+Try git-bug first for offline-capable issue reading, then fall back to `gh`:
+
 ```bash
-gh issue view <N> --json title,body,labels,comments,url
+# git-bug first (offline-capable) — provides title, body, and status
+ISSUE_TITLE=""
+ISSUE_BODY=""
+if command -v git-bug &>/dev/null; then
+    _BUG_JSON=$(git-bug bug show "$ISSUE_NUM" --format json 2>/dev/null || echo "")
+    if [ -n "$_BUG_JSON" ]; then
+        ISSUE_TITLE=$(echo "$_BUG_JSON" | jq -r '.title // empty')
+        # The body is the first comment's message (comment index 0)
+        ISSUE_BODY=$(echo "$_BUG_JSON" | jq -r '.comments[0].message // empty')
+    fi
+fi
+
+# Fall back to gh if git-bug didn't provide the data
+if [ -z "$ISSUE_TITLE" ] || [ -z "$ISSUE_BODY" ]; then
+    _GH_JSON=$(gh issue view <N> --json title,body,labels,comments,url 2>/dev/null || echo "")
+    if [ -n "$_GH_JSON" ]; then
+        [ -z "$ISSUE_TITLE" ] && ISSUE_TITLE=$(echo "$_GH_JSON" | jq -r '.title')
+        [ -z "$ISSUE_BODY" ] && ISSUE_BODY=$(echo "$_GH_JSON" | jq -r '.body')
+    fi
+fi
 ```
 
+If neither source is available, stop and inform the user: "Cannot read issue
+#<N> — git-bug has no cached data and `gh` is unavailable."
+
 Check for review-issue comments — they contain scope assessment, principle
-flags, and ADR notes that should inform the plan.
+flags, and ADR notes that should inform the plan. Comments are available from
+`gh` output (`.comments[]`) or from git-bug JSON (`.comments[1:]` — index 0
+is the issue body).
 
 ### 2. Load governance context
 
@@ -94,7 +123,7 @@ holds review artifacts (Gemini prompts/findings) alongside the plan:
 
 ## Issue
 
-<issue URL from: gh issue view <N> --json url --jq '.url'>
+<issue URL — use `gh issue view <N> --json url --jq '.url'` if available, otherwise use the repo's GitHub URL pattern>
 
 ## Context
 
@@ -182,15 +211,22 @@ git commit -m "Add work plan for #<N>
 
 ### 8. Create or update a draft PR
 
-Push the branch and create (or update) a draft PR with a `[PLAN]` title
-prefix and the plan as the body. The prefix prevents agents from confusing
-the PR number with the issue number.
+**Skip this step** if:
+- The user passed `--no-pr`, or
+- `gh` is unavailable (`command -v gh &>/dev/null && gh auth status &>/dev/null` fails)
+
+If skipped, note in the report: "Draft PR skipped (offline or `--no-pr`).
+The plan is committed locally on branch `<branch-name>`."
+
+Otherwise, push the branch and create (or update) a draft PR with a `[PLAN]`
+title prefix and the plan as the body. The prefix prevents agents from
+confusing the PR number with the issue number.
 
 ```bash
 # Push current branch (name may vary: feature/issue-<N> or feature/ISSUE-<N>-<desc>)
 git push -u origin HEAD
 
-ISSUE_TITLE=$(gh issue view <N> --json title --jq '.title')
+# Use ISSUE_TITLE from step 1 (already resolved from git-bug or gh)
 CURRENT_BRANCH=$(git branch --show-current)
 
 # Check for existing PR on this branch
