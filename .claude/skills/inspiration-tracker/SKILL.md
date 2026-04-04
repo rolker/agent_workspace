@@ -86,11 +86,14 @@ projects:
 
 ### 2. Ensure local copy
 
-All clones live in `.agent/scratchpad/inspiration/<name>/` (gitignored,
-ephemeral — recreated on any machine where this workspace is checked out).
+All clones live in the **main tree's** scratchpad at
+`<MAIN_ROOT>/.agent/scratchpad/inspiration/<name>/` (gitignored). Using the
+main tree instead of the worktree means clones persist across skill worktree
+lifecycles, avoiding re-cloning on every run.
 
 ```bash
-CLONE_DIR=".agent/scratchpad/inspiration/<name>"
+MAIN_ROOT=$(git worktree list --porcelain | head -1 | sed 's/^worktree //')
+CLONE_DIR="$MAIN_ROOT/.agent/scratchpad/inspiration/<name>"
 if [ -d "$CLONE_DIR/.git" ]; then
     cd "$CLONE_DIR" && git fetch origin
 else
@@ -346,9 +349,10 @@ When invoked with `add` or `add <url>`:
 - **Commit early, update later** — the digest is committed after research
   (step 7) and updated after decisions (step 9). This preserves research
   even if the conversation is interrupted.
-- **Scratchpad clones are ephemeral** — all clones in
-  `.agent/scratchpad/inspiration/<name>/` (gitignored). Registry and digests
-  are git-tracked and portable across machines.
+- **Scratchpad clones use the main tree** — all clones live in the main
+  tree's `.agent/scratchpad/inspiration/<name>/` (gitignored), not the
+  worktree. This avoids re-cloning on every skill worktree run. Registry
+  and digests are git-tracked and portable across machines.
 - **Shallow clones for reading, GitHub API for history** — local clones use
   `--depth=1` for speed; changelog tracking uses the GitHub compare API
   instead of local git history. This keeps clones lightweight.
