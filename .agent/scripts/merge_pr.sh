@@ -172,7 +172,7 @@ ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" "${GH_REPO_ARGS[@]}" --json title --jq 
 if [[ -n "$ISSUE_TITLE" ]]; then
     ROADMAP_MATCHES=()
     # Extract significant keywords (3+ chars, skip common words)
-    KEYWORDS=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{3,}' \
+    KEYWORDS=$(printf '%s\n' "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{3,}' \
         | grep -vxE '(the|and|for|with|from|that|this|into|when|also|not|but|are|was|has|have|will|can|its|all|new|add|use|get|set|fix|run)' \
         | head -5 || true)
     if [[ -n "$KEYWORDS" ]]; then
