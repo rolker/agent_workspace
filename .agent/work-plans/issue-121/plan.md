@@ -6,10 +6,10 @@ https://github.com/rolker/agent_workspace/issues/121
 
 ## Context
 
-The workspace has `docs/ROADMAP.md` (UX improvements roadmap). The project
-has phases in `DESIGN.md` but no standalone `ROADMAP.md`. Nothing enforces
-roadmap updates when work completes, and agents don't consult it when
-choosing work.
+The workspace has `docs/ROADMAP.md` (workspace-wide roadmap). The project
+already has `project/ROADMAP.md` (phase checklists with issue references)
+and `project/DESIGN.md` already links to it. Nothing enforces roadmap
+updates when work completes, and agents don't consult it when choosing work.
 
 Decisions from user input:
 - `/what-next` uses roadmap checklist only (no labels/milestones)
@@ -18,26 +18,12 @@ Decisions from user input:
 
 ## Approach
 
-This is three PRs, sequenced as sub-issues of #121.
+This is two PRs, sequenced as sub-issues of #121. (Sub-issue A from the
+original plan — creating project ROADMAP.md — is already complete:
+`project/ROADMAP.md` exists with phase checklists and `project/DESIGN.md`
+already links to it.)
 
-### Sub-issue A: Project ROADMAP.md
-
-1. **Create `project/ROADMAP.md`** — Extract the Phases checklist from
-   `project/DESIGN.md` (lines 833-909) into a standalone file. Group by
-   phase with `- [x]`/`- [ ]` checklists. Include issue references where
-   they exist (e.g., "PR #38", "PR #42").
-
-2. **Update `project/DESIGN.md`** — Replace the inline Phases checklist
-   with a link: "See [ROADMAP.md](ROADMAP.md) for the current phase
-   checklist." Keep the narrative context (phase descriptions) in DESIGN.md.
-
-3. **No changes to workspace `docs/ROADMAP.md`** — It already exists and
-   is maintained through brainstorm sessions.
-
-**Files**: `project/ROADMAP.md` (new), `project/DESIGN.md` (edit)
-**Repo**: project (daddy_camp)
-
-### Sub-issue B: `/what-next` skill
+### Sub-issue A: `/what-next` skill
 
 1. **Create `.claude/skills/what-next/SKILL.md`** — A skill that:
    - Reads `ROADMAP.md` from both workspace (`docs/ROADMAP.md`) and project
@@ -56,7 +42,7 @@ This is three PRs, sequenced as sub-issues of #121.
 **Files**: `.claude/skills/what-next/SKILL.md` (new)
 **Repo**: workspace (agent_workspace)
 
-### Sub-issue C: Merge-time roadmap reminder
+### Sub-issue B: Merge-time roadmap reminder
 
 1. **Add roadmap check to `merge_pr.sh`** — After the successful merge
    and sync steps (around line 168), grep the closed issue title against
@@ -68,10 +54,15 @@ This is three PRs, sequenced as sub-issues of #121.
    ```
    This is informational only — not a gate.
 
-2. **Match strategy** — Use the PR's linked issue title (already resolved
-   earlier in the script as `$ISSUE_TITLE`) and grep for keywords against
-   ROADMAP.md lines. Fuzzy enough to catch relevant items, but not so
-   aggressive it fires on every merge.
+2. **Resolve the issue title** — `merge_pr.sh` does not currently have
+   `$ISSUE_TITLE`. Add a step to fetch it via
+   `gh issue view "$ISSUE_NUM" --json title --jq '.title'` (the issue
+   number is already resolved in the script).
+
+3. **Match strategy** — Grep the issue title keywords against ROADMAP.md
+   lines. Fuzzy enough to catch relevant items, but not so aggressive it
+   fires on every merge. Guard the grep with a file-existence check so
+   the reminder is a no-op when no ROADMAP.md exists (ADR-0003 compliance).
 
 **Files**: `.agent/scripts/merge_pr.sh` (edit)
 **Repo**: workspace (agent_workspace)
@@ -80,19 +71,17 @@ This is three PRs, sequenced as sub-issues of #121.
 
 | File | Change | Sub-issue |
 |------|--------|-----------|
-| `project/ROADMAP.md` | New file: phase checklist extracted from DESIGN.md | A |
-| `project/DESIGN.md` | Replace Phases section with link to ROADMAP.md | A |
-| `.claude/skills/what-next/SKILL.md` | New skill: roadmap cross-reference and next-work suggestions | B |
-| `.agent/scripts/merge_pr.sh` | Add soft roadmap reminder after merge | C |
+| `.claude/skills/what-next/SKILL.md` | New skill: roadmap cross-reference and next-work suggestions | A |
+| `.agent/scripts/merge_pr.sh` | Add issue title resolution + soft roadmap reminder after merge | B |
 
 ## Principles Self-Check
 
 | Principle | Consideration |
 |---|---|
 | Only what's needed | Soft reminder, not hard gate. Skill reads existing files, no new infrastructure |
-| A change includes its consequences | DESIGN.md updated when Phases moves to ROADMAP.md |
-| Workspace vs. project separation | Project ROADMAP lives in project repo; skill and merge check are workspace |
-| Improve incrementally | Three small PRs rather than one large one |
+| A change includes its consequences | merge_pr.sh change is self-contained; skill is additive |
+| Workspace vs. project separation | Skill and merge check are workspace; they read project ROADMAP.md conditionally |
+| Improve incrementally | Two small PRs rather than one large one |
 
 ## ADR Compliance
 
@@ -105,7 +94,6 @@ This is three PRs, sequenced as sub-issues of #121.
 
 | If we change... | Also update... | Included in plan? |
 |---|---|---|
-| `project/DESIGN.md` (remove Phases) | `project/ROADMAP.md` (must exist first) | Yes |
 | Add new skill | Skill list in adapters if enumerated | Checked — skill lists are auto-generated or not enumerated |
 | `merge_pr.sh` | AGENTS.md script table if description changes | No change needed — description stays generic |
 
@@ -115,7 +103,6 @@ None.
 
 ## Estimated Scope
 
-Three sub-issue PRs:
-- A: project ROADMAP.md (~small, project repo)
-- B: `/what-next` skill (~medium, workspace repo)
-- C: merge-time reminder (~small, workspace repo)
+Two sub-issue PRs:
+- A: `/what-next` skill (~medium, workspace repo)
+- B: merge-time reminder (~small, workspace repo)
