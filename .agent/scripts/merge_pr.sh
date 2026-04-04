@@ -16,11 +16,10 @@
 #
 # Steps:
 #   1. Merge the PR (--merge strategy)
-#   2. cd to workspace root (required for worktree removal)
-#   3. Remove the worktree (fails safely if uncommitted changes exist)
-#   4. Delete local and remote branches
-#   5. Pull main to sync (workspace and project repos)
-#   6. Roadmap reminder (soft check if merged issue relates to a roadmap item)
+#   2. Remove the worktree (cd to root first; fails safely if uncommitted changes)
+#   3. Delete local and remote branches
+#   4. Pull main to sync (workspace and project repos)
+#   5. Roadmap reminder (soft check if merged issue relates to a roadmap item)
 #
 # Exit codes:
 #   0 — success
