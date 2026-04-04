@@ -298,12 +298,6 @@ else
     # Build command string for tmux (tmux requires a single shell command string)
     INVOKE_CMD=$(build_invoke_cmd "$TARGET_AGENT" "$AGENT_BIN" "$PROMPT_FILE" "$FINDINGS_FILE")
 
-    # Initialize findings file
-    cat > "$FINDINGS_FILE" << FINDINGS_EOF
-<!-- ${TARGET_AGENT} adversarial review findings — this file is populated by ${TARGET_AGENT} CLI -->
-<!-- Waiting for review to complete... -->
-FINDINGS_EOF
-
     # Kill existing session if present
     if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
         tmux kill-session -t "$SESSION_NAME"

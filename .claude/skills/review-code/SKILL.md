@@ -228,11 +228,11 @@ look for.
 
 Determine the calling agent's framework and dispatch all available non-caller
 agents. Use `$AGENT_FRAMEWORK` if set; fall back to
-`source .agent/scripts/detect_cli_env.sh` if unset or "unknown". Normalize
+`source .agent/scripts/detect_cli_env.sh || true` if unset or "unknown". Normalize
 the framework key (lowercase) and apply explicit aliases to match the agent
 keys used by the script: `claude-code` → `claude`, `gemini-cli` → `gemini`,
-`codex-cli` → `codex`. The canonical keys are: `gemini`, `codex`, `claude`,
-`copilot`.
+`codex-cli` → `codex`, `copilot-cli` → `copilot`. The canonical keys are:
+`gemini`, `codex`, `claude`, `copilot`.
 
 For each non-caller agent, launch the cross-model review script:
 
