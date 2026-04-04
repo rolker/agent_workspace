@@ -32,7 +32,10 @@ local file paths, or issue numbers.
 
 ### 1. Read the plan
 
-Determine the input form and locate the plan file:
+Determine the input form and locate the plan file. Detection heuristic:
+- Starts with `--issue` → issue number form
+- Contains `/` or ends with `.md` → file path form
+- Otherwise → PR number form
 
 **PR number** (e.g., `/review-plan 127`):
 
@@ -190,6 +193,17 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 ### Recommended Actions
 
 - [ ] <specific action items before implementation begins>
+```
+
+**PR-less format** — when reviewing via `--issue` or file path (no PR exists),
+replace the PR header:
+
+```markdown
+## Plan Review: #<issue> — <title>
+
+**Issue**: #<issue> — <issue-title>
+**Plan file**: `.agent/work-plans/issue-<issue>/plan.md`
+**Branch**: `<branch-name>` (if in a worktree, otherwise omit)
 ```
 
 If no findings, output:
