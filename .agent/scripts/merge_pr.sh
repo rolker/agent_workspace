@@ -20,6 +20,7 @@
 #   3. Remove the worktree (fails safely if uncommitted changes exist)
 #   4. Delete local and remote branches
 #   5. Pull main to sync (workspace and project repos)
+#   6. Roadmap reminder (soft check if merged issue relates to a roadmap item)
 #
 # Exit codes:
 #   0 — success
@@ -164,6 +165,37 @@ echo "  ✅ Workspace synced"
 if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -d "$ROOT_DIR/project/.git" ]]; then
     echo "  Syncing project..."
     git -C "$ROOT_DIR/project" pull --ff-only 2>/dev/null && echo "  ✅ Project synced" || true
+fi
+
+# --- Step 5: Roadmap reminder ---
+# Soft check: does the merged issue relate to a roadmap item?
+ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" "${GH_REPO_ARGS[@]}" --json title --jq '.title' 2>/dev/null || echo "")
+if [[ -n "$ISSUE_TITLE" ]]; then
+    ROADMAP_MATCHES=()
+    # Extract significant keywords (3+ chars, skip common words)
+    KEYWORDS=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{3,}' \
+        | grep -vxE '(the|and|for|with|from|that|this|into|when|also|not|but|are|was|has|have|will|can|its|all|new|add|use|get|set|fix|run)' \
+        | head -5)
+    if [[ -n "$KEYWORDS" ]]; then
+        for roadmap in "$ROOT_DIR/docs/ROADMAP.md" "$ROOT_DIR/project/ROADMAP.md"; do
+            [[ -f "$roadmap" ]] || continue
+            roadmap_rel="${roadmap#"$ROOT_DIR/"}"
+            while IFS= read -r keyword; do
+                if grep -qi "$keyword" "$roadmap" 2>/dev/null; then
+                    ROADMAP_MATCHES+=("$roadmap_rel")
+                    break
+                fi
+            done <<< "$KEYWORDS"
+        done
+    fi
+    if [[ ${#ROADMAP_MATCHES[@]} -gt 0 ]]; then
+        echo ""
+        echo "📋 Roadmap reminder: issue #${ISSUE_NUM} (\"${ISSUE_TITLE}\") may relate to:"
+        for match in "${ROADMAP_MATCHES[@]}"; do
+            echo "   - $match"
+        done
+        echo "   Consider updating the roadmap if this completes a tracked item."
+    fi
 fi
 
 echo ""
