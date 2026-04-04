@@ -68,7 +68,8 @@ columns without `Source`). Find the `Item`, `Issue`, and `Status` columns
 by matching header names, not by column position.
 
 Extract: `{section, item, issue_ref, status}` where status is the value in
-the `Status` column.
+the `Status` column. Treat an empty `Issue` cell or an em dash (`—`) as
+"no issue" — only actual `#<N>` references count as issue refs.
 
 **Sections to skip**: `Decided Against` (rejected items) and `To Consider`
 (unvetted inspiration-tracker findings, bullet-point format, not actionable
@@ -79,8 +80,8 @@ roadmap entries). Only parse sections that contain checklist or table items.
 Resolve the `<owner/repo>` slug for each repo:
 
 ```bash
-# Workspace repo
-WS_REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner')
+# Workspace repo (use git remote from workspace root, not gh repo view which depends on CWD)
+WS_REPO=$(git remote get-url origin 2>/dev/null | sed -nE 's|.*github\.com[:/](.+)(\.git)?$|\1|p')
 
 # Project repo (if project/ has its own .git)
 PJ_REPO=$(git -C project remote get-url origin 2>/dev/null | sed -nE 's|.*github\.com[:/](.+)(\.git)?$|\1|p')
