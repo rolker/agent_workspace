@@ -196,8 +196,10 @@ Resolve the linked issue number from the PR (same as step 1's branch-name
 extraction). Determine which repo owns the linked issue and check
 `.agent/work-plans/issue-<issue>/progress.md` in the owning repo's worktree
 first, falling back to the current worktree. If progress.md does not exist
-in either location, create it in the current worktree with frontmatter (use
-the issue title fetched via `gh issue view <issue> --json title --jq '.title'`):
+in either location, create it in the owning repo's worktree (or the current
+worktree if no owning worktree exists) with frontmatter. Fetch the issue
+title from the correct repo via
+`gh issue view <issue> --repo <owner/repo> --json title --jq '.title'`:
 
 ```yaml
 ---
