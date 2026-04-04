@@ -205,6 +205,17 @@ gh pr view <N> --json url --jq '.url'
 gh repo view --json url --jq '.url'
 ```
 
+### Repo Targeting in Scratchpad Clones
+
+The `gh` CLI resolves the target repo from the current directory's git remote.
+Inside scratchpad clones (`.agent/scratchpad/inspiration/<name>/` etc.), this
+targets the cloned external repo — not the workspace or project repo.
+
+When running `gh` commands that target a repo (`issue create`, `pr create`,
+`issue comment`, etc.) from any non-worktree directory, always pass
+`-R <owner/repo>` explicitly. `gh_create_issue.sh` enforces this with a
+safeguard that aborts if the detected repo doesn't match workspace or project.
+
 ### Merging PRs from Worktrees
 
 Never use `gh pr merge --delete-branch` from a worktree — `gh` tries to

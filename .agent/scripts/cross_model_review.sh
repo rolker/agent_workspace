@@ -145,6 +145,13 @@ if ! command -v gh &>/dev/null; then
     exit 1
 fi
 
+# Resolve repo slug for explicit -R targeting (prevents misrouting in nested repos)
+GH_REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//' || echo "")
+GH_REPO_ARGS=()
+if [[ -n "$GH_REPO_SLUG" && "$GH_REPO_SLUG" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+    GH_REPO_ARGS=("-R" "$GH_REPO_SLUG")
+fi
+
 # Determine execution mode
 USE_SYNC=false
 if [[ "$FORCE_SYNC" == true ]]; then
@@ -185,7 +192,7 @@ fi
 
 # --- Resolve issue number from PR ---
 ISSUE_NUMBER=""
-PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body' 2>/dev/null || echo "")
+PR_BODY=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json body --jq '.body' 2>/dev/null || echo "")
 if [[ -n "$PR_BODY" ]]; then
     # Look for "Closes #N", "Fixes #N", or "Resolves #N" first (portable, no PCRE)
     ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | sed -nE 's/.*(Closes|Fixes|Resolves)[[:space:]]+#([0-9]+).*/\2/p' | head -n1)
@@ -209,8 +216,8 @@ FINDINGS_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-findings.md"
 SESSION_NAME="review-${TARGET_AGENT}-${ISSUE_NUMBER}"
 
 # --- Get PR metadata ---
-PR_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq '.title' 2>/dev/null || echo "PR #${PR_NUMBER}")
-PR_URL=$(gh pr view "$PR_NUMBER" --json url --jq '.url' 2>/dev/null || echo "")
+PR_TITLE=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json title --jq '.title' 2>/dev/null || echo "PR #${PR_NUMBER}")
+PR_URL=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
 
 # --- Write prompt ---
 # Use a quoted heredoc for the static header to prevent shell expansion,
@@ -244,7 +251,7 @@ printf '**Title**: %s\n**URL**: %s\n**PR Number**: #%s\n\n' \
 
 # Stream diff directly into the prompt file
 printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
-if ! gh pr diff "$PR_NUMBER" >> "$PROMPT_FILE" 2>/dev/null; then
+if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" >> "$PROMPT_FILE" 2>/dev/null; then
     echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
     exit 3
 fi

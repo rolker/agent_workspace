@@ -20,7 +20,7 @@
 # Exit codes:
 #   0 - Success
 #   1 - Invalid label detected
-#   2 - GitHub CLI error
+#   2 - Invalid arguments (bad label, missing -R value, or repo mismatch)
 #   3 - Missing dependencies
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
@@ -51,15 +51,29 @@ if ! command -v jq &> /dev/null; then
     exit 3
 fi
 
-# Parse command line arguments to extract labels
+# Parse command line arguments to extract labels and -R flag
 LABELS=()
+EXPLICIT_REPO=""
 
 # Preserve original arguments for passing to gh
 ORIGINAL_ARGS=("$@")
 
-# Single pass to extract labels
+# Single pass to extract labels and -R flag
 while [ $# -gt 0 ]; do
     case "$1" in
+        -R|--repo)
+            if [ -n "${2:-}" ]; then
+                EXPLICIT_REPO="$2"
+                shift 2
+            else
+                echo "❌ Error: -R/--repo requires a value (owner/repo)" >&2
+                exit 2
+            fi
+            ;;
+        --repo=*)
+            EXPLICIT_REPO="${1#*=}"
+            shift
+            ;;
         --label|-l)
             if [ -n "${2:-}" ]; then
                 LABELS+=("$2")
@@ -78,6 +92,56 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+
+# --- Repo-safety check ---
+# Prevent gh from targeting the wrong repo when running inside scratchpad
+# clones or other nested git repos (see issue #72).
+if [ -z "$EXPLICIT_REPO" ]; then
+    # Extract slug from current repo's remote
+    _CURRENT_REMOTE=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || echo "")
+    _CURRENT_SLUG=$(echo "$_CURRENT_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
+
+    # Extract workspace repo slug
+    _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    _WORKSPACE_ROOT="$(cd "$_SCRIPT_DIR/../.." && pwd)"
+    _WS_REMOTE=$(git -C "$_WORKSPACE_ROOT" remote get-url origin 2>/dev/null || echo "")
+    _WS_SLUG=$(echo "$_WS_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
+
+    # Extract project repo slug (if configured)
+    _PROJECT_SLUG=""
+    if [ -d "$_WORKSPACE_ROOT/project" ] && git -C "$_WORKSPACE_ROOT/project" rev-parse --is-inside-work-tree &>/dev/null; then
+        _PROJ_REMOTE=$(git -C "$_WORKSPACE_ROOT/project" remote get-url origin 2>/dev/null || echo "")
+        _PROJECT_SLUG=$(echo "$_PROJ_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
+    fi
+
+    # Validate slug format (owner/repo) before comparing — non-GitHub remotes
+    # (enterprise hosts, SSH aliases, GitLab) produce slugs that won't match.
+    # Skip the safety check rather than false-positive aborting.
+    _SLUG_PATTERN='^[^/[:space:]]+/[^/[:space:]]+$'
+
+    # Check if current repo matches workspace or project
+    _REPO_OK=false
+    if [ -n "$_CURRENT_SLUG" ] && [[ "$_CURRENT_SLUG" =~ $_SLUG_PATTERN ]]; then
+        if [ "$_CURRENT_SLUG" = "$_WS_SLUG" ]; then
+            _REPO_OK=true
+        elif [ -n "$_PROJECT_SLUG" ] && [ "$_CURRENT_SLUG" = "$_PROJECT_SLUG" ]; then
+            _REPO_OK=true
+        fi
+    else
+        # Slug is empty or not in owner/repo format — can't validate, allow through
+        _REPO_OK=true
+    fi
+
+    if [ "$_REPO_OK" = false ]; then
+        echo "❌ Error: gh would target '${_CURRENT_SLUG}', which is not the workspace or project repo." >&2
+        echo "   Workspace repo: ${_WS_SLUG:-<not detected>}" >&2
+        echo "   Project repo:   ${_PROJECT_SLUG:-<not configured>}" >&2
+        echo "" >&2
+        echo "   You are likely inside a scratchpad clone. Use -R to target the correct repo:" >&2
+        echo "   $0 -R ${_WS_SLUG:-owner/repo} [other args]" >&2
+        exit 2
+    fi
+fi
 
 # Auto-inject parent issue reference when $WORKTREE_ISSUE is set
 if [ -n "${WORKTREE_ISSUE:-}" ]; then
