@@ -192,14 +192,15 @@ Output a structured report:
 
 ### 7. Update progress.md
 
-Resolve the linked issue number from the PR body (same as step 5's issue
-resolution). Append an "External Review" step to
-`.agent/work-plans/issue-<issue>/progress.md`. If progress.md does not
-exist, create it with frontmatter first:
+Resolve the linked issue number from the PR (same as step 1's branch-name
+extraction). Determine which repo owns the linked issue and check
+`.agent/work-plans/issue-<issue>/progress.md` in the owning repo's worktree
+first, falling back to the current worktree. If progress.md does not exist
+in either location, create it in the current worktree with frontmatter (use
+the issue title fetched via `gh issue view <issue> --json title --jq '.title'`):
 
 ```yaml
 ---
-workflow: collaborative
 issue: <issue>
 ---
 
@@ -245,9 +246,9 @@ Commit progress.md after appending:
   issue, group them in the valid issues table.
 - **Governance alignment** — note when a comment aligns with or contradicts
   workspace principles or ADRs.
-- **No comments posted** — this skill does not post review comments, dismiss
-  reviews, or modify the PR. The only write side-effect is appending to
-  progress.md and committing it locally (step 7).
+- **No GitHub review actions** — this skill does not post review comments,
+  dismiss reviews, or modify the PR on GitHub. The only side-effect is
+  appending to progress.md and committing it (step 7).
 - **Plan-first workflow PRs** — In the plan-first workflow, a PR starts with a
   plan commit and later receives implementation commits. When triaging these PRs:
   - Comments on `.agent/work-plans/issue-*/plan.md` files are low priority —

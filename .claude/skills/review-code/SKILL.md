@@ -362,12 +362,15 @@ After outputting the report to the conversation, append a "Local Review"
 step to `progress.md` so findings persist across sessions.
 
 **Locate or create progress.md**: Use the issue number resolved in step 1.
-Check `.agent/work-plans/issue-<issue>/progress.md` in the current worktree.
-If it does not exist, create it with frontmatter:
+Determine which repo owns the linked issue (workspace repo for workspace
+issues, project repo for project issues). Check
+`.agent/work-plans/issue-<issue>/progress.md` in the owning repo's worktree
+first. If not found there, fall back to the current worktree. If it does not
+exist in either location, create it in the current worktree with frontmatter
+(use the issue title from step 1):
 
 ```yaml
 ---
-workflow: collaborative
 issue: <issue>
 ---
 

@@ -144,11 +144,10 @@ holds review artifacts (Gemini prompts/findings) alongside the plan:
 
 Before committing, append a "Plan" step entry to
 `.agent/work-plans/issue-<N>/progress.md`. If progress.md does not exist,
-create it with frontmatter first:
+create it with frontmatter (use the issue title from step 1):
 
 ```yaml
 ---
-workflow: collaborative
 issue: <N>
 ---
 
