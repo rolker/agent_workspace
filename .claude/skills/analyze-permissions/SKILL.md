@@ -36,8 +36,8 @@ allowlist, and produces a report with proposed additions grouped by safety tier.
 
 **Current settings**: Read `.claude/settings.json` from the repository root.
 Resolve the root with `git rev-parse --show-toplevel` (which returns the
-worktree root if inside one). For worktrees, the settings file is shared
-with the main tree via git, so the worktree copy is authoritative.
+worktree root if inside one). Each worktree checks out its own copy from
+the same committed content, so the worktree copy is authoritative.
 
 Extract the current `permissions.allow` and `permissions.deny` arrays.
 
@@ -119,7 +119,7 @@ Group uncovered patterns into tiers:
 - `git` read commands: `log`, `show`, `diff`, `status`, `branch --list`,
   `branch --show-current`, `branch -a`, `branch -v`, `remote -v`,
   `remote show`, `remote get-url`, `worktree list`, `rev-parse`, `ls-files`,
-  `describe`, `tag --list`, `stash list`
+  `describe`, `tag --list`, `stash list`, `fetch`, `pull --ff-only`
 - Note: bare `git branch`, `git remote`, and `git tag` (without read-only
   flags) can perform writes (`branch -d`, `remote add`, `tag <name>`).
   Classify these ambiguous forms as Tier 3 unless a read-only flag is present.
