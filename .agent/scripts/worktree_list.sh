@@ -240,7 +240,6 @@ _scan_project_worktrees() {
         # Check dirty status and count changed files
         local_status="clean"
         local_changed=0
-        local_porcelain
         local_porcelain="$(git -C "$proj_wt" status --porcelain 2>/dev/null || true)"
         if [ -n "$local_porcelain" ]; then
             local_status="dirty"
