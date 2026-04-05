@@ -23,15 +23,23 @@
       "Bash(git remote -v *)",
       "Bash(git remote -v)",
       "Bash(git remote show *)",
+      "Bash(git remote get-url *)",
+      "Bash(git fetch *)",
+      "Bash(git fetch)",
+      "Bash(git pull --ff-only *)",
+      "Bash(git pull --ff-only)",
+      "Bash(git rev-parse *)",
 
       "Bash(gh issue view *)",
       "Bash(gh issue list *)",
       "Bash(gh pr view *)",
       "Bash(gh pr list *)",
       "Bash(gh pr diff *)",
+      "Bash(gh pr checks *)",
       "Bash(gh repo view *)",
       "Bash(gh api repos/*/pulls/*/comments)",
       "Bash(gh api repos/*/pulls/*/reviews)",
+      "Bash(gh api repos/*/compare/*)",
 
       "Bash(source */.agent/scripts/set_git_identity_env.sh *)",
       "Bash(source */.agent/scripts/worktree_enter.sh *)",
@@ -42,6 +50,7 @@
       "Bash(.agent/scripts/dashboard.sh *)",
       "Bash(.agent/scripts/dashboard.sh)",
       "Bash(.agent/scripts/fetch_pr_reviews.sh *)",
+      "Bash(.agent/scripts/worktree_create.sh *)",
 
       "Bash(make dashboard *)",
       "Bash(make dashboard)",
@@ -49,17 +58,34 @@
       "Bash(make validate)",
       "Bash(make lint *)",
       "Bash(make lint)",
+      "Bash(make sync *)",
+      "Bash(make sync)",
+      "Bash(make generate-skills *)",
+      "Bash(make generate-skills)",
 
       "Bash(jq *)",
-      "Bash(shellcheck *)"
+      "Bash(shellcheck *)",
+      "Bash(git-bug version *)",
+      "Bash(git-bug version)",
+      "Bash(git-bug bug ls *)",
+      "Bash(git-bug bug ls)",
+      "Bash(git-bug bug show *)",
+      "Bash(git-bug user ls *)",
+      "Bash(git-bug user ls)",
+      "Bash(git-bug bridge list *)",
+      "Bash(git-bug bridge list)",
+      "Bash(git-bug --help *)",
+      "Bash(git-bug --help)"
     ],
     "deny": [
       "Bash(git push --force *)",
       "Bash(git push -f *)",
+      "Bash(git push --force-with-lease *)",
       "Bash(git reset --hard *)",
       "Bash(git checkout -- *)",
       "Bash(git clean *)",
-      "Bash(rm -rf *)"
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)"
     ]
   },
   "hooks": {
