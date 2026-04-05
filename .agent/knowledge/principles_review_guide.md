@@ -18,6 +18,7 @@ humans use it as a checklist.
 | Workspace vs. project separation | Workspace infra is project-agnostic; project content in project repos | Project-specific config leaking into workspace; workspace depending on a project |
 | Workspace improvements cascade to projects | New workflow pattern is portable; workspace is the reference implementation | Improvements locked to one repo; patterns that can't be adopted downstream |
 | Primary framework first, portability where free | Full use of active framework; rules naturally portable are expressed portably | Hobbling the primary tool for hypothetical frameworks; framework lock-in where avoidable |
+| The workspace serves the product | Infrastructure investment tied to concrete product acceleration; operational friction fixes justified by product impact | Sustained workspace-heavy PR ratio without product delivery; tooling that solves problems the product doesn't have; infrastructure built for its own sake |
 
 ## ADR Applicability
 

@@ -61,3 +61,12 @@ Design improvements to be portable across repos from the start.
 Use the full capabilities of the active framework (currently Claude Code). Where rules
 are naturally framework-agnostic — build commands, coding conventions, architecture —
 express them portably.
+
+## The workspace serves the product
+
+Infrastructure investment pays off when it makes the next product change faster, safer,
+or more reliable. When workspace work consistently outpaces product delivery, treat that
+as a signal — the tooling may be solving problems the product doesn't have, or solving
+them at a scale that isn't justified yet. Operational friction (reactive fixes,
+workarounds, repeated mistakes) is a valid input to workspace improvement, but the
+measure of success is product shipped, not infrastructure built.
