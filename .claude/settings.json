@@ -27,7 +27,6 @@
       "Bash(git fetch *)",
       "Bash(git pull --ff-only *)",
       "Bash(git pull --ff-only)",
-      "Bash(git add *)",
       "Bash(git rev-parse *)",
 
       "Bash(gh issue view *)",
@@ -51,7 +50,6 @@
       "Bash(.agent/scripts/dashboard.sh)",
       "Bash(.agent/scripts/fetch_pr_reviews.sh *)",
       "Bash(.agent/scripts/worktree_create.sh *)",
-      "Bash(.agent/scripts/worktree_remove.sh *)",
 
       "Bash(make dashboard *)",
       "Bash(make dashboard)",
@@ -78,10 +76,12 @@
     "deny": [
       "Bash(git push --force *)",
       "Bash(git push -f *)",
+      "Bash(git push --force-with-lease *)",
       "Bash(git reset --hard *)",
       "Bash(git checkout -- *)",
       "Bash(git clean *)",
-      "Bash(rm -rf *)"
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)"
     ]
   },
   "hooks": {

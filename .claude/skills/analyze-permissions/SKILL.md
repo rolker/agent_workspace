@@ -64,6 +64,14 @@ subcommand that would appear in an allowlist rule. Normalization rules:
 **Git/gh subcommand depth**: Use 2 tokens for git/gh (`git log`, `gh pr view`),
 1 token for everything else (`make`, `jq`, `shellcheck`).
 
+**Exception — `gh api`**: Use 3 tokens (`gh api <path-prefix>`) to preserve
+the endpoint path. Also check for write flags (`-X POST`, `-X PUT`,
+`-X PATCH`, `-X DELETE`, `-f`, `--field`, `--input`) — if any are present,
+classify the command as Tier 3 (write operation) regardless of the endpoint.
+Examples:
+- `gh api repos/owner/repo/compare/main...HEAD` -> `Bash(gh api repos/*/compare/*)` (Tier 1)
+- `gh api repos/owner/repo/issues -f title="..."` -> `Bash(gh api *)` (Tier 3, write detected)
+
 **Path-based commands** (scripts):
 - `/home/user/daddy_camp/.agent/scripts/dashboard.sh --quick` -> `Bash(.agent/scripts/dashboard.sh *)`
 - `.agent/scripts/worktree_create.sh --issue 42` -> `Bash(.agent/scripts/worktree_create.sh *)`
@@ -75,9 +83,11 @@ subcommand that would appear in an allowlist rule. Normalization rules:
 - `source /abs/path/.agent/scripts/foo.sh` -> `Bash(source .agent/scripts/foo.sh *)`
 
 **Compound commands** (pipes, `&&`, `;`):
-- Extract the **first command** in the pipeline/chain as the pattern.
-  Compound commands are harder to allowlist precisely — flag them separately
-  as "compound commands that may need manual review".
+- Extract **all commands** in the pipeline/chain. Normalize each independently.
+- Classify the compound at the tier of its **most dangerous component** — e.g.,
+  `echo foo && rm -rf /` is Tier 4 (destructive), not Tier 1 (read-only).
+- Flag compound commands separately as "compound commands that may need manual
+  review" since they can't be precisely allowlisted with a single pattern.
 
 **Commands to skip**:
 - `cd` (directory changes, not meaningful for allowlisting)
@@ -102,7 +112,8 @@ Group uncovered patterns into tiers:
 - `git` read commands: `log`, `show`, `diff`, `status`, `branch`, `remote`,
   `worktree list`, `rev-parse`, `ls-files`, `describe`, `tag`, `stash list`
 - `gh` read commands: `issue view`, `issue list`, `pr view`, `pr list`,
-  `pr diff`, `pr checks`, `repo view`, `api` (GET patterns)
+  `pr diff`, `pr checks`, `repo view`, `api` (only when no write flags
+  detected — see `gh api` exception in step 3)
 - Read-only tools: `jq`, `shellcheck`, `wc`, `which`, `ls`, `pwd`, `cat`,
   `head`, `tail`, `file`, `stat`
 
@@ -116,10 +127,11 @@ Group uncovered patterns into tiers:
 - `git add`, `git commit`, `git push` (without force), `git stash`,
   `git checkout`, `git switch`, `git merge`, `git rebase`
 - `gh pr create`, `gh pr merge`, `gh issue create`, `gh issue comment`
+- `gh api` with write flags (`-X POST/PUT/PATCH/DELETE`, `-f`, `--field`)
 - `git-bug` write commands: `add`, `comment`, `label`, `status`
 
 **Tier 4 — Destructive / dangerous** (suggest for deny list):
-- `git push --force`, `git push -f`
+- `git push --force`, `git push -f`, `git push --force-with-lease`
 - `git reset --hard`
 - `git clean`
 - `rm -rf`, `rm -r`
