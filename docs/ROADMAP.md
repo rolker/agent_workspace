@@ -79,16 +79,22 @@ would flag, PRs pass on first try.
 | Item | Issue | Status | Source | Notes |
 |------|-------|--------|--------|-------|
 | Adaptive review depth | #47 | done | gstack | Scale effort to change risk; cross-model via Gemini CLI (PR #76) |
-| Cognitive review patterns | #54 | planned | gstack | Reusable checklists for common mistake types |
-| Fix-first review workflow | #52 | planned | gstack | Fix issues during review, don't just report |
-| Spec compliance vs quality split | #27 | planned | superpowers | Separate "does it meet spec" from "is it good" |
-| Adversarial self-review | #55 | planned | gstack | Agent challenges its own work |
+| Cognitive review patterns | #54 | done | gstack | Reusable checklists for common mistake types |
+| Fix-first review workflow | #52 | done | gstack | Fix issues during review, don't just report |
+| Spec compliance vs quality split | #27 | done | superpowers | Separate "does it meet spec" from "is it good" |
+| Adversarial self-review | #55 | done | gstack | Agent challenges its own work |
 | Review summary in plan files | #83 | done | brainstorm | Append review findings to plan file; lighter alternative to JSONL |
-| JSONL review tracking | #51 | deferred | gstack | Machine-queryable layer; reconsider if plan-file approach (#83) isn't sufficient |
+| JSONL review tracking | #51 | done | gstack | Machine-queryable layer |
 | Plan status tracking in reviews | #49 | subsumed by #88 | gstack | Reviews update progress.md instead of tracking in plan file |
-| Continual learning from reviews | #42 | planned | microsoft/skills | Misses feed back into local review patterns |
+| Continual learning from reviews | #42 | done | microsoft/skills | Misses feed back into local review patterns |
 | JS/web static analysis profile | #81 | done | review session | JS/TS added to linter tables (PR #94); no-match fallback message added (PR #100) |
-| Copilot review loop automation | #69 | planned | brainstorm | Autonomous push/review/fix cycle (after local review is solid) |
+| Copilot review loop automation | #69 | done | brainstorm | Autonomous push/review/fix cycle |
+| Anti-sycophancy patterns | #48 | done | gstack | Banned phrases, worked pushback examples; general patterns applied to AGENTS.md |
+| AI slop detection in design review | #61 | done | gstack | Check for generic AI patterns (hero sections, card grids, stock imagery) |
+| Diff-aware test targeting | #53 | done | gstack | Map git diff to affected test targets, focus QA on what changed |
+| Review-branch skill | #3 | planned | — | Local pre-push self-review |
+| Flag script/skill changes without tests | #136 | planned | — | review-code enhancement |
+| Verification-before-completion skill | #29 | planned | superpowers | Observable verification before marking tasks done |
 
 ## Priority: Reduce Agent Coordination Overhead
 
@@ -97,17 +103,23 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 
 | Item | Issue | Status | Source | Notes |
 |------|-------|--------|--------|-------|
-| Web dashboard | #64 | planned | ros2_agent_workspace | Anchor for multi-agent visibility; inspired by upstream #398 |
-| Agent health monitoring | #34 | planned | gastown | Dashboard surfaces agent status |
+| Web dashboard | #64 | done | ros2_agent_workspace | Anchor for multi-agent visibility; inspired by upstream #398 |
+| Agent health monitoring | #34 | done | gastown | Dashboard surfaces agent status |
 | Lifecycle progress tracking | #88 | done | brainstorm | progress.md + workflow templates by involvement level; consolidates #33, #36, #49 |
 | Persistent work state | #33 | subsumed by #88 | gastown | Survives crashes; progress.md is the persistent state |
 | Session continuity | #36 | subsumed by #88 | gastown + brainstorm | progress.md gives new sessions full context |
-| Inter-agent messaging | #35 | planned | gastown | Structured communication between agents |
-| Structured agent handoffs | #40 | planned | microsoft/skills | Tool scoping per agent role |
-| Permission prompt reduction | — | in progress | brainstorm | #1 friction point; tool-use logging hook deployed, analyze then build targeted allowlist |
+| Inter-agent messaging | #35 | done | gastown | Structured communication between agents |
+| Structured agent handoffs | #40 | done | microsoft/skills | Tool scoping per agent role |
+| Permission prompt reduction | #110 | planned | brainstorm | Share workspace-level rules and automate analysis; #1 friction point |
 | Morning status / standup skill | — | planned | brainstorm | Gather PR, review, issue, worktree state; suggest prioritized work plan (scenario 4) |
 | Post-PR merge/cleanup/sync | #38 | done | session friction | `merge_pr.sh` + `make merge-pr PR=<N>` automates merge, worktree removal, branch cleanup, and sync |
-| Crash recovery skill | #70 | planned | brainstorm | Session-specific scratchpad subdirs |
+| Crash recovery skill | #70 | done | brainstorm | Session-specific scratchpad subdirs |
+| Agent friction self-reporting | #58 | done | gstack | Agent rates experience 0-10 after workflow steps, files field reports when not 10 |
+| tmux session strategy | #65 | done | ros2_agent_workspace | Named sessions for agents and applications, dashboard integration |
+| Enhanced start-task with tmux | #66 | done | ros2_agent_workspace | Worktree + tmux session + agent launch in one command |
+| Workflow modes | #67 | done | ros2_agent_workspace | Autonomous / collaborative / pair per-session, with permission implications |
+| Port tmux session management | #2 | planned | ros2_agent_workspace | Bring tmux management from upstream |
+| Draft zones | #87 | planned | — | Human-edited paths with agent-driven PR incorporation |
 
 ## Priority: Improve How Agents Think
 
@@ -115,9 +127,12 @@ How agents approach problems at different levels of abstraction.
 
 | Item | Issue | Status | Source | Notes |
 |------|-------|--------|--------|-------|
-| Brainstorm multi-level modes | #71 | planned | gstack | Vision/strategy/architecture/design with auto-detection. Inspired by gstack's office-hours -> CEO review -> eng review -> design review hierarchy, adapted as modes within a single skill. |
-| Success indicators in AGENTS.md | #43 | planned | microsoft/skills | Observable behaviors confirming principles work |
-| Systematic debugging | #31 | planned | superpowers + gstack | "No fixes without root cause" discipline. superpowers' 4-phase investigation + gstack's "Iron Law: no fixes without root cause" |
+| Brainstorm multi-level modes | #71 | done | gstack | Vision/strategy/architecture/design with auto-detection |
+| Success indicators in AGENTS.md | #43 | done | microsoft/skills | Observable behaviors confirming principles work |
+| Systematic debugging | #31 | done | superpowers + gstack | "No fixes without root cause" discipline |
+| Explicit scope modes for planning | #56 | done | gstack | Four modes: expansion, selective expansion, hold, reduction |
+| Search-before-building step | #50 | done | gstack | Search for runtime built-ins and best practices before recommending infrastructure |
+| Completeness principle | #59 | done | gstack | Prefer full implementation when AI compresses effort 10-100x |
 
 ## Priority: Skill Infrastructure
 
@@ -125,11 +140,15 @@ Foundation pieces that make the skill library scalable and reliable.
 
 | Item | Issue | Status | Source | Notes |
 |------|-------|--------|--------|-------|
-| Progressive skill disclosure | #39 | planned | microsoft/skills | Three-level loading (metadata/body/references) to reduce context pressure; prerequisite for skill chaining |
-| Skill chaining / proactive suggestions | #60 | planned | gstack + superpowers | Skills suggest next skill; gstack's `benefits-from` + superpowers' auto-triggering (#26) |
-| Headless integration tests | #28 | planned | superpowers | Run skills in headless mode, parse JSONL transcripts |
+| Progressive skill disclosure | #39 | done | microsoft/skills | Three-level loading (metadata/body/references) to reduce context pressure |
+| Skill chaining / proactive suggestions | #60 | done | gstack + superpowers | Skills suggest next skill; gstack's `benefits-from` + superpowers' auto-triggering |
+| Headless integration tests | #28 | done | superpowers | Run skills in headless mode, parse JSONL transcripts |
 | YAML scenario-based skill testing | #41 | planned | microsoft/skills | Declarative YAML scenarios; complementary approach to #28 |
-| Prevent gh CLI wrong-repo targeting | #72 | planned | brainstorm | Bug fix: always use -R, add safeguard to gh_create_issue.sh |
+| Prevent gh CLI wrong-repo targeting | #72 | done | brainstorm | Always use -R, added safeguard to gh_create_issue.sh |
+| PreToolUse safety hooks | #57 | done | gstack | Three-tier hierarchy: careful (warn), freeze (block edits outside path), guard (both) |
+| Auto-triggering skills | #26 | planned | superpowers | Trigger skills based on context |
+| Design skill | #74 | planned | — | Design skill for the workspace |
+| Visual companion UI | #30 | planned | superpowers | Interactive skills with visual companion |
 
 ## Unphased
 
@@ -137,9 +156,11 @@ Small fixes that can be done anytime.
 
 | Item | Issue | Status | Notes |
 |------|-------|--------|-------|
-| Research skill worktree fix | #45 | planned | Fix project worktree path + staleness tracking |
+| Research skill worktree fix | #45 | done | Fix project worktree path + staleness tracking |
 | Gemini CLI PATH resilience | #82 | done | Fallback path detection added (PR #99) |
 | Stale venv/hook detection after rename | #13 | done | `make validate` detects, `make repair` fixes (PR #101) |
+| worktree_list.sh stray local_porcelain | #134 | planned | Bug: command-not-found error |
+| cross_model_review.sh outside worktree | #133 | planned | Bug: fails when invoked outside target repo worktree |
 
 ## Decided Against
 
@@ -150,25 +171,6 @@ Items considered and rejected, with reasons.
 ## To Consider
 
 New findings from inspiration tracker, not yet discussed in a brainstorm session.
-
-### Review & Quality Patterns
-- **Anti-sycophancy patterns** (#48) — Banned phrases, worked pushback examples for brainstorm/review skills. General patterns applied to AGENTS.md; skill-specific patterns (gated escape hatch) still to consider. Source: gstack
-- **Explicit scope modes for planning** (#56) — Four modes: expansion, selective expansion, hold, reduction. Source: gstack plan-ceo-review
-- **AI slop detection in design review** (#61) — Check for generic AI patterns (hero sections, card grids, stock imagery). Source: gstack design-review
-- **Diff-aware test targeting** (#53) — Map git diff to affected test targets, focus QA on what changed. Source: gstack
-
-### Agent Discipline & Self-Improvement
-- **Search-before-building step** (#50) — Search for runtime built-ins and best practices before recommending infrastructure. Three-layer knowledge framework. Source: gstack
-- **Completeness principle** (#59) — Prefer full implementation when AI compresses effort 10-100x. "Lake vs ocean" distinction. Source: gstack
-- **Agent friction self-reporting** (#58) — Agent rates experience 0-10 after workflow steps, files field reports when not 10. Source: gstack
-
-### Safety & Guardrails
-- **PreToolUse safety hooks** (#57) — Three-tier hierarchy: careful (warn), freeze (block edits outside path), guard (both). Source: gstack
-
-### Multi-Agent Infrastructure
-- **tmux session strategy** (#65) — Named sessions for agents (`agent-issue-N`) and applications, dashboard integration. Source: ros2_agent_workspace
-- **Enhanced start-task with tmux** (#66) — Worktree + tmux session + agent launch in one command. Source: ros2_agent_workspace
-- **Workflow modes** (#67) — Autonomous / collaborative / pair per-session, with permission implications. Source: ros2_agent_workspace
 
 ### Cross-Workspace Analysis
 - **Cross-project retrospective** — Analyze git history, PR reviews, and issue patterns across workspaces to surface recurring friction and coordination issues. Start with fork-type sources (ros2_agent_workspace) where history is deeper. Source: gstack /retro global
