@@ -84,7 +84,7 @@ would flag, PRs pass on first try.
 | Spec compliance vs quality split | #27 | done | superpowers | Separate "does it meet spec" from "is it good" |
 | Adversarial self-review | #55 | done | gstack | Agent challenges its own work |
 | Review summary in plan files | #83 | done | brainstorm | Append review findings to plan file; lighter alternative to JSONL |
-| JSONL review tracking | #51 | done | gstack | Machine-queryable layer |
+| JSONL review tracking | #51 | deferred | gstack | Machine-queryable layer; reconsider if plan-file approach (#83) isn't sufficient |
 | Plan status tracking in reviews | #49 | subsumed by #88 | gstack | Reviews update progress.md instead of tracking in plan file |
 | Continual learning from reviews | #42 | done | microsoft/skills | Misses feed back into local review patterns |
 | JS/web static analysis profile | #81 | done | review session | JS/TS added to linter tables (PR #94); no-match fallback message added (PR #100) |
