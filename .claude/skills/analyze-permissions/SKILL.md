@@ -34,9 +34,10 @@ allowlist, and produces a report with proposed additions grouped by safety tier.
 - If the file doesn't exist or is empty, report "No tool-use log found.
   Enable the PreToolUse logging hook first." and stop.
 
-**Current settings**: Read `.claude/settings.json` from the workspace root
-(not the worktree — use `$WORKTREE_MAIN_TREE/.claude/settings.json` if in a
-worktree, otherwise `.claude/settings.json`).
+**Current settings**: Read `.claude/settings.json` from the repository root.
+Resolve the root with `git rev-parse --show-toplevel` (which returns the
+worktree root if inside one). For worktrees, the settings file is shared
+with the main tree via git, so the worktree copy is authoritative.
 
 Extract the current `permissions.allow` and `permissions.deny` arrays.
 
@@ -44,9 +45,14 @@ Extract the current `permissions.allow` and `permissions.deny` arrays.
 
 Filter log entries where `tool == "Bash"`. For each entry:
 
-1. Parse `input_summary` as JSON and extract the `command` field
-2. If `input_summary` is truncated (ends abruptly at 200 chars), note it as
-   partial but still extract the command prefix
+1. Attempt to parse `input_summary` as JSON and extract the `command` field
+2. If JSON parsing fails (e.g., because `input_summary` was truncated at 200
+   chars by the logging hook), fall back to a tolerant heuristic: look for
+   `"command":"` in the raw text and extract the value up to the next unescaped
+   quote or end of string
+3. If the extracted command appears truncated (no closing quote, or string
+   length is near 200 chars), note it as partial and classify it conservatively
+   (one tier more restrictive than the pattern would normally receive)
 
 Apply `--since` filter if specified: compare `ts` field against the cutoff date.
 
@@ -61,8 +67,9 @@ subcommand that would appear in an allowlist rule. Normalization rules:
 - `make dashboard` -> `Bash(make dashboard *)`
 - `jq '.foo' file.json` -> `Bash(jq *)`
 
-**Git/gh subcommand depth**: Use 2 tokens for git/gh (`git log`, `gh pr view`),
-1 token for everything else (`make`, `jq`, `shellcheck`).
+**Subcommand depth**: Use 2 tokens for `git`/`gh` subcommands (`git log`,
+`gh pr view`) and for `make` targets (`make dashboard`, `make sync`).
+Use 1 token for other commands (`jq`, `shellcheck`).
 
 **Exception — `gh api`**: Use 3 tokens (`gh api <path-prefix>`) to preserve
 the endpoint path. Also check for write flags (`-X POST`, `-X PUT`,
@@ -109,8 +116,13 @@ as "denied (correct)" rather than proposing to allow it.
 Group uncovered patterns into tiers:
 
 **Tier 1 — Read-only** (safe to auto-allow):
-- `git` read commands: `log`, `show`, `diff`, `status`, `branch`, `remote`,
-  `worktree list`, `rev-parse`, `ls-files`, `describe`, `tag`, `stash list`
+- `git` read commands: `log`, `show`, `diff`, `status`, `branch --list`,
+  `branch --show-current`, `branch -a`, `branch -v`, `remote -v`,
+  `remote show`, `remote get-url`, `worktree list`, `rev-parse`, `ls-files`,
+  `describe`, `tag --list`, `stash list`
+- Note: bare `git branch`, `git remote`, and `git tag` (without read-only
+  flags) can perform writes (`branch -d`, `remote add`, `tag <name>`).
+  Classify these ambiguous forms as Tier 3 unless a read-only flag is present.
 - `gh` read commands: `issue view`, `issue list`, `pr view`, `pr list`,
   `pr diff`, `pr checks`, `repo view`, `api` (only when no write flags
   detected — see `gh api` exception in step 3)

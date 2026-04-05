@@ -15,13 +15,28 @@ issue: 110
 **Must-fix**: 4 | **Suggestions**: 6
 
 ### Findings
-- [ ] (must-fix) `Bash(git add *)` auto-allowed but is Tier 3 write op — `.claude/settings.json:30`
-- [ ] (must-fix) `Bash(.agent/scripts/worktree_remove.sh *)` allows `--force` data-loss path — `.claude/settings.json:54`
-- [ ] (must-fix) `gh api` normalization collapses POST/DELETE into Tier 1 read-only — `SKILL.md:64`
-- [ ] (must-fix) Compound command extraction only checks first command — `SKILL.md:77`
-- [ ] (suggestion) Missing `git push --force-with-lease` in deny list — `.claude/settings.json`
-- [ ] (suggestion) Missing `rm -r *` in deny list — `.claude/settings.json`
-- [ ] (suggestion) `git-bug bridge *` includes write subcommands — `.claude/settings.json:73`
-- [ ] (suggestion) Truncated input_summary produces invalid JSON — `SKILL.md:47`
+- [x] (must-fix) `Bash(git add *)` auto-allowed but is Tier 3 write op — removed in `5809636`
+- [x] (must-fix) `Bash(.agent/scripts/worktree_remove.sh *)` allows `--force` data-loss path — removed in `5809636`
+- [x] (must-fix) `gh api` normalization collapses POST/DELETE into Tier 1 read-only — added write-flag heuristic in `5809636`
+- [x] (must-fix) Compound command extraction only checks first command — changed to most-dangerous-component in `5809636`
+- [x] (suggestion) Missing `git push --force-with-lease` in deny list — added in `5809636`
+- [x] (suggestion) Missing `rm -r *` in deny list — added in `5809636`
 - [ ] (suggestion) Path normalization misses scripts/ symlink — `SKILL.md:68`
 - [ ] (suggestion) Non-Claude adapter skill lists not updated — consequences gap
+
+## External Review
+**Status**: complete
+**When**: 2026-04-04 20:45
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #132 — 2 review(s), 7 valid, 3 false positives
+**CI**: all-pass
+
+### Actions
+- [x] Replace `$WORKTREE_MAIN_TREE` with `git rev-parse --show-toplevel`
+- [x] Update `make` normalization to use 2 tokens for `make <target>`
+- [x] Narrow Tier 1 git commands to read-only forms
+- [x] Add JSON parse fallback for truncated `input_summary`
+- [x] Add `Bash(git fetch)` no-args form to allowlist
+- [x] Narrow `git-bug` rules to read-only subcommands
+- [x] Update progress.md to reflect current findings
