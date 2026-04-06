@@ -238,10 +238,16 @@ For each non-caller agent, launch the cross-model review script:
 
 ```bash
 # Example: Claude is the caller, dispatch gemini, codex, and copilot
-.agent/scripts/cross_model_review.sh --pr <N> --agent gemini
-.agent/scripts/cross_model_review.sh --pr <N> --agent codex
-.agent/scripts/cross_model_review.sh --pr <N> --agent copilot
+# Use --repo when the PR is in a different repo than the current directory
+.agent/scripts/cross_model_review.sh --pr <N> --agent gemini --repo owner/repo
+.agent/scripts/cross_model_review.sh --pr <N> --agent codex --repo owner/repo
+.agent/scripts/cross_model_review.sh --pr <N> --agent copilot --repo owner/repo
 ```
+
+Pass `--repo <owner/repo>` when the PR lives in a different repo than the
+current working directory (e.g., reviewing a project PR from the workspace
+tree). Pass `--work-dir <path>` to place artifacts in a specific worktree
+instead of the current `git rev-parse --show-toplevel`.
 
 The script auto-detects the execution mode: tmux (background) when available,
 sync (blocking) when tmux is unavailable or in sandboxed environments. Use
