@@ -3,7 +3,7 @@
 # Merge a PR, remove its worktree, delete the branch, and sync main.
 #
 # Usage:
-#   .agent/scripts/merge_pr.sh --pr <N> [--type workspace|project]
+#   .agent/scripts/merge_pr.sh --pr <N> [--type workspace|project] [--no-roadmap-update]
 #
 # If --type is omitted, the script auto-detects by checking which worktree
 # exists for the issue. If neither or both exist, it asks.
@@ -15,11 +15,11 @@
 #     will be invalid after the script completes — cd to the workspace root
 #
 # Steps:
-#   1. Merge the PR (--merge strategy)
-#   2. Remove the worktree (cd to root first; fails safely if uncommitted changes)
-#   3. Delete local and remote branches
-#   4. Pull main to sync (workspace and project repos)
-#   5. Roadmap reminder (soft check if merged issue relates to a roadmap item)
+#   1. Roadmap update (commit + push to feature branch before merge)
+#   2. Merge the PR (--merge strategy)
+#   3. Remove the worktree (cd to root first; fails safely if uncommitted changes)
+#   4. Delete local and remote branches
+#   5. Pull main to sync (workspace and project repos)
 #
 # Exit codes:
 #   0 — success
@@ -32,6 +32,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PR_NUMBER=""
 WORKTREE_TYPE=""
+NO_ROADMAP_UPDATE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -41,16 +42,18 @@ while [[ $# -gt 0 ]]; do
         --type)
             [[ $# -lt 2 ]] && { echo "ERROR: Missing value for --type" >&2; exit 2; }
             WORKTREE_TYPE="$2"; shift 2 ;;
+        --no-roadmap-update)
+            NO_ROADMAP_UPDATE=true; shift ;;
         *)
             echo "ERROR: Unknown argument: $1" >&2
-            echo "Usage: $0 --pr <N> [--type workspace|project]" >&2
+            echo "Usage: $0 --pr <N> [--type workspace|project] [--no-roadmap-update]" >&2
             exit 2 ;;
     esac
 done
 
 if [[ -z "$PR_NUMBER" ]]; then
     echo "ERROR: --pr <N> is required" >&2
-    echo "Usage: $0 --pr <N> [--type workspace|project]" >&2
+    echo "Usage: $0 --pr <N> [--type workspace|project] [--no-roadmap-update]" >&2
     exit 2
 fi
 
@@ -124,7 +127,43 @@ echo "========================================"
 echo "Merging PR #${PR_NUMBER} (issue #${ISSUE_NUM})"
 echo "========================================"
 
-# --- Step 1: Merge ---
+# --- Step 1: Roadmap update (pre-merge) ---
+if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
+    echo "  Checking roadmap for #${ISSUE_NUM}..."
+    # Determine which repo's worktree has the feature branch checked out
+    if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -d "$ROOT_DIR/project/.git" ]]; then
+        _ROADMAP_REPO="$ROOT_DIR/project"
+    else
+        _ROADMAP_REPO="$ROOT_DIR"
+    fi
+
+    # Capture changed files from update script (stdout) while showing status (stderr-style echo)
+    _CHANGED_FILES=$("$SCRIPT_DIR/update_roadmap.sh" --issue "$ISSUE_NUM" --root "$ROOT_DIR" 2>&1 \
+        | tee /dev/stderr | grep "^/" || true)
+
+    if [[ -n "$_CHANGED_FILES" ]]; then
+        echo "  Committing roadmap update to feature branch..."
+        # Stage and commit only the changed roadmap files
+        while IFS= read -r changed_file; do
+            git -C "$_ROADMAP_REPO" add "$changed_file" 2>/dev/null || true
+        done <<< "$_CHANGED_FILES"
+
+        if git -C "$_ROADMAP_REPO" diff --cached --quiet 2>/dev/null; then
+            echo "  ⚠️  No staged changes — skipping roadmap commit"
+        else
+            git -C "$_ROADMAP_REPO" commit -m "Update roadmap: mark #${ISSUE_NUM} as done" 2>/dev/null \
+                && echo "  ✅ Roadmap updated" \
+                || echo "  ⚠️  Roadmap commit failed — proceeding with merge"
+            git -C "$_ROADMAP_REPO" push 2>/dev/null \
+                && echo "  ✅ Roadmap commit pushed" \
+                || echo "  ⚠️  Roadmap push failed — proceeding with merge"
+        fi
+    fi
+else
+    echo "  Roadmap update skipped (--no-roadmap-update)"
+fi
+
+# --- Step 2: Merge ---
 echo "  Merging PR..."
 resolve_gh_repo_args
 if ! gh pr merge "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --merge; then
@@ -133,7 +172,7 @@ if ! gh pr merge "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --merge; then
 fi
 echo "  ✅ PR merged"
 
-# --- Step 2: Remove worktree ---
+# --- Step 3: Remove worktree ---
 if [[ -n "$WORKTREE_TYPE" ]]; then
     echo "  Removing worktree..."
     # Must run from root, not from inside the worktree
@@ -145,7 +184,7 @@ if [[ -n "$WORKTREE_TYPE" ]]; then
     fi
 fi
 
-# --- Step 3: Delete branches ---
+# --- Step 4: Delete branches ---
 echo "  Cleaning up branches..."
 if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -d "$ROOT_DIR/project/.git" ]]; then
     BRANCH_REPO="$ROOT_DIR/project"
@@ -155,7 +194,7 @@ fi
 git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>/dev/null && echo "  ✅ Local branch deleted" || true
 git -C "$BRANCH_REPO" push origin --delete "$PR_BRANCH" 2>/dev/null && echo "  ✅ Remote branch deleted" || true
 
-# --- Step 4: Sync ---
+# --- Step 5: Sync ---
 echo "  Syncing main..."
 git pull --ff-only
 echo "  ✅ Workspace synced"
@@ -164,37 +203,6 @@ echo "  ✅ Workspace synced"
 if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -d "$ROOT_DIR/project/.git" ]]; then
     echo "  Syncing project..."
     git -C "$ROOT_DIR/project" pull --ff-only 2>/dev/null && echo "  ✅ Project synced" || true
-fi
-
-# --- Step 5: Roadmap reminder ---
-# Soft check: does the merged issue relate to a roadmap item?
-ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" "${GH_REPO_ARGS[@]}" --json title --jq '.title' 2>/dev/null || echo "")
-if [[ -n "$ISSUE_TITLE" ]]; then
-    ROADMAP_MATCHES=()
-    # Extract significant keywords (3+ chars, skip common words)
-    KEYWORDS=$(printf '%s\n' "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' | grep -oE '[a-z]{3,}' \
-        | grep -vxE '(the|and|for|with|from|that|this|into|when|also|not|but|are|was|has|have|will|can|its|all|new|add|use|get|set|fix|run)' \
-        | head -n 5 || true)
-    if [[ -n "$KEYWORDS" ]]; then
-        for roadmap in "$ROOT_DIR/docs/ROADMAP.md" "$ROOT_DIR/project/ROADMAP.md"; do
-            [[ -f "$roadmap" ]] || continue
-            roadmap_rel="${roadmap#"$ROOT_DIR/"}"
-            while IFS= read -r keyword; do
-                if grep -qiF "$keyword" "$roadmap" 2>/dev/null; then
-                    ROADMAP_MATCHES+=("$roadmap_rel")
-                    break
-                fi
-            done <<< "$KEYWORDS"
-        done
-    fi
-    if [[ ${#ROADMAP_MATCHES[@]} -gt 0 ]]; then
-        echo ""
-        echo "📋 Roadmap reminder: issue #${ISSUE_NUM} (\"${ISSUE_TITLE}\") may relate to:"
-        for match in "${ROADMAP_MATCHES[@]}"; do
-            echo "   - $match"
-        done
-        echo "   Consider updating the roadmap if this completes a tracked item."
-    fi
 fi
 
 echo ""
