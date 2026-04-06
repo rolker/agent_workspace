@@ -151,48 +151,36 @@ GH_EOF
 }
 
 # ---- Test: issue extraction from PR body ----
+# Helper: mirrors the extraction logic from cross_model_review.sh
+extract_issue() {
+    local body="$1"
+    local ref num
+    ref=$(printf '%s\n' "$body" | grep -ioE '(^|[^[:alnum:]_])(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 || true)
+    num=$(printf '%s\n' "$ref" | grep -oE '[0-9]+$' || true)
+    if [[ -z "$num" ]]; then
+        num=$(printf '%s\n' "$body" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+' || true)
+    fi
+    printf '%s' "${num:-}"
+}
+
 test_issue_extraction() {
     echo "TEST: issue number extraction"
 
-    # Test cases: input body text -> expected issue number
-    # We'll test the grep logic directly rather than running the full script
+    # Positive cases
+    assert_eq "Closes #42 -> 42" "42" "$(extract_issue 'Some text\nCloses #42\nMore text')"
+    assert_eq "fixes #123 -> 123" "123" "$(extract_issue 'fixes #123')"
+    assert_eq "Resolves owner/repo#77 -> 77" "77" "$(extract_issue 'Resolves owner/repo#77')"
+    assert_eq "CLOSES #5 -> 5" "5" "$(extract_issue 'CLOSES #5')"
 
-    # Case 1: "Closes #42"
-    local body="Some text\nCloses #42\nMore text"
-    local result
-    result=$(printf '%s\n' "$body" | grep -ioE '(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 | grep -oE '[0-9]+$')
-    assert_eq "Closes #42 -> 42" "42" "$result"
+    # Negative: substring false positives should NOT match as close keywords
+    assert_eq "encloses #42 -> fallback 42" "42" "$(extract_issue 'encloses #42')"
+    assert_eq "prefixes #7 -> fallback 7" "7" "$(extract_issue 'prefixes #7')"
+    # But with a real close keyword elsewhere, it should pick the right one
+    assert_eq "encloses #42, Closes #99 -> 99" "99" "$(extract_issue 'encloses #42 but Closes #99')"
 
-    # Case 2: "fixes #123" (lowercase)
-    body="fixes #123"
-    result=$(printf '%s\n' "$body" | grep -ioE '(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 | grep -oE '[0-9]+$')
-    assert_eq "fixes #123 -> 123" "123" "$result"
-
-    # Case 3: "Resolves owner/repo#77" (cross-repo)
-    body="Resolves owner/repo#77"
-    result=$(printf '%s\n' "$body" | grep -ioE '(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 | grep -oE '[0-9]+$')
-    assert_eq "Resolves owner/repo#77 -> 77" "77" "$result"
-
-    # Case 4: "CLOSES #5" (all caps)
-    body="CLOSES #5"
-    result=$(printf '%s\n' "$body" | grep -ioE '(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 | grep -oE '[0-9]+$')
-    assert_eq "CLOSES #5 -> 5" "5" "$result"
-
-    # Case 5: No close keyword, but has "#10" -> fallback
-    body="Related to #10 and #20"
-    result=$(printf '%s\n' "$body" | grep -ioE '(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 | grep -oE '[0-9]+$' || true)
-    if [[ -z "$result" ]]; then
-        result=$(printf '%s\n' "$body" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+')
-    fi
-    assert_eq "Fallback #10 -> 10" "10" "$result"
-
-    # Case 6: No issue reference at all -> empty (caller uses PR number)
-    body="No issue reference here"
-    result=$(printf '%s\n' "$body" | grep -ioE '(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 | grep -oE '[0-9]+$' || true)
-    if [[ -z "$result" ]]; then
-        result=$(printf '%s\n' "$body" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+' || true)
-    fi
-    assert_eq "No issue ref -> empty" "" "${result:-}"
+    # Fallback cases
+    assert_eq "Fallback #10 -> 10" "10" "$(extract_issue 'Related to #10 and #20')"
+    assert_eq "No issue ref -> empty" "" "$(extract_issue 'No issue reference here')"
 }
 
 # ---- Test: --work-dir controls artifact placement ----

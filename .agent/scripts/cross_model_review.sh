@@ -228,8 +228,10 @@ ISSUE_NUMBER=""
 PR_BODY=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json body --jq '.body' 2>/dev/null || echo "")
 if [[ -n "$PR_BODY" ]]; then
     # Look for GitHub close keywords (case-insensitive): Closes #N, Fixes #N, Resolves #N
+    # Requires word boundary before keyword to avoid "encloses", "prefixes", etc.
     # Also handles cross-repo form: Closes owner/repo#N (extracts just N)
-    ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | grep -ioE '(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 | grep -oE '[0-9]+$')
+    ISSUE_REF=$(printf '%s\n' "$PR_BODY" | grep -ioE '(^|[^[:alnum:]_])(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 || true)
+    ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_REF" | grep -oE '[0-9]+$' || true)
     if [[ -z "$ISSUE_NUMBER" ]]; then
         # Fallback: first standalone #N (not part of a URL path or hex color)
         ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+')
@@ -244,6 +246,8 @@ fi
 
 # --- Set up artifact directory (absolute paths for tmux session) ---
 if [[ -n "$EXPLICIT_WORK_DIR" ]]; then
+    # Resolve to absolute path so tmux sessions find the directory
+    EXPLICIT_WORK_DIR=$(cd "$EXPLICIT_WORK_DIR" && pwd)
     WORK_PLANS_DIR="${EXPLICIT_WORK_DIR}/.agent/work-plans/issue-${ISSUE_NUMBER}"
 else
     WORK_PLANS_DIR="$(git rev-parse --show-toplevel)/.agent/work-plans/issue-${ISSUE_NUMBER}"

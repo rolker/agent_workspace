@@ -45,3 +45,16 @@ All four fixes applied to `cross_model_review.sh`. Updated `review-code` SKILL.m
 ### Actions
 - [x] Move --repo slug validation before gh dependency check (deterministic exit codes)
 - [x] Make test_invalid_repo_slug hermetic with setup/mock PATH
+
+## External Review (round 3)
+**Status**: complete
+**When**: 2026-04-05 21:45
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #145 — 3 review(s), 3 valid (Copilot round 3), 4 stale (already addressed)
+**CI**: all-pass
+
+### Actions
+- [x] Add word boundary to close keyword regex (prevents "encloses"/"prefixes" false matches)
+- [x] Resolve --work-dir to absolute path via cd/pwd
+- [x] Add substring false-positive test cases (19 tests total)
