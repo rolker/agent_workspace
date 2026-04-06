@@ -49,3 +49,16 @@ Major plan revision after discovering:
 - [ ] (suggestion) issue_list_open uses fragile $? pattern vs idiomatic if-assignment in issue_count_open — `_issue_helpers.sh:180-181`
 - [ ] (suggestion) issue_list_open returns different ID types (git-bug short_id vs GitHub number) — `_issue_helpers.sh:182-184`
 - [ ] (suggestion) Duplicated slug extraction in merge_pr.sh and worktree_enter.sh — consider sharing extract_gh_slug — `merge_pr.sh:174-187`
+
+## External Review
+**Status**: complete
+**When**: 2026-04-06 01:30
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #143 — 2 review(s), 3 valid, 3 false positives
+**CI**: all-pass
+
+### Actions
+- [ ] Guard git-bug path in issue_list_open/issue_count_open — only use when --repo matches bridged repo
+- [ ] Add direct gh fallback in worktree_create.sh when slug extraction fails
+- [ ] Rewrite what-next and issue-triage skill snippets — git-bug is count-only, gh is primary for cross-referencing
