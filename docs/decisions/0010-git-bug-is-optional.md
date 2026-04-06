@@ -47,3 +47,31 @@ git-bug **is installed by default** in this workspace.
 **Opt-out:**
 Run `make skip-git-bug` to mark the stamp without running git-bug setup/configuration.
 The workspace degrades to gh-only (identical to previous behavior).
+
+## Sync Strategy
+
+git-bug's local cache syncs with GitHub at three levels:
+
+| Operation | Sync behavior |
+|-----------|---------------|
+| Issue read (cache hit) | Local only — no network |
+| Issue read (cache miss) | Pull from GitHub (`git bug bridge pull github`), retry locally, then fall back to `gh` |
+| Issue write | Local git-bug op, then immediate push (`git bug bridge push github`) |
+| Periodic | `make sync` runs full bidirectional pull + push |
+
+**Rationale:** Always-sync on every read adds unnecessary latency and API usage.
+Pull-on-miss covers the common stale-cache case (issue just created on GitHub)
+while keeping cache-hit reads instant and offline-capable. Writes push immediately
+so issues and comments are visible to collaborators and GitHub notifications
+without waiting for periodic sync.
+
+The shared helper `.agent/scripts/_issue_helpers.sh` implements the read
+pattern. See `AGENTS.md` "git-bug-first Pattern" for usage.
+
+## CLI Notes (v0.10.1)
+
+- Issue commands use the `bug` subcommand: `git bug bug show`, `git bug bug select`, etc.
+- Bridge listing: `git bug bridge` (bare command lists bridges; `bridge list` does not exist)
+- GitHub issue number lookup: metadata filter
+  `git bug bug -m "github-url=https://github.com/OWNER/REPO/issues/N" --format json`
+- `bug show --format json` includes title, status, and comments but not bridge metadata

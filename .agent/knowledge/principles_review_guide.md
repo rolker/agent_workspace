@@ -32,7 +32,7 @@ humans use it as a checklist.
 | 0006 — Shared AGENTS.md | Changing agent instructions | Shared rules in `AGENTS.md`; framework adapters are thin wrappers |
 | 0007 — Retain Make with Dependency Tracking | Changing the Makefile or proposing a different task runner | Keep Make; use stamp-file dependencies for incremental setup and build |
 | 0009 — Python package management | Installing Python packages or modifying `.venv` | Use .venv for dev tools; never bare pip install |
-| 0010 — git-bug for local issue tracking | Adding or modifying issue lookup scripts, bootstrap, or sync | git-bug is optional; scripts try git-bug first, fall back to `gh`; graceful degradation required |
+| 0010 — git-bug installed by default | Adding or modifying issue lookup scripts, bootstrap, or sync | git-bug installed by default; scripts use `_issue_helpers.sh` (git-bug first with sync-on-miss, fall back to `gh`); graceful degradation required |
 
 ## Consequences Map
 
