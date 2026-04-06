@@ -15,9 +15,11 @@
 # with --sync.
 #
 # Usage:
-#   .agent/scripts/cross_model_review.sh --pr <N>                       # gemini (default)
-#   .agent/scripts/cross_model_review.sh --pr <N> --agent codex         # specific agent
-#   .agent/scripts/cross_model_review.sh --pr <N> --agent claude --sync # force sync
+#   .agent/scripts/cross_model_review.sh --pr <N>                              # gemini (default)
+#   .agent/scripts/cross_model_review.sh --pr <N> --agent codex                # specific agent
+#   .agent/scripts/cross_model_review.sh --pr <N> --agent claude --sync        # force sync
+#   .agent/scripts/cross_model_review.sh --pr <N> --repo owner/repo            # explicit repo target
+#   .agent/scripts/cross_model_review.sh --pr <N> --work-dir /path/to/worktree # explicit artifact dir
 #
 # The script runs in whichever repo worktree it's invoked from.
 # Workspace issues run in workspace worktrees, project issues in project worktrees.
@@ -93,13 +95,16 @@ run_agent_sync() {
 PR_NUMBER=""
 FORCE_SYNC=false
 TARGET_AGENT="gemini"
+EXPLICIT_REPO=""
+EXPLICIT_WORK_DIR=""
+USAGE="Usage: $0 --pr <N> [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--sync]"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr)
             if [[ $# -lt 2 ]]; then
                 echo "ERROR: Missing value for --pr" >&2
-                echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+                echo "$USAGE" >&2
                 exit 2
             fi
             PR_NUMBER="$2"
@@ -108,10 +113,28 @@ while [[ $# -gt 0 ]]; do
         --agent)
             if [[ $# -lt 2 ]]; then
                 echo "ERROR: Missing value for --agent" >&2
-                echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+                echo "$USAGE" >&2
                 exit 2
             fi
             TARGET_AGENT="${2,,}"  # lowercase
+            shift 2
+            ;;
+        --repo|-R)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: Missing value for --repo" >&2
+                echo "$USAGE" >&2
+                exit 2
+            fi
+            EXPLICIT_REPO="$2"
+            shift 2
+            ;;
+        --work-dir)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: Missing value for --work-dir" >&2
+                echo "$USAGE" >&2
+                exit 2
+            fi
+            EXPLICIT_WORK_DIR="$2"
             shift 2
             ;;
         --sync)
@@ -120,7 +143,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "ERROR: Unknown argument: $1" >&2
-            echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+            echo "$USAGE" >&2
             exit 2
             ;;
     esac
@@ -128,7 +151,7 @@ done
 
 if [[ -z "$PR_NUMBER" ]]; then
     echo "ERROR: --pr <N> is required" >&2
-    echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+    echo "$USAGE" >&2
     exit 2
 fi
 
@@ -146,7 +169,11 @@ if ! command -v gh &>/dev/null; then
 fi
 
 # Resolve repo slug for explicit -R targeting (prevents misrouting in nested repos)
-GH_REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//' || echo "")
+if [[ -n "$EXPLICIT_REPO" ]]; then
+    GH_REPO_SLUG="$EXPLICIT_REPO"
+else
+    GH_REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//' || echo "")
+fi
 GH_REPO_ARGS=()
 if [[ -n "$GH_REPO_SLUG" && "$GH_REPO_SLUG" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
     GH_REPO_ARGS=("-R" "$GH_REPO_SLUG")
@@ -194,21 +221,27 @@ fi
 ISSUE_NUMBER=""
 PR_BODY=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json body --jq '.body' 2>/dev/null || echo "")
 if [[ -n "$PR_BODY" ]]; then
-    # Look for "Closes #N", "Fixes #N", or "Resolves #N" first (portable, no PCRE)
-    ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | sed -nE 's/.*(Closes|Fixes|Resolves)[[:space:]]+#([0-9]+).*/\2/p' | head -n1)
+    # Look for GitHub close keywords (case-insensitive): Closes #N, Fixes #N, Resolves #N
+    # Also handles cross-repo form: Closes owner/repo#N (extracts just N)
+    ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | grep -ioE '(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 | grep -oE '[0-9]+$')
     if [[ -z "$ISSUE_NUMBER" ]]; then
-        # Fallback: first occurrence of "#N" anywhere in the body
-        ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | sed -nE 's/.*#([0-9]+).*/\1/p' | head -n1)
+        # Fallback: first standalone #N (not part of a URL path or hex color)
+        ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+')
     fi
 fi
 
 # Fall back to PR number if no issue found
 if [[ -z "$ISSUE_NUMBER" ]]; then
+    echo "INFO: Could not extract issue number from PR body — using PR number" >&2
     ISSUE_NUMBER="$PR_NUMBER"
 fi
 
 # --- Set up artifact directory (absolute paths for tmux session) ---
-WORK_PLANS_DIR="$(git rev-parse --show-toplevel)/.agent/work-plans/issue-${ISSUE_NUMBER}"
+if [[ -n "$EXPLICIT_WORK_DIR" ]]; then
+    WORK_PLANS_DIR="${EXPLICIT_WORK_DIR}/.agent/work-plans/issue-${ISSUE_NUMBER}"
+else
+    WORK_PLANS_DIR="$(git rev-parse --show-toplevel)/.agent/work-plans/issue-${ISSUE_NUMBER}"
+fi
 mkdir -p "$WORK_PLANS_DIR"
 
 PROMPT_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-prompt.md"
@@ -251,8 +284,21 @@ printf '**Title**: %s\n**URL**: %s\n**PR Number**: #%s\n\n' \
 
 # Stream diff directly into the prompt file
 printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
+DIFF_START_LINE=$(wc -l < "$PROMPT_FILE")
 if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" >> "$PROMPT_FILE" 2>/dev/null; then
     echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
+    echo '--- Review error: failed to retrieve diff ---' > "$FINDINGS_FILE"
+    exit 3
+fi
+DIFF_END_LINE=$(wc -l < "$PROMPT_FILE")
+
+# Guard: if diff is empty, abort with a clear error instead of launching an
+# agent with no content to review
+if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
+    echo "ERROR: PR #${PR_NUMBER} diff is empty — nothing to review" >&2
+    echo "  This usually means the PR was not found in the target repo." >&2
+    echo "  Try passing --repo <owner/repo> explicitly." >&2
+    echo '--- Review error: diff was empty (PR not found or no changes) ---' > "$FINDINGS_FILE"
     exit 3
 fi
 printf '```\n\n' >> "$PROMPT_FILE"

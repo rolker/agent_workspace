@@ -12,3 +12,10 @@ issue: 133
 Plan file: `.agent/work-plans/issue-133/plan.md`.
 
 Four targeted fixes: add `--repo` and `--work-dir` flags for explicit repo/artifact targeting, fix issue number extraction regex, and add empty diff guard with error surfacing.
+
+## Implementation
+**Status**: complete
+**When**: 2026-04-05 21:00
+**By**: Claude Code Agent (claude-opus-4-6)
+
+All four fixes applied to `cross_model_review.sh`. Updated `review-code` SKILL.md invocation examples and AGENTS.md script reference. Added 14-test suite in `tests/test_cross_model_review.sh` covering argument parsing, issue extraction, artifact placement, and empty diff guard.
