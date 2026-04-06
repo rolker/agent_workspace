@@ -39,10 +39,20 @@ If `--repo` was specified, filter to just that repository.
 
 ### 2. Fetch open issues per repo
 
-For each repository:
+For each repository, fetch issues via `gh` (needed for labels, timestamps,
+assignees used in categorization). git-bug can provide a quick offline count
+but lacks these fields.
 
 ```bash
+# Primary: gh (provides number, title, labels, timestamps, assignees, URLs)
 gh issue list --repo <owner/repo> --state open --json number,title,labels,createdAt,updatedAt,url,assignees --limit 100
+
+# Optional: git-bug for offline issue count (when gh is unavailable)
+# Note: git-bug output lacks labels, timestamps, and URLs — use only for counts
+if ! command -v gh &>/dev/null && command -v git-bug &>/dev/null \
+    && git bug bridge 2>/dev/null | grep -q github; then
+    git bug bug status:open | wc -l   # count only
+fi
 ```
 
 Collect all results into a unified list with the repo name attached.

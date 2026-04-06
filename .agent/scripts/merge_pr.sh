@@ -30,6 +30,9 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# shellcheck source=_issue_helpers.sh
+source "$SCRIPT_DIR/_issue_helpers.sh"
+
 PR_NUMBER=""
 WORKTREE_TYPE=""
 
@@ -168,7 +171,23 @@ fi
 
 # --- Step 5: Roadmap reminder ---
 # Soft check: does the merged issue relate to a roadmap item?
-ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" "${GH_REPO_ARGS[@]}" --json title --jq '.title' 2>/dev/null || echo "")
+# Resolve repo slug for git-bug-first lookup
+_REPO_SLUG=""
+if [[ ${#GH_REPO_ARGS[@]} -gt 0 ]]; then
+    _REPO_SLUG=$(extract_gh_slug "${GH_REPO_ARGS[1]:-}")
+fi
+if [[ -z "$_REPO_SLUG" ]]; then
+    _REPO_SLUG=$(extract_gh_slug "$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null)")
+fi
+ISSUE_TITLE=""
+if [[ -n "$_REPO_SLUG" ]]; then
+    issue_lookup "$ISSUE_NUM" --repo "$_REPO_SLUG" --root "$ROOT_DIR" || true
+fi
+# Fallback: if slug extraction failed (non-GitHub remote), try gh directly
+if [[ -z "$ISSUE_TITLE" ]] && [[ -z "$_REPO_SLUG" ]] && command -v gh &>/dev/null; then
+    ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" "${GH_REPO_ARGS[@]}" \
+        --json title --jq '.title' 2>/dev/null || echo "")
+fi
 if [[ -n "$ISSUE_TITLE" ]]; then
     ROADMAP_MATCHES=()
     # Extract significant keywords (3+ chars, skip common words)
