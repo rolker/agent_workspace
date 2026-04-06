@@ -33,3 +33,15 @@ All four fixes applied to `cross_model_review.sh`. Updated `review-code` SKILL.m
 - [x] Fix stderr capture redirection in test_empty_diff_guard
 - [x] Add --repo slug validation (exit 2 on invalid pattern)
 - [x] Add test for invalid --repo slug (16 tests total now)
+
+## External Review (round 2)
+**Status**: complete
+**When**: 2026-04-05 21:30
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #145 — 2 review(s), 2 valid (Copilot round 2), 2 stale (already addressed)
+**CI**: all-pass
+
+### Actions
+- [x] Move --repo slug validation before gh dependency check (deterministic exit codes)
+- [x] Make test_invalid_repo_slug hermetic with setup/mock PATH

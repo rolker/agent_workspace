@@ -324,11 +324,14 @@ test_unknown_argument() {
 # ---- Test: --repo with invalid slug ----
 test_invalid_repo_slug() {
     echo "TEST: --repo with invalid slug exits 2"
+    setup
 
     local exit_code=0
-    STDERR=$(bash "${SCRIPT_UNDER_TEST}" --pr 1 --repo "not-a-slug" 2>&1) || exit_code=$?
+    STDERR=$(PATH="${MOCK_BIN}:${PATH}" bash "${SCRIPT_UNDER_TEST}" --pr 1 --repo "not-a-slug" 2>&1) || exit_code=$?
     assert_exit_code "invalid slug exits 2" "2" "$exit_code"
     assert_contains "error mentions invalid slug" "not a valid owner/repo" "$STDERR"
+
+    teardown
 }
 
 # ---- Run all tests ----
