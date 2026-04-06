@@ -19,3 +19,17 @@ Four targeted fixes: add `--repo` and `--work-dir` flags for explicit repo/artif
 **By**: Claude Code Agent (claude-opus-4-6)
 
 All four fixes applied to `cross_model_review.sh`. Updated `review-code` SKILL.md invocation examples and AGENTS.md script reference. Added 14-test suite in `tests/test_cross_model_review.sh` covering argument parsing, issue extraction, artifact placement, and empty diff guard.
+
+## External Review
+**Status**: complete
+**When**: 2026-04-05 21:20
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #145 — 1 review(s), 3 valid (all Copilot), 0 false positives
+**CI**: all-pass
+
+### Actions
+- [x] Remove dead first mock `gh` heredoc in test_repo_flag_accepted
+- [x] Fix stderr capture redirection in test_empty_diff_guard
+- [x] Add --repo slug validation (exit 2 on invalid pattern)
+- [x] Add test for invalid --repo slug (16 tests total now)

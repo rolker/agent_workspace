@@ -86,46 +86,8 @@ test_repo_flag_accepted() {
     echo "TEST: --repo flag is accepted"
     setup
 
-    # Mock gh that records the -R argument it received
-    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
-#!/usr/bin/env bash
-# Record all args for inspection
-echo "$@" >> "${MOCK_GH_LOG}"
-case "$1" in
-    pr)
-        case "$3" in
-            --json)
-                if [[ "$4" == "body" ]]; then
-                    echo '{"body": "Closes #42"}'
-                    # jq emulation: if --jq is present, extract .body
-                    exit 0
-                elif [[ "$4" == "title" ]]; then
-                    echo "Test PR"
-                    exit 0
-                elif [[ "$4" == "url" ]]; then
-                    echo "https://github.com/test/repo/pull/99"
-                    exit 0
-                fi
-                ;;
-            *)
-                # gh pr diff — output a non-empty diff
-                echo "diff --git a/file.txt b/file.txt"
-                echo "--- a/file.txt"
-                echo "+++ b/file.txt"
-                echo "@@ -1 +1 @@"
-                echo "-old"
-                echo "+new"
-                exit 0
-                ;;
-        esac
-        ;;
-esac
-exit 0
-GH_EOF
-    chmod +x "${MOCK_BIN}/gh"
-
-    # gh outputs raw text; we need it to handle --jq itself. Simplify: make
-    # gh return the value directly for --jq queries.
+    # Mock gh that records arguments and returns direct values for --jq-style
+    # queries used by the test.
     cat > "${MOCK_BIN}/gh" << 'GH_EOF'
 #!/usr/bin/env bash
 echo "$@" >> "${MOCK_GH_LOG}"
@@ -322,7 +284,7 @@ GH_EOF
     cd "${MOCK_REPO}"
     local exit_code=0
     STDERR=$(PATH="${MOCK_BIN}:${PATH}" bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync 2>&1 >/dev/null) || exit_code=$?
+        --pr 99 --sync 2>&1) || exit_code=$?
 
     assert_exit_code "empty diff exits 3" "3" "$exit_code"
     assert_contains "error message mentions empty diff" "diff is empty" "$STDERR"
@@ -359,12 +321,23 @@ test_unknown_argument() {
     assert_exit_code "unknown arg exits 2" "2" "$exit_code"
 }
 
+# ---- Test: --repo with invalid slug ----
+test_invalid_repo_slug() {
+    echo "TEST: --repo with invalid slug exits 2"
+
+    local exit_code=0
+    STDERR=$(bash "${SCRIPT_UNDER_TEST}" --pr 1 --repo "not-a-slug" 2>&1) || exit_code=$?
+    assert_exit_code "invalid slug exits 2" "2" "$exit_code"
+    assert_contains "error mentions invalid slug" "not a valid owner/repo" "$STDERR"
+}
+
 # ---- Run all tests ----
 echo "=== cross_model_review.sh tests ==="
 echo ""
 
 test_missing_pr_flag
 test_unknown_argument
+test_invalid_repo_slug
 test_issue_extraction
 test_repo_flag_accepted
 test_work_dir_flag

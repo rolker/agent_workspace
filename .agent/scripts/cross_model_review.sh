@@ -170,6 +170,10 @@ fi
 
 # Resolve repo slug for explicit -R targeting (prevents misrouting in nested repos)
 if [[ -n "$EXPLICIT_REPO" ]]; then
+    if [[ ! "$EXPLICIT_REPO" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+        echo "ERROR: --repo value '${EXPLICIT_REPO}' is not a valid owner/repo slug" >&2
+        exit 2
+    fi
     GH_REPO_SLUG="$EXPLICIT_REPO"
 else
     GH_REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//' || echo "")
