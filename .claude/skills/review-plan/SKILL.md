@@ -68,14 +68,29 @@ Try git-bug first for offline-capable issue reading, then fall back to `gh`:
 
 ```bash
 # git-bug first (offline-capable) — provides title, body, and comments
+# Look up by GitHub URL metadata (git-bug human_id != GitHub issue number)
 ISSUE_TITLE=""
 ISSUE_BODY=""
-if command -v git-bug &>/dev/null; then
-    _BUG_JSON=$(git-bug bug show "$ISSUE_NUM" --format json 2>/dev/null || echo "")
-    if [ -n "$_BUG_JSON" ]; then
-        ISSUE_TITLE=$(echo "$_BUG_JSON" | jq -r '.title // empty')
-        # The body is the first comment's message (comment index 0)
-        ISSUE_BODY=$(echo "$_BUG_JSON" | jq -r '.comments[0].message // empty')
+if command -v git-bug &>/dev/null && command -v jq &>/dev/null; then
+    _REPO_SLUG="<owner/repo>"  # resolve from git remote
+    _GITHUB_URL="https://github.com/${_REPO_SLUG}/issues/${ISSUE_NUM}"
+    _LIST_JSON=$(git bug bug -m "github-url=${_GITHUB_URL}" --format json 2>/dev/null || echo "")
+    _BUG_ID=$(echo "$_LIST_JSON" | jq -r '.[0].human_id // empty' 2>/dev/null)
+    if [ -n "$_BUG_ID" ]; then
+        _SHOW_JSON=$(git bug bug show "$_BUG_ID" --format json 2>/dev/null || echo "")
+        ISSUE_TITLE=$(echo "$_SHOW_JSON" | jq -r '.title // empty')
+        ISSUE_BODY=$(echo "$_SHOW_JSON" | jq -r '.comments[0].message // empty')
+    fi
+    # Sync-on-miss: if not found, pull from GitHub and retry
+    if [ -z "$ISSUE_TITLE" ]; then
+        git bug bridge pull github &>/dev/null || true
+        _LIST_JSON=$(git bug bug -m "github-url=${_GITHUB_URL}" --format json 2>/dev/null || echo "")
+        _BUG_ID=$(echo "$_LIST_JSON" | jq -r '.[0].human_id // empty' 2>/dev/null)
+        if [ -n "$_BUG_ID" ]; then
+            _SHOW_JSON=$(git bug bug show "$_BUG_ID" --format json 2>/dev/null || echo "")
+            ISSUE_TITLE=$(echo "$_SHOW_JSON" | jq -r '.title // empty')
+            ISSUE_BODY=$(echo "$_SHOW_JSON" | jq -r '.comments[0].message // empty')
+        fi
     fi
 fi
 

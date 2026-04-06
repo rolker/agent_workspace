@@ -30,6 +30,9 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# shellcheck source=_issue_helpers.sh
+source "$SCRIPT_DIR/_issue_helpers.sh"
+
 PR_NUMBER=""
 WORKTREE_TYPE=""
 NO_ROADMAP_UPDATE=false
