@@ -59,6 +59,19 @@ Major plan revision after discovering:
 **CI**: all-pass
 
 ### Actions
-- [ ] Guard git-bug path in issue_list_open/issue_count_open — only use when --repo matches bridged repo
-- [ ] Add direct gh fallback in worktree_create.sh when slug extraction fails
-- [ ] Rewrite what-next and issue-triage skill snippets — git-bug is count-only, gh is primary for cross-referencing
+- [x] Guard git-bug path in issue_list_open/issue_count_open — only use when --repo matches bridged repo
+- [x] Add direct gh fallback in worktree_create.sh when slug extraction fails
+- [x] Rewrite what-next and issue-triage skill snippets — git-bug is count-only, gh is primary for cross-referencing
+
+## External Review (round 2)
+**Status**: complete
+**When**: 2026-04-06 02:00
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #143 — 3 review(s), 3 valid, 2 false positives
+**CI**: all-pass
+
+### Actions
+- [ ] Add repo-slug guard to issue_lookup git-bug path — skip git-bug when --repo doesn't match --root's remote
+- [ ] Update what-next and issue-triage skill snippets — add `| wc -l` to git-bug "count only" line
+- [ ] Update --repo documentation in _issue_helpers.sh and AGENTS.md — mark as required for list/count
