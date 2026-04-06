@@ -7,62 +7,93 @@ https://github.com/rolker/agent_workspace/issues/142
 ## Context
 
 ADR-0010 requires trying git-bug first for issue reads, falling back to `gh`.
-Some scripts and skills comply (`worktree_create.sh`, `plan-task`, `review-plan`,
-`dashboard.sh`), but each reinvents the pattern inline. Other scripts and skills
-skip git-bug entirely. Discussion on the issue refined the pattern to include
-sync-on-miss reads and push-on-write semantics.
+Some scripts and skills attempt compliance (`worktree_create.sh`, `plan-task`,
+`review-plan`, `dashboard.sh`), but each reinvents the pattern inline. Other
+scripts and skills skip git-bug entirely. Discussion on the issue refined the
+pattern to include sync-on-miss reads and push-on-write semantics.
 
-Two distinct API patterns exist in compliant code:
-- **Text parsing** (`worktree_create.sh`): `git bug select/show` + sed/awk
-- **JSON parsing** (skills): `git-bug bug show --format json` + jq
+### Critical finding: existing "compliant" code is broken
 
-The existing `_worktree_helpers.sh` provides shared functions for worktree
-operations but has no issue lookup helpers.
+Investigation revealed that the existing git-bug code in `worktree_create.sh`
+uses `git bug select` — a command that **does not exist** in git-bug v0.10.1.
+The correct invocation is `git bug bug select`. This means all "compliant"
+single-issue lookups silently fail and fall back to `gh` every time.
+
+### git-bug CLI patterns (verified on v0.10.1)
+
+**Lookup by GitHub issue number** (two-step via metadata filter):
+```bash
+# Step 1: Find git-bug ID via bridge metadata
+BUG_ID=$(git -C "$ROOT" bug bug \
+  -m "github-url=https://github.com/OWNER/REPO/issues/N" \
+  --format json | jq -r '.[0].human_id // empty')
+
+# Step 2: Get full details
+git -C "$ROOT" bug bug show "$BUG_ID" --format json
+```
+
+The bridge stores `github-url` metadata on each synced bug. The list command
+(`git bug bug`) supports `-m key=value` filtering; the show command does not
+expose metadata. So lookup requires: list-with-filter to get the ID, then
+show for full details.
+
+**List open issues**: `git -C "$ROOT" bug bug status:open`
+
+**Key facts**:
+- `git -C` works with all `git bug` subcommands (repo targeting)
+- `--format json` works on both list and show
+- `show --format json` includes title, status, comments, but NOT metadata
+- `select`/`deselect` exist as `git bug bug select`/`deselect` (not `git bug select`)
+- The metadata filter requires the full GitHub URL, so the helper needs the repo slug
+
+### Existing utility infrastructure
+
+`_worktree_helpers.sh` provides shared functions for worktree operations.
+The new `_issue_helpers.sh` follows the same naming convention.
 
 ## Approach
 
 ### 1. Create shared helper: `.agent/scripts/_issue_helpers.sh`
 
-A sourced utility file (matching `_worktree_helpers.sh` naming convention) with
-these functions:
+A sourced utility file with these functions:
 
-- **`issue_lookup <N> [--repo <slug>] [--root <dir>]`** — single-issue lookup
+- **`issue_lookup <N> --repo <slug> [--root <dir>]`** — single-issue lookup
   returning title, state, and body. Implements the sync-on-miss pattern:
-  1. `git bug show` locally (cache hit = done, no network)
-  2. Cache miss: `git bug bridge pull github`, retry `git bug show`
+  1. Query git-bug via metadata filter:
+     `git bug bug -m "github-url=https://github.com/$REPO/issues/$N" --format json`
+  2. Cache miss: `git bug bridge pull github`, log it, retry the query
   3. Still missing: fall back to `gh issue view`
-  4. Log sync operations for transparency ("git-bug: pulling #N from GitHub...")
   
   Output: sets `ISSUE_TITLE`, `ISSUE_STATE`, `ISSUE_BODY` variables (caller
   sources the function). Returns 0 on success, 1 if neither source found the
   issue.
 
 - **`issue_list_open [--repo <slug>] [--root <dir>]`** — list open issues.
-  Tries `git bug ls status:open` first, falls back to `gh issue list`. Returns
-  one issue per line in `<number>\t<title>` format.
+  Tries `git bug bug status:open --format json` first, falls back to
+  `gh issue list`. Returns JSON array with number, title, status.
 
 - **`issue_count_open [--repo <slug>] [--root <dir>]`** — count open issues.
-  Thin wrapper around `issue_list_open | wc -l` or dedicated `git bug ls`
-  count.
+  Uses `git bug bug status:open` line count, falls back to `gh api`.
 
 Design decisions:
-- Use the **text parsing** approach for the shared helper (matches existing
-  script conventions; avoids jq dependency for scripts that don't already use it)
+- Use **JSON output** (`--format json`) for structured parsing — avoids fragile
+  text parsing with sed/awk, and jq is already a workspace dependency
+- `--repo` is required for single-issue lookup (needed to construct the GitHub
+  URL for metadata matching); optional for list/count (git-bug lists from the
+  local repo's bridge)
 - Skills will reference the canonical pattern in `AGENTS.md` rather than
   sourcing the helper (skills are instruction text, not executable code)
 - The `--root` flag defaults to the workspace root (needed for `git -C` context)
-- Always call `git bug deselect` after `select/show` (follows `worktree_create.sh`)
 
-### 2. Refactor compliant scripts to use the shared helper
+### 2. Fix and refactor existing git-bug callers
 
-Replace inline git-bug-first implementations with sourced helper calls:
+Replace broken inline implementations with sourced helper calls:
 
-- **`worktree_create.sh`** (lines 270-311): Replace ~40 lines with
-  `source _issue_helpers.sh` + `issue_lookup "$ISSUE_NUM"`
-- **`dashboard.sh`** (lines 379-391): Replace with `issue_count_open`
-
-This validates the helper against known-working behavior before applying it
-to new callers.
+- **`worktree_create.sh`** (lines 270-311): Currently uses `git bug select`
+  (wrong command — silently fails every time). Replace ~40 lines with
+  `source _issue_helpers.sh` + `issue_lookup "$ISSUE_NUM"`.
+- **`dashboard.sh`** (lines 379-391): Working (`git bug bug` list path is
+  correct here). Replace with `issue_count_open` for consistency.
 
 ### 3. Update non-compliant scripts
 
@@ -153,15 +184,12 @@ Add `_issue_helpers.sh` to the script reference table with purpose:
 
 ## Open Questions
 
-1. **Should existing compliant callers be refactored in this PR or a follow-up?**
-   The plan includes refactoring `worktree_create.sh` and `dashboard.sh` to
-   validate the helper, but this adds scope. Could defer to a separate PR if
-   preferred.
-
-2. **`git-bug` CLI invocation style**: `worktree_create.sh` uses
-   `git -C "$ROOT_DIR" bug select/show` while skills use `git-bug bug show --format json`.
-   The helper should pick one. Text parsing via `git -C` is more portable
-   (works with `--root` param) — confirm this is preferred over JSON+jq.
+None — resolved during planning:
+- Existing callers will be refactored in this PR (confirmed by Roland)
+- CLI style: use `git -C "$ROOT" bug bug` with `--format json` (combines
+  `-C` repo targeting with structured output; verified working on v0.10.1)
+- The `worktree_create.sh` git-bug code is broken (`git bug select` doesn't
+  exist) — this PR fixes it, not just adds compliance
 
 ## Estimated Scope
 
