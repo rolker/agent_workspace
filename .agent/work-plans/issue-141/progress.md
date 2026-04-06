@@ -44,3 +44,16 @@ Implemented per plan:
 - [ ] (suggestion) Tests promised in plan step 5 but not included
 - [ ] (suggestion) sed replacement fragile if status contains regex metacharacters — `update_roadmap.sh:83`
 - [ ] (suggestion) sed could match wrong column if status text appears elsewhere in row — `update_roadmap.sh:83`
+
+## External Review
+**Status**: complete
+**When**: 2026-04-06 01:45
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #144 — 2 review(s), 4 valid, 4 false positives
+**CI**: all-pass
+
+### Actions
+- [ ] Guard _WT_TOPLEVEL: add `|| echo ""` to rev-parse, skip staging if empty
+- [ ] Move FOUND_MATCH=true in checklist section to after `- [ ]` check
+- [ ] Design decision: project roadmap update in project worktrees (accept limitation or add --ws-root)
