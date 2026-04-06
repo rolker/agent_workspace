@@ -46,6 +46,11 @@ if [[ -z "$ISSUE_NUM" ]]; then
     exit 0
 fi
 
+if ! [[ "$ISSUE_NUM" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: --issue value must be numeric, got '${ISSUE_NUM}'" >&2
+    exit 0
+fi
+
 if [[ -z "$ROOT_DIR" ]]; then
     ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 fi
@@ -127,7 +132,7 @@ _try_checklist_format() {
         FOUND_MATCH=true
         echo "  ${label}: #${ISSUE_NUM} — checking item" >&2
         if [[ "$DRY_RUN" == false ]]; then
-            sed -i "${line_num}s/- \[ \]/- [x]/" "$roadmap"
+            sed "${line_num}s/- \[ \]/- [x]/" "$roadmap" > "${roadmap}.tmp" && mv "${roadmap}.tmp" "$roadmap"
             if sed -n "${line_num}p" "$roadmap" | grep -q "\- \[x\]"; then
                 echo "$roadmap"
             else
