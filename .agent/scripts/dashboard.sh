@@ -27,6 +27,9 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
+# shellcheck source=_issue_helpers.sh
+source "$SCRIPT_DIR/_issue_helpers.sh"
+
 # --- Parse arguments ---
 SKIP_SYNC=false
 SKIP_GITHUB=false
@@ -375,20 +378,7 @@ if [ "$SKIP_GITHUB" = false ]; then
         ISSUE_OUTPUT=""
         for repo in $REPOS; do
             [ -z "$repo" ] && continue
-            count=""
-            # Try git-bug for the workspace repo (where a bridge is configured)
-            if [ "$repo" = "$WS_REMOTE" ] && command -v git-bug &>/dev/null \
-                && git -C "$MAIN_ROOT" bug bridge list &>/dev/null 2>&1; then
-                _gb_output=$(git -C "$MAIN_ROOT" bug ls status:open 2>/dev/null)
-                _gb_rc=$?
-                if [ $_gb_rc -eq 0 ]; then
-                    count=$(printf '%s\n' "$_gb_output" | grep -c . || true)
-                fi
-            fi
-            # Fall back to gh API
-            if [ -z "$count" ] || ! [[ "$count" =~ ^[0-9]+$ ]]; then
-                count=$(gh api -X GET search/issues -f q="repo:$repo is:issue is:open" --jq '.total_count' 2>/dev/null || echo "0")
-            fi
+            count=$(issue_count_open --repo "$repo" --root "$MAIN_ROOT")
             [[ "$count" =~ ^[0-9]+$ ]] || count=0
             if [ "$count" -gt 0 ]; then
                 repo_name=$(basename "$repo")
