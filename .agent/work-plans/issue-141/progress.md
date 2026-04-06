@@ -25,3 +25,22 @@ Implemented per plan:
    reminder with pre-merge auto-update (new step 1). Commits and pushes
    roadmap changes to feature branch before merging. Failures non-blocking.
 3. AGENTS.md script reference updated.
+
+## Local Review
+**Status**: complete
+**When**: 2026-04-06 01:15
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: changes-requested
+
+**PR**: #144 at `c9d1b06`
+**Depth**: Deep (reason: 351 lines, governance file AGENTS.md)
+**Must-fix**: 4 | **Suggestions**: 3
+
+### Findings
+- [ ] (must-fix) Roadmap update runs on wrong branch (ROOT_DIR is main, not feature) — `merge_pr.sh:131-161`
+- [ ] (must-fix) Absolute paths + bare git push target wrong branch — `merge_pr.sh:148,157`
+- [ ] (must-fix) set -eo pipefail contradicts "always exits 0" — `update_roadmap.sh:15`
+- [ ] (must-fix) \b in grep not portable — `update_roadmap.sh:111`
+- [ ] (suggestion) Tests promised in plan step 5 but not included
+- [ ] (suggestion) sed replacement fragile if status contains regex metacharacters — `update_roadmap.sh:83`
+- [ ] (suggestion) sed could match wrong column if status text appears elsewhere in row — `update_roadmap.sh:83`
