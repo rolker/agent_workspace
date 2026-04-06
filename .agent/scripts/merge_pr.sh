@@ -155,31 +155,35 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
 
             if [[ -n "$_CHANGED_FILES" ]]; then
                 echo "  Committing roadmap update to feature branch..."
-                _WT_TOPLEVEL=$(git -C "$_WT_ROOT" rev-parse --show-toplevel 2>/dev/null)
+                _WT_TOPLEVEL=$(git -C "$_WT_ROOT" rev-parse --show-toplevel 2>/dev/null || echo "")
 
-                # Stage changed files using paths relative to the worktree root
-                while IFS= read -r changed_file; do
-                    [[ -z "$changed_file" ]] && continue
-                    case "$changed_file" in
-                        "${_WT_TOPLEVEL}"/*)
-                            _REL="${changed_file#"${_WT_TOPLEVEL}/"}"
-                            git -C "$_WT_ROOT" add -- "$_REL" 2>/dev/null || true
-                            ;;
-                        *)
-                            echo "  ⚠️  Skipping non-repo path: $changed_file" >&2
-                            ;;
-                    esac
-                done <<< "$_CHANGED_FILES"
-
-                if git -C "$_WT_ROOT" diff --cached --quiet 2>/dev/null; then
-                    echo "  ⚠️  No staged changes — skipping roadmap commit"
+                if [[ -z "$_WT_TOPLEVEL" ]]; then
+                    echo "  ⚠️  Unable to resolve worktree root — skipping roadmap commit"
                 else
-                    git -C "$_WT_ROOT" commit -m "Update roadmap: mark #${ISSUE_NUM} as done" 2>/dev/null \
-                        && echo "  ✅ Roadmap updated" \
-                        || echo "  ⚠️  Roadmap commit failed — proceeding with merge"
-                    git -C "$_WT_ROOT" push origin "$PR_BRANCH" 2>/dev/null \
-                        && echo "  ✅ Roadmap commit pushed" \
-                        || echo "  ⚠️  Roadmap push failed — proceeding with merge"
+                    # Stage changed files using paths relative to the worktree root
+                    while IFS= read -r changed_file; do
+                        [[ -z "$changed_file" ]] && continue
+                        case "$changed_file" in
+                            "${_WT_TOPLEVEL}"/*)
+                                _REL="${changed_file#"${_WT_TOPLEVEL}/"}"
+                                git -C "$_WT_ROOT" add -- "$_REL" 2>/dev/null || true
+                                ;;
+                            *)
+                                echo "  ⚠️  Skipping non-repo path: $changed_file" >&2
+                                ;;
+                        esac
+                    done <<< "$_CHANGED_FILES"
+
+                    if git -C "$_WT_ROOT" diff --cached --quiet 2>/dev/null; then
+                        echo "  ⚠️  No staged changes — skipping roadmap commit"
+                    else
+                        git -C "$_WT_ROOT" commit -m "Update roadmap: mark #${ISSUE_NUM} as done" 2>/dev/null \
+                            && echo "  ✅ Roadmap updated" \
+                            || echo "  ⚠️  Roadmap commit failed — proceeding with merge"
+                        git -C "$_WT_ROOT" push origin "$PR_BRANCH" 2>/dev/null \
+                            && echo "  ✅ Roadmap commit pushed" \
+                            || echo "  ⚠️  Roadmap push failed — proceeding with merge"
+                    fi
                 fi
             fi
         fi

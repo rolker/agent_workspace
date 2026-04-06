@@ -5,9 +5,12 @@
 # Usage:
 #   update_roadmap.sh --issue <N> [--root <dir>] [--dry-run]
 #
-# Searches for #<N> in roadmap files and updates status:
-#   - Table format (docs/ROADMAP.md): changes Status column to "done"
-#   - Checklist format (project/ROADMAP.md): changes "- [ ]" to "- [x]"
+# Searches for #<N> in ROADMAP.md files under --root and updates status:
+#   - Table format: changes the Status column to "done"
+#   - Checklist format: changes "- [ ]" to "- [x]"
+#
+# Discovers roadmap files at: ROADMAP.md, docs/ROADMAP.md
+# Both formats are tried against each file found.
 #
 # Only matches explicit #<N> references (no fuzzy matching).
 # Prints status to stderr, changed file paths to stdout.
@@ -49,7 +52,9 @@ fi
 
 FOUND_MATCH=false
 
-# Helper: rebuild a table row with column 4 (status) replaced by "done".
+# --- Helpers ---
+
+# Rebuild a table row with column 4 (status) replaced by "done".
 # Uses awk for precise column replacement — avoids sed regex injection.
 _replace_status_col() {
     local file="$1" line_num="$2"
@@ -64,71 +69,83 @@ _replace_status_col() {
     ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
 }
 
-# --- Table format: docs/ROADMAP.md ---
-# Format: | Item | #N | Status | Source | Notes |
+# Try table format: | Item | #N | Status | Source | Notes |
 # Match lines where the Issue column (col 3) is exactly #<N>.
-# Update the Status column (col 4) to "done".
-WS_ROADMAP="$ROOT_DIR/docs/ROADMAP.md"
-if [[ -f "$WS_ROADMAP" ]]; then
-    while IFS= read -r line_num; do
-        line=$(sed -n "${line_num}p" "$WS_ROADMAP")
+_try_table_format() {
+    local roadmap="$1" label="$2"
 
-        # Check Issue column (awk field $3) is exactly #<N>
+    while IFS= read -r line_num; do
+        local line
+        line=$(sed -n "${line_num}p" "$roadmap")
+
+        local issue_col
         issue_col=$(echo "$line" | awk -F'|' '{print $3}' | xargs)
         if [[ "$issue_col" != "#${ISSUE_NUM}" ]]; then
             continue
         fi
 
+        local status_col
         status_col=$(echo "$line" | awk -F'|' '{print $4}' | xargs)
         FOUND_MATCH=true
         if [[ "${status_col,,}" == "done" ]]; then
-            echo "  docs/ROADMAP.md: #${ISSUE_NUM} already marked done" >&2
+            echo "  ${label}: #${ISSUE_NUM} already marked done" >&2
             continue
         fi
 
-        echo "  docs/ROADMAP.md: #${ISSUE_NUM} — updating status from '${status_col}' to 'done'" >&2
+        echo "  ${label}: #${ISSUE_NUM} — updating status from '${status_col}' to 'done'" >&2
         if [[ "$DRY_RUN" == false ]]; then
-            _replace_status_col "$WS_ROADMAP" "$line_num"
-            # Verify the change actually took effect
-            new_status=$(sed -n "${line_num}p" "$WS_ROADMAP" | awk -F'|' '{print $4}' | xargs)
+            _replace_status_col "$roadmap" "$line_num"
+            local new_status
+            new_status=$(sed -n "${line_num}p" "$roadmap" | awk -F'|' '{print $4}' | xargs)
             if [[ "${new_status,,}" == "done" ]]; then
-                echo "$WS_ROADMAP"
+                echo "$roadmap"
             else
-                echo "  ⚠️  docs/ROADMAP.md: replacement did not take effect" >&2
+                echo "  ⚠️  ${label}: replacement did not take effect" >&2
             fi
         fi
-    done < <(grep -n "| *#${ISSUE_NUM} *|" "$WS_ROADMAP" 2>/dev/null | cut -d: -f1)
-fi
+    done < <(grep -n "| *#${ISSUE_NUM} *|" "$roadmap" 2>/dev/null | cut -d: -f1)
+}
 
-# --- Checklist format: project/ROADMAP.md ---
-# Format: - [ ] Item description (#N)  or  - [ ] Item #N description
+# Try checklist format: - [ ] Item description (#N)
 # Match unchecked items containing #<N> and check them.
-PJ_ROADMAP="$ROOT_DIR/project/ROADMAP.md"
-if [[ -f "$PJ_ROADMAP" ]]; then
+_try_checklist_format() {
+    local roadmap="$1" label="$2"
+
     # Portable word boundary: #N followed by non-alphanumeric or end of line
     while IFS= read -r line_num; do
-        line=$(sed -n "${line_num}p" "$PJ_ROADMAP")
+        local line
+        line=$(sed -n "${line_num}p" "$roadmap")
 
-        FOUND_MATCH=true
         if [[ "$line" != *"- [ ]"* ]]; then
             if [[ "$line" == *"- [x]"* ]]; then
-                echo "  project/ROADMAP.md: #${ISSUE_NUM} already checked" >&2
+                FOUND_MATCH=true
+                echo "  ${label}: #${ISSUE_NUM} already checked" >&2
             fi
             continue
         fi
 
-        echo "  project/ROADMAP.md: #${ISSUE_NUM} — checking item" >&2
+        FOUND_MATCH=true
+        echo "  ${label}: #${ISSUE_NUM} — checking item" >&2
         if [[ "$DRY_RUN" == false ]]; then
-            sed -i "${line_num}s/- \[ \]/- [x]/" "$PJ_ROADMAP"
-            # Verify the change
-            if sed -n "${line_num}p" "$PJ_ROADMAP" | grep -q "\- \[x\]"; then
-                echo "$PJ_ROADMAP"
+            sed -i "${line_num}s/- \[ \]/- [x]/" "$roadmap"
+            if sed -n "${line_num}p" "$roadmap" | grep -q "\- \[x\]"; then
+                echo "$roadmap"
             else
-                echo "  ⚠️  project/ROADMAP.md: replacement did not take effect" >&2
+                echo "  ⚠️  ${label}: replacement did not take effect" >&2
             fi
         fi
-    done < <(grep -nE "#${ISSUE_NUM}([^[:alnum:]_]|$)" "$PJ_ROADMAP" 2>/dev/null | cut -d: -f1)
-fi
+    done < <(grep -nE "#${ISSUE_NUM}([^[:alnum:]_]|$)" "$roadmap" 2>/dev/null | cut -d: -f1)
+}
+
+# --- Discover and process roadmap files ---
+# Check both possible locations; try both formats against each file.
+for rel_path in "ROADMAP.md" "docs/ROADMAP.md"; do
+    roadmap="$ROOT_DIR/$rel_path"
+    [[ -f "$roadmap" ]] || continue
+
+    _try_table_format "$roadmap" "$rel_path"
+    _try_checklist_format "$roadmap" "$rel_path"
+done
 
 # --- Report ---
 if [[ "$FOUND_MATCH" == false ]]; then
