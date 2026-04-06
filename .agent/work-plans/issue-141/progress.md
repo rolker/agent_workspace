@@ -57,3 +57,14 @@ Implemented per plan:
 - [ ] Guard _WT_TOPLEVEL: add `|| echo ""` to rev-parse, skip staging if empty
 - [ ] Move FOUND_MATCH=true in checklist section to after `- [ ]` check
 - [ ] Design decision: project roadmap update in project worktrees (accept limitation or add --ws-root)
+
+## External Review (round 2)
+**Status**: complete
+**When**: 2026-04-06 02:15
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #144 — 3 review(s), 1 valid, 1 false positive (13 previously addressed)
+**CI**: all-pass
+
+### Actions
+- [ ] Validate ISSUE_NUM is numeric after argument parsing in update_roadmap.sh
