@@ -265,6 +265,10 @@ if [ -z "$SKILL_NAME" ] && [ "$SHELL_SNIPPET" != true ]; then
             _ISSUE_TITLE="$ISSUE_TITLE"
         fi
     fi
+    # Fallback: if slug extraction failed (non-GitHub remote), try gh without --repo
+    if [ -z "$_ISSUE_TITLE" ] && [ -z "$_WS_SLUG" ] && command -v gh &>/dev/null; then
+        _ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --json title --jq '.title' 2>/dev/null || echo "")
+    fi
     WORKTREE_ISSUE_TITLE_VALUE="$_ISSUE_TITLE"
 fi
 
