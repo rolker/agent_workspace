@@ -250,17 +250,20 @@ fi
 if [ -z "$SKILL_NAME" ] && [ "$SHELL_SNIPPET" != true ]; then
 
     # Fetch and display issue title (git-bug first, then gh fallback)
+    # Try workspace repo first, then project repo for project-type worktrees
     _ISSUE_TITLE=""
-    _WS_REMOTE=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
-    _WS_SLUG=""
-    if [[ -n "$_WS_REMOTE" && "$_WS_REMOTE" == *"github.com"* ]]; then
-        _WS_SLUG=$(echo "$_WS_REMOTE" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
-        [[ "$_WS_SLUG" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]] || _WS_SLUG=""
-    fi
-
+    _WS_SLUG=$(extract_gh_slug "$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null)")
     if [ -n "$_WS_SLUG" ]; then
         issue_lookup "$ISSUE_NUM" --repo "$_WS_SLUG" --root "$ROOT_DIR" || true
         _ISSUE_TITLE="$ISSUE_TITLE"
+    fi
+    # If not found in workspace repo, try project repo
+    if [ -z "$_ISSUE_TITLE" ] && [ -d "$ROOT_DIR/project/.git" ]; then
+        _PJ_SLUG=$(extract_gh_slug "$(git -C "$ROOT_DIR/project" remote get-url origin 2>/dev/null)")
+        if [ -n "$_PJ_SLUG" ] && [ "$_PJ_SLUG" != "$_WS_SLUG" ]; then
+            issue_lookup "$ISSUE_NUM" --repo "$_PJ_SLUG" --root "$ROOT_DIR" || true
+            _ISSUE_TITLE="$ISSUE_TITLE"
+        fi
     fi
     WORKTREE_ISSUE_TITLE_VALUE="$_ISSUE_TITLE"
 fi

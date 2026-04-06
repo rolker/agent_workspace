@@ -174,16 +174,19 @@ fi
 # Resolve repo slug for git-bug-first lookup
 _REPO_SLUG=""
 if [[ ${#GH_REPO_ARGS[@]} -gt 0 ]]; then
-    _REMOTE_URL="${GH_REPO_ARGS[1]:-}"
-else
-    _REMOTE_URL=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
+    _REPO_SLUG=$(extract_gh_slug "${GH_REPO_ARGS[1]:-}")
 fi
-if [[ -n "$_REMOTE_URL" && "$_REMOTE_URL" == *"github.com"* ]]; then
-    _REPO_SLUG=$(echo "$_REMOTE_URL" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
+if [[ -z "$_REPO_SLUG" ]]; then
+    _REPO_SLUG=$(extract_gh_slug "$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null)")
 fi
 ISSUE_TITLE=""
 if [[ -n "$_REPO_SLUG" ]]; then
     issue_lookup "$ISSUE_NUM" --repo "$_REPO_SLUG" --root "$ROOT_DIR" || true
+fi
+# Fallback: if slug extraction failed (non-GitHub remote), try gh directly
+if [[ -z "$ISSUE_TITLE" ]] && [[ -z "$_REPO_SLUG" ]] && command -v gh &>/dev/null; then
+    ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" "${GH_REPO_ARGS[@]}" \
+        --json title --jq '.title' 2>/dev/null || echo "")
 fi
 if [[ -n "$ISSUE_TITLE" ]]; then
     ROADMAP_MATCHES=()

@@ -43,10 +43,17 @@ if command -v git-bug &>/dev/null && command -v jq &>/dev/null; then
         ISSUE_TITLE=$(echo "$_SHOW_JSON" | jq -r '.title // empty')
         ISSUE_BODY=$(echo "$_SHOW_JSON" | jq -r '.comments[0].message // empty')
     fi
-    # Sync-on-miss: if not found, pull and retry
+    # Sync-on-miss: if not found, pull from GitHub and retry
     if [ -z "$ISSUE_TITLE" ]; then
+        echo "  git-bug: cache miss, pulling from GitHub..." >&2
         git bug bridge pull github &>/dev/null || true
-        # retry the same lookup...
+        _LIST_JSON=$(git bug bug -m "github-url=${_GITHUB_URL}" --format json 2>/dev/null || echo "")
+        _BUG_ID=$(echo "$_LIST_JSON" | jq -r '.[0].human_id // empty' 2>/dev/null)
+        if [ -n "$_BUG_ID" ]; then
+            _SHOW_JSON=$(git bug bug show "$_BUG_ID" --format json 2>/dev/null || echo "")
+            ISSUE_TITLE=$(echo "$_SHOW_JSON" | jq -r '.title // empty')
+            ISSUE_BODY=$(echo "$_SHOW_JSON" | jq -r '.comments[0].message // empty')
+        fi
     fi
 fi
 

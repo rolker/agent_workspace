@@ -31,15 +31,7 @@ fetch_remote_branch() {
     git -C "$git_path" fetch --quiet origin -- "$branch" 2>/dev/null
 }
 
-# Extract a validated owner/repo slug from a GitHub remote URL.
-extract_gh_slug() {
-    local url="$1"
-    local slug
-    slug=$(echo "$url" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
-    if [[ "$slug" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
-        echo "$slug"
-    fi
-}
+# extract_gh_slug is provided by _issue_helpers.sh (sourced above)
 
 # Defaults
 ISSUE_NUM=""

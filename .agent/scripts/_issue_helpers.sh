@@ -5,11 +5,25 @@
 # Source this file from other scripts:
 #   source "$SCRIPT_DIR/_issue_helpers.sh"
 #
-# Requires: jq (for JSON parsing)
+# Requires: jq (for git-bug JSON parsing)
 # Optional: git-bug v0.10+ with GitHub bridge configured
+#
+# The gh fallback uses gh's built-in --jq flag and does NOT require jq.
+# jq is only needed for the git-bug path.
 #
 # Pattern: try git-bug first (offline-capable), pull on cache miss,
 # fall back to gh CLI. See ADR-0010 and AGENTS.md "git-bug-first Pattern".
+
+# --- Utility: extract validated GitHub slug from remote URL ---
+# Returns the slug on stdout, empty if not a valid GitHub URL.
+extract_gh_slug() {
+    local url="$1"
+    local slug
+    slug=$(echo "$url" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
+    if [[ "$slug" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+        echo "$slug"
+    fi
+}
 
 # --- Single-issue lookup ---
 # Fetch title, state, and body for a GitHub issue number.
@@ -77,15 +91,18 @@ issue_lookup() {
         fi
     fi
 
-    # --- Fall back to gh ---
+    # --- Fall back to gh (no jq required — uses gh's built-in --jq) ---
     if [[ -z "$ISSUE_TITLE" ]] && command -v gh &>/dev/null; then
-        local gh_json
-        gh_json=$(gh issue view "$issue_num" --repo "$repo_slug" \
-            --json title,state,body 2>/dev/null || echo "")
-        if [[ -n "$gh_json" ]]; then
-            ISSUE_TITLE=$(echo "$gh_json" | jq -r '.title // empty')
-            ISSUE_STATE=$(echo "$gh_json" | jq -r '.state // empty')
-            ISSUE_BODY=$(echo "$gh_json" | jq -r '.body // empty')
+        # Single API call; parse title and state with gh's --jq, fetch body separately
+        # (body can contain arbitrary text including our delimiter)
+        local gh_meta
+        gh_meta=$(gh issue view "$issue_num" --repo "$repo_slug" \
+            --json title,state --jq '.title + "||GH_SEP||" + .state' 2>/dev/null || echo "")
+        if [[ -n "$gh_meta" && "$gh_meta" == *"||GH_SEP||"* ]]; then
+            ISSUE_TITLE="${gh_meta%%||GH_SEP||*}"
+            ISSUE_STATE="${gh_meta#*||GH_SEP||}"
+            ISSUE_BODY=$(gh issue view "$issue_num" --repo "$repo_slug" \
+                --json body --jq '.body' 2>/dev/null || echo "")
         fi
     fi
 
@@ -135,7 +152,10 @@ _issue_lookup_gitbug() {
 # Usage:
 #   issue_list_open [--repo <owner/repo>] [--root <dir>]
 #
-# Outputs one line per issue: <human_id_or_number>\t<title>
+# Outputs one line per issue: <id>\t<title>
+# Note: <id> is a git-bug short ID (hex prefix) when served from git-bug,
+# or a GitHub issue number when served from gh. Callers that need GitHub
+# issue numbers should use the gh fallback explicitly.
 # Returns 0 on success, 1 if no source available.
 issue_list_open() {
     local repo_slug="" root_dir=""
@@ -158,8 +178,8 @@ issue_list_open() {
         has_bridge=$(git -C "$root_dir" bug bridge 2>/dev/null | grep -c "github" || true)
         if [[ "$has_bridge" -gt 0 ]]; then
             local list_output
-            list_output=$(git -C "$root_dir" bug bug status:open 2>/dev/null)
-            if [[ $? -eq 0 && -n "$list_output" ]]; then
+            if list_output=$(git -C "$root_dir" bug bug status:open 2>/dev/null) \
+                && [[ -n "$list_output" ]]; then
                 # Output format: <short_id>\t<status>\t<title>
                 # Reformat to: <short_id>\t<title>
                 echo "$list_output" | awk -F'\t' '{print $1 "\t" $3}'
@@ -168,7 +188,7 @@ issue_list_open() {
         fi
     fi
 
-    # --- Fall back to gh ---
+    # --- Fall back to gh (no jq required) ---
     if command -v gh &>/dev/null && [[ -n "$repo_slug" ]]; then
         gh issue list --repo "$repo_slug" --state open \
             --json number,title --jq '.[] | "\(.number)\t\(.title)"' 2>/dev/null
@@ -201,23 +221,31 @@ issue_count_open() {
     fi
 
     # --- Try git-bug ---
+    # git-bug's local store contains issues for the repo at $root_dir.
+    # Only use it when $repo_slug matches that repo's remote to avoid
+    # returning the wrong count when iterating over multiple repos.
     if command -v git-bug &>/dev/null; then
-        local has_bridge
-        has_bridge=$(git -C "$root_dir" bug bridge 2>/dev/null | grep -c "github" || true)
-        if [[ "$has_bridge" -gt 0 ]]; then
-            local list_output
-            if list_output=$(git -C "$root_dir" bug bug status:open 2>/dev/null); then
-                if [[ -z "$list_output" ]]; then
-                    echo "0"
-                else
-                    echo "$list_output" | grep -c .
+        local ws_remote ws_slug
+        ws_remote=$(git -C "$root_dir" remote get-url origin 2>/dev/null || echo "")
+        ws_slug=$(extract_gh_slug "$ws_remote")
+        if [[ -n "$ws_slug" && "$ws_slug" == "$repo_slug" ]]; then
+            local has_bridge
+            has_bridge=$(git -C "$root_dir" bug bridge 2>/dev/null | grep -c "github" || true)
+            if [[ "$has_bridge" -gt 0 ]]; then
+                local list_output
+                if list_output=$(git -C "$root_dir" bug bug status:open 2>/dev/null); then
+                    if [[ -z "$list_output" ]]; then
+                        echo "0"
+                    else
+                        echo "$list_output" | grep -c .
+                    fi
+                    return 0
                 fi
-                return 0
             fi
         fi
     fi
 
-    # --- Fall back to gh ---
+    # --- Fall back to gh (no jq required) ---
     if command -v gh &>/dev/null && [[ -n "$repo_slug" ]]; then
         gh api -X GET search/issues \
             -f q="repo:${repo_slug} is:issue is:open" \
