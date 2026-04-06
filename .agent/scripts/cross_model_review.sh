@@ -234,7 +234,7 @@ if [[ -n "$PR_BODY" ]]; then
     ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_REF" | grep -oE '[0-9]+$' || true)
     if [[ -z "$ISSUE_NUMBER" ]]; then
         # Fallback: first standalone #N (not part of a URL path or hex color)
-        ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+')
+        ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+' || true)
     fi
 fi
 
@@ -246,6 +246,10 @@ fi
 
 # --- Set up artifact directory (absolute paths for tmux session) ---
 if [[ -n "$EXPLICIT_WORK_DIR" ]]; then
+    if [[ ! -d "$EXPLICIT_WORK_DIR" ]]; then
+        echo "ERROR: --work-dir is not an existing directory: ${EXPLICIT_WORK_DIR}" >&2
+        exit 2
+    fi
     # Resolve to absolute path so tmux sessions find the directory
     EXPLICIT_WORK_DIR=$(cd "$EXPLICIT_WORK_DIR" && pwd)
     WORK_PLANS_DIR="${EXPLICIT_WORK_DIR}/.agent/work-plans/issue-${ISSUE_NUMBER}"

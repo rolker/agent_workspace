@@ -58,3 +58,15 @@ All four fixes applied to `cross_model_review.sh`. Updated `review-code` SKILL.m
 - [x] Add word boundary to close keyword regex (prevents "encloses"/"prefixes" false matches)
 - [x] Resolve --work-dir to absolute path via cd/pwd
 - [x] Add substring false-positive test cases (19 tests total)
+
+## External Review (round 4)
+**Status**: complete
+**When**: 2026-04-05 22:00
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #145 — 4 review(s), 2 valid (Copilot round 4), 7 stale (already addressed)
+**CI**: all-pass
+
+### Actions
+- [x] Add || true to fallback grep pipeline (pipefail abort on no-match)
+- [x] Validate --work-dir existence before cd (clear error instead of cryptic cd failure)
