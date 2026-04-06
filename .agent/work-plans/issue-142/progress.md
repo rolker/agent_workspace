@@ -72,6 +72,17 @@ Major plan revision after discovering:
 **CI**: all-pass
 
 ### Actions
-- [ ] Add repo-slug guard to issue_lookup git-bug path — skip git-bug when --repo doesn't match --root's remote
-- [ ] Update what-next and issue-triage skill snippets — add `| wc -l` to git-bug "count only" line
-- [ ] Update --repo documentation in _issue_helpers.sh and AGENTS.md — mark as required for list/count
+- [x] Add repo-slug guard to issue_lookup git-bug path — skip git-bug when --repo doesn't match --root's remote
+- [x] Update what-next and issue-triage skill snippets — add `| wc -l` to git-bug "count only" line
+- [x] Update --repo documentation in _issue_helpers.sh and AGENTS.md — mark as required for list/count
+
+## External Review (round 3)
+**Status**: complete
+**When**: 2026-04-06 02:15
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #143 — 4 review(s), 1 valid, 0 false positives
+**CI**: all-pass
+
+### Actions
+- [ ] Add direct gh fallback in worktree_enter.sh when slug extraction fails
