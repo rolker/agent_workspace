@@ -27,9 +27,42 @@ repo? conflicting with ADRs?). For evaluating an implementation plan, use
 
 ### 1. Read the issue
 
+Try git-bug first for offline-capable issue reading, then fall back to `gh`:
+
 ```bash
-gh issue view <N> --json title,body,labels,assignees,milestone,comments,url
+# git-bug first (offline-capable) — provides title, body, and comments
+ISSUE_TITLE=""
+ISSUE_BODY=""
+if command -v git-bug &>/dev/null && command -v jq &>/dev/null; then
+    _REPO_SLUG="<owner/repo>"  # resolve from git remote
+    _GITHUB_URL="https://github.com/${_REPO_SLUG}/issues/<N>"
+    _LIST_JSON=$(git bug bug -m "github-url=${_GITHUB_URL}" --format json 2>/dev/null || echo "")
+    _BUG_ID=$(echo "$_LIST_JSON" | jq -r '.[0].human_id // empty' 2>/dev/null)
+    if [ -n "$_BUG_ID" ]; then
+        _SHOW_JSON=$(git bug bug show "$_BUG_ID" --format json 2>/dev/null || echo "")
+        ISSUE_TITLE=$(echo "$_SHOW_JSON" | jq -r '.title // empty')
+        ISSUE_BODY=$(echo "$_SHOW_JSON" | jq -r '.comments[0].message // empty')
+    fi
+    # Sync-on-miss: if not found, pull and retry
+    if [ -z "$ISSUE_TITLE" ]; then
+        git bug bridge pull github &>/dev/null || true
+        # retry the same lookup...
+    fi
+fi
+
+# Fall back to gh if git-bug didn't provide the data
+if [ -z "$ISSUE_TITLE" ] || [ -z "$ISSUE_BODY" ]; then
+    _GH_JSON=$(gh issue view <N> --json title,body,labels,assignees,milestone,comments,url 2>/dev/null || echo "")
+    if [ -n "$_GH_JSON" ]; then
+        [ -z "$ISSUE_TITLE" ] && ISSUE_TITLE=$(echo "$_GH_JSON" | jq -r '.title')
+        [ -z "$ISSUE_BODY" ] && ISSUE_BODY=$(echo "$_GH_JSON" | jq -r '.body')
+    fi
+fi
 ```
+
+Check for review-issue comments — they contain scope assessment, principle
+flags, and ADR notes. Comments are available from `gh` output (`.comments[]`)
+or from git-bug JSON (`.comments[1:]` — index 0 is the issue body).
 
 Identify:
 - What is being proposed?

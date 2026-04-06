@@ -87,9 +87,20 @@ WS_REPO=$(git remote get-url origin 2>/dev/null | sed -nE 's|.*github\.com[:/](.
 PJ_REPO=$(git -C project remote get-url origin 2>/dev/null | sed -nE 's|.*github\.com[:/](.+)(\.git)?$|\1|p')
 ```
 
-For each repo that has a roadmap:
+For each repo that has a roadmap, try git-bug first for offline-capable
+issue listing, then fall back to `gh`:
 
 ```bash
+# git-bug first (for repos with a configured bridge)
+if command -v git-bug &>/dev/null \
+    && git bug bridge 2>/dev/null | grep -q github; then
+    # Open issues
+    git bug bug status:open
+    # Closed issues (git-bug lists all by default; filter for closed)
+    git bug bug status:closed
+fi
+
+# Fall back to gh
 # Open issues
 gh issue list --repo <owner/repo> --state open --json number,title,labels,url,assignees --limit 200
 

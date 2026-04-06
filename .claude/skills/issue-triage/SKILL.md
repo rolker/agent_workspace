@@ -39,9 +39,17 @@ If `--repo` was specified, filter to just that repository.
 
 ### 2. Fetch open issues per repo
 
-For each repository:
+For each repository, try git-bug first for offline-capable issue listing,
+then fall back to `gh`:
 
 ```bash
+# git-bug first (for repos with a configured bridge)
+if command -v git-bug &>/dev/null \
+    && git bug bridge 2>/dev/null | grep -q github; then
+    git bug bug status:open --format json
+fi
+
+# Fall back to gh
 gh issue list --repo <owner/repo> --state open --json number,title,labels,createdAt,updatedAt,url,assignees --limit 100
 ```
 
