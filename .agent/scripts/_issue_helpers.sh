@@ -74,19 +74,26 @@ issue_lookup() {
     ISSUE_BODY=""
 
     # --- Try git-bug ---
+    # Only use git-bug when --repo matches the repo at --root (git-bug's bridge
+    # only has issues for that repo). Skip to gh fallback for other repos.
     if command -v git-bug &>/dev/null && command -v jq &>/dev/null; then
-        local github_url="https://github.com/${repo_slug}/issues/${issue_num}"
+        local ws_remote ws_slug
+        ws_remote=$(git -C "$root_dir" remote get-url origin 2>/dev/null || echo "")
+        ws_slug=$(extract_gh_slug "$ws_remote")
+        if [[ -n "$ws_slug" && "$ws_slug" == "$repo_slug" ]]; then
+            local github_url="https://github.com/${repo_slug}/issues/${issue_num}"
 
-        _issue_lookup_gitbug "$root_dir" "$github_url"
+            _issue_lookup_gitbug "$root_dir" "$github_url"
 
-        # Sync-on-miss: if not found locally, pull and retry
-        if [[ -z "$ISSUE_TITLE" ]]; then
-            local has_bridge
-            has_bridge=$(git -C "$root_dir" bug bridge 2>/dev/null | grep -c "github" || true)
-            if [[ "$has_bridge" -gt 0 ]]; then
-                echo "  git-bug: cache miss for #${issue_num}, pulling from GitHub..." >&2
-                git -C "$root_dir" bug bridge pull github &>/dev/null || true
-                _issue_lookup_gitbug "$root_dir" "$github_url"
+            # Sync-on-miss: if not found locally, pull and retry
+            if [[ -z "$ISSUE_TITLE" ]]; then
+                local has_bridge
+                has_bridge=$(git -C "$root_dir" bug bridge 2>/dev/null | grep -c "github" || true)
+                if [[ "$has_bridge" -gt 0 ]]; then
+                    echo "  git-bug: cache miss for #${issue_num}, pulling from GitHub..." >&2
+                    git -C "$root_dir" bug bridge pull github &>/dev/null || true
+                    _issue_lookup_gitbug "$root_dir" "$github_url"
+                fi
             fi
         fi
     fi
@@ -150,7 +157,7 @@ _issue_lookup_gitbug() {
 # List open issues from git-bug or gh.
 #
 # Usage:
-#   issue_list_open [--repo <owner/repo>] [--root <dir>]
+#   issue_list_open --repo <owner/repo> [--root <dir>]
 #
 # Outputs one line per issue: <id>\t<title>
 # Note: <id> is a git-bug short ID (hex prefix) when served from git-bug,
@@ -210,7 +217,7 @@ issue_list_open() {
 # Count open issues from git-bug or gh.
 #
 # Usage:
-#   issue_count_open [--repo <owner/repo>] [--root <dir>]
+#   issue_count_open --repo <owner/repo> [--root <dir>]
 #
 # Outputs a single integer. Returns 0 on success, 1 if no source available.
 issue_count_open() {

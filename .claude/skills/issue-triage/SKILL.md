@@ -51,7 +51,7 @@ gh issue list --repo <owner/repo> --state open --json number,title,labels,create
 # Note: git-bug output lacks labels, timestamps, and URLs — use only for counts
 if ! command -v gh &>/dev/null && command -v git-bug &>/dev/null \
     && git bug bridge 2>/dev/null | grep -q github; then
-    git bug bug status:open   # count only
+    git bug bug status:open | wc -l   # count only
 fi
 ```
 

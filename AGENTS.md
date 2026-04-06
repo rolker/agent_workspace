@@ -213,8 +213,8 @@ doesn't track PRs.
 
 **Scripts**: source `.agent/scripts/_issue_helpers.sh` and use:
 - `issue_lookup <N> --repo <owner/repo> [--root <dir>]` — single issue
-- `issue_list_open [--repo <owner/repo>] [--root <dir>]` — list open issues
-- `issue_count_open [--repo <owner/repo>] [--root <dir>]` — count open issues
+- `issue_list_open --repo <owner/repo> [--root <dir>]` — list open issues
+- `issue_count_open --repo <owner/repo> [--root <dir>]` — count open issues
 
 **Sync behavior**:
 - **Reads**: local cache first; on miss, `git bug bridge pull github` + retry,
