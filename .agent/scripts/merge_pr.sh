@@ -130,33 +130,58 @@ echo "========================================"
 # --- Step 1: Roadmap update (pre-merge) ---
 if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
     echo "  Checking roadmap for #${ISSUE_NUM}..."
-    # Determine which repo's worktree has the feature branch checked out
-    if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -d "$ROOT_DIR/project/.git" ]]; then
-        _ROADMAP_REPO="$ROOT_DIR/project"
-    else
-        _ROADMAP_REPO="$ROOT_DIR"
+
+    # Resolve the worktree that has the feature branch checked out.
+    # The roadmap must be updated there (not in ROOT_DIR, which is on main).
+    _WT_ROOT=""
+    if [[ "$WORKTREE_TYPE" == "workspace" ]]; then
+        _WT_PATH="$ROOT_DIR/worktrees/workspace/issue-workspace-${ISSUE_NUM}"
+        [[ -d "$_WT_PATH" ]] && _WT_ROOT="$_WT_PATH"
+    elif [[ "$WORKTREE_TYPE" == "project" ]]; then
+        _WT_PATH="$ROOT_DIR/worktrees/project/issue-project-${ISSUE_NUM}"
+        [[ -d "$_WT_PATH" ]] && _WT_ROOT="$_WT_PATH"
     fi
 
-    # Capture changed files from update script (stdout) while showing status (stderr-style echo)
-    _CHANGED_FILES=$("$SCRIPT_DIR/update_roadmap.sh" --issue "$ISSUE_NUM" --root "$ROOT_DIR" 2>&1 \
-        | tee /dev/stderr | grep "^/" || true)
-
-    if [[ -n "$_CHANGED_FILES" ]]; then
-        echo "  Committing roadmap update to feature branch..."
-        # Stage and commit only the changed roadmap files
-        while IFS= read -r changed_file; do
-            git -C "$_ROADMAP_REPO" add "$changed_file" 2>/dev/null || true
-        done <<< "$_CHANGED_FILES"
-
-        if git -C "$_ROADMAP_REPO" diff --cached --quiet 2>/dev/null; then
-            echo "  ⚠️  No staged changes — skipping roadmap commit"
+    if [[ -z "$_WT_ROOT" ]]; then
+        echo "  ⚠️  No worktree found for issue #${ISSUE_NUM} — skipping roadmap update"
+    else
+        # Verify the worktree is on the expected feature branch
+        _WT_BRANCH=$(git -C "$_WT_ROOT" branch --show-current 2>/dev/null || echo "")
+        if [[ "$_WT_BRANCH" != "$PR_BRANCH" ]]; then
+            echo "  ⚠️  Worktree is on '${_WT_BRANCH:-unknown}', expected '$PR_BRANCH' — skipping roadmap update"
         else
-            git -C "$_ROADMAP_REPO" commit -m "Update roadmap: mark #${ISSUE_NUM} as done" 2>/dev/null \
-                && echo "  ✅ Roadmap updated" \
-                || echo "  ⚠️  Roadmap commit failed — proceeding with merge"
-            git -C "$_ROADMAP_REPO" push 2>/dev/null \
-                && echo "  ✅ Roadmap commit pushed" \
-                || echo "  ⚠️  Roadmap push failed — proceeding with merge"
+            # Run update_roadmap.sh in the worktree (stdout = changed file paths, stderr = status)
+            _CHANGED_FILES=$("$SCRIPT_DIR/update_roadmap.sh" --issue "$ISSUE_NUM" --root "$_WT_ROOT" || true)
+
+            if [[ -n "$_CHANGED_FILES" ]]; then
+                echo "  Committing roadmap update to feature branch..."
+                _WT_TOPLEVEL=$(git -C "$_WT_ROOT" rev-parse --show-toplevel 2>/dev/null)
+
+                # Stage changed files using paths relative to the worktree root
+                while IFS= read -r changed_file; do
+                    [[ -z "$changed_file" ]] && continue
+                    case "$changed_file" in
+                        "${_WT_TOPLEVEL}"/*)
+                            _REL="${changed_file#"${_WT_TOPLEVEL}/"}"
+                            git -C "$_WT_ROOT" add -- "$_REL" 2>/dev/null || true
+                            ;;
+                        *)
+                            echo "  ⚠️  Skipping non-repo path: $changed_file" >&2
+                            ;;
+                    esac
+                done <<< "$_CHANGED_FILES"
+
+                if git -C "$_WT_ROOT" diff --cached --quiet 2>/dev/null; then
+                    echo "  ⚠️  No staged changes — skipping roadmap commit"
+                else
+                    git -C "$_WT_ROOT" commit -m "Update roadmap: mark #${ISSUE_NUM} as done" 2>/dev/null \
+                        && echo "  ✅ Roadmap updated" \
+                        || echo "  ⚠️  Roadmap commit failed — proceeding with merge"
+                    git -C "$_WT_ROOT" push origin "$PR_BRANCH" 2>/dev/null \
+                        && echo "  ✅ Roadmap commit pushed" \
+                        || echo "  ⚠️  Roadmap push failed — proceeding with merge"
+                fi
+            fi
         fi
     fi
 else

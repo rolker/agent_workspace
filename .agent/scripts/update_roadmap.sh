@@ -10,9 +10,11 @@
 #   - Checklist format (project/ROADMAP.md): changes "- [ ]" to "- [x]"
 #
 # Only matches explicit #<N> references (no fuzzy matching).
-# Prints what was changed for transparency. Always exits 0 (never blocks merge).
+# Prints status to stderr, changed file paths to stdout.
+# Always exits 0 (never blocks merge).
 
-set -eo pipefail
+set -o pipefail
+trap 'exit 0' EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -45,43 +47,55 @@ if [[ -z "$ROOT_DIR" ]]; then
     ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 fi
 
-CHANGED_FILES=()
 FOUND_MATCH=false
+
+# Helper: rebuild a table row with column 4 (status) replaced by "done".
+# Uses awk for precise column replacement — avoids sed regex injection.
+_replace_status_col() {
+    local file="$1" line_num="$2"
+    awk -F'|' -v OFS='|' -v ln="$line_num" '
+        NR == ln {
+            # $4 is the status column — preserve spacing by replacing inner text
+            gsub(/[^ ].*[^ ]/, "done", $4)
+            # If status was single word with only one non-space char
+            if ($4 !~ /done/) gsub(/[^ ]+/, "done", $4)
+        }
+        { print }
+    ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+}
 
 # --- Table format: docs/ROADMAP.md ---
 # Format: | Item | #N | Status | Source | Notes |
-# Match lines where a column contains exactly #<N> and another column has a
-# status that isn't "done". Update the status column to "done".
+# Match lines where the Issue column (col 3) is exactly #<N>.
+# Update the Status column (col 4) to "done".
 WS_ROADMAP="$ROOT_DIR/docs/ROADMAP.md"
 if [[ -f "$WS_ROADMAP" ]]; then
-    # Find table lines containing #<N> in a column (word boundary match)
-    # Table rows look like: | Item | #47 | done | gstack | notes |
     while IFS= read -r line_num; do
         line=$(sed -n "${line_num}p" "$WS_ROADMAP")
 
-        # Split into columns and check if any column is exactly #<N>
-        # We need the Issue column (typically column 2) to contain #<N>
+        # Check Issue column (awk field $3) is exactly #<N>
         issue_col=$(echo "$line" | awk -F'|' '{print $3}' | xargs)
         if [[ "$issue_col" != "#${ISSUE_NUM}" ]]; then
-            # Also check if it's part of a compound reference like "#49" in "subsumed by #88"
-            # Only match if the issue column is exactly our number
             continue
         fi
 
-        # Get current status (column 4 typically)
         status_col=$(echo "$line" | awk -F'|' '{print $4}' | xargs)
         FOUND_MATCH=true
         if [[ "${status_col,,}" == "done" ]]; then
-            echo "  docs/ROADMAP.md: #${ISSUE_NUM} already marked done"
+            echo "  docs/ROADMAP.md: #${ISSUE_NUM} already marked done" >&2
             continue
         fi
 
-        echo "  docs/ROADMAP.md: #${ISSUE_NUM} — updating status from '${status_col}' to 'done'"
+        echo "  docs/ROADMAP.md: #${ISSUE_NUM} — updating status from '${status_col}' to 'done'" >&2
         if [[ "$DRY_RUN" == false ]]; then
-            # Replace the status column value with "done" on this specific line
-            # Use sed to replace the status field in the pipe-delimited table row
-            sed -i "${line_num}s/| ${status_col} |/| done |/" "$WS_ROADMAP"
-            CHANGED_FILES+=("$WS_ROADMAP")
+            _replace_status_col "$WS_ROADMAP" "$line_num"
+            # Verify the change actually took effect
+            new_status=$(sed -n "${line_num}p" "$WS_ROADMAP" | awk -F'|' '{print $4}' | xargs)
+            if [[ "${new_status,,}" == "done" ]]; then
+                echo "$WS_ROADMAP"
+            else
+                echo "  ⚠️  docs/ROADMAP.md: replacement did not take effect" >&2
+            fi
         fi
     done < <(grep -n "| *#${ISSUE_NUM} *|" "$WS_ROADMAP" 2>/dev/null | cut -d: -f1)
 fi
@@ -91,35 +105,32 @@ fi
 # Match unchecked items containing #<N> and check them.
 PJ_ROADMAP="$ROOT_DIR/project/ROADMAP.md"
 if [[ -f "$PJ_ROADMAP" ]]; then
+    # Portable word boundary: #N followed by non-alphanumeric or end of line
     while IFS= read -r line_num; do
         line=$(sed -n "${line_num}p" "$PJ_ROADMAP")
 
         FOUND_MATCH=true
-        # Only update unchecked items
         if [[ "$line" != *"- [ ]"* ]]; then
             if [[ "$line" == *"- [x]"* ]]; then
-                echo "  project/ROADMAP.md: #${ISSUE_NUM} already checked"
+                echo "  project/ROADMAP.md: #${ISSUE_NUM} already checked" >&2
             fi
             continue
         fi
 
-        echo "  project/ROADMAP.md: #${ISSUE_NUM} — checking item"
+        echo "  project/ROADMAP.md: #${ISSUE_NUM} — checking item" >&2
         if [[ "$DRY_RUN" == false ]]; then
             sed -i "${line_num}s/- \[ \]/- [x]/" "$PJ_ROADMAP"
-            CHANGED_FILES+=("$PJ_ROADMAP")
+            # Verify the change
+            if sed -n "${line_num}p" "$PJ_ROADMAP" | grep -q "\- \[x\]"; then
+                echo "$PJ_ROADMAP"
+            else
+                echo "  ⚠️  project/ROADMAP.md: replacement did not take effect" >&2
+            fi
         fi
-    done < <(grep -n "#${ISSUE_NUM}\b" "$PJ_ROADMAP" 2>/dev/null | cut -d: -f1)
+    done < <(grep -nE "#${ISSUE_NUM}([^[:alnum:]_]|$)" "$PJ_ROADMAP" 2>/dev/null | cut -d: -f1)
 fi
 
 # --- Report ---
 if [[ "$FOUND_MATCH" == false ]]; then
-    echo "  No roadmap entries found for #${ISSUE_NUM}"
+    echo "  No roadmap entries found for #${ISSUE_NUM}" >&2
 fi
-
-# Return unique list of changed files (for caller to commit)
-# Output on stdout: one file path per line (only changed files)
-if [[ ${#CHANGED_FILES[@]} -gt 0 ]]; then
-    printf '%s\n' "${CHANGED_FILES[@]}" | sort -u
-fi
-
-exit 0
