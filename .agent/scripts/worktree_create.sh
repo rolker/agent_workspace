@@ -270,6 +270,11 @@ if [ -n "$ISSUE_NUM" ]; then
     if [ -n "$_LOOKUP_REPO" ]; then
         issue_lookup "$ISSUE_NUM" --repo "$_LOOKUP_REPO" --root "$ROOT_DIR" || true
     fi
+    # Fallback: if slug extraction failed (non-GitHub remote), try gh without --repo
+    if [ -z "$ISSUE_TITLE" ] && [ -z "$_LOOKUP_REPO" ] && command -v gh &>/dev/null; then
+        ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --json title --jq '.title' 2>/dev/null || echo "")
+        ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state --jq '.state' 2>/dev/null || echo "")
+    fi
 
     # PR check stays gh-only — git-bug doesn't track PRs
     if command -v gh &>/dev/null; then

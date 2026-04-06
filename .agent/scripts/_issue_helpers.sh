@@ -173,17 +173,25 @@ issue_list_open() {
     fi
 
     # --- Try git-bug ---
+    # git-bug's local store contains issues for the repo at $root_dir.
+    # Only use it when $repo_slug matches that repo's remote to avoid
+    # returning issues for the wrong repo.
     if command -v git-bug &>/dev/null; then
-        local has_bridge
-        has_bridge=$(git -C "$root_dir" bug bridge 2>/dev/null | grep -c "github" || true)
-        if [[ "$has_bridge" -gt 0 ]]; then
-            local list_output
-            if list_output=$(git -C "$root_dir" bug bug status:open 2>/dev/null) \
-                && [[ -n "$list_output" ]]; then
-                # Output format: <short_id>\t<status>\t<title>
-                # Reformat to: <short_id>\t<title>
-                echo "$list_output" | awk -F'\t' '{print $1 "\t" $3}'
-                return 0
+        local ws_remote ws_slug
+        ws_remote=$(git -C "$root_dir" remote get-url origin 2>/dev/null || echo "")
+        ws_slug=$(extract_gh_slug "$ws_remote")
+        if [[ -n "$ws_slug" && "$ws_slug" == "$repo_slug" ]]; then
+            local has_bridge
+            has_bridge=$(git -C "$root_dir" bug bridge 2>/dev/null | grep -c "github" || true)
+            if [[ "$has_bridge" -gt 0 ]]; then
+                local list_output
+                if list_output=$(git -C "$root_dir" bug bug status:open 2>/dev/null) \
+                    && [[ -n "$list_output" ]]; then
+                    # Output format: <short_id>\t<status>\t<title>
+                    # Reformat to: <short_id>\t<title>
+                    echo "$list_output" | awk -F'\t' '{print $1 "\t" $3}'
+                    return 0
+                fi
             fi
         fi
     fi

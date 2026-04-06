@@ -87,25 +87,24 @@ WS_REPO=$(git remote get-url origin 2>/dev/null | sed -nE 's|.*github\.com[:/](.
 PJ_REPO=$(git -C project remote get-url origin 2>/dev/null | sed -nE 's|.*github\.com[:/](.+)(\.git)?$|\1|p')
 ```
 
-For each repo that has a roadmap, try git-bug first for offline-capable
-issue listing, then fall back to `gh`:
+For each repo that has a roadmap, fetch issues via `gh` (needed for labels,
+assignees, URLs used in the cross-reference step). git-bug can provide a
+quick offline count but lacks these fields.
 
 ```bash
-# git-bug first (for repos with a configured bridge)
-if command -v git-bug &>/dev/null \
-    && git bug bridge 2>/dev/null | grep -q github; then
-    # Open issues
-    git bug bug status:open
-    # Closed issues (git-bug lists all by default; filter for closed)
-    git bug bug status:closed
-fi
-
-# Fall back to gh
+# Primary: gh (provides number, title, labels, assignees, URLs)
 # Open issues
 gh issue list --repo <owner/repo> --state open --json number,title,labels,url,assignees --limit 200
 
 # Recently closed (up to 100 most recent, to detect staleness)
 gh issue list --repo <owner/repo> --state closed --json number,title,closedAt,url --limit 100
+
+# Optional: git-bug for offline issue count (when gh is unavailable)
+# Note: git-bug output lacks labels, assignees, and URLs — use only for counts
+if ! command -v gh &>/dev/null && command -v git-bug &>/dev/null \
+    && git bug bridge 2>/dev/null | grep -q github; then
+    git bug bug status:open   # count only
+fi
 ```
 
 ### 4. Cross-reference
