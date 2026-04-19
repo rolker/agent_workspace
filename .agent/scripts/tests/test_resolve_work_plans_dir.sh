@@ -97,7 +97,9 @@ test_no_args_under_set_u() {
         source "${HELPER}"
         resolve_work_plans_dir 2>&1 || echo "__RC__=$?"
     )
-    rc=$(printf '%s\n' "$out" | grep -oE '__RC__=[0-9]+$' | tail -n1 | cut -d= -f2)
+    # `|| true` so a missing __RC__ match (regression: function stopped
+    # returning non-zero) doesn't crash the whole test run via pipefail.
+    rc=$(printf '%s\n' "$out" | grep -oE '__RC__=[0-9]+$' | tail -n1 | cut -d= -f2 || true)
 
     assert_eq "returns 1" "1" "$rc"
     assert_contains "intended error surfaced" \
