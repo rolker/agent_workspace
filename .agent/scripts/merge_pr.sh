@@ -65,9 +65,25 @@ if [[ -n "$WORKTREE_TYPE" ]] && [[ "$WORKTREE_TYPE" != "workspace" && "$WORKTREE
     exit 2
 fi
 
-# --- Resolve workspace root ---
-ROOT_DIR="$SCRIPT_DIR/../.."
-ROOT_DIR="$(cd "$ROOT_DIR" && pwd)"
+# --- Resolve workspace root (main tree) ---
+# Use `git worktree list --porcelain` instead of $SCRIPT_DIR/../.. so the
+# resolution is correct when the script is invoked from inside a
+# worktree (e.g. `make merge-pr` from a feature worktree). With the
+# relative-path approach, ROOT_DIR resolved to the worktree root, not
+# the main tree, so downstream worktree detection and cleanup silently
+# skipped. See issue #146.
+#
+# git worktree list always prints the main worktree first, in absolute
+# form, regardless of invocation cwd.
+# `|| true` so invocation outside any repo (git fails, pipefail would
+# otherwise trip set -e) falls through to the explicit empty-string
+# check below with a clearer error.
+ROOT_DIR=$({ git -C "$SCRIPT_DIR" worktree list --porcelain 2>/dev/null \
+    | head -n1 | sed 's/^worktree //'; } || true)
+if [[ -z "$ROOT_DIR" ]]; then
+    echo "ERROR: merge_pr.sh must run from within a git repository" >&2
+    exit 1
+fi
 
 # --- Resolve target repo for gh commands ---
 # For project PRs, gh must target the project repo, not the workspace repo.
