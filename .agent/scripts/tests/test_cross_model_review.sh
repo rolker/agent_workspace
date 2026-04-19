@@ -398,7 +398,7 @@ test_gh_repo_view_resolves_alias() {
     echo "TEST: gh repo view resolves SSH alias / Enterprise URLs (#150)"
     setup
 
-    # Point the mock repo's origin at an SSH host alias form the old
+    # Point the mock repo's origin at an SSH host alias from the old
     # sed pipeline would have mangled.
     git -C "${MOCK_REPO}" remote add origin "git@github-work:real-owner/real-repo.git" 2>/dev/null \
         || git -C "${MOCK_REPO}" remote set-url origin "git@github-work:real-owner/real-repo.git"
