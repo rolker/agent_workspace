@@ -13,4 +13,4 @@ issue: 150
 **CI**: all 8 checks pass
 
 ### Actions
-- [ ] Typo fix: "alias form the old" → "alias from the old" — `.agent/scripts/tests/test_cross_model_review.sh:401`
+- [x] Typo fix: "alias form the old" → "alias from the old" — `.agent/scripts/tests/test_cross_model_review.sh:401`
