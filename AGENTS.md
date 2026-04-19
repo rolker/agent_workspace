@@ -306,6 +306,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | Script | Purpose |
 |--------|---------|
 | `.agent/scripts/_issue_helpers.sh` | Shared git-bug-first issue lookup with sync-on-miss **(source)** |
+| `.agent/scripts/_resolve_work_plans_dir.sh` | Resolve per-issue work-plans dir; refuses outside matching worktree (issue #147) **(source)** |
 | `.agent/scripts/set_git_identity_env.sh` | Ephemeral git identity (session-only) **(source)** |
 | `.agent/scripts/worktree_create.sh` | Create isolated worktree |
 | `.agent/scripts/worktree_enter.sh` | Enter worktree **(source)** |
