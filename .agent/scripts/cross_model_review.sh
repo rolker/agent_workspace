@@ -15,9 +15,11 @@
 # with --sync.
 #
 # Usage:
-#   .agent/scripts/cross_model_review.sh --pr <N>                       # gemini (default)
-#   .agent/scripts/cross_model_review.sh --pr <N> --agent codex         # specific agent
-#   .agent/scripts/cross_model_review.sh --pr <N> --agent claude --sync # force sync
+#   .agent/scripts/cross_model_review.sh --pr <N>                              # gemini (default)
+#   .agent/scripts/cross_model_review.sh --pr <N> --agent codex                # specific agent
+#   .agent/scripts/cross_model_review.sh --pr <N> --agent claude --sync        # force sync
+#   .agent/scripts/cross_model_review.sh --pr <N> --repo owner/repo            # explicit repo target
+#   .agent/scripts/cross_model_review.sh --pr <N> --work-dir /path/to/worktree # explicit artifact dir
 #
 # The script runs in whichever repo worktree it's invoked from.
 # Workspace issues run in workspace worktrees, project issues in project worktrees.
@@ -94,9 +96,11 @@ run_agent_sync() {
 PR_NUMBER=""
 FORCE_SYNC=false
 TARGET_AGENT="gemini"
+EXPLICIT_REPO=""
+EXPLICIT_WORK_DIR=""
 CLI_WORK_PLANS_DIR=""
 
-USAGE="Usage: $0 --pr <N> [--agent <name>] [--sync] [--work-plans-dir <path>]"
+USAGE="Usage: $0 --pr <N> [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--work-plans-dir <path>] [--sync]"
 
 # Helper: treat a missing value OR a value that starts with '-' (i.e. the
 # user supplied another flag instead of a value) as "missing value."
@@ -123,14 +127,24 @@ while [[ $# -gt 0 ]]; do
             TARGET_AGENT="${2,,}"  # lowercase
             shift 2
             ;;
-        --sync)
-            FORCE_SYNC=true
-            shift
+        --repo|-R)
+            require_value "--repo" "${2:-}"
+            EXPLICIT_REPO="$2"
+            shift 2
+            ;;
+        --work-dir)
+            require_value "--work-dir" "${2:-}"
+            EXPLICIT_WORK_DIR="$2"
+            shift 2
             ;;
         --work-plans-dir)
             require_value "--work-plans-dir" "${2:-}"
             CLI_WORK_PLANS_DIR="$2"
             shift 2
+            ;;
+        --sync)
+            FORCE_SYNC=true
+            shift
             ;;
         *)
             echo "ERROR: Unknown argument: $1" >&2
@@ -153,6 +167,12 @@ if [[ -z "${AGENT_BINS[$TARGET_AGENT]+x}" ]]; then
     exit 2
 fi
 
+# Validate --repo slug (before dependency checks so bad input always exits 2)
+if [[ -n "$EXPLICIT_REPO" && ! "$EXPLICIT_REPO" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+    echo "ERROR: --repo value '${EXPLICIT_REPO}' is not a valid owner/repo slug" >&2
+    exit 2
+fi
+
 # --- Dependency checks ---
 if ! command -v gh &>/dev/null; then
     echo "WARNING: GitHub CLI (gh) not installed — required for PR metadata" >&2
@@ -160,7 +180,11 @@ if ! command -v gh &>/dev/null; then
 fi
 
 # Resolve repo slug for explicit -R targeting (prevents misrouting in nested repos)
-GH_REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//' || echo "")
+if [[ -n "$EXPLICIT_REPO" ]]; then
+    GH_REPO_SLUG="$EXPLICIT_REPO"
+else
+    GH_REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//' || echo "")
+fi
 GH_REPO_ARGS=()
 if [[ -n "$GH_REPO_SLUG" && "$GH_REPO_SLUG" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
     GH_REPO_ARGS=("-R" "$GH_REPO_SLUG")
@@ -208,29 +232,42 @@ fi
 ISSUE_NUMBER=""
 PR_BODY=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json body --jq '.body' 2>/dev/null || echo "")
 if [[ -n "$PR_BODY" ]]; then
-    # Look for "Closes #N", "Fixes #N", or "Resolves #N" first (portable, no PCRE)
-    ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | sed -nE 's/.*(Closes|Fixes|Resolves)[[:space:]]+#([0-9]+).*/\2/p' | head -n1)
+    # Look for GitHub close keywords (case-insensitive): Closes #N, Fixes #N, Resolves #N
+    # Requires word boundary before keyword to avoid "encloses", "prefixes", etc.
+    # Also handles cross-repo form: Closes owner/repo#N (extracts just N)
+    ISSUE_REF=$(printf '%s\n' "$PR_BODY" | grep -ioE '(^|[^[:alnum:]_])(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 || true)
+    ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_REF" | grep -oE '[0-9]+$' || true)
     if [[ -z "$ISSUE_NUMBER" ]]; then
-        # Fallback: first occurrence of "#N" anywhere in the body
-        ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | sed -nE 's/.*#([0-9]+).*/\1/p' | head -n1)
+        # Fallback: first standalone #N (not part of a URL path or hex color)
+        ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+' || true)
     fi
 fi
 
 # Fall back to PR number if no issue found
 if [[ -z "$ISSUE_NUMBER" ]]; then
+    echo "INFO: Could not extract issue number from PR body — using PR number" >&2
     ISSUE_NUMBER="$PR_NUMBER"
 fi
 
 # --- Set up artifact directory (absolute paths for tmux session) ---
-# Refuse to run outside the matching worktree (issue #147) — otherwise
-# files land as untracked artifacts in main. Callers can override with
-# --work-plans-dir for ad-hoc invocations.
+# Refuse to run outside the matching worktree (issue #147) unless the
+# caller explicitly overrides the location via --work-plans-dir (exact
+# path) or --work-dir (repo root). Either override is routed through
+# $WORK_PLANS_DIR_OVERRIDE so the resolver treats them uniformly.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_resolve_work_plans_dir.sh
 source "${SCRIPT_DIR}/_resolve_work_plans_dir.sh"
 
 if [[ -n "$CLI_WORK_PLANS_DIR" ]]; then
     export WORK_PLANS_DIR_OVERRIDE="$CLI_WORK_PLANS_DIR"
+elif [[ -n "$EXPLICIT_WORK_DIR" ]]; then
+    if [[ ! -d "$EXPLICIT_WORK_DIR" ]]; then
+        echo "ERROR: --work-dir is not an existing directory: ${EXPLICIT_WORK_DIR}" >&2
+        exit 2
+    fi
+    # Resolve to absolute path so tmux sessions find the directory.
+    EXPLICIT_WORK_DIR=$(cd "$EXPLICIT_WORK_DIR" && pwd)
+    export WORK_PLANS_DIR_OVERRIDE="${EXPLICIT_WORK_DIR}/.agent/work-plans/issue-${ISSUE_NUMBER}"
 fi
 
 WORK_PLANS_DIR=$(resolve_work_plans_dir "$ISSUE_NUMBER") || exit 4
@@ -276,8 +313,21 @@ printf '**Title**: %s\n**URL**: %s\n**PR Number**: #%s\n\n' \
 
 # Stream diff directly into the prompt file
 printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
+DIFF_START_LINE=$(wc -l < "$PROMPT_FILE")
 if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" >> "$PROMPT_FILE" 2>/dev/null; then
     echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
+    echo '--- Review error: failed to retrieve diff ---' > "$FINDINGS_FILE"
+    exit 3
+fi
+DIFF_END_LINE=$(wc -l < "$PROMPT_FILE")
+
+# Guard: if diff is empty, abort with a clear error instead of launching an
+# agent with no content to review
+if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
+    echo "ERROR: PR #${PR_NUMBER} diff is empty — nothing to review" >&2
+    echo "  This usually means the PR was not found in the target repo." >&2
+    echo "  Try passing --repo <owner/repo> explicitly." >&2
+    echo '--- Review error: diff was empty (PR not found or no changes) ---' > "$FINDINGS_FILE"
     exit 3
 fi
 printf '```\n\n' >> "$PROMPT_FILE"
