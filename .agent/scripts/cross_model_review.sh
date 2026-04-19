@@ -93,13 +93,16 @@ run_agent_sync() {
 PR_NUMBER=""
 FORCE_SYNC=false
 TARGET_AGENT="gemini"
+CLI_WORK_PLANS_DIR=""
+
+USAGE="Usage: $0 --pr <N> [--agent <name>] [--sync] [--work-plans-dir <path>]"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr)
             if [[ $# -lt 2 ]]; then
                 echo "ERROR: Missing value for --pr" >&2
-                echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+                echo "$USAGE" >&2
                 exit 2
             fi
             PR_NUMBER="$2"
@@ -108,7 +111,7 @@ while [[ $# -gt 0 ]]; do
         --agent)
             if [[ $# -lt 2 ]]; then
                 echo "ERROR: Missing value for --agent" >&2
-                echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+                echo "$USAGE" >&2
                 exit 2
             fi
             TARGET_AGENT="${2,,}"  # lowercase
@@ -118,9 +121,18 @@ while [[ $# -gt 0 ]]; do
             FORCE_SYNC=true
             shift
             ;;
+        --work-plans-dir)
+            if [[ $# -lt 2 ]]; then
+                echo "ERROR: Missing value for --work-plans-dir" >&2
+                echo "$USAGE" >&2
+                exit 2
+            fi
+            CLI_WORK_PLANS_DIR="$2"
+            shift 2
+            ;;
         *)
             echo "ERROR: Unknown argument: $1" >&2
-            echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+            echo "$USAGE" >&2
             exit 2
             ;;
     esac
@@ -128,7 +140,7 @@ done
 
 if [[ -z "$PR_NUMBER" ]]; then
     echo "ERROR: --pr <N> is required" >&2
-    echo "Usage: $0 --pr <N> [--agent <name>] [--sync]" >&2
+    echo "$USAGE" >&2
     exit 2
 fi
 
@@ -208,7 +220,18 @@ if [[ -z "$ISSUE_NUMBER" ]]; then
 fi
 
 # --- Set up artifact directory (absolute paths for tmux session) ---
-WORK_PLANS_DIR="$(git rev-parse --show-toplevel)/.agent/work-plans/issue-${ISSUE_NUMBER}"
+# Refuse to run outside the matching worktree (issue #147) — otherwise
+# files land as untracked artifacts in main. Callers can override with
+# --work-plans-dir for ad-hoc invocations.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_resolve_work_plans_dir.sh
+source "${SCRIPT_DIR}/_resolve_work_plans_dir.sh"
+
+if [[ -n "$CLI_WORK_PLANS_DIR" ]]; then
+    export WORK_PLANS_DIR_OVERRIDE="$CLI_WORK_PLANS_DIR"
+fi
+
+WORK_PLANS_DIR=$(resolve_work_plans_dir "$ISSUE_NUMBER") || exit 2
 mkdir -p "$WORK_PLANS_DIR"
 
 PROMPT_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-prompt.md"
