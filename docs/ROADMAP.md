@@ -154,6 +154,51 @@ Foundation pieces that make the skill library scalable and reliable.
 | Design skill | #74 | planned | — | Design skill for the workspace |
 | Visual companion UI | #30 | planned | superpowers | Interactive skills with visual companion |
 
+## Priority: Challenge Existing Solutions
+
+Evaluate whether ecosystem developments replace or reshape what we
+already do. Drives from the 2026-04-19 research refresh + inspiration
+scan + meta-reflection session. Each row is a one-time decision;
+Status column records the outcome.
+
+**Decision vocabulary**:
+- **Absorb** — port patterns into existing tooling; keep our surface
+- **Sweep** — one-time audit/update pass across existing files
+- **Evaluate** — timeboxed spike; keep or kill based on feel
+- **Defer** — revisit on specific trigger criteria
+- **Decline** — explicit "not pursuing," reason recorded
+
+| Candidate | Our current solution | Decision | Notes |
+|-----------|----------------------|----------|-------|
+| `just` + `just-mcp` as Make replacement | Make + .PHONY + generated /make_* skills | **Defer** | Motivation is framework resilience (Claude outages force fallback to Gemini/Codex/Copilot). Revisit trigger: concrete Claude-outage or multi-framework moment where `make`-based commands aren't framework-agnostic enough. Parallel adapter-file sweep (CODEX.md, Gemini, Copilot) covers ~80% of the same motivation cheaper |
+| Session Intelligence Layer (`/focus` + `/context-save` + `/context-restore`) | progress.md + plan.md | **Absorb** | Don't replace — add discipline. `/focus` = condensed "you are here" peek; `/context-save` replaces top `## Checkpoint (latest)` block in progress.md; `/context-restore` rehydrates on return. Subsumes prior "per-session context card" Consider item. Source: gstack #733, #1064 |
+| `/review-code` absorb anti-skip + subagent isolation + cross-review dedup + swarm-of-personas | Existing /review-code with silence filter | **Absorb** | All additive. Anti-skip forces reviews to actually execute. Subagent isolation mitigates context-rot. Cross-review dedup refines silence filter. Swarm-of-personas (shell, security, logic, docs) spawns parallel adversarial reviewers — addresses today's shell-surface misses. Source: gstack #804, #1030, #760 + Row 7 extract |
+| Opus 4.7 prompt audit sweep | Prompts written for 4.6 judgment-filling | **Sweep** | One-time pass across AGENTS.md + skill SKILL.md files + prompt-like knowledge docs. Find wiggle words ("when appropriate") and mode-biased example sets; tighten or add paired examples. Structured as 3 PRs (AGENTS.md needs "Ask First" approval per our boundaries). Anthropic explicitly warns 4.6-era prompts need review |
+| MCP layer exposure of workspace commands | Per-framework adapter files | **Defer** | Cross-framework standard, but infrastructure investment without concrete non-Claude driver yet. Revisit on (a) adapter files proving inadequate during outage, or (b) non-Claude agent becoming primary driver |
+| Tier 3 orchestration (overnight backlog drain) | Tier 2 (parallel supervised sprints) | **Defer** | Most of our backlog isn't mechanical — benefits from Roland's eye. Revisit trigger: concrete mechanical-backlog forcing function (e.g., 50 stacked dep-bump PRs) |
+| Agent Teams (experimental) | Manual per-terminal | **Decline**; absorb concepts | Unique Agent Teams value (persistence, peer mailbox, shared task list) doesn't map to our patterns. Extracted concepts: **swarm-of-personas** → rolled into /review-code absorb above; **watchdog alerts** → separate small item below, implemented as file-polling bash not Agent Teams infrastructure |
+| Ultraplan evaluation | No inline-plan-comments UI | **Evaluate** | Anthropic early preview (Week 15 Apr 2026) ships CLI→web-editor→run-or-pull-back-local flow. Matches the Antigravity-style inline-plan-review UX Roland described wanting. 1-hour spike on a real issue. Subsumes prior "inline-comment review UI" Consider item |
+| Prompt cache 1h (`ENABLE_PROMPT_CACHING_1H`) | Default 5m | **Adopt** | Immediate win for long sessions. Set in `.claude/settings.json` |
+| Away summary (`CLAUDE_CODE_ENABLE_AWAY_SUMMARY`) | Unclear default behavior | **Investigate first** | May already be active via telemetry path. Understand interaction with /focus before enabling |
+
+### Related new roadmap items (simpler-tool implementations)
+
+| Item | Source | Status | Notes |
+|------|--------|--------|-------|
+| File-polling watchdog helper | Row 7 extract | planned | `.agent/scripts/watch_progress.sh` — polls progress.md across worktrees, terminal bell / notification on status change. ~50 LOC bash. Implements watchdog pattern without Agent Teams |
+| Swarm-of-personas for /review-code | Row 7 extract | planned | Already captured as sub-item of the /review-code enhancement row above. Parallel `Agent()` subagents with distinct personas |
+| Run `/fewer-permission-prompts` on recent transcripts | session catch-up | planned | Immediate win; feeds #110 |
+| Apply gstack #993 tilde-in-assignment fix | session catch-up | planned | Concrete permission-prompt reduction pattern |
+| Audit #56 scope modes + #71 brainstorm for mode-posture bias | session catch-up | planned | Paired-examples pattern check on known multi-mode skills. Becomes more important under Opus 4.7 literal-following |
+
+### Principles to add (not roadmap items, but design constraints)
+
+- **Framework resilience** — Skills and commands should work under any supported framework. Adapter files (CLAUDE.md, CODEX.md, Gemini, Copilot) must cover the same ground. Motivation: Claude outages force fallback
+- **CLI-first** — Augment the terminal; don't replace it. Management-layer tools live alongside direct observation, never between user and agents (D5 visibility)
+- **Workspace/project parity** — Every practical tool handles both types. `--type workspace|project` is the canonical shape
+
+These go in AGENTS.md under a new "Design principles for new tooling" section (separate PR — AGENTS.md changes require "Ask First" approval).
+
 ## Unphased
 
 Small fixes that can be done anytime.
