@@ -13,4 +13,4 @@ issue: 146
 **CI**: all 8 checks pass
 
 ### Actions
-- [ ] Capture initial branch via `git symbolic-ref --short HEAD` and check out by that instead of hardcoded `main`/`master` — `.agent/scripts/tests/test_merge_pr_root_resolution.sh:~27`
+- [x] Capture initial branch via `git symbolic-ref --short HEAD` and check out by that instead of hardcoded `main`/`master` — `.agent/scripts/tests/test_merge_pr_root_resolution.sh:~27`
