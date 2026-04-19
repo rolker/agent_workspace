@@ -94,13 +94,14 @@ run_agent_sync() {
 
 # --- Argument parsing ---
 PR_NUMBER=""
+CLI_ISSUE_NUMBER=""
 FORCE_SYNC=false
 TARGET_AGENT="gemini"
 EXPLICIT_REPO=""
 EXPLICIT_WORK_DIR=""
 CLI_WORK_PLANS_DIR=""
 
-USAGE="Usage: $0 --pr <N> [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--work-plans-dir <path>] [--sync]"
+USAGE="Usage: $0 --pr <N> [--issue <N>] [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--work-plans-dir <path>] [--sync]"
 
 # Helper: treat a missing value OR a value that starts with '-' (i.e. the
 # user supplied another flag instead of a value) as "missing value."
@@ -120,6 +121,11 @@ while [[ $# -gt 0 ]]; do
         --pr)
             require_value "--pr" "${2:-}"
             PR_NUMBER="$2"
+            shift 2
+            ;;
+        --issue)
+            require_value "--issue" "${2:-}"
+            CLI_ISSUE_NUMBER="$2"
             shift 2
             ;;
         --agent)
@@ -170,6 +176,13 @@ fi
 # Validate --repo slug (before dependency checks so bad input always exits 2)
 if [[ -n "$EXPLICIT_REPO" && ! "$EXPLICIT_REPO" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
     echo "ERROR: --repo value '${EXPLICIT_REPO}' is not a valid owner/repo slug" >&2
+    exit 2
+fi
+
+# Validate --issue is a bare positive integer (same contract as the
+# per-issue work-plans resolver — see _resolve_work_plans_dir.sh).
+if [[ -n "$CLI_ISSUE_NUMBER" && ! "$CLI_ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --issue value '${CLI_ISSUE_NUMBER}' is not a positive integer" >&2
     exit 2
 fi
 
@@ -228,25 +241,37 @@ if [[ -z "$AGENT_BIN" ]]; then
     exit 1
 fi
 
-# --- Resolve issue number from PR ---
-ISSUE_NUMBER=""
-PR_BODY=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json body --jq '.body' 2>/dev/null || echo "")
-if [[ -n "$PR_BODY" ]]; then
-    # Look for GitHub close keywords (case-insensitive): Closes #N, Fixes #N, Resolves #N
-    # Requires word boundary before keyword to avoid "encloses", "prefixes", etc.
-    # Also handles cross-repo form: Closes owner/repo#N (extracts just N)
-    ISSUE_REF=$(printf '%s\n' "$PR_BODY" | grep -ioE '(^|[^[:alnum:]_])(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 || true)
+# --- Resolve issue number ---
+# Order: explicit --issue flag wins; otherwise require a GitHub closure
+# keyword in the PR body. The loose "first standalone #N" fallback was
+# removed in #149 — it silently routed artifacts to unrelated issues
+# (e.g. "see also #42. Related to #99...") and, post-#147, caused the
+# work-plans resolver to abort with a confusing wrong-issue message.
+if [[ -n "$CLI_ISSUE_NUMBER" ]]; then
+    ISSUE_NUMBER="$CLI_ISSUE_NUMBER"
+else
+    PR_BODY=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json body --jq '.body' 2>/dev/null || echo "")
+    # Match GitHub closure keywords (case-insensitive): Closes #N,
+    # Fixes #N, Resolves #N. Requires a word boundary before the keyword
+    # to avoid matching "encloses", "prefixes", etc. Also accepts the
+    # cross-repo form "Closes owner/repo#N" (just extracts N).
+    ISSUE_REF=$(printf '%s\n' "$PR_BODY" \
+        | grep -ioE '(^|[^[:alnum:]_])(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' \
+        | head -n1 || true)
     ISSUE_NUMBER=$(printf '%s\n' "$ISSUE_REF" | grep -oE '[0-9]+$' || true)
-    if [[ -z "$ISSUE_NUMBER" ]]; then
-        # Fallback: first standalone #N (not part of a URL path or hex color)
-        ISSUE_NUMBER=$(printf '%s\n' "$PR_BODY" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+' || true)
-    fi
-fi
 
-# Fall back to PR number if no issue found
-if [[ -z "$ISSUE_NUMBER" ]]; then
-    echo "INFO: Could not extract issue number from PR body — using PR number" >&2
-    ISSUE_NUMBER="$PR_NUMBER"
+    if [[ -z "$ISSUE_NUMBER" ]]; then
+        {
+            echo "ERROR: PR #${PR_NUMBER} body has no 'Closes|Fixes|Resolves #N' keyword."
+            echo ""
+            echo "  The loose '#N' fallback was removed in #149 because it routed"
+            echo "  artifacts to unrelated issues. Two ways to proceed:"
+            echo "    1. Pass --issue <N> to set the issue number explicitly, or"
+            echo "    2. Edit the PR body to include a closure keyword"
+            echo "       (e.g. 'Closes #123')."
+        } >&2
+        exit 2
+    fi
 fi
 
 # --- Set up artifact directory (absolute paths for tmux session) ---
