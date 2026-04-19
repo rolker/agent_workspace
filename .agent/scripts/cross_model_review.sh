@@ -193,11 +193,15 @@ if ! command -v gh &>/dev/null; then
     exit 1
 fi
 
-# Resolve repo slug for explicit -R targeting (prevents misrouting in nested repos)
+# Resolve repo slug for explicit -R targeting (prevents misrouting in
+# nested repos). Prefer `gh repo view` over parsing `git remote get-url`
+# — gh handles SSH host aliases (~/.ssh/config), GitHub Enterprise, and
+# custom remote names correctly, where the regex approach produced
+# garbage or silently fell back (issue #150).
 if [[ -n "$EXPLICIT_REPO" ]]; then
     GH_REPO_SLUG="$EXPLICIT_REPO"
 else
-    GH_REPO_SLUG=$(git remote get-url origin 2>/dev/null | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//' || echo "")
+    GH_REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
 fi
 GH_REPO_ARGS=()
 if [[ -n "$GH_REPO_SLUG" && "$GH_REPO_SLUG" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then

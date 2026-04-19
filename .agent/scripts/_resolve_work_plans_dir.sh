@@ -30,7 +30,10 @@
 # instead.
 
 resolve_work_plans_dir() {
-    local issue="$1"
+    # Use "${1:-}" so callers running under `set -u` (e.g.
+    # cross_model_review.sh runs with set -euo pipefail) don't trigger
+    # "unbound variable" before the explicit empty-string check below.
+    local issue="${1:-}"
 
     if [ -z "$issue" ]; then
         echo "ERROR: resolve_work_plans_dir: issue number required" >&2
@@ -56,7 +59,8 @@ resolve_work_plans_dir() {
 
     # Rule 3: abort.
     {
-        echo "ERROR: refusing to resolve work-plans dir for issue #${issue} outside its worktree."        echo ""
+        echo "ERROR: refusing to resolve work-plans dir for issue #${issue} outside its worktree."
+        echo ""
         if [ -n "${WORKTREE_ISSUE:-}" ]; then
             echo "  Current \$WORKTREE_ISSUE is '${WORKTREE_ISSUE}', not '${issue}'."
         else

@@ -392,6 +392,168 @@ test_flag_as_value_rejected() {
     assert_contains "error mentions missing value" "Missing value for --pr" "$STDERR"
 }
 
+# ---- Test: gh repo view resolves SSH host alias / Enterprise URLs (#150) ----
+#
+# Before #150, GH_REPO_SLUG was extracted via a sed pipeline on `git
+# remote get-url origin` that assumed a literal `github.com` hostname.
+# SSH host aliases (`git@github-work:owner/repo.git`) and Enterprise
+# hostnames (`git@github.mycorp.com:owner/repo.git`) produced garbage
+# slugs that were either silently dropped or misrouted to the wrong repo.
+#
+# Post-#150, the script defers to `gh repo view --json nameWithOwner`,
+# which uses gh's own repo-resolution (reads ~/.ssh/config, respects
+# GH_HOST, etc.). This test mocks a git remote using an SSH alias and a
+# `gh repo view` response that returns the intended slug, then asserts
+# the `-R` flag forwarded to downstream `gh pr view` matches.
+test_gh_repo_view_resolves_alias() {
+    echo "TEST: gh repo view resolves SSH alias / Enterprise URLs (#150)"
+    setup
+
+    # Point the mock repo's origin at an SSH host alias from the old
+    # sed pipeline would have mangled.
+    git -C "${MOCK_REPO}" remote add origin "git@github-work:real-owner/real-repo.git" 2>/dev/null \
+        || git -C "${MOCK_REPO}" remote set-url origin "git@github-work:real-owner/real-repo.git"
+
+    export MOCK_GH_LOG="${TMPDIR_BASE}/gh_calls.log"
+    true > "$MOCK_GH_LOG"
+
+    # Mock gh: `repo view` returns the intended slug (as real gh would
+    # via ~/.ssh/config); `pr view` / `pr diff` record their -R args.
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+echo "$@" >> "${MOCK_GH_LOG}"
+if [[ "$1" == "repo" && "$2" == "view" ]]; then
+    # Respond only when asked for nameWithOwner (what the script wants)
+    if [[ " $* " == *" --json nameWithOwner "* ]]; then
+        echo "real-owner/real-repo"
+        exit 0
+    fi
+    exit 0
+elif [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; PR="$1"; shift
+    if [[ "${1:-}" == "-R" ]]; then
+        echo "REPO_FLAG=$2" >> "${MOCK_GH_LOG}"
+        shift 2
+    fi
+    if [[ "$1" == "--json" && "$2" == "body" ]]; then
+        echo "Closes #42"
+    elif [[ "$1" == "--json" && "$2" == "title" ]]; then
+        echo "Test PR"
+    elif [[ "$1" == "--json" && "$2" == "url" ]]; then
+        echo "https://github.com/real-owner/real-repo/pull/99"
+    fi
+elif [[ "$1" == "pr" && "$2" == "diff" ]]; then
+    echo "diff --git a/file.txt b/file.txt"
+    echo "--- a/file.txt"
+    echo "+++ b/file.txt"
+    echo "@@ -1 +1 @@"
+    echo "-old"
+    echo "+new"
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    cd "${MOCK_REPO}"
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync >/dev/null 2>&1 || true
+
+    # Assert `gh repo view --json nameWithOwner` was called.
+    if grep -q "^repo view --json nameWithOwner" "$MOCK_GH_LOG"; then
+        echo "  PASS: gh repo view --json nameWithOwner was called"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: gh repo view was not invoked for slug resolution"
+        echo "    gh log:"
+        sed 's/^/      /' "$MOCK_GH_LOG"
+        FAIL=$((FAIL + 1))
+    fi
+
+    # Assert downstream pr view received the resolved slug as -R.
+    if grep -q "REPO_FLAG=real-owner/real-repo" "$MOCK_GH_LOG"; then
+        echo "  PASS: resolved slug forwarded to downstream gh as -R"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: resolved slug not forwarded; would have misrouted"
+        echo "    gh log:"
+        sed 's/^/      /' "$MOCK_GH_LOG"
+        FAIL=$((FAIL + 1))
+    fi
+
+    teardown
+}
+
+# ---- Test: gh repo view failure falls back cleanly (no -R, no abort) ----
+#
+# If the cwd isn't a recognized gh repo (no remote, or a non-github
+# remote), `gh repo view --json nameWithOwner` exits non-zero. The
+# script should treat this as "no explicit slug" and omit -R, letting
+# downstream gh calls do their own resolution rather than aborting.
+test_gh_repo_view_failure_falls_back() {
+    echo "TEST: gh repo view failure => no -R, script continues"
+    setup
+
+    export MOCK_GH_LOG="${TMPDIR_BASE}/gh_calls.log"
+    true > "$MOCK_GH_LOG"
+
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+echo "$@" >> "${MOCK_GH_LOG}"
+if [[ "$1" == "repo" && "$2" == "view" ]]; then
+    # Simulate "not a github repo" — exit non-zero, no output.
+    exit 1
+elif [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; PR="$1"; shift
+    if [[ "${1:-}" == "-R" ]]; then
+        echo "REPO_FLAG=$2" >> "${MOCK_GH_LOG}"
+        shift 2
+    fi
+    if [[ "$1" == "--json" && "$2" == "body" ]]; then
+        echo "Closes #42"
+    elif [[ "$1" == "--json" && "$2" == "title" ]]; then
+        echo "Test PR"
+    elif [[ "$1" == "--json" && "$2" == "url" ]]; then
+        echo "https://github.com/fallback/repo/pull/99"
+    fi
+elif [[ "$1" == "pr" && "$2" == "diff" ]]; then
+    echo "diff --git a/file.txt b/file.txt"
+    echo "--- a/file.txt"
+    echo "+++ b/file.txt"
+    echo "@@ -1 +1 @@"
+    echo "-old"
+    echo "+new"
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    cd "${MOCK_REPO}"
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync >/dev/null 2>&1 || true
+
+    # -R should NOT have been passed since slug resolution failed.
+    if grep -q "REPO_FLAG=" "$MOCK_GH_LOG"; then
+        echo "  FAIL: -R was passed despite gh repo view failing"
+        echo "    gh log:"
+        sed 's/^/      /' "$MOCK_GH_LOG"
+        FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: no -R when gh repo view fails"
+        PASS=$((PASS + 1))
+    fi
+
+    # Script should still have proceeded to pr view (graceful fallback).
+    if grep -q "^pr view" "$MOCK_GH_LOG"; then
+        echo "  PASS: script proceeded to pr view after slug-resolve failure"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: script did not proceed past slug resolution"
+        FAIL=$((FAIL + 1))
+    fi
+
+    teardown
+}
+
 # ---- Test: --issue flag overrides PR-body extraction (#149) ----
 #
 # When --issue <N> is passed, the script must honour it verbatim without
@@ -612,6 +774,8 @@ test_work_dir_flag
 test_empty_diff_guard
 test_resolver_refuses_without_worktree_issue
 test_flag_as_value_rejected
+test_gh_repo_view_resolves_alias
+test_gh_repo_view_failure_falls_back
 test_issue_flag_overrides_extraction
 test_missing_keyword_aborts
 test_issue_flag_validates_integer
