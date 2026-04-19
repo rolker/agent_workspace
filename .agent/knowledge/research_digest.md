@@ -3,6 +3,47 @@
 <!-- Last full refresh: 2026-04-19 (partial — high-movement topics refreshed, stable topics date-bumped only) -->
 <!-- Run /research --refresh periodically to re-survey stale entries -->
 
+## Permission Prompt Reduction Patterns (Claude Code)
+
+**Added**: 2026-04-19 | **Last verified**: 2026-04-19 | **Sources**: [Configure permissions — Claude Code Docs](https://code.claude.com/docs/en/permissions), [Claude Code auto mode](https://www.anthropic.com/engineering/claude-code-auto-mode), [Claude Code changelog 2026](https://claudefa.st/blog/guide/changelog), [managed-settings.json guide](https://managed-settings.com/), [--dangerously-skip-permissions: 5 modes](https://www.morphllm.com/claude-code-dangerously-skip-permissions), [bug #18160 — allow permissions ignored in global settings](https://github.com/anthropics/claude-code/issues/18160)
+
+Key takeaways:
+- **Built-in read-only allowlist** — Claude Code automatically runs `ls`, `cat`, `head`, `tail`, `grep`, `find`, `wc`, `diff`, `stat`, `du`, `cd`, and read-only forms of `git` without prompt. Unquoted globs are permitted when every flag is read-only (e.g., `ls *.ts`, `wc -l src/*.py`).
+- **Project-level `.claude/settings.json` allowlists** — commit to source control to share permission decisions across your team. User-level lives at `~/.claude.json`.
+- **`/fewer-permission-prompts` skill** (renamed from "Less Permission Prompts") — scans session transcripts to extract frequently used read-only tool-call patterns and proposes allowlist additions. Already present locally in `.claude/skills/fewer-permission-prompts/`.
+- **Tilde expansion gotcha** — pattern matching in `settings.json` evaluates BEFORE shell tilde expansion. So `~/.claude/` won't match `/home/user/.claude/`. Gstack #993 addressed a similar issue (tilde-in-assignment silently triggered prompts). Use absolute paths in allowlist patterns or document the workaround. Known upstream issue (#18160).
+- **`auto mode`** — "safer way to skip permissions." Anthropic's framing: opt into it for known-safe workflows, not a blanket `--dangerously-skip-permissions`. Five distinct skip modes exist with different risk profiles.
+- **Permission prompts remain the #1 friction point** in multi-agent workflows at scale (roadmap #110 in this workspace).
+
+**Relevance**: Direct hit on this workspace's #110 priority. Three concrete actions suggested:
+1. Run `/fewer-permission-prompts` after the session to propose allowlist additions from today's transcripts.
+2. Audit for tilde-in-assignment + tilde-in-pattern issues; use absolute paths.
+3. Commit `.claude/settings.json` to source control (already our pattern) so the pruned allowlist survives across developers/agents.
+
+---
+
+## Mode-Posture Preservation in Multi-Mode Skills
+
+**Added**: 2026-04-19 | **Last verified**: 2026-04-19 | **Sources**: [gstack #1065 — mode-posture energy fix](https://github.com/garrytan/gstack/pull/1065), [Prompt Engineering Guide — priming and style control](https://www.promptingguide.ai/techniques), [Mirascope — LLM prompt best practices](https://mirascope.com/blog/llm-prompt), [Palantir Foundry — LLM prompt best practices](https://www.palantir.com/docs/foundry/aip/best-practices-prompt-engineering)
+
+Key takeaways:
+- **Problem**: When a skill has multiple "modes" (e.g., scope expansion vs. holding, forcing question vs. softening, wild-builder vs. structured-PRD), a generic style rule in a shared preamble can silently flatten all of them toward whichever framing the examples favor. Gstack documented this as a real regression across `/plan-ceo-review` and `/office-hours` in early 2026.
+- **Root cause** is a well-known LLM property: **few-shot examples dominate abstract rules.** Psychological/linguistic priming research shows even small phrasings activate different knowledge areas — so any one-sided example set becomes a strong attractor.
+- **Fix pattern** (gstack #1065):
+  1. **Paired examples** in shared preambles — cover the full range of postures the skill spans (pain / upside / forcing), not just the most common one.
+  2. **Inline exemplars** anchored on stable headings in each skill template (so the mode-specific energy survives the preamble).
+  3. **Gate-tier regression tests** with judge rubrics on distinct axes (surface framing + decision preservation; stacking + domain match; excitement over optimization). Pass threshold ~4/5 per axis.
+- **Under Opus 4.7's more literal instruction following** (see Opus 4.7 entry), mode collapse from biased examples gets MORE reliable, not less. Paired examples matter more on 4.7 than they did on 4.6.
+
+**Relevance**: Directly applicable to this workspace's existing multi-mode skills:
+- **#56 "Explicit scope modes for planning"** (done) — four modes: expansion, selective expansion, hold, reduction. At risk if any shared preamble examples favor one mode.
+- **#71 "Brainstorm multi-level modes"** (done) — vision / strategy / architecture / design. Same risk.
+- **`/plan-task`** skill — currently single-mode, but if we ever split by task type, this constraint applies.
+
+Recommended follow-ups: audit those skills for preamble examples that bias toward one mode; add paired examples where mode-spanning preambles exist; consider gate-tier judge-rubric tests.
+
+---
+
 ## Claude Opus 4.7 — Behavioral Changes Since 4.6
 
 **Added**: 2026-04-19 | **Last verified**: 2026-04-19 | **Sources**: [What's new in Claude Opus 4.7 (Anthropic API Docs)](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7), [GitHub Changelog — Opus 4.7 GA April 16, 2026](https://github.blog/changelog/2026-04-16-claude-opus-4-7-is-generally-available/), [Verdent — What Changed for Coding Agents](https://www.verdent.ai/guides/what-is-claude-opus-4-7), [Labellerr — 4.7 vs 4.6 comparison](https://www.labellerr.com/blog/claude-opus-4-7-vs-opus-4-6-comparison/amp/), [Apiyi — Launch-day in-depth review](https://help.apiyi.com/en/claude-opus-4-7-vs-4-6-real-performance-review-en.html)
@@ -25,7 +66,7 @@ Key takeaways:
 
 ## Command Runner Alternatives to Make
 
-**Added**: 2026-02-27 | **Last verified**: 2026-02-27 | **Sources**: [just](https://github.com/casey/just), [Task](https://github.com/go-task/task), [mise](https://github.com/jdx/mise)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 | **Sources**: [just](https://github.com/casey/just), [Task](https://github.com/go-task/task), [mise](https://github.com/jdx/mise)
 
 Key takeaways:
 - `just` is the strongest candidate for replacing Make as a command runner — closest syntax, built-in `just --list`, no `.PHONY` needed, multi-language recipes
@@ -39,7 +80,7 @@ Key takeaways:
 
 ## AGENTS.md — Cross-Platform Agent Instruction Standard
 
-**Added**: 2026-02-27 | **Last verified**: 2026-02-27 | **Sources**: [agents.md spec](https://agents.md/), [GitHub repo](https://github.com/agentsmd/agents.md), [OpenAI Codex guide](https://developers.openai.com/codex/guides/agents-md/), [Agentic AI Foundation](https://openai.com/index/agentic-ai-foundation/), [deep dive](https://prpm.dev/blog/agents-md-deep-dive), [sync strategy](https://kau.sh/blog/agents-md/)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 | **Sources**: [agents.md spec](https://agents.md/), [GitHub repo](https://github.com/agentsmd/agents.md), [OpenAI Codex guide](https://developers.openai.com/codex/guides/agents-md/), [Agentic AI Foundation](https://openai.com/index/agentic-ai-foundation/), [deep dive](https://prpm.dev/blog/agents-md-deep-dive), [sync strategy](https://kau.sh/blog/agents-md/)
 
 Key takeaways:
 - Vendor-neutral spec stewarded by the Agentic AI Foundation (Linux Foundation), with contributions from OpenAI, Anthropic, and others
@@ -54,7 +95,7 @@ Key takeaways:
 
 ## AI Agent Spec Writing Best Practices
 
-**Added**: 2026-02-27 | **Last verified**: 2026-02-27 | **Sources**: [Osmani, "How to Write a Good Spec for AI Agents" (O'Reilly, Jan 2026)](https://www.oreilly.com/radar/how-to-write-a-good-spec-for-ai-agents/), [addyosmani.com](https://addyosmani.com/blog/good-spec/)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 | **Sources**: [Osmani, "How to Write a Good Spec for AI Agents" (O'Reilly, Jan 2026)](https://www.oreilly.com/radar/how-to-write-a-good-spec-for-ai-agents/), [addyosmani.com](https://addyosmani.com/blog/good-spec/)
 
 Key takeaways:
 - Informed by GitHub's analysis of 2,500+ agent configuration files
@@ -70,7 +111,7 @@ Key takeaways:
 
 ## Harness Engineering — Production-Scale Agent-First Development
 
-**Added**: 2026-02-27 | **Last verified**: 2026-02-27 | **Sources**: [OpenAI blog (Lopopolo, Feb 2026)](https://openai.com/index/harness-engineering/), [Böckeler analysis (martinfowler.com)](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html), [InfoQ coverage](https://www.infoq.com/news/2026/02/openai-harness-engineering-codex/)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 | **Sources**: [OpenAI blog (Lopopolo, Feb 2026)](https://openai.com/index/harness-engineering/), [Böckeler analysis (martinfowler.com)](https://martinfowler.com/articles/exploring-gen-ai/harness-engineering.html), [InfoQ coverage](https://www.infoq.com/news/2026/02/openai-harness-engineering-codex/)
 
 Key takeaways:
 - Team of 3–7 engineers built ~1M LOC product with zero human-written code over 5 months using Codex; 3.5 PRs/engineer/day
@@ -88,7 +129,7 @@ Key takeaways:
 
 ## Multi-Agent Engineering Patterns
 
-**Added**: 2026-02-27 | **Last verified**: 2026-02-27 | **Sources**: [GitHub blog, "Multi-agent workflows often fail" (Feb 2026)](https://github.blog/ai-and-ml/generative-ai/multi-agent-workflows-often-fail-heres-how-to-engineer-ones-that-dont/)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 | **Sources**: [GitHub blog, "Multi-agent workflows often fail" (Feb 2026)](https://github.blog/ai-and-ml/generative-ai/multi-agent-workflows-often-fail-heres-how-to-engineer-ones-that-dont/)
 
 Key takeaways:
 - Core thesis: most multi-agent failures come from **missing structure**, not model capability — treat agents as distributed system components
@@ -119,7 +160,7 @@ Key takeaways:
 
 ## Model Context Protocol (MCP) — Industry Standard
 
-**Added**: 2026-02-27 | **Last verified**: 2026-02-27 | **Sources**: [MCP spec](https://spec.modelcontextprotocol.io/), [Agentic AI Foundation](https://www.linuxfoundation.org/press/linux-foundation-launches-the-agentic-ai-foundation)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 | **Sources**: [MCP spec](https://spec.modelcontextprotocol.io/), [Agentic AI Foundation](https://www.linuxfoundation.org/press/linux-foundation-launches-the-agentic-ai-foundation)
 
 Key takeaways:
 - Donated to the Linux Foundation's Agentic AI Foundation (Dec 2025) — now the cross-vendor standard adopted by OpenAI, Google, Anthropic, and others
@@ -133,7 +174,7 @@ Key takeaways:
 
 ## ROS 2 Agent Frameworks
 
-**Added**: 2026-02-27 | **Last verified**: 2026-02-27 | **Sources**: [ROSA (NASA JPL)](https://github.com/nasa-jpl/rosa), [RAI (RobotecAI)](https://github.com/RobotecAI/rai), [ROS-LLM (Auromix)](https://github.com/Auromix/ROS-LLM), [EmbodiedAgents (Automatika)](https://automatika-robotics.github.io/embodied-agents/)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 (reference only — daddy_camp is non-ROS) | **Sources**: [ROSA (NASA JPL)](https://github.com/nasa-jpl/rosa), [RAI (RobotecAI)](https://github.com/RobotecAI/rai), [ROS-LLM (Auromix)](https://github.com/Auromix/ROS-LLM), [EmbodiedAgents (Automatika)](https://automatika-robotics.github.io/embodied-agents/)
 
 Key takeaways:
 - **ROSA** (NASA JPL): natural language interaction with ROS 1/2 systems — inspect nodes, query topics, diagnose issues; published at IROS 2024
@@ -149,7 +190,7 @@ Key takeaways:
 
 ## Agentic Coding Market and Tool Landscape
 
-**Added**: 2026-02-27 | **Last verified**: 2026-02-27 | **Sources**: [GitHub blog](https://github.blog/ai-and-ml/generative-ai/multi-agent-workflows-often-fail-heres-how-to-engineer-ones-that-dont/), [Anthropic engineering](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 | **Sources**: [GitHub blog](https://github.blog/ai-and-ml/generative-ai/multi-agent-workflows-often-fail-heres-how-to-engineer-ones-that-dont/), [Anthropic engineering](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
 
 Key takeaways:
 - Market grew from $550M to $4B in one year; 57% of companies run AI agents in production (Jan 2026)
@@ -165,7 +206,7 @@ Key takeaways:
 
 ## GitHub Outage Resilience and Offline Development
 
-**Added**: 2026-03-04 | **Last verified**: 2026-03-04 | **Sources**: [SecureSlate: GitHub outage resilience](https://getsecureslate.com/blog/what-the-github-outage-taught-us-about-resilience-and-compliance-2026), [GitHub down Feb 2026](https://serenitiesai.com/articles/github-down-ai-coding-tools-dependency-2026), [GitHub June 2025 outage](https://www.webpronews.com/githubs-june-2025-outage-how-a-routine-database-migration-cascaded-into-a-platform-wide-crisis/), [Self-hosted git platforms 2026](https://dasroot.net/posts/2026/01/self-hosted-git-platforms-gitlab-gitea-forgejo-2026/)
+**Added**: 2026-03-04 | **Last verified**: 2026-04-19 | **Sources**: [SecureSlate: GitHub outage resilience](https://getsecureslate.com/blog/what-the-github-outage-taught-us-about-resilience-and-compliance-2026), [GitHub down Feb 2026](https://serenitiesai.com/articles/github-down-ai-coding-tools-dependency-2026), [GitHub June 2025 outage](https://www.webpronews.com/githubs-june-2025-outage-how-a-routine-database-migration-cascaded-into-a-platform-wide-crisis/), [Self-hosted git platforms 2026](https://dasroot.net/posts/2026/01/self-hosted-git-platforms-gitlab-gitea-forgejo-2026/)
 
 Key takeaways:
 - GitHub has had multiple major outages in 2025–2026, partly due to its ongoing datacenter-to-Azure migration; Feb 2026 outage blocked pushes, CI, and PR reviews globally
@@ -181,23 +222,24 @@ Key takeaways:
 
 ## git-bug — Distributed Offline-First Issue Tracker
 
-**Added**: 2026-03-04 | **Last verified**: 2026-03-04 | **Sources**: [git-bug repo](https://github.com/git-bug/git-bug), [BrightCoding overview](https://www.blog.brightcoding.dev/2025/06/01/git-bug-a-distributed-offline-first-bug-tracker-embedded-in-git/), [HN discussion](https://news.ycombinator.com/item?id=43971620)
+**Added**: 2026-03-04 | **Last verified**: 2026-04-19 | **Sources**: [git-bug repo (git-bug/git-bug)](https://github.com/git-bug/git-bug), [Releases](https://github.com/git-bug/git-bug/releases), [BrightCoding overview](https://www.blog.brightcoding.dev/2025/06/01/git-bug-a-distributed-offline-first-bug-tracker-embedded-in-git/), [HN discussion](https://news.ycombinator.com/item?id=43971620), [ros2_agent_workspace #418 — v0.10.1 syntax-drift lesson](https://github.com/rolker/ros2_agent_workspace/issues/418)
 
 Key takeaways:
-- Stores issues as git objects (under `refs/bugs`), not files — no clutter in the working tree, full version history, distributed by default
-- **Offline-first**: create, edit, comment on issues without network; syncs via `git push/pull` to any remote
-- **Bidirectional bridges**: GitHub, GitLab, Jira, Launchpad — can pull issues from GitHub and push local issues back
-- Multiple interfaces: CLI, terminal UI (TUI), and web UI (significantly improved in recent releases)
-- Latest release: v0.10.1 (May 2025), active development with 2,400+ commits
-- **git-issue** (Spinellis) is a simpler alternative storing issues as files in a dedicated branch
+- Stores issues as git objects (under `refs/bugs`), not files — no clutter in working tree, full version history, distributed by default.
+- **Offline-first**: create, edit, comment without network; syncs via `git push/pull` to any remote.
+- **Bidirectional bridges**: GitHub, GitLab, Jira, Launchpad.
+- Multiple interfaces: CLI, TUI, web UI.
+- **Latest release still v0.10.1** (May 2025). Last repo activity noted Apr 9, 2026; master branch removed Jan 31, 2026 (structural change). No v0.11/v0.12 cut yet.
+- **v0.10.1 syntax migration** (lesson from ros2 #418): commands moved from top-level (`git bug select/show`) to nested under `git bug bug` in v0.10.1. Scripts written for earlier versions silently fall back to whatever wraps them (`2>/dev/null`) without complaint — the ros2 workspace's scripts fell back to `gh` for ~2 weeks before someone noticed. daddy_camp verified 2026-04-19 that our scripts use the correct `git bug bug ...` form.
+- **git-issue** (Spinellis) is a simpler alternative storing issues as files in a dedicated branch.
 
-**Relevance**: Could serve as a local issue cache that stays in sync with GitHub when online and continues working offline. The GitHub bridge would allow the workspace's issue-first workflow to continue during outages. The `refs/bugs` storage means no interference with the working tree or worktree isolation.
+**Relevance**: Our workspace has adopted git-bug as the first read path (ADR-0010). 96 issues cached locally as of 2026-04-19. Two gaps remain vs. an ideal offline-first story: (1) visible fallback warnings when git-bug is unavailable (roadmap item in PR #157); (2) writes still go through `gh issue create` — offline issue creation exists via `GITBUG_CREATE=1` but hasn't been exercised end-to-end. Forgejo as an alternative remote has been explicitly declined this session (D6).
 
 ---
 
 ## Local CI with Act (nektos/act)
 
-**Added**: 2026-03-04 | **Last verified**: 2026-03-04 | **Sources**: [nektos/act repo](https://github.com/nektos/act), [CICube guide](https://cicube.io/blog/run-github-actions-locally/), [Microsoft guide](https://techcommunity.microsoft.com/blog/azureinfrastructureblog/using-act-to-test-github-workflows-locally-for-azure-deployments-cicd/4414310)
+**Added**: 2026-03-04 | **Last verified**: 2026-04-19 | **Sources**: [nektos/act repo](https://github.com/nektos/act), [CICube guide](https://cicube.io/blog/run-github-actions-locally/), [Microsoft guide](https://techcommunity.microsoft.com/blog/azureinfrastructureblog/using-act-to-test-github-workflows-locally-for-azure-deployments-cicd/4414310)
 
 Key takeaways:
 - Runs GitHub Actions workflows locally using Docker — reads `.github/workflows/` and spins up containers matching the GitHub environment
@@ -212,7 +254,7 @@ Key takeaways:
 
 ## ROS 2 Offline Development Patterns
 
-**Added**: 2026-03-04 | **Last verified**: 2026-03-04 | **Sources**: [rosdep offline mirror PR](https://github.com/ros-infrastructure/rosdep/pull/839), [ROS Answers: rosdep offline](https://answers.ros.org/question/276942/can-sudo-rosdep-init-and-rosdep-update-be-done-offline/), [rosdep mirror guide](https://answers.ros.org/question/338122/how-do-i-deploy-a-rosdep-mirror/)
+**Added**: 2026-03-04 | **Last verified**: 2026-04-19 (reference only — daddy_camp is non-ROS) | **Sources**: [rosdep offline mirror PR](https://github.com/ros-infrastructure/rosdep/pull/839), [ROS Answers: rosdep offline](https://answers.ros.org/question/276942/can-sudo-rosdep-init-and-rosdep-update-be-done-offline/), [rosdep mirror guide](https://answers.ros.org/question/338122/how-do-i-deploy-a-rosdep-mirror/)
 
 Key takeaways:
 - `rosdep` can work offline by setting `ROSDISTRO_INDEX_URL=file:///path/to/local/index-v4.yaml` — clone the `rosdistro` repo locally and point to it
@@ -226,7 +268,7 @@ Key takeaways:
 
 ## Lightweight Self-Hosted Git Forges (Forgejo / Gitea)
 
-**Added**: 2026-03-04 | **Last verified**: 2026-03-04 | **Sources**: [Self-hosted git platforms 2026](https://dasroot.net/posts/2026/01/self-hosted-git-platforms-gitlab-gitea-forgejo-2026/), [Forgejo comparison](https://forgejo.org/compare/), [Forgejo vs Gitea](https://forgejo.org/compare-to-gitea/), [Gitea comparison](https://docs.gitea.com/installation/comparison)
+**Added**: 2026-03-04 | **Last verified**: 2026-04-19 (Forgejo/Gitea explicitly declined 2026-04-19 — see session D6; entry retained as reference in case constraints change) | **Sources**: [Self-hosted git platforms 2026](https://dasroot.net/posts/2026/01/self-hosted-git-platforms-gitlab-gitea-forgejo-2026/), [Forgejo comparison](https://forgejo.org/compare/), [Forgejo vs Gitea](https://forgejo.org/compare-to-gitea/), [Gitea comparison](https://docs.gitea.com/installation/comparison)
 
 Key takeaways:
 - **Gitea** and **Forgejo** (community fork of Gitea) are functionally near-identical: ~200MB RAM, single binary or Docker one-liner, run on Raspberry Pi
@@ -257,7 +299,7 @@ Key takeaways:
 
 ## Potential Inspiration Tracker Candidates
 
-**Added**: 2026-03-22 | **Last verified**: 2026-03-22 | **Sources**: [obra/superpowers](https://github.com/obra/superpowers), [obra/superpowers-lab](https://github.com/obra/superpowers-lab), [steveyegge/gastown](https://github.com/steveyegge/gastown), [microsoft/skills](https://github.com/microsoft/skills), [wshobson/agents](https://github.com/wshobson/agents), [hesreallyhim/awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code), [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator)
+**Added**: 2026-03-22 | **Last verified**: 2026-04-19 (updated: gastown + microsoft-skills dropped from registry per 2026-04-19 inspiration-tracker run — see their digests for archival reason) | **Sources**: [obra/superpowers](https://github.com/obra/superpowers), [obra/superpowers-lab](https://github.com/obra/superpowers-lab), [steveyegge/gastown](https://github.com/steveyegge/gastown), [microsoft/skills](https://github.com/microsoft/skills), [wshobson/agents](https://github.com/wshobson/agents), [hesreallyhim/awesome-claude-code](https://github.com/hesreallyhim/awesome-claude-code), [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator)
 
 Survey of repos that could be tracked via `/inspiration-tracker add` for portable patterns and enhancements. Assessed against this workspace's concerns: skills architecture, governance, worktree isolation, multi-agent coordination, and multi-framework identity.
 
@@ -278,3 +320,12 @@ Survey of repos that could be tracked via `/inspiration-tracker add` for portabl
 - **hesreallyhim/awesome-claude-code**, **VoltAgent/awesome-claude-code-subagents**, **rohitg00/awesome-claude-code-toolkit** — Curated lists / catalogs. Useful for one-off browsing but too broad and fast-churning for structured tracking. Better used as discovery sources when searching for a specific pattern.
 
 **Relevance**: The inspiration tracker currently only tracks `ros2_agent_workspace` (fork) and `gstack` (inspiration). Adding 2–3 of the strong candidates would broaden the workspace's awareness of evolving patterns in skills architecture, multi-agent coordination, and governance enforcement. Recommended priority: **superpowers** first (most relevant to skills and review workflows), then **gastown** (most relevant to multi-agent coordination).
+
+**Update 2026-04-19**: Registry evolved since this survey — superpowers added, gastown + microsoft-skills added then archived (low signal-to-noise per 2026-04-19 inspiration-tracker run). New candidates surfaced during 2026-04-19 research refresh, not yet triaged:
+
+- **Vibe Kanban** ([vibekanban.com](https://vibekanban.com/)) — Visual Kanban UI for orchestrating AI coding agents. May not fit our CLI-first preference but worth looking at the task-decomposition model.
+- **Superset** ([superset.sh](https://superset.sh/)) — Orchestrator stack pattern (Superset/Capy for orchestration + Claude Code/Codex for primary + Copilot/Cursor for editor-side).
+- **Capy** — Orchestrator, mentioned alongside Superset as the other leading 2026 orchestration platform.
+- **CodeMachine-CLI** ([BrightCoding article](https://www.blog.brightcoding.dev/2026/04/14/codemachine-cli-the-revolutionary-ai-agent-orchestrator)) — New AI agent orchestrator (April 2026).
+
+None pursued as inspiration-tracker entries yet. Triage on next brainstorm.
