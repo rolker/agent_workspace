@@ -92,7 +92,9 @@ would flag, PRs pass on first try.
 | Anti-sycophancy patterns | #48 | done | gstack | Banned phrases, worked pushback examples; general patterns applied to AGENTS.md |
 | AI slop detection in design review | #61 | done | gstack | Check for generic AI patterns (hero sections, card grids, stock imagery) |
 | Diff-aware test targeting | #53 | done | gstack | Map git diff to affected test targets, focus QA on what changed |
-| Review-branch skill | #3 | planned | — | Local pre-push self-review |
+| Two-mode push policy | — | planned | 2026-04-19 session | Mode 1 push-early vs Mode 2 push-when-ready; doc change + `unpushed_branches.sh` helper |
+| Add branch mode to /review-code | #3 | planned | 2026-04-19 session | Pre-push local review via `/review-code --branch <ref>`; `cross_model_review.sh --branch` too. Subsumes prior "review-branch skill" scope of #3. Must work for workspace AND project from day one |
+| Feed shell-surface misses back into /review-code | — | planned | 2026-04-19 session | Specific patterns: echo-concat (bash -n accepts), `set -u` + `$1` before check, flag-as-value parsing, gh-failure fall-through. Formalize the Copilot-miss capture loop |
 | Flag script/skill changes without tests | #136 | planned | — | review-code enhancement |
 | Verification-before-completion skill | #29 | planned | superpowers | Observable verification before marking tasks done |
 
@@ -118,8 +120,10 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | tmux session strategy | #65 | done | ros2_agent_workspace | Named sessions for agents and applications, dashboard integration |
 | Enhanced start-task with tmux | #66 | done | ros2_agent_workspace | Worktree + tmux session + agent launch in one command |
 | Workflow modes | #67 | done | ros2_agent_workspace | Autonomous / collaborative / pair per-session, with permission implications |
-| Port tmux session management | #2 | planned | ros2_agent_workspace | Bring tmux management from upstream |
+| Port tmux session management | #2 | revisit | ros2_agent_workspace | **Motivation review pending (2026-04-19 session)**: ros2 ATC protocol solves multi-machine visibility, which we don't have. Narrow use cases here: session persistence, dashboard pane capture, long-lived services. Close or rescope based on concrete motivation |
 | Draft zones | #87 | planned | — | Human-edited paths with agent-driven PR incorporation |
+| Local integration branches | — | planned | 2026-04-19 session | Per-type dedicated worktrees (`worktrees/workspace/integration/`, `worktrees/project/<repo>/integration/`), declarative config per type, local-only branches, `integration_rebuild.sh --type workspace\|project\|both`. Lets multi-feature integration testing happen without merging to main or pushing prematurely. Unlocks Mode 2 |
+| Coordinator agent (simmering) | — | deferred | 2026-04-19 session | Question triage + context restoration across parallel agents. **Hard constraints**: additive-only (never a filter — Roland debugs by watching terminals); cannot handle permission prompts (per-session). Scope = design/scope/confirmation questions (~1/3 of interrupts). Not implementing yet. MVP mechanism: shared question file → coordinator skill → ranked summary. Revisit after other items land |
 
 ## Priority: Improve How Agents Think
 
@@ -150,6 +154,51 @@ Foundation pieces that make the skill library scalable and reliable.
 | Design skill | #74 | planned | — | Design skill for the workspace |
 | Visual companion UI | #30 | planned | superpowers | Interactive skills with visual companion |
 
+## Priority: Challenge Existing Solutions
+
+Evaluate whether ecosystem developments replace or reshape what we
+already do. Drives from the 2026-04-19 research refresh + inspiration
+scan + meta-reflection session. Each row is a one-time decision;
+Status column records the outcome.
+
+**Decision vocabulary**:
+- **Absorb** — port patterns into existing tooling; keep our surface
+- **Sweep** — one-time audit/update pass across existing files
+- **Evaluate** — timeboxed spike; keep or kill based on feel
+- **Defer** — revisit on specific trigger criteria
+- **Decline** — explicit "not pursuing," reason recorded
+
+| Candidate | Our current solution | Decision | Notes |
+|-----------|----------------------|----------|-------|
+| `just` + `just-mcp` as Make replacement | Make + .PHONY + generated /make_* skills | **Defer** | Motivation is framework resilience (Claude outages force fallback to Gemini/Codex/Copilot). Revisit trigger: concrete Claude-outage or multi-framework moment where `make`-based commands aren't framework-agnostic enough. Parallel adapter-file sweep (CODEX.md, Gemini, Copilot) covers ~80% of the same motivation cheaper |
+| Session Intelligence Layer (`/focus` + `/context-save` + `/context-restore`) | progress.md + plan.md | **Absorb** | Don't replace — add discipline. `/focus` = condensed "you are here" peek; `/context-save` replaces top `## Checkpoint (latest)` block in progress.md; `/context-restore` rehydrates on return. Subsumes prior "per-session context card" Consider item. Source: gstack #733, #1064 |
+| `/review-code` absorb anti-skip + subagent isolation + cross-review dedup + swarm-of-personas | Existing /review-code with silence filter | **Absorb** | All additive. Anti-skip forces reviews to actually execute. Subagent isolation mitigates context-rot. Cross-review dedup refines silence filter. Swarm-of-personas (shell, security, logic, docs) spawns parallel adversarial reviewers — addresses today's shell-surface misses. Source: gstack #804, #1030, #760 + Row 7 extract |
+| Opus 4.7 prompt audit sweep | Prompts written for 4.6 judgment-filling | **Sweep** | One-time pass across AGENTS.md + skill SKILL.md files + prompt-like knowledge docs. Find wiggle words ("when appropriate") and mode-biased example sets; tighten or add paired examples. Structured as 3 PRs (AGENTS.md needs "Ask First" approval per our boundaries). Anthropic explicitly warns 4.6-era prompts need review |
+| MCP layer exposure of workspace commands | Per-framework adapter files | **Defer** | Cross-framework standard, but infrastructure investment without concrete non-Claude driver yet. Revisit on (a) adapter files proving inadequate during outage, or (b) non-Claude agent becoming primary driver |
+| Tier 3 orchestration (overnight backlog drain) | Tier 2 (parallel supervised sprints) | **Defer** | Most of our backlog isn't mechanical — benefits from Roland's eye. Revisit trigger: concrete mechanical-backlog forcing function (e.g., 50 stacked dep-bump PRs) |
+| Agent Teams (experimental) | Manual per-terminal | **Decline**; absorb concepts | Unique Agent Teams value (persistence, peer mailbox, shared task list) doesn't map to our patterns. Extracted concepts: **swarm-of-personas** → rolled into /review-code absorb above; **watchdog alerts** → separate small item below, implemented as file-polling bash not Agent Teams infrastructure |
+| Ultraplan evaluation | No inline-plan-comments UI | **Evaluate** | Anthropic early preview (Week 15 Apr 2026) ships CLI→web-editor→run-or-pull-back-local flow. Matches the Antigravity-style inline-plan-review UX Roland described wanting. 1-hour spike on a real issue. Subsumes prior "inline-comment review UI" Consider item |
+| Prompt cache 1h (`ENABLE_PROMPT_CACHING_1H`) | Default 5m | **Adopt** | Immediate win for long sessions. Set in `.claude/settings.json` |
+| Away summary (`CLAUDE_CODE_ENABLE_AWAY_SUMMARY`) | Unclear default behavior | **Investigate first** | May already be active via telemetry path. Understand interaction with /focus before enabling |
+
+### Related new roadmap items (simpler-tool implementations)
+
+| Item | Source | Status | Notes |
+|------|--------|--------|-------|
+| File-polling watchdog helper | Row 7 extract | planned | `.agent/scripts/watch_progress.sh` — polls progress.md across worktrees, terminal bell / notification on status change. ~50 LOC bash. Implements watchdog pattern without Agent Teams |
+| Swarm-of-personas for /review-code | Row 7 extract | planned | Already captured as sub-item of the /review-code enhancement row above. Parallel `Agent()` subagents with distinct personas |
+| Run `/fewer-permission-prompts` on recent transcripts | session catch-up | planned | Immediate win; feeds #110 |
+| Apply gstack #993 tilde-in-assignment fix | session catch-up | planned | Concrete permission-prompt reduction pattern |
+| Audit #56 scope modes + #71 brainstorm for mode-posture bias | session catch-up | planned | Paired-examples pattern check on known multi-mode skills. Becomes more important under Opus 4.7 literal-following |
+
+### Principles to add (not roadmap items, but design constraints)
+
+- **Framework resilience** — Skills and commands should work under any supported framework. Adapter files (CLAUDE.md, CODEX.md, Gemini, Copilot) must cover the same ground. Motivation: Claude outages force fallback
+- **CLI-first** — Augment the terminal; don't replace it. Management-layer tools live alongside direct observation, never between user and agents (D5 visibility)
+- **Workspace/project parity** — Every practical tool handles both types. `--type workspace|project` is the canonical shape
+
+These go in AGENTS.md under a new "Design principles for new tooling" section (separate PR — AGENTS.md changes require "Ask First" approval).
+
 ## Unphased
 
 Small fixes that can be done anytime.
@@ -161,12 +210,20 @@ Small fixes that can be done anytime.
 | Stale venv/hook detection after rename | #13 | done | `make validate` detects, `make repair` fixes (PR #101) |
 | worktree_list.sh stray local_porcelain | #134 | planned | Bug: command-not-found error |
 | cross_model_review.sh outside worktree | #133 | planned | Bug: fails when invoked outside target repo worktree |
+| Git-bug fallback warnings + smoke test | — | planned | Lesson from ros2 #418 silent-fallback trap. `_issue_helpers.sh` falls through to `gh` silently; add visible warning on miss. Smoke-test `git bug bug --format json` in `make validate` |
+| Workspace/project parity audit | — | planned | Generalize workspace-only tooling: `dashboard.sh`, `update_roadmap.sh`, `validate_workspace.py`. Per 2026-04-19 session principle: every practical tool works with both types |
+| Port ros2 #436 behavioral-patterns knowledge | — | planned | From 2026-04-19 reflection on ros2 field work. New knowledge docs: agent behavioral patterns (time blindness, spec rigidity, unauthorized policy decisions), autonomous logging, discuss-before-editing, approval scope discipline. Port concept-not-mechanism: coordinator role, research-agent-as-shared-resource |
 
 ## Decided Against
 
 Items considered and rejected, with reasons.
 
-(None yet.)
+| Item | Considered | Reason |
+|------|-----------|--------|
+| Forgejo / local self-hosted git forge | 2026-04-19 session (prompted by ros2 #423/#355) | Ros2 needs it because field machines can't reach GitHub. We have no comparable constraint — always-online single-machine setup. Hosting cost + new dependency without addressing real pain here. Revisit only if GitHub-dependency friction grows materially |
+| Coordinator-intermediated mode | 2026-04-19 session | Would require the coordinator to sit between Roland and sub-agents. Incompatible with direct terminal visibility that Roland uses for debugging (watch agents in action, scroll back to see process). Any coordinator must be additive-only |
+| Ros2 tmux ATC protocol (verbatim port) | 2026-04-19 session | Solves multi-machine/remote-agent visibility problem. daddy_camp is single-machine local — agents don't drive each other's tmux panes. Protocol would add overhead without fitting the actual failure mode |
+| Mandatory commit squashing before push | 2026-04-19 session | We merge with `--merge` (not `--squash`), so branch history = PR history. Squashing would hide useful intermediate state. Commits are cheap; keep them honest. `fixup!` autosquash remains optional per-developer |
 
 ## To Consider
 
@@ -175,6 +232,30 @@ New findings from inspiration tracker, not yet discussed in a brainstorm session
 ### Cross-Workspace Analysis
 - **Cross-project retrospective** — Analyze git history, PR reviews, and issue patterns across workspaces to surface recurring friction and coordination issues. Start with fork-type sources (ros2_agent_workspace) where history is deeper. Source: gstack /retro global
 - **Test coverage catalog** — Shared audit showing test status across skills and scripts. Aggregates what's tested, what's missing, as a dashboard layer on top of skill testing (#41). Source: gstack test coverage catalog
+
+### From session reflection (2026-04-19)
+
+Cherry-picked from a recon scan of tracked inspirations since last refresh (2026-03-31). Not yet triaged — evaluate during a future brainstorm.
+
+- **Tilde-in-assignment permission-prompt fix** — Bash pattern change that silences Claude Code permission prompts on common script patterns. Concrete, portable. Source: gstack #993. Feeds #110
+- **Subagent isolation for context rot** — Strengthen `/review-code`'s adversarial specialist against long-context degradation. Source: gstack #1030
+- **`/context-save` + `/context-restore` skill pair** — Compare against our `progress.md` pattern; may offer a formalization or complementary capability. Source: gstack #1064 (renamed from `/checkpoint`)
+- **Cross-model benchmark skill** — Compare outputs across models for the same review/task. Possible enhancement to `cross_model_review.sh`. Source: gstack #1040
+- **Worktree consent pattern during implementation** — Adds a confirmation gate we don't have. Source: superpowers #1124
+- **Multi-repo worktree guidance** — Their docs may be sharper than ours. Source: superpowers #1123
+- **Agent behavioral patterns (from ros2 field experience)** — Time blindness, spec rigidity, unauthorized policy decisions, inventing causal narratives. Source: ros2 #436
+- **Autonomous logging during operations** — Batch-write findings without per-entry commits. Source: ros2 #436
+- **Discuss design before editing** — For content/creative changes; direct edits are fine for code fixes. Source: ros2 #436
+- **Approval scope discipline** — One approved command ≠ approval for follow-ups. Source: ros2 #436
+- **Research-agent-as-shared-resource** — One agent does research while another implements. Source: ros2 #436
+
+### Research topics to add (not tracker items)
+
+Candidates for `.agent/knowledge/research_digest.md`, separate from roadmap items.
+
+- **Claude Opus 4.7 behavioral changes since 4.6** — What shifted, especially for cache-warm session management, subagent dispatch, context handling. New topic.
+- **Permission prompt patterns across frameworks** — Cross-reference gstack #993 + our #110. What do other frameworks do? New topic.
+- **Git-bug v0.10.1 syntax drift lesson** — Brief entry capturing what ros2 #418 found and how we avoided it (for future-us when we upgrade git-bug again)
 
 ## Cross-cutting Decisions
 
