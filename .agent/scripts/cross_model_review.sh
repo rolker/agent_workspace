@@ -103,13 +103,14 @@ CLI_WORK_PLANS_DIR=""
 
 USAGE="Usage: $0 --pr <N> [--issue <N>] [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--work-plans-dir <path>] [--sync]"
 
-# Helper: treat a missing value OR a value that starts with '-' (i.e. the
-# user supplied another flag instead of a value) as "missing value."
-# Consistent with how other scripts in this repo validate flag arguments.
+# Helper: treat a missing value OR a value that looks like another long
+# flag (`--foo`) as "missing value." Narrower than `-*` so negative
+# integers and dash-prefixed paths fall through to their dedicated
+# validators (per review feedback on #149).
 require_value() {
     local flag="$1"
     local value="$2"
-    if [[ -z "$value" || "$value" == -* ]]; then
+    if [[ -z "$value" || "$value" == --* ]]; then
         echo "ERROR: Missing value for $flag" >&2
         echo "$USAGE" >&2
         exit 2
@@ -250,7 +251,20 @@ fi
 if [[ -n "$CLI_ISSUE_NUMBER" ]]; then
     ISSUE_NUMBER="$CLI_ISSUE_NUMBER"
 else
-    PR_BODY=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json body --jq '.body' 2>/dev/null || echo "")
+    # Capture gh's exit status distinctly from "retrieved an empty body"
+    # so auth/network/permission failures produce the right remediation
+    # (per review feedback on #149).
+    if ! PR_BODY=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json body --jq '.body' 2>/dev/null); then
+        {
+            echo "ERROR: Failed to retrieve body for PR #${PR_NUMBER}."
+            echo ""
+            echo "  Verify GitHub authentication, repository permissions,"
+            echo "  and network connectivity, then try again."
+            echo "  Alternatively, pass --issue <N> to skip PR-body extraction."
+        } >&2
+        exit 2
+    fi
+
     # Match GitHub closure keywords (case-insensitive): Closes #N,
     # Fixes #N, Resolves #N. Requires a word boundary before the keyword
     # to avoid matching "encloses", "prefixes", etc. Also accepts the

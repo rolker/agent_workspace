@@ -68,6 +68,19 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local label="$1" pattern="$2" text="$3"
+    if echo "$text" | grep -qE "$pattern"; then
+        echo "  FAIL: $label"
+        echo "    unexpected pattern found: $pattern"
+        echo "    in: $text"
+        FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: $label"
+        PASS=$((PASS + 1))
+    fi
+}
+
 assert_exit_code() {
     local label="$1" expected="$2" actual="$3"
     if [[ "$expected" == "$actual" ]]; then
@@ -446,6 +459,19 @@ GH_EOF
         PASS=$((PASS + 1))
     fi
 
+    # Also assert the script skipped the PR-body extraction entirely
+    # when --issue was supplied (no `gh pr view ... --json body` call).
+    # Tightens the test per review feedback on PR #154.
+    if grep -qE "^pr view .* --json body" "$MOCK_GH_LOG"; then
+        echo "  FAIL: gh pr view --json body was called despite --issue"
+        echo "    gh log:"
+        sed 's/^/      /' "$MOCK_GH_LOG"
+        FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: PR-body extraction skipped when --issue is set"
+        PASS=$((PASS + 1))
+    fi
+
     teardown
 }
 
@@ -484,8 +510,11 @@ GH_EOF
         --pr 99 --sync 2>&1) || exit_code=$?
 
     assert_exit_code "missing keyword exits 2" "2" "$exit_code"
+    # Pattern avoids `|` (which grep -E would treat as alternation and
+    # accept a partial match). Testing an unambiguous fragment of the
+    # error message instead — per review feedback on PR #154.
     assert_contains "error mentions missing keyword" \
-        "no 'Closes|Fixes|Resolves #N' keyword" "$stderr"
+        "body has no 'Closes" "$stderr"
     # Pattern must not start with "--" so grep -E doesn't treat it as a flag.
     assert_contains "error suggests --issue flag" "Pass --issue" "$stderr"
 
@@ -519,7 +548,55 @@ test_issue_flag_validates_integer() {
 
     exit_code=0
     stderr=$(bash "${SCRIPT_UNDER_TEST}" --pr 99 --issue -5 2>&1) || exit_code=$?
-    assert_exit_code "--issue -5 rejected (as another flag)" "2" "$exit_code"
+    assert_exit_code "--issue -5 rejected" "2" "$exit_code"
+    # Post-review: require_value was narrowed from -* to --*, so -5
+    # now reaches the integer validator instead of being caught as a
+    # "missing value" flag. Both paths exit 2; the integer message is
+    # more accurate.
+    assert_contains "error mentions integer contract for -5" \
+        "not a positive integer" "$stderr"
+}
+
+# ---- Test: gh pr view failure produces a retrieval-specific error (#149) ----
+#
+# Regression test for the review fix: when gh fails (auth/permissions/
+# network), the script must NOT emit the "no closure keyword" guidance,
+# which would point users at the wrong remediation.
+test_gh_pr_view_failure_distinct_error() {
+    echo "TEST: gh pr view failure produces a distinct error (#149)"
+    setup
+
+    # Mock gh that fails on `pr view --json body` (exit non-zero).
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; PR="$1"; shift
+    [[ "${1:-}" == "-R" ]] && shift 2
+    if [[ "$1" == "--json" && "$2" == "body" ]]; then
+        # Simulate auth/network/permission failure
+        echo "gh: authentication required" >&2
+        exit 1
+    fi
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    local stderr
+    stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync 2>&1) || exit_code=$?
+
+    assert_exit_code "gh failure exits 2" "2" "$exit_code"
+    assert_contains "error mentions retrieval failure" \
+        "Failed to retrieve body" "$stderr"
+    # Must NOT fall through to the no-keyword remediation — that would
+    # be misleading when the real problem is auth/network.
+    assert_not_contains "no-keyword guidance suppressed on gh failure" \
+        "body has no 'Closes" "$stderr"
+
+    teardown
 }
 
 # ---- Run all tests ----
@@ -538,6 +615,7 @@ test_flag_as_value_rejected
 test_issue_flag_overrides_extraction
 test_missing_keyword_aborts
 test_issue_flag_validates_integer
+test_gh_pr_view_failure_distinct_error
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
