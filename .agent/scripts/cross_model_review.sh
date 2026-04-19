@@ -36,6 +36,7 @@
 #   1 — missing dependencies (gh or target agent CLI)
 #   2 — invalid arguments
 #   3 — failed to create prompt or launch session
+#   4 — wrong worktree / invalid environment (see _resolve_work_plans_dir.sh)
 
 set -euo pipefail
 
@@ -97,44 +98,48 @@ FORCE_SYNC=false
 TARGET_AGENT="gemini"
 EXPLICIT_REPO=""
 EXPLICIT_WORK_DIR=""
-USAGE="Usage: $0 --pr <N> [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--sync]"
+CLI_WORK_PLANS_DIR=""
+
+USAGE="Usage: $0 --pr <N> [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--work-plans-dir <path>] [--sync]"
+
+# Helper: treat a missing value OR a value that starts with '-' (i.e. the
+# user supplied another flag instead of a value) as "missing value."
+# Consistent with how other scripts in this repo validate flag arguments.
+require_value() {
+    local flag="$1"
+    local value="$2"
+    if [[ -z "$value" || "$value" == -* ]]; then
+        echo "ERROR: Missing value for $flag" >&2
+        echo "$USAGE" >&2
+        exit 2
+    fi
+}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr)
-            if [[ $# -lt 2 ]]; then
-                echo "ERROR: Missing value for --pr" >&2
-                echo "$USAGE" >&2
-                exit 2
-            fi
+            require_value "--pr" "${2:-}"
             PR_NUMBER="$2"
             shift 2
             ;;
         --agent)
-            if [[ $# -lt 2 ]]; then
-                echo "ERROR: Missing value for --agent" >&2
-                echo "$USAGE" >&2
-                exit 2
-            fi
+            require_value "--agent" "${2:-}"
             TARGET_AGENT="${2,,}"  # lowercase
             shift 2
             ;;
         --repo|-R)
-            if [[ $# -lt 2 ]]; then
-                echo "ERROR: Missing value for --repo" >&2
-                echo "$USAGE" >&2
-                exit 2
-            fi
+            require_value "--repo" "${2:-}"
             EXPLICIT_REPO="$2"
             shift 2
             ;;
         --work-dir)
-            if [[ $# -lt 2 ]]; then
-                echo "ERROR: Missing value for --work-dir" >&2
-                echo "$USAGE" >&2
-                exit 2
-            fi
+            require_value "--work-dir" "${2:-}"
             EXPLICIT_WORK_DIR="$2"
+            shift 2
+            ;;
+        --work-plans-dir)
+            require_value "--work-plans-dir" "${2:-}"
+            CLI_WORK_PLANS_DIR="$2"
             shift 2
             ;;
         --sync)
@@ -245,17 +250,27 @@ if [[ -z "$ISSUE_NUMBER" ]]; then
 fi
 
 # --- Set up artifact directory (absolute paths for tmux session) ---
-if [[ -n "$EXPLICIT_WORK_DIR" ]]; then
+# Refuse to run outside the matching worktree (issue #147) unless the
+# caller explicitly overrides the location via --work-plans-dir (exact
+# path) or --work-dir (repo root). Either override is routed through
+# $WORK_PLANS_DIR_OVERRIDE so the resolver treats them uniformly.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_resolve_work_plans_dir.sh
+source "${SCRIPT_DIR}/_resolve_work_plans_dir.sh"
+
+if [[ -n "$CLI_WORK_PLANS_DIR" ]]; then
+    export WORK_PLANS_DIR_OVERRIDE="$CLI_WORK_PLANS_DIR"
+elif [[ -n "$EXPLICIT_WORK_DIR" ]]; then
     if [[ ! -d "$EXPLICIT_WORK_DIR" ]]; then
         echo "ERROR: --work-dir is not an existing directory: ${EXPLICIT_WORK_DIR}" >&2
         exit 2
     fi
-    # Resolve to absolute path so tmux sessions find the directory
+    # Resolve to absolute path so tmux sessions find the directory.
     EXPLICIT_WORK_DIR=$(cd "$EXPLICIT_WORK_DIR" && pwd)
-    WORK_PLANS_DIR="${EXPLICIT_WORK_DIR}/.agent/work-plans/issue-${ISSUE_NUMBER}"
-else
-    WORK_PLANS_DIR="$(git rev-parse --show-toplevel)/.agent/work-plans/issue-${ISSUE_NUMBER}"
+    export WORK_PLANS_DIR_OVERRIDE="${EXPLICIT_WORK_DIR}/.agent/work-plans/issue-${ISSUE_NUMBER}"
 fi
+
+WORK_PLANS_DIR=$(resolve_work_plans_dir "$ISSUE_NUMBER") || exit 4
 mkdir -p "$WORK_PLANS_DIR"
 
 PROMPT_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-prompt.md"

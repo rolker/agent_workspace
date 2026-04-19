@@ -132,9 +132,12 @@ GH_EOF
     export MOCK_GH_LOG="${TMPDIR_BASE}/gh_calls.log"
     true > "$MOCK_GH_LOG"
 
-    # Run the script with --repo and --sync (to avoid tmux)
+    # Run the script with --repo and --sync (to avoid tmux). Set
+    # WORKTREE_ISSUE=42 (matching the mock PR body's "Closes #42") so the
+    # work-plans-dir resolver (issue #147) accepts the invocation instead
+    # of aborting with "not in matching worktree."
     cd "${MOCK_REPO}"
-    PATH="${MOCK_BIN}:${PATH}" bash "${SCRIPT_UNDER_TEST}" \
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
         --pr 99 --repo test/repo --sync >/dev/null 2>&1 || true
 
     # Verify gh was called with -R test/repo
@@ -269,9 +272,12 @@ exit 0
 GH_EOF
     chmod +x "${MOCK_BIN}/gh"
 
+    # WORKTREE_ISSUE=42 matches the mock PR's "Closes #42" so the resolver
+    # (issue #147) accepts the invocation; this test exercises the empty-
+    # diff guard, not the worktree check.
     cd "${MOCK_REPO}"
     local exit_code=0
-    STDERR=$(PATH="${MOCK_BIN}:${PATH}" bash "${SCRIPT_UNDER_TEST}" \
+    STDERR=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
         --pr 99 --sync 2>&1) || exit_code=$?
 
     assert_exit_code "empty diff exits 3" "3" "$exit_code"
@@ -322,6 +328,59 @@ test_invalid_repo_slug() {
     teardown
 }
 
+# ---- Test: resolver refuses outside matching worktree ----
+test_resolver_refuses_without_worktree_issue() {
+    echo "TEST: resolver refuses when WORKTREE_ISSUE unset / mismatched"
+    setup
+
+    # Mock gh returns a PR body with "Closes #42"
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; PR="$1"; shift
+    [[ "${1:-}" == "-R" ]] && shift 2
+    if [[ "$1" == "--json" && "$2" == "body" ]]; then
+        echo "Closes #42"
+    fi
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    cd "${MOCK_REPO}"
+
+    # Case 1: WORKTREE_ISSUE unset -> resolver rule 3 aborts with exit 4.
+    local exit_code=0
+    STDERR=$(unset WORKTREE_ISSUE; PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync 2>&1) || exit_code=$?
+    assert_exit_code "unset WORKTREE_ISSUE exits 4" "4" "$exit_code"
+    assert_contains "error mentions worktree" "worktree" "$STDERR"
+
+    # Case 2: WORKTREE_ISSUE mismatched -> same abort, different message.
+    exit_code=0
+    STDERR=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=100 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync 2>&1) || exit_code=$?
+    assert_exit_code "mismatched WORKTREE_ISSUE exits 4" "4" "$exit_code"
+    assert_contains "error names the mismatch" "'100', not '42'" "$STDERR"
+
+    teardown
+}
+
+# ---- Test: flag-as-value is rejected ----
+test_flag_as_value_rejected() {
+    echo "TEST: --flag --other-flag pattern is rejected"
+
+    local exit_code=0
+    STDERR=$(bash "${SCRIPT_UNDER_TEST}" --work-plans-dir --sync 2>&1) || exit_code=$?
+    assert_exit_code "--work-plans-dir --sync exits 2" "2" "$exit_code"
+    assert_contains "error mentions missing value" "Missing value for --work-plans-dir" "$STDERR"
+
+    exit_code=0
+    STDERR=$(bash "${SCRIPT_UNDER_TEST}" --pr --sync 2>&1) || exit_code=$?
+    assert_exit_code "--pr --sync exits 2" "2" "$exit_code"
+    assert_contains "error mentions missing value" "Missing value for --pr" "$STDERR"
+}
+
 # ---- Run all tests ----
 echo "=== cross_model_review.sh tests ==="
 echo ""
@@ -333,6 +392,8 @@ test_issue_extraction
 test_repo_flag_accepted
 test_work_dir_flag
 test_empty_diff_guard
+test_resolver_refuses_without_worktree_issue
+test_flag_as_value_rejected
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
