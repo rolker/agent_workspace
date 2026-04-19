@@ -34,6 +34,7 @@
 #   1 — missing dependencies (gh or target agent CLI)
 #   2 — invalid arguments
 #   3 — failed to create prompt or launch session
+#   4 — wrong worktree / invalid environment (see _resolve_work_plans_dir.sh)
 
 set -euo pipefail
 
@@ -97,23 +98,28 @@ CLI_WORK_PLANS_DIR=""
 
 USAGE="Usage: $0 --pr <N> [--agent <name>] [--sync] [--work-plans-dir <path>]"
 
+# Helper: treat a missing value OR a value that starts with '-' (i.e. the
+# user supplied another flag instead of a value) as "missing value."
+# Consistent with how other scripts in this repo validate flag arguments.
+require_value() {
+    local flag="$1"
+    local value="$2"
+    if [[ -z "$value" || "$value" == -* ]]; then
+        echo "ERROR: Missing value for $flag" >&2
+        echo "$USAGE" >&2
+        exit 2
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr)
-            if [[ $# -lt 2 ]]; then
-                echo "ERROR: Missing value for --pr" >&2
-                echo "$USAGE" >&2
-                exit 2
-            fi
+            require_value "--pr" "${2:-}"
             PR_NUMBER="$2"
             shift 2
             ;;
         --agent)
-            if [[ $# -lt 2 ]]; then
-                echo "ERROR: Missing value for --agent" >&2
-                echo "$USAGE" >&2
-                exit 2
-            fi
+            require_value "--agent" "${2:-}"
             TARGET_AGENT="${2,,}"  # lowercase
             shift 2
             ;;
@@ -122,11 +128,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --work-plans-dir)
-            if [[ $# -lt 2 ]]; then
-                echo "ERROR: Missing value for --work-plans-dir" >&2
-                echo "$USAGE" >&2
-                exit 2
-            fi
+            require_value "--work-plans-dir" "${2:-}"
             CLI_WORK_PLANS_DIR="$2"
             shift 2
             ;;
@@ -231,7 +233,7 @@ if [[ -n "$CLI_WORK_PLANS_DIR" ]]; then
     export WORK_PLANS_DIR_OVERRIDE="$CLI_WORK_PLANS_DIR"
 fi
 
-WORK_PLANS_DIR=$(resolve_work_plans_dir "$ISSUE_NUMBER") || exit 2
+WORK_PLANS_DIR=$(resolve_work_plans_dir "$ISSUE_NUMBER") || exit 4
 mkdir -p "$WORK_PLANS_DIR"
 
 PROMPT_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-prompt.md"

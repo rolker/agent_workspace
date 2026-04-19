@@ -104,7 +104,7 @@ source .agent/scripts/_resolve_work_plans_dir.sh
 WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || {
     # Resolver printed remediation guidance to stderr — surface it to the
     # user and stop. Do not write plan.md / progress.md anywhere else.
-    return 1 2>/dev/null || exit 1
+    exit 1
 }
 ```
 

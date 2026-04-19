@@ -6,15 +6,23 @@
 #   source "$SCRIPT_DIR/_resolve_work_plans_dir.sh"
 #
 # Exposes: resolve_work_plans_dir <issue-number>
-#   On success: echoes absolute path to .agent/work-plans/issue-<N>/ on stdout.
+#   On success: echoes the resolved work-plans directory path on stdout.
+#               If $WORK_PLANS_DIR_OVERRIDE is set, that value is echoed
+#               as-is (may be relative, not normalized). Otherwise the
+#               returned path is absolute. No trailing slash either way.
 #   On failure: prints error to stderr and returns 1.
 #
 # Resolution rules (in order):
 #   1. If $WORK_PLANS_DIR_OVERRIDE is set (callers export this after parsing
-#      --work-plans-dir), return it verbatim.
+#      --work-plans-dir), return it verbatim (no normalization).
 #   2. Else if $WORKTREE_ISSUE equals the requested issue number, return
 #      "$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<N>".
 #   3. Else abort with remediation guidance pointing at worktree_enter.sh.
+#
+# Caller-gotcha: prefer a bare assignment (`WORK_PLANS_DIR=$(resolve ... )
+# || exit 4`) over `local WORK_PLANS_DIR=$(resolve ... )`. The `local`
+# builtin's own exit status masks the command substitution's, so the
+# `|| exit` never fires on failure.
 #
 # Rationale: see issue #147. Using `git rev-parse --show-toplevel` without a
 # worktree check lets scripts silently write per-issue artifacts into `main`
@@ -48,8 +56,7 @@ resolve_work_plans_dir() {
 
     # Rule 3: abort.
     {
-        echo "ERROR: refusing to resolve work-plans dir for issue #${issue} outside its worktree."
-        echo ""
+        echo "ERROR: refusing to resolve work-plans dir for issue #${issue} outside its worktree."        echo ""
         if [ -n "${WORKTREE_ISSUE:-}" ]; then
             echo "  Current \$WORKTREE_ISSUE is '${WORKTREE_ISSUE}', not '${issue}'."
         else
@@ -66,3 +73,11 @@ resolve_work_plans_dir() {
     } >&2
     return 1
 }
+
+# Warn if the file is executed directly — it only defines a function and
+# must be sourced.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    echo "ERROR: _resolve_work_plans_dir.sh must be sourced, not executed directly." >&2
+    echo "Usage: source .agent/scripts/_resolve_work_plans_dir.sh" >&2
+    exit 1
+fi
