@@ -91,14 +91,25 @@ Read relevant files to understand the current state:
 - Documentation that references them
 - Use the consequences map to identify what else may be affected
 
-### 4. Ensure correct worktree
+### 4. Ensure correct worktree (hard check)
 
-Before writing or committing the plan, verify you are in a worktree for the
-target issue. If the plan is committed from a different worktree, it ends up
-on the wrong branch.
+Before writing or committing the plan, resolve the work-plans directory
+using the shared helper. It refuses to return a path when you're outside
+the matching worktree — this is deliberate (issue #147): silent writes
+into the main tree were stranding per-issue artifacts on no branch.
 
-Check `$WORKTREE_ISSUE` (set by `worktree_enter.sh`). If it does not match
-`<N>`, or is unset, create and enter the correct worktree:
+```bash
+# shellcheck source=../../../.agent/scripts/_resolve_work_plans_dir.sh
+source .agent/scripts/_resolve_work_plans_dir.sh
+WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || {
+    # Resolver printed remediation guidance to stderr — surface it to the
+    # user and stop. Do not write plan.md / progress.md anywhere else.
+    return 1 2>/dev/null || exit 1
+}
+```
+
+If the resolver aborts, the message tells the user to create or enter the
+matching worktree. Typical remediation:
 
 **Workspace issues** (changes to `.agent/`, `docs/`, configs, skills):
 
@@ -114,24 +125,19 @@ source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
 source .agent/scripts/worktree_enter.sh --issue <N> --type project
 ```
 
-To determine the worktree type and parameters:
+To determine the type, run `gh issue view <N> --json url` and compare
+against the workspace repo URL — use `--type project` when the issue is
+in a project repo. If a worktree for the issue already exists, just enter
+it.
 
-1. Check which GitHub repo the issue belongs to — use `gh issue view <N>
-   --json url` and compare against the workspace repo URL. If the issue is
-   in a project repo, use `--type layer`.
-2. Infer the layer and package from the issue body, labels, or the repo
-   name. Project repos live under `layers/main/<layer>_ws/src/<project_repo>/`
-   — use `ls` to find the matching layer.
-3. If the layer or package cannot be determined, ask the user.
-
-If a worktree for the issue already exists, just enter it.
+Use `$WORK_PLANS_DIR` (from the resolver) as the base path in step 5 and
+step 7 — do not construct `.agent/work-plans/issue-<N>/` by hand.
 
 ### 5. Generate the plan
 
-Write a plan to `.agent/work-plans/issue-<N>/plan.md` (relative to the current
-repo — workspace repo for workspace issues, project repo for project issues).
-Create the `issue-<N>/` directory if it doesn't exist — this directory also
-holds review artifacts (Gemini prompts/findings) alongside the plan:
+Write a plan to `${WORK_PLANS_DIR}/plan.md` (resolved in step 4). Create
+the directory if it doesn't exist — it also holds review artifacts (Gemini
+prompts/findings) alongside the plan:
 
 ```markdown
 # Plan: <issue-title>
@@ -187,8 +193,8 @@ holds review artifacts (Gemini prompts/findings) alongside the plan:
 ### 6. Update progress.md
 
 Before committing, append a "Plan" step entry to
-`.agent/work-plans/issue-<N>/progress.md`. If progress.md does not exist,
-create it with frontmatter (use the issue title from step 1):
+`${WORK_PLANS_DIR}/progress.md`. If progress.md does not exist, create it
+with frontmatter (use the issue title from step 1):
 
 ```yaml
 ---
@@ -207,7 +213,7 @@ Then append the step entry:
 **When**: <YYYY-MM-DD HH:MM>
 **By**: <agent name> (<model>)
 
-Plan file: `.agent/work-plans/issue-<N>/plan.md`.
+Plan file: `${WORK_PLANS_DIR}/plan.md`.
 
 <1-2 sentence summary of the approach>
 ```
@@ -217,8 +223,8 @@ Plan file: `.agent/work-plans/issue-<N>/plan.md`.
 Stage both files and commit together:
 
 ```bash
-mkdir -p .agent/work-plans/issue-<N>
-git add .agent/work-plans/issue-<N>/plan.md .agent/work-plans/issue-<N>/progress.md
+mkdir -p "$WORK_PLANS_DIR"
+git add "$WORK_PLANS_DIR/plan.md" "$WORK_PLANS_DIR/progress.md"
 git commit -m "Add work plan for #<N>
 
 <one-line summary of the approach>"
@@ -250,7 +256,7 @@ EXISTING_PR=$(gh pr list --head "$CURRENT_BRANCH" --json url --jq '.[0].url // "
 # Build PR body: prepend Closes reference, then plan content
 BODY_FILE=$(mktemp /tmp/gh_body.XXXXXX.md)
 printf 'Closes #<N>\n\n' > "$BODY_FILE"
-cat .agent/work-plans/issue-<N>/plan.md >> "$BODY_FILE"
+cat "$WORK_PLANS_DIR/plan.md" >> "$BODY_FILE"
 
 if [ -n "$EXISTING_PR" ]; then
     # Update existing PR title and body
