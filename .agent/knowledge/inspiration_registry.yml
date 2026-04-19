@@ -55,6 +55,39 @@ projects:
       - subagent patterns and orchestration
       - development methodology and workflows
 
+  agent-orchestrator:
+    type: inspiration
+    repo: ComposioHQ/agent-orchestrator
+    description: Reference open-source orchestrator for parallel coding agents
+    # Added 2026-04-19. Tracked despite our Tier 3 "Defer" decision —
+    # the patterns (reaction system, adapter architecture, worktree-per-
+    # agent discipline) inform how we'd adopt IF mechanical backlog
+    # pressure ever makes Tier 3 worthwhile. Also the reference point
+    # for the "additive-only" constraint (D5) — if they move toward less
+    # intermediated designs, revisit.
+    interest_areas:
+      - reaction system (CI failures, review comments, PR approvals)
+      - task decomposition patterns
+      - adapter architecture (runtime/agent/workspace/tracker/notifier pluggability)
+      - worktree-per-agent discipline (convergent with our own)
+      - dashboard model for multi-agent oversight
+
+  overstory:
+    type: inspiration
+    repo: jayminwest/overstory
+    description: Multi-agent orchestrator with SQLite-backed messaging and watchdog daemon
+    # Added 2026-04-19. Paired with agent-orchestrator to cover the
+    # category from two angles — agent-orchestrator is the big/reference
+    # implementation, Overstory explores different messaging tech
+    # (SQLite-backed mailbox) and conflict-resolution patterns. Of
+    # particular interest: watchdog daemon, which we're building
+    # separately as a small bash helper per Row 7 decision.
+    interest_areas:
+      - inter-agent messaging (SQLite-backed mailbox)
+      - conflict resolution (4-tier)
+      - watchdog daemon patterns
+      - multi-runtime agent support (Claude Code, Pi, Gemini CLI)
+
   # --- Archived sources (2026-04-19) ---
   #
   # The following entries were removed from active tracking after a signal-
