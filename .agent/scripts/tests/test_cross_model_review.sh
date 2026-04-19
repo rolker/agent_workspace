@@ -68,6 +68,19 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local label="$1" pattern="$2" text="$3"
+    if echo "$text" | grep -qE "$pattern"; then
+        echo "  FAIL: $label"
+        echo "    unexpected pattern found: $pattern"
+        echo "    in: $text"
+        FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: $label"
+        PASS=$((PASS + 1))
+    fi
+}
+
 assert_exit_code() {
     local label="$1" expected="$2" actual="$3"
     if [[ "$expected" == "$actual" ]]; then
@@ -154,35 +167,33 @@ GH_EOF
 }
 
 # ---- Test: issue extraction from PR body ----
-# Helper: mirrors the extraction logic from cross_model_review.sh
+# Helper: mirrors the extraction logic from cross_model_review.sh.
+# Post-#149: keyword-only — no loose "#N anywhere" fallback.
 extract_issue() {
     local body="$1"
     local ref num
-    ref=$(printf '%s\n' "$body" | grep -ioE '(^|[^[:alnum:]_])(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' | head -n1 || true)
+    ref=$(printf '%s\n' "$body" \
+        | grep -ioE '(^|[^[:alnum:]_])(closes|fixes|resolves)[[:space:]]+([a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+)?#[0-9]+' \
+        | head -n1 || true)
     num=$(printf '%s\n' "$ref" | grep -oE '[0-9]+$' || true)
-    if [[ -z "$num" ]]; then
-        num=$(printf '%s\n' "$body" | grep -oE '(^|[[:space:]])#[0-9]+' | head -n1 | grep -oE '[0-9]+' || true)
-    fi
     printf '%s' "${num:-}"
 }
 
 test_issue_extraction() {
-    echo "TEST: issue number extraction"
+    echo "TEST: issue number extraction (keyword-only, post-#149)"
 
-    # Positive cases
-    assert_eq "Closes #42 -> 42" "42" "$(extract_issue 'Some text\nCloses #42\nMore text')"
+    # Positive cases — keyword match wins
+    assert_eq "Closes #42 -> 42" "42" "$(extract_issue 'Some text. Closes #42. More text.')"
     assert_eq "fixes #123 -> 123" "123" "$(extract_issue 'fixes #123')"
     assert_eq "Resolves owner/repo#77 -> 77" "77" "$(extract_issue 'Resolves owner/repo#77')"
     assert_eq "CLOSES #5 -> 5" "5" "$(extract_issue 'CLOSES #5')"
-
-    # Negative: substring false positives should NOT match as close keywords
-    assert_eq "encloses #42 -> fallback 42" "42" "$(extract_issue 'encloses #42')"
-    assert_eq "prefixes #7 -> fallback 7" "7" "$(extract_issue 'prefixes #7')"
-    # But with a real close keyword elsewhere, it should pick the right one
+    # A real keyword later in the body wins over substring false positives
     assert_eq "encloses #42, Closes #99 -> 99" "99" "$(extract_issue 'encloses #42 but Closes #99')"
 
-    # Fallback cases
-    assert_eq "Fallback #10 -> 10" "10" "$(extract_issue 'Related to #10 and #20')"
+    # Post-#149: no keyword means empty — no loose "#N anywhere" fallback
+    assert_eq "encloses #42 (substring only) -> empty" "" "$(extract_issue 'encloses #42')"
+    assert_eq "prefixes #7 (substring only) -> empty" "" "$(extract_issue 'prefixes #7')"
+    assert_eq "no keyword, '#N' in body -> empty" "" "$(extract_issue 'Related to #10 and #20')"
     assert_eq "No issue ref -> empty" "" "$(extract_issue 'No issue reference here')"
 }
 
@@ -543,6 +554,213 @@ GH_EOF
     teardown
 }
 
+# ---- Test: --issue flag overrides PR-body extraction (#149) ----
+#
+# When --issue <N> is passed, the script must honour it verbatim without
+# consulting the PR body. This is the escape hatch for PRs that don't
+# use Closes/Fixes/Resolves keywords (rollup PRs, long-running
+# investigations, etc.).
+test_issue_flag_overrides_extraction() {
+    echo "TEST: --issue overrides PR-body extraction (#149)"
+    setup
+
+    export MOCK_GH_LOG="${TMPDIR_BASE}/gh_calls.log"
+    true > "$MOCK_GH_LOG"
+
+    # Mock gh: PR body has NO closure keyword — extraction would fail
+    # without --issue. With --issue the body shouldn't even be queried
+    # for body (but we still need view for title/url; returning body
+    # anyway is harmless because the script skips extraction).
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+echo "$@" >> "${MOCK_GH_LOG}"
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; PR="$1"; shift
+    [[ "${1:-}" == "-R" ]] && shift 2
+    if [[ "$1" == "--json" && "$2" == "body" ]]; then
+        echo "A PR body with no closure keyword. See also #42."
+    elif [[ "$1" == "--json" && "$2" == "title" ]]; then
+        echo "Test PR"
+    elif [[ "$1" == "--json" && "$2" == "url" ]]; then
+        echo "https://github.com/test/repo/pull/99"
+    fi
+elif [[ "$1" == "pr" && "$2" == "diff" ]]; then
+    echo "diff --git a/file.txt b/file.txt"
+    echo "--- a/file.txt"
+    echo "+++ b/file.txt"
+    echo "@@ -1 +1 @@"
+    echo "-old"
+    echo "+new"
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    cd "${MOCK_REPO}"
+    # --issue 123 matches WORKTREE_ISSUE so the resolver accepts it; the
+    # wrong match (#42 from the loose fallback) would have been picked
+    # before #149 and broken this test.
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=123 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --issue 123 --sync >/dev/null 2>&1 || true
+
+    # Artifacts should land under issue-123 (from --issue), not issue-42
+    # (from the PR body).
+    if [[ -d "${MOCK_REPO}/.agent/work-plans/issue-123" ]]; then
+        echo "  PASS: --issue value used as issue number"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: --issue value not used"
+        echo "    ls work-plans: $(ls "${MOCK_REPO}/.agent/work-plans/" 2>/dev/null || echo 'empty')"
+        FAIL=$((FAIL + 1))
+    fi
+    if [[ -d "${MOCK_REPO}/.agent/work-plans/issue-42" ]]; then
+        echo "  FAIL: loose fallback still used — routed to #42"
+        FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: PR-body #42 not used"
+        PASS=$((PASS + 1))
+    fi
+
+    # Also assert the script skipped the PR-body extraction entirely
+    # when --issue was supplied (no `gh pr view ... --json body` call).
+    # Tightens the test per review feedback on PR #154.
+    if grep -qE "^pr view .* --json body" "$MOCK_GH_LOG"; then
+        echo "  FAIL: gh pr view --json body was called despite --issue"
+        echo "    gh log:"
+        sed 's/^/      /' "$MOCK_GH_LOG"
+        FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: PR-body extraction skipped when --issue is set"
+        PASS=$((PASS + 1))
+    fi
+
+    teardown
+}
+
+# ---- Test: missing closure keyword aborts with guidance (#149) ----
+#
+# Before #149 the script silently routed artifacts to the first '#N'
+# found anywhere in the PR body, or fell back to the PR number. Both
+# behaviors hid real errors. Now: no keyword + no --issue => exit 2.
+test_missing_keyword_aborts() {
+    echo "TEST: missing closure keyword without --issue aborts (#149)"
+    setup
+
+    # Mock gh: PR body deliberately has only a loose '#N' reference and
+    # a substring like "encloses #42" that should not be picked up.
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; PR="$1"; shift
+    [[ "${1:-}" == "-R" ]] && shift 2
+    if [[ "$1" == "--json" && "$2" == "body" ]]; then
+        echo "Related to #42 (encloses #7). No closure keyword here."
+    elif [[ "$1" == "--json" && "$2" == "title" ]]; then
+        echo "Test PR"
+    elif [[ "$1" == "--json" && "$2" == "url" ]]; then
+        echo "https://github.com/test/repo/pull/99"
+    fi
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    local stderr
+    stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync 2>&1) || exit_code=$?
+
+    assert_exit_code "missing keyword exits 2" "2" "$exit_code"
+    # Pattern avoids `|` (which grep -E would treat as alternation and
+    # accept a partial match). Testing an unambiguous fragment of the
+    # error message instead — per review feedback on PR #154.
+    assert_contains "error mentions missing keyword" \
+        "body has no 'Closes" "$stderr"
+    # Pattern must not start with "--" so grep -E doesn't treat it as a flag.
+    assert_contains "error suggests --issue flag" "Pass --issue" "$stderr"
+
+    # No artifacts should have been written (abort before resolver).
+    if [[ -d "${MOCK_REPO}/.agent/work-plans/issue-42" ]] || \
+       [[ -d "${MOCK_REPO}/.agent/work-plans/issue-7" ]]; then
+        echo "  FAIL: artifacts leaked from the loose fallback"
+        FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: no artifacts written when extraction fails"
+        PASS=$((PASS + 1))
+    fi
+
+    teardown
+}
+
+# ---- Test: --issue validates positive integer shape (#149) ----
+test_issue_flag_validates_integer() {
+    echo "TEST: --issue rejects non-integer values (#149)"
+
+    local exit_code=0
+    local stderr
+    stderr=$(bash "${SCRIPT_UNDER_TEST}" --pr 99 --issue not-a-number 2>&1) || exit_code=$?
+    assert_exit_code "non-integer --issue exits 2" "2" "$exit_code"
+    assert_contains "error mentions integer contract" \
+        "not a positive integer" "$stderr"
+
+    exit_code=0
+    stderr=$(bash "${SCRIPT_UNDER_TEST}" --pr 99 --issue 0 2>&1) || exit_code=$?
+    assert_exit_code "--issue 0 rejected" "2" "$exit_code"
+
+    exit_code=0
+    stderr=$(bash "${SCRIPT_UNDER_TEST}" --pr 99 --issue -5 2>&1) || exit_code=$?
+    assert_exit_code "--issue -5 rejected" "2" "$exit_code"
+    # Post-review: require_value was narrowed from -* to --*, so -5
+    # now reaches the integer validator instead of being caught as a
+    # "missing value" flag. Both paths exit 2; the integer message is
+    # more accurate.
+    assert_contains "error mentions integer contract for -5" \
+        "not a positive integer" "$stderr"
+}
+
+# ---- Test: gh pr view failure produces a retrieval-specific error (#149) ----
+#
+# Regression test for the review fix: when gh fails (auth/permissions/
+# network), the script must NOT emit the "no closure keyword" guidance,
+# which would point users at the wrong remediation.
+test_gh_pr_view_failure_distinct_error() {
+    echo "TEST: gh pr view failure produces a distinct error (#149)"
+    setup
+
+    # Mock gh that fails on `pr view --json body` (exit non-zero).
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; PR="$1"; shift
+    [[ "${1:-}" == "-R" ]] && shift 2
+    if [[ "$1" == "--json" && "$2" == "body" ]]; then
+        # Simulate auth/network/permission failure
+        echo "gh: authentication required" >&2
+        exit 1
+    fi
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    local stderr
+    stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync 2>&1) || exit_code=$?
+
+    assert_exit_code "gh failure exits 2" "2" "$exit_code"
+    assert_contains "error mentions retrieval failure" \
+        "Failed to retrieve body" "$stderr"
+    # Must NOT fall through to the no-keyword remediation — that would
+    # be misleading when the real problem is auth/network.
+    assert_not_contains "no-keyword guidance suppressed on gh failure" \
+        "body has no 'Closes" "$stderr"
+
+    teardown
+}
+
 # ---- Run all tests ----
 echo "=== cross_model_review.sh tests ==="
 echo ""
@@ -558,6 +776,10 @@ test_resolver_refuses_without_worktree_issue
 test_flag_as_value_rejected
 test_gh_repo_view_resolves_alias
 test_gh_repo_view_failure_falls_back
+test_issue_flag_overrides_extraction
+test_missing_keyword_aborts
+test_issue_flag_validates_integer
+test_gh_pr_view_failure_distinct_error
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
