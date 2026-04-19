@@ -1,6 +1,17 @@
 # Inspiration Digest: microsoft-skills
 
-Type: inspiration
+> **ARCHIVED** — 2026-04-19. Removed from active `inspiration_registry.yml`
+> tracking. Recon scan 2026-04-19 (since 2026-03-31) showed 23 merged PRs,
+> 20 of which are mechanical Azure plugin syncs (`Sync plugin files from
+> GitHub-Copilot-for-Azure ...`). The remaining 3 are either Azure-specific
+> (KQL language mastery skill, Azure-skills CHANGELOG population) or
+> structural (outer skills folder removal). Signal-to-noise collapsed.
+>
+> This digest is retained for historical reference. If microsoft/skills
+> pivots back toward general skill-architecture contributions worth
+> tracking, re-add to the registry.
+
+Type: inspiration (archived)
 Last checked: 2026-03-31
 Repo: microsoft/skills @ a8af084
 

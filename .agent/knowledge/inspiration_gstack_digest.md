@@ -1,8 +1,9 @@
 # Inspiration Digest: gstack
 
 Type: inspiration
-Last checked: 2026-03-31
-Repo: garrytan/gstack @ db35b8e
+Last checked: 2026-04-19
+Repo: garrytan/gstack @ 22a4451e0edb13fd67c1900537f8b106d025f2a3
+Previously checked: 2026-03-31 @ db35b8e
 
 ## Survey Summary
 
@@ -140,8 +141,96 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 ## Skipped
 
 - `/autoplan` — Automated plan generation pipeline; already covered by workflow templates from #88 (2026-03-31)
+- `gstack-multi-host-platform` — Declarative multi-host platform + OpenCode/Slate/Cursor/OpenClaw integration (#793, #816, #832). We're Claude Code–focused; multi-host targeting isn't our concern (2026-04-19)
+- `gstack-browser-data-platform` — Browser data platform for AI agents (#907). Gstack domain, not ours (2026-04-19)
+- `gstack-team-install-mode` — Team-friendly install mode (#809). Solo-user here (2026-04-19)
+- `gstack-security-waves` — Security fix waves 1/3 (#810, #988). Gstack-specific vulnerabilities (2026-04-19)
+- `gstack-design-html` — /design-html from any starting point (#734). Gstack domain (2026-04-19)
+- `gstack-aquavoice-triggers` — Voice-friendly skill triggers for AquaVoice (v0.14.6.0). Gstack domain (2026-04-19)
+- `gstack-cookie-picker` — Cookie picker auth token leak fix (#904). Gstack domain (2026-04-19)
+- `gstack-plan-devex-review` — New /plan-devex-review persona (#784). Pattern interesting but not a current need; no analogue motivated in daddy_camp (2026-04-19)
 
 ## Deferred
 
 - `deploy-pipeline-automation` — /land-and-deploy + /canary + /benchmark full deploy pipeline (2026-03-22)
 - `cross-model-outside-voices` — Using second model for design critique and plan review; investigate Codex as reviewer separately (2026-03-31)
+- `gstack-recursive-self-improvement` — "Recursive self-improvement — operational learning + full skill wiring" (#647). Title ambiguous; concept may map to our "Copilot learning loop" but needs investigation before triaging. Revisit next run (2026-04-19)
+- `gstack-relationship-closing` — Office-hours adapts to repeat users (#937). Memory/relationship layer; may become relevant if multi-session agent memory evolves. Revisit (2026-04-19)
+
+## Changelog (2026-03-31 → 2026-04-19)
+
+55 commits, 300 files. v0.11.6.0 → v1.3.0.0+. Very active; ~30 versioned
+releases in 19 days. Major themes:
+
+### Session intelligence and context
+
+- **v0.15.0.0 (#733)** — Session Intelligence Layer: /checkpoint + /health + context recovery
+- **v1.0.1.0 (#1064)** — Renamed /checkpoint → /context-save + /context-restore
+- **v0.18.1.0 (#1030)** — Context rot defense for /ship: subagent isolation, clean step numbering
+
+### Review quality and reliability
+
+- **v0.15.2.0 (#760)** — Adaptive gating + cross-review dedup for review army
+- **v0.15.6.1 (#804)** — Anti-skip rule for all review skills (forces reviews to actually run)
+- **v1.3.0.0 (#1040)** — Open agents learnings + cross-model benchmark skill
+
+### UX for agent-user interactions
+
+- **v0.17.0.0 (#1000)** — UX behavioral foundations + ux-audit command
+- **v1.1.2.0 (#1065)** — Mode-posture energy fix for /plan-ceo-review and /office-hours: generic writing-style rules were flattening distinct mode personalities (expansion / forcing / wild) into diagnostic-pain framing. Fix uses paired examples + gate-tier tests so regression can't silently ship
+
+### Permission prompt friction
+
+- **v0.15.12.0 (#993)** — Avoid tilde-in-assignment to silence Claude Code permission prompts
+
+### Multi-host platform (out of scope for us)
+
+- **v0.15.5.0 (#793)** — Declarative multi-host + OpenCode, Slate, Cursor, OpenClaw
+- **v0.15.9.0 (#816)** — OpenClaw integration v2: prompt is the bridge
+- **v0.15.10.0 (#832)** — Native OpenClaw skills + ClaHub publishing
+- **v0.18.0.0 (#1005)** — Confusion Protocol, Hermes + GBrain hosts, brain-first resolver
+
+### New skills and roles
+
+- **v0.15.3.0 (#784)** — /plan-devex-review + /devex-review
+- **v0.16.0.0 (#907)** — Browser data platform for AI agents
+- **v0.13.8.0 (#647)** — Recursive self-improvement: operational learning + full skill wiring
+
+### Meta / release engineering
+
+- **v1.0.0.0 (#1039)** — gstack v1: simpler prompts + real LOC receipts
+- **v0.15.15.1 (#868)** — Pair-agent tunnel 15-second drop fix
+- **v1.1.1.0 (#1063)** — Detect + repair VERSION/package.json drift in /ship
+
+## Pending roadmap add (after PR #157 merges)
+
+These items were triaged this run but not added to docs/ROADMAP.md "To
+Consider" yet because PR #157 is actively reshaping that section. Append
+once #157 lands.
+
+- `gstack-session-intelligence-layer` — **To Consider** — Session Intelligence
+  Layer pattern from gstack v0.15.0.0 (#733): /checkpoint + /health + context
+  recovery. Direct match for daddy_camp's attention-handoff concern (see also
+  per-session context card from ros2 digest). Investigate the /health pattern
+  specifically — status check for a session without switching into it
+- `gstack-adaptive-gating-review-dedup` — **To Consider** — Multi-specialist
+  review dedup + adaptive gating from gstack v0.15.2.0 (#760). Feeds
+  /review-code refinement; complements silence-filter pattern we already have
+- `gstack-anti-skip-rule-for-reviews` — **To Consider** — Forces review skills
+  to actually execute their checks rather than claim success. Reliability
+  pattern from gstack v0.15.6.1 (#804); directly applicable to /review-code
+  when under time pressure
+- `gstack-ux-behavioral-foundations` — **To Consider** — UX foundations + ux-audit
+  command from gstack v0.17.0.0 (#1000). Intersects with CLI-first principle
+  from 2026-04-19 session
+- `gstack-mode-posture-preservation` — **To Consider** — Paired-examples
+  pattern + gate-tier tests for mode-specific posture preservation (gstack
+  v1.1.2.0, #1065). Audit our scope-mode (#56) and brainstorm multi-level
+  (#71) skills for similar flatten-risk; add judge-rubric tests
+
+## Tightened interest_areas (2026-04-19)
+
+Updated in registry same PR. Dropped "browser-based QA" and
+de-emphasized release engineering; added "session and context management"
+and "agent-user UX patterns". See inspiration_registry.yml for comments
+explaining the change.

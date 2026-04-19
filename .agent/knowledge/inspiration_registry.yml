@@ -33,10 +33,15 @@ projects:
     type: inspiration
     repo: garrytan/gstack
     description: Opinionated Claude Code skills framework with role-based slash commands
+    # interest_areas tightened 2026-04-19: dropped browser-based QA
+    # (gstack domain), de-emphasized release engineering (scale mismatch);
+    # added session/context management + agent-user UX patterns to match
+    # daddy_camp's current concerns
     interest_areas:
-      - review and QA workflow (multi-role review, browser-based QA)
-      - planning methodology (CEO/eng/design review roles)
-      - release engineering (/ship, /document-release automation)
+      - review and QA workflow (multi-role review, adversarial, anti-skip)
+      - planning methodology (CEO/eng/design review roles, scope modes)
+      - session and context management (/checkpoint, /health, context-save/restore, context rot defense)
+      - agent-user UX patterns (CLI-friendly interaction, mode-posture preservation)
       - safety controls (/careful, /freeze, /guard hooks)
       - agent friction reporting (how agents surface workflow friction)
 
@@ -50,20 +55,18 @@ projects:
       - subagent patterns and orchestration
       - development methodology and workflows
 
-  gastown:
-    type: inspiration
-    repo: steveyegge/gastown
-    description: Multi-agent workspace manager
-    interest_areas:
-      - multi-agent coordination and workspace management
-      - task orchestration and dispatching
-      - agent isolation and context management
-
-  microsoft-skills:
-    type: inspiration
-    repo: microsoft/skills
-    description: Skills, MCP servers, Custom Agents, and Agents.md for grounding coding agents
-    interest_areas:
-      - skills architecture and SDK grounding
-      - custom agent patterns
-      - Agents.md conventions
+  # --- Archived sources (2026-04-19) ---
+  #
+  # The following entries were removed from active tracking after a signal-
+  # to-noise review. Their digest files remain in .agent/knowledge/ with
+  # an ARCHIVED header noting the date and reason. Re-add to `projects:`
+  # above if motivation changes.
+  #
+  # gastown (steveyegge/gastown) — 100+ merges in 19 days but almost all
+  # internal `gt` CLI tooling (stack-based git workflow, beads, polecats).
+  # Domain has diverged from ours; our agent-coordination concerns aren't
+  # what gastown iterates on anymore.
+  #
+  # microsoft-skills (microsoft/skills) — 20 of 23 merges in 19 days are
+  # mechanical Azure plugin syncs. Low signal-to-noise for general skill
+  # architecture learning.
