@@ -28,10 +28,10 @@ loudly instead of silently writing into the main tree.
 **Must-fix**: 0 | **Suggestions**: 6
 
 ### Findings
-- [ ] (suggestion) Add source-only guard — `.agent/scripts/_resolve_work_plans_dir.sh:end-of-file`
+- [x] (suggestion) Add source-only guard — `.agent/scripts/_resolve_work_plans_dir.sh:end-of-file`
 - [ ] (suggestion) Validate/normalize `$WORK_PLANS_DIR_OVERRIDE` (reject `..`) — `.agent/scripts/_resolve_work_plans_dir.sh:33`
-- [ ] (suggestion) Header comment re: `local VAR=$(...)` masking exit status — `.agent/scripts/_resolve_work_plans_dir.sh:header`
-- [ ] (suggestion) Replace `return 1 2>/dev/null || exit 1` with plain `exit 1` — `.claude/skills/plan-task/SKILL.md:104`
+- [x] (suggestion) Header comment re: `local VAR=$(...)` masking exit status — `.agent/scripts/_resolve_work_plans_dir.sh:header`
+- [x] (suggestion) Replace `return 1 2>/dev/null || exit 1` with plain `exit 1` — `.claude/skills/plan-task/SKILL.md:104`
 - [ ] (suggestion) Move resolver call earlier in script — `.agent/scripts/cross_model_review.sh:~226`
 - [ ] (suggestion) Document integer-only contract for issue arg — `.agent/scripts/_resolve_work_plans_dir.sh:39`
 
@@ -48,6 +48,6 @@ loudly instead of silently writing into the main tree.
 **CI**: all 6 checks pass
 
 ### Actions
-- [ ] Reject leading-`-` values in `--work-plans-dir` (+ apply to `--pr`, `--agent`) — `.agent/scripts/cross_model_review.sh:~99-132`
-- [ ] Use distinct exit code (4) for wrong-worktree; update script header doc — `.agent/scripts/cross_model_review.sh:36,235`
-- [ ] Update helper header to reflect override returned verbatim (may be relative) — `.agent/scripts/_resolve_work_plans_dir.sh:9-14`
+- [x] Reject leading-`-` values in `--work-plans-dir` (+ apply to `--pr`, `--agent`) — `.agent/scripts/cross_model_review.sh:~99-132`
+- [x] Use distinct exit code (4) for wrong-worktree; update script header doc — `.agent/scripts/cross_model_review.sh:36,235`
+- [x] Update helper header to reflect override returned verbatim (may be relative) — `.agent/scripts/_resolve_work_plans_dir.sh:9-14`
