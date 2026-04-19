@@ -13,4 +13,4 @@ issue: 151
 **CI**: all 8 checks pass
 
 ### Actions
-- [ ] Add `|| true` to `rc=` extraction (defensive; avoid pipeline failure killing the test suite) — `.agent/scripts/tests/test_resolve_work_plans_dir.sh:100`
+- [x] Add `|| true` to `rc=` extraction (defensive; avoid pipeline failure killing the test suite) — `.agent/scripts/tests/test_resolve_work_plans_dir.sh:100`
