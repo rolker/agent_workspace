@@ -1,6 +1,20 @@
 # Inspiration Digest: gastown
 
-Type: inspiration
+> **ARCHIVED** — 2026-04-19. Removed from active `inspiration_registry.yml`
+> tracking. Recon scan 2026-04-19 (since 2026-03-31) showed 100+ merges in
+> 19 days but nearly all internal `gt` CLI tooling (stack-based git workflow,
+> beads v1.0.0, polecats, merge queue integration, daemon/worker). Domain
+> has diverged from ours; agent-coordination concerns we tracked in the
+> initial survey are not what gastown iterates on anymore.
+>
+> Only cross-cutting candidate surfaced in recon: `gt doctor` Claude Code
+> minimum version check (#3593), which we could mimic in `validate_workspace.py`
+> if desired. Not pursued.
+>
+> This digest is retained for historical reference. Re-add to the registry
+> if motivation changes.
+
+Type: inspiration (archived)
 Last checked: 2026-03-31
 Repo: steveyegge/gastown @ 4894b0d
 
