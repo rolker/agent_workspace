@@ -1,7 +1,27 @@
 # Research Digest: Workspace
 
-<!-- Last full refresh: — (no full refresh has been run yet) -->
+<!-- Last full refresh: 2026-04-19 (partial — high-movement topics refreshed, stable topics date-bumped only) -->
 <!-- Run /research --refresh periodically to re-survey stale entries -->
+
+## Claude Opus 4.7 — Behavioral Changes Since 4.6
+
+**Added**: 2026-04-19 | **Last verified**: 2026-04-19 | **Sources**: [What's new in Claude Opus 4.7 (Anthropic API Docs)](https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7), [GitHub Changelog — Opus 4.7 GA April 16, 2026](https://github.blog/changelog/2026-04-16-claude-opus-4-7-is-generally-available/), [Verdent — What Changed for Coding Agents](https://www.verdent.ai/guides/what-is-claude-opus-4-7), [Labellerr — 4.7 vs 4.6 comparison](https://www.labellerr.com/blog/claude-opus-4-7-vs-opus-4-6-comparison/amp/), [Apiyi — Launch-day in-depth review](https://help.apiyi.com/en/claude-opus-4-7-vs-4-6-real-performance-review-en.html)
+
+Key takeaways:
+- **GA April 16, 2026** — three days before this entry. Today's agent (this session) runs 4.7.
+- **More literal instruction following**. Opus 4.6 interpreted instructions loosely, sometimes skipped steps, filled gaps with judgment. Opus 4.7 takes them precisely — "respond in JSON" returns JSON and nothing else; "write exactly 3 functions" writes exactly 3. Anthropic **explicitly warns** that prompts written for earlier models that relied on judgment to fill gaps need review and rewrite.
+- **More direct, opinionated tone**. Less validation-forward phrasing, fewer emoji, more regular progress updates during long agentic traces.
+- **New `xhigh` effort level** between `high` and `max`. Anthropic's docs recommend starting with `xhigh` for coding and agentic use.
+- **Reduced confident-wrong rate** — new self-verification behavior that lowers how often agents surface confidently wrong output.
+- **Vision upgrade** — max image resolution jumped from ~1.15 MP to ~3.75 MP (3.3× pixel count).
+- **New cybersecurity safeguards** — requests involving prohibited/high-risk topics may be refused. Legitimate security work goes through the Cyber Verification Program.
+
+**Relevance**: Direct impact on this workspace. Two immediate implications:
+1. **Audit existing prompts and skill templates** — any that depended on 4.6's judgment-filling may now under-perform on 4.7. In particular, mode-posture preservation (gstack #1065 lesson) becomes more critical under 4.7: literal following means a generic style rule collapses modes even more reliably than before.
+2. **Framework config** — our `framework_config.sh` model defaults shouldn't be edited per `feedback_model_detection.md`, but runtime detection should reflect 4.7 when the caller runs on it. We already use the 3-arg form to skip detection and pass exact model ID.
+3. **Session memory note** — Roland's memory already records `feedback_model_detection.md`; 4.7 doesn't invalidate that, but calls for a sweep of any docs that hardcoded `claude-opus-4-6`.
+
+---
 
 ## Command Runner Alternatives to Make
 
@@ -84,15 +104,16 @@ Key takeaways:
 
 ## Claude Code Agent Teams
 
-**Added**: 2026-02-27 | **Last verified**: 2026-02-27 | **Sources**: [Claude Code Agent Teams docs](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/agent-teams)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 | **Sources**: [Claude Code Agent Teams docs](https://code.claude.com/docs/en/agent-teams), [Claude Code Agent Teams: Setup & Usage Guide 2026](https://claudefa.st/blog/guide/agents/agent-teams), [Anthropic — Building a C compiler with parallel Claudes](https://www.anthropic.com/engineering/building-c-compiler), [Turing College guide](https://www.turingcollege.com/blog/claude-agent-teams-explained), [alexop.dev — From Tasks to Swarms](https://alexop.dev/posts/from-tasks-to-swarms-agent-teams-in-claude-code/)
 
 Key takeaways:
-- Multiple Claude Code instances coordinate as a team — leader spawns teammates, each gets its own context window, communication via mailbox
-- Coordination patterns: leader/swarm/pipeline/watchdog
-- Enable with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (still experimental)
-- Best suited for parallel work on separate packages where agents don't modify the same files
+- Shipped **alongside Opus 4.6** in February 2026. Still flagged as experimental but used for Anthropic's own production work (parallel Claudes built a C compiler, per their engineering blog).
+- **Enable**: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in env or `settings.json`.
+- **Architecture**: one Claude Code session acts as team lead; spawns independent teammates each with its own context window and tool access. Peer-to-peer communication via a **mailbox system** + shared task list (not purely lead-dispatched).
+- **Coordination patterns**: leader / swarm / pipeline / watchdog — orchestration style is prompt-selected, not a different runtime.
+- **Known limitations** (as of April 2026): session resumption, task coordination across longer horizons, shutdown behavior. Still rough around the edges.
 
-**Relevance**: The workspace's worktree infrastructure already provides the isolation layer Agent Teams assumes. Each teammate could work in its own worktree. Worth evaluating on non-critical multi-package features once stable.
+**Relevance**: The workspace's worktree infrastructure provides the isolation layer Agent Teams assumes. The feature maps well onto Roland's concerns about coordinating parallel agents BUT intersects with two session decisions: (1) D5 — we want coordinator-as-additive, not intermediated. Agent Teams is an intermediated model where the team lead dispatches. Evaluate only if teammate visibility is preserved (each teammate's terminal is watchable). (2) Permission prompts — teammates are separate sessions with separate tool trust, so permission-prompt load would grow with team size unless each teammate has tight allowlists.
 
 ---
 
@@ -221,17 +242,16 @@ Key takeaways:
 
 ## Agent Orchestrators for Parallel Coding Agents
 
-**Added**: 2026-03-11 | **Last verified**: 2026-03-11 | **Sources**: [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator), [jayminwest/overstory](https://github.com/jayminwest/overstory), [awesome-agent-orchestrators](https://gist.github.com/sujayjayjay/d0e88d5f53a5198c4ba5bb007a859bdd), [Shipyard blog](https://shipyard.build/blog/claude-code-multi-agent/), [ainativedev parallelizing agents](https://ainativedev.io/news/how-to-parallelize-ai-coding-agents)
+**Added**: 2026-03-11 | **Last verified**: 2026-04-19 | **Sources**: [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator), [Vibe Kanban](https://vibekanban.com/), [Superset orchestrator comparison](https://superset.sh/compare/best-ai-coding-agents-2026), [Visual Studio multi-agent in VS Code 1.109](https://visualstudiomagazine.com/articles/2026/02/09/hands-on-with-new-multi-agent-orchestration-in-vs-code.aspx), [Addy Osmani — The Code Agent Orchestra](https://addyosmani.com/blog/code-agent-orchestra/), [From Conductor to Orchestrator (2026 practical guide)](https://htdocs.dev/posts/from-conductor-to-orchestrator-a-practical-guide-to-multi-agent-coding-in-2026/), [CodeMachine-CLI (Apr 2026)](https://www.blog.brightcoding.dev/2026/04/14/codemachine-cli-the-revolutionary-ai-agent-orchestrator), [Catalyst & Code — 2026 orchestration frameworks](https://www.catalystandcode.com/blog/ai-agent-orchestration-frameworks)
 
 Key takeaways:
-- **Agent-orchestrator** (ComposioHQ, 4.1k stars, MIT): spawns parallel coding agents each in its own git worktree/branch/PR; pluggable adapters for runtime (tmux/Docker/K8s), agent (Claude Code/Codex/Aider), workspace (worktree/clone), tracker (GitHub/Linear), and notifier (desktop/Slack)
-- **Reaction system**: configurable auto-responses to CI failures (agent retries fix), review comments (agent addresses feedback), and approved PRs (notify or auto-merge) — the key differentiator over manual multi-agent setups
-- **Overstory**: similar concept with SQLite-backed inter-agent messaging, 4-tier conflict resolution, and a watchdog daemon; pluggable AgentRuntime interface for Claude Code, Pi, Gemini CLI
-- **Convergent patterns across all orchestrators**: (1) git worktree isolation per agent, (2) supervisor/coordinator that decomposes tasks, (3) event-driven reactions to CI/review, (4) dashboard for human oversight, (5) YAML-based configuration
-- **Ecosystem is exploding**: 9+ purpose-built orchestrators emerged in early 2026 (Vibe Kanban, Superset, Symphony, dmux, agtx, Ralph, GoClaw, plus the above) — all converge on worktree isolation as the fundamental primitive
-- The bottleneck has shifted from "can AI write code?" to "how do I run multiple agents in parallel without chaos?" — orchestration is the 2026 scaling lever
+- **The category consolidated but keeps expanding**: agent-orchestrator (ComposioHQ), Vibe Kanban, Superset, Capy, CodeMachine-CLI, and Overstory lead; VS Code 1.109 added native multi-agent orchestration in Feb 2026 (validating the category as mainstream).
+- **Three-tier pattern is now the standard framing** for 2026 developer workflows: Tier 1 interactive (Copilot/Cursor at the cursor), Tier 2 parallel sprints (Claude Code + multiple worktrees), Tier 3 overnight backlog drain (orchestrator + agents spawned by issue). Most developers will use all three.
+- **Convergent architecture** (unchanged from 2026-03-11): (1) git worktree isolation per agent, (2) supervisor/coordinator that decomposes tasks, (3) event-driven reactions to CI/review, (4) dashboard for human oversight, (5) YAML-based configuration.
+- **Agent-agnostic adapters are now table-stakes** — orchestrators target Claude Code, Codex, Aider, Cursor agents via the same surface. Runtime-agnostic (tmux/Docker/K8s) and tracker-agnostic (GitHub/Linear) likewise.
+- **"Code Agent Orchestra" / "Conductor to Orchestrator"** writeups (Osmani + others) frame the pattern as a distributed-systems design problem: constrain the agent space, design for failure, validate at boundaries.
 
-**Relevance**: This workspace already has the foundational primitives that all orchestrators build on: worktree isolation scripts, draft-PR visibility, workforce protocol, and multi-framework identity. The gaps relative to agent-orchestrator are: (1) **no reaction system** — CI failures and review comments require manual agent re-engagement; (2) **no dashboard** — `worktree_list.sh` shows status but lacks a unified view of agent progress, CI, and PRs; (3) **no automated task decomposition** — issues are manually assigned to agents; (4) **no inter-agent messaging** — agents can't coordinate or hand off work. Of these, a reaction system for CI failures and review feedback would deliver the most immediate value, since agents already create PRs but can't respond to CI/review events autonomously. See [#375](https://github.com/rolker/ros2_agent_workspace/issues/375).
+**Relevance**: This workspace already has the foundational primitives all orchestrators build on: worktree isolation, draft-PR visibility, workforce protocol, multi-framework identity. Gaps vs. agent-orchestrator still stand: (1) no reaction system for CI/review events, (2) no unified agent-status dashboard tuned to parallel operation, (3) no automated task decomposition, (4) no inter-agent messaging. Of these, the reaction system remains the most immediate value. The 2026-04-19 update: our rejection of "coordinator-intermediated" designs (session decision D5) means we'd want an orchestrator that is **additive**, not between us and our agents. Most 2026 orchestrators are intermediated — worth evaluating each carefully before adoption.
 
 ---
 
