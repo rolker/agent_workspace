@@ -18,13 +18,19 @@ MAIN_REPO=""
 WORKTREE=""
 
 setup_main_and_worktree() {
+    local initial_branch
+
     TMPDIR_BASE=$(mktemp -d /tmp/test_mpr.XXXXXX)
     MAIN_REPO="${TMPDIR_BASE}/main"
     git init -q "${MAIN_REPO}"
     git -C "${MAIN_REPO}" -c user.name="Test" -c user.email="t@t" commit --allow-empty -m "init" -q
+    # Capture the user's init default branch (main/master/trunk/etc.)
+    # so we can return to it after the feature branch is created.
+    # Hardcoding main/master breaks on init.defaultBranch=trunk setups.
+    initial_branch=$(git -C "${MAIN_REPO}" symbolic-ref --short HEAD)
     git -C "${MAIN_REPO}" checkout -q -b feature/issue-999 2>/dev/null
     git -C "${MAIN_REPO}" -c user.name="Test" -c user.email="t@t" commit --allow-empty -m "feature" -q
-    git -C "${MAIN_REPO}" checkout -q main 2>/dev/null || git -C "${MAIN_REPO}" checkout -q master 2>/dev/null
+    git -C "${MAIN_REPO}" checkout -q "${initial_branch}"
     # Create a linked worktree on the feature branch
     WORKTREE="${MAIN_REPO}/worktrees/issue-999"
     git -C "${MAIN_REPO}" worktree add -q "${WORKTREE}" feature/issue-999
