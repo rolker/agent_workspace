@@ -131,32 +131,37 @@ a known footgun.
 
 ## Pending Review
 
-- `personality-canary` — Adopt a "codename" or designated identity memory
-  that's expected to be present in context; pair with a small visual signal
-  so its absence is obvious. Workflow change + 1 memory entry; possibly a
-  status-line tweak. Aligned with stated user interest.
-- `short-term-stack-workflow` — Adopt push/pop conventions for nested
-  brainstorm/digression contexts. Document in CLAUDE.md/AGENTS.md; uses
-  existing memory mechanism. No new tooling.
-- `tier-by-durability-axis` — Add a `durability:` field to memory frontmatter
-  (e.g., `invariant`, `preference`, `long`, `short`), orthogonal to existing
-  `type:`. Lets us mark experimental notes as `short` so they don't pollute
-  long-term context. Schema change; mild migration cost.
-- `memory-dump-load-pattern` — Formalize export/import scripts even though
-  git already gives us this. Marginal value; arguably skip.
-- `tool-use-event-log` — Skip; we don't have the pain.
-- `engram-binary-adoption` — Skip; conflicts with existing markdown setup.
-- `hooks-integration` — Skip; would conflict with existing hooks in
-  `.claude/settings.json`.
+(none — all items triaged below)
 
-## Roadmapped
+## Issued
 
-(none yet)
+- `personality-canary-light` — agent_workspace #168 (2026-04-26).
+  Adopted at light layer: codename **Grover** + 5-trait tone (lean,
+  precise, skeptical, quietly dry, calm under load). Memory file written
+  to auto-memory at `~/.claude/projects/-home-roland-daddy-camp/memory/user_agent_personality.md`;
+  index updated. 30-day revisit (~2026-05-26) to evaluate whether the
+  light layer earns its keep or escalation/deletion is warranted.
 
-## Skipped
+## Skipped (2026-04-26 decisions)
 
-(none yet)
+- `memory-dump-load-pattern` — Marginal value; git already provides
+  cross-machine portability for the auto-memory directory.
+- `tool-use-event-log` — No stated pain; we don't currently need a
+  per-session "what files did this touch?" summary.
+- `engram-binary-adoption` — Conflicts with our existing markdown-based
+  auto-memory setup. The patterns are portable as concepts; the binary
+  is not.
+- `hooks-integration` — Would conflict with existing hooks in
+  `.claude/settings.json`. Engram's bootstrap explicitly warns about
+  duplicate hook configuration as a footgun.
 
 ## Deferred
 
-(none yet)
+- `short-term-stack-workflow` — Push/pop conventions for nested digressions
+  (engram's "save context, brainstorm, resume" pattern). Deferred 2026-04-26;
+  most current digressions are short enough that resume context isn't lost.
+  Resurface on next run. Pairs with `tier-by-durability-axis`.
+- `tier-by-durability-axis` — `durability:` frontmatter field
+  (`short`/`long`/`permanent`), orthogonal to existing `type:`. Deferred
+  2026-04-26; without short-term-stack workflow there's no use case for
+  a `short` value. Resurface paired with the stack workflow item.
