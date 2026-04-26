@@ -107,14 +107,7 @@ No carry-over.
 
 ## Pending Review (this round)
 
-- `quality-standard-section` — Port AGENTS.md Quality Standard with
-  framing adjusted for public-release game (2026-04-26)
-- `plan-task-during-implementation` — Port "During implementation"
-  guidance + `--no-pr` flag to local plan-task skill (2026-04-26)
-- `adr-0012-cross-reference-addendums` — Port ADR-0012 enabling
-  navigational addendums on accepted ADRs (2026-04-26)
-- `triage-reviews-justification-tightening` — Port column-rename and
-  "specific failure mode" wording tightening (2026-04-26)
+(none — all items triaged below)
 
 ## Changelog (2026-03-22 → 2026-04-19)
 
@@ -229,6 +222,10 @@ concurrent ideas:
 
 ## Issued
 
+- `quality-doctrine-batch` — agent_workspace #164 bundling four ports
+  (AGENTS.md Quality Standard, plan-task During implementation + --no-pr,
+  ADR-0012 cross-reference addendums, triage-reviews justification
+  tightening) (2026-04-26)
 - `web-dashboard-phase1` — Issue #64: ported web-based agent dashboard from upstream (2026-03-22) — **but see "CLI-first" note; may need rethinking**
 - `tmux-session-strategy` — Issue #65: tmux session strategy (2026-03-22) — **see #2 revisit in PR #157**
 - `agent-start-task-tmux` — Issue #66 (2026-03-22)
@@ -251,6 +248,25 @@ concurrent ideas:
   inline-comments-on-plan interface. Let user comment per-line on long
   agent responses, agent addresses each. Implementation space to be
   explored (dashboard render / TUI / static HTML). Parked pending design.
+
+## Skipped (2026-04-26 decisions)
+
+- `field-mode-literal-port` — ADR-0011 + `field_mode.sh` + `/import-field-changes`.
+  Project repo origin is GitHub; no field deploy planned. Comment posted
+  on agent_workspace #87 (Draft Zones) noting ADR-0011 as a structural
+  template for the eventual draft-zones ADR.
+- `field-mode-knowledge-doc` — `field_mode_hotfix.md` pairs with field
+  mode → skipped together.
+- `identity-script-revisions-#407` — already in place locally with
+  rolker.net emails, Codex CLI listed, FALLBACKS-ONLY stance documented
+  (per `feedback_model_detection.md`).
+- `git-bug-in-devcontainer` — ros2-specific devcontainer; daddy_camp
+  uses host install per ADR-0010.
+- `--symlink-install-doc` — ROS colcon-specific; not applicable.
+- `adr-0001/0002-status-line-addendums` — depends on ADR-0012 landing
+  first; will be addressed as housekeeping after the bundled PR merges.
+- `ros2-internal-issues` — #427/#429/#430/#431/#436/#444/#454/#452/#453
+  domain-specific or upstream-internal.
 
 ## Skipped (2026-04-19 decisions)
 
