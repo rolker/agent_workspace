@@ -88,6 +88,24 @@ projects:
       - watchdog daemon patterns
       - multi-runtime agent support (Claude Code, Pi, Gemini CLI)
 
+  engram:
+    type: inspiration
+    repo: shiblon/engram
+    description: Memory and personality aid for Claude Code — stack-based short-term memory and dump/load portability
+    # Added 2026-04-26. Author's own framing emphasizes personality
+    # as a context-decay canary. Daddy_camp already has a working
+    # auto-memory setup (CLAUDE.md + per-project memory files);
+    # interest is in the patterns, not adopting the Go binary.
+    # Personality angle is exploratory — user is curious but no
+    # commitment to adopt.
+    interest_areas:
+      - stack-based short-term memory (push/pop for nested brainstorm contexts)
+      - personality as context-decay canary (drift signals full context window)
+      - multi-layer memory architecture (global vs project, seamless switching)
+      - tool-driven memory management (CLI vs file edits during conversation)
+      - memory dump/load for cross-machine portability
+      - bootstrap UX (single command sets up CLAUDE.md, hooks, gitignore)
+
   # --- Archived sources (2026-04-19) ---
   #
   # The following entries were removed from active tracking after a signal-
