@@ -31,6 +31,7 @@ humans use it as a checklist.
 | 0005 — Layered enforcement | Adding or modifying enforcement | CI/branch protection is authoritative; pre-commit provides local feedback; framework hooks provide early feedback |
 | 0006 — Shared AGENTS.md | Changing agent instructions | Shared rules in `AGENTS.md`; framework adapters are thin wrappers |
 | 0007 — Retain Make with Dependency Tracking | Changing the Makefile or proposing a different task runner | Keep Make; use stamp-file dependencies for incremental setup and build |
+| 0008 — Permit cross-reference addendums in ADRs | Editing an accepted ADR | Status-line notes pointing at related ADRs and References-section additions are permitted; substantive edits (Decision rewording, position reversal, Consequences changes) still require superseding |
 | 0009 — Python package management | Installing Python packages or modifying `.venv` | Use .venv for dev tools; never bare pip install |
 | 0010 — git-bug installed by default | Adding or modifying issue lookup scripts, bootstrap, or sync | git-bug installed by default; scripts use `_issue_helpers.sh` (git-bug first with sync-on-miss, fall back to `gh`); graceful degradation required |
 
