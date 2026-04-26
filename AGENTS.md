@@ -74,6 +74,27 @@ code being changed:
 - Push back when something seems wrong rather than agreeing too readily
 - Lead with the answer or action, not the reasoning
 
+## Quality Standard
+
+This project is bound for public release. Players will see what we ship; bugs,
+half-fixes, and silent failures degrade trust in the product. The marginal cost
+of completeness is near zero with AI — do the whole thing, do it right, do it
+with tests.
+
+- When fixing a bug, fix it completely: add the test, handle the edge case, check
+  the state transition. Never leave a "good enough" fix when the proper one is
+  within reach.
+- When triaging reviews, do not dismiss concerns about error handling, silent
+  failures, stale data, or missing validation as "nits" unless the failure mode
+  genuinely cannot occur. Speculative or vague "won't happen in practice" is not
+  a dismissal.
+- Code that arrives from outside the normal review path is a draft — field
+  imports, cherry-picks, copy-pastes, hurried agent commits merged without
+  review. Add tests, verify external identifiers and contracts, check for
+  idempotency before treating it as landed.
+- Never offer to "table this for later" when the permanent solve is five minutes
+  away. Never present a workaround when the real fix exists.
+
 ## Tool Usage
 
 - **Prefer dedicated tools over shell equivalents** — When your framework
