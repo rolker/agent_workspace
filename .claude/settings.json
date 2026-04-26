@@ -1,4 +1,7 @@
 {
+  "env": {
+    "ENABLE_PROMPT_CACHING_1H": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(ls *)",
@@ -25,9 +28,9 @@
       "Bash(git remote show *)",
       "Bash(git remote get-url *)",
       "Bash(git fetch *)",
-      "Bash(git fetch)",
       "Bash(git pull --ff-only *)",
       "Bash(git pull --ff-only)",
+      "Bash(git add *)",
       "Bash(git rev-parse *)",
 
       "Bash(gh issue view *)",
@@ -47,10 +50,16 @@
       "Bash(source .agent/scripts/set_git_identity_env.sh *)",
       "Bash(.agent/scripts/worktree_list.sh *)",
       "Bash(.agent/scripts/worktree_list.sh)",
+      "Bash(*/.agent/scripts/worktree_list.sh *)",
       "Bash(.agent/scripts/dashboard.sh *)",
       "Bash(.agent/scripts/dashboard.sh)",
       "Bash(.agent/scripts/fetch_pr_reviews.sh *)",
+      "Bash(*/.agent/scripts/fetch_pr_reviews.sh *)",
       "Bash(.agent/scripts/worktree_create.sh *)",
+      "Bash(.agent/scripts/worktree_remove.sh *)",
+      "Bash(bash .agent/scripts/tests/*)",
+      "Bash(bash -n *)",
+      "Bash(*/.venv/bin/shellcheck *)",
 
       "Bash(make dashboard *)",
       "Bash(make dashboard)",
@@ -67,25 +76,20 @@
       "Bash(shellcheck *)",
       "Bash(git-bug version *)",
       "Bash(git-bug version)",
-      "Bash(git-bug bug ls *)",
-      "Bash(git-bug bug ls)",
-      "Bash(git-bug bug show *)",
-      "Bash(git-bug user ls *)",
-      "Bash(git-bug user ls)",
-      "Bash(git-bug bridge list *)",
-      "Bash(git-bug bridge list)",
+      "Bash(git-bug bug *)",
+      "Bash(git-bug bug)",
+      "Bash(git-bug bridge *)",
+      "Bash(git-bug user *)",
       "Bash(git-bug --help *)",
       "Bash(git-bug --help)"
     ],
     "deny": [
       "Bash(git push --force *)",
       "Bash(git push -f *)",
-      "Bash(git push --force-with-lease *)",
       "Bash(git reset --hard *)",
       "Bash(git checkout -- *)",
       "Bash(git clean *)",
-      "Bash(rm -rf *)",
-      "Bash(rm -r *)"
+      "Bash(rm -rf *)"
     ]
   },
   "hooks": {
