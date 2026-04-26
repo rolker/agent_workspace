@@ -1,9 +1,120 @@
 # Inspiration Digest: ros2_agent_workspace
 
 Type: fork
-Last checked: 2026-04-19
-Repo: rolker/ros2_agent_workspace @ 8465ebd838f8257fc5074c00fd0aa15c83516f3d
-Previously checked: 2026-03-22 @ 54a2ef469eeaddc7aa30f11ff34078aa94836e74
+Last checked: 2026-04-26
+Repo: rolker/ros2_agent_workspace @ 395b1c5e26c82a7b032738adc0d4a03269e48035
+Previously checked: 2026-04-19 @ 8465ebd838f8257fc5074c00fd0aa15c83516f3d
+
+## Changelog (2026-04-19 → 2026-04-26)
+
+53 commits, 28 files. Major themes:
+
+### Field Mode (#445 → PR #448, ADR-0011)
+
+Carve-out from "never edit files in the main tree" (ADR-0002) for repos
+whose `origin` host is not on the GitHub allowlist (`github.com`,
+`ssh.github.com`). Adds `.agent/scripts/field_mode.sh` (host-allowlist
+detector), `.agent/scripts/tests/test_field_mode.sh`, and a hotfix
+walkthrough at `.agent/knowledge/field_mode_hotfix.md`. AGENTS.md grew a
+"Field Mode" section.
+
+- **Daddy_camp relevance**: Low. The project repo's origin is GitHub.
+  No second remote planned. Skip unless we add a non-GitHub deploy target.
+
+### ADR-0012 — Permit Cross-Reference Addendums in ADRs
+
+Narrows ADR-0001's immutability rule to allow purely navigational
+addendums: a Status-line note pointing at a later superseding/scoped
+ADR, or a References section listing related ADRs. Substantive edits
+still require superseding.
+
+- **Daddy_camp relevance**: Medium. We inherited `docs/decisions/` from
+  ros2; the discoverability gap (older ADRs don't link forward to newer
+  ones that scope them) applies to us too. Cheap port.
+
+### `/import-field-changes` skill (#432 → PR #440)
+
+Batch-imports remote-ahead commits from a secondary remote (gitcloud) back
+to GitHub: per-repo issue creation, draft PR, and pre-review against the
+Quality Standard. Depends on `pull_remote.py --json`.
+
+- **Daddy_camp relevance**: Low. Pairs with field-mode; same scope. Skip
+  unless field deploys are added.
+
+### AGENTS.md "Quality Standard" section (#437 → PR #438)
+
+Adds a top-level Quality Standard with rules: fix bugs completely (test +
+edge case + lifecycle), don't dismiss reviewer concerns about silent
+failures or stale data as "nits", don't offer to "table this for later"
+when the permanent solve is minutes away. Originally framed for "robot
+boats on open water" but the substance is domain-neutral.
+
+- **Daddy_camp relevance**: High. Principles transfer to a public-release
+  game project. Direct port with framing adjusted.
+
+### plan-task — "During implementation" guidance + `--no-pr` (#449 → PR #450)
+
+Adds a sizable "During implementation" section: anti-"append-only
+changelog" rule for plan files. Inline edits to the plan are the default
+when implementation diverges; an `## Implementation Notes` section at the
+bottom is allowed only for rationale-bearing design pivots whose *why*
+isn't obvious from the diff. Also adds `--no-pr` flag for offline planning.
+
+- **Daddy_camp relevance**: High. Our `plan-task` skill is in active use;
+  drift between plan and landed code is a recurring concern. Cheap port.
+
+### triage-reviews — "Require justification for false positives" (#439 → PR #441)
+
+Renames the dismissal table column from "Reasoning" to "Justification",
+tightens example wording from "Why it's not applicable" to "Specific
+reason the failure mode cannot occur". Forces dismissals to articulate
+the absent failure mode, not vibes.
+
+- **Daddy_camp relevance**: Medium. Our local `triage-reviews` already
+  has additional logic upstream lacks (Update progress.md step). Small
+  additive port.
+
+### Identity scripts (#407 → PR #443)
+
+`set_git_identity_env.sh` and `framework_config.sh` revised so agents
+self-report their model via the 3rd argument; the table now functions
+as documented fallbacks only.
+
+- **Daddy_camp status**: Already in place. Local versions diverged to use
+  rolker.net emails, list Codex CLI, and document the "FALLBACKS ONLY"
+  stance per `feedback_model_detection.md`. No port.
+
+### Repo-cosmetic upstream changes (skipped here)
+
+- `git-bug` added to agent Docker image: ros2-specific devcontainer.
+- `--symlink-install` doc tightening in AGENTS.md Build & Test: ROS-domain.
+- ADR-0001/0002 status-line addendums: meta-port that depends on
+  adopting ADR-0012 first.
+
+### New issues since last check (upstream-internal)
+
+- **#454** — triage-reviews post dismissal rationale to PR (proposal).
+  Adjacent to our progress.md step. Watch.
+- **#452/#453** — Port review-skill improvements *from agent_workspace
+  → them*. Inverse direction; informational only.
+- **#444** — review-plan reads stale PR body (bug). Upstream-internal.
+- **#406** — Investigate gstack (already in our registry).
+
+### Earlier deferrals — status
+
+All items from the 2026-04-19 round have been resolved (ported/skipped).
+No carry-over.
+
+## Pending Review (this round)
+
+- `quality-standard-section` — Port AGENTS.md Quality Standard with
+  framing adjusted for public-release game (2026-04-26)
+- `plan-task-during-implementation` — Port "During implementation"
+  guidance + `--no-pr` flag to local plan-task skill (2026-04-26)
+- `adr-0012-cross-reference-addendums` — Port ADR-0012 enabling
+  navigational addendums on accepted ADRs (2026-04-26)
+- `triage-reviews-justification-tightening` — Port column-rename and
+  "specific failure mode" wording tightening (2026-04-26)
 
 ## Changelog (2026-03-22 → 2026-04-19)
 
