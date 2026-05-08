@@ -42,6 +42,7 @@ REPO_SLUG=""
 PLAN_FILE=""
 PARENT_ISSUE_NUM=""
 WORKFLOW=""
+PRINT_PATH_ONLY=false
 
 # Skills allowed to create worktrees without a GitHub issue
 ALLOWED_SKILLS=("research" "inspiration-tracker")
@@ -58,11 +59,14 @@ show_usage() {
     echo "  --parent-issue <N>    Parent issue number; branches from parent's feature branch"
     echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
     echo "  --workflow <name>     Workflow template; initializes progress.md (e.g., collaborative)"
+    echo "  --print-path-only     Suppress all stdout except the final worktree path on success"
+    echo "                        (errors go to stderr; exit code reflects success/failure)"
     echo ""
     echo "Examples:"
     echo "  $0 --issue 123 --type workspace"
     echo "  $0 --issue 123 --type project --workflow collaborative"
     echo "  $0 --skill research --type workspace"
+    echo "  WT=\$($0 --issue 123 --type workspace --print-path-only)"
 }
 
 # Parse arguments
@@ -118,6 +122,10 @@ while [[ $# -gt 0 ]]; do
             WORKFLOW="$2"
             shift 2
             ;;
+        --print-path-only)
+            PRINT_PATH_ONLY=true
+            shift
+            ;;
         -h|--help)
             show_usage
             exit 0
@@ -129,6 +137,15 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Quiet mode: save original stdout to fd 3, redirect all subsequent stdout to
+# stderr. The final worktree path is emitted on fd 3 at the end of the script.
+# Errors and informational output go to stderr (matching standard CLI conventions
+# for quiet-mode tools).
+if [ "$PRINT_PATH_ONLY" = true ]; then
+    exec 3>&1
+    exec 1>&2
+fi
 
 # Validate --issue XOR --skill
 if [ -n "$ISSUE_NUM" ] && [ -n "$SKILL_NAME" ]; then
@@ -664,3 +681,8 @@ else
     echo "  $SCRIPT_DIR/worktree_remove.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
 fi
 echo ""
+
+# Quiet mode: emit only the worktree path on the original stdout (fd 3).
+if [ "$PRINT_PATH_ONLY" = true ]; then
+    echo "$WORKTREE_DIR" >&3
+fi
