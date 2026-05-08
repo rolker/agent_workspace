@@ -58,7 +58,12 @@ build_invoke_cmd() {
 
     case "$agent" in
         gemini)
-            echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
+            # gemini's -p (--prompt) requires a value, even when stdin
+            # supplies the real prompt. Empty string activates headless
+            # mode; the help text confirms gemini "appends" stdin to it.
+            # Without the "", argparse reports "Not enough arguments" and
+            # dumps the help screen into the findings file. Issue #181.
+            echo "\"${bin}\" -p \"\" < \"${prompt}\" > \"${findings}\" 2>&1"
             ;;
         codex)
             # Codex exec reads prompt via stdin
@@ -84,7 +89,9 @@ run_agent_sync() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
-        gemini)  "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        # gemini's -p needs an explicit value — empty string activates
+        # headless mode while leaving the real prompt on stdin (#181).
+        gemini)  "$bin" -p "" < "$prompt" > "$findings" 2>&1 ;;
         codex)   "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
         claude)  "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
         copilot) "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
