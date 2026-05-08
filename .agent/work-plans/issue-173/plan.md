@@ -40,6 +40,10 @@ Bug 1's fix needs the path glob from Bug 2 to be correct.
    worktree whose `branch` line matches `refs/heads/feature/issue-<N>`.
    Sidesteps both the multi-project path layout *and* any future path
    convention drift — git is the authority on where worktrees live.
+   Also covers legacy `.workspace-worktrees/` paths naturally: any
+   directory `git` knows about as a worktree shows up here regardless
+   of where it sits on disk, so the existing `WS_LEGACY` check at
+   line 125 becomes unnecessary rather than dropped.
 
 2. **Try both repos for the PR lookup, with collision-safe disambiguation.**
    Replace lines 105–110 with a query loop that calls
@@ -60,28 +64,60 @@ Bug 1's fix needs the path glob from Bug 2 to be correct.
    When `--type` *is* supplied, skip the disambiguation: query only
    the matching repo and short-circuit on its result.
 
+   **Edge cases the loop must surface explicitly (not silently skip):**
+   - `$ROOT_DIR/project/.git` exists but `git -C project remote get-url origin`
+     returns empty → error "Project repo has no `origin` remote
+     configured; cannot resolve project PRs." (The current
+     `resolve_gh_repo_args` silently produces no `-R` here, which is
+     exactly how Bug 1 manifested — must not regress.)
+   - `gh` returns a non-empty error other than not-found (typical:
+     "HTTP 401: Bad credentials" when unauthed against one repo but
+     authed against the other) → propagate the error from that repo
+     verbatim, treat the lookup as inconclusive, and require `--type`
+     rather than falling back to the working repo. Silently picking
+     the only authed match would be the same class of bug we're fixing.
+
 3. **Use the worktree-list helper everywhere a path is needed.** Lines
    157–161 currently rebuild paths by string concatenation for the
    roadmap-update step. Replace with the same git-worktree-list lookup
    so the path is whatever git actually has, not what the script
    assumes.
 
-4. **Make `make merge-pr` forward extra args.** Add a `MERGE_PR_ARGS`
-   passthrough variable to the Makefile rule. Mostly defensive — once
-   auto-detect works, `--type` should rarely be needed; but
-   `--no-roadmap-update` and the both-worktrees-exist case still want
-   an escape hatch.
+4. **Make `make merge-pr` forward extra args via `MERGE_PR_ARGS`.** Add a
+   passthrough variable to the Makefile rule. Resolved in favor of
+   `MERGE_PR_ARGS` over argument-style (`make merge-pr -- --type project`)
+   for consistency with how every other Make passthrough in this workspace
+   is exposed. Mostly defensive — once auto-detect works, `--type` should
+   rarely be needed; but `--no-roadmap-update` and the both-worktrees-exist
+   case still want an escape hatch.
 
-5. **Smoke-test manually.** Reproduce the original failure mode (would
-   need a project PR), then verify the fix flows. Steps documented in
-   the PR description so the reviewer can replay.
+   Literal Makefile edit (one line, line 122):
+
+   ```diff
+   -	@$(MAIN_ROOT)/.agent/scripts/merge_pr.sh --pr $(PR)
+   +	@$(MAIN_ROOT)/.agent/scripts/merge_pr.sh --pr $(PR) $(MERGE_PR_ARGS)
+   ```
+
+   `$(MERGE_PR_ARGS)` defaults to empty (no `?=` initialization needed —
+   undefined Make variables expand to nothing). Invocation example:
+   `make merge-pr PR=84 MERGE_PR_ARGS="--type project"`.
+
+5. **Smoke-test manually** — committed path. The workspace has no shell-test
+   scaffold (no bats, no shunit2), and adding one for a one-off bug fix is
+   exactly the kind of speculative tooling "Only what's needed" warns
+   against. The PR description will document a deterministic reproduction:
+   (a) confirm the original failure on `main` (`make merge-pr PR=<some
+   project PR>` → silent exit 1), (b) confirm the fix on the branch (same
+   command → succeeds, OR errors with a clear diagnostic when both repos
+   have an open PR with the same number). If shell tests become useful
+   beyond this fix, that's a separate follow-up issue, not in-scope here.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
 | `.agent/scripts/merge_pr.sh` | Replace `resolve_gh_repo_args` + lines 102–143 with: (a) repo-trying loop that determines target repo and `PR_BRANCH` together, (b) git-worktree-list-based worktree detection that also yields the path. Replace lines 156–162's path-building with the same helper. |
-| `Makefile` | Add `MERGE_PR_ARGS` passthrough on the `merge-pr:` rule. |
+| `Makefile` | Add `$(MERGE_PR_ARGS)` passthrough on the `merge-pr:` rule (line 122) — see step 4 for the literal diff. |
 | `.agent/work-plans/issue-173/progress.md` | Plan + implementation steps as work proceeds. |
 
 No changes to AGENTS.md / docs needed: documented usage today is `make
@@ -117,11 +153,7 @@ work as documented.
 
 ## Open Questions
 
-- **Forward args via `MERGE_PR_ARGS` or argument-style (`make merge-pr -- --type project`)?**
-  The first is what every other Make passthrough convention does; the
-  second is closer to bare-script invocation. Defaulting to
-  `MERGE_PR_ARGS` for consistency with how Make is normally extended,
-  unless you'd prefer the argument-style.
+None — `MERGE_PR_ARGS` resolved in step 4; testing approach committed in step 5.
 
 ## Estimated Scope
 
