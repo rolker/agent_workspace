@@ -41,14 +41,24 @@ Bug 1's fix needs the path glob from Bug 2 to be correct.
    Sidesteps both the multi-project path layout *and* any future path
    convention drift — git is the authority on where worktrees live.
 
-2. **Try both repos for the PR lookup.** Replace lines 105–110 with a
-   loop that calls `gh pr view -R <remote>` against the workspace remote
-   first, then the project remote (if `$ROOT_DIR/project` exists). Use
-   the first repo that returns a non-empty `headRefName`; remember that
-   repo so subsequent `gh pr merge` uses it. Bail with a clearer message
-   if neither returns. This also implicitly determines
-   `WORKTREE_TYPE` (project if matched against project remote, workspace
-   otherwise) when `--type` was not supplied.
+2. **Try both repos for the PR lookup, with collision-safe disambiguation.**
+   Replace lines 105–110 with a query loop that calls
+   `gh pr view -R <remote> --json state,headRefName,title` against
+   *both* the workspace remote and the project remote (if
+   `$ROOT_DIR/project` exists), filtering to `state == "OPEN"`. PR
+   numbers are repo-local — workspace #84 ≠ project #84 — so "first
+   match wins" would silently pick the wrong PR when both repos have
+   an open PR with the same number. Behavior:
+   - **0 open hits** → error "PR #<N> not open in either workspace or
+     project."
+   - **exactly 1 hit** → use that repo; this implicitly determines
+     `WORKTREE_TYPE` (project if matched against project remote,
+     workspace otherwise) when `--type` was not supplied.
+   - **2 hits** → error with both titles and require `--type` to
+     disambiguate. (Already-merged/closed PRs are filtered out, so
+     stale numbers don't pollute the collision check.)
+   When `--type` *is* supplied, skip the disambiguation: query only
+   the matching repo and short-circuit on its result.
 
 3. **Use the worktree-list helper everywhere a path is needed.** Lines
    157–161 currently rebuild paths by string concatenation for the
