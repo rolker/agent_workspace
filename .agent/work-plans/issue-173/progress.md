@@ -68,3 +68,22 @@ the plan with deterministic reproduction documented in PR description.
 - [x] Workspace PR auto-detect: `merge_pr.sh --pr 177` (own draft PR)
       correctly resolved to workspace; gh refused merge of draft as
       expected.
+
+## Local Review
+**Status**: complete
+**When**: 2026-05-07 23:00
+**By**: Claude Code Agent (claude-opus-4-7)
+**Verdict**: changes-requested
+
+**PR**: #177 at `b8dcf11`
+**Depth**: Deep (reason: 429 lines changed > 200)
+**Must-fix**: 2 | **Suggestions**: 4
+
+### Findings
+- [ ] (must-fix) Project-remote validation runs even when `--type workspace` passed; breaks workspace merges in workspaces with unconfigured `project/origin` — `.agent/scripts/merge_pr.sh:113`
+- [ ] (must-fix) `gh pr merge` for workspace PRs uses CWD repo (`GH_REPO_ARGS` only set for project hit) — `.agent/scripts/merge_pr.sh:198-211`
+- [ ] (suggestion) `[[ -d project/.git ]]` at lines 322/336 should be `[[ -e ]]` for submodule support — `.agent/scripts/merge_pr.sh:322,336`
+- [ ] (suggestion) Forward-compat for gh error wording in `query_pr` — `.agent/scripts/merge_pr.sh:163-170`
+- [ ] (suggestion) `find_worktree_for_branch` awk doesn't handle newlines in paths — `.agent/scripts/merge_pr.sh:98-103`
+- [ ] (suggestion) Add both must-fix scenarios to the PR smoke-test table
+- [ ] (separate-issue) Gemini cross-model review failed due to `-p` arg bug in `cross_model_review.sh`
