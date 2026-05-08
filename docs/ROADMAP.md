@@ -254,6 +254,12 @@ Cherry-picked from a recon scan of tracked inspirations since last refresh (2026
 - **drill / evals harness** — Python-based skill compliance benchmark with multi-backend support (Claude / Codex / Gemini variants), 30+ scenario YAMLs, LLM verifier + deterministic assertions, 122-test pytest suite. Daddy_camp has ~25 skills with no behavioral tests; explore a scaled-down version for our context. Source: obra/superpowers — `evals/` on dev branch (PR #1488)
 - **plan-review-cycle skill** — Adversarial plan review skill that sits between writing-plans and executing-plans. Compare against our existing `/review-plan` skill body; absorb stronger patterns. Source: obra/superpowers — PR #1473 (merged)
 
+### From gstack (2026-05-07)
+
+- **Plan-* skill STOP gates + anti-shortcut clause + floor tests** — Harden `/plan-task` and `/review-plan` against the "agent claims phase done without firing the gate" failure mode (esp. under Opus 4.7 literal-following). Pattern: explicit anti-shortcut prose forbidding skip-ahead, gate-tier tests verifying `AskUserQuestion` floor count, optional sub-LLM recommendation judge. Complements row 192's mode-posture audit. Source: gstack v1.21–v1.27 (#1255, #1296, #1313, #1354)
+- **AskUserQuestion cadence + Pros/Cons format** — Knowledge-doc entry capturing cadence rules (don't batch unrelated; ask in natural decision order; don't front-load) plus Pros/Cons-style option framing for tradeoff-shaped decisions. Audit pass on heavily-used skills. Source: gstack v1.10.0.0 (#1178)
+- **Operational-learning vs Layer 5 clarification (research item)** — Investigate gstack's gbrain transcript ingest + per-skill manifests as an "operational learning" pattern and contrast with our Layer 5 review-architecture (continual learning via #42 → #69). Determine whether anything portable beyond what Layer 5 already encodes. Source: gstack #647 (v0.13.8.0) + gbrain federation surface (v1.9–v1.27)
+
 ### Research topics to add (not tracker items)
 
 Candidates for `.agent/knowledge/research_digest.md`, separate from roadmap items.

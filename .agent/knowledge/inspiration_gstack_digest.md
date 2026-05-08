@@ -1,9 +1,9 @@
 # Inspiration Digest: gstack
 
 Type: inspiration
-Last checked: 2026-04-19
-Repo: garrytan/gstack @ 22a4451e0edb13fd67c1900537f8b106d025f2a3
-Previously checked: 2026-03-31 @ db35b8e
+Last checked: 2026-05-07
+Repo: garrytan/gstack @ 443bde0 (was 22a4451 on 2026-04-19)
+Previously checked: 2026-04-19 @ 22a4451; 2026-03-31 @ db35b8e
 
 ## Survey Summary
 
@@ -137,6 +137,18 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 
 - `cross-project-retrospective` — Cross-workspace retrospective analyzing friction patterns across repos, starting with fork sources (2026-03-31)
 - `test-coverage-catalog` — Shared audit of test status across skills and scripts as dashboard layer (2026-03-31)
+- `plan-stop-gates-floor-tests` (2026-05-07) — Added to ROADMAP.md "To Consider"
+  under "From gstack (2026-05-07)". Anti-shortcut clause + AskUserQuestion
+  floor tests for `/plan-task` and `/review-plan`. Source: gstack
+  v1.21–v1.27 (#1255, #1296, #1313, #1354).
+- `askuserquestion-cadence-prosconsformat` (2026-05-07) — Added to
+  ROADMAP.md. Knowledge-doc entry on AskUserQuestion cadence + Pros/Cons
+  format. Source: gstack v1.10.0.0 (#1178).
+- `operational-learning-vs-layer5` (2026-05-07) — Added to ROADMAP.md
+  as a research item. Clarify whether gstack's gbrain operational-learning
+  pattern adds anything beyond our Layer 5 (#42 → #69) review architecture.
+  Resolves prior `gstack-recursive-self-improvement` deferral. Source:
+  gstack #647 + gbrain federation surface (v1.9–v1.27).
 
 ## Skipped
 
@@ -149,13 +161,35 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 - `gstack-aquavoice-triggers` — Voice-friendly skill triggers for AquaVoice (v0.14.6.0). Gstack domain (2026-04-19)
 - `gstack-cookie-picker` — Cookie picker auth token leak fix (#904). Gstack domain (2026-04-19)
 - `gstack-plan-devex-review` — New /plan-devex-review persona (#784). Pattern interesting but not a current need; no analogue motivated in daddy_camp (2026-04-19)
+- `gstack-relationship-closing` (2026-05-07) — Office-hours adapts to repeat
+  users (#937). Auto-memory `user_workflow_patterns` + `user_agent_personality`
+  already cover this at the memory layer; no skill-level adaptation needed.
+  Closes the prior 2026-04-19 deferral.
 
 ## Deferred
 
-- `deploy-pipeline-automation` — /land-and-deploy + /canary + /benchmark full deploy pipeline (2026-03-22)
-- `cross-model-outside-voices` — Using second model for design critique and plan review; investigate Codex as reviewer separately (2026-03-31)
-- `gstack-recursive-self-improvement` — "Recursive self-improvement — operational learning + full skill wiring" (#647). Title ambiguous; concept may map to our "Copilot learning loop" but needs investigation before triaging. Revisit next run (2026-04-19)
-- `gstack-relationship-closing` — Office-hours adapts to repeat users (#937). Memory/relationship layer; may become relevant if multi-session agent memory evolves. Revisit (2026-04-19)
+- `deploy-pipeline-automation` — /land-and-deploy + /canary + /benchmark full
+  deploy pipeline. Deferred 2026-03-22 and re-confirmed 2026-05-07; project
+  is private/pre-distribution — no deploy story yet. Resurface when packaging
+  becomes real.
+- `cross-model-outside-voices` (2026-03-31) — Superseded 2026-05-07 by the
+  `claude-outside-voice-skill` deferral below; tracked as one item now.
+- `claude-outside-voice-skill` (2026-05-07) — gstack v1.13.0.0 #1212.
+  Generalize `cross_model_review.sh` into a named-config outside-voice
+  dispatcher. Existing single-voice script works for now; revisit when the
+  single-voice limitation creates concrete friction.
+- `opus-4-7-migration-patterns` (2026-05-07) — gstack v1.5.2.0 #1117 and
+  v1.10.1.0 #1166. Model overlay, voice tuning, fanout-nudge removal, overlay
+  efficacy harness. Daddy_camp running on 4.7 fine; revisit if/when we
+  observe degradation tied to model-specific behavior.
+- `gbrain-federation-surface` (2026-05-07) — gstack v1.9–v1.27. Cross-machine
+  knowledge layer with per-skill manifests, transcript ingest, retrieval surface.
+  Architecturally interesting but no clear failure case in our scattered-knowledge
+  model. Revisit when concrete friction emerges.
+- `gstack-ux-behavioral-foundations` (2026-05-07) — gstack #1000. Was on
+  prior pending-roadmap list but didn't make PR #157 reshape. AGENTS.md
+  Communication Standards already covers the spirit; resurface if skill-prose
+  drift becomes a felt problem.
 
 ## Changelog (2026-03-31 → 2026-04-19)
 
@@ -202,31 +236,99 @@ releases in 19 days. Major themes:
 - **v0.15.15.1 (#868)** — Pair-agent tunnel 15-second drop fix
 - **v1.1.1.0 (#1063)** — Detect + repair VERSION/package.json drift in /ship
 
-## Pending roadmap add (after PR #157 merges)
+## Pending roadmap add disposition (post-#157 audit, 2026-05-07)
 
-These items were triaged this run but not added to docs/ROADMAP.md "To
-Consider" yet because PR #157 is actively reshaping that section. Append
-once #157 lands.
+PR #157 merged 2026-04-19. Audit of which "pending roadmap add" items
+landed in `docs/ROADMAP.md`:
 
-- `gstack-session-intelligence-layer` — **To Consider** — Session Intelligence
-  Layer pattern from gstack v0.15.0.0 (#733): /checkpoint + /health + context
-  recovery. Direct match for daddy_camp's attention-handoff concern (see also
-  per-session context card from ros2 digest). Investigate the /health pattern
-  specifically — status check for a session without switching into it
-- `gstack-adaptive-gating-review-dedup` — **To Consider** — Multi-specialist
-  review dedup + adaptive gating from gstack v0.15.2.0 (#760). Feeds
-  /review-code refinement; complements silence-filter pattern we already have
-- `gstack-anti-skip-rule-for-reviews` — **To Consider** — Forces review skills
-  to actually execute their checks rather than claim success. Reliability
-  pattern from gstack v0.15.6.1 (#804); directly applicable to /review-code
-  when under time pressure
-- `gstack-ux-behavioral-foundations` — **To Consider** — UX foundations + ux-audit
-  command from gstack v0.17.0.0 (#1000). Intersects with CLI-first principle
-  from 2026-04-19 session
-- `gstack-mode-posture-preservation` — **To Consider** — Paired-examples
-  pattern + gate-tier tests for mode-specific posture preservation (gstack
-  v1.1.2.0, #1065). Audit our scope-mode (#56) and brainstorm multi-level
-  (#71) skills for similar flatten-risk; add judge-rubric tests
+- `gstack-session-intelligence-layer` (#733, #1064) → **landed** at
+  ROADMAP.md row 174 ("Absorb" decision: `/focus` + `/context-save` +
+  `/context-restore` integrated with progress.md / plan.md).
+- `gstack-adaptive-gating-review-dedup` (#760) → **landed** at row 175
+  (rolled into `/review-code` absorption alongside anti-skip and
+  subagent isolation).
+- `gstack-anti-skip-rule-for-reviews` (#804) → **landed** at row 175.
+- `gstack-mode-posture-preservation` (#1065) → **landed** at row 192
+  (planned audit of #56 + #71 for paired-examples bias).
+- `gstack-ux-behavioral-foundations` (#1000) → **NOT landed.** Did not
+  make it into the post-#157 ROADMAP.md. Re-triaged in 2026-05-07
+  decisions below.
+
+## Changelog Since Last Check (2026-04-19 → 2026-05-07)
+
+35 commits, 300 files (22a4451..443bde0). v1.4.0.0 → v1.28.0.0 — ~24
+versioned releases in 19 days. Continued rapid iteration.
+
+### Major themes
+
+**Plan-* skill reliability (high relevance for daddy_camp's /plan-task and /review-plan):**
+
+- v1.21.1.0 #1255 — tighten plan-ceo-review smoke (Step 0 must fire)
+- v1.25.1.0 #1296 — office-hours Phase 4 STOP gate + AskUserQuestion
+  recommendation judge (LLM judges whether a recommendation actually
+  appeared before allowing pass)
+- v1.26.2.0 #1313 — plan-eng-review STOP gates always fire
+  AskUserQuestion + report-at-bottom contract enforcement
+- v1.27.1.0 #1354 — anti-shortcut clause + gate-tier AskUserQuestion
+  floor tests for ALL plan-* skills (forcing-function pattern)
+
+**AskUserQuestion mechanics:**
+
+- v1.10.0.0 #1178 — AskUserQuestion cadence fix + Pros/Cons format upgrade
+- v1.25.0.0 #1287 — AskUserQuestion resolves to host MCP variant when
+  native is disallowed
+
+**Outside voices / cross-model:**
+
+- v1.13.0.0 #1212 — `/claude-outside-voice` skill (paired with prior
+  Codex outside-voice). Resolves our deferred `cross-model-outside-voices`
+  item from 2026-03-31.
+
+**Opus 4.7 migration:**
+
+- v1.5.2.0 #1117 — Opus 4.7 migration: model overlay, voice, routing
+- v1.10.1.0 #1166 — overlay efficacy harness + Opus 4.7 fanout-nudge removal
+
+**Gbrain federation surface (mostly gstack-domain):**
+
+- v1.9.0.0 #1151 — gbrain-sync (cross-machine gstack memory)
+- v1.12.0.0 #1183, v1.17.0.0 #1234 — /setup-gbrain coding-agent onboarding
+- v1.20.0.0 #1233 — browser-skills runtime + gbrain-support carryover
+- v1.26.0.0 #1298 — V1 transcript ingest + per-skill gbrain manifests +
+  retrieval surface
+- v1.26.3.0 #1314 — /sync-gbrain skill + native code-surface orchestrator
+- v1.27.0.0 #1351 — /setup-gbrain Path 4 (remote MCP) + brain → artifacts rename
+
+**Security (gstack-internal):**
+
+- v1.4.0.0 #1089 — ML prompt-injection defense for sidebar
+- v1.6.0.0 #1137 — tunnel dual-listener + SSRF + envelope + path wave
+  (security)
+
+**Cross-platform / packaging:**
+
+- v1.24.0.0 #1252 — cross-platform hardening (curated Windows lane)
+- v1.11.0.0 #1168 — workspace-aware version allocation in /ship
+- v1.15.0.0 #1215 — slim preamble + real-PTY plan-mode E2E harness
+
+**Misc:**
+
+- v1.6.4.0 #1135 — Haiku classifier FP cut from 44% → 23%, gate enforced
+- v1.6.3.0 #1149 — plan-reviews: RECOMMENDATION + Completeness split + Codex ELI10
+- v1.4.0.0 #1086, v1.4.1.0 #1098 — `/make-pdf` markdown-to-PDF (out of scope)
+- v1.16.0.0 #1253 — tunnel allowlist 17→26 (gstack runtime)
+- v1.23.0.0 #1284 — always prefix PR titles with v\<VERSION>
+
+### Activity Snapshot (2026-05-07)
+
+- Open issues are heavily gstack-domain: gbrain ingest, /browse Chromium,
+  host adapters (Cursor/Forge/Cowork), tunnel security
+- ~30 open issues, ~10 open PRs sampled. Translation contributions appearing.
+- Rapid versioning continues: v1.4 → v1.28 in 19 days
+
+## Pending Review
+
+(none — all 2026-05-07 items triaged below)
 
 ## Tightened interest_areas (2026-04-19)
 
