@@ -80,10 +80,10 @@ the plan with deterministic reproduction documented in PR description.
 **Must-fix**: 2 | **Suggestions**: 4
 
 ### Findings
-- [ ] (must-fix) Project-remote validation runs even when `--type workspace` passed; breaks workspace merges in workspaces with unconfigured `project/origin` — `.agent/scripts/merge_pr.sh:113`
-- [ ] (must-fix) `gh pr merge` for workspace PRs uses CWD repo (`GH_REPO_ARGS` only set for project hit) — `.agent/scripts/merge_pr.sh:198-211`
-- [ ] (suggestion) `[[ -d project/.git ]]` at lines 322/336 should be `[[ -e ]]` for submodule support — `.agent/scripts/merge_pr.sh:322,336`
-- [ ] (suggestion) Forward-compat for gh error wording in `query_pr` — `.agent/scripts/merge_pr.sh:163-170`
-- [ ] (suggestion) `find_worktree_for_branch` awk doesn't handle newlines in paths — `.agent/scripts/merge_pr.sh:98-103`
-- [ ] (suggestion) Add both must-fix scenarios to the PR smoke-test table
-- [ ] (separate-issue) Gemini cross-model review failed due to `-p` arg bug in `cross_model_review.sh`
+- [x] (must-fix) Project-remote validation runs even when `--type workspace` passed; breaks workspace merges in workspaces with unconfigured `project/origin` — `.agent/scripts/merge_pr.sh:113` — **fixed in `5125115`**
+- [x] (must-fix) `gh pr merge` for workspace PRs uses CWD repo (`GH_REPO_ARGS` only set for project hit) — `.agent/scripts/merge_pr.sh:198-211` — **fixed in `5125115`**
+- [x] (suggestion) `[[ -d project/.git ]]` at lines 322/336 should be `[[ -e ]]` for submodule support — **fixed in `5125115`**
+- [x] (suggestion) Forward-compat for gh error wording in `query_pr` — **fixed in `5125115`**
+- [x] (suggestion) `find_worktree_for_branch` awk doesn't handle newlines in paths — **noted as code comment in `5125115`**
+- [x] (suggestion) Add both must-fix scenarios to the PR smoke-test table — **PR body updated**
+- [x] (separate-issue) Gemini cross-model review failed due to `-p` arg bug in `cross_model_review.sh` — **filed as #181**
