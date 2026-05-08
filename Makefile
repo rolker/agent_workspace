@@ -118,8 +118,8 @@ revert-feature:
 	@$(MAIN_ROOT)/.agent/scripts/revert_feature.sh --issue $(ISSUE)
 
 merge-pr:
-	@if [ -z "$(PR)" ]; then echo "Usage: make merge-pr PR=<N>"; exit 1; fi
-	@$(MAIN_ROOT)/.agent/scripts/merge_pr.sh --pr $(PR)
+	@if [ -z "$(PR)" ]; then echo "Usage: make merge-pr PR=<N> [MERGE_PR_ARGS=...]"; exit 1; fi
+	@$(MAIN_ROOT)/.agent/scripts/merge_pr.sh --pr $(PR) $(MERGE_PR_ARGS)
 
 generate-skills:
 	@$(MAIN_ROOT)/.agent/scripts/generate_make_skills.sh

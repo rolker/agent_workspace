@@ -85,27 +85,136 @@ if [[ -z "$ROOT_DIR" ]]; then
     exit 1
 fi
 
-# --- Resolve target repo for gh commands ---
-# For project PRs, gh must target the project repo, not the workspace repo.
-GH_REPO_ARGS=()
-resolve_gh_repo_args() {
-    GH_REPO_ARGS=()
-    if [[ "$WORKTREE_TYPE" == "project" ]]; then
-        local project_remote
-        project_remote=$(git -C "$ROOT_DIR/project" remote get-url origin 2>/dev/null || echo "")
-        if [[ -n "$project_remote" ]]; then
-            GH_REPO_ARGS=("-R" "$project_remote")
-        fi
-    fi
+# --- Helper: find a worktree for a given branch ---
+# Issue #173: previous logic globbed `worktrees/project/issue-project-<N>`,
+# which never matched the actual multi-project layout
+# (`worktrees/project/<repo>/issue-<repo>-<N>`). Asking git for the
+# authoritative location side-steps that whole class of path-encoding bug
+# AND naturally covers legacy `.workspace-worktrees/` paths — anything git
+# tracks as a worktree shows up here regardless of where it lives on disk.
+find_worktree_for_branch() {
+    local repo="$1"
+    local branch="$2"
+    git -C "$repo" worktree list --porcelain 2>/dev/null \
+        | awk -v target="refs/heads/$branch" '
+            /^worktree / { wt = substr($0, 10); next }
+            /^branch /   { if ($2 == target) { print wt; exit } }
+        '
 }
 
-# --- Extract issue number from PR branch ---
-# Note: GH_REPO_ARGS may be empty at this point (type not yet known).
-# We try without -R first; if --type project was specified, we resolve after.
-resolve_gh_repo_args
-PR_BRANCH=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json headRefName --jq '.headRefName' 2>/dev/null)
-if [[ -z "$PR_BRANCH" ]]; then
-    echo "ERROR: Could not fetch PR #${PR_NUMBER}" >&2
+# --- Discover the workspace and (optional) project remotes ---
+# Workspace remote always exists (we just resolved ROOT_DIR via git).
+# Project remote is only resolved when project/ is configured. Empty
+# project remote with project/ present is a misconfiguration — surface
+# it now rather than letting it manifest as a silent "PR not found"
+# (issue #173 root cause).
+WS_REMOTE=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
+PJ_REMOTE=""
+if [[ -e "$ROOT_DIR/project/.git" ]]; then
+    PJ_REMOTE=$(git -C "$ROOT_DIR/project" remote get-url origin 2>/dev/null || echo "")
+    if [[ -z "$PJ_REMOTE" ]]; then
+        echo "ERROR: $ROOT_DIR/project has no 'origin' remote configured." >&2
+        echo "  Cannot resolve project PRs. Configure the remote, or pass" >&2
+        echo "  --type workspace if this is intentionally workspace-only." >&2
+        exit 1
+    fi
+fi
+
+# --- Resolve which repo owns the PR (collision-safe) ---
+# PR numbers are repo-local: workspace #84 ≠ project #84. Trying repos
+# in sequence and taking the first hit (the original design) silently
+# picks the wrong one when both repos have an open PR with the same
+# number. Query both, filter to OPEN, then:
+#   0 hits → error
+#   1 hit  → use it (and implicitly determine WORKTREE_TYPE if --type
+#            was not supplied)
+#   2 hits → error and require --type to disambiguate
+# When --type IS supplied, query only the matching repo.
+
+# Query a single repo. On OPEN PR, populates QUERY_BRANCH/QUERY_TITLE
+# and returns 0. On not-found OR not-OPEN, returns 1 silently. On other
+# errors (auth, network), prints the error and returns 2.
+QUERY_BRANCH=""
+QUERY_TITLE=""
+query_pr() {
+    local remote="$1"
+    local out err rc=0
+    local err_file
+    err_file=$(mktemp)
+    out=$(gh pr view "$PR_NUMBER" -R "$remote" \
+            --json state,headRefName,title 2>"$err_file") || rc=$?
+    err=$(<"$err_file")
+    rm -f "$err_file"
+
+    if [[ $rc -eq 0 ]] && [[ -n "$out" ]]; then
+        local state
+        state=$(echo "$out" | jq -r '.state // empty')
+        if [[ "$state" == "OPEN" ]]; then
+            QUERY_BRANCH=$(echo "$out" | jq -r '.headRefName // empty')
+            QUERY_TITLE=$(echo "$out" | jq -r '.title // empty')
+            return 0
+        fi
+        return 1   # exists but not OPEN — irrelevant for merge
+    fi
+
+    # Distinguish "PR not found" from auth/network errors. Silently
+    # picking the only authed repo would be the same class of bug
+    # we're fixing — propagate other errors and require --type.
+    case "$err" in
+        *"Could not resolve to"*|*"GraphQL: Could not"*|*"no pull"*|*"404"*)
+            return 1 ;;
+        *)
+            echo "ERROR: gh failed against $remote:" >&2
+            echo "  $err" >&2
+            return 2 ;;
+    esac
+}
+
+WS_HIT=false; WS_BRANCH=""; WS_TITLE=""
+PJ_HIT=false; PJ_BRANCH=""; PJ_TITLE=""
+
+if [[ -z "$WORKTREE_TYPE" || "$WORKTREE_TYPE" == "workspace" ]] && [[ -n "$WS_REMOTE" ]]; then
+    if query_pr "$WS_REMOTE"; then
+        WS_HIT=true
+        WS_BRANCH="$QUERY_BRANCH"
+        WS_TITLE="$QUERY_TITLE"
+    elif [[ $? -eq 2 ]]; then
+        echo "  Pass --type to bypass auto-detection." >&2
+        exit 1
+    fi
+fi
+
+if [[ -z "$WORKTREE_TYPE" || "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PJ_REMOTE" ]]; then
+    if query_pr "$PJ_REMOTE"; then
+        PJ_HIT=true
+        PJ_BRANCH="$QUERY_BRANCH"
+        PJ_TITLE="$QUERY_TITLE"
+    elif [[ $? -eq 2 ]]; then
+        echo "  Pass --type to bypass auto-detection." >&2
+        exit 1
+    fi
+fi
+
+GH_REPO_ARGS=()
+if $WS_HIT && $PJ_HIT; then
+    echo "ERROR: PR #${PR_NUMBER} is open in BOTH repos:" >&2
+    echo "  workspace: $WS_TITLE" >&2
+    echo "  project:   $PJ_TITLE" >&2
+    echo "  Pass --type workspace or --type project to disambiguate." >&2
+    exit 2
+elif $WS_HIT; then
+    WORKTREE_TYPE="workspace"
+    PR_BRANCH="$WS_BRANCH"
+elif $PJ_HIT; then
+    WORKTREE_TYPE="project"
+    PR_BRANCH="$PJ_BRANCH"
+    GH_REPO_ARGS=("-R" "$PJ_REMOTE")
+else
+    if [[ -n "$WORKTREE_TYPE" ]]; then
+        echo "ERROR: PR #${PR_NUMBER} not open in $WORKTREE_TYPE repo." >&2
+    else
+        echo "ERROR: PR #${PR_NUMBER} not open in either workspace or project." >&2
+    fi
     exit 1
 fi
 
@@ -117,31 +226,6 @@ if [[ -z "$ISSUE_NUM" ]]; then
     exit 1
 fi
 
-# --- Auto-detect worktree type if not specified ---
-if [[ -z "$WORKTREE_TYPE" ]]; then
-    WS_PATH="$ROOT_DIR/worktrees/workspace/issue-workspace-${ISSUE_NUM}"
-    PJ_PATH="$ROOT_DIR/worktrees/project/issue-project-${ISSUE_NUM}"
-    # Also check legacy path
-    WS_LEGACY="$ROOT_DIR/.workspace-worktrees/issue-workspace-${ISSUE_NUM}"
-
-    WS_EXISTS=false
-    PJ_EXISTS=false
-    [[ -d "$WS_PATH" || -d "$WS_LEGACY" ]] && WS_EXISTS=true
-    [[ -d "$PJ_PATH" ]] && PJ_EXISTS=true
-
-    if $WS_EXISTS && ! $PJ_EXISTS; then
-        WORKTREE_TYPE="workspace"
-    elif $PJ_EXISTS && ! $WS_EXISTS; then
-        WORKTREE_TYPE="project"
-    elif $WS_EXISTS && $PJ_EXISTS; then
-        echo "ERROR: Both workspace and project worktrees exist for issue #${ISSUE_NUM}" >&2
-        echo "  Specify --type workspace or --type project" >&2
-        exit 2
-    else
-        echo "WARNING: No worktree found for issue #${ISSUE_NUM} — will merge and sync only" >&2
-    fi
-fi
-
 echo "========================================"
 echo "Merging PR #${PR_NUMBER} (issue #${ISSUE_NUM})"
 echo "========================================"
@@ -150,21 +234,21 @@ echo "========================================"
 if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
     echo "  Checking roadmap for #${ISSUE_NUM}..."
 
-    # Resolve the worktree that has the feature branch checked out.
-    # The roadmap must be updated there (not in ROOT_DIR, which is on main).
-    _WT_ROOT=""
-    if [[ "$WORKTREE_TYPE" == "workspace" ]]; then
-        _WT_PATH="$ROOT_DIR/worktrees/workspace/issue-workspace-${ISSUE_NUM}"
-        [[ -d "$_WT_PATH" ]] && _WT_ROOT="$_WT_PATH"
-    elif [[ "$WORKTREE_TYPE" == "project" ]]; then
-        _WT_PATH="$ROOT_DIR/worktrees/project/issue-project-${ISSUE_NUM}"
-        [[ -d "$_WT_PATH" ]] && _WT_ROOT="$_WT_PATH"
-    fi
+    # Resolve the worktree that has the feature branch checked out via
+    # find_worktree_for_branch (issue #173) — git is the authority on
+    # where worktrees live, so we don't have to re-encode path
+    # conventions here. For project worktrees, list against the project
+    # repo since project worktrees are tracked there.
+    _WT_REPO="$ROOT_DIR"
+    [[ "$WORKTREE_TYPE" == "project" ]] && _WT_REPO="$ROOT_DIR/project"
+    _WT_ROOT=$(find_worktree_for_branch "$_WT_REPO" "$PR_BRANCH")
 
     if [[ -z "$_WT_ROOT" ]]; then
         echo "  ⚠️  No worktree found for issue #${ISSUE_NUM} — skipping roadmap update"
     else
-        # Verify the worktree is on the expected feature branch
+        # Belt-and-braces: confirm git's worktree-list output really is on
+        # the expected branch (handles a detached-HEAD edge case where the
+        # `branch ` line was present but transient).
         _WT_BRANCH=$(git -C "$_WT_ROOT" branch --show-current 2>/dev/null || echo "")
         if [[ "$_WT_BRANCH" != "$PR_BRANCH" ]]; then
             echo "  ⚠️  Worktree is on '${_WT_BRANCH:-unknown}', expected '$PR_BRANCH' — skipping roadmap update"
@@ -212,8 +296,9 @@ else
 fi
 
 # --- Step 2: Merge ---
+# GH_REPO_ARGS was set during PR resolution above (-R <project-remote> for
+# project PRs, empty for workspace PRs). Don't re-resolve.
 echo "  Merging PR..."
-resolve_gh_repo_args
 if ! gh pr merge "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --merge; then
     echo "ERROR: Merge failed for PR #${PR_NUMBER}" >&2
     exit 1
