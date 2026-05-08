@@ -44,6 +44,21 @@ PARENT_ISSUE_NUM=""
 WORKFLOW=""
 PRINT_PATH_ONLY=false
 
+# Pre-scan for --print-path-only so quiet-mode redirection activates BEFORE
+# the main argument parser runs. Without this, parse-time errors (unknown
+# flag, missing required value) would leak to stdout and pollute the path
+# channel. The flag is still consumed by the main parse loop below — this
+# pre-scan only handles the redirect side-effect.
+for _arg in "$@"; do
+    if [ "$_arg" = "--print-path-only" ]; then
+        PRINT_PATH_ONLY=true
+        exec 3>&1
+        exec 1>&2
+        break
+    fi
+done
+unset _arg
+
 # Skills allowed to create worktrees without a GitHub issue
 ALLOWED_SKILLS=("research" "inspiration-tracker")
 
@@ -138,14 +153,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Quiet mode: save original stdout to fd 3, redirect all subsequent stdout to
-# stderr. The final worktree path is emitted on fd 3 at the end of the script.
-# Errors and informational output go to stderr (matching standard CLI conventions
-# for quiet-mode tools).
-if [ "$PRINT_PATH_ONLY" = true ]; then
-    exec 3>&1
-    exec 1>&2
-fi
+# (Quiet-mode redirect was set up by the pre-scan above, before parsing.)
 
 # Validate --issue XOR --skill
 if [ -n "$ISSUE_NUM" ] && [ -n "$SKILL_NAME" ]; then
