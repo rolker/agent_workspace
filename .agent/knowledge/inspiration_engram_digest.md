@@ -163,9 +163,9 @@ issues or PRs — author works on `main` directly.
 - Direction: consolidation toward multi-agent platform support via MCP +
   agentinfo, plus migration infrastructure for in-the-wild DBs.
 
-## Pending Review (2026-05-07)
+## Pending Review
 
-(triaged inline below)
+(none — all 2026-05-07 items triaged below)
 
 ## Issued
 
@@ -176,7 +176,9 @@ issues or PRs — author works on `main` directly.
   index updated. 30-day revisit (~2026-05-26) to evaluate whether the
   light layer earns its keep or escalation/deletion is warranted.
 
-## Skipped (2026-04-26 decisions)
+## Skipped
+
+### 2026-04-26 decisions
 
 - `memory-dump-load-pattern` — Marginal value; git already provides
   cross-machine portability for the auto-memory directory.
@@ -189,13 +191,28 @@ issues or PRs — author works on `main` directly.
   `.claude/settings.json`. Engram's bootstrap explicitly warns about
   duplicate hook configuration as a footgun.
 
+### 2026-05-07 decisions
+
+- `agentinfo-command-pattern` — Engram's "tool prints its own usage"
+  pattern. Daddy_camp already gets the portable insight via CLAUDE.md →
+  `@AGENTS.md` referencing; no new helper needed.
+- `db-migration-system` — Engram's schema-evolution support for SQLite
+  DBs. Markdown-based memory has no schema to migrate; pattern is N/A.
+
 ## Deferred
 
 - `short-term-stack-workflow` — Push/pop conventions for nested digressions
-  (engram's "save context, brainstorm, resume" pattern). Deferred 2026-04-26;
-  most current digressions are short enough that resume context isn't lost.
-  Resurface on next run. Pairs with `tier-by-durability-axis`.
+  (engram's "save context, brainstorm, resume" pattern). Deferred
+  2026-04-26 and re-confirmed 2026-05-07; most digressions still short
+  enough that resume context isn't lost. Pairs with
+  `tier-by-durability-axis`. Resurface on next run.
 - `tier-by-durability-axis` — `durability:` frontmatter field
   (`short`/`long`/`permanent`), orthogonal to existing `type:`. Deferred
-  2026-04-26; without short-term-stack workflow there's no use case for
-  a `short` value. Resurface paired with the stack workflow item.
+  2026-04-26 and re-confirmed 2026-05-07; without the stack workflow
+  there's no use case for a `short` value. Pairs with the stack workflow
+  item. Resurface paired.
+- `engram-mcp-server` (2026-05-07) — Engram now ships an MCP server
+  exposing memory/personality state to non-Claude-Code agents. Daddy_camp
+  could write a small MCP wrapper over its file-based auto-memory dir to
+  serve Codex / Gemini / Copilot. Deferred until we actually run those
+  agents against this workspace and discover memory loading is awkward.
