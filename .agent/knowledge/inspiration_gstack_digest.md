@@ -137,6 +137,18 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 
 - `cross-project-retrospective` — Cross-workspace retrospective analyzing friction patterns across repos, starting with fork sources (2026-03-31)
 - `test-coverage-catalog` — Shared audit of test status across skills and scripts as dashboard layer (2026-03-31)
+- `plan-stop-gates-floor-tests` (2026-05-07) — Added to ROADMAP.md "To Consider"
+  under "From gstack (2026-05-07)". Anti-shortcut clause + AskUserQuestion
+  floor tests for `/plan-task` and `/review-plan`. Source: gstack
+  v1.21–v1.27 (#1255, #1296, #1313, #1354).
+- `askuserquestion-cadence-prosconsformat` (2026-05-07) — Added to
+  ROADMAP.md. Knowledge-doc entry on AskUserQuestion cadence + Pros/Cons
+  format. Source: gstack v1.10.0.0 (#1178).
+- `operational-learning-vs-layer5` (2026-05-07) — Added to ROADMAP.md
+  as a research item. Clarify whether gstack's gbrain operational-learning
+  pattern adds anything beyond our Layer 5 (#42 → #69) review architecture.
+  Resolves prior `gstack-recursive-self-improvement` deferral. Source:
+  gstack #647 + gbrain federation surface (v1.9–v1.27).
 
 ## Skipped
 
@@ -149,13 +161,35 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 - `gstack-aquavoice-triggers` — Voice-friendly skill triggers for AquaVoice (v0.14.6.0). Gstack domain (2026-04-19)
 - `gstack-cookie-picker` — Cookie picker auth token leak fix (#904). Gstack domain (2026-04-19)
 - `gstack-plan-devex-review` — New /plan-devex-review persona (#784). Pattern interesting but not a current need; no analogue motivated in daddy_camp (2026-04-19)
+- `gstack-relationship-closing` (2026-05-07) — Office-hours adapts to repeat
+  users (#937). Auto-memory `user_workflow_patterns` + `user_agent_personality`
+  already cover this at the memory layer; no skill-level adaptation needed.
+  Closes the prior 2026-04-19 deferral.
 
 ## Deferred
 
-- `deploy-pipeline-automation` — /land-and-deploy + /canary + /benchmark full deploy pipeline (2026-03-22)
-- `cross-model-outside-voices` — Using second model for design critique and plan review; investigate Codex as reviewer separately (2026-03-31)
-- `gstack-recursive-self-improvement` — "Recursive self-improvement — operational learning + full skill wiring" (#647). Title ambiguous; concept may map to our "Copilot learning loop" but needs investigation before triaging. Revisit next run (2026-04-19)
-- `gstack-relationship-closing` — Office-hours adapts to repeat users (#937). Memory/relationship layer; may become relevant if multi-session agent memory evolves. Revisit (2026-04-19)
+- `deploy-pipeline-automation` — /land-and-deploy + /canary + /benchmark full
+  deploy pipeline. Deferred 2026-03-22 and re-confirmed 2026-05-07; project
+  is private/pre-distribution — no deploy story yet. Resurface when packaging
+  becomes real.
+- `cross-model-outside-voices` (2026-03-31) — Superseded 2026-05-07 by the
+  `claude-outside-voice-skill` deferral below; tracked as one item now.
+- `claude-outside-voice-skill` (2026-05-07) — gstack v1.13.0.0 #1212.
+  Generalize `cross_model_review.sh` into a named-config outside-voice
+  dispatcher. Existing single-voice script works for now; revisit when the
+  single-voice limitation creates concrete friction.
+- `opus-4-7-migration-patterns` (2026-05-07) — gstack v1.5.2.0 #1117 and
+  v1.10.1.0 #1166. Model overlay, voice tuning, fanout-nudge removal, overlay
+  efficacy harness. Daddy_camp running on 4.7 fine; revisit if/when we
+  observe degradation tied to model-specific behavior.
+- `gbrain-federation-surface` (2026-05-07) — gstack v1.9–v1.27. Cross-machine
+  knowledge layer with per-skill manifests, transcript ingest, retrieval surface.
+  Architecturally interesting but no clear failure case in our scattered-knowledge
+  model. Revisit when concrete friction emerges.
+- `gstack-ux-behavioral-foundations` (2026-05-07) — gstack #1000. Was on
+  prior pending-roadmap list but didn't make PR #157 reshape. AGENTS.md
+  Communication Standards already covers the spirit; resurface if skill-prose
+  drift becomes a felt problem.
 
 ## Changelog (2026-03-31 → 2026-04-19)
 
@@ -292,9 +326,9 @@ versioned releases in 19 days. Continued rapid iteration.
 - ~30 open issues, ~10 open PRs sampled. Translation contributions appearing.
 - Rapid versioning continues: v1.4 → v1.28 in 19 days
 
-## Pending Review (2026-05-07)
+## Pending Review
 
-(triaged inline below)
+(none — all 2026-05-07 items triaged below)
 
 ## Tightened interest_areas (2026-04-19)
 
