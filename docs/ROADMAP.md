@@ -249,6 +249,11 @@ Cherry-picked from a recon scan of tracked inspirations since last refresh (2026
 - **Approval scope discipline** — One approved command ≠ approval for follow-ups. Source: ros2 #436
 - **Research-agent-as-shared-resource** — One agent does research while another implements. Source: ros2 #436
 
+### From superpowers (2026-05-07)
+
+- **drill / evals harness** — Python-based skill compliance benchmark with multi-backend support (Claude / Codex / Gemini variants), 30+ scenario YAMLs, LLM verifier + deterministic assertions, 122-test pytest suite. Daddy_camp has ~25 skills with no behavioral tests; explore a scaled-down version for our context. Source: obra/superpowers — `evals/` on dev branch (PR #1488)
+- **plan-review-cycle skill** — Adversarial plan review skill that sits between writing-plans and executing-plans. Compare against our existing `/review-plan` skill body; absorb stronger patterns. Source: obra/superpowers — PR #1473 (merged)
+
 ### Research topics to add (not tracker items)
 
 Candidates for `.agent/knowledge/research_digest.md`, separate from roadmap items.
