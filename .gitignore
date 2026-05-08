@@ -21,6 +21,9 @@ worktrees/
 # Generated Claude Code skills (regenerate with: make generate-skills)
 .claude/skills/make_*/
 
+# Claude Code runtime lock (created by ScheduleWakeup; ephemeral, never committed)
+.claude/scheduled_tasks.lock
+
 # Agent Scratchpad (Temporary files and artifacts)
 .agent/scratchpad/*
 !.agent/scratchpad/README.md
