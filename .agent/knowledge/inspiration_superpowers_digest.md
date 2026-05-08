@@ -164,42 +164,19 @@ process as mandatory workflow rather than optional suggestions.
 - Big themes since last check: native Codex plugin, worktree rototill, drill/evals
   harness, deprecated shim removal, lifecycle hooks, adversarial review patterns.
 
-## Pending Review (2026-05-07)
+## Pending Review
 
-- `drill-evals-harness` — Python-based skill compliance benchmark with multi-backend
-  support, scenario YAMLs, LLM verifier + deterministic assertions. Source:
-  `obra/superpowers` evals/ on dev (PR #1488). Daddy_camp has ~25 skills with no
-  behavioral tests; this is the highest-leverage portable pattern.
-- `plan-review-cycle-skill` — Adversarial plan review between plan-writing and
-  execution (PR #1473 merged). Compare with daddy_camp's existing /review-plan
-  skill — patterns may transfer.
-- `subagent-model-reconciliation` — Pre-execution model-selection skill for
-  subagent steps (PR #1496 open). Resolves our deferred `model-selection-for-subagents`
-  item from 2026-03-22; the upstream now has a concrete shipping artifact.
-- `lifecycle-event-hooks` — Expose lifecycle events beyond SessionStart for
-  external plugins (PR #1461, issue #1442). Daddy_camp has hooks; could inform
-  our hook architecture if we add lifecycle events.
-- `lift-agent-into-skill` — Pattern of folding agent-level prompts into skill
-  bodies (v5.1.0 did this for code-reviewer). Daddy_camp has Plan/review-code
-  agents; pattern of inlining vs separate-file is worth a look.
-- `cross-platform-skill-compatibility` — Agent-neutral prose with per-runtime
-  tool refs (PR #1486 open). Daddy_camp uses AGENTS.md adapter pattern; cross-check.
-- `writing-skills-script-vs-prose` — When to extract deterministic steps to
-  scripts vs keep as prose in skill bodies (issue #1267 / PR #1471). Daddy_camp
-  has a mix of both — guidance worth absorbing.
-- `worktree-consent-gate` — Explicit user-consent gate before auto-creating
-  worktrees, plus native-tool preference for harness-provided worktree tools.
-  Daddy_camp's worktree scripts auto-create; pattern adoption is debatable.
-- `using-superpowers-opt-in-bootstrap` — Make session-start injection opt-in
-  vs always-on (issue #1456, also #1220 token-cost-accumulation). Less applicable
-  (we don't have a session-start bootstrap injection).
-- `evidence-quoted-safety-screen` — Companion skill enforcing literal quotes
-  of verification evidence (issue #1495). Daddy_camp has a strong "verify before
-  claiming" stance in AGENTS.md; explicit skill could harden it.
+(none — all 2026-05-07 items triaged below)
 
 ## Roadmapped
 
-(none — pending triage of items above)
+- `drill-evals-harness` — added to ROADMAP.md "To Consider" 2026-05-07.
+  Python-based skill compliance benchmark with multi-backend support, scenario
+  YAMLs, LLM verifier + deterministic assertions. Source: obra/superpowers
+  evals/ on dev (PR #1488).
+- `plan-review-cycle-skill` — added to ROADMAP.md "To Consider" 2026-05-07.
+  Adversarial plan review between writing-plans and executing-plans
+  (PR #1473 merged). Compare with daddy_camp's existing /review-plan skill.
 
 ## Issued (historical, 2026-03-22)
 
@@ -212,7 +189,10 @@ process as mandatory workflow rather than optional suggestions.
 
 ## Skipped
 
-(none)
+- `using-superpowers-opt-in-bootstrap` (2026-05-07) — Daddy_camp has no analogous
+  always-on session-start prompt injection. CLAUDE.md/AGENTS.md load once per
+  session; settings.json hooks fire on specific events without injecting prompt
+  text. Pattern noted for the workspace-context system but no direct adoption.
 
 ## Deferred
 
@@ -220,8 +200,28 @@ process as mandatory workflow rather than optional suggestions.
   detection for critical processes — keep in mind for future skill writing
   (2026-03-22)
 - `inline-self-review-vs-subagent` — Superseded 2026-05-07: plan-review-cycle
-  skill shipped (PR #1473) and the inline-vs-subagent debate appears settled
-  toward keeping subagent review with refinements. Tracking now via the
-  `plan-review-cycle-skill` Pending Review item above.
+  skill shipped (PR #1473); now tracked via the `plan-review-cycle-skill`
+  Roadmapped entry.
 - `model-selection-for-subagents` — Superseded 2026-05-07 by
-  `subagent-model-reconciliation` Pending Review item above (PR #1496).
+  `subagent-model-reconciliation` (Deferred below; PR #1496 still open).
+- `subagent-model-reconciliation` (2026-05-07) — PR #1496 still open upstream;
+  defer until merged so we can study the final shape. Resolves our older
+  `model-selection-for-subagents` deferral.
+- `writing-skills-script-vs-prose` (2026-05-07) — Issue #1267 / PR #1471.
+  Useful but not pressing; revisit when authoring the next batch of skills.
+- `lifecycle-event-hooks` (2026-05-07) — PR #1461 / issue #1442. No concrete
+  need today; flag if we ever want skill-to-skill reactivity beyond
+  settings.json hooks.
+- `lift-agent-into-skill` (2026-05-07) — v5.1.0 pattern. Note for next
+  reorganization of `.claude/agents/`; some 1:1 agent→skill pairs in
+  daddy_camp may be inlining candidates.
+- `cross-platform-skill-compatibility` (2026-05-07) — PR #1486. AGENTS.md
+  Tool Mapping table covers the workspace-level mapping; revisit if/when
+  we run skills under Codex or Gemini.
+- `worktree-consent-gate` (2026-05-07) — v5.1.0 pattern. Daddy_camp's
+  workflow is friction-averse with 4-5 concurrent agents; auto-creation
+  is currently preferred. Native-tool preference also conflicts with our
+  cross-runtime stance. Keep on radar if worktree volume becomes a problem.
+- `evidence-quoted-safety-screen` (2026-05-07) — Issue #1495. Pattern is
+  interesting but enforcement mechanism (hook? skill? AGENTS.md tightening?)
+  unclear; revisit after upstream lands a concrete skill.
