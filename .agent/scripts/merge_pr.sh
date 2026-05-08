@@ -92,6 +92,10 @@ fi
 # authoritative location side-steps that whole class of path-encoding bug
 # AND naturally covers legacy `.workspace-worktrees/` paths — anything git
 # tracks as a worktree shows up here regardless of where it lives on disk.
+# Note: this awk parser assumes worktree paths do not contain newlines.
+# git's own docs flag that pathological case and recommend `--porcelain -z`
+# with NUL-aware parsing for true robustness. We don't bother — newlines in
+# worktree paths would break a lot more than this script.
 find_worktree_for_branch() {
     local repo="$1"
     local branch="$2"
@@ -112,7 +116,11 @@ WS_REMOTE=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
 PJ_REMOTE=""
 if [[ -e "$ROOT_DIR/project/.git" ]]; then
     PJ_REMOTE=$(git -C "$ROOT_DIR/project" remote get-url origin 2>/dev/null || echo "")
-    if [[ -z "$PJ_REMOTE" ]]; then
+    # Only require the project remote when we might actually need it. With
+    # --type workspace, the project repo is irrelevant — don't fail the merge
+    # of a perfectly valid workspace PR just because project/origin happens
+    # to be unconfigured (e.g. a fresh clone where setup_project.sh hasn't run).
+    if [[ -z "$PJ_REMOTE" ]] && [[ "$WORKTREE_TYPE" != "workspace" ]]; then
         echo "ERROR: $ROOT_DIR/project has no 'origin' remote configured." >&2
         echo "  Cannot resolve project PRs. Configure the remote, or pass" >&2
         echo "  --type workspace if this is intentionally workspace-only." >&2
@@ -160,8 +168,14 @@ query_pr() {
     # Distinguish "PR not found" from auth/network errors. Silently
     # picking the only authed repo would be the same class of bug
     # we're fixing — propagate other errors and require --type.
+    # Match gh's current "GraphQL: Could not resolve to a PullRequest" wording
+    # plus a few likely future variants. If gh ever rephrases not-found, an
+    # unmatched not-found error would surface as rc=2 (auth/network), forcing
+    # the user to pass --type — annoying but not unsafe (the alternative,
+    # silently picking the only authed match, is the bug class we're fixing).
     case "$err" in
-        *"Could not resolve to"*|*"GraphQL: Could not"*|*"no pull"*|*"404"*)
+        *"Could not resolve to"*|*"GraphQL: Could not"*|*"no pull"*|*"404"* \
+        |*"not found"*|*"Not Found"*|*"could not find"*|*"Could not find"*)
             return 1 ;;
         *)
             echo "ERROR: gh failed against $remote:" >&2
@@ -205,6 +219,12 @@ if $WS_HIT && $PJ_HIT; then
 elif $WS_HIT; then
     WORKTREE_TYPE="workspace"
     PR_BRANCH="$WS_BRANCH"
+    # Set -R for the workspace too — `gh pr merge` without -R falls back to
+    # the CWD's git remote, which is the project repo when the script is
+    # invoked from a project worktree (or anywhere else not under the
+    # workspace tree). Without this, query_pr could correctly identify the
+    # workspace PR while the actual merge step targets the wrong repo.
+    GH_REPO_ARGS=("-R" "$WS_REMOTE")
 elif $PJ_HIT; then
     WORKTREE_TYPE="project"
     PR_BRANCH="$PJ_BRANCH"
@@ -319,7 +339,9 @@ fi
 
 # --- Step 4: Delete branches ---
 echo "  Cleaning up branches..."
-if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -d "$ROOT_DIR/project/.git" ]]; then
+# Use [[ -e ]] (not [[ -d ]]) to handle submodule layouts where project/.git
+# is a file containing `gitdir:` rather than a directory.
+if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -e "$ROOT_DIR/project/.git" ]]; then
     BRANCH_REPO="$ROOT_DIR/project"
 else
     BRANCH_REPO="$ROOT_DIR"
@@ -333,7 +355,7 @@ git pull --ff-only
 echo "  ✅ Workspace synced"
 
 # Also sync project repo for project-type merges
-if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -d "$ROOT_DIR/project/.git" ]]; then
+if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -e "$ROOT_DIR/project/.git" ]]; then
     echo "  Syncing project..."
     git -C "$ROOT_DIR/project" pull --ff-only 2>/dev/null && echo "  ✅ Project synced" || true
 fi
