@@ -33,6 +33,14 @@ These are auto-approved and don't consume permission prompts.
   (e.g., `/make_build`, `/make_test`, `/make_dashboard`). After adding or removing eligible
   `.PHONY` targets, run `make generate-skills` to regenerate the slash commands.
 
+- **Worktree entry**: prefer `/start-task --issue <N> --type <workspace|project>` (or
+  `--skill <name> --type workspace`) over the two-step `worktree_create.sh` +
+  `source worktree_enter.sh` flow. The slash command wraps the policy scripts and
+  enters via the native `EnterWorktree` tool, so the session lands in the worktree
+  with proper cache coherence in one tool call. All policy still applies (issue
+  checks, branch naming, `--plan-file`, `--workflow`, skill allowlist). Codex /
+  Gemini agents stay on the script flow — `/start-task` is Claude Code only.
+
 ## References
 
 - [`AGENTS.md`](AGENTS.md) — Shared workspace rules (all agents)
