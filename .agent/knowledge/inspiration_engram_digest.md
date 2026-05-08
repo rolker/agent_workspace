@@ -1,8 +1,8 @@
 # Inspiration Digest: engram
 
 Type: inspiration
-Last checked: 2026-04-26 (first run)
-Repo: shiblon/engram @ a4c577c25872c74567343faa55b93c7c7b43c8df
+Last checked: 2026-05-07
+Repo: shiblon/engram @ 125f1d4 (was a4c577c on 2026-04-26)
 
 ## Survey Summary
 
@@ -121,17 +121,51 @@ a known footgun.
 | Memory dump/load for portability | `engram mem dump` / `mem load` to/from markdown. | We get this implicitly via git-checked memory directory. |
 | Bootstrap UX | Single command sets up CLAUDE.md, hooks, gitignore, global invariants. | Compelling pattern but irrelevant unless we adopt the binary. |
 
+## Changelog Since Last Check (2026-04-26 → 2026-05-07)
+
+9 commits, 16 files (a4c577c..125f1d4). Single contributor still; still no
+issues or PRs — author works on `main` directly.
+
+### Major additions
+
+- **MCP server** (commit c9957b8) — new `engram mcp` subcommand serves engram
+  over MCP stdio. Exposes resources `engram://inject` (session context:
+  identity, preferences, memories, recent activity) and `engram://agentinfo`
+  (workflow instructions). Lets non-Claude-Code agents (Cursor, Gemini,
+  Copilot, AntiGravity) integrate via MCP rather than hooks.
+- **`agentinfo` command** (commit 1123d25) — prints canonical "how to use
+  engram" prose for embedding via `>> CLAUDE.md` or `@<path>` reference.
+  Pattern: tool-as-source-of-truth for agent instructions instead of
+  hand-edited copies in each adapter file.
+- **DB migration system** (commit 7d3e9b1) — `engram migrate` plus internal
+  `pkg/engram/migrate.go`. Schema-evolution support for installed DBs.
+- **Multi-platform bootstrap** (commits 5d89e67, b33fc9a, fec2d69) —
+  `engram bootstrap <claude|gemini|antigravity|copilot|cursor>`. Cursor
+  newly added. Claude gets full hook support; others use system prompt
+  injection. Bootstrap also extended for `go install`-based distribution.
+- **CLAUDE.md @file inclusion** (commit a3b9d9d) — bootstrap now writes
+  `@<path>` reference into CLAUDE.md instead of inlining `agentinfo` text.
+  Daddy_camp already uses this pattern for `@AGENTS.md`.
+- **`promote` → `move`** (commit b33fc9a) — internal CLI rename.
+- **Refined global vs project instructions** (commit 125f1d4).
+
+### What did NOT change
+
+- Memory tier model (invariant / preference / long / short).
+- Personality canary mechanism (codename in invariant + status-line).
+- Hook-based file-activity tracking (PostToolUse → record).
+- Architectural footprint: still ~10-15 Go files, single author, no tests.
+
 ## Activity Snapshot
 
-- **No issues, no PRs.** Author works on `main` directly.
-- **27 commits total** since project inception (recent: bootstrap polish,
-  CLI ergonomics, README tightening, GoReleaser fixes).
-- Activity reads as personal-project iteration, not a maintained library.
-- Single contributor (`shiblon` aka Chris Monson).
+- **No issues, no PRs.** Author still works on `main` directly.
+- **36 commits total** (was 27 at last check; +9 in 11 days).
+- Direction: consolidation toward multi-agent platform support via MCP +
+  agentinfo, plus migration infrastructure for in-the-wild DBs.
 
-## Pending Review
+## Pending Review (2026-05-07)
 
-(none — all items triaged below)
+(triaged inline below)
 
 ## Issued
 
