@@ -16,10 +16,26 @@
 #
 # Steps:
 #   1. Roadmap update (commit + push to feature branch before merge)
-#   2. Merge the PR (--merge strategy)
-#   3. Remove the worktree (cd to root first; fails safely if uncommitted changes)
-#   4. Delete local and remote branches
-#   5. Pull main to sync (workspace and project repos)
+#   2. Wait for CI on the (possibly new) HEAD before merging (--no-wait skips)
+#   3. Merge the PR (--merge strategy)
+#   4. Remove the worktree (cd to root first; fails safely if uncommitted changes)
+#   5. Delete local and remote branches
+#   6. Pull main to sync (workspace and project repos)
+#
+# Manual verification of the wait step (issue #186):
+#   1. On any open PR branch in this repo, push a trivial commit:
+#        git commit --allow-empty -m "poke ci"
+#        git push
+#   2. Immediately run:
+#        make merge-pr PR=<N>
+#   3. Expected: script prints "Waiting for CI..." and blocks until checks
+#      complete, then merges.
+#   4. Without the wait step (pre-#186), step 2 would have errored
+#      "Pull Request is not mergeable" instantly.
+#
+#   An automated equivalent would need to mock gh pr checks --watch
+#   (drift risk) or spin throwaway PRs (network + auth dependencies);
+#   declined as out of scope for #186.
 #
 # Exit codes:
 #   0 — success
@@ -36,6 +52,9 @@ source "$SCRIPT_DIR/_issue_helpers.sh"
 PR_NUMBER=""
 WORKTREE_TYPE=""
 NO_ROADMAP_UPDATE=false
+NO_WAIT=false
+
+USAGE="Usage: $0 --pr <N> [--type workspace|project] [--no-roadmap-update] [--no-wait]"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -47,16 +66,18 @@ while [[ $# -gt 0 ]]; do
             WORKTREE_TYPE="$2"; shift 2 ;;
         --no-roadmap-update)
             NO_ROADMAP_UPDATE=true; shift ;;
+        --no-wait)
+            NO_WAIT=true; shift ;;
         *)
             echo "ERROR: Unknown argument: $1" >&2
-            echo "Usage: $0 --pr <N> [--type workspace|project] [--no-roadmap-update]" >&2
+            echo "$USAGE" >&2
             exit 2 ;;
     esac
 done
 
 if [[ -z "$PR_NUMBER" ]]; then
     echo "ERROR: --pr <N> is required" >&2
-    echo "Usage: $0 --pr <N> [--type workspace|project] [--no-roadmap-update]" >&2
+    echo "$USAGE" >&2
     exit 2
 fi
 
@@ -315,7 +336,35 @@ else
     echo "  Roadmap update skipped (--no-roadmap-update)"
 fi
 
-# --- Step 2: Merge ---
+# --- Step 2: Wait for CI ---
+# When the roadmap-update step pushes a fresh commit, the new commit's
+# CI hasn't started yet — `gh pr merge` below would fail with
+# "Pull Request is not mergeable" until checks complete. Avoid the
+# manual `gh pr checks --watch` round-trip by waiting here. --no-wait
+# skips when the user knows CI is already green.
+#
+# `--fail-fast` exits as soon as any check fails (gh exit 8) so we
+# don't waste time waiting for the rest. The error path captures gh's
+# exit code, surfaces the PR URL, and aborts the merge with context.
+if [[ "$NO_WAIT" == false ]]; then
+    echo "  Waiting for CI..."
+    if gh pr checks "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --watch --fail-fast; then
+        echo "  ✅ CI checks passed"
+    else
+        _wait_rc=$?
+        _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+        {
+            echo "ERROR: CI checks failed (gh exit $_wait_rc)"
+            [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+            echo "  Fix the failure and re-run, or pass --no-wait to skip the CI wait."
+        } >&2
+        exit 1
+    fi
+else
+    echo "  CI wait skipped (--no-wait)"
+fi
+
+# --- Step 3: Merge ---
 # GH_REPO_ARGS was set during PR resolution above (-R <project-remote> for
 # project PRs, empty for workspace PRs). Don't re-resolve.
 echo "  Merging PR..."
@@ -325,7 +374,7 @@ if ! gh pr merge "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --merge; then
 fi
 echo "  ✅ PR merged"
 
-# --- Step 3: Remove worktree ---
+# --- Step 4: Remove worktree ---
 if [[ -n "$WORKTREE_TYPE" ]]; then
     echo "  Removing worktree..."
     # Must run from root, not from inside the worktree
@@ -337,7 +386,7 @@ if [[ -n "$WORKTREE_TYPE" ]]; then
     fi
 fi
 
-# --- Step 4: Delete branches ---
+# --- Step 5: Delete branches ---
 echo "  Cleaning up branches..."
 # Use [[ -e ]] (not [[ -d ]]) to handle submodule layouts where project/.git
 # is a file containing `gitdir:` rather than a directory.
@@ -349,7 +398,7 @@ fi
 git -C "$BRANCH_REPO" branch -d "$PR_BRANCH" 2>/dev/null && echo "  ✅ Local branch deleted" || true
 git -C "$BRANCH_REPO" push origin --delete "$PR_BRANCH" 2>/dev/null && echo "  ✅ Remote branch deleted" || true
 
-# --- Step 5: Sync ---
+# --- Step 6: Sync ---
 echo "  Syncing main..."
 git pull --ff-only
 echo "  ✅ Workspace synced"
