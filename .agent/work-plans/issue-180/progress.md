@@ -44,3 +44,30 @@ All 4 must-fix and 3 suggestion-tier findings addressed across 3 atomic commits:
     suggestion #1 (`"$ARGUMENTS"` quoting + metachar refusal), suggestion #2
     (EnterWorktree-fail recovery), suggestion #3 (set-e dangling worktree hint),
     plus nits (stray echo, --repo-vs-repo-slug mismatch, line-59 comment)
+
+## External Review
+**Status**: complete
+**When**: 2026-05-09 14:30
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #182 — 1 review (Copilot bot, against `3908be3`), 4 inline comments, 0 valid, 0 false positives, 4 addressed
+**CI**: all 4 checks pass on current head `5bf0fe0`
+
+The Copilot review was submitted against the original feature commit
+(`3908be3`) before the local-review fix commits landed. Verified each
+of the 4 inline findings against the current head:
+
+- `SKILL.md:35` (legacy paths in worktree-detection check) → addressed
+  by `cc23db5` (now uses `git rev-parse --git-dir` vs `--git-common-dir`)
+- `SKILL.md:48` (relative path needs cd to repo root) → addressed by
+  `cc23db5` (Step 2 explicitly cds via `git rev-parse --show-toplevel`)
+- `SKILL.md:62` (`2>/dev/null` doesn't suppress stdout message) →
+  addressed by `d7d8fa8` (`worktree_enter.sh` routes not-found errors
+  to stderr)
+- `worktree_create.sh:148` (parse-time stdout leak) → addressed by
+  `93ca991` (pre-scan for `--print-path-only` redirects fd 1→2 immediately)
+
+### Actions
+- [ ] (Optional) Dismiss the stale Copilot review on PR #182 — its findings are resolved.
+- [ ] (Optional) Re-request Copilot review against `5bf0fe0` for a clean re-pass before merge.
+- [ ] Merge when ready — CI green, Copilot findings resolved, local-review verdict approved.
