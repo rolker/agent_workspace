@@ -107,3 +107,43 @@ the script changes (`3ffc237`).
 
 Self-test (task 4): run the new branch mode against this very branch
 (`feature/issue-3`), triage findings, fix inline if minor.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-05-09 13:35
+**By**: Claude Code Agent (claude-opus-4-7) + gemini + codex (cross-model)
+**Verdict**: approved (all findings addressed inline)
+
+**Branch**: `feature/issue-3` at `cf4060b`
+**Base**: `main`
+**Depth**: Deep (reason: 724 changed lines + governance-file overrides)
+**Must-fix**: 4 | **Suggestions**: 7 | **Declined**: 2
+
+### Findings
+
+- [x] (must-fix) TARGET_LABEL referenced BRANCH_NAME before metadata block — `cross_model_review.sh:398`
+- [x] (must-fix) `--branch <ref>` didn't normalize BASE_REF when only origin/<ref> exists — `cross_model_review.sh:419`
+- [x] (must-fix) Branch-name regex matched `feature/issue-3foo` and `feature/issue-03` (silent misrouting, #149 pattern) — `cross_model_review.sh:300`
+- [x] (must-fix) tmux session name collision under `--no-progress` — `cross_model_review.sh:396`
+- [x] (suggestion) Script reference row missed `--branch`/`--no-progress` — `AGENTS.md:350`
+- [x] (suggestion) Helper swallowed bad `repo_root` errors — `_resolve_default_branch.sh:33`
+- [x] (suggestion) Helper "main fallback" error wording misleading — `_resolve_default_branch.sh:71`
+- [x] (suggestion) SKILL.md referenced undefined `BASE_ARG` — `SKILL.md:1b snippet`
+- [x] (suggestion) SKILL.md ambiguous about depth keywords passing to script — `SKILL.md:5e dispatch`
+- [x] (suggestion) `gh repo view` called in branch mode (wasted round-trip) — `cross_model_review.sh:241`
+- [x] (suggestion) `--no-progress` artifact-dir asymmetry undocumented — `cross_model_review.sh:382`
+
+### Declined
+
+- (D1) `mktemp -d` cleanup trap — users want to inspect findings after script exits; OS cleans /tmp on boot. Comment added.
+- (D2) `_resolve_default_branch.sh` `origin` assumption — consistent with workspace convention; manifest hook (#172) is the future home for repo-specific overrides.
+
+### Cross-model summary
+
+- Gemini (pre-fix): TARGET_LABEL ordering, BASE_REF normalization, mktemp trap (declined), BASE_ARG, origin assumption (declined)
+- Codex (pre-fix): TARGET_LABEL ordering, BASE_REF normalization (independent confirm of gemini)
+- Claude adversarial subagent: tmux collision, regex tightening, repo_root validation, error wording, depth-keyword passthrough, gh repo view efficiency, no-progress comment
+
+### Fix commit
+
+`cf4060b` — applied all must-fixes plus all suggestions worth fixing inline. Smoke test (`./cross_model_review.sh --branch --agent gemini`) passes clean post-fix.
