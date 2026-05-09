@@ -79,11 +79,17 @@ gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*'
 
 #### 1b. Branch mode (--branch [<base-ref>])
 
+This snippet is illustrative pseudo-code; the skill body describes
+behavior, not a copy-pastable shell block. `$BASE_REF_FROM_USER` is a
+placeholder for whatever value the user passed to `--branch <base>`
+(empty string when `--branch` was passed bare).
+
 ```bash
 # Resolve base ref. Explicit `--branch <base>` arg wins; otherwise
 # the helper consults the per-project manifest (when wired — see #172),
 # falls back to `git symbolic-ref refs/remotes/origin/HEAD`, then `main`.
 source .agent/scripts/_resolve_default_branch.sh
+BASE_REF_FROM_USER=""  # set to `--branch` arg value if user passed one
 if [[ -n "$BASE_REF_FROM_USER" ]]; then
     BASE="$BASE_REF_FROM_USER"
 else

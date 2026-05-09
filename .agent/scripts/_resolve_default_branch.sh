@@ -59,10 +59,18 @@ resolve_default_branch() {
     #   fi
 
     # --- Step 2: git's configured default ---
+    # Two-step capture (instead of `git ... | sed`) so callers running
+    # under `set -e -o pipefail` (e.g. cross_model_review.sh) don't abort
+    # here when origin/HEAD is unset — the failing symbolic-ref would
+    # make the pipeline non-zero and short-circuit the step-3 fallback.
+    # Parameter expansion replaces sed for the prefix strip.
     if [ -z "$branch" ]; then
-        branch=$(git -C "$repo_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-                    | sed 's|^refs/remotes/origin/||')
-        [ -n "$branch" ] && resolved_via="git symbolic-ref"
+        local symref=""
+        symref=$(git -C "$repo_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null) || symref=""
+        if [ -n "$symref" ]; then
+            branch="${symref#refs/remotes/origin/}"
+            resolved_via="git symbolic-ref"
+        fi
     fi
 
     # --- Step 3: hardcoded fallback ---
