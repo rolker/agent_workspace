@@ -30,12 +30,18 @@ PR #157.
 ## Approach
 
 1. **Add `--branch [<base>]` to `/review-code`.** Flag toggles branch mode;
-   optional base value resolved from `git symbolic-ref refs/remotes/origin/HEAD`
-   with a fallback to `main`. Step 1 forks: PR mode keeps `gh pr view/diff`;
-   branch mode uses `git diff <base>...HEAD` and `git diff --name-only
-   <base>...HEAD`. Issue-number resolution forks too: PR mode parses
-   "Closes #N" from the PR body; branch mode parses `feature/issue-<N>`
-   from `git branch --show-current`, with `--issue <N>` as override.
+   optional base value resolved through new helper
+   `.agent/scripts/_resolve_default_branch.sh` — single resolution point so
+   #172's manifest can be wired in one place later. Resolution order:
+   `--branch <ref>` argument (caller-side, never reaches helper) → manifest
+   hook (inert today, comment-marked) → `git symbolic-ref refs/remotes/origin/HEAD`
+   → literal `main`. Step 1 forks: PR mode keeps `gh pr view/diff`; branch
+   mode uses `git diff <base>...HEAD` and `git diff --name-only <base>...HEAD`.
+   Issue-number resolution forks too: PR mode parses "Closes #N" from the PR
+   body; branch mode parses `feature/issue-<N>` (or `feature/ISSUE-<N>-...`
+   per AGENTS.md branch-naming rule) from `git branch --show-current`, with
+   `--issue <N>` as override. Hard error if neither resolves and
+   `--no-progress` not passed.
 
 2. **Specialists run unchanged.** Depth-classification signals (line count,
    file count, override-trigger files) operate on the local diff identically.
@@ -76,8 +82,9 @@ PR #157.
 
 | File | Change |
 |------|--------|
-| `.claude/skills/review-code/SKILL.md` | Add "Modes" section; fork Step 1 into PR-mode and branch-mode sub-steps; mark Step 5b "Existing review comments" as PR-only; differentiate Step 8 step header for branch mode |
-| `.agent/scripts/cross_model_review.sh` | Add `--branch [<ref>]` (mutually exclusive with `--pr`); branch-mode prompt header; branch-mode diff capture via `git diff <base>...HEAD`; branch-mode issue resolution from `feature/issue-<N>` |
+| `.agent/scripts/_resolve_default_branch.sh` | **New**. Sourced helper; exports `resolve_default_branch <repo_root>`. Resolution order: manifest hook (inert) → `git symbolic-ref refs/remotes/origin/HEAD` → `main` |
+| `.claude/skills/review-code/SKILL.md` | Add "Modes" section; fork Step 1 into PR-mode and branch-mode sub-steps; mark Step 5b "Existing review comments" as PR-only; differentiate Step 8 step header for branch mode; document `--skip-static` (works in both modes) and `--no-progress` (branch-mode-only) |
+| `.agent/scripts/cross_model_review.sh` | Add `--branch [<ref>]` (mutually exclusive with `--pr`, hard error if both); add `--skip-static` (no-op in this script — for symmetry with skill flag); add `--no-progress`; branch-mode prompt header; branch-mode diff capture via `git diff <base>...HEAD`; branch-mode issue resolution from `feature/issue-<N>` |
 | `.agent/knowledge/review_depth_classification.md` | Generalize "PR metadata" wording; add branch-mode paragraph |
 | `.agent/AGENT_ONBOARDING.md` | One-line note on the `--branch` flag |
 
@@ -108,51 +115,53 @@ PR #157.
 | `review_depth_classification.md` | `review-code` skill | Yes (steps 1, 5 stay in sync) |
 | Workflow skill list | Skill list in non-Claude adapters | Partial — review-code already listed; only flag note added (step 6) |
 
-## Open Questions
+## Decisions
 
-These are the architectural decisions worth your eyes before implement begins.
-Numbered so you can answer "1=A, 2=B, ..." or override individually.
+Captured 2026-05-09 during plan review with Roland. Each decision was
+asked one at a time with concrete previews; recommendations were taken
+in 4 of 5 with one extension.
 
-1. **Default base ref** — recommend dynamic resolution via
-   `git symbolic-ref refs/remotes/origin/HEAD`, fall back to `main`.
-   Both workspace and project default to `main` today, so this is mostly
-   future-proofing. Alternative: hardcode `main`. (Recommend dynamic.)
+1. **Default base ref**: dynamic resolution via new
+   `.agent/scripts/_resolve_default_branch.sh` helper.
+   Order: `--branch <ref>` arg → manifest hook (inert today; wires up when
+   #172 lands) → `git symbolic-ref refs/remotes/origin/HEAD` → `main`.
+   Single resolution point so the manifest landing is one-file later.
 
-2. **Static analysis in branch mode** — the issue body says "static analysis
-   optional — pre-commit already runs". Two reasonable defaults:
-   - **(a) On**: matches Standard tier exactly; silence filter drops
-     linter-clean files; safety net for `--no-verify` bypasses.
-   - **(b) Off, with `--with-static` opt-in**: branch mode is faster;
-     trusts pre-commit as the gate.
-   Recommend (a) — the speed delta is small and `--no-verify` does happen.
+2. **Static analysis**: always on by default in *both* PR and branch modes,
+   `--skip-static` toggle suppresses in either mode. Symmetric. Preserves
+   Light tier's mental model. Catches `--no-verify` bypasses.
 
-3. **Issue-number resolution fallback** — when branch isn't
-   `feature/issue-<N>` and `--issue` isn't passed:
-   - **(a) Hard error** with remediation message ("pass --issue or rename
-     branch"). Strict but avoids silent artifact misrouting (the #149
-     failure mode).
-   - **(b) Soft skip**: run review without progress-log persistence.
-   Recommend (a).
+3. **Branch-name parse failure**: hard error with remediation message;
+   `--no-progress` opt-in for skill worktrees / one-off branches. Matches
+   existing strictness patterns from #72, #147, #149.
 
-4. **Mutual exclusion of `--pr` and `--branch`** — recommend hard error if
-   both provided. Allowing both could mean "review the local branch in the
-   context of the existing PR" but doubles the test surface for unclear
-   benefit.
+4. **`--pr` + `--branch`**: mutually exclusive; hard error if both passed.
+   Two clean modes, no compound logic. Compound use case can be added
+   additively if it ever materializes.
 
-5. **Self-test scope** — once branch mode is built, running it on this
-   feature branch is the obvious smoke test. Two options:
-   - **(a) Same PR**: include any minor findings in this PR. Bigger
-     findings → follow-up issue.
-   - **(b) Separate run** after merge, treat as initial dogfood.
-   Recommend (a) — fast feedback loop.
+5. **Self-test**: same PR. Run `/review-code --branch` against
+   `feature/issue-3` itself before final push; fix minor findings inline,
+   triage anything bigger.
+
+### Resulting flag surface
+
+| Flag | Modes | Meaning |
+|------|-------|---------|
+| `--branch [<ref>]` | new | enable branch mode; optional base ref |
+| `--issue <N>` | both | override issue resolution |
+| `--skip-static` | both | suppress static-analysis specialist |
+| `--no-progress` | branch | skip progress.md persistence (skill worktrees) |
+| (positional `<pr-or-url>`) | PR | unchanged |
+| `light\|standard\|deep` | both | unchanged depth override |
 
 ## Estimated Scope
 
-Single PR, ~250 LOC across the four files. Most volume in
-`cross_model_review.sh` (arg parsing + diff path) and `SKILL.md` (mode
-sub-sections). No new tests — there is no existing test harness for
-`cross_model_review.sh`, and a parity-only addition would be out of scope
-for #3.
+Single PR, ~300 LOC across five files (helper added during plan review).
+Most volume in `cross_model_review.sh` (arg parsing + diff path) and
+`SKILL.md` (mode sub-sections). No new tests — there is no existing test
+harness for `cross_model_review.sh`, and a parity-only addition would be
+out of scope for #3. Self-test on the implementation itself (decision 5)
+serves as the dogfood pass.
 
 ## Implementation Notes
 
