@@ -238,7 +238,9 @@ fi
 GH_REPO_SLUG=""
 if [[ -n "$EXPLICIT_REPO" ]]; then
     GH_REPO_SLUG="$EXPLICIT_REPO"
-elif command -v gh &>/dev/null; then
+elif [[ "$BRANCH_MODE" != true ]] && command -v gh &>/dev/null; then
+    # PR mode only — branch mode never uses GH_REPO_ARGS so the
+    # network call is wasted work.
     GH_REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
 fi
 GH_REPO_ARGS=()
@@ -297,7 +299,12 @@ if [[ -n "$CLI_ISSUE_NUMBER" ]]; then
     ISSUE_NUMBER="$CLI_ISSUE_NUMBER"
 elif [[ "$BRANCH_MODE" == true ]]; then
     CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "")
-    if [[ "$CURRENT_BRANCH" =~ ^feature/[Ii][Ss][Ss][Uu][Ee]-([0-9]+) ]]; then
+    # Tightened regex: requires a separator after digits (so
+    # `feature/issue-3foo` doesn't silently capture `3`) and rejects
+    # leading zeros (so `feature/issue-03` doesn't bypass the
+    # --issue validator's positive-integer check). #149 lesson:
+    # silent issue-number misrouting is the failure mode to prevent.
+    if [[ "$CURRENT_BRANCH" =~ ^feature/[Ii][Ss][Ss][Uu][Ee]-([1-9][0-9]*)(-|$) ]]; then
         ISSUE_NUMBER="${BASH_REMATCH[1]}"
     elif [[ "$NO_PROGRESS" == true ]]; then
         # Sentinel used for SESSION_NAME and findings filename; the
@@ -382,7 +389,14 @@ elif [[ -n "$EXPLICIT_WORK_DIR" ]]; then
 elif [[ "$NO_PROGRESS" == true ]]; then
     # --no-progress: ephemeral artifact dir. Findings remain readable
     # for the session but aren't tied to a per-issue directory and won't
-    # be picked up by progress.md commit conventions.
+    # be picked up by progress.md commit conventions. Note that the
+    # branch-name regex may still resolve a real ISSUE_NUMBER (e.g.
+    # `feature/issue-3` with --no-progress); the artifact dir override
+    # always wins when --no-progress is set, even if the issue number
+    # was resolvable. Tmpdir is left in /tmp for the session; the OS
+    # cleans it up on next boot. Adding a `trap` to remove on exit was
+    # considered and declined: users frequently want to inspect
+    # findings after the script finishes.
     NO_PROGRESS_TMP_DIR=$(mktemp -d -t "cross-model-review.XXXXXX")
     echo "INFO: --no-progress: artifacts going to ${NO_PROGRESS_TMP_DIR}" >&2
     export WORK_PLANS_DIR_OVERRIDE="${NO_PROGRESS_TMP_DIR}"
@@ -394,17 +408,13 @@ mkdir -p "$WORK_PLANS_DIR"
 PROMPT_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-prompt.md"
 FINDINGS_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-findings.md"
 SESSION_NAME="review-${TARGET_AGENT}-${ISSUE_NUMBER}"
-
-# Human-readable label for status messages. Mode-aware so branch-mode
-# logs read sensibly without "PR #" prefixes that don't apply.
-if [[ "$BRANCH_MODE" == true ]]; then
-    if [[ "$ISSUE_NUMBER" == "noprogress" ]]; then
-        TARGET_LABEL="branch ${BRANCH_NAME} (no-progress mode)"
-    else
-        TARGET_LABEL="branch ${BRANCH_NAME} (issue #${ISSUE_NUMBER})"
-    fi
-else
-    TARGET_LABEL="PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
+# Two concurrent --no-progress runs share ISSUE_NUMBER="noprogress"
+# and would collide on the tmux session name; the existing
+# "kill any pre-existing session" logic would silently terminate the
+# first run. Append the PID so concurrent skill-worktree pre-push
+# reviews coexist.
+if [[ "$ISSUE_NUMBER" == "noprogress" ]]; then
+    SESSION_NAME="${SESSION_NAME}-$$"
 fi
 
 # --- Get review-target metadata ---
@@ -416,11 +426,16 @@ if [[ "$BRANCH_MODE" == true ]]; then
     HEAD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
     if [[ -n "$BRANCH_BASE" ]]; then
-        BASE_REF="$BRANCH_BASE"
-        # Validate the user-supplied ref exists.
-        if ! git rev-parse --verify --quiet "$BASE_REF" >/dev/null 2>&1 \
-            && ! git rev-parse --verify --quiet "origin/$BASE_REF" >/dev/null 2>&1; then
-            echo "ERROR: --branch base '${BASE_REF}' is not a known ref" >&2
+        # Validate and normalize: prefer the local ref, fall back to
+        # origin/<ref> when only the remote-tracking branch exists.
+        # Without normalization, `git diff develop...HEAD` would fail
+        # on a fresh clone where only `origin/develop` is reachable.
+        if git rev-parse --verify --quiet "$BRANCH_BASE" >/dev/null 2>&1; then
+            BASE_REF="$BRANCH_BASE"
+        elif git rev-parse --verify --quiet "origin/$BRANCH_BASE" >/dev/null 2>&1; then
+            BASE_REF="origin/$BRANCH_BASE"
+        else
+            echo "ERROR: --branch base '${BRANCH_BASE}' is not a known ref (locally or as origin/${BRANCH_BASE})" >&2
             exit 2
         fi
     else
@@ -432,6 +447,19 @@ if [[ "$BRANCH_MODE" == true ]]; then
 else
     PR_TITLE=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json title --jq '.title' 2>/dev/null || echo "PR #${PR_NUMBER}")
     PR_URL=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+fi
+
+# Human-readable label for status messages. Mode-aware so branch-mode
+# logs read sensibly without "PR #" prefixes that don't apply. Computed
+# after the metadata block so BRANCH_NAME is in scope under `set -u`.
+if [[ "$BRANCH_MODE" == true ]]; then
+    if [[ "$ISSUE_NUMBER" == "noprogress" ]]; then
+        TARGET_LABEL="branch ${BRANCH_NAME} (no-progress mode)"
+    else
+        TARGET_LABEL="branch ${BRANCH_NAME} (issue #${ISSUE_NUMBER})"
+    fi
+else
+    TARGET_LABEL="PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
 fi
 
 # --- Write prompt ---

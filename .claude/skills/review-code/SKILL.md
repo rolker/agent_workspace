@@ -80,11 +80,15 @@ gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*'
 #### 1b. Branch mode (--branch [<base-ref>])
 
 ```bash
-# Resolve base ref. Explicit arg wins; otherwise the helper consults
-# the per-project manifest (when wired — see #172), falls back to
-# `git symbolic-ref refs/remotes/origin/HEAD`, then `main`.
+# Resolve base ref. Explicit `--branch <base>` arg wins; otherwise
+# the helper consults the per-project manifest (when wired — see #172),
+# falls back to `git symbolic-ref refs/remotes/origin/HEAD`, then `main`.
 source .agent/scripts/_resolve_default_branch.sh
-BASE="${BASE_ARG:-$(resolve_default_branch)}"
+if [[ -n "$BASE_REF_FROM_USER" ]]; then
+    BASE="$BASE_REF_FROM_USER"
+else
+    BASE=$(resolve_default_branch)
+fi
 
 # Branch metadata
 BRANCH=$(git branch --show-current)
@@ -313,6 +317,11 @@ Pass `--repo <owner/repo>` (PR mode) when the PR lives in a different repo
 than the current working directory (e.g., reviewing a project PR from the
 workspace tree). Pass `--work-dir <path>` to place artifacts in a specific
 worktree instead of the current `git rev-parse --show-toplevel`.
+
+**Depth keywords are skill-level only.** `cross_model_review.sh` itself
+does not parse `light`/`standard`/`deep` — those control which
+specialists this skill dispatches. Passing them to the script will
+trigger an "Unknown argument" error.
 
 The script auto-detects the execution mode: tmux (background) when available,
 sync (blocking) when tmux is unavailable or in sandboxed environments. Use

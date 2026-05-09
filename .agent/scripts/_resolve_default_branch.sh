@@ -36,9 +36,18 @@ resolve_default_branch() {
             echo "ERROR: resolve_default_branch: not inside a git repository" >&2
             return 1
         }
+    else
+        # Validate explicit repo_root up-front so a bad path produces
+        # a clear error instead of falling through to the
+        # "main fallback didn't work" branch later.
+        git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1 || {
+            echo "ERROR: resolve_default_branch: not a git repository: $repo_root" >&2
+            return 1
+        }
     fi
 
     local branch=""
+    local resolved_via=""
 
     # --- Step 1: per-project manifest hook ---
     # When #172's per-project manifest schema is decided, the read goes
@@ -53,10 +62,14 @@ resolve_default_branch() {
     if [ -z "$branch" ]; then
         branch=$(git -C "$repo_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
                     | sed 's|^refs/remotes/origin/||')
+        [ -n "$branch" ] && resolved_via="git symbolic-ref"
     fi
 
     # --- Step 3: hardcoded fallback ---
-    branch="${branch:-main}"
+    if [ -z "$branch" ]; then
+        branch="main"
+        resolved_via="hardcoded fallback"
+    fi
 
     # --- Verify the chosen ref is reachable ---
     if git -C "$repo_root" rev-parse --verify --quiet "$branch" >/dev/null 2>&1; then
@@ -69,11 +82,18 @@ resolve_default_branch() {
     fi
 
     {
-        echo "ERROR: resolve_default_branch: cannot find '$branch' locally or as 'origin/$branch'."
+        echo "ERROR: resolve_default_branch: '${branch}' (resolved via ${resolved_via})"
+        echo "  is not reachable as a local ref or as origin/${branch}."
         echo ""
-        echo "  Tried: git symbolic-ref refs/remotes/origin/HEAD, then 'main' fallback."
-        echo "  If origin/HEAD is unset, run: git remote set-head origin -a"
-        echo "  Or pass an explicit base via the caller's --branch <ref> flag."
+        if [ "$resolved_via" = "hardcoded fallback" ]; then
+            echo "  Repo at '${repo_root}' has no origin/HEAD configured AND no 'main' branch."
+            echo "  Either run: git remote set-head origin -a"
+            echo "  Or pass an explicit base via the caller's --branch <ref> flag."
+        else
+            echo "  origin/HEAD points at '${branch}' but that ref does not resolve."
+            echo "  Try: git fetch origin"
+            echo "  Or pass an explicit base via the caller's --branch <ref> flag."
+        fi
     } >&2
     return 1
 }
