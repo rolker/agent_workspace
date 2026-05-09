@@ -157,6 +157,6 @@ Self-test (task 4): run the new branch mode against this very branch
 **CI**: all 8 checks pass
 
 ### Actions
-- [ ] Fix `_resolve_default_branch.sh:63-65` — replace pipeline with two-step capture so `set -e + pipefail` callers don't abort before the `main` fallback when `origin/HEAD` is unset. (Self-test missed this because the workspace repo has origin/HEAD set.)
-- [ ] Fix `SKILL.md:87` — clarify that `$BASE_REF_FROM_USER` in the branch-mode snippet is a placeholder for the `--branch` arg value.
-- [ ] (Optional) Dismiss the Copilot review on PR after fixes land.
+- [x] Fix `_resolve_default_branch.sh:63-65` — replace pipeline with two-step capture so `set -e + pipefail` callers don't abort before the `main` fallback when `origin/HEAD` is unset. (`944243c`)
+- [x] Fix `SKILL.md:87` — clarify that `$BASE_REF_FROM_USER` in the branch-mode snippet is a placeholder for the `--branch` arg value. (`944243c`)
+- [ ] (Optional) Dismiss the Copilot review on PR after CI confirms fixes; merge once green.
