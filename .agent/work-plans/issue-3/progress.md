@@ -147,3 +147,16 @@ Self-test (task 4): run the new branch mode against this very branch
 ### Fix commit
 
 `cf4060b` — applied all must-fixes plus all suggestions worth fixing inline. Smoke test (`./cross_model_review.sh --branch --agent gemini`) passes clean post-fix.
+
+## External Review
+**Status**: complete
+**When**: 2026-05-09 14:05
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #185 — 1 review (Copilot bot) at `b54597a`, 2 inline comments, 2 valid, 0 false positives
+**CI**: all 8 checks pass
+
+### Actions
+- [ ] Fix `_resolve_default_branch.sh:63-65` — replace pipeline with two-step capture so `set -e + pipefail` callers don't abort before the `main` fallback when `origin/HEAD` is unset. (Self-test missed this because the workspace repo has origin/HEAD set.)
+- [ ] Fix `SKILL.md:87` — clarify that `$BASE_REF_FROM_USER` in the branch-mode snippet is a placeholder for the `--branch` arg value.
+- [ ] (Optional) Dismiss the Copilot review on PR after fixes land.
