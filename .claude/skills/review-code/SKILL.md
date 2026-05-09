@@ -8,14 +8,36 @@ description: Lead reviewer that orchestrates specialist sub-reviews (static anal
 ## Usage
 
 ```
-/review-code <pr-number-or-url> [light|standard|deep]
+# PR mode (default — review an open PR)
+/review-code <pr-number-or-url> [light|standard|deep] [--skip-static]
+
+# Branch mode (local pre-push self-review)
+/review-code --branch [<base-ref>] [--issue <N>] [--no-progress] [--skip-static] [light|standard|deep]
 ```
 
-Optional depth keyword overrides automatic classification.
+Optional depth keyword overrides automatic classification. `--skip-static`
+suppresses the static-analysis specialist in either mode (useful when
+pre-commit was clean). `--no-progress` (branch mode only) skips the
+progress.md persistence step — used for skill worktrees and one-off
+branches that don't have an issue to track against.
 
 ## Overview
 
-**Lifecycle position**: review-issue → plan-task → review-plan → implement → **review-code**
+**Lifecycle position**:
+
+```
+review-issue → plan-task → review-plan → implement
+   → review-code --branch  (local pre-push self-review)
+   → push
+   → review-code (PR mode)
+   → triage-reviews
+```
+
+The two `review-code` entry points share specialists, depth classification,
+the silence filter, and the report format. They differ only in where the
+diff and metadata come from (local git vs. open PR) and whether the
+"Existing review comments" sub-step runs (no PR comments to fetch
+pre-push).
 
 Multi-specialist code review system. A lead reviewer gathers context,
 classifies review depth based on change risk, dispatches specialist
@@ -37,7 +59,12 @@ modify the PR unless the user asks.
 
 ## Steps
 
-### 1. Gather PR context
+### 1. Gather review context
+
+The two modes draw their inputs from different sources. Pick the
+sub-step that matches the invocation.
+
+#### 1a. PR mode (default)
 
 ```bash
 # PR metadata
@@ -50,11 +77,45 @@ gh pr diff <N>
 gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*'
 ```
 
-Identify:
-- What repo the PR targets (workspace or project repo?)
+#### 1b. Branch mode (--branch [<base-ref>])
+
+This snippet is illustrative pseudo-code; the skill body describes
+behavior, not a copy-pastable shell block. `$BASE_REF_FROM_USER` is a
+placeholder for whatever value the user passed to `--branch <base>`
+(empty string when `--branch` was passed bare).
+
+```bash
+# Resolve base ref. Explicit `--branch <base>` arg wins; otherwise
+# the helper consults the per-project manifest (when wired — see #172),
+# falls back to `git symbolic-ref refs/remotes/origin/HEAD`, then `main`.
+source .agent/scripts/_resolve_default_branch.sh
+BASE_REF_FROM_USER=""  # set to `--branch` arg value if user passed one
+if [[ -n "$BASE_REF_FROM_USER" ]]; then
+    BASE="$BASE_REF_FROM_USER"
+else
+    BASE=$(resolve_default_branch)
+fi
+
+# Branch metadata
+BRANCH=$(git branch --show-current)
+HEAD_SHA=$(git rev-parse --short HEAD)
+
+# Files and diff
+git diff --name-only "$BASE"...HEAD
+git diff "$BASE"...HEAD
+
+# Linked issue: parse `feature/issue-<N>` or `feature/ISSUE-<N>-<desc>`
+# from the branch name. `--issue <N>` overrides; `--no-progress`
+# opts out of progress.md persistence for skill worktrees / one-off
+# branches. If neither resolves and `--no-progress` not passed, hard
+# error with remediation.
+```
+
+Identify (both modes):
+- What repo this affects (workspace or project)
 - What files changed and in which directories
-- The linked issue and its requirements
-- Whether a work plan exists (`.agent/work-plans/issue-*/plan.md` in the PR's target repo)
+- The linked issue and its requirements (or `--no-progress` if no issue applies)
+- Whether a work plan exists (`.agent/work-plans/issue-*/plan.md`)
 
 Read the **full content** of each changed file (not just the diff hunks) to
 understand surrounding context.
@@ -153,6 +214,13 @@ Report each finding as:
 - File, line number, tool name, message
 - Skip findings on lines not touched by this PR (context-only lines)
 
+**`--skip-static` flag** (both modes): skip this specialist entirely.
+Useful when pre-commit was clean and the user wants a faster review, or
+when the user has already run linters separately. Note that skipping
+this at Light tier leaves the review with no specialists; the silence
+filter will produce the "No findings" output, which is the documented
+behavior.
+
 #### 5b. Governance Specialist
 
 Load governance context:
@@ -179,14 +247,15 @@ For each: does the PR comply with the key requirement?
 something in the "If you change..." column. Are the corresponding "Also update..."
 items addressed? Mark each as Done or Missing.
 
-**Existing review comments**: Check for unresolved human and bot comments:
+**Existing review comments** (PR mode only): Check for unresolved human
+and bot comments:
 
 ```bash
 .agent/scripts/fetch_pr_reviews.sh --pr <N>
 ```
 
 Note unresolved human comments (high priority), valid bot findings, and false
-positives.
+positives. Skip this sub-step in branch mode — there's no PR yet.
 
 #### 5c. Plan Drift Specialist
 
@@ -234,20 +303,31 @@ keys used by the script: `claude-code` → `claude`, `gemini-cli` → `gemini`,
 `codex-cli` → `codex`, `copilot-cli` → `copilot`. The canonical keys are:
 `gemini`, `codex`, `claude`, `copilot`.
 
-For each non-caller agent, launch the cross-model review script:
+For each non-caller agent, launch the cross-model review script. Use
+`--pr <N>` in PR mode and `--branch [<ref>]` in branch mode (mutually
+exclusive — passing both is a hard error).
 
 ```bash
-# Example: Claude is the caller, dispatch gemini, codex, and copilot
-# Use --repo when the PR is in a different repo than the current directory
+# PR mode — example: Claude is the caller, dispatch gemini, codex, copilot
 .agent/scripts/cross_model_review.sh --pr <N> --agent gemini --repo owner/repo
 .agent/scripts/cross_model_review.sh --pr <N> --agent codex --repo owner/repo
 .agent/scripts/cross_model_review.sh --pr <N> --agent copilot --repo owner/repo
+
+# Branch mode — runs locally, no --repo needed in most cases
+.agent/scripts/cross_model_review.sh --branch --agent gemini
+.agent/scripts/cross_model_review.sh --branch <base> --agent codex
+.agent/scripts/cross_model_review.sh --branch --agent copilot --no-progress  # skill worktrees
 ```
 
-Pass `--repo <owner/repo>` when the PR lives in a different repo than the
-current working directory (e.g., reviewing a project PR from the workspace
-tree). Pass `--work-dir <path>` to place artifacts in a specific worktree
-instead of the current `git rev-parse --show-toplevel`.
+Pass `--repo <owner/repo>` (PR mode) when the PR lives in a different repo
+than the current working directory (e.g., reviewing a project PR from the
+workspace tree). Pass `--work-dir <path>` to place artifacts in a specific
+worktree instead of the current `git rev-parse --show-toplevel`.
+
+**Depth keywords are skill-level only.** `cross_model_review.sh` itself
+does not parse `light`/`standard`/`deep` — those control which
+specialists this skill dispatches. Passing them to the script will
+trigger an "Unknown argument" error.
 
 The script auto-detects the execution mode: tmux (background) when available,
 sync (blocking) when tmux is unavailable or in sandboxed environments. Use
@@ -286,6 +366,8 @@ Collect all findings from all dispatched specialists and filter:
 
 ### 7. Produce the report
 
+PR-mode header:
+
 ```markdown
 ## Code Review: #<N> — <title>
 
@@ -295,6 +377,31 @@ Collect all findings from all dispatched specialists and filter:
 **Files changed**: <count> (+<additions> -<deletions>)
 **Review depth**: <Light|Standard|Deep> (reason: <primary signal>)
 **Context**: <status of review-context.yaml — fresh / stale / not found>
+```
+
+Branch-mode header (replace **PR** with **Branch**/**Base**, and the
+title-line PR number with the branch name):
+
+```markdown
+## Code Review (Pre-Push): <branch-name>
+
+**Branch**: <branch-name> at `<short-sha>`
+**Base**: <base-ref>
+**Issue**: #<issue> — <issue-title>  <!-- or "Skipped (--no-progress)" -->
+**Repo**: workspace | <project-repo>
+**Files changed**: <count> (+<additions> -<deletions>)
+**Review depth**: <Light|Standard|Deep> (reason: <primary signal>)
+**Context**: <status of review-context.yaml — fresh / stale / not found>
+```
+
+The body sections (Must-Fix, Suggestions, Governance, Plan Adherence,
+Cross-Model Reviews, Existing Review Comments, Summary, Recommended
+Actions) are identical between modes — except **Existing Review Comments**
+is omitted in branch mode (no PR yet).
+
+PR-mode template body:
+
+```markdown
 
 ### Must-Fix
 
@@ -374,10 +481,20 @@ No governance concerns for a change of this scope.
 No issues found. LGTM.
 ```
 
+**Branch-mode equivalents**: for both the Light condensed and No-findings
+formats, swap the title line for `## Code Review (Pre-Push): <branch-name>`
+and replace the `**PR**: <url>` line with
+`**Branch**: <name> at <sha>` and `**Base**: <base-ref>`. Other content
+unchanged.
+
 ### 8. Persist review summary to progress file
 
-After outputting the report to the conversation, append a "Local Review"
-step to `progress.md` so findings persist across sessions.
+After outputting the report to the conversation, append a review-step
+entry to `progress.md` so findings persist across sessions.
+
+**Skip this entire step** if branch mode was invoked with
+`--no-progress` — that flag explicitly opts out of progress.md writes
+(skill worktrees and one-off branches without an issue context).
 
 **Locate or create progress.md**: Use the issue number resolved in step 1.
 Determine which repo owns the linked issue (workspace repo for workspace
@@ -397,17 +514,23 @@ issue: <issue>
 # Issue #<issue> — <issue title>
 ```
 
-Append this step entry:
+Append this step entry. Use `## Local Review` for PR mode and
+`## Local Review (Pre-Push)` for branch mode so the same issue can carry
+both a pre-push and a post-PR entry on its timeline without one
+overwriting the other:
 
 ```markdown
 
-## Local Review
+## Local Review              <!-- PR mode -->
+## Local Review (Pre-Push)   <!-- branch mode -->
 **Status**: complete
 **When**: <YYYY-MM-DD HH:MM>
 **By**: <agent name> (<model>)
 **Verdict**: <approved|changes-requested>
 
-**PR**: #<N> at `<short-sha>`
+**PR**: #<N> at `<short-sha>`        <!-- PR mode -->
+**Branch**: <name> at `<short-sha>`  <!-- branch mode -->
+**Base**: <base-ref>                 <!-- branch mode -->
 **Depth**: <tier> (reason: <signal>)
 **Must-fix**: <count> | **Suggestions**: <count>
 

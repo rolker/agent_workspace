@@ -101,6 +101,9 @@ run_agent_sync() {
 
 # --- Argument parsing ---
 PR_NUMBER=""
+BRANCH_MODE=false
+BRANCH_BASE=""
+NO_PROGRESS=false
 CLI_ISSUE_NUMBER=""
 FORCE_SYNC=false
 TARGET_AGENT="gemini"
@@ -108,7 +111,7 @@ EXPLICIT_REPO=""
 EXPLICIT_WORK_DIR=""
 CLI_WORK_PLANS_DIR=""
 
-USAGE="Usage: $0 --pr <N> [--issue <N>] [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--work-plans-dir <path>] [--sync]"
+USAGE="Usage: $0 (--pr <N> | --branch [<ref>]) [--issue <N>] [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--work-plans-dir <path>] [--sync] [--no-progress]"
 
 # Helper: treat a missing value OR a value that looks like another long
 # flag (`--foo`) as "missing value." Narrower than `-*` so negative
@@ -130,6 +133,23 @@ while [[ $# -gt 0 ]]; do
             require_value "--pr" "${2:-}"
             PR_NUMBER="$2"
             shift 2
+            ;;
+        --branch)
+            BRANCH_MODE=true
+            # --branch takes an optional value. Treat the next token as
+            # the base ref only if it doesn't look like another flag and
+            # isn't empty. Otherwise leave BRANCH_BASE empty so the
+            # default-branch resolver runs.
+            if [[ -n "${2:-}" && "${2}" != --* ]]; then
+                BRANCH_BASE="$2"
+                shift 2
+            else
+                shift 1
+            fi
+            ;;
+        --no-progress)
+            NO_PROGRESS=true
+            shift 1
             ;;
         --issue)
             require_value "--issue" "${2:-}"
@@ -168,8 +188,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$PR_NUMBER" ]]; then
-    echo "ERROR: --pr <N> is required" >&2
+if [[ -n "$PR_NUMBER" && "$BRANCH_MODE" == true ]]; then
+    echo "ERROR: --pr and --branch are mutually exclusive." >&2
+    echo "" >&2
+    echo "  Use --pr <N> for PR mode (post-push review)" >&2
+    echo "  or --branch [<base>] for branch mode (local pre-push review)." >&2
+    exit 2
+fi
+if [[ -z "$PR_NUMBER" && "$BRANCH_MODE" != true ]]; then
+    echo "ERROR: one of --pr <N> or --branch [<ref>] is required" >&2
     echo "$USAGE" >&2
     exit 2
 fi
@@ -195,7 +222,9 @@ if [[ -n "$CLI_ISSUE_NUMBER" && ! "$CLI_ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 # --- Dependency checks ---
-if ! command -v gh &>/dev/null; then
+# gh is required for PR mode (PR body/diff retrieval) but optional for
+# branch mode (offline pre-push review uses local git only).
+if [[ "$BRANCH_MODE" != true ]] && ! command -v gh &>/dev/null; then
     echo "WARNING: GitHub CLI (gh) not installed — required for PR metadata" >&2
     exit 1
 fi
@@ -204,10 +233,14 @@ fi
 # nested repos). Prefer `gh repo view` over parsing `git remote get-url`
 # — gh handles SSH host aliases (~/.ssh/config), GitHub Enterprise, and
 # custom remote names correctly, where the regex approach produced
-# garbage or silently fell back (issue #150).
+# garbage or silently fell back (issue #150). Skipped in branch mode
+# unless gh is available, since branch mode never calls gh -R.
+GH_REPO_SLUG=""
 if [[ -n "$EXPLICIT_REPO" ]]; then
     GH_REPO_SLUG="$EXPLICIT_REPO"
-else
+elif [[ "$BRANCH_MODE" != true ]] && command -v gh &>/dev/null; then
+    # PR mode only — branch mode never uses GH_REPO_ARGS so the
+    # network call is wasted work.
     GH_REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
 fi
 GH_REPO_ARGS=()
@@ -254,14 +287,45 @@ if [[ -z "$AGENT_BIN" ]]; then
 fi
 
 # --- Resolve issue number ---
-# Order: explicit --issue flag wins; otherwise require a GitHub closure
-# keyword in the PR body. The loose "first standalone #N" fallback was
-# removed in #149 — it silently routed artifacts to unrelated issues
-# (e.g. "see also #42. Related to #99...") and, post-#147, caused the
+# Order: explicit --issue flag wins; otherwise mode-specific resolution.
+# PR mode: require a GitHub closure keyword in the PR body. The loose
+# "first standalone #N" fallback was removed in #149 — it silently
+# routed artifacts to unrelated issues and, post-#147, caused the
 # work-plans resolver to abort with a confusing wrong-issue message.
+# Branch mode: parse the current branch name (AGENTS.md branch-naming
+# rule: feature/issue-<N> or feature/ISSUE-<N>-<desc>). On parse
+# failure, hard error unless --no-progress was passed.
 if [[ -n "$CLI_ISSUE_NUMBER" ]]; then
     ISSUE_NUMBER="$CLI_ISSUE_NUMBER"
+elif [[ "$BRANCH_MODE" == true ]]; then
+    CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "")
+    # Tightened regex: requires a separator after digits (so
+    # `feature/issue-3foo` doesn't silently capture `3`) and rejects
+    # leading zeros (so `feature/issue-03` doesn't bypass the
+    # --issue validator's positive-integer check). #149 lesson:
+    # silent issue-number misrouting is the failure mode to prevent.
+    if [[ "$CURRENT_BRANCH" =~ ^feature/[Ii][Ss][Ss][Uu][Ee]-([1-9][0-9]*)(-|$) ]]; then
+        ISSUE_NUMBER="${BASH_REMATCH[1]}"
+    elif [[ "$NO_PROGRESS" == true ]]; then
+        # Sentinel used for SESSION_NAME and findings filename; the
+        # per-issue artifact dir is replaced with a tmp dir below.
+        ISSUE_NUMBER="noprogress"
+    else
+        {
+            echo "ERROR: cannot resolve issue number."
+            echo ""
+            echo "  Current branch '${CURRENT_BRANCH}' does not match feature/issue-<N>."
+            echo ""
+            echo "  Fix one of:"
+            echo "    --issue <N>     point to a specific issue"
+            echo "    --no-progress   skip progress.md persistence"
+            echo "                    (skill worktrees, one-off branches)"
+            echo "    rename branch   if this should be tracked"
+        } >&2
+        exit 2
+    fi
 else
+    # PR mode: parse Closes/Fixes/Resolves keyword from PR body.
     # Capture gh's exit status distinctly from "retrieved an empty body"
     # so auth/network/permission failures produce the right remediation
     # (per review feedback on #149).
@@ -302,11 +366,15 @@ fi
 # --- Set up artifact directory (absolute paths for tmux session) ---
 # Refuse to run outside the matching worktree (issue #147) unless the
 # caller explicitly overrides the location via --work-plans-dir (exact
-# path) or --work-dir (repo root). Either override is routed through
-# $WORK_PLANS_DIR_OVERRIDE so the resolver treats them uniformly.
+# path), --work-dir (repo root), or --no-progress (mktemp -d for
+# ephemeral artifacts when there's no issue to track). Each override
+# routes through $WORK_PLANS_DIR_OVERRIDE so the resolver treats them
+# uniformly.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_resolve_work_plans_dir.sh
 source "${SCRIPT_DIR}/_resolve_work_plans_dir.sh"
+# shellcheck source=_resolve_default_branch.sh
+source "${SCRIPT_DIR}/_resolve_default_branch.sh"
 
 if [[ -n "$CLI_WORK_PLANS_DIR" ]]; then
     export WORK_PLANS_DIR_OVERRIDE="$CLI_WORK_PLANS_DIR"
@@ -318,6 +386,20 @@ elif [[ -n "$EXPLICIT_WORK_DIR" ]]; then
     # Resolve to absolute path so tmux sessions find the directory.
     EXPLICIT_WORK_DIR=$(cd "$EXPLICIT_WORK_DIR" && pwd)
     export WORK_PLANS_DIR_OVERRIDE="${EXPLICIT_WORK_DIR}/.agent/work-plans/issue-${ISSUE_NUMBER}"
+elif [[ "$NO_PROGRESS" == true ]]; then
+    # --no-progress: ephemeral artifact dir. Findings remain readable
+    # for the session but aren't tied to a per-issue directory and won't
+    # be picked up by progress.md commit conventions. Note that the
+    # branch-name regex may still resolve a real ISSUE_NUMBER (e.g.
+    # `feature/issue-3` with --no-progress); the artifact dir override
+    # always wins when --no-progress is set, even if the issue number
+    # was resolvable. Tmpdir is left in /tmp for the session; the OS
+    # cleans it up on next boot. Adding a `trap` to remove on exit was
+    # considered and declined: users frequently want to inspect
+    # findings after the script finishes.
+    NO_PROGRESS_TMP_DIR=$(mktemp -d -t "cross-model-review.XXXXXX")
+    echo "INFO: --no-progress: artifacts going to ${NO_PROGRESS_TMP_DIR}" >&2
+    export WORK_PLANS_DIR_OVERRIDE="${NO_PROGRESS_TMP_DIR}"
 fi
 
 WORK_PLANS_DIR=$(resolve_work_plans_dir "$ISSUE_NUMBER") || exit 4
@@ -326,10 +408,59 @@ mkdir -p "$WORK_PLANS_DIR"
 PROMPT_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-prompt.md"
 FINDINGS_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-findings.md"
 SESSION_NAME="review-${TARGET_AGENT}-${ISSUE_NUMBER}"
+# Two concurrent --no-progress runs share ISSUE_NUMBER="noprogress"
+# and would collide on the tmux session name; the existing
+# "kill any pre-existing session" logic would silently terminate the
+# first run. Append the PID so concurrent skill-worktree pre-push
+# reviews coexist.
+if [[ "$ISSUE_NUMBER" == "noprogress" ]]; then
+    SESSION_NAME="${SESSION_NAME}-$$"
+fi
 
-# --- Get PR metadata ---
-PR_TITLE=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json title --jq '.title' 2>/dev/null || echo "PR #${PR_NUMBER}")
-PR_URL=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+# --- Get review-target metadata ---
+# PR mode: query gh for the PR's title and URL.
+# Branch mode: resolve base ref via the helper, capture HEAD sha and
+# branch name for the prompt header.
+if [[ "$BRANCH_MODE" == true ]]; then
+    BRANCH_NAME=$(git branch --show-current 2>/dev/null || echo "(detached)")
+    HEAD_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+    if [[ -n "$BRANCH_BASE" ]]; then
+        # Validate and normalize: prefer the local ref, fall back to
+        # origin/<ref> when only the remote-tracking branch exists.
+        # Without normalization, `git diff develop...HEAD` would fail
+        # on a fresh clone where only `origin/develop` is reachable.
+        if git rev-parse --verify --quiet "$BRANCH_BASE" >/dev/null 2>&1; then
+            BASE_REF="$BRANCH_BASE"
+        elif git rev-parse --verify --quiet "origin/$BRANCH_BASE" >/dev/null 2>&1; then
+            BASE_REF="origin/$BRANCH_BASE"
+        else
+            echo "ERROR: --branch base '${BRANCH_BASE}' is not a known ref (locally or as origin/${BRANCH_BASE})" >&2
+            exit 2
+        fi
+    else
+        BASE_REF=$(resolve_default_branch) || exit 2
+    fi
+
+    PR_TITLE="Local branch ${BRANCH_NAME} at ${HEAD_SHA}"
+    PR_URL=""
+else
+    PR_TITLE=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json title --jq '.title' 2>/dev/null || echo "PR #${PR_NUMBER}")
+    PR_URL=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+fi
+
+# Human-readable label for status messages. Mode-aware so branch-mode
+# logs read sensibly without "PR #" prefixes that don't apply. Computed
+# after the metadata block so BRANCH_NAME is in scope under `set -u`.
+if [[ "$BRANCH_MODE" == true ]]; then
+    if [[ "$ISSUE_NUMBER" == "noprogress" ]]; then
+        TARGET_LABEL="branch ${BRANCH_NAME} (no-progress mode)"
+    else
+        TARGET_LABEL="branch ${BRANCH_NAME} (issue #${ISSUE_NUMBER})"
+    fi
+else
+    TARGET_LABEL="PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
+fi
 
 # --- Write prompt ---
 # Use a quoted heredoc for the static header to prevent shell expansion,
@@ -357,27 +488,49 @@ everything. Focus on:
 
 PROMPT_HEADER
 
-# Append PR metadata (needs expansion)
-printf '**Title**: %s\n**URL**: %s\n**PR Number**: #%s\n\n' \
-    "$PR_TITLE" "$PR_URL" "$PR_NUMBER" >> "$PROMPT_FILE"
+# Append review-target metadata (needs expansion).
+# Branch-mode prompt emits Branch + Base + HEAD instead of PR Number/URL
+# so the agent reviewing local pre-push work has the right framing.
+if [[ "$BRANCH_MODE" == true ]]; then
+    printf '**Title**: %s\n**Branch**: %s\n**Base**: %s\n**HEAD**: %s\n\n' \
+        "$PR_TITLE" "$BRANCH_NAME" "$BASE_REF" "$HEAD_SHA" >> "$PROMPT_FILE"
+else
+    printf '**Title**: %s\n**URL**: %s\n**PR Number**: #%s\n\n' \
+        "$PR_TITLE" "$PR_URL" "$PR_NUMBER" >> "$PROMPT_FILE"
+fi
 
-# Stream diff directly into the prompt file
+# Stream diff directly into the prompt file. Branch mode uses local
+# `git diff <base>...HEAD`; PR mode uses `gh pr diff <N>`.
 printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
 DIFF_START_LINE=$(wc -l < "$PROMPT_FILE")
-if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" >> "$PROMPT_FILE" 2>/dev/null; then
-    echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
-    echo '--- Review error: failed to retrieve diff ---' > "$FINDINGS_FILE"
-    exit 3
+if [[ "$BRANCH_MODE" == true ]]; then
+    if ! git diff "${BASE_REF}...HEAD" >> "$PROMPT_FILE" 2>/dev/null; then
+        echo "ERROR: Could not produce diff for ${BRANCH_NAME} against ${BASE_REF}" >&2
+        echo '--- Review error: failed to produce branch diff ---' > "$FINDINGS_FILE"
+        exit 3
+    fi
+else
+    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" >> "$PROMPT_FILE" 2>/dev/null; then
+        echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
+        echo '--- Review error: failed to retrieve diff ---' > "$FINDINGS_FILE"
+        exit 3
+    fi
 fi
 DIFF_END_LINE=$(wc -l < "$PROMPT_FILE")
 
 # Guard: if diff is empty, abort with a clear error instead of launching an
-# agent with no content to review
+# agent with no content to review.
 if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
-    echo "ERROR: PR #${PR_NUMBER} diff is empty — nothing to review" >&2
-    echo "  This usually means the PR was not found in the target repo." >&2
-    echo "  Try passing --repo <owner/repo> explicitly." >&2
-    echo '--- Review error: diff was empty (PR not found or no changes) ---' > "$FINDINGS_FILE"
+    if [[ "$BRANCH_MODE" == true ]]; then
+        echo "ERROR: branch '${BRANCH_NAME}' has no changes against '${BASE_REF}' — nothing to review" >&2
+        echo "  Either the branch is up-to-date with the base, or the base ref is wrong." >&2
+        echo '--- Review error: diff was empty (branch matches base) ---' > "$FINDINGS_FILE"
+    else
+        echo "ERROR: PR #${PR_NUMBER} diff is empty — nothing to review" >&2
+        echo "  This usually means the PR was not found in the target repo." >&2
+        echo "  Try passing --repo <owner/repo> explicitly." >&2
+        echo '--- Review error: diff was empty (PR not found or no changes) ---' > "$FINDINGS_FILE"
+    fi
     exit 3
 fi
 printf '```\n\n' >> "$PROMPT_FILE"
@@ -412,7 +565,7 @@ if [[ "$USE_SYNC" == true ]]; then
     echo "AGENT=${TARGET_AGENT}"
     echo "FINDINGS_FILE=${FINDINGS_FILE}"
     echo ""
-    echo "Running ${TARGET_AGENT} adversarial review synchronously for PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})..."
+    echo "Running ${TARGET_AGENT} adversarial review synchronously for ${TARGET_LABEL}..."
     echo "  Prompt:  ${PROMPT_FILE}"
     echo "  Results: ${FINDINGS_FILE}"
 
@@ -450,7 +603,7 @@ else
     echo "TMUX_SESSION=${SESSION_NAME}"
     echo "FINDINGS_FILE=${FINDINGS_FILE}"
     echo ""
-    echo "${TARGET_AGENT} adversarial review launched for PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
+    echo "${TARGET_AGENT} adversarial review launched for ${TARGET_LABEL}"
     echo "  Monitor: tmux attach -t ${SESSION_NAME}"
     echo "  Prompt:  ${PROMPT_FILE}"
     echo "  Results: ${FINDINGS_FILE}"

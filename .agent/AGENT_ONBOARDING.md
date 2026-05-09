@@ -66,6 +66,10 @@ Available workflow skills: `review-issue`, `plan-task`, `review-plan`,
 `triage-reviews`, `skill-importer`, `document-package`, `issue-triage`,
 `test-engineering`.
 
+`review-code` has two modes: pass a PR number/URL for post-push review
+of an open PR, or pass `--branch [<base-ref>]` for local pre-push
+self-review against a base ref.
+
 ## References
 
 - [`AGENTS.md`](../AGENTS.md) — Shared workspace rules (all agents)
