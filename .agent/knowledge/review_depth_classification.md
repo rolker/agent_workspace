@@ -5,7 +5,10 @@ How to determine the appropriate review depth for a PR. Used by the
 
 ## Risk Signals
 
-Collect these from PR metadata (`gh pr view` output):
+Collect these from diff metadata. In PR mode the source is
+`gh pr view` output; in branch mode (`/review-code --branch`) the same
+signals come from local git (`git diff --name-only <base>...HEAD`,
+`git diff --shortstat <base>...HEAD`).
 
 | Signal | Source | How to measure |
 |--------|--------|----------------|
@@ -119,12 +122,16 @@ based on other signals.
 ## User Override
 
 The user can request a specific tier by including a depth keyword in the
-`/review-code` invocation:
+`/review-code` invocation. Same keywords apply in both PR and branch
+modes:
 
-- `/review-code 42 light` — force Light review
-- `/review-code 42 standard` — force Standard review
-- `/review-code 42 deep` — force Deep review
+- `/review-code 42 light` — force Light review (PR mode)
+- `/review-code 42 standard` — force Standard review (PR mode)
+- `/review-code 42 deep` — force Deep review (PR mode)
+- `/review-code --branch deep` — force Deep review on local branch
+- `/review-code --branch main light` — force Light review against `main`
 
 User overrides take precedence over automatic classification. This allows
 forcing a thorough review on a small change, or a quick review on a large
-but low-risk change (e.g., bulk formatting).
+but low-risk change (e.g., bulk formatting). The `--skip-static` flag
+(both modes) suppresses the static-analysis specialist regardless of tier.
