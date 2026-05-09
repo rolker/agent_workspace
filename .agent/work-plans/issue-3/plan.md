@@ -84,7 +84,7 @@ PR #157.
 |------|--------|
 | `.agent/scripts/_resolve_default_branch.sh` | **New**. Sourced helper; exports `resolve_default_branch <repo_root>`. Resolution order: manifest hook (inert) → `git symbolic-ref refs/remotes/origin/HEAD` → `main` |
 | `.claude/skills/review-code/SKILL.md` | Add "Modes" section; fork Step 1 into PR-mode and branch-mode sub-steps; mark Step 5b "Existing review comments" as PR-only; differentiate Step 8 step header for branch mode; document `--skip-static` (works in both modes) and `--no-progress` (branch-mode-only) |
-| `.agent/scripts/cross_model_review.sh` | Add `--branch [<ref>]` (mutually exclusive with `--pr`, hard error if both); add `--skip-static` (no-op in this script — for symmetry with skill flag); add `--no-progress`; branch-mode prompt header; branch-mode diff capture via `git diff <base>...HEAD`; branch-mode issue resolution from `feature/issue-<N>` |
+| `.agent/scripts/cross_model_review.sh` | Add `--branch [<ref>]` (mutually exclusive with `--pr`, hard error if both); add `--no-progress`; branch-mode prompt header; branch-mode diff capture via `git diff <base>...HEAD`; branch-mode issue resolution from `feature/issue-<N>`. Note: `--skip-static` is not added here — this script only dispatches cross-model adversarial review; static analysis lives in the skill |
 | `.agent/knowledge/review_depth_classification.md` | Generalize "PR metadata" wording; add branch-mode paragraph |
 | `.agent/AGENT_ONBOARDING.md` | One-line note on the `--branch` flag |
 
@@ -149,7 +149,7 @@ in 4 of 5 with one extension.
 |------|-------|---------|
 | `--branch [<ref>]` | new | enable branch mode; optional base ref |
 | `--issue <N>` | both | override issue resolution |
-| `--skip-static` | both | suppress static-analysis specialist |
+| `--skip-static` | both | suppress static-analysis specialist (skill only — `cross_model_review.sh` doesn't run static) |
 | `--no-progress` | branch | skip progress.md persistence (skill worktrees) |
 | (positional `<pr-or-url>`) | PR | unchanged |
 | `light\|standard\|deep` | both | unchanged depth override |
