@@ -192,10 +192,10 @@ if [ -n "$SKILL_NAME" ]; then
         WORKTREE_DIR="$FOUND"
         echo "⚠️  Found worktree in legacy location. Remove and recreate to use new layout." >&2
     else
-        echo "Error: No $WORKTREE_TYPE worktree found for skill '$SKILL_NAME'"
-        echo ""
-        echo "Create one with:"
-        echo "  .agent/scripts/worktree_create.sh --skill $SKILL_NAME --type $WORKTREE_TYPE"
+        echo "Error: No $WORKTREE_TYPE worktree found for skill '$SKILL_NAME'" >&2
+        echo "" >&2
+        echo "Create one with:" >&2
+        echo "  .agent/scripts/worktree_create.sh --skill $SKILL_NAME --type $WORKTREE_TYPE" >&2
         return 1 2>/dev/null || exit 1
     fi
 else
@@ -223,10 +223,10 @@ else
         fi
         unset CURRENT_TOPLEVEL
         if [ -z "$WORKTREE_DIR" ]; then
-            echo "Error: No $WORKTREE_TYPE worktree found for issue #$ISSUE_NUM"
-            echo ""
-            echo "Create one with:"
-            echo "  .agent/scripts/worktree_create.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
+            echo "Error: No $WORKTREE_TYPE worktree found for issue #$ISSUE_NUM" >&2
+            echo "" >&2
+            echo "Create one with:" >&2
+            echo "  .agent/scripts/worktree_create.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE" >&2
             return 1 2>/dev/null || exit 1
         fi
     fi

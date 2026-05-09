@@ -42,6 +42,22 @@ REPO_SLUG=""
 PLAN_FILE=""
 PARENT_ISSUE_NUM=""
 WORKFLOW=""
+PRINT_PATH_ONLY=false
+
+# Pre-scan for --print-path-only so quiet-mode redirection activates BEFORE
+# the main argument parser runs. Without this, parse-time errors (unknown
+# flag, missing required value) would leak to stdout and pollute the path
+# channel. The flag is still consumed by the main parse loop below — this
+# pre-scan only handles the redirect side-effect.
+for _arg in "$@"; do
+    if [ "$_arg" = "--print-path-only" ]; then
+        PRINT_PATH_ONLY=true
+        exec 3>&1
+        exec 1>&2
+        break
+    fi
+done
+unset _arg
 
 # Skills allowed to create worktrees without a GitHub issue
 ALLOWED_SKILLS=("research" "inspiration-tracker")
@@ -58,11 +74,14 @@ show_usage() {
     echo "  --parent-issue <N>    Parent issue number; branches from parent's feature branch"
     echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
     echo "  --workflow <name>     Workflow template; initializes progress.md (e.g., collaborative)"
+    echo "  --print-path-only     Suppress all stdout except the final worktree path on success"
+    echo "                        (errors go to stderr; exit code reflects success/failure)"
     echo ""
     echo "Examples:"
     echo "  $0 --issue 123 --type workspace"
     echo "  $0 --issue 123 --type project --workflow collaborative"
     echo "  $0 --skill research --type workspace"
+    echo "  WT=\$($0 --issue 123 --type workspace --print-path-only)"
 }
 
 # Parse arguments
@@ -118,6 +137,10 @@ while [[ $# -gt 0 ]]; do
             WORKFLOW="$2"
             shift 2
             ;;
+        --print-path-only)
+            PRINT_PATH_ONLY=true
+            shift
+            ;;
         -h|--help)
             show_usage
             exit 0
@@ -129,6 +152,8 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# (Quiet-mode redirect was set up by the pre-scan above, before parsing.)
 
 # Validate --issue XOR --skill
 if [ -n "$ISSUE_NUM" ] && [ -n "$SKILL_NAME" ]; then
@@ -664,3 +689,8 @@ else
     echo "  $SCRIPT_DIR/worktree_remove.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
 fi
 echo ""
+
+# Quiet mode: emit only the worktree path on the original stdout (fd 3).
+if [ "$PRINT_PATH_ONLY" = true ]; then
+    echo "$WORKTREE_DIR" >&3
+fi
