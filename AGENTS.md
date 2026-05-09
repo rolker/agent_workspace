@@ -341,7 +341,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/check_branch_updates.sh` | Check if branch is behind default |
 | `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
 | `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
-| `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap), remove worktree, delete branch, sync main |
+| `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, waits for CI on the latest HEAD before merging), remove worktree, delete branch, sync main; `--no-wait` to skip the CI wait |
 | `.agent/scripts/update_roadmap.sh` | Auto-update roadmap status for completed issues |
 | `.agent/scripts/sync_project.py` | Sync workspace + project repos |
 | `.agent/scripts/validate_workspace.py` | Validate project/ configuration |
