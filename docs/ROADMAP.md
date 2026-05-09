@@ -93,7 +93,7 @@ would flag, PRs pass on first try.
 | AI slop detection in design review | #61 | done | gstack | Check for generic AI patterns (hero sections, card grids, stock imagery) |
 | Diff-aware test targeting | #53 | done | gstack | Map git diff to affected test targets, focus QA on what changed |
 | Two-mode push policy | — | planned | 2026-04-19 session | Mode 1 push-early vs Mode 2 push-when-ready; doc change + `unpushed_branches.sh` helper |
-| Add branch mode to /review-code | #3 | planned | 2026-04-19 session | Pre-push local review via `/review-code --branch <ref>`; `cross_model_review.sh --branch` too. Subsumes prior "review-branch skill" scope of #3. Must work for workspace AND project from day one |
+| Add branch mode to /review-code | #3 | done | 2026-04-19 session | Pre-push local review via `/review-code --branch <ref>`; `cross_model_review.sh --branch` too. Subsumes prior "review-branch skill" scope of #3. Must work for workspace AND project from day one |
 | Feed shell-surface misses back into /review-code | — | planned | 2026-04-19 session | Specific patterns: echo-concat (bash -n accepts), `set -u` + `$1` before check, flag-as-value parsing, gh-failure fall-through. Formalize the Copilot-miss capture loop |
 | Flag script/skill changes without tests | #136 | planned | — | review-code enhancement |
 | Verification-before-completion skill | #29 | planned | superpowers | Observable verification before marking tasks done |
