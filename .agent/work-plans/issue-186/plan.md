@@ -99,49 +99,44 @@ surfaces merit different mechanisms.
 | `merge_pr.sh` | `AGENTS.md` script-reference table | Yes (file 3) |
 | Add a new knowledge doc | (standalone reference; no cascading deps) | Yes (file 2) |
 
-## Open Questions
+## Decisions
 
-These are the architectural decisions worth your eyes before implement.
-Numbered so you can answer "1=A, 2=B, ..." or override individually.
+Captured 2026-05-09 during plan review with Roland. Each decision was asked
+one at a time with concrete previews; recommendations were taken on all
+three.
 
-1. **Surface-1 vs Surface-2 vs both.** Three options:
-   - **(a) Both** (Recommended): script-side `gh pr checks --watch` in
-     `merge_pr.sh` *plus* agent-side knowledge doc for the `Monitor` pattern.
-     Script fix solves today's pain immediately for everyone; knowledge doc
-     captures the pattern for future agent-flow uses (without requiring a
-     code change to consume it).
-   - **(b) Script-side only**: just add the wait to `merge_pr.sh`. Simpler
-     PR; defer the agent-side `Monitor` knowledge doc until a concrete
-     agent-flow use case appears.
-   - **(c) Agent-side only**: no script change; build a `/merge-pr`
-     slash command that wraps `merge_pr.sh` and uses `Monitor` for the
-     wait. Larger architectural change; `merge_pr.sh` stays wait-less for
-     non-Claude agents (still the manual-second-invocation pain for them).
+1. **Surface scope: both.** Script-side `gh pr checks --watch` in
+   `merge_pr.sh` *plus* a new `.agent/knowledge/agent_wait_patterns.md`
+   knowledge doc for the agent-side `Monitor` pattern. The script fix
+   solves the manual-second-invocation pain for *every* framework
+   immediately; the knowledge doc captures the agent-side pattern as
+   durable guidance for future Claude Code flows (no consumer required
+   today). Matches the issue's framework-portability AC and the
+   workspace's "Workspace improvements cascade to projects" principle.
 
-   Option **(a)** matches the issue's scope ("merge flows" + framework
-   portability), gives the immediate win, and leaves room for follow-up.
+2. **Wait behaviour: `--fail-fast`.** `gh pr checks --watch --fail-fast`
+   exits on the first failed check; the script then aborts the merge
+   with a useful error pointing at the failed check (and its run URL).
+   Saves time on busted CI runs; clear exit-code handling (gh exits 8
+   on first-fail). The script translates the failure into a clear
+   merge-aborted message rather than letting `set -e` swallow context.
 
-2. **Wait timeout / fail-fast behaviour.** `gh pr checks --watch` defaults
-   to "wait forever". Three reasonable choices for the script:
-   - **(a) `--fail-fast`** (Recommended): exits on first failed check;
-     the script then aborts the merge with a useful error pointing at the
-     failed check. Saves time on busted CI runs.
-   - **(b) Plain `--watch`**: wait until all checks complete, then merge
-     if green or fail with a generic error if not.
-   - **(c) Wrapped in `timeout`**: e.g. `timeout 10m gh pr checks --watch`.
-     Defends against runaway CI but introduces another knob.
+3. **Smoke test: documented manual verification.** ~5 LOC procedure in
+   `merge_pr.sh`'s header explaining how to reproduce today's failure
+   mode (push a poke commit, run `make merge-pr` immediately) and verify
+   the fix avoids it. Honest about test-automation limits — automating
+   this would require mocking `gh pr checks --watch` (drift risk) or
+   spinning throwaway PRs (network + auth dependencies). Out-of-scope
+   for #186; revisit if regression risk grows.
 
-3. **Smoke-test feasibility.** The wait path is hard to test end-to-end
-   without a live PR. Three options:
-   - **(a) Document manual verification** (Recommended for first cut):
-     a script-header procedure that explains how to reproduce today's
-     failure mode in a sandbox, and verify the fix avoids it. Low cost,
-     honest about test-automation limits.
-   - **(b) Mocked smoke test**: stub `gh pr checks --watch` with a
-     scripted success/failure sequence. Decent coverage; some risk of
-     drift from real `gh` behaviour.
-   - **(c) Real-PR smoke test**: spin a throwaway PR each run. High
-     fidelity; needs network, gh auth, and PR-cleanup logic.
+### Resulting flag surface (script-side)
+
+| Flag | Meaning |
+|------|---------|
+| `--no-wait` | Skip the new internal CI wait (for cases where the user knows CI is green) |
+| `--no-roadmap-update` | (existing) skip the roadmap auto-update step |
+| `--type workspace\|project` | (existing) override auto-detection |
+| `--pr <N>` | (existing) PR number; required |
 
 ## Estimated Scope
 
