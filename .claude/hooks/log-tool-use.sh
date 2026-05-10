@@ -28,7 +28,10 @@ INPUT=$(cat)
     TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // "unknown"')
     CWD=$(echo "$INPUT" | jq -r '.cwd // "unknown"')
     PERM_MODE=$(echo "$INPUT" | jq -r '.permission_mode // "unknown"')
-    INPUT_SUMMARY=$(echo "$INPUT" | jq -c '.tool_input' | head -c 200)
+    # 2000-byte cap on input_summary. Earlier value (200) clipped ~40% of Bash
+    # entries mid-command, blunting permission-pattern analysis. 2000 captures
+    # typical heredoc bodies and `python3 -c` scripts intact.
+    INPUT_SUMMARY=$(echo "$INPUT" | jq -c '.tool_input' | head -c 2000)
 
     jq -n -c \
       --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
