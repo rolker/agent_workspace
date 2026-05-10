@@ -336,6 +336,8 @@ sync (blocking) when tmux is unavailable or in sandboxed environments. Use
 2. Runs the agent (in tmux session `review-<agent>-<issue>` or synchronously)
 3. Agent writes findings to `.agent/work-plans/issue-<issue>/review-<agent>-findings.md`
 
+The prompt and findings files are not committed (see #193) — gitignored when written under `.agent/work-plans/`, or outside the repo when `--no-progress` puts them in a `/tmp` dir. Regenerated each run, not part of the audit trail. Durable findings belong in `progress.md`.
+
 **If the script exits non-zero** for a given agent (CLI not installed or
 unavailable), note it in the report and continue with other agents. One
 agent's unavailability does not block the others. Do not fail the review.

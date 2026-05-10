@@ -44,3 +44,11 @@ __pycache__/
 
 # CodeQL generated files
 _codeql_detected_source_root
+
+# Cross-model review artifacts (see #193)
+# Regenerated each /review-code run; bloats PR diffs and recursively grows
+# until it breaks Codex's 1MB context window. Patterns are suffix-anchored
+# (-prompt.md / -findings.md) so a future tracked review-*-summary.md
+# audit-trail file is not caught.
+.agent/work-plans/*/review-*-prompt.md
+.agent/work-plans/*/review-*-findings.md
