@@ -99,3 +99,26 @@ or `--skill research --type workspace` from the main tree. Most
 realistic test is the next worktree creation in this session — if
 that fails, the fix didn't take. The session itself becomes the
 dogfood.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-05-09 18:25
+**By**: Claude Code Agent (claude-opus-4-7) + Claude adversarial subagent
+**Verdict**: changes-requested (3 small doc findings)
+
+**Branch**: `feature/issue-188` at `b1a1ce3`
+**Base**: `main`
+**Depth**: Standard (reason: governance-file override; line count inflated by `plan.md`/`progress.md` tracking artifacts, primary signal is the `SKILL.md` edit)
+**Must-fix**: 1 | **Suggestions**: 2
+
+### Findings
+- [ ] (must-fix) Line 70 sentence claims "after fix shipped in this PR for `worktree_enter.sh`" but that fix shipped in PR #180 (`d7d8fa8`); reword — `.claude/skills/start-task/SKILL.md:70`
+- [ ] (suggestion) "Argument handling" shell-metacharacter warning is technically inaccurate — bash doesn't re-expand variable contents; tighten to concrete failure mode — `.claude/skills/start-task/SKILL.md:31`
+- [ ] (suggestion) Line 70 stdout-vs-stderr claim is over-broad — true only for not-found path, not Unknown-option path which still writes to stdout. Either narrow the claim or open follow-up to route Unknown-option to stderr in `worktree_enter.sh` — `.claude/skills/start-task/SKILL.md:70`
+
+### Notes
+- Bash semantics verified correct by adversarial trace.
+- Plan adherence clean (all 5 planned edits landed; no drift).
+- Static analysis: no profile for `.md` files; report explicit per skill convention.
+- Cross-model dispatch skipped (Standard tier).
+- All three findings are doc/comment polish, ~5 minutes to fix inline.
