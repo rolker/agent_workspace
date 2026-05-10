@@ -30,7 +30,7 @@ issue: 195
 **CI**: all-pass (8 checks)
 
 ### Actions
-- [ ] Narrow `Bash(git -C * branch *)` to read-only forms — same bypass class as round-1 `command *` issue (HIGH). Replace with: `Bash(git -C * branch)`, `Bash(git -C * branch --show-current *)`, `Bash(git -C * branch -a *)`, `Bash(git -C * branch -v *)`, `Bash(git -C * branch --list *)`.
+- [x] Narrow `Bash(git -C * branch *)` to read-only forms — commit 1a8d2b6.
 - [ ] Decide on `awk *` and `sed -n *` (re-raised by Copilot — bot's persistence raises the bar on dismissal). Options: keep with acknowledgment, or move to settings.local.json.
 - [ ] (Optional) Add `*/.agent/scripts/gh_create_issue.sh *` and `*/.agent/scripts/update_roadmap.sh *` path variants for consistency with surrounding pattern.
 - [ ] (Optional) Add explicit acknowledgment in PR body that `echo`/`printf`/`cat` redirection is a universal shell property, not a property unique to this PR's additions.
