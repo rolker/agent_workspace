@@ -1,0 +1,19 @@
+---
+issue: 193
+---
+
+# Issue #193 — review-code: untrack cross-model review artifacts (break PR diffs and Codex's 1MB context)
+
+## Plan
+**Status**: complete
+**When**: 2026-05-09 23:45
+**By**: Claude Code Agent (claude-opus-4-7)
+
+Plan file: `.agent/work-plans/issue-193/plan.md`.
+
+Minimal workspace fix: add two ignore patterns to `.gitignore`, note the
+convention in the `cross_model_review.sh` header and the `review-code`
+skill body, and open a sibling project-repo issue for daddy_camp's
+matching `.gitignore` change. Defense-in-depth filter, summary-file
+emission, and cascade-pattern docs deferred to follow-ups by explicit
+scope decision.
