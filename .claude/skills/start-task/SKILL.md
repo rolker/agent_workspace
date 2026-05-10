@@ -28,7 +28,7 @@ Replace the two-step `worktree_create.sh && source worktree_enter.sh` ceremony w
 Two limitations of slash-command argument forwarding worth knowing:
 
 - **Embedded whitespace in a value is not preserved.** `/start-task --branch "feature/foo bar"` flattens to `--branch feature/foo bar` at the slash-command boundary, then word-splits into three tokens. There is no recovery mechanism at this layer. For values with embedded whitespace, call `worktree_create.sh` directly. (Listed in "When not to use" above.)
-- **Shell metacharacters in values** (`;`, `$`, backticks) remain a concern even with globbing disabled — they could still execute under unquoted expansion in certain command-substitution shapes. The agent should warn the user and refuse rather than blindly execute when these appear.
+- **Shell metacharacters in values** (`;`, `$`, backticks) reach the underlying scripts as literal characters. With `set -f` disabling glob expansion and bash not re-expanding variable contents, direct injection at the slash-command boundary isn't the concern; the actual risk is downstream — these characters can have unexpected meanings to the scripts that consume the values (as branch names, file paths, or in error messages). For values that need metacharacters, call `worktree_create.sh` directly with proper shell quoting.
 
 ## Steps
 
@@ -67,7 +67,7 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 
 ### 3. Resolve the worktree path (existing → create-new fallback)
 
-Exit-code-checked idiom — error text from the "not found" path goes to stderr (after fix shipped in this PR for `worktree_enter.sh`), so `2>/dev/null` actually suppresses it:
+Exit-code-checked idiom — error text from the "not found" path goes to stderr, so `2>/dev/null` suppresses it. The `worktree_enter.sh` "Unknown option" path still writes to stdout (caught harmlessly by the elif chain when it overwrites `$WT`); see #194 for routing that to stderr too.
 
 ```bash
 # Disable glob expansion for the unquoted $ARGUMENTS expansion below.
