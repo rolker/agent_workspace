@@ -3,9 +3,11 @@
 #
 # Launches an external CLI agent to provide an independent adversarial review
 # of a PR. Writes prompt and findings to .agent/work-plans/issue-<N>/
-# alongside the work plan. These files are gitignored — regenerated each
-# run, not part of the audit trail (durable findings live in progress.md).
-# See #193 for the recursive-bloat failure mode that motivated this.
+# alongside the work plan — or to a /tmp dir under --no-progress. These
+# files are not committed (gitignored under .agent/work-plans/, outside
+# the repo under --no-progress). Regenerated each run, not part of the
+# audit trail (durable findings live in progress.md). See #193 for the
+# recursive-bloat failure mode that motivated this.
 #
 # Supported agents: gemini, codex, claude, copilot
 #
