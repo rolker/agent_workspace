@@ -32,3 +32,17 @@ worktree; new artifacts appeared at
 `review-*-summary.md` shape.
 
 Step 6 (sibling daddy_camp issue) deferred to after PR #198 marked ready.
+
+## External Review
+**Status**: complete
+**When**: 2026-05-09 23:30
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #198 — 1 review (Copilot, bot), 3 inline comments, 0 false positives
+**CI**: all 8 checks pass
+
+### Actions
+- [ ] Fix wording in `cross_model_review.sh` (line 6-8): cover both gitignored and `--no-progress` modes
+- [ ] Fix matching wording in `.claude/skills/review-code/SKILL.md` line 339
+- [ ] Reword `progress.md` Plan summary to drop the in-PR sibling-issue claim
+- [ ] Update `progress.md` Implement section: sibling issue is filed as `daddy_camp#108`, not deferred
