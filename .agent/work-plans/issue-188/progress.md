@@ -112,9 +112,9 @@ dogfood.
 **Must-fix**: 1 | **Suggestions**: 2
 
 ### Findings
-- [ ] (must-fix) Line 70 sentence claims "after fix shipped in this PR for `worktree_enter.sh`" but that fix shipped in PR #180 (`d7d8fa8`); reword — `.claude/skills/start-task/SKILL.md:70`
-- [ ] (suggestion) "Argument handling" shell-metacharacter warning is technically inaccurate — bash doesn't re-expand variable contents; tighten to concrete failure mode — `.claude/skills/start-task/SKILL.md:31`
-- [ ] (suggestion) Line 70 stdout-vs-stderr claim is over-broad — true only for not-found path, not Unknown-option path which still writes to stdout. Either narrow the claim or open follow-up to route Unknown-option to stderr in `worktree_enter.sh` — `.claude/skills/start-task/SKILL.md:70`
+- [x] (must-fix) Line 70 sentence claims "after fix shipped in this PR for `worktree_enter.sh`" but that fix shipped in PR #180 (`d7d8fa8`); reworded — `.claude/skills/start-task/SKILL.md:70` (`9b5429d`)
+- [x] (suggestion) "Argument handling" shell-metacharacter warning is technically inaccurate — bash doesn't re-expand variable contents; tightened to downstream-handling risk — `.claude/skills/start-task/SKILL.md:31` (`9b5429d`)
+- [x] (suggestion) Line 70 stdout-vs-stderr claim narrowed; Unknown-option asymmetry called out with cross-reference to follow-up #194 — `.claude/skills/start-task/SKILL.md:70` (`9b5429d`)
 
 ### Notes
 - Bash semantics verified correct by adversarial trace.
