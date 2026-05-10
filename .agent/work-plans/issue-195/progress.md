@@ -20,3 +20,17 @@ issue: 195
 - [x] Remove `Bash(make deploy *)`, `Bash(make deploy)`, `Bash(make e2e *)`, `Bash(make e2e)` (LOW: targets do not exist in workspace Makefile — wrong-repo carryover from settings.local.json) — commit f7ace0d
 - [x] Tighten PR body language: replaced "All read-only or output-only" overclaim with explicit "checked-in workspace scripts" trust-model framing; awk/sed shell-escape risk acknowledged in new "Trust model" section.
 - [ ] (Optional) Reply on Copilot comments #5 (`git -C * fetch` — false positive; mirrors existing allowed `git fetch *`) and #7 (`gh_create_issue.sh`/`update_roadmap.sh` — consistent with `worktree_create.sh` precedent).
+
+## External Review (round 2)
+**Status**: complete
+**When**: 2026-05-10 04:55
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #196 — 2 reviews total, 5 new comments at HEAD `7cf3d59` (round-1 changes verified addressed). 1 valid, 2 re-raised judgment calls, 1 universal-shell concern, 1 consistency suggestion.
+**CI**: all-pass (8 checks)
+
+### Actions
+- [ ] Narrow `Bash(git -C * branch *)` to read-only forms — same bypass class as round-1 `command *` issue (HIGH). Replace with: `Bash(git -C * branch)`, `Bash(git -C * branch --show-current *)`, `Bash(git -C * branch -a *)`, `Bash(git -C * branch -v *)`, `Bash(git -C * branch --list *)`.
+- [ ] Decide on `awk *` and `sed -n *` (re-raised by Copilot — bot's persistence raises the bar on dismissal). Options: keep with acknowledgment, or move to settings.local.json.
+- [ ] (Optional) Add `*/.agent/scripts/gh_create_issue.sh *` and `*/.agent/scripts/update_roadmap.sh *` path variants for consistency with surrounding pattern.
+- [ ] (Optional) Add explicit acknowledgment in PR body that `echo`/`printf`/`cat` redirection is a universal shell property, not a property unique to this PR's additions.
