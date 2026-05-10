@@ -34,3 +34,14 @@ issue: 195
 - [ ] Decide on `awk *` and `sed -n *` (re-raised by Copilot — bot's persistence raises the bar on dismissal). Options: keep with acknowledgment, or move to settings.local.json.
 - [ ] (Optional) Add `*/.agent/scripts/gh_create_issue.sh *` and `*/.agent/scripts/update_roadmap.sh *` path variants for consistency with surrounding pattern.
 - [ ] (Optional) Add explicit acknowledgment in PR body that `echo`/`printf`/`cat` redirection is a universal shell property, not a property unique to this PR's additions.
+
+## External Review (round 3)
+**Status**: complete
+**When**: 2026-05-10 05:15
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #196 — 3 reviews total, 3 new comments at HEAD `f32119b`. **No new actionable items**: all 3 are re-raises (awk/sed shell escape — 3rd time; echo/printf/cat compound-command redirection — 2nd time with sharper deny-bypass framing).
+**CI**: all-pass (8 checks)
+
+### Actions
+- [ ] None new. The compound-command/redirection concern is a structural property of pattern-based allowlists (applies to pre-existing `grep *`, `ls *`, `jq *` etc., not introduced by this PR). User decision on awk/sed/path-variants stands from round 2.
