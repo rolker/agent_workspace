@@ -30,35 +30,64 @@ summary file, and cascade docs deferred to follow-ups.
    the artifact filenames under any work-plans dir. Place them in a new
    "Cross-model review artifacts" section with a brief comment explaining
    why (regenerated per run; bloats PR diffs; breaks Codex 1MB context).
+   Add a one-line note that the patterns are intentionally suffix-anchored
+   (`-prompt.md` / `-findings.md`, not bare `review-*`) so a future
+   `review-*-summary.md` audit-trail file is not caught by the same
+   patterns. Future-proofs the deferred summary-file follow-up.
 
-2. **Note the convention in `cross_model_review.sh` header.** One
-   sentence in the existing script-header comment block (lines 2-39)
-   stating that the prompt + findings files are ephemeral and gitignored.
-   No code change. This is the consequences-map cascade for the
-   `review-code` skill: per the principles guide, changes to the
-   `review-code` skill or its support script should keep both in sync.
+2. **Untrack the 4 already-tracked workspace artifacts.** `git ls-files`
+   shows 4 review artifacts on main from past merged work
+   (`.agent/work-plans/issue-173/review-{codex,gemini}-{prompt,findings}.md`).
+   Run `git rm --cached` on them in this PR. Files stay on disk; only the
+   index entry goes. Safe to do here because there are no open workspace
+   PRs to disrupt (verified). The project-side sibling issue keeps the
+   equivalent cleanup optional with a "when no in-flight PRs touch these
+   paths" qualifier (project repo has open PR #106).
 
-3. **Update `review-code` SKILL.md.** Lines 335–337 describe the script
+3. **Note the convention in `cross_model_review.sh` header.** Replace the
+   sentence at line 6 — *"These files can be committed as review
+   artifacts."* — which becomes incorrect with this change. New text:
+   *"These files are gitignored — regenerated each run, not part of the
+   audit trail (durable findings live in `progress.md`)."* Single-line
+   replacement; no code change. This is the consequences-map cascade for
+   the `review-code` skill.
+
+4. **Update `review-code` SKILL.md.** Lines 335–337 describe the script
    writing the prompt/findings paths. Add a one-liner clarifying these
    are gitignored and not part of the audit trail; durable findings live
    in `progress.md` (already the convention).
 
-4. **Open a sibling project-repo issue in `rolker/daddy_camp`.** Body
-   references this issue, lists the same two patterns for
-   `daddy_camp/.gitignore`, and notes the optional `git rm --cached`
-   cleanup for the 8 already-tracked artifacts under
-   `.agent/work-plans/issue-*/review-*-{prompt,findings}.md`. This
-   sibling issue tracks the project-side fix; the project-repo PR is
-   separate work in the daddy_camp worktree.
+5. **Verify (acceptance criterion #2).** From this worktree, run
+   `cross_model_review.sh --branch main --no-progress --agent gemini`
+   (or whichever agent CLI is available) against the local branch.
+   Confirm the resulting `review-gemini-{prompt,findings}.md` files
+   appear in the temp dir (`--no-progress`) and that
+   `git status --porcelain | grep -E 'review-(prompt|findings)'`
+   returns nothing. If a non-`--no-progress` form is preferred (writing
+   into `.agent/work-plans/issue-193/`), the same grep against the
+   worktree's status must return nothing — proving the `.gitignore`
+   patterns catch them.
+
+6. **Open a sibling project-repo issue in `rolker/daddy_camp`.** Done
+   *after* PR #198 is review-ready, so the sibling issue can reference
+   both #193 (workspace) and the workspace PR URL. Body lists the same
+   two patterns for `project/.gitignore`, and notes the optional
+   `git rm --cached` cleanup for the 8 already-tracked project artifacts
+   under `.agent/work-plans/issue-*/review-*-{prompt,findings}.md`
+   (qualified: do when no in-flight PRs touch those paths). **This step
+   is intentionally a side-effect outside this PR's diff** — the
+   project-repo PR is separate work in the daddy_camp worktree.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.gitignore` | Add 2 patterns + section comment (~5 lines) |
-| `.agent/scripts/cross_model_review.sh` | 1 sentence in the header-comment block (~lines 2-39); no code change |
+| `.gitignore` | Add 2 suffix-anchored patterns + section comment + future-proofing note (~6 lines) |
+| `.agent/work-plans/issue-173/review-{codex,gemini}-{prompt,findings}.md` (×4) | `git rm --cached` — untrack already-committed artifacts |
+| `.agent/scripts/cross_model_review.sh` | Replace line-6 sentence; no code change |
 | `.claude/skills/review-code/SKILL.md` | 1 line near the existing "Writes a review prompt to ..." description (~line 335) |
-| `(new)` daddy_camp sibling issue | Opened via `gh issue create -R rolker/daddy_camp`, links back to #193 |
+| *(verification, not a file change)* | Run `cross_model_review.sh` and confirm `git status` stays clean |
+| *(out-of-PR side effect)* daddy_camp sibling issue | Opened last, via `gh issue create -R rolker/daddy_camp`, links back to #193 + PR #198 |
 
 ## Principles Self-Check
 
@@ -95,4 +124,4 @@ summary file, and cascade docs deferred to follow-ups.
 
 ## Estimated Scope
 
-Single PR. Implementation is ~5 lines of `.gitignore`, two one-liner doc touches, one `gh issue create` call against `daddy_camp`. Total diff target: <30 lines of meaningful change.
+Single PR. Implementation is ~6 lines of `.gitignore`, 4 untrack lines, two one-liner doc touches, a verification run, and one out-of-diff `gh issue create` call against `daddy_camp`. Total diff target: <40 lines of meaningful change (the 4 `git rm --cached` show as `delete mode 100644 ...` lines, not content).
