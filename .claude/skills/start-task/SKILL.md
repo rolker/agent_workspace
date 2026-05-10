@@ -19,10 +19,16 @@ Replace the two-step `worktree_create.sh && source worktree_enter.sh` ceremony w
 - The session is **already inside a worktree.** EnterWorktree refuses in that case. Step 1 below detects this and stops; tell the user to exit the current worktree first.
 - You want a worktree without entering it (e.g., creating one for another agent). Call `worktree_create.sh` directly.
 - The framework is **not Claude Code.** Codex / Gemini agents stay on the existing `worktree_create.sh` + `worktree_enter.sh --print-path` / `--shell-snippet` flow. This command depends on the native `EnterWorktree` tool.
+- **Values containing embedded whitespace** (e.g. `--branch "feature/foo bar"`). Slash-command argument forwarding flattens user-supplied quotes; the inner whitespace will not be preserved across the boundary. Call `worktree_create.sh` directly for those cases.
 
 ## Argument handling
 
-`$ARGUMENTS` contains the user's flags exactly as typed. The bash idioms below quote `"$ARGUMENTS"` to preserve spacing within a single value (e.g. `--branch "feature/foo bar"`). For values containing shell metacharacters (`;`, `$`, backticks, etc.), the agent should warn the user and refuse rather than blindly execute.
+`$ARGUMENTS` contains the user's flags exactly as typed, as a flat string. The bash idioms below pass it **unquoted** so the shell word-splits it into separate flag tokens — this is what makes the typical multi-flag case (`--issue 188 --type workspace`) work. The invocation block is bracketed with `set -f` / `set +f` to suppress glob expansion: without the bracket, values containing `*`, `?`, or `[` (e.g. `--branch main*`, `--plan-file /tmp/*.md`) would expand against the cwd before reaching the script.
+
+Two limitations of slash-command argument forwarding worth knowing:
+
+- **Embedded whitespace in a value is not preserved.** `/start-task --branch "feature/foo bar"` flattens to `--branch feature/foo bar` at the slash-command boundary, then word-splits into three tokens. There is no recovery mechanism at this layer. For values with embedded whitespace, call `worktree_create.sh` directly. (Listed in "When not to use" above.)
+- **Shell metacharacters in values** (`;`, `$`, backticks) reach the underlying scripts as literal characters. With `set -f` disabling glob expansion and bash not re-expanding variable contents, direct injection at the slash-command boundary isn't the concern; the actual risk is downstream — these characters can have unexpected meanings to the scripts that consume the values (as branch names, file paths, or in error messages). For values that need metacharacters, call `worktree_create.sh` directly with proper shell quoting.
 
 ## Steps
 
@@ -61,16 +67,25 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 
 ### 3. Resolve the worktree path (existing → create-new fallback)
 
-Exit-code-checked idiom — error text from the "not found" path goes to stderr (after fix shipped in this PR for `worktree_enter.sh`), so `2>/dev/null` actually suppresses it:
+Exit-code-checked idiom — error text from the "not found" path goes to stderr, so `2>/dev/null` suppresses it. The `worktree_enter.sh` "Unknown option" path still writes to stdout (caught harmlessly by the elif chain when it overwrites `$WT`); see #194 for routing that to stderr too.
 
 ```bash
-if WT=$(.agent/scripts/worktree_enter.sh "$ARGUMENTS" --print-path 2>/dev/null); then
+# Disable glob expansion for the unquoted $ARGUMENTS expansion below.
+# Word-splitting still happens (so `--issue 188 --type workspace` becomes
+# 4 args), but glob characters in values (e.g. `--branch main*`,
+# `--plan-file *.md`) won't expand against the cwd. Restored in every
+# branch exit.
+set -f
+if WT=$(.agent/scripts/worktree_enter.sh $ARGUMENTS --print-path 2>/dev/null); then
+    set +f
     # Worktree already exists for this issue/skill.
     :
-elif WT=$(.agent/scripts/worktree_create.sh "$ARGUMENTS" --print-path-only); then
+elif WT=$(.agent/scripts/worktree_create.sh $ARGUMENTS --print-path-only); then
+    set +f
     # New worktree created; $WT is the path.
     :
 else
+    set +f
     # Creation failed. The script already wrote its error to stderr.
     # Surface the error to the user verbatim and STOP. Do not call EnterWorktree.
     #
@@ -109,6 +124,18 @@ After EnterWorktree returns successfully, briefly tell the user:
 - Which worktree they're now in (issue/skill, branch)
 - Whether it was newly created or pre-existing (you know from step 3 — the `if` branch hit means existing, `elif` means new)
 - Any setup messages the underlying scripts printed (e.g., "Branch is up to date with origin")
+
+## Manual verification
+
+After changes to this skill, run these checks from a fresh main-tree session to confirm behaviour. End-to-end automation would require a Claude Code SDK test harness; declined as out-of-scope (issue #188).
+
+1. **Typical case** — `/start-task --issue <test-N> --type workspace`. Expected: step 3's `elif` fires; new worktree created at `worktrees/workspace/issue-workspace-<test-N>/`; `EnterWorktree` succeeds; session lands in the new worktree.
+
+2. **Skill case** — `/start-task --skill research --type workspace`. Same flow with a skill-worktree path (`worktrees/workspace/skill-research-<TS>/`).
+
+3. **Re-entry case** — exit the worktree from check 1 (`ExitWorktree(action="keep")`), then re-run the same `/start-task --issue <test-N> --type workspace`. Expected: step 3's `if` branch fires (existing worktree found); no new creation; `EnterWorktree` returns to it.
+
+4. **Glob safety (structural check)** — inspect step 3 of this skill body and confirm `set -f` precedes the `if` block and `set +f` is restored in each of the three branches. Without these, an invocation containing values like `--branch main*` or `--plan-file *.md` would glob-expand against the cwd before reaching the script. The bracket makes the failure mode structurally impossible.
 
 ## Exit semantics
 
