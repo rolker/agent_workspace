@@ -62,3 +62,14 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 
 ### Actions
 - [x] Align `find` docs with bare-find blocking — fixed in `c2cfdd3`. Updated CLAUDE.md and hook header from `find <path> [...]` to `find [path] [...]` (path optional, bare `find` defaults to `.`). Added `find` (no args) test; 66/66 pass.
+
+## External Review (re-triage 3)
+**Status**: complete
+**When**: 2026-05-11 14:20
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `4d7f408` — 1 new Copilot review (3 comments, same root cause)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Strip single-quoted regions before compound/redirect early-out — fixed in `eeb96f4`. Marquee bypass closed: `sed -n '1p;2p' README.md` now blocks (was exiting 0). 8 regression tests added; 74/74 pass. Known approximation: literal `>`/`<`/`;` inside double quotes still bypass (rare; documented inline).
