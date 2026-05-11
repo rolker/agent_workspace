@@ -10,7 +10,8 @@
 #   cat <file> ...                       → Read
 #   head [-n] N <file>                   → Read with limit
 #   tail [-n] N <file>                   → Read with offset
-#   find <path> [...]                    → Glob (any non-operational find)
+#   find [path] [...]                    → Glob (any non-operational find,
+#                                          including bare `find` which defaults to .)
 #   sed -n 'SCRIPT' <file>               → Read with offset/limit (or Grep)
 #   sed -i ... <file>                    → Edit
 #                                          (incl. combined-cluster forms: -ni, -in, --in-place)

@@ -96,6 +96,7 @@ assert_blocks "sed -niE combined with -E"      "sed -niE 's/x/y/' file.txt"
 # Bare-find enumeration (documented as broader than just -name searches)
 assert_blocks "find bare path"                 "find /etc"
 assert_blocks "find single arg path"           "find ."
+assert_blocks "find no args (implicit .)"      "find"
 # End-of-options (`--`) handling: positional args after `--` must still block
 # even when they start with `-`. Closes the bypass/false-positive gap surfaced
 # by Copilot.
