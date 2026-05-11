@@ -50,4 +50,4 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 **CI**: all-pass (8/8)
 
 ### Actions
-- [ ] (Low priority) Add `--` end-of-options handling, OR document the gap in the hook's pass-through docstring. Heuristic gap: `cat -- -file` bypasses block; `sed -- SCRIPT -input` false-positives `has_sed_inplace`. Real but pathological (requires filenames starting with `-`). — `.claude/hooks/block-bash-tool-mapping.sh:56`
+- [x] Add `--` end-of-options handling — fixed in `d735122`. Split TOKENS into FLAG_ARGS (pre-`--`) and POS_ARGS (post-`--`, always positional). Closes both gaps: `cat -- -file` now blocks; `sed -- 'expr' -input` now falls through. 11 regression tests added; 65/65 pass.
