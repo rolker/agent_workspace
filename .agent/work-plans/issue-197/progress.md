@@ -28,3 +28,15 @@ issue: 197
 
 ### Cross-model
 Not dispatched this pass — Claude adversarial findings substantive enough to fix first; re-review after.
+
+## External Review
+**Status**: complete
+**When**: 2026-05-11 13:30
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 — 2 review(s), 2 valid, 0 false positives (4 stale-but-addressed, 1 plan-file artifact skipped)
+**CI**: all-pass (8/8)
+
+### Actions
+- [ ] Harden `LOG_FILE="${HOME}/..."` against unset `HOME` (use `${HOME:-/tmp}` or drop `set -u`) — `.claude/hooks/block-bash-tool-mapping.sh:31`
+- [ ] Remove unused `local exit_code` + SC2034 suppression — `.agent/scripts/tests/test_block_bash_tool_mapping.sh:33-34`
