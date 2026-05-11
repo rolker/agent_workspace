@@ -38,5 +38,5 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 **CI**: all-pass (8/8)
 
 ### Actions
-- [ ] Harden `LOG_FILE="${HOME}/..."` against unset `HOME` (use `${HOME:-/tmp}` or drop `set -u`) — `.claude/hooks/block-bash-tool-mapping.sh:31`
-- [ ] Remove unused `local exit_code` + SC2034 suppression — `.agent/scripts/tests/test_block_bash_tool_mapping.sh:33-34`
+- [x] Harden `LOG_FILE="${HOME}/..."` against unset `HOME` — fixed in `dc52801` (`${HOME:-/tmp}`)
+- [x] Remove unused `local exit_code` + SC2034 suppression — fixed in `67d576c`
