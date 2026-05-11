@@ -30,8 +30,6 @@ run_hook() {
         tool_input: {command: $cmd, description: "test"},
         cwd: "/tmp", permission_mode: "default"
     }')
-    # shellcheck disable=SC2034
-    local exit_code
     HOME="$TMP_HOME" bash "$HOOK" <<< "$input"
 }
 
