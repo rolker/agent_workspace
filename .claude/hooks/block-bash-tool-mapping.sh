@@ -53,8 +53,23 @@ TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""')
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
 [[ -z "$COMMAND" ]] && exit 0
 
+# Strip single-quoted regions ('...') so metachars inside quoted sed
+# scripts/regexes (e.g. `sed -n '1p;2p' file`, `sed -n 's/<x>//p' file`)
+# don't false-trigger the compound/redirect early-out below. Double-quoted
+# regions are left intact so `"$(...)"` command substitution still
+# triggers early-out correctly. Tradeoff: literal `>`/`<`/`;` inside
+# double quotes (e.g. `cat "file>bar"`) will still early-out — that's
+# acceptable since this hook is a nudge, not a parser.
+COMPOUND_CHECK="$COMMAND"
+while [[ "$COMPOUND_CHECK" == *\'*\'* ]]; do
+    before="${COMPOUND_CHECK%%\'*}"
+    after_first="${COMPOUND_CHECK#*\'}"
+    after_second="${after_first#*\'}"
+    COMPOUND_CHECK="${before}${after_second}"
+done
+
 # Early-out: any compound/redirect/subshell construct → allow
-case "$COMMAND" in
+case "$COMPOUND_CHECK" in
     *\|*|*\>*|*\<*|*\&\&*|*\;*|*\$\(*|*\`*) exit 0 ;;
 esac
 

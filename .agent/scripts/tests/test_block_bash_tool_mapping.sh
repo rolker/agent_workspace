@@ -97,6 +97,14 @@ assert_blocks "sed -niE combined with -E"      "sed -niE 's/x/y/' file.txt"
 assert_blocks "find bare path"                 "find /etc"
 assert_blocks "find single arg path"           "find ."
 assert_blocks "find no args (implicit .)"      "find"
+# Quoted-metacharacter bypass: shell metachars (`;`, `<`, `>`) inside
+# single-quoted sed scripts/regexes must NOT trigger the compound/redirect
+# early-out. Previously `sed -n '1p;2p' file` passed through.
+assert_blocks "sed -n with ; in script"        "sed -n '1p;2p' file"
+assert_blocks "sed -n with ; in regex"         "sed -n '/foo;bar/p' file.log"
+assert_blocks "sed -n with <,> in script"      "sed -n 's/<a>/<b>/p' file.html"
+assert_blocks "sed -n with ; on real file"     "sed -n '1p;2p' README.md"
+assert_blocks "sed -i with ; in script"        "sed -i 's/a/b/;s/c/d/' file.txt"
 # End-of-options (`--`) handling: positional args after `--` must still block
 # even when they start with `-`. Closes the bypass/false-positive gap surfaced
 # by Copilot.
@@ -114,6 +122,11 @@ echo "=== Allow cases (early-outs: pipes/redirects/heredocs) ==="
 assert_allows "cat with pipe"                  "cat foo | grep bar"
 assert_allows "cat with redirect"              "cat foo > out.txt"
 assert_allows "cat with heredoc"               "cat <<EOF > out.md"
+# Confirm the single-quote stripping doesn't break legitimate compound commands
+# that happen to have quoted args next to unquoted metacharacters.
+assert_allows "cat 'quoted' | grep"            "cat 'foo' | grep bar"
+assert_allows "sed -n 'script' | head"         "sed -n '1,5p' file | head"
+assert_allows "compound with quoted script"    "echo a | sed -n '1p;2p'"
 assert_allows "head with pipe"                 "git log | head -5"
 assert_allows "tail with pipe"                 "git log | tail -5"
 assert_allows "find with pipe"                 "find . | head -10"
