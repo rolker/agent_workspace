@@ -51,3 +51,14 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 
 ### Actions
 - [x] Add `--` end-of-options handling — fixed in `d735122`. Split TOKENS into FLAG_ARGS (pre-`--`) and POS_ARGS (post-`--`, always positional). Closes both gaps: `cat -- -file` now blocks; `sed -- 'expr' -input` now falls through. 11 regression tests added; 65/65 pass.
+
+## External Review (re-triage 2)
+**Status**: complete
+**When**: 2026-05-11 14:00
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `e31ce0b` — 1 new Copilot review (2 comments)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Align `find` docs with bare-find blocking — fixed in `c2cfdd3`. Updated CLAUDE.md and hook header from `find <path> [...]` to `find [path] [...]` (path optional, bare `find` defaults to `.`). Added `find` (no args) test; 66/66 pass.
