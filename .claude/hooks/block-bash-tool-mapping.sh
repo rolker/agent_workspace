@@ -24,6 +24,13 @@
 #   sed without -i and without -n        (stream substitution stage)
 #   anything not starting with cat/head/tail/find/sed
 #
+# End-of-options (`--`) handling:
+#   Flag heuristics scan only tokens before `--`. Tokens after `--` are
+#   treated as positional args (files for cat/head/tail/sed, paths for find)
+#   regardless of leading `-`. So `cat -- -file` blocks (file read);
+#   `sed -- 's/x/y/' -input` falls through (no -i/-n flag before --);
+#   `find -- -delete` blocks (`-delete` after `--` is a path, not the op flag).
+#
 # Side-effects: logs each block to ~/.claude/tool-mapping-blocks.jsonl so we
 # can measure how often the hook fires.
 
@@ -58,6 +65,26 @@ case "$HEAD" in
     cat|head|tail|find|sed) ;;
     *) exit 0 ;;
 esac
+
+# Split args at the first `--` end-of-options marker.
+# FLAG_ARGS: tokens before `--`, scanned by flag heuristics.
+# POS_ARGS:  tokens after `--`, always treated as positional (file/path) args
+#            even if they start with `-`. When `--` is absent, FLAG_ARGS holds
+#            everything past the command name and POS_ARGS is empty.
+FLAG_ARGS=()
+POS_ARGS=()
+saw_dashdash=0
+for tok in "${TOKENS[@]:1}"; do
+    if [[ "$saw_dashdash" -eq 0 && "$tok" == "--" ]]; then
+        saw_dashdash=1
+        continue
+    fi
+    if [[ "$saw_dashdash" -eq 1 ]]; then
+        POS_ARGS+=("$tok")
+    else
+        FLAG_ARGS+=("$tok")
+    fi
+done
 
 # ---- helpers ----------------------------------------------------------------
 
@@ -136,15 +163,20 @@ case "$HEAD" in
     cat)
         # Block if any non-flag arg follows; cat can be used to emit a literal
         # without args (cat with stdin would pipe — already early-outed).
-        for tok in "${TOKENS[@]:1}"; do
+        for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
             [[ "$tok" != -* ]] && \
                 emit_block "cat <file> blocked." "Use the Read tool instead."
         done
+        # Anything after `--` is a positional file arg, even if it starts with `-`.
+        if [[ "${#POS_ARGS[@]}" -gt 0 ]]; then
+            emit_block "cat <file> blocked." "Use the Read tool instead."
+        fi
         ;;
 
     head|tail)
-        # Allow byte mode (-c) and follow mode (-f/-F for tail)
-        for tok in "${TOKENS[@]:1}"; do
+        # Allow byte mode (-c) and follow mode (-f/-F for tail). Mode flags
+        # only count before `--`.
+        for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
             case "$tok" in
                 -c|-c[0-9]*|--bytes|--bytes=*) exit 0 ;;
             esac
@@ -155,17 +187,23 @@ case "$HEAD" in
             fi
         done
         # Block if any non-flag, non-numeric arg follows (i.e., a file)
-        for tok in "${TOKENS[@]:1}"; do
+        for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
             if [[ "$tok" != -* && ! "$tok" =~ ^[0-9]+$ ]]; then
                 emit_block "$HEAD <file> blocked." \
                     "Use the Read tool instead (limit/offset for partial reads)."
             fi
         done
+        # Anything after `--` is a positional file arg.
+        if [[ "${#POS_ARGS[@]}" -gt 0 ]]; then
+            emit_block "$HEAD <file> blocked." \
+                "Use the Read tool instead (limit/offset for partial reads)."
+        fi
         ;;
 
     find)
-        # Allow operational find (commands that do more than enumerate files)
-        for tok in "${TOKENS[@]:1}"; do
+        # Allow operational find (commands that do more than enumerate files).
+        # Operational predicates only count before `--`; after `--` they're paths.
+        for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
             case "$tok" in
                 -exec|-execdir|-ok|-okdir|-delete|-mtime|-mmin|-cmin|-amin| \
                 -size|-newer|-newer*|-prune|-print0|-fls|-ls|-fprint|-fprint0| \
@@ -174,31 +212,34 @@ case "$HEAD" in
                     ;;
             esac
         done
-        # Anything else (bare `find PATH`, `find . -name ...`, `find . -type f`)
-        # is filesystem enumeration → Glob.
+        # Anything else (bare `find PATH`, `find . -name ...`, `find . -type f`,
+        # `find -- -delete` where -delete is now a path) is enumeration → Glob.
         emit_block "find for file enumeration blocked." \
             "Use the Glob tool instead."
         ;;
 
     sed)
-        # Block in-place edit (any -i form, including combined short-flag clusters)
-        if has_sed_inplace "${TOKENS[@]:1}"; then
+        # Block in-place edit (any -i form, including combined short-flag
+        # clusters). Flag heuristics only consider tokens before `--`.
+        if has_sed_inplace "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; then
             emit_block "sed -i (in-place edit) blocked." \
                 "Use the Edit tool instead."
         fi
-        # Block -n print-mode (sed -n 'SCRIPT' FILE) by counting non-flag tokens
-        # past sed. Script + file = 2 non-flag tokens; script alone (1) means
-        # stdin (which would have a pipe → already early-outed) and we allow.
-        # Combined-cluster forms like `sed -ne SCRIPT FILE` are caught because
-        # the cluster matches has_short_flag_letter 'n' and SCRIPT/FILE both
-        # don't start with '-'.
-        if has_short_flag_letter n "${TOKENS[@]:1}"; then
-            if [[ "$(count_non_flag_args "${TOKENS[@]:1}")" -ge 2 ]]; then
+        # Block -n print-mode (sed -n 'SCRIPT' FILE). Count positional args
+        # across both halves: non-flag tokens before `--` + every token after
+        # `--`. Script + file = 2 positional → block. Script alone means
+        # stdin (would have a pipe → already early-outed).
+        if has_short_flag_letter n "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; then
+            non_flag_count=$(count_non_flag_args "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}")
+            total_positional=$((non_flag_count + ${#POS_ARGS[@]}))
+            if [[ "$total_positional" -ge 2 ]]; then
                 emit_block "sed -n 'SCRIPT' <file> blocked." \
                     "Use the Read tool with offset/limit (or Grep for /regex/)."
             fi
         fi
-        # Plain sed without -i/-n falls through (often a stream substitution stage)
+        # Plain sed without -i/-n falls through (stream substitution stage).
+        # Note: `sed -- 's/x/y/' -input` falls through here even though `-input`
+        # looks flag-like — that's correct: no -i/-n present.
         ;;
 esac
 

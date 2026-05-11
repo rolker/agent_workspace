@@ -96,6 +96,17 @@ assert_blocks "sed -niE combined with -E"      "sed -niE 's/x/y/' file.txt"
 # Bare-find enumeration (documented as broader than just -name searches)
 assert_blocks "find bare path"                 "find /etc"
 assert_blocks "find single arg path"           "find ."
+# End-of-options (`--`) handling: positional args after `--` must still block
+# even when they start with `-`. Closes the bypass/false-positive gap surfaced
+# by Copilot.
+assert_blocks "cat -- -file (dash filename)"   "cat -- -file"
+assert_blocks "cat -- README.md"               "cat -- README.md"
+assert_blocks "head -- -file"                  "head -- -file"
+assert_blocks "head 5 -- -file"                "head 5 -- -file"
+assert_blocks "tail -- -log"                   "tail -- -log"
+assert_blocks "find -- -delete (as path)"      "find -- -delete"
+assert_blocks "sed -n -- '5p' -input"          "sed -n -- '5p' -input"
+assert_blocks "sed -i -- 's/x/y/' -input"      "sed -i -- 's/x/y/' -input"
 
 echo
 echo "=== Allow cases (early-outs: pipes/redirects/heredocs) ==="
@@ -129,6 +140,13 @@ assert_allows "sed without flags or file"      "sed"
 # piped in real use → early-outed; this synthetic standalone test confirms
 # the non-flag-count branch correctly distinguishes script-only from script+file).
 assert_allows "sed -n script only (stdin)"     "sed -n '5p'"
+# `sed -- 'SCRIPT' -input` is plain stream substitution (no -i/-n before --),
+# so it should fall through. The leading `-` on the filename must NOT trigger
+# has_sed_inplace because it's a positional arg, not a flag.
+assert_allows "sed -- stream sub w/ dash file" "sed -- 's/x/y/' -input"
+# head/tail with `--` and a byte-mode flag before `--`
+assert_allows "head -c -- file"                "head -c 100 -- file.bin"
+assert_allows "tail -f -- file"                "tail -f -- /var/log/x"
 
 echo
 echo "=== Allow cases (unrelated commands) ==="
