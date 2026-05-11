@@ -28,7 +28,7 @@
 # can measure how often the hook fires.
 
 set -u
-LOG_FILE="${HOME}/.claude/tool-mapping-blocks.jsonl"
+LOG_FILE="${HOME:-/tmp}/.claude/tool-mapping-blocks.jsonl"
 umask 077
 mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
