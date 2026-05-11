@@ -58,8 +58,10 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
 # don't false-trigger the compound/redirect early-out below. Double-quoted
 # regions are left intact so `"$(...)"` command substitution still
 # triggers early-out correctly. Tradeoff: literal `>`/`<`/`;` inside
-# double quotes (e.g. `cat "file>bar"`) will still early-out — that's
-# acceptable since this hook is a nudge, not a parser.
+# double quotes (e.g. `cat "file>bar"`) will still early-out and allow
+# the call through. This is a deliberate approximation: full quote-aware
+# bash parsing would be disproportionate to the gain, and the
+# double-quoted-metachar pattern is rare in practice for cat/head/tail/sed.
 COMPOUND_CHECK="$COMMAND"
 while [[ "$COMPOUND_CHECK" == *\'*\'* ]]; do
     before="${COMPOUND_CHECK%%\'*}"
@@ -217,10 +219,14 @@ case "$HEAD" in
         ;;
 
     find)
-        # Allow operational find (commands that do more than enumerate files).
-        # Operational predicates only count before `--`; after `--` they're paths.
+        # Allow operational find (commands that do more than enumerate files)
+        # and informational flags (`--help`, `--version`). Operational
+        # predicates only count before `--`; after `--` they're paths.
         for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
             case "$tok" in
+                --help|--version|-help|-version|--usage)
+                    exit 0
+                    ;;
                 -exec|-execdir|-ok|-okdir|-delete|-mtime|-mmin|-cmin|-amin| \
                 -size|-newer|-newer*|-prune|-print0|-fls|-ls|-fprint|-fprint0| \
                 -inum|-empty|-perm|-user|-group|-uid|-gid|-quit)

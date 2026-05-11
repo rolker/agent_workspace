@@ -148,6 +148,8 @@ assert_allows "find with -mtime"               "find . -mtime -7"
 assert_allows "find with -size"                "find . -size +1M"
 assert_allows "find with -newer"               "find . -newer ref.txt"
 assert_allows "find -print0"                   "find . -print0"
+assert_allows "find --help"                    "find --help"
+assert_allows "find --version"                 "find --version"
 assert_allows "sed stream substitution"        "sed 's/x/y/' file"
 assert_allows "sed without flags or file"      "sed"
 # sed -n alone with one non-flag token = script only, stdin source (would be
