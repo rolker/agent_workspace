@@ -40,3 +40,14 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 ### Actions
 - [x] Harden `LOG_FILE="${HOME}/..."` against unset `HOME` — fixed in `dc52801` (`${HOME:-/tmp}`)
 - [x] Remove unused `local exit_code` + SC2034 suppression — fixed in `67d576c`
+
+## External Review (re-triage)
+**Status**: complete
+**When**: 2026-05-11 13:45
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `903be0c` — 1 new Copilot review (1 comment)
+**CI**: all-pass (8/8)
+
+### Actions
+- [ ] (Low priority) Add `--` end-of-options handling, OR document the gap in the hook's pass-through docstring. Heuristic gap: `cat -- -file` bypasses block; `sed -- SCRIPT -input` false-positives `has_sed_inplace`. Real but pathological (requires filenames starting with `-`). — `.claude/hooks/block-bash-tool-mapping.sh:56`
