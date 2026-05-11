@@ -27,6 +27,14 @@ the dedicated tools are:
 
 These are auto-approved and don't consume permission prompts.
 
+**Enforced by hook**: `.claude/hooks/block-bash-tool-mapping.sh` blocks
+Bash calls that match the simple cases — `cat file`, `head -N file`,
+`tail -N file`, `find PATH -name PAT`, `sed -n 'EXPR' file`, `sed -i ...`.
+Pipes, redirects, heredocs, and operational flags (`head -c`, `tail -f`,
+`find -exec/-delete/-mtime`, `sed 's/x/y/'` without `-i`/`-n`) pass through
+unchanged. Blocks are logged to `~/.claude/tool-mapping-blocks.jsonl` so we
+can measure how often the hook fires.
+
 ## Claude-Specific Notes
 
 - Makefile `.PHONY` targets (excluding `help`) are available as `/make_*` slash commands
