@@ -79,9 +79,25 @@ assert_blocks "find -type -name"               "find . -type f -name '*.md'"
 assert_blocks "find no args (just path)"       "find ."
 assert_blocks "sed -n line print"              "sed -n '40,80p' file.txt"
 assert_blocks "sed -n single line"             "sed -n 5p file"
+# Regression cases for the broken char-class heuristic. Each of these uses a
+# real-world filename that contains lowercase 's', 'd', or 'p' — characters
+# that the original heuristic mistook for sed-script tokens, causing
+# false-negatives on the marquee case.
+assert_blocks "sed -n on README.md"            "sed -n '5,10p' README.md"
+assert_blocks "sed -n on notes.md"             "sed -n '5,10p' notes.md"
+assert_blocks "sed -n on package.json"         "sed -n '1,20p' package.json"
+assert_blocks "sed -n on src/main.rs"          "sed -n 5p src/main.rs"
+assert_blocks "sed -ne combined cluster"       "sed -ne '5,10p' README.md"
 assert_blocks "sed -i in-place"                "sed -i 's/x/y/' file.txt"
 assert_blocks "sed -i with extension"          "sed -i.bak 's/x/y/' file.txt"
 assert_blocks "sed --in-place long form"       "sed --in-place 's/x/y/' file.txt"
+# Combined-cluster in-place forms — these previously bypassed has_sed_inplace.
+assert_blocks "sed -ni combined cluster"       "sed -ni 's/x/y/' file.txt"
+assert_blocks "sed -in combined cluster"       "sed -in 's/x/y/' file.txt"
+assert_blocks "sed -niE combined with -E"      "sed -niE 's/x/y/' file.txt"
+# Bare-find enumeration (documented as broader than just -name searches)
+assert_blocks "find bare path"                 "find /etc"
+assert_blocks "find single arg path"           "find ."
 
 echo
 echo "=== Allow cases (early-outs: pipes/redirects/heredocs) ==="
@@ -111,6 +127,10 @@ assert_allows "find with -newer"               "find . -newer ref.txt"
 assert_allows "find -print0"                   "find . -print0"
 assert_allows "sed stream substitution"        "sed 's/x/y/' file"
 assert_allows "sed without flags or file"      "sed"
+# sed -n alone with one non-flag token = script only, stdin source (would be
+# piped in real use → early-outed; this synthetic standalone test confirms
+# the non-flag-count branch correctly distinguishes script-only from script+file).
+assert_allows "sed -n script only (stdin)"     "sed -n '5p'"
 
 echo
 echo "=== Allow cases (unrelated commands) ==="

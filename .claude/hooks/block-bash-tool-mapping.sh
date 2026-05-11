@@ -9,11 +9,11 @@
 # Patterns blocked:
 #   cat <file> ...                       → Read
 #   head [-n] N <file>                   → Read with limit
-#   tail [-n] N <file>                   → Read (tail-relative not supported; use Read with offset)
-#   find <path> [-name|-iname|-type|-path] ...
-#                                        → Glob
-#   sed -n 'EXPR' <file>                 → Read with offset/limit (or Grep for /regex/)
+#   tail [-n] N <file>                   → Read with offset
+#   find <path> [...]                    → Glob (any non-operational find)
+#   sed -n 'SCRIPT' <file>               → Read with offset/limit (or Grep)
 #   sed -i ... <file>                    → Edit
+#                                          (incl. combined-cluster forms: -ni, -in, --in-place)
 #
 # Pass-through (early-out):
 #   anything containing | > < << <<< >> && || ; $( ` (compound/redirect/subshell)
@@ -21,7 +21,7 @@
 #   tail -c ... / tail -f / tail -F      (byte/follow modes)
 #   find ... -exec/-execdir/-delete/-mtime/-mmin/-cmin/-amin/-size/-newer/-prune/-print0/-fls/-ls
 #                                        (operational find)
-#   sed without -i and without -n        (often a stream substitution stage; ambiguous)
+#   sed without -i and without -n        (stream substitution stage)
 #   anything not starting with cat/head/tail/find/sed
 #
 # Side-effects: logs each block to ~/.claude/tool-mapping-blocks.jsonl so we
@@ -30,6 +30,7 @@
 set -u
 LOG_FILE="${HOME}/.claude/tool-mapping-blocks.jsonl"
 umask 077
+mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
 
 INPUT=$(cat)
 
@@ -68,8 +69,8 @@ $2
 
 CLAUDE.md tool mapping:
   cat / head / tail <file>  → Read
-  find PATH [-name PAT]     → Glob
-  sed -n 'EXPR' <file>      → Read (with offset/limit) or Grep
+  find PATH [...]           → Glob
+  sed -n 'SCRIPT' <file>    → Read (with offset/limit) or Grep
   sed -i ... <file>         → Edit
 
 Pipes, redirects, heredocs, and operational flags (head -c, tail -f,
@@ -91,25 +92,42 @@ EOF
     exit 2
 }
 
-has_exact_flag() {
-    # $1 = exact-match flag (e.g. -n); rest = tokens
-    local flag="$1"; shift
+has_short_flag_letter() {
+    # Returns 0 if any single-dash short-flag cluster contains $1.
+    # Examples for letter 'n': -n, -ne, -ni, -nE all match. --inplace does not.
+    local letter="$1"; shift
     local t
     for t in "$@"; do
-        [[ "$t" == "$flag" ]] && return 0
+        case "$t" in
+            --*) ;;
+            -*"$letter"*) return 0 ;;
+        esac
     done
     return 1
 }
 
 has_sed_inplace() {
-    # sed's in-place flag forms: -i, -i.bak, -iEXT, --in-place, --in-place=EXT
+    # sed's in-place flag: -i, -i.bak, -iEXT, combined-cluster forms (-ni, -in, -niE),
+    # and long form --in-place / --in-place=EXT.
     local t
     for t in "$@"; do
         case "$t" in
-            -i|-i.*|-i[!-]*|--in-place|--in-place=*) return 0 ;;
+            --in-place|--in-place=*) return 0 ;;
+            --*) ;;
+            -*i*) return 0 ;;
         esac
     done
     return 1
+}
+
+count_non_flag_args() {
+    # Counts tokens that don't start with '-'. Used to detect "script + file"
+    # in `sed -n SCRIPT FILE` (two non-flag tokens past `sed`).
+    local count=0 t
+    for t in "$@"; do
+        [[ "$t" != -* ]] && count=$((count + 1))
+    done
+    echo "$count"
 }
 
 # ---- per-command rules ------------------------------------------------------
@@ -146,7 +164,7 @@ case "$HEAD" in
         ;;
 
     find)
-        # Allow operational find
+        # Allow operational find (commands that do more than enumerate files)
         for tok in "${TOKENS[@]:1}"; do
             case "$tok" in
                 -exec|-execdir|-ok|-okdir|-delete|-mtime|-mmin|-cmin|-amin| \
@@ -156,26 +174,27 @@ case "$HEAD" in
                     ;;
             esac
         done
-        # Anything else (typical: find . -name '*.ts' or find . -type f -name *.md)
-        emit_block "find for file search blocked." \
+        # Anything else (bare `find PATH`, `find . -name ...`, `find . -type f`)
+        # is filesystem enumeration → Glob.
+        emit_block "find for file enumeration blocked." \
             "Use the Glob tool instead."
         ;;
 
     sed)
-        # Block in-place edit (any -i / -i.bak / --in-place form)
+        # Block in-place edit (any -i form, including combined short-flag clusters)
         if has_sed_inplace "${TOKENS[@]:1}"; then
             emit_block "sed -i (in-place edit) blocked." \
                 "Use the Edit tool instead."
         fi
-        # Block -n print-mode (sed -n 'EXPR' file) when a file arg is present
-        if has_exact_flag -n "${TOKENS[@]:1}"; then
-            # Find the last non-flag, non-quoted-script token; if it's a file path, block
-            LAST="${TOKENS[-1]:-}"
-            # Heuristic: a "file" looks like a path/identifier without sed metachars
-            if [[ -n "$LAST" && "$LAST" != -* ]] && \
-               ! [[ "$LAST" =~ [pPdDsSyYqQ\;\{\}] ]] && \
-               ! [[ "$LAST" =~ ^[\'\"] ]]; then
-                emit_block "sed -n 'EXPR' <file> blocked." \
+        # Block -n print-mode (sed -n 'SCRIPT' FILE) by counting non-flag tokens
+        # past sed. Script + file = 2 non-flag tokens; script alone (1) means
+        # stdin (which would have a pipe → already early-outed) and we allow.
+        # Combined-cluster forms like `sed -ne SCRIPT FILE` are caught because
+        # the cluster matches has_short_flag_letter 'n' and SCRIPT/FILE both
+        # don't start with '-'.
+        if has_short_flag_letter n "${TOKENS[@]:1}"; then
+            if [[ "$(count_non_flag_args "${TOKENS[@]:1}")" -ge 2 ]]; then
+                emit_block "sed -n 'SCRIPT' <file> blocked." \
                     "Use the Read tool with offset/limit (or Grep for /regex/)."
             fi
         fi

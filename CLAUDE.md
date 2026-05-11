@@ -28,12 +28,14 @@ the dedicated tools are:
 These are auto-approved and don't consume permission prompts.
 
 **Enforced by hook**: `.claude/hooks/block-bash-tool-mapping.sh` blocks
-Bash calls that match the simple cases — `cat file`, `head -N file`,
-`tail -N file`, `find PATH -name PAT`, `sed -n 'EXPR' file`, `sed -i ...`.
-Pipes, redirects, heredocs, and operational flags (`head -c`, `tail -f`,
-`find -exec/-delete/-mtime`, `sed 's/x/y/'` without `-i`/`-n`) pass through
-unchanged. Blocks are logged to `~/.claude/tool-mapping-blocks.jsonl` so we
-can measure how often the hook fires.
+Bash calls that match the simple cases — `cat <file>`, `head [-N] <file>`,
+`tail [-N] <file>`, `find <path> ...` (any filesystem enumeration without
+an operational flag), `sed -n 'SCRIPT' <file>`, and `sed -i ...` (including
+combined short-flag clusters like `-ni`). Pipes, redirects, heredocs, and
+operational flags (`head -c`, `tail -f`, `find -exec/-delete/-mtime/...`,
+plain `sed 's/x/y/'` without `-i` or `-n`) pass through unchanged. Blocks
+are logged to `~/.claude/tool-mapping-blocks.jsonl` so we can measure how
+often the hook fires.
 
 ## Claude-Specific Notes
 
