@@ -73,3 +73,14 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 
 ### Actions
 - [x] Strip single-quoted regions before compound/redirect early-out — fixed in `eeb96f4`. Marquee bypass closed: `sed -n '1p;2p' README.md` now blocks (was exiting 0). 8 regression tests added; 74/74 pass. Known approximation: literal `>`/`<`/`;` inside double quotes still bypass (rare; documented inline).
+
+## External Review (re-triage 4)
+**Status**: complete
+**When**: 2026-05-11 14:35
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `f850f79` — 1 new Copilot review (2 comments)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Allow `find --help`/`--version` (informational, not enumeration) and rewrite the misleading "nudge, not a parser" comment to match block-on-match behavior — fixed in `c0f7616`. 2 regression tests added; 76/76 pass.
