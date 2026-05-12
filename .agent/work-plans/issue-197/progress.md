@@ -121,3 +121,16 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 
 ### Actions
 - [x] Move `umask`/`mkdir -p` into `emit_block()` so allowed Bash calls and non-Bash tool calls never touch `~/.claude/` — fixed in `f406daa`. Verified empirically: allowed `echo hello` leaves test $HOME empty.
+
+## External Review (re-triage 8)
+**Status**: complete
+**When**: 2026-05-12 10:00
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `4e5b841` — 1 new Copilot review (3 comments)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Strip backslash-escape pairs (`\X`) from COMPOUND_CHECK before metachar early-out — fixed in `091656f`. Closes `cat file\>bar.txt` bypass (was exit 0).
+- [x] Fix CLAUDE.md awk row: `awk -i` is gawk's include-library flag, not in-place. Move awk to its own broad row (`awk (any)` → Edit); keep sed granular — fixed in `091656f`.
+- [x] Simplify `"${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"` to `"${FLAG_ARGS[@]}"` (7 occurrences); safe under `set -u` on bash 4.4+ — fixed in `091656f`. 88/88 pass.
