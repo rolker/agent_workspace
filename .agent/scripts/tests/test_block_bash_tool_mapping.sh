@@ -122,6 +122,12 @@ assert_blocks "sed -n with <,> in dq script"   'sed -n "s/<a>/<b>/p" file.html'
 assert_blocks "sed -i with ; in dq script"     'sed -i "s/a/b/;s/c/d/" file.txt'
 # Filename containing a metachar inside double quotes (literal, not redirect)
 assert_blocks "cat dq filename with >"         'cat "file>bar.txt"'
+# Backslash-escaped metacharacters are literal in bash, not redirects.
+# Previously `cat file\>bar.txt` bypassed the block because `>` triggered
+# the compound early-out before backslash-escapes were stripped.
+assert_blocks "cat backslash-escaped >"        'cat file\>bar.txt'
+assert_blocks "cat backslash-escaped |"        'cat file\|bar.txt'
+assert_blocks "cat backslash-escaped ;"        'cat file\;bar.txt'
 # End-of-options (`--`) handling: positional args after `--` must still block
 # even when they start with `-`. Closes the bypass/false-positive gap surfaced
 # by Copilot.

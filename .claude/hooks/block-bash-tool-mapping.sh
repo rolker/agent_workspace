@@ -89,6 +89,24 @@ while [[ "$COMPOUND_TEMP" == *\"*\"* ]]; do
 done
 COMPOUND_CHECK+="$COMPOUND_TEMP"
 
+# Strip backslash-escape pairs from any remaining (unquoted) content.
+# In bash, `\X` outside quotes is always a literal X — `cat file\>bar.txt`
+# is `cat` reading one literal-named file, not a redirection. Without
+# stripping, `\>` here would false-trigger the early-out below.
+COMPOUND_TEMP="$COMPOUND_CHECK"
+COMPOUND_CHECK=""
+i=0
+n=${#COMPOUND_TEMP}
+while (( i < n )); do
+    ch="${COMPOUND_TEMP:$i:1}"
+    if [[ "$ch" == '\' ]]; then
+        i=$((i + 2))   # Skip backslash + the escaped char
+        continue
+    fi
+    COMPOUND_CHECK+="$ch"
+    i=$((i + 1))
+done
+
 # Early-out: any compound/redirect/subshell construct → allow
 case "$COMPOUND_CHECK" in
     *\|*|*\>*|*\<*|*\&\&*|*\;*|*\$\(*|*\`*) exit 0 ;;
@@ -205,7 +223,7 @@ case "$HEAD" in
     cat)
         # Block if any non-flag arg follows; cat can be used to emit a literal
         # without args (cat with stdin would pipe — already early-outed).
-        for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
+        for tok in "${FLAG_ARGS[@]}"; do
             [[ "$tok" != -* ]] && \
                 emit_block "cat <file> blocked." "Use the Read tool instead."
         done
@@ -218,7 +236,7 @@ case "$HEAD" in
     head|tail)
         # Allow byte mode (-c) and follow mode (-f/-F for tail). Mode flags
         # only count before `--`.
-        for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
+        for tok in "${FLAG_ARGS[@]}"; do
             case "$tok" in
                 -c|-c[0-9]*|--bytes|--bytes=*) exit 0 ;;
             esac
@@ -234,7 +252,7 @@ case "$HEAD" in
         # `123`). The legacy `-N` count form (e.g. `head -5 file`) starts
         # with `-` and is already skipped by the non-flag test.
         prev=""
-        for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
+        for tok in "${FLAG_ARGS[@]}"; do
             if [[ "$tok" =~ ^[0-9]+$ ]]; then
                 case "$prev" in
                     -n|--lines|-c|--bytes)
@@ -260,7 +278,7 @@ case "$HEAD" in
         # Allow operational find (commands that do more than enumerate files)
         # and informational flags (`--help`, `--version`). Operational
         # predicates only count before `--`; after `--` they're paths.
-        for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
+        for tok in "${FLAG_ARGS[@]}"; do
             case "$tok" in
                 --help|--version|-help|-version|--usage)
                     exit 0
@@ -281,7 +299,7 @@ case "$HEAD" in
     sed)
         # Block in-place edit (any -i form, including combined short-flag
         # clusters). Flag heuristics only consider tokens before `--`.
-        if has_sed_inplace "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; then
+        if has_sed_inplace "${FLAG_ARGS[@]}"; then
             emit_block "sed -i (in-place edit) blocked." \
                 "Use the Edit tool instead."
         fi
@@ -289,8 +307,8 @@ case "$HEAD" in
         # across both halves: non-flag tokens before `--` + every token after
         # `--`. Script + file = 2 positional → block. Script alone means
         # stdin (would have a pipe → already early-outed).
-        if has_short_flag_letter n "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; then
-            non_flag_count=$(count_non_flag_args "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}")
+        if has_short_flag_letter n "${FLAG_ARGS[@]}"; then
+            non_flag_count=$(count_non_flag_args "${FLAG_ARGS[@]}")
             total_positional=$((non_flag_count + ${#POS_ARGS[@]}))
             if [[ "$total_positional" -ge 2 ]]; then
                 emit_block "sed -n 'SCRIPT' <file> blocked." \
