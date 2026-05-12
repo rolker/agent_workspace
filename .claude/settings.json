@@ -99,6 +99,7 @@
       "Bash(.agent/scripts/cross_model_review.sh *)",
       "Bash(*/.agent/scripts/cross_model_review.sh *)",
       "Bash(.agent/scripts/gh_create_issue.sh *)",
+      "Bash(.agent/scripts/gh_create_pr.sh *)",
       "Bash(.agent/scripts/update_roadmap.sh *)",
       "Bash(bash .agent/scripts/tests/*)",
       "Bash(bash -n *)",
