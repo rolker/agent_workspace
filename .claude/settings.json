@@ -143,6 +143,11 @@
             "type": "command",
             "command": ".claude/hooks/log-tool-use.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/block-bash-tool-mapping.sh",
+            "timeout": 5
           }
         ]
       }
