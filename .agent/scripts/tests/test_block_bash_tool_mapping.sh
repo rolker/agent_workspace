@@ -72,6 +72,11 @@ assert_blocks "head -n N file"                 "head -n 50 log.txt"
 assert_blocks "head file (no count)"           "head file.txt"
 assert_blocks "tail -N file"                   "tail -100 log.txt"
 assert_blocks "tail -n N file"                 "tail -n 200 log.txt"
+# Bare numeric filename: coreutils treats `head 123` as reading file `123`,
+# not as a count. Previously exempted as numeric → bypassed the block.
+assert_blocks "head numeric filename"          "head 123"
+assert_blocks "tail numeric filename"          "tail 2024"
+assert_blocks "head -n 5 plus numeric file"    "head -n 5 2024"
 assert_blocks "find -name"                     "find . -name '*.ts'"
 assert_blocks "find -type -name"               "find . -type f -name '*.md'"
 assert_blocks "find no args (just path)"       "find ."
@@ -98,13 +103,20 @@ assert_blocks "find bare path"                 "find /etc"
 assert_blocks "find single arg path"           "find ."
 assert_blocks "find no args (implicit .)"      "find"
 # Quoted-metacharacter bypass: shell metachars (`;`, `<`, `>`) inside
-# single-quoted sed scripts/regexes must NOT trigger the compound/redirect
-# early-out. Previously `sed -n '1p;2p' file` passed through.
+# single- OR double-quoted sed scripts/regexes must NOT trigger the
+# compound/redirect early-out. Previously `sed -n '1p;2p' file` (single)
+# and `sed -n "1p;2p" file` (double) both passed through.
 assert_blocks "sed -n with ; in script"        "sed -n '1p;2p' file"
 assert_blocks "sed -n with ; in regex"         "sed -n '/foo;bar/p' file.log"
 assert_blocks "sed -n with <,> in script"      "sed -n 's/<a>/<b>/p' file.html"
 assert_blocks "sed -n with ; on real file"     "sed -n '1p;2p' README.md"
 assert_blocks "sed -i with ; in script"        "sed -i 's/a/b/;s/c/d/' file.txt"
+# Double-quoted variants of the same bypass cases:
+assert_blocks "sed -n with ; in dq script"     'sed -n "1p;2p" README.md'
+assert_blocks "sed -n with <,> in dq script"   'sed -n "s/<a>/<b>/p" file.html'
+assert_blocks "sed -i with ; in dq script"     'sed -i "s/a/b/;s/c/d/" file.txt'
+# Filename containing a metachar inside double quotes (literal, not redirect)
+assert_blocks "cat dq filename with >"         'cat "file>bar.txt"'
 # End-of-options (`--`) handling: positional args after `--` must still block
 # even when they start with `-`. Closes the bypass/false-positive gap surfaced
 # by Copilot.
@@ -127,6 +139,9 @@ assert_allows "cat with heredoc"               "cat <<EOF > out.md"
 assert_allows "cat 'quoted' | grep"            "cat 'foo' | grep bar"
 assert_allows "sed -n 'script' | head"         "sed -n '1,5p' file | head"
 assert_allows "compound with quoted script"    "echo a | sed -n '1p;2p'"
+# Double-quoted command substitution must still trigger early-out
+assert_allows "cat \"\$(...)\" preserved"      'cat "$(echo file)"'
+assert_allows "cat \`...\` in dq preserved"    'cat "`echo file`"'
 assert_allows "head with pipe"                 "git log | head -5"
 assert_allows "tail with pipe"                 "git log | tail -5"
 assert_allows "find with pipe"                 "find . | head -10"

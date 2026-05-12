@@ -53,15 +53,19 @@ TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""')
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
 [[ -z "$COMMAND" ]] && exit 0
 
-# Strip single-quoted regions ('...') so metachars inside quoted sed
-# scripts/regexes (e.g. `sed -n '1p;2p' file`, `sed -n 's/<x>//p' file`)
-# don't false-trigger the compound/redirect early-out below. Double-quoted
-# regions are left intact so `"$(...)"` command substitution still
-# triggers early-out correctly. Tradeoff: literal `>`/`<`/`;` inside
-# double quotes (e.g. `cat "file>bar"`) will still early-out and allow
-# the call through. This is a deliberate approximation: full quote-aware
-# bash parsing would be disproportionate to the gain, and the
-# double-quoted-metachar pattern is rare in practice for cat/head/tail/sed.
+# Strip quoted regions from a working copy of $COMMAND before the
+# compound/redirect early-out so metachars inside quoted sed
+# scripts/regexes (e.g. `sed -n '1p;2p' file`, `sed -n "s/<x>//p" file`)
+# don't false-trigger an early-out.
+#
+# Single-quoted regions: always safe to strip (everything inside `'...'`
+# is literal in bash).
+#
+# Double-quoted regions: stripped only when they don't contain `$(` or
+# backticks. Inside `"..."` those constructs are still expanded by bash,
+# so `"$(cmd)"` must remain visible to the compound check. Plain
+# `"file>bar"` is safe to strip because `>`/`<`/`;` inside `"..."` are
+# literal characters, not redirections.
 COMPOUND_CHECK="$COMMAND"
 while [[ "$COMPOUND_CHECK" == *\'*\'* ]]; do
     before="${COMPOUND_CHECK%%\'*}"
@@ -69,6 +73,23 @@ while [[ "$COMPOUND_CHECK" == *\'*\'* ]]; do
     after_second="${after_first#*\'}"
     COMPOUND_CHECK="${before}${after_second}"
 done
+# Strip "safe" double-quoted regions (no command substitution inside).
+COMPOUND_TEMP="$COMPOUND_CHECK"
+COMPOUND_CHECK=""
+while [[ "$COMPOUND_TEMP" == *\"*\"* ]]; do
+    before="${COMPOUND_TEMP%%\"*}"
+    after_first="${COMPOUND_TEMP#*\"}"
+    dq_content="${after_first%%\"*}"
+    after_second="${after_first#*\"}"
+    if [[ "$dq_content" == *\$\(* || "$dq_content" == *\`* ]]; then
+        # Has command substitution — preserve so early-out can fire
+        COMPOUND_CHECK+="${before}\"${dq_content}\""
+    else
+        COMPOUND_CHECK+="$before"
+    fi
+    COMPOUND_TEMP="$after_second"
+done
+COMPOUND_CHECK+="$COMPOUND_TEMP"
 
 # Early-out: any compound/redirect/subshell construct → allow
 case "$COMPOUND_CHECK" in
@@ -204,12 +225,26 @@ case "$HEAD" in
                 esac
             fi
         done
-        # Block if any non-flag, non-numeric arg follows (i.e., a file)
+        # Block if any non-flag arg follows (i.e., a file). A bare numeric
+        # token is only a count when it follows -n / --lines / -c / --bytes;
+        # otherwise coreutils treats it as a filename (`head 123` reads file
+        # `123`). The legacy `-N` count form (e.g. `head -5 file`) starts
+        # with `-` and is already skipped by the non-flag test.
+        prev=""
         for tok in "${FLAG_ARGS[@]:+${FLAG_ARGS[@]}}"; do
-            if [[ "$tok" != -* && ! "$tok" =~ ^[0-9]+$ ]]; then
+            if [[ "$tok" =~ ^[0-9]+$ ]]; then
+                case "$prev" in
+                    -n|--lines|-c|--bytes)
+                        prev="$tok"
+                        continue
+                        ;;
+                esac
+            fi
+            if [[ "$tok" != -* ]]; then
                 emit_block "$HEAD <file> blocked." \
                     "Use the Read tool instead (limit/offset for partial reads)."
             fi
+            prev="$tok"
         done
         # Anything after `--` is a positional file arg.
         if [[ "${#POS_ARGS[@]}" -gt 0 ]]; then
