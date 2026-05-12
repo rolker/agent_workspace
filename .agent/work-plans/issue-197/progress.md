@@ -84,3 +84,15 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 
 ### Actions
 - [x] Allow `find --help`/`--version` (informational, not enumeration) and rewrite the misleading "nudge, not a parser" comment to match block-on-match behavior — fixed in `c0f7616`. 2 regression tests added; 76/76 pass.
+
+## External Review (re-triage 5)
+**Status**: complete
+**When**: 2026-05-11 14:50
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `ad67a10` — 1 new Copilot review (2 comments)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Extend quote-stripping to double-quoted regions (when free of `$(`/backticks) — fixed in `bacc64b`. Closes `sed -n "1p;2p" file` bypass. Preserves `cat "$(cmd)"` early-out.
+- [x] Make `head`/`tail` numeric exemption stateful — fixed in `bacc64b`. `head 123` now blocks (was bypassing as "count"); only numeric tokens immediately after `-n`/`--lines`/`-c`/`--bytes` are exempted. 9 regression tests added; 85/85 pass.
