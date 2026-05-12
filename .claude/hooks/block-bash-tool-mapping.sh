@@ -122,7 +122,34 @@ esac
 
 # Tokenize on whitespace; quoting is approximate (good enough for flag detection)
 read -ra TOKENS <<< "$COMMAND"
-HEAD="${TOKENS[0]:-}"
+
+# Normalize the head of the command so simple invocation wrappers don't
+# bypass the block. Two peeling rules and a basename strip:
+#   1) Leading `VAR=value` env-assignment tokens (`FOO=1 cat file`)
+#   2) Bare wrapper commands (`sudo cat`, `command cat`, `env cat`, etc.)
+#   3) Basename of the resulting head (`/bin/cat` → `cat`)
+# Wrapper *flags* are NOT parsed — `sudo -u user cat file` and similar
+# forms remain a known bypass. Adding per-wrapper flag tables would be
+# disproportionate; this hook is a nudge, not a security boundary.
+head_idx=0
+while (( head_idx < ${#TOKENS[@]} )); do
+    tok="${TOKENS[$head_idx]}"
+    if [[ "$tok" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+        head_idx=$((head_idx + 1))
+        continue
+    fi
+    case "${tok##*/}" in
+        sudo|command|env|exec|nice|nohup|time|busybox|stdbuf|ionice|chrt)
+            head_idx=$((head_idx + 1))
+            continue
+            ;;
+    esac
+    break
+done
+# Rebuild TOKENS to start at the resolved head, then basename it.
+TOKENS=("${TOKENS[@]:$head_idx}")
+HEAD_FULL="${TOKENS[0]:-}"
+HEAD="${HEAD_FULL##*/}"
 
 case "$HEAD" in
     cat|head|tail|find|sed) ;;

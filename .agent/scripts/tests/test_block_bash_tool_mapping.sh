@@ -131,6 +131,23 @@ assert_blocks "cat backslash-escaped ;"        'cat file\;bar.txt'
 # Inline `-e SCRIPT` form should still block (equivalent to bare-script form).
 assert_blocks "sed -n -e inline script"        'sed -n -e "5,10p" file.log'
 assert_blocks "sed -n -e single-quoted"        "sed -n -e '5p' file.txt"
+# Wrapper / path / env-assignment bypasses: HEAD detection now peels
+# leading wrappers and takes basename. Bare-wrapper forms only — flag-
+# bearing forms like `sudo -u user cat` remain a documented limitation.
+assert_blocks "absolute-path cat"              "/bin/cat README.md"
+assert_blocks "absolute-path head"             "/usr/bin/head -n 5 file.log"
+assert_blocks "absolute-path sed -n"           "/usr/bin/sed -n '5p' file.txt"
+assert_blocks "sudo cat"                       "sudo cat /etc/hosts"
+assert_blocks "command cat"                    "command cat file.txt"
+assert_blocks "env cat"                        "env cat file.txt"
+assert_blocks "nohup cat"                      "nohup cat file.txt"
+assert_blocks "time cat"                       "time cat file.txt"
+assert_blocks "single VAR= cat"                "FOO=1 cat file.txt"
+assert_blocks "multiple VAR= cat"              "FOO=1 BAR=2 cat file.txt"
+assert_blocks "stacked wrappers"               "sudo command cat file.txt"
+assert_blocks "wrapper + path"                 "sudo /bin/cat file.txt"
+assert_blocks "VAR= + wrapper + cat"           "FOO=1 sudo cat file.txt"
+assert_blocks "sudo find no operational flag"  "sudo find /etc -name foo"
 # End-of-options (`--`) handling: positional args after `--` must still block
 # even when they start with `-`. Closes the bypass/false-positive gap surfaced
 # by Copilot.
