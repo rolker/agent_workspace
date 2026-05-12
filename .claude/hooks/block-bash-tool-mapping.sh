@@ -13,6 +13,10 @@
 #   find [path] [...]                    → Glob (any non-operational find,
 #                                          including bare `find` which defaults to .)
 #   sed -n 'SCRIPT' <file>               → Read with offset/limit (or Grep)
+#                                          (also blocks `sed -n -e SCRIPT file`;
+#                                          `sed -n -f script.sed file` passes
+#                                          through — external script content is
+#                                          unknown to us)
 #   sed -i ... <file>                    → Edit
 #                                          (incl. combined-cluster forms: -ni, -in, --in-place)
 #
@@ -107,9 +111,11 @@ while (( i < n )); do
     i=$((i + 1))
 done
 
-# Early-out: any compound/redirect/subshell construct → allow
+# Early-out: any compound/redirect/subshell construct → allow.
+# Newlines and carriage returns count as statement separators (a multi-line
+# Bash snippet is a sequence of independent commands, not a "simple read").
 case "$COMPOUND_CHECK" in
-    *\|*|*\>*|*\<*|*\&\&*|*\;*|*\$\(*|*\`*) exit 0 ;;
+    *\|*|*\>*|*\<*|*\&\&*|*\;*|*\$\(*|*\`*|*$'\n'*|*$'\r'*) exit 0 ;;
 esac
 
 # Tokenize on whitespace; quoting is approximate (good enough for flag detection)
@@ -307,7 +313,13 @@ case "$HEAD" in
         # across both halves: non-flag tokens before `--` + every token after
         # `--`. Script + file = 2 positional → block. Script alone means
         # stdin (would have a pipe → already early-outed).
-        if has_short_flag_letter n "${FLAG_ARGS[@]}"; then
+        #
+        # Exempt -f: `sed -n -f script.sed file` runs an external sed script
+        # whose contents are unknown to us; Read/Grep can't replicate it.
+        # `-e 'SCRIPT'` is functionally equivalent to the bare-script form,
+        # so we keep blocking it.
+        if has_short_flag_letter n "${FLAG_ARGS[@]}" \
+           && ! has_short_flag_letter f "${FLAG_ARGS[@]}"; then
             non_flag_count=$(count_non_flag_args "${FLAG_ARGS[@]}")
             total_positional=$((non_flag_count + ${#POS_ARGS[@]}))
             if [[ "$total_positional" -ge 2 ]]; then

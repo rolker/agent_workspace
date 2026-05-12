@@ -128,6 +128,9 @@ assert_blocks "cat dq filename with >"         'cat "file>bar.txt"'
 assert_blocks "cat backslash-escaped >"        'cat file\>bar.txt'
 assert_blocks "cat backslash-escaped |"        'cat file\|bar.txt'
 assert_blocks "cat backslash-escaped ;"        'cat file\;bar.txt'
+# Inline `-e SCRIPT` form should still block (equivalent to bare-script form).
+assert_blocks "sed -n -e inline script"        'sed -n -e "5,10p" file.log'
+assert_blocks "sed -n -e single-quoted"        "sed -n -e '5p' file.txt"
 # End-of-options (`--`) handling: positional args after `--` must still block
 # even when they start with `-`. Closes the bypass/false-positive gap surfaced
 # by Copilot.
@@ -153,6 +156,13 @@ assert_allows "compound with quoted script"    "echo a | sed -n '1p;2p'"
 # Double-quoted command substitution must still trigger early-out
 assert_allows "cat \"\$(...)\" preserved"      'cat "$(echo file)"'
 assert_allows "cat \`...\` in dq preserved"    'cat "`echo file`"'
+# Newline (multi-line bash snippet) is a statement separator — compound.
+assert_allows "multi-line snippet"             "$(printf 'cat foo\nls bar')"
+assert_allows "snippet with carriage return"   "$(printf 'cat foo\rls bar')"
+# `sed -n -f script.sed file` runs an external script; content unknown
+# to us, so Read/Grep can't substitute. Pass through.
+assert_allows "sed -n -f external script"      "sed -n -f script.sed file.log"
+assert_allows "sed -nf combined cluster"       "sed -nf script.sed file.log"
 assert_allows "head with pipe"                 "git log | head -5"
 assert_allows "tail with pipe"                 "git log | tail -5"
 assert_allows "find with pipe"                 "find . | head -10"
