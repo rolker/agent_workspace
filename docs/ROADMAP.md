@@ -112,7 +112,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | Session continuity | #36 | subsumed by #88 | gastown + brainstorm | progress.md gives new sessions full context |
 | Inter-agent messaging | #35 | done | gastown | Structured communication between agents |
 | Structured agent handoffs | #40 | done | microsoft/skills | Tool scoping per agent role |
-| Permission prompt reduction | #110 | planned | brainstorm | Share workspace-level rules and automate analysis; #1 friction point |
+| Permission prompt reduction | #110 | done | brainstorm | Share workspace-level rules and automate analysis; #1 friction point |
 | Morning status / standup skill | — | planned | brainstorm | Gather PR, review, issue, worktree state; suggest prioritized work plan (scenario 4) |
 | Post-PR merge/cleanup/sync | #38 | done | session friction | `merge_pr.sh` + `make merge-pr PR=<N>` automates merge, worktree removal, branch cleanup, and sync |
 | Crash recovery skill | #70 | done | brainstorm | Session-specific scratchpad subdirs |
@@ -208,8 +208,8 @@ Small fixes that can be done anytime.
 | Research skill worktree fix | #45 | done | Fix project worktree path + staleness tracking |
 | Gemini CLI PATH resilience | #82 | done | Fallback path detection added (PR #99) |
 | Stale venv/hook detection after rename | #13 | done | `make validate` detects, `make repair` fixes (PR #101) |
-| worktree_list.sh stray local_porcelain | #134 | planned | Bug: command-not-found error |
-| cross_model_review.sh outside worktree | #133 | planned | Bug: fails when invoked outside target repo worktree |
+| worktree_list.sh stray local_porcelain | #134 | done | Bug: command-not-found error |
+| cross_model_review.sh outside worktree | #133 | done | Bug: fails when invoked outside target repo worktree |
 | Git-bug fallback warnings + smoke test | — | planned | Lesson from ros2 #418 silent-fallback trap. `_issue_helpers.sh` falls through to `gh` silently; add visible warning on miss. Smoke-test `git bug bug --format json` in `make validate` |
 | Workspace/project parity audit | — | planned | Generalize workspace-only tooling: `dashboard.sh`, `update_roadmap.sh`, `validate_workspace.py`. Per 2026-04-19 session principle: every practical tool works with both types |
 | Port ros2 #436 behavioral-patterns knowledge | — | planned | From 2026-04-19 reflection on ros2 field work. New knowledge docs: agent behavioral patterns (time blindness, spec rigidity, unauthorized policy decisions), autonomous logging, discuss-before-editing, approval scope discipline. Port concept-not-mechanism: coordinator role, research-agent-as-shared-resource |
