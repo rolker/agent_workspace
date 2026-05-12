@@ -169,3 +169,15 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 
 ### Actions
 - [x] Normalize HEAD against wrappers, env-assignments, and path prefix — fixed in `95682e3`. Closes bypasses: `/bin/cat`, `sudo cat`, `command cat`, `env cat`, `nohup cat`, `time cat`, `FOO=1 cat`, stacked wrappers, etc. 14 regression tests added; 108/108 pass. Documented limitation: wrapper-with-flags forms (`sudo -u user cat`) still bypass — per-wrapper flag tables would be disproportionate for a nudge hook.
+
+## External Review (re-triage 12)
+**Status**: complete
+**When**: 2026-05-12 10:55
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `454570e` — 1 new Copilot review (2 comments)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Catch GNU sed `--quiet`/`--silent` long forms (equivalent to `-n`) — fixed in `594870c`. Added `has_sed_quiet` helper; `-f` exemption preserved. 5 regression tests added; 113/113 pass.
+- [x] Drop "nudge" wording in wrapper-flags comment (Copilot has flagged this framing repeatedly) — fixed in `594870c`. Replaced with plain trade-off description.
