@@ -207,14 +207,40 @@ Use your actual runtime identity — never copy example model names from docs.
 
 ## GitHub CLI Patterns
 
-### Use `--body-file`, Not `--body`
+### Creating pull requests
+
+Use `.agent/scripts/gh_create_pr.sh` for PRs — it injects the AI signature,
+validates labels, and prevents wrong-repo targeting. Heredoc body via stdin
+keeps the whole flow in one allowlisted call:
+
+```bash
+.agent/scripts/gh_create_pr.sh --title "Title" --body-stdin <<'EOF'
+Your markdown content here.
+EOF
+```
+
+For a body already in a file:
+
+```bash
+.agent/scripts/gh_create_pr.sh --title "Title" --body-file path/to/body.md
+```
+
+The signature footer is appended automatically when `AGENT_NAME` and
+`AGENT_MODEL` are set (via `set_git_identity_env.sh`). Pass
+`--no-signature` to suppress — rare; revert PRs or human-authored only.
+
+### Use `--body-file`, Not `--body` (for direct `gh` calls)
+
+When invoking `gh issue create` / `gh issue comment` directly (the wrapper
+above covers PRs), prefer `--body-file` so multiline content isn't mangled
+by shell quoting:
 
 ```bash
 BODY_FILE=$(mktemp /tmp/gh_body.XXXXXX.md)
 cat << 'EOF' > "$BODY_FILE"
 Your markdown content here.
 EOF
-gh pr create --title "Title" --body-file "$BODY_FILE"
+gh issue create --title "Title" --body-file "$BODY_FILE"
 rm "$BODY_FILE"
 ```
 
@@ -340,6 +366,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/setup_project.sh` | Configure project/ directory |
 | `.agent/scripts/check_branch_updates.sh` | Check if branch is behind default |
 | `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
+| `.agent/scripts/gh_create_pr.sh` | Create PR with AI signature injection + label validation; reads body via `--body-stdin`, `--body-file`, or `--body` |
 | `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
 | `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, waits for CI on the latest HEAD before merging), remove worktree, delete branch, sync main; `--no-wait` to skip the CI wait |
 | `.agent/scripts/update_roadmap.sh` | Auto-update roadmap status for completed issues |
