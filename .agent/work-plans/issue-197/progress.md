@@ -158,3 +158,14 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 
 ### Actions
 - [x] Reword the operational-find list in the hook header docstring as illustrative ("e.g. ...") rather than exhaustive — fixed in `d7caa1e`. Avoids drift as the code's allowlist grows.
+
+## External Review (re-triage 11)
+**Status**: complete
+**When**: 2026-05-12 10:40
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `674c28c` — 1 new Copilot review (1 comment, multiple bypasses)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Normalize HEAD against wrappers, env-assignments, and path prefix — fixed in `95682e3`. Closes bypasses: `/bin/cat`, `sudo cat`, `command cat`, `env cat`, `nohup cat`, `time cat`, `FOO=1 cat`, stacked wrappers, etc. 14 regression tests added; 108/108 pass. Documented limitation: wrapper-with-flags forms (`sudo -u user cat`) still bypass — per-wrapper flag tables would be disproportionate for a nudge hook.
