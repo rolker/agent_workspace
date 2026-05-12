@@ -181,3 +181,38 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 ### Actions
 - [x] Catch GNU sed `--quiet`/`--silent` long forms (equivalent to `-n`) — fixed in `594870c`. Added `has_sed_quiet` helper; `-f` exemption preserved. 5 regression tests added; 113/113 pass.
 - [x] Drop "nudge" wording in wrapper-flags comment (Copilot has flagged this framing repeatedly) — fixed in `594870c`. Replaced with plain trade-off description.
+
+## Implement: gh_create_pr.sh (item 2 of #197 umbrella)
+**Status**: complete
+**When**: 2026-05-12 11:30
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**Branch**: `feature/issue-197-gh-create-pr` (off main; sibling to merged #200/#199)
+
+### Scope
+Collapses the heredoc + mktemp + `gh pr create --body-file` + rm sequence
+(2–3 permission prompts each PR) into a single allowlistable wrapper.
+
+### Design decisions
+- **Hard-fail on missing identity** — when signature would be added but
+  `AGENT_NAME`/`AGENT_MODEL` are unset, exit 2 with set_git_identity_env.sh
+  instructions. `--no-signature` and already-signed bodies bypass this
+  check. Stance is workspace-policy strict per Roland's pick.
+- **`--body-stdin` as canonical form in AGENTS.md** — single allowlisted
+  call, no mktemp dance. `--body-file` and `--body` still supported as
+  alternatives. Wrapper internally drains stdin to a temp file and uses
+  trap-based cleanup.
+- **Mirror gh_create_issue.sh structure** — repo-safety check, label
+  validation, json metadata path, error code conventions. Dropped the
+  git-bug path (PRs aren't git-bug tracked per ADR-0010).
+- **Test approach: shimmed `gh` via PATH** — `.agent/scripts/tests/test_gh_create_pr.sh`
+  injects a `gh` shim that captures argv into a logfile; assertions inspect
+  the logfile. No network calls, mirrors test_block_bash_tool_mapping.sh style.
+
+### Test gotcha (logged for future)
+The system's `grep` is `ugrep` (stricter option parser). `grep -Fxq "--draft"`
+fails because `--draft` is interpreted as a flag. Fix: `grep -Fxq -- "$pattern"`.
+Applied to argv_has() in the new test; worth remembering across other tests.
+
+### Actions
+- [ ] Open PR closing #197 umbrella item 2 (last remaining sub-task)
