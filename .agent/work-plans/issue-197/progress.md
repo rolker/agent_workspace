@@ -215,4 +215,27 @@ fails because `--draft` is interpreted as a flag. Fix: `grep -Fxq -- "$pattern"`
 Applied to argv_has() in the new test; worth remembering across other tests.
 
 ### Actions
-- [ ] Open PR closing #197 umbrella item 2 (last remaining sub-task)
+- [x] Open PR closing #197 umbrella item 2 — PR #203 opened
+
+## External Review (PR #203, round 1)
+**Status**: complete
+**When**: 2026-05-12 12:00
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `dd7ee00` — 1 Copilot review (6 comments, all valid, 0 false positives)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Normalize joined-equals flag forms (`--body=X` → `--body X`) in a pre-parse pass — fixed in `31a13d8`. Closes the two argv-rewrite bugs (#1, #2) on `--body=` and `--body-file=`.
+- [x] Hoist `--body-stdin` drain-and-rewrite out of the signature branch — fixed in `31a13d8`. `--body-stdin` no longer leaks to `gh` when `--no-signature` or pre-signed content (#6).
+- [x] Run signature dedupe against stdin-drained content — fixed in `31a13d8` (falls out naturally once the drain happens before `needs_signature` runs) (#4).
+- [x] `needs_signature` returns false when no body provided — fixed in `31a13d8`. Interactive `gh pr create` works without `AGENT_NAME` (#3).
+- [x] Test coverage for all 4 body shapes × signed/unsigned/already-signed/interactive — added in `31a13d8`. 10 new tests; suite 26/26.
+
+### Lesson
+Pre-review checklist should explicitly enumerate argv shape variants
+(`--flag X` vs `--flag=X` vs stdin) for any wrapper that rewrites
+argv. Five of the six Copilot catches cluster around this single
+gap — and they all would have been caught by adding one row to the
+test ledger upfront. Feeding into the `feedback_adversarial_pre_review`
+memory.
