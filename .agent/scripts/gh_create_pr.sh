@@ -71,13 +71,27 @@ if ! command -v jq &>/dev/null; then
     exit 3
 fi
 
+# Normalize joined-equals flag forms (--flag=VALUE → --flag VALUE) so the
+# downstream parse + rewrite logic only has to handle one shape per flag.
+# Without this, rewriting `ORIGINAL_ARGS[i]` for signature injection would
+# drop the `--body=` / `--body-file=` prefix.
+_RAW_ARGS=("$@")
+ORIGINAL_ARGS=()
+for arg in "${_RAW_ARGS[@]}"; do
+    case "$arg" in
+        --body=*)      ORIGINAL_ARGS+=(--body "${arg#*=}") ;;
+        --body-file=*) ORIGINAL_ARGS+=(--body-file "${arg#*=}") ;;
+        --repo=*)      ORIGINAL_ARGS+=(--repo "${arg#*=}") ;;
+        --label=*)     ORIGINAL_ARGS+=(--label "${arg#*=}") ;;
+        *)             ORIGINAL_ARGS+=("$arg") ;;
+    esac
+done
+
 # Parse command-line arguments. We need to know:
 #   - --label / -l values (for validation)
 #   - -R / --repo value (for repo-safety check)
 #   - --body / --body-file / --body-stdin (for signature injection)
 #   - --no-signature (skip footer)
-ORIGINAL_ARGS=("$@")
-
 LABELS=()
 EXPLICIT_REPO=""
 NO_SIGNATURE=false
@@ -100,10 +114,6 @@ while [ $i -lt ${#ORIGINAL_ARGS[@]} ]; do
                 exit 2
             fi
             ;;
-        --repo=*)
-            EXPLICIT_REPO="${arg#*=}"
-            i=$((i + 1))
-            ;;
         --label|-l)
             if [ -n "${ORIGINAL_ARGS[$((i+1))]:-}" ]; then
                 LABELS+=("${ORIGINAL_ARGS[$((i+1))]}")
@@ -111,10 +121,6 @@ while [ $i -lt ${#ORIGINAL_ARGS[@]} ]; do
             else
                 i=$((i + 1))
             fi
-            ;;
-        --label=*)
-            LABELS+=("${arg#*=}")
-            i=$((i + 1))
             ;;
         --body)
             if [ -n "${ORIGINAL_ARGS[$((i+1))]:-}" ]; then
@@ -125,11 +131,6 @@ while [ $i -lt ${#ORIGINAL_ARGS[@]} ]; do
                 i=$((i + 1))
             fi
             ;;
-        --body=*)
-            BODY_TEXT="${arg#*=}"
-            BODY_ARG_INDEX=$i
-            i=$((i + 1))
-            ;;
         --body-file)
             if [ -n "${ORIGINAL_ARGS[$((i+1))]:-}" ]; then
                 BODY_FILE_PATH="${ORIGINAL_ARGS[$((i+1))]}"
@@ -138,11 +139,6 @@ while [ $i -lt ${#ORIGINAL_ARGS[@]} ]; do
             else
                 i=$((i + 1))
             fi
-            ;;
-        --body-file=*)
-            BODY_FILE_PATH="${arg#*=}"
-            BODY_FILE_ARG_INDEX=$i
-            i=$((i + 1))
             ;;
         --body-stdin)
             BODY_STDIN=true
@@ -199,15 +195,47 @@ if [ -z "$EXPLICIT_REPO" ]; then
     fi
 fi
 
+# --- Drain --body-stdin (always; wrapper-only flag) --------------------------
+# `--body-stdin` is not understood by `gh pr create`. Always rewrite it to
+# `--body-file <tmp>` regardless of signature decision; otherwise the flag
+# leaks through to gh and fails as "unknown flag".
+if [ "$BODY_STDIN" = true ]; then
+    STDIN_BODY_FILE=$(mktemp /tmp/gh_pr_body.XXXXXX.md)
+    trap 'rm -f "$STDIN_BODY_FILE"' EXIT
+    cat > "$STDIN_BODY_FILE"
+    NEW_ARGS=()
+    for arg in "${ORIGINAL_ARGS[@]}"; do
+        if [ "$arg" = "--body-stdin" ]; then
+            NEW_ARGS+=(--body-file "$STDIN_BODY_FILE")
+        else
+            NEW_ARGS+=("$arg")
+        fi
+    done
+    ORIGINAL_ARGS=("${NEW_ARGS[@]}")
+    BODY_FILE_PATH="$STDIN_BODY_FILE"
+    # Find the new --body-file value's index so signature injection can rewrite it.
+    for (( j=0; j<${#ORIGINAL_ARGS[@]}; j++ )); do
+        if [ "${ORIGINAL_ARGS[$j]}" = "--body-file" ]; then
+            BODY_FILE_ARG_INDEX=$((j + 1))
+            break
+        fi
+    done
+fi
+
 # --- AI signature injection --------------------------------------------------
 # Append the canonical signature footer unless:
 #   - --no-signature was passed
+#   - no body was provided at all (interactive `gh pr create` opens an editor)
 #   - body already contains **Authored-By**:
 # When signature is required but AGENT_NAME / AGENT_MODEL are unset,
 # hard-fail with instructions (workspace policy: PRs are signed).
 SIG_MARKER='**Authored-By**:'
 needs_signature() {
     [ "$NO_SIGNATURE" = true ] && return 1
+    # No body input at all → interactive editor mode → no injection
+    [ -z "$BODY_TEXT" ] && [ -z "$BODY_FILE_PATH" ] && return 1
+    # Already signed (catches stdin-drained content too, since BODY_FILE_PATH
+    # now points at the temp file)
     if [ -n "$BODY_TEXT" ]; then
         printf '%s' "$BODY_TEXT" | grep -Fq "$SIG_MARKER" && return 1
     elif [ -n "$BODY_FILE_PATH" ] && [ -f "$BODY_FILE_PATH" ]; then
@@ -233,30 +261,19 @@ if needs_signature; then
     if [ -n "$BODY_TEXT" ]; then
         ORIGINAL_ARGS[$BODY_ARG_INDEX]="${BODY_TEXT}${SIG_BLOCK}"
     elif [ -n "$BODY_FILE_PATH" ] && [ -f "$BODY_FILE_PATH" ]; then
-        SIGNED_BODY_FILE=$(mktemp /tmp/gh_pr_body.XXXXXX.md)
-        trap 'rm -f "$SIGNED_BODY_FILE"' EXIT
-        cp "$BODY_FILE_PATH" "$SIGNED_BODY_FILE"
-        printf '%s' "$SIG_BLOCK" >> "$SIGNED_BODY_FILE"
-        ORIGINAL_ARGS[$BODY_FILE_ARG_INDEX]="$SIGNED_BODY_FILE"
-    elif [ "$BODY_STDIN" = true ]; then
-        # Drain stdin, append signature, then convert --body-stdin to --body-file
-        SIGNED_BODY_FILE=$(mktemp /tmp/gh_pr_body.XXXXXX.md)
-        trap 'rm -f "$SIGNED_BODY_FILE"' EXIT
-        cat > "$SIGNED_BODY_FILE"
-        printf '%s' "$SIG_BLOCK" >> "$SIGNED_BODY_FILE"
-        # Rewrite ORIGINAL_ARGS: --body-stdin → --body-file <path>
-        NEW_ARGS=()
-        for arg in "${ORIGINAL_ARGS[@]}"; do
-            if [ "$arg" = "--body-stdin" ]; then
-                NEW_ARGS+=(--body-file "$SIGNED_BODY_FILE")
-            else
-                NEW_ARGS+=("$arg")
-            fi
-        done
-        ORIGINAL_ARGS=("${NEW_ARGS[@]}")
+        # Append directly to the existing temp file (for stdin) or copy+append
+        # for a user-provided body file. Either way, the on-disk file gets the
+        # signature and gh sees the same --body-file path.
+        if [ "$BODY_STDIN" = true ]; then
+            printf '%s' "$SIG_BLOCK" >> "$BODY_FILE_PATH"
+        else
+            SIGNED_BODY_FILE=$(mktemp /tmp/gh_pr_body.XXXXXX.md)
+            trap 'rm -f "$SIGNED_BODY_FILE" "${STDIN_BODY_FILE:-}"' EXIT
+            cp "$BODY_FILE_PATH" "$SIGNED_BODY_FILE"
+            printf '%s' "$SIG_BLOCK" >> "$SIGNED_BODY_FILE"
+            ORIGINAL_ARGS[$BODY_FILE_ARG_INDEX]="$SIGNED_BODY_FILE"
+        fi
     fi
-    # If no body was provided at all, we leave args alone; gh pr create
-    # will open an editor and the user can add the signature there.
 fi
 
 # Strip the wrapper-only flag before invoking gh

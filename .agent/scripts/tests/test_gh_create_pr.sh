@@ -214,6 +214,117 @@ assert_calls_gh "unset + already-signed body calls gh" \
 rm -f "$TMPF"
 
 echo
+echo "=== Joined-equals forms (--body=X, --body-file=X) ==="
+export AGENT_NAME="Test Agent"
+export AGENT_MODEL="test-model"
+
+assert_calls_gh "--body=VALUE shape" \
+    --title "T" --body=Inline-body-via-equals
+# After normalization + signature injection, gh should see `--body` followed
+# by the body+signature on the next argv line, not a single positional token.
+if argv_has "--body" \
+   && grep -q '^Inline-body-via-equals' "$ARGV_LOG" \
+   && grep -Fq '**Authored-By**: `Test Agent`' "$ARGV_LOG"; then
+    echo "  PASS [argv]:       --body=VALUE normalized and signed"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL [argv]:       --body=VALUE handling broken"
+    echo "  argv was:"; sed 's/^/    /' "$ARGV_LOG"
+    FAIL=$((FAIL + 1))
+fi
+
+TMPF=$(mktemp /tmp/test_body.XXXXXX.md)
+echo "Eq form body" > "$TMPF"
+assert_calls_gh "--body-file=PATH shape" \
+    --title "T" "--body-file=$TMPF"
+if argv_has "--body-file" \
+   && [[ -f "$BODY_CAPTURE_DIR/body.md" ]] \
+   && grep -Fq "Eq form body" "$BODY_CAPTURE_DIR/body.md" \
+   && grep -Fq "**Authored-By**: \`Test Agent\`" "$BODY_CAPTURE_DIR/body.md"; then
+    echo "  PASS [body]:       --body-file=PATH normalized and signed"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL [body]:       --body-file=PATH handling broken"
+    FAIL=$((FAIL + 1))
+fi
+rm -f "$TMPF"
+
+echo
+echo "=== --body-stdin path ==="
+# Signed stdin (env vars set, content not pre-signed)
+reset_capture
+printf '%s\n' "Stdin body content" | "$SCRIPT" --title "T" --body-stdin >/dev/null 2>&1
+rc=$?
+if [[ "$rc" -eq 0 ]] && argv_has "--body-file" \
+   && [[ -f "$BODY_CAPTURE_DIR/body.md" ]] \
+   && grep -Fq "Stdin body content" "$BODY_CAPTURE_DIR/body.md" \
+   && grep -Fq "**Authored-By**: \`Test Agent\`" "$BODY_CAPTURE_DIR/body.md"; then
+    echo "  PASS [stdin]:      --body-stdin drained, rewritten to --body-file, signed"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL [stdin]:      --body-stdin signed path broken (rc=$rc)"
+    FAIL=$((FAIL + 1))
+fi
+# --body-stdin should never reach gh
+if argv_has "--body-stdin"; then
+    echo "  FAIL [stdin]:      --body-stdin leaked through to gh"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS [stdin]:      --body-stdin stripped before gh"
+    PASS=$((PASS + 1))
+fi
+
+# Stdin + already-signed content → no duplicate
+reset_capture
+printf '%s' "Pre-signed stdin
+
+---
+**Authored-By**: \`Someone\`
+**Model**: \`x\`
+" | "$SCRIPT" --title "T" --body-stdin >/dev/null 2>&1
+SIG_COUNT_STDIN=$(grep -cF '**Authored-By**:' "$BODY_CAPTURE_DIR/body.md" 2>/dev/null || echo 0)
+if [[ "$SIG_COUNT_STDIN" -eq 1 ]]; then
+    echo "  PASS [stdin]:      already-signed stdin not duplicated (1 Authored-By)"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL [stdin]:      already-signed stdin got $SIG_COUNT_STDIN Authored-By lines"
+    FAIL=$((FAIL + 1))
+fi
+
+# Stdin + --no-signature → still drained and rewritten, no signature added
+reset_capture
+printf '%s\n' "Stdin no-sig" | "$SCRIPT" --title "T" --body-stdin --no-signature >/dev/null 2>&1
+rc=$?
+if [[ "$rc" -eq 0 ]] && argv_has "--body-file" \
+   && [[ -f "$BODY_CAPTURE_DIR/body.md" ]] \
+   && grep -Fq "Stdin no-sig" "$BODY_CAPTURE_DIR/body.md"; then
+    if grep -Fq '**Authored-By**:' "$BODY_CAPTURE_DIR/body.md"; then
+        echo "  FAIL [stdin]:      --no-signature on stdin still added signature"
+        FAIL=$((FAIL + 1))
+    else
+        echo "  PASS [stdin]:      --body-stdin + --no-signature drains without signing"
+        PASS=$((PASS + 1))
+    fi
+else
+    echo "  FAIL [stdin]:      --body-stdin + --no-signature didn't reach gh (rc=$rc)"
+    FAIL=$((FAIL + 1))
+fi
+
+echo
+echo "=== Interactive (no body provided) ==="
+# With env vars set: no body means editor mode; should not hard-fail or
+# require signature injection.
+assert_calls_gh "no body, env vars set" \
+    --title "T"
+# With env vars UNSET: no body should ALSO pass through (no signature needed
+# because there's nothing to sign yet — user will edit interactively).
+unset AGENT_NAME AGENT_MODEL
+assert_calls_gh "no body, env vars unset (no hard-fail)" \
+    --title "T"
+export AGENT_NAME="Test Agent"
+export AGENT_MODEL="test-model"
+
+echo
 echo "=== Pass-through flags ==="
 export AGENT_NAME="Test Agent"
 export AGENT_MODEL="test-model"
