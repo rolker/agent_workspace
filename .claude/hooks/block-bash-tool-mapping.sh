@@ -48,13 +48,6 @@ fi
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""')
 [[ "$TOOL" != "Bash" ]] && exit 0
 
-# Defer logging-dir setup until we know this is a Bash call. The hook is
-# wired as a wildcard PreToolUse in .claude/settings.json, so it runs for
-# Read/Edit/Write/etc. too; doing this work earlier would create
-# ~/.claude/ on every non-Bash tool call for no reason.
-umask 077
-mkdir -p "$(dirname "$LOG_FILE")" 2>/dev/null || true
-
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
 [[ -z "$COMMAND" ]] && exit 0
 
@@ -149,8 +142,13 @@ find -exec/-delete/-mtime, etc.) pass through. To bypass intentionally,
 add a pipe or redirect — or just use the dedicated tool.
 EOF
 
-    # Log the block (best-effort; never fail the hook)
+    # Log the block (best-effort; never fail the hook). Logging-dir setup
+    # is deferred to here so it only runs when we're actually about to
+    # write — allowed Bash calls and non-Bash tool calls never touch
+    # ~/.claude/.
     {
+        umask 077
+        mkdir -p "$(dirname "$LOG_FILE")"
         jq -n -c \
             --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg head "$HEAD" \
