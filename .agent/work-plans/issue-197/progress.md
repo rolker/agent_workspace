@@ -96,3 +96,17 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 ### Actions
 - [x] Extend quote-stripping to double-quoted regions (when free of `$(`/backticks) — fixed in `bacc64b`. Closes `sed -n "1p;2p" file` bypass. Preserves `cat "$(cmd)"` early-out.
 - [x] Make `head`/`tail` numeric exemption stateful — fixed in `bacc64b`. `head 123` now blocks (was bypassing as "count"); only numeric tokens immediately after `-n`/`--lines`/`-c`/`--bytes` are exempted. 9 regression tests added; 85/85 pass.
+
+## External Review (re-triage 6)
+**Status**: complete
+**When**: 2026-05-12 09:30
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `cdcc90e` — 1 new Copilot review (4 comments: 3 valid, 1 false positive)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Defer `umask`/`mkdir -p` until after the Bash check (hook is wildcard PreToolUse so was running for every tool call) — fixed in `8f7c803`.
+- [x] Add `command -v jq` guard at top of test script for clear missing-dep error — fixed in `8f7c803`.
+- [x] Split CLAUDE.md Tool Mapping row to match hook's granular sed behavior (`sed -i`/`awk -i` → Edit; `sed -n` → Read/Grep) — fixed in `8f7c803`.
+- [n/a] Heredoc leading-space concern: **false positive**. Verified with `cat -A` — stderr is left-aligned, no indentation.
