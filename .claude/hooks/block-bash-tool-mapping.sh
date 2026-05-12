@@ -24,8 +24,10 @@
 #   anything containing | > < << <<< >> && || ; $( ` (compound/redirect/subshell)
 #   head -c ... / head -c                (byte mode)
 #   tail -c ... / tail -f / tail -F      (byte/follow modes)
-#   find ... -exec/-execdir/-delete/-mtime/-mmin/-cmin/-amin/-size/-newer/-prune/-print0/-fls/-ls
-#                                        (operational find)
+#   find ... with any operational predicate, e.g. -exec / -delete / -mtime /
+#   -size / -newer / -prune / -ok / -fprint / -perm / -user / -quit ...
+#   (see the `find)` case below for the full allowlist; bare `--help` /
+#   `--version` also pass through)
 #   sed without -i and without -n        (stream substitution stage)
 #   anything not starting with cat/head/tail/find/sed
 #
