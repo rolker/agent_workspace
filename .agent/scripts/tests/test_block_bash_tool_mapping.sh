@@ -131,6 +131,10 @@ assert_blocks "cat backslash-escaped ;"        'cat file\;bar.txt'
 # Inline `-e SCRIPT` form should still block (equivalent to bare-script form).
 assert_blocks "sed -n -e inline script"        'sed -n -e "5,10p" file.log'
 assert_blocks "sed -n -e single-quoted"        "sed -n -e '5p' file.txt"
+# GNU sed long forms equivalent to -n
+assert_blocks "sed --quiet inline script"      "sed --quiet '5p' file.txt"
+assert_blocks "sed --silent inline script"     "sed --silent '5p' file.log"
+assert_blocks "sed --quiet on README.md"       "sed --quiet '1,10p' README.md"
 # Wrapper / path / env-assignment bypasses: HEAD detection now peels
 # leading wrappers and takes basename. Bare-wrapper forms only — flag-
 # bearing forms like `sudo -u user cat` remain a documented limitation.
@@ -180,6 +184,9 @@ assert_allows "snippet with carriage return"   "$(printf 'cat foo\rls bar')"
 # to us, so Read/Grep can't substitute. Pass through.
 assert_allows "sed -n -f external script"      "sed -n -f script.sed file.log"
 assert_allows "sed -nf combined cluster"       "sed -nf script.sed file.log"
+# --quiet/--silent + -f still allowed (external script content unknown)
+assert_allows "sed --quiet -f external"        "sed --quiet -f script.sed file.log"
+assert_allows "sed --silent -f external"       "sed --silent -f script.sed file.log"
 assert_allows "head with pipe"                 "git log | head -5"
 assert_allows "tail with pipe"                 "git log | tail -5"
 assert_allows "find with pipe"                 "find . | head -10"

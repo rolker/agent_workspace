@@ -13,7 +13,8 @@
 #   find [path] [...]                    → Glob (any non-operational find,
 #                                          including bare `find` which defaults to .)
 #   sed -n 'SCRIPT' <file>               → Read with offset/limit (or Grep)
-#                                          (also blocks `sed -n -e SCRIPT file`;
+#                                          (also blocks `sed -n -e SCRIPT file`
+#                                          and long-form `--quiet`/`--silent`;
 #                                          `sed -n -f script.sed file` passes
 #                                          through — external script content is
 #                                          unknown to us)
@@ -130,7 +131,7 @@ read -ra TOKENS <<< "$COMMAND"
 #   3) Basename of the resulting head (`/bin/cat` → `cat`)
 # Wrapper *flags* are NOT parsed — `sudo -u user cat file` and similar
 # forms remain a known bypass. Adding per-wrapper flag tables would be
-# disproportionate; this hook is a nudge, not a security boundary.
+# disproportionate to the gain for this small bypass class.
 head_idx=0
 while (( head_idx < ${#TOKENS[@]} )); do
     tok="${TOKENS[$head_idx]}"
@@ -242,6 +243,21 @@ has_sed_inplace() {
     return 1
 }
 
+has_sed_quiet() {
+    # Returns 0 if sed is in print-mode: short-flag `-n` (incl. clusters
+    # like `-ne`, `-nf`) OR GNU long forms `--quiet` / `--silent`.
+    if has_short_flag_letter n "$@"; then
+        return 0
+    fi
+    local t
+    for t in "$@"; do
+        case "$t" in
+            --quiet|--silent) return 0 ;;
+        esac
+    done
+    return 1
+}
+
 count_non_flag_args() {
     # Counts tokens that don't start with '-'. Used to detect "script + file"
     # in `sed -n SCRIPT FILE` (two non-flag tokens past `sed`).
@@ -347,7 +363,7 @@ case "$HEAD" in
         # whose contents are unknown to us; Read/Grep can't replicate it.
         # `-e 'SCRIPT'` is functionally equivalent to the bare-script form,
         # so we keep blocking it.
-        if has_short_flag_letter n "${FLAG_ARGS[@]}" \
+        if has_sed_quiet "${FLAG_ARGS[@]}" \
            && ! has_short_flag_letter f "${FLAG_ARGS[@]}"; then
             non_flag_count=$(count_non_flag_args "${FLAG_ARGS[@]}")
             total_positional=$((non_flag_count + ${#POS_ARGS[@]}))
