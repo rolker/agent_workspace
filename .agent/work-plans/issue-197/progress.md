@@ -110,3 +110,14 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 - [x] Add `command -v jq` guard at top of test script for clear missing-dep error — fixed in `8f7c803`.
 - [x] Split CLAUDE.md Tool Mapping row to match hook's granular sed behavior (`sed -i`/`awk -i` → Edit; `sed -n` → Read/Grep) — fixed in `8f7c803`.
 - [n/a] Heredoc leading-space concern: **false positive**. Verified with `cat -A` — stderr is left-aligned, no indentation.
+
+## External Review (re-triage 7)
+**Status**: complete
+**When**: 2026-05-12 09:45
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `4ea18fe` — 1 new Copilot review (1 comment)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Move `umask`/`mkdir -p` into `emit_block()` so allowed Bash calls and non-Bash tool calls never touch `~/.claude/` — fixed in `f406daa`. Verified empirically: allowed `echo hello` leaves test $HOME empty.
