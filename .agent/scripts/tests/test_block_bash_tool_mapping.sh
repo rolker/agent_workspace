@@ -8,6 +8,11 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="${SCRIPT_DIR}/../../../.claude/hooks/block-bash-tool-mapping.sh"
 
+if ! command -v jq >/dev/null 2>&1; then
+    echo "FATAL: jq is required to run these tests (and by the hook itself)" >&2
+    exit 1
+fi
+
 if [[ ! -x "$HOOK" ]]; then
     echo "FATAL: hook not found or not executable at $HOOK"
     exit 1

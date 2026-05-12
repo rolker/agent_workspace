@@ -22,7 +22,8 @@ the dedicated tools are:
 | `ls`, `find` | Glob |
 | `grep`, `rg` | Grep |
 | `cat`, `head`, `tail` | Read |
-| `sed`, `awk` | Edit |
+| `sed -i`, `awk -i` | Edit |
+| `sed -n 'SCRIPT' <file>` | Read (offset/limit) or Grep |
 | `echo >`, heredoc redirection | Write |
 
 These are auto-approved and don't consume permission prompts.
