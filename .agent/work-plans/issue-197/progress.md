@@ -147,3 +147,14 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 - [x] Add newline/CR to compound early-out — fixed in `255c0a5`. Multi-line bash snippets (`cat foo\nls bar`) no longer treated as simple cat. Test added.
 - [x] Skip sed `-n` block when `-f` is present (external sed script — content unknown) — fixed in `255c0a5`. `-e` inline still blocks. 2 -f allow tests + 2 -e block tests added.
 - [x] Update CLAUDE.md "Enforced by hook" + hook header to call out the `-e` block / `-f` pass-through nuance — fixed in `255c0a5`.
+
+## External Review (re-triage 10)
+**Status**: complete
+**When**: 2026-05-12 10:25
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #200 at `ea82982` — 1 new Copilot review (1 comment)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Reword the operational-find list in the hook header docstring as illustrative ("e.g. ...") rather than exhaustive — fixed in `d7caa1e`. Avoids drift as the code's allowlist grows.
