@@ -229,6 +229,10 @@ The signature footer is appended automatically when `AGENT_NAME` and
 `AGENT_MODEL` are set (via `set_git_identity_env.sh`). Pass
 `--no-signature` to suppress — rare; revert PRs or human-authored only.
 
+If a body is provided and identity env vars are unset, the wrapper hard-fails
+with exit code 2 and points to `set_git_identity_env.sh`. This is intentional
+workspace policy: PRs must be signed unless explicitly opted out.
+
 ### Use `--body-file`, Not `--body` (for direct `gh` calls)
 
 When invoking `gh issue create` / `gh issue comment` directly (the wrapper

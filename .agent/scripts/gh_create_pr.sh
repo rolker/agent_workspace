@@ -128,23 +128,31 @@ while [ $i -lt ${#ORIGINAL_ARGS[@]} ]; do
             # is still recognized as non-interactive (would otherwise
             # collapse into the "no body provided → editor mode" branch
             # in needs_signature()).
+            #
+            # Reject missing value up-front (last-arg case) — otherwise the
+            # wrapper either hard-fails on missing identity (misleading) or
+            # silently drops signature injection and passes a value-less
+            # `--body` through to gh.
             BODY_FLAG_PRESENT=true
-            if [ $((i + 1)) -lt ${#ORIGINAL_ARGS[@]} ]; then
-                BODY_TEXT="${ORIGINAL_ARGS[$((i+1))]}"
-                BODY_ARG_INDEX=$((i + 1))
-                i=$((i + 2))
-            else
-                i=$((i + 1))
+            if [ $((i + 1)) -ge ${#ORIGINAL_ARGS[@]} ]; then
+                echo "❌ Error: --body requires a value" >&2
+                exit 2
             fi
+            BODY_TEXT="${ORIGINAL_ARGS[$((i+1))]}"
+            BODY_ARG_INDEX=$((i + 1))
+            i=$((i + 2))
             ;;
         --body-file)
-            if [ -n "${ORIGINAL_ARGS[$((i+1))]:-}" ]; then
-                BODY_FILE_PATH="${ORIGINAL_ARGS[$((i+1))]}"
-                BODY_FILE_ARG_INDEX=$((i + 1))
-                i=$((i + 2))
-            else
-                i=$((i + 1))
+            # Same reasoning as --body: a trailing --body-file with no
+            # value silently became "no body file" before, which masks
+            # a clear CLI error from the caller.
+            if [ $((i + 1)) -ge ${#ORIGINAL_ARGS[@]} ]; then
+                echo "❌ Error: --body-file requires a value" >&2
+                exit 2
             fi
+            BODY_FILE_PATH="${ORIGINAL_ARGS[$((i+1))]}"
+            BODY_FILE_ARG_INDEX=$((i + 1))
+            i=$((i + 2))
             ;;
         --body-stdin)
             BODY_STDIN=true

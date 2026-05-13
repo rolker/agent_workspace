@@ -327,6 +327,18 @@ export AGENT_NAME="Test Agent"
 export AGENT_MODEL="test-model"
 
 echo
+echo "=== Missing value rejection ==="
+# --body / --body-file as the last arg with no value used to either
+# hard-fail on missing identity (misleading) or silently pass a value-less
+# flag through to gh. Now hard-fails with a clear error and exit 2.
+export AGENT_NAME="Test Agent"
+export AGENT_MODEL="test-model"
+assert_exit_code "--body as last arg → exit 2" 2 \
+    --title "T" --body
+assert_exit_code "--body-file as last arg → exit 2" 2 \
+    --title "T" --body-file
+
+echo
 echo "=== Empty body flag (--body \"\") is non-interactive ==="
 # `--body ""` is flag-present, so it must NOT collapse into interactive
 # mode: signature gets appended, and missing identity hard-fails.
