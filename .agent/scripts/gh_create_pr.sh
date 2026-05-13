@@ -98,6 +98,7 @@ NO_SIGNATURE=false
 BODY_TEXT=""
 BODY_FILE_PATH=""
 BODY_STDIN=false
+BODY_FLAG_PRESENT=false
 BODY_ARG_INDEX=-1
 BODY_FILE_ARG_INDEX=-1
 
@@ -123,7 +124,12 @@ while [ $i -lt ${#ORIGINAL_ARGS[@]} ]; do
             fi
             ;;
         --body)
-            if [ -n "${ORIGINAL_ARGS[$((i+1))]:-}" ]; then
+            # Track flag presence separately from content so `--body ""`
+            # is still recognized as non-interactive (would otherwise
+            # collapse into the "no body provided → editor mode" branch
+            # in needs_signature()).
+            BODY_FLAG_PRESENT=true
+            if [ $((i + 1)) -lt ${#ORIGINAL_ARGS[@]} ]; then
                 BODY_TEXT="${ORIGINAL_ARGS[$((i+1))]}"
                 BODY_ARG_INDEX=$((i + 1))
                 i=$((i + 2))
@@ -232,11 +238,13 @@ fi
 SIG_MARKER='**Authored-By**:'
 needs_signature() {
     [ "$NO_SIGNATURE" = true ] && return 1
-    # No body input at all → interactive editor mode → no injection
-    [ -z "$BODY_TEXT" ] && [ -z "$BODY_FILE_PATH" ] && return 1
+    # No body input flag at all → interactive editor mode → no injection.
+    # `--body ""` counts as flag-present (non-interactive) and will be signed,
+    # so it does NOT take this branch.
+    [ "$BODY_FLAG_PRESENT" = false ] && [ -z "$BODY_FILE_PATH" ] && return 1
     # Already signed (catches stdin-drained content too, since BODY_FILE_PATH
     # now points at the temp file)
-    if [ -n "$BODY_TEXT" ]; then
+    if [ "$BODY_FLAG_PRESENT" = true ] && [ -n "$BODY_TEXT" ]; then
         printf '%s' "$BODY_TEXT" | grep -Fq "$SIG_MARKER" && return 1
     elif [ -n "$BODY_FILE_PATH" ] && [ -f "$BODY_FILE_PATH" ]; then
         grep -Fq "$SIG_MARKER" "$BODY_FILE_PATH" && return 1
@@ -258,7 +266,7 @@ if needs_signature; then
     SIG_BLOCK=$(printf '\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' \
                        "$AGENT_NAME" "$AGENT_MODEL")
 
-    if [ -n "$BODY_TEXT" ]; then
+    if [ "$BODY_FLAG_PRESENT" = true ] && [ "$BODY_ARG_INDEX" -ge 0 ]; then
         ORIGINAL_ARGS[$BODY_ARG_INDEX]="${BODY_TEXT}${SIG_BLOCK}"
     elif [ -n "$BODY_FILE_PATH" ] && [ -f "$BODY_FILE_PATH" ]; then
         # Append directly to the existing temp file (for stdin) or copy+append
@@ -285,26 +293,35 @@ done
 
 # --- Label validation -------------------------------------------------------
 # Skip when no labels were passed or metadata file is absent.
+#
+# We invoke `gh pr create` without `exec` because `exec` replaces the shell
+# process and skips the EXIT trap, which would leak STDIN_BODY_FILE and
+# SIGNED_BODY_FILE in /tmp.
 if [ ${#LABELS[@]} -eq 0 ]; then
     echo "ℹ️  No labels specified, passing through to 'gh pr create'"
-    exec gh pr create "${FINAL_ARGS[@]}"
+    gh pr create "${FINAL_ARGS[@]}"
+    exit $?
 fi
 
 if [ ! -f "$METADATA_FILE" ]; then
     echo "⚠️  Warning: $METADATA_FILE not found"
     echo "   Skipping label validation. Labels will be validated by GitHub."
-    exec gh pr create "${FINAL_ARGS[@]}"
+    gh pr create "${FINAL_ARGS[@]}"
+    exit $?
 fi
 
 VALID_LABELS=$(jq -r '.labels[]' "$METADATA_FILE" 2>/dev/null) || {
     echo "⚠️  Warning: Failed to parse $METADATA_FILE"
     echo "   Skipping label validation."
-    exec gh pr create "${FINAL_ARGS[@]}"
+    gh pr create "${FINAL_ARGS[@]}"
+    exit $?
 }
 
 INVALID_LABELS=()
 for label in "${LABELS[@]}"; do
-    if ! echo "$VALID_LABELS" | grep -Fxq "$label"; then
+    # `--` terminates grep option parsing so labels starting with `-`
+    # are not misread as flags (matters under ugrep / stricter grep).
+    if ! echo "$VALID_LABELS" | grep -Fxq -- "$label"; then
         INVALID_LABELS+=("$label")
     fi
 done
@@ -322,4 +339,5 @@ if [ ${#INVALID_LABELS[@]} -gt 0 ]; then
 fi
 
 echo "✅ All labels valid, creating PR..."
-exec gh pr create "${FINAL_ARGS[@]}"
+gh pr create "${FINAL_ARGS[@]}"
+exit $?

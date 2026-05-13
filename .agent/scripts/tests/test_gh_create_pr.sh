@@ -119,12 +119,14 @@ export AGENT_MODEL="test-model"
 
 assert_calls_gh "inline body, signature appended" \
     --title "T" --body "Body text"
-if argv_has "Body text
-
----
-**Authored-By**: \`Test Agent\`
-**Model**: \`test-model\`
-"; then
+# Use targeted `grep -Fq` rather than `argv_has` (`grep -Fxq`): the shim
+# writes each argv token via `printf '%s\n'`, so the signed `--body`
+# token's embedded newlines split it across multiple lines of argv.log.
+# `grep -Fxq` is line-oriented and would match too loosely against any
+# single line of the expected multi-line block.
+if grep -Fq 'Body text' "$ARGV_LOG" \
+   && grep -Fq '**Authored-By**: `Test Agent`' "$ARGV_LOG" \
+   && grep -Fq '**Model**: `test-model`' "$ARGV_LOG"; then
     echo "  PASS [body content]: inline body has signature footer"
     PASS=$((PASS + 1))
 else
@@ -321,6 +323,28 @@ assert_calls_gh "no body, env vars set" \
 unset AGENT_NAME AGENT_MODEL
 assert_calls_gh "no body, env vars unset (no hard-fail)" \
     --title "T"
+export AGENT_NAME="Test Agent"
+export AGENT_MODEL="test-model"
+
+echo
+echo "=== Empty body flag (--body \"\") is non-interactive ==="
+# `--body ""` is flag-present, so it must NOT collapse into interactive
+# mode: signature gets appended, and missing identity hard-fails.
+assert_calls_gh "--body \"\" still gets signature" \
+    --title "T" --body ""
+if grep -Fq '**Authored-By**: `Test Agent`' "$ARGV_LOG" \
+   && grep -Fq '**Model**: `test-model`' "$ARGV_LOG"; then
+    echo "  PASS [body content]: --body \"\" got signature appended"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL [body content]: --body \"\" did not get signature appended"
+    echo "  Got argv:"
+    sed 's/^/    /' "$ARGV_LOG"
+    FAIL=$((FAIL + 1))
+fi
+unset AGENT_NAME AGENT_MODEL
+assert_exit_code "--body \"\" hard-fails with unset env vars" 2 \
+    --title "T" --body ""
 export AGENT_NAME="Test Agent"
 export AGENT_MODEL="test-model"
 
