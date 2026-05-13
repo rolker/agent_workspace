@@ -239,3 +239,17 @@ argv. Five of the six Copilot catches cluster around this single
 gap — and they all would have been caught by adding one row to the
 test ledger upfront. Feeding into the `feedback_adversarial_pre_review`
 memory.
+
+## External Review (PR #203, round 2)
+**Status**: complete
+**When**: 2026-05-13 14:00
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `0f26739` — 1 new Copilot review (5 comments, 4 valid, 0 false positives; the stale 6-comment review against `dd7ee00` is already addressed by `31a13d8`)
+**CI**: all-pass (8/8)
+
+### Actions
+- [ ] Fix exec/trap temp-file leak: replace all four `exec gh pr create "${FINAL_ARGS[@]}"` (lines 290, 296, 302, 325) with `gh pr create "${FINAL_ARGS[@]}"; rc=$?; exit $rc` so the EXIT traps at lines 204 and 271 actually run and `/tmp/gh_pr_body.XXXXXX.md` files don't accumulate.
+- [ ] Harden label validation against `ugrep`: change `grep -Fxq "$label"` → `grep -Fxq -- "$label"` at `gh_create_pr.sh:307` and the mirror at `gh_create_issue.sh:279`.
+- [ ] Replace unreliable multi-line `argv_has` assertion at `tests/test_gh_create_pr.sh:120-135` with targeted `grep -Fq '**Authored-By**: \`Test Agent\`' "$ARGV_LOG"` + `grep -Fq 'Body text' "$ARGV_LOG"` (matches the working pattern already used at lines 225-227 for `--body=VALUE`).
+- [ ] Track `--body` flag presence separately from content so `--body ""` still triggers signature path / identity check; add a regression test.
