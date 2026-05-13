@@ -1,6 +1,6 @@
 ---
 name: start-task
-description: "Claude Code only — create or enter the worktree for an issue/skill and switch the session into it via the native EnterWorktree tool. Wraps worktree_create.sh / worktree_enter.sh so all project policy (issue checks, branch naming, skill allowlist, --plan-file draft PR, --workflow scaffolding) still applies."
+description: "Claude Code only — create or enter the worktree for an issue/skill and cd the session into it. Wraps worktree_create.sh / worktree_enter.sh so all project policy (issue checks, branch naming, skill allowlist, --plan-file draft PR, --workflow scaffolding) still applies."
 argument-hint: "--issue <N> --type <workspace|project> | --skill <name> --type workspace [--branch <name>] [--parent-issue <N>] [--plan-file <path>] [--workflow <name>]"
 ---
 
@@ -16,9 +16,9 @@ Replace the two-step `worktree_create.sh && source worktree_enter.sh` ceremony w
 
 ## When not to use
 
-- The session is **already inside a worktree.** EnterWorktree refuses in that case. Step 1 below detects this and stops; tell the user to exit the current worktree first.
+- The session is **already inside a worktree.** /start-task refuses in that case to avoid nested worktrees. Step 1 below detects this and stops; tell the user to exit the current worktree first.
 - You want a worktree without entering it (e.g., creating one for another agent). Call `worktree_create.sh` directly.
-- The framework is **not Claude Code.** Codex / Gemini agents stay on the existing `worktree_create.sh` + `worktree_enter.sh --print-path` / `--shell-snippet` flow. This command depends on the native `EnterWorktree` tool.
+- The framework is **not Claude Code.** This command depends on the Claude Code slash-command mechanism (a persistent shell where `cd` carries forward across tool calls). Codex / Gemini agents use per-command shells and stay on the existing `worktree_create.sh` + `worktree_enter.sh --print-path` / `--shell-snippet` flow.
 - **Values containing embedded whitespace** (e.g. `--branch "feature/foo bar"`). Slash-command argument forwarding flattens user-supplied quotes; the inner whitespace will not be preserved across the boundary. Call `worktree_create.sh` directly for those cases.
 
 ## Argument handling
@@ -87,7 +87,7 @@ elif WT=$(.agent/scripts/worktree_create.sh $ARGUMENTS --print-path-only); then
 else
     set +f
     # Creation failed. The script already wrote its error to stderr.
-    # Surface the error to the user verbatim and STOP. Do not call EnterWorktree.
+    # Surface the error to the user verbatim and STOP. Do not proceed to step 4.
     #
     # Recovery: a partial creation may have left a worktree on disk even on
     # non-zero exit (e.g., set -e fires after `git worktree add` succeeds but
@@ -105,21 +105,21 @@ fi
 
 > Argument compatibility: `worktree_enter.sh` accepts `--issue`/`--skill`/`--type`/`--repo`/`--repo-slug`. `worktree_create.sh` accepts those plus `--branch`/`--parent-issue`/`--plan-file`/`--workflow`, but does **not** accept `--repo` (only `--repo-slug`). For multi-project disambiguation, use `--repo-slug`. Creation-only flags (`--branch`, `--parent-issue`, `--plan-file`, `--workflow`) cause `worktree_enter.sh` to reject the call as "Unknown option", which makes the `if` branch fail and the `elif` (creation) branch run. That's the correct behavior: those flags only make sense at creation time.
 
-### 4. Enter the worktree via the native tool
+### 4. Enter the worktree
 
-Call **EnterWorktree** with the captured path:
+`cd` into the worktree path captured in step 3:
 
 ```
-EnterWorktree(path="$WT")
+cd "$WT"
 ```
 
-The `path` parameter (rather than `name`) tells EnterWorktree to switch into a pre-existing worktree of this repo. EnterWorktree validates the path against `git worktree list` and rejects anything not registered.
+`cd` is used uniformly across `--type workspace`, `--type project`, and `--skill` modes. Project worktrees live in a separate git repo from the workspace; the native `EnterWorktree` tool would reject them because `git worktree list` from the workspace tree doesn't include them. `cd` doesn't care which repo owns the directory, so one mechanism covers every mode.
 
-**If EnterWorktree fails:** the worktree exists on disk but the session can't enter it. Tell the user the worktree path, and offer two recovery options: (a) manually `cd <path>` and continue without the harness-level worktree session, or (b) run `.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or `--skill <name>`) to clean up. Do not retry EnterWorktree silently.
+**If `cd` fails:** the worktree path was just printed by a successful `worktree_create.sh` (or returned by `worktree_enter.sh` for an existing one), so failure here is anomalous — a filesystem race, a permissions problem, or the directory was removed externally between steps 3 and 4. Report the error and run `.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or `--skill <name>`) to clean up before retrying.
 
 ### 5. Confirm to the user
 
-After EnterWorktree returns successfully, briefly tell the user:
+After `cd` returns successfully, briefly tell the user:
 
 - Which worktree they're now in (issue/skill, branch)
 - Whether it was newly created or pre-existing (you know from step 3 — the `if` branch hit means existing, `elif` means new)
@@ -129,23 +129,24 @@ After EnterWorktree returns successfully, briefly tell the user:
 
 After changes to this skill, run these checks from a fresh main-tree session to confirm behaviour. End-to-end automation would require a Claude Code SDK test harness; declined as out-of-scope (issue #188).
 
-1. **Typical case** — `/start-task --issue <test-N> --type workspace`. Expected: step 3's `elif` fires; new worktree created at `worktrees/workspace/issue-workspace-<test-N>/`; `EnterWorktree` succeeds; session lands in the new worktree.
+1. **Typical case** — `/start-task --issue <test-N> --type workspace`. Expected: step 3's `elif` fires; new worktree created at `worktrees/workspace/issue-workspace-<test-N>/`; `cd` succeeds; session lands in the new worktree.
 
 2. **Skill case** — `/start-task --skill research --type workspace`. Same flow with a skill-worktree path (`worktrees/workspace/skill-research-<TS>/`).
 
-3. **Re-entry case** — exit the worktree from check 1 (`ExitWorktree(action="keep")`), then re-run the same `/start-task --issue <test-N> --type workspace`. Expected: step 3's `if` branch fires (existing worktree found); no new creation; `EnterWorktree` returns to it.
+3. **Project case** — `/start-task --issue <test-N> --type project` against a configured project repo. Expected: step 3's `elif` fires; new worktree created at `worktrees/project/<repo>/issue-<repo>-<test-N>/`; `cd` succeeds. This is the case the previous `EnterWorktree`-based flow failed (the project worktree belongs to a separate git repo from the workspace, which `git worktree list` doesn't see); confirms uniform `cd` covers it.
 
-4. **Glob safety (structural check)** — inspect step 3 of this skill body and confirm `set -f` precedes the `if` block and `set +f` is restored in each of the three branches. Without these, an invocation containing values like `--branch main*` or `--plan-file *.md` would glob-expand against the cwd before reaching the script. The bracket makes the failure mode structurally impossible.
+4. **Re-entry case** — exit the worktree from check 1 (`cd -` back to the workspace root), then re-run the same `/start-task --issue <test-N> --type workspace`. Expected: step 3's `if` branch fires (existing worktree found); no new creation; `cd` puts the session back in the existing worktree.
+
+5. **Glob safety (structural check)** — inspect step 3 of this skill body and confirm `set -f` precedes the `if` block and `set +f` is restored in each of the three branches. Without these, an invocation containing values like `--branch main*` or `--plan-file *.md` would glob-expand against the cwd before reaching the script. The bracket makes the failure mode structurally impossible.
 
 ## Exit semantics
 
-- The worktree was created **outside** of EnterWorktree (our scripts called `git worktree add`), so `ExitWorktree` will refuse to remove it. If the user asks to exit:
-  - `ExitWorktree(action="keep")` returns the session to the original directory but leaves the worktree on disk. This is the only valid exit action for worktrees entered this way.
-  - To actually delete the worktree, use `.agent/scripts/worktree_remove.sh --issue <N> --type <type>` or `make merge-pr PR=<N>` (which removes the worktree as part of the merge flow).
+- To return the session to the previous directory: `cd -` (Bash returns to whatever directory `cd` was invoked from). Any other `cd` works too. The worktree stays on disk.
+- To delete the worktree: `.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or `--skill <name>`). `make merge-pr PR=<N>` also removes the worktree as part of the merge flow.
 
-## Why not just call EnterWorktree directly?
+## Why a wrapper around `cd <path>`?
 
-EnterWorktree alone would work, but it doesn't know about:
+Plain `cd <some-path>` would work — but only after `worktree_create.sh` has run, since the path is what the script computes (issue → branch name → worktree directory). And `worktree_create.sh` is where all the policy lives:
 
 - Issue-first policy (lookup, closed-issue warning, PR-vs-issue check)
 - The workspace/project repo distinction (two repos managed in one tree)
@@ -156,8 +157,8 @@ EnterWorktree alone would work, but it doesn't know about:
 - `--plan-file` draft-PR creation with AI signature
 - Cross-repo PR targeting for project-type worktrees
 
-`worktree_create.sh` enforces all of that. This skill keeps the script as the source of truth for policy and uses EnterWorktree only for the session-level switch — which gives smoother CWD handling and proper cache coherence on exit.
+This skill keeps `worktree_create.sh` as the source of truth for that policy, resolves the worktree path (existing → create-new fallback) consistently across workspace/project/skill modes, and `cd`s into the result — all in one slash-command invocation.
 
 ## Implementation note
 
-Slash commands in Claude Code are markdown instructions — there is no executable file behind `/start-task`. The agent reads this body, runs the Bash calls in sections 1–3, and invokes EnterWorktree in section 4. The flow is intentionally short and prescriptive so it's reliable across model versions.
+Slash commands in Claude Code are markdown instructions — there is no executable file behind `/start-task`. The agent reads this body and runs the Bash calls in sections 1–4 (path resolution in 3, `cd` in 4). The flow is intentionally short and prescriptive so it's reliable across model versions.

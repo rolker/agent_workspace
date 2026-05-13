@@ -50,10 +50,13 @@ often the hook fires.
 - **Worktree entry**: prefer `/start-task --issue <N> --type <workspace|project>` (or
   `--skill <name> --type workspace`) over the two-step `worktree_create.sh` +
   `source worktree_enter.sh` flow. The slash command wraps the policy scripts and
-  enters via the native `EnterWorktree` tool, so the session lands in the worktree
-  with proper cache coherence in one tool call. All policy still applies (issue
-  checks, branch naming, `--plan-file`, `--workflow`, skill allowlist). Codex /
-  Gemini agents stay on the script flow — `/start-task` is Claude Code only.
+  `cd`s the session into the worktree in one invocation. `cd` is used uniformly
+  across `--type workspace`, `--type project`, and `--skill` modes — the native
+  `EnterWorktree` tool would reject project worktrees (those live in a separate
+  git repo from the workspace), so `cd` is the one mechanism that covers every
+  mode. All policy still applies (issue checks, branch naming, `--plan-file`,
+  `--workflow`, skill allowlist). Codex / Gemini agents use per-command shells
+  and stay on the script flow — `/start-task` is Claude Code only.
 
 ## References
 

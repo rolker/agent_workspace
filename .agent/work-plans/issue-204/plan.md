@@ -22,59 +22,33 @@ EnterWorktree did not survive two days of side-by-side use.
 
 ## Approach
 
-1. **`.claude/skills/start-task/SKILL.md` — step 4**: replace
-   `EnterWorktree(path="$WT")` with `cd "$WT"`. Keep step 3 (worktree path
-   resolution) and step 1 ("refuse if already in a worktree") unchanged —
-   the nested-worktree guard is still useful, the rationale just shifts
-   from "EnterWorktree refuses" to "don't nest".
-2. **`.claude/skills/start-task/SKILL.md` — step 5 ("Confirm to the user")**:
-   drop the "via EnterWorktree" framing; the confirmation message is the
-   same content.
-3. **`.claude/skills/start-task/SKILL.md` — "Exit semantics" section**:
-   rewrite. Today it says "the worktree was created outside of EnterWorktree
-   so ExitWorktree will refuse to remove it" and prescribes
-   `ExitWorktree(action="keep")`. After this change, exit is just `cd -`
-   (or any `cd` away); delete is `worktree_remove.sh --issue <N> --type
-   <type>` or `make merge-pr PR=<N>`.
-4. **`.claude/skills/start-task/SKILL.md` — "Why not just call EnterWorktree
-   directly?" section**: keep the policy-enforcement justification (issue
-   lookup, branch naming, allowlist, workflow scaffolding, plan-file PR,
-   cross-repo PR targeting). Remove the closing sentence about
-   "EnterWorktree only for the session-level switch — which gives smoother
-   CWD handling and proper cache coherence on exit" — it's the claim
-   discarded by this issue.
-5. **`.claude/skills/start-task/SKILL.md` — "When not to use" first
-   bullet**: today says "The session is already inside a worktree.
-   EnterWorktree refuses in that case." Reword: "/start-task refuses in
-   that case (step 1 detects it)" — the behaviour is the same, the cause
-   is the skill, not the native tool.
-6. **`.claude/skills/start-task/SKILL.md` — "Manual verification" cases
-   1–3**: each ends with "EnterWorktree succeeds; session lands in the new
-   worktree." Replace with "the `cd` command succeeds; session lands in
-   the new worktree." Case 4 (glob safety) is unrelated and unchanged.
-7. **`CLAUDE.md` — lines 50–56 ("Worktree entry" bullet under Claude-Specific
-   Notes)**: rewrite to describe the uniform `cd` flow. Drop the "enters
-   via the native EnterWorktree tool ... with proper cache coherence in
-   one tool call" framing. Keep the project-vs-workspace coverage point
-   (still true: all policy applies, all types covered) and the
-   Codex/Gemini caveat (still true).
-8. **`AGENTS.md` — add "Worktree Entry" subsection**: insert under
-   `## Worktree Workflow` (after the existing `### Skill Worktree
-   Exception` subsection, before `## Issue-First Policy`). Content per
-   the issue body's "Convention to document" block: skills auto-entering
-   a worktree use `cd <path>`, not EnterWorktree, with one-line rationale
-   and the exit/delete pointers.
-9. **Manual verification** in a fresh session after the changes land:
-   re-run the three SKILL.md cases (`--issue --type workspace`,
-   `--skill research --type workspace`, re-entry) plus the case the
-   issue exists for: `--issue --type project` against the project repo
-   (must end in the project worktree, not the workspace cwd).
+1. **`.claude/skills/start-task/SKILL.md`** — edit every EnterWorktree/ExitWorktree mention. Touchpoints (re-grepped after review-plan flagged the original list was incomplete):
+   - Frontmatter `description:` (line 3): drop "via the native EnterWorktree tool" framing
+   - "When not to use" 1st bullet (line 19): replace "EnterWorktree refuses" rationale with "avoid nested worktrees"
+   - "When not to use" 3rd bullet (line 21): rejustify the Claude-only restriction in terms of the persistent-shell mechanism (Codex/Gemini use per-command shells)
+   - Step 3 inline comment (line 90): "Do not call EnterWorktree" → "Do not proceed to step 4"
+   - Step 4 (lines 108–118): rename heading from "Enter the worktree via the native tool" to "Enter the worktree"; replace `EnterWorktree(path="$WT")` with `cd "$WT"`; replace the EnterWorktree-specific rationale paragraph with a `cd`-rationale paragraph; rewrite (not name-swap) the failure-mode paragraph for the `cd` failure mode
+   - Step 5 (line 122): "After EnterWorktree returns successfully" → "After `cd` returns successfully"
+   - Manual verification cases 1, 3 (lines 132, 136): swap EnterWorktree/ExitWorktree mentions for `cd` / `cd -`; **add a new case 3 for `--type project`** (the failure case the issue exists for) and renumber re-entry to case 4, glob safety to case 5
+   - "Exit semantics" section (lines 140–144): rewrite for the `cd -` flow; drop ExitWorktree references entirely
+   - "Why not just call EnterWorktree directly?" section (lines 146–159): retitle to "Why a wrapper around `cd <path>`?"; reframe content as "what does the wrapper add over plain `cd`" (worktree_create.sh policy + path resolution); drop the cache-coherence claim
+   - "Implementation note" (line 163): "invokes EnterWorktree in section 4" → "runs `cd` in section 4"
+2. **`CLAUDE.md` — lines 50–56**: rewrite the "Worktree entry" bullet under Claude-Specific Notes for the uniform `cd` flow. Drop the "EnterWorktree native tool ... cache coherence ... in one tool call" framing. Keep the project-vs-workspace coverage point (still true: all policy applies, all types covered) and the Codex/Gemini caveat (rejustified in terms of per-command shells).
+3. **`AGENTS.md` — add `### Worktree Entry` subsection** inside `## Worktree Workflow`, placed after the existing `**Multi-project**` paragraph and before the `See WORKTREE_GUIDE.md` line was the original target; revised target is the same position (just before `## Issue-First Policy`). Content: skills auto-entering a worktree use `cd <path>`, with one-paragraph rationale (native tools key off `git worktree list` of the current repo, which rules them out for project worktrees) and the exit/delete pointers.
+4. **Manual verification** in a fresh session after the PR merges: run the five SKILL.md cases (`--issue --type workspace`, `--skill research --type workspace`, `--issue --type project`, re-entry, glob safety). The `--type project` case is the new addition and is the case the issue exists for.
+
+## Decisions on review-plan findings (resolved during implementation)
+
+- **Section retitle** (finding 2): renamed to "Why a wrapper around `cd <path>`?" (matches new step-4 mechanic).
+- **Step-4 failure paragraph** (finding 3): rewritten for the `cd` failure mode (filesystem race, permissions, externally-removed dir) rather than name-swapped.
+- **"When not to use" 3rd bullet** (finding 4): bullet **stays**, rejustified in terms of the persistent-shell mechanism (Claude Code keeps shell state across tool calls; Codex/Gemini use per-command shells, so they need `worktree_enter.sh --print-path` / `--shell-snippet` to communicate the cwd back).
+- **Memory file timing** (finding 5): post-merge follow-up confirmed. The memory file (`feedback-enterworktree-cross-repo.md`) lives outside the workspace repo (in `~/.claude/projects/.../memory/`), so it isn't bundleable into this PR even if we wanted to. Will note in the PR description that the memory update is deferred and tracked separately.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.claude/skills/start-task/SKILL.md` | Step 4 (cd, not EnterWorktree); step 5 (drop EnterWorktree framing); "Exit semantics" section (rewrite for cd flow); "Why not just call EnterWorktree directly?" (drop cache-coherence claim); "When not to use" first bullet (reword); "Manual verification" cases 1–3 (cd, not EnterWorktree) |
+| `.claude/skills/start-task/SKILL.md` | Frontmatter description; "When not to use" bullets 1 and 3; step 3 inline comment; step 4 (heading rename + body rewrite + failure-mode paragraph rewrite); step 5 (cd, not EnterWorktree); Manual verification (rewrite cases 1, 3; add new project case; renumber); Exit semantics (rewrite for cd flow); "Why a wrapper..." section (retitle + reframe); Implementation note |
 | `CLAUDE.md` | Lines 50–56 worktree-entry bullet: rewrite for uniform `cd` flow |
 | `AGENTS.md` | Add `### Worktree Entry` subsection under `## Worktree Workflow` |
 
