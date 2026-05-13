@@ -40,9 +40,13 @@
 #
 # Exit codes:
 #   0 - Success
-#   1 - Invalid label detected
-#   2 - Invalid arguments (bad label, missing -R value, repo mismatch,
-#       or unset AGENT_NAME/AGENT_MODEL without --no-signature)
+#   1 - Invalid label value (label not in .agent/github_metadata.json)
+#   2 - Argument / usage errors:
+#         - missing value for -R/--repo, --label/-l, --body, or --body-file
+#         - more than one of {--body, --body-file, --body-stdin} provided
+#         - repo-safety mismatch (gh would target the wrong remote)
+#         - AGENT_NAME / AGENT_MODEL unset when a body is provided and
+#           --no-signature was not passed
 #   3 - Missing dependencies (gh, jq)
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
