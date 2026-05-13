@@ -291,7 +291,7 @@ Suite: 35/35 (was 31/31, +4 new tests).
 **CI**: all-pass (8/8)
 
 ### Actions
-- [ ] Rewrite the "Exit codes" header comment in `gh_create_pr.sh` (lines 41-46) to match actual behavior: `1` = invalid label (not "bad label" — that's a missing value); `2` = argument/usage errors (missing values for `-R` / `--label` / `--body` / `--body-file`, repo mismatch, mutually exclusive body sources, identity unset when signing); `3` = missing dependencies (gh, jq).
+- [x] Rewrote the "Exit codes" header in `gh_create_pr.sh` to match actual behavior (1 = invalid label value, 2 = argument/usage errors enumerated, 3 = missing deps) — fixed in `cccf264`.
 
 ### Trend
 Round comment counts: 6 → 5 → 2 → 3 → 1. Zero false positives across all 5 rounds. Each round is closing remaining edges rather than reopening earlier ground.
