@@ -263,6 +263,6 @@ memory.
 **CI**: all-pass (8/8)
 
 ### Actions
-- [ ] Reject missing `--body` / `--body-file` values with `exit 2` and a clear error message in `gh_create_pr.sh` (lines 125-148). Mirror the `-R/--repo` pattern: when `i+1 >= len`, emit `❌ Error: --body requires a value` (or `--body-file …`) and exit 2. Currently a trailing `--body` with no value sets `BODY_FLAG_PRESENT=true` / `BODY_ARG_INDEX=-1`, then either hard-fails on missing identity (misleading) or silently drops signature injection and passes a value-less `--body` to gh.
-- [ ] Add regression tests for `--body` as last arg and `--body-file` as last arg — both expect `exit 2`.
-- [ ] Document the identity-unset hard-fail in AGENTS.md "Creating pull requests" section (after line 230): one sentence noting that providing a body without `AGENT_NAME` / `AGENT_MODEL` exits with code 2 and points to `set_git_identity_env.sh`.
+- [x] Reject missing `--body` / `--body-file` values up-front with `exit 2` and a clear error message in `gh_create_pr.sh` — fixed in `f21f4fc`. Mirrors the `-R/--repo` pattern.
+- [x] Added regression tests for both `--body` and `--body-file` as last-arg cases (assert exit code 2) — fixed in `f21f4fc`. Suite 31/31.
+- [x] Documented the identity-unset hard-fail in AGENTS.md "Creating pull requests" section — fixed in `f21f4fc`.
