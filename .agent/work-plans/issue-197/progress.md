@@ -253,3 +253,16 @@ memory.
 - [x] Harden label validation against `ugrep`: added `--` to `grep -Fxq` in both `gh_create_pr.sh:307` and the mirror at `gh_create_issue.sh:279` — fixed in `6d59a0d`.
 - [x] Replaced unreliable multi-line `argv_has` assertion with targeted `grep -Fq` checks for body text + `**Authored-By**:` / `**Model**:` markers — fixed in `6d59a0d`.
 - [x] Track `--body` flag presence separately via `BODY_FLAG_PRESENT` so `--body ""` is recognized as non-interactive (signed when env vars set, hard-fails when unset) — fixed in `6d59a0d`. Added 3 regression tests; suite 29/29.
+
+## External Review (PR #203, round 3)
+**Status**: complete
+**When**: 2026-05-13 14:30
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `2f4bb88` — 1 new Copilot review (2 comments, 2 valid, 0 false positives; plus 1 low-confidence suppressed comment on `--body-file` parsing, same root cause as #1 below)
+**CI**: all-pass (8/8)
+
+### Actions
+- [ ] Reject missing `--body` / `--body-file` values with `exit 2` and a clear error message in `gh_create_pr.sh` (lines 125-148). Mirror the `-R/--repo` pattern: when `i+1 >= len`, emit `❌ Error: --body requires a value` (or `--body-file …`) and exit 2. Currently a trailing `--body` with no value sets `BODY_FLAG_PRESENT=true` / `BODY_ARG_INDEX=-1`, then either hard-fails on missing identity (misleading) or silently drops signature injection and passes a value-less `--body` to gh.
+- [ ] Add regression tests for `--body` as last arg and `--body-file` as last arg — both expect `exit 2`.
+- [ ] Document the identity-unset hard-fail in AGENTS.md "Creating pull requests" section (after line 230): one sentence noting that providing a body without `AGENT_NAME` / `AGENT_MODEL` exits with code 2 and points to `set_git_identity_env.sh`.
