@@ -282,5 +282,19 @@ memory.
 
 Suite: 35/35 (was 31/31, +4 new tests).
 
+## External Review (PR #203, round 5)
+**Status**: complete
+**When**: 2026-05-13 15:15
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `163aab3` — 1 new Copilot review (1 comment, 1 valid, 0 false positives)
+**CI**: all-pass (8/8)
+
+### Actions
+- [ ] Rewrite the "Exit codes" header comment in `gh_create_pr.sh` (lines 41-46) to match actual behavior: `1` = invalid label (not "bad label" — that's a missing value); `2` = argument/usage errors (missing values for `-R` / `--label` / `--body` / `--body-file`, repo mismatch, mutually exclusive body sources, identity unset when signing); `3` = missing dependencies (gh, jq).
+
+### Trend
+Round comment counts: 6 → 5 → 2 → 3 → 1. Zero false positives across all 5 rounds. Each round is closing remaining edges rather than reopening earlier ground.
+
 ### Trend
 Round comment counts: 6 → 5 → 2 → 3. Zero false positives across all 4 rounds. Each round is finding genuine smaller refinements rather than re-flagging earlier concerns or churning over style.
