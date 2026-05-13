@@ -276,9 +276,11 @@ memory.
 **CI**: all-pass (8/8)
 
 ### Actions
-- [ ] Reject mutually exclusive body sources: count `{BODY_FLAG_PRESENT, BODY_FILE_PATH non-empty, BODY_STDIN}` after parsing; if > 1, exit 2 with "❌ Error: --body, --body-file, and --body-stdin are mutually exclusive". Otherwise signature can land on a source `gh pr create` doesn't use, leaving the PR unsigned. Add regression tests for each pair.
-- [ ] Hard-fail on missing `--label` / `-l` value (mirror the round-3 fix for `--body` / `--body-file`): exit 2 with clear error. Add regression test for `--label` as last arg.
-- [ ] Fix misleading test header comment at `tests/test_gh_create_pr.sh:6-8`: only `gh` is shimmed, not `git`. One-line edit.
+- [x] Rejected mutually exclusive body sources with `exit 2` — fixed in `694ef25`. Count of `{BODY_FLAG_PRESENT, BODY_FILE_PATH non-empty, BODY_STDIN}` > 1 → error. Three regression tests cover all pairs.
+- [x] Hard-fail on missing `--label` / `-l` value with `exit 2` — fixed in `694ef25`. Mirrors `--repo` / `--body` / `--body-file`. Regression test added.
+- [x] Fixed misleading test header comment at `tests/test_gh_create_pr.sh:6-8` — only `gh` is shimmed — fixed in `694ef25`.
+
+Suite: 35/35 (was 31/31, +4 new tests).
 
 ### Trend
 Round comment counts: 6 → 5 → 2 → 3. Zero false positives across all 4 rounds. Each round is finding genuine smaller refinements rather than re-flagging earlier concerns or churning over style.
