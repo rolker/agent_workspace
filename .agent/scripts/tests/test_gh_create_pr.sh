@@ -3,9 +3,10 @@
 #
 # Run: bash .agent/scripts/tests/test_gh_create_pr.sh
 #
-# Strategy: shim `gh` and `git` in a temporary PATH so the wrapper runs
-# end-to-end without network calls. The shimmed `gh pr create` writes its
-# argv to a known file; assertions inspect that file.
+# Strategy: shim `gh` in a temporary PATH so the wrapper runs end-to-end
+# without network calls. The shimmed `gh pr create` writes its argv to a
+# known file; assertions inspect that file. `git` (rev-parse, remotes) is
+# the real binary against the real worktree.
 
 set -uo pipefail
 
@@ -328,15 +329,33 @@ export AGENT_MODEL="test-model"
 
 echo
 echo "=== Missing value rejection ==="
-# --body / --body-file as the last arg with no value used to either
-# hard-fail on missing identity (misleading) or silently pass a value-less
-# flag through to gh. Now hard-fails with a clear error and exit 2.
+# --body / --body-file / --label as the last arg with no value used to
+# either hard-fail on missing identity (misleading) or silently pass a
+# value-less flag through to gh. Now hard-fails with a clear error and
+# exit 2 — consistent with --repo's existing behavior.
 export AGENT_NAME="Test Agent"
 export AGENT_MODEL="test-model"
 assert_exit_code "--body as last arg → exit 2" 2 \
     --title "T" --body
 assert_exit_code "--body-file as last arg → exit 2" 2 \
     --title "T" --body-file
+assert_exit_code "--label as last arg → exit 2" 2 \
+    --title "T" --body "B" --label
+
+echo
+echo "=== Mutually exclusive body sources ==="
+# Specifying more than one of --body / --body-file / --body-stdin would
+# let the wrapper sign one source while gh uses another (or errors),
+# leaving the PR unsigned. Reject with exit 2.
+TMPF_MX=$(mktemp /tmp/test_body.XXXXXX.md)
+echo "file body" > "$TMPF_MX"
+assert_exit_code "--body + --body-file → exit 2" 2 \
+    --title "T" --body "B" --body-file "$TMPF_MX"
+assert_exit_code "--body + --body-stdin → exit 2" 2 \
+    --title "T" --body "B" --body-stdin
+assert_exit_code "--body-file + --body-stdin → exit 2" 2 \
+    --title "T" --body-file "$TMPF_MX" --body-stdin
+rm -f "$TMPF_MX"
 
 echo
 echo "=== Empty body flag (--body \"\") is non-interactive ==="

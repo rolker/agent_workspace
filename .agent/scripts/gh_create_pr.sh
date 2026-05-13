@@ -116,12 +116,15 @@ while [ $i -lt ${#ORIGINAL_ARGS[@]} ]; do
             fi
             ;;
         --label|-l)
-            if [ -n "${ORIGINAL_ARGS[$((i+1))]:-}" ]; then
-                LABELS+=("${ORIGINAL_ARGS[$((i+1))]}")
-                i=$((i + 2))
-            else
-                i=$((i + 1))
+            # Mirror the missing-value handling on --body / --body-file /
+            # --repo: a trailing --label with no value silently passes
+            # through to gh and produces a generic CLI error.
+            if [ $((i + 1)) -ge ${#ORIGINAL_ARGS[@]} ]; then
+                echo "❌ Error: --label requires a value" >&2
+                exit 2
             fi
+            LABELS+=("${ORIGINAL_ARGS[$((i+1))]}")
+            i=$((i + 2))
             ;;
         --body)
             # Track flag presence separately from content so `--body ""`
@@ -167,6 +170,19 @@ while [ $i -lt ${#ORIGINAL_ARGS[@]} ]; do
             ;;
     esac
 done
+
+# --- Mutually exclusive body sources -----------------------------------------
+# Multiple body sources would mean the wrapper signs one source while
+# `gh pr create` may use a different one (or error). Either outcome can
+# leave the PR unsigned, defeating the strict-policy stance.
+_BODY_SOURCE_COUNT=0
+[ "$BODY_FLAG_PRESENT" = true ]      && _BODY_SOURCE_COUNT=$((_BODY_SOURCE_COUNT + 1))
+[ -n "$BODY_FILE_PATH" ]             && _BODY_SOURCE_COUNT=$((_BODY_SOURCE_COUNT + 1))
+[ "$BODY_STDIN" = true ]             && _BODY_SOURCE_COUNT=$((_BODY_SOURCE_COUNT + 1))
+if [ "$_BODY_SOURCE_COUNT" -gt 1 ]; then
+    echo "❌ Error: --body, --body-file, and --body-stdin are mutually exclusive" >&2
+    exit 2
+fi
 
 # --- Repo-safety check (issue #72) -------------------------------------------
 # Prevent gh from targeting the wrong repo when running inside scratchpad
