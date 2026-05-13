@@ -266,3 +266,19 @@ memory.
 - [x] Reject missing `--body` / `--body-file` values up-front with `exit 2` and a clear error message in `gh_create_pr.sh` — fixed in `f21f4fc`. Mirrors the `-R/--repo` pattern.
 - [x] Added regression tests for both `--body` and `--body-file` as last-arg cases (assert exit code 2) — fixed in `f21f4fc`. Suite 31/31.
 - [x] Documented the identity-unset hard-fail in AGENTS.md "Creating pull requests" section — fixed in `f21f4fc`.
+
+## External Review (PR #203, round 4)
+**Status**: complete
+**When**: 2026-05-13 14:55
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `5bc83b1` — 1 new Copilot review (3 comments, 3 valid, 0 false positives)
+**CI**: all-pass (8/8)
+
+### Actions
+- [ ] Reject mutually exclusive body sources: count `{BODY_FLAG_PRESENT, BODY_FILE_PATH non-empty, BODY_STDIN}` after parsing; if > 1, exit 2 with "❌ Error: --body, --body-file, and --body-stdin are mutually exclusive". Otherwise signature can land on a source `gh pr create` doesn't use, leaving the PR unsigned. Add regression tests for each pair.
+- [ ] Hard-fail on missing `--label` / `-l` value (mirror the round-3 fix for `--body` / `--body-file`): exit 2 with clear error. Add regression test for `--label` as last arg.
+- [ ] Fix misleading test header comment at `tests/test_gh_create_pr.sh:6-8`: only `gh` is shimmed, not `git`. One-line edit.
+
+### Trend
+Round comment counts: 6 → 5 → 2 → 3. Zero false positives across all 4 rounds. Each round is finding genuine smaller refinements rather than re-flagging earlier concerns or churning over style.
