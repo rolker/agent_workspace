@@ -249,7 +249,7 @@ memory.
 **CI**: all-pass (8/8)
 
 ### Actions
-- [ ] Fix exec/trap temp-file leak: replace all four `exec gh pr create "${FINAL_ARGS[@]}"` (lines 290, 296, 302, 325) with `gh pr create "${FINAL_ARGS[@]}"; rc=$?; exit $rc` so the EXIT traps at lines 204 and 271 actually run and `/tmp/gh_pr_body.XXXXXX.md` files don't accumulate.
-- [ ] Harden label validation against `ugrep`: change `grep -Fxq "$label"` → `grep -Fxq -- "$label"` at `gh_create_pr.sh:307` and the mirror at `gh_create_issue.sh:279`.
-- [ ] Replace unreliable multi-line `argv_has` assertion at `tests/test_gh_create_pr.sh:120-135` with targeted `grep -Fq '**Authored-By**: \`Test Agent\`' "$ARGV_LOG"` + `grep -Fq 'Body text' "$ARGV_LOG"` (matches the working pattern already used at lines 225-227 for `--body=VALUE`).
-- [ ] Track `--body` flag presence separately from content so `--body ""` still triggers signature path / identity check; add a regression test.
+- [x] Fix exec/trap temp-file leak: replaced all four `exec gh pr create "${FINAL_ARGS[@]}"` with non-exec + `exit $?` so the EXIT traps actually fire — fixed in `6d59a0d`. Verified via `/tmp/gh_pr_body.*.md` count before/after test run (0 → 0).
+- [x] Harden label validation against `ugrep`: added `--` to `grep -Fxq` in both `gh_create_pr.sh:307` and the mirror at `gh_create_issue.sh:279` — fixed in `6d59a0d`.
+- [x] Replaced unreliable multi-line `argv_has` assertion with targeted `grep -Fq` checks for body text + `**Authored-By**:` / `**Model**:` markers — fixed in `6d59a0d`.
+- [x] Track `--body` flag presence separately via `BODY_FLAG_PRESENT` so `--body ""` is recognized as non-interactive (signed when env vars set, hard-fails when unset) — fixed in `6d59a0d`. Added 3 regression tests; suite 29/29.
