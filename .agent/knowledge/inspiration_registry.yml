@@ -55,22 +55,6 @@ projects:
       - subagent patterns and orchestration
       - development methodology and workflows
 
-  overstory:
-    type: inspiration
-    repo: jayminwest/overstory
-    description: Multi-agent orchestrator with SQLite-backed messaging and watchdog daemon
-    # Added 2026-04-19. Paired with agent-orchestrator to cover the
-    # category from two angles — agent-orchestrator is the big/reference
-    # implementation, Overstory explores different messaging tech
-    # (SQLite-backed mailbox) and conflict-resolution patterns. Of
-    # particular interest: watchdog daemon, which we're building
-    # separately as a small bash helper per Row 7 decision.
-    interest_areas:
-      - inter-agent messaging (SQLite-backed mailbox)
-      - conflict resolution (4-tier)
-      - watchdog daemon patterns
-      - multi-runtime agent support (Claude Code, Pi, Gemini CLI)
-
   engram:
     type: inspiration
     repo: shiblon/engram
@@ -113,3 +97,10 @@ projects:
   # is covered by the ros2 dispatch/run-issue design (roadmapped
   # 2026-07-14). Was tracked for: reaction system, task decomposition,
   # adapter architecture, worktree-per-agent discipline, dashboard model.
+  #
+  # overstory (jayminwest/overstory) — upstream repository archived
+  # read-only 2026-05-28; successor Warren (cloud control plane + web UI)
+  # not tracked, interest areas don't transfer. Portable patterns
+  # (STEELMAN doc, base+overlay prompts, role vocabulary) roadmapped
+  # 2026-07-14; SQLite mailbox / watchdog / conflict-tier survey preserved
+  # in the digest.
