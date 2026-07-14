@@ -151,20 +151,42 @@ inspiration-tracker skill itself both flowed from us to them.
 
 ## Pending Review (2026-07-14 round)
 
-- `per-repo-agents-md` — ADR-0017 + project_agents_md.md template +
-  onboard/audit wiring (2026-07-14)
-- `script-tests-ci-job` — make test-scripts + CI job for
-  .agent/scripts/tests/ (2026-07-14)
+(none — all items triaged below)
+
+## Roadmapped (2026-07-14 decisions)
+
+- `per-repo-agents-md` — added to ROADMAP.md "To Consider" (2026-07-14)
+- `script-tests-ci-job` — added to ROADMAP.md "To Consider" (2026-07-14)
+- `identity-ci-check` — added to ROADMAP.md "To Consider" (2026-07-14)
+- `review-convergence-signal` — added to ROADMAP.md "To Consider" (2026-07-14)
+- `dispatch-run-issue-reference` — added to ROADMAP.md "To Consider" as a
+  reference design updating the agent-orchestrator Tier-3 stance, not a
+  port candidate (2026-07-14)
+
+## Ported/Adapted (2026-07-14)
+
+- `gitignore-claude-locks` — `.claude/scheduled_tasks.lock` generalized to
+  `.claude/*.lock` directly in this digest PR (trivial fix, no issue)
+  (2026-07-14)
+
+## Deferred (2026-07-14)
+
 - `progress-entry-vocabulary` — ADR-0013 canonical entry types +
-  progress_read.py (2026-07-14)
-- `dispatch-run-issue-reference` — dispatch_subagent.sh + /run-issue +
-  ADR-0015 as reference design for eventual orchestration (2026-07-14)
-- `identity-ci-check` — check_pr_authors.py CI mechanism + pre-commit
-  identity hook (2026-07-14)
-- `review-convergence-signal` — round counting + ship-vs-continue verdict
-  in review-code (2026-07-14)
-- `gitignore-claude-locks` — generalize `.claude/scheduled_tasks.lock` to
-  `.claude/*.lock` (2026-07-14)
+  progress_read.py. Revisit when our workflow-skill count grows enough
+  for entry-name drift to bite (2026-07-14)
+
+## Skipped (2026-07-14 decisions)
+
+- `deployment-mode` — ADR-0014 + /start-deployment + /wrap-up-deployment +
+  dlog.sh: field-ops domain (live boat deployments). Lessons noted in
+  changelog (fabricated timestamps; prompt-free append helper).
+- `ros-domain-2026-07` — ADR-0016 layer chaining, setup.bash O(N²) fix,
+  rosdep bake, LD_LIBRARY_PATH shadowing, agent Docker image,
+  verify_change.sh (colcon-specific).
+- `merge-pr-root-fixes` — their #507/#508/#511 mirror problems we already
+  solved (#146/#155, test_merge_pr_root_resolution.sh).
+- `git-bug-per-repo-bridge-#476` / `ssh-agent-#502` — field/multi-repo
+  workflow we don't have.
 
 ## Changelog (2026-04-19 → 2026-04-26)
 
