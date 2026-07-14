@@ -106,16 +106,18 @@ brainstorm cover this), translations, telemetry consent.
 
 ## Pending Review (2026-07-14 round)
 
-- `skill-carving-token-reduction` — router/skeleton + on-demand
-  references pattern; eval-first floor; carve-guard (2026-07-14)
-- `auq-fallback-and-auto-decide` — fallback-abuse lesson + AUTO_DECIDE
-  explicit self-decide contract (2026-07-14)
-- `consult-memory-before-asking` — brain-aware-planning ask-side rule
-  (2026-07-14)
-- `unresolved-decisions-in-review-reports` — review report declares
-  undecided items (2026-07-14)
-- `fail-closed-hook-audit` — audit/test enforcement hooks for fail-open
-  behavior (2026-07-14)
+(none — all items triaged below)
+
+## Roadmapped (2026-07-14 decisions)
+
+All five 2026-07-14 findings added to ROADMAP.md "To Consider" under
+"From gstack (2026-07-14)":
+
+- `skill-carving-token-reduction` (2026-07-14)
+- `auq-fallback-and-auto-decide` (2026-07-14)
+- `consult-memory-before-asking` (2026-07-14)
+- `unresolved-decisions-in-review-reports` (2026-07-14)
+- `fail-closed-hook-audit` (2026-07-14)
 
 ## Survey Summary
 
@@ -277,6 +279,10 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
   users (#937). Auto-memory `user_workflow_patterns` + `user_agent_personality`
   already cover this at the memory layer; no skill-level adaptation needed.
   Closes the prior 2026-04-19 deferral.
+- `opus-4-7-migration-patterns` (2026-07-14) — closed from Deferred: the
+  model landscape moved past 4.7 (gstack #2238 flags their own hardcoded
+  "Claude Opus 4.7" trailer as a defect). Model-migration friction, if it
+  recurs, will be model-specific and re-triaged fresh.
 
 ## Deferred
 
@@ -290,10 +296,6 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
   Generalize `cross_model_review.sh` into a named-config outside-voice
   dispatcher. Existing single-voice script works for now; revisit when the
   single-voice limitation creates concrete friction.
-- `opus-4-7-migration-patterns` (2026-05-07) — gstack v1.5.2.0 #1117 and
-  v1.10.1.0 #1166. Model overlay, voice tuning, fanout-nudge removal, overlay
-  efficacy harness. Daddy_camp running on 4.7 fine; revisit if/when we
-  observe degradation tied to model-specific behavior.
 - `gbrain-federation-surface` (2026-05-07) — gstack v1.9–v1.27. Cross-machine
   knowledge layer with per-skill manifests, transcript ingest, retrieval surface.
   Architecturally interesting but no clear failure case in our scattered-knowledge
