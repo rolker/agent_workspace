@@ -1,8 +1,91 @@
 # Inspiration Digest: engram
 
 Type: inspiration
-Last checked: 2026-05-07
-Repo: shiblon/engram @ 125f1d4 (was a4c577c on 2026-04-26)
+Last checked: 2026-07-14
+Repo: shiblon/engram @ 243fb2c748f87cf6bfde977440e858e5a805e4d3
+Previously checked: 2026-05-07 @ 125f1d4; 2026-04-26 @ a4c577c
+
+## Changelog (2026-05-07 → 2026-07-14)
+
+91 commits (125f1d4..243fb2c), v0.6 → v0.11.2. Still single-author on
+main, no issues/PRs — but the project matured markedly. **Two survey
+facts are now stale**: engram has a real test suite (13+ `_test.go`
+files; the old "zero tests" credibility asterisk no longer applies), and
+it now handles git worktrees (one database shared across a repo's
+worktrees, manifest keyed `(identity, path)`).
+
+### The authoritative-channel priority ladder (most portable insight)
+
+Direct quote from the commit that motivated it: *"A preference stored
+only in engram is silently beaten by harness and [instruction files]"*.
+The fix: engram now **renders invariants (P1) and preferences (P2) into
+the harness's authoritative instruction channel** at inject time, instead
+of trusting a side-channel memory block to compete with CLAUDE.md-tier
+text.
+
+- **Daddy_camp relevance**: High as a lesson about our own memory system.
+  Recalled memories arrive in `<system-reminder>` blocks — a weaker
+  channel than CLAUDE.md/AGENTS.md. Load-bearing feedback-type memories
+  (standing corrections, hard rules) may deserve promotion into the
+  instruction files rather than staying recall-only. A memory-audit rule,
+  not a tool port.
+
+### Session-start context budgeting + orientation
+
+- `inject` now **bounds** session-start context, rolls up active files by
+  name, and budgets the "areas" section; orientation got visible (status
+  line + orientation header leading with the running version).
+- Version-drift check rides along in inject.
+
+- **Daddy_camp relevance**: Medium. Convergent with our roadmapped
+  `per-session-context-card` concept (rapid re-grounding when switching
+  agent tabs) — engram's orientation header is a working example of the
+  same idea. Cross-link when that item is picked up.
+
+### Agent-tool catalog with staged graduation
+
+Self-describing tool catalog mined from session patterns: candidates are
+staged, then graduate to `$HOME/.engram/agenttools`. Notably the
+**project-level** tool subsystem was later removed — global-only
+survived. (Author's own scope-discipline worth noting.)
+
+- **Daddy_camp relevance**: Low-medium. Parallels our
+  analyze-permissions / skill-authoring flows ("mine sessions for
+  recurring patterns, then promote"). Pattern noted; no port target.
+
+### Dump/restore-all + project manifest
+
+`engram register` (+ `--scan`, `--list`, `--forget`), project manifest,
+save-archive + staged restore across machines. Fix discipline visible:
+"never silently drop projects from the archive", "report file writes
+truthfully".
+
+- **Daddy_camp relevance**: Low. Git already gives our markdown memory
+  portability. Unchanged from prior skip decision.
+
+### MCP surface removed
+
+The experimental MCP server we deferred on (2026-05-07,
+`engram-mcp-server`) was **removed** upstream ("gate MCP behind
+CLI-viability check"). Codex/Gemini integration went hook-parity + AGENTS
+fallback instead.
+
+- **Daddy_camp action**: Close the deferral as obsolete.
+
+### Misc
+
+`mem tldr` (curate a summary without rewriting content), Homebrew
+cask/deb packaging, CHANGELOG backfill, inject error-path fixes
+("surface previously-swallowed errors"), Codex session-start hook found
+too noisy → `--no-session-hook` flag.
+
+## Pending Review (2026-07-14 round)
+
+- `authoritative-channel-promotion` — audit rule: load-bearing memories
+  promoted into instruction files, not recall-only (2026-07-14)
+- `orientation-header-crosslink` — engram's inject orientation as a
+  working example for our per-session-context-card roadmap item
+  (2026-07-14)
 
 ## Survey Summary
 
