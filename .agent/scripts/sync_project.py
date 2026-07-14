@@ -8,4 +8,6 @@ import os
 import sys
 
 ADAPTER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "adapter")
-os.execv(ADAPTER, [ADAPTER, "sync"] + sys.argv[1:])
+
+if __name__ == "__main__":
+    os.execv(ADAPTER, [ADAPTER, "sync"] + sys.argv[1:])
