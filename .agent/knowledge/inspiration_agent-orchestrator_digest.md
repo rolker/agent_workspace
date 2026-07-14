@@ -1,8 +1,67 @@
 # Inspiration Digest: agent-orchestrator
 
 Type: inspiration
-Last checked: 2026-04-19
-Repo: ComposioHQ/agent-orchestrator @ 7b13d2beadc505117691e74e7757acdfa7d17b9d
+Last checked: 2026-07-14
+Repo: ComposioHQ/agent-orchestrator @ efc8969c47e1d85473d47f4690515b6969ab8335
+Previously checked: 2026-04-19 @ 7b13d2b
+
+## Changelog (2026-04-19 → 2026-07-14)
+
+609 commits, 300+ files, 100+ merged PRs — but the story is a **pivot,
+not pattern evolution**. AO has productized: native desktop app (v0.10.x,
+custom Windows titlebar, macOS chrome), a **mobile supervisor app**
+(password-authenticated LAN bridge, shared-terminal co-view from a
+phone), landing pages with demo videos, PostHog telemetry, an embedded
+browser-preview panel with in-preview annotations, and a token-based
+design system. The npm CLI distribution is now marked "frozen / not
+recommended" — the desktop app is the product.
+
+### What this means for the patterns we track it for
+
+- **Reaction system / task decomposition** — little visible movement this
+  window; development effort went to product surface, not orchestration
+  semantics.
+- **Adapter architecture** — still broadening (Amp, Grok, Vibe, Cursor,
+  Codex launch/restore paths; #2572 "resolve default reviewer harness"
+  shows the code-review slot maturing), which continues to validate the
+  slot-based design.
+- **Worktree-per-agent discipline** — one notable robustness fix: #2600
+  recovers stale orchestrator worktrees during replacement. Convergent
+  with our own worktree-lifecycle hardening; no new mechanism.
+- **Dashboard model** — now explicitly a *native-app* model plus mobile
+  supervision. The registry note said "if they move toward less
+  intermediated designs, revisit" — they moved the **opposite** way:
+  more intermediation (embedded terminal, embedded browser, phone
+  co-view).
+- **Interaction niche worth noting**: the mobile supervisor is a genuinely
+  new answer to "monitor long-running agents while away from the desk" —
+  the same attention-handoff need our CLI-first stance solves with
+  terminals. Noted as a data point, not a direction.
+
+### Tracking-value assessment
+
+The reference-implementation value that justified tracking (orchestration
+patterns for IF Tier-3 orchestration ever becomes worthwhile) is now
+better served by the **ros2 dispatch/run-issue reference design**
+(roadmapped 2026-07-14) — closer to home, local-first, terminal-based.
+AO's churn is product/UI-dominated, so signal-to-noise for our interest
+areas has dropped sharply — the same profile that got gastown and
+microsoft-skills archived on 2026-04-19. Archive candidacy raised for
+user decision this run.
+
+## Pending Review (carried from 2026-04-19, triaged this round)
+
+The four "portable concepts" from the initial survey, never triaged
+because PR #157 was reshaping the roadmap at the time:
+
+1. `webhook-driven-reaction-system` — minimal form: a CI-failure watcher
+   that wakes/notifies the responsible agent
+2. `code-review-plugin-slot` — formalize review as a slot with multiple
+   persona implementations
+3. `duplicate-spawn-prevention` — check an agent isn't already on an
+   issue before spawning
+4. `warm-terminal-design-language` — typography/palette reference if we
+   ever build a visual UI
 
 ## Survey Summary
 
