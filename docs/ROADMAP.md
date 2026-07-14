@@ -292,6 +292,12 @@ Cherry-picked from a recon scan of tracked inspirations since last refresh (2026
 - **Duplicate-spawn prevention** — Before starting work on an issue, check whether a worktree/agent already exists for it and fail loud (worktree_create.sh partially covers this; the gap is cross-session awareness). Source: ComposioHQ/agent-orchestrator #1337
 - **Code-review-as-slot** — Treat reviewer personas as pluggable implementations behind one review interface, so alternate reviewers (different models, different lenses) can be swapped without editing the review-code skill body. Source: ComposioHQ/agent-orchestrator #1339/#2572
 
+### From overstory (2026-07-14, archival round)
+
+- **STEELMAN document pattern** — Before adopting any workspace-wide approach (orchestration, new skill class, major tooling), write the strongest case *against* it — as a STEELMAN section in the ADR or a standalone doc. Overstory's own STEELMAN.md (compounding error rates, cost amplification, debugging-as-forensics) remains the model artifact and validated our own Tier-3 defer reasoning. Source: jayminwest/overstory STEELMAN.md (archived, readable)
+- **Base+overlay prompt split** — Separate role HOW (reusable base: workflow, constraints, capabilities) from task WHAT (per-invocation overlay: task ID, scope, branch). Candidate outcome of the existing prompt-audit sweep row rather than a separate effort. Source: jayminwest/overstory agents/*.md + ov sling overlay architecture
+- **Agent role vocabulary** — Named role catalog (builder, coordinator, lead, merger, monitor, reviewer, scout, supervisor) as the working vocabulary when formalizing multi-persona review (swarm-of-personas row). Source: jayminwest/overstory agents/ catalog
+
 ### Research topics to add (not tracker items)
 
 Candidates for `.agent/knowledge/research_digest.md`, separate from roadmap items.

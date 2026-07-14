@@ -1,5 +1,10 @@
 # Inspiration Digest: overstory
 
+> **ARCHIVED 2026-07-14** — upstream repository was itself archived
+> read-only on 2026-05-28 (successor: Warren, not tracked — cloud
+> control-plane focus doesn't match our interest areas). All deferrals
+> resolved below; portable patterns preserved in this digest's survey.
+
 Type: inspiration
 Last checked: 2026-07-14
 Repo: jayminwest/overstory @ ff38f3f76f084abcc34f519bcaa69580f6e53cf1
@@ -227,9 +232,26 @@ own maintainers advise against deploying casually.
 - **Mode-posture preservation (Row 4 prompt audit)** — their Base+Overlay
   split is a clean pattern for the audit to aim at
 
-## Roadmapped
+## Roadmapped (2026-07-14 decisions)
 
-(none this run)
+Added to ROADMAP.md "To Consider" under "From overstory (2026-07-14,
+archival round)":
+
+- `overstory-steelman-pattern` (2026-07-14)
+- `overstory-base-overlay-prompts` (2026-07-14)
+- `overstory-agent-role-vocabulary` (2026-07-14)
+
+## Skipped (2026-07-14 decisions)
+
+- `overstory-hook-orchestrator-pattern` — closed with upstream archival.
+  The "session IS the orchestrator" ethos already shaped the additive-only
+  coordinator constraint; the concrete hook mechanics are preserved in
+  this digest's survey section and recoverable if the coordinator design
+  is ever un-parked.
+- `warren-successor-tracking` — Warren (cloud control plane + web UI) not
+  added to the registry; interest areas don't transfer. Re-evaluate if a
+  local-orchestration need makes its self-manage/self-repair loop
+  relevant.
 
 ## Skipped (this run)
 
@@ -241,13 +263,5 @@ own maintainers advise against deploying casually.
 
 ## Deferred
 
-- `overstory-steelman-pattern` — Write our own STEELMAN docs for big
-  decisions. Candidate for Row 6 Tier-3 defer + Row 7 coordinator
-  simmering. Revisit at next brainstorm.
-- `overstory-base-overlay-prompts` — Split skill HOW from task WHAT.
-  Could emerge from Row 4 Opus 4.7 prompt audit. Revisit during sweep.
-- `overstory-hook-orchestrator-pattern` — Use hooks to prime + inject
-  context rather than external daemon. Candidate for coordinator design
-  when we un-park Row 7.
-- `overstory-agent-role-vocabulary` — Borrow role names (builder,
-  reviewer, scout, etc.) when formalizing swarm-of-personas from Row 3.
+(none — all deferrals resolved 2026-07-14 on upstream archival: three
+roadmapped, one skipped; see sections above)
