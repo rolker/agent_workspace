@@ -1,9 +1,192 @@
 # Inspiration Digest: ros2_agent_workspace
 
 Type: fork
-Last checked: 2026-04-26
-Repo: rolker/ros2_agent_workspace @ 395b1c5e26c82a7b032738adc0d4a03269e48035
-Previously checked: 2026-04-19 @ 8465ebd838f8257fc5074c00fd0aa15c83516f3d
+Last checked: 2026-07-14
+Repo: rolker/ros2_agent_workspace @ b64640f14f05799796164dd7fe07cd8b583541dc
+Previously checked: 2026-04-26 @ 395b1c5e26c82a7b032738adc0d4a03269e48035
+
+## Changelog (2026-04-26 → 2026-07-14)
+
+511 commits, 179 files — by far the biggest round since tracking began.
+Upstream pace increased sharply (June deployment freeze drove a burst of
+field tooling, then a large orchestration build-out). Major themes:
+
+### Per-repo root AGENTS.md (#563 → PR #567, ADR-0017)
+
+GitHub Copilot code review now reads a repo's root `AGENTS.md`
+(2026-06-18) and applies it when generating review feedback. Upstream
+measured ~200 false-positive Copilot findings across 18 repos with no
+instructions and responded with: a thin (~40–60 line) per-project-repo
+`AGENTS.md` instantiated from `.agent/templates/project_agents_md.md`,
+ADR-0017 ("reference, never fork" — the per-repo file points at workspace
+rules, adds only repo-specific content plus a standalone context block for
+Copilot which can't see the workspace), and wiring into `onboard-project`
+(offers the file) and `audit-project` (checks presence/currency).
+
+- **Daddy_camp relevance**: High. The project repo gets Copilot PR
+  reviews with zero instructions today. Template + ADR + skill wiring are
+  all domain-neutral. Direct port candidate.
+
+### Script tests in CI (#509 → PR #510)
+
+`make test-scripts` runs `.agent/scripts/tests/` (shell via bash, python
+via pytest) in a dedicated CI job. Tests are hermetic (temp git sandboxes,
+stubbed `gh`, no network), so the job needs only git + pytest.
+
+- **Daddy_camp relevance**: High, cheap. We have 4 hermetic test scripts
+  in `.agent/scripts/tests/` that run manual-only; our `validate.yml` has
+  lint + docs jobs but no script-tests job. Direct port.
+
+### Composable-timeline orchestration (#470/#481 → ADRs 0013, 0015; PRs #519–#557)
+
+The largest theme (~15 PRs). Three layers:
+
+1. **ADR-0013 — progress.md entry-type vocabulary.** Canonical entry
+   types (`## Issue Review`, `## Plan`, `## Plan Review`,
+   `## Implementation`, `## Local Review (Pre-Push)`,
+   `## Integrated Review`, …) so six skills write one grep-able timeline.
+   Duplicate findings across sources are kept and surfaced as
+   "cross-source confirmations" at integration time. `progress_read.py`
+   parses the timeline.
+2. **`dispatch_subagent.sh` + ADR-0015 (handoff context contract).**
+   Runs any workflow phase in a fresh-context sub-agent — in-process
+   (Agent tool) or headless container (subscription token, no GitHub
+   auth in either direction). Host fetches inputs (`--context-file`) and
+   publishes outputs; container's canonical record is the committed
+   progress.md entry. Exit contract: host reads the phase's last entry to
+   route. Extensive test coverage (5 test files).
+3. **`/run-issue` host orchestrator + `/address-findings`.** Drives
+   review-issue → plan-task → review-plan → implement → review-code →
+   triage-reviews → address-findings, each a fresh-context dispatch, with
+   `AskUserQuestion` checkpoints gating every push/PR/merge. Local-first:
+   PR created at the end. `/address-findings` is a deliberately thin
+   "work the agreed fix plan" phase.
+
+- **Daddy_camp relevance**: Split. ADR-0013 vocabulary + progress_read
+  pattern is Medium — we already write progress.md entries in
+  triage-reviews and the drift risk is real. The dispatch/run-issue
+  machinery is the "orchestrator" category we deferred (Tier 3, D5
+  additive-only constraint) — but notably upstream's take is local-first,
+  checkpointed, and terminal-based, i.e. it satisfies much of our
+  CLI-first constraint. Worth a roadmap entry as a reference design
+  rather than a port.
+
+### Identity enforcement (#468 → PR #471; hooks)
+
+Sub-agent commits were landing authored as the human user (env vars not
+surviving subshells). Three mechanisms: `check-commit-identity.py`
+pre-commit hook (strict on agent branches when `$AGENT_NAME` set,
+permissive otherwise), `identity_patterns.py` (shared patterns),
+`check_pr_authors.py` CI check (Mechanism C — env-independent,
+load-bearing: rejects PRs where an agent-convention branch has commits
+whose primary author matches a human pattern; Co-Authored-By trailers
+deliberately not evaluated).
+
+- **Daddy_camp relevance**: Medium. Same failure mode exists here when
+  sub-agents commit. The CI-side check is the portable part (no env
+  dependency); patterns would need adapting to rolker.net emails.
+
+### review-code refinements (#467 → PR #517; #537 → PR #543; #460 → PR #462)
+
+- Copilot Adversarial made **opt-in** (`--copilot`), replaced by default
+  with a **dual-lens Claude pass** (Lens A + Lens B) after context-cost
+  evaluation.
+- **Convergence/ship signal** (pre-push): round = count of prior
+  `## Local Review (Pre-Push)` entries + 1; verdict "ship recommended"
+  when no must-fixes, or at round ≥ 2 when must-fix count is low (≤2),
+  not rising, and mechanical. Gives the orchestrator (or human) a
+  ship-vs-continue signal instead of looping reviews indefinitely.
+  Includes a lighter severity bar for agent-guidance docs (SKILL.md).
+- `--skip-static` / `--no-progress` / `--issue` overrides.
+
+- **Daddy_camp relevance**: Medium. The convergence/ship-signal pattern
+  is portable to our review-code/cross_model_review loop and addresses a
+  real cost (each re-review round is expensive). Copilot-opt-in decision
+  is an interesting data point for our own external-review cost tuning.
+
+### Deployment mode (ADR-0014, #495/#499–#557 cluster)
+
+Behavioral operating mode for live field deployments: urgency contract
+(anti-rabbit-holing under live time pressure, grounded in incident-command
+/ sterile-cockpit practice) + lifecycle tooling (`/start-deployment`,
+`/wrap-up-deployment`, `dlog.sh` prompt-free timestamped logging,
+`deployment_config.yaml`). Notable lessons: agents fabricate timestamps
+(fix: forbid typed timestamps, use a helper); log-append via `printf >>`
+hits a permission prompt per entry (fix: dlog helper).
+
+- **Daddy_camp relevance**: Low (field-ops domain). The two lessons
+  (fabricated timestamps; prompt-free append helper) are worth remembering
+  if we ever build session-logging tooling. Skip.
+
+### Upstream-internal / ROS-domain (skipped)
+
+- ADR-0016 runtime-vs-baked layer chaining, setup.bash O(N²) fix (#559),
+  rosdep bake (#520–#523), LD_LIBRARY_PATH shadowing (#484), agent Docker
+  image + `docker_run_agent.sh` (#566 open bug), `verify_change.sh`
+  (colcon-specific) — all ROS/container domain.
+- `make merge-pr` (#488 → PR #494) — adapted **from us**; their #507/#508
+  ROOT-resolution fixes mirror problems we already solved (#146/#155,
+  `test_merge_pr_root_resolution.sh`). No action.
+- git-bug per-repo bridge setup (#476), SSH-agent persistence (#502) —
+  field/multi-repo workflow we don't have.
+
+### Open issues worth watching
+
+- **#564** — Slim workspace AGENTS.md to a map using an
+  enforcement-backed criterion (ADR + restructure). Our AGENTS.md has the
+  same growth problem; watch for their criterion.
+- **#562** — merge_pr.sh `--skill` support (skill worktrees currently
+  need manual cleanup). We share this gap — this very digest PR will be
+  merged from a skill worktree.
+- **#558** — background-dispatch completion notifications don't wake an
+  idle agent; **#527** — surface deferred findings across review rounds.
+  Both are orchestration-polish; informational.
+
+### Bidirectional note
+
+Upstream checked *us* today (PR #560 "Update inspiration digest:
+agent_workspace (2026-07-14 check)") and continues porting our
+review-skill improvements (#452/#453). `make merge-pr` and the
+inspiration-tracker skill itself both flowed from us to them.
+
+## Pending Review (2026-07-14 round)
+
+(none — all items triaged below)
+
+## Roadmapped (2026-07-14 decisions)
+
+- `per-repo-agents-md` — added to ROADMAP.md "To Consider" (2026-07-14)
+- `script-tests-ci-job` — added to ROADMAP.md "To Consider" (2026-07-14)
+- `identity-ci-check` — added to ROADMAP.md "To Consider" (2026-07-14)
+- `review-convergence-signal` — added to ROADMAP.md "To Consider" (2026-07-14)
+- `dispatch-run-issue-reference` — added to ROADMAP.md "To Consider" as a
+  reference design updating the agent-orchestrator Tier-3 stance, not a
+  port candidate (2026-07-14)
+
+## Ported/Adapted (2026-07-14)
+
+- `gitignore-claude-locks` — `.claude/scheduled_tasks.lock` generalized to
+  `.claude/*.lock` directly in this digest PR (trivial fix, no issue)
+  (2026-07-14)
+
+## Deferred (2026-07-14)
+
+- `progress-entry-vocabulary` — ADR-0013 canonical entry types +
+  progress_read.py. Revisit when our workflow-skill count grows enough
+  for entry-name drift to bite (2026-07-14)
+
+## Skipped (2026-07-14 decisions)
+
+- `deployment-mode` — ADR-0014 + /start-deployment + /wrap-up-deployment +
+  dlog.sh: field-ops domain (live boat deployments). Lessons noted in
+  changelog (fabricated timestamps; prompt-free append helper).
+- `ros-domain-2026-07` — ADR-0016 layer chaining, setup.bash O(N²) fix,
+  rosdep bake, LD_LIBRARY_PATH shadowing, agent Docker image,
+  verify_change.sh (colcon-specific).
+- `merge-pr-root-fixes` — their #507/#508/#511 mirror problems we already
+  solved (#146/#155, test_merge_pr_root_resolution.sh).
+- `git-bug-per-repo-bridge-#476` / `ssh-agent-#502` — field/multi-repo
+  workflow we don't have.
 
 ## Changelog (2026-04-19 → 2026-04-26)
 
