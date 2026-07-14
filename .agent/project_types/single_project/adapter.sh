@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # .agent/project_types/single_project/adapter.sh
 # single_project adapter — one repo cloned or symlinked at $WORKSPACE_ROOT/project.
 #
@@ -59,7 +60,7 @@ adapter_build() {
     _single_project_load_cmd BUILD_CMD || return 1
     echo "Running: $BUILD_CMD $*"
     echo ""
-    cd "$(adapter_project_root)"
+    cd "$(adapter_project_root)" || return 1
     # shellcheck disable=SC2086
     exec $BUILD_CMD "$@"
 }
@@ -68,7 +69,7 @@ adapter_test() {
     _single_project_load_cmd TEST_CMD || return 1
     echo "Running: $TEST_CMD $*"
     echo ""
-    cd "$(adapter_project_root)"
+    cd "$(adapter_project_root)" || return 1
     # shellcheck disable=SC2086
     exec $TEST_CMD "$@"
 }
@@ -85,7 +86,7 @@ adapter_install() {
     fi
     echo "Running: $INSTALL_CMD $*"
     echo ""
-    cd "$(adapter_project_root)"
+    cd "$(adapter_project_root)" || return 1
     # shellcheck disable=SC2086
     exec $INSTALL_CMD "$@"
 }
