@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Sync Workspace and Project Repositories
+Sync Workspace and Project Repositories (single_project adapter)
 
 Safely synchronizes workspace and project repositories by pulling updates on
 default branches and fetching on feature branches. Respects dirty working
 directories and detached HEAD states.
 
 Usage:
-    python3 sync_project.py [--dry-run]
+    .agent/scripts/adapter sync [--dry-run]
+    (or via: make sync)
 """
 
 import shutil
@@ -16,8 +17,10 @@ import subprocess
 import argparse
 from pathlib import Path
 
+# This file lives in .agent/project_types/single_project/; the shared lib
+# stays in .agent/scripts/lib/.
 SCRIPT_DIR = Path(__file__).parent.resolve()
-sys.path.insert(0, str(SCRIPT_DIR / "lib"))
+sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "scripts" / "lib"))
 
 from workspace import get_workspace_root, get_project_path, is_project_configured
 

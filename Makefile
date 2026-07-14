@@ -34,7 +34,7 @@ VENV_BIN := $(VENV_DIR)/bin
 PRE_COMMIT := $(VENV_BIN)/pre-commit
 
 # --- Phony targets ---
-.PHONY: help setup build test lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug repair merge-pr
+.PHONY: help setup build test install lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug repair merge-pr
 
 # =============================================================================
 # Tier 2 — Developer workflow
@@ -52,6 +52,7 @@ help:
 	@echo "Development:"
 	@echo "  make build            Run BUILD_CMD from .agent/project_config.sh"
 	@echo "  make test             Run TEST_CMD from .agent/project_config.sh"
+	@echo "  make install          Run INSTALL_CMD (no-op when unset)"
 	@echo "  make dashboard        Show workspace + project status"
 	@echo "  make sync             Fetch/pull workspace + project repos"
 	@echo ""
@@ -79,6 +80,9 @@ build: $(STAMP)/setup-dev.done
 
 test: $(STAMP)/setup-dev.done
 	@$(MAIN_ROOT)/.agent/scripts/test.sh
+
+install: $(STAMP)/setup-dev.done
+	@$(MAIN_ROOT)/.agent/scripts/adapter install
 
 lint: $(STAMP)/setup-dev.done
 	$(PRE_COMMIT) run --all-files

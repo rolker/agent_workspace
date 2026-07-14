@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# .agent/scripts/setup_project.sh
-# Bootstrap the project/ directory.
+# .agent/project_types/single_project/setup.sh
+# Bootstrap the project/ directory (single_project adapter).
+#
+# Invoked via: .agent/scripts/adapter setup  (or: make setup)
 #
 # Logic:
 #   1. If project/ exists and is a valid git repo → report URL, optionally pull
@@ -13,8 +15,9 @@
 
 set -euo pipefail
 
+# This file lives 3 levels below the workspace root (.agent/project_types/single_project/).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+ROOT_DIR="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 
 PROJECT_DIR="$ROOT_DIR/project"
 
