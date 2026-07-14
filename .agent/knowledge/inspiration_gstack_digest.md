@@ -1,9 +1,121 @@
 # Inspiration Digest: gstack
 
 Type: inspiration
-Last checked: 2026-05-07
-Repo: garrytan/gstack @ 443bde0 (was 22a4451 on 2026-04-19)
-Previously checked: 2026-04-19 @ 22a4451; 2026-03-31 @ db35b8e
+Last checked: 2026-07-14
+Repo: garrytan/gstack @ 7c9df1c568a9ea745508f679a329332b2c338063
+Previously checked: 2026-05-07 @ 443bde0; 2026-04-19 @ 22a4451; 2026-03-31 @ db35b8e
+
+## Changelog (2026-05-07 → 2026-07-14)
+
+64 merged PRs, 300+ files (443bde0..7c9df1c). v1.28 → v1.58 in ~9 weeks.
+Cadence has slowed from the ~1.5 releases/day peak but the project now runs
+recurring "community bug waves" (Daegu: 23 bugs, windhoek: 9, plus external
+audits) fed by its field-report pipeline — the friction-reporting system we
+tracked in the initial survey, now operating at scale.
+
+### Token reduction / skill carving (v1.46, v1.54, v1.56, v1.57.0)
+
+The dominant portable theme. "gstack v2 foundation" cut skill-catalog
+tokens 56% and put an eval-first floor under all 51 skills; /ship was
+carved into a skeleton + on-demand sections (−59% always-loaded); a
+"carve-guard" system protects the carved structure; more skills carved
+since (cso, document-release, design-consultation). Open issues extend it:
+#2214 (1839-line autoplan SKILL.md → router + `references/`), #2238 (audit:
+~120 lines of boilerplate duplicated across 51/56 skills, over-prescriptive
+STRICT recipes).
+
+- **Daddy_camp relevance**: High. Our skill bodies keep growing (this
+  skill's own SKILL.md included), and ros2's open #564 (slim AGENTS.md via
+  an enforcement-backed criterion) is the same concern arriving from the
+  fork side — convergent evidence that always-loaded instruction mass is
+  a real cost. The router + on-demand-references pattern is portable.
+
+### AskUserQuestion reliability saga (v1.31 → v1.48 → v1.56 → v1.57.2 → v1.58.1)
+
+A full arc worth recording: v1.31 **deleted** the AUQ prose fallback
+("root cause of forever war" — the fallback let skills silently bypass the
+tool); v1.48 added a question **split rule** + an explicit `AUTO_DECIDE`
+carve-out (agent may self-decide only in a declared class of cases); v1.56
+added a "paranoid safety net"; v1.57.2 **re-introduced** a prose fallback,
+but only for genuine runtime tool failure; v1.58.1/#2206/#2207 deal with
+host variants (Conductor) breaking native AUQ. Net lesson: gates must
+fail loud, fallbacks get abused unless scoped to verified tool failure,
+and self-decide needs an explicit contract.
+
+- **Daddy_camp relevance**: Medium. Complements the already-roadmapped
+  AUQ cadence/Pros-Cons item and the plan-* STOP-gate item (both
+  2026-05-07): this adds the fallback-abuse failure mode and the
+  AUTO_DECIDE contract idea.
+
+### Cross-session decision memory (v1.57.5) + brain-aware planning (v1.52.1)
+
+Skills record decisions durably across sessions; 5 planning skills now
+read structured memory context *before* asking the user anything ("don't
+ask what the brain already knows").
+
+- **Daddy_camp relevance**: Medium. The ask-side rule is portable to our
+  skills: consult memory/progress.md/ROADMAP before AskUserQuestion.
+  Storage side is gbrain-domain.
+
+### Review-loop refinements
+
+- v1.57.7 — review report must **declare unresolved decisions** (nothing
+  silently dropped between review rounds). Same concern as ros2's open
+  #527 (surface deferred findings across rounds) — convergent.
+- v1.57.10 — **Codex review default-on** across review/ship/plan/docs.
+  Notable contrast: ros2 made Copilot Adversarial **opt-in** after
+  measuring context cost, same month. The two forks of "external
+  second-model review" pricing landed on opposite defaults.
+- v1.39.1 — EXIT PLAN MODE GATE for plan-mode review skills.
+
+- **Daddy_camp relevance**: Medium for unresolved-decisions declaration
+  (cheap addition to review-code/triage-reviews report formats);
+  informational for the Codex-default contrast (feeds our own
+  cross-model cost tuning).
+
+### Safety guards failing open (v1.57.6)
+
+A community bug wave found **4 security guards failing open** (guard
+hooks that silently passed when their precondition machinery broke).
+Fix wave + tests.
+
+- **Daddy_camp relevance**: Medium as a lesson: we have enforcement hooks
+  (block-bash-tool-mapping, pre-commit) — worth an explicit fail-closed
+  audit/test pass. Cheap, concrete.
+
+### Gstack-domain (skip)
+
+gbrowser stealth/anti-detection + headed-mode woes (#2242, #2219, #2220),
+iOS device-farm (v1.43), persistent design-board daemon (v1.45), sidebar
+keepalive (v1.44), PGLite/voyage-code-3 embeddings, split-engine gbrain
+(v1.37) + sync hardening waves, submodule/factory-export packaging
+(v1.34), Windows/CI hardening, /make-pdf emoji, redaction guard (v1.53 —
+document-pipeline specific), /spec skill (v1.47 — our plan-task +
+brainstorm cover this), translations, telemetry consent.
+
+### Deferred-item signals (no status change)
+
+- `claude-outside-voice-skill` — v1.57.10's Codex-default-on is new
+  signal but our single-voice `cross_model_review.sh` friction hasn't
+  changed. Stays deferred.
+- `opus-4-7-migration-patterns` — likely obsolete as framed: the model
+  landscape moved on (gstack #2238 flags their own hardcoded "Claude Opus
+  4.7" trailer as a defect). Candidate to close next run.
+- `gbrain-federation-surface` — still evolving fast upstream; still no
+  concrete local failure case. Stays deferred.
+
+## Pending Review (2026-07-14 round)
+
+- `skill-carving-token-reduction` — router/skeleton + on-demand
+  references pattern; eval-first floor; carve-guard (2026-07-14)
+- `auq-fallback-and-auto-decide` — fallback-abuse lesson + AUTO_DECIDE
+  explicit self-decide contract (2026-07-14)
+- `consult-memory-before-asking` — brain-aware-planning ask-side rule
+  (2026-07-14)
+- `unresolved-decisions-in-review-reports` — review report declares
+  undecided items (2026-07-14)
+- `fail-closed-hook-audit` — audit/test enforcement hooks for fail-open
+  behavior (2026-07-14)
 
 ## Survey Summary
 
