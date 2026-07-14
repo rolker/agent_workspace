@@ -1,10 +1,151 @@
 # Inspiration Digest: superpowers
 
 Type: inspiration
-Last checked: 2026-05-07
+Last checked: 2026-07-14
 Repo: obra/superpowers
-- main @ f2cbfbe (Release v5.1.0, 2026-05-04)
-- dev  @ 7f02ccd (active development, 2026-05-06)
+- main @ d884ae04edebef577e82ff7c4e143debd0bbec99 (post-v6.1.1)
+- dev  @ 92164e2 (23 ahead / 10 behind main — modest divergence)
+- Previously: main @ f2cbfbe (v5.1.0), dev @ 7f02ccd on 2026-05-07
+
+## Changelog (2026-05-07 → 2026-07-14)
+
+188 commits, 135 files on main. Two major releases: **v6.0.0**
+(2026-06-16) and v6.1.x. The v6 release notes are unusually thorough and
+worth reading in full (`gh release view v6.0.0 -R obra/superpowers`).
+
+### SDD review-economics rewrite (v6.0.0 headline)
+
+A long run of cost/quality experiments on real projects reshaped
+subagent-driven development's per-task review. Their evals: similar
+quality ~2× faster with ~50% fewer tokens. The individual mechanisms are
+the portable part:
+
+- **One reviewer per task, two verdicts** — a single task-reviewer prompt
+  reads the diff once, returns spec-compliance + quality verdicts, plus a
+  "can't verify from the diff" verdict for requirements in untouched code.
+  One broad whole-branch review on the best model at the end.
+- **Work moves as files, not pasted text** — "a pasted diff parks itself
+  permanently in the most expensive context"; `task-brief` and
+  `review-package` scripts write task text and diff to files the subagent
+  reads.
+- **Every dispatch must state its model** — left to choose, controllers
+  stopped naming one, and an unnamed model inherits the session's most
+  expensive tier (one run put all 26 reviewers on top tier). Convergent
+  with ros2's #539 (dispatch defaulted to wrong model tier). Upstream
+  *rejected* a dedicated skill for this (PR #1496 closed: "one line in
+  your instructions file beats a new skill + eval cost of touching five
+  behavior-shaping files") and baked it into SDD templates instead.
+- **The controller can't coach reviewers** — real runs caught controllers
+  telling reviewers to skip a finding or pre-rate it "Minor at most", and
+  the flaw shipped. Suppressing findings and pre-rating severity banned;
+  plan-mandated defects get reported for the human to decide.
+- **Reviewers are read-only and skeptical of rationales** — no working-tree
+  mutation (a reviewer's `git checkout` had orphaned commits); an
+  implementer's "left it that way on purpose" doesn't dismiss a finding.
+- **Evidence + resume** — findings cite file:line, implementer reports move
+  to files with red/green test evidence, and a progress ledger lets a
+  context-lost controller resume rather than redo.
+
+- **Daddy_camp relevance**: High. We dispatch review subagents
+  (review-code specialists, cross_model_review) and the anti-coaching,
+  files-not-paste, mandatory-model, and read-only-reviewer rules are all
+  cheap to adopt piecemeal.
+
+### Plan structure upgrades (v6.0.0)
+
+- **Global Constraints block** — rules binding every task (version floors,
+  naming, exact values) copied verbatim into the plan so they reach
+  implementers/reviewers downstream.
+- **Per-task Interfaces block** — what each task consumes/produces, so an
+  implementer seeing only its own task knows its neighbors' contracts.
+- **Right-sizing guidance** — a task should earn its own test cycle and
+  review pass; fold setup/config/docs into the task that needs them. Their
+  A/B: one fix round vs two-to-four for control (which also shipped a bug).
+
+- **Daddy_camp relevance**: Medium-high. Direct enhancement candidates for
+  our plan-task skill's plan format.
+
+### Writing-skills guidance (v6.0.0 + #1741)
+
+- **Match the Form to the Failure** — a table for picking guidance form: a
+  flat "don't do X" works for discipline slips but backfires when the
+  problem is output *shape*, where a worked example wins.
+- **Micro-Test Wording** — sample a phrasing a handful of times against a
+  no-guidance control before committing; run-to-run variance is a warning.
+
+- **Daddy_camp relevance**: Medium. We author skills continuously; this is
+  distilled craft knowledge. Resolves the prior
+  `writing-skills-script-vs-prose` deferral (that guidance landed as part
+  of this).
+
+### Harness-neutral skill prose (v6.0.0, includes merged PR #1486)
+
+Skills rewritten from Claude Code dialect ("use the Task tool", "put it in
+CLAUDE.md") to action vocabulary ("dispatch a subagent", "your
+instructions file"), with a per-harness tool reference mapping actions to
+tools (Claude Code, Codex, Copilot, Gemini, Pi, Antigravity).
+`finishing-a-development-branch` went forge-neutral (no hardcoded
+`gh pr create`).
+
+- **Daddy_camp relevance**: Medium. Our AGENTS.md + adapter-file structure
+  already does the workspace-level version; the *skill-body* neutrality
+  pattern applies if our skills ever run under Codex/Gemini (which the
+  workspace nominally supports). Resolves the prior
+  `cross-platform-skill-compatibility` deferral.
+
+### Token reduction (again — third convergent source)
+
+#1848 compressed the using-superpowers bootstrap, #1847 pruned per-harness
+tool-mapping boilerplate, #1932 folded index-style Integration sections
+into points of use. Same quarter: gstack carved skills (56% catalog token
+cut), ros2 opened #564 to slim AGENTS.md. Three tracked sources
+independently attacking always-loaded instruction mass.
+
+- **Daddy_camp relevance**: Feeds the just-roadmapped
+  `skill-carving-token-reduction` item; no separate entry needed. The
+  convergence itself is the signal.
+
+### Other notable
+
+- **Evals moved to a submodule** (separate repo) — `tests/` now holds
+  plugin-code tests, `evals/` skill-behavior tests, split documented in
+  `docs/testing.md`. Our roadmapped `drill-evals-harness` item's source
+  pointer should follow the submodule when picked up.
+- **Gemini CLI support removed as "EOLed by Google" (#1846) then restored
+  by revert (#1959)** — churn suggests the EOL claim was wrong or
+  premature. Watch only; our Gemini adapter file is unaffected.
+- **Visual companion security model** (per-session key, sandboxed file
+  server, DNS-rebinding defense) — good patterns if we ever ship a local
+  web tool; no current need.
+- **testing-anti-patterns reframed as writing-good-tests** (#1935);
+  finishing-a-development-branch modernized with a rationalization table
+  (#1933).
+
+### Deferred-item status changes
+
+- `subagent-model-reconciliation` — PR #1496 **closed unmerged**; core
+  insight adopted differently in v6 (mandatory model naming in SDD
+  templates). Resolve into the SDD finding.
+- `cross-platform-skill-compatibility` — PR #1486 **merged** + v6
+  expansion. Resolved into the harness-neutral finding.
+- `evidence-quoted-safety-screen` — issue #1495 **closed** upstream
+  without a shipped skill. Close.
+- `writing-skills-script-vs-prose` — landed as part of v6 writing-skills
+  guidance. Resolved into that finding.
+- `lifecycle-event-hooks` (PR #1461) — still open upstream. Stays
+  deferred.
+
+## Pending Review (2026-07-14 round)
+
+- `sdd-review-economics` — anti-coaching rule, files-not-paste handoff,
+  mandatory model naming, read-only reviewers, progress ledger
+  (2026-07-14)
+- `plan-structure-blocks` — Global Constraints + per-task Interfaces +
+  right-sizing for plan-task (2026-07-14)
+- `skill-authoring-guidance` — Match Form to Failure + Micro-Test Wording
+  (2026-07-14)
+- `harness-neutral-skill-prose` — action vocabulary + per-harness tool
+  reference (2026-07-14)
 
 ## Survey Summary
 
