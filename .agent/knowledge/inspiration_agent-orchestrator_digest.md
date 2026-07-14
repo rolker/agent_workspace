@@ -1,5 +1,12 @@
 # Inspiration Digest: agent-orchestrator
 
+> **ARCHIVED 2026-07-14** — removed from active tracking. AO pivoted to a
+> productized desktop + mobile app; orchestration-pattern churn (our
+> interest) gave way to product/UI churn, and the Tier-3 reference role is
+> now covered by the ros2 dispatch/run-issue design (roadmapped
+> 2026-07-14). Patterns from the initial survey are triaged below.
+> Re-add to `inspiration_registry.yml` if motivation changes.
+
 Type: inspiration
 Last checked: 2026-07-14
 Repo: ComposioHQ/agent-orchestrator @ efc8969c47e1d85473d47f4690515b6969ab8335
@@ -49,19 +56,29 @@ areas has dropped sharply — the same profile that got gastown and
 microsoft-skills archived on 2026-04-19. Archive candidacy raised for
 user decision this run.
 
-## Pending Review (carried from 2026-04-19, triaged this round)
+## Pending Review
 
-The four "portable concepts" from the initial survey, never triaged
-because PR #157 was reshaping the roadmap at the time:
+(none — the four items carried from 2026-04-19 are triaged below)
 
-1. `webhook-driven-reaction-system` — minimal form: a CI-failure watcher
-   that wakes/notifies the responsible agent
-2. `code-review-plugin-slot` — formalize review as a slot with multiple
-   persona implementations
-3. `duplicate-spawn-prevention` — check an agent isn't already on an
-   issue before spawning
-4. `warm-terminal-design-language` — typography/palette reference if we
-   ever build a visual UI
+## Roadmapped (2026-07-14 decisions)
+
+Added to ROADMAP.md "To Consider" under "From agent-orchestrator
+(2026-07-14, archival round)":
+
+- `ci-failure-watcher` — minimal reaction system (2026-07-14)
+- `duplicate-spawn-prevention` — cross-session issue-in-progress check
+  (2026-07-14)
+- `code-review-plugin-slot` — reviewer personas as pluggable
+  implementations (2026-07-14)
+
+## Skipped (2026-07-14 decisions)
+
+- `warm-terminal-design-language` — no visual UI planned (CLI-first
+  stance); typography/palette reference recoverable from this digest's
+  survey section if that ever changes.
+- `mobile-supervision-model` — AO's phone co-view answers the
+  attention-handoff need we deliberately solve with terminals; noted as
+  a data point only.
 
 ## Survey Summary
 
