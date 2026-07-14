@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-0011](0011-project-type-adapter-contract.md), which
+replaces the single-repo assumption with a project-type adapter contract
+while carrying forward the workspace-vs-project separation doctrine.
 
 ## Context
 

@@ -24,6 +24,19 @@ jobs:
           SKIP: check-commit-identity,no-commit-to-branch,check-branch-updates,verify-issue-branch
         run: make lint
 
+  validate-adapter-contract:
+    name: Validate Adapter Contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate project-type adapters (ADR-0011)
+        run: bash .agent/scripts/validate_adapter.sh
+
+      - name: Run adapter tests
+        run: bash .agent/scripts/tests/test_adapter.sh
+
   validate-documentation:
     name: Validate Documentation
     runs-on: ubuntu-latest
