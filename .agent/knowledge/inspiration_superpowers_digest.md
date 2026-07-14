@@ -137,15 +137,18 @@ independently attacking always-loaded instruction mass.
 
 ## Pending Review (2026-07-14 round)
 
-- `sdd-review-economics` — anti-coaching rule, files-not-paste handoff,
-  mandatory model naming, read-only reviewers, progress ledger
-  (2026-07-14)
-- `plan-structure-blocks` — Global Constraints + per-task Interfaces +
-  right-sizing for plan-task (2026-07-14)
-- `skill-authoring-guidance` — Match Form to Failure + Micro-Test Wording
-  (2026-07-14)
-- `harness-neutral-skill-prose` — action vocabulary + per-harness tool
-  reference (2026-07-14)
+(none — all items triaged below)
+
+## Roadmapped (2026-07-14 decisions)
+
+Added to ROADMAP.md "To Consider" under "From superpowers (2026-07-14)":
+
+- `sdd-review-economics` (2026-07-14) — also resolves the
+  `subagent-model-reconciliation` deferral (PR #1496 closed unmerged;
+  insight adopted via mandatory model naming)
+- `plan-structure-blocks` (2026-07-14)
+- `skill-authoring-guidance` (2026-07-14) — also resolves the
+  `writing-skills-script-vs-prose` deferral
 
 ## Survey Summary
 
@@ -344,25 +347,30 @@ process as mandatory workflow rather than optional suggestions.
   skill shipped (PR #1473); now tracked via the `plan-review-cycle-skill`
   Roadmapped entry.
 - `model-selection-for-subagents` — Superseded 2026-05-07 by
-  `subagent-model-reconciliation` (Deferred below; PR #1496 still open).
-- `subagent-model-reconciliation` (2026-05-07) — PR #1496 still open upstream;
-  defer until merged so we can study the final shape. Resolves our older
-  `model-selection-for-subagents` deferral.
-- `writing-skills-script-vs-prose` (2026-05-07) — Issue #1267 / PR #1471.
-  Useful but not pressing; revisit when authoring the next batch of skills.
-- `lifecycle-event-hooks` (2026-05-07) — PR #1461 / issue #1442. No concrete
-  need today; flag if we ever want skill-to-skill reactivity beyond
-  settings.json hooks.
+  `subagent-model-reconciliation`; that in turn resolved 2026-07-14 into
+  the Roadmapped `sdd-review-economics` item (PR #1496 closed unmerged,
+  insight adopted in v6 SDD templates).
+- `subagent-model-reconciliation` — **Resolved 2026-07-14** into the
+  Roadmapped `sdd-review-economics` item.
+- `writing-skills-script-vs-prose` — **Resolved 2026-07-14** into the
+  Roadmapped `skill-authoring-guidance` item (landed upstream as Match
+  Form to Failure / Micro-Test Wording).
+- `lifecycle-event-hooks` (2026-05-07) — PR #1461 / issue #1442 still open
+  upstream 2026-07-14. No concrete need today; flag if we ever want
+  skill-to-skill reactivity beyond settings.json hooks.
 - `lift-agent-into-skill` (2026-05-07) — v5.1.0 pattern. Note for next
   reorganization of `.claude/agents/`; some 1:1 agent→skill pairs in
   daddy_camp may be inlining candidates.
-- `cross-platform-skill-compatibility` (2026-05-07) — PR #1486. AGENTS.md
-  Tool Mapping table covers the workspace-level mapping; revisit if/when
-  we run skills under Codex or Gemini.
+- `harness-neutral-skill-prose` (2026-07-14) — v6.0.0 action-vocabulary
+  rewrite + per-harness tool references. Supersedes the 2026-05-07
+  `cross-platform-skill-compatibility` deferral (PR #1486 merged). Our
+  skills only run under Claude Code today; revisit if Codex/Gemini skill
+  use becomes real.
 - `worktree-consent-gate` (2026-05-07) — v5.1.0 pattern. Daddy_camp's
   workflow is friction-averse with 4-5 concurrent agents; auto-creation
   is currently preferred. Native-tool preference also conflicts with our
   cross-runtime stance. Keep on radar if worktree volume becomes a problem.
-- `evidence-quoted-safety-screen` (2026-05-07) — Issue #1495. Pattern is
-  interesting but enforcement mechanism (hook? skill? AGENTS.md tightening?)
-  unclear; revisit after upstream lands a concrete skill.
+  (Related v6 change, no action: upstream worktrees moved from a global
+  dir into the project — matching the layout we already use.)
+- `evidence-quoted-safety-screen` — **Closed 2026-07-14**: issue #1495
+  closed upstream without a shipped skill. No local need emerged.

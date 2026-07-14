@@ -276,6 +276,12 @@ Cherry-picked from a recon scan of tracked inspirations since last refresh (2026
 - **Unresolved-decisions declaration in review reports** — Review/triage report formats must explicitly list decisions raised but not resolved, so nothing silently drops between rounds. Convergent with ros2 #527 (surface deferred findings across rounds). Source: garrytan/gstack v1.57.7.0
 - **Fail-closed hook audit** — Verify enforcement hooks (block-bash-tool-mapping, pre-commit) fail closed when their own machinery breaks; gstack's community bug wave found 4 security guards failing open. Add explicit fail-closed cases to hook tests. Source: garrytan/gstack v1.57.6.0
 
+### From superpowers (2026-07-14)
+
+- **Subagent review economics** — Adopt v6.0.0's field-tested dispatch rules piecemeal in review-code / cross_model_review: controller may not coach reviewers (no suppressing findings or pre-rating severity); task text + diffs handed to subagents as files, never pasted into the prompt; every dispatch names its model explicitly (unnamed inherits the most expensive tier — convergent with ros2 #539); reviewers are read-only and skeptical of implementer rationales; progress ledger enables context-loss resume. Upstream evals: ~2× faster, ~50% fewer tokens at par quality. Source: obra/superpowers v6.0.0 release notes, #1717/#1744
+- **Plan structure blocks for plan-task** — Add a Global Constraints block (binding rules copied verbatim so they reach downstream implementers/reviewers), per-task Interfaces block (what each task consumes/produces), and right-sizing guidance (a task earns its own test cycle + review pass). Upstream A/B: one fix round vs two-to-four for control. Source: obra/superpowers v6.0.0 Writing Plans
+- **Skill-authoring guidance knowledge doc** — "Match the Form to the Failure" (flat prohibitions fix discipline slips; worked examples fix output-shape problems) + "Micro-Test Wording" (sample a phrasing against a no-guidance control before committing; variance is a warning). Closes the older script-vs-prose deferral. Source: obra/superpowers v6.0.0 Writing Skills, #1741
+
 ### Research topics to add (not tracker items)
 
 Candidates for `.agent/knowledge/research_digest.md`, separate from roadmap items.
