@@ -81,11 +81,15 @@ too noisy → `--no-session-hook` flag.
 
 ## Pending Review (2026-07-14 round)
 
-- `authoritative-channel-promotion` — audit rule: load-bearing memories
-  promoted into instruction files, not recall-only (2026-07-14)
-- `orientation-header-crosslink` — engram's inject orientation as a
-  working example for our per-session-context-card roadmap item
-  (2026-07-14)
+(none — all items triaged below)
+
+## Roadmapped (2026-07-14 decisions)
+
+- `authoritative-channel-promotion` — added to ROADMAP.md "To Consider"
+  under "From engram (2026-07-14)" (2026-07-14)
+- `orientation-header-crosslink` — recorded as a source annotation on the
+  existing Session Intelligence Layer row in ROADMAP.md (working example
+  for the absorbed per-session-context-card concept) (2026-07-14)
 
 ## Survey Summary
 
@@ -286,16 +290,15 @@ issues or PRs — author works on `main` directly.
 
 - `short-term-stack-workflow` — Push/pop conventions for nested digressions
   (engram's "save context, brainstorm, resume" pattern). Deferred
-  2026-04-26 and re-confirmed 2026-05-07; most digressions still short
-  enough that resume context isn't lost. Pairs with
-  `tier-by-durability-axis`. Resurface on next run.
+  2026-04-26, re-confirmed 2026-05-07 and 2026-07-14 (tier model unchanged
+  upstream; no local pain). Pairs with `tier-by-durability-axis`.
+  Resurface paired.
 - `tier-by-durability-axis` — `durability:` frontmatter field
   (`short`/`long`/`permanent`), orthogonal to existing `type:`. Deferred
-  2026-04-26 and re-confirmed 2026-05-07; without the stack workflow
-  there's no use case for a `short` value. Pairs with the stack workflow
-  item. Resurface paired.
-- `engram-mcp-server` (2026-05-07) — Engram now ships an MCP server
-  exposing memory/personality state to non-Claude-Code agents. Daddy_camp
-  could write a small MCP wrapper over its file-based auto-memory dir to
-  serve Codex / Gemini / Copilot. Deferred until we actually run those
-  agents against this workspace and discover memory loading is awkward.
+  2026-04-26, re-confirmed 2026-05-07 and 2026-07-14; without the stack
+  workflow there's no use case for a `short` value. Resurface paired.
+- `engram-mcp-server` — **Closed 2026-07-14 as obsolete**: upstream
+  removed the experimental MCP surface (gated behind a CLI-viability
+  check) and went hook-parity + AGENTS-fallback for Codex/Gemini instead.
+  The local trigger condition (running non-Claude agents against this
+  workspace) never fired either.
