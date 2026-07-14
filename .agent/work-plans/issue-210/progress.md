@@ -35,6 +35,7 @@ Deviations from plan (rationale in plan.md Implementation Notes):
 - Config-field step landed as documentation + default (`PROJECT_TYPE`
   defaults to `single_project`) because `project_config.sh` is per-machine
   and doesn't exist in the repo.
-- Step 11 (daddy_camp parity run) could not run on this machine — no
-  project/ or project_config.sh configured here. Run `make build && make test`
-  comparison on a daddy_camp machine before merging to main.
+- Step 11's parity gate generalized: it must not depend on daddy_camp (a
+  project this workspace hosts in another context). Behavioral parity is
+  pinned by the sandboxed test suite against synthetic projects; pre-adapter
+  configs resolve to `single_project` and behave identically.

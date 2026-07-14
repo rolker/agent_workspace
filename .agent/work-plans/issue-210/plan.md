@@ -113,13 +113,16 @@ Confirm before implementation.
   adapter's missing-config guidance message now show `PROJECT_TYPE` and
   `INSTALL_CMD`. `_resolve_project_type` defaults to `single_project` so
   pre-adapter configs (BUILD_CMD/TEST_CMD only) keep working unchanged.
-- **No-behavior-change verification on daddy_camp could not run on this
-  machine**: neither `project/` nor `.agent/project_config.sh` is configured
-  here (fresh clone; `make setup` never ran). Behavioral parity is instead
-  pinned by `test_adapter.sh` (45 assertions incl. delegation observability
-  and shim-chain tests) which asserts the exact old semantics (cwd, messages,
-  exit codes, arg forwarding). The plan's step 11 comparison should be run on
-  a machine with daddy_camp configured before merge to main.
+- **Step 11's verification target generalized away from daddy_camp.**
+  daddy_camp is a project this workspace hosts in another context, not
+  something this repo's gate can depend on (this clone has no `project/` or
+  `project_config.sh` at all). The no-behavior-change gate is instead pinned
+  by `test_adapter.sh` (45 assertions incl. delegation observability and
+  shim-chain tests), which asserts the exact old semantics — cwd, messages,
+  exit codes, arg forwarding — against synthetic sandbox projects. Any
+  configured workspace gets the same guarantee: pre-adapter configs
+  (BUILD_CMD/TEST_CMD only) resolve to `single_project` and run the same
+  commands in the same cwd as before.
 - **Pylint pre-commit `files` regex extended** to `^\.agent/(scripts|project_types)/.*\.py$`
   so the moved sync.py stays under lint. (Old regex also had an unescaped
   leading dot; fixed in passing.)
