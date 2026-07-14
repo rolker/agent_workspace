@@ -7,10 +7,17 @@
 # setup_project.sh/sync_project.py flow.
 #
 # Sourced by .agent/scripts/adapter with WORKSPACE_ROOT and ADAPTER_TYPE_DIR
-# exported. Not executable on its own.
+# set as shell variables (not exported). Not executable on its own; must be
+# silent at source time.
 
 # Load .agent/project_config.sh and require the named command variable to
 # be set (e.g. BUILD_CMD). Prints the same guidance the old scripts printed.
+#
+# Callers must NOT guard this with `||` — verbs run under the dispatcher's
+# set -e, and an unguarded call is what makes a failure inside the sourced
+# config abort the verb (matching the old top-level-source behavior).
+# A `|| return 1` guard would disable errexit for the whole call, silently
+# swallowing config failures.
 _single_project_load_cmd() {
     local var_name="$1"
     local config="$WORKSPACE_ROOT/.agent/project_config.sh"
@@ -57,7 +64,7 @@ adapter_validate() {
 }
 
 adapter_build() {
-    _single_project_load_cmd BUILD_CMD || return 1
+    _single_project_load_cmd BUILD_CMD
     echo "Running: $BUILD_CMD $*"
     echo ""
     cd "$(adapter_project_root)" || return 1
@@ -66,7 +73,7 @@ adapter_build() {
 }
 
 adapter_test() {
-    _single_project_load_cmd TEST_CMD || return 1
+    _single_project_load_cmd TEST_CMD
     echo "Running: $TEST_CMD $*"
     echo ""
     cd "$(adapter_project_root)" || return 1
@@ -125,11 +132,13 @@ adapter_scope_for_pr() {
     fi
     url="${url%.git}"
     url="${url%/}"
-    if [[ "$url" =~ ^[^@]+@[^:]+:(.+)$ ]]; then
-        # SSH form: git@github.com:owner/repo
+    # URL form must be tried first: an SCP-form pattern would greedily match
+    # ssh://git@github.com:22/owner/repo and capture "22/owner/repo".
+    if [[ "$url" =~ ^[A-Za-z][A-Za-z0-9+.-]*://[^/]+/(.+)$ ]]; then
+        # URL form: https://github.com/owner/repo, ssh://git@github.com:22/owner/repo
         echo "${BASH_REMATCH[1]}"
-    elif [[ "$url" =~ ^[a-z+]+://[^/]+/(.+)$ ]]; then
-        # URL form: https://github.com/owner/repo, ssh://git@github.com/owner/repo
+    elif [[ "$url" =~ ^[^@/]+@[^:/]+:(.+)$ ]]; then
+        # SCP form: git@github.com:owner/repo (no slashes before the colon)
         echo "${BASH_REMATCH[1]}"
     else
         echo "ERROR: cannot parse owner/repo from origin URL: $url" >&2
