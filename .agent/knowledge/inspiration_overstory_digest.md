@@ -1,8 +1,53 @@
 # Inspiration Digest: overstory
 
 Type: inspiration
-Last checked: 2026-04-19
-Repo: jayminwest/overstory @ 590e729b332fecc449aa0abdb4ea608e43329fb0
+Last checked: 2026-07-14
+Repo: jayminwest/overstory @ ff38f3f76f084abcc34f519bcaa69580f6e53cf1
+Previously checked: 2026-04-19 @ 590e729
+
+## Changelog (2026-04-19 → 2026-07-14): project archived upstream
+
+434 commits, then the end:
+
+- Late April–early May: an intense burst of the tool **driving its own
+  development** — the commit log is swarm merges (`Merge branch
+  'overstory/builder-*/overstory-XXXX'`), `mulch: update expertise`, and
+  `seeds: sync` state commits. Notable late additions: headless-first
+  spawning with a web UI (`ov serve`) demoting tmux to an escape hatch,
+  spawn-per-turn mail/nudge consumers, worker_done terminal contract.
+- **2026-05-15**: README notes maintenance mode, "points to Warren as
+  successor."
+- **2026-05-28**: repository marked **no longer maintained / archived
+  (read-only)**. No merged PRs and no new issues since our last check —
+  community activity had already stopped.
+
+**Successor**: [Warren](https://github.com/jayminwest/warren) — "control
+plane and UI for cloud-based custom agents that operate in isolation,
+self-manage, self-repair, and self-improve." Active (pushed 2026-07-14,
+119 stars), but it is a cloud-agent control plane with a web UI —
+farther from the local, terminal-first patterns (SQLite mailbox, watchdog
+daemon, tiered conflict resolution) that motivated tracking overstory.
+Those patterns are frozen in overstory's MIT-licensed archive and
+captured in this digest's survey; nothing further will evolve here.
+
+**Registry action**: archive overstory. Warren not added — interest
+areas don't transfer; re-evaluate if a local-orchestration need makes
+its self-repair/self-manage loop relevant.
+
+## Deferral triage forced by upstream archival (2026-07-14)
+
+The four deferrals below were "revisit when upstream evolves" items; with
+upstream dead, each must resolve to roadmap or close:
+
+1. `overstory-steelman-pattern` — write the strongest case AGAINST a
+   major approach before adopting it (their STEELMAN.md remains the model
+   artifact, archived but readable)
+2. `overstory-base-overlay-prompts` — role HOW as reusable base + task
+   WHAT as per-invocation overlay
+3. `overstory-hook-orchestrator-pattern` — "your session IS the
+   orchestrator": hooks prime and inject, no external daemon
+4. `overstory-agent-role-vocabulary` — named role catalog (builder,
+   reviewer, scout, merger, …) for multi-persona review
 
 ## Survey Summary
 
