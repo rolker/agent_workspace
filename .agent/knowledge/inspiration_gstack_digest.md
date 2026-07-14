@@ -24,7 +24,7 @@ since (cso, document-release, design-consultation). Open issues extend it:
 ~120 lines of boilerplate duplicated across 51/56 skills, over-prescriptive
 STRICT recipes).
 
-- **Daddy_camp relevance**: High. Our skill bodies keep growing (this
+- **Workspace relevance**: High. Our skill bodies keep growing (this
   skill's own SKILL.md included), and ros2's open #564 (slim AGENTS.md via
   an enforcement-backed criterion) is the same concern arriving from the
   fork side — convergent evidence that always-loaded instruction mass is
@@ -42,7 +42,7 @@ host variants (Conductor) breaking native AUQ. Net lesson: gates must
 fail loud, fallbacks get abused unless scoped to verified tool failure,
 and self-decide needs an explicit contract.
 
-- **Daddy_camp relevance**: Medium. Complements the already-roadmapped
+- **Workspace relevance**: Medium. Complements the already-roadmapped
   AUQ cadence/Pros-Cons item and the plan-* STOP-gate item (both
   2026-05-07): this adds the fallback-abuse failure mode and the
   AUTO_DECIDE contract idea.
@@ -53,7 +53,7 @@ Skills record decisions durably across sessions; 5 planning skills now
 read structured memory context *before* asking the user anything ("don't
 ask what the brain already knows").
 
-- **Daddy_camp relevance**: Medium. The ask-side rule is portable to our
+- **Workspace relevance**: Medium. The ask-side rule is portable to our
   skills: consult memory/progress.md/ROADMAP before AskUserQuestion.
   Storage side is gbrain-domain.
 
@@ -68,7 +68,7 @@ ask what the brain already knows").
   second-model review" pricing landed on opposite defaults.
 - v1.39.1 — EXIT PLAN MODE GATE for plan-mode review skills.
 
-- **Daddy_camp relevance**: Medium for unresolved-decisions declaration
+- **Workspace relevance**: Medium for unresolved-decisions declaration
   (cheap addition to review-code/triage-reviews report formats);
   informational for the Codex-default contrast (feeds our own
   cross-model cost tuning).
@@ -79,7 +79,7 @@ A community bug wave found **4 security guards failing open** (guard
 hooks that silently passed when their precondition machinery broke).
 Fix wave + tests.
 
-- **Daddy_camp relevance**: Medium as a lesson: we have enforcement hooks
+- **Workspace relevance**: Medium as a lesson: we have enforcement hooks
   (block-bash-tool-mapping, pre-commit) — worth an explicit fail-closed
   audit/test pass. Cheap, concrete.
 
@@ -274,7 +274,7 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 - `gstack-design-html` — /design-html from any starting point (#734). Gstack domain (2026-04-19)
 - `gstack-aquavoice-triggers` — Voice-friendly skill triggers for AquaVoice (v0.14.6.0). Gstack domain (2026-04-19)
 - `gstack-cookie-picker` — Cookie picker auth token leak fix (#904). Gstack domain (2026-04-19)
-- `gstack-plan-devex-review` — New /plan-devex-review persona (#784). Pattern interesting but not a current need; no analogue motivated in daddy_camp (2026-04-19)
+- `gstack-plan-devex-review` — New /plan-devex-review persona (#784). Pattern interesting but not a current need; no analogue motivated in this workspace (2026-04-19)
 - `gstack-relationship-closing` (2026-05-07) — Office-hours adapts to repeat
   users (#937). Auto-memory `user_workflow_patterns` + `user_agent_personality`
   already cover this at the memory layer; no skill-level adaptation needed.
@@ -375,7 +375,7 @@ versioned releases in 19 days. Continued rapid iteration.
 
 ### Major themes
 
-**Plan-* skill reliability (high relevance for daddy_camp's /plan-task and /review-plan):**
+**Plan-* skill reliability (high relevance for our /plan-task and /review-plan):**
 
 - v1.21.1.0 #1255 — tighten plan-ceo-review smoke (Step 0 must fire)
 - v1.25.1.0 #1296 — office-hours Phase 4 STOP gate + AskUserQuestion
