@@ -286,6 +286,12 @@ Cherry-picked from a recon scan of tracked inspirations since last refresh (2026
 
 - **Authoritative-channel promotion for load-bearing memories** — Audit rule: a standing correction or hard rule stored only in recall-style memory (`<system-reminder>` blocks) is silently beaten by instruction-file text; promote load-bearing feedback/preference memories into CLAUDE.md/AGENTS.md (or the memory index) where they compete at the right priority. Engram hit exactly this ("a preference stored only in engram is silently beaten by harness") and now renders invariants+preferences into the authoritative channel. Source: shiblon/engram v0.11 priority-ladder commits
 
+### From agent-orchestrator (2026-07-14, archival round)
+
+- **CI-failure watcher (minimal reaction system)** — Small script that watches `gh run list` for the branches of active worktrees and notifies/wakes the responsible session on failure. The minimal-extraction version of AO's webhook reaction system; pairs with the ros2 dispatch/run-issue reference design. Source: ComposioHQ/agent-orchestrator #1347 + feedback-routing design doc
+- **Duplicate-spawn prevention** — Before starting work on an issue, check whether a worktree/agent already exists for it and fail loud (worktree_create.sh partially covers this; the gap is cross-session awareness). Source: ComposioHQ/agent-orchestrator #1337
+- **Code-review-as-slot** — Treat reviewer personas as pluggable implementations behind one review interface, so alternate reviewers (different models, different lenses) can be swapped without editing the review-code skill body. Source: ComposioHQ/agent-orchestrator #1339/#2572
+
 ### Research topics to add (not tracker items)
 
 Candidates for `.agent/knowledge/research_digest.md`, separate from roadmap items.

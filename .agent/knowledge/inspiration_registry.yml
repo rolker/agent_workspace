@@ -55,23 +55,6 @@ projects:
       - subagent patterns and orchestration
       - development methodology and workflows
 
-  agent-orchestrator:
-    type: inspiration
-    repo: ComposioHQ/agent-orchestrator
-    description: Reference open-source orchestrator for parallel coding agents
-    # Added 2026-04-19. Tracked despite our Tier 3 "Defer" decision —
-    # the patterns (reaction system, adapter architecture, worktree-per-
-    # agent discipline) inform how we'd adopt IF mechanical backlog
-    # pressure ever makes Tier 3 worthwhile. Also the reference point
-    # for the "additive-only" constraint (D5) — if they move toward less
-    # intermediated designs, revisit.
-    interest_areas:
-      - reaction system (CI failures, review comments, PR approvals)
-      - task decomposition patterns
-      - adapter architecture (runtime/agent/workspace/tracker/notifier pluggability)
-      - worktree-per-agent discipline (convergent with our own)
-      - dashboard model for multi-agent oversight
-
   overstory:
     type: inspiration
     repo: jayminwest/overstory
@@ -121,3 +104,12 @@ projects:
   # microsoft-skills (microsoft/skills) — 20 of 23 merges in 19 days are
   # mechanical Azure plugin syncs. Low signal-to-noise for general skill
   # architecture learning.
+  #
+  # --- Archived 2026-07-14 ---
+  #
+  # agent-orchestrator (ComposioHQ/agent-orchestrator) — pivoted to a
+  # productized desktop + mobile app (npm CLI frozen); orchestration-
+  # pattern churn gave way to product/UI churn. The Tier-3 reference role
+  # is covered by the ros2 dispatch/run-issue design (roadmapped
+  # 2026-07-14). Was tracked for: reaction system, task decomposition,
+  # adapter architecture, worktree-per-agent discipline, dashboard model.
