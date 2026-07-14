@@ -44,26 +44,41 @@ Deviations from plan (rationale in plan.md Implementation Notes):
 **Status**: complete
 **When**: 2026-07-14 (UTC)
 **By**: Claude Code Agent (claude-fable-5)
-**Verdict**: changes-requested
+**Verdict**: changes-requested → findings addressed (see Review Fixes)
 
 **PR**: #211 at `c5d1452`
 **Depth**: Deep (reason: 20 files / 1815 lines + enforcement & governance files)
 **Must-fix**: 3 | **Suggestions**: 10
 
 ### Findings
-- [ ] (must-fix) `|| return 1` disables errexit inside `_single_project_load_cmd`; a failing `source project_config.sh` is swallowed and build/test/install proceed — breaks the zero-behavior-change claim — `.agent/project_types/single_project/adapter.sh:35`
-- [ ] (must-fix) `scope_for_pr` mis-parses `ssh://host:port/owner/repo` URLs: SCP-form regex matches first and silently returns `port/owner` — `.agent/project_types/single_project/adapter.sh:127`
-- [ ] (must-fix) Validator false-passes an adapter whose top-level code calls `exit 0` (prints "all verbs implemented"); top-level `exit 1` kills the validator with no diagnostic — `.agent/scripts/validate_adapter.sh:44`
-- [ ] (suggestion) `PROJECT_TYPE` inherited from caller environment, new env sensitivity vs old scripts — `.agent/scripts/adapter:66`
-- [ ] (suggestion) `WORKSPACE_ROOT`/`ADAPTER_TYPE_DIR` exported into every BUILD/TEST/INSTALL process env — `.agent/scripts/adapter:118`
-- [ ] (suggestion) config sourced twice per invocation; first source's failures fully hidden — `.agent/scripts/adapter:66`
-- [ ] (suggestion) adapter source-time stdout pollutes machine-read verbs (`env` is eval'd by callers) — `.agent/scripts/adapter:121`
-- [ ] (suggestion) sync shim execs at import time; wrap in `if __name__ == "__main__"` — `.agent/scripts/sync_project.py:11`
-- [ ] (suggestion) test gaps: no exit-code-propagation tests (plan step 7 promised them), unguarded `$(...)` asserts abort suite under set -e, shim-chain build test doesn't assert cwd, moved sync.py's lib import never executed — `.agent/scripts/tests/test_adapter.sh`
-- [ ] (suggestion) validator: empty project_types glob gives misleading `*` diagnostic; export `ADAPTER_TYPE_DIR` before sourcing — `.agent/scripts/validate_adapter.sh:33`
-- [ ] (suggestion) README.md config example lacks `PROJECT_TYPE`/`INSTALL_CMD`; Common Commands lacks `make install` — `README.md:42`
-- [ ] (suggestion) `.agent/knowledge/README.md:20` claims setup_project.sh creates the workspace-context symlink — it never did (pre-existing, surfaced by move)
-- [ ] (suggestion) scheme regex `^[a-z+]+://` misses digits/uppercase schemes; harden while fixing the SSH-port bug — `.agent/project_types/single_project/adapter.sh:130`
+- [x] (must-fix) `|| return 1` disables errexit inside `_single_project_load_cmd`; a failing `source project_config.sh` is swallowed and build/test/install proceed — breaks the zero-behavior-change claim — `.agent/project_types/single_project/adapter.sh:35`
+- [x] (must-fix) `scope_for_pr` mis-parses `ssh://host:port/owner/repo` URLs: SCP-form regex matches first and silently returns `port/owner` — `.agent/project_types/single_project/adapter.sh:127`
+- [x] (must-fix) Validator false-passes an adapter whose top-level code calls `exit 0` (prints "all verbs implemented"); top-level `exit 1` kills the validator with no diagnostic — `.agent/scripts/validate_adapter.sh:44`
+- [x] (suggestion) `PROJECT_TYPE` inherited from caller environment, new env sensitivity vs old scripts — `.agent/scripts/adapter:66`
+- [x] (suggestion) `WORKSPACE_ROOT`/`ADAPTER_TYPE_DIR` exported into every BUILD/TEST/INSTALL process env — `.agent/scripts/adapter:118`
+- [x] (suggestion) config sourced twice per invocation; first source's failures fully hidden — `.agent/scripts/adapter:66`
+- [x] (suggestion) adapter source-time stdout pollutes machine-read verbs (`env` is eval'd by callers) — `.agent/scripts/adapter:121`
+- [x] (suggestion) sync shim execs at import time; wrap in `if __name__ == "__main__"` — `.agent/scripts/sync_project.py:11`
+- [x] (suggestion) test gaps: no exit-code-propagation tests (plan step 7 promised them), unguarded `$(...)` asserts abort suite under set -e, shim-chain build test doesn't assert cwd, moved sync.py's lib import never executed — `.agent/scripts/tests/test_adapter.sh`
+- [x] (suggestion) validator: empty project_types glob gives misleading `*` diagnostic; export `ADAPTER_TYPE_DIR` before sourcing — `.agent/scripts/validate_adapter.sh:33`
+- [x] (suggestion) README.md config example lacks `PROJECT_TYPE`/`INSTALL_CMD`; Common Commands lacks `make install` — `README.md:42`
+- [x] (suggestion) `.agent/knowledge/README.md:20` claims setup_project.sh creates the workspace-context symlink — it never did (pre-existing, surfaced by move)
+- [x] (suggestion) scheme regex `^[a-z+]+://` misses digits/uppercase schemes; harden while fixing the SSH-port bug — `.agent/project_types/single_project/adapter.sh:130`
+
+## Review Fixes
+**Status**: complete
+**When**: 2026-07-14 (UTC)
+**By**: Claude Code Agent (claude-fable-5)
+
+All 3 must-fix and 10 suggestions applied in 6 atomic commits
+(09d0b99..c1ff6b0): errexit swallow fixed by unguarding the loader call;
+scope_for_pr tries URL form first with a hardened scheme pattern;
+validator is sentinel-based and additionally enforces silent-at-source;
+dispatcher clears inherited PROJECT_TYPE and no longer exports
+WORKSPACE_ROOT/ADAPTER_TYPE_DIR; sync shim inert on import; test suite
+grown 45 → 62 assertions incl. exit-code propagation and failing-config
+abort; README + knowledge/README corrected. Full suite, validator, and
+pre-commit all pass.
 
 Pre-existing defects surfaced (follow-up issues, not PR regressions):
 `sync_gitbug` uses invalid `git bug bridge list` so git-bug sync never ran;
