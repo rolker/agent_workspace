@@ -26,7 +26,7 @@ humans use it as a checklist.
 |---|---|---|
 | 0001 — Adopt ADRs | A design decision is made that future agents/humans need to understand | Record in `docs/decisions/` with context, decision, and consequences |
 | 0002 — Worktree isolation | Any feature work begins | Use worktree, not branch switch; enforced by worktree scripts and pre-commit hooks |
-| 0003 — Project-agnostic workspace | Adding content to the workspace repo | Content must be project-agnostic, not tied to a specific project |
+| 0003 — Project-agnostic workspace *(superseded by 0011)* | — | Superseded: single-repo assumption replaced by the adapter contract; separation doctrine lives on in 0011 |
 | 0004 — Enforcement hierarchy | A new compliance rule is proposed | Enforce at multiple layers (instructions → hooks → CI); no single layer sufficient |
 | 0005 — Layered enforcement | Adding or modifying enforcement | CI/branch protection is authoritative; pre-commit provides local feedback; framework hooks provide early feedback |
 | 0006 — Shared AGENTS.md | Changing agent instructions | Shared rules in `AGENTS.md`; framework adapters are thin wrappers |
@@ -34,6 +34,7 @@ humans use it as a checklist.
 | 0008 — Permit cross-reference addendums in ADRs | Editing an accepted ADR | Status-line notes pointing at related ADRs and References-section additions are permitted; substantive edits (Decision rewording, position reversal, Consequences changes) still require superseding |
 | 0009 — Python package management | Installing Python packages or modifying `.venv` | Use .venv for dev tools; never bare pip install |
 | 0010 — git-bug installed by default | Adding or modifying issue lookup scripts, bootstrap, or sync | git-bug installed by default; scripts use `_issue_helpers.sh` (git-bug first with sync-on-miss, fall back to `gh`); graceful degradation required |
+| 0011 — Project-type adapter contract | Adding workspace content, touching build/test/setup/sync scripts, or anything that branches on project shape | Shape-specific behavior lives in `.agent/project_types/<type>/adapter.sh` behind the 10-verb contract; workspace content stays project-agnostic; `validate_adapter.sh` must pass |
 
 ## Consequences Map
 
@@ -43,6 +44,7 @@ humans use it as a checklist.
 | An ADR in `docs/decisions/` | This review guide's ADR table |
 | `AGENTS.md` | Framework adapters if affected (`.github/copilot-instructions.md`, etc.) |
 | A script in `.agent/scripts/` | Script reference table in `AGENTS.md`; `Makefile` if it has a target |
+| The adapter contract (`REQUIRED_VERBS` in `.agent/scripts/adapter`) | Every `.agent/project_types/*/adapter.sh`; ADR-0011; `test_adapter.sh` |
 | A template in `.agent/templates/` | Docs that reference the template; skills that use it |
 | A framework skill (e.g., `.claude/skills/`) | That framework's adapter file; regenerate skills if needed |
 | Workflow skill list (add/remove a skill) | Skill list in non-Claude adapters (`.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md`) |
