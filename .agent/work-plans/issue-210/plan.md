@@ -97,3 +97,29 @@ Confirm before implementation.
 ## Implementation Notes
 
 (Appended only for rationale-bearing design pivots discovered during coding.)
+
+- **setup/sync implementations moved, not wrapped** (plan step 5 offered either).
+  A script can't both be a dispatch shim and hold the real logic the adapter
+  calls back into — that's infinite recursion. `setup_project.sh` →
+  `.agent/project_types/single_project/setup.sh` and `sync_project.py` →
+  `.agent/project_types/single_project/sync.py` (git mv, history preserved);
+  the old paths are now shims. This also lands the logic where the
+  architecture says shape-specific code belongs. `validate_workspace.py` stays
+  put — `make validate` calls it directly and it never became a shim, so
+  `adapter_validate` delegates to it in place.
+- **No committed project_config.sh template exists** (the file is per-machine,
+  gitignored). Step 3 "add fields to project_config.sh" therefore lands as
+  documentation: the AGENTS.md/ARCHITECTURE.md config examples and the
+  adapter's missing-config guidance message now show `PROJECT_TYPE` and
+  `INSTALL_CMD`. `_resolve_project_type` defaults to `single_project` so
+  pre-adapter configs (BUILD_CMD/TEST_CMD only) keep working unchanged.
+- **No-behavior-change verification on daddy_camp could not run on this
+  machine**: neither `project/` nor `.agent/project_config.sh` is configured
+  here (fresh clone; `make setup` never ran). Behavioral parity is instead
+  pinned by `test_adapter.sh` (45 assertions incl. delegation observability
+  and shim-chain tests) which asserts the exact old semantics (cwd, messages,
+  exit codes, arg forwarding). The plan's step 11 comparison should be run on
+  a machine with daddy_camp configured before merge to main.
+- **Pylint pre-commit `files` regex extended** to `^\.agent/(scripts|project_types)/.*\.py$`
+  so the moved sync.py stays under lint. (Old regex also had an unescaped
+  leading dot; fixed in passing.)
