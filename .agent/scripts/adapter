@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# .agent/scripts/adapter
+# Project-type adapter dispatcher (ADR-0011).
+#
+# Resolves the active project type and dispatches a verb to that type's
+# adapter implementation in .agent/project_types/<type>/adapter.sh.
+#
+# Usage:
+#   .agent/scripts/adapter [--from <dir>] <verb> [args...]
+#
+# Verbs (the adapter contract — see REQUIRED_VERBS below):
+#   setup           First-time bring-up: clone, layer import, post-install hooks
+#   sync            Pull updates across constituent repos / refresh layers
+#   validate        Check checkout shape matches what the type expects
+#   build           Invoke the project's build
+#   test            Invoke the project's tests
+#   install         Deploy / install the built artifact
+#   env             Emit shell statements callers eval (e.g., ROS overlay)
+#   project_root    Print the path to the project tree
+#   repos           Print newline-separated name:path for each constituent repo
+#   scope_for_pr    Given a path, print owner/repo for PR targeting
+#
+# `adapter env` output protocol: each stdout line is a complete shell
+# statement; callers eval the whole stdout. Example caller:
+#   eval "$(.agent/scripts/adapter env)"
+# A type with no environment to expose emits nothing (and exits 0).
+#
+# --from <dir>: reserved for multi-tenant project resolution (#172 step 2,
+# cwd walk-up). Accepted now to lock the signature; step 1 always resolves
+# from the workspace root.
+#
+# This file is sourceable: sourcing defines REQUIRED_VERBS and
+# _resolve_project_type without dispatching (used by validate_adapter.sh).
+
+set -euo pipefail
+
+# Single source of truth for the contract. validate_adapter.sh imports this.
+REQUIRED_VERBS=(setup sync validate build test install env project_root repos scope_for_pr)
+
+_ADAPTER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WORKSPACE_ROOT="$(dirname "$(dirname "$_ADAPTER_SCRIPT_DIR")")"
+
+# Print the active project type. Reads PROJECT_TYPE from
+# .agent/project_config.sh; defaults to single_project so pre-adapter
+# configs (BUILD_CMD/TEST_CMD only) keep working unchanged.
+_resolve_project_type() {
+    local from_dir="$WORKSPACE_ROOT"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --from) from_dir="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    # Step 1: from_dir is accepted but resolution is workspace-root only.
+    # Step 2 (#172) extends this to walk up from from_dir to a per-project
+    # config before falling back to the workspace config.
+    : "$from_dir"
+
+    local config="$WORKSPACE_ROOT/.agent/project_config.sh"
+    local project_type="single_project"
+    if [ -f "$config" ]; then
+        local configured
+        configured="$(
+            # Subshell so config vars don't leak into the dispatcher.
+            # shellcheck source=/dev/null
+            source "$config" >/dev/null 2>&1 || true
+            echo "${PROJECT_TYPE:-}"
+        )"
+        [ -n "$configured" ] && project_type="$configured"
+    fi
+    echo "$project_type"
+}
+
+# Sourced (not executed): stop here so callers get the definitions above.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
+
+usage() {
+    echo "Usage: adapter [--from <dir>] <verb> [args...]" >&2
+    echo "Verbs: ${REQUIRED_VERBS[*]}" >&2
+}
+
+FROM_ARGS=()
+if [ "${1:-}" = "--from" ]; then
+    [ $# -ge 2 ] || { echo "ERROR: --from requires a directory argument" >&2; usage; exit 1; }
+    FROM_ARGS=(--from "$2")
+    shift 2
+fi
+
+if [ $# -lt 1 ]; then
+    usage
+    exit 1
+fi
+
+VERB="$1"
+shift
+
+verb_known=false
+for v in "${REQUIRED_VERBS[@]}"; do
+    [ "$v" = "$VERB" ] && verb_known=true
+done
+if [ "$verb_known" != true ]; then
+    echo "ERROR: unknown verb '$VERB'" >&2
+    usage
+    exit 1
+fi
+
+PROJECT_TYPE_NAME="$(_resolve_project_type ${FROM_ARGS[@]+"${FROM_ARGS[@]}"})"
+ADAPTER_TYPE_DIR="$WORKSPACE_ROOT/.agent/project_types/$PROJECT_TYPE_NAME"
+
+if [ ! -f "$ADAPTER_TYPE_DIR/adapter.sh" ]; then
+    echo "ERROR: no adapter for project type '$PROJECT_TYPE_NAME'" >&2
+    echo "  expected: $ADAPTER_TYPE_DIR/adapter.sh" >&2
+    exit 1
+fi
+
+export WORKSPACE_ROOT ADAPTER_TYPE_DIR
+
+# shellcheck source=/dev/null
+source "$ADAPTER_TYPE_DIR/adapter.sh"
+
+if ! declare -F "adapter_${VERB}" >/dev/null; then
+    echo "ERROR: project type '$PROJECT_TYPE_NAME' does not implement verb '$VERB'" >&2
+    echo "  (run .agent/scripts/validate_adapter.sh to check the contract)" >&2
+    exit 1
+fi
+
+"adapter_${VERB}" "$@"
