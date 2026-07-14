@@ -29,6 +29,16 @@
 # cwd walk-up). Accepted now to lock the signature; step 1 always resolves
 # from the workspace root.
 #
+# Contract requirements for .agent/project_types/<type>/adapter.sh:
+#   - Silent at source time: nothing written to stdout while being sourced
+#     (machine-read verbs like `env` are eval'd by callers; source-time
+#     output would corrupt them). Enforced by validate_adapter.sh.
+#   - No top-level `exit`: the file defines functions only.
+#
+# .agent/project_config.sh must be side-effect-free (plain variable
+# assignments): it is sourced once here for PROJECT_TYPE resolution and
+# again by verbs that need command variables.
+#
 # This file is sourceable: sourcing defines REQUIRED_VERBS and
 # _resolve_project_type without dispatching (used by validate_adapter.sh).
 
@@ -62,6 +72,9 @@ _resolve_project_type() {
         local configured
         configured="$(
             # Subshell so config vars don't leak into the dispatcher.
+            # Clear any inherited PROJECT_TYPE first: only the config file
+            # may select the type, not the caller's environment.
+            PROJECT_TYPE=
             # shellcheck source=/dev/null
             source "$config" >/dev/null 2>&1 || true
             echo "${PROJECT_TYPE:-}"
@@ -115,7 +128,10 @@ if [ ! -f "$ADAPTER_TYPE_DIR/adapter.sh" ]; then
     exit 1
 fi
 
-export WORKSPACE_ROOT ADAPTER_TYPE_DIR
+# Deliberately NOT exported: the sourced adapter's functions read these as
+# shell variables, and exporting them would leak new names into the
+# environment of every BUILD_CMD/TEST_CMD/INSTALL_CMD child process — an
+# observable difference from the pre-adapter scripts.
 
 # shellcheck source=/dev/null
 source "$ADAPTER_TYPE_DIR/adapter.sh"
