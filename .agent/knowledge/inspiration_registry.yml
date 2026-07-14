@@ -36,7 +36,7 @@ projects:
     # interest_areas tightened 2026-04-19: dropped browser-based QA
     # (gstack domain), de-emphasized release engineering (scale mismatch);
     # added session/context management + agent-user UX patterns to match
-    # daddy_camp's current concerns
+    # the workspace's current concerns
     interest_areas:
       - review and QA workflow (multi-role review, adversarial, anti-skip)
       - planning methodology (CEO/eng/design review roles, scope modes)
@@ -60,7 +60,7 @@ projects:
     repo: shiblon/engram
     description: Memory and personality aid for Claude Code — stack-based short-term memory and dump/load portability
     # Added 2026-04-26. Author's own framing emphasizes personality
-    # as a context-decay canary. Daddy_camp already has a working
+    # as a context-decay canary. The workspace already has a working
     # auto-memory setup (CLAUDE.md + per-project memory files);
     # interest is in the patterns, not adopting the Go binary.
     # Personality angle is exploratory — user is curious but no

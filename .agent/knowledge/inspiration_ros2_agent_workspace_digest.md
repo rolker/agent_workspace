@@ -23,7 +23,7 @@ rules, adds only repo-specific content plus a standalone context block for
 Copilot which can't see the workspace), and wiring into `onboard-project`
 (offers the file) and `audit-project` (checks presence/currency).
 
-- **Daddy_camp relevance**: High. The project repo gets Copilot PR
+- **Workspace relevance**: High. The project repo gets Copilot PR
   reviews with zero instructions today. Template + ADR + skill wiring are
   all domain-neutral. Direct port candidate.
 
@@ -33,7 +33,7 @@ Copilot which can't see the workspace), and wiring into `onboard-project`
 via pytest) in a dedicated CI job. Tests are hermetic (temp git sandboxes,
 stubbed `gh`, no network), so the job needs only git + pytest.
 
-- **Daddy_camp relevance**: High, cheap. We have 4 hermetic test scripts
+- **Workspace relevance**: High, cheap. We have 4 hermetic test scripts
   in `.agent/scripts/tests/` that run manual-only; our `validate.yml` has
   lint + docs jobs but no script-tests job. Direct port.
 
@@ -62,7 +62,7 @@ The largest theme (~15 PRs). Three layers:
    PR created at the end. `/address-findings` is a deliberately thin
    "work the agreed fix plan" phase.
 
-- **Daddy_camp relevance**: Split. ADR-0013 vocabulary + progress_read
+- **Workspace relevance**: Split. ADR-0013 vocabulary + progress_read
   pattern is Medium — we already write progress.md entries in
   triage-reviews and the drift risk is real. The dispatch/run-issue
   machinery is the "orchestrator" category we deferred (Tier 3, D5
@@ -82,7 +82,7 @@ load-bearing: rejects PRs where an agent-convention branch has commits
 whose primary author matches a human pattern; Co-Authored-By trailers
 deliberately not evaluated).
 
-- **Daddy_camp relevance**: Medium. Same failure mode exists here when
+- **Workspace relevance**: Medium. Same failure mode exists here when
   sub-agents commit. The CI-side check is the portable part (no env
   dependency); patterns would need adapting to rolker.net emails.
 
@@ -99,7 +99,7 @@ deliberately not evaluated).
   Includes a lighter severity bar for agent-guidance docs (SKILL.md).
 - `--skip-static` / `--no-progress` / `--issue` overrides.
 
-- **Daddy_camp relevance**: Medium. The convergence/ship-signal pattern
+- **Workspace relevance**: Medium. The convergence/ship-signal pattern
   is portable to our review-code/cross_model_review loop and addresses a
   real cost (each re-review round is expensive). Copilot-opt-in decision
   is an interesting data point for our own external-review cost tuning.
@@ -114,7 +114,7 @@ Behavioral operating mode for live field deployments: urgency contract
 (fix: forbid typed timestamps, use a helper); log-append via `printf >>`
 hits a permission prompt per entry (fix: dlog helper).
 
-- **Daddy_camp relevance**: Low (field-ops domain). The two lessons
+- **Workspace relevance**: Low (field-ops domain). The two lessons
   (fabricated timestamps; prompt-free append helper) are worth remembering
   if we ever build session-logging tooling. Skip.
 
@@ -201,7 +201,7 @@ detector), `.agent/scripts/tests/test_field_mode.sh`, and a hotfix
 walkthrough at `.agent/knowledge/field_mode_hotfix.md`. AGENTS.md grew a
 "Field Mode" section.
 
-- **Daddy_camp relevance**: Low. The project repo's origin is GitHub.
+- **Workspace relevance**: Low. The project repo's origin is GitHub.
   No second remote planned. Skip unless we add a non-GitHub deploy target.
 
 ### ADR-0012 — Permit Cross-Reference Addendums in ADRs
@@ -211,7 +211,7 @@ addendums: a Status-line note pointing at a later superseding/scoped
 ADR, or a References section listing related ADRs. Substantive edits
 still require superseding.
 
-- **Daddy_camp relevance**: Medium. We inherited `docs/decisions/` from
+- **Workspace relevance**: Medium. We inherited `docs/decisions/` from
   ros2; the discoverability gap (older ADRs don't link forward to newer
   ones that scope them) applies to us too. Cheap port.
 
@@ -221,7 +221,7 @@ Batch-imports remote-ahead commits from a secondary remote (gitcloud) back
 to GitHub: per-repo issue creation, draft PR, and pre-review against the
 Quality Standard. Depends on `pull_remote.py --json`.
 
-- **Daddy_camp relevance**: Low. Pairs with field-mode; same scope. Skip
+- **Workspace relevance**: Low. Pairs with field-mode; same scope. Skip
   unless field deploys are added.
 
 ### AGENTS.md "Quality Standard" section (#437 → PR #438)
@@ -232,8 +232,8 @@ failures or stale data as "nits", don't offer to "table this for later"
 when the permanent solve is minutes away. Originally framed for "robot
 boats on open water" but the substance is domain-neutral.
 
-- **Daddy_camp relevance**: High. Principles transfer to a public-release
-  game project. Direct port with framing adjusted.
+- **Workspace relevance**: High. Principles transfer to any public-release
+  project. Direct port with framing adjusted.
 
 ### plan-task — "During implementation" guidance + `--no-pr` (#449 → PR #450)
 
@@ -243,7 +243,7 @@ when implementation diverges; an `## Implementation Notes` section at the
 bottom is allowed only for rationale-bearing design pivots whose *why*
 isn't obvious from the diff. Also adds `--no-pr` flag for offline planning.
 
-- **Daddy_camp relevance**: High. Our `plan-task` skill is in active use;
+- **Workspace relevance**: High. Our `plan-task` skill is in active use;
   drift between plan and landed code is a recurring concern. Cheap port.
 
 ### triage-reviews — "Require justification for false positives" (#439 → PR #441)
@@ -253,7 +253,7 @@ tightens example wording from "Why it's not applicable" to "Specific
 reason the failure mode cannot occur". Forces dismissals to articulate
 the absent failure mode, not vibes.
 
-- **Daddy_camp relevance**: Medium. Our local `triage-reviews` already
+- **Workspace relevance**: Medium. Our local `triage-reviews` already
   has additional logic upstream lacks (Update progress.md step). Small
   additive port.
 
@@ -263,7 +263,7 @@ the absent failure mode, not vibes.
 self-report their model via the 3rd argument; the table now functions
 as documented fallbacks only.
 
-- **Daddy_camp status**: Already in place. Local versions diverged to use
+- **Workspace status**: Already in place. Local versions diverged to use
   rolker.net emails, list Codex CLI, and document the "FALLBACKS ONLY"
   stance per `feedback_model_detection.md`. No port.
 
@@ -301,7 +301,7 @@ No carry-over.
 ~3498 LOC Python web dashboard (ThreadingHTTPServer + SSE, Playwright tests,
 CSRF hardening, static-file containment). ~20 commits over review iterations.
 
-- **Already decided on daddy_camp side**: roadmap #64 "Web dashboard" is
+- **Already decided on workspace side**: roadmap #64 "Web dashboard" is
   `done`. No re-port planned (see "CLI-first architecture note" below).
 
 ### Git-bug v0.10.1 syntax fix (PR #419 closes #418)
@@ -311,7 +311,7 @@ v0.10.1 nested them under `git bug bug`. Every call silently fell back to `gh`
 for ~2 weeks before the regression was caught. Key lesson: **silent fallbacks
 hide breakage.**
 
-- **daddy_camp status**: we got the syntax right first try (our AGENTS.md +
+- **Workspace status**: we got the syntax right first try (our AGENTS.md +
   `_issue_helpers.sh` use `git bug bug ...`). Verified live 2026-04-19 —
   96 local issues cached, bridge configured.
 - **Gap**: we don't warn on fallback. Captured in PR #157 roadmap as
@@ -323,7 +323,7 @@ Four new scripts (677 LOC): `add_remote.py`, `push_remote.py`, `pull_remote.py`,
 `lib/remote_utils.py`. Forgejo-aware; supports pushing to gitcloud or similar
 from field machines.
 
-- **daddy_camp status**: **Skip.** Backup for us = `git push origin <branch>`;
+- **Workspace status**: **Skip.** Backup for us = `git push origin <branch>`;
   Forgejo declined (D6); no multi-repo manifest need. Ros2's scripts solve a
   problem we don't have.
 
@@ -352,7 +352,7 @@ They imported the skill **from us**. No action.
 - **#423 — Git-bug and offline agent workflow for field deployments** —
   read 2026-04-19. Still design-stage (Forgejo bridge planned, not built).
 - **#432 — Merging field changes from gitcloud back to GitHub** — related
-  to #422 push/pull scripts. Daddy_camp doesn't have this workflow need.
+  to #422 push/pull scripts. This workspace doesn't have that workflow need.
 - **#435 — Deployment debrief skill** — field-ops specific (bag analysis
   with noise filtering). Skip.
 - **#427, #429, #430, #431, #434** — ROS-domain or field-specific. Skip.
@@ -363,14 +363,14 @@ They imported the skill **from us**. No action.
 |---|---|---|
 | `dashboard-sh-enhancements` | deferred | **Skip** — ros2 moved to Python web dashboard; our CLI-first preference makes re-port a bad fit |
 | `tests/` directory for scripts | deferred | **Ported/Adapted** — we started this session (test_cross_model_review, test_resolve_work_plans_dir, test_merge_pr_root_resolution) |
-| `ci_workflow.yml` template | deferred | **Skip** — template targets ROS repos; daddy_camp isn't ROS |
+| `ci_workflow.yml` template | deferred | **Skip** — template targets ROS repos; the managed project isn't ROS |
 | `pre-commit-config.yaml` template | deferred | **Skip** — same reason |
 | `.github/copilot-instructions.md` adapter | deferred | **Skip** — we have Copilot review working via default behavior |
 
 ## CLI-first architecture note (2026-04-19 session)
 
 A common thread through recent decisions: the ros2 workspace has chosen
-a web dashboard + intermediated review UI direction. Daddy_camp's
+a web dashboard + intermediated review UI direction. This workspace's
 single-user, single-machine, CLI-intensive workflow goes the opposite way.
 The user:
 
@@ -443,7 +443,7 @@ concurrent ideas:
 - `identity-script-revisions-#407` — already in place locally with
   rolker.net emails, Codex CLI listed, FALLBACKS-ONLY stance documented
   (per `feedback_model_detection.md`).
-- `git-bug-in-devcontainer` — ros2-specific devcontainer; daddy_camp
+- `git-bug-in-devcontainer` — ros2-specific devcontainer; this workspace
   uses host install per ADR-0010.
 - `--symlink-install-doc` — ROS colcon-specific; not applicable.
 - `adr-0001/0002-status-line-addendums` — depends on ADR-0012 landing
@@ -455,7 +455,7 @@ concurrent ideas:
 
 - `secondary-remote-sync` — ros2 #422 `push_remote.py`/`pull_remote.py`.
   Backup via `git push origin <branch>`; Forgejo declined; no multi-repo
-  manifest. Daddy_camp doesn't need it.
+  manifest. This workspace doesn't need it.
 - `dashboard-phase1-re-port` — web-UI model doesn't fit CLI-centric
   workflow. Valid need (attention handoff) tracked as context-card concept.
 - `root-dir-symlink-fix` — solved differently in our #146/#155.

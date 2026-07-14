@@ -222,7 +222,7 @@ Items considered and rejected, with reasons.
 |------|-----------|--------|
 | Forgejo / local self-hosted git forge | 2026-04-19 session (prompted by ros2 #423/#355) | Ros2 needs it because field machines can't reach GitHub. We have no comparable constraint — always-online single-machine setup. Hosting cost + new dependency without addressing real pain here. Revisit only if GitHub-dependency friction grows materially |
 | Coordinator-intermediated mode | 2026-04-19 session | Would require the coordinator to sit between Roland and sub-agents. Incompatible with direct terminal visibility that Roland uses for debugging (watch agents in action, scroll back to see process). Any coordinator must be additive-only |
-| Ros2 tmux ATC protocol (verbatim port) | 2026-04-19 session | Solves multi-machine/remote-agent visibility problem. daddy_camp is single-machine local — agents don't drive each other's tmux panes. Protocol would add overhead without fitting the actual failure mode |
+| Ros2 tmux ATC protocol (verbatim port) | 2026-04-19 session | Solves multi-machine/remote-agent visibility problem. this workspace is single-machine local — agents don't drive each other's tmux panes. Protocol would add overhead without fitting the actual failure mode |
 | Mandatory commit squashing before push | 2026-04-19 session | We merge with `--merge` (not `--squash`), so branch history = PR history. Squashing would hide useful intermediate state. Commits are cheap; keep them honest. `fixup!` autosquash remains optional per-developer |
 
 ## To Consider
@@ -251,7 +251,7 @@ Cherry-picked from a recon scan of tracked inspirations since last refresh (2026
 
 ### From superpowers (2026-05-07)
 
-- **drill / evals harness** — Python-based skill compliance benchmark with multi-backend support (Claude / Codex / Gemini variants), 30+ scenario YAMLs, LLM verifier + deterministic assertions, 122-test pytest suite. Daddy_camp has ~25 skills with no behavioral tests; explore a scaled-down version for our context. Source: obra/superpowers — `evals/` on dev branch (PR #1488)
+- **drill / evals harness** — Python-based skill compliance benchmark with multi-backend support (Claude / Codex / Gemini variants), 30+ scenario YAMLs, LLM verifier + deterministic assertions, 122-test pytest suite. The workspace has ~25 skills with no behavioral tests; explore a scaled-down version for our context. Source: obra/superpowers — `evals/` on dev branch (PR #1488)
 - **plan-review-cycle skill** — Adversarial plan review skill that sits between writing-plans and executing-plans. Compare against our existing `/review-plan` skill body; absorb stronger patterns. Source: obra/superpowers — PR #1473 (merged)
 
 ### From gstack (2026-05-07)
@@ -262,7 +262,7 @@ Cherry-picked from a recon scan of tracked inspirations since last refresh (2026
 
 ### From ros2_agent_workspace (2026-07-14)
 
-- **Per-repo root AGENTS.md for the project repo** — Copilot code review reads a repo's root `AGENTS.md` (since 2026-06-18); daddy_camp gets Copilot PR reviews with zero instructions today. Port the thin "reference, never fork" template (~40–60 lines with a standalone context block for Copilot) + ADR + onboard-project/audit-project wiring. Source: rolker/ros2_agent_workspace — ADR-0017, `.agent/templates/project_agents_md.md`, PR #567
+- **Per-repo root AGENTS.md for the project repo** — Copilot code review reads a repo's root `AGENTS.md` (since 2026-06-18); project repos get Copilot PR reviews with zero instructions today. Port the thin "reference, never fork" template (~40–60 lines with a standalone context block for Copilot) + ADR + onboard-project/audit-project wiring. Source: rolker/ros2_agent_workspace — ADR-0017, `.agent/templates/project_agents_md.md`, PR #567
 - **Run .agent/scripts/tests/ in CI** — Add a `make test-scripts` target + CI job running our 4 hermetic script tests (currently manual-only; `validate.yml` has lint + docs jobs but no test job). Source: rolker/ros2_agent_workspace — #509/PR #510, `.agent/scripts/tests/run_script_tests.sh`
 - **Agent-identity CI check** — Env-independent CI check rejecting PRs where an agent-convention branch has commits whose primary author email matches a human pattern (Co-Authored-By trailers deliberately exempt). Complements the fragile env-var-based local enforcement; adapt patterns to rolker.net emails. Source: rolker/ros2_agent_workspace — #468, `.agent/hooks/check_pr_authors.py` + `identity_patterns.py`
 - **Review convergence/ship signal** — Pre-push review rounds get a ship-vs-continue verdict (round = prior review entries + 1; ship when no must-fixes, or round ≥ 2 with ≤2 mechanical, non-rising must-fixes) so review loops don't run indefinitely. Related data point: they made Copilot Adversarial opt-in after measuring context cost, defaulting to a dual-lens Claude pass. Source: rolker/ros2_agent_workspace — #537/PR #543, #467/PR #517

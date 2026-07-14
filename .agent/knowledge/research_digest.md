@@ -174,7 +174,7 @@ Key takeaways:
 
 ## ROS 2 Agent Frameworks
 
-**Added**: 2026-02-27 | **Last verified**: 2026-04-19 (reference only — daddy_camp is non-ROS) | **Sources**: [ROSA (NASA JPL)](https://github.com/nasa-jpl/rosa), [RAI (RobotecAI)](https://github.com/RobotecAI/rai), [ROS-LLM (Auromix)](https://github.com/Auromix/ROS-LLM), [EmbodiedAgents (Automatika)](https://automatika-robotics.github.io/embodied-agents/)
+**Added**: 2026-02-27 | **Last verified**: 2026-04-19 (reference only — no ROS project currently managed) | **Sources**: [ROSA (NASA JPL)](https://github.com/nasa-jpl/rosa), [RAI (RobotecAI)](https://github.com/RobotecAI/rai), [ROS-LLM (Auromix)](https://github.com/Auromix/ROS-LLM), [EmbodiedAgents (Automatika)](https://automatika-robotics.github.io/embodied-agents/)
 
 Key takeaways:
 - **ROSA** (NASA JPL): natural language interaction with ROS 1/2 systems — inspect nodes, query topics, diagnose issues; published at IROS 2024
@@ -230,7 +230,7 @@ Key takeaways:
 - **Bidirectional bridges**: GitHub, GitLab, Jira, Launchpad.
 - Multiple interfaces: CLI, TUI, web UI.
 - **Latest release still v0.10.1** (May 2025). Last repo activity noted Apr 9, 2026; master branch removed Jan 31, 2026 (structural change). No v0.11/v0.12 cut yet.
-- **v0.10.1 syntax migration** (lesson from ros2 #418): commands moved from top-level (`git bug select/show`) to nested under `git bug bug` in v0.10.1. Scripts written for earlier versions silently fall back to whatever wraps them (`2>/dev/null`) without complaint — the ros2 workspace's scripts fell back to `gh` for ~2 weeks before someone noticed. daddy_camp verified 2026-04-19 that our scripts use the correct `git bug bug ...` form.
+- **v0.10.1 syntax migration** (lesson from ros2 #418): commands moved from top-level (`git bug select/show`) to nested under `git bug bug` in v0.10.1. Scripts written for earlier versions silently fall back to whatever wraps them (`2>/dev/null`) without complaint — the ros2 workspace's scripts fell back to `gh` for ~2 weeks before someone noticed. verified 2026-04-19 that this workspace's scripts use the correct `git bug bug ...` form.
 - **git-issue** (Spinellis) is a simpler alternative storing issues as files in a dedicated branch.
 
 **Relevance**: Our workspace has adopted git-bug as the first read path (ADR-0010). 96 issues cached locally as of 2026-04-19. Two gaps remain vs. an ideal offline-first story: (1) visible fallback warnings when git-bug is unavailable (roadmap item in PR #157); (2) writes still go through `gh issue create` — offline issue creation exists via `GITBUG_CREATE=1` but hasn't been exercised end-to-end. Forgejo as an alternative remote has been explicitly declined this session (D6).
@@ -254,7 +254,7 @@ Key takeaways:
 
 ## ROS 2 Offline Development Patterns
 
-**Added**: 2026-03-04 | **Last verified**: 2026-04-19 (reference only — daddy_camp is non-ROS) | **Sources**: [rosdep offline mirror PR](https://github.com/ros-infrastructure/rosdep/pull/839), [ROS Answers: rosdep offline](https://answers.ros.org/question/276942/can-sudo-rosdep-init-and-rosdep-update-be-done-offline/), [rosdep mirror guide](https://answers.ros.org/question/338122/how-do-i-deploy-a-rosdep-mirror/)
+**Added**: 2026-03-04 | **Last verified**: 2026-04-19 (reference only — no ROS project currently managed) | **Sources**: [rosdep offline mirror PR](https://github.com/ros-infrastructure/rosdep/pull/839), [ROS Answers: rosdep offline](https://answers.ros.org/question/276942/can-sudo-rosdep-init-and-rosdep-update-be-done-offline/), [rosdep mirror guide](https://answers.ros.org/question/338122/how-do-i-deploy-a-rosdep-mirror/)
 
 Key takeaways:
 - `rosdep` can work offline by setting `ROSDISTRO_INDEX_URL=file:///path/to/local/index-v4.yaml` — clone the `rosdistro` repo locally and point to it

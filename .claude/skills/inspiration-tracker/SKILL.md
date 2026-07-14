@@ -337,6 +337,15 @@ When invoked with `add` or `add <url>`:
 
 - **Interactive, not autonomous** — always present findings and let the user
   decide. Never add to roadmap without confirmation.
+- **Workspace digests are project-agnostic** (issue #217) — digests in
+  `.agent/knowledge/`, registry comments, and ROADMAP.md entries assess
+  **workspace relevance** (agent infrastructure: skills, scripts,
+  governance, worktrees) and never name or depend on a specific managed
+  project. Use "the project repo" / "this workspace" phrasing. A finding
+  that only matters to a specific project belongs in that project's own
+  inspiration digest in the project repo (mirroring the research skill's
+  workspace/project digest split), recorded there via a project-type
+  worktree — not in the workspace digest.
 - **Discovery, not implementation** — this skill identifies and triages
   enhancements. Findings go to the roadmap's "To Consider" section. GitHub
   issues are created later (during `/brainstorm`) when work is ready to begin.

@@ -55,8 +55,8 @@ agent_workspace/
 │   │   └── issue-workspace-42/
 │   │       └── ... (workspace files)
 │   └── project/                   # Project repo worktrees (per-repo)
-│       └── daddy_camp/
-│           └── issue-daddy_camp-42/
+│       └── <repo_name>/
+│           └── issue-<repo_name>-42/
 │               └── ... (project files)
 ```
 
@@ -107,8 +107,8 @@ Since `--type` is mandatory, workspace vs. project is never ambiguous.
 For multiple project repos, use `--repo`:
 
 ```bash
-source .agent/scripts/worktree_enter.sh --issue 42 --type project --repo daddy_camp
-.agent/scripts/worktree_remove.sh --issue 42 --type project --repo daddy_camp
+source .agent/scripts/worktree_enter.sh --issue 42 --type project --repo <repo_name>
+.agent/scripts/worktree_remove.sh --issue 42 --type project --repo <repo_name>
 ```
 
 For multiple worktrees of the same type with different repo slugs, use `--repo-slug`:

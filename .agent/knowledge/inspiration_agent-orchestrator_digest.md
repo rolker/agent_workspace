@@ -206,7 +206,7 @@ into issue-or-PR or agent-session actions. Key decisions:
 
 5. **Hash-based project namespacing** — `sha256(configDir).slice(0,12)`
    prevents collisions when the same config manages multiple projects.
-   We only have one active project (daddy_camp); overkill now, worth
+   A workspace instance manages one project at a time; overkill now, worth
    remembering if we scale
 6. **Exclusive routing mode (local OR scm)** — their explicit decision
    that routing can't split both ways. Clarity-over-flexibility
@@ -229,7 +229,7 @@ into issue-or-PR or agent-session actions. Key decisions:
 
 - **Tier 3 orchestration** (Deferred, Row 6 of #157) — AO IS Tier 3.
   This survey confirms the category is well-formed, pattern-convergent,
-  and mature. Still deferred for daddy_camp per our "most of our
+  and mature. Still deferred per our "most of our
   backlog isn't mechanical" reasoning. Revisit trigger unchanged
 - **Agent Teams declined** (Row 7) — AO's reaction system is the
   non-Agent-Teams equivalent of the coordination they offer; our

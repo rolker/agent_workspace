@@ -46,7 +46,7 @@ the portable part:
   to files with red/green test evidence, and a progress ledger lets a
   context-lost controller resume rather than redo.
 
-- **Daddy_camp relevance**: High. We dispatch review subagents
+- **Workspace relevance**: High. We dispatch review subagents
   (review-code specialists, cross_model_review) and the anti-coaching,
   files-not-paste, mandatory-model, and read-only-reviewer rules are all
   cheap to adopt piecemeal.
@@ -62,7 +62,7 @@ the portable part:
   review pass; fold setup/config/docs into the task that needs them. Their
   A/B: one fix round vs two-to-four for control (which also shipped a bug).
 
-- **Daddy_camp relevance**: Medium-high. Direct enhancement candidates for
+- **Workspace relevance**: Medium-high. Direct enhancement candidates for
   our plan-task skill's plan format.
 
 ### Writing-skills guidance (v6.0.0 + #1741)
@@ -73,7 +73,7 @@ the portable part:
 - **Micro-Test Wording** — sample a phrasing a handful of times against a
   no-guidance control before committing; run-to-run variance is a warning.
 
-- **Daddy_camp relevance**: Medium. We author skills continuously; this is
+- **Workspace relevance**: Medium. We author skills continuously; this is
   distilled craft knowledge. Resolves the prior
   `writing-skills-script-vs-prose` deferral (that guidance landed as part
   of this).
@@ -87,7 +87,7 @@ tools (Claude Code, Codex, Copilot, Gemini, Pi, Antigravity).
 `finishing-a-development-branch` went forge-neutral (no hardcoded
 `gh pr create`).
 
-- **Daddy_camp relevance**: Medium. Our AGENTS.md + adapter-file structure
+- **Workspace relevance**: Medium. Our AGENTS.md + adapter-file structure
   already does the workspace-level version; the *skill-body* neutrality
   pattern applies if our skills ever run under Codex/Gemini (which the
   workspace nominally supports). Resolves the prior
@@ -101,7 +101,7 @@ into points of use. Same quarter: gstack carved skills (56% catalog token
 cut), ros2 opened #564 to slim AGENTS.md. Three tracked sources
 independently attacking always-loaded instruction mass.
 
-- **Daddy_camp relevance**: Feeds the just-roadmapped
+- **Workspace relevance**: Feeds the just-roadmapped
   `skill-carving-token-reduction` item; no separate entry needed. The
   convergence itself is the signal.
 
@@ -320,7 +320,7 @@ process as mandatory workflow rather than optional suggestions.
   evals/ on dev (PR #1488).
 - `plan-review-cycle-skill` — added to ROADMAP.md "To Consider" 2026-05-07.
   Adversarial plan review between writing-plans and executing-plans
-  (PR #1473 merged). Compare with daddy_camp's existing /review-plan skill.
+  (PR #1473 merged). Compare with our existing /review-plan skill.
 
 ## Issued (historical, 2026-03-22)
 
@@ -333,7 +333,7 @@ process as mandatory workflow rather than optional suggestions.
 
 ## Skipped
 
-- `using-superpowers-opt-in-bootstrap` (2026-05-07) — Daddy_camp has no analogous
+- `using-superpowers-opt-in-bootstrap` (2026-05-07) — This workspace has no analogous
   always-on session-start prompt injection. CLAUDE.md/AGENTS.md load once per
   session; settings.json hooks fire on specific events without injecting prompt
   text. Pattern noted for the workspace-context system but no direct adoption.
@@ -360,13 +360,13 @@ process as mandatory workflow rather than optional suggestions.
   skill-to-skill reactivity beyond settings.json hooks.
 - `lift-agent-into-skill` (2026-05-07) — v5.1.0 pattern. Note for next
   reorganization of `.claude/agents/`; some 1:1 agent→skill pairs in
-  daddy_camp may be inlining candidates.
+  this workspace may be inlining candidates.
 - `harness-neutral-skill-prose` (2026-07-14) — v6.0.0 action-vocabulary
   rewrite + per-harness tool references. Supersedes the 2026-05-07
   `cross-platform-skill-compatibility` deferral (PR #1486 merged). Our
   skills only run under Claude Code today; revisit if Codex/Gemini skill
   use becomes real.
-- `worktree-consent-gate` (2026-05-07) — v5.1.0 pattern. Daddy_camp's
+- `worktree-consent-gate` (2026-05-07) — v5.1.0 pattern. This workspace's
   workflow is friction-averse with 4-5 concurrent agents; auto-creation
   is currently preferred. Native-tool preference also conflicts with our
   cross-runtime stance. Keep on radar if worktree volume becomes a problem.

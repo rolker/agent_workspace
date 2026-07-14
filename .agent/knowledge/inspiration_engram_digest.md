@@ -23,7 +23,7 @@ the harness's authoritative instruction channel** at inject time, instead
 of trusting a side-channel memory block to compete with CLAUDE.md-tier
 text.
 
-- **Daddy_camp relevance**: High as a lesson about our own memory system.
+- **Workspace relevance**: High as a lesson about our own memory system.
   Recalled memories arrive in `<system-reminder>` blocks — a weaker
   channel than CLAUDE.md/AGENTS.md. Load-bearing feedback-type memories
   (standing corrections, hard rules) may deserve promotion into the
@@ -37,7 +37,7 @@ text.
   line + orientation header leading with the running version).
 - Version-drift check rides along in inject.
 
-- **Daddy_camp relevance**: Medium. Convergent with our roadmapped
+- **Workspace relevance**: Medium. Convergent with our roadmapped
   `per-session-context-card` concept (rapid re-grounding when switching
   agent tabs) — engram's orientation header is a working example of the
   same idea. Cross-link when that item is picked up.
@@ -49,7 +49,7 @@ staged, then graduate to `$HOME/.engram/agenttools`. Notably the
 **project-level** tool subsystem was later removed — global-only
 survived. (Author's own scope-discipline worth noting.)
 
-- **Daddy_camp relevance**: Low-medium. Parallels our
+- **Workspace relevance**: Low-medium. Parallels our
   analyze-permissions / skill-authoring flows ("mine sessions for
   recurring patterns, then promote"). Pattern noted; no port target.
 
@@ -60,7 +60,7 @@ save-archive + staged restore across machines. Fix discipline visible:
 "never silently drop projects from the archive", "report file writes
 truthfully".
 
-- **Daddy_camp relevance**: Low. Git already gives our markdown memory
+- **Workspace relevance**: Low. Git already gives our markdown memory
   portability. Unchanged from prior skip decision.
 
 ### MCP surface removed
@@ -70,7 +70,7 @@ The experimental MCP server we deferred on (2026-05-07,
 CLI-viability check"). Codex/Gemini integration went hook-parity + AGENTS
 fallback instead.
 
-- **Daddy_camp action**: Close the deferral as obsolete.
+- **Workspace action**: Close the deferral as obsolete.
 
 ### Misc
 
@@ -119,7 +119,7 @@ the workflow conventions through prose instructions written into a global
 | `long`       | project  | Settled project decisions and facts.             |
 | `short`      | project  | In-flight context, conversation stack, backlog.  |
 
-Note: this is a *durability* axis. Daddy_camp's existing memory uses a
+Note: this is a *durability* axis. This workspace's existing memory uses a
 *source/topic* axis (user / feedback / project / reference). The two are
 orthogonal — could be combined.
 
@@ -155,7 +155,7 @@ status line stops showing your agent's name, context coherence is breaking.
 ### Isolation strategy
 
 - Per-project DB in `<project-root>/.claude/engram.db` keeps project memory
-  scoped (similar to daddy_camp's per-project memory dir under
+  scoped (similar to our per-project memory dir under
   `~/.claude/projects/<encoded-path>/memory/`).
 - Global DB in `~/.claude/engram.db` for cross-project invariants and
   preferences.
@@ -199,7 +199,7 @@ a known footgun.
 
 ## Mapping to interest_areas
 
-| Interest area | What engram does | Daddy_camp delta |
+| Interest area | What engram does | Workspace delta |
 |---|---|---|
 | Stack-based short-term memory | `short` tier holds "in-flight context, conversation stack, backlog." Workflow says push current context before digression, pop on resume. The *tool* doesn't enforce stack semantics — it's prose-encoded in the global `engram-workflow` invariant. | We'd add this as a workflow convention in CLAUDE.md/AGENTS.md without needing tooling. |
 | Personality as context-decay canary | `codename` invariant + status-line render. When status line drops the codename, context is breaking down. | Adoptable as a memory entry + lightweight status-line addition. |
@@ -232,7 +232,7 @@ issues or PRs — author works on `main` directly.
   injection. Bootstrap also extended for `go install`-based distribution.
 - **CLAUDE.md @file inclusion** (commit a3b9d9d) — bootstrap now writes
   `@<path>` reference into CLAUDE.md instead of inlining `agentinfo` text.
-  Daddy_camp already uses this pattern for `@AGENTS.md`.
+  This workspace already uses this pattern for `@AGENTS.md`.
 - **`promote` → `move`** (commit b33fc9a) — internal CLI rename.
 - **Refined global vs project instructions** (commit 125f1d4).
 
@@ -257,11 +257,12 @@ issues or PRs — author works on `main` directly.
 ## Issued
 
 - `personality-canary-light` — agent_workspace #168 (2026-04-26).
-  Adopted at light layer: codename **Grover** + 5-trait tone (lean,
-  precise, skeptical, quietly dry, calm under load). Memory file written
-  to auto-memory at `~/.claude/projects/-home-roland-daddy-camp/memory/user_agent_personality.md`;
-  index updated. 30-day revisit (~2026-05-26) to evaluate whether the
-  light layer earns its keep or escalation/deletion is warranted.
+  Adopted at light layer: an agent codename + 5-trait tone, written as a
+  `user_agent_personality` entry in the then-active project's auto-memory
+  (project-scoped; the specific codename and file path live with that
+  project, not the workspace — see issue #217). 30-day revisit
+  (~2026-05-26) to evaluate whether the light layer earns its keep or
+  escalation/deletion is warranted.
 
 ## Skipped
 
@@ -281,7 +282,7 @@ issues or PRs — author works on `main` directly.
 ### 2026-05-07 decisions
 
 - `agentinfo-command-pattern` — Engram's "tool prints its own usage"
-  pattern. Daddy_camp already gets the portable insight via CLAUDE.md →
+  pattern. This workspace already gets the portable insight via CLAUDE.md →
   `@AGENTS.md` referencing; no new helper needed.
 - `db-migration-system` — Engram's schema-evolution support for SQLite
   DBs. Markdown-based memory has no schema to migrate; pattern is N/A.

@@ -80,7 +80,7 @@ Examples:
 - `gh api repos/owner/repo/issues -f title="..."` -> `Bash(gh api *)` (Tier 3, write detected)
 
 **Path-based commands** (scripts):
-- `/home/user/daddy_camp/.agent/scripts/dashboard.sh --quick` -> `Bash(.agent/scripts/dashboard.sh *)`
+- `/home/user/workspace/.agent/scripts/dashboard.sh --quick` -> `Bash(.agent/scripts/dashboard.sh *)`
 - `.agent/scripts/worktree_create.sh --issue 42` -> `Bash(.agent/scripts/worktree_create.sh *)`
 - Normalize absolute paths: strip any prefix up to and including the workspace
   root or worktree root, keeping the relative path from `.agent/` onward.
