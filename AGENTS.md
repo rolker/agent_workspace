@@ -283,8 +283,10 @@ Build and test commands are project-specific. Configure them in `.agent/project_
 
 ```bash
 # .agent/project_config.sh
+PROJECT_TYPE="single_project"  # project-type adapter (ADR-0011); defaults to single_project
 BUILD_CMD="make"       # or: cmake --build build, cargo build, npm run build, etc.
 TEST_CMD="make test"   # or: cargo test, pytest, npm test, etc.
+INSTALL_CMD=""         # optional deploy/install command; empty = make install no-ops
 ```
 
 Then run:
@@ -292,10 +294,15 @@ Then run:
 ```bash
 make build    # runs BUILD_CMD in project/
 make test     # runs TEST_CMD in project/
+make install  # runs INSTALL_CMD (no-op when unset)
 make lint     # pre-commit on all files
 make validate # check workspace config
 make dashboard
 ```
+
+These dispatch through the project-type adapter (`.agent/scripts/adapter`),
+which resolves `PROJECT_TYPE` and calls that type's implementation in
+`.agent/project_types/<type>/adapter.sh`. See ADR-0011.
 
 ## Documentation Accuracy
 
@@ -335,15 +342,17 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/worktree_list.sh` | List active worktrees (`--json` for structured output) |
 | `.agent/scripts/agent start-task <N>` | High-level wrapper: create worktree |
 | `.agent/scripts/dashboard.sh` | Unified workspace status (supports `--quick`) |
-| `.agent/scripts/build.sh` | Run BUILD_CMD from project_config.sh |
-| `.agent/scripts/test.sh` | Run TEST_CMD from project_config.sh |
-| `.agent/scripts/setup_project.sh` | Configure project/ directory |
+| `.agent/scripts/adapter` | Project-type adapter dispatcher: `adapter [--from <dir>] <verb>` (ADR-0011) |
+| `.agent/scripts/validate_adapter.sh` | Verify every project type implements the full adapter contract |
+| `.agent/scripts/build.sh` | Run BUILD_CMD from project_config.sh (dispatches via adapter) |
+| `.agent/scripts/test.sh` | Run TEST_CMD from project_config.sh (dispatches via adapter) |
+| `.agent/scripts/setup_project.sh` | Configure project/ directory (dispatches via adapter) |
 | `.agent/scripts/check_branch_updates.sh` | Check if branch is behind default |
 | `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
 | `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
 | `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, waits for CI on the latest HEAD before merging), remove worktree, delete branch, sync main; `--no-wait` to skip the CI wait |
 | `.agent/scripts/update_roadmap.sh` | Auto-update roadmap status for completed issues |
-| `.agent/scripts/sync_project.py` | Sync workspace + project repos |
+| `.agent/scripts/sync_project.py` | Sync workspace + project repos (dispatches via adapter) |
 | `.agent/scripts/validate_workspace.py` | Validate project/ configuration |
 | `.agent/scripts/detect_agent_identity.sh` | Auto-detect agent framework + model |
 | `.agent/scripts/fetch_pr_reviews.sh` | Fetch all PR reviews and CI status |

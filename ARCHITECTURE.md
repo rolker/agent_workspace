@@ -16,7 +16,9 @@ agent_workspace/
 │   │   ├── lib/           # Python library modules
 │   │   └── ...
 │   ├── knowledge/         # Agent knowledge documents
-│   ├── project_config.sh  # BUILD_CMD / TEST_CMD (gitignored, per-developer)
+│   ├── project_types/     # Project-type adapters (ADR-0011)
+│   │   └── single_project/  # adapter.sh + setup.sh + sync.py
+│   ├── project_config.sh  # PROJECT_TYPE / BUILD_CMD / TEST_CMD / INSTALL_CMD (gitignored, per-developer)
 │   ├── work-plans/        # issue-<N>/plan.md and review artifacts
 │   ├── work-artifacts/    # Generated outputs
 │   ├── scratchpad/        # Temp workspace (gitignored)
@@ -49,8 +51,15 @@ agent_workspace/
 
 ## Project Repository Model
 
-The `project/` directory holds a single external git repository. It is configured
-during setup and gitignored. The project can be:
+Project-shape-specific behavior (setup, sync, build, test, install, environment,
+repo enumeration, PR targeting) lives behind a 10-verb adapter contract
+(ADR-0011). `.agent/scripts/adapter <verb>` resolves `PROJECT_TYPE` from
+`.agent/project_config.sh` and dispatches to
+`.agent/project_types/<type>/adapter.sh`. `validate_adapter.sh` (pre-commit + CI)
+asserts every type implements every verb.
+
+The only type today is `single_project`: the `project/` directory holds one
+external git repository, configured during setup and gitignored. The project can be:
 
 - **Cloned**: `git clone <url> project/`
 - **Symlinked**: `ln -s /path/to/existing/clone project`
@@ -60,6 +69,8 @@ project URL — no `configs/` directory is needed.
 
 `validate_workspace.py` checks that `project/` exists, is a valid git repo, and has a
 remote configured.
+
+Further types (`multi_repo`, `ros2_colcon`) arrive with later #172 steps.
 
 ## Worktree Strategy
 
@@ -116,12 +127,15 @@ Build and test commands are project-specific and configured in `.agent/project_c
 project:
 
 ```bash
+PROJECT_TYPE="single_project"  # project-type adapter; defaults to single_project
 BUILD_CMD="make"       # whatever builds the project
 TEST_CMD="make test"   # whatever tests the project
+INSTALL_CMD=""         # optional deploy/install; empty = make install no-ops
 ```
 
-These are executed in the `project/` directory by `.agent/scripts/build.sh` and
-`.agent/scripts/test.sh`.
+`make build`, `make test`, and `make install` dispatch through the project-type
+adapter, which runs the configured command in the project tree
+(`adapter project_root` — `project/` for `single_project`).
 
 ## Governance
 

@@ -47,6 +47,13 @@ repos:
         stages: [pre-commit]
         always_run: true
 
+      - id: validate-adapter-contract
+        name: Validate project-type adapter contract (ADR-0011)
+        entry: bash .agent/scripts/validate_adapter.sh
+        language: system
+        pass_filenames: false
+        files: ^\.agent/(scripts/adapter|scripts/validate_adapter\.sh|project_types/)
+
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.9.0.6
     hooks:
@@ -73,7 +80,7 @@ repos:
         args:
           - '--max-line-length=100'
           - '--disable=C0114,C0115,C0116,E0401,C0413,C0411,R0914,R0912,R0915,W0718,W1514,W0613,W0123,R1705,W1510'
-        files: ^.agent/scripts/.*\.py$
+        files: ^\.agent/(scripts|project_types)/.*\.py$
 
   - repo: https://github.com/adrienverge/yamllint
     rev: v1.33.0

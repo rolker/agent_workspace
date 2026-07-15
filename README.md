@@ -41,8 +41,10 @@ After setup, configure your build and test commands in `.agent/project_config.sh
 ```bash
 cat > .agent/project_config.sh << 'EOF'
 # Per-developer project configuration
+PROJECT_TYPE="single_project"  # project-type adapter (ADR-0011); defaults to single_project
 BUILD_CMD="make"       # or: cmake --build build, cargo build, npm run build
 TEST_CMD="make test"   # or: cargo test, pytest, npm test
+INSTALL_CMD=""         # optional deploy/install; empty = make install no-ops
 EOF
 ```
 
@@ -51,6 +53,7 @@ EOF
 ```bash
 make build        # Run BUILD_CMD in project/
 make test         # Run TEST_CMD in project/
+make install      # Run INSTALL_CMD (no-op when unset)
 make lint         # Pre-commit on all files
 make validate     # Check workspace config
 make dashboard    # Workspace + project status
