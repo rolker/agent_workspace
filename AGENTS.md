@@ -31,7 +31,7 @@ code being changed:
 | Scope | Repo | What lives there |
 |-------|------|-----------------|
 | Workspace | `agent_workspace` | `AGENTS.md`, `.agent/`, skills, scripts, docs |
-| Project | project repo (e.g. `daddy_camp`) | The product being built (`project/`) |
+| Project | project repo (e.g. `my_project`) | The product being built (`project/`) |
 
 ## Boundaries
 

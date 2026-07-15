@@ -1,9 +1,123 @@
 # Inspiration Digest: gstack
 
 Type: inspiration
-Last checked: 2026-05-07
-Repo: garrytan/gstack @ 443bde0 (was 22a4451 on 2026-04-19)
-Previously checked: 2026-04-19 @ 22a4451; 2026-03-31 @ db35b8e
+Last checked: 2026-07-14
+Repo: garrytan/gstack @ 7c9df1c568a9ea745508f679a329332b2c338063
+Previously checked: 2026-05-07 @ 443bde0; 2026-04-19 @ 22a4451; 2026-03-31 @ db35b8e
+
+## Changelog (2026-05-07 → 2026-07-14)
+
+64 merged PRs, 300+ files (443bde0..7c9df1c). v1.28 → v1.58 in ~9 weeks.
+Cadence has slowed from the ~1.5 releases/day peak but the project now runs
+recurring "community bug waves" (Daegu: 23 bugs, windhoek: 9, plus external
+audits) fed by its field-report pipeline — the friction-reporting system we
+tracked in the initial survey, now operating at scale.
+
+### Token reduction / skill carving (v1.46, v1.54, v1.56, v1.57.0)
+
+The dominant portable theme. "gstack v2 foundation" cut skill-catalog
+tokens 56% and put an eval-first floor under all 51 skills; /ship was
+carved into a skeleton + on-demand sections (−59% always-loaded); a
+"carve-guard" system protects the carved structure; more skills carved
+since (cso, document-release, design-consultation). Open issues extend it:
+#2214 (1839-line autoplan SKILL.md → router + `references/`), #2238 (audit:
+~120 lines of boilerplate duplicated across 51/56 skills, over-prescriptive
+STRICT recipes).
+
+- **Workspace relevance**: High. Our skill bodies keep growing (this
+  skill's own SKILL.md included), and ros2's open #564 (slim AGENTS.md via
+  an enforcement-backed criterion) is the same concern arriving from the
+  fork side — convergent evidence that always-loaded instruction mass is
+  a real cost. The router + on-demand-references pattern is portable.
+
+### AskUserQuestion reliability saga (v1.31 → v1.48 → v1.56 → v1.57.2 → v1.58.1)
+
+A full arc worth recording: v1.31 **deleted** the AUQ prose fallback
+("root cause of forever war" — the fallback let skills silently bypass the
+tool); v1.48 added a question **split rule** + an explicit `AUTO_DECIDE`
+carve-out (agent may self-decide only in a declared class of cases); v1.56
+added a "paranoid safety net"; v1.57.2 **re-introduced** a prose fallback,
+but only for genuine runtime tool failure; v1.58.1/#2206/#2207 deal with
+host variants (Conductor) breaking native AUQ. Net lesson: gates must
+fail loud, fallbacks get abused unless scoped to verified tool failure,
+and self-decide needs an explicit contract.
+
+- **Workspace relevance**: Medium. Complements the already-roadmapped
+  AUQ cadence/Pros-Cons item and the plan-* STOP-gate item (both
+  2026-05-07): this adds the fallback-abuse failure mode and the
+  AUTO_DECIDE contract idea.
+
+### Cross-session decision memory (v1.57.5) + brain-aware planning (v1.52.1)
+
+Skills record decisions durably across sessions; 5 planning skills now
+read structured memory context *before* asking the user anything ("don't
+ask what the brain already knows").
+
+- **Workspace relevance**: Medium. The ask-side rule is portable to our
+  skills: consult memory/progress.md/ROADMAP before AskUserQuestion.
+  Storage side is gbrain-domain.
+
+### Review-loop refinements
+
+- v1.57.7 — review report must **declare unresolved decisions** (nothing
+  silently dropped between review rounds). Same concern as ros2's open
+  #527 (surface deferred findings across rounds) — convergent.
+- v1.57.10 — **Codex review default-on** across review/ship/plan/docs.
+  Notable contrast: ros2 made Copilot Adversarial **opt-in** after
+  measuring context cost, same month. The two forks of "external
+  second-model review" pricing landed on opposite defaults.
+- v1.39.1 — EXIT PLAN MODE GATE for plan-mode review skills.
+
+- **Workspace relevance**: Medium for unresolved-decisions declaration
+  (cheap addition to review-code/triage-reviews report formats);
+  informational for the Codex-default contrast (feeds our own
+  cross-model cost tuning).
+
+### Safety guards failing open (v1.57.6)
+
+A community bug wave found **4 security guards failing open** (guard
+hooks that silently passed when their precondition machinery broke).
+Fix wave + tests.
+
+- **Workspace relevance**: Medium as a lesson: we have enforcement hooks
+  (block-bash-tool-mapping, pre-commit) — worth an explicit fail-closed
+  audit/test pass. Cheap, concrete.
+
+### Gstack-domain (skip)
+
+gbrowser stealth/anti-detection + headed-mode woes (#2242, #2219, #2220),
+iOS device-farm (v1.43), persistent design-board daemon (v1.45), sidebar
+keepalive (v1.44), PGLite/voyage-code-3 embeddings, split-engine gbrain
+(v1.37) + sync hardening waves, submodule/factory-export packaging
+(v1.34), Windows/CI hardening, /make-pdf emoji, redaction guard (v1.53 —
+document-pipeline specific), /spec skill (v1.47 — our plan-task +
+brainstorm cover this), translations, telemetry consent.
+
+### Deferred-item signals (no status change)
+
+- `claude-outside-voice-skill` — v1.57.10's Codex-default-on is new
+  signal but our single-voice `cross_model_review.sh` friction hasn't
+  changed. Stays deferred.
+- `opus-4-7-migration-patterns` — likely obsolete as framed: the model
+  landscape moved on (gstack #2238 flags their own hardcoded "Claude Opus
+  4.7" trailer as a defect). Candidate to close next run.
+- `gbrain-federation-surface` — still evolving fast upstream; still no
+  concrete local failure case. Stays deferred.
+
+## Pending Review (2026-07-14 round)
+
+(none — all items triaged below)
+
+## Roadmapped (2026-07-14 decisions)
+
+All five 2026-07-14 findings added to ROADMAP.md "To Consider" under
+"From gstack (2026-07-14)":
+
+- `skill-carving-token-reduction` (2026-07-14)
+- `auq-fallback-and-auto-decide` (2026-07-14)
+- `consult-memory-before-asking` (2026-07-14)
+- `unresolved-decisions-in-review-reports` (2026-07-14)
+- `fail-closed-hook-audit` (2026-07-14)
 
 ## Survey Summary
 
@@ -160,11 +274,15 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
 - `gstack-design-html` — /design-html from any starting point (#734). Gstack domain (2026-04-19)
 - `gstack-aquavoice-triggers` — Voice-friendly skill triggers for AquaVoice (v0.14.6.0). Gstack domain (2026-04-19)
 - `gstack-cookie-picker` — Cookie picker auth token leak fix (#904). Gstack domain (2026-04-19)
-- `gstack-plan-devex-review` — New /plan-devex-review persona (#784). Pattern interesting but not a current need; no analogue motivated in daddy_camp (2026-04-19)
+- `gstack-plan-devex-review` — New /plan-devex-review persona (#784). Pattern interesting but not a current need; no analogue motivated in this workspace (2026-04-19)
 - `gstack-relationship-closing` (2026-05-07) — Office-hours adapts to repeat
   users (#937). Auto-memory `user_workflow_patterns` + `user_agent_personality`
   already cover this at the memory layer; no skill-level adaptation needed.
   Closes the prior 2026-04-19 deferral.
+- `opus-4-7-migration-patterns` (2026-07-14) — closed from Deferred: the
+  model landscape moved past 4.7 (gstack #2238 flags their own hardcoded
+  "Claude Opus 4.7" trailer as a defect). Model-migration friction, if it
+  recurs, will be model-specific and re-triaged fresh.
 
 ## Deferred
 
@@ -178,10 +296,6 @@ release engineer). 25+ skills, TypeScript/Bun-based, MIT license.
   Generalize `cross_model_review.sh` into a named-config outside-voice
   dispatcher. Existing single-voice script works for now; revisit when the
   single-voice limitation creates concrete friction.
-- `opus-4-7-migration-patterns` (2026-05-07) — gstack v1.5.2.0 #1117 and
-  v1.10.1.0 #1166. Model overlay, voice tuning, fanout-nudge removal, overlay
-  efficacy harness. Daddy_camp running on 4.7 fine; revisit if/when we
-  observe degradation tied to model-specific behavior.
 - `gbrain-federation-surface` (2026-05-07) — gstack v1.9–v1.27. Cross-machine
   knowledge layer with per-skill manifests, transcript ingest, retrieval surface.
   Architecturally interesting but no clear failure case in our scattered-knowledge
@@ -261,7 +375,7 @@ versioned releases in 19 days. Continued rapid iteration.
 
 ### Major themes
 
-**Plan-* skill reliability (high relevance for daddy_camp's /plan-task and /review-plan):**
+**Plan-* skill reliability (high relevance for our /plan-task and /review-plan):**
 
 - v1.21.1.0 #1255 — tighten plan-ceo-review smoke (Step 0 must fire)
 - v1.25.1.0 #1296 — office-hours Phase 4 STOP gate + AskUserQuestion

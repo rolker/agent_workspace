@@ -1,8 +1,95 @@
 # Inspiration Digest: engram
 
 Type: inspiration
-Last checked: 2026-05-07
-Repo: shiblon/engram @ 125f1d4 (was a4c577c on 2026-04-26)
+Last checked: 2026-07-14
+Repo: shiblon/engram @ 243fb2c748f87cf6bfde977440e858e5a805e4d3
+Previously checked: 2026-05-07 @ 125f1d4; 2026-04-26 @ a4c577c
+
+## Changelog (2026-05-07 → 2026-07-14)
+
+91 commits (125f1d4..243fb2c), v0.6 → v0.11.2. Still single-author on
+main, no issues/PRs — but the project matured markedly. **Two survey
+facts are now stale**: engram has a real test suite (13+ `_test.go`
+files; the old "zero tests" credibility asterisk no longer applies), and
+it now handles git worktrees (one database shared across a repo's
+worktrees, manifest keyed `(identity, path)`).
+
+### The authoritative-channel priority ladder (most portable insight)
+
+Direct quote from the commit that motivated it: *"A preference stored
+only in engram is silently beaten by harness and [instruction files]"*.
+The fix: engram now **renders invariants (P1) and preferences (P2) into
+the harness's authoritative instruction channel** at inject time, instead
+of trusting a side-channel memory block to compete with CLAUDE.md-tier
+text.
+
+- **Workspace relevance**: High as a lesson about our own memory system.
+  Recalled memories arrive in `<system-reminder>` blocks — a weaker
+  channel than CLAUDE.md/AGENTS.md. Load-bearing feedback-type memories
+  (standing corrections, hard rules) may deserve promotion into the
+  instruction files rather than staying recall-only. A memory-audit rule,
+  not a tool port.
+
+### Session-start context budgeting + orientation
+
+- `inject` now **bounds** session-start context, rolls up active files by
+  name, and budgets the "areas" section; orientation got visible (status
+  line + orientation header leading with the running version).
+- Version-drift check rides along in inject.
+
+- **Workspace relevance**: Medium. Convergent with our roadmapped
+  `per-session-context-card` concept (rapid re-grounding when switching
+  agent tabs) — engram's orientation header is a working example of the
+  same idea. Cross-link when that item is picked up.
+
+### Agent-tool catalog with staged graduation
+
+Self-describing tool catalog mined from session patterns: candidates are
+staged, then graduate to `$HOME/.engram/agenttools`. Notably the
+**project-level** tool subsystem was later removed — global-only
+survived. (Author's own scope-discipline worth noting.)
+
+- **Workspace relevance**: Low-medium. Parallels our
+  analyze-permissions / skill-authoring flows ("mine sessions for
+  recurring patterns, then promote"). Pattern noted; no port target.
+
+### Dump/restore-all + project manifest
+
+`engram register` (+ `--scan`, `--list`, `--forget`), project manifest,
+save-archive + staged restore across machines. Fix discipline visible:
+"never silently drop projects from the archive", "report file writes
+truthfully".
+
+- **Workspace relevance**: Low. Git already gives our markdown memory
+  portability. Unchanged from prior skip decision.
+
+### MCP surface removed
+
+The experimental MCP server we deferred on (2026-05-07,
+`engram-mcp-server`) was **removed** upstream ("gate MCP behind
+CLI-viability check"). Codex/Gemini integration went hook-parity + AGENTS
+fallback instead.
+
+- **Workspace action**: Close the deferral as obsolete.
+
+### Misc
+
+`mem tldr` (curate a summary without rewriting content), Homebrew
+cask/deb packaging, CHANGELOG backfill, inject error-path fixes
+("surface previously-swallowed errors"), Codex session-start hook found
+too noisy → `--no-session-hook` flag.
+
+## Pending Review (2026-07-14 round)
+
+(none — all items triaged below)
+
+## Roadmapped (2026-07-14 decisions)
+
+- `authoritative-channel-promotion` — added to ROADMAP.md "To Consider"
+  under "From engram (2026-07-14)" (2026-07-14)
+- `orientation-header-crosslink` — recorded as a source annotation on the
+  existing Session Intelligence Layer row in ROADMAP.md (working example
+  for the absorbed per-session-context-card concept) (2026-07-14)
 
 ## Survey Summary
 
@@ -32,7 +119,7 @@ the workflow conventions through prose instructions written into a global
 | `long`       | project  | Settled project decisions and facts.             |
 | `short`      | project  | In-flight context, conversation stack, backlog.  |
 
-Note: this is a *durability* axis. Daddy_camp's existing memory uses a
+Note: this is a *durability* axis. This workspace's existing memory uses a
 *source/topic* axis (user / feedback / project / reference). The two are
 orthogonal — could be combined.
 
@@ -68,7 +155,7 @@ status line stops showing your agent's name, context coherence is breaking.
 ### Isolation strategy
 
 - Per-project DB in `<project-root>/.claude/engram.db` keeps project memory
-  scoped (similar to daddy_camp's per-project memory dir under
+  scoped (similar to our per-project memory dir under
   `~/.claude/projects/<encoded-path>/memory/`).
 - Global DB in `~/.claude/engram.db` for cross-project invariants and
   preferences.
@@ -112,7 +199,7 @@ a known footgun.
 
 ## Mapping to interest_areas
 
-| Interest area | What engram does | Daddy_camp delta |
+| Interest area | What engram does | Workspace delta |
 |---|---|---|
 | Stack-based short-term memory | `short` tier holds "in-flight context, conversation stack, backlog." Workflow says push current context before digression, pop on resume. The *tool* doesn't enforce stack semantics — it's prose-encoded in the global `engram-workflow` invariant. | We'd add this as a workflow convention in CLAUDE.md/AGENTS.md without needing tooling. |
 | Personality as context-decay canary | `codename` invariant + status-line render. When status line drops the codename, context is breaking down. | Adoptable as a memory entry + lightweight status-line addition. |
@@ -145,7 +232,7 @@ issues or PRs — author works on `main` directly.
   injection. Bootstrap also extended for `go install`-based distribution.
 - **CLAUDE.md @file inclusion** (commit a3b9d9d) — bootstrap now writes
   `@<path>` reference into CLAUDE.md instead of inlining `agentinfo` text.
-  Daddy_camp already uses this pattern for `@AGENTS.md`.
+  This workspace already uses this pattern for `@AGENTS.md`.
 - **`promote` → `move`** (commit b33fc9a) — internal CLI rename.
 - **Refined global vs project instructions** (commit 125f1d4).
 
@@ -170,11 +257,12 @@ issues or PRs — author works on `main` directly.
 ## Issued
 
 - `personality-canary-light` — agent_workspace #168 (2026-04-26).
-  Adopted at light layer: codename **Grover** + 5-trait tone (lean,
-  precise, skeptical, quietly dry, calm under load). Memory file written
-  to auto-memory at `~/.claude/projects/-home-roland-daddy-camp/memory/user_agent_personality.md`;
-  index updated. 30-day revisit (~2026-05-26) to evaluate whether the
-  light layer earns its keep or escalation/deletion is warranted.
+  Adopted at light layer: an agent codename + 5-trait tone, written as a
+  `user_agent_personality` entry in the then-active project's auto-memory
+  (project-scoped; the specific codename and file path live with that
+  project, not the workspace — see issue #217). 30-day revisit
+  (~2026-05-26) to evaluate whether the light layer earns its keep or
+  escalation/deletion is warranted.
 
 ## Skipped
 
@@ -194,7 +282,7 @@ issues or PRs — author works on `main` directly.
 ### 2026-05-07 decisions
 
 - `agentinfo-command-pattern` — Engram's "tool prints its own usage"
-  pattern. Daddy_camp already gets the portable insight via CLAUDE.md →
+  pattern. This workspace already gets the portable insight via CLAUDE.md →
   `@AGENTS.md` referencing; no new helper needed.
 - `db-migration-system` — Engram's schema-evolution support for SQLite
   DBs. Markdown-based memory has no schema to migrate; pattern is N/A.
@@ -203,16 +291,15 @@ issues or PRs — author works on `main` directly.
 
 - `short-term-stack-workflow` — Push/pop conventions for nested digressions
   (engram's "save context, brainstorm, resume" pattern). Deferred
-  2026-04-26 and re-confirmed 2026-05-07; most digressions still short
-  enough that resume context isn't lost. Pairs with
-  `tier-by-durability-axis`. Resurface on next run.
+  2026-04-26, re-confirmed 2026-05-07 and 2026-07-14 (tier model unchanged
+  upstream; no local pain). Pairs with `tier-by-durability-axis`.
+  Resurface paired.
 - `tier-by-durability-axis` — `durability:` frontmatter field
   (`short`/`long`/`permanent`), orthogonal to existing `type:`. Deferred
-  2026-04-26 and re-confirmed 2026-05-07; without the stack workflow
-  there's no use case for a `short` value. Pairs with the stack workflow
-  item. Resurface paired.
-- `engram-mcp-server` (2026-05-07) — Engram now ships an MCP server
-  exposing memory/personality state to non-Claude-Code agents. Daddy_camp
-  could write a small MCP wrapper over its file-based auto-memory dir to
-  serve Codex / Gemini / Copilot. Deferred until we actually run those
-  agents against this workspace and discover memory loading is awkward.
+  2026-04-26, re-confirmed 2026-05-07 and 2026-07-14; without the stack
+  workflow there's no use case for a `short` value. Resurface paired.
+- `engram-mcp-server` — **Closed 2026-07-14 as obsolete**: upstream
+  removed the experimental MCP surface (gated behind a CLI-viability
+  check) and went hook-parity + AGENTS-fallback for Codex/Gemini instead.
+  The local trigger condition (running non-Claude agents against this
+  workspace) never fired either.

@@ -1,8 +1,84 @@
 # Inspiration Digest: agent-orchestrator
 
+> **ARCHIVED 2026-07-14** — removed from active tracking. AO pivoted to a
+> productized desktop + mobile app; orchestration-pattern churn (our
+> interest) gave way to product/UI churn, and the Tier-3 reference role is
+> now covered by the ros2 dispatch/run-issue design (roadmapped
+> 2026-07-14). Patterns from the initial survey are triaged below.
+> Re-add to `inspiration_registry.yml` if motivation changes.
+
 Type: inspiration
-Last checked: 2026-04-19
-Repo: ComposioHQ/agent-orchestrator @ 7b13d2beadc505117691e74e7757acdfa7d17b9d
+Last checked: 2026-07-14
+Repo: ComposioHQ/agent-orchestrator @ efc8969c47e1d85473d47f4690515b6969ab8335
+Previously checked: 2026-04-19 @ 7b13d2b
+
+## Changelog (2026-04-19 → 2026-07-14)
+
+609 commits, 300+ files, 100+ merged PRs — but the story is a **pivot,
+not pattern evolution**. AO has productized: native desktop app (v0.10.x,
+custom Windows titlebar, macOS chrome), a **mobile supervisor app**
+(password-authenticated LAN bridge, shared-terminal co-view from a
+phone), landing pages with demo videos, PostHog telemetry, an embedded
+browser-preview panel with in-preview annotations, and a token-based
+design system. The npm CLI distribution is now marked "frozen / not
+recommended" — the desktop app is the product.
+
+### What this means for the patterns we track it for
+
+- **Reaction system / task decomposition** — little visible movement this
+  window; development effort went to product surface, not orchestration
+  semantics.
+- **Adapter architecture** — still broadening (Amp, Grok, Vibe, Cursor,
+  Codex launch/restore paths; #2572 "resolve default reviewer harness"
+  shows the code-review slot maturing), which continues to validate the
+  slot-based design.
+- **Worktree-per-agent discipline** — one notable robustness fix: #2600
+  recovers stale orchestrator worktrees during replacement. Convergent
+  with our own worktree-lifecycle hardening; no new mechanism.
+- **Dashboard model** — now explicitly a *native-app* model plus mobile
+  supervision. The registry note said "if they move toward less
+  intermediated designs, revisit" — they moved the **opposite** way:
+  more intermediation (embedded terminal, embedded browser, phone
+  co-view).
+- **Interaction niche worth noting**: the mobile supervisor is a genuinely
+  new answer to "monitor long-running agents while away from the desk" —
+  the same attention-handoff need our CLI-first stance solves with
+  terminals. Noted as a data point, not a direction.
+
+### Tracking-value assessment
+
+The reference-implementation value that justified tracking (orchestration
+patterns for IF Tier-3 orchestration ever becomes worthwhile) is now
+better served by the **ros2 dispatch/run-issue reference design**
+(roadmapped 2026-07-14) — closer to home, local-first, terminal-based.
+AO's churn is product/UI-dominated, so signal-to-noise for our interest
+areas has dropped sharply — the same profile that got gastown and
+microsoft-skills archived on 2026-04-19. Archive candidacy raised for
+user decision this run.
+
+## Pending Review
+
+(none — the four items carried from 2026-04-19 are triaged below)
+
+## Roadmapped (2026-07-14 decisions)
+
+Added to ROADMAP.md "To Consider" under "From agent-orchestrator
+(2026-07-14, archival round)":
+
+- `ci-failure-watcher` — minimal reaction system (2026-07-14)
+- `duplicate-spawn-prevention` — cross-session issue-in-progress check
+  (2026-07-14)
+- `code-review-plugin-slot` — reviewer personas as pluggable
+  implementations (2026-07-14)
+
+## Skipped (2026-07-14 decisions)
+
+- `warm-terminal-design-language` — no visual UI planned (CLI-first
+  stance); typography/palette reference recoverable from this digest's
+  survey section if that ever changes.
+- `mobile-supervision-model` — AO's phone co-view answers the
+  attention-handoff need we deliberately solve with terminals; noted as
+  a data point only.
 
 ## Survey Summary
 
@@ -130,7 +206,7 @@ into issue-or-PR or agent-session actions. Key decisions:
 
 5. **Hash-based project namespacing** — `sha256(configDir).slice(0,12)`
    prevents collisions when the same config manages multiple projects.
-   We only have one active project (daddy_camp); overkill now, worth
+   A workspace instance manages one project at a time; overkill now, worth
    remembering if we scale
 6. **Exclusive routing mode (local OR scm)** — their explicit decision
    that routing can't split both ways. Clarity-over-flexibility
@@ -153,7 +229,7 @@ into issue-or-PR or agent-session actions. Key decisions:
 
 - **Tier 3 orchestration** (Deferred, Row 6 of #157) — AO IS Tier 3.
   This survey confirms the category is well-formed, pattern-convergent,
-  and mature. Still deferred for daddy_camp per our "most of our
+  and mature. Still deferred per our "most of our
   backlog isn't mechanical" reasoning. Revisit trigger unchanged
 - **Agent Teams declined** (Row 7) — AO's reaction system is the
   non-Agent-Teams equivalent of the coordination they offer; our

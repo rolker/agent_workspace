@@ -36,7 +36,7 @@ projects:
     # interest_areas tightened 2026-04-19: dropped browser-based QA
     # (gstack domain), de-emphasized release engineering (scale mismatch);
     # added session/context management + agent-user UX patterns to match
-    # daddy_camp's current concerns
+    # the workspace's current concerns
     interest_areas:
       - review and QA workflow (multi-role review, adversarial, anti-skip)
       - planning methodology (CEO/eng/design review roles, scope modes)
@@ -55,45 +55,12 @@ projects:
       - subagent patterns and orchestration
       - development methodology and workflows
 
-  agent-orchestrator:
-    type: inspiration
-    repo: ComposioHQ/agent-orchestrator
-    description: Reference open-source orchestrator for parallel coding agents
-    # Added 2026-04-19. Tracked despite our Tier 3 "Defer" decision —
-    # the patterns (reaction system, adapter architecture, worktree-per-
-    # agent discipline) inform how we'd adopt IF mechanical backlog
-    # pressure ever makes Tier 3 worthwhile. Also the reference point
-    # for the "additive-only" constraint (D5) — if they move toward less
-    # intermediated designs, revisit.
-    interest_areas:
-      - reaction system (CI failures, review comments, PR approvals)
-      - task decomposition patterns
-      - adapter architecture (runtime/agent/workspace/tracker/notifier pluggability)
-      - worktree-per-agent discipline (convergent with our own)
-      - dashboard model for multi-agent oversight
-
-  overstory:
-    type: inspiration
-    repo: jayminwest/overstory
-    description: Multi-agent orchestrator with SQLite-backed messaging and watchdog daemon
-    # Added 2026-04-19. Paired with agent-orchestrator to cover the
-    # category from two angles — agent-orchestrator is the big/reference
-    # implementation, Overstory explores different messaging tech
-    # (SQLite-backed mailbox) and conflict-resolution patterns. Of
-    # particular interest: watchdog daemon, which we're building
-    # separately as a small bash helper per Row 7 decision.
-    interest_areas:
-      - inter-agent messaging (SQLite-backed mailbox)
-      - conflict resolution (4-tier)
-      - watchdog daemon patterns
-      - multi-runtime agent support (Claude Code, Pi, Gemini CLI)
-
   engram:
     type: inspiration
     repo: shiblon/engram
     description: Memory and personality aid for Claude Code — stack-based short-term memory and dump/load portability
     # Added 2026-04-26. Author's own framing emphasizes personality
-    # as a context-decay canary. Daddy_camp already has a working
+    # as a context-decay canary. The workspace already has a working
     # auto-memory setup (CLAUDE.md + per-project memory files);
     # interest is in the patterns, not adopting the Go binary.
     # Personality angle is exploratory — user is curious but no
@@ -105,6 +72,72 @@ projects:
       - tool-driven memory management (CLI vs file edits during conversation)
       - memory dump/load for cross-machine portability
       - bootstrap UX (single command sets up CLAUDE.md, hooks, gitignore)
+
+  cc-harness-skills:
+    type: inspiration
+    repo: LearnPrompt/cc-harness-skills
+    description: Portable Claude-Code-inspired skills for memory, verification, coordination, and context compression
+    # Added 2026-07-14 (emerging-source sweep). Created 2026-04, very
+    # active. Strongest interest-area overlap of the sweep; context
+    # compression angle feeds the skill-carving/token-reduction roadmap
+    # thread (convergent across gstack/superpowers/ros2).
+    interest_areas:
+      - context compression and token-reduction techniques
+      - verification skill patterns (evidence-before-claims)
+      - memory management patterns
+      - multi-agent coordination skills
+      - cross-harness skill portability
+
+  project-codeguard:
+    type: inspiration
+    repo: cosai-oasis/project-codeguard
+    description: Model-agnostic secure-by-default rules framework for AI coding agent workflows (OASIS/CoSAI)
+    # Added 2026-07-14 (emerging-source sweep). Standards-body backed;
+    # complements the security-review skill and the fail-closed-hook
+    # audit roadmap item.
+    interest_areas:
+      - secure-by-default rule design for agent workflows
+      - rule packaging and distribution format
+      - integration with review pipelines
+      - model-agnostic enforcement mechanisms
+
+  diffx:
+    type: inspiration
+    repo: wong2/diffx
+    description: Local code review tool designed for the coding-agent workflow
+    # Added 2026-07-14 (emerging-source sweep). Review-before-push UX
+    # for humans supervising agents — adjacent to our review-code /
+    # triage-reviews loop and the CLI-first constraint.
+    interest_areas:
+      - review-before-push workflow integration
+      - diff presentation for human supervision of agent output
+      - inline commenting and finding-tracking UX
+      - staying local-first / terminal-adjacent
+
+  harness-starter-kit:
+    type: inspiration
+    repo: harnessworks/harness-starter-kit
+    description: Prompt-first harness engineering for safer AI coding agent workflows
+    # Added 2026-07-14 (emerging-source sweep). Newest of the batch
+    # (created 2026-05); watch whether "harness engineering" as a
+    # discipline develops enforcement-backed patterns beyond ours.
+    interest_areas:
+      - enforcement-backed instruction design
+      - safety guardrails for agent workflows
+      - harness bootstrap / starter-kit UX
+      - prompt-engineering-as-configuration patterns
+
+  # --- Watched, not tracked (2026-07-14 sweep) ---
+  #
+  # hqhq1025/skill-optimizer (132★) — skill lifecycle mining/audit/
+  # generalization; strong concept but quiet since 2026-05-14. Revisit
+  # next quarter if activity resumes.
+  # ForgeAILab/forge (42★) — structured task-lifecycle workflow engine;
+  # composable-timeline adjacent, still small.
+  # ma08/botfiles (28★) — portable agent-ecosystem hooks/config.
+  # Just-Agent/make-agents-cheaper (22★) — prompt-cache economics; tiny.
+  # smtg-ai/claude-squad, ruvnet/ruflo — established orchestration
+  # platforms; excluded per Tier-3 defer + STEELMAN reasoning.
 
   # --- Archived sources (2026-04-19) ---
   #
@@ -121,3 +154,19 @@ projects:
   # microsoft-skills (microsoft/skills) — 20 of 23 merges in 19 days are
   # mechanical Azure plugin syncs. Low signal-to-noise for general skill
   # architecture learning.
+  #
+  # --- Archived 2026-07-14 ---
+  #
+  # agent-orchestrator (ComposioHQ/agent-orchestrator) — pivoted to a
+  # productized desktop + mobile app (npm CLI frozen); orchestration-
+  # pattern churn gave way to product/UI churn. The Tier-3 reference role
+  # is covered by the ros2 dispatch/run-issue design (roadmapped
+  # 2026-07-14). Was tracked for: reaction system, task decomposition,
+  # adapter architecture, worktree-per-agent discipline, dashboard model.
+  #
+  # overstory (jayminwest/overstory) — upstream repository archived
+  # read-only 2026-05-28; successor Warren (cloud control plane + web UI)
+  # not tracked, interest areas don't transfer. Portable patterns
+  # (STEELMAN doc, base+overlay prompts, role vocabulary) roadmapped
+  # 2026-07-14; SQLite mailbox / watchdog / conflict-tier survey preserved
+  # in the digest.
