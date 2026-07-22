@@ -166,6 +166,129 @@ test_rule3_mismatch_message() {
     assert_contains "mentions current WORKTREE_ISSUE" "'100', not '42'" "$out"
 }
 
+# ---- Rule 2b helpers: temp git repos with controlled dir/branch names ----
+#
+# make_temp_repo <basename> <branch> — creates an empty git repo whose
+# toplevel basename and initial branch are controlled, echoes its path.
+# No commits needed: `git branch --show-current` reports unborn branches.
+# TMP_ROOT is created eagerly in the parent shell: make_temp_repo runs
+# inside $(...) subshells, so any assignment there would not persist and
+# the EXIT trap would miss it.
+TMP_ROOT=$(mktemp -d)
+make_temp_repo() {
+    local base="$1" branch="$2"
+    local repo="${TMP_ROOT}/$base"
+    git init -q -b "$branch" "$repo"
+    echo "$repo"
+}
+trap 'rm -rf "$TMP_ROOT"' EXIT
+
+# ---- Test: rule-2b resolves from worktree dir name when env unset (issue #224) ----
+test_rule2b_dir_name_match() {
+    echo "TEST: unset WORKTREE_ISSUE resolves via issue-<slug>-<N> dir name"
+
+    local repo out
+    repo=$(make_temp_repo "issue-workspace-55" "some-branch")
+    out=$(
+        cd "$repo"
+        unset WORK_PLANS_DIR_OVERRIDE WORKTREE_ISSUE
+        # shellcheck source=../_resolve_work_plans_dir.sh
+        source "${HELPER}"
+        resolve_work_plans_dir 55
+    )
+    assert_eq "path under matching worktree toplevel" \
+        "${repo}/.agent/work-plans/issue-55" "$out"
+}
+
+# ---- Test: rule-2b resolves from branch name when env unset (issue #224) ----
+test_rule2b_branch_name_match() {
+    echo "TEST: unset WORKTREE_ISSUE resolves via feature/issue-<N> branch"
+
+    local repo out
+    repo=$(make_temp_repo "plain-checkout" "feature/issue-56")
+    out=$(
+        cd "$repo"
+        unset WORK_PLANS_DIR_OVERRIDE WORKTREE_ISSUE
+        # shellcheck source=../_resolve_work_plans_dir.sh
+        source "${HELPER}"
+        resolve_work_plans_dir 56
+    )
+    assert_eq "path under branch-matched toplevel" \
+        "${repo}/.agent/work-plans/issue-56" "$out"
+
+    # Described branch variant: feature/ISSUE-<N>-<description> (case-insensitive).
+    repo=$(make_temp_repo "plain-checkout-2" "feature/ISSUE-57-fix-thing")
+    out=$(
+        cd "$repo"
+        unset WORK_PLANS_DIR_OVERRIDE WORKTREE_ISSUE
+        # shellcheck source=../_resolve_work_plans_dir.sh
+        source "${HELPER}"
+        resolve_work_plans_dir 57
+    )
+    assert_eq "described branch variant resolves" \
+        "${repo}/.agent/work-plans/issue-57" "$out"
+}
+
+# ---- Test: rule-2b still refuses outside any matching worktree ----
+test_rule2b_refuses_outside_worktree() {
+    echo "TEST: unset WORKTREE_ISSUE outside any matching worktree still refuses"
+
+    local repo out rc
+    repo=$(make_temp_repo "main-checkout" "main")
+    rc=0
+    out=$(
+        cd "$repo"
+        unset WORK_PLANS_DIR_OVERRIDE WORKTREE_ISSUE
+        # shellcheck source=../_resolve_work_plans_dir.sh
+        source "${HELPER}"
+        resolve_work_plans_dir 58 2>&1
+    ) || rc=$?
+    assert_eq "returns 1" "1" "$rc"
+    assert_contains "refusal message present" \
+        "refusing to resolve work-plans dir for issue #58" "$out"
+}
+
+# ---- Test: rule-2b number boundaries are exact ----
+test_rule2b_number_boundary() {
+    echo "TEST: issue number match is exact (no prefix/suffix bleed)"
+
+    local repo out rc
+    # Dir encodes 2244; requesting 224 must refuse.
+    repo=$(make_temp_repo "issue-workspace-2244" "feature/issue-2244")
+    rc=0
+    out=$(
+        cd "$repo"
+        unset WORK_PLANS_DIR_OVERRIDE WORKTREE_ISSUE
+        # shellcheck source=../_resolve_work_plans_dir.sh
+        source "${HELPER}"
+        resolve_work_plans_dir 224 2>&1
+    ) || rc=$?
+    assert_eq "issue-x-2244 does not satisfy 224" "1" "$rc"
+    assert_contains "refusal message present" \
+        "refusing to resolve work-plans dir for issue #224" "$out"
+}
+
+# ---- Test: set-but-mismatched WORKTREE_ISSUE never takes the fallback ----
+test_mismatched_env_still_refuses_in_matching_dir() {
+    echo "TEST: mismatched WORKTREE_ISSUE refuses even inside a matching worktree"
+
+    local repo out rc
+    # Dir and branch both encode 59, but the env var asserts 100 —
+    # the #147 guard must win over the #224 fallback.
+    repo=$(make_temp_repo "issue-workspace-59" "feature/issue-59")
+    rc=0
+    out=$(
+        cd "$repo"
+        unset WORK_PLANS_DIR_OVERRIDE
+        export WORKTREE_ISSUE=100
+        # shellcheck source=../_resolve_work_plans_dir.sh
+        source "${HELPER}"
+        resolve_work_plans_dir 59 2>&1
+    ) || rc=$?
+    assert_eq "returns 1" "1" "$rc"
+    assert_contains "mismatch message names both issues" "'100', not '59'" "$out"
+}
+
 # ---- Test: direct execution errors out ----
 test_direct_execution_refused() {
     echo "TEST: running the helper directly errors out"
@@ -186,6 +309,11 @@ test_no_args_under_set_u
 test_rule1_override
 test_rule2_worktree_match
 test_rule3_mismatch_message
+test_rule2b_dir_name_match
+test_rule2b_branch_name_match
+test_rule2b_refuses_outside_worktree
+test_rule2b_number_boundary
+test_mismatched_env_still_refuses_in_matching_dir
 test_direct_execution_refused
 
 echo ""
