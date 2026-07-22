@@ -28,13 +28,27 @@ setup() {
     MOCK_BIN="${TMPDIR_BASE}/bin"
     mkdir -p "${MOCK_BIN}"
 
-    # Mock gemini CLI that just writes "mock review" to the findings file
-    cat > "${MOCK_BIN}/gemini" << 'MOCK_EOF'
+    # Mock agy CLI (the gemini agent's binary post-#223). Records argv to
+    # MOCK_AGY_LOG when set, and prints the -p/--print/--prompt argument
+    # value to stdout (the script redirects stdout to the findings file).
+    # Deliberately never reads stdin — real agy print mode takes the
+    # prompt as an argument value, not on stdin.
+    cat > "${MOCK_BIN}/agy" << 'MOCK_EOF'
 #!/usr/bin/env bash
-# Mock gemini: copy stdin to stdout (findings file via redirect)
-cat
+if [[ -n "${MOCK_AGY_LOG:-}" ]]; then
+    printf '%s\n' "$@" >> "${MOCK_AGY_LOG}"
+fi
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -p|--print|--prompt)
+            printf '%s\n' "${2:-}"
+            shift 2 2>/dev/null || shift
+            ;;
+        *) shift ;;
+    esac
+done
 MOCK_EOF
-    chmod +x "${MOCK_BIN}/gemini"
+    chmod +x "${MOCK_BIN}/agy"
 }
 
 teardown() {
@@ -761,6 +775,80 @@ GH_EOF
     teardown
 }
 
+# ---- Test: gemini agent invokes agy with prompt as -p argument (#223) ----
+#
+# The Gemini CLI migrated to the `agy` binary. Print mode takes the prompt
+# as the argument value of -p/--print — the old `gemini -p "" < prompt`
+# stdin-append convention (#181) no longer applies. This test asserts:
+#   1. the script resolves and invokes the `agy` binary,
+#   2. agy receives --print-timeout and -p,
+#   3. the prompt content arrives as an argument value (not stdin), and
+#   4. the findings-file flow completes end-to-end.
+# The script is run with stdin from /dev/null so a regression back to
+# stdin-based invocation fails fast instead of hanging the suite.
+test_agy_invocation() {
+    echo "TEST: gemini agent invokes agy with prompt as -p argument (#223)"
+    setup
+
+    # Mock gh with a valid PR body and non-empty diff.
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; PR="$1"; shift
+    [[ "${1:-}" == "-R" ]] && shift 2
+    if [[ "$1" == "--json" && "$2" == "body" ]]; then
+        echo "Closes #42"
+    elif [[ "$1" == "--json" && "$2" == "title" ]]; then
+        echo "Test PR"
+    elif [[ "$1" == "--json" && "$2" == "url" ]]; then
+        echo "https://github.com/test/repo/pull/99"
+    fi
+elif [[ "$1" == "pr" && "$2" == "diff" ]]; then
+    echo "diff --git a/file.txt b/file.txt"
+    echo "--- a/file.txt"
+    echo "+++ b/file.txt"
+    echo "@@ -1 +1 @@"
+    echo "-old"
+    echo "+new"
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    export MOCK_AGY_LOG="${TMPDIR_BASE}/agy_calls.log"
+    true > "$MOCK_AGY_LOG"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync < /dev/null >/dev/null 2>&1 || exit_code=$?
+    unset MOCK_AGY_LOG
+
+    assert_exit_code "review completes (exit 0)" "0" "$exit_code"
+
+    local agy_log
+    agy_log=$(cat "${TMPDIR_BASE}/agy_calls.log")
+    assert_contains "agy received --print-timeout" "^--print-timeout$" "$agy_log"
+    assert_contains "agy received -p" "^-p$" "$agy_log"
+    assert_contains "prompt content passed as argument value" \
+        "Adversarial Code Review" "$agy_log"
+
+    local findings_file="${MOCK_REPO}/.agent/work-plans/issue-42/review-gemini-findings.md"
+    if [[ -f "$findings_file" ]]; then
+        local content
+        content=$(cat "$findings_file")
+        assert_contains "findings file received agy output" \
+            "Adversarial Code Review" "$content"
+        assert_contains "findings file has completion marker" \
+            "Review complete" "$content"
+    else
+        echo "  FAIL: findings file not created"
+        FAIL=$((FAIL + 1))
+    fi
+
+    teardown
+}
+
 # ---- Run all tests ----
 echo "=== cross_model_review.sh tests ==="
 echo ""
@@ -780,6 +868,7 @@ test_issue_flag_overrides_extraction
 test_missing_keyword_aborts
 test_issue_flag_validates_integer
 test_gh_pr_view_failure_distinct_error
+test_agy_invocation
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
