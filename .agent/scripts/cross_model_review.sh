@@ -10,6 +10,7 @@
 # recursive-bloat failure mode that motivated this.
 #
 # Supported agents: gemini, codex, claude, copilot
+# (the gemini agent runs via the `agy` binary — see AGENT_BINS)
 #
 # Two execution modes:
 #   tmux (default) — runs the agent in a background tmux session
@@ -46,28 +47,39 @@ set -euo pipefail
 
 # --- Agent configuration ---
 # Binary name to search for in PATH and fallback locations.
+# The Gemini CLI migrated to the `agy` binary (issue #223); the agent key
+# stays "gemini" so existing callers (--agent gemini, review-code skill
+# mapping, artifact filenames) keep working.
 declare -A AGENT_BINS=(
-    ["gemini"]="gemini"
+    ["gemini"]="agy"
     ["codex"]="codex"
     ["claude"]="claude"
     ["copilot"]="copilot"
 )
 
+# Timeout for agy print mode. The agy default (5m) is too tight for
+# adversarial reviews of large diffs; Go duration format.
+AGY_PRINT_TIMEOUT="30m"
+
 # Build the shell command string to invoke an agent.
 # Args: agent_key, bin_path, prompt_file, findings_file
 # Stdout: a shell command string safe for tmux new-session.
-# All agents use stdin-based invocation to avoid argv limits on large diffs.
+# Agents use stdin-based invocation where the CLI supports it, to avoid
+# argv limits on large diffs. agy is the exception — see below.
 build_invoke_cmd() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
         gemini)
-            # gemini's -p (--prompt) requires a value, even when stdin
-            # supplies the real prompt. Empty string activates headless
-            # mode; the help text confirms gemini "appends" stdin to it.
-            # Without the "", argparse reports "Not enough arguments" and
-            # dumps the help screen into the findings file. Issue #181.
-            echo "\"${bin}\" -p \"\" < \"${prompt}\" > \"${findings}\" 2>&1"
+            # agy print mode takes the prompt as the argument value of
+            # -p/--print — it does not read the prompt from stdin (the
+            # old `gemini -p "" < prompt` stdin-append convention from
+            # #181 no longer applies). Issue #223. The $(cat ...) is
+            # escaped so it expands inside the tmux session's shell.
+            # Caveat: argv passing is subject to the kernel's per-argument
+            # size limit (~128KiB on Linux); verified working for typical
+            # review prompts during the PR #211 review.
+            echo "\"${bin}\" --print-timeout ${AGY_PRINT_TIMEOUT} -p \"\$(cat \"${prompt}\")\" > \"${findings}\" 2>&1"
             ;;
         codex)
             # Codex exec reads prompt via stdin
@@ -93,9 +105,9 @@ run_agent_sync() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
-        # gemini's -p needs an explicit value — empty string activates
-        # headless mode while leaving the real prompt on stdin (#181).
-        gemini)  "$bin" -p "" < "$prompt" > "$findings" 2>&1 ;;
+        # agy print mode takes the prompt as the -p argument value; it
+        # does not read the prompt from stdin (#223).
+        gemini)  "$bin" --print-timeout "$AGY_PRINT_TIMEOUT" -p "$(cat "$prompt")" > "$findings" 2>&1 ;;
         codex)   "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
         claude)  "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
         copilot) "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
