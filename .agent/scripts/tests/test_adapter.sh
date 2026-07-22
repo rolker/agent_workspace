@@ -461,6 +461,114 @@ test_scope_for_pr_requires_path() {
     assert_contains "explains the requirement" "requires a path argument" "$out"
 }
 
+# ---- setup.sh / sync.py robustness tests (issue #222) ----
+
+# Build an origin repo and a clone at $2 primed for a rebase conflict:
+# origin's default branch gains a commit the clone doesn't have, and the
+# clone gains a local commit touching the same line. The clone ends up on
+# 'main', clean, so setup/sync will attempt `git pull --rebase` and fail
+# mid-rebase.
+make_conflicted_clone() {
+    local sb="$1" clone="$2"
+    local origin="$sb/origin_repo"
+    mkdir -p "$origin"
+    git -C "$origin" init --quiet -b main
+    echo "base" > "$origin/f.txt"
+    git -C "$origin" add f.txt
+    git -C "$origin" -c user.name=t -c user.email=t@t commit -m base --quiet
+    git clone --quiet "$origin" "$clone" 2>/dev/null
+    git -C "$clone" config user.name t
+    git -C "$clone" config user.email t@t
+    echo "upstream" > "$origin/f.txt"
+    git -C "$origin" -c user.name=t -c user.email=t@t commit -am upstream --quiet
+    echo "local" > "$clone/f.txt"
+    git -C "$clone" commit -am local --quiet
+}
+
+# Echo "clean" if no rebase is in progress in repo $1, else "mid-rebase".
+rebase_state() {
+    local repo="$1"
+    if [ -d "$repo/.git/rebase-merge" ] || [ -d "$repo/.git/rebase-apply" ]; then
+        echo "mid-rebase"
+    else
+        echo "clean"
+    fi
+}
+
+test_setup_aborts_failed_rebase() {
+    echo "TEST: setup aborts an in-progress rebase after a failed pull"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_conflicted_clone "$sb" "$sb/project"
+    out="$("$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    assert_eq "setup still exits 0" "0" "$rc"
+    assert_contains "reports the pull failure" "Pull failed" "$out"
+    assert_eq "repo left clean, not mid-rebase" "clean" "$(rebase_state "$sb/project")"
+}
+
+test_setup_replaces_broken_symlink() {
+    echo "TEST: setup removes a broken symlink at project/ before symlinking"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
+    ln -s "$sb/nonexistent_target" "$sb/project"
+    out="$(echo "$sb/real_checkout" | "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "symlink created" "Symlinked: project" "$out"
+    assert_eq "project/ now points at the checkout" \
+        "$(cd "$sb/real_checkout" && pwd -P)" "$(readlink "$sb/project")"
+}
+
+test_setup_replaces_valid_symlink_to_nonrepo() {
+    echo "TEST: setup removes a valid symlink to a non-repo dir before symlinking"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    mkdir "$sb/not_a_repo"
+    ln -s "$sb/not_a_repo" "$sb/project"
+    make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
+    out="$(echo "$sb/real_checkout" | "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "project/ now points at the checkout" \
+        "$(cd "$sb/real_checkout" && pwd -P)" "$(readlink "$sb/project")"
+}
+
+test_setup_removes_empty_placeholder_dir() {
+    echo "TEST: setup still removes an empty placeholder directory (regression)"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    mkdir "$sb/project"
+    make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
+    out="$(echo "$sb/real_checkout" | "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "project/ now points at the checkout" \
+        "$(cd "$sb/real_checkout" && pwd -P)" "$(readlink "$sb/project")"
+}
+
+test_setup_preserves_nonempty_dir() {
+    echo "TEST: setup does NOT delete a non-empty project/ directory"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    mkdir "$sb/project"
+    echo "precious" > "$sb/project/data.txt"
+    make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
+    out="$(echo "$sb/real_checkout" | "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    assert_eq "setup fails" "1" "$rc"
+    assert_eq "existing file untouched" "precious" "$(< "$sb/project/data.txt")"
+}
+
+test_sync_aborts_failed_rebase() {
+    echo "TEST: sync.py aborts an in-progress rebase after a failed pull"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    mkdir -p "$sb/.agent/scripts/lib"
+    cp "$REAL_ROOT/.agent/scripts/lib/"*.py "$sb/.agent/scripts/lib/"
+    make_conflicted_clone "$sb" "$sb/project"
+    out="$(python3 "$sb/.agent/project_types/single_project/sync.py" 2>&1)" || rc=$?
+    assert_eq "sync exits 0" "0" "$rc"
+    assert_contains "reports the pull failure" "Update failed" "$out"
+    assert_eq "repo left clean, not mid-rebase" "clean" "$(rebase_state "$sb/project")"
+}
+
 # ---- Delegation / shim-chain tests ----
 
 test_setup_delegates() {
@@ -551,6 +659,12 @@ test_scope_for_pr_https
 test_scope_for_pr_ssh_url_with_port
 test_scope_for_pr_walks_up
 test_scope_for_pr_requires_path
+test_setup_aborts_failed_rebase
+test_setup_replaces_broken_symlink
+test_setup_replaces_valid_symlink_to_nonrepo
+test_setup_removes_empty_placeholder_dir
+test_setup_preserves_nonempty_dir
+test_sync_aborts_failed_rebase
 test_setup_delegates
 test_sync_shim_chain
 test_sync_real_implementation_runs
