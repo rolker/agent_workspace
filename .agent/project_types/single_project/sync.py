@@ -83,6 +83,11 @@ def sync_repo(repo_path, repo_name, dry_run=False):
             else:
                 print(f"     ✅ Updated:\n{output}")
         else:
+            # A failed rebase pull (conflict, network error) can leave the
+            # repo mid-rebase, wedging later git operations. Abort any
+            # in-progress rebase; the abort itself failing (no rebase in
+            # progress) is fine and ignored.
+            run_git_cmd(repo_path, ["rebase", "--abort"])
             print(f"     ❌ Update failed: {output}")
     else:
         print(f"  On feature branch '{branch}'. Fetching only...")

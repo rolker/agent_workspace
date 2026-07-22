@@ -33,6 +33,19 @@ get_remote_url() {
     git -C "$dir" remote get-url origin 2>/dev/null || echo ""
 }
 
+# --- Helper: clear a stale placeholder at project/ ---
+# Removes a symlink (broken, or pointing at a non-repo — a valid repo symlink
+# never reaches this path because Case 1 handles it) or an empty placeholder
+# directory. A non-empty real directory is deliberately left in place so the
+# subsequent ln -s / git clone fails loudly instead of clobbering data.
+remove_placeholder() {
+    if [ -L "$PROJECT_DIR" ]; then
+        rm "$PROJECT_DIR"
+    elif [ -d "$PROJECT_DIR" ] && [ -z "$(ls -A "$PROJECT_DIR" 2>/dev/null)" ]; then
+        rmdir "$PROJECT_DIR"
+    fi
+}
+
 # --- Case 1: project/ already exists and is a valid git repo ---
 if is_git_repo "$PROJECT_DIR"; then
     REMOTE_URL="$(get_remote_url "$PROJECT_DIR")"
@@ -50,7 +63,15 @@ if is_git_repo "$PROJECT_DIR"; then
         if [ -z "$DIRTY" ]; then
             echo ""
             echo "Pulling latest changes on branch '$BRANCH'..."
-            git -C "$PROJECT_DIR" pull --rebase 2>/dev/null && echo "   ✅ Up to date." || echo "   ⚠️  Pull failed (continuing anyway)"
+            if git -C "$PROJECT_DIR" pull --rebase 2>/dev/null; then
+                echo "   ✅ Up to date."
+            else
+                # A failed rebase pull (conflict, network error) can leave the
+                # repo mid-rebase, wedging later git operations. Abort any
+                # in-progress rebase; ignore failure when none is in progress.
+                git -C "$PROJECT_DIR" rebase --abort &>/dev/null || true
+                echo "   ⚠️  Pull failed (continuing anyway)"
+            fi
         fi
     fi
 
@@ -89,10 +110,8 @@ if [ -d "$PROJECT_INPUT" ]; then
         exit 1
     fi
 
-    # Remove project/ if it's an empty placeholder directory
-    if [ -d "$PROJECT_DIR" ] && [ -z "$(ls -A "$PROJECT_DIR" 2>/dev/null)" ]; then
-        rmdir "$PROJECT_DIR"
-    fi
+    # Remove project/ if it's a stale symlink or empty placeholder directory
+    remove_placeholder
 
     # Create symlink to avoid duplicating the repo on disk
     RESOLVED_PATH="$(cd "$PROJECT_INPUT" && pwd -P)"
@@ -101,10 +120,8 @@ if [ -d "$PROJECT_INPUT" ]; then
     echo "✅ Symlinked: project → $RESOLVED_PATH"
 else
     # Treat as a git URL — clone it
-    # Remove project/ if it's an empty placeholder directory
-    if [ -d "$PROJECT_DIR" ] && [ -z "$(ls -A "$PROJECT_DIR" 2>/dev/null)" ]; then
-        rmdir "$PROJECT_DIR"
-    fi
+    # Remove project/ if it's a stale symlink or empty placeholder directory
+    remove_placeholder
 
     echo ""
     echo "Cloning '$PROJECT_INPUT'..."

@@ -1,5 +1,8 @@
-# Project directory (managed externally — cloned or symlinked)
+# Project directory (managed externally — cloned or symlinked).
+# Both forms are needed: `project/` matches a real directory but NOT a
+# symlink; bare `project` covers the symlinked-checkout case.
 project/
+project
 
 # Worktrees (workspace and project, see issue #25)
 worktrees/
