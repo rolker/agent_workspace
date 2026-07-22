@@ -63,7 +63,8 @@ if ! git bug user adopt &>/dev/null 2>&1; then
 fi
 
 # 3. GitHub bridge setup
-BRIDGE_EXISTS=$(git bug bridge list 2>/dev/null | grep -c "github" || true)
+# `git bug bridge` (no subcommand) lists bridges — `bridge list` doesn't exist in v0.10.1
+BRIDGE_EXISTS=$(git bug bridge 2>/dev/null | grep -c "github" || true)
 if [ "$BRIDGE_EXISTS" -eq 0 ]; then
     # Need gh CLI for auth token
     if ! command -v gh &>/dev/null; then
