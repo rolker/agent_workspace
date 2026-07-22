@@ -181,3 +181,120 @@ Not dispatched this pass — Claude adversarial findings substantive enough to f
 ### Actions
 - [x] Catch GNU sed `--quiet`/`--silent` long forms (equivalent to `-n`) — fixed in `594870c`. Added `has_sed_quiet` helper; `-f` exemption preserved. 5 regression tests added; 113/113 pass.
 - [x] Drop "nudge" wording in wrapper-flags comment (Copilot has flagged this framing repeatedly) — fixed in `594870c`. Replaced with plain trade-off description.
+
+## Implement: gh_create_pr.sh (item 2 of #197 umbrella)
+**Status**: complete
+**When**: 2026-05-12 11:30
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**Branch**: `feature/issue-197-gh-create-pr` (off main; sibling to merged #200/#199)
+
+### Scope
+Collapses the heredoc + mktemp + `gh pr create --body-file` + rm sequence
+(2–3 permission prompts each PR) into a single allowlistable wrapper.
+
+### Design decisions
+- **Hard-fail on missing identity** — when signature would be added but
+  `AGENT_NAME`/`AGENT_MODEL` are unset, exit 2 with set_git_identity_env.sh
+  instructions. `--no-signature` and already-signed bodies bypass this
+  check. Stance is workspace-policy strict per Roland's pick.
+- **`--body-stdin` as canonical form in AGENTS.md** — single allowlisted
+  call, no mktemp dance. `--body-file` and `--body` still supported as
+  alternatives. Wrapper internally drains stdin to a temp file and uses
+  trap-based cleanup.
+- **Mirror gh_create_issue.sh structure** — repo-safety check, label
+  validation, json metadata path, error code conventions. Dropped the
+  git-bug path (PRs aren't git-bug tracked per ADR-0010).
+- **Test approach: shimmed `gh` via PATH** — `.agent/scripts/tests/test_gh_create_pr.sh`
+  injects a `gh` shim that captures argv into a logfile; assertions inspect
+  the logfile. No network calls, mirrors test_block_bash_tool_mapping.sh style.
+
+### Test gotcha (logged for future)
+The system's `grep` is `ugrep` (stricter option parser). `grep -Fxq "--draft"`
+fails because `--draft` is interpreted as a flag. Fix: `grep -Fxq -- "$pattern"`.
+Applied to argv_has() in the new test; worth remembering across other tests.
+
+### Actions
+- [x] Open PR closing #197 umbrella item 2 — PR #203 opened
+
+## External Review (PR #203, round 1)
+**Status**: complete
+**When**: 2026-05-12 12:00
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `dd7ee00` — 1 Copilot review (6 comments, all valid, 0 false positives)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Normalize joined-equals flag forms (`--body=X` → `--body X`) in a pre-parse pass — fixed in `31a13d8`. Closes the two argv-rewrite bugs (#1, #2) on `--body=` and `--body-file=`.
+- [x] Hoist `--body-stdin` drain-and-rewrite out of the signature branch — fixed in `31a13d8`. `--body-stdin` no longer leaks to `gh` when `--no-signature` or pre-signed content (#6).
+- [x] Run signature dedupe against stdin-drained content — fixed in `31a13d8` (falls out naturally once the drain happens before `needs_signature` runs) (#4).
+- [x] `needs_signature` returns false when no body provided — fixed in `31a13d8`. Interactive `gh pr create` works without `AGENT_NAME` (#3).
+- [x] Test coverage for all 4 body shapes × signed/unsigned/already-signed/interactive — added in `31a13d8`. 10 new tests; suite 26/26.
+
+### Lesson
+Pre-review checklist should explicitly enumerate argv shape variants
+(`--flag X` vs `--flag=X` vs stdin) for any wrapper that rewrites
+argv. Five of the six Copilot catches cluster around this single
+gap — and they all would have been caught by adding one row to the
+test ledger upfront. Feeding into the `feedback_adversarial_pre_review`
+memory.
+
+## External Review (PR #203, round 2)
+**Status**: complete
+**When**: 2026-05-13 14:00
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `0f26739` — 1 new Copilot review (5 comments, 4 valid, 0 false positives; the stale 6-comment review against `dd7ee00` is already addressed by `31a13d8`)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Fix exec/trap temp-file leak: replaced all four `exec gh pr create "${FINAL_ARGS[@]}"` with non-exec + `exit $?` so the EXIT traps actually fire — fixed in `6d59a0d`. Verified via `/tmp/gh_pr_body.*.md` count before/after test run (0 → 0).
+- [x] Harden label validation against `ugrep`: added `--` to `grep -Fxq` in both `gh_create_pr.sh:307` and the mirror at `gh_create_issue.sh:279` — fixed in `6d59a0d`.
+- [x] Replaced unreliable multi-line `argv_has` assertion with targeted `grep -Fq` checks for body text + `**Authored-By**:` / `**Model**:` markers — fixed in `6d59a0d`.
+- [x] Track `--body` flag presence separately via `BODY_FLAG_PRESENT` so `--body ""` is recognized as non-interactive (signed when env vars set, hard-fails when unset) — fixed in `6d59a0d`. Added 3 regression tests; suite 29/29.
+
+## External Review (PR #203, round 3)
+**Status**: complete
+**When**: 2026-05-13 14:30
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `2f4bb88` — 1 new Copilot review (2 comments, 2 valid, 0 false positives; plus 1 low-confidence suppressed comment on `--body-file` parsing, same root cause as #1 below)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Reject missing `--body` / `--body-file` values up-front with `exit 2` and a clear error message in `gh_create_pr.sh` — fixed in `f21f4fc`. Mirrors the `-R/--repo` pattern.
+- [x] Added regression tests for both `--body` and `--body-file` as last-arg cases (assert exit code 2) — fixed in `f21f4fc`. Suite 31/31.
+- [x] Documented the identity-unset hard-fail in AGENTS.md "Creating pull requests" section — fixed in `f21f4fc`.
+
+## External Review (PR #203, round 4)
+**Status**: complete
+**When**: 2026-05-13 14:55
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `5bc83b1` — 1 new Copilot review (3 comments, 3 valid, 0 false positives)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Rejected mutually exclusive body sources with `exit 2` — fixed in `694ef25`. Count of `{BODY_FLAG_PRESENT, BODY_FILE_PATH non-empty, BODY_STDIN}` > 1 → error. Three regression tests cover all pairs.
+- [x] Hard-fail on missing `--label` / `-l` value with `exit 2` — fixed in `694ef25`. Mirrors `--repo` / `--body` / `--body-file`. Regression test added.
+- [x] Fixed misleading test header comment at `tests/test_gh_create_pr.sh:6-8` — only `gh` is shimmed — fixed in `694ef25`.
+
+Suite: 35/35 (was 31/31, +4 new tests).
+
+## External Review (PR #203, round 5)
+**Status**: complete
+**When**: 2026-05-13 15:15
+**By**: Claude Code Agent (claude-opus-4-7)
+
+**PR**: #203 at `163aab3` — 1 new Copilot review (1 comment, 1 valid, 0 false positives)
+**CI**: all-pass (8/8)
+
+### Actions
+- [x] Rewrote the "Exit codes" header in `gh_create_pr.sh` to match actual behavior (1 = invalid label value, 2 = argument/usage errors enumerated, 3 = missing deps) — fixed in `cccf264`.
+
+### Trend
+Round comment counts: 6 → 5 → 2 → 3 → 1. Zero false positives across all 5 rounds. Each round is closing remaining edges rather than reopening earlier ground.
+
+### Trend
+Round comment counts: 6 → 5 → 2 → 3. Zero false positives across all 4 rounds. Each round is finding genuine smaller refinements rather than re-flagging earlier concerns or churning over style.

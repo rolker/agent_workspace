@@ -274,9 +274,11 @@ VALID_LABELS=$(jq -r '.labels[]' "$METADATA_FILE" 2>/dev/null) || {
 }
 
 # Validate each label
+# `--` terminates grep option parsing so labels starting with `-` are not
+# misread as flags (matters under ugrep / stricter grep).
 INVALID_LABELS=()
 for label in "${LABELS[@]}"; do
-    if ! echo "$VALID_LABELS" | grep -Fxq "$label"; then
+    if ! echo "$VALID_LABELS" | grep -Fxq -- "$label"; then
         INVALID_LABELS+=("$label")
     fi
 done
