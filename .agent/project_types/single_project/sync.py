@@ -107,10 +107,12 @@ def sync_gitbug(repo_path, dry_run=False):
     if not shutil.which("git-bug"):
         return
 
-    # Check if a bridge is configured in this repo
+    # Check if a bridge is configured in this repo.
+    # NOTE: `git bug bridge` with NO subcommand lists bridges —
+    # `git bug bridge list` does not exist in git-bug v0.10.1 (issue #221).
     try:
         result = subprocess.run(
-            ["git", "bug", "bridge", "list"],
+            ["git", "bug", "bridge"],
             cwd=str(repo_path),
             capture_output=True,
             text=True,
