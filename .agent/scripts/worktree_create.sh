@@ -23,6 +23,7 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_issue_helpers.sh"
+source "$SCRIPT_DIR/_project_registry.sh"
 
 # Try to fetch a specific branch from origin.
 fetch_remote_branch() {
@@ -39,6 +40,7 @@ SKILL_NAME=""
 WORKTREE_TYPE=""
 BRANCH_NAME=""
 REPO_SLUG=""
+PROJECT_REPO=""
 PLAN_FILE=""
 PARENT_ISSUE_NUM=""
 WORKFLOW=""
@@ -69,6 +71,9 @@ show_usage() {
     echo "  --issue <number>      Issue number (required, unless --skill is used)"
     echo "  --skill <name>        Skill name (alternative to --issue; allowed: ${ALLOWED_SKILLS[*]})"
     echo "  --type <type>         Worktree type: 'workspace' or 'project' (required)"
+    echo "  --repo <name>         Registered project name from .agent/projects.local"
+    echo "                        (--type project only; default: legacy project/, or the"
+    echo "                        single registered project when project/ is absent)"
     echo "  --repo-slug <slug>    Repository slug for naming (auto-detected if not provided)"
     echo "  --branch <name>       Custom branch name (default: feature/issue-<N>)"
     echo "  --parent-issue <N>    Parent issue number; branches from parent's feature branch"
@@ -102,6 +107,15 @@ while [[ $# -gt 0 ]]; do
             ;;
         --type)
             WORKTREE_TYPE="$2"
+            shift 2
+            ;;
+        --repo)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                echo "Error: --repo requires a project name"
+                show_usage
+                exit 1
+            fi
+            PROJECT_REPO="$2"
             shift 2
             ;;
         --repo-slug)
@@ -226,12 +240,59 @@ if [ -n "$WORKFLOW" ]; then
     fi
 fi
 
-# For project type, project/ must be configured
+if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" != "project" ]; then
+    echo "Error: --repo is only valid with --type project"
+    exit 1
+fi
+
+# For project type, resolve the project checkout: an explicit --repo name
+# from the registry, the legacy project/ symlink, or — when project/ is
+# absent — the single registered project (issue #227).
+PROJECT_NAME=""
 if [ "$WORKTREE_TYPE" == "project" ]; then
-    PROJECT_DIR="$ROOT_DIR/project"
+    PROJECT_DIR=""
+    if [ -n "$PROJECT_REPO" ]; then
+        _RC=0
+        _ENTRY="$(registry_lookup "$ROOT_DIR" "$PROJECT_REPO")" || _RC=$?
+        if [ "$_RC" -ne 0 ]; then
+            if [ "$_RC" -eq 1 ]; then
+                echo "Error: project '$PROJECT_REPO' is not registered in $(registry_file "$ROOT_DIR")"
+                _NAMES="$(registry_names "$ROOT_DIR" 2>/dev/null || true)"
+                if [ -n "$_NAMES" ]; then
+                    echo "Registered projects:"
+                    sed 's/^/  /' <<< "$_NAMES"
+                else
+                    echo "  (no projects registered — see .agent/projects.local.example)"
+                fi
+            fi
+            exit 1
+        fi
+        PROJECT_NAME="$PROJECT_REPO"
+        PROJECT_DIR="$(cut -f2 <<< "$_ENTRY")"
+    elif [ -d "$ROOT_DIR/project" ] && git -C "$ROOT_DIR/project" rev-parse --git-dir &>/dev/null; then
+        PROJECT_DIR="$ROOT_DIR/project"
+    else
+        # No legacy project/ — fall back to the registry.
+        _ENTRIES="$(registry_entries "$ROOT_DIR")" || exit 1
+        _COUNT=0
+        [ -n "$_ENTRIES" ] && _COUNT="$(wc -l <<< "$_ENTRIES")"
+        if [ "$_COUNT" -eq 1 ]; then
+            PROJECT_NAME="$(cut -f1 <<< "$_ENTRIES")"
+            PROJECT_DIR="$(cut -f3 <<< "$_ENTRIES")"
+            echo "Using registered project '$PROJECT_NAME' ($PROJECT_DIR)"
+        elif [ "$_COUNT" -gt 1 ]; then
+            echo "Error: Multiple projects registered. Use --repo to specify:"
+            cut -f1 <<< "$_ENTRIES" | sed 's/^/  --repo /'
+            exit 1
+        else
+            echo "Error: project/ is not configured."
+            echo "Run: make setup  (or register a project in .agent/projects.local)"
+            exit 1
+        fi
+    fi
     if [ ! -d "$PROJECT_DIR" ] || ! git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-        echo "Error: project/ is not configured."
-        echo "Run: make setup"
+        echo "Error: project checkout is not a git repository: $PROJECT_DIR"
+        [ -n "$PROJECT_NAME" ] && echo "Clone the project there or fix .agent/projects.local"
         exit 1
     fi
 fi
@@ -240,32 +301,39 @@ fi
 if [ -z "$REPO_SLUG" ]; then
     REMOTE_URL=""
 
-    if [ "$WORKTREE_TYPE" == "project" ] && [ -d "$ROOT_DIR/project" ]; then
-        REMOTE_URL=$(git -C "$ROOT_DIR/project" remote get-url origin 2>/dev/null || echo "")
+    if [ "$WORKTREE_TYPE" == "project" ] && [ -d "$PROJECT_DIR" ]; then
+        REMOTE_URL=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "")
     fi
 
-    if [ -z "$REMOTE_URL" ]; then
-        REMOTE_URL=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
-    fi
-
-    if [ -n "$REMOTE_URL" ]; then
+    if [ -n "$PROJECT_NAME" ]; then
+        # Registry-selected project: the registry name is the worktree repo
+        # key (worktrees/project/<name>/ — matches enter/remove --repo).
         GH_REPO_SLUG=$(extract_gh_slug "$REMOTE_URL")
-        REPO_SLUG=$(basename "$REMOTE_URL" .git)
-        # Normalize known workspace repo name
-        if [ "$REPO_SLUG" == "agent_workspace" ]; then
+        REPO_SLUG=$(echo "$PROJECT_NAME" | sed 's/[^A-Za-z0-9_]/_/g')
+    else
+        if [ -z "$REMOTE_URL" ]; then
+            REMOTE_URL=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
+        fi
+
+        if [ -n "$REMOTE_URL" ]; then
+            GH_REPO_SLUG=$(extract_gh_slug "$REMOTE_URL")
+            REPO_SLUG=$(basename "$REMOTE_URL" .git)
+            # Normalize known workspace repo name
+            if [ "$REPO_SLUG" == "agent_workspace" ]; then
+                REPO_SLUG="workspace"
+            fi
+            REPO_SLUG=$(echo "$REPO_SLUG" | sed 's/[^A-Za-z0-9_]/_/g')
+        else
+            GH_REPO_SLUG=""
             REPO_SLUG="workspace"
         fi
-        REPO_SLUG=$(echo "$REPO_SLUG" | sed 's/[^A-Za-z0-9_]/_/g')
-    else
-        GH_REPO_SLUG=""
-        REPO_SLUG="workspace"
     fi
     echo "Auto-detected repository slug: $REPO_SLUG"
 else
     # --repo-slug given; still auto-detect GH_REPO_SLUG for gh CLI
     GH_REPO_SLUG=""
-    if [ "$WORKTREE_TYPE" == "project" ] && [ -d "$ROOT_DIR/project" ]; then
-        _URL=$(git -C "$ROOT_DIR/project" remote get-url origin 2>/dev/null || echo "")
+    if [ "$WORKTREE_TYPE" == "project" ] && [ -d "$PROJECT_DIR" ]; then
+        _URL=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "")
         GH_REPO_SLUG=$(extract_gh_slug "$_URL")
     elif git -C "$ROOT_DIR" remote get-url origin &>/dev/null; then
         _URL=$(git -C "$ROOT_DIR" remote get-url origin)
@@ -276,8 +344,8 @@ fi
 
 # --- Determine project GH slug for PR targeting ---
 PROJECT_GH_SLUG=""
-if [ "$WORKTREE_TYPE" == "project" ] && [ -d "$ROOT_DIR/project" ]; then
-    _PROJ_URL=$(git -C "$ROOT_DIR/project" remote get-url origin 2>/dev/null || echo "")
+if [ "$WORKTREE_TYPE" == "project" ] && [ -d "$PROJECT_DIR" ]; then
+    _PROJ_URL=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "")
     PROJECT_GH_SLUG=$(extract_gh_slug "$_PROJ_URL")
 fi
 
@@ -397,37 +465,37 @@ PARENT_BRANCH_FOUND=false
 # --- Create the worktree ---
 if [ "$WORKTREE_TYPE" == "project" ]; then
     # Project worktrees are git worktrees of the project repo
-    if git -C "$ROOT_DIR/project" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+    if git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
         echo "Using existing local branch '$BRANCH_NAME'..."
-        git -C "$ROOT_DIR/project" worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
-    elif fetch_remote_branch "$ROOT_DIR/project" "$BRANCH_NAME"; then
+        git -C "$PROJECT_DIR" worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
+    elif fetch_remote_branch "$PROJECT_DIR" "$BRANCH_NAME"; then
         echo "Tracking remote branch 'origin/$BRANCH_NAME'..."
-        git -C "$ROOT_DIR/project" worktree add --track -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$BRANCH_NAME"
+        git -C "$PROJECT_DIR" worktree add --track -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$BRANCH_NAME"
     elif [ -n "$PARENT_BRANCH" ]; then
-        if git -C "$ROOT_DIR/project" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH"; then
+        if git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH"; then
             echo "Creating new branch '$BRANCH_NAME' from parent branch '$PARENT_BRANCH'..."
-            git -C "$ROOT_DIR/project" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "$PARENT_BRANCH"
+            git -C "$PROJECT_DIR" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "$PARENT_BRANCH"
             PARENT_BRANCH_FOUND=true
-        elif fetch_remote_branch "$ROOT_DIR/project" "$PARENT_BRANCH"; then
+        elif fetch_remote_branch "$PROJECT_DIR" "$PARENT_BRANCH"; then
             echo "Creating new branch '$BRANCH_NAME' from parent branch 'origin/$PARENT_BRANCH'..."
-            git -C "$ROOT_DIR/project" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$PARENT_BRANCH"
+            git -C "$PROJECT_DIR" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$PARENT_BRANCH"
             PARENT_BRANCH_FOUND=true
         else
             echo "⚠️  Parent branch '$PARENT_BRANCH' not found; falling back to HEAD"
-            git -C "$ROOT_DIR/project" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+            git -C "$PROJECT_DIR" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
         fi
     else
         echo "Creating new branch '$BRANCH_NAME' from current HEAD..."
-        git -C "$ROOT_DIR/project" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+        git -C "$PROJECT_DIR" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
     fi
 
     # Check parent branch exists for PR targeting
     if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ]; then
-        if git -C "$ROOT_DIR/project" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
-           git -C "$ROOT_DIR/project" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
+        if git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
+           git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
             PARENT_BRANCH_FOUND=true
-        elif fetch_remote_branch "$ROOT_DIR/project" "$PARENT_BRANCH" && \
-             git -C "$ROOT_DIR/project" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
+        elif fetch_remote_branch "$PROJECT_DIR" "$PARENT_BRANCH" && \
+             git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
             PARENT_BRANCH_FOUND=true
         fi
     fi
