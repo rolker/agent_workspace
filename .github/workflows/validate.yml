@@ -37,6 +37,12 @@ jobs:
       - name: Run adapter tests
         run: bash .agent/scripts/tests/test_adapter.sh
 
+      - name: Run project registry tests
+        run: bash .agent/scripts/tests/test_project_registry.sh
+
+      - name: Run ros2_colcon adapter tests
+        run: bash .agent/scripts/tests/test_ros2_colcon.sh
+
   validate-documentation:
     name: Validate Documentation
     runs-on: ubuntu-latest

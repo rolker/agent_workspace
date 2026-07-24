@@ -80,10 +80,10 @@ this table tracks the seven migration steps.
 |------|------|-------|--------|-------|
 | 1 | Adapter contract + `single_project` adapter | #210 | done | 10-verb contract (ADR-0011); pure facade over the pre-adapter scripts (PR #226) |
 | 2 | Multi-tenant hosting: `projects/<name>/` + registry | #227 | done | `.agent/projects.local`, `--project`/cwd discovery, worktree `--repo` wiring (PR #232) |
-| 3 | `multi_repo` adapter | — | planned | For the next sibling-repos project; used from day one |
-| 4 | Manifest support | — | planned | `.project_config` schema + `agent project add --manifest-repo/--manifest-ref`; standalone manifest repos first, embedded branches later |
+| 3 | `multi_repo` adapter | — | deferred | Re-sequenced 2026-07-24 (see #172 comment): waits for a sibling-repos project to materialize |
+| 4 | Manifest support | — | planned | `.project_config` schema + `agent project add --manifest-repo/--manifest-ref`; standalone manifest repos first, embedded branches later. Role variants (dev/operator/robot) designed here with step 7 |
 | 5 | Migrate hosted project into `projects/` | — | planned | Retire the legacy `project/` symlink; unlocks project-rooted sessions with layered CLAUDE.md |
-| 6 | Port `ros2_colcon` adapter | — | planned | Validate on the ROS machine; retire `ros2_agent_workspace` as a separate repo |
+| 6 | Port `ros2_colcon` adapter | #235 | in progress | Pulled forward (target: host project11 with multi-distro). Phase 1 = adapter core; then real-project smoke, layer worktrees, second distro instance |
 | 7 | Variant-branch refinement | — | planned | `agent/manifest/base` + per-machine variant branches; builds on step 4 |
 
 ## Priority: Improve Local Reviews
