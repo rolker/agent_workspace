@@ -143,6 +143,9 @@ PROJECT_DIR="${MAIN_ROOT:-$ROOT_DIR}/project"
 REGISTRY_ENTRIES="$(registry_entries "${MAIN_ROOT:-$ROOT_DIR}")" || {
     check_fail "projects.local has malformed entries (see errors above)"
     ((FAILED_CHECKS++))
+    # Fail closed like the adapter dispatcher: don't report/sync/query a
+    # partial project list from a malformed registry.
+    REGISTRY_ENTRIES=""
 }
 if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
     PROJECT_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "")
@@ -383,18 +386,18 @@ if [ "$SKIP_GITHUB" = false ]; then
     else
         # Build repo list: workspace + project
         REPOS=""
-        WS_REMOTE=$(cd "$ROOT_DIR" && git remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|.git$||' || true)
+        WS_REMOTE=$(cd "$ROOT_DIR" && git remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|\.git$||' || true)
         [ -n "$WS_REMOTE" ] && REPOS="$WS_REMOTE"
 
         if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
-            PROJ_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|.git$||' || true)
+            PROJ_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|\.git$||' || true)
             [ -n "$PROJ_REMOTE" ] && REPOS=$(printf '%s\n%s' "$REPOS" "$PROJ_REMOTE")
         fi
         if [ -n "${REGISTRY_ENTRIES:-}" ]; then
             while IFS=$'\t' read -r _name _type _path; do
                 [ -z "$_name" ] && continue
                 [ -d "$_path" ] && git -C "$_path" rev-parse --git-dir &>/dev/null || continue
-                _REG_REMOTE=$(git -C "$_path" remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|.git$||' || true)
+                _REG_REMOTE=$(git -C "$_path" remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|\.git$||' || true)
                 [ -n "$_REG_REMOTE" ] && REPOS=$(printf '%s\n%s' "$REPOS" "$_REG_REMOTE")
             done <<< "$REGISTRY_ENTRIES"
         fi

@@ -34,12 +34,12 @@ issue: 227
 **CI**: all-pass
 
 ### Actions
-- [ ] Fix: dashboard.sh — escape the dot in all three `sed 's|.git$||'`
+- [x] Fix: dashboard.sh — escape the dot in all three `sed 's|.git$||'`
   slug-stripping pipelines (lines 386/390/397); unescaped `.` makes the
   pattern strip 4 chars from repo names ending in "git" even without a
   literal `.git` suffix. Two occurrences are pre-existing, one was added
   by this PR — fix all three.
-- [ ] Fix: dashboard.sh — clear REGISTRY_ENTRIES in the parse-error handler
+- [x] Fix: dashboard.sh — clear REGISTRY_ENTRIES in the parse-error handler
   so later sections (sync, registered-projects report, GitHub queries)
   don't act on a partial project list; the health-check failure banner
   carries the diagnosis.
