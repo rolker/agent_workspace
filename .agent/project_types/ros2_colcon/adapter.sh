@@ -47,7 +47,9 @@ _rc_manifest_dir() {
     echo "$(_rc_root)/configs/manifest"
 }
 
-# Require the manifest dir (dir or resolving symlink). Errors with guidance.
+# Require the manifest dir (dir or resolving symlink) with at least one
+# layer defined. Errors with guidance — an empty layers.txt must not let
+# the layer loops run zero times and report success.
 _rc_require_manifest() {
     local mdir
     mdir="$(_rc_manifest_dir)"
@@ -56,6 +58,10 @@ _rc_require_manifest() {
         echo "The hosting dir must contain configs/manifest/ with layers.txt," >&2
         echo "repos/<layer>.repos, and optionally bootstrap.yaml — the" >&2
         echo "ros2_agent_workspace manifest shape. See issue #235." >&2
+        return 1
+    fi
+    if [ -z "$(_rc_layers)" ]; then
+        echo "ERROR: $mdir/layers.txt defines no layers (empty or comments only)" >&2
         return 1
     fi
 }
@@ -95,12 +101,18 @@ _rc_distro() {
     if [ -z "$distro" ]; then
         config="$(_rc_config_file)"
         if [ -f "$config" ]; then
-            distro="$(
+            # Suppress the config's stdout only (env output must stay
+            # eval-safe); a failing config is a hard error, never an empty
+            # value — matching single_project's config-failure semantics.
+            if ! distro="$(
                 ROS_DISTRO=
                 # shellcheck source=/dev/null
-                source "$config" >/dev/null 2>&1 || true
+                source "$config" >/dev/null || exit 1
                 echo "${ROS_DISTRO:-}"
-            )"
+            )"; then
+                echo "ERROR: failed to source $config" >&2
+                return 1
+            fi
         fi
     fi
     if [ -z "$distro" ]; then
@@ -123,21 +135,27 @@ _rc_ros_root() {
     local config root=""
     config="$(_rc_config_file)"
     if [ -f "$config" ]; then
-        root="$(
+        # A failing config must not silently discard the user's override
+        # and fall back to /opt/ros (wrong ROS install, no warning).
+        if ! root="$(
             ROS_ROOT_DIR=
             # shellcheck source=/dev/null
-            source "$config" >/dev/null 2>&1 || true
+            source "$config" >/dev/null || exit 1
             echo "${ROS_ROOT_DIR:-}"
-        )"
+        )"; then
+            echo "ERROR: failed to source $config" >&2
+            return 1
+        fi
     fi
     echo "${root:-/opt/ros}"
 }
 
 # Path to the distro's setup.bash; errors if missing.
 _rc_underlay() {
-    local distro underlay
+    local distro ros_root underlay
     distro="$(_rc_distro)" || return 1
-    underlay="$(_rc_ros_root)/$distro/setup.bash"
+    ros_root="$(_rc_ros_root)" || return 1
+    underlay="$ros_root/$distro/setup.bash"
     if [ ! -f "$underlay" ]; then
         echo "ERROR: ROS underlay not found: $underlay" >&2
         echo "Install ROS 2 '$distro' (or set ROS_ROOT_DIR in $(_rc_config_file))." >&2

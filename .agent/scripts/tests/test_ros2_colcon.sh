@@ -271,6 +271,44 @@ test_missing_manifest_fails() {
     assert_contains "points at the expected manifest" "configs/manifest" "$out"
 }
 
+test_empty_layers_fails() {
+    echo "TEST: an empty/comment-only layers.txt fails loudly instead of no-op success"
+    local sb out rc=0 proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    printf '# no layers yet\n\n' > "$proj/configs/manifest/layers.txt"
+    out="$(run_adapter "$sb" build 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the empty manifest" "defines no layers" "$out"
+    assert_not_contains "no phantom success" "All layers built successfully" "$out"
+}
+
+test_broken_config_fails() {
+    echo "TEST: a failing per-project config is a hard error, not a silent fallback"
+    local sb out rc=0 proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    # Config declares the override, then fails — the override must not be
+    # silently dropped in favor of /opt/ros.
+    {
+        echo "ROS_ROOT_DIR=\"$sb/rosroot\""
+        echo "false"
+    } > "$sb/.agent/projects.d/p11.sh"
+    out="$(run_adapter "$sb" env 2>&1)" || rc=$?
+    assert_eq "exits nonzero (_rc_ros_root path)" "1" "$rc"
+    assert_contains "names the config" "failed to source $sb/.agent/projects.d/p11.sh" "$out"
+
+    # Same failure via the distro-resolution path (no distro in manifest).
+    printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
+        > "$proj/configs/manifest/bootstrap.yaml"
+    rc=0
+    out="$(run_adapter "$sb" env 2>&1)" || rc=$?
+    assert_eq "exits nonzero (_rc_distro path)" "1" "$rc"
+    assert_contains "still names the config" "failed to source" "$out"
+}
+
 # ---- env verb ----
 
 test_env_chain_order() {
@@ -588,6 +626,8 @@ test_distro_from_project_config
 test_distro_unresolvable_fails
 test_missing_underlay_fails
 test_missing_manifest_fails
+test_empty_layers_fails
+test_broken_config_fails
 test_env_chain_order
 test_setup_imports_each_layer
 test_setup_optional_layer_failure_tolerated
