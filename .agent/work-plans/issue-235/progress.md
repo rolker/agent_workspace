@@ -61,3 +61,18 @@ issue: 235
   the same gap and should be added in the same step. Without this, adapter
   regressions can merge unnoticed — enforcement-over-documentation says
   the suites belong in CI.
+
+## External Review (round 4)
+**Status**: complete
+**When**: 2026-07-24 13:20
+**By**: Claude Code Agent (claude-fable-5)
+
+**PR**: #236 — round 4 (head 1dd194f): 1 comment (4 locations), 1 valid
+**CI**: all-pass (both new suites green on the runner)
+
+### Actions
+- [ ] Fix: scope the nounset relaxation to the ROS source calls only —
+  adapter_build/adapter_test currently `set +u` at function top and never
+  restore, weakening the adapter's own logic. Add a _rc_source_setup
+  helper (set +u; source; set -u) with a fail-loud error at each call
+  site; drop the function-top set +u lines.
