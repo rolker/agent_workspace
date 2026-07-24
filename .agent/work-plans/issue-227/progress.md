@@ -43,3 +43,20 @@ issue: 227
   so later sections (sync, registered-projects report, GitHub queries)
   don't act on a partial project list; the health-check failure banner
   carries the diagnosis.
+
+## External Review (round 3)
+**Status**: complete
+**When**: 2026-07-24 10:20
+**By**: Claude Code Agent (claude-fable-5)
+
+**PR**: #232 — round 3 (head 326143a): 1 comment, 0 valid, 1 false positive
+**CI**: all-pass
+
+### Actions
+- [x] No action: adapter.sh missing-config header "No project_config.sh
+  found." cannot mislead — _single_project_config_file() returns the
+  per-project override only when that file exists, so in the missing-file
+  branch $config is always the shared project_config.sh. The guidance
+  lines already reference $config, and the active project's override path
+  is printed when one is active. The var-not-set branch (where $config
+  can be the override) already names it via $config.
