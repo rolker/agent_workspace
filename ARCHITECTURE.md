@@ -18,7 +18,8 @@ agent_workspace/
 │   │   └── ...
 │   ├── knowledge/         # Agent knowledge documents
 │   ├── project_types/     # Project-type adapters (ADR-0011)
-│   │   └── single_project/  # adapter.sh + setup.sh + sync.py
+│   │   ├── single_project/  # adapter.sh + setup.sh + sync.py
+│   │   └── ros2_colcon/     # adapter.sh — layered colcon workspaces (#235)
 │   ├── project_config.sh  # PROJECT_TYPE / BUILD_CMD / TEST_CMD / INSTALL_CMD (gitignored, per-developer)
 │   ├── projects.local     # Per-machine project registry (gitignored; see projects.local.example)
 │   ├── projects.d/        # Per-project command configs, <name>.sh (gitignored)
@@ -86,7 +87,13 @@ project URL — no `configs/` directory is needed.
 repo with a remote) and registry entries (well-formed, known project type,
 checkout present).
 
-Further types (`multi_repo`, `ros2_colcon`) arrive with later #172 steps.
+Two project types exist: `single_project` (one repo at the hosting dir) and
+`ros2_colcon` (ordered colcon layers under `layers/main/<layer>_ws/`, driven
+by an in-tree manifest at `configs/manifest/` — `layers.txt`, per-layer
+`.repos` files, `bootstrap.yaml`; the ROS distro comes from the manifest's
+`distro:` field or `ROS_DISTRO` in the per-project config, never a silent
+default). `multi_repo` is deferred until a sibling-repos project materializes
+(#172 re-sequencing, 2026-07-24).
 
 ## Worktree Strategy
 
