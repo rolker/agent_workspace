@@ -2,11 +2,17 @@
 Workspace Management Library
 
 Provides common functions for discovering and managing repositories in the
-general-purpose Agent Workspace (single-repo model).
+general-purpose Agent Workspace: the legacy single-repo model (project/)
+and the per-machine project registry (.agent/projects.local, issue #227).
 """
 
+import re
 import subprocess
 from pathlib import Path
+
+# Mirror the validation rules in .agent/scripts/_project_registry.sh.
+_REGISTRY_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_REGISTRY_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9_]*$")
 
 
 def get_workspace_root():
@@ -26,12 +32,70 @@ def get_project_path():
     return Path(get_workspace_root()) / "project"
 
 
-def is_project_configured():
+def is_project_configured(project=None):
     """
-    Return True if project/ exists and is a valid git repo.
+    Return True if the project checkout exists and is a valid git repo.
+
+    Defaults to the legacy project/ directory; pass a Path to check a
+    registry-hosted project instead.
     """
-    project = get_project_path()
-    return project.exists() and (project / ".git").exists()
+    if project is None:
+        project = get_project_path()
+    project = Path(project)
+    if not project.exists():
+        return False
+    if (project / ".git").exists():
+        return True
+    # project may be a symlink to a checkout
+    return (project.resolve() / ".git").exists()
+
+
+def get_projects_registry_path(root=None):
+    """Return the Path of the per-machine project registry (issue #227)."""
+    if root is None:
+        root = get_workspace_root()
+    return Path(root) / ".agent" / "projects.local"
+
+
+def read_projects_registry(root=None):
+    """
+    Parse .agent/projects.local (issue #227).
+
+    Returns (entries, errors) where entries is a list of dicts with keys
+    'name', 'type', and 'path' (absolute Path), and errors is a list of
+    human-readable strings for malformed lines. A missing registry file
+    yields ([], []) — the registry is optional.
+    """
+    if root is None:
+        root = get_workspace_root()
+    root = Path(root)
+    registry = get_projects_registry_path(root)
+    entries = []
+    errors = []
+    if not registry.is_file():
+        return entries, errors
+    for lineno, raw in enumerate(registry.read_text().splitlines(), start=1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        fields = line.split()
+        if len(fields) > 3:
+            errors.append(f"{registry}:{lineno}: too many fields (paths must not contain spaces)")
+            continue
+        name = fields[0]
+        ptype = fields[1] if len(fields) > 1 else ""
+        path = fields[2] if len(fields) > 2 else f"projects/{name}"
+        if not _REGISTRY_NAME_RE.match(name):
+            errors.append(f"{registry}:{lineno}: invalid project name '{name}'")
+            continue
+        if not _REGISTRY_TYPE_RE.match(ptype):
+            errors.append(f"{registry}:{lineno}: invalid or missing project type for '{name}'")
+            continue
+        abs_path = Path(path)
+        if not abs_path.is_absolute():
+            abs_path = root / path
+        entries.append({"name": name, "type": ptype, "path": abs_path})
+    return entries, errors
 
 
 def get_project_remote_url():

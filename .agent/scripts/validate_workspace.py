@@ -3,10 +3,15 @@
 Validate workspace configuration.
 
 Checks that:
-1. project/ exists and is a valid git repo
-2. project/ has a remote configured
-3. .venv shebangs match the current workspace path
-4. pre-commit hook points to a valid Python path
+1. A project checkout is configured — legacy project/ symlink and/or
+   registry entries in .agent/projects.local (issue #227); both shapes
+   may coexist during migration
+2. Configured checkouts are valid git repos (legacy project/ additionally
+   needs a remote)
+3. Registry entries are well-formed and name project types that have
+   adapters (ADR-0011)
+4. .venv shebangs match the current workspace path
+5. pre-commit hook points to a valid Python path
 
 Usage:
     python3 validate_workspace.py [--verbose]
@@ -20,7 +25,12 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(SCRIPT_DIR / "lib"))
 
-from workspace import get_workspace_root, get_project_path, get_project_remote_url
+from workspace import (
+    get_workspace_root,
+    get_project_path,
+    get_project_remote_url,
+    read_projects_registry,
+)
 
 
 def get_git_branch(repo_path):
@@ -41,7 +51,7 @@ def get_git_branch(repo_path):
 
 def validate_workspace(verbose=False):
     """Validate workspace configuration. Returns True if valid."""
-    get_workspace_root()  # validate we're in a workspace
+    workspace_root = Path(get_workspace_root())
     project = get_project_path()
 
     print("Validating workspace...")
@@ -49,10 +59,19 @@ def validate_workspace(verbose=False):
 
     issues = []
 
-    # Check project/ exists
+    # Registry shape (.agent/projects.local, issue #227)
+    registry_entries, registry_errors = read_projects_registry(workspace_root)
+    for err in registry_errors:
+        issues.append(f"projects.local: {err}")
+
+    # Check project/ exists (legacy shape). A registry with entries makes
+    # the legacy symlink optional — both shapes may coexist.
     if not project.exists():
-        issues.append("project/ directory does not exist")
-        issues.append("  Run: make setup  (will prompt for repo URL or path)")
+        if not registry_entries:
+            issues.append("project/ directory does not exist")
+            issues.append("  Run: make setup  (will prompt for repo URL or path)")
+        elif verbose:
+            print("  legacy project/ not configured (registry projects present)")
     elif not (project / ".git").exists():
         # Could be a symlink to a git repo
         resolved = project.resolve()
@@ -67,16 +86,33 @@ def validate_workspace(verbose=False):
             branch = get_git_branch(project)
             print(f"  project/ is a git repo (branch: {branch or 'detached HEAD'})")
 
-    # Check remote URL
+    # Check remote URL (legacy shape only — registry checkouts are validated
+    # per entry below and don't require a remote named 'origin' here)
     remote_url = get_project_remote_url()
-    if not issues:
+    if not issues and project.exists():
         if not remote_url:
             issues.append("project/ has no remote 'origin' configured")
         elif verbose:
             print(f"  project remote: {remote_url}")
 
+    # Validate registry entries: known project type, valid checkout
+    for entry in registry_entries:
+        name, ptype, path = entry["name"], entry["type"], entry["path"]
+        adapter_file = workspace_root / ".agent" / "project_types" / ptype / "adapter.sh"
+        if not adapter_file.is_file():
+            issues.append(
+                f"project '{name}': unknown project type '{ptype}' "
+                f"(no adapter at .agent/project_types/{ptype}/)"
+            )
+        if not path.exists():
+            issues.append(f"project '{name}': hosting dir does not exist: {path}")
+            issues.append("  Clone the project there or fix .agent/projects.local")
+        elif not (path / ".git").exists() and not (path.resolve() / ".git").exists():
+            issues.append(f"project '{name}': {path} is not a git repository")
+        elif verbose:
+            print(f"  project '{name}' ({ptype}): {path} OK")
+
     # Check venv shebangs for stale paths (workspace was renamed/moved)
-    workspace_root = Path(get_workspace_root())
     venv_pip = workspace_root / ".venv" / "bin" / "pip"
     if venv_pip.exists():
         try:
