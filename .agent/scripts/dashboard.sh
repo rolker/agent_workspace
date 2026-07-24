@@ -29,6 +29,8 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # shellcheck source=_issue_helpers.sh
 source "$SCRIPT_DIR/_issue_helpers.sh"
+# shellcheck source=_project_registry.sh
+source "$SCRIPT_DIR/_project_registry.sh"
 
 # --- Parse arguments ---
 SKIP_SYNC=false
@@ -136,8 +138,12 @@ else
     check_warn "git-bug not installed (optional: offline issue tracking — run: make skip-git-bug to suppress)"
 fi
 
-# Project directory
+# Project directory (legacy shape) + registered projects (issue #227)
 PROJECT_DIR="${MAIN_ROOT:-$ROOT_DIR}/project"
+REGISTRY_ENTRIES="$(registry_entries "${MAIN_ROOT:-$ROOT_DIR}")" || {
+    check_fail "projects.local has malformed entries (see errors above)"
+    ((FAILED_CHECKS++))
+}
 if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
     PROJECT_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null || echo "")
     if [ -n "$PROJECT_REMOTE" ]; then
@@ -145,8 +151,18 @@ if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/nul
     else
         check_warn "project/ is a git repo but has no remote"
     fi
-else
+elif [ -z "$REGISTRY_ENTRIES" ]; then
     check_warn "project/ not configured. Run: make setup"
+fi
+if [ -n "$REGISTRY_ENTRIES" ]; then
+    while IFS=$'\t' read -r _name _type _path; do
+        [ -z "$_name" ] && continue
+        if [ -d "$_path" ] && git -C "$_path" rev-parse --git-dir &>/dev/null; then
+            check_pass "project '$_name' ($_type) checked out"
+        else
+            check_warn "project '$_name' registered but not checked out at $_path"
+        fi
+    done <<< "$REGISTRY_ENTRIES"
 fi
 
 # Configuration validation
@@ -211,6 +227,19 @@ if [ "$SKIP_SYNC" = false ]; then
         fi
     fi
 
+    if [ -n "${REGISTRY_ENTRIES:-}" ]; then
+        while IFS=$'\t' read -r _name _type _path; do
+            [ -z "$_name" ] && continue
+            [ -d "$_path" ] && git -C "$_path" rev-parse --git-dir &>/dev/null || continue
+            echo -n "Syncing project ($_name)... "
+            if git -C "$_path" fetch --quiet 2>/dev/null; then
+                echo "✅"
+            else
+                echo "⚠️ (fetch failed)"
+            fi
+        done <<< "$REGISTRY_ENTRIES"
+    fi
+
     echo ""
 fi
 
@@ -259,9 +288,37 @@ if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/nul
         echo "- **Remote**: $PROJ_REMOTE"
     fi
 else
-    echo "- **Status**: ⚠️ Not configured (run: make setup)"
+    if [ -n "${REGISTRY_ENTRIES:-}" ]; then
+        echo "- **Status**: (legacy project/ not configured; registered projects below)"
+    else
+        echo "- **Status**: ⚠️ Not configured (run: make setup)"
+    fi
 fi
 echo ""
+
+# Registered projects (issue #227)
+if [ -n "${REGISTRY_ENTRIES:-}" ]; then
+    echo "### Registered Projects"
+    while IFS=$'\t' read -r _name _type _path; do
+        [ -z "$_name" ] && continue
+        echo "#### $_name ($_type)"
+        if [ -d "$_path" ] && git -C "$_path" rev-parse --git-dir &>/dev/null; then
+            _BRANCH=$(git -C "$_path" branch --show-current 2>/dev/null || echo "detached HEAD")
+            _REMOTE=$(git -C "$_path" remote get-url origin 2>/dev/null || echo "(no remote)")
+            if [ -n "$(git -C "$_path" status --porcelain 2>/dev/null)" ]; then
+                echo "- **Status**: ⚠️ Modified"
+            else
+                echo "- **Status**: ✅ Clean"
+            fi
+            echo "- **Branch**: $_BRANCH"
+            echo "- **Remote**: $_REMOTE"
+            echo "- **Path**: $_path"
+        else
+            echo "- **Status**: ⚠️ Not checked out ($_path)"
+        fi
+        echo ""
+    done <<< "$REGISTRY_ENTRIES"
+fi
 
 echo "---"
 echo ""
@@ -332,6 +389,14 @@ if [ "$SKIP_GITHUB" = false ]; then
         if [ -d "$PROJECT_DIR" ] && git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
             PROJ_REMOTE=$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|.git$||' || true)
             [ -n "$PROJ_REMOTE" ] && REPOS=$(printf '%s\n%s' "$REPOS" "$PROJ_REMOTE")
+        fi
+        if [ -n "${REGISTRY_ENTRIES:-}" ]; then
+            while IFS=$'\t' read -r _name _type _path; do
+                [ -z "$_name" ] && continue
+                [ -d "$_path" ] && git -C "$_path" rev-parse --git-dir &>/dev/null || continue
+                _REG_REMOTE=$(git -C "$_path" remote get-url origin 2>/dev/null | sed 's|git@github.com:||' | sed 's|https://github.com/||' | sed 's|.git$||' || true)
+                [ -n "$_REG_REMOTE" ] && REPOS=$(printf '%s\n%s' "$REPOS" "$_REG_REMOTE")
+            done <<< "$REGISTRY_ENTRIES"
         fi
         REPOS=$(echo "$REPOS" | sort -u | grep -v '^$')
 
