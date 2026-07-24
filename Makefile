@@ -56,6 +56,9 @@ help:
 	@echo "  make dashboard        Show workspace + project status"
 	@echo "  make sync             Fetch/pull workspace + project repos"
 	@echo ""
+	@echo "  PROJECT=<name> targets a registered project from .agent/projects.local"
+	@echo "  (e.g. make build PROJECT=gz4d); default is the legacy project/ symlink."
+	@echo ""
 	@echo "Worktrees:"
 	@echo "  .agent/scripts/worktree_create.sh --issue <N> --type workspace"
 	@echo "  .agent/scripts/worktree_create.sh --issue <N> --type project"
@@ -75,14 +78,19 @@ help:
 setup: $(STAMP)/project.done $(STAMP)/git-bug.done
 	@echo "✅ Setup complete."
 
+# Multi-tenant hosting (issue #227): PROJECT=<name> selects a project from
+# .agent/projects.local; unset means legacy project/ (or cwd discovery in
+# direct script invocations).
+PROJECT_FLAG := $(if $(PROJECT),--project $(PROJECT))
+
 build: $(STAMP)/setup-dev.done
-	@$(MAIN_ROOT)/.agent/scripts/build.sh
+	@$(MAIN_ROOT)/.agent/scripts/build.sh $(PROJECT_FLAG)
 
 test: $(STAMP)/setup-dev.done
-	@$(MAIN_ROOT)/.agent/scripts/test.sh
+	@$(MAIN_ROOT)/.agent/scripts/test.sh $(PROJECT_FLAG)
 
 install: $(STAMP)/setup-dev.done
-	@$(MAIN_ROOT)/.agent/scripts/adapter install
+	@$(MAIN_ROOT)/.agent/scripts/adapter $(PROJECT_FLAG) install
 
 lint: $(STAMP)/setup-dev.done
 	$(PRE_COMMIT) run --all-files
@@ -106,7 +114,7 @@ repair:
 	@echo "✅ Repair complete. Run 'make validate' to verify."
 
 sync:
-	python3 $(MAIN_ROOT)/.agent/scripts/sync_project.py
+	python3 $(MAIN_ROOT)/.agent/scripts/sync_project.py $(PROJECT_FLAG)
 
 lock:
 	@$(MAIN_ROOT)/.agent/scripts/lock.sh
