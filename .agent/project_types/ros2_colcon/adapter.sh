@@ -64,6 +64,17 @@ _rc_require_manifest() {
         echo "ERROR: $mdir/layers.txt defines no layers (empty or comments only)" >&2
         return 1
     fi
+    # Layer names become filesystem paths (layers/main/<layer>_ws) — enforce
+    # the same rule as ros2's setup_layers.sh so an entry like '../x' can
+    # never escape the hosting dir. The charset excludes '.', so no '..'.
+    local layer
+    while IFS= read -r layer; do
+        if ! [[ "$layer" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "ERROR: invalid layer name '$layer' in $mdir/layers.txt" >&2
+            echo "Layer names must contain only letters, numbers, hyphens, and underscores." >&2
+            return 1
+        fi
+    done < <(_rc_layers)
 }
 
 # Ordered layer names from layers.txt (comments/blanks stripped, whitespace

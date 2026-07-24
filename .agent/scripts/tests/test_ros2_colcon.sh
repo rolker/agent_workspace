@@ -284,6 +284,20 @@ test_empty_layers_fails() {
     assert_not_contains "no phantom success" "All layers built successfully" "$out"
 }
 
+test_traversal_layer_name_fails() {
+    echo "TEST: a path-traversal layer name in layers.txt is rejected"
+    local sb out rc=0 proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    printf 'l1\n../../escape\n' > "$proj/configs/manifest/layers.txt"
+    out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the offending entry" "invalid layer name '../../escape'" "$out"
+    assert_eq "nothing imported before the check" \
+        "no" "$([ -f "$sb/vcs.log" ] && echo yes || echo no)"
+}
+
 test_broken_config_fails() {
     echo "TEST: a failing per-project config is a hard error, not a silent fallback"
     local sb out rc=0 proj
@@ -627,6 +641,7 @@ test_distro_unresolvable_fails
 test_missing_underlay_fails
 test_missing_manifest_fails
 test_empty_layers_fails
+test_traversal_layer_name_fails
 test_broken_config_fails
 test_env_chain_order
 test_setup_imports_each_layer

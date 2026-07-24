@@ -35,7 +35,7 @@ issue: 235
 **CI**: all-pass
 
 ### Actions
-- [ ] Fix: validate layer names in _rc_require_manifest — layers.txt
+- [x] Fix: validate layer names in _rc_require_manifest — layers.txt
   entries build filesystem paths unvalidated; '../x' would escape the
   hosting dir. Restore the ros2 setup_layers.sh rule (^[A-Za-z0-9_-]+$,
   which also excludes '.'), fail loud on violation, add a traversal test.
