@@ -71,7 +71,7 @@ issue: 235
 **CI**: all-pass (both new suites green on the runner)
 
 ### Actions
-- [ ] Fix: scope the nounset relaxation to the ROS source calls only —
+- [x] Fix: scope the nounset relaxation to the ROS source calls only —
   adapter_build/adapter_test currently `set +u` at function top and never
   restore, weakening the adapter's own logic. Add a _rc_source_setup
   helper (set +u; source; set -u) with a fail-loud error at each call

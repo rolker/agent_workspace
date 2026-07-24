@@ -195,6 +195,22 @@ _rc_repos_entries() {
     ' "$repos_file"
 }
 
+# Source a ROS setup script with nounset relaxed — ROS setup files
+# reference unbound variables — then restore it so the adapter's own logic
+# keeps full set -euo pipefail protection. A failing setup script is a
+# loud error at the call site, never a silent continue.
+_rc_source_setup() {
+    local setup_file="$1" rc=0
+    set +u
+    # shellcheck disable=SC1090
+    source "$setup_file" || rc=$?
+    set -u
+    if [ "$rc" -ne 0 ]; then
+        echo "ERROR: failed to source $setup_file" >&2
+        return "$rc"
+    fi
+}
+
 # --- Contract verbs -------------------------------------------------------
 
 adapter_project_root() {
@@ -257,14 +273,11 @@ adapter_setup() {
 adapter_build() {
     # Build layers in layers.txt order, sourcing each successful layer's
     # local_setup.bash so later layers overlay it. Stop on first failure.
-    # ROS setup scripts reference unbound variables — relax set -u here.
-    set +u
     _rc_require_manifest || return 1
     local underlay layer layer_dir rc
     underlay="$(_rc_underlay)" || return 1
     unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
-    # shellcheck source=/dev/null
-    source "$underlay"
+    _rc_source_setup "$underlay" || return 1
     while IFS= read -r layer; do
         layer_dir="$(_rc_layer_dir "$layer")"
         if [ ! -d "$layer_dir/src" ]; then
@@ -283,8 +296,7 @@ adapter_build() {
             return "$rc"
         fi
         if [ -f "$layer_dir/install/local_setup.bash" ]; then
-            # shellcheck source=/dev/null
-            source "$layer_dir/install/local_setup.bash"
+            _rc_source_setup "$layer_dir/install/local_setup.bash" || return 1
         fi
     done < <(_rc_layers)
     echo "All layers built successfully."
@@ -293,18 +305,15 @@ adapter_build() {
 adapter_test() {
     # Test every layer that has sources; unlike build, a failing layer does
     # not stop the run — all failures are reported at the end.
-    set +u
     _rc_require_manifest || return 1
     local underlay layer layer_dir rc failed=""
     underlay="$(_rc_underlay)" || return 1
     unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
-    # shellcheck source=/dev/null
-    source "$underlay"
+    _rc_source_setup "$underlay" || return 1
     while IFS= read -r layer; do
         layer_dir="$(_rc_layer_dir "$layer")"
         if [ -f "$layer_dir/install/local_setup.bash" ]; then
-            # shellcheck source=/dev/null
-            source "$layer_dir/install/local_setup.bash"
+            _rc_source_setup "$layer_dir/install/local_setup.bash" || return 1
         fi
         if [ ! -d "$layer_dir/src" ]; then
             echo "Skipping layer $layer (no src directory)"
