@@ -70,6 +70,22 @@ Push again (should be clean)
 Over time, local review gets smarter. Copilot round-trips go from 2-3 per PR
 to 0-1.
 
+## Priority: Workspace Redesign (#172)
+
+Multi-tenant workspace + project-type adapters + per-project manifests.
+The full design and migration sketch live in #172 (the durable record);
+this table tracks the seven migration steps.
+
+| Step | Item | Issue | Status | Notes |
+|------|------|-------|--------|-------|
+| 1 | Adapter contract + `single_project` adapter | #210 | done | 10-verb contract (ADR-0011); pure facade over the pre-adapter scripts (PR #226) |
+| 2 | Multi-tenant hosting: `projects/<name>/` + registry | #227 | done | `.agent/projects.local`, `--project`/cwd discovery, worktree `--repo` wiring (PR #232) |
+| 3 | `multi_repo` adapter | — | planned | For the next sibling-repos project; used from day one |
+| 4 | Manifest support | — | planned | `.project_config` schema + `agent project add --manifest-repo/--manifest-ref`; standalone manifest repos first, embedded branches later |
+| 5 | Migrate hosted project into `projects/` | — | planned | Retire the legacy `project/` symlink; unlocks project-rooted sessions with layered CLAUDE.md |
+| 6 | Port `ros2_colcon` adapter | — | planned | Validate on the ROS machine; retire `ros2_agent_workspace` as a separate repo |
+| 7 | Variant-branch refinement | — | planned | `agent/manifest/base` + per-machine variant branches; builds on step 4 |
+
 ## Priority: Improve Local Reviews
 
 The biggest actionable time sink: push -> wait for Copilot review -> triage
@@ -120,7 +136,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | tmux session strategy | #65 | done | ros2_agent_workspace | Named sessions for agents and applications, dashboard integration |
 | Enhanced start-task with tmux | #66 | done | ros2_agent_workspace | Worktree + tmux session + agent launch in one command |
 | Workflow modes | #67 | done | ros2_agent_workspace | Autonomous / collaborative / pair per-session, with permission implications |
-| Port tmux session management | #2 | revisit | ros2_agent_workspace | **Motivation review pending (2026-04-19 session)**: ros2 ATC protocol solves multi-machine visibility, which we don't have. Narrow use cases here: session persistence, dashboard pane capture, long-lived services. Close or rescope based on concrete motivation |
+| Port tmux session management | #2 | declined | ros2_agent_workspace | Closed 2026-04-19: wholesale port declined — the ATC protocol solves multi-machine visibility this single-machine workspace doesn't have (see #2 and the Decided Against entry) |
 | Draft zones | #87 | planned | — | Human-edited paths with agent-driven PR incorporation |
 | Local integration branches | — | planned | 2026-04-19 session | Per-type dedicated worktrees (`worktrees/workspace/integration/`, `worktrees/project/<repo>/integration/`), declarative config per type, local-only branches, `integration_rebuild.sh --type workspace\|project\|both`. Lets multi-feature integration testing happen without merging to main or pushing prematurely. Unlocks Mode 2 |
 | Coordinator agent (simmering) | — | deferred | 2026-04-19 session | Question triage + context restoration across parallel agents. **Hard constraints**: additive-only (never a filter — Roland debugs by watching terminals); cannot handle permission prompts (per-session). Scope = design/scope/confirmation questions (~1/3 of interrupts). Not implementing yet. MVP mechanism: shared question file → coordinator skill → ranked summary. Revisit after other items land |
