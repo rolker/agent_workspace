@@ -24,3 +24,22 @@ issue: 227
   a false positive — the inner expansion is quoted (standard empty-array
   idiom, verified: "a b" and "c*" survive intact; same idiom used in
   test_adapter.sh / test_project_registry.sh).
+
+## External Review (round 2)
+**Status**: complete
+**When**: 2026-07-24 10:05
+**By**: Claude Code Agent (claude-fable-5)
+
+**PR**: #232 — 2 reviews total; round 2 (head e9950b5): 2 comments, 2 valid
+**CI**: all-pass
+
+### Actions
+- [ ] Fix: dashboard.sh — escape the dot in all three `sed 's|.git$||'`
+  slug-stripping pipelines (lines 386/390/397); unescaped `.` makes the
+  pattern strip 4 chars from repo names ending in "git" even without a
+  literal `.git` suffix. Two occurrences are pre-existing, one was added
+  by this PR — fix all three.
+- [ ] Fix: dashboard.sh — clear REGISTRY_ENTRIES in the parse-error handler
+  so later sections (sync, registered-projects report, GitHub queries)
+  don't act on a partial project list; the health-check failure banner
+  carries the diagnosis.
