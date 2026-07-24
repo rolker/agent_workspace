@@ -25,3 +25,23 @@ issue: 235
 - [x] Fix: _rc_ros_root — same masking problem; a broken config silently
   ignores the user's ROS_ROOT_DIR override and falls back to /opt/ros.
   Same fix shape as _rc_distro.
+
+## External Review (round 2)
+**Status**: complete
+**When**: 2026-07-24 12:35
+**By**: Claude Code Agent (claude-fable-5)
+
+**PR**: #236 — round 2 (head 924c6d7): 2 comments, 1 valid, 1 false positive
+**CI**: all-pass
+
+### Actions
+- [ ] Fix: validate layer names in _rc_require_manifest — layers.txt
+  entries build filesystem paths unvalidated; '../x' would escape the
+  hosting dir. Restore the ros2 setup_layers.sh rule (^[A-Za-z0-9_-]+$,
+  which also excludes '.'), fail loud on violation, add a traversal test.
+- [x] No action: grep '^distro:' anchoring is correct — bootstrap.yaml is
+  the established flat top-level-key format (ros2 setup_layers.sh parses
+  git_url/branch/layer with the same ^key: anchors); a leading-whitespace
+  distro: would be a NESTED YAML key that top-level parsing must not
+  match (it could belong to a future variant-scoped mapping). The miss
+  path is loud and actionable, not silent.
