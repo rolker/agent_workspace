@@ -4,6 +4,13 @@
 project/
 project
 
+# Multi-tenant project hosting (issue #227 — #172 step 2).
+# projects/ holds per-machine checkouts; the registry and per-project
+# command configs are per-machine too (see .agent/projects.local.example).
+projects/
+.agent/projects.local
+.agent/projects.d/
+
 # Worktrees (workspace and project, see issue #25)
 worktrees/
 

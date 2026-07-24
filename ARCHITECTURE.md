@@ -2,9 +2,10 @@
 
 ## Overview
 
-This workspace is a general-purpose multi-agent development platform. It manages
-one external project repository (`project/`) and provides the full agent infrastructure
-needed to develop it safely: worktree isolation, governance, skills, hooks, and
+This workspace is a general-purpose multi-agent development platform. It hosts
+external project repositories (the legacy `project/` symlink and/or named
+projects under `projects/`) and provides the full agent infrastructure
+needed to develop them safely: worktree isolation, governance, skills, hooks, and
 multi-agent coordination.
 
 ## Directory Structure
@@ -19,6 +20,8 @@ agent_workspace/
 │   ├── project_types/     # Project-type adapters (ADR-0011)
 │   │   └── single_project/  # adapter.sh + setup.sh + sync.py
 │   ├── project_config.sh  # PROJECT_TYPE / BUILD_CMD / TEST_CMD / INSTALL_CMD (gitignored, per-developer)
+│   ├── projects.local     # Per-machine project registry (gitignored; see projects.local.example)
+│   ├── projects.d/        # Per-project command configs, <name>.sh (gitignored)
 │   ├── work-plans/        # issue-<N>/plan.md and review artifacts
 │   ├── work-artifacts/    # Generated outputs
 │   ├── scratchpad/        # Temp workspace (gitignored)
@@ -35,7 +38,8 @@ agent_workspace/
 │   ├── workflows/         # CI
 │   ├── PULL_REQUEST_TEMPLATE.md
 │   └── ISSUE_TEMPLATE/
-├── project/               # Gitignored — cloned or symlinked project repo
+├── project/               # Gitignored — cloned or symlinked project repo (legacy shape)
+├── projects/              # Gitignored — named project checkouts, projects/<name>/ (issue #227)
 ├── docs/
 │   ├── PRINCIPLES.md
 │   └── decisions/         # Architecture Decision Records (ADRs)
@@ -53,22 +57,34 @@ agent_workspace/
 
 Project-shape-specific behavior (setup, sync, build, test, install, environment,
 repo enumeration, PR targeting) lives behind a 10-verb adapter contract
-(ADR-0011). `.agent/scripts/adapter <verb>` resolves `PROJECT_TYPE` from
-`.agent/project_config.sh` and dispatches to
+(ADR-0011). `.agent/scripts/adapter [--from <dir>] [--project <name>] <verb>`
+resolves the active project and dispatches to
 `.agent/project_types/<type>/adapter.sh`. `validate_adapter.sh` (pre-commit + CI)
 asserts every type implements every verb.
 
-The only type today is `single_project`: the `project/` directory holds one
-external git repository, configured during setup and gitignored. The project can be:
+Two hosting shapes coexist during the #172 migration (issue #227):
 
-- **Cloned**: `git clone <url> project/`
-- **Symlinked**: `ln -s /path/to/existing/clone project`
+- **Legacy**: the `project/` directory holds one external git repository —
+  cloned (`git clone <url> project/`) or symlinked
+  (`ln -s /path/to/existing/clone project`). `PROJECT_TYPE` comes from
+  `.agent/project_config.sh` (default `single_project`).
+- **Registry**: `.agent/projects.local` (per-machine, gitignored) maps
+  project names to hosting dirs (default `projects/<name>/`) and project
+  types. Per-project build/test commands live in
+  `.agent/projects.d/<name>.sh`, falling back to `.agent/project_config.sh`.
+  See `.agent/projects.local.example` for the format.
+
+The dispatcher resolves the active project in order: explicit
+`--project <name>` (`make build PROJECT=<name>`), the caller's cwd inside a
+registered hosting dir, then the legacy `project/` shape. A machine with only
+the legacy symlink behaves exactly as before.
 
 The project's `remote.origin.url` (from `.git/config`) is the source of truth for the
 project URL — no `configs/` directory is needed.
 
-`validate_workspace.py` checks that `project/` exists, is a valid git repo, and has a
-remote configured.
+`validate_workspace.py` understands both shapes: legacy `project/` (valid git
+repo with a remote) and registry entries (well-formed, known project type,
+checkout present).
 
 Further types (`multi_repo`, `ros2_colcon`) arrive with later #172 steps.
 

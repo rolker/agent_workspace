@@ -76,6 +76,7 @@ make_sandbox() {
     SANDBOXES+=("$sb")
     mkdir -p "$sb/.agent/scripts" "$sb/.agent/project_types"
     cp "$REAL_ROOT/.agent/scripts/adapter" "$sb/.agent/scripts/adapter"
+    cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$sb/.agent/scripts/_project_registry.sh"
     cp "$REAL_ROOT/.agent/scripts/validate_adapter.sh" "$sb/.agent/scripts/validate_adapter.sh"
     cp -r "$REAL_ROOT/.agent/project_types/single_project" "$sb/.agent/project_types/"
     echo "$sb"

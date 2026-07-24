@@ -246,8 +246,17 @@ echo "Removing worktree..."
 
 # Determine which git repo owns this worktree
 if [ "$WORKTREE_TYPE" == "project" ]; then
-    # Project worktrees: git worktrees of the project repo
-    PROJECT_DIR="$ROOT_DIR/project"
+    # Project worktrees: git worktrees of the project repo. Resolve the
+    # owning repo from the worktree itself (its git-common-dir) so this
+    # works for both the legacy project/ symlink and registry-hosted
+    # projects (issue #227).
+    _COMMON_DIR="$(git -C "$WORKTREE_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    if [ -n "$_COMMON_DIR" ]; then
+        PROJECT_DIR="$(dirname "$_COMMON_DIR")"
+    else
+        # Broken worktree metadata — fall back to the legacy location.
+        PROJECT_DIR="$ROOT_DIR/project"
+    fi
     if [ "$FORCE" = true ]; then
         git -C "$PROJECT_DIR" worktree remove --force "$WORKTREE_DIR"
     else
@@ -271,7 +280,7 @@ echo "✅ Worktree removed successfully"
 if [ -n "$BRANCH_NAME" ]; then
     echo ""
     REPO_CONTEXT="the project repo"
-    REPO_PATH="$ROOT_DIR/project"
+    REPO_PATH="${PROJECT_DIR:-$ROOT_DIR/project}"
     if [ "$WORKTREE_TYPE" == "workspace" ]; then
         REPO_CONTEXT="the workspace repo"
         REPO_PATH="$ROOT_DIR"

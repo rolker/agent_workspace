@@ -98,6 +98,7 @@ For changes to the managed project repo (`project/`).
 | Skill | `skill-<repo_slug>-<YYYYMMDD-HHMMSS>` |
 
 `<repo_slug>` is auto-detected from the remote URL (e.g., `workspace`, `myproject`).
+For registry-selected projects (see below) the registry name is used instead.
 Use `--repo-slug` to override.
 
 ## Disambiguation
@@ -107,9 +108,17 @@ Since `--type` is mandatory, workspace vs. project is never ambiguous.
 For multiple project repos, use `--repo`:
 
 ```bash
-source .agent/scripts/worktree_enter.sh --issue 42 --type project --repo <repo_name>
-.agent/scripts/worktree_remove.sh --issue 42 --type project --repo <repo_name>
+.agent/scripts/worktree_create.sh --issue 42 --type project --repo <name>
+source .agent/scripts/worktree_enter.sh --issue 42 --type project --repo <name>
+.agent/scripts/worktree_remove.sh --issue 42 --type project --repo <name>
 ```
+
+On `worktree_create.sh`, `--repo <name>` selects a registered project from
+`.agent/projects.local` (issue #227); the worktree is created under
+`worktrees/project/<name>/` so `enter`/`remove --repo <name>` find it by the
+same key. Without `--repo`, the legacy `project/` checkout is used; when
+`project/` is absent and exactly one project is registered, that project is
+auto-selected (multiple registrations require `--repo`).
 
 For multiple worktrees of the same type with different repo slugs, use `--repo-slug`:
 
