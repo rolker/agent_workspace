@@ -52,7 +52,9 @@ registry_entries() {
             rc=2
             continue
         fi
-        if ! [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+        # '..' is rejected so a registered name can never trip
+        # wt_project_base's path-traversal rule downstream.
+        if ! [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$name" == *..* ]]; then
             echo "ERROR: ${file}:${lineno}: invalid project name '$name'" >&2
             rc=2
             continue

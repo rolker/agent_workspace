@@ -85,7 +85,7 @@ def read_projects_registry(root=None):
         name = fields[0]
         ptype = fields[1] if len(fields) > 1 else ""
         path = fields[2] if len(fields) > 2 else f"projects/{name}"
-        if not _REGISTRY_NAME_RE.match(name):
+        if not _REGISTRY_NAME_RE.match(name) or ".." in name:
             errors.append(f"{registry}:{lineno}: invalid project name '{name}'")
             continue
         if not _REGISTRY_TYPE_RE.match(ptype):

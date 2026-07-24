@@ -11,7 +11,7 @@
 #   name          Project identity on this machine. Also the default hosting
 #                 dir (projects/<name>/) and the worktree repo key
 #                 (worktrees/project/<name>/). Allowed: [A-Za-z0-9._-],
-#                 must start with a letter or digit.
+#                 must start with a letter or digit; '..' is not allowed.
 #   project_type  Adapter type; must exist at .agent/project_types/<type>/
 #                 (ADR-0011). Currently: single_project.
 #   path          Optional hosting directory. Relative paths resolve against

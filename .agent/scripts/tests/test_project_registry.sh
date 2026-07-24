@@ -126,6 +126,16 @@ test_registry_malformed_line_fails() {
     assert_contains "names the malformed line" "projects.local:1" "$out"
 }
 
+test_registry_rejects_dotdot_name() {
+    echo "TEST: registry name containing '..' is rejected"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    echo "a..b single_project" > "$sb/.agent/projects.local"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project a..b project_root 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "flags the name" "invalid project name 'a..b'" "$out"
+}
+
 test_registry_comments_and_blanks() {
     echo "TEST: comments and blank lines are ignored"
     local sb out
@@ -372,6 +382,7 @@ make_worktree_sandbox() {
     local sb
     sb="$(make_sandbox)"
     cp "$REAL_ROOT/.agent/scripts/worktree_create.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/worktree_enter.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_worktree_helpers.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_issue_helpers.sh" "$sb/.agent/scripts/"
     mkdir -p "$sb/stubbin"
@@ -432,6 +443,25 @@ test_worktree_create_single_registry_autoselect() {
         "yes" "$([ -d "$sb/worktrees/project/alpha/issue-alpha-998" ] && echo yes || echo no)"
 }
 
+test_worktree_create_dashed_name_roundtrip() {
+    echo "TEST: dashed registry name survives create → enter --repo round-trip"
+    local sb out rc=0
+    sb="$(make_worktree_sandbox)"
+    make_registered_project "$sb" my-proj >/dev/null
+    seed_commit "$sb/projects/my-proj"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 996 --type project --repo my-proj 2>&1)" || rc=$?
+    assert_eq "create exit 0" "0" "$rc"
+    assert_eq "worktree dir uses the raw name" \
+        "yes" "$([ -d "$sb/worktrees/project/my-proj/issue-my-proj-996" ] && echo yes || echo no)"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_enter.sh" --issue 996 --type project --repo my-proj --print-path 2>&1)" || rc=$?
+    assert_eq "enter --repo finds it" "0" "$rc"
+    assert_eq "enter resolves the same path" \
+        "$sb/worktrees/project/my-proj/issue-my-proj-996" "$out"
+}
+
 test_worktree_create_multiple_requires_repo() {
     echo "TEST: worktree_create without --repo fails when multiple projects are registered"
     local sb out rc=0
@@ -452,6 +482,7 @@ echo ""
 
 test_registry_absent_is_legacy
 test_registry_malformed_line_fails
+test_registry_rejects_dotdot_name
 test_registry_comments_and_blanks
 test_project_flag_resolves
 test_project_flag_after_verb
@@ -474,6 +505,7 @@ test_validate_neither_shape
 test_worktree_create_unknown_repo
 test_worktree_create_registry_repo
 test_worktree_create_single_registry_autoselect
+test_worktree_create_dashed_name_roundtrip
 test_worktree_create_multiple_requires_repo
 
 echo ""

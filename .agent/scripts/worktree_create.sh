@@ -307,9 +307,12 @@ if [ -z "$REPO_SLUG" ]; then
 
     if [ -n "$PROJECT_NAME" ]; then
         # Registry-selected project: the registry name is the worktree repo
-        # key (worktrees/project/<name>/ — matches enter/remove --repo).
+        # key (worktrees/project/<name>/ — matches enter/remove --repo), so
+        # it must be used raw. Its charset is validated by the registry
+        # parser and is a subset of what wt_project_base accepts; sanitizing
+        # '.'/'-' to '_' here would break enter/remove --repo <name> lookup.
         GH_REPO_SLUG=$(extract_gh_slug "$REMOTE_URL")
-        REPO_SLUG=$(echo "$PROJECT_NAME" | sed 's/[^A-Za-z0-9_]/_/g')
+        REPO_SLUG="$PROJECT_NAME"
     else
         if [ -z "$REMOTE_URL" ]; then
             REMOTE_URL=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")

@@ -13,7 +13,7 @@ issue: 227
 **CI**: all-pass (lint, docs validation, adapter contract ×2)
 
 ### Actions
-- [ ] Fix: worktree_create.sh — for registry-selected projects, use the raw
+- [x] Fix: worktree_create.sh — for registry-selected projects, use the raw
   registry name as REPO_SLUG instead of sanitizing `.`/`-` to `_`; the
   registry charset (`[A-Za-z0-9][A-Za-z0-9._-]*`) is already a subset of
   what `wt_project_base` accepts, and `enter`/`remove --repo <name>` locate
