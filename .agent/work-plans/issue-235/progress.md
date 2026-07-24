@@ -55,7 +55,7 @@ issue: 235
 **CI**: all-pass
 
 ### Actions
-- [ ] Fix (needs human approval — CI change is an Ask First boundary): add
+- [x] Fix (human-approved 2026-07-24): add
   test_ros2_colcon.sh to validate.yml's Validate Adapter Contract job,
   which already runs test_adapter.sh. test_project_registry.sh (#227) has
   the same gap and should be added in the same step. Without this, adapter
