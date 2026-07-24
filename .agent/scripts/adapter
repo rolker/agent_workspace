@@ -6,7 +6,7 @@
 # adapter implementation in .agent/project_types/<type>/adapter.sh.
 #
 # Usage:
-#   .agent/scripts/adapter [--from <dir>] <verb> [args...]
+#   .agent/scripts/adapter [--from <dir>] [--project <name>] <verb> [args...]
 #
 # Verbs (the adapter contract — see REQUIRED_VERBS below):
 #   setup           First-time bring-up: clone, layer import, post-install hooks
@@ -25,9 +25,18 @@
 #   eval "$(.agent/scripts/adapter env)"
 # A type with no environment to expose emits nothing (and exits 0).
 #
-# --from <dir>: reserved for multi-tenant project resolution (#172 step 2,
-# cwd walk-up). Accepted now to lock the signature; step 1 always resolves
-# from the workspace root.
+# Multi-tenant resolution (#172 step 2, issue #227) — the active project is
+# resolved in this order:
+#   1. --project <name>: explicit selection from .agent/projects.local
+#   2. --from <dir> (default: caller's cwd) inside a registered hosting dir
+#   3. Legacy: PROJECT_TYPE from .agent/project_config.sh, root project/
+# `--project` and `--from` are extracted from argv wherever they appear, so
+# shims can forward them after the verb (no contract verb takes flags with
+# these names). The resolved project is exposed to the sourced adapter as
+# shell variables (not exported): ACTIVE_PROJECT_NAME (empty for legacy),
+# ACTIVE_PROJECT_ROOT, and ACTIVE_PROJECT_CONFIG (per-project command
+# config at .agent/projects.d/<name>.sh; adapters fall back to
+# .agent/project_config.sh when it doesn't exist).
 #
 # Contract requirements for .agent/project_types/<type>/adapter.sh:
 #   - Silent at source time: nothing written to stdout while being sourced
@@ -50,22 +59,12 @@ REQUIRED_VERBS=(setup sync validate build test install env project_root repos sc
 _ADAPTER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(dirname "$(dirname "$_ADAPTER_SCRIPT_DIR")")"
 
-# Print the active project type. Reads PROJECT_TYPE from
+# Print the legacy project type. Reads PROJECT_TYPE from
 # .agent/project_config.sh; defaults to single_project so pre-adapter
 # configs (BUILD_CMD/TEST_CMD only) keep working unchanged.
+# Registry-resolved projects take their type from .agent/projects.local
+# instead (see the dispatch section below).
 _resolve_project_type() {
-    local from_dir="$WORKSPACE_ROOT"
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --from) from_dir="$2"; shift 2 ;;
-            *) shift ;;
-        esac
-    done
-    # Step 1: from_dir is accepted but resolution is workspace-root only.
-    # Step 2 (#172) extends this to walk up from from_dir to a per-project
-    # config before falling back to the workspace config.
-    : "$from_dir"
-
     local config="$WORKSPACE_ROOT/.agent/project_config.sh"
     local project_type="single_project"
     if [ -f "$config" ]; then
@@ -89,17 +88,38 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
     return 0
 fi
 
+# shellcheck source=_project_registry.sh
+source "$_ADAPTER_SCRIPT_DIR/_project_registry.sh"
+
 usage() {
-    echo "Usage: adapter [--from <dir>] <verb> [args...]" >&2
+    echo "Usage: adapter [--from <dir>] [--project <name>] <verb> [args...]" >&2
     echo "Verbs: ${REQUIRED_VERBS[*]}" >&2
 }
 
-FROM_ARGS=()
-if [ "${1:-}" = "--from" ]; then
-    [ $# -ge 2 ] || { echo "ERROR: --from requires a directory argument" >&2; usage; exit 1; }
-    FROM_ARGS=(--from "$2")
-    shift 2
-fi
+# Extract --from/--project wherever they appear so shims that append flags
+# after the verb (build.sh --project x → adapter build --project x) work.
+FROM_DIR=""
+PROJECT_ARG=""
+ARGS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --from)
+            [ $# -ge 2 ] || { echo "ERROR: --from requires a directory argument" >&2; usage; exit 1; }
+            FROM_DIR="$2"
+            shift 2
+            ;;
+        --project)
+            [ $# -ge 2 ] || { echo "ERROR: --project requires a project name" >&2; usage; exit 1; }
+            PROJECT_ARG="$2"
+            shift 2
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+set -- ${ARGS[@]+"${ARGS[@]}"}
 
 if [ $# -lt 1 ]; then
     usage
@@ -119,7 +139,67 @@ if [ "$verb_known" != true ]; then
     exit 1
 fi
 
-PROJECT_TYPE_NAME="$(_resolve_project_type ${FROM_ARGS[@]+"${FROM_ARGS[@]}"})"
+# --- Resolve the active project (issue #227) ---
+# ACTIVE_PROJECT_* are read by the sourced adapter's functions (like
+# WORKSPACE_ROOT/ADAPTER_TYPE_DIR below), hence the SC2034 disables.
+ACTIVE_PROJECT_NAME=""
+# shellcheck disable=SC2034
+ACTIVE_PROJECT_ROOT="$WORKSPACE_ROOT/project"
+# shellcheck disable=SC2034
+ACTIVE_PROJECT_CONFIG=""
+PROJECT_TYPE_NAME=""
+
+if [ -n "$PROJECT_ARG" ]; then
+    # Explicit selection by registered name.
+    _RC=0
+    _ENTRY="$(registry_lookup "$WORKSPACE_ROOT" "$PROJECT_ARG")" || _RC=$?
+    if [ "$_RC" -ne 0 ]; then
+        if [ "$_RC" -eq 1 ]; then
+            echo "ERROR: project '$PROJECT_ARG' is not registered in $(registry_file "$WORKSPACE_ROOT")" >&2
+            _NAMES="$(registry_names "$WORKSPACE_ROOT" 2>/dev/null || true)"
+            if [ -n "$_NAMES" ]; then
+                echo "Registered projects:" >&2
+                sed 's/^/  /' <<< "$_NAMES" >&2
+            else
+                echo "  (no projects registered — see .agent/projects.local.example)" >&2
+            fi
+        fi
+        exit 1
+    fi
+    ACTIVE_PROJECT_NAME="$PROJECT_ARG"
+    PROJECT_TYPE_NAME="$(cut -f1 <<< "$_ENTRY")"
+    # shellcheck disable=SC2034
+    ACTIVE_PROJECT_ROOT="$(cut -f2 <<< "$_ENTRY")"
+else
+    # Discovery: resolve from the caller's directory (or --from <dir>).
+    _FROM="${FROM_DIR:-$PWD}"
+    if _ENTRY="$(registry_resolve_from_dir "$WORKSPACE_ROOT" "$_FROM")"; then
+        ACTIVE_PROJECT_NAME="$(cut -f1 <<< "$_ENTRY")"
+        PROJECT_TYPE_NAME="$(cut -f2 <<< "$_ENTRY")"
+        # shellcheck disable=SC2034
+        ACTIVE_PROJECT_ROOT="$(cut -f3 <<< "$_ENTRY")"
+    else
+        _RC=$?
+        [ "$_RC" -eq 2 ] && exit 1  # malformed registry — never guess
+        # Inside the hosting dir but not registered → fail loud rather than
+        # silently operating on the legacy project.
+        _WSROOT_P="$(cd "$WORKSPACE_ROOT" && pwd -P)"
+        _FROM_P="$(cd "$_FROM" 2>/dev/null && pwd -P || true)"
+        if [ -n "$_FROM_P" ] && [[ "$_FROM_P" == "$_WSROOT_P/projects/"* ]]; then
+            echo "ERROR: $_FROM_P is under projects/ but no registered project owns it." >&2
+            echo "Register it in $(registry_file "$WORKSPACE_ROOT") (see .agent/projects.local.example)." >&2
+            exit 1
+        fi
+        # Legacy: project/ symlink + workspace-level config.
+        PROJECT_TYPE_NAME="$(_resolve_project_type)"
+    fi
+fi
+
+if [ -n "$ACTIVE_PROJECT_NAME" ]; then
+    # shellcheck disable=SC2034
+    ACTIVE_PROJECT_CONFIG="$WORKSPACE_ROOT/.agent/projects.d/${ACTIVE_PROJECT_NAME}.sh"
+fi
+
 ADAPTER_TYPE_DIR="$WORKSPACE_ROOT/.agent/project_types/$PROJECT_TYPE_NAME"
 
 if [ ! -f "$ADAPTER_TYPE_DIR/adapter.sh" ]; then

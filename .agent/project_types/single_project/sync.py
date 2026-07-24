@@ -154,19 +154,27 @@ def main():
     parser.add_argument(
         "--dry-run", action="store_true", help="Simulate actions without executing."
     )
+    parser.add_argument(
+        "--project-root",
+        help="Project checkout to sync (registry-hosted project, issue #227); "
+        "default: the legacy project/ directory.",
+    )
     args = parser.parse_args()
 
     root_dir = Path(get_workspace_root())
-    project_dir = get_project_path()
+    project_dir = Path(args.project_root) if args.project_root else get_project_path()
 
     # Sync workspace repo
     if sync_repo(root_dir, "agent_workspace (workspace)", args.dry_run):
         sync_gitbug(root_dir, args.dry_run)
 
     # Sync project repo
-    if is_project_configured():
+    if is_project_configured(project_dir):
         if sync_repo(project_dir, f"project ({project_dir.resolve().name})", args.dry_run):
             sync_gitbug(project_dir, args.dry_run)
+    elif args.project_root:
+        print("Checking project...")
+        print(f"  ⚠️  {project_dir} is not a git checkout.")
     else:
         print("Checking project...")
         print("  ⚠️  project/ not configured. Run: make setup")

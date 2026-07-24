@@ -19,7 +19,30 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 
+# Default: legacy project/ shape. The adapter passes --project-root for
+# registry-hosted projects (issue #227).
 PROJECT_DIR="$ROOT_DIR/project"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --project-root)
+            [ $# -ge 2 ] || { echo "Error: --project-root requires a directory argument" >&2; exit 1; }
+            PROJECT_DIR="$2"
+            shift 2
+            ;;
+        *)
+            echo "Error: unknown option '$1'" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Human-readable label for messages: "project/" for the legacy shape, the
+# actual path for registry-hosted projects.
+if [ "$PROJECT_DIR" = "$ROOT_DIR/project" ]; then
+    PROJECT_LABEL="project/"
+else
+    PROJECT_LABEL="$PROJECT_DIR"
+fi
 
 # --- Helper: check if project/ is a valid git repo ---
 is_git_repo() {
@@ -49,7 +72,7 @@ remove_placeholder() {
 # --- Case 1: project/ already exists and is a valid git repo ---
 if is_git_repo "$PROJECT_DIR"; then
     REMOTE_URL="$(get_remote_url "$PROJECT_DIR")"
-    echo "✅ project/ is already configured."
+    echo "✅ $PROJECT_LABEL is already configured."
     if [ -n "$REMOTE_URL" ]; then
         echo "   Remote: $REMOTE_URL"
     else
@@ -117,7 +140,7 @@ if [ -d "$PROJECT_INPUT" ]; then
     RESOLVED_PATH="$(cd "$PROJECT_INPUT" && pwd -P)"
     ln -s "$RESOLVED_PATH" "$PROJECT_DIR"
     echo ""
-    echo "✅ Symlinked: project → $RESOLVED_PATH"
+    echo "✅ Symlinked: ${PROJECT_LABEL%/} → $RESOLVED_PATH"
 else
     # Treat as a git URL — clone it
     # Remove project/ if it's a stale symlink or empty placeholder directory
@@ -127,7 +150,7 @@ else
     echo "Cloning '$PROJECT_INPUT'..."
     if git clone "$PROJECT_INPUT" "$PROJECT_DIR"; then
         echo ""
-        echo "✅ Cloned to project/"
+        echo "✅ Cloned to $PROJECT_LABEL"
     else
         echo "Error: git clone failed."
         exit 1
@@ -145,6 +168,6 @@ if is_git_repo "$PROJECT_DIR"; then
     echo ""
     echo "Run 'make dashboard' to check workspace status."
 else
-    echo "Error: project/ is still not a valid git repository after setup."
+    echo "Error: $PROJECT_LABEL is still not a valid git repository after setup."
     exit 1
 fi
