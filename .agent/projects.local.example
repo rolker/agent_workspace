@@ -1,0 +1,33 @@
+# .agent/projects.local — per-machine project registry (issue #227, #172 step 2)
+#
+# Copy this file to .agent/projects.local (gitignored) to host named
+# projects under projects/<name>/ alongside — or instead of — the legacy
+# project/ symlink.
+#
+# One project per line, whitespace-separated:
+#
+#   <name>  <project_type>  [<path>]
+#
+#   name          Project identity on this machine. Also the default hosting
+#                 dir (projects/<name>/) and the worktree repo key
+#                 (worktrees/project/<name>/). Allowed: [A-Za-z0-9._-],
+#                 must start with a letter or digit.
+#   project_type  Adapter type; must exist at .agent/project_types/<type>/
+#                 (ADR-0011). Currently: single_project.
+#   path          Optional hosting directory. Relative paths resolve against
+#                 the workspace root; default is projects/<name>. Paths must
+#                 not contain spaces.
+#
+# Checkouts are managed manually for now: clone (or symlink) the project
+# into its hosting dir, then register it here. Per-project build/test
+# commands go in .agent/projects.d/<name>.sh (gitignored), with
+# .agent/project_config.sh as the shared fallback.
+#
+# How the active project is resolved (adapter dispatcher):
+#   1. --project <name> (or: make build PROJECT=<name>)
+#   2. current directory inside a registered hosting dir
+#   3. legacy project/ symlink (unchanged behavior)
+#
+# Examples:
+#gz4d      single_project
+#coastal   single_project   /data/checkouts/coastal_mapper
