@@ -284,6 +284,54 @@ Cherry-picked from a recon scan of tracked inspirations since last refresh (2026
 - **Review convergence/ship signal** — Pre-push review rounds get a ship-vs-continue verdict (round = prior review entries + 1; ship when no must-fixes, or round ≥ 2 with ≤2 mechanical, non-rising must-fixes) so review loops don't run indefinitely. Related data point: they made Copilot Adversarial opt-in after measuring context cost, defaulting to a dual-lens Claude pass. Source: rolker/ros2_agent_workspace — #537/PR #543, #467/PR #517
 - **Orchestration reference design (updates Tier-3 stance)** — `dispatch_subagent.sh` + `/run-issue` + `/address-findings` + ADR-0015 handoff contract: local-first, terminal-based, `AskUserQuestion`-checkpointed lifecycle orchestration where the host fetches inputs and publishes outputs and the sandboxed phase has no GitHub auth. Not a port candidate now, but the closest-to-home reference if mechanical backlog pressure ever makes orchestration (agent-orchestrator Tier-3 defer, D5 additive-only) worthwhile — it satisfies most of our CLI-first constraint. Source: rolker/ros2_agent_workspace — #470/#481, ADR-0013/0015
 
+### From the 2026-09-14 inspiration sweep (gstack, superpowers, engram, project-codeguard, harness-starter-kit, cc-harness-skills, diffx)
+
+Seven sources refreshed in one pass (one digest PR each; the ros2_agent_workspace round is recorded separately above). Framing question was whether anything changes the #172 redesign path. Nothing does; four sources independently supply design input for it, grouped first.
+
+#### Design inputs for #172 (adapters, registry, manifests, variants)
+
+- **Adapter-config factory with parity proof** — Collapse per-type adapter config into a defaults + overrides factory; a dump-diff test proves the refactor changed nothing, a test pins "accepted verbs ⊆ dispatched verbs", and an unread-field audit catches config nobody consumes. Input to ADR-0011's contract as more types land. Source: garrytan/gstack — `defineHost()` wave (v1.60–v1.84)
+- **Harness-adapter contract checklist** — Per-adapter definition-of-done with a live acceptance test, a never-write-into-external-repo rule (maps to the P-X level in #172), a manifest registry that keeps N per-host manifests in lockstep, and an "does an existing type already cover this?" gate before adding a type. Source: obra/superpowers — `docs/porting-to-a-new-harness.md` rewrite, `.version-bump.json` (v6.3.0)
+- **State-root discipline for multi-project hosting** — One resolver for every reader and writer of agent state; per-project state keyed by canonical slug with self-heal; agent state is never written into a project checkout; registering one project must not reclassify another. Rules for the registry (#227) and for #239. Source: garrytan/gstack — multi-project state-root bug cluster
+- **Setup-time variant rendering** — Render host × model (here: role × distro) variants from one template at setup time, keyed off project-owned config, instead of maintaining copies. Shape for #172 step 7 role variants. Source: garrytan/gstack — per-model overlay rendering
+- **Policy kernel + on-demand topic bodies** — Split agent guidance into a small always-loaded kernel of WHEN/DO/READ/BOUNDARY entries plus topic bodies loaded on demand, with a body-load histogram to find dead guidance. Shape for shared-kernel-plus-variant instruction files across #172 variants; also the enforcement half of the skill-carving row. Source: shiblon/engram v0.16.0
+- **Manifest source tracking + update/refresh verbs** — A manifest records the workspace commit it was last reconciled against; `update`/`refresh` classify each incoming change as applied / skipped / deferred, never overwrite, and report. Concrete cascade model for the M level in #172 step 4. Source: harnessworks/harness-starter-kit — `.harness/source.json`, `/harness update`
+- **Manifest-carried rule packs** — Project rule packs (security or convention rules with frontmatter) travel as manifest payload and are refreshed by `adapter sync`, mirroring a consumer-side update workflow. Additive #172 step 4 input. Source: cosai-oasis/project-codeguard — rule packaging + consumer update flow
+- **Ownership gate for generated files** — Generated files carry a provenance marker; regeneration proves ownership before overwriting, backs up customized copies, and reports foreign entries. Protects `make generate-skills` output and manifest-generated files. Source: garrytan/gstack — generated-file ownership wave
+
+#### Enforcement and drift
+
+- **Failure memory with a detection link** — A failure record must cite an existing detection check (path or make target verified to exist; non-committal prose rejected). Mechanical form of "a change includes its consequences". Source: harnessworks/harness-starter-kit — memory validation
+- **Decision-memory diff warning** — PR check: watched infrastructure paths changed without a `docs/decisions/` diff triggers ADR-or-explain. Source: harnessworks/harness-starter-kit
+- **Coupling findings taxonomy for audit-workspace** — Orphan Constraint / Orphan Feedback / Unoperationalized Memory / Ungoverned Change Type / Promotion Gap as named finding classes so audits are comparable run to run. Source: harnessworks/harness-starter-kit — coupling diagnostic
+- **Adapter-file drift check** — CI check that CLAUDE.md, CODEX.md, and the Copilot/Gemini instruction files stay thin routers over AGENTS.md (ADR-0006). Source: harnessworks/harness-starter-kit
+- **Governance wording regression tests** — Unit tests pinning load-bearing AGENTS.md / PRINCIPLES.md sentences; lighter than the drill/evals harness. Source: harnessworks/harness-starter-kit
+- **Forbidden-filenames hook** — Pre-commit rejection of `*_old`, `*_backup`, `temp_*`, `*.bak`. Source: harnessworks/harness-starter-kit
+- **Context-budget ratchet** — Committed size fixture + ratchet test for always-loaded instruction mass; the enforcement half of the skill-carving row (ros2 #564 lacks it). Source: garrytan/gstack
+- **Test-lane honesty tripwires** — Every suite must provably run in some CI lane; exit codes must survive `| tee`; a suite that runs 4% of itself must not exit green. Fold into the test-coverage catalog row; #235 made the adapter suites live in CI. Source: garrytan/gstack — fail-open sweeps
+- **Experiment registry with exit conditions** — Every non-stable feature declares a hypothesis and the observable events that promote or remove it; a test checks registry/CLI agreement; each minor release reviews entries. Fits #172 trials and audit-workspace. Source: shiblon/engram
+- **Skill frontmatter schema + version gate** — CI validator for skill frontmatter and a one-version-everywhere check; audit-workspace has no skill schema check today. Source: cosai-oasis/project-codeguard
+
+#### Review, dispatch, and untrusted input
+
+- **Spawned-session dispatch contract** — Dispatcher sets a spawned marker; gates auto-resolve except destructive ones; decisions are returned to the parent as an array; the completion trigger must be a verified signal; `run_in_background:false` pinned where a result is needed. This sweep exercised exactly this. Source: garrytan/gstack
+- **Rulings, not stalls** — A controller ledgers non-catastrophic rulings instead of parking on the human; only four hard stops; decisions surfaced at finish. Fixes the ask-user-stall default in multi-step skills. Source: obra/superpowers SDD (v6.2–v6.3)
+- **Tracker-text trust envelope** — One ingress helper envelopes PR/issue/comment text as data before it enters context; a CI scanner fails raw reads. Five skills/scripts here read tracker text raw. Source: garrytan/gstack
+- **Content-bound review evidence** — "Tests passed" / "reviewed" claims bind to a content fingerprint of tree + command + max age; revives the deferred #51 idea with its missing piece. Source: garrytan/gstack
+- **Dispatch fan-out lessons** — Closed-set read-only authority for reviewers, plan mode redirects writes, accepted ≠ enforced, measured context-suppression cost, keep one whole-change reviewer. Audit `cross_model_review.sh` and review-code against it. Source: shiblon/engram — dispatch design notes
+- **Agent-skill security checklist** — Tool allowlists, filesystem/network bounds, logging, human-in-the-loop for high-risk actions; concrete checklist for skill-importer's safety step. Source: cosai-oasis/project-codeguard PR #112
+- **Question vs change-request split in triage-reviews** — Questions get a reply and stay open; change requests get applied, replied, resolved. Small absorb. Source: wong2/diffx
+- **Skill activation and targeting evidence** — Field evidence that "applies to any code" skills get skipped and over-broad targeting loads most of a corpus; addendum to the skill-authoring guidance row. Source: cosai-oasis/project-codeguard #117/#121
+
+#### Method and memory
+
+- **Writing-good-tests principles** — Name the break, assert behaviour not text, mutation check; for `test-engineering` and our script tests (several grep script text today). Source: obra/superpowers `writing-good-tests`
+- **Three-path brainstorm router** — Spike / bounded / architectural off-ramp with stage-bound approval and a one-way ratchet, for `/plan-task` → `/review-plan` instead of always-full-ceremony. Source: obra/superpowers
+- **Memory consolidation rule** — Surface contradictions and duplicates before writing memory instead of appending. Cheap anti-drift rule for MEMORY.md. Source: shiblon/engram
+- **Reuse ladder + shortcut-debt markers** — Reuse-ladder paragraph in skill guidance; shortcut decision-id markers harvested at retro. Native `/simplify` covers the lens. Source: garrytan/gstack
+- **Verification tri-state vocabulary** — verified / unverified / failed output contract and "never imply validation ran"; annotation on #29. Source: LearnPrompt/cc-harness-skills
+- **Continuation-summary template** — Nine-section compaction summary preserving every user correction and the next aligned step; shapes the progress.md checkpoint block in the Session Intelligence Layer row. Source: LearnPrompt/cc-harness-skills
+
 ### From gstack (2026-07-14)
 
 - **Skill carving / token reduction** — Carve large skill bodies into a thin always-loaded skeleton + on-demand `references/` sections, with an eval floor so carving can't silently break behavior. Gstack cut catalog tokens 56% and /ship's always-loaded mass 59%; ros2's open #564 (slim AGENTS.md via enforcement-backed criterion) is the same concern from the fork side. Audit our largest SKILL.md bodies first. Source: garrytan/gstack v1.46/v1.54/v1.56/v1.57.0, issues #2214/#2238
