@@ -614,8 +614,12 @@ adapter_scope_for_pr() {
         echo "ERROR: scope_for_pr requires a path argument" >&2
         return 1
     fi
+    # `git -C` needs a directory; a file path (package.xml, a source file)
+    # resolves from its parent — found on the real p11-jazzy checkout (#237).
+    local dir="$path"
+    [ -d "$dir" ] || dir="$(dirname "$dir")"
     local url
-    if ! url="$(git -C "$path" remote get-url origin 2>/dev/null)"; then
+    if ! url="$(git -C "$dir" remote get-url origin 2>/dev/null)"; then
         echo "ERROR: no git repository with an 'origin' remote at or above: $path" >&2
         return 1
     fi

@@ -442,6 +442,9 @@ test_scope_for_pr_walks_up() {
     mkdir -p "$sb/repo_walk/deep/sub/dir"
     out="$("$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_walk/deep/sub/dir")" || true
     assert_eq "walked up to repo root" "owner3/repo3" "$out"
+    touch "$sb/repo_walk/deep/sub/dir/file.txt"
+    out="$("$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_walk/deep/sub/dir/file.txt")" || true
+    assert_eq "file path resolves via its parent dir" "owner3/repo3" "$out"
 }
 
 test_scope_for_pr_ssh_url_with_port() {

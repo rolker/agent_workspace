@@ -672,6 +672,10 @@ test_scope_for_pr_nested_package() {
     mkdir -p "$proj/layers/main/l1_ws/src/pkg_a/src/deep"
     out="$(run_adapter "$sb" scope_for_pr "$proj/layers/main/l1_ws/src/pkg_a/src/deep")" || true
     assert_eq "owner/repo of the package, not the layer" "owner/pkg_a" "$out"
+    # A file path (package.xml) must resolve from its directory (#237).
+    touch "$proj/layers/main/l1_ws/src/pkg_a/package.xml"
+    out="$(run_adapter "$sb" scope_for_pr "$proj/layers/main/l1_ws/src/pkg_a/package.xml")" || true
+    assert_eq "file path resolves via its parent dir" "owner/pkg_a" "$out"
 }
 
 # ---- sync verb ----
