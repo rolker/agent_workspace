@@ -215,9 +215,25 @@ and manual checks need a home in the manifest's `.project_config`.
   more round at low cadence and moving it to "watched, not tracked" if there
   is still no activity.
 
+## Tracking status
+
+- 2026-09-14: keep tracked for one more round. If the repo is still dormant
+  (no commits since 2026-06-18) at the next check, move it to the
+  "watched, not tracked" block in `inspiration_registry.yml` instead of
+  running another survey.
+
 ## Pending Review (2026-09-14 round)
 
-- `failure-memory-with-detection-link` — Adopt a failure-record schema
+(none — all items triaged below)
+
+## Roadmapped (2026-09-14 decisions)
+
+All seven roadmapped items were added to ROADMAP.md via the consolidated
+2026-09-14 sweep block in the gstack digest PR (2026-09-14).
+
+- `failure-memory-with-detection-link` — added to ROADMAP.md via the
+  consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14).
+  Adopt a failure-record schema
   (`docs/failures/NNNN-*.md`) whose "Detection Or Prevention Check" section
   is mechanically validated: cited test/script/workflow paths and `make`
   targets must exist, non-committal prose is rejected, and "no check is
@@ -227,7 +243,9 @@ and manual checks need a home in the manifest's `.project_config`.
   context sections and memory files. Source: `scripts/check_failure_memory.py`,
   ADR 0004, `docs/failures/000-template.md`. Workspace relevance: **High**.
   (2026-09-14)
-- `decision-memory-diff-warning` — Pre-commit/CI check: if watched
+- `decision-memory-diff-warning` — added to ROADMAP.md via the
+  consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14).
+  Pre-commit/CI check: if watched
   implementation paths (`.agent/scripts/**`, `.claude/skills/**`,
   `.github/workflows/**`, `Makefile`) changed in a PR and `docs/decisions/**`
   did not, print the trigger question and require an ADR, an ADR citation,
@@ -238,7 +256,9 @@ and manual checks need a home in the manifest's `.project_config`.
   an opt-in fail flag, rules in a JSON file. Source:
   `scripts/check_decision_memory.py`, `.harness/decision-memory-rules.json`,
   ADR 0002. Workspace relevance: **High**. (2026-09-14)
-- `coupling-findings-for-audit-workspace` — Add Doctor's coupling taxonomy
+- `coupling-findings-for-audit-workspace` — added to ROADMAP.md via the
+  consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14).
+  Add Doctor's coupling taxonomy
   to `/audit-workspace`: Orphan Constraint (hook/script with no CI or doc
   binding), Orphan Feedback (CI/Makefile references a script that does not
   exist), Unoperationalized Memory (ADR consequences never wired to a check),
@@ -248,7 +268,9 @@ and manual checks need a home in the manifest's `.project_config`.
   makes findings comparable across runs and could exit nonzero in CI.
   Source: `scripts/harness_doctor.py` `coupling_findings()`, ADR 0007.
   Workspace relevance: **Medium**. (2026-09-14)
-- `manifest-source-tracking-and-update` — For #172: give each project
+- `manifest-source-tracking-and-update` — added to ROADMAP.md via the
+  consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14).
+  For #172: give each project
   manifest a `.agent/workspace-source.json` (workspace commit last reconciled
   against) and a `/harness update`-style verb that diffs workspace changes
   since that commit, classifies each as safe candidate / patch carefully /
@@ -258,14 +280,9 @@ and manual checks need a home in the manifest's `.project_config`.
   improvements cascade to projects" at the M level. Source:
   `commands/harness-update.md`, `commands/harness-refresh.md`. Workspace
   relevance: **High** (for #172 specifically). (2026-09-14)
-- `gate-placement-normal-focused-manual` — Require every check added to
-  the workspace or an adapter to be classified normal-gate / focused /
-  manual with a reason, in the PR template and in `adapter test` docs;
-  deterministic local checks must be in the normal gate or justify why not.
-  Cheap report-field rule; could later become part of the #172 adapter
-  contract. Source: ADR 0003, `docs/checklists/verification-scripts.md`.
-  Workspace relevance: **Medium**. (2026-09-14)
-- `adapter-file-drift-check` — CI check that framework adapter files
+- `adapter-file-drift-check` — added to ROADMAP.md via the consolidated
+  2026-09-14 sweep block in the gstack digest PR (2026-09-14).
+  CI check that framework adapter files
   (`CLAUDE.md`, `CODEX.md`, `.github/copilot-instructions.md`, Gemini
   instructions) stay thin routers over `AGENTS.md` and do not restate or
   contradict it, modelled on `check_agent_skills_package.py` which keeps the
@@ -273,19 +290,28 @@ and manual checks need a home in the manifest's `.project_config`.
   covers the generated `/make_*` skills. Source:
   `scripts/check_agent_skills_package.py`, ADR 0008. Workspace relevance:
   **Medium**. (2026-09-14)
-- `governance-wording-regression-tests` — Pin load-bearing sentences in
+- `governance-wording-regression-tests` — added to ROADMAP.md via the
+  consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14).
+  Pin load-bearing sentences in
   AGENTS.md / PRINCIPLES.md / skill files with plain unit tests
   (`tests/test_repository_hygiene.py` pattern) so a well-meaning edit cannot
   silently drop a rule. Lighter than the roadmapped drill/evals harness;
   complements it. Source: `tests/test_repository_hygiene.py`. Workspace
   relevance: **Medium**. (2026-09-14)
-- `structure-rules-forbidden-filenames` — Pre-commit hook rejecting
+- `structure-rules-forbidden-filenames` — added to ROADMAP.md via the
+  consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14).
+  Pre-commit hook rejecting
   `temp_*`, `*_new.*`, `*_old.*`, `*_backup.*`, `*.bak` outside scratchpad,
   from a small JSON rules file. Mechanical form of the "Workspace
   Cleanliness" rule. Source: `scripts/check_structure.py`,
   `.harness/structure-rules.json`. Workspace relevance: **Low**.
   (2026-09-14)
-- `enforceability-ladder-vs-adr-0005` — Informational: upstream issue #56
+
+## Skipped (2026-09-14 decisions)
+
+- `enforceability-ladder-vs-adr-0005` — skipped: ADR-0005 already settles
+  the direction (CI-first); the alternative is recorded above in the
+  governance-model survey for reference (2026-09-14). Informational: upstream issue #56
   proposes a cost-ascending ladder (edit instruction → extend existing check
   → reuse verification command → new script/CI) gated by "does it catch the
   failure or only document it". Our ADR-0005 is strength-ascending
@@ -293,21 +319,19 @@ and manual checks need a home in the manifest's `.project_config`.
   principles review guide acknowledging the alternative and why we chose
   CI-first; no behaviour change. Source: harnessworks/harness-starter-kit#56.
   Workspace relevance: **Low**. (2026-09-14)
-- `benchmark-task-json-boundaries` — Repo-owned benchmark task specs
-  (prompt + expected file boundary + forbidden file boundary + oracle
-  commands) consumed by a generic external runner. Overlaps the existing
-  roadmapped drill/evals-harness item; only the file-boundary oracle is new.
-  Source: `benchmarks/tasks/*.json`, `benchmarks/README.md`. Workspace
-  relevance: **Low**. (2026-09-14)
+- `benchmark-task-json-boundaries` — skipped: covered by the existing
+  roadmapped drill/evals-harness item (2026-09-14). Repo-owned benchmark
+  task specs (prompt + expected file boundary + forbidden file boundary +
+  oracle commands) consumed by a generic external runner; only the
+  file-boundary oracle is new. Source: `benchmarks/tasks/*.json`,
+  `benchmarks/README.md`. Workspace relevance: **Low**.
 
-## Roadmapped
+## Deferred (2026-09-14)
 
-(none yet — awaiting triage)
-
-## Skipped
-
-(none yet — awaiting triage)
-
-## Deferred
-
-(none yet — awaiting triage)
+- `gate-placement-normal-focused-manual` — revisit once the #172 adapter
+  contract settles; could become an adapter-level field (2026-09-14).
+  Require every check added to the workspace or an adapter to be classified
+  normal-gate / focused / manual with a reason, in the PR template and in
+  `adapter test` docs; deterministic local checks must be in the normal gate
+  or justify why not. Source: ADR 0003,
+  `docs/checklists/verification-scripts.md`. Workspace relevance: **Medium**.
