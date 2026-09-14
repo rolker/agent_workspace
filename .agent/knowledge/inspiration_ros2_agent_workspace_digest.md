@@ -1,9 +1,184 @@
 # Inspiration Digest: ros2_agent_workspace
 
 Type: fork
-Last checked: 2026-07-14
-Repo: rolker/ros2_agent_workspace @ b64640f14f05799796164dd7fe07cd8b583541dc
-Previously checked: 2026-04-26 @ 395b1c5e26c82a7b032738adc0d4a03269e48035
+Last checked: 2026-09-14
+Repo: rolker/ros2_agent_workspace @ 3b365a53bcdf47892f8b76425650ac40454d00bf
+Previously checked: 2026-07-14 @ b64640f14f05799796164dd7fe07cd8b583541dc
+
+## Changelog (2026-07-14 → 2026-09-14)
+
+355 commits since the last check. Framing question for this round: does
+anything upstream change the path of the #172 workspace redesign
+(adapters, multi-tenant hosting, manifests, role/distro variants,
+absorbing this fork)? Short answer: **no — it confirms it.** Three of the
+largest upstream efforts this period are patches for problems the
+registry + adapter model removes structurally, and one upstream change
+(manifest fallback) converges on what #237 just landed here.
+
+### Root/manifest resolution without `layers/` (#569 → open PR #625)
+
+Upstream's janitor-sweep PR adds three resolution scripts —
+`workspace_root.sh`, `manifest_fallback.sh`, `resolve_repo_checkout.sh`
+(+ 32 tests) — because `layers/` and the `configs/manifest` symlink
+exist only in the main checkout, so every skill run from a worktree,
+fresh clone, or container had nothing to read. `manifest_fallback.sh`
+shallow-clones the manifest repo from the tracked bootstrap pointer and
+reads `bootstrap.yaml` (same four keys) to find the `.repos` files.
+
+- **Workspace relevance**: **Confirms the redesign.** Here the hosting
+  dir is an absolute registry path resolved by the adapter dispatcher,
+  independent of which checkout the caller stands in, and `adapter
+  setup` already bootstraps the manifest from the same pointer (#237).
+  The one place we still have the upstream shape of the bug is the
+  Makefile's worktree-root guess — filed as #239 this round; their
+  `workspace_root.sh` rule (validated env var → script's own location →
+  hop to the main checkout via `--git-common-dir`, gated on the
+  destination being a workspace root) is the reference for the #239
+  fix. Also relevant to **step 4 (manifests)**: both repos now consume
+  the manifest independently of the layer tree, so moving it to a
+  standalone / orphan-branch manifest (Pattern A) is viable on both
+  sides.
+
+### False-green sweep: sync/pull/validate (#609 → PR #611)
+
+`make sync` reported success and exited 0 when repos failed to update.
+Fixed with an outcome classification per repo (updated / skipped /
+FAILED with cause), "no repos enumerated" is not all-clear, an
+unreadable tree is FAILED not clean, and exit-code contract documented.
+
+- **Workspace relevance**: **High — same bug exists here.** Our
+  `ros2_colcon` `adapter_sync` prints `pull failed (continuing)` /
+  `fetch failed (continuing)` to stderr and then `Sync complete.` with
+  exit 0; `single_project` sync should be checked for the same shape.
+  Quality Standard says silent failures are not nits. Direct fix
+  candidate with tests in the existing adapter suites.
+
+### Local-first quality gates (#572 umbrella; ADR-0018, ci_local.sh #573/#578)
+
+A containerized local CI runner mirrors each repo's `ci.yml` from a
+pristine `git archive HEAD` snapshot and writes an attestation (image,
+packages, scope, log sha) to a git note at `refs/notes/ci-local`.
+ADR-0018 accepts a full-scope attestation as merge verification for
+project-repo PRs, hosted CI kept for environment diversity. Motivation:
+2h21m hosted runs, field hosts with no GitHub credentials.
+
+- **Workspace relevance**: Medium. The ROS container runner is domain,
+  but the *shape* — a per-project-type "verify in a clean environment
+  and attest" step that `merge_pr.sh` could accept instead of waiting
+  on hosted CI — is an adapter-verb candidate (`ci` or `attest`) once
+  a second project type needs it. Not now; note for the ADR-0011 verb
+  list.
+
+### Dispatch default flipped to in-process; what a container contains (#607 → ADR-0019)
+
+Auto mode removed the prompt-cost argument for container dispatch. Six
+review rounds on the launcher found the "sandbox" mounts the whole
+workspace read-write, forwards Claude credentials, and withholds GitHub
+write auth only by configuration. ADR-0019 names it: containers isolate
+*machine state*; untrusted input is handled by the `--context-file`
+data fence, orthogonal to mode.
+
+- **Workspace relevance**: Low-Medium. We have no dispatcher (Tier-3
+  deferred). Updates the reference design entry already on the roadmap:
+  the container is not the containment story. Informational.
+
+### `progress_append.sh` + ADR-0013 lifecycle plumbing (#594/#596/#592)
+
+Prompt-free finish-phase processing, a plan-task "Documentation &
+Instruction Impact" section with matching review-plan dimension and
+review-code governance check, and repo-qualified re-orientation context
+required in every run-issue `AskUserQuestion`.
+
+- **Workspace relevance**: Medium. The doc-impact seam is a cheap port
+  into our `plan-task` / `review-plan` (we already have a Consequences
+  Map in the principles guide). Re-orientation context in questions is
+  already user policy here (CLAUDE.md). ADR-0013 vocabulary stays
+  deferred (tracked as #190).
+
+### review-code: record lane for lifecycle-record diffs (#601, open)
+
+Proposal: `.agent/work-plans/**` diffs (plans, progress, spike findings)
+get one accuracy round and fast convergence; reference docs keep full
+depth. Motivated by three Deep review rounds polishing citations on a
+findings document whose verdict never moved.
+
+- **Workspace relevance**: Medium. Same depth heuristic here (ported
+  `review_depth_classification.md`); our progress-only PRs would hit
+  the same loop. Candidate.
+
+### ADR 'Provisional' status proposal (#620, open)
+
+A third ADR status for decisions that are made and binding but whose
+details are still being proven by implementation, so refinements don't
+need a superseding ADR. Motivating case is a project-repo ADR.
+
+- **Workspace relevance**: Medium. ADR-0011 (adapter contract) is in
+  exactly that state — verbs are being proven project type by project
+  type (#235/#237). Cheap governance port if #620 lands; watch.
+
+### Worktree hazards (#598 open; #621 open; #618 open)
+
+`worktree_create.sh` silently symlinks the real repo into the worktree
+when `git worktree add` fails (stderr discarded), which let a dispatched
+phase switch the main clone's branch. Relative paths resolve in the
+wrong worktree when a compound command's `cd` is undone by a later
+failure. `merge_pr.sh` cwd mode resolves a non-canonical worktree it
+cannot clean up.
+
+- **Workspace relevance**: #598 is a **phase 3 design constraint** for
+  #172 step 6 (package-level worktrees for nested repos must hard-stop
+  on `git worktree add` failure, never symlink a git repo). #621 is a
+  knowledge note (this session hit the cwd-reset shape several times).
+  #618 mirrors gaps our own `merge_pr.sh` may share; check when #191
+  lands.
+
+### Field / ROS / container domain (skipped)
+
+#602/#604/#606 container volume ownership, #582–#584 sync throttle,
+#577/#578 upstream.repos underlay deps, #612/#613 refs/bugs push +
+git-bug staleness on the boat, #619/#622 import-field-changes and
+push_remote layer defaults, #605/#585/#590 local Ollama adversarial
+specialist (made opt-in), #623 file_clock gotcha, #617 layer-keyed
+lookups knowledge, Gazebo research (#369).
+
+### Open issues worth watching
+
+- **#564** slim AGENTS.md via enforcement-backed criterion — still open,
+  now sequenced before the janitor (#569). Same growth problem here.
+- **#562** `merge_pr.sh --skill` — still open; this digest PR again
+  needs manual worktree cleanup. Shared gap.
+- **#569/#625** janitor sweep — report-only skill chaining
+  audit-workspace / audit-project rotation / issue-triage / digest
+  freshness into one timestamped local report; publish + trigger
+  deferred. Their research digest sat 59 days past its nag. Ours has
+  the same detectors and the same missing loop.
+
+### Bidirectional note
+
+Upstream's digest of *us* (checked 2026-07-14) records the #172 push and
+their own #208/#209-equivalents porting field mode in reverse. Nothing
+new to pull back; their next check of us will see #226/#232/#236/#238.
+
+## Pending Review (2026-09-14 round)
+
+- `adapter-sync-false-green` — our `adapter_sync` verbs report "Sync
+  complete." exit 0 after per-repo failures; port #609's outcome
+  classification + exit contract (2026-09-14)
+- `janitor-sweep` — scheduled staleness/drift loop over our existing
+  detectors; #569 shape, report-only first (2026-09-14)
+- `doc-impact-seam` — plan-task "Documentation & Instruction Impact"
+  section + review-plan dimension + review-code governance check (#596)
+  (2026-09-14)
+- `review-code-record-lane` — lighter lane for `.agent/work-plans/**`
+  diffs (#601) (2026-09-14)
+- `adr-provisional-status` — third ADR status for decided-but-proving
+  decisions (#620); ADR-0011 is the local case (2026-09-14)
+- `worktree-no-symlink-fallback` — constraint for #172 step 6 phase 3
+  package worktrees (#598) (2026-09-14)
+- `local-ci-attestation-verb` — adapter-verb candidate mirroring
+  ADR-0018's attest-then-merge shape (2026-09-14)
+- `merge-pr-skill-worktrees` — `merge_pr.sh --skill` (#562); shared gap
+  (2026-09-14)
 
 ## Changelog (2026-04-26 → 2026-07-14)
 
