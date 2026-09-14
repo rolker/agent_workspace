@@ -549,6 +549,74 @@ test_setup_bootstrap_missing_fields_fails() {
     assert_contains "names the fields" "must define 'git_url' and 'branch'" "$out"
 }
 
+test_setup_bootstrap_config_path_dotdot_component_only() {
+    echo "TEST: config_path rejects '..' only as a path component ('config..d' is accepted)"
+    local sb out rc=0 proj url
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" "" config..d)"
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "config..d exits 0" "0" "$rc"
+    assert_eq "symlink targets config..d" \
+        "manifest_repo/manifest_repo/config..d" "$(readlink "$proj/configs/manifest")"
+    # A real '..' component nested inside the path is still rejected.
+    printf 'git_url: file://%s/remote/manifest_repo\nbranch: fakefox\nconfig_path: config/../../etc\n' "$sb" \
+        > "$sb/remote/bootstrap.yaml"
+    rm -rf "$proj/configs"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "nested .. component exits nonzero" "1" "$rc"
+    assert_contains "names config_path" "invalid 'config_path'" "$out"
+}
+
+test_setup_bootstrap_reuse_requires_matching_origin() {
+    echo "TEST: an existing clone dir is reused only when its origin matches git_url"
+    local sb out rc=0 proj url clone_dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" l1)"
+    clone_dir="$proj/layers/main/l1_ws/src/manifest_repo"
+    # Leftover from a bootstrap that pointed at a different repo.
+    mkdir -p "$clone_dir"
+    git -C "$clone_dir" init --quiet
+    git -C "$clone_dir" remote add origin "file:///elsewhere/other_manifest.git"
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "mismatched origin exits nonzero" "1" "$rc"
+    assert_contains "names both repos" "is a checkout of file:///elsewhere/other_manifest.git, not file://$sb/remote/manifest_repo" "$out"
+    assert_eq "no symlink created" "false" "$([ -e "$proj/configs/manifest" ] && echo true || echo false)"
+    # A non-git directory at the clone path is refused too.
+    rm -rf "$clone_dir" && mkdir -p "$clone_dir"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "non-git dir exits nonzero" "1" "$rc"
+    assert_contains "says it is not a checkout" "not a git checkout" "$out"
+}
+
+test_setup_bootstrap_reuse_warns_on_branch_mismatch() {
+    echo "TEST: a matching checkout on another branch is reused with a warning"
+    local sb out rc=0 proj url clone_dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" l1)"
+    clone_dir="$proj/layers/main/l1_ws/src/manifest_repo"
+    mkdir -p "$(dirname "$clone_dir")"
+    git clone -q -b fakefox "file://$sb/remote/manifest_repo" "$clone_dir"
+    git -C "$clone_dir" checkout -q -b feature/work
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "warns with both branches" "on 'feature/work', bootstrap pins 'fakefox'" "$out"
+    assert_eq "checkout left on its branch" "feature/work" "$(git -C "$clone_dir" branch --show-current)"
+    assert_eq "manifest linked" "true" "$([ -f "$proj/configs/manifest/layers.txt" ] && echo true || echo false)"
+}
+
 test_setup_existing_manifest_skips_bootstrap() {
     echo "TEST: a hand-placed configs/manifest dir is used as-is (no fetch)"
     local sb out rc=0
@@ -812,6 +880,9 @@ test_setup_bootstrap_env_url_wins
 test_setup_fresh_dir_without_url_fails
 test_setup_bootstrap_rejects_unsafe_fields
 test_setup_bootstrap_missing_fields_fails
+test_setup_bootstrap_config_path_dotdot_component_only
+test_setup_bootstrap_reuse_requires_matching_origin
+test_setup_bootstrap_reuse_warns_on_branch_mismatch
 test_setup_existing_manifest_skips_bootstrap
 test_build_layer_order_and_cascade
 test_build_skips_layer_without_src

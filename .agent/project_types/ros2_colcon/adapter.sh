@@ -298,7 +298,16 @@ _rc_bootstrap_manifest() {
         echo "Layer names must contain only letters, numbers, hyphens, and underscores." >&2
         return 1
     fi
-    if [[ "$config_path" == /* || "$config_path" == *..* ]]; then
+    # Reject an absolute path or any '..' path COMPONENT (not substring —
+    # 'config..d' cannot escape the clone and must pass).
+    local component invalid_path=false
+    local -a _rc_components
+    [[ "$config_path" == /* ]] && invalid_path=true
+    IFS='/' read -r -a _rc_components <<< "$config_path"
+    for component in "${_rc_components[@]}"; do
+        [ "$component" = ".." ] && invalid_path=true
+    done
+    if [ "$invalid_path" = true ]; then
         echo "ERROR: invalid 'config_path' value in bootstrap config: $config_path" >&2
         echo "config_path must be a relative path without '..' components." >&2
         return 1
@@ -319,7 +328,27 @@ _rc_bootstrap_manifest() {
     echo "  To:   $clone_dir"
     mkdir -p "$(dirname "$clone_dir")"
     if [ -e "$clone_dir" ]; then
-        echo "  (already present — reusing existing checkout)"
+        # Reuse only a checkout of the SAME repo: a corrected bootstrap.yaml
+        # after a partial bootstrap must not silently attach whatever was
+        # cloned before. Branch is the developer's business (feature work
+        # on a Pattern B manifest repo is normal) — report, don't refuse.
+        local existing_url existing_branch
+        if ! existing_url="$(git -C "$clone_dir" remote get-url origin 2>/dev/null)"; then
+            echo "ERROR: $clone_dir exists but is not a git checkout with an 'origin' remote." >&2
+            echo "Remove it (or point bootstrap.yaml elsewhere) and rerun setup." >&2
+            return 1
+        fi
+        if [ "${existing_url%.git}" != "${git_url%.git}" ]; then
+            echo "ERROR: $clone_dir is a checkout of $existing_url, not $git_url." >&2
+            echo "Remove it (or fix git_url in the bootstrap config) and rerun setup." >&2
+            return 1
+        fi
+        existing_branch="$(git -C "$clone_dir" branch --show-current 2>/dev/null)"
+        if [ "$existing_branch" != "$branch" ]; then
+            echo "  WARNING: existing checkout is on '${existing_branch:-detached}', bootstrap pins '$branch' — reusing as-is"
+        else
+            echo "  (already present — reusing existing checkout)"
+        fi
     elif ! git clone -b "$branch" "$git_url" "$clone_dir"; then
         echo "ERROR: failed to clone $git_url (branch: $branch)" >&2
         return 1

@@ -56,13 +56,13 @@ worktree's adapter and registry were exercised — not the main tree's.
 **CI**: all-pass
 
 ### Actions
-- [ ] Fix: `_rc_bootstrap_manifest` — when `clone_dir` already exists, verify
+- [x] Fix: `_rc_bootstrap_manifest` — when `clone_dir` already exists, verify
   it is a git checkout whose `origin` URL matches `git_url` (hard error with
   cleanup guidance otherwise) and warn when its current branch differs from
   `branch`; today an existing dir is reused blindly, so a corrected
   bootstrap.yaml after a partial bootstrap can attach the wrong manifest.
   Add tests: mismatched-origin reuse fails; matching reuse with a different
   branch warns and proceeds.
-- [ ] Fix: `config_path` traversal guard — reject `..` only as a complete
+- [x] Fix: `config_path` traversal guard — reject `..` only as a complete
   path component (split on `/`), not as a substring, so `config..d` is
   accepted as the error text already promises. Add a test.
