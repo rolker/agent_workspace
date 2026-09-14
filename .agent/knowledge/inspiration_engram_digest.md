@@ -1,9 +1,215 @@
 # Inspiration Digest: engram
 
 Type: inspiration
-Last checked: 2026-07-14
-Repo: shiblon/engram @ 243fb2c748f87cf6bfde977440e858e5a805e4d3
-Previously checked: 2026-05-07 @ 125f1d4; 2026-04-26 @ a4c577c
+Last checked: 2026-09-14
+Repo: shiblon/engram @ 2050c00b1ef66cc3e432d7a7a6b21907a2eb0f21
+Previously checked: 2026-07-14 @ 243fb2c; 2026-05-07 @ 125f1d4; 2026-04-26 @ a4c577c
+
+## Changelog (2026-07-14 → 2026-09-14)
+
+48 commits (243fb2c..2050c00), v0.11.2 → v0.16.0, ~90 files touched.
+Still no issues; the first three PRs ever (#1–#3, all self-authored
+feature branches) show the author moving off direct-to-main. A Go CI
+workflow (`.github/workflows/test.yml`) now runs on push and PR, so the
+"no CI on PRs" survey line is stale too. Two new design documents
+(`docs/design-notes.md` additions, `docs/dispatch-notes.md`) carry most
+of the portable thinking this round.
+
+### Experiments with exit conditions (most portable governance idea)
+
+New `engram experiments` registry (`pkg/engram/experiments.go`): every
+non-stable feature must declare a hypothesis, the surfaces that may
+change, **the event that promotes it**, and **the event that removes
+it** — "conditions name observable events rather than dates." Tests fail
+if a registered experiment has no labeled CLI command or vice versa, and
+minor-release prep must review every entry (promote / continue /
+deprecate / remove). `skill-discovery` was promoted this round;
+`curation-log`, `dispatch`, `guidance-reads` stay experimental with the
+v0.16.0 review recording *why*.
+
+- **Workspace relevance**: High, and directly relevant to the #172
+  redesign. Project-type adapters, the multi-tenant registry, per-project
+  manifests and role/distro variants are each a trial. An "experimental"
+  ADR/status with named promote/remove events (e.g. "a second project
+  type lands without touching the dispatcher") is a lighter-weight
+  commitment than shipping them as settled architecture, and gives
+  `/audit-workspace` something mechanical to check.
+
+### Policy kernel + on-demand topic bodies (guidance restructure)
+
+v0.16.0 unified all agent guidance behind one topic registry. Init files
+(CLAUDE.md / AGENTS.md / GEMINI.md …) now carry a ~5.5 KB **policy
+kernel** whose entries have explicit `WHEN` / `DO` / `READ` / optional
+`BOUNDARY` fields; `engram agentinfo <topic>` loads a full body on
+demand. Recognition is by condition, "without relying on magic
+keywords." An experimental `agentinfo stats` histogram counts which
+topic bodies actually get loaded per release, to find dead or
+under-routed guidance ("evidence for deciding which policy belongs
+eagerly in the kernel").
+
+- **Workspace relevance**: Medium-High. AGENTS.md is already the kernel
+  and `.agent/knowledge/` the bodies, but the rule entries are prose, not
+  WHEN/DO/READ/BOUNDARY, and nothing measures which knowledge files are
+  ever read. For #172's role/distro variants this suggests: one shared
+  kernel + per-variant topic bodies, rather than per-variant instruction
+  files that drift.
+
+### Memory consolidation rule
+
+v0.15.x bootstrap guidance adds a "Memory consolidation" section: before
+writing a memory, notice when it contradicts or duplicates one already
+in context, *surface* that instead of appending, and harmonize with the
+user into a replacement that retires the old entry. User feedback about
+the consolidation process itself goes to a memory entry the bootstrap
+never regenerates, so refinements survive re-bootstrap. v0.15.1 fixed
+the rule reaching only Claude — "a shared constant referenced by both
+documents."
+
+- **Workspace relevance**: Medium-High. Our auto-memory MEMORY.md index
+  has no anti-drift rule; entries accumulate. A one-paragraph rule in the
+  memory instructions is cheap. The "shared constant so two rendered
+  documents can't drift" lesson also applies to CLAUDE.md vs the other
+  framework adapter files.
+
+### Dispatch: multi-provider fan-out (experimental) — lessons for review tooling
+
+`engram dispatch` fans a decomposed task out to provider CLIs (claude,
+codex) as child processes, joined by one supervisor: no daemon, no
+schema, JSON-Lines status stream, per-child deadline and process group.
+`docs/dispatch-notes.md` (659 lines) is the interesting artifact. Findings
+measured against real CLIs:
+- **Read-only is the default authority** and must be a closed set; a
+  typo passed straight through as `--sandbox danger-full-access`.
+- **Plan mode is not read-only**: claude's `--permission-mode plan`
+  *redirects* writes to plan files, costing an 8-child review batch its
+  output. Read-only became `--permission-mode dontAsk --disallowedTools
+  "Edit Write NotebookEdit"`, canaried per probe.
+- **A flag the provider accepts is not a flag it enforces** — codex
+  echoed `sandbox: read-only` then wrote a file anyway.
+- **Context load dominates cost**: 36,888 cache-creation tokens with no
+  suppression vs 3,693 with `--setting-sources local` for a 9-word prompt.
+  And the `user` rung is not isolation: a child asked its codename
+  answered with the *parent operator's* codename.
+- **Slicing destroys the seams / fan-out amplifies false positives** —
+  always keep one child on the whole change at higher altitude; the
+  per-slice prompt must explicitly license silence.
+- Provider invocation recipes are **learned and probed, not compiled in**
+  (argv arrays with placeholders, stored with provenance + help digest;
+  "learning must probe, not believe"; model verified from CLI output
+  metadata, never by asking the child).
+- The test-quality reviewer found "tests that could not fail"; the
+  security reviewer found four child-output hazards. Both were found by
+  *reviewing dispatch with dispatch*.
+
+- **Workspace relevance**: High for `cross_model_review.sh` and the
+  `review-code` / `triage-reviews` skills, which already fan out to
+  specialist reviewers and to Codex/Gemini. The authority, plan-mode,
+  context-suppression, whole-change-reviewer and license-silence findings
+  are directly checkable against our scripts. Not a port of dispatch.
+
+### Multi-tenant scoping details (convergent with #172)
+
+Items that don't need porting but validate design choices in the
+redesign: bootstrap is **global by default so a forgotten flag cannot
+dirty the current repository** (`--project` is explicit); linked
+worktrees read the main checkout's database and "do not create a second
+`.engram` inside the linked worktree"; the project manifest (`register
+--list/--forget/--purge`) is keyed path-first so evicting one working
+copy leaves sibling clones alone; identity is global-only, behavior
+(preferences) may be global or project-scoped, "inject merges both,
+global first." A new design note, **"Durable state is not automatically
+memory"** (would it travel to another machine? does it shape agent
+behavior? would a human curate it? — three noes means it is state, put
+it in a table not a tier), is a useful test for what belongs in a
+registry vs a knowledge doc.
+
+- **Workspace relevance**: Medium for #172 — no new direction, but the
+  explicit-scope default and the state-vs-knowledge test are worth
+  citing in the design.
+
+### Bootstrap `--dry-run` / `--diff`
+
+Every bootstrap provider can preview writes as unified patches, with
+unchanged targets shown as empty patch headers, then one accept/reject
+prompt; reviewed files are revalidated before application.
+
+- **Workspace relevance**: Medium. `/onboard-project` and the future
+  per-project manifest generator (#172) write files into a project repo;
+  a diff preview before writing is the same UX.
+
+### Personality canary (open issue #168)
+
+No change to the mechanism. Two relevant notes: `design-notes.md` now
+states the principle as *"Identity is full and redundant; everything
+else is a summary … never make identity depend on a single channel being
+present"*; and the dispatch probe showed identity leaking into
+subagents through user-level CLAUDE.md, so a subagent that "knows the
+codename" says nothing about its own context health. Worth a comment on
+#168 when the 30-day light-layer evaluation happens.
+
+### Misc
+
+`mem edit` in `$EDITOR`; copyable `engram:/tier/key` addresses; compact
+`list`/`search` by default with `--limit`/`--full`; canonical tier
+enforcement with alias normalization at migration; append-only
+`curation_events` log (capture only, no consumer yet); Debian packaging;
+"a local build no longer claims to BE the release" (Go stamps
+pseudo-versions, and stamps no `vcs.*` at all when building from a
+linked git worktree — a worktree gotcha worth knowing).
+
+## Pending Review (2026-09-14 round)
+
+(none — all items triaged below)
+
+## Roadmapped (2026-09-14 decisions)
+
+- `experiment-registry-exit-conditions` — experimental features declare
+  hypothesis + promote/remove *events*; registry checked by tests;
+  minor-release review of every entry. Target: #172 adapters / registry /
+  manifests / variants and `/audit-workspace` — added to ROADMAP.md via
+  the consolidated 2026-09-14 sweep block in the gstack digest PR
+  (2026-09-14)
+- `policy-kernel-topic-bodies` — WHEN/DO/READ/BOUNDARY kernel in the
+  init file + on-demand topic bodies + body-load histogram; shape for
+  AGENTS.md vs `.agent/knowledge/` and for #172 role/distro variants
+  (shared kernel, per-variant bodies) — added to ROADMAP.md via the
+  consolidated 2026-09-14 sweep block in the gstack digest PR
+  (2026-09-14)
+- `memory-consolidation-rule` — surface contradictions/duplicates before
+  writing a memory instead of appending; refinements live outside the
+  regenerated file. Target: auto-memory MEMORY.md instructions — added
+  to ROADMAP.md via the consolidated 2026-09-14 sweep block in the
+  gstack digest PR (2026-09-14)
+- `dispatch-review-fanout-lessons` — read-only default authority as a
+  closed set; plan mode redirects writes; accepted ≠ enforced; context
+  suppression numbers; keep one whole-change reviewer; license silence.
+  Target: audit of `cross_model_review.sh` / `review-code` — added to
+  ROADMAP.md via the consolidated 2026-09-14 sweep block in the gstack
+  digest PR (2026-09-14)
+
+## Skipped (2026-09-14 decisions)
+
+- `explicit-scope-default` — global-by-default so a forgotten flag can't
+  dirty the current repo; worktrees share the main checkout's store;
+  "durable state is not memory" test. Convergent validation of #172's
+  existing direction, nothing to port; cite in the #172 discussion
+  (2026-09-14)
+
+## Deferred (2026-09-14)
+
+- `bootstrap-dry-run-diff` — unified-patch preview + accept/reject before
+  writing files into a project repo. Revisit when `/onboard-project` or
+  the #172 manifest generator writes files into project repos
+  (2026-09-14)
+- `identity-redundant-surfaces` — "never make identity depend on a single
+  channel"; subagents inherit the parent's codename via user-level
+  instructions, so the canary is per-session, not per-agent. Comment on
+  #168 when that issue is evaluated (2026-09-14)
+- `automation-catalog-digest-verdicts` — per-candidate judgment stored
+  with its content digest; changed candidates keep prior verdict pending
+  confirmation, removed ones need explicit retirement. Parallels
+  `/skill-importer`, `/analyze-permissions`, `/audit-project`; no current
+  pain, resurface next run (2026-09-14)
 
 ## Changelog (2026-05-07 → 2026-07-14)
 
