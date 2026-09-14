@@ -407,6 +407,228 @@ test_setup_requires_vcs() {
     assert_contains "names the missing tool" "'vcs' (vcstool) not found" "$out"
 }
 
+# ---- setup: manifest bootstrap (#237) ----
+
+# A local "remote" manifest repo (git, branch fakefox) whose config dir holds
+# a one-layer manifest, plus a bootstrap.yaml served via file:// (curl
+# handles file URLs, so no network and no stub). Pattern B when a layer is
+# given, Pattern A otherwise. Prints the bootstrap.yaml URL.
+make_manifest_remote() {
+    local sb="$1" layer="${2:-}" config_path="${3:-config}"
+    local repo="$sb/remote/manifest_repo"
+    mkdir -p "$repo/$config_path/repos"
+    printf 'l1\n' > "$repo/$config_path/layers.txt"
+    printf 'distro: fakefox\n' > "$repo/$config_path/bootstrap.yaml"
+    write_repos_file "$repo/$config_path/repos/l1.repos" fakefox pkg_a
+    git -C "$repo" init --quiet -b fakefox
+    git -C "$repo" -c user.name=t -c user.email=t@t add -A
+    git -C "$repo" -c user.name=t -c user.email=t@t commit --quiet -m init
+    {
+        echo "git_url: file://$repo"
+        echo "branch: fakefox"
+        [ -n "$layer" ] && echo "layer: $layer"
+        [ "$config_path" != "config" ] && echo "config_path: $config_path"
+        true
+    } > "$sb/remote/bootstrap.yaml"
+    echo "file://$sb/remote/bootstrap.yaml"
+}
+
+# Fresh (empty) hosting dir registered as p11 with the sandbox underlay.
+make_fresh_project() {
+    local sb="$1"
+    mkdir -p "$sb/projects/p11"
+    echo "p11 ros2_colcon" >> "$sb/.agent/projects.local"
+    echo "ROS_ROOT_DIR=\"$sb/rosroot\"" > "$sb/.agent/projects.d/p11.sh"
+    make_underlay "$sb"
+    echo "$sb/projects/p11"
+}
+
+test_setup_bootstraps_manifest_pattern_b() {
+    echo "TEST: setup on a fresh hosting dir bootstraps a Pattern B manifest from the config URL"
+    local sb out rc=0 proj url
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" l1)"
+    echo "MANIFEST_BOOTSTRAP_URL=\"$url\"" >> "$sb/.agent/projects.d/p11.sh"
+    out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "reports Pattern B" "Pattern B: layer=l1" "$out"
+    assert_eq "manifest repo cloned into the layer's src" \
+        "true" "$([ -d "$proj/layers/main/l1_ws/src/manifest_repo/.git" ] && echo true || echo false)"
+    assert_eq "configs/manifest is a relative symlink into the clone" \
+        "../layers/main/l1_ws/src/manifest_repo/config" "$(readlink "$proj/configs/manifest")"
+    assert_eq "layer import ran after bootstrap" \
+        "VCS_IMPORT:$proj/layers/main/l1_ws/src" "$(cat "$sb/vcs.log")"
+    # Idempotent: a second setup must not re-fetch or re-clone.
+    rc=0
+    out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "second setup exits 0" "0" "$rc"
+    assert_not_contains "second setup does not fetch again" "Fetching bootstrap" "$out"
+}
+
+test_setup_bootstraps_pattern_a_from_url_file() {
+    echo "TEST: bootstrap falls back to configs/project_bootstrap.url; Pattern A clones standalone"
+    local sb out rc=0 proj url
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" "" manifests/site)"
+    mkdir -p "$proj/configs"
+    printf '  %s \n' "$url" > "$proj/configs/project_bootstrap.url"
+    out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "reports Pattern A" "Pattern A" "$out"
+    assert_eq "clone lands under configs/manifest_repo" \
+        "true" "$([ -d "$proj/configs/manifest_repo/manifest_repo/.git" ] && echo true || echo false)"
+    assert_eq "symlink honours config_path" \
+        "manifest_repo/manifest_repo/manifests/site" "$(readlink "$proj/configs/manifest")"
+}
+
+test_setup_bootstrap_env_url_wins() {
+    echo "TEST: BOOTSTRAP_URL in the environment overrides the config and file"
+    local sb out rc=0 proj url
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" l1)"
+    echo 'MANIFEST_BOOTSTRAP_URL="file:///nonexistent/config.yaml"' >> "$sb/.agent/projects.d/p11.sh"
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "fetched the env URL" "Fetching bootstrap config from $url" "$out"
+    assert_eq "manifest present" "true" "$([ -f "$proj/configs/manifest/layers.txt" ] && echo true || echo false)"
+}
+
+test_setup_fresh_dir_without_url_fails() {
+    echo "TEST: fresh hosting dir with no bootstrap URL fails with guidance"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_fresh_project "$sb" >/dev/null
+    out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the missing URL" "no bootstrap URL" "$out"
+    assert_contains "lists MANIFEST_BOOTSTRAP_URL" "MANIFEST_BOOTSTRAP_URL" "$out"
+}
+
+test_setup_bootstrap_rejects_unsafe_fields() {
+    echo "TEST: bootstrap rejects traversal in config_path and invalid layer names"
+    local sb out rc=0 proj url
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" l1)"
+    printf 'git_url: file://%s/remote/manifest_repo\nbranch: fakefox\nconfig_path: ../../etc\n' "$sb" \
+        > "$sb/remote/bootstrap.yaml"
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "traversal config_path exits nonzero" "1" "$rc"
+    assert_contains "names config_path" "invalid 'config_path'" "$out"
+    assert_eq "nothing cloned" "false" "$([ -e "$proj/configs/manifest_repo" ] && echo true || echo false)"
+    printf 'git_url: file://%s/remote/manifest_repo\nbranch: fakefox\nlayer: ../x\n' "$sb" \
+        > "$sb/remote/bootstrap.yaml"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "bad layer exits nonzero" "1" "$rc"
+    assert_contains "names layer" "invalid 'layer'" "$out"
+}
+
+test_setup_bootstrap_missing_fields_fails() {
+    echo "TEST: bootstrap.yaml without git_url/branch fails before cloning"
+    local sb out rc=0 url
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_fresh_project "$sb" >/dev/null
+    url="$(make_manifest_remote "$sb" l1)"
+    printf 'branch: fakefox\n' > "$sb/remote/bootstrap.yaml"
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the fields" "must define 'git_url' and 'branch'" "$out"
+}
+
+test_setup_bootstrap_config_path_dotdot_component_only() {
+    echo "TEST: config_path rejects '..' only as a path component ('config..d' is accepted)"
+    local sb out rc=0 proj url
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" "" config..d)"
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "config..d exits 0" "0" "$rc"
+    assert_eq "symlink targets config..d" \
+        "manifest_repo/manifest_repo/config..d" "$(readlink "$proj/configs/manifest")"
+    # A real '..' component nested inside the path is still rejected.
+    printf 'git_url: file://%s/remote/manifest_repo\nbranch: fakefox\nconfig_path: config/../../etc\n' "$sb" \
+        > "$sb/remote/bootstrap.yaml"
+    rm -rf "$proj/configs"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "nested .. component exits nonzero" "1" "$rc"
+    assert_contains "names config_path" "invalid 'config_path'" "$out"
+}
+
+test_setup_bootstrap_reuse_requires_matching_origin() {
+    echo "TEST: an existing clone dir is reused only when its origin matches git_url"
+    local sb out rc=0 proj url clone_dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" l1)"
+    clone_dir="$proj/layers/main/l1_ws/src/manifest_repo"
+    # Leftover from a bootstrap that pointed at a different repo.
+    mkdir -p "$clone_dir"
+    git -C "$clone_dir" init --quiet
+    git -C "$clone_dir" remote add origin "file:///elsewhere/other_manifest.git"
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "mismatched origin exits nonzero" "1" "$rc"
+    assert_contains "names both repos" "is a checkout of file:///elsewhere/other_manifest.git, not file://$sb/remote/manifest_repo" "$out"
+    assert_eq "no symlink created" "false" "$([ -e "$proj/configs/manifest" ] && echo true || echo false)"
+    # A non-git directory at the clone path is refused too.
+    rm -rf "$clone_dir" && mkdir -p "$clone_dir"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "non-git dir exits nonzero" "1" "$rc"
+    assert_contains "says it is not a checkout" "not a git checkout" "$out"
+}
+
+test_setup_bootstrap_reuse_warns_on_branch_mismatch() {
+    echo "TEST: a matching checkout on another branch is reused with a warning"
+    local sb out rc=0 proj url clone_dir
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_fresh_project "$sb")"
+    url="$(make_manifest_remote "$sb" l1)"
+    clone_dir="$proj/layers/main/l1_ws/src/manifest_repo"
+    mkdir -p "$(dirname "$clone_dir")"
+    git clone -q -b fakefox "file://$sb/remote/manifest_repo" "$clone_dir"
+    git -C "$clone_dir" checkout -q -b feature/work
+    out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
+        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "warns with both branches" "on 'feature/work', bootstrap pins 'fakefox'" "$out"
+    assert_eq "checkout left on its branch" "feature/work" "$(git -C "$clone_dir" branch --show-current)"
+    assert_eq "manifest linked" "true" "$([ -f "$proj/configs/manifest/layers.txt" ] && echo true || echo false)"
+}
+
+test_setup_existing_manifest_skips_bootstrap() {
+    echo "TEST: a hand-placed configs/manifest dir is used as-is (no fetch)"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_colcon_project "$sb" >/dev/null
+    echo 'MANIFEST_BOOTSTRAP_URL="file:///nonexistent/config.yaml"' >> "$sb/.agent/projects.d/p11.sh"
+    out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_not_contains "no fetch attempted" "Fetching bootstrap" "$out"
+}
+
 # ---- build verb ----
 
 test_build_layer_order_and_cascade() {
@@ -518,6 +740,10 @@ test_scope_for_pr_nested_package() {
     mkdir -p "$proj/layers/main/l1_ws/src/pkg_a/src/deep"
     out="$(run_adapter "$sb" scope_for_pr "$proj/layers/main/l1_ws/src/pkg_a/src/deep")" || true
     assert_eq "owner/repo of the package, not the layer" "owner/pkg_a" "$out"
+    # A file path (package.xml) must resolve from its directory (#237).
+    touch "$proj/layers/main/l1_ws/src/pkg_a/package.xml"
+    out="$(run_adapter "$sb" scope_for_pr "$proj/layers/main/l1_ws/src/pkg_a/package.xml")" || true
+    assert_eq "file path resolves via its parent dir" "owner/pkg_a" "$out"
 }
 
 # ---- sync verb ----
@@ -648,6 +874,16 @@ test_setup_imports_each_layer
 test_setup_optional_layer_failure_tolerated
 test_setup_required_layer_failure_aborts
 test_setup_requires_vcs
+test_setup_bootstraps_manifest_pattern_b
+test_setup_bootstraps_pattern_a_from_url_file
+test_setup_bootstrap_env_url_wins
+test_setup_fresh_dir_without_url_fails
+test_setup_bootstrap_rejects_unsafe_fields
+test_setup_bootstrap_missing_fields_fails
+test_setup_bootstrap_config_path_dotdot_component_only
+test_setup_bootstrap_reuse_requires_matching_origin
+test_setup_bootstrap_reuse_warns_on_branch_mismatch
+test_setup_existing_manifest_skips_bootstrap
 test_build_layer_order_and_cascade
 test_build_skips_layer_without_src
 test_build_stops_on_failure

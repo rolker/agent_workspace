@@ -92,8 +92,13 @@ Two project types exist: `single_project` (one repo at the hosting dir) and
 by an in-tree manifest at `configs/manifest/` — `layers.txt`, per-layer
 `.repos` files, `bootstrap.yaml`; the ROS distro comes from the manifest's
 `distro:` field or `ROS_DISTRO` in the per-project config, never a silent
-default). `multi_repo` is deferred until a sibling-repos project materializes
-(#172 re-sequencing, 2026-07-24).
+default). A `ros2_colcon` hosting dir starts empty: `adapter setup` fetches
+the project's `bootstrap.yaml` (`BOOTSTRAP_URL`, then
+`MANIFEST_BOOTSTRAP_URL` in the per-project config, then
+`configs/project_bootstrap.url`), clones the manifest repo at its branch,
+symlinks `configs/manifest/` into it, and imports every layer's repos with
+`vcs` (#237). `multi_repo` is deferred until a sibling-repos project
+materializes (#172 re-sequencing, 2026-07-24).
 
 ## Worktree Strategy
 

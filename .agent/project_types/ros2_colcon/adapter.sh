@@ -8,6 +8,15 @@
 # bootstrap.yaml). Manifest-repo formalization is #172 step 4; this adapter
 # reads the manifest from the hosting dir only.
 #
+# Fresh hosting dir (#237, step 6 phase 2): `setup` bootstraps the manifest
+# when configs/manifest is absent, porting ros2's setup_layers.sh flow
+# non-interactively. The bootstrap URL (a remote bootstrap.yaml) resolves
+# from BOOTSTRAP_URL in the environment, MANIFEST_BOOTSTRAP_URL in the
+# per-project config, or configs/project_bootstrap.url in the hosting dir.
+# bootstrap.yaml fields: git_url, branch (required); layer (Pattern B —
+# clone into layers/main/<layer>_ws/src/<repo>; absent = Pattern A —
+# configs/manifest_repo/<repo>); config_path (default "config").
+#
 # Distro handling (new capability — the ros2 scripts hardcoded jazzy):
 #   1. `distro:` field in configs/manifest/bootstrap.yaml
 #   2. ROS_DISTRO in the per-project config (.agent/projects.d/<name>.sh,
@@ -195,6 +204,168 @@ _rc_repos_entries() {
     ' "$repos_file"
 }
 
+# Read one scalar from the per-project config (sourced in a subshell, stdout
+# suppressed so eval'd `env` output stays clean). A failing config is a
+# hard error — same semantics as _rc_distro / _rc_ros_root.
+_rc_config_var() {
+    local var="$1" config value
+    config="$(_rc_config_file)"
+    [ -f "$config" ] || { echo ""; return 0; }
+    if ! value="$(
+        eval "$var="
+        # shellcheck source=/dev/null
+        source "$config" >/dev/null || exit 1
+        eval "echo \"\${$var:-}\""
+    )"; then
+        echo "ERROR: failed to source $config" >&2
+        return 1
+    fi
+    echo "$value"
+}
+
+# Resolve the bootstrap URL (remote bootstrap.yaml). Priority: BOOTSTRAP_URL
+# env, MANIFEST_BOOTSTRAP_URL in the per-project config, then the hosting
+# dir's configs/project_bootstrap.url. Never prompts — the adapter runs
+# under make and in CI.
+_rc_bootstrap_url() {
+    local url="" url_file
+    url="$(printf '%s' "${BOOTSTRAP_URL:-}" | tr -d '[:space:]')"
+    if [ -z "$url" ]; then
+        url="$(_rc_config_var MANIFEST_BOOTSTRAP_URL)" || return 1
+        url="$(printf '%s' "$url" | tr -d '[:space:]')"
+    fi
+    if [ -z "$url" ]; then
+        url_file="$(_rc_root)/configs/project_bootstrap.url"
+        [ -f "$url_file" ] && url="$(tr -d '[:space:]' < "$url_file")"
+    fi
+    echo "$url"
+}
+
+# One scalar from a bootstrap.yaml (flat "key: value" lines; inline comments
+# stripped). Same parsing as _rc_distro and ros2's setup_layers.sh.
+_rc_yaml_scalar() {
+    grep "^${2}:" "$1" 2>/dev/null | head -1 | cut -d '#' -f 1 | awk '{print $2}'
+}
+
+# Bootstrap the manifest into a fresh hosting dir: fetch bootstrap.yaml,
+# clone the manifest repo at its branch, symlink configs/manifest to the
+# repo's config dir. No-op when configs/manifest already resolves; refuses
+# to replace a non-symlink at that path.
+_rc_bootstrap_manifest() {
+    local root mdir url tmp git_url branch layer config_path repo_name
+    local clone_dir config_dir target
+    root="$(_rc_root)"
+    mdir="$root/configs/manifest"
+    if [ -L "$mdir" ] && [ -e "$mdir" ]; then
+        return 0
+    fi
+    if [ -e "$mdir" ] && [ ! -L "$mdir" ]; then
+        # A real directory is a hand-placed manifest — leave it alone.
+        return 0
+    fi
+    url="$(_rc_bootstrap_url)" || return 1
+    if [ -z "$url" ]; then
+        echo "ERROR: no manifest at $mdir and no bootstrap URL to fetch one." >&2
+        echo "Provide the URL of the project's bootstrap.yaml via one of:" >&2
+        echo "  BOOTSTRAP_URL=<url> (environment)" >&2
+        echo "  MANIFEST_BOOTSTRAP_URL=<url> in $(_rc_config_file)" >&2
+        echo "  $root/configs/project_bootstrap.url" >&2
+        return 1
+    fi
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "ERROR: 'curl' not found — required to fetch $url" >&2
+        return 1
+    fi
+    echo "Fetching bootstrap config from $url..."
+    tmp="$(mktemp)"
+    if ! curl -sSLf "$url" -o "$tmp"; then
+        rm -f "$tmp"
+        echo "ERROR: failed to download bootstrap config from $url" >&2
+        return 1
+    fi
+    git_url="$(_rc_yaml_scalar "$tmp" git_url)"
+    branch="$(_rc_yaml_scalar "$tmp" branch)"
+    layer="$(_rc_yaml_scalar "$tmp" layer)"
+    config_path="$(_rc_yaml_scalar "$tmp" config_path)"
+    rm -f "$tmp"
+    if [ -z "$git_url" ] || [ -z "$branch" ]; then
+        echo "ERROR: bootstrap config at $url must define 'git_url' and 'branch'." >&2
+        return 1
+    fi
+    config_path="${config_path:-config}"
+    if [ -n "$layer" ] && ! [[ "$layer" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        echo "ERROR: invalid 'layer' value in bootstrap config: $layer" >&2
+        echo "Layer names must contain only letters, numbers, hyphens, and underscores." >&2
+        return 1
+    fi
+    # Reject an absolute path or any '..' path COMPONENT (not substring —
+    # 'config..d' cannot escape the clone and must pass).
+    local component invalid_path=false
+    local -a _rc_components
+    [[ "$config_path" == /* ]] && invalid_path=true
+    IFS='/' read -r -a _rc_components <<< "$config_path"
+    for component in "${_rc_components[@]}"; do
+        [ "$component" = ".." ] && invalid_path=true
+    done
+    if [ "$invalid_path" = true ]; then
+        echo "ERROR: invalid 'config_path' value in bootstrap config: $config_path" >&2
+        echo "config_path must be a relative path without '..' components." >&2
+        return 1
+    fi
+    repo_name="$(basename "$git_url" .git)"
+    if ! [[ "$repo_name" =~ ^[A-Za-z0-9_.-]+$ ]] || [[ "$repo_name" == .* ]]; then
+        echo "ERROR: cannot derive a safe repository name from git_url: $git_url" >&2
+        return 1
+    fi
+    if [ -n "$layer" ]; then
+        clone_dir="$root/layers/main/${layer}_ws/src/$repo_name"
+        echo "Cloning manifest repo (Pattern B: layer=$layer)..."
+    else
+        clone_dir="$root/configs/manifest_repo/$repo_name"
+        echo "Cloning manifest repo (Pattern A: standalone config)..."
+    fi
+    echo "  From: $git_url (branch: $branch)"
+    echo "  To:   $clone_dir"
+    mkdir -p "$(dirname "$clone_dir")"
+    if [ -e "$clone_dir" ]; then
+        # Reuse only a checkout of the SAME repo: a corrected bootstrap.yaml
+        # after a partial bootstrap must not silently attach whatever was
+        # cloned before. Branch is the developer's business (feature work
+        # on a Pattern B manifest repo is normal) — report, don't refuse.
+        local existing_url existing_branch
+        if ! existing_url="$(git -C "$clone_dir" remote get-url origin 2>/dev/null)"; then
+            echo "ERROR: $clone_dir exists but is not a git checkout with an 'origin' remote." >&2
+            echo "Remove it (or point bootstrap.yaml elsewhere) and rerun setup." >&2
+            return 1
+        fi
+        if [ "${existing_url%.git}" != "${git_url%.git}" ]; then
+            echo "ERROR: $clone_dir is a checkout of $existing_url, not $git_url." >&2
+            echo "Remove it (or fix git_url in the bootstrap config) and rerun setup." >&2
+            return 1
+        fi
+        existing_branch="$(git -C "$clone_dir" branch --show-current 2>/dev/null)"
+        if [ "$existing_branch" != "$branch" ]; then
+            echo "  WARNING: existing checkout is on '${existing_branch:-detached}', bootstrap pins '$branch' — reusing as-is"
+        else
+            echo "  (already present — reusing existing checkout)"
+        fi
+    elif ! git clone -b "$branch" "$git_url" "$clone_dir"; then
+        echo "ERROR: failed to clone $git_url (branch: $branch)" >&2
+        return 1
+    fi
+    config_dir="$clone_dir/$config_path"
+    if [ ! -d "$config_dir" ]; then
+        echo "ERROR: config directory not found at $config_dir" >&2
+        echo "Check the 'config_path' value in bootstrap.yaml (current: $config_path)." >&2
+        return 1
+    fi
+    mkdir -p "$root/configs"
+    # Relative link so the hosting dir can be moved as a unit.
+    target="$(realpath --relative-to="$root/configs" "$config_dir")"
+    ln -sfn "$target" "$mdir"
+    echo "Created symlink: $mdir -> $target"
+}
+
 # Source a ROS setup script with nounset relaxed — ROS setup files
 # reference unbound variables — then restore it so the adapter's own logic
 # keeps full set -euo pipefail protection. A failing setup script is a
@@ -235,9 +406,11 @@ adapter_env() {
 }
 
 adapter_setup() {
-    # In-tree manifest: import each layer's repos with vcs. Optional layers
+    # Bootstrap the manifest into a fresh hosting dir when needed, then
+    # import each layer's repos with vcs. Optional layers
     # (optional_layers.txt) may fail — e.g. private repos; everything else
-    # aborts loudly. Manifest bootstrap-from-URL is phase 2 (#235 scope).
+    # aborts loudly.
+    _rc_bootstrap_manifest || return 1
     _rc_require_manifest || return 1
     if ! command -v vcs >/dev/null 2>&1; then
         echo "ERROR: 'vcs' (vcstool) not found — required to import layer repos." >&2
@@ -470,8 +643,12 @@ adapter_scope_for_pr() {
         echo "ERROR: scope_for_pr requires a path argument" >&2
         return 1
     fi
+    # `git -C` needs a directory; a file path (package.xml, a source file)
+    # resolves from its parent — found on the real p11-jazzy checkout (#237).
+    local dir="$path"
+    [ -d "$dir" ] || dir="$(dirname "$dir")"
     local url
-    if ! url="$(git -C "$path" remote get-url origin 2>/dev/null)"; then
+    if ! url="$(git -C "$dir" remote get-url origin 2>/dev/null)"; then
         echo "ERROR: no git repository with an 'origin' remote at or above: $path" >&2
         return 1
     fi
