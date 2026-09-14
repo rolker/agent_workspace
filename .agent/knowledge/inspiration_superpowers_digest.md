@@ -237,33 +237,48 @@ not diagnose superpowers".
 
 ## Pending Review (2026-09-14 round)
 
+(none — all items triaged below)
+
+## Roadmapped (2026-09-14 decisions)
+
 - `harness-adapter-contract` — rewritten `docs/porting-to-a-new-harness.md`
   + `.version-bump.json` lockstep as a design reference for #172's
   project-type adapter contract: per-adapter definition of done with a
   behavioural acceptance test, never-write-upstream-files rule for
   external repos, manifest registry a release script must touch,
-  "existing type already covers this?" gate (2026-09-14)
+  "existing type already covers this?" gate — added to ROADMAP.md via
+  the consolidated 2026-09-14 sweep block in the gstack digest PR
+  (2026-09-14)
 - `sdd-rulings-not-stalls` — controller decides non-catastrophic
   conflicts, ledgers `Ruling: what — why — cost if wrong`, surfaces all
   rulings at finish; four hard stops only. Candidate rule for
-  `WORKFORCE_PROTOCOL` / review skills' "ask the user" default
-  (2026-09-14)
+  `WORKFORCE_PROTOCOL` / review skills' "ask the user" default — added
+  to ROADMAP.md via the consolidated 2026-09-14 sweep block in the
+  gstack digest PR (2026-09-14)
 - `writing-good-tests-principles` — name-the-break / exercise-the-real-
   thing catalog, behaviour-not-text rule for script and skill tests,
   mutation check; feed into `test-engineering` and workspace test
-  conventions (2026-09-14)
+  conventions — added to ROADMAP.md via the consolidated 2026-09-14
+  sweep block in the gstack digest PR (2026-09-14)
 - `brainstorm-three-path-router` — spike/bounded/architectural
   classification with one-way ratchet; stage-bound approval language.
-  Candidate off-ramp for the `/plan-task` → `/review-plan` pipeline
-  (2026-09-14)
+  Candidate off-ramp for the `/plan-task` → `/review-plan` pipeline —
+  added to ROADMAP.md via the consolidated 2026-09-14 sweep block in
+  the gstack digest PR (2026-09-14)
+
+## Deferred (2026-09-14)
+
 - `session-diagnosis-skill` — dev-branch `diagnosing-superpowers`:
   transcript forensics with analyst-per-dimension fan-out and
-  `path:line`-or-nothing findings; complements `drill-evals-harness`
-  (2026-09-14)
+  `path:line`-or-nothing findings; complements `drill-evals-harness`.
+  Revisit when released to main (2026-09-14)
+
+## Skipped (2026-09-14 decisions)
+
 - `sdd-batching-and-no-nesting` — batch same-shape micro-tasks into one
-  dispatch; dispatched subagents never dispatch subagents. Small
-  additions to the roadmapped `sdd-review-economics` entry rather than a
-  new item (2026-09-14)
+  dispatch; dispatched subagents never dispatch subagents. Folded into
+  the existing `sdd-review-economics` roadmap item rather than tracked
+  separately (2026-09-14)
 
 ## Changelog (2026-05-07 → 2026-07-14)
 
