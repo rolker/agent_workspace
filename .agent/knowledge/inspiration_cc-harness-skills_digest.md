@@ -115,55 +115,54 @@ such concern.
   it was written; the repo is effectively a one-shot drop with a
   marketing refresh.
 
+## Tracking status
+
+Moved to the registry's "watched, not tracked" block on 2026-09-14.
+Content frozen since v0.1.0 (2026-04-01); zero issues and zero PRs ever
+opened. Re-add to `projects:` only if substantive skill changes resume.
+
 ## Pending Review (2026-09-14 round)
 
-- `verification-tristate-vocabulary` — adopt the explicit
-  **verified / unverified / failed** output vocabulary and the "never
-  imply validation ran if it did not" rule as a source annotation on
-  ROADMAP row #29 (Verification-before-completion skill) and/or the
-  `/review-code` adversarial specialist's output contract. Prompt-level
-  only; no mechanism to port. Source: `skills/verification-gate/`
-  (2026-09-14)
-- `nine-section-continuation-summary` — the compaction template
-  (esp. "preserve all user messages / corrections that changed
-  direction" and "next step aligned to the most recent explicit
-  request") as a candidate shape for the `progress.md` top checkpoint
-  block / the Session Intelligence Layer `/context-save` item. Source:
-  `skills/structured-context-compressor/references/prompt-template.md`
-  (2026-09-14)
-- `memory-no-code-state-rule` — memory-audit criterion: never store
-  code-structure/file-location facts that drift; keep the memory index
-  pointer-only with an explicit size cap (200 lines / 25 KB). Overlaps
-  the existing engram-sourced "Authoritative-channel promotion" memory
-  audit item; candidate to fold in rather than stand alone. Source:
-  `skills/dream-memory/`, `skills/memory-extractor/` (2026-09-14)
-- `skill-bundle-structural-lint` — a `check_all.sh`-style structural
-  check (every skill dir has SKILL.md + expected subdirs; helper
-  scripts compile) as a cheap `make validate` / `/audit-workspace`
-  addition. The superpowers-sourced "drill / evals harness" roadmap
-  item is the behavioural superset. Source: `skills/check_all.sh`
-  (2026-09-14)
+(none — all items triaged below)
+
+## Roadmapped (2026-09-14 decisions)
+
+- `verification-tristate-vocabulary` — explicit **verified /
+  unverified / failed** output vocabulary and the "never imply
+  validation ran if it did not" rule, as a source annotation on the
+  Verification-before-completion row (#29) / `/review-code` adversarial
+  output contract. Source: `skills/verification-gate/` — added to
+  ROADMAP.md via the consolidated 2026-09-14 sweep block in the gstack
+  digest PR (2026-09-14)
+- `nine-section-continuation-summary` — compaction template preserving
+  all user messages/corrections and a "next step aligned to the most
+  recent explicit request", as a candidate shape for the `progress.md`
+  checkpoint block / Session Intelligence Layer `/context-save`.
+  Source: `skills/structured-context-compressor/references/prompt-template.md`
+  — added to ROADMAP.md via the consolidated 2026-09-14 sweep block in
+  the gstack digest PR (2026-09-14)
+
+## Skipped (2026-09-14 decisions)
+
 - `swarm-phase-split` — research → synthesis → implementation →
-  verification with one-owner-per-write-surface. Already how
+  verification with one-owner-per-write-surface is already how
   `/review-code` and WORKFORCE_PROTOCOL work; no delta identified.
   Source: `skills/swarm-coordinator/` (2026-09-14)
-- `kairos-proactive-job-spec` — bounded scheduled jobs with expiry.
-  Claude Code's native `/loop` and `/schedule` cover this; workspace
+- `kairos-proactive-job-spec` — bounded scheduled jobs with expiry;
+  Claude Code's native `/loop` and `/schedule` cover this and workspace
   policy avoids unattended daemons. Source: `skills/kairos-lite/`
   (2026-09-14)
-- `tracking-status` — the registry comment overstates activity; content
-  frozen since 2026-04-01 with no issue tracker. Decide whether to keep
-  the entry (changelog mode will be near-empty) or mark it dormant/
-  remove it. (2026-09-14)
 
-## Roadmapped
+## Deferred (2026-09-14)
 
-(none yet)
-
-## Skipped
-
-(none yet)
-
-## Deferred
-
-(none yet)
+- `memory-no-code-state-rule` — memory-audit criterion: never store
+  code-structure/file-location facts that drift; keep the memory index
+  pointer-only with an explicit size cap (200 lines / 25 KB). Fold into
+  the engram-sourced "Authoritative-channel promotion" memory audit item
+  when that is picked up. Source: `skills/dream-memory/`,
+  `skills/memory-extractor/` (2026-09-14)
+- `skill-bundle-structural-lint` — `check_all.sh`-style structural
+  check (SKILL.md + expected subdirs exist; helper scripts compile) as
+  a cheap `make validate` / `/audit-workspace` addition. Revisit
+  alongside the superpowers "drill / evals harness" item, which is the
+  behavioural superset. Source: `skills/check_all.sh` (2026-09-14)

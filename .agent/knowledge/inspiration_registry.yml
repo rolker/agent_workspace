@@ -73,21 +73,6 @@ projects:
       - memory dump/load for cross-machine portability
       - bootstrap UX (single command sets up CLAUDE.md, hooks, gitignore)
 
-  cc-harness-skills:
-    type: inspiration
-    repo: LearnPrompt/cc-harness-skills
-    description: Portable Claude-Code-inspired skills for memory, verification, coordination, and context compression
-    # Added 2026-07-14 (emerging-source sweep). Created 2026-04, very
-    # active. Strongest interest-area overlap of the sweep; context
-    # compression angle feeds the skill-carving/token-reduction roadmap
-    # thread (convergent across gstack/superpowers/ros2).
-    interest_areas:
-      - context compression and token-reduction techniques
-      - verification skill patterns (evidence-before-claims)
-      - memory management patterns
-      - multi-agent coordination skills
-      - cross-harness skill portability
-
   project-codeguard:
     type: inspiration
     repo: cosai-oasis/project-codeguard
@@ -138,6 +123,8 @@ projects:
   # Just-Agent/make-agents-cheaper (22★) — prompt-cache economics; tiny.
   # smtg-ai/claude-squad, ruvnet/ruflo — established orchestration
   # platforms; excluded per Tier-3 defer + STEELMAN reasoning.
+  # LearnPrompt/cc-harness-skills (232★) — six CC-derived portable skills;
+  # demoted 2026-09-14: content frozen since v0.1.0 (2026-04-01), no issues/PRs.
 
   # --- Archived sources (2026-04-19) ---
   #
