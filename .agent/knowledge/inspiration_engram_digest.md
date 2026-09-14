@@ -159,40 +159,57 @@ linked git worktree — a worktree gotcha worth knowing).
 
 ## Pending Review (2026-09-14 round)
 
-- `experiment-registry-exit-conditions` — experimental features must
-  declare hypothesis + promote/remove *events*; registry checked by
-  tests; minor-release review of every entry. Candidate for #172's
-  adapters/registry/manifests/variants and for `/audit-workspace`.
+(none — all items triaged below)
+
+## Roadmapped (2026-09-14 decisions)
+
+- `experiment-registry-exit-conditions` — experimental features declare
+  hypothesis + promote/remove *events*; registry checked by tests;
+  minor-release review of every entry. Target: #172 adapters / registry /
+  manifests / variants and `/audit-workspace` — added to ROADMAP.md via
+  the consolidated 2026-09-14 sweep block in the gstack digest PR
   (2026-09-14)
 - `policy-kernel-topic-bodies` — WHEN/DO/READ/BOUNDARY kernel in the
-  init file + on-demand topic bodies + body-load histogram. Candidate
-  shape for AGENTS.md vs `.agent/knowledge/` and for #172 role/distro
-  variants (shared kernel, per-variant bodies). (2026-09-14)
+  init file + on-demand topic bodies + body-load histogram; shape for
+  AGENTS.md vs `.agent/knowledge/` and for #172 role/distro variants
+  (shared kernel, per-variant bodies) — added to ROADMAP.md via the
+  consolidated 2026-09-14 sweep block in the gstack digest PR
+  (2026-09-14)
 - `memory-consolidation-rule` — surface contradictions/duplicates before
   writing a memory instead of appending; refinements live outside the
-  regenerated file. Candidate rule for auto-memory MEMORY.md
-  instructions. (2026-09-14)
+  regenerated file. Target: auto-memory MEMORY.md instructions — added
+  to ROADMAP.md via the consolidated 2026-09-14 sweep block in the
+  gstack digest PR (2026-09-14)
 - `dispatch-review-fanout-lessons` — read-only default authority as a
   closed set; plan mode redirects writes; accepted ≠ enforced; context
   suppression numbers; keep one whole-change reviewer; license silence.
-  Candidate audit of `cross_model_review.sh` / `review-code`.
-  (2026-09-14)
-- `bootstrap-dry-run-diff` — unified-patch preview + accept/reject before
-  writing files into a project repo. Candidate for `/onboard-project`
-  and #172 manifest generation. (2026-09-14)
+  Target: audit of `cross_model_review.sh` / `review-code` — added to
+  ROADMAP.md via the consolidated 2026-09-14 sweep block in the gstack
+  digest PR (2026-09-14)
+
+## Skipped (2026-09-14 decisions)
+
 - `explicit-scope-default` — global-by-default so a forgotten flag can't
   dirty the current repo; worktrees share the main checkout's store;
-  "durable state is not memory" test. Convergent validation for #172;
-  likely cite-and-skip. (2026-09-14)
+  "durable state is not memory" test. Convergent validation of #172's
+  existing direction, nothing to port; cite in the #172 discussion
+  (2026-09-14)
+
+## Deferred (2026-09-14)
+
+- `bootstrap-dry-run-diff` — unified-patch preview + accept/reject before
+  writing files into a project repo. Revisit when `/onboard-project` or
+  the #172 manifest generator writes files into project repos
+  (2026-09-14)
 - `identity-redundant-surfaces` — "never make identity depend on a single
   channel"; subagents inherit the parent's codename via user-level
-  instructions, so the canary is per-session, not per-agent. Note for
-  #168. (2026-09-14)
-- `automation-catalog-digest-verdicts` — skill/automation discovery
-  stores one judgment per candidate with its content digest; changed
-  candidates keep prior verdict pending confirmation, removed ones need
-  explicit retirement. Parallels `/skill-importer`, `/analyze-permissions`
-  and `/audit-project`. (2026-09-14)
+  instructions, so the canary is per-session, not per-agent. Comment on
+  #168 when that issue is evaluated (2026-09-14)
+- `automation-catalog-digest-verdicts` — per-candidate judgment stored
+  with its content digest; changed candidates keep prior verdict pending
+  confirmation, removed ones need explicit retirement. Parallels
+  `/skill-importer`, `/analyze-permissions`, `/audit-project`; no current
+  pain, resurface next run (2026-09-14)
 
 ## Changelog (2026-05-07 → 2026-07-14)
 
