@@ -1,11 +1,269 @@
 # Inspiration Digest: superpowers
 
 Type: inspiration
-Last checked: 2026-07-14
+Last checked: 2026-09-14
 Repo: obra/superpowers
-- main @ d884ae04edebef577e82ff7c4e143debd0bbec99 (post-v6.1.1)
-- dev  @ 92164e2 (23 ahead / 10 behind main — modest divergence)
-- Previously: main @ f2cbfbe (v5.1.0), dev @ 7f02ccd on 2026-05-07
+- main @ b36e0829c6d0140e93cfef2ca599b1b07d4a7797 (= v6.3.0, released 2026-08-12)
+- dev  @ d3d9d2b (142 ahead / 0 behind main — large unreleased backlog)
+- Previously checked: main @ d884ae04edebef577e82ff7c4e143debd0bbec99
+  (post-v6.1.1), dev @ 92164e2 on 2026-07-14
+
+## Changelog (2026-07-14 → 2026-09-14)
+
+53 commits, 76 files on main (compare `d884ae0...b36e082`). Two releases:
+**v6.2.0** (2026-07-23) and **v6.3.0** (2026-08-12; squash-merged as one
+commit, PR #2125). `main` has been static since; `dev` carries 142
+unreleased commits, most of them a new `diagnosing-superpowers` skill
+(PR #2236) and an intent-preservation rewrite of brainstorming /
+writing-plans (PR #2258). Issue tracker: ~30 open, ~80 closed since last
+check, ~40 open PRs — very active, heavily agent-authored, and the
+maintainer's 94% PR-rejection posture (`CLAUDE.md`) is now the defining
+governance artifact of the repo.
+
+### Harness-adapter contract hardened (v6.3.0 + `docs/porting-to-a-new-harness.md`)
+
+Two new harnesses (Devin CLI `.devin-plugin/`, Hermes Agent
+`.hermes-plugin/` — the first Python-shaped plugin) and a rewritten
+porting guide that reads as a **formal adapter contract**:
+
+- Three components, strictly separated: harness-agnostic skills (source of
+  truth, never edited per harness), a per-harness *tool mapping*
+  (`references/<harness>-tools.md`), and a per-harness *bootstrap*
+  (Shape A shell-hook / Shape B in-process plugin / Shape C
+  instructions-file). Routing table picks the shape from what the
+  harness exposes.
+- **Definition of done** is a checklist ending in a mandatory live
+  acceptance test ("Let's make a react todo list" must auto-trigger
+  brainstorming) plus per-harness tests in `tests/<harness>/`.
+- **Rule 2: everything ships through the harness's own install mechanism;
+  never edit the user's files.** A port that can't deliver the bootstrap
+  via the install artifact is declared unsupportable rather than worked
+  around.
+- **Version lockstep across N manifests**: `.version-bump.json` lists
+  every per-harness manifest + version field; `scripts/bump-version.sh`
+  bumps all of them and audits for stragglers (new test suite
+  `tests/version-bump/`). A new manifest not registered there "ships
+  stale" — named as a gotcha.
+- "You may not need a new directory at all" — some harnesses just load an
+  existing manifest; the guide tells porters to check before adding a
+  type.
+
+- **Workspace relevance (issue #172 redesign): High — as a design
+  reference, not a code port.** This is the same problem as project-type
+  adapters, one level up: shared core + thin per-variant layer + a
+  contract each variant must satisfy + a validator that proves it. Direct
+  analogues worth borrowing when writing the adapter ADRs and
+  `validate_adapter.sh` follow-ups: (1) a written *definition of done*
+  per adapter including a behavioural acceptance test, not just "verbs
+  exist"; (2) the "never write into the user's / upstream repo's files"
+  rule maps onto the P-X external-repo level in #172's durability table;
+  (3) a `.version-bump.json`-style registry of every per-type manifest
+  that a release script must touch is the pattern for keeping
+  `.agent/project_types/<type>/` metadata in lockstep; (4) the "does an
+  existing type already cover this?" gate before adding a type. Nothing
+  here contradicts #172's direction; it corroborates it and supplies
+  checklist detail.
+
+### SDD: rulings-not-stalls, plan-scoped workspace, batching, no nesting (v6.2.0 / v6.3.0)
+
+- **Rulings, not stalls** (#2077) — a running plan does not wait on a
+  human. Conflicts, ambiguities, plan defects, cap exceptions get a
+  ledgered `Ruling: <what> — <why> — <cost if wrong>` and work continues.
+  Only four hard stops remain: irreversible/destructive ops,
+  security-sensitive actions, side effects outside the worktree (merge,
+  push to shared branch, publish), and a plan so broken every path is a
+  guess. Every ruling is re-surfaced in a "Rulings I made" section of the
+  finish report. Motivating data: a donated session parked 8h48m on a
+  question the controller could have decided; 15/15 baseline controllers
+  stalled on a seeded conflict.
+- **Plan-scoped SDD workspace** (v6.2.0) — `.superpowers/sdd/<plan>/`
+  per plan, ledger's first line names its plan, workspace deleted when
+  the final review is clean (git history is the durable record). Fixed a
+  real cross-plan contamination bug where a second run read the first
+  run's ledger. Related open issues #2293/#2267 already want the ledger
+  to also carry in-flight dispatches and cross-task discoveries.
+- **Batch small same-shape tasks into one dispatch** (#2078) — the
+  per-task dispatch+review overhead is only worth paying when the task
+  needs its own judgment/tests/review surface. Baseline mined from 174
+  SDD sessions.
+- **Dispatched subagents never dispatch subagents** (#2059) — a Codex
+  audit found one branch review grow to 129 sessions at depth 12, all
+  inheriting the root's top-tier model. Implementers and reviewers are
+  now leaf nodes.
+- **Resume-based fix loop with five-round breaker** (v6.2.0) — rounds 1–3
+  resume the original implementer, rounds 4–5 use a fresh implementer on
+  a more capable model, then the controller adjudicates. Scoped
+  `re-review-prompt.md` checks the fixes only.
+- **`Spec:` pointer in plans** (#2086) — SDD reads the spec at setup;
+  conflicts resolve against the spec, rulings without a reachable spec
+  are marked provisional.
+
+- **Workspace relevance: Medium-high.** The rulings rule is the piece
+  that matters most here: our `WORKFORCE_PROTOCOL` and review skills
+  have "ask the user" as the default escape hatch, which is exactly the
+  stall shape upstream measured. A bounded "decide, ledger, surface at
+  the end" rule with the same four hard stops would fit our
+  friction-averse multi-agent setup. Batching and the no-nesting rule are
+  small additions to the already-roadmapped `sdd-review-economics` item
+  rather than new entries. The plan-scoped workspace maps onto our
+  per-issue `work-plans/` + `_resolve_work_plans_dir.sh` (we already key
+  artifacts by issue; the upstream lesson is "delete at plan end, and
+  name the owner in the artifact").
+
+### Brainstorming three-path router + intent preservation (v6.3.0, dev)
+
+- **Spike / Bounded / Architectural** classification announced before
+  the first question (#2063). Ceremony scales (spike: 2–3 sentences +
+  nod; bounded: short in-chat design; architectural: full spec + plan),
+  approval never does. One-way ratchet: hidden complexity upgrades the
+  path mid-task, nothing downgrades. Evidence: 65 graded live reps across
+  three harnesses. Motivated by a 2-week audit of one person's real Codex
+  window (2,240 sessions) showing full-ceremony documents were the wasted
+  part, not the approval.
+- **dev (#2258, unreleased)**: "Establish Shared Understanding" —
+  discover intent, write back understanding separating what was said
+  from assumptions, carry it into the design artifact. Approval is bound
+  to the stage actually presented: "approval of an idea or feature scope
+  does not approve artifacts that do not exist yet." writing-plans now
+  asks for plan review before execution-method choice, and honours an
+  execution method the user already supplied instead of re-asking.
+
+- **Workspace relevance: Medium.** Our `/plan-task` → `/review-plan`
+  pipeline is always full-ceremony; a spike/bounded off-ramp is the
+  obvious gap and the `AGENTS.md` "trivial fixes don't need an issue"
+  clause is the only scaling we have. The "approval is stage-bound"
+  language is convergent with the personal CLAUDE.md rule "a go-ahead
+  answers only the question actually asked" — upstream reached the same
+  rule from eval data.
+
+### writing-good-tests replaces testing-anti-patterns (v6.2.0)
+
+Rebuilt as a positive two-principle catalog: (1) every test names the
+break it catches, (2) every test exercises the real thing. New content
+beyond the old anti-patterns list: derive expectations independently of
+the code under test (mirror assertions), no change detectors, **behaviour
+not text** ("asserting a script/skill/config contains an exact line proves
+only that the source is the source" — run it and assert effects; prose for
+humans earns no test), test your boundary not the framework's, a
+pre-finish **mutation check**, and gate functions before writing a test
+body / before adding a mock. Deleting TDD's "Why Order Matters" section
+outright measurably degraded test-first behaviour (8/10 → 5/10), so the
+arguments were folded into rationalization rows instead.
+
+- **Workspace relevance: Medium-high.** Directly applicable to our
+  `test-engineering` skill and to how we test shell scripts and skills:
+  several workspace tests grep script text rather than run the script
+  (the "string-presence trap" named here). The fold-don't-delete finding
+  is also a caution for the roadmapped `skill-carving-token-reduction`
+  work — measure before cutting persuasion prose.
+
+### Skills compression sweep, eval-gated (v6.2.0)
+
+Recap / social-proof / benefits sections removed across 12 skills; every
+load-bearing argument moved into a rationalization-table row or its point
+of use. Each cut micro-tested with subagent probes; the one cut that
+degraded behaviour was reworked, not shipped. `finishing-a-development-
+branch` no longer offers "discard" in the completion menu (explicit
+request + typed `discard` only), PR creation is forge-agnostic, and
+**worktree removal never `--force`s on its own** — if `git worktree
+remove` refuses on untracked files, show `status --porcelain -uall` and
+ask (#2024; two real users lost plan docs to `--force`).
+
+- **Workspace relevance: Low-medium.** Fourth data point for
+  `skill-carving-token-reduction` (method: eval-gated cuts, fold into
+  tables). The worktree guard is already covered: `worktree_remove.sh`
+  refuses on uncommitted changes unless `--force`, and `merge_pr.sh`
+  calls it without `--force`. No action.
+
+### diagnosing-superpowers skill (dev, PR #2236 — unreleased)
+
+Evidence-based post-mortem of a session that went wrong: intake → locate
+transcripts on disk (Claude Code + Codex formats) → dispatch one analyst
+subagent per dimension in parallel (skill-timeline, plan-adherence,
+repeated-work, stumbles, quality-evidence, request-conflicts,
+cost-and-time) → report with mandatory `path:line` citations → optional
+GitHub-issue draft → optional scrubbed bundle export with a scrub + audit
+loop until CLEAN. Hard rules: read-only on session files, one transcript
+line can be a megabyte (context-safety reference), "you report; you do
+not diagnose superpowers".
+
+- **Workspace relevance: Medium.** We have no session-forensics
+  capability; `/triage-reviews` and `/review-code` look at diffs, never
+  at transcripts. The analyst-per-dimension fan-out and the
+  no-citation-no-finding rule are reusable shapes; the transcript
+  discovery reference (`references/session-discovery.md`) is the
+  concrete part worth reading if we ever build a "why did that agent
+  session cost so much" skill. Also relevant to the roadmapped
+  `drill-evals-harness` item as a complementary *retrospective* tool.
+
+### Other notable
+
+- **Gemini CLI support restored** (#1959 revert, v6.2.0) — the v6.1.0
+  "EOLed by Google" removal was premature; `gemini-tools.md` is back.
+  Closes the watch item from last round; our Gemini adapter file was
+  never affected.
+- **Windows SessionStart hook via `shell: "bash"`** (v6.2.0) — Claude
+  Code ≥ 2.1.81 honours a `shell` key on hooks; older versions ignore it.
+  Useful fact if our `settings.json` hooks ever need to run on Windows.
+- **Codex efficiency campaign** (#2060–#2062) — explicit model+effort on
+  every spawn with a config backstop; event-driven bounded waits took
+  wait-timeouts from 65–78% to 0%. Codex-specific mechanics; the
+  "name the model on every dispatch" rule is already in
+  `sdd-review-economics`.
+- **Open issues worth a glance**: #2245 (four dispatch checks that
+  silently fail — base commit, spawned model, enumerable scope,
+  parallel-dispatch isolation), #2286 (verification-before-completion
+  never asks where the evidence came from), #2292 ("GREEN measures
+  compliance, not outcome" for skill evals), #2280 (per-skill config
+  files), #2050 (dispatched subagent committed to main instead of the
+  worktree — isolation not enforced). Open PR #2193 extends mandatory
+  model naming to all dispatches outside SDD.
+
+### Deferred-item status changes
+
+- `lifecycle-event-hooks` (PR #1461 / issue #1442) — PR #1461 no longer
+  in the open list; issue #1442 closed. Nothing shipped under that name.
+  Close.
+- `harness-neutral-skill-prose` — porting guide now makes the
+  skills-name-actions rule explicit and non-negotiable ("never edit skill
+  bodies to fit your harness"). Stays deferred; still no Codex/Gemini
+  skill use here.
+- `worktree-consent-gate` — v6.2.0 removed the *discard* offer and added
+  the untracked-file guard; the creation-consent gate itself is
+  unchanged. Stays deferred.
+- `iron-law-pattern` — v6.2.0's fold-don't-delete eval result is the
+  first hard evidence that rationalization tables carry behaviour.
+  Stays deferred, note strengthened.
+
+## Pending Review (2026-09-14 round)
+
+- `harness-adapter-contract` — rewritten `docs/porting-to-a-new-harness.md`
+  + `.version-bump.json` lockstep as a design reference for #172's
+  project-type adapter contract: per-adapter definition of done with a
+  behavioural acceptance test, never-write-upstream-files rule for
+  external repos, manifest registry a release script must touch,
+  "existing type already covers this?" gate (2026-09-14)
+- `sdd-rulings-not-stalls` — controller decides non-catastrophic
+  conflicts, ledgers `Ruling: what — why — cost if wrong`, surfaces all
+  rulings at finish; four hard stops only. Candidate rule for
+  `WORKFORCE_PROTOCOL` / review skills' "ask the user" default
+  (2026-09-14)
+- `writing-good-tests-principles` — name-the-break / exercise-the-real-
+  thing catalog, behaviour-not-text rule for script and skill tests,
+  mutation check; feed into `test-engineering` and workspace test
+  conventions (2026-09-14)
+- `brainstorm-three-path-router` — spike/bounded/architectural
+  classification with one-way ratchet; stage-bound approval language.
+  Candidate off-ramp for the `/plan-task` → `/review-plan` pipeline
+  (2026-09-14)
+- `session-diagnosis-skill` — dev-branch `diagnosing-superpowers`:
+  transcript forensics with analyst-per-dimension fan-out and
+  `path:line`-or-nothing findings; complements `drill-evals-harness`
+  (2026-09-14)
+- `sdd-batching-and-no-nesting` — batch same-shape micro-tasks into one
+  dispatch; dispatched subagents never dispatch subagents. Small
+  additions to the roadmapped `sdd-review-economics` entry rather than a
+  new item (2026-09-14)
 
 ## Changelog (2026-05-07 → 2026-07-14)
 
