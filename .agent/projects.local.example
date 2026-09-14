@@ -18,10 +18,18 @@
 #                 the workspace root; default is projects/<name>. Paths must
 #                 not contain spaces.
 #
-# Checkouts are managed manually for now: clone (or symlink) the project
-# into its hosting dir, then register it here. Per-project build/test
-# commands go in .agent/projects.d/<name>.sh (gitignored), with
-# .agent/project_config.sh as the shared fallback.
+# single_project checkouts are managed manually: clone (or symlink) the
+# project into its hosting dir, then register it here. ros2_colcon
+# instances bootstrap themselves from an empty hosting dir — register the
+# name, point MANIFEST_BOOTSTRAP_URL at the project's bootstrap.yaml, and
+# run `.agent/scripts/adapter --project <name> setup` (or `make build
+# PROJECT=<name>` after setup). Per-project build/test commands go in
+# .agent/projects.d/<name>.sh (gitignored), with .agent/project_config.sh
+# as the shared fallback. A ros2_colcon config looks like:
+#
+#   # .agent/projects.d/p11-jazzy.sh
+#   ROS_DISTRO="jazzy"          # when the manifest has no distro: field
+#   MANIFEST_BOOTSTRAP_URL="https://<host>/<manifest-repo>/raw/jazzy/config/bootstrap.yaml"
 #
 # How the active project is resolved (adapter dispatcher):
 #   1. --project <name> (or: make build PROJECT=<name>)
