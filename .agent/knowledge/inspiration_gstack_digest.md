@@ -272,32 +272,43 @@ CI, but not a tracked item).
 
 ## Pending Review (2026-09-14 round)
 
-Framing for this round: the lead is checking whether anything changes
-the path of the workspace redesign (issue #172: project-type adapters,
+(none — all ten items triaged below)
+
+## Roadmapped (2026-09-14 decisions)
+
+Framing for this round: the lead checked whether anything changes the
+path of the workspace redesign (issue #172: project-type adapters,
 multi-tenant project registry, per-project manifests, role/distro
-variants). Items marked **#172** speak to that directly.
+variants). Verdict: the #172 path holds; the four items marked **#172**
+refine its design rules rather than redirect it. All ten items
+roadmapped.
 
 - `hosts-definehost-adapter-factory` **#172** — `defineHost()`
   defaults+overrides factory for host configs; byte-identical proof via
   dump-diff; accept-list ⊆ dispatch-arms pinned by test; unread-field
   audit; `docs/ADDING_A_HOST.md` recipe. Source: garrytan/gstack
-  v1.64.1.0, v1.69.0.0 (#2361), `hosts/define-host.ts` (2026-09-14)
+  v1.64.1.0, v1.69.0.0 (#2361), `hosts/define-host.ts` — added to
+  ROADMAP.md via the consolidated 2026-09-14 sweep block (2026-09-14)
 - `setup-time-variant-rendering` **#172** — host × model variants
   rendered from one template at setup, keyed off a config file the
   project owns (`HostConfig.defaultModel`, `model-overlays/*.md`,
   `./setup --host codex --model <id>`), not maintained as parallel
-  copies. Source: garrytan/gstack v1.67.2.0 (#2633), v1.84.1.0 (2026-09-14)
+  copies. Source: garrytan/gstack v1.67.2.0 (#2633), v1.84.1.0 — added
+  to ROADMAP.md via the consolidated 2026-09-14 sweep block (2026-09-14)
 - `state-root-discipline-multi-project` **#172** — one state-root
   resolver shared by hook readers and writers; per-project state keyed
   by canonical slug with self-heal; never write agent state into a
   project checkout; project A's registration can't reclassify project
   B. Source: garrytan/gstack v1.80.0.0 (#1459), v1.68.0.0, #2728/#2748,
-  #2858 (2026-09-14)
+  #2858 — added to ROADMAP.md via the consolidated 2026-09-14 sweep
+  block (2026-09-14)
 - `ownership-gate-generated-files` **#172** — provenance marker on
   generated dirs; prove ownership before delete/overwrite; back up
   customized generated files; report foreign same-name entries.
   Applies to `make generate-skills` output and #172 per-project
-  manifests. Source: garrytan/gstack v1.80.0.0 / v1.81.0.0 (#2119) (2026-09-14)
+  manifests. Source: garrytan/gstack v1.80.0.0 / v1.81.0.0 (#2119) —
+  added to ROADMAP.md via the consolidated 2026-09-14 sweep block
+  (2026-09-14)
 - `spawned-session-dispatch-contract` — `SESSION_KIND=spawned` marker
   set by the dispatcher; gates auto-resolve to the recommended option
   except destructive ones (conservative + recorded); `decisions` array
@@ -305,38 +316,44 @@ variants). Items marked **#172** speak to that directly.
   never inferred from prose; `run_in_background: false` pinned at every
   sync dispatch site. Extends roadmapped `auq-fallback-and-auto-decide`.
   Source: garrytan/gstack v1.76.0.0 (#2733), v1.78.0.0, v1.79.0.0
-  (#497/#2440) (2026-09-14)
+  (#497/#2440) — added to ROADMAP.md via the consolidated 2026-09-14
+  sweep block (2026-09-14)
 - `tracker-text-trust-envelope` — PR bodies/comments/issue titles enter
   context only through one ingress helper that envelopes and labels;
   scanner fails CI on raw reads; write-backs use a raw artifact. Targets
   `triage-reviews`, `review-issue`, `issue-triage`,
   `fetch_pr_reviews.sh`, `cross_model_review.sh`. Source: garrytan/gstack
   v1.66.1.0 (`lib/tracker-guard.ts`, `bin/gstack-issue-guard`), v1.68.0.0
-  (#2441), open PR #2818 (2026-09-14)
+  (#2441), open PR #2818 — added to ROADMAP.md via the consolidated
+  2026-09-14 sweep block (2026-09-14)
 - `content-bound-review-evidence` — working-tree content fingerprint
   binds "tests passed" / "reviewed" to content + command + max-age;
   staleness graded by content, not commit count. Revives deferred #51
   (JSONL review tracking) with the missing piece. Source:
   garrytan/gstack v1.66.1.0 (`bin/gstack-wtree`, `bin/gstack-evidence`),
-  v1.69.0.0 (#2652) (2026-09-14)
+  v1.69.0.0 (#2652) — added to ROADMAP.md via the consolidated
+  2026-09-14 sweep block (2026-09-14)
 - `test-lane-honesty-tripwires` — every test/validation script provably
   runs in some lane (listing-vs-lane reverse invariant); exit codes
   survive `| tee` (`PIPESTATUS[0]`); zero-test green jobs deleted;
   green-by-skip census. Extends roadmapped `test-coverage-catalog` and
   `fail-closed-hook-audit`. Source: garrytan/gstack v1.64.0.0,
-  v1.66.0.0, v1.74.0.0, v1.77.0.0 (2026-09-14)
+  v1.66.0.0, v1.74.0.0, v1.77.0.0 — added to ROADMAP.md via the
+  consolidated 2026-09-14 sweep block (2026-09-14)
 - `context-budget-ratchet` — committed size fixture + ratchet test
   (growth fails, reductions re-lock) for always-on instruction mass and
   per-skill eager tokens; token bill-of-materials tool. The enforcement
   half of roadmapped `skill-carving-token-reduction` / ros2 #564. Source:
   garrytan/gstack v1.63.0.0 (`gstack-context-bill`,
-  `test/catalog-budget.test.ts`), v1.71.0.0 (#2691) (2026-09-14)
+  `test/catalog-budget.test.ts`), v1.71.0.0 (#2691) — added to
+  ROADMAP.md via the consolidated 2026-09-14 sweep block (2026-09-14)
 - `reuse-ladder-and-shortcut-debt-markers` — reuse ladder paragraph
   (repo → stdlib → native → installed dep → build the rest) for
   AGENTS.md / plan-task; accepted shortcuts leave a decision-ledger id +
   in-code marker harvested at retro, orphan markers flagged as forged
   suppression. Simplification lens itself is covered by native
-  `/simplify`. Source: garrytan/gstack v1.75.0.0 (#2722) (2026-09-14)
+  `/simplify`. Source: garrytan/gstack v1.75.0.0 (#2722) — added to
+  ROADMAP.md via the consolidated 2026-09-14 sweep block (2026-09-14)
 
 ## Changelog (2026-05-07 → 2026-07-14)
 
