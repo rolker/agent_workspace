@@ -161,24 +161,44 @@ new to pull back; their next check of us will see #226/#232/#236/#238.
 
 ## Pending Review (2026-09-14 round)
 
-- `adapter-sync-false-green` — our `adapter_sync` verbs report "Sync
-  complete." exit 0 after per-repo failures; port #609's outcome
-  classification + exit contract (2026-09-14)
-- `janitor-sweep` — scheduled staleness/drift loop over our existing
-  detectors; #569 shape, report-only first (2026-09-14)
-- `doc-impact-seam` — plan-task "Documentation & Instruction Impact"
-  section + review-plan dimension + review-code governance check (#596)
+(none — all items triaged below)
+
+## Roadmapped (2026-09-14 decisions)
+
+- `adapter-sync-false-green` — added to ROADMAP.md "To Consider"; both
+  `ros2_colcon` `adapter_sync` and `single_project` `sync.py` verified to
+  report success after per-repo failures (2026-09-14)
+- `janitor-sweep` — added to ROADMAP.md "To Consider", report-only
+  first, trigger decided with #187 (2026-09-14)
+- `doc-impact-seam` — added to ROADMAP.md "To Consider" (2026-09-14)
+- `worktree-no-symlink-fallback` — added to ROADMAP.md "To Consider" as
+  a #172 step 6 phase 3 constraint (2026-09-14)
+- `adr-provisional-status` — added to ROADMAP.md "To Consider"
   (2026-09-14)
+- `merge-pr-skill-worktrees` — added to ROADMAP.md "To Consider", folded
+  into the #191 `/merge-pr` item (2026-09-14)
+
+## Deferred (2026-09-14)
+
 - `review-code-record-lane` — lighter lane for `.agent/work-plans/**`
-  diffs (#601) (2026-09-14)
-- `adr-provisional-status` — third ADR status for decided-but-proving
-  decisions (#620); ADR-0011 is the local case (2026-09-14)
-- `worktree-no-symlink-fallback` — constraint for #172 step 6 phase 3
-  package worktrees (#598) (2026-09-14)
+  diffs (#601, still open upstream). Revisit when our own progress-only
+  PRs start looping in review (2026-09-14)
 - `local-ci-attestation-verb` — adapter-verb candidate mirroring
-  ADR-0018's attest-then-merge shape (2026-09-14)
-- `merge-pr-skill-worktrees` — `merge_pr.sh --skill` (#562); shared gap
-  (2026-09-14)
+  ADR-0018's attest-then-merge shape. Revisit when a second project type
+  needs a clean-environment verification step (2026-09-14)
+
+## Skipped (2026-09-14 decisions)
+
+- `ros-container-field-2026-09` — #602/#604/#606 container volumes,
+  #582–#584 sync throttle, #577/#578 upstream.repos underlay, #612/#613
+  refs/bugs + git-bug staleness, #619/#622 field import defaults,
+  #605/#585/#590 local Ollama specialist, #623/#617 project knowledge
+  entries, #369 Gazebo research — domain.
+- `dispatch-mode-flip-#607` — no dispatcher here; ADR-0019's
+  containment table noted against the roadmap's reference-design entry.
+- `root-resolution-scripts-#625` — the problem is structural here
+  (registry + adapter); only the Makefile guess remains and is tracked
+  as #239, with upstream's `workspace_root.sh` rule as the reference.
 
 ## Changelog (2026-04-26 → 2026-07-14)
 
