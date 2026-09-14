@@ -31,6 +31,12 @@
 #   ROS_DISTRO="jazzy"          # when the manifest has no distro: field
 #   MANIFEST_BOOTSTRAP_URL="https://<host>/<manifest-repo>/raw/jazzy/config/bootstrap.yaml"
 #
+# One instance per distro: a second distro of the same project is a second
+# registry entry with its OWN hosting dir (e.g. p11-rolling next to
+# p11-jazzy). Never point two entries at one dir — setup reuses an existing
+# manifest checkout with only a warning on a branch mismatch, so the second
+# instance would silently read the first one's manifest.
+#
 # How the active project is resolved (adapter dispatcher):
 #   1. --project <name> (or: make build PROJECT=<name>)
 #   2. current directory inside a registered hosting dir
