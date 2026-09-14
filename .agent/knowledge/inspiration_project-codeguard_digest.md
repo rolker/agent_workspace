@@ -158,7 +158,11 @@ direction:
   #113 (APM as an additional distribution path), #35 (release artifact
   signing — open).
 
-## Pending Review (2026-09-14 round)
+## Pending Review
+
+(none — 2026-09-14 round triaged)
+
+## Roadmapped (2026-09-14 decisions)
 
 - `skill-activation-and-targeting-evidence` — Upstream field evidence
   that a skill declared relevant to "any code" is skipped by agents as
@@ -168,28 +172,39 @@ direction:
   applicability from what the skill actually governs, and keep the
   activation description narrow enough that the agent believes it.
   Candidate addendum to the already-roadmapped "Skill-authoring guidance
-  knowledge doc" (superpowers, 2026-07-14). Relevance: High. (2026-09-14)
+  knowledge doc" (superpowers, 2026-07-14). Relevance: High. — added to ROADMAP.md via the consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14)
 - `agent-skill-security-checklist` — PR #112's
   `codeguard-0-ai-agent-skills.md`: tool allowlists instead of "do
   anything" tools, explicit filesystem/network boundaries, parameterised
   shell, timeouts, logging of all actions, human approval for high-risk
   actions (delete, push, infra). Concrete external checklist for
   `skill-importer`'s safety check and for `audit-workspace`; thematically
-  adjacent to the fail-closed hook audit. Relevance: Medium. (2026-09-14)
+  adjacent to the fail-closed hook audit. Relevance: Medium. — added to ROADMAP.md via the consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14)
 - `manifest-carried-rule-packs` — For #172: model a project's security
   rules as a manifest payload (upstream bundle version + optional custom
   rule sources) refreshed by `adapter sync`, following CodeGuard's
   consumer-side update workflow (detect host dirs, compare vendored
   version to release, single refresh PR, legacy-path warnings). Keeps
   project-specific rules out of the workspace by construction. Relevance:
-  High for the redesign; no change to its direction. (2026-09-14)
+  High for the redesign; no change to its direction. — added to ROADMAP.md via the consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14)
 - `skill-source-schema-and-version-gate` — CI gate pattern:
   frontmatter-schema validator for authored skill/rule sources (required
   fields, mutually exclusive targeting fields, closed tag vocabulary,
   non-empty body) plus a one-version-everywhere check across manifests
   and generated files, re-run against the tag at release. We validate the
   adapter contract but not skill frontmatter; `audit-workspace` could
-  grow a schema check. Relevance: Medium. (2026-09-14)
+  grow a schema check. Relevance: Medium. — added to ROADMAP.md via the consolidated 2026-09-14 sweep block in the gstack digest PR (2026-09-14)
+
+## Skipped (2026-09-14 decisions)
+
+- `codeguard-as-project-baseline` — Adopting CodeGuard itself (plugin
+  install or vendored rule files) is a per-project or per-user decision,
+  not workspace infrastructure; a project that wants it records that in
+  its own repo/manifest. Listed so the decision is explicit. Relevance:
+  Low for the workspace. — skipped: per-project/per-user adoption decision, not workspace infrastructure (2026-09-14)
+
+## Deferred (2026-09-14)
+
 - `read-only-reviewer-with-structured-findings` — `codeguard-reviewer`
   contract: read-only on source, single SARIF 2.1.0 findings file as the
   only write, repo content treated as untrusted (prompt-injection
@@ -197,7 +212,7 @@ direction:
   cited line before emission, per-host permission blocks generated from
   one table. Convergent with the roadmapped superpowers "reviewers are
   read-only" rule; the new piece is a machine-readable findings format
-  that `triage-reviews` could consume. Relevance: Medium. (2026-09-14)
+  that `triage-reviews` could consume. Relevance: Medium. — revisit on a later run (2026-09-14)
 - `single-source-multi-host-emission` — `sources/` → converter →
   per-host bundles with a committed generated skill and a per-host
   emission table (`artifact_targets.py`). Second data point for the
@@ -205,7 +220,7 @@ direction:
   `harness-starter-kit`; relevant to #172's per-machine assembly of
   `.claude/commands/` if the workspace ever generates Codex/Copilot
   surfaces from one source. Relevance: Medium, redesign-dependent.
-  (2026-09-14)
+  — revisit on a later run (2026-09-14)
 - `skill-efficacy-eval-harness` — Inspect-AI harness comparing
   baseline / secure-prompt / skill-installed conditions with a
   `skill_loaded` signal and a digest-pinned scanner contract. First
@@ -213,21 +228,4 @@ direction:
   heavy (Docker, pinned Semgrep) and security-specific, but the
   three-condition design is the reusable idea — it is the rigorous form
   of superpowers' "micro-test wording" advice. Relevance: Low–Medium.
-  (2026-09-14)
-- `codeguard-as-project-baseline` — Adopting CodeGuard itself (plugin
-  install or vendored rule files) is a per-project or per-user decision,
-  not workspace infrastructure; a project that wants it records that in
-  its own repo/manifest. Listed so the decision is explicit. Relevance:
-  Low for the workspace. (2026-09-14)
-
-## Roadmapped
-
-(none yet)
-
-## Skipped
-
-(none yet)
-
-## Deferred
-
-(none yet)
+  — revisit on a later run (2026-09-14)
