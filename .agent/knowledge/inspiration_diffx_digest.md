@@ -135,58 +135,61 @@ per-worktree file. **No change to the #172 path.**
 - 3 open PRs, all unreviewed by the maintainer: #39 markdown + Google-Docs
   comments (Jul 14), #40 API scoping / same-origin security fix (Jul 31),
   #41 untracked-file diff fix (Aug 7).
-- Assessment: effectively dormant. Keep tracked one more round; if still no
-  maintainer activity at the next check, drop from the registry — the
-  portable ideas are already captured below.
+- Assessment: effectively dormant. See "Tracking status" below.
 
-## Pending Review (2026-09-14 round)
+## Tracking status
+
+- 2026-09-14: keep tracked for **one more round**. If there is still no
+  maintainer activity (no commits after 2026-06-23, open PRs #39/#40/#41
+  still unreviewed) at the next check, move diffx to **watched-not-tracked**
+  — registry entry retired, this digest kept as the record. The portable
+  ideas are already captured in the decision sections below, so nothing is
+  lost by dropping it. No registry edit made this round.
+
+## Pending Review
+
+(none — all 2026-09-14 items decided below)
+
+## Roadmapped (2026-09-14 decisions)
+
+- `question-vs-change-request-split` — The finish skill's rule: questions
+  get a reply and stay open for the human; change requests get applied,
+  replied to, and resolved. `/triage-reviews` already classifies valid /
+  false-positive but does not distinguish "the reviewer asked a question"
+  from "the reviewer wants a change", and could resolve a question by
+  answering it. Small absorb into `/triage-reviews` — added to ROADMAP.md
+  via the consolidated 2026-09-14 sweep block in the gstack digest PR
+  (2026-09-14)
+
+## Skipped (2026-09-14 decisions)
+
+- `viewed-tracking-with-content-hash` — Per-file "reviewed" flag that
+  auto-clears when the file's content hash changes (PR #23). Only
+  meaningful inside a review UI we do not have. (2026-09-14)
+- `local-agent-api-injection-surface` — Governance caution, not a feature:
+  a loopback HTTP API whose inputs become agent code edits is a
+  prompt-injection surface (any open browser tab can POST to it); diffx
+  shipped without origin/host checks and the fix (PR #40) is unmerged. We
+  have no such API today; the caution stays recorded here (and in the
+  "Security note" above) so it is found if a local review loop is ever
+  built. (2026-09-14)
+
+## Deferred (2026-09-14)
 
 - `review-before-push-local-loop` — A pre-push human-review step: agent
   presents its working-tree diff, human leaves line-anchored comments, the
   same agent fetches them, applies change requests, answers questions, and
-  resolves each — the local mirror of `/triage-reviews`. Relevance
-  **Medium**: real gap in our loop (all human review is post-push), but the
-  only existing implementation is a browser UI that sits on the wrong side
-  of the CLI-first constraint. Suggested decision: **defer** — revisit
-  after the Ultraplan spike settles whether a CLI→web→CLI round trip is
-  acceptable for plans; if yes, a diff-review variant is a candidate.
-  (2026-09-14)
+  resolves each — the local mirror of `/triage-reviews`. Real gap in our
+  loop (all human review is post-push), but the only existing
+  implementation is a browser UI on the wrong side of the CLI-first
+  constraint. Revisit after the Ultraplan spike settles whether a
+  CLI→web→CLI round trip is acceptable for plans; if yes, a diff-review
+  variant is a candidate. (2026-09-14)
 - `line-anchored-comment-contract` — Adopt diffx's comment schema
   (`filePath`, `side`, `lineNumber`, `lineContent`, `body`, `status`,
   `replies`) and its XML hand-back block as the workspace's canonical
   human→agent review-comment format, independent of any UI (a YAML file in
   the worktree, or `gh` review comments, could both serialise to it).
-  Relevance **Medium**: cheap, tool-agnostic, and `lineContent` anchoring
-  is a good idea for surviving line drift. Suggested decision: **defer** —
-  only worth doing together with the loop above; no consumer today.
+  Cheap and tool-agnostic; `lineContent` anchoring survives line drift.
+  Only worth doing together with the loop above; no consumer today.
   (2026-09-14)
-- `question-vs-change-request-split` — The finish skill's rule: questions
-  get a reply and stay open for the human; change requests get applied,
-  replied to, and resolved. Relevance **Low–Medium**: `/triage-reviews`
-  already classifies valid / false-positive but does not distinguish "the
-  reviewer asked a question" from "the reviewer wants a change", and
-  currently could resolve a question by answering it. Suggested decision:
-  **roadmap** as a small absorb into `/triage-reviews`. (2026-09-14)
-- `viewed-tracking-with-content-hash` — Per-file "reviewed" flag that
-  auto-clears when the file's content hash changes (PR #23). Relevance
-  **Low**: only meaningful inside a review UI we do not have. Suggested
-  decision: **skip**. (2026-09-14)
-- `local-agent-api-injection-surface` — Governance caution, not a feature:
-  a loopback HTTP API whose inputs become agent code edits is a
-  prompt-injection surface (any open browser tab can POST to it); diffx
-  shipped without origin/host checks and the fix (PR #40) is unmerged.
-  Relevance **Low** today (we have no such API). Suggested decision:
-  **skip**, with the note recorded here so it is found if the loop above
-  is ever built. (2026-09-14)
-
-## Roadmapped
-
-(none yet)
-
-## Skipped
-
-(none yet)
-
-## Deferred
-
-(none yet)
