@@ -99,8 +99,10 @@ stderr, hard-stop, never `ln -s`) is still implemented explicitly.
      `worktree_enter.sh`, `worktree_remove.sh`, `merge_pr.sh` take the same qualified
      `--issue` and refuse a bare number for this shape.
    - **Branch names** (decided 2026-09-15): owning repo `feature/issue-<N>`; every other
-     repo `feature/<owner-repo>-issue-<N>` (e.g. `feature/cube_bathymetry-issue-111` in
-     `marine_msgs`), PR body references `owner/repo#N`.
+     repo `feature/<repo>-issue-<N>` — `<repo>` is just the repo half of the issue's
+     `owner/repo` (e.g. `feature/cube_bathymetry-issue-111` in `marine_msgs`, for issue
+     `rolker/cube_bathymetry#111`; the owner is dropped, it adds no disambiguation
+     value here), PR body references `owner/repo#N`.
 
 2. **Two new contract verbs** (ADR-0012, new — ADR-0011 fixes the verb count in its
    decision text, so this is a substantive change per ADR-0008, not an addendum):
@@ -149,6 +151,20 @@ stderr, hard-stop, never `ln -s`) is still implemented explicitly.
 5. **`worktree_remove.sh`**: read `.worktree-repos`; preflight `git status --porcelain`
    on **every** entry before removing any (unless `--force`); remove each via
    `git -C <origin> worktree remove` + `prune`; delete the aggregate dir last.
+
+   **As implemented (PR 1):** `worktree_enter.sh`/`worktree_remove.sh` accept a
+   qualified `--issue owner/repo#N` by extracting the trailing numeric suffix
+   for lookup — the existing glob-based `find_worktree` already matches
+   directories ending in `-<N>`, so this needs no new disambiguation logic for
+   the common case (one worktree per issue number per repo slug). Full
+   manifest-header-based resolution (reading every candidate's
+   `.worktree-repos` header to disambiguate when the glob returns multiple
+   matches for the same trailing number under one repo slug) is **not**
+   implemented in PR 1 — the pre-existing multi-match error path
+   (`find_worktree`'s "Multiple worktrees found" + `--repo-slug` hint) still
+   applies. This is a real gap versus "resolve via the manifest header," left
+   for a follow-up if it proves to matter in practice (unlikely: the qualified
+   issue ref is unique per repo slug in the intended workflow).
 
 6. **`merge_pr.sh`**: accept `--repo owner/repo` (or a qualified `owner/repo#N` PR
    ref) and, when given, query only that repo; otherwise today's workspace/`project/`

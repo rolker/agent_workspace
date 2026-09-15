@@ -153,3 +153,82 @@ All four plan-review actions folded in: ADR-0011 status addendum and
 principles_review_guide.md added to scope; dead `wt_layer_branch`/
 `wt_layer_is_dirty` removed in PR 1; `.worktree-repos` gains a header carrying
 project/issue/layer so directory names are never parsed for this shape.
+
+## Implement (PR 1)
+**Status**: complete
+**When**: 2026-09-15 (implementation session)
+**By**: Claude Code Agent (claude-sonnet-5)
+
+Implemented Approach steps 1-5 and 7-11 (step 6, `merge_pr.sh`, is PR 2 —
+untouched). Merged `origin/main` first to pick up #255 (`--repo` → `--project`
+rename), since the plan's CLI examples assume it landed.
+
+**Landed as designed:**
+- `worktree_repos`/`worktree_env` adapter verbs (`REQUIRED_VERBS` → 12) on both
+  `single_project` and `ros2_colcon`; `validate_adapter.sh` passes; both
+  verbs covered on both types in `test_adapter.sh`/`test_ros2_colcon.sh`.
+- ADR-0012 (new); ADR-0011 gets the Status/References cross-reference
+  addendum; `principles_review_guide.md` and `ARCHITECTURE.md` updated from
+  "10-verb" to "12-verb".
+- `.worktree-repos` manifest writer/reader + legacy fallback in
+  `_worktree_helpers.sh`; `wt_layer_branch`/`wt_layer_is_dirty` removed
+  (confirmed zero callers via grep before deleting).
+- `worktree_create.sh`: qualified `--issue owner/repo#N`, `--layer`,
+  `--package-repos`; `--type layer` rejected with a pointer to the new form;
+  branch-resolution waterfall factored into `_wt_add_repo` (captures every
+  attempt's stderr); loops over `worktree_repos` output for **every**
+  `--type project` worktree (not just package worktrees) — `single_project`'s
+  one-entry manifest reproduces today's single-repo behavior exactly, verified
+  by the existing `test_project_registry.sh` worktree-create suite unchanged
+  and passing. `rev-parse --git-dir` check before each add; on failure, prints
+  collected stderr, rolls back every entry already added, deletes the
+  aggregate dir, exits 1 — never `ln -s`. Writes `.worktree-repos`; generates
+  `env.sh`/`build.sh`/`test.sh` when `worktree_env` has output (`test.sh`
+  re-sources `env.sh` after building).
+- `worktree_remove.sh`: preflights every manifest entry's `git status
+  --porcelain` before removing any (unless `--force`); removes each from its
+  own owning repo (resolved via that entry's `git-common-dir`, not the
+  manifest's stored origin path); aggregate dir last.
+- `worktree_list.sh`/`dashboard.sh`: manifest header/entries when present
+  (aggregate dirty = any entry dirty, changed-file counts summed); directory
+  regex stays legacy-only; dashboard counts `worktrees/project/*/*`.
+- Hermetic tests: real (git-backed) package-worktree create/remove/list
+  integration tests in `test_ros2_colcon.sh` — create success (named package
+  worktreed, sibling untouched and not a symlink, env.sh sourcing order,
+  manifest written), second-repo failure rolls back the first with no
+  aggregate dir left and stderr surfaced, multi-package dirty removal refuses
+  before touching anything, `worktree_list.sh --json` reporting for a nested
+  worktree. These tests found and fixed two real bugs:
+  (1) `adapter_worktree_repos`'s git-repo check used `rev-parse --git-dir`,
+  which walks up to an ancestor's `.git` when the package dir has none of its
+  own — fixed to compare `rev-parse --show-toplevel` against the package dir;
+  (2) `worktree_list.sh` read the manifest header via `wt_read_manifest`'s
+  side-effect globals inside a `$(...)` subshell, losing them — fixed to
+  parse the header directly.
+- Docs: `.agent/WORKTREE_GUIDE.md` package-worktree subsection;
+  `docs/ROADMAP.md` row 6 (phase 3 done in PR 1 terms); `/start-task`
+  SKILL.md's argument-compatibility note.
+- `plan.md` synced inline: branch-naming wording for non-owning repos
+  clarified to match what was actually built (`feature/<repo>-issue-<N>`,
+  repo name only — the plan's prose was ambiguous about whether "owner-repo"
+  meant the joined form; the worked example always meant repo-only); step 5
+  annotated with what "qualified `--issue` resolution" actually means in PR 1
+  (numeric-suffix matching via the existing glob, not full manifest-header
+  disambiguation across multiple candidates).
+
+**Deferred / left as a known gap:**
+- Full manifest-header-based worktree resolution in `worktree_enter.sh`/
+  `worktree_remove.sh` when multiple candidates share a trailing issue number
+  under one repo slug — the pre-existing "Multiple worktrees found, use
+  `--repo-slug`" path still applies instead. Not expected to matter in
+  practice (the qualified issue ref is unique per repo slug in the intended
+  workflow) but is a real gap versus the plan's original phrasing.
+- The real `p11-jazzy` smoke test (plan step 10) — explicitly out of scope
+  for the implementer; left for the reviewer.
+- `merge_pr.sh` multi-repo resolution and the sibling-PR cleanup rule (plan
+  step 6) — PR 2, untouched here.
+
+**Verification:** `validate_adapter.sh` passes (12/12 verbs, both types);
+`test_adapter.sh` 86/86; `test_ros2_colcon.sh` 142/142; `test_project_registry.sh`
+54/54 (unchanged, still passing against the rewritten `worktree_create.sh`);
+`pre-commit run --all-files` passes.
