@@ -751,13 +751,22 @@ adapter_worktree_env() {
     local underlay; underlay="$(_rc_underlay)" || return 1
     echo "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX"
     printf 'source %q\n' "$underlay"
-    # Every conditional source below is emitted as a runtime-guarded line
-    # ([ -f ... ] && source ...), not skipped when the install doesn't exist
-    # yet at *generation* time. env.sh is written once at worktree-create
-    # time (before any build); a build-time-only [ -f ] check here would
-    # permanently omit the worktree's own install line even after it's
-    # built, and test.sh's re-source-after-build would never pick up the
-    # fresh overlay.
+    # Every conditional source below is emitted as a runtime-guarded line,
+    # not skipped when the install doesn't exist yet at *generation* time.
+    # env.sh is written once at worktree-create time (before any build); a
+    # build-time-only check here would permanently omit the worktree's own
+    # install line even after it's built, and test.sh's re-source-after-build
+    # would never pick up the fresh overlay.
+    #
+    # The guard is `if [ -f X ]; then source X; fi`, never `[ -f X ] &&
+    # source X`: an `&&` form's exit status is the `[ -f ]` test's own
+    # (nonzero) status when the file doesn't exist, and `source env.sh`
+    # inherits that as env.sh's *own* exit status when this happens to be
+    # the last line generated. Under a caller's `set -e` (an issue shell,
+    # or the generated build.sh/test.sh — see _wt_env_last_line_is_safe
+    # below), that turns "install not built yet" into an immediate,
+    # silent abort of the sourcing script itself. `if/then/fi` with no
+    # `else` always exits 0, whichever branch is taken.
     local l layer_dir found_target=false
     while IFS= read -r l; do
         if [ "$l" = "$layer" ]; then
@@ -765,7 +774,7 @@ adapter_worktree_env() {
             break
         fi
         layer_dir="$(_rc_layer_dir "$l")"
-        printf '[ -f %q ] && source %q\n' \
+        printf 'if [ -f %q ]; then source %q; fi\n' \
             "$layer_dir/install/local_setup.bash" "$layer_dir/install/local_setup.bash"
     done < <(_rc_layers)
     if [ "$found_target" != true ]; then
@@ -773,10 +782,17 @@ adapter_worktree_env() {
         return 1
     fi
     layer_dir="$(_rc_layer_dir "$layer")"
-    printf '[ -f %q ] && source %q\n' \
+    printf 'if [ -f %q ]; then source %q; fi\n' \
         "$layer_dir/install/local_setup.bash" "$layer_dir/install/local_setup.bash"
-    printf '[ -f %q ] && source %q\n' \
+    printf 'if [ -f %q ]; then source %q; fi\n' \
         "$worktree/${layer}_ws/install/local_setup.bash" "$worktree/${layer}_ws/install/local_setup.bash"
+    # No trailing `true` crutch: every line this function can ever emit —
+    # unset, the underlay source (guaranteed to exist; _rc_underlay already
+    # errored out above if not), and every if/then/fi guard — exits 0 on
+    # its own regardless of which one ends up last. That is the actual
+    # guarantee; test_worktree_env_last_line_never_fails_under_set_e below
+    # exercises it end to end (source the real generated output under
+    # `set -e` with no install present) rather than trusting this comment.
 }
 
 adapter_scope_for_pr() {

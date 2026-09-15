@@ -271,12 +271,14 @@ test_worktree_create_package_success() {
     assert_eq "env.sh scrubs, then runtime-guards underlay+l1 install, in order" \
         "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
 source $sb/rosroot/fakefox/setup.bash
-[ -f $proj/layers/main/l1_ws/install/local_setup.bash ] && source $proj/layers/main/l1_ws/install/local_setup.bash
-[ -f $wt/l1_ws/install/local_setup.bash ] && source $wt/l1_ws/install/local_setup.bash" \
+if [ -f $proj/layers/main/l1_ws/install/local_setup.bash ]; then source $proj/layers/main/l1_ws/install/local_setup.bash; fi
+if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/local_setup.bash; fi" \
         "$(< "$wt/env.sh")"
     assert_eq "build.sh generated and executable" "true" "$([ -x "$wt/build.sh" ] && echo true || echo false)"
     assert_eq "test.sh generated and executable" "true" "$([ -x "$wt/test.sh" ] && echo true || echo false)"
     assert_eq "manifest written" "true" "$([ -f "$wt/.worktree-repos" ] && echo true || echo false)"
+    assert_eq "sourcing env.sh under set -e with no install present still exits 0" \
+        "ok" "$(bash -c "set -e; source '$wt/env.sh'; echo ok" 2>&1)"
 }
 
 test_worktree_create_rolls_back_on_second_repo_failure() {
@@ -1108,10 +1110,33 @@ test_worktree_env_for_package_worktree() {
     local expected
     expected="unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
 source $sb/rosroot/fakefox/setup.bash
-[ -f $proj/layers/main/l1_ws/install/local_setup.bash ] && source $proj/layers/main/l1_ws/install/local_setup.bash
-[ -f $proj/layers/main/l2_ws/install/local_setup.bash ] && source $proj/layers/main/l2_ws/install/local_setup.bash
-[ -f $wt/l2_ws/install/local_setup.bash ] && source $wt/l2_ws/install/local_setup.bash"
+if [ -f $proj/layers/main/l1_ws/install/local_setup.bash ]; then source $proj/layers/main/l1_ws/install/local_setup.bash; fi
+if [ -f $proj/layers/main/l2_ws/install/local_setup.bash ]; then source $proj/layers/main/l2_ws/install/local_setup.bash; fi
+if [ -f $wt/l2_ws/install/local_setup.bash ]; then source $wt/l2_ws/install/local_setup.bash; fi"
     assert_eq "below-layer, same-layer (hosted, not built), worktree's own — all runtime-guarded" "$expected" "$out"
+
+    local wt_env="$sb/wt_env.sh"
+    printf '%s\n' "$out" > "$wt_env"
+    assert_eq "sourcing under set -e with no missing-file install exits 0 (l2's own is built here)" \
+        "ok" "$(bash -c "set -e; source '$wt_env'; echo ok" 2>&1)"
+}
+
+test_worktree_env_last_line_never_fails_under_set_e() {
+    echo "TEST: env.sh's last line is always a zero-exit guard, even when no install exists at all"
+    local sb out proj wt
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    # No installs anywhere — the worst case: every conditional line's
+    # [ -f ] test is false, including whichever one is last.
+    wt="$sb/wt"
+    mkdir -p "$wt/l1_ws"
+    out="$(run_adapter "$sb" worktree_env --worktree "$wt")" || true
+    local env_file="$sb/env.sh"
+    printf '%s\n' "$out" > "$env_file"
+    local result
+    result="$(bash -c "set -e; source '$env_file'; echo ok" 2>&1)"
+    assert_eq "'source env.sh' under set -e still reaches 'echo ok'" "ok" "$result"
 }
 
 test_worktree_env_runtime_guard_picks_up_install_built_after_generation() {
@@ -1310,6 +1335,7 @@ test_worktree_repos_owning_and_sibling_branches
 test_worktree_repos_unknown_package_fails
 test_worktree_repos_wrong_layer_fails
 test_worktree_env_for_package_worktree
+test_worktree_env_last_line_never_fails_under_set_e
 test_worktree_env_runtime_guard_picks_up_install_built_after_generation
 test_worktree_env_no_layer_ws_fails
 test_sync_pull_skip_fetch
