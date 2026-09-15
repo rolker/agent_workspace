@@ -475,6 +475,22 @@ test_worktree_create_repo_alias() {
         "yes" "$([ -d "$sb/worktrees/project/alpha/issue-alpha-995" ] && echo yes || echo no)"
 }
 
+test_worktree_create_single_repo_no_manifest_file() {
+    echo "TEST: a single_project worktree gets no .worktree-repos and no untracked files"
+    local sb out rc=0 wt
+    sb="$(make_worktree_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    seed_commit "$sb/projects/alpha"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 994 --type project --project alpha 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    wt="$sb/worktrees/project/alpha/issue-alpha-994"
+    assert_eq "no .worktree-repos file written" \
+        "false" "$([ -e "$wt/.worktree-repos" ] && echo true || echo false)"
+    assert_eq "worktree checkout has no untracked/uncommitted files" \
+        "" "$(git -C "$wt" status --porcelain)"
+}
+
 test_worktree_create_multiple_requires_repo() {
     echo "TEST: worktree_create without --project fails when multiple projects are registered"
     local sb out rc=0
@@ -520,6 +536,7 @@ test_worktree_create_registry_repo
 test_worktree_create_single_registry_autoselect
 test_worktree_create_dashed_name_roundtrip
 test_worktree_create_repo_alias
+test_worktree_create_single_repo_no_manifest_file
 test_worktree_create_multiple_requires_repo
 
 echo ""

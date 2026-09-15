@@ -610,8 +610,21 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
 
     # Write the per-worktree repo manifest (.worktree-repos, ADR-0012) so
     # every later script (enter/remove/list/dashboard/merge_pr) can compose
-    # this worktree's repos without calling the adapter or checking type.
-    printf '%s\n' "$REPO_LINES" | wt_write_manifest "$WORKTREE_DIR" "${PROJECT_NAME:-project}" "$ISSUE_REF" "$LAYER"
+    # this worktree's repos without calling the adapter or checking type —
+    # EXCEPT when there is exactly one entry with rel path ".": there, the
+    # worktree root IS the repo checkout, and wt_read_manifest's legacy
+    # fallback already reconstructs that single entry with no file needed.
+    # Writing the file in that case would add a permanently untracked file
+    # to every single_project (and legacy) worktree's own git status.
+    _REPO_LINE_COUNT="$(printf '%s\n' "$REPO_LINES" | grep -c . || true)"
+    _WRITE_MANIFEST=true
+    if [ "${_REPO_LINE_COUNT:-0}" -eq 1 ]; then
+        IFS=$'\t' read -r _rl_origin _rl_rel _rl_branch <<< "$REPO_LINES"
+        [ "$_rl_rel" = "." ] && _WRITE_MANIFEST=false
+    fi
+    if [ "$_WRITE_MANIFEST" = true ]; then
+        printf '%s\n' "$REPO_LINES" | wt_write_manifest "$WORKTREE_DIR" "${PROJECT_NAME:-project}" "$ISSUE_REF" "$LAYER"
+    fi
 
     # Generate env.sh/build.sh/test.sh for a package worktree when
     # worktree_env has something to say (ros2_colcon). env.sh is the entry
