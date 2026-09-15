@@ -108,6 +108,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ADR-0012: a package worktree's --issue is qualified (owner/repo#N).
+# ISSUE_REF keeps the raw value (bare or qualified) for
+# find_worktree_by_issue, which matches a qualified ref against each
+# candidate's .worktree-repos header exactly — never by directory name
+# alone. ISSUE_NUM is the trailing numeric suffix, used everywhere else
+# (issue lookup, directory-name construction for legacy shapes, etc.).
+ISSUE_REF="$ISSUE_NUM"
+if [ -n "$ISSUE_NUM" ] && [[ "$ISSUE_NUM" == *#* ]]; then
+    ISSUE_NUM="${ISSUE_NUM##*#}"
+fi
+
 if [ -n "$ISSUE_NUM" ] && [ -n "$SKILL_NAME" ]; then
     echo "Error: --issue and --skill are mutually exclusive"
     show_usage
@@ -199,10 +210,12 @@ if [ -n "$SKILL_NAME" ]; then
         return 1 2>/dev/null || exit 1
     fi
 else
-    # Issue mode: search new location, then legacy
-    if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree "$NEW_BASE" "$ISSUE_NUM" "$REPO_SLUG"); then
+    # Issue mode: search new location, then legacy. A qualified ISSUE_REF
+    # (owner/repo#N) is matched against each candidate's .worktree-repos
+    # header exactly (ADR-0012) — never by the trailing number alone.
+    if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_issue "$NEW_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree "$LEGACY_BASE" "$ISSUE_NUM" "$REPO_SLUG"); then
+    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_issue "$LEGACY_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
         echo "⚠️  Found worktree in legacy location. Remove and recreate to use new layout." >&2
     else

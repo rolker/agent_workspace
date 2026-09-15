@@ -337,10 +337,14 @@ echo ""
 WORKTREE_SCRIPT="$SCRIPT_DIR/worktree_list.sh"
 if [ -x "$WORKTREE_SCRIPT" ]; then
     WT_COUNT=$(git -C "$ROOT_DIR" worktree list 2>/dev/null | grep -v "(bare)" | grep -vF "$ROOT_DIR " | wc -l)
-    # Also count project worktrees
+    # Also count project worktrees: current layout (worktrees/project/<project>/<worktree>)
+    # plus the legacy shape (project/worktrees/<worktree>).
     PROJ_WT_COUNT=0
+    if [ -d "$ROOT_DIR/worktrees/project" ]; then
+        PROJ_WT_COUNT=$(find "$ROOT_DIR/worktrees/project" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
+    fi
     if [ -d "$PROJECT_DIR/worktrees" ]; then
-        PROJ_WT_COUNT=$(find "$PROJECT_DIR/worktrees" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)
+        PROJ_WT_COUNT=$((PROJ_WT_COUNT + $(find "$PROJECT_DIR/worktrees" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)))
     fi
     if [ "$WT_COUNT" -gt 0 ] || [ "$PROJ_WT_COUNT" -gt 0 ]; then
         "$WORKTREE_SCRIPT" 2>/dev/null | grep -E "^(\[main\]|\[workspace\]|\[project\]|  )" || true

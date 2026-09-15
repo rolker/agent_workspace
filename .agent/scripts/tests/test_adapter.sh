@@ -194,7 +194,7 @@ test_validator_passes_complete_adapters() {
     sb="$(make_sandbox)"
     out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    assert_contains "reports single_project complete" "single_project: all 10 verbs implemented" "$out"
+    assert_contains "reports single_project complete" "single_project: all 12 verbs implemented" "$out"
 }
 
 test_validator_flags_missing_verbs() {
@@ -208,7 +208,7 @@ test_validator_flags_missing_verbs() {
     assert_eq "exit 1" "1" "$rc"
     assert_contains "flags partial_type" "partial_type: missing verbs" "$out"
     assert_contains "lists a missing verb" "adapter_scope_for_pr" "$out"
-    assert_contains "complete type still passes" "single_project: all 10 verbs implemented" "$out"
+    assert_contains "complete type still passes" "single_project: all 12 verbs implemented" "$out"
 }
 
 test_validator_flags_missing_adapter_file() {
@@ -465,6 +465,56 @@ test_scope_for_pr_requires_path() {
     assert_contains "explains the requirement" "requires a path argument" "$out"
 }
 
+# ---- worktree_repos / worktree_env (ADR-0012, single_project) ----
+
+test_worktree_repos_single_entry() {
+    echo "TEST: single_project worktree_repos prints one entry, rel path '.'"
+    local sb out
+    sb="$(make_sandbox)"
+    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
+    out="$("$sb/.agent/scripts/adapter" worktree_repos --issue 42)" || true
+    assert_eq "project dir, ., default branch" \
+        "$sb/project	.	feature/issue-42" "$out"
+}
+
+test_worktree_repos_accepts_qualified_issue() {
+    echo "TEST: single_project worktree_repos accepts a qualified owner/repo#N issue"
+    local sb out
+    sb="$(make_sandbox)"
+    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
+    out="$("$sb/.agent/scripts/adapter" worktree_repos --issue owner/repo#42)" || true
+    assert_eq "trailing number extracted for the branch" \
+        "$sb/project	.	feature/issue-42" "$out"
+}
+
+test_worktree_repos_rejects_layer_flags() {
+    echo "TEST: single_project worktree_repos rejects --layer/--package-repos"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_git_repo "$sb/project" "git@github.com:owner/repo.git"
+    out="$("$sb/.agent/scripts/adapter" worktree_repos --issue 42 --layer platforms 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "explains no layers to worktree" "does not support --layer" "$out"
+}
+
+test_worktree_repos_requires_issue() {
+    echo "TEST: worktree_repos without --issue fails"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    out="$("$sb/.agent/scripts/adapter" worktree_repos 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "explains the requirement" "requires --issue" "$out"
+}
+
+test_worktree_env_emits_nothing() {
+    echo "TEST: single_project worktree_env emits nothing and exits 0"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    out="$("$sb/.agent/scripts/adapter" worktree_env --worktree "$sb/anything")" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "empty stdout" "" "$out"
+}
+
 # ---- setup.sh / sync.py robustness tests (issue #222) ----
 
 # Build an origin repo and a clone at $2 primed for a rebase conflict:
@@ -663,6 +713,11 @@ test_scope_for_pr_https
 test_scope_for_pr_ssh_url_with_port
 test_scope_for_pr_walks_up
 test_scope_for_pr_requires_path
+test_worktree_repos_single_entry
+test_worktree_repos_accepts_qualified_issue
+test_worktree_repos_rejects_layer_flags
+test_worktree_repos_requires_issue
+test_worktree_env_emits_nothing
 test_setup_aborts_failed_rebase
 test_setup_replaces_broken_symlink
 test_setup_replaces_valid_symlink_to_nonrepo

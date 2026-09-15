@@ -149,6 +149,39 @@ adapter_repos() {
     echo "${name}:${root}"
 }
 
+adapter_worktree_repos() {
+    # Single repo, single entry: the project checkout itself, rel path ".".
+    # single_project never branches on --layer/--package-repos (ADR-0012).
+    local issue="" layer="" package_repos=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --issue) issue="${2:-}"; shift 2 ;;
+            --layer) layer="${2:-}"; shift 2 ;;
+            --package-repos) package_repos="${2:-}"; shift 2 ;;
+            *) echo "ERROR: worktree_repos: unknown argument '$1'" >&2; return 1 ;;
+        esac
+    done
+    if [ -z "$issue" ]; then
+        echo "ERROR: worktree_repos requires --issue <N|owner/repo#N>" >&2
+        return 1
+    fi
+    if [ -n "$layer" ] || [ -n "$package_repos" ]; then
+        echo "ERROR: single_project does not support --layer/--package-repos (no layers to worktree)" >&2
+        return 1
+    fi
+    local num="${issue##*#}"
+    if ! [[ "$num" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: --issue must be a number or end in #<number> (got '$issue')" >&2
+        return 1
+    fi
+    printf '%s\t.\tfeature/issue-%s\n' "$(adapter_project_root)" "$num"
+}
+
+adapter_worktree_env() {
+    # single_project has no per-worktree environment to overlay.
+    :
+}
+
 adapter_scope_for_pr() {
     local path="${1:-}"
     if [ -z "$path" ]; then

@@ -129,6 +129,55 @@ For multiple worktrees of the same type with different repo slugs, use `--repo-s
 source .agent/scripts/worktree_enter.sh --issue 42 --type workspace --repo-slug workspace
 ```
 
+## Package Worktrees (`ros2_colcon`, ADR-0012)
+
+For a hosted `ros2_colcon` instance, worktree one or more package repos inside
+one layer instead of the whole hosting dir. Nothing is inferred — layer,
+package repos, and issue are all explicit:
+
+```bash
+.agent/scripts/worktree_create.sh --type project --project p11-jazzy \
+    --issue rolker/cube_bathymetry#111 \
+    --layer platforms --package-repos cube_bathymetry,marine_msgs
+```
+
+- `--issue` **must** be the qualified `owner/repo#N` form for a package
+  worktree (a bare number is a usage error — the qualified ref is how
+  `worktree_repos` tells the issue's own repo from its siblings).
+- `--package-repos` takes package-repo **directory names** (what
+  `.agent/scripts/adapter repos` prints), not ROS package names.
+- `--layer`/`--package-repos` are creation-only, like `--branch`/`--plan-file`
+  (see the SKILL.md compatibility note below); re-entry and removal use the
+  qualified `--issue owner/repo#N --type project --project <name>` form only.
+- Branch names: the repo that owns the issue gets `feature/issue-<N>`; every
+  other named repo gets `feature/<repo>-issue-<N>` (e.g.
+  `feature/cube_bathymetry-issue-111` in `marine_msgs`).
+- Directory: `worktrees/project/<project>/issue-<project>-<owner>-<repo>-<N>/`
+  — cosmetic only. Every script that needs project/issue/layer reads the
+  `.worktree-repos` manifest header, never this name.
+- Untouched sibling packages and lower/other layers are **not symlinked** —
+  colcon's own overlay resolves them via the hosted instance's already-built
+  installs (design B in the issue #252 plan). No code path in this workflow
+  ever falls back to `ln -s`; a `git worktree add` failure on any named repo
+  rolls back every repo already added in the same run and hard-stops.
+- If the worktree has anything to overlay, `worktree_create.sh` also writes:
+  - `env.sh` — sourceable; the entry point for a shell that needs to keep
+    the overlay (`source env.sh`).
+  - `build.sh` — one-shot `colcon build` wrapper (sources `env.sh`, builds).
+  - `test.sh` — one-shot: builds if not yet built, **re-sources `env.sh`**
+    so the fresh overlay is on top, then `colcon test` +
+    `colcon test-result --verbose`.
+  - Both pass `--allow-overriding` to `colcon build`, computed at **run
+    time** from `colcon list --names-only --base-paths src` (never
+    hard-coded at generation time — this always matches whatever's under
+    `src/`, including packages added after the worktree was created).
+    Overriding the hosted instance's same-layer install is the entire
+    reason a package worktree exists; without `--allow-overriding` colcon
+    warns on every build (`colcon-override-check`) and may hard-error in a
+    future release.
+- `--plan-file` draft-PR creation is not supported for package worktrees (the
+  aggregate dir is not itself a git repo); open PRs per package repo by hand.
+
 ## Draft PRs with Plan File
 
 Pass `--plan-file` to create a draft PR immediately and post the plan as a PR comment:

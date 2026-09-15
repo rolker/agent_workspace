@@ -25,6 +25,12 @@ source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_issue_helpers.sh"
 source "$SCRIPT_DIR/_project_registry.sh"
 
+# ADR-0012: a package worktree names its layer and package repos
+# explicitly; --issue must then be the qualified owner/repo#N form so
+# worktree_repos can tell the issue's own repo from its siblings.
+LAYER=""
+PACKAGE_REPOS=""
+
 # Try to fetch a specific branch from origin.
 fetch_remote_branch() {
     local git_path="$1"
@@ -75,6 +81,10 @@ show_usage() {
     echo "                        (--type project only; default: legacy project/, or the"
     echo "                        single registered project when project/ is absent)"
     echo "  --repo-slug <slug>    Repository slug for naming (auto-detected if not provided)"
+    echo "  --layer <name>        Layer to worktree (ros2_colcon package worktrees; requires"
+    echo "                        --package-repos and a qualified --issue owner/repo#N)"
+    echo "  --package-repos <a,b> Comma-separated package-repo directory names to worktree"
+    echo "                        (requires --layer)"
     echo "  --branch <name>       Custom branch name (default: feature/issue-<N>)"
     echo "  --parent-issue <N>    Parent issue number; branches from parent's feature branch"
     echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
@@ -120,6 +130,22 @@ while [[ $# -gt 0 ]]; do
             ;;
         --repo-slug)
             REPO_SLUG="$2"
+            shift 2
+            ;;
+        --layer)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                echo "Error: --layer requires a layer name"
+                exit 1
+            fi
+            LAYER="$2"
+            shift 2
+            ;;
+        --package-repos)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                echo "Error: --package-repos requires a comma-separated list of repo names"
+                exit 1
+            fi
+            PACKAGE_REPOS="$2"
             shift 2
             ;;
         --branch)
@@ -214,9 +240,47 @@ if [ -z "$WORKTREE_TYPE" ]; then
     show_usage
     exit 1
 fi
+if [ "$WORKTREE_TYPE" = "layer" ]; then
+    echo "Error: --type layer no longer exists."
+    echo "Use: --type project --layer <name> --package-repos <a,b> --issue owner/repo#N"
+    exit 1
+fi
 if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; then
     echo "Error: --type must be 'workspace' or 'project'"
     exit 1
+fi
+
+# --- Qualified --issue (owner/repo#N), and --layer/--package-repos gating ---
+# ADR-0012: nothing about a package worktree is inferred. A qualified
+# --issue is required whenever --layer/--package-repos are used (so
+# worktree_repos can tell the issue's own repo from its siblings); a bare
+# number is otherwise accepted unchanged (workspace worktrees, legacy
+# single-repo project worktrees).
+ISSUE_REF="$ISSUE_NUM"
+ISSUE_OWNER_REPO=""
+if [ -n "$ISSUE_NUM" ] && [[ "$ISSUE_NUM" == *#* ]]; then
+    if [[ "$ISSUE_NUM" =~ ^([^/#]+/[^/#]+)#([0-9]+)$ ]]; then
+        ISSUE_OWNER_REPO="${BASH_REMATCH[1]}"
+        ISSUE_REF="$ISSUE_NUM"
+        ISSUE_NUM="${BASH_REMATCH[2]}"
+    else
+        echo "Error: qualified --issue must be owner/repo#N, got '$ISSUE_NUM'"
+        exit 1
+    fi
+fi
+if [ -n "$LAYER" ] || [ -n "$PACKAGE_REPOS" ]; then
+    if [ "$WORKTREE_TYPE" != "project" ]; then
+        echo "Error: --layer/--package-repos are only valid with --type project"
+        exit 1
+    fi
+    if [ -z "$LAYER" ] || [ -z "$PACKAGE_REPOS" ]; then
+        echo "Error: --layer and --package-repos must be given together"
+        exit 1
+    fi
+    if [ -z "$ISSUE_OWNER_REPO" ]; then
+        echo "Error: --layer/--package-repos require a qualified --issue owner/repo#N"
+        exit 1
+    fi
 fi
 
 # Validate workflow template if provided
@@ -356,13 +420,30 @@ fi
 # --- Validate issue and fetch title ---
 ISSUE_TITLE=""
 ISSUE_STATE=""
+# Display form for messages: the qualified ref when --issue was qualified,
+# else the bare number (unchanged from before ADR-0012).
+if [ -n "$ISSUE_OWNER_REPO" ]; then
+    ISSUE_DISPLAY_REF="${ISSUE_OWNER_REPO}#${ISSUE_NUM}"
+else
+    ISSUE_DISPLAY_REF="#${ISSUE_NUM}"
+fi
 if [ -n "$ISSUE_NUM" ]; then
-    # Look up issue via git-bug (with sync-on-miss) then gh fallback
-    _LOOKUP_REPO="${GH_REPO_SLUG:-}"
-    if [ -z "$_LOOKUP_REPO" ]; then
-        # Best-effort: extract from workspace remote
-        _WS_URL=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
-        _LOOKUP_REPO=$(extract_gh_slug "$_WS_URL")
+    # A qualified --issue owner/repo#N names its own repo explicitly — the
+    # lookup, the PR-not-issue check, and any error/status message must all
+    # target that repo, never the workspace remote or an auto-detected
+    # GH_REPO_SLUG (which is the *project*'s repo, not necessarily the
+    # issue's — e.g. a package worktree's owning repo can differ from the
+    # registered project's own remote).
+    if [ -n "$ISSUE_OWNER_REPO" ]; then
+        _LOOKUP_REPO="$ISSUE_OWNER_REPO"
+    else
+        # Look up issue via git-bug (with sync-on-miss) then gh fallback
+        _LOOKUP_REPO="${GH_REPO_SLUG:-}"
+        if [ -z "$_LOOKUP_REPO" ]; then
+            # Best-effort: extract from workspace remote
+            _WS_URL=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
+            _LOOKUP_REPO=$(extract_gh_slug "$_WS_URL")
+        fi
     fi
     if [ -n "$_LOOKUP_REPO" ]; then
         issue_lookup "$ISSUE_NUM" --repo "$_LOOKUP_REPO" --root "$ROOT_DIR" || true
@@ -373,28 +454,29 @@ if [ -n "$ISSUE_NUM" ]; then
         ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state --jq '.state' 2>/dev/null || echo "")
     fi
 
-    # PR check stays gh-only — git-bug doesn't track PRs
+    # PR check stays gh-only — git-bug doesn't track PRs. Same repo as the
+    # lookup above: the qualified ref's own repo, or the fallback chain.
     if command -v gh &>/dev/null; then
         _PR_CHECK=""
-        if [ -n "$GH_REPO_SLUG" ]; then
-            _PR_CHECK=$(gh pr view "$ISSUE_NUM" --repo "$GH_REPO_SLUG" --json state --jq '.state' 2>/dev/null || echo "")
+        if [ -n "$_LOOKUP_REPO" ]; then
+            _PR_CHECK=$(gh pr view "$ISSUE_NUM" --repo "$_LOOKUP_REPO" --json state --jq '.state' 2>/dev/null || echo "")
         else
             _PR_CHECK=$(gh pr view "$ISSUE_NUM" --json state --jq '.state' 2>/dev/null || echo "")
         fi
         if [ -n "$_PR_CHECK" ]; then
-            echo "Error: #$ISSUE_NUM is a pull request, not an issue."
+            echo "Error: $ISSUE_DISPLAY_REF is a pull request, not an issue."
             echo "Use the original issue number instead."
             exit 1
         fi
     fi
 
     if [ -n "$ISSUE_TITLE" ]; then
-        echo "Issue #$ISSUE_NUM: $ISSUE_TITLE"
+        echo "Issue $ISSUE_DISPLAY_REF: $ISSUE_TITLE"
         if [ "$ISSUE_STATE" = "CLOSED" ]; then
-            echo "   ⚠️  Warning: Issue #$ISSUE_NUM is CLOSED"
+            echo "   ⚠️  Warning: Issue $ISSUE_DISPLAY_REF is CLOSED"
         fi
     else
-        echo "⚠️  Could not fetch issue #$ISSUE_NUM title (offline or issue does not exist)"
+        echo "⚠️  Could not fetch issue $ISSUE_DISPLAY_REF title (offline or issue does not exist)"
         echo "   Proceeding anyway — verify the issue number is correct."
     fi
 else
@@ -417,9 +499,34 @@ if [ -n "$PARENT_ISSUE_NUM" ]; then
     PARENT_BRANCH="feature/issue-${PARENT_ISSUE_NUM}"
 fi
 
+# --- Resolve the worktree repo manifest (ADR-0012, --type project only) ---
+# worktree_repos is the single source of truth for which repos compose the
+# worktree and what to name their branches — this script never decides
+# that itself, and never checks the project type.
+REPO_LINES=""
+if [ "$WORKTREE_TYPE" == "project" ]; then
+    WR_ADAPTER_ARGS=()
+    [ -n "$PROJECT_NAME" ] && WR_ADAPTER_ARGS+=(--project "$PROJECT_NAME")
+    WR_VERB_ARGS=(--issue "$ISSUE_REF")
+    [ -n "$LAYER" ] && WR_VERB_ARGS+=(--layer "$LAYER")
+    [ -n "$PACKAGE_REPOS" ] && WR_VERB_ARGS+=(--package-repos "$PACKAGE_REPOS")
+    if ! REPO_LINES="$("$SCRIPT_DIR/adapter" "${WR_ADAPTER_ARGS[@]}" worktree_repos "${WR_VERB_ARGS[@]}")"; then
+        exit 1
+    fi
+    if [ -z "$REPO_LINES" ]; then
+        echo "Error: worktree_repos returned no repos to worktree"
+        exit 1
+    fi
+fi
+
 # --- Determine worktree path ---
 if [ -n "$SKILL_NAME" ]; then
     DIR_PREFIX="skill-${REPO_SLUG}-${SYNTHETIC_ID}"
+elif [ -n "$LAYER" ]; then
+    # Package worktree: the directory name carries the qualified issue for
+    # human legibility only — every script that needs project/issue/layer
+    # reads the .worktree-repos header instead of parsing this name.
+    DIR_PREFIX="issue-${REPO_SLUG}-${ISSUE_OWNER_REPO/\//-}-${ISSUE_NUM}"
 else
     DIR_PREFIX="issue-${REPO_SLUG}-${ISSUE_NUM}"
 fi
@@ -452,7 +559,7 @@ if [ -n "$SKILL_NAME" ]; then
     echo "  Skill:      $SKILL_NAME"
     echo "  ID:         $SYNTHETIC_ID"
 else
-    echo "  Issue:      #$ISSUE_NUM"
+    echo "  Issue:      $ISSUE_DISPLAY_REF"
 fi
 echo "  Repository: $REPO_SLUG"
 echo "  Type:       $WORKTREE_TYPE"
@@ -468,41 +575,165 @@ PARENT_BRANCH_FOUND=false
 
 # --- Create the worktree ---
 if [ "$WORKTREE_TYPE" == "project" ]; then
-    # Project worktrees are git worktrees of the project repo
-    if git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
-        echo "Using existing local branch '$BRANCH_NAME'..."
-        git -C "$PROJECT_DIR" worktree add "$WORKTREE_DIR" "$BRANCH_NAME"
-    elif fetch_remote_branch "$PROJECT_DIR" "$BRANCH_NAME"; then
-        echo "Tracking remote branch 'origin/$BRANCH_NAME'..."
-        git -C "$PROJECT_DIR" worktree add --track -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$BRANCH_NAME"
-    elif [ -n "$PARENT_BRANCH" ]; then
-        if git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH"; then
-            echo "Creating new branch '$BRANCH_NAME' from parent branch '$PARENT_BRANCH'..."
-            git -C "$PROJECT_DIR" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "$PARENT_BRANCH"
-            PARENT_BRANCH_FOUND=true
-        elif fetch_remote_branch "$PROJECT_DIR" "$PARENT_BRANCH"; then
-            echo "Creating new branch '$BRANCH_NAME' from parent branch 'origin/$PARENT_BRANCH'..."
-            git -C "$PROJECT_DIR" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR" "origin/$PARENT_BRANCH"
-            PARENT_BRANCH_FOUND=true
+    # Project worktrees loop over the worktree_repos manifest — one
+    # git-worktree-add per entry, via the shared waterfall helper. Never
+    # falls back to a symlink (ADR-0012).
+    #
+    # Rollback state + trap: WT_ADDED_ENTRIES records every entry actually
+    # added this run (dest, origin, branch, whether that branch already
+    # existed before the add). The trap is armed right after the FIRST
+    # successful add — from that point on, ANY failure (a later add, the
+    # manifest write, worktree_env, or env.sh/build.sh/test.sh generation)
+    # rolls back every entry added so far and deletes the aggregate dir,
+    # via one function rather than an ad-hoc rm/worktree-remove at each
+    # call site. It is disarmed once the worktree is fully valid, so an
+    # unrelated later failure elsewhere in the script (e.g. --plan-file
+    # draft-PR creation) never undoes an otherwise-successful worktree.
+    WT_ADDED_ENTRIES=()
+
+    _wt_rollback_package_worktree() {
+        local rc=$?
+        trap - ERR EXIT
+        echo "ERROR: worktree creation failed — rolling back ${#WT_ADDED_ENTRIES[@]} already-created worktree(s)..." >&2
+        local entry dest origin branch existed
+        for entry in "${WT_ADDED_ENTRIES[@]}"; do
+            IFS='|' read -r dest origin branch existed <<< "$entry"
+            git -C "$origin" worktree remove --force "$dest" 2>/dev/null || true
+            if [ "$existed" = "no" ] && [ -n "$branch" ]; then
+                git -C "$origin" branch -D "$branch" 2>/dev/null || true
+            fi
+        done
+        rm -rf "$WORKTREE_DIR"
+        exit "${rc:-1}"
+    }
+
+    while IFS=$'\t' read -r WR_ORIGIN WR_REL WR_BRANCH; do
+        [ -z "$WR_ORIGIN" ] && continue
+        if [ "$WR_REL" = "." ]; then
+            WR_DEST="$WORKTREE_DIR"
         else
-            echo "⚠️  Parent branch '$PARENT_BRANCH' not found; falling back to HEAD"
-            git -C "$PROJECT_DIR" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+            WR_DEST="$WORKTREE_DIR/$WR_REL"
         fi
-    else
-        echo "Creating new branch '$BRANCH_NAME' from current HEAD..."
-        git -C "$PROJECT_DIR" worktree add -b "$BRANCH_NAME" "$WORKTREE_DIR"
+        if ! git -C "$WR_ORIGIN" rev-parse --git-dir >/dev/null 2>&1; then
+            echo "ERROR: manifest entry is not a git repository: $WR_ORIGIN" >&2
+            if [ "${#WT_ADDED_ENTRIES[@]}" -eq 0 ]; then
+                rm -rf "$WORKTREE_DIR"
+            fi
+            exit 1
+        fi
+        mkdir -p "$(dirname "$WR_DEST")"
+        echo "Adding worktree for $WR_ORIGIN at $WR_DEST (branch '$WR_BRANCH')..."
+        WR_BRANCH_EXISTED=no
+        git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/heads/$WR_BRANCH" && WR_BRANCH_EXISTED=yes
+        if ! _wt_add_repo "$WR_ORIGIN" "$WR_DEST" "$WR_BRANCH" "$PARENT_BRANCH"; then
+            if [ "${#WT_ADDED_ENTRIES[@]}" -eq 0 ]; then
+                rm -rf "$WORKTREE_DIR"
+            fi
+            exit 1
+        fi
+        WT_ADDED_ENTRIES+=("$WR_DEST|$WR_ORIGIN|$WR_BRANCH|$WR_BRANCH_EXISTED")
+        if [ "${#WT_ADDED_ENTRIES[@]}" -eq 1 ]; then
+            trap _wt_rollback_package_worktree ERR EXIT
+        fi
+        if [ "$WR_BRANCH" = "$BRANCH_NAME" ] || [ "$WR_REL" = "." ]; then
+            # Owning-repo entry: check parent-branch-found for PR targeting,
+            # matching the pre-#252 single-repo semantics.
+            if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ]; then
+                if git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
+                   git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
+                    PARENT_BRANCH_FOUND=true
+                fi
+            fi
+        fi
+    done <<< "$REPO_LINES"
+
+    # Write the per-worktree repo manifest (.worktree-repos, ADR-0012) so
+    # every later script (enter/remove/list/dashboard/merge_pr) can compose
+    # this worktree's repos without calling the adapter or checking type —
+    # EXCEPT when there is exactly one entry with rel path ".": there, the
+    # worktree root IS the repo checkout, and wt_read_manifest's legacy
+    # fallback already reconstructs that single entry with no file needed.
+    # Writing the file in that case would add a permanently untracked file
+    # to every single_project (and legacy) worktree's own git status.
+    _REPO_LINE_COUNT="$(printf '%s\n' "$REPO_LINES" | grep -c . || true)"
+    _WRITE_MANIFEST=true
+    if [ "${_REPO_LINE_COUNT:-0}" -eq 1 ]; then
+        IFS=$'\t' read -r _rl_origin _rl_rel _rl_branch <<< "$REPO_LINES"
+        [ "$_rl_rel" = "." ] && _WRITE_MANIFEST=false
+    fi
+    if [ "$_WRITE_MANIFEST" = true ]; then
+        printf '%s\n' "$REPO_LINES" | wt_write_manifest "$WORKTREE_DIR" "${PROJECT_NAME:-project}" "$ISSUE_REF" "$LAYER"
     fi
 
-    # Check parent branch exists for PR targeting
-    if [ -n "$PARENT_BRANCH" ] && [ "$PARENT_BRANCH_FOUND" = false ]; then
-        if git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/heads/$PARENT_BRANCH" || \
-           git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
-            PARENT_BRANCH_FOUND=true
-        elif fetch_remote_branch "$PROJECT_DIR" "$PARENT_BRANCH" && \
-             git -C "$PROJECT_DIR" show-ref --verify --quiet "refs/remotes/origin/$PARENT_BRANCH"; then
-            PARENT_BRANCH_FOUND=true
+    # Generate env.sh/build.sh/test.sh for a package worktree when
+    # worktree_env has something to say (ros2_colcon). env.sh is the entry
+    # point for a shell that must keep the overlay; build.sh/test.sh are
+    # one-shot wrappers that source it fresh.
+    if [ -n "$LAYER" ]; then
+        WE_ADAPTER_ARGS=()
+        [ -n "$PROJECT_NAME" ] && WE_ADAPTER_ARGS+=(--project "$PROJECT_NAME")
+        WE_OUTPUT="$("$SCRIPT_DIR/adapter" "${WE_ADAPTER_ARGS[@]}" worktree_env --worktree "$WORKTREE_DIR")" || {
+            echo "Error: worktree_env failed for the new worktree" >&2
+            exit 1
+        }
+        if [ -n "$WE_OUTPUT" ]; then
+            printf '%s\n' "$WE_OUTPUT" > "$WORKTREE_DIR/env.sh"
+            cat > "$WORKTREE_DIR/build.sh" << BUILD_EOF
+#!/usr/bin/env bash
+set -e
+SELF_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "\$SELF_DIR/env.sh"
+cd "\$SELF_DIR/${LAYER}_ws"
+# A package worktree exists to override same-layer packages the hosted
+# instance already built — colcon warns (and may hard-error in a future
+# release) without --allow-overriding for exactly those. Computed here at
+# run time (colcon list, not this generation-time script) so it always
+# matches whatever's actually under src/, including packages added later.
+OVERRIDES="\$(colcon list --names-only --base-paths src | tr '\n' ' ')"
+if [ -n "\$OVERRIDES" ]; then
+    # shellcheck disable=SC2086
+    colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \\
+        --allow-overriding \$OVERRIDES "\$@"
+else
+    colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "\$@"
+fi
+BUILD_EOF
+            chmod +x "$WORKTREE_DIR/build.sh"
+            cat > "$WORKTREE_DIR/test.sh" << TEST_EOF
+#!/usr/bin/env bash
+set -e
+SELF_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "\$SELF_DIR/env.sh"
+cd "\$SELF_DIR/${LAYER}_ws"
+if [ ! -d install ]; then
+    # See build.sh: --allow-overriding is required for a package worktree's
+    # whole reason for existing (overriding the hosted instance's same-layer
+    # install), computed at run time from what's actually under src/.
+    OVERRIDES="\$(colcon list --names-only --base-paths src | tr '\n' ' ')"
+    if [ -n "\$OVERRIDES" ]; then
+        # shellcheck disable=SC2086
+        colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \\
+            --allow-overriding \$OVERRIDES
+    else
+        colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    fi
+fi
+# Re-source so the freshly built overlay is on top (mirrors adapter_test).
+# shellcheck source=/dev/null
+source "\$SELF_DIR/env.sh"
+colcon test --event-handlers console_direct+ --return-code-on-test-failure "\$@"
+colcon test-result --verbose
+TEST_EOF
+            chmod +x "$WORKTREE_DIR/test.sh"
+            echo "Generated env.sh, build.sh, test.sh"
         fi
     fi
+
+    # The worktree is now fully valid — disarm. A failure anywhere later in
+    # this script (e.g. --plan-file draft-PR creation) must not roll it back.
+    trap - ERR EXIT
 
 else
     # Workspace worktrees are git worktrees of the workspace repo
@@ -581,14 +812,18 @@ echo "========================================"
 if [ -n "$SKILL_NAME" ]; then
     echo "  Skill: $SKILL_NAME (ID: $SYNTHETIC_ID)"
 elif [ -n "$ISSUE_TITLE" ]; then
-    echo "  Issue #$ISSUE_NUM: $ISSUE_TITLE"
+    echo "  Issue $ISSUE_DISPLAY_REF: $ISSUE_TITLE"
 fi
 [ -n "$PARENT_BRANCH" ] && echo "  Parent: #$PARENT_ISSUE_NUM ($PARENT_BRANCH)"
 [ -n "$WORKFLOW" ] && echo "  Workflow: $WORKFLOW"
 echo ""
 
 # --- Create draft PR if --plan-file given ---
-if [ -n "$PLAN_FILE" ]; then
+if [ -n "$PLAN_FILE" ] && [ -n "$LAYER" ]; then
+    echo "⚠️  --plan-file draft PR creation is not supported for package worktrees"
+    echo "   (the aggregate dir is not itself a git repo; multi-repo PR"
+    echo "   resolution is tracked separately). Create PRs per package repo by hand."
+elif [ -n "$PLAN_FILE" ]; then
     echo "Creating draft PR for issue #${ISSUE_NUM:-${SKILL_NAME}}..."
     echo ""
 
@@ -747,6 +982,18 @@ PREOF
 fi
 
 # --- Next steps ---
+# A qualified --issue owner/repo#N (ADR-0012) must be echoed back qualified
+# here too — worktree_enter.sh/worktree_remove.sh resolve a package
+# worktree by matching that exact ref against its .worktree-repos header
+# (find_worktree_by_issue); a bare number is ambiguous for a project that
+# has more than one package worktree and would send the user to the wrong
+# command. --project is included whenever this worktree was created
+# against a registered project, for the same reason.
+_NEXT_STEPS_ISSUE="$ISSUE_NUM"
+[ -n "$ISSUE_OWNER_REPO" ] && _NEXT_STEPS_ISSUE="$ISSUE_REF"
+_NEXT_STEPS_PROJECT_FLAG=""
+[ -n "$PROJECT_NAME" ] && _NEXT_STEPS_PROJECT_FLAG=" --project $PROJECT_NAME"
+
 if [ -n "$SKILL_NAME" ]; then
     echo "To enter this worktree:"
     echo "  source $SCRIPT_DIR/worktree_enter.sh --skill $SKILL_NAME --type $WORKTREE_TYPE"
@@ -755,10 +1002,10 @@ if [ -n "$SKILL_NAME" ]; then
     echo "  $SCRIPT_DIR/worktree_remove.sh --skill $SKILL_NAME --type $WORKTREE_TYPE"
 else
     echo "To enter this worktree:"
-    echo "  source $SCRIPT_DIR/worktree_enter.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
+    echo "  source $SCRIPT_DIR/worktree_enter.sh --issue $_NEXT_STEPS_ISSUE --type $WORKTREE_TYPE$_NEXT_STEPS_PROJECT_FLAG"
     echo ""
     echo "When done, remove with:"
-    echo "  $SCRIPT_DIR/worktree_remove.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
+    echo "  $SCRIPT_DIR/worktree_remove.sh --issue $_NEXT_STEPS_ISSUE --type $WORKTREE_TYPE$_NEXT_STEPS_PROJECT_FLAG"
 fi
 echo ""
 
