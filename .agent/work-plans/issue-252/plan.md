@@ -48,7 +48,7 @@ that doesn't invert overlay precedence or go stale — the same discipline this 
 
 | | A. Hybrid mirror | B. Pure overlay |
 |---|---|---|
-| Dependents workflow | Untouched siblings resolve via symlink into main automatically; a dependent can be rebuilt in place without re-listing it | Untouched siblings resolve via the hosted instance's already-built layer *install* (normal colcon underlay); rebuilding a dependent needs it named explicitly (`--packages a,b`) |
+| Dependents workflow | Untouched siblings resolve via symlink into main automatically; a dependent can be rebuilt in place without re-listing it | Untouched siblings resolve via the hosted instance's already-built layer *install* (normal colcon underlay); rebuilding a dependent needs it named explicitly (`--package-repos a,b`) |
 | Build reuse / rebuild cost | Reuses main's builds for everything not named; still full per-worktree symlink tree to construct/maintain | Reuses main's builds identically (via install, not source symlink); worktree build only ever touches named packages — smaller `colcon build` scope |
 | Scoping to a hosted instance | Already solved at `_rc_root`/`ACTIVE_PROJECT_ROOT`; no difference | Same — no difference |
 | Path/env bug classes invited | Reintroduces upstream's exact classes: `sys.path`/`PYTHONPATH` shadowing from symlinked main builds (#427), and the symlink-fallback-on-failure hazard (#598) is structurally tempting because the "else branch" for non-git paths sits right next to a large mirrored tree | No mirrored tree exists, so there is nothing to fall back to *by construction*; only genuine git-repo worktrees are ever created |
@@ -82,25 +82,53 @@ directory could theoretically be non-git if the manifest is malformed.
 
 ## Approach
 
-1. **`worktree_create.sh`**: add `--layer <layer>` and `--packages <pkg[,pkg...]>`,
-   valid only with `--type project` and a registry entry whose adapter type is
-   `ros2_colcon` (look up via `_project_registry.sh`, same helper the dispatcher uses).
-   When the resolved type is `ros2_colcon`, `--layer`/`--packages` become **required**
-   (mirrors upstream's `--type layer` requirement) — the plain single-repo branch
-   (lines 469-480) is skipped entirely for this type.
+0. **Prerequisite: #255** renames the worktree scripts' project selector from
+   `--repo <name>` to `--project <name>` (alias kept). This plan is written against
+   `--project`.
+1. **`worktree_create.sh` CLI — explicit, nothing inferred** (decided 2026-09-15;
+   upstream's #526 wrong-repo pick came from resolving a bare issue number):
+
+   ```
+   worktree_create.sh --type project --project p11-jazzy \
+       --issue rolker/cube_bathymetry#111 \
+       --layer platforms --package-repos cube_bathymetry,marine_msgs
+   ```
+
+   - Valid only when the `--project` registry entry's adapter type is `ros2_colcon`
+     (look up via `_project_registry.sh`); for that type all three of `--issue`
+     (qualified), `--layer`, `--package-repos` are **required** and the plain
+     single-repo branch (lines 469-480) is skipped.
+   - `--issue` **must** be `owner/repo#N` for package worktrees. A bare number is a
+     usage error, never a guess. The owning repo comes from the reference.
+   - `--layer` is required and validated: every listed repo must live in that layer;
+     otherwise hard error naming the layer each was actually found in.
+   - `--package-repos` takes package-repo directory names (what `adapter repos`
+     prints), validated against that verb's output; unknown names are a hard error.
+     Named `--package-repos`, not upstream's `--packages`, because the values are
+     repos, not ROS package names (a documented confusion upstream).
+   - `--type layer` is rejected with a message pointing at this form.
+   - Worktree directory: `worktrees/project/<project>/issue-<project>-<owner-repo>-<N>/`
+     so two package repos' issue N never collide on disk. `worktree_enter.sh`,
+     `worktree_remove.sh`, `merge_pr.sh` take the same qualified `--issue` and refuse a
+     bare number for this shape.
 2. Resolve target package paths by calling
    `.agent/scripts/adapter --project <name> repos` (existing verb, `adapter_repos` in
-   `ros2_colcon/adapter.sh` line 618) and matching requested package names against the
+   `ros2_colcon/adapter.sh` line 618) and matching requested names against the
    `name:path` output — reuses the manifest-walking logic already tested, no duplicate
    path construction in `worktree_create.sh`.
 3. For each resolved package path: run the **existing** branch-resolution waterfall
    (local branch → remote branch → parent branch → new branch) into
-   `worktrees/project/<name>/issue-<name>-<N>/<layer>_ws/src/<pkg>/`, capturing stderr
-   at every attempt (drop `2>/dev/null`). On total failure: print the collected stderr
-   and hard-stop (`exit 1`) — never `ln -s`. Verify with `git -C <path>
-   rev-parse --git-dir` before attempting (a manifest entry that resolves to a
-   non-git path is a manifest bug, not a fallback case — hard-stop with a distinct
-   error, still no symlink).
+   `<worktree>/<layer>_ws/src/<repo>/`, capturing stderr at every attempt (drop
+   `2>/dev/null`). On total failure: print the collected stderr and hard-stop
+   (`exit 1`) — never `ln -s`. Verify with `git -C <path> rev-parse --git-dir` before
+   attempting (a manifest entry that resolves to a non-git path is a manifest bug, not
+   a fallback case — hard-stop with a distinct error, still no symlink).
+   **Branch names** (decided 2026-09-15, option 2): the owning repo gets
+   `feature/issue-<N>`; every other repo in the worktree gets
+   `feature/<owner-repo>-issue-<N>` (e.g. `feature/cube_bathymetry-issue-111` in
+   `marine_msgs`) so it can never collide with that repo's own issue N, and its PR body
+   references the issue as `owner/repo#N`. `merge_pr.sh` cleanup loops per repo and
+   knows both forms.
 4. Generate `<layer>_ws/build.sh` and `<layer>_ws/test.sh` in the worktree (small,
    ros2_colcon-specific templates, not a new adapter verb per ADR-0011's
    "differs-per-type AND the workflow needs it" test — this is worktree-internal
@@ -121,7 +149,8 @@ directory could theoretically be non-git if the manifest is malformed.
 6. **`merge_pr.sh`**: extend the branch-delete/sync block (lines 389-410) similarly —
    when the merged worktree is ros2_colcon-shaped, loop branch delete + `pull --ff-only`
    over each package repo instead of assuming one `project/` repo.
-7. **Smoke test on `p11-jazzy`**: create a package worktree for one real package,
+7. **Smoke test on `p11-jazzy` only** (decided 2026-09-15: `p11-rolling` is not yet
+   buildable): create a package worktree for one real package,
    run the generated `build.sh` (expect a real, not no-op, colcon build against that
    package's `src/`), confirm the hosted instance's install is untouched, then
    `worktree_remove.sh` and confirm the package repo's main checkout is unaffected.
@@ -134,16 +163,21 @@ directory could theoretically be non-git if the manifest is malformed.
 9. **`docs/ROADMAP.md`** row 6: update to "Phase 3 done" with a one-line summary, note
    remaining steps 4/7 + retiring `ros2_agent_workspace`.
 10. **`.agent/WORKTREE_GUIDE.md`**: add a "ros2_colcon package worktrees" subsection
-    documenting `--layer`/`--packages`, the generated `build.sh`/`test.sh`, and that
-    the no-symlink rule holds structurally under this design.
+    documenting the qualified `--issue`, `--layer`, `--package-repos`, the branch
+    naming for non-owning repos, the generated `build.sh`/`test.sh`, and that the
+    no-symlink rule holds structurally under this design. **`AGENTS.md` is not touched
+    by this PR** (decided 2026-09-15): its worktree section stays type-agnostic; the
+    script's usage error names the required flags and points at the guide, and the
+    per-project `CLAUDE.md` from #172 step 5 will carry the reminder once it exists.
 
 ## Files to Change
 
 | File | Change |
 |---|---|
-| `.agent/scripts/worktree_create.sh` | Add `--layer`/`--packages`; ros2_colcon branch: resolve via `adapter repos`, per-package worktree-add with captured stderr and hard-stop, generate `build.sh`/`test.sh` |
-| `.agent/scripts/worktree_remove.sh` | Detect ros2_colcon-shaped worktree; loop per-package `git worktree remove` + prune |
-| `.agent/scripts/merge_pr.sh` | Loop per-package branch delete + sync for ros2_colcon-shaped worktrees |
+| `.agent/scripts/worktree_create.sh` | Add qualified `--issue owner/repo#N`, `--layer`, `--package-repos`; reject `--type layer` and bare issue numbers for this shape; ros2_colcon branch: resolve via `adapter repos`, per-repo worktree-add with captured stderr and hard-stop, owning/non-owning branch names, generate `build.sh`/`test.sh` |
+| `.agent/scripts/worktree_enter.sh` | Accept the qualified `--issue` form and the `issue-<project>-<owner-repo>-<N>` directory name |
+| `.agent/scripts/worktree_remove.sh` | Same qualified `--issue`; detect ros2_colcon-shaped worktree; loop per-repo `git worktree remove` + prune |
+| `.agent/scripts/merge_pr.sh` | Loop per-repo branch delete (both branch-name forms) + sync for ros2_colcon-shaped worktrees |
 | `.agent/scripts/tests/test_ros2_colcon.sh` | New cases: package worktree success path, forced-failure hard-stop (no symlink) |
 | `docs/ROADMAP.md` | Row 6: phase 3 done |
 | `.agent/WORKTREE_GUIDE.md` | New subsection on package worktrees for ros2_colcon |
@@ -176,24 +210,27 @@ directory could theoretically be non-git if the manifest is malformed.
 
 | If we change... | Also update... | Included in plan? |
 |---|---|---|
-| `worktree_create.sh` CLI surface (`--layer`/`--packages`) | `AGENTS.md`/`CLAUDE.md` worktree section, `.agent/WORKTREE_GUIDE.md` | WORKTREE_GUIDE.md yes; AGENTS.md/CLAUDE.md left as Open Question below (they don't currently document per-type worktree flags) |
+| `worktree_create.sh` CLI surface (`--issue owner/repo#N`, `--layer`, `--package-repos`) | `.agent/WORKTREE_GUIDE.md`; `/start-task` SKILL.md argument-compatibility note | WORKTREE_GUIDE.md yes; start-task note yes (one line); AGENTS.md deliberately not (see step 10) |
+| Worktree directory / branch naming for package worktrees | `worktree_list.sh` output, `dashboard.sh` worktree listing | Verify both still list the new directory shape correctly; include in the smoke test |
 | `worktree_remove.sh`/`merge_pr.sh` cleanup logic | `.agent/scripts/tests/` for those scripts if such tests exist | Checked: no `test_worktree_remove.sh`/`test_merge_pr.sh` exist today (only `test_ros2_colcon.sh`/`test_adapter.sh`); out of scope to add net-new test scaffolding for scripts that have none — flagged as a pre-existing gap, not created here |
 | ROADMAP.md row 6 | Roadmap phase tracking for steps 4/7 | Yes, row updated; steps 4/7 remain open in the row text |
 
+## Decisions (resolved 2026-09-15 with the owner)
+
+- **AGENTS.md untouched**; documentation goes in `WORKTREE_GUIDE.md` plus a
+  self-explanatory usage error. Per-project `CLAUDE.md` (#172 step 5) later.
+- **Smoke test on `p11-jazzy` only**; `p11-rolling` is not buildable yet.
+- **CLI is explicit, nothing inferred**: `--type project` (no `--type layer`),
+  qualified `--issue owner/repo#N`, required `--layer`, `--package-repos` validated
+  against `adapter repos`. Rationale: upstream #526 (bare issue number resolved to the
+  wrong repo). Depends on #255 (`--repo` → `--project`).
+- **Non-owning repos get `feature/<owner-repo>-issue-<N>`** to avoid branch collisions.
+
 ## Open Questions
 
-- Should `AGENTS.md`/`CLAUDE.md`'s generic "Project Worktrees" section gain a
-  pointer to the ros2_colcon-specific `--layer`/`--packages` flags, or is
-  `.agent/WORKTREE_GUIDE.md` the right (and only) place? Those files currently
-  describe project worktrees type-agnostically.
-- Confirm whether `p11-rolling` should also get a smoke pass, or whether `p11-jazzy`
-  alone satisfies the issue's acceptance criterion ("Package worktree created, built,
-  removed end to end on `p11-jazzy`" — the issue names only `p11-jazzy`, so this plan
-  assumes that instance is sufficient).
-- Naming: upstream used `--type layer`; this plan keeps `--type project` and adds
-  `--layer`/`--packages` as ros2_colcon-only refinements. Confirm this naming (vs. a
-  distinct `--type layer`) is acceptable before implementation, since it's a
-  user-facing CLI decision.
+- None blocking. Implementation detail to settle during coding: whether
+  `worktree_enter.sh --print-path` for this shape should also accept the directory
+  name directly, for dispatchers that already know it.
 
 ## Estimated Scope
 
