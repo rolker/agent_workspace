@@ -214,6 +214,12 @@ make merge-pr PR=57 REPO=owner/marine_msgs
   optimistic assumption that no PR was open — and the message names which
   repo's check failed and why, with the `worktree_remove.sh` command to rerun
   once you've confirmed by hand that repo has no open PR.
+- When the worktree is finally removed (no sibling PR open, or none left
+  unchecked), `merge_pr.sh` sweeps *every* named repo's local branch, not just
+  the one just merged — a repo whose PR merged earlier, while a sibling PR
+  was still open, only had its remote branch deleted at the time (its local
+  branch was deferred, since it was still checked out); this sweep is what
+  actually deletes it, once the whole worktree — and its checkout — is gone.
 - The roadmap update (`update_roadmap.sh`) is skipped for a package-repo PR
   with a one-line note — the roadmap file lives in this repo, not the package
   repo, so there's nothing to commit there.

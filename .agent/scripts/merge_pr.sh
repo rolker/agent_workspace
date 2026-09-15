@@ -582,9 +582,36 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
         cd "$ROOT_DIR"
         if "$SCRIPT_DIR/worktree_remove.sh" --issue "$PKG_WT_ISSUE" --type project --project "$PKG_WT_PROJECT"; then
             echo "  ✅ Worktree removed"
-            if [[ -n "$_OWN_ORIGIN" ]]; then
-                git -C "$_OWN_ORIGIN" branch -d "$PR_BRANCH" 2>/dev/null && echo "  ✅ Local branch deleted ($PR_REPO_SLUG)" || true
-            fi
+            # Sweep every manifest entry (not just the one just merged) for
+            # a local branch whose remote counterpart is already gone. A PR
+            # that merged earlier, while a sibling PR was still open, only
+            # got its remote branch deleted at the time (the local one was
+            # deferred, above) — now that the whole worktree is gone, every
+            # entry's checkout is free, so finish deleting whichever local
+            # branches the remote has already dropped. Anything still on
+            # its origin is left alone and named.
+            while IFS=$'\t' read -r _cm_origin _cm_rel _cm_branch; do
+                [[ -z "$_cm_origin" ]] && continue
+                [[ -z "$_cm_branch" ]] && continue
+                git -C "$_cm_origin" show-ref --verify --quiet "refs/heads/$_cm_branch" || continue
+                _cm_remote="$(git -C "$_cm_origin" remote get-url origin 2>/dev/null || echo "")"
+                _cm_slug="$(extract_gh_slug "$_cm_remote")"
+                _cm_lsremote_rc=0
+                git -C "$_cm_origin" ls-remote --exit-code --heads origin "$_cm_branch" >/dev/null 2>&1 || _cm_lsremote_rc=$?
+                case $_cm_lsremote_rc in
+                    0)
+                        echo "  ℹ️  Branch '$_cm_branch' still exists on origin (${_cm_slug:-$_cm_origin}) — leaving the local branch in place"
+                        ;;
+                    2)
+                        git -C "$_cm_origin" branch -d "$_cm_branch" 2>/dev/null \
+                            && echo "  ✅ Local branch deleted ($_cm_branch, ${_cm_slug:-$_cm_origin})" || true
+                        ;;
+                    *)
+                        echo "  ⚠️  Could not check whether '$_cm_branch' still exists on origin (${_cm_slug:-$_cm_origin}) — leaving the local branch in place" >&2
+                        ;;
+                esac
+            done <<< "$_entries"
+            unset _cm_origin _cm_rel _cm_branch _cm_remote _cm_slug _cm_lsremote_rc
         else
             echo "  ⚠️  Worktree removal failed — check for uncommitted changes" >&2
         fi

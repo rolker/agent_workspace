@@ -168,20 +168,26 @@ make_merge_sandbox() {
 }
 
 # A real (committed) git repo standing in for a package repo's checkout,
-# with `origin` pointing at a fake (never-dialed) GitHub URL — fine, since
-# merge_pr.sh's remote-branch delete/pull are tolerant of failure
-# (`2>/dev/null || true`) for these repos; only $ROOT_DIR's own sync is
-# unconditional, and that always uses the local bare clone above.
+# with `origin` pointing at a real local bare clone — reachable offline, so
+# `git ls-remote`/push/pull against it behave exactly as they would against
+# a real (reachable) GitHub remote, deterministically, with no network. The
+# bare clone's path is nested under a `github.com/<owner>/` directory
+# purely so `extract_gh_slug` (plain text substitution on "github.com[:/]",
+# not URL/DNS validation) still resolves it to "<owner>/<name>" the same
+# way it would a real `git@github.com:<owner>/<name>.git` URL.
 make_origin_repo() {
     local sb="$1" name="$2" owner="${3:-owner}"
     local dir="$sb/origins/$name"
-    mkdir -p "$dir"
+    local remote_dir="$sb/fake_remotes/github.com/${owner}/${name}.git"
+    mkdir -p "$dir" "$(dirname "$remote_dir")"
+    git init --bare --quiet "$remote_dir"
     git -C "$dir" init --quiet
     echo "$name" > "$dir/README.md"
     git -C "$dir" add README.md
     git -C "$dir" -c user.name=t -c user.email=t@t commit --quiet -m init
     git -C "$dir" branch -m main 2>/dev/null || true
-    git -C "$dir" remote add origin "git@github.com:${owner}/${name}.git"
+    git -C "$dir" remote add origin "$remote_dir"
+    git -C "$dir" push --quiet -u origin main
     echo "$dir"
 }
 
@@ -225,6 +231,12 @@ test_qualified_pr_ref_resolves_package_worktree() {
         p11 "owner/pkg_a#111" l1 \
         "$origin_a|l1_ws/src/pkg_a|feature/issue-111" \
         "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-111")"
+    # pkg_b is untouched: no PR (0 open), and — unlike the orphaned-branch
+    # sweep test below — a real commit not on its main, so `branch -d`
+    # safely refuses to delete it (git's own "not fully merged" guard) even
+    # though the post-removal sweep considers it, since its branch was
+    # never pushed to origin either.
+    git -C "$wt/l1_ws/src/pkg_b" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m wip
     write_pr_view_fixture "$sb" "owner/pkg_a" 111 "feature/issue-111"
     write_pr_list_fixture "$sb" "owner/pkg_b" "feature/pkg_b-issue-111" 0
 
@@ -332,6 +344,34 @@ test_sibling_check_failure_fails_closed() {
         "$(git -C "$origin_a" show-ref --verify --quiet refs/heads/feature/issue-555 && echo true || echo false)"
 }
 
+test_orphaned_local_branch_swept_on_final_merge() {
+    echo "TEST: a local branch left over from an earlier merge (remote already gone) is swept once the last sibling merges"
+    local sb out rc=0 origin_a origin_b wt
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    origin_b="$(make_origin_repo "$sb" pkg_b owner)"
+    # pkg_a's PR merged earlier: its remote branch is already gone (never
+    # pushed here — ls-remote sees the same "no such ref" either way), but
+    # its local branch survived because pkg_b's PR was still open at the
+    # time. Now pkg_b's PR merges too.
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_b-666" \
+        p11 "owner/pkg_b#666" l1 \
+        "$origin_a|l1_ws/src/pkg_a|feature/issue-666" \
+        "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-666")"
+    write_pr_view_fixture "$sb" "owner/pkg_b" 666 "feature/pkg_b-issue-666"
+    write_pr_list_fixture "$sb" "owner/pkg_a" "feature/issue-666" 0
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_b#666 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "worktree removed" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "pkg_a's orphaned local branch swept" "false" \
+        "$(git -C "$origin_a" show-ref --verify --quiet refs/heads/feature/issue-666 && echo true || echo false)"
+    assert_eq "pkg_b's own local branch deleted too" "false" \
+        "$(git -C "$origin_b" show-ref --verify --quiet refs/heads/feature/pkg_b-issue-666 && echo true || echo false)"
+    assert_contains "reports pkg_a's sweep" "Local branch deleted (feature/issue-666" "$out"
+    assert_contains "reports pkg_b's sweep" "Local branch deleted (feature/pkg_b-issue-666" "$out"
+}
+
 test_legacy_workspace_pr_regression() {
     echo "TEST: a plain workspace PR (no manifest) is resolved and cleaned up exactly as before #252 PR 2"
     local sb out rc=0 wt ws_remote
@@ -405,6 +445,7 @@ test_sibling_pr_open_keeps_worktree
 test_repo_flag_equivalent_to_qualified_ref
 test_conflicting_repo_and_qualified_ref_rejected
 test_sibling_check_failure_fails_closed
+test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression
 
