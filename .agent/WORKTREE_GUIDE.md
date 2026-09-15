@@ -178,6 +178,44 @@ package repos, and issue are all explicit:
 - `--plan-file` draft-PR creation is not supported for package worktrees (the
   aggregate dir is not itself a git repo); open PRs per package repo by hand.
 
+### Merging Package-Worktree PRs
+
+Each package repo's PR is a normal `gh` PR against its own repo — merge it with
+`merge_pr.sh`'s repo-qualified resolution, not the plain `--pr <N>` form (PR
+numbers are repo-local, and a package repo is never the workspace or the
+registered project's own remote):
+
+```bash
+.agent/scripts/merge_pr.sh --pr owner/marine_msgs#57
+# equivalently:
+.agent/scripts/merge_pr.sh --pr 57 --repo owner/marine_msgs
+
+make merge-pr PR=owner/marine_msgs#57
+# equivalently:
+make merge-pr PR=57 REPO=owner/marine_msgs
+```
+
+- `--repo owner/repo` (or the equivalent qualified `--pr owner/repo#N`) skips
+  the workspace/`project/` auto-detection entirely and queries only that repo.
+- The worktree is found by scanning every `.worktree-repos` manifest for an
+  entry whose repo and branch match the merged PR — never by parsing the
+  worktree's directory name.
+- Merging one package repo's PR does **not** remove the worktree by itself.
+  After deleting that repo's remote branch and fast-forwarding its own main
+  checkout, `merge_pr.sh` checks every *other* repo named in the manifest for
+  an open PR on its branch (`gh pr list`). If any sibling PR is still open,
+  the worktree is kept and the blocking repo/branch is printed; the local
+  branch just merged stays checked out too, since it's still part of the kept
+  worktree. Only once every named repo's PR has merged does the aggregate
+  worktree (and its local branches) actually get removed, via the normal
+  `worktree_remove.sh` preflight-and-remove path.
+- The roadmap update (`update_roadmap.sh`) is skipped for a package-repo PR
+  with a one-line note — the roadmap file lives in this repo, not the package
+  repo, so there's nothing to commit there.
+- Both branch shapes are recognized when extracting the issue number:
+  `feature/issue-<N>` (the repo that owns the issue) and
+  `feature/<repo>-issue-<N>` (every other named repo).
+
 ## Draft PRs with Plan File
 
 Pass `--plan-file` to create a draft PR immediately and post the plan as a PR comment:

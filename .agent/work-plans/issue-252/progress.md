@@ -297,3 +297,91 @@ byte-for-byte unchanged, `ros2 pkg prefix` resolves to the worktree overlay, zer
 symlinks, `worktree_list.sh` reports the nested worktree, `worktree_remove.sh`
 leaves the package repo with one worktree on `jazzy` and clean. Reviewer verdict:
 PR 1 ready. `merge_pr.sh` (plan step 6) follows as PR 2.
+
+## Implement (PR 2)
+**Status**: complete
+**When**: 2026-09-15 (implementation session)
+**By**: Claude Code Agent (claude-sonnet-5)
+
+Implemented plan step 6 (`merge_pr.sh` multi-repo resolution + sibling-PR
+cleanup rule) — the remaining piece before closing #252.
+
+**Landed as designed:**
+- `--repo owner/repo` flag, and an equivalent qualified `--pr owner/repo#N`
+  ref (conflicting `--repo`/qualified-ref values are a usage error); when
+  given, `query_pr` is called against exactly that repo and the whole
+  workspace/`project/` two-remote auto-detection block is skipped. Without
+  it, behavior is byte-for-byte the pre-PR-2 script.
+- Issue-number extraction now accepts both `feature/issue-<N>` and
+  `feature/<repo>-issue-<N>` (one combined regex with an optional
+  `<repo>-` prefix group; verified against every branch shape the old
+  single-pattern regex matched, so this is a pure addition, not a
+  behavior change for existing branches).
+- Manifest-driven worktree lookup: scans
+  `worktrees/project/*/*/.worktree-repos`, resolving each entry's owning
+  repo via `git remote get-url origin` + `extract_gh_slug` and matching
+  against the merged PR's repo + branch — never parses a directory name.
+  A miss (no manifest matches) falls through unchanged to the existing
+  `find_worktree_for_branch` path for legacy/single-repo/workspace PRs.
+- Sibling-PR cleanup rule: after merge, checks every *other* manifest
+  entry's repo for an open PR on its branch (`gh pr list -R <repo> --head
+  <branch> --state open`); if any is open, the worktree is kept and the
+  blocking repo(s)/branch(es) are printed; only when none are open does
+  `worktree_remove.sh --issue <qualified> --type project --project <name>`
+  (values read from the manifest header, never guessed) actually run.
+- Roadmap update is skipped for a package-repo PR with a one-line note
+  (the roadmap lives in this repo, not the package repo); unchanged for
+  workspace/project-repo PRs.
+- `Makefile`'s `merge-pr` target passes through `PR=owner/repo#N` and a new
+  `REPO=owner/repo` variable (`#` in a `make` command-line assignment does
+  not need escaping — verified with a throwaway Makefile before relying on
+  it).
+
+**Deviation from plan step 6 (and why):** the plan's phrasing — "delete the
+merged branch in its own repo and sync that repo" — describes it as
+unconditional. Implemented as written, this fails every time: the merged
+repo's local branch is still checked out in the (not-yet-removed) package
+worktree entry at the point the merge completes, and `git branch -d` refuses
+to delete a branch checked out in *any* worktree (linked or main), not just
+the current one. Writing it exactly as specified would make every local
+branch delete a silent no-op until some later, unrelated `merge_pr.sh` run
+happened to remove that worktree for other reasons — a real cleanup gap, not
+a cosmetic one. Fixed by sequencing: the *remote* branch delete and the own
+repo's `pull --ff-only` still run unconditionally right after the merge
+(neither needs the branch to be free of a local checkout); the *local*
+branch delete is deferred until immediately after `worktree_remove.sh`
+succeeds, which is only reached in the no-sibling-PR-open case — exactly the
+case where the branch has actually been freed. When a sibling PR keeps the
+worktree, the local branch correctly stays too, since that checkout is still
+live.
+
+**Tests:** new `.agent/scripts/tests/test_merge_pr.sh` (27 cases, all
+passing) — the plan noted no merge_pr suite existed; a dedicated file was
+cleaner than extending `test_ros2_colcon.sh`'s adapter-focused fixtures with
+merge-specific `gh` stubbing. Covers: qualified-`--pr`-ref resolution finds
+the package worktree by manifest and queries only that repo; the
+`feature/<repo>-issue-N` branch form extracts the issue number; an open
+sibling PR keeps the worktree and names the blocker (and leaves the merged
+repo's local branch untouched, since it's still checked out); `--repo
+owner/repo --pr N` behaves identically to the qualified-ref form; a
+conflicting `--repo`/qualified-`--pr` combination is a usage error (exit 2);
+and two regression cases — a legacy workspace PR and a legacy single-repo
+`project/` PR (neither has a `.worktree-repos` manifest) — resolve and clean
+up exactly as before PR 2. `gh` is replaced by a fixture-driven stub (no
+network, no auth); `git pull --ff-only` in the legacy sync step is made to
+succeed offline by pointing each sandbox repo's `origin` at a local bare
+clone instead of a real GitHub URL.
+
+**Verification:** `test_merge_pr.sh` 27/27; `test_ros2_colcon.sh` 179/179
+(unchanged, still passing); `test_adapter.sh` 86/86; `test_project_registry.sh`
+57/57; `test_merge_pr_root_resolution.sh` 5/5 (unchanged); `validate_adapter.sh`
+12/12 both types; `pre-commit run --all-files` clean.
+
+**Undone:** nothing from plan step 6. `test_merge_pr.sh` is not wired into
+`.github/workflows/validate.yml` — consistent with the workspace's existing
+convention, where several other test files under `.agent/scripts/tests/`
+(e.g. `test_merge_pr_root_resolution.sh`, `test_gh_create_pr.sh`) are also
+not CI-wired; only `test_adapter.sh`, `test_project_registry.sh`, and
+`test_ros2_colcon.sh` currently run in CI. Not changed here since it wasn't
+asked for and is a workspace-wide convention question, not specific to this
+issue.
