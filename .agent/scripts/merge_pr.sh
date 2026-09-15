@@ -72,6 +72,7 @@ source "$SCRIPT_DIR/_worktree_helpers.sh"
 PR_NUMBER=""
 WORKTREE_TYPE=""
 REPO_ARG=""
+REPO_KIND=""   # workspace | project | package — derived from --repo when given
 NO_ROADMAP_UPDATE=false
 NO_WAIT=false
 
@@ -267,12 +268,30 @@ if [[ -n "$REPO_ARG" ]]; then
         PR_BRANCH="$QUERY_BRANCH"
         GH_REPO_ARGS=("-R" "$REPO_ARG")
         PR_REPO_SLUG="$REPO_ARG"
-        if [[ -z "$WORKTREE_TYPE" ]]; then
-            if [[ -n "$WS_REMOTE" ]] && [[ "$(extract_gh_slug "$WS_REMOTE")" == "$REPO_ARG" ]]; then
-                WORKTREE_TYPE="workspace"
-            else
-                WORKTREE_TYPE="project"
-            fi
+        # Derive what kind of repo this is from the remotes we know about,
+        # and refuse a --type that contradicts it: a wrong --type would send
+        # cleanup at the wrong checkout (e.g. --repo <workspace> --type
+        # project would remove a project worktree after merging a workspace
+        # PR). Anything that is neither the workspace nor the legacy
+        # project/ remote is a package repo (REPO_KIND=package): it is only
+        # ever cleaned up through a matching .worktree-repos manifest, never
+        # through the legacy single-repo path.
+        if [[ -n "$WS_REMOTE" ]] && [[ "$(extract_gh_slug "$WS_REMOTE")" == "$REPO_ARG" ]]; then
+            REPO_KIND="workspace"
+        elif [[ -n "$PJ_REMOTE" ]] && [[ "$(extract_gh_slug "$PJ_REMOTE")" == "$REPO_ARG" ]]; then
+            REPO_KIND="project"
+        else
+            REPO_KIND="package"
+        fi
+        if [[ -n "$WORKTREE_TYPE" ]] && [[ "$WORKTREE_TYPE" != "$REPO_KIND" ]]; then
+            echo "ERROR: --type $WORKTREE_TYPE conflicts with --repo $REPO_ARG (which is the $REPO_KIND repo)." >&2
+            echo "  Drop --type; it is derived from --repo." >&2
+            exit 2
+        fi
+        if [[ "$REPO_KIND" == "package" ]]; then
+            WORKTREE_TYPE=""   # never the legacy single-repo cleanup path
+        else
+            WORKTREE_TYPE="$REPO_KIND"
         fi
     else
         _rc=$?
@@ -399,7 +418,7 @@ IS_PACKAGE_PR=false
 
 # --- Step 1: Roadmap update (pre-merge) ---
 if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
-    if [[ "$IS_PACKAGE_PR" == true ]]; then
+    if [[ "$IS_PACKAGE_PR" == true ]] || [[ "${REPO_KIND:-}" == "package" ]]; then
         echo "  Package PR (repo: $PR_REPO_SLUG) — skipping roadmap update"
         echo "  (the roadmap lives in this repo, not the package repo)"
     else
@@ -639,6 +658,15 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
         fi
     fi
     unset _entries
+elif [[ "${REPO_KIND:-}" == "package" ]]; then
+    # --- Step 4 (package repo, no matching package worktree) ---
+    # An explicit --repo that is neither the workspace nor project/ and has
+    # no .worktree-repos entry on this branch: nothing local belongs to this
+    # PR, so there is nothing to remove. Never fall through to the legacy
+    # path — worktree_remove.sh --issue N --type project would match some
+    # OTHER repo's issue-N worktree.
+    echo "  No local package worktree has $PR_REPO_SLUG on branch '$PR_BRANCH' — nothing local to clean up."
+    echo "  (Remote branch left as-is; delete it on GitHub if the merge did not.)"
 else
     # --- Step 4 (workspace / legacy single-repo project PR): unchanged ---
     if [[ -n "$WORKTREE_TYPE" ]]; then

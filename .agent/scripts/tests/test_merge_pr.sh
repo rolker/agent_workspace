@@ -396,6 +396,36 @@ test_own_repo_sync_failure_is_reported() {
     assert_eq "worktree still removed (sync failure does not block removal)" "false" "$([ -d "$wt" ] && echo true || echo false)"
 }
 
+test_package_repo_without_worktree_never_uses_legacy_cleanup() {
+    echo "TEST: --repo on a package repo with no matching worktree merges and cleans nothing (never the legacy path)"
+    local sb out rc=0 origin_a decoy
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    # Decoy: a legacy-shaped project worktree for the SAME issue number in an
+    # unrelated project — the legacy path would find and remove it.
+    decoy="$sb/worktrees/project/other/issue-other-558"
+    mkdir -p "$decoy" && touch "$decoy/marker"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 558 "feature/issue-558"
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#558 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "says nothing local matched" "nothing local to clean up" "$out"
+    assert_eq "decoy worktree untouched" "true" "$([ -f "$decoy/marker" ] && echo true || echo false)"
+    assert_eq "no legacy removal attempted" "false" "$(grep -q 'Removing worktree' <<< "$out" && echo true || echo false)"
+}
+
+test_repo_conflicting_type_rejected() {
+    echo "TEST: --repo with a contradicting --type is rejected before merging"
+    local sb out rc=0
+    sb="$(make_merge_sandbox)"
+    make_origin_repo "$sb" pkg_a owner >/dev/null
+    write_pr_view_fixture "$sb" "owner/pkg_a" 559 "feature/issue-559"
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#559 --type workspace --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 2" "2" "$rc"
+    assert_contains "names the conflict" "conflicts with --repo owner/pkg_a" "$out"
+    assert_eq "nothing merged" "false" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
+}
+
 test_orphaned_local_branch_swept_on_final_merge() {
     echo "TEST: a local branch left over from an earlier merge (remote already gone) is swept once the last sibling merges"
     local sb out rc=0 origin_a origin_b wt
@@ -499,6 +529,8 @@ test_conflicting_repo_and_qualified_ref_rejected
 test_sibling_check_failure_fails_closed
 test_sibling_without_remote_fails_closed
 test_own_repo_sync_failure_is_reported
+test_package_repo_without_worktree_never_uses_legacy_cleanup
+test_repo_conflicting_type_rejected
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression
