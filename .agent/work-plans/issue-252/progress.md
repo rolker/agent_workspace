@@ -280,3 +280,20 @@ regression test:
 **Verification (post-fix):** `validate_adapter.sh` 12/12 both types;
 `test_adapter.sh` 86/86; `test_ros2_colcon.sh` 156/156; `test_project_registry.sh`
 57/57; `pre-commit run --all-files` clean.
+
+## Smoke Test (plan step 10)
+**Status**: complete
+**When**: 2026-09-15 18:30
+**By**: Claude Code Agent (claude-fable-5-1)
+
+Real `p11-jazzy` instance, package worktree for `rolker/ros2_network_monitor#27`
+(layer `sensors`). Three rounds; rounds 1-2 found five defects that the hermetic
+suites could not (wrong-repo issue lookup, no rollback after a post-add failure,
+`env.sh` last-line status aborting `build.sh` under `set -e`, banner printing the
+ambiguous bare-number form, colcon override warning). All fixed with regression
+tests. Round 3, scripts as generated: `build.sh` exit 0 (3 packages, no override
+warning), `test.sh` exit 0 (107 tests, 0 failures), hosted `sensors_ws/install`
+byte-for-byte unchanged, `ros2 pkg prefix` resolves to the worktree overlay, zero
+symlinks, `worktree_list.sh` reports the nested worktree, `worktree_remove.sh`
+leaves the package repo with one worktree on `jazzy` and clean. Reviewer verdict:
+PR 1 ready. `merge_pr.sh` (plan step 6) follows as PR 2.
