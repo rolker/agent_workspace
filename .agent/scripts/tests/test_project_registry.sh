@@ -3,7 +3,7 @@
 # .agent/scripts/_project_registry.sh parsing, adapter dispatcher resolution
 # (--project, cwd discovery, legacy fallback), per-project command config,
 # validate_workspace.py both-shapes support, sync.py --project-root, and
-# worktree_create.sh --repo wiring.
+# worktree_create.sh --project wiring.
 #
 # Tests run against sandbox workspaces (mktemp) with the real scripts copied
 # in, so no test touches the real workspace, its registry, or the network
@@ -374,7 +374,7 @@ test_validate_neither_shape() {
     assert_contains "legacy guidance kept" "project/ directory does not exist" "$out"
 }
 
-# ---- worktree_create.sh --repo wiring ----
+# ---- worktree_create.sh --project wiring ----
 
 # Worktree sandboxes get the worktree scripts, their helpers, and a failing
 # gh stub so issue lookups degrade gracefully offline.
@@ -402,25 +402,25 @@ seed_commit() {
 }
 
 test_worktree_create_unknown_repo() {
-    echo "TEST: worktree_create --repo with unregistered name fails and lists projects"
+    echo "TEST: worktree_create --project with unregistered name fails and lists projects"
     local sb out rc=0
     sb="$(make_worktree_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 999 --type project --repo nope 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --issue 999 --type project --project nope 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the unknown project" "'nope' is not registered" "$out"
     assert_contains "lists registered projects" "alpha" "$out"
 }
 
 test_worktree_create_registry_repo() {
-    echo "TEST: worktree_create --repo <name> creates the worktree from the registry checkout"
+    echo "TEST: worktree_create --project <name> creates the worktree from the registry checkout"
     local sb out rc=0
     sb="$(make_worktree_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
     seed_commit "$sb/projects/alpha"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 999 --type project --repo alpha 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --issue 999 --type project --project alpha 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "worktree exists under the registry name" \
         "yes" "$([ -d "$sb/worktrees/project/alpha/issue-alpha-999" ] && echo yes || echo no)"
@@ -430,7 +430,7 @@ test_worktree_create_registry_repo() {
 }
 
 test_worktree_create_single_registry_autoselect() {
-    echo "TEST: worktree_create without --repo auto-selects the single registered project"
+    echo "TEST: worktree_create without --project auto-selects the single registered project"
     local sb out rc=0
     sb="$(make_worktree_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
@@ -444,26 +444,39 @@ test_worktree_create_single_registry_autoselect() {
 }
 
 test_worktree_create_dashed_name_roundtrip() {
-    echo "TEST: dashed registry name survives create → enter --repo round-trip"
+    echo "TEST: dashed registry name survives create → enter --project round-trip"
     local sb out rc=0
     sb="$(make_worktree_sandbox)"
     make_registered_project "$sb" my-proj >/dev/null
     seed_commit "$sb/projects/my-proj"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_create.sh" --issue 996 --type project --repo my-proj 2>&1)" || rc=$?
+        "$sb/.agent/scripts/worktree_create.sh" --issue 996 --type project --project my-proj 2>&1)" || rc=$?
     assert_eq "create exit 0" "0" "$rc"
     assert_eq "worktree dir uses the raw name" \
         "yes" "$([ -d "$sb/worktrees/project/my-proj/issue-my-proj-996" ] && echo yes || echo no)"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
-        "$sb/.agent/scripts/worktree_enter.sh" --issue 996 --type project --repo my-proj --print-path 2>&1)" || rc=$?
-    assert_eq "enter --repo finds it" "0" "$rc"
+        "$sb/.agent/scripts/worktree_enter.sh" --issue 996 --type project --project my-proj --print-path 2>&1)" || rc=$?
+    assert_eq "enter --project finds it" "0" "$rc"
     assert_eq "enter resolves the same path" \
         "$sb/worktrees/project/my-proj/issue-my-proj-996" "$out"
 }
 
+test_worktree_create_repo_alias() {
+    echo "TEST: worktree_create --repo alpha still succeeds (alias for --project)"
+    local sb out rc=0
+    sb="$(make_worktree_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    seed_commit "$sb/projects/alpha"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 995 --type project --repo alpha 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "worktree exists under the registry name" \
+        "yes" "$([ -d "$sb/worktrees/project/alpha/issue-alpha-995" ] && echo yes || echo no)"
+}
+
 test_worktree_create_multiple_requires_repo() {
-    echo "TEST: worktree_create without --repo fails when multiple projects are registered"
+    echo "TEST: worktree_create without --project fails when multiple projects are registered"
     local sb out rc=0
     sb="$(make_worktree_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
@@ -471,9 +484,9 @@ test_worktree_create_multiple_requires_repo() {
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
         "$sb/.agent/scripts/worktree_create.sh" --issue 997 --type project 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    assert_contains "asks for --repo" "Use --repo to specify" "$out"
-    assert_contains "lists alpha" "--repo alpha" "$out"
-    assert_contains "lists beta" "--repo beta" "$out"
+    assert_contains "asks for --project" "Use --project to specify" "$out"
+    assert_contains "lists alpha" "--project alpha" "$out"
+    assert_contains "lists beta" "--project beta" "$out"
 }
 
 # ---- Run all tests ----
@@ -506,6 +519,7 @@ test_worktree_create_unknown_repo
 test_worktree_create_registry_repo
 test_worktree_create_single_registry_autoselect
 test_worktree_create_dashed_name_roundtrip
+test_worktree_create_repo_alias
 test_worktree_create_multiple_requires_repo
 
 echo ""

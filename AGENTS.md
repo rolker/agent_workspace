@@ -162,10 +162,10 @@ source .agent/scripts/worktree_enter.sh --skill research --type workspace
 .agent/scripts/worktree_remove.sh --issue <N> --type project
 ```
 
-**Multi-project** — use `--repo` when multiple project repos are configured:
+**Multi-project** — use `--project` when multiple projects are registered:
 
 ```bash
-.agent/scripts/worktree_enter.sh --issue <N> --type project --repo <repo_name>
+.agent/scripts/worktree_enter.sh --issue <N> --type project --project <name>
 ```
 
 See [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) for disambiguation and troubleshooting.

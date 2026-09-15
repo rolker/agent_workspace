@@ -105,20 +105,23 @@ Use `--repo-slug` to override.
 
 Since `--type` is mandatory, workspace vs. project is never ambiguous.
 
-For multiple project repos, use `--repo`:
+For multiple registered projects, use `--project`:
 
 ```bash
-.agent/scripts/worktree_create.sh --issue 42 --type project --repo <name>
-source .agent/scripts/worktree_enter.sh --issue 42 --type project --repo <name>
-.agent/scripts/worktree_remove.sh --issue 42 --type project --repo <name>
+.agent/scripts/worktree_create.sh --issue 42 --type project --project <name>
+source .agent/scripts/worktree_enter.sh --issue 42 --type project --project <name>
+.agent/scripts/worktree_remove.sh --issue 42 --type project --project <name>
 ```
 
-On `worktree_create.sh`, `--repo <name>` selects a registered project from
+On `worktree_create.sh`, `--project <name>` selects a registered project from
 `.agent/projects.local` (issue #227); the worktree is created under
-`worktrees/project/<name>/` so `enter`/`remove --repo <name>` find it by the
-same key. Without `--repo`, the legacy `project/` checkout is used; when
+`worktrees/project/<name>/` so `enter`/`remove --project <name>` find it by the
+same key. Without `--project`, the legacy `project/` checkout is used; when
 `project/` is absent and exactly one project is registered, that project is
-auto-selected (multiple registrations require `--repo`).
+auto-selected (multiple registrations require `--project`).
+
+`--repo` remains accepted as a silent alias for `--project` on all three
+worktree scripts.
 
 For multiple worktrees of the same type with different repo slugs, use `--repo-slug`:
 

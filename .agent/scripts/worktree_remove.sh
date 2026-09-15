@@ -3,8 +3,8 @@
 # Remove a git worktree and clean up
 #
 # Usage:
-#   ./worktree_remove.sh --issue <number> --type workspace|project [--repo <name>] [--repo-slug <slug>] [--force]
-#   ./worktree_remove.sh --skill <name> --type workspace|project [--repo <name>] [--repo-slug <slug>] [--force]
+#   ./worktree_remove.sh --issue <number> --type workspace|project [--project <name>] [--repo-slug <slug>] [--force]
+#   ./worktree_remove.sh --skill <name> --type workspace|project [--project <name>] [--repo-slug <slug>] [--force]
 #
 # Examples:
 #   ./worktree_remove.sh --issue 123 --type workspace
@@ -37,7 +37,7 @@ show_usage() {
     echo "  --issue <number>        Issue number (required, unless --skill is used)"
     echo "  --skill <name>          Skill name (alternative to --issue)"
     echo "  --type <type>           Worktree type: 'workspace' or 'project' (required)"
-    echo "  --repo <name>           Project repo name (for multi-project disambiguation)"
+    echo "  --project <name>        Registered project name (for multi-project disambiguation; alias: --repo)"
     echo "  --repo-slug <slug>      Repository slug (optional, for disambiguation)"
     echo "  --force                 Force removal even with uncommitted changes"
 }
@@ -61,7 +61,7 @@ while [[ $# -gt 0 ]]; do
             WORKTREE_TYPE="$2"
             shift 2
             ;;
-        --repo)
+        --project|--repo)
             PROJECT_REPO="$2"
             shift 2
             ;;
@@ -117,7 +117,7 @@ if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; the
     exit 1
 fi
 if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" == "workspace" ]; then
-    echo "Error: --repo is only valid with --type project"
+    echo "Error: --project is only valid with --type project"
     exit 1
 fi
 
@@ -146,9 +146,9 @@ _resolve_base_dirs() {
                 if [ "${#repo_dirs[@]}" -eq 1 ]; then
                     NEW_BASE="${repo_dirs[0]%/}"
                 elif [ "${#repo_dirs[@]}" -gt 1 ]; then
-                    echo "Error: Multiple project repos found. Use --repo to specify:" >&2
+                    echo "Error: Multiple project repos found. Use --project to specify:" >&2
                     for d in "${repo_dirs[@]}"; do
-                        echo "  --repo $(basename "${d%/}")" >&2
+                        echo "  --project $(basename "${d%/}")" >&2
                     done
                     return 1
                 fi
