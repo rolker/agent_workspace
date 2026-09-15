@@ -108,6 +108,14 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# ADR-0012: a package worktree's --issue is qualified (owner/repo#N);
+# resolution here is still by the numeric suffix (the .worktree-repos
+# header, not the directory name, is the source of truth for the full
+# qualified ref — see wt_read_manifest).
+if [ -n "$ISSUE_NUM" ] && [[ "$ISSUE_NUM" == *#* ]]; then
+    ISSUE_NUM="${ISSUE_NUM##*#}"
+fi
+
 if [ -n "$ISSUE_NUM" ] && [ -n "$SKILL_NAME" ]; then
     echo "Error: --issue and --skill are mutually exclusive"
     show_usage

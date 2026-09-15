@@ -97,6 +97,12 @@ if [ -n "$REPO_SLUG" ]; then
     REPO_SLUG=$(echo "$REPO_SLUG" | sed 's/[^A-Za-z0-9_]/_/g')
 fi
 
+# ADR-0012: a package worktree's --issue is qualified (owner/repo#N);
+# resolution here is still by the numeric suffix.
+if [ -n "$ISSUE_NUM" ] && [[ "$ISSUE_NUM" == *#* ]]; then
+    ISSUE_NUM="${ISSUE_NUM##*#}"
+fi
+
 if [ -n "$ISSUE_NUM" ] && [ -n "$SKILL_NAME" ]; then
     echo "Error: --issue and --skill are mutually exclusive"
     show_usage
@@ -225,76 +231,93 @@ if [[ "$CALLER_PWD" == "$WORKTREE_DIR" || "$CALLER_PWD" == "$WORKTREE_DIR/"* ]];
     exit 1
 fi
 
-# Check for uncommitted changes
-if [ -d "$WORKTREE_DIR" ]; then
-    cd "$WORKTREE_DIR"
-    UNCOMMITTED=$(git status --porcelain 2>/dev/null)
-
-    if [ -n "$UNCOMMITTED" ] && [ "$FORCE" != true ]; then
-        echo "⚠️  Warning: Worktree has uncommitted changes:"
-        echo ""
-        git status --short
-        echo ""
-        echo "Use --force to remove anyway, or commit/stash your changes first."
-        exit 1
+# --- Resolve every entry this worktree is made of ---
+# .worktree-repos (ADR-0012), or the legacy single-entry fallback for a
+# worktree without one. Either way: never parse the directory name, never
+# call the adapter, never check the project type.
+MANIFEST_ENTRIES="$(wt_read_manifest "$WORKTREE_DIR")"
+declare -a ENTRY_DESTS=()
+while IFS=$'\t' read -r _m_origin _m_rel _m_branch; do
+    [ -z "$_m_rel" ] && continue
+    if [ "$_m_rel" = "." ]; then
+        ENTRY_DESTS+=("$WORKTREE_DIR")
+    else
+        ENTRY_DESTS+=("$WORKTREE_DIR/$_m_rel")
     fi
-    cd "$ROOT_DIR"
+done <<< "$MANIFEST_ENTRIES"
+
+# --- Preflight every entry before removing any (unless --force) ---
+declare -a DIRTY_DESTS=()
+for _dest in "${ENTRY_DESTS[@]}"; do
+    [ -d "$_dest" ] || continue
+    _porcelain="$(git -C "$_dest" status --porcelain 2>/dev/null || true)"
+    [ -n "$_porcelain" ] && DIRTY_DESTS+=("$_dest")
+done
+
+if [ "${#DIRTY_DESTS[@]}" -gt 0 ] && [ "$FORCE" != true ]; then
+    echo "⚠️  Warning: worktree has uncommitted changes in:"
+    for _dest in "${DIRTY_DESTS[@]}"; do
+        echo ""
+        echo "  ${_dest#"$WORKTREE_DIR"/}:"
+        git -C "$_dest" status --short | sed 's/^/    /'
+    done
+    echo ""
+    echo "Use --force to remove anyway, or commit/stash your changes first."
+    exit 1
 fi
 
-# Remove the worktree
+# --- Remove every entry, then the aggregate dir last ---
 echo "Removing worktree..."
 
-# Determine which git repo owns this worktree
-if [ "$WORKTREE_TYPE" == "project" ]; then
-    # Project worktrees: git worktrees of the project repo. Resolve the
-    # owning repo from the worktree itself (its git-common-dir) so this
-    # works for both the legacy project/ symlink and registry-hosted
-    # projects (issue #227).
-    _COMMON_DIR="$(git -C "$WORKTREE_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-    if [ -n "$_COMMON_DIR" ]; then
-        PROJECT_DIR="$(dirname "$_COMMON_DIR")"
+declare -a ENTRY_OWNERS=()
+for _dest in "${ENTRY_DESTS[@]}"; do
+    [ -d "$_dest" ] || continue
+    # Resolve the owning repo from the entry itself (its git-common-dir),
+    # not from the manifest's recorded origin path — the checkout is the
+    # ground truth if a repo has since moved.
+    _common_dir="$(git -C "$_dest" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    if [ -n "$_common_dir" ]; then
+        _owner="$(dirname "$_common_dir")"
     else
-        # Broken worktree metadata — fall back to the legacy location.
-        PROJECT_DIR="$ROOT_DIR/project"
+        _owner="$ROOT_DIR/project"
     fi
     if [ "$FORCE" = true ]; then
-        git -C "$PROJECT_DIR" worktree remove --force "$WORKTREE_DIR"
+        git -C "$_owner" worktree remove --force "$_dest"
     else
-        git -C "$PROJECT_DIR" worktree remove "$WORKTREE_DIR"
+        git -C "$_owner" worktree remove "$_dest"
     fi
-    git -C "$PROJECT_DIR" worktree prune
-else
-    # Workspace worktrees: git worktrees of the workspace repo
-    if [ "$FORCE" = true ]; then
-        git worktree remove --force "$WORKTREE_DIR"
-    else
-        git worktree remove "$WORKTREE_DIR"
-    fi
-    git worktree prune
-fi
+    git -C "$_owner" worktree prune
+    ENTRY_OWNERS+=("$_owner")
+done
+
+# Aggregate dir last: a no-op for the legacy/single-entry shape (already
+# removed above, since dest == WORKTREE_DIR); deletes the leftover
+# .worktree-repos/env.sh/build.sh/test.sh/layer dirs for a package worktree.
+rm -rf "$WORKTREE_DIR"
 
 echo ""
 echo "✅ Worktree removed successfully"
 
-# Show branch deletion instructions
-if [ -n "$BRANCH_NAME" ]; then
-    echo ""
-    REPO_CONTEXT="the project repo"
-    REPO_PATH="${PROJECT_DIR:-$ROOT_DIR/project}"
-    if [ "$WORKTREE_TYPE" == "workspace" ]; then
-        REPO_CONTEXT="the workspace repo"
-        REPO_PATH="$ROOT_DIR"
-    fi
-    if git -C "$REPO_PATH" show-ref --verify --quiet "refs/heads/$BRANCH_NAME" 2>/dev/null; then
-        echo "The branch '$BRANCH_NAME' still exists in $REPO_CONTEXT."
+# Show branch deletion instructions per entry.
+_shown_branch=""
+_i=0
+while IFS=$'\t' read -r _m_origin _m_rel _m_branch; do
+    [ -z "$_m_rel" ] && continue
+    _owner="${ENTRY_OWNERS[$_i]:-}"
+    _i=$((_i + 1))
+    [ -z "$_owner" ] && continue
+    [ -z "$_m_branch" ] && continue
+    if git -C "$_owner" show-ref --verify --quiet "refs/heads/$_m_branch" 2>/dev/null; then
         echo ""
+        echo "The branch '$_m_branch' still exists in $_owner."
         echo "To delete it locally:"
-        echo "  git -C $REPO_PATH branch -d $BRANCH_NAME"
-        echo ""
+        echo "  git -C $_owner branch -d $_m_branch"
         echo "To delete it on origin (if pushed):"
-        echo "  git -C $REPO_PATH push origin --delete $BRANCH_NAME"
+        echo "  git -C $_owner push origin --delete $_m_branch"
+        _shown_branch="yes"
     fi
-fi
+done <<< "$MANIFEST_ENTRIES"
+unset _shown_branch _i _owner _m_origin _m_rel _m_branch
 
 echo ""
 echo "Remaining worktrees:"

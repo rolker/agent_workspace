@@ -230,22 +230,57 @@ _scan_project_worktrees() {
     for proj_wt in "$search_dir"/issue-* "$search_dir"/skill-*; do
         [ -d "$proj_wt" ] || continue
 
-        extract_issue_repo "$(basename "$proj_wt")"
-        local_issue="$WT_ISSUE"
-        local_repo="$WT_REPO"
-        local_skill="$WT_SKILL"
+        if [ -f "$proj_wt/.worktree-repos" ]; then
+            # ADR-0012 package worktree: the manifest header and entries are
+            # authoritative — never parse the directory name for this shape.
+            local _manifest_entries
+            _manifest_entries="$(wt_read_manifest "$proj_wt")"
+            local_repo="$WT_MANIFEST_PROJECT"
+            local_skill=""
+            if [[ "$WT_MANIFEST_ISSUE" == *#* ]]; then
+                local_issue="${WT_MANIFEST_ISSUE##*#}"
+            else
+                local_issue="$WT_MANIFEST_ISSUE"
+            fi
+            local_status="clean"
+            local_changed=0
+            local -a _wt_branches=()
+            local _m_origin _m_rel _m_branch _dest _porcelain
+            while IFS=$'\t' read -r _m_origin _m_rel _m_branch; do
+                [ -z "$_m_rel" ] && continue
+                if [ "$_m_rel" = "." ]; then
+                    _dest="$proj_wt"
+                else
+                    _dest="$proj_wt/$_m_rel"
+                fi
+                [ -n "$_m_branch" ] && _wt_branches+=("$_m_branch")
+                [ -d "$_dest" ] || continue
+                _porcelain="$(git -C "$_dest" status --porcelain 2>/dev/null || true)"
+                if [ -n "$_porcelain" ]; then
+                    local_status="dirty"
+                    local_changed=$((local_changed + $(wc -l <<< "$_porcelain")))
+                fi
+            done <<< "$_manifest_entries"
+            local_branch="$(IFS=,; echo "${_wt_branches[*]:-}")"
+            [ "$local_status" = "dirty" ] && ((DIRTY_COUNT++)) || true
+        else
+            extract_issue_repo "$(basename "$proj_wt")"
+            local_issue="$WT_ISSUE"
+            local_repo="$WT_REPO"
+            local_skill="$WT_SKILL"
 
-        local_branch=$(git -C "$proj_wt" branch --show-current 2>/dev/null || echo "")
+            local_branch=$(git -C "$proj_wt" branch --show-current 2>/dev/null || echo "")
 
-        # Check dirty status and count changed files
-        local_status="clean"
-        local_changed=0
-        local_porcelain="$(git -C "$proj_wt" status --porcelain 2>/dev/null || true)"
-        if [ -n "$local_porcelain" ]; then
-            local_status="dirty"
-            local_changed=$(echo "$local_porcelain" | wc -l)
-            local_changed=$((local_changed + 0))
-            ((DIRTY_COUNT++)) || true
+            # Check dirty status and count changed files
+            local_status="clean"
+            local_changed=0
+            local_porcelain="$(git -C "$proj_wt" status --porcelain 2>/dev/null || true)"
+            if [ -n "$local_porcelain" ]; then
+                local_status="dirty"
+                local_changed=$(echo "$local_porcelain" | wc -l)
+                local_changed=$((local_changed + 0))
+                ((DIRTY_COUNT++)) || true
+            fi
         fi
 
         # Collect JSON entry
