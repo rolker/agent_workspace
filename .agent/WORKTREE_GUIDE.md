@@ -178,6 +178,67 @@ package repos, and issue are all explicit:
 - `--plan-file` draft-PR creation is not supported for package worktrees (the
   aggregate dir is not itself a git repo); open PRs per package repo by hand.
 
+### Merging Package-Worktree PRs
+
+Each package repo's PR is a normal `gh` PR against its own repo — merge it with
+`merge_pr.sh`'s repo-qualified resolution, not the plain `--pr <N>` form (PR
+numbers are repo-local, and a package repo is never the workspace or the
+registered project's own remote):
+
+```bash
+.agent/scripts/merge_pr.sh --pr owner/marine_msgs#57
+# equivalently:
+.agent/scripts/merge_pr.sh --pr 57 --repo owner/marine_msgs
+
+make merge-pr PR=owner/marine_msgs#57
+# equivalently:
+make merge-pr PR=57 REPO=owner/marine_msgs
+```
+
+- `--repo owner/repo` (or the equivalent qualified `--pr owner/repo#N`) skips
+  the workspace/`project/` auto-detection entirely and queries only that repo.
+- The worktree is found by scanning every `.worktree-repos` manifest for an
+  entry whose repo and branch match the merged PR — never by parsing the
+  worktree's directory name. If the same repo and branch are worktreed under
+  more than one registered instance, the merge is refused until you pass
+  `--project <name>` to say which worktree it cleans up.
+- A head branch GitHub already auto-deleted on merge counts as cleaned up; only
+  a branch that is still on origin goes through `push --delete`.
+- Merging one package repo's PR does **not** remove the worktree by itself.
+  After deleting that repo's remote branch and fast-forwarding its own main
+  checkout, `merge_pr.sh` checks every *other* repo named in the manifest for
+  an open PR on its branch (`gh pr list`). If any sibling PR is still open,
+  the worktree is kept and the blocking repo/branch is printed; the local
+  branch just merged stays checked out too, since it's still part of the kept
+  worktree. Only once no other named repo has an *open* PR on its branch
+  (merged, closed without merging, or never opened all count as "not open")
+  does the aggregate worktree (and its local branches) actually get removed,
+  via the normal `worktree_remove.sh` preflight-and-remove path.
+- The sibling-PR check fails **closed**: if `gh pr list` itself fails for a
+  repo (network, auth, rate limit), the worktree is kept — not removed on the
+  optimistic assumption that no PR was open — and the message names which
+  repo's check failed and why, with the `worktree_remove.sh` command to rerun
+  once you've confirmed by hand that repo has no open PR.
+- When the worktree is finally removed (no sibling PR open, or none left
+  unchecked), `merge_pr.sh` sweeps *every* named repo's local branch, not just
+  the one just merged — a repo whose PR merged earlier, while a sibling PR
+  was still open, only had its remote branch deleted at the time (its local
+  branch was deferred, since it was still checked out). The sweep deletes a
+  local branch only when its remote ref is gone *and* git's safe delete
+  accepts it; a branch still on origin, or one holding unmerged work (a
+  sibling PR closed without merging), is reported and left in place with the
+  command to delete it by hand.
+- The final banner says what actually happened: cleaned up and synced; merged
+  with the worktree kept pending sibling PRs; or merged with cleanup
+  incomplete (a failed branch delete, sync, or worktree removal is never
+  reported as success).
+- The roadmap update (`update_roadmap.sh`) is skipped for a package-repo PR
+  with a one-line note — the roadmap file lives in this repo, not the package
+  repo, so there's nothing to commit there.
+- Both branch shapes are recognized when extracting the issue number:
+  `feature/issue-<N>` (the repo that owns the issue) and
+  `feature/<repo>-issue-<N>` (every other named repo).
+
 ## Draft PRs with Plan File
 
 Pass `--plan-file` to create a draft PR immediately and post the plan as a PR comment:

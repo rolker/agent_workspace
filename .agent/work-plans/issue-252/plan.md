@@ -177,6 +177,24 @@ stderr, hard-stop, never `ln -s`) is still implemented explicitly.
    it and print which package PRs are still open. Accept both branch-name forms when
    extracting the issue number.
 
+   **As implemented (PR 2):** matches the design above, with one sequencing
+   refinement discovered while writing the hermetic tests. The merged repo's
+   *local* branch delete is deferred until after `worktree_remove.sh` actually
+   runs (i.e. only in the no-sibling-PR-open case) — attempting it right after
+   the merge fails every time, because that branch is still checked out in the
+   (not-yet-removed) package-worktree entry, and `git branch -d` refuses to
+   delete a branch checked out in any worktree, linked or main. The *remote*
+   branch delete and the origin repo's `pull --ff-only` don't have that
+   constraint and still run unconditionally right after the merge, regardless
+   of whether a sibling PR ends up keeping the worktree. Manifest-driven
+   worktree lookup, repo-qualified PR resolution (`--repo`/qualified
+   `owner/repo#N`), the roadmap-skip note for package PRs, and both
+   branch-name forms in issue-number extraction all landed as designed. Tests
+   in a new `.agent/scripts/tests/test_merge_pr.sh` (27 cases): qualified-ref
+   resolution, both branch forms, sibling-PR-open keeps the worktree,
+   `--repo`+bare-N equivalence, conflicting `--repo`/qualified-ref rejected,
+   and legacy workspace/single-repo-project PR regressions (unchanged).
+
 7. **`worktree_list.sh` / `dashboard.sh`**: when `.worktree-repos` exists, issue,
    project and owning repo come from its header (step 3), and branch/dirty state from
    its entries (aggregate dirty = any entry dirty, changed-file count summed); the

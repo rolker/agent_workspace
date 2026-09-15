@@ -67,7 +67,7 @@ help:
 	@echo "Utilities:"
 	@echo "  make lock             Lock workspace (prevent concurrent agent work)"
 	@echo "  make unlock           Unlock workspace"
-	@echo "  make merge-pr PR=<N>  Merge PR, remove worktree, delete branch, sync"
+	@echo "  make merge-pr PR=<N|owner/repo#N> [REPO=owner/repo]  Merge PR, remove worktree, delete branch, sync"
 	@echo "  make pr-triage        Show PR status across workspace + project"
 	@echo "  make revert-feature ISSUE=<N>   Revert commits for issue <N>"
 	@echo "  make generate-skills  Regenerate /make_* slash commands"
@@ -130,8 +130,8 @@ revert-feature:
 	@$(MAIN_ROOT)/.agent/scripts/revert_feature.sh --issue $(ISSUE)
 
 merge-pr:
-	@if [ -z "$(PR)" ]; then echo "Usage: make merge-pr PR=<N> [MERGE_PR_ARGS=...]"; exit 1; fi
-	@$(MAIN_ROOT)/.agent/scripts/merge_pr.sh --pr $(PR) $(MERGE_PR_ARGS)
+	@if [ -z "$(PR)" ]; then echo "Usage: make merge-pr PR=<N|owner/repo#N> [REPO=owner/repo] [MERGE_PR_ARGS=...]"; exit 1; fi
+	@$(MAIN_ROOT)/.agent/scripts/merge_pr.sh --pr "$(PR)" $(if $(REPO),--repo "$(REPO)") $(MERGE_PR_ARGS)
 
 generate-skills:
 	@$(MAIN_ROOT)/.agent/scripts/generate_make_skills.sh
