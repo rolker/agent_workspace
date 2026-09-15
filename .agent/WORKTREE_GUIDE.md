@@ -209,6 +209,11 @@ make merge-pr PR=57 REPO=owner/marine_msgs
   worktree. Only once every named repo's PR has merged does the aggregate
   worktree (and its local branches) actually get removed, via the normal
   `worktree_remove.sh` preflight-and-remove path.
+- The sibling-PR check fails **closed**: if `gh pr list` itself fails for a
+  repo (network, auth, rate limit), the worktree is kept — not removed on the
+  optimistic assumption that no PR was open — and the message names which
+  repo's check failed and why, with the `worktree_remove.sh` command to rerun
+  once you've confirmed by hand that repo has no open PR.
 - The roadmap update (`update_roadmap.sh`) is skipped for a package-repo PR
   with a one-line note — the roadmap file lives in this repo, not the package
   repo, so there's nothing to commit there.

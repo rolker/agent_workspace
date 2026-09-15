@@ -105,6 +105,10 @@ elif [ "$1" = "pr" ] && [ "$2" = "list" ]; then
             *) shift ;;
         esac
     done
+    if [ -n "${GH_PR_LIST_FAIL:-}" ]; then
+        echo "${GH_PR_LIST_FAIL_MSG:-gh: pr list failed}" >&2
+        exit 1
+    fi
     f="$GH_FIXTURES_DIR/pr_list_$(sanitize "$repo")_$(sanitize "$branch").count"
     if [ -f "$f" ]; then
         cat "$f"
@@ -300,6 +304,34 @@ test_conflicting_repo_and_qualified_ref_rejected() {
     assert_contains "names the conflict" "conflicts with qualified --pr" "$out"
 }
 
+test_sibling_check_failure_fails_closed() {
+    echo "TEST: a gh failure checking a sibling's PRs fails closed — keeps the worktree and names the repo"
+    local sb out rc=0 origin_a origin_b wt
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    origin_b="$(make_origin_repo "$sb" pkg_b owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-555" \
+        p11 "owner/pkg_a#555" l1 \
+        "$origin_a|l1_ws/src/pkg_a|feature/issue-555" \
+        "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-555")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 555 "feature/issue-555"
+    # No pr_list fixture for owner/pkg_b: GH_PR_LIST_FAIL forces that call
+    # to fail outright (simulating a gh outage — network, auth, rate
+    # limit) instead of quietly answering "0 open PRs".
+
+    out="$(GH_PR_LIST_FAIL=1 GH_PR_LIST_FAIL_MSG='rate limit exceeded' \
+        run_merge_pr "$sb" --pr owner/pkg_a#555 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "names the repo the check could not be completed for" "owner/pkg_b" "$out"
+    assert_contains "explains what happened" "COULD NOT CHECK" "$out"
+    assert_contains "surfaces gh's own error" "rate limit exceeded" "$out"
+    assert_contains "tells the user how to finish cleanup once confirmed" \
+        "worktree_remove.sh --issue owner/pkg_a#555 --type project --project p11" "$out"
+    assert_eq "worktree kept (fail closed, not fail open)" "true" "$([ -d "$wt" ] && echo true || echo false)"
+    assert_eq "pkg_a's local branch NOT deleted (still checked out in the kept worktree)" "true" \
+        "$(git -C "$origin_a" show-ref --verify --quiet refs/heads/feature/issue-555 && echo true || echo false)"
+}
+
 test_legacy_workspace_pr_regression() {
     echo "TEST: a plain workspace PR (no manifest) is resolved and cleaned up exactly as before #252 PR 2"
     local sb out rc=0 wt ws_remote
@@ -372,6 +404,7 @@ test_sibling_form_issue_number_extraction
 test_sibling_pr_open_keeps_worktree
 test_repo_flag_equivalent_to_qualified_ref
 test_conflicting_repo_and_qualified_ref_rejected
+test_sibling_check_failure_fails_closed
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression
 

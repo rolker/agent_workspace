@@ -508,13 +508,19 @@ echo "  ✅ PR merged"
 if [[ "$IS_PACKAGE_PR" == true ]]; then
     # --- Step 4 (package PR): sibling-PR cleanup rule (ADR-0012) ---
     # Delete the merged branch and sync in its own repo; check every OTHER
-    # manifest entry for an open PR on its branch; if any is open, keep the
-    # worktree and name the blockers, otherwise remove it via
+    # manifest entry for an open PR on its branch; if any is open — OR if
+    # the check itself could not be completed (gh failure: network, auth,
+    # rate limit) — keep the worktree and name why, otherwise remove it via
     # worktree_remove.sh (which itself preflights every entry for
-    # uncommitted changes).
+    # uncommitted changes). Failing the check open (treating "couldn't ask
+    # gh" as "no open PR") would let an outage remove a worktree whose
+    # sibling PR is still open — nothing would be lost (branches survive in
+    # the origin repos), but it's a silent failure, so this fails closed
+    # instead.
     echo "  Package PR merged — checking sibling package PRs before cleanup..."
     _entries="$(wt_read_manifest "$PKG_WT_DIR")"
     declare -a _SIBLING_BLOCKERS=()
+    declare -a _SIBLING_CHECK_FAILURES=()
     _OWN_ORIGIN=""
     while IFS=$'\t' read -r _m_origin _m_rel _m_branch; do
         [[ -z "$_m_origin" ]] && continue
@@ -528,22 +534,30 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
             echo "  ⚠️  Sibling entry at $_m_origin has no resolvable GitHub remote — skipping its PR check" >&2
             continue
         fi
-        _open_count="$(gh pr list -R "$_m_slug" --head "$_m_branch" --state open --json number --jq 'length' 2>/dev/null || echo "0")"
+        _pr_list_err_file="$(mktemp)"
+        _pr_list_rc=0
+        _open_count="$(gh pr list -R "$_m_slug" --head "$_m_branch" --state open --json number --jq 'length' 2>"$_pr_list_err_file")" || _pr_list_rc=$?
+        _pr_list_err="$(<"$_pr_list_err_file")"
+        rm -f "$_pr_list_err_file"
+        if [[ $_pr_list_rc -ne 0 ]]; then
+            _SIBLING_CHECK_FAILURES+=("${_m_slug} (branch: ${_m_branch}): ${_pr_list_err:-gh pr list failed with no output}")
+            continue
+        fi
         if [[ "${_open_count:-0}" -gt 0 ]]; then
             _SIBLING_BLOCKERS+=("${_m_slug} (branch: ${_m_branch})")
         fi
     done <<< "$_entries"
-    unset _entries _m_origin _m_rel _m_branch _m_remote _m_slug _open_count
+    unset _m_origin _m_rel _m_branch _m_remote _m_slug _open_count _pr_list_err_file _pr_list_rc _pr_list_err
 
     # Delete the REMOTE branch and fast-forward the own repo's main checkout
     # now — neither needs the branch to be free of a local checkout. The
     # LOCAL branch is still checked out in this (not-yet-removed) package
     # worktree entry, so `git branch -d` would just fail every time (git
     # refuses to delete a branch checked out in any worktree, linked or
-    # main) — deferred until after worktree_remove.sh actually frees it
-    # below, reached only when no sibling PR blocks cleanup. If a sibling
-    # keeps the worktree around, the local branch stays too, correctly,
-    # since that entry's checkout is still live.
+    # main) — deferred to the post-removal sweep below, reached only when
+    # no sibling PR blocks cleanup. If a sibling keeps the worktree around,
+    # the local branch stays too, correctly, since that entry's checkout is
+    # still live.
     if [[ -n "$_OWN_ORIGIN" ]]; then
         git -C "$_OWN_ORIGIN" push origin --delete "$PR_BRANCH" 2>/dev/null && echo "  ✅ Remote branch deleted ($PR_REPO_SLUG)" || true
         git -C "$_OWN_ORIGIN" pull --ff-only 2>/dev/null && echo "  ✅ $PR_REPO_SLUG synced" || true
@@ -551,11 +565,18 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
         echo "  ⚠️  Could not resolve $PR_REPO_SLUG's own manifest entry — remote branch/sync left untouched" >&2
     fi
 
-    if [[ "${#_SIBLING_BLOCKERS[@]}" -gt 0 ]]; then
-        echo "  ⚠️  Keeping worktree $PKG_WT_DIR — sibling package PR(s) still open:"
+    if [[ "${#_SIBLING_BLOCKERS[@]}" -gt 0 ]] || [[ "${#_SIBLING_CHECK_FAILURES[@]}" -gt 0 ]]; then
+        echo "  ⚠️  Keeping worktree $PKG_WT_DIR — sibling package PR(s) still open or unchecked:"
         for _b in "${_SIBLING_BLOCKERS[@]}"; do
             echo "     - $_b"
         done
+        for _b in "${_SIBLING_CHECK_FAILURES[@]}"; do
+            echo "     - $_b — COULD NOT CHECK for an open PR (gh failed)"
+        done
+        if [[ "${#_SIBLING_CHECK_FAILURES[@]}" -gt 0 ]]; then
+            echo "  Once you've confirmed those repos have no open PR, rerun:"
+            echo "    $SCRIPT_DIR/worktree_remove.sh --issue $PKG_WT_ISSUE --type project --project $PKG_WT_PROJECT"
+        fi
     else
         echo "  Removing worktree..."
         cd "$ROOT_DIR"
@@ -568,6 +589,7 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
             echo "  ⚠️  Worktree removal failed — check for uncommitted changes" >&2
         fi
     fi
+    unset _entries
 else
     # --- Step 4 (workspace / legacy single-repo project PR): unchanged ---
     if [[ -n "$WORKTREE_TYPE" ]]; then
