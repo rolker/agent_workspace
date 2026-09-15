@@ -146,7 +146,7 @@ _resolve_base_dirs() {
                 if [ "${#repo_dirs[@]}" -eq 1 ]; then
                     NEW_BASE="${repo_dirs[0]%/}"
                 elif [ "${#repo_dirs[@]}" -gt 1 ]; then
-                    echo "Error: Multiple project repos found. Use --project to specify:" >&2
+                    echo "Error: Multiple projects registered. Use --project to specify:" >&2
                     for d in "${repo_dirs[@]}"; do
                         echo "  --project $(basename "${d%/}")" >&2
                     done

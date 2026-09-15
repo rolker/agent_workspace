@@ -13,5 +13,5 @@ issue: 255
 **CI**: all-pass
 
 ### Actions
-- [ ] worktree_enter.sh:171 and worktree_remove.sh:149 — say "Multiple projects registered" (these list project hosting dirs, not git repos)
-- [ ] start-task SKILL.md:106 — compatibility note wrongly says worktree_create.sh rejects `--project`; both scripts accept it, `--repo-slug` is only the naming slug
+- [x] worktree_enter.sh:171 and worktree_remove.sh:149 — say "Multiple projects registered" (these list project hosting dirs, not git repos)
+- [x] start-task SKILL.md:106 — compatibility note wrongly says worktree_create.sh rejects `--project`; both scripts accept it, `--repo-slug` is only the naming slug
