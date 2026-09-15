@@ -268,10 +268,11 @@ test_worktree_create_package_success() {
     assert_eq "sibling still on its original branch in the hosted instance" \
         "main" "$(git -C "$proj/layers/main/l1_ws/src/pkg_b" branch --show-current)"
     assert_eq "env.sh generated" "true" "$([ -f "$wt/env.sh" ] && echo true || echo false)"
-    assert_eq "env.sh scrubs, then sources underlay+l1 install, in order" \
+    assert_eq "env.sh scrubs, then runtime-guards underlay+l1 install, in order" \
         "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
 source $sb/rosroot/fakefox/setup.bash
-source $proj/layers/main/l1_ws/install/local_setup.bash" \
+[ -f $proj/layers/main/l1_ws/install/local_setup.bash ] && source $proj/layers/main/l1_ws/install/local_setup.bash
+[ -f $wt/l1_ws/install/local_setup.bash ] && source $wt/l1_ws/install/local_setup.bash" \
         "$(< "$wt/env.sh")"
     assert_eq "build.sh generated and executable" "true" "$([ -x "$wt/build.sh" ] && echo true || echo false)"
     assert_eq "test.sh generated and executable" "true" "$([ -x "$wt/test.sh" ] && echo true || echo false)"
@@ -980,9 +981,37 @@ test_worktree_env_for_package_worktree() {
     local expected
     expected="unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
 source $sb/rosroot/fakefox/setup.bash
-source $proj/layers/main/l1_ws/install/local_setup.bash
-source $wt/l2_ws/install/local_setup.bash"
-    assert_eq "below-layer, no same-layer install (none built), worktree's own" "$expected" "$out"
+[ -f $proj/layers/main/l1_ws/install/local_setup.bash ] && source $proj/layers/main/l1_ws/install/local_setup.bash
+[ -f $proj/layers/main/l2_ws/install/local_setup.bash ] && source $proj/layers/main/l2_ws/install/local_setup.bash
+[ -f $wt/l2_ws/install/local_setup.bash ] && source $wt/l2_ws/install/local_setup.bash"
+    assert_eq "below-layer, same-layer (hosted, not built), worktree's own — all runtime-guarded" "$expected" "$out"
+}
+
+test_worktree_env_runtime_guard_picks_up_install_built_after_generation() {
+    echo "TEST: env.sh's own-install line is a runtime guard, not a generation-time snapshot"
+    local sb out proj wt
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    wt="$sb/wt"
+    mkdir -p "$wt/l1_ws"
+    # Generate env.sh before the worktree's own install exists at all —
+    # this is exactly worktree_create.sh's ordering (env.sh is written once,
+    # before any build.sh/test.sh run).
+    out="$(run_adapter "$sb" worktree_env --worktree "$wt")" || true
+    local env_file="$sb/env.sh"
+    printf '%s\n' "$out" > "$env_file"
+    assert_not_contains "no install exists yet: nothing marks itself built" \
+        "MARKER_SET" "$(bash -c "MARKER=unset; source '$env_file' >/dev/null 2>&1; echo \$MARKER")"
+
+    # Now "build": create the worktree's own install with a stub
+    # local_setup.bash that sets a marker. Re-sourcing the SAME env.sh
+    # (never regenerated) must now pick it up.
+    mkdir -p "$wt/l1_ws/install"
+    echo 'export MARKER=MARKER_SET' > "$wt/l1_ws/install/local_setup.bash"
+    local after
+    after="$(bash -c "MARKER=unset; source '$env_file' >/dev/null 2>&1; echo \$MARKER")"
+    assert_eq "the pre-generated env.sh now sources the freshly built install" "MARKER_SET" "$after"
 }
 
 test_worktree_env_no_layer_ws_fails() {
@@ -1151,6 +1180,7 @@ test_worktree_repos_owning_and_sibling_branches
 test_worktree_repos_unknown_package_fails
 test_worktree_repos_wrong_layer_fails
 test_worktree_env_for_package_worktree
+test_worktree_env_runtime_guard_picks_up_install_built_after_generation
 test_worktree_env_no_layer_ws_fails
 test_sync_pull_skip_fetch
 test_validate_passes_matching_checkout

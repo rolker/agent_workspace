@@ -751,6 +751,13 @@ adapter_worktree_env() {
     local underlay; underlay="$(_rc_underlay)" || return 1
     echo "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX"
     printf 'source %q\n' "$underlay"
+    # Every conditional source below is emitted as a runtime-guarded line
+    # ([ -f ... ] && source ...), not skipped when the install doesn't exist
+    # yet at *generation* time. env.sh is written once at worktree-create
+    # time (before any build); a build-time-only [ -f ] check here would
+    # permanently omit the worktree's own install line even after it's
+    # built, and test.sh's re-source-after-build would never pick up the
+    # fresh overlay.
     local l layer_dir found_target=false
     while IFS= read -r l; do
         if [ "$l" = "$layer" ]; then
@@ -758,21 +765,18 @@ adapter_worktree_env() {
             break
         fi
         layer_dir="$(_rc_layer_dir "$l")"
-        if [ -f "$layer_dir/install/local_setup.bash" ]; then
-            printf 'source %q\n' "$layer_dir/install/local_setup.bash"
-        fi
+        printf '[ -f %q ] && source %q\n' \
+            "$layer_dir/install/local_setup.bash" "$layer_dir/install/local_setup.bash"
     done < <(_rc_layers)
     if [ "$found_target" != true ]; then
         echo "ERROR: layer '$layer' (from $worktree) is not defined in layers.txt" >&2
         return 1
     fi
     layer_dir="$(_rc_layer_dir "$layer")"
-    if [ -f "$layer_dir/install/local_setup.bash" ]; then
-        printf 'source %q\n' "$layer_dir/install/local_setup.bash"
-    fi
-    if [ -f "$worktree/${layer}_ws/install/local_setup.bash" ]; then
-        printf 'source %q\n' "$worktree/${layer}_ws/install/local_setup.bash"
-    fi
+    printf '[ -f %q ] && source %q\n' \
+        "$layer_dir/install/local_setup.bash" "$layer_dir/install/local_setup.bash"
+    printf '[ -f %q ] && source %q\n' \
+        "$worktree/${layer}_ws/install/local_setup.bash" "$worktree/${layer}_ws/install/local_setup.bash"
 }
 
 adapter_scope_for_pr() {
