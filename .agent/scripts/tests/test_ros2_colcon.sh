@@ -302,6 +302,32 @@ test_worktree_create_rolls_back_on_second_repo_failure() {
     assert_contains "captured stderr surfaced" "not a git repository" "$out"
 }
 
+test_worktree_create_rollback_on_worktree_env_failure() {
+    echo "TEST: worktree_env failing after a successful add rolls back the add, dir, and branch"
+    local sb out rc=0 proj wt
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    # Break distro resolution (an environment problem unrelated to the add
+    # itself, discovered only after the package worktree already exists —
+    # worktree_env runs after every add has succeeded).
+    printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
+        > "$proj/configs/manifest/bootstrap.yaml"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project p11 \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-333"
+    assert_eq "no aggregate dir left behind" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "package repo's worktree list shows only the main checkout" \
+        "1" "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain | grep -c '^worktree ')"
+    assert_eq "the branch created for the (rolled-back) add does not exist" \
+        "false" "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" show-ref --verify --quiet refs/heads/feature/issue-333 \
+            && echo true || echo false)"
+    assert_contains "reports the rollback" "rolling back" "$out"
+    assert_contains "names the underlying failure" "cannot resolve the ROS distro" "$out"
+}
+
 test_worktree_remove_multi_package_dirty_refuses_all() {
     echo "TEST: dirty entry anywhere refuses the whole removal before touching anything"
     local sb out rc=0 proj wt
@@ -1243,6 +1269,7 @@ echo ""
 test_validator_accepts_ros2_colcon
 test_worktree_create_package_success
 test_worktree_create_rolls_back_on_second_repo_failure
+test_worktree_create_rollback_on_worktree_env_failure
 test_worktree_remove_multi_package_dirty_refuses_all
 test_worktree_list_json_reports_package_worktree
 test_worktree_enter_disambiguates_by_qualified_issue

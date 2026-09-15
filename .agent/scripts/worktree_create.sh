@@ -576,12 +576,37 @@ PARENT_BRANCH_FOUND=false
 # --- Create the worktree ---
 if [ "$WORKTREE_TYPE" == "project" ]; then
     # Project worktrees loop over the worktree_repos manifest — one
-    # git-worktree-add per entry, via the shared waterfall helper. On any
-    # failure: print the collected stderr, roll back every entry already
-    # added, delete the aggregate dir, hard-stop. Never falls back to a
-    # symlink (ADR-0012).
-    ADDED_ENTRIES=()
-    ADD_FAILED=false
+    # git-worktree-add per entry, via the shared waterfall helper. Never
+    # falls back to a symlink (ADR-0012).
+    #
+    # Rollback state + trap: WT_ADDED_ENTRIES records every entry actually
+    # added this run (dest, origin, branch, whether that branch already
+    # existed before the add). The trap is armed right after the FIRST
+    # successful add — from that point on, ANY failure (a later add, the
+    # manifest write, worktree_env, or env.sh/build.sh/test.sh generation)
+    # rolls back every entry added so far and deletes the aggregate dir,
+    # via one function rather than an ad-hoc rm/worktree-remove at each
+    # call site. It is disarmed once the worktree is fully valid, so an
+    # unrelated later failure elsewhere in the script (e.g. --plan-file
+    # draft-PR creation) never undoes an otherwise-successful worktree.
+    WT_ADDED_ENTRIES=()
+
+    _wt_rollback_package_worktree() {
+        local rc=$?
+        trap - ERR EXIT
+        echo "ERROR: worktree creation failed — rolling back ${#WT_ADDED_ENTRIES[@]} already-created worktree(s)..." >&2
+        local entry dest origin branch existed
+        for entry in "${WT_ADDED_ENTRIES[@]}"; do
+            IFS='|' read -r dest origin branch existed <<< "$entry"
+            git -C "$origin" worktree remove --force "$dest" 2>/dev/null || true
+            if [ "$existed" = "no" ] && [ -n "$branch" ]; then
+                git -C "$origin" branch -D "$branch" 2>/dev/null || true
+            fi
+        done
+        rm -rf "$WORKTREE_DIR"
+        exit "${rc:-1}"
+    }
+
     while IFS=$'\t' read -r WR_ORIGIN WR_REL WR_BRANCH; do
         [ -z "$WR_ORIGIN" ] && continue
         if [ "$WR_REL" = "." ]; then
@@ -591,16 +616,25 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         fi
         if ! git -C "$WR_ORIGIN" rev-parse --git-dir >/dev/null 2>&1; then
             echo "ERROR: manifest entry is not a git repository: $WR_ORIGIN" >&2
-            ADD_FAILED=true
-            break
+            if [ "${#WT_ADDED_ENTRIES[@]}" -eq 0 ]; then
+                rm -rf "$WORKTREE_DIR"
+            fi
+            exit 1
         fi
         mkdir -p "$(dirname "$WR_DEST")"
         echo "Adding worktree for $WR_ORIGIN at $WR_DEST (branch '$WR_BRANCH')..."
+        WR_BRANCH_EXISTED=no
+        git -C "$WR_ORIGIN" show-ref --verify --quiet "refs/heads/$WR_BRANCH" && WR_BRANCH_EXISTED=yes
         if ! _wt_add_repo "$WR_ORIGIN" "$WR_DEST" "$WR_BRANCH" "$PARENT_BRANCH"; then
-            ADD_FAILED=true
-            break
+            if [ "${#WT_ADDED_ENTRIES[@]}" -eq 0 ]; then
+                rm -rf "$WORKTREE_DIR"
+            fi
+            exit 1
         fi
-        ADDED_ENTRIES+=("$WR_DEST|$WR_ORIGIN")
+        WT_ADDED_ENTRIES+=("$WR_DEST|$WR_ORIGIN|$WR_BRANCH|$WR_BRANCH_EXISTED")
+        if [ "${#WT_ADDED_ENTRIES[@]}" -eq 1 ]; then
+            trap _wt_rollback_package_worktree ERR EXIT
+        fi
         if [ "$WR_BRANCH" = "$BRANCH_NAME" ] || [ "$WR_REL" = "." ]; then
             # Owning-repo entry: check parent-branch-found for PR targeting,
             # matching the pre-#252 single-repo semantics.
@@ -612,19 +646,6 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
             fi
         fi
     done <<< "$REPO_LINES"
-
-    if [ "$ADD_FAILED" = true ]; then
-        if [ "${#ADDED_ENTRIES[@]}" -gt 0 ]; then
-            echo "Rolling back ${#ADDED_ENTRIES[@]} already-created worktree(s)..." >&2
-            for _entry in "${ADDED_ENTRIES[@]}"; do
-                _dest="${_entry%%|*}"
-                _origin="${_entry#*|}"
-                git -C "$_origin" worktree remove --force "$_dest" 2>/dev/null || true
-            done
-        fi
-        rm -rf "$WORKTREE_DIR"
-        exit 1
-    fi
 
     # Write the per-worktree repo manifest (.worktree-repos, ADR-0012) so
     # every later script (enter/remove/list/dashboard/merge_pr) can compose
@@ -687,6 +708,10 @@ TEST_EOF
             echo "Generated env.sh, build.sh, test.sh"
         fi
     fi
+
+    # The worktree is now fully valid — disarm. A failure anywhere later in
+    # this script (e.g. --plan-file draft-PR creation) must not roll it back.
+    trap - ERR EXIT
 
 else
     # Workspace worktrees are git worktrees of the workspace repo
