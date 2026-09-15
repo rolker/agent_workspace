@@ -206,9 +206,10 @@ make merge-pr PR=57 REPO=owner/marine_msgs
   an open PR on its branch (`gh pr list`). If any sibling PR is still open,
   the worktree is kept and the blocking repo/branch is printed; the local
   branch just merged stays checked out too, since it's still part of the kept
-  worktree. Only once every named repo's PR has merged does the aggregate
-  worktree (and its local branches) actually get removed, via the normal
-  `worktree_remove.sh` preflight-and-remove path.
+  worktree. Only once no other named repo has an *open* PR on its branch
+  (merged, closed without merging, or never opened all count as "not open")
+  does the aggregate worktree (and its local branches) actually get removed,
+  via the normal `worktree_remove.sh` preflight-and-remove path.
 - The sibling-PR check fails **closed**: if `gh pr list` itself fails for a
   repo (network, auth, rate limit), the worktree is kept — not removed on the
   optimistic assumption that no PR was open — and the message names which

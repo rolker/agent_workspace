@@ -367,6 +367,35 @@ test_sibling_without_remote_fails_closed() {
     assert_eq "worktree kept (fail closed)" "true" "$([ -d "$wt" ] && echo true || echo false)"
 }
 
+test_own_repo_sync_failure_is_reported() {
+    echo "TEST: a failed pull --ff-only in the merged repo is reported, not swallowed"
+    local sb out rc=0 origin_a wt tmp_clone
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-557" \
+        p11 "owner/pkg_a#557" l1 \
+        "$origin_a|l1_ws/src/pkg_a|feature/issue-557")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 557 "feature/issue-557"
+    # Diverge: one commit on origin's main via a scratch clone, a different
+    # one on the local main checkout — pull --ff-only must refuse.
+    tmp_clone="$sb/scratch_clone"
+    git clone --quiet "$(git -C "$origin_a" remote get-url origin)" "$tmp_clone"
+    echo remote > "$tmp_clone/remote.txt"
+    git -C "$tmp_clone" add remote.txt
+    git -C "$tmp_clone" -c user.name=t -c user.email=t@t commit --quiet -m remote
+    git -C "$tmp_clone" push --quiet origin main
+    echo local > "$origin_a/local.txt"
+    git -C "$origin_a" add local.txt
+    git -C "$origin_a" -c user.name=t -c user.email=t@t commit --quiet -m local
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#557 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0 (merge itself succeeded)" "0" "$rc"
+    assert_contains "sync failure is reported" "Could not fast-forward owner/pkg_a" "$out"
+    assert_contains "git's own error is surfaced" "fast-forward" "$out"
+    assert_contains "final summary marks cleanup incomplete" "cleanup incomplete" "$out"
+    assert_eq "worktree still removed (sync failure does not block removal)" "false" "$([ -d "$wt" ] && echo true || echo false)"
+}
+
 test_orphaned_local_branch_swept_on_final_merge() {
     echo "TEST: a local branch left over from an earlier merge (remote already gone) is swept once the last sibling merges"
     local sb out rc=0 origin_a origin_b wt
@@ -469,6 +498,7 @@ test_repo_flag_equivalent_to_qualified_ref
 test_conflicting_repo_and_qualified_ref_rejected
 test_sibling_check_failure_fails_closed
 test_sibling_without_remote_fails_closed
+test_own_repo_sync_failure_is_reported
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression

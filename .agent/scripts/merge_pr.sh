@@ -559,11 +559,31 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
     # no sibling PR blocks cleanup. If a sibling keeps the worktree around,
     # the local branch stays too, correctly, since that entry's checkout is
     # still live.
+    # Neither step is allowed to fail silently: a network, permission, or
+    # non-fast-forward failure is reported with git's own stderr and marks
+    # the cleanup incomplete (final summary below), rather than letting the
+    # script go on to report an unqualified success.
+    _CLEANUP_INCOMPLETE=false
     if [[ -n "$_OWN_ORIGIN" ]]; then
-        git -C "$_OWN_ORIGIN" push origin --delete "$PR_BRANCH" 2>/dev/null && echo "  ✅ Remote branch deleted ($PR_REPO_SLUG)" || true
-        git -C "$_OWN_ORIGIN" pull --ff-only 2>/dev/null && echo "  ✅ $PR_REPO_SLUG synced" || true
+        _git_err=""
+        if _git_err="$(git -C "$_OWN_ORIGIN" push origin --delete "$PR_BRANCH" 2>&1)"; then
+            echo "  ✅ Remote branch deleted ($PR_REPO_SLUG)"
+        else
+            echo "  ⚠️  Could not delete remote branch '$PR_BRANCH' in $PR_REPO_SLUG:" >&2
+            echo "     ${_git_err:-no output}" >&2
+            _CLEANUP_INCOMPLETE=true
+        fi
+        if _git_err="$(git -C "$_OWN_ORIGIN" pull --ff-only 2>&1)"; then
+            echo "  ✅ $PR_REPO_SLUG synced"
+        else
+            echo "  ⚠️  Could not fast-forward $PR_REPO_SLUG's checkout at $_OWN_ORIGIN:" >&2
+            echo "     ${_git_err:-no output}" >&2
+            _CLEANUP_INCOMPLETE=true
+        fi
+        unset _git_err
     else
         echo "  ⚠️  Could not resolve $PR_REPO_SLUG's own manifest entry — remote branch/sync left untouched" >&2
+        _CLEANUP_INCOMPLETE=true
     fi
 
     if [[ "${#_SIBLING_BLOCKERS[@]}" -gt 0 ]] || [[ "${#_SIBLING_CHECK_FAILURES[@]}" -gt 0 ]]; then
@@ -577,6 +597,7 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
         if [[ "${#_SIBLING_CHECK_FAILURES[@]}" -gt 0 ]]; then
             echo "  Once you've confirmed those repos have no open PR, rerun:"
             echo "    $SCRIPT_DIR/worktree_remove.sh --issue $PKG_WT_ISSUE --type project --project $PKG_WT_PROJECT"
+            echo "  then delete the local branches it lists (it prints one 'git -C <repo> branch -d' per repo)."
         fi
     else
         echo "  Removing worktree..."
@@ -657,7 +678,11 @@ fi
 
 echo ""
 echo "========================================"
-echo "✅ Done: PR #${PR_NUMBER} merged, cleaned up, and synced"
+if [[ "${_CLEANUP_INCOMPLETE:-false}" == true ]]; then
+    echo "⚠️  Done: PR #${PR_NUMBER} merged, but cleanup incomplete — see warnings above"
+else
+    echo "✅ Done: PR #${PR_NUMBER} merged, cleaned up, and synced"
+fi
 echo "========================================"
 
 # Warn if the caller's shell may be in a deleted directory
