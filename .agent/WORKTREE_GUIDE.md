@@ -167,6 +167,14 @@ package repos, and issue are all explicit:
   - `test.sh` — one-shot: builds if not yet built, **re-sources `env.sh`**
     so the fresh overlay is on top, then `colcon test` +
     `colcon test-result --verbose`.
+  - Both pass `--allow-overriding` to `colcon build`, computed at **run
+    time** from `colcon list --names-only --base-paths src` (never
+    hard-coded at generation time — this always matches whatever's under
+    `src/`, including packages added after the worktree was created).
+    Overriding the hosted instance's same-layer install is the entire
+    reason a package worktree exists; without `--allow-overriding` colcon
+    warns on every build (`colcon-override-check`) and may hard-error in a
+    future release.
 - `--plan-file` draft-PR creation is not supported for package worktrees (the
   aggregate dir is not itself a git repo); open PRs per package repo by hand.
 

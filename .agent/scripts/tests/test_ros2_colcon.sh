@@ -276,6 +276,19 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
         "$(< "$wt/env.sh")"
     assert_eq "build.sh generated and executable" "true" "$([ -x "$wt/build.sh" ] && echo true || echo false)"
     assert_eq "test.sh generated and executable" "true" "$([ -x "$wt/test.sh" ] && echo true || echo false)"
+    local build_sh test_sh
+    build_sh="$(< "$wt/build.sh")"
+    test_sh="$(< "$wt/test.sh")"
+    assert_contains "build.sh opts in with --allow-overriding" "--allow-overriding" "$build_sh"
+    assert_contains "test.sh opts in with --allow-overriding" "--allow-overriding" "$test_sh"
+    assert_contains "build.sh computes the override list at run time (colcon list)" \
+        "OVERRIDES=\"\$(colcon list --names-only --base-paths src" "$build_sh"
+    assert_contains "test.sh computes the override list at run time (colcon list)" \
+        "OVERRIDES=\"\$(colcon list --names-only --base-paths src" "$test_sh"
+    assert_not_contains "build.sh never hard-codes a package name for --allow-overriding" \
+        "--allow-overriding pkg_a" "$build_sh"
+    assert_eq "build.sh is syntactically valid bash" "0" "$(bash -n "$wt/build.sh" >/dev/null 2>&1; echo $?)"
+    assert_eq "test.sh is syntactically valid bash" "0" "$(bash -n "$wt/test.sh" >/dev/null 2>&1; echo $?)"
     assert_eq "manifest written" "true" "$([ -f "$wt/.worktree-repos" ] && echo true || echo false)"
     assert_eq "sourcing env.sh under set -e with no install present still exits 0" \
         "ok" "$(bash -c "set -e; source '$wt/env.sh'; echo ok" 2>&1)"

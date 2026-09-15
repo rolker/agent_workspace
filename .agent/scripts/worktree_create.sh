@@ -685,7 +685,19 @@ SELF_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "\$SELF_DIR/env.sh"
 cd "\$SELF_DIR/${LAYER}_ws"
-colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "\$@"
+# A package worktree exists to override same-layer packages the hosted
+# instance already built — colcon warns (and may hard-error in a future
+# release) without --allow-overriding for exactly those. Computed here at
+# run time (colcon list, not this generation-time script) so it always
+# matches whatever's actually under src/, including packages added later.
+OVERRIDES="\$(colcon list --names-only --base-paths src | tr '\n' ' ')"
+if [ -n "\$OVERRIDES" ]; then
+    # shellcheck disable=SC2086
+    colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \\
+        --allow-overriding \$OVERRIDES "\$@"
+else
+    colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "\$@"
+fi
 BUILD_EOF
             chmod +x "$WORKTREE_DIR/build.sh"
             cat > "$WORKTREE_DIR/test.sh" << TEST_EOF
@@ -696,7 +708,17 @@ SELF_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 source "\$SELF_DIR/env.sh"
 cd "\$SELF_DIR/${LAYER}_ws"
 if [ ! -d install ]; then
-    colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    # See build.sh: --allow-overriding is required for a package worktree's
+    # whole reason for existing (overriding the hosted instance's same-layer
+    # install), computed at run time from what's actually under src/.
+    OVERRIDES="\$(colcon list --names-only --base-paths src | tr '\n' ' ')"
+    if [ -n "\$OVERRIDES" ]; then
+        # shellcheck disable=SC2086
+        colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \\
+            --allow-overriding \$OVERRIDES
+    else
+        colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+    fi
 fi
 # Re-source so the freshly built overlay is on top (mirrors adapter_test).
 # shellcheck source=/dev/null
