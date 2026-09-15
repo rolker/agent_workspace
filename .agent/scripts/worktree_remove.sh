@@ -97,8 +97,11 @@ if [ -n "$REPO_SLUG" ]; then
     REPO_SLUG=$(echo "$REPO_SLUG" | sed 's/[^A-Za-z0-9_]/_/g')
 fi
 
-# ADR-0012: a package worktree's --issue is qualified (owner/repo#N);
-# resolution here is still by the numeric suffix.
+# ADR-0012: a package worktree's --issue is qualified (owner/repo#N).
+# ISSUE_REF keeps the raw value for find_worktree_by_issue (exact
+# .worktree-repos header match); ISSUE_NUM is the trailing number, used
+# elsewhere (messages, legacy directory-name construction).
+ISSUE_REF="$ISSUE_NUM"
 if [ -n "$ISSUE_NUM" ] && [[ "$ISSUE_NUM" == *#* ]]; then
     ISSUE_NUM="${ISSUE_NUM##*#}"
 fi
@@ -181,9 +184,9 @@ if [ -n "$SKILL_NAME" ]; then
         exit 1
     fi
 else
-    if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree "$NEW_BASE" "$ISSUE_NUM" "$REPO_SLUG"); then
+    if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_issue "$NEW_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
-    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree "$LEGACY_BASE" "$ISSUE_NUM" "$REPO_SLUG"); then
+    elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_issue "$LEGACY_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
         echo "⚠️  Found worktree in legacy location." >&2
     else

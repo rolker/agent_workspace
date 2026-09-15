@@ -153,18 +153,20 @@ stderr, hard-stop, never `ln -s`) is still implemented explicitly.
    `git -C <origin> worktree remove` + `prune`; delete the aggregate dir last.
 
    **As implemented (PR 1):** `worktree_enter.sh`/`worktree_remove.sh` accept a
-   qualified `--issue owner/repo#N` by extracting the trailing numeric suffix
-   for lookup — the existing glob-based `find_worktree` already matches
-   directories ending in `-<N>`, so this needs no new disambiguation logic for
-   the common case (one worktree per issue number per repo slug). Full
-   manifest-header-based resolution (reading every candidate's
-   `.worktree-repos` header to disambiguate when the glob returns multiple
-   matches for the same trailing number under one repo slug) is **not**
-   implemented in PR 1 — the pre-existing multi-match error path
-   (`find_worktree`'s "Multiple worktrees found" + `--repo-slug` hint) still
-   applies. This is a real gap versus "resolve via the manifest header," left
-   for a follow-up if it proves to matter in practice (unlikely: the qualified
-   issue ref is unique per repo slug in the intended workflow).
+   qualified `--issue owner/repo#N` and resolve it via
+   `find_worktree_by_issue` (`_worktree_helpers.sh`): a qualified ref is
+   matched against each glob candidate's `.worktree-repos` header `issue=`
+   field exactly — never by the trailing number alone — so two package
+   worktrees for the same issue number in different sibling repos under one
+   project (`issue-<proj>-<owner>-cube_bathymetry-<N>` and
+   `issue-<proj>-<owner>-marine_msgs-<N>`) each resolve unambiguously to
+   their own qualified ref. A bare number that matches more than one
+   worktree still errors, but — when any candidate carries a manifest — the
+   error now names the qualified `--issue owner/repo#N` form for each
+   candidate instead of suggesting `--repo-slug` (which cannot disambiguate
+   sibling package repos within the same project; it only disambiguates
+   different repo slugs). The disambiguation gap noted in the plan-review
+   pass is closed.
 
 6. **`merge_pr.sh`**: accept `--repo owner/repo` (or a qualified `owner/repo#N` PR
    ref) and, when given, query only that repo; otherwise today's workspace/`project/`

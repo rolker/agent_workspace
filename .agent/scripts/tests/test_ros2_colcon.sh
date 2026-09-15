@@ -348,6 +348,49 @@ test_worktree_list_json_reports_package_worktree() {
     assert_contains "dirty status reported" '"status":"dirty"' "$out"
 }
 
+run_worktree_enter_print_path() {
+    local sb="$1"
+    shift
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_enter.sh" --print-path "$@")
+}
+
+test_worktree_enter_disambiguates_by_qualified_issue() {
+    echo "TEST: qualified --issue resolves each of two same-N package worktrees; bare N errors with the hint"
+    local sb out rc=0 proj wt_a wt_c
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    make_committed_pkg_repo "$proj" l2 pkg_c
+    run_worktree_create "$sb" --issue owner/pkg_a#555 --type project --project p11 \
+        --layer l1 --package-repos pkg_a >/dev/null 2>&1
+    run_worktree_create "$sb" --issue owner/pkg_c#555 --type project --project p11 \
+        --layer l2 --package-repos pkg_c >/dev/null 2>&1
+    wt_a="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-555"
+    wt_c="$sb/worktrees/project/p11/issue-p11-owner-pkg_c-555"
+    assert_eq "pkg_a worktree exists" "true" "$([ -d "$wt_a" ] && echo true || echo false)"
+    assert_eq "pkg_c worktree exists" "true" "$([ -d "$wt_c" ] && echo true || echo false)"
+
+    out="$(run_worktree_enter_print_path "$sb" --issue owner/pkg_a#555 --type project --project p11 2>&1)" || rc=$?
+    assert_eq "qualified issue for pkg_a resolves to pkg_a's worktree" "0" "$rc"
+    assert_eq "resolved path is pkg_a's" "$wt_a" "$out"
+
+    rc=0
+    out="$(run_worktree_enter_print_path "$sb" --issue owner/pkg_c#555 --type project --project p11 2>&1)" || rc=$?
+    assert_eq "qualified issue for pkg_c resolves to pkg_c's worktree" "0" "$rc"
+    assert_eq "resolved path is pkg_c's" "$wt_c" "$out"
+
+    rc=0
+    out="$(run_worktree_enter_print_path "$sb" --issue 555 --type project --project p11 2>&1)" || rc=$?
+    assert_eq "bare number is ambiguous: exits nonzero" "1" "$rc"
+    assert_contains "names both candidates" "issue-p11-owner-pkg_a-555" "$out"
+    assert_contains "names both candidates (2)" "issue-p11-owner-pkg_c-555" "$out"
+    assert_contains "points at the qualified form, not --repo-slug" \
+        "--repo-slug cannot" "$out"
+    assert_contains "gives the qualified ref for pkg_a" "--issue owner/pkg_a#555" "$out"
+    assert_contains "gives the qualified ref for pkg_c" "--issue owner/pkg_c#555" "$out"
+}
+
 # ---- Contract & validator ----
 
 test_validator_accepts_ros2_colcon() {
@@ -1144,6 +1187,7 @@ test_worktree_create_package_success
 test_worktree_create_rolls_back_on_second_repo_failure
 test_worktree_remove_multi_package_dirty_refuses_all
 test_worktree_list_json_reports_package_worktree
+test_worktree_enter_disambiguates_by_qualified_issue
 test_distro_from_bootstrap_yaml
 test_distro_from_project_config
 test_distro_unresolvable_fails

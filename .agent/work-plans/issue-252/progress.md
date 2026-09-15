@@ -216,19 +216,67 @@ rename), since the plan's CLI examples assume it landed.
   (numeric-suffix matching via the existing glob, not full manifest-header
   disambiguation across multiple candidates).
 
-**Deferred / left as a known gap:**
-- Full manifest-header-based worktree resolution in `worktree_enter.sh`/
-  `worktree_remove.sh` when multiple candidates share a trailing issue number
-  under one repo slug — the pre-existing "Multiple worktrees found, use
-  `--repo-slug`" path still applies instead. Not expected to matter in
-  practice (the qualified issue ref is unique per repo slug in the intended
-  workflow) but is a real gap versus the plan's original phrasing.
+**Deferred:**
 - The real `p11-jazzy` smoke test (plan step 10) — explicitly out of scope
   for the implementer; left for the reviewer.
 - `merge_pr.sh` multi-repo resolution and the sibling-PR cleanup rule (plan
   step 6) — PR 2, untouched here.
 
+(The manifest-header worktree-resolution gap noted above and in the initial
+Implement entry is closed — see the "Post-review fixes" entry below.)
+
 **Verification:** `validate_adapter.sh` passes (12/12 verbs, both types);
 `test_adapter.sh` 86/86; `test_ros2_colcon.sh` 142/142; `test_project_registry.sh`
 54/54 (unchanged, still passing against the rewritten `worktree_create.sh`);
 `pre-commit run --all-files` passes.
+
+## Post-review fixes (PR 1)
+**Status**: complete
+**When**: 2026-09-15 (post-review session)
+**By**: Claude Code Agent (claude-sonnet-5)
+
+Reviewer found three defects in PR 1. Each fixed as its own commit with a
+regression test:
+
+1. **`env.sh` generation-time snapshot** — `adapter_worktree_env`'s
+   `[ -f ... ]` guard ran at *generation* time (worktree-create, before any
+   build), so a not-yet-built install line was permanently omitted from
+   `env.sh`'s text — `test.sh`'s "re-source `env.sh` after building" never
+   actually picked up the fresh overlay, since the source line for it was
+   never written. Fixed: every conditional source is now emitted as a
+   runtime-guarded line (`[ -f <path> ] && source <path>`, `%q`-quoted) for
+   both the hosted-instance layer installs and the worktree's own install.
+   New test: generate `env.sh` before the worktree's own install exists,
+   then create it with a stub `local_setup.bash` that sets a marker,
+   re-source the *same* (unregenerated) `env.sh`, assert the marker is set.
+2. **`.worktree-repos` written into single-repo checkouts** — every
+   `--type project` worktree got a `.worktree-repos` file, including
+   `single_project`'s one-entry ("." rel path) shape, where the worktree
+   root *is* the tracked repo checkout — a permanent untracked file (or an
+   accidental commit) in every single-repo project worktree.
+   `wt_read_manifest`'s legacy fallback already reconstructs that exact
+   shape with no file, so the fix is simply not writing it when there's
+   exactly one entry with rel path ".". New test in
+   `test_project_registry.sh`: create a `single_project` worktree, assert
+   no `.worktree-repos` and an empty `git status --porcelain`.
+3. **Bare-number disambiguation defeated the explicit-CLI decision** —
+   `worktree_enter.sh`/`worktree_remove.sh` reduced a qualified `--issue
+   owner/repo#N` to its numeric suffix before lookup, so two package
+   worktrees for the same issue number in different sibling repos under one
+   project were ambiguous, and the error suggested `--repo-slug`, which
+   cannot disambiguate sibling package repos within the same project (it
+   only disambiguates different registered projects). Fixed: a new
+   `find_worktree_by_issue` (`_worktree_helpers.sh`) matches a qualified ref
+   against each glob candidate's `.worktree-repos` header `issue=` field
+   exactly (never by directory name/trailing number alone for a qualified
+   ref); a bare number that still matches more than one candidate now names
+   the qualified `--issue owner/repo#N` form for each, instead of
+   `--repo-slug`, whenever any candidate carries a manifest. `plan.md` step
+   5 updated — the disambiguation gap it called out is now closed. New
+   test: two fake package worktrees for the same issue number in different
+   repos; qualified `--issue` resolves each via `--print-path`; the bare
+   number errors and names both qualified refs.
+
+**Verification (post-fix):** `validate_adapter.sh` 12/12 both types;
+`test_adapter.sh` 86/86; `test_ros2_colcon.sh` 156/156; `test_project_registry.sh`
+57/57; `pre-commit run --all-files` clean.

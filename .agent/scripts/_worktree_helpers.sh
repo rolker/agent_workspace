@@ -109,6 +109,122 @@ find_worktree() {
     return 1
 }
 
+# Read the issue= field from a worktree's .worktree-repos header, if any.
+# Empty stdout (not an error) when no manifest file exists.
+# Usage: ref=$(_wt_manifest_issue_field "$worktree_dir")
+_wt_manifest_issue_field() {
+    local dir="$1" manifest header
+    manifest="$dir/.worktree-repos"
+    [ -f "$manifest" ] || { echo ""; return 0; }
+    header="$(head -n1 "$manifest")"
+    sed -n 's/.* issue=\([^ ]*\).*/\1/p' <<< "$header"
+}
+
+# Find a --type project worktree by issue reference — a bare number, or a
+# qualified owner/repo#N (ADR-0012 package worktree). Returns the path on
+# stdout, same disambiguation-failure contract as find_worktree (nonzero,
+# guidance on stderr).
+#
+# - Qualified ref: only a directory whose .worktree-repos header's `issue=`
+#   field is *exactly* that ref is a match — the directory name (and its
+#   trailing number) is never trusted alone for this shape. No manifest, or
+#   a mismatched one, is not a match; this never falls back to "any
+#   directory with that trailing number" for a qualified ref, because that
+#   would defeat the whole point of qualifying it.
+# - Bare number: identical to find_worktree, except that when more than one
+#   directory matches AND at least one of them carries a manifest (i.e. the
+#   ambiguity is between package worktrees for different repos, which
+#   --repo-slug cannot resolve — --repo-slug disambiguates *registered
+#   projects*, not sibling package repos within the same project), the
+#   error instead lists the qualified `--issue owner/repo#N` refs to use.
+#
+# Usage: path=$(find_worktree_by_issue "$base_dir" "$issue_ref" "$repo_slug")
+find_worktree_by_issue() {
+    local base_dir="$1" issue_ref="$2" repo_slug="$3"
+    local issue_num
+    if [[ "$issue_ref" == *#* ]]; then
+        issue_num="${issue_ref##*#}"
+    else
+        issue_num="$issue_ref"
+    fi
+
+    if [ -n "$repo_slug" ]; then
+        local exact_path="$base_dir/issue-${repo_slug}-${issue_num}"
+        if [ -d "$exact_path" ]; then
+            if [[ "$issue_ref" == *#* ]] && [ "$(_wt_manifest_issue_field "$exact_path")" != "$issue_ref" ]; then
+                return 1
+            fi
+            echo "$exact_path"
+            return 0
+        fi
+        return 1
+    fi
+
+    local matches=()
+    for path in "$base_dir"/issue-*-"${issue_num}"; do
+        if [ -d "$path" ] && [ "$path" != "$base_dir/issue-*-${issue_num}" ]; then
+            matches+=( "$path" )
+        fi
+    done
+    local legacy_path="$base_dir/issue-${issue_num}"
+    [ -d "$legacy_path" ] && matches+=( "$legacy_path" )
+
+    if [[ "$issue_ref" == *#* ]]; then
+        # Qualified: manifest-exact matches only.
+        local filtered=() path hdr
+        for path in "${matches[@]}"; do
+            hdr="$(_wt_manifest_issue_field "$path")"
+            [ -n "$hdr" ] && [ "$hdr" = "$issue_ref" ] && filtered+=( "$path" )
+        done
+        if [ "${#filtered[@]}" -eq 1 ]; then
+            echo "${filtered[0]}"
+            return 0
+        elif [ "${#filtered[@]}" -gt 1 ]; then
+            echo "Error: multiple worktrees found matching issue '${issue_ref}':" >&2
+            for path in "${filtered[@]}"; do
+                echo "  - $(basename "$path")" >&2
+            done
+            return 1
+        fi
+        return 1
+    fi
+
+    # Bare number.
+    if [ "${#matches[@]}" -eq 1 ]; then
+        echo "${matches[0]}"
+        return 0
+    elif [ "${#matches[@]}" -gt 1 ]; then
+        local -a manifest_refs=()
+        local path hdr
+        for path in "${matches[@]}"; do
+            hdr="$(_wt_manifest_issue_field "$path")"
+            [ -n "$hdr" ] && manifest_refs+=( "$hdr" )
+        done
+        echo "Error: Multiple worktrees found for issue ${issue_num}:" >&2
+        for path in "${matches[@]}"; do
+            echo "  - $(basename "$path")" >&2
+        done
+        echo "" >&2
+        if [ "${#manifest_refs[@]}" -gt 0 ]; then
+            echo "These include package worktrees for different repos — --repo-slug cannot" >&2
+            echo "disambiguate them. Use the qualified --issue form instead:" >&2
+            for hdr in "${manifest_refs[@]}"; do
+                echo "  --issue ${hdr}" >&2
+            done
+        else
+            echo "Use --repo-slug to specify which one:" >&2
+            for path in "${matches[@]}"; do
+                local slug
+                slug=$(basename "$path" | sed -E 's/^issue-(.+)-[0-9]+$/\1/')
+                echo "  --issue ${issue_num} --repo-slug ${slug}" >&2
+            done
+        fi
+        return 1
+    fi
+
+    return 1
+}
+
 # --- Per-worktree repo manifest (.worktree-repos, ADR-0012) ---
 #
 # A package worktree (multiple git worktrees composed under one aggregate
