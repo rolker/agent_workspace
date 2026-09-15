@@ -34,7 +34,8 @@ humans use it as a checklist.
 | 0008 — Permit cross-reference addendums in ADRs | Editing an accepted ADR | Status-line notes pointing at related ADRs and References-section additions are permitted; substantive edits (Decision rewording, position reversal, Consequences changes) still require superseding |
 | 0009 — Python package management | Installing Python packages or modifying `.venv` | Use .venv for dev tools; never bare pip install |
 | 0010 — git-bug installed by default | Adding or modifying issue lookup scripts, bootstrap, or sync | git-bug installed by default; scripts use `_issue_helpers.sh` (git-bug first with sync-on-miss, fall back to `gh`); graceful degradation required |
-| 0011 — Project-type adapter contract | Adding workspace content, touching build/test/setup/sync scripts, or anything that branches on project shape | Shape-specific behavior lives in `.agent/project_types/<type>/adapter.sh` behind the 10-verb contract; workspace content stays project-agnostic; `validate_adapter.sh` must pass |
+| 0011 — Project-type adapter contract | Adding workspace content, touching build/test/setup/sync scripts, or anything that branches on project shape | Shape-specific behavior lives in `.agent/project_types/<type>/adapter.sh` behind the 12-verb contract; workspace content stays project-agnostic; `validate_adapter.sh` must pass |
+| 0012 — Worktree composition is an adapter concern | Touching worktree creation/removal/listing, or any script that composes a multi-repo worktree | Multi-repo composition knowledge lives behind `worktree_repos`/`worktree_env` adapter verbs, not in generic worktree scripts; those scripts loop over the `.worktree-repos` manifest and never check project type; no symlink fallback anywhere in the creation path |
 
 ## Consequences Map
 
@@ -44,7 +45,7 @@ humans use it as a checklist.
 | An ADR in `docs/decisions/` | This review guide's ADR table |
 | `AGENTS.md` | Framework adapters if affected (`.github/copilot-instructions.md`, etc.) |
 | A script in `.agent/scripts/` | Script reference table in `AGENTS.md`; `Makefile` if it has a target |
-| The adapter contract (`REQUIRED_VERBS` in `.agent/scripts/adapter`) | Every `.agent/project_types/*/adapter.sh`; ADR-0011; `test_adapter.sh` |
+| The adapter contract (`REQUIRED_VERBS` in `.agent/scripts/adapter`) | Every `.agent/project_types/*/adapter.sh`; ADR-0011 (or a new ADR per ADR-0008 if the verb count changes); `test_adapter.sh` |
 | A template in `.agent/templates/` | Docs that reference the template; skills that use it |
 | A framework skill (e.g., `.claude/skills/`) | That framework's adapter file; regenerate skills if needed |
 | Workflow skill list (add/remove a skill) | Skill list in non-Claude adapters (`.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md`) |

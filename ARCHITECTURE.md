@@ -57,8 +57,9 @@ agent_workspace/
 ## Project Repository Model
 
 Project-shape-specific behavior (setup, sync, build, test, install, environment,
-repo enumeration, PR targeting) lives behind a 10-verb adapter contract
-(ADR-0011). `.agent/scripts/adapter [--from <dir>] [--project <name>] <verb>`
+repo enumeration, PR targeting, worktree composition) lives behind a 12-verb
+adapter contract (ADR-0011, amended by ADR-0012).
+`.agent/scripts/adapter [--from <dir>] [--project <name>] <verb>`
 resolves the active project and dispatches to
 `.agent/project_types/<type>/adapter.sh`. `validate_adapter.sh` (pre-commit + CI)
 asserts every type implements every verb.
