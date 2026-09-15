@@ -12,21 +12,22 @@ https://github.com/rolker/agent_workspace/issues/252
 `$(_rc_root)/layers/main/<layer>_ws/src/<pkg>` (each `<pkg>` a separate git checkout
 imported by `vcs`), driven by an in-tree manifest (`configs/manifest/layers.txt`,
 `repos/<layer>.repos`). `adapter_env`/`adapter_build`/`adapter_test` already do
-**runtime chaining** (distro underlay, then each layer's `install/local_setup.bash`
-in ascending order) — never baked chains — matching upstream's ADR-0016 fix.
-Two hosted instances exist side by side today (`p11-jazzy`, `p11-rolling`), each a
-separate `ACTIVE_PROJECT_ROOT` selected via `.agent/scripts/adapter --project <name>`
-(#227, #248) — instance scoping is already solved at the adapter layer.
+**runtime chaining** (scrub `COLCON_PREFIX_PATH`/`AMENT_PREFIX_PATH`/
+`CMAKE_PREFIX_PATH`/`AMENT_CURRENT_PREFIX`, source the distro underlay, then each
+layer's `install/local_setup.bash` in ascending order) — never baked chains — matching
+upstream's ADR-0016 fix. Two hosted instances exist side by side today (`p11-jazzy`,
+`p11-rolling`), each a separate `ACTIVE_PROJECT_ROOT` selected via
+`.agent/scripts/adapter --project <name>` (#227, #248).
 
-`worktree_create.sh --type project` today git-worktrees a **single** `PROJECT_DIR`
-(the legacy `project/` symlink or a registry entry's hosting dir) — see lines 252-298
-and 469-480. For `ros2_colcon`, the registered hosting dir (e.g. `p11-jazzy/`) is
-**not itself a git repo** — it is a plain directory containing many independent repo
-checkouts under `layers/main/*/src/*` plus a `configs/manifest` symlink. `git -C
-$PROJECT_DIR rev-parse --git-dir` fails there, so `--type project` cannot work for a
-colcon instance today. `worktree_remove.sh` (`_COMMON_DIR`/`git worktree remove`,
-lines 247-274) and `merge_pr.sh` (branch delete/sync, lines 389-410) have the same
-single-repo assumption and don't loop over multiple package repos.
+**The single-repo assumption lives in five generic scripts, not one.** A project
+worktree today is exactly one `git worktree add` against one repo, and that is baked
+into `worktree_create.sh` (lines 469-493), `worktree_remove.sh` (dirty check at
+228-240 and removal at 247-274), `merge_pr.sh` (PR lookup against only the workspace
+and `project/` remotes at 130-285, `feature/issue-N` parsing, cleanup at 389-410),
+`worktree_list.sh` (directory-name regex at 118-125, `git status` at the worktree root
+at 238-248) and `dashboard.sh` (count at 337-346). For `ros2_colcon` the registered
+hosting dir (e.g. `p11-jazzy/`) is not itself a git repo, so `--type project` cannot
+work for a colcon instance at all today.
 
 Upstream (`ros2_agent_workspace/scripts/worktree_create.sh`, lines 860-1032) solves
 this with a **hybrid mirror**: `--type layer --layer <l> --packages <a,b>` git-worktrees
@@ -38,13 +39,17 @@ worktree's packages on `sys.path`. Upstream's fallback chain for `git worktree a
 swallows stderr (`2>/dev/null`) at every attempt and, on total failure, silently
 `ln -s`'s the **real package clone** into the worktree and reports success
 (`ros2_agent_workspace#598`) — a dispatched agent then switched the main clone's
-branch through the symlink. `ros2_agent_workspace` ADR-0016 (runtime vs. baked layer
-chaining) independently establishes that sourcing each layer's `local_setup.bash` in
-ascending order, never a baked `install/setup.bash`, is the only chaining mechanism
-that doesn't invert overlay precedence or go stale — the same discipline this repo's
-`adapter_env`/`adapter_build` already follow.
+branch through the symlink.
 
-## Design comparison (required by the issue)
+**Existing-tool scan (2026-09-15).** Nothing packaged does "subset of a multi-repo
+manifest → git worktrees → colcon overlay on an already-built install → cleanup".
+Nearest generic tools (multree, Canopy) orchestrate worktree sets from their own
+manifests with no vcstool/colcon awareness; vcstool's 2025 rewrite has no worktree
+subcommand; Zephyr `west` has only an unimplemented proposal. `vcs` remains the right
+engine for manifest reading and multi-repo status; the aggregate worktree and the
+policy around it are ours to build.
+
+## Design comparison 1 — worktree layout (required by the issue)
 
 | | A. Hybrid mirror | B. Pure overlay |
 |---|---|---|
@@ -52,41 +57,31 @@ that doesn't invert overlay precedence or go stale — the same discipline this 
 | Build reuse / rebuild cost | Reuses main's builds for everything not named; still full per-worktree symlink tree to construct/maintain | Reuses main's builds identically (via install, not source symlink); worktree build only ever touches named packages — smaller `colcon build` scope |
 | Scoping to a hosted instance | Already solved at `_rc_root`/`ACTIVE_PROJECT_ROOT`; no difference | Same — no difference |
 | Path/env bug classes invited | Reintroduces upstream's exact classes: `sys.path`/`PYTHONPATH` shadowing from symlinked main builds (#427), and the symlink-fallback-on-failure hazard (#598) is structurally tempting because the "else branch" for non-git paths sits right next to a large mirrored tree | No mirrored tree exists, so there is nothing to fall back to *by construction*; only genuine git-repo worktrees are ever created |
-| What `sync`/`validate`/`build`/`test` must do from inside a worktree | Need new logic to distinguish "this is a symlink to main, skip" from "this is a real worktree, act" in every verb that walks the layer tree | No adapter verb needs to run inside the worktree at all — a small generated `build.sh`/`test.sh` (analogous to upstream's, minus the force-prepend hack) sources the hosting instance's lower-layer + same-layer installs as an underlay and builds only the overlaid `src/` |
-| Implementation size | Large: worktree_create.sh layer/package branch, full symlink-tree generation, generated setup.bash with path force-prepend, and remove/merge_pr changes to skip symlinked entries | Medium: worktree_create.sh layer/package branch using existing `adapter repos` to resolve paths, small generated build/test wrapper, remove/merge_pr changes (loop over named package repos only — no symlinks to skip) |
+| What `sync`/`validate`/`build`/`test` must do from inside a worktree | Need new logic to distinguish "this is a symlink to main, skip" from "this is a real worktree, act" in every verb that walks the layer tree | No adapter verb needs to run inside the worktree; a generated `env.sh` sources the hosting instance's lower-layer + same-layer installs as an underlay and the worktree builds only its own `src/` |
+| Implementation size | Large: symlink-tree generation, generated setup.bash with path force-prepend, remove/merge_pr changes to skip symlinked entries | Medium: per-repo worktree loop, small generated env/build/test wrappers, cleanup loops over named package repos only |
 
-## Recommendation
+**Chosen: B.** Colcon's own overlay semantics reproduce A's "reuse untouched siblings"
+benefit without a symlink into the main checkout, so #427 and #598 have no surface.
+The no-symlink hard-stop rule (issue body, `docs/PRINCIPLES.md` "Enforcement over
+documentation") is satisfied structurally: no code path ever reaches a non-git-repo
+fallback for a package worktree; ordinary `git worktree add` failure handling (capture
+stderr, hard-stop, never `ln -s`) is still implemented explicitly.
 
-**Design B (pure overlay).** The adapter already does runtime layer chaining
-(`.agent/project_types/ros2_colcon/adapter.sh` `adapter_env`/`adapter_build`,
-lines 391-476) exactly the way ADR-0016 mandates — sourcing each layer's
-`local_setup.bash` in ascending order, never a baked chain. Colcon's own overlay
-semantics (source the hosted instance's target-layer `install/local_setup.bash` as an
-underlay, then build only the named packages in the worktree's own `src/`, then source
-*its* `install/local_setup.bash` last) reproduce the "reuse untouched siblings' builds"
-benefit of Design A's symlink tree without ever needing a symlink into the main
-checkout. That means the entire class of bugs the issue calls out — #427 (stale main
-build dir shadowing the worktree on `sys.path`, which only exists because A symlinks
-source trees) and #598 (silent symlink fallback on `git worktree add` failure) — has
-no surface to appear on: no path in this design is ever a "symlink to main" that a
-verb must special-case, only real git-repo worktrees of the named package(s). This
-also keeps the change medium-sized (`worktree_create.sh` gains one new branch reusing
-the existing `adapter repos` verb output, not a new symlink-tree generator), matching
-"Only what's needed." **The no-symlink hard-stop rule (issue body, `docs/PRINCIPLES.md`
-"Enforcement over documentation") is satisfied structurally**: Design B never
-constructs a path where a non-git-repo fallback branch could be reached for a package
-worktree, so the rule doesn't need a runtime check protecting a mirror step — it needs
-only the ordinary `git worktree add` failure handling (capture stderr, hard-stop, never
-`ln -s` a git repo), which the plan still implements explicitly since a target package
-directory could theoretically be non-git if the manifest is malformed.
+## Design comparison 2 — where the multi-repo logic lives (from PR #254 review)
+
+| | C. Type checks inside generic scripts | D. Adapter verbs (ADR-0011) |
+|---|---|---|
+| ADR-0011 | Violates "workflow scripts never branch on project type"; the ADR's own verb test ("the workflow needs this, and the how differs per type") is met, so a verb is warranted | Compliant; contract extended by two verbs |
+| Where the five single-repo assumptions get fixed | Five `if ros2_colcon` branches, one per script | Once: generic scripts loop over a per-worktree repo manifest; the verb produces it |
+| Next project type (monorepo sparse checkout, Rust workspace, …) | Re-does all five | Implements two verbs |
+| Size | Smaller now | Larger now: two verbs × two adapters, factor the branch waterfall into a per-repo function, new ADR |
+
+**Chosen: D** (decided 2026-09-15 with the owner after the tool scan).
 
 ## Approach
 
-0. **Prerequisite: #255** renames the worktree scripts' project selector from
-   `--repo <name>` to `--project <name>` (alias kept). This plan is written against
-   `--project`.
-1. **`worktree_create.sh` CLI — explicit, nothing inferred** (decided 2026-09-15;
-   upstream's #526 wrong-repo pick came from resolving a bare issue number):
+1. **CLI — explicit, nothing inferred** (decided 2026-09-15; upstream #526 wrong-repo
+   pick came from resolving a bare issue number). #255 (`--repo` → `--project`) is merged.
 
    ```
    worktree_create.sh --type project --project p11-jazzy \
@@ -94,147 +89,171 @@ directory could theoretically be non-git if the manifest is malformed.
        --layer platforms --package-repos cube_bathymetry,marine_msgs
    ```
 
-   - Valid only when the `--project` registry entry's adapter type is `ros2_colcon`
-     (look up via `_project_registry.sh`); for that type all three of `--issue`
-     (qualified), `--layer`, `--package-repos` are **required** and the plain
-     single-repo branch (lines 469-480) is skipped.
-   - `--issue` **must** be `owner/repo#N` for package worktrees. A bare number is a
-     usage error, never a guess. The owning repo comes from the reference.
-   - `--layer` is required and validated: every listed repo must live in that layer;
-     otherwise hard error naming the layer each was actually found in.
-   - `--package-repos` takes package-repo directory names (what `adapter repos`
-     prints), validated against that verb's output; unknown names are a hard error.
-     Named `--package-repos`, not upstream's `--packages`, because the values are
-     repos, not ROS package names (a documented confusion upstream).
-   - `--type layer` is rejected with a message pointing at this form.
-   - Worktree directory: `worktrees/project/<project>/issue-<project>-<owner-repo>-<N>/`
-     so two package repos' issue N never collide on disk. `worktree_enter.sh`,
-     `worktree_remove.sh`, `merge_pr.sh` take the same qualified `--issue` and refuse a
-     bare number for this shape.
-2. Resolve target package paths by calling
-   `.agent/scripts/adapter --project <name> repos` (existing verb, `adapter_repos` in
-   `ros2_colcon/adapter.sh` line 618) and matching requested names against the
-   `name:path` output — reuses the manifest-walking logic already tested, no duplicate
-   path construction in `worktree_create.sh`.
-3. For each resolved package path: run the **existing** branch-resolution waterfall
-   (local branch → remote branch → parent branch → new branch) into
-   `<worktree>/<layer>_ws/src/<repo>/`, capturing stderr at every attempt (drop
-   `2>/dev/null`). On total failure: print the collected stderr and hard-stop
-   (`exit 1`) — never `ln -s`. Verify with `git -C <path> rev-parse --git-dir` before
-   attempting (a manifest entry that resolves to a non-git path is a manifest bug, not
-   a fallback case — hard-stop with a distinct error, still no symlink).
-   **Branch names** (decided 2026-09-15, option 2): the owning repo gets
-   `feature/issue-<N>`; every other repo in the worktree gets
-   `feature/<owner-repo>-issue-<N>` (e.g. `feature/cube_bathymetry-issue-111` in
-   `marine_msgs`) so it can never collide with that repo's own issue N, and its PR body
-   references the issue as `owner/repo#N`. `merge_pr.sh` cleanup loops per repo and
-   knows both forms.
-4. Generate `<layer>_ws/build.sh` and `<layer>_ws/test.sh` in the worktree (small,
-   ros2_colcon-specific templates, not a new adapter verb per ADR-0011's
-   "differs-per-type AND the workflow needs it" test — this is worktree-internal
-   tooling, analogous to upstream's generated scripts): source the distro underlay
-   (reuse `_rc_underlay`/`_rc_ros_root` logic from the hosted instance's config),
-   source every layer **below** the target layer's `install/local_setup.bash` from the
-   hosted instance in `layers.txt` order, source the hosted instance's **same-layer**
-   `install/local_setup.bash` as the underlay for untouched siblings, run
-   `colcon build`/`colcon test` scoped to the worktree's own `<layer>_ws` (only the
-   named packages exist in its `src/`), then source the worktree's own
-   `install/local_setup.bash` last so it outranks the hosted instance's same-layer
-   install — canonical colcon overlay precedence, no force-prepend hack needed.
-5. **`worktree_remove.sh`**: extend the "determine which git repo owns this worktree"
-   block (lines 247-274) — when the worktree dir contains `<layer>_ws/src/*` package
-   subdirectories (ros2_colcon shape) instead of being itself a worktree of one repo,
-   loop `git -C <pkg_dir> worktree remove` per package, then `worktree prune` each
-   package's origin repo.
-6. **`merge_pr.sh`**: extend the branch-delete/sync block (lines 389-410) similarly —
-   when the merged worktree is ros2_colcon-shaped, loop branch delete + `pull --ff-only`
-   over each package repo instead of assuming one `project/` repo.
-7. **Smoke test on `p11-jazzy` only** (decided 2026-09-15: `p11-rolling` is not yet
-   buildable): create a package worktree for one real package,
-   run the generated `build.sh` (expect a real, not no-op, colcon build against that
-   package's `src/`), confirm the hosted instance's install is untouched, then
-   `worktree_remove.sh` and confirm the package repo's main checkout is unaffected.
-8. **Hermetic script test** in `.agent/scripts/tests/test_ros2_colcon.sh` (extends the
-   existing suite, ~903 lines): success path (fake layer with two fake git package
-   repos, worktree one, assert the other is untouched and NOT symlinked, assert
-   generated build.sh sources things in the right order); forced-failure path (make
-   `git worktree add` fail for the target repo — e.g. lock the repo or pass a
-   colliding branch — assert hard-stop, stderr is printed, and `[ -L path ]` is false).
-9. **`docs/ROADMAP.md`** row 6: update to "Phase 3 done" with a one-line summary, note
-   remaining steps 4/7 + retiring `ros2_agent_workspace`.
-10. **`.agent/WORKTREE_GUIDE.md`**: add a "ros2_colcon package worktrees" subsection
-    documenting the qualified `--issue`, `--layer`, `--package-repos`, the branch
-    naming for non-owning repos, the generated `build.sh`/`test.sh`, and that the
-    no-symlink rule holds structurally under this design. **`AGENTS.md` is not touched
-    by this PR** (decided 2026-09-15): its worktree section stays type-agnostic; the
-    script's usage error names the required flags and points at the guide, and the
-    per-project `CLAUDE.md` from #172 step 5 will carry the reminder once it exists.
+   - `--issue` accepts `owner/repo#N` for any project type. For `ros2_colcon` it is
+     **required** in that form and `--layer` + `--package-repos` are required; a bare
+     number is a usage error, never a guess. For `single_project` the extra flags are
+     rejected. Validation lives in the `worktree_repos` verb (step 2), not in the script.
+   - `--package-repos` takes package-repo directory names (what `adapter repos` prints),
+     not ROS package names (a documented confusion upstream). `--type layer` is rejected.
+   - Worktree directory: `worktrees/project/<project>/issue-<project>-<owner-repo>-<N>/`.
+     `worktree_enter.sh`, `worktree_remove.sh`, `merge_pr.sh` take the same qualified
+     `--issue` and refuse a bare number for this shape.
+   - **Branch names** (decided 2026-09-15): owning repo `feature/issue-<N>`; every other
+     repo `feature/<owner-repo>-issue-<N>` (e.g. `feature/cube_bathymetry-issue-111` in
+     `marine_msgs`), PR body references `owner/repo#N`.
+
+2. **Two new contract verbs** (ADR-0012, new — ADR-0011 fixes the verb count in its
+   decision text, so this is a substantive change per ADR-0008, not an addendum):
+
+   - `worktree_repos --issue <ref> [--layer <l>] [--package-repos <a,b>]` → one line per
+     repo to worktree: `<origin_repo_abs_path>\t<rel_path_in_worktree>\t<branch>`.
+     Validates its own flags; unknown repo names or a repo outside `--layer` are hard
+     errors naming where it was found. `single_project`: one line
+     (`<project_dir>\t.\tfeature/issue-N`; rejects `--layer`/`--package-repos`).
+     `ros2_colcon`: resolves paths via the existing `adapter_repos` manifest walk
+     (line 618); rel path `<layer>_ws/src/<repo>`.
+   - `worktree_env --worktree <dir>` → sourceable bash, or empty. `single_project`:
+     empty. `ros2_colcon`: the same scrub `adapter_build` does at line 452, distro
+     underlay, every layer **below** the target layer's `install/local_setup.bash`
+     from the hosted instance in `layers.txt` order, the hosted instance's
+     **same-layer** install, then `<dir>/<layer>_ws/install/local_setup.bash` if it
+     exists — canonical colcon precedence, no force-prepend.
+   - `REQUIRED_VERBS` in `.agent/scripts/adapter` → 12; `validate_adapter.sh` and
+     `test_adapter.sh` cover both types.
+
+3. **Per-worktree repo manifest.** `worktree_create.sh` writes the `worktree_repos`
+   output to `<worktree>/.worktree-repos` (gitignored by being outside every repo's
+   tree). Every later script (`enter`, `remove`, `merge_pr`, `list`, `dashboard`) reads
+   that file and never calls the adapter or checks the type. A worktree without the
+   file is a legacy single-repo worktree: treat the root as the one entry.
+
+4. **`worktree_create.sh`**: factor the branch-resolution waterfall (local → remote →
+   parent → new; lines 469-493) into `_wt_add_repo <origin> <dest> <branch>` that
+   captures stderr at every attempt (drop `2>/dev/null`). Loop over `worktree_repos`
+   entries, tracking each success; on any failure print the collected stderr,
+   `git worktree remove --force` every entry added so far, delete the aggregate dir,
+   `exit 1` — never `ln -s`. Before each add, `git -C <origin> rev-parse --git-dir`
+   must succeed (a non-git manifest entry is a manifest bug: distinct error, still no
+   symlink). Then, if `worktree_env` prints anything, write `<worktree>/env.sh`
+   (its output), `build.sh` (`source env.sh` → `colcon build` in `<layer>_ws`) and
+   `test.sh` (`source env.sh` → `colcon build` if no install yet → `source env.sh`
+   again so the fresh overlay is on top → `colcon test` + `colcon test-result`).
+   `env.sh` is the entry point for an issue shell that must retain the overlay; an
+   executed `build.sh` cannot set the caller's environment.
+
+5. **`worktree_remove.sh`**: read `.worktree-repos`; preflight `git status --porcelain`
+   on **every** entry before removing any (unless `--force`); remove each via
+   `git -C <origin> worktree remove` + `prune`; delete the aggregate dir last.
+
+6. **`merge_pr.sh`**: accept `--repo owner/repo` (or a qualified `owner/repo#N` PR
+   ref) and, when given, query only that repo; otherwise today's workspace/`project/`
+   behaviour. Locate the worktree by scanning `worktrees/project/*/*/.worktree-repos`
+   (and legacy) for an entry whose branch matches the PR head. Cleanup rule: delete the
+   merged branch in its own repo and sync that repo; **remove the worktree only when
+   every other entry's branch has no open PR** (`gh pr list --head -R`), otherwise keep
+   it and print which package PRs are still open. Accept both branch-name forms when
+   extracting the issue number.
+
+7. **`worktree_list.sh` / `dashboard.sh`**: parse `issue-<project>-<owner-repo>-<N>`
+   (project names contain hyphens; today's regex rejects them); per worktree, branch
+   and dirty state come from the `.worktree-repos` entries (aggregate dirty = any entry
+   dirty, changed-file count summed); dashboard counts `worktrees/project/*/*`.
+
+8. **`/start-task` SKILL.md**: update the argument-compatibility note. Creation flags
+   (`--layer`, `--package-repos`) are creation-only like `--branch`/`--plan-file`;
+   re-entry uses `--issue owner/repo#N --type project --project <name>` only.
+
+9. **Hermetic tests**: `test_adapter.sh` — both verbs on both types with fake repos.
+   `test_ros2_colcon.sh` — create success (two fake package repos, one worktreed, the
+   other untouched and `[ -L ]` false); **failure on the second repo** rolls back the
+   first and leaves no aggregate dir; multi-package dirty removal refuses before
+   touching anything; `env.sh` sourcing order under a pre-polluted
+   `COLCON_PREFIX_PATH`; `worktree_list.sh --json` reports issue, project, branches
+   and dirty state for a nested worktree; `merge_pr.sh` keeps the worktree while a
+   sibling PR is open (stub `gh`).
+
+10. **Smoke test on `p11-jazzy` only** (decided 2026-09-15): one real package
+    worktree, `build.sh` does a real colcon build, hosted install untouched,
+    `worktree_remove.sh`, main checkout unaffected.
+
+11. **Docs**: `docs/decisions/0012-worktree-composition-is-an-adapter-concern.md`;
+    `docs/ROADMAP.md` row 6 → phase 3 done; `.agent/WORKTREE_GUIDE.md` subsection on
+    package worktrees (qualified `--issue`, `--layer`, `--package-repos`, branch
+    naming, `env.sh`/`build.sh`/`test.sh`, structural no-symlink rule). **`AGENTS.md`
+    untouched** (decided 2026-09-15).
 
 ## Files to Change
 
 | File | Change |
 |---|---|
-| `.agent/scripts/worktree_create.sh` | Add qualified `--issue owner/repo#N`, `--layer`, `--package-repos`; reject `--type layer` and bare issue numbers for this shape; ros2_colcon branch: resolve via `adapter repos`, per-repo worktree-add with captured stderr and hard-stop, owning/non-owning branch names, generate `build.sh`/`test.sh` |
-| `.agent/scripts/worktree_enter.sh` | Accept the qualified `--issue` form and the `issue-<project>-<owner-repo>-<N>` directory name |
-| `.agent/scripts/worktree_remove.sh` | Same qualified `--issue`; detect ros2_colcon-shaped worktree; loop per-repo `git worktree remove` + prune |
-| `.agent/scripts/merge_pr.sh` | Loop per-repo branch delete (both branch-name forms) + sync for ros2_colcon-shaped worktrees |
-| `.agent/scripts/tests/test_ros2_colcon.sh` | New cases: package worktree success path, forced-failure hard-stop (no symlink) |
-| `docs/ROADMAP.md` | Row 6: phase 3 done |
-| `.agent/WORKTREE_GUIDE.md` | New subsection on package worktrees for ros2_colcon |
+| `.agent/scripts/adapter` | `REQUIRED_VERBS` += `worktree_repos worktree_env` |
+| `.agent/project_types/single_project/adapter.sh` | Implement both verbs (single-entry / empty) |
+| `.agent/project_types/ros2_colcon/adapter.sh` | Implement both verbs; share scrub/underlay helpers with `adapter_build` |
+| `.agent/scripts/validate_adapter.sh` | Covered by `REQUIRED_VERBS`; confirm passes |
+| `.agent/scripts/worktree_create.sh` | Qualified `--issue`, `--layer`, `--package-repos`; `_wt_add_repo` loop with captured stderr, rollback, hard-stop; write `.worktree-repos`; generate `env.sh`/`build.sh`/`test.sh` |
+| `.agent/scripts/worktree_enter.sh` | Qualified `--issue`; new directory name |
+| `.agent/scripts/worktree_remove.sh` | Manifest-driven preflight-all-then-remove-all; aggregate dir last |
+| `.agent/scripts/merge_pr.sh` | `--repo`/qualified PR ref; manifest-driven worktree lookup; sibling-PR cleanup rule; both branch forms |
+| `.agent/scripts/worktree_list.sh` | New name regex; per-entry branch/dirty from manifest |
+| `.agent/scripts/dashboard.sh` | Count `worktrees/project/*/*` |
+| `.agent/scripts/_worktree_helpers.sh` | `.worktree-repos` reader with legacy fallback, shared by the five scripts |
+| `.agent/scripts/tests/test_adapter.sh`, `test_ros2_colcon.sh` | Cases in step 9 |
+| `.claude/skills/start-task/SKILL.md` | Compat note (step 8) |
+| `docs/decisions/0012-…md` | New ADR |
+| `docs/ROADMAP.md`, `.agent/WORKTREE_GUIDE.md` | Step 11 |
 
 ## Principles Self-Check
 
 | Principle | Consideration |
 |---|---|
-| Human control and transparency | Hard-stop with full stderr on worktree-add failure — no silent fallback; generated scripts print what they source before running |
-| Enforcement over documentation | No-symlink rule is structural (Design B), plus an explicit `rev-parse --git-dir` check before any worktree-add attempt, backed by the hermetic forced-failure test |
-| Capture decisions, not just implementations | This plan's design comparison and recommendation stand as the record; no separate ADR needed unless the adapter contract itself changes (see ADR Compliance) |
-| A change includes its consequences | worktree_remove.sh, merge_pr.sh, ROADMAP.md, WORKTREE_GUIDE.md all included, not deferred |
-| Only what's needed | No new contract verb; generated build/test scripts instead of a symlink-tree generator |
-| Improve incrementally | Builds on phases 1/2/4 (#235/#237/#248) already merged; doesn't touch single_project |
-| Test what breaks | Forced-failure path is the regression that matters (#598-class bug); prioritized over coverage padding |
-| Workspace vs. project separation | ros2_colcon-specific logic stays behind the adapter/registry type check in the generic scripts, mirroring how `--repo` already branches generically |
-| Primary framework first, portability where free | Bash scripts remain framework-agnostic; no Claude-specific behavior added |
-| The workspace serves the product | This unblocks real per-issue package isolation on the hosted `p11-jazzy`/`p11-rolling` instances, not speculative tooling |
+| Human control and transparency | Hard-stop with full stderr on any worktree-add failure, rollback of partial state; `merge_pr.sh` says which sibling PRs block cleanup |
+| Enforcement over documentation | No-symlink rule structural (B) plus `rev-parse` check and the forced-failure test; verb presence enforced by `validate_adapter.sh` in pre-commit and CI |
+| Capture decisions, not just implementations | Two comparisons above; ADR-0012 records the contract extension |
+| A change includes its consequences | All five single-repo scripts, list/dashboard, skill note, docs and tests are in scope |
+| Only what's needed | Two verbs, not three (arg validation folded into `worktree_repos`); a flat manifest file instead of adapter calls from every script |
+| Improve incrementally | Builds on phases 1/2/4; `single_project` behaviour unchanged, legacy worktrees keep working via fallback |
+| Test what breaks | Second-repo failure, multi-package dirty, polluted env, sibling-PR cleanup — the regressions that matter |
+| Workspace vs. project separation | Generic scripts know nothing about ROS; shape knowledge stays in the adapter |
+| Primary framework first, portability where free | Bash, framework-agnostic; skill note is Claude-only by nature |
+| The workspace serves the product | Real per-issue package isolation on `p11-jazzy` |
 
 ## ADR Compliance
 
 | ADR | Triggered | How addressed |
 |---|---|---|
-| ADR-0002 (worktree isolation) | Yes — this *is* worktree isolation for a new shape | Package worktrees, never branch-switching the main checkout |
-| ADR-0004/0005 (enforcement hierarchy) | Yes — no-symlink rule needs mechanical enforcement | Hermetic test's forced-failure case is the mechanical check; no hook exists (or is needed) since Design B has no code path to guard beyond the explicit `rev-parse` check |
-| ADR-0011 (adapter contract) | Yes — this is adapter-adjacent work | **No new contract verb.** Everything needed (`repos` for path resolution) already exists; the generated build/test scripts are worktree-internal tooling, not a dispatcher-visible verb, so this is not a contract change and needs no ADR addendum (ADR-0008) or supersession. `validate_adapter.sh` is unaffected — confirm it still passes after this change |
-| ADR-0016 equivalent (this repo has no numbered peer — runtime chaining is embedded directly in `adapter_env`/`adapter_build`) | Yes — generated `build.sh`/`test.sh` must chain the same way | Followed explicitly in step 4: `local_setup.bash` sourcing only, ascending order, no baked `install/setup.bash` |
+| ADR-0002 (worktree isolation) | Yes | Package worktrees, never branch-switching the main checkout |
+| ADR-0004/0005 (enforcement hierarchy) | Yes | Hermetic tests + `validate_adapter.sh` are the mechanical checks |
+| ADR-0008 (addendums) | Yes | Adding verbs changes ADR-0011's decision text → new ADR-0012, not an addendum |
+| ADR-0011 (adapter contract) | Yes | Generic scripts no longer branch on type; two verbs added via ADR-0012; `validate_adapter.sh` extended automatically by `REQUIRED_VERBS` |
+| ADR-0016 equivalent (runtime chaining, embedded in `adapter_env`/`adapter_build`) | Yes | `worktree_env` sources `local_setup.bash` only, ascending, scrub first |
 
 ## Consequences
 
-| If we change... | Also update... | Included in plan? |
+| If we change... | Also update... | Included? |
 |---|---|---|
-| `worktree_create.sh` CLI surface (`--issue owner/repo#N`, `--layer`, `--package-repos`) | `.agent/WORKTREE_GUIDE.md`; `/start-task` SKILL.md argument-compatibility note | WORKTREE_GUIDE.md yes; start-task note yes (one line); AGENTS.md deliberately not (see step 10) |
-| Worktree directory / branch naming for package worktrees | `worktree_list.sh` output, `dashboard.sh` worktree listing | Verify both still list the new directory shape correctly; include in the smoke test |
-| `worktree_remove.sh`/`merge_pr.sh` cleanup logic | `.agent/scripts/tests/` for those scripts if such tests exist | Checked: no `test_worktree_remove.sh`/`test_merge_pr.sh` exist today (only `test_ros2_colcon.sh`/`test_adapter.sh`); out of scope to add net-new test scaffolding for scripts that have none — flagged as a pre-existing gap, not created here |
-| ROADMAP.md row 6 | Roadmap phase tracking for steps 4/7 | Yes, row updated; steps 4/7 remain open in the row text |
+| Adapter contract (+2 verbs) | Both adapters, `validate_adapter.sh`, `test_adapter.sh`, ADR-0012, ADR-0011 status line | Yes |
+| `worktree_create.sh` CLI | `WORKTREE_GUIDE.md`, `/start-task` SKILL.md; `AGENTS.md` deliberately not | Yes |
+| Worktree directory/branch naming | `worktree_list.sh`, `dashboard.sh`, `worktree_enter.sh` | Yes |
+| Cleanup logic (`remove`, `merge_pr`) | Tests for those scripts | Yes — new cases in `test_ros2_colcon.sh` with a stubbed `gh`; no standalone suites exist today |
+| ROADMAP.md row 6 | Steps 4/7 remain open in the row text | Yes |
 
 ## Decisions (resolved 2026-09-15 with the owner)
 
-- **AGENTS.md untouched**; documentation goes in `WORKTREE_GUIDE.md` plus a
-  self-explanatory usage error. Per-project `CLAUDE.md` (#172 step 5) later.
-- **Smoke test on `p11-jazzy` only**; `p11-rolling` is not buildable yet.
-- **CLI is explicit, nothing inferred**: `--type project` (no `--type layer`),
-  qualified `--issue owner/repo#N`, required `--layer`, `--package-repos` validated
-  against `adapter repos`. Rationale: upstream #526 (bare issue number resolved to the
-  wrong repo). Depends on #255 (`--repo` → `--project`).
-- **Non-owning repos get `feature/<owner-repo>-issue-<N>`** to avoid branch collisions.
+- Design B (pure overlay) and design D (adapter verbs, after an existing-tool scan
+  found nothing packaged).
+- AGENTS.md untouched; smoke on `p11-jazzy` only; CLI explicit, nothing inferred;
+  non-owning repos branch as `feature/<owner-repo>-issue-<N>`.
 
 ## Open Questions
 
-- None blocking. Implementation detail to settle during coding: whether
-  `worktree_enter.sh --print-path` for this shape should also accept the directory
-  name directly, for dispatchers that already know it.
+- None blocking. During coding: whether `worktree_enter.sh --print-path` should also
+  accept the directory name directly for dispatchers that already know it.
 
 ## Estimated Scope
 
-Single PR. The change set (worktree_create.sh branch, worktree_remove.sh/merge_pr.sh
-loops, one generated-script template, hermetic tests, smoke test, two doc updates) is
-cohesive and none of the pieces are independently mergeable — a partial version (e.g.
-create without remove/merge_pr cleanup) would leave orphaned package worktrees.
+**Two PRs**, both under this issue:
+
+1. Verbs + ADR-0012 + `worktree_create`/`enter`/`remove`/`list`/`dashboard` + tests +
+   docs. Mergeable alone: worktrees can be created, built, listed and removed; merging
+   a package PR meanwhile is `gh pr merge` + `worktree_remove.sh` by hand.
+2. `merge_pr.sh` multi-repo resolution and sibling-PR cleanup rule. Closes #252.
