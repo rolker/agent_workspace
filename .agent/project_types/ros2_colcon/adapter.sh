@@ -635,6 +635,140 @@ adapter_repos() {
     fi
 }
 
+adapter_worktree_repos() {
+    # One line per named package repo: <origin>\t<layer>_ws/src/<pkg>\t<branch>
+    # (ADR-0012). --layer and --package-repos are both required — a package
+    # worktree names its layer and its packages explicitly, nothing inferred.
+    local issue="" layer="" package_repos=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --issue) issue="${2:-}"; shift 2 ;;
+            --layer) layer="${2:-}"; shift 2 ;;
+            --package-repos) package_repos="${2:-}"; shift 2 ;;
+            *) echo "ERROR: worktree_repos: unknown argument '$1'" >&2; return 1 ;;
+        esac
+    done
+    if [ -z "$issue" ]; then
+        echo "ERROR: worktree_repos requires --issue owner/repo#N" >&2
+        return 1
+    fi
+    local owner repo num
+    if [[ "$issue" =~ ^([^/]+)/([^#]+)#([0-9]+)$ ]]; then
+        owner="${BASH_REMATCH[1]}"
+        repo="${BASH_REMATCH[2]}"
+        num="${BASH_REMATCH[3]}"
+    else
+        echo "ERROR: ros2_colcon requires a qualified --issue owner/repo#N (got '$issue')" >&2
+        return 1
+    fi
+    if [ -z "$layer" ] || [ -z "$package_repos" ]; then
+        echo "ERROR: ros2_colcon requires both --layer <l> and --package-repos <a,b>" >&2
+        return 1
+    fi
+    _rc_require_manifest || return 1
+    if ! [[ "$layer" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        echo "ERROR: invalid layer name '$layer'" >&2
+        return 1
+    fi
+    local l found=0
+    while IFS= read -r l; do
+        [ "$l" = "$layer" ] && found=1
+    done < <(_rc_layers)
+    if [ "$found" -ne 1 ]; then
+        echo "ERROR: layer '$layer' is not defined in layers.txt" >&2
+        return 1
+    fi
+    local layer_dir; layer_dir="$(_rc_layer_dir "$layer")"
+    local -a pkgs
+    IFS=',' read -r -a pkgs <<< "$package_repos"
+    local pkg pkg_dir owner_repo branch
+    for pkg in "${pkgs[@]}"; do
+        [ -z "$pkg" ] && continue
+        pkg_dir="$layer_dir/src/$pkg"
+        if [ ! -d "$pkg_dir" ]; then
+            local other_layer other_dir
+            while IFS= read -r other_layer; do
+                [ "$other_layer" = "$layer" ] && continue
+                other_dir="$(_rc_layer_dir "$other_layer")/src/$pkg"
+                if [ -d "$other_dir" ]; then
+                    echo "ERROR: package repo '$pkg' is in layer '$other_layer', not '$layer'" >&2
+                    return 1
+                fi
+            done < <(_rc_layers)
+            echo "ERROR: package repo '$pkg' not found under layer '$layer' ($pkg_dir)" >&2
+            return 1
+        fi
+        if ! git -C "$pkg_dir" rev-parse --git-dir >/dev/null 2>&1; then
+            echo "ERROR: $pkg_dir (layer '$layer', package '$pkg') is not a git repository" >&2
+            return 1
+        fi
+        owner_repo="$(adapter_scope_for_pr "$pkg_dir" 2>/dev/null || true)"
+        if [ "$owner_repo" = "$owner/$repo" ]; then
+            branch="feature/issue-$num"
+        else
+            branch="feature/${repo}-issue-${num}"
+        fi
+        printf '%s\t%s_ws/src/%s\t%s\n' "$pkg_dir" "$layer" "$pkg" "$branch"
+    done
+}
+
+adapter_worktree_env() {
+    # Sourceable bash for a package worktree: scrub, distro underlay, every
+    # layer below the target layer's local_setup.bash (hosted instance,
+    # ascending), the hosted instance's same-layer install, then the
+    # worktree's own <layer>_ws/install/local_setup.bash if built (ADR-0012).
+    # Canonical colcon overlay precedence — no force-prepend (cf. header note
+    # on upstream #427).
+    local worktree=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --worktree) worktree="${2:-}"; shift 2 ;;
+            *) echo "ERROR: worktree_env: unknown argument '$1'" >&2; return 1 ;;
+        esac
+    done
+    if [ -z "$worktree" ]; then
+        echo "ERROR: worktree_env requires --worktree <dir>" >&2
+        return 1
+    fi
+    _rc_require_manifest || return 1
+    local layer="" ws_dir base
+    for ws_dir in "$worktree"/*_ws; do
+        [ -d "$ws_dir" ] || continue
+        base="$(basename "$ws_dir")"
+        layer="${base%_ws}"
+        break
+    done
+    if [ -z "$layer" ]; then
+        echo "ERROR: no <layer>_ws directory found under $worktree" >&2
+        return 1
+    fi
+    local underlay; underlay="$(_rc_underlay)" || return 1
+    echo "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX"
+    printf 'source %q\n' "$underlay"
+    local l layer_dir found_target=false
+    while IFS= read -r l; do
+        if [ "$l" = "$layer" ]; then
+            found_target=true
+            break
+        fi
+        layer_dir="$(_rc_layer_dir "$l")"
+        if [ -f "$layer_dir/install/local_setup.bash" ]; then
+            printf 'source %q\n' "$layer_dir/install/local_setup.bash"
+        fi
+    done < <(_rc_layers)
+    if [ "$found_target" != true ]; then
+        echo "ERROR: layer '$layer' (from $worktree) is not defined in layers.txt" >&2
+        return 1
+    fi
+    layer_dir="$(_rc_layer_dir "$layer")"
+    if [ -f "$layer_dir/install/local_setup.bash" ]; then
+        printf 'source %q\n' "$layer_dir/install/local_setup.bash"
+    fi
+    if [ -f "$worktree/${layer}_ws/install/local_setup.bash" ]; then
+        printf 'source %q\n' "$worktree/${layer}_ws/install/local_setup.bash"
+    fi
+}
+
 adapter_scope_for_pr() {
     # Walk up from a path to the owning package repo's origin owner/repo.
     # Same URL parsing as single_project (proven by its adapter tests).

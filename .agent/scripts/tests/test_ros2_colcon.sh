@@ -200,8 +200,8 @@ test_validator_accepts_ros2_colcon() {
     sb="$(make_sandbox)"
     out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    assert_contains "ros2_colcon complete" "ros2_colcon: all 10 verbs implemented" "$out"
-    assert_contains "single_project still complete" "single_project: all 10 verbs implemented" "$out"
+    assert_contains "ros2_colcon complete" "ros2_colcon: all 12 verbs implemented" "$out"
+    assert_contains "single_project still complete" "single_project: all 12 verbs implemented" "$out"
 }
 
 # ---- Distro resolution ----
@@ -746,6 +746,101 @@ test_scope_for_pr_nested_package() {
     assert_eq "file path resolves via its parent dir" "owner/pkg_a" "$out"
 }
 
+# ---- worktree_repos / worktree_env (ADR-0012) ----
+
+test_worktree_repos_requires_qualified_issue() {
+    echo "TEST: ros2_colcon worktree_repos rejects a bare issue number"
+    local sb out rc=0 proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    populate_layer "$proj" l1 --git pkg_a
+    out="$(run_adapter "$sb" worktree_repos --issue 111 --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the qualified form" "requires a qualified --issue owner/repo#N" "$out"
+}
+
+test_worktree_repos_requires_layer_and_packages() {
+    echo "TEST: ros2_colcon worktree_repos requires both --layer and --package-repos"
+    local sb out rc=0 proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    populate_layer "$proj" l1 --git pkg_a
+    out="$(run_adapter "$sb" worktree_repos --issue owner/repo#111 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names both flags" "requires both --layer" "$out"
+}
+
+test_worktree_repos_owning_and_sibling_branches() {
+    echo "TEST: worktree_repos names the issue's own repo feature/issue-N, siblings qualified"
+    local sb out proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    populate_layer "$proj" l1 --git pkg_a pkg_b
+    out="$(run_adapter "$sb" worktree_repos --issue owner/pkg_a#111 --layer l1 --package-repos pkg_a,pkg_b)" || true
+    assert_eq "owning repo plain, sibling qualified" \
+        "$proj/layers/main/l1_ws/src/pkg_a	l1_ws/src/pkg_a	feature/issue-111
+$proj/layers/main/l1_ws/src/pkg_b	l1_ws/src/pkg_b	feature/pkg_a-issue-111" "$out"
+}
+
+test_worktree_repos_unknown_package_fails() {
+    echo "TEST: worktree_repos names an unknown package repo"
+    local sb out rc=0 proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    populate_layer "$proj" l1 --git pkg_a
+    out="$(run_adapter "$sb" worktree_repos --issue owner/pkg_a#111 --layer l1 --package-repos pkg_a,pkg_ghost 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the missing package" "package repo 'pkg_ghost' not found under layer 'l1'" "$out"
+}
+
+test_worktree_repos_wrong_layer_fails() {
+    echo "TEST: worktree_repos names the layer a package actually lives in"
+    local sb out rc=0 proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    populate_layer "$proj" l1 --git pkg_a
+    populate_layer "$proj" l2 --git pkg_c
+    out="$(run_adapter "$sb" worktree_repos --issue owner/pkg_a#111 --layer l1 --package-repos pkg_c 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the real layer" "'pkg_c' is in layer 'l2', not 'l1'" "$out"
+}
+
+test_worktree_env_for_package_worktree() {
+    echo "TEST: worktree_env sources below-layer installs, same-layer install, then the worktree's own"
+    local sb out proj wt
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    mkdir -p "$proj/layers/main/l1_ws/install"
+    touch "$proj/layers/main/l1_ws/install/local_setup.bash"
+    wt="$sb/wt"
+    mkdir -p "$wt/l2_ws/install"
+    touch "$wt/l2_ws/install/local_setup.bash"
+    out="$(run_adapter "$sb" worktree_env --worktree "$wt")" || true
+    local expected
+    expected="unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+source $sb/rosroot/fakefox/setup.bash
+source $proj/layers/main/l1_ws/install/local_setup.bash
+source $wt/l2_ws/install/local_setup.bash"
+    assert_eq "below-layer, no same-layer install (none built), worktree's own" "$expected" "$out"
+}
+
+test_worktree_env_no_layer_ws_fails() {
+    echo "TEST: worktree_env fails when no <layer>_ws directory exists under the worktree"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_colcon_project "$sb" >/dev/null
+    out="$(run_adapter "$sb" worktree_env --worktree "$sb/empty_wt" 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the missing dir" "no <layer>_ws directory found" "$out"
+}
+
 # ---- sync verb ----
 
 test_sync_pull_skip_fetch() {
@@ -891,6 +986,13 @@ test_test_continues_past_failures
 test_repos_lists_packages_across_layers
 test_repos_unconfigured_fails
 test_scope_for_pr_nested_package
+test_worktree_repos_requires_qualified_issue
+test_worktree_repos_requires_layer_and_packages
+test_worktree_repos_owning_and_sibling_branches
+test_worktree_repos_unknown_package_fails
+test_worktree_repos_wrong_layer_fails
+test_worktree_env_for_package_worktree
+test_worktree_env_no_layer_ws_fails
 test_sync_pull_skip_fetch
 test_validate_passes_matching_checkout
 test_validate_flags_missing_repo

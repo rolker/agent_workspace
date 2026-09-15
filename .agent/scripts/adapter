@@ -19,6 +19,10 @@
 #   project_root    Print the path to the project tree
 #   repos           Print newline-separated name:path for each constituent repo
 #   scope_for_pr    Given a path, print owner/repo for PR targeting
+#   worktree_repos  Print <origin>\t<rel_path_in_worktree>\t<branch> per repo
+#                   to worktree for an issue (ADR-0012)
+#   worktree_env    Print sourceable bash (or nothing) for a package worktree
+#                   built by worktree_repos (ADR-0012)
 #
 # `adapter env` output protocol: each stdout line is a complete shell
 # statement; callers eval the whole stdout. Example caller:
@@ -54,7 +58,7 @@
 set -euo pipefail
 
 # Single source of truth for the contract. validate_adapter.sh imports this.
-REQUIRED_VERBS=(setup sync validate build test install env project_root repos scope_for_pr)
+REQUIRED_VERBS=(setup sync validate build test install env project_root repos scope_for_pr worktree_repos worktree_env)
 
 _ADAPTER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(dirname "$(dirname "$_ADAPTER_SCRIPT_DIR")")"
