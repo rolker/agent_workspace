@@ -73,10 +73,12 @@ PR_NUMBER=""
 WORKTREE_TYPE=""
 REPO_ARG=""
 REPO_KIND=""   # workspace | project | package — derived from --repo when given
+PROJECT_ARG="" # registered project name; selects among package worktrees that
+               # host the same repo+branch under different instances
 NO_ROADMAP_UPDATE=false
 NO_WAIT=false
 
-USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--type workspace|project] [--no-roadmap-update] [--no-wait]"
+USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait]"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -86,6 +88,9 @@ while [[ $# -gt 0 ]]; do
         --repo)
             [[ $# -lt 2 ]] && { echo "ERROR: Missing value for --repo" >&2; exit 2; }
             REPO_ARG="$2"; shift 2 ;;
+        --project)
+            [[ $# -lt 2 ]] && { echo "ERROR: Missing value for --project" >&2; exit 2; }
+            PROJECT_ARG="$2"; shift 2 ;;
         --type)
             [[ $# -lt 2 ]] && { echo "ERROR: Missing value for --type" >&2; exit 2; }
             WORKTREE_TYPE="$2"; shift 2 ;;
@@ -384,6 +389,7 @@ echo "========================================"
 PKG_WT_DIR=""
 PKG_WT_PROJECT=""
 PKG_WT_ISSUE=""
+declare -a _PKG_MATCHES=()
 if [[ -n "$PR_REPO_SLUG" ]]; then
     for _manifest in "$ROOT_DIR"/worktrees/project/*/*/.worktree-repos; do
         [[ -f "$_manifest" ]] || continue
@@ -401,17 +407,34 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
             fi
         done <<< "$_entries"
         if [[ "$_found" == true ]]; then
-            PKG_WT_DIR="$_wtdir"
             # Header fields read directly (not via wt_read_manifest's own
             # side-effect globals, which a `$(...)` call above would discard —
             # see the worktree_list.sh fix in PR 1's post-review pass).
             _header="$(head -n1 "$_manifest")"
-            PKG_WT_PROJECT="$(sed -n 's/^# project=\([^ ]*\).*/\1/p' <<< "$_header")"
-            PKG_WT_ISSUE="$(sed -n 's/.* issue=\([^ ]*\).*/\1/p' <<< "$_header")"
-            break
+            _hdr_project="$(sed -n 's/^# project=\([^ ]*\).*/\1/p' <<< "$_header")"
+            _hdr_issue="$(sed -n 's/.* issue=\([^ ]*\).*/\1/p' <<< "$_header")"
+            # --project narrows to one registered instance; otherwise collect
+            # every match — the same repo+branch can be worktreed under more
+            # than one ros2_colcon instance (each has its own checkout), and
+            # glob order must not silently pick one.
+            if [[ -n "$PROJECT_ARG" ]] && [[ "$_hdr_project" != "$PROJECT_ARG" ]]; then
+                continue
+            fi
+            _PKG_MATCHES+=("$_wtdir"$'\t'"$_hdr_project"$'\t'"$_hdr_issue")
         fi
     done
-    unset _manifest _wtdir _entries _found _m_origin _m_rel _m_branch _m_remote _m_slug _header
+    if [[ "${#_PKG_MATCHES[@]}" -gt 1 ]]; then
+        echo "ERROR: $PR_REPO_SLUG branch '$PR_BRANCH' is worktreed under more than one project:" >&2
+        for _pm in "${_PKG_MATCHES[@]}"; do
+            IFS=$'\t' read -r _pm_dir _pm_project _pm_issue <<< "$_pm"
+            echo "  --project $_pm_project   ($_pm_dir)" >&2
+        done
+        echo "  Pass --project <name> to say which one this merge cleans up. Nothing was merged." >&2
+        exit 2
+    elif [[ "${#_PKG_MATCHES[@]}" -eq 1 ]]; then
+        IFS=$'\t' read -r PKG_WT_DIR PKG_WT_PROJECT PKG_WT_ISSUE <<< "${_PKG_MATCHES[0]}"
+    fi
+    unset _manifest _wtdir _entries _found _m_origin _m_rel _m_branch _m_remote _m_slug _header _hdr_project _hdr_issue _pm _pm_dir _pm_project _pm_issue
 fi
 IS_PACKAGE_PR=false
 [[ -n "$PKG_WT_DIR" ]] && IS_PACKAGE_PR=true
@@ -585,13 +608,21 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
     _CLEANUP_INCOMPLETE=false
     if [[ -n "$_OWN_ORIGIN" ]]; then
         _git_err=""
-        if _git_err="$(git -C "$_OWN_ORIGIN" push origin --delete "$PR_BRANCH" 2>&1)"; then
+        # GitHub may auto-delete the head branch on merge; an absent ref is
+        # the desired end state, not a failure. Only a ref that is still
+        # there (or an unreachable remote) goes through push --delete.
+        _lsr_rc=0
+        git -C "$_OWN_ORIGIN" ls-remote --exit-code --heads origin "$PR_BRANCH" >/dev/null 2>&1 || _lsr_rc=$?
+        if [[ $_lsr_rc -eq 2 ]]; then
+            echo "  ✅ Remote branch already gone ($PR_REPO_SLUG, auto-deleted on merge)"
+        elif _git_err="$(git -C "$_OWN_ORIGIN" push origin --delete "$PR_BRANCH" 2>&1)"; then
             echo "  ✅ Remote branch deleted ($PR_REPO_SLUG)"
         else
             echo "  ⚠️  Could not delete remote branch '$PR_BRANCH' in $PR_REPO_SLUG:" >&2
             echo "     ${_git_err:-no output}" >&2
             _CLEANUP_INCOMPLETE=true
         fi
+        unset _lsr_rc
         if _git_err="$(git -C "$_OWN_ORIGIN" pull --ff-only 2>&1)"; then
             echo "  ✅ $PR_REPO_SLUG synced"
         else
@@ -644,8 +675,16 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
                         echo "  ℹ️  Branch '$_cm_branch' still exists on origin (${_cm_slug:-$_cm_origin}) — leaving the local branch in place"
                         ;;
                     2)
-                        git -C "$_cm_origin" branch -d "$_cm_branch" 2>/dev/null \
-                            && echo "  ✅ Local branch deleted ($_cm_branch, ${_cm_slug:-$_cm_origin})" || true
+                        # Safe delete on purpose: a branch with unmerged work
+                        # (a sibling PR closed without merging, say) is kept
+                        # and the reason surfaced, never silently skipped.
+                        if _cm_err="$(git -C "$_cm_origin" branch -d "$_cm_branch" 2>&1)"; then
+                            echo "  ✅ Local branch deleted ($_cm_branch, ${_cm_slug:-$_cm_origin})"
+                        else
+                            echo "  ⚠️  Kept local branch '$_cm_branch' in ${_cm_slug:-$_cm_origin} — remote is gone but:" >&2
+                            echo "     ${_cm_err:-git branch -d failed with no output}" >&2
+                            echo "     Delete it with: git -C $_cm_origin branch -D $_cm_branch   (if that work is truly abandoned)" >&2
+                        fi
                         ;;
                     *)
                         echo "  ⚠️  Could not check whether '$_cm_branch' still exists on origin (${_cm_slug:-$_cm_origin}) — leaving the local branch in place" >&2

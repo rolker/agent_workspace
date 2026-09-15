@@ -426,6 +426,81 @@ test_repo_conflicting_type_rejected() {
     assert_eq "nothing merged" "false" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
 }
 
+test_same_repo_under_two_instances_requires_project() {
+    echo "TEST: the same repo+branch worktreed under two instances is rejected without --project, selected with it"
+    local sb out rc=0 origin_a origin_a2 wt1 wt2
+    sb="$(make_merge_sandbox)"
+    # Two checkouts of the "same" GitHub repo (same owner/name slug, distinct
+    # local clones), one per instance, each with a package worktree on the
+    # same branch.
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    origin_a2="$sb/origins2/pkg_a"
+    mkdir -p "$(dirname "$origin_a2")"
+    git clone --quiet "$(git -C "$origin_a" remote get-url origin)" "$origin_a2"
+    wt1="$(make_package_worktree "$sb" "worktrees/project/inst1/issue-inst1-owner-pkg_a-560" \
+        inst1 "owner/pkg_a#560" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-560")"
+    wt2="$(make_package_worktree "$sb" "worktrees/project/inst2/issue-inst2-owner-pkg_a-560" \
+        inst2 "owner/pkg_a#560" l1 "$origin_a2|l1_ws/src/pkg_a|feature/issue-560")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 560 "feature/issue-560"
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#560 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 2 without --project" "2" "$rc"
+    assert_contains "lists inst1" "--project inst1" "$out"
+    assert_contains "lists inst2" "--project inst2" "$out"
+    assert_eq "nothing merged" "false" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
+    assert_eq "both worktrees intact" "true" "$([ -d "$wt1" ] && [ -d "$wt2" ] && echo true || echo false)"
+
+    rc=0
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#560 --project inst2 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0 with --project inst2" "0" "$rc"
+    assert_eq "inst2 worktree removed" "false" "$([ -d "$wt2" ] && echo true || echo false)"
+    assert_eq "inst1 worktree untouched" "true" "$([ -d "$wt1" ] && echo true || echo false)"
+}
+
+test_remote_branch_already_gone_is_not_a_failure() {
+    echo "TEST: a head branch GitHub already auto-deleted counts as cleaned up, not incomplete"
+    local sb out rc=0 origin_a wt
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-561" \
+        p11 "owner/pkg_a#561" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-561")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 561 "feature/issue-561"
+    # make_package_worktree creates the branch locally only; it was never
+    # pushed, so origin has no such ref — exactly the auto-deleted shape.
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#561 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "reports the branch as already gone" "Remote branch already gone" "$out"
+    assert_eq "no false incomplete warning" "false" "$(grep -q 'cleanup incomplete' <<< "$out" && echo true || echo false)"
+    assert_eq "worktree removed" "false" "$([ -d "$wt" ] && echo true || echo false)"
+}
+
+test_sweep_reports_unmerged_local_branch() {
+    echo "TEST: the post-removal sweep reports (and keeps) a sibling branch with unmerged work"
+    local sb out rc=0 origin_a origin_b
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    origin_b="$(make_origin_repo "$sb" pkg_b owner)"
+    make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-562" \
+        p11 "owner/pkg_a#562" l1 \
+        "$origin_a|l1_ws/src/pkg_a|feature/issue-562" \
+        "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-562" >/dev/null
+    # pkg_b: an unmerged commit on its branch, never pushed (remote ref absent
+    # → sweep tries branch -d → git refuses).
+    echo abandoned > "$sb/worktrees/project/p11/issue-p11-owner-pkg_a-562/l1_ws/src/pkg_b/abandoned.txt"
+    git -C "$sb/worktrees/project/p11/issue-p11-owner-pkg_a-562/l1_ws/src/pkg_b" add abandoned.txt
+    git -C "$sb/worktrees/project/p11/issue-p11-owner-pkg_a-562/l1_ws/src/pkg_b" -c user.name=t -c user.email=t@t commit --quiet -m abandoned
+    write_pr_view_fixture "$sb" "owner/pkg_a" 562 "feature/issue-562"
+    write_pr_list_fixture "$sb" "owner/pkg_b" "feature/pkg_b-issue-562" 0 2>/dev/null || true
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#562 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "sweep reports the kept branch" "Kept local branch 'feature/pkg_b-issue-562'" "$out"
+    assert_contains "surfaces git's reason" "not fully merged" "$out"
+    assert_eq "pkg_b branch still exists" "true" \
+        "$(git -C "$origin_b" show-ref --verify --quiet refs/heads/feature/pkg_b-issue-562 && echo true || echo false)"
+}
+
 test_orphaned_local_branch_swept_on_final_merge() {
     echo "TEST: a local branch left over from an earlier merge (remote already gone) is swept once the last sibling merges"
     local sb out rc=0 origin_a origin_b wt
@@ -531,6 +606,9 @@ test_sibling_without_remote_fails_closed
 test_own_repo_sync_failure_is_reported
 test_package_repo_without_worktree_never_uses_legacy_cleanup
 test_repo_conflicting_type_rejected
+test_same_repo_under_two_instances_requires_project
+test_remote_branch_already_gone_is_not_a_failure
+test_sweep_reports_unmerged_local_branch
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression

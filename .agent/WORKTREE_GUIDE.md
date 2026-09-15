@@ -199,7 +199,11 @@ make merge-pr PR=57 REPO=owner/marine_msgs
   the workspace/`project/` auto-detection entirely and queries only that repo.
 - The worktree is found by scanning every `.worktree-repos` manifest for an
   entry whose repo and branch match the merged PR — never by parsing the
-  worktree's directory name.
+  worktree's directory name. If the same repo and branch are worktreed under
+  more than one registered instance, the merge is refused until you pass
+  `--project <name>` to say which worktree it cleans up.
+- A head branch GitHub already auto-deleted on merge counts as cleaned up; only
+  a branch that is still on origin goes through `push --delete`.
 - Merging one package repo's PR does **not** remove the worktree by itself.
   After deleting that repo's remote branch and fast-forwarding its own main
   checkout, `merge_pr.sh` checks every *other* repo named in the manifest for
