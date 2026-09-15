@@ -86,6 +86,26 @@ this table tracks the seven migration steps.
 | 6 | Port `ros2_colcon` adapter | #235, #237, #248, #252 | in progress | Pulled forward (target: host project11 with multi-distro). Phase 1 adapter core done (#235, PR #236). Phase 2 real-project smoke done (#237, PR #238): `setup` bootstraps a fresh hosting dir; `p11-jazzy` built end to end. Phase 4 isolation smoke done (#248): `p11-rolling` registered beside `p11-jazzy` from the project's `rolling` manifest branch (uma#384); setup/validate/env/discovery isolate per instance, no adapter changes needed; no Rolling build until the project is ported. Phase 3 (layer/package worktrees) done in PR 1 of #252: `worktree_repos`/`worktree_env` adapter verbs (ADR-0012), `.worktree-repos` manifest, manifest-driven `worktree_create`/`enter`/`remove`/`list`/`dashboard`, hermetic tests, no-symlink structural guarantee. PR 2 of #252 (`merge_pr.sh` multi-repo resolution + sibling-PR cleanup rule) and the real `p11-jazzy` smoke test are the remaining work before closing #252; then steps 4 + 7 and retiring `ros2_agent_workspace` |
 | 7 | Variant-branch refinement | — | planned | `agent/manifest/base` + per-machine variant branches; builds on step 4 |
 
+### Cutover sequence: project11 moves to this workspace
+
+Ordered by dependency, deliberately without dates: each row starts when the
+rows above it are done, and nothing here is time-boxed. Goal (owner,
+2026-09-15): absorb everything `ros2_agent_workspace` does, keep non-ROS
+project types working, and stop the fork diverging. Divergence policy in the
+meantime (recorded in #253): non-ROS changes land here first; the fork takes
+ROS-only fixes.
+
+| Order | Item | Issue | Status | Notes |
+|-------|------|-------|--------|-------|
+| 1 | Package worktrees, PR 2 (`merge_pr.sh`) | #252 | in progress | PR 1 (#254) merged. PR 2 adds repo-qualified PR resolution and the sibling-PR cleanup rule |
+| 2 | Hosted project under `projects/` (step 5) | — | planned | project11 already lives in `projects/p11-jazzy`; this formalizes it and adds the per-project `CLAUDE.md` |
+| 3 | Manifest support (step 4) | — | planned | See step 4 above |
+| 4 | Parity audit of the fork | #253 | planned | Feature by feature against the fork's tree, including its `.agent/knowledge`, work plans and work artifacts, not just scripts. Closed-since-fork issues are accounted for here, as features |
+| 5 | Triage and transfer the fork's open issues | #260 | planned | Four buckets: transfer, close as covered, move to a project11 product repo, close as obsolete. Sonnet classifies, owner adjudicates proposals |
+| 6 | Migrate and triage fork memories | #261 | planned | Auto-memory is path-keyed; copy, then verify each memory against this tree |
+| 7 | Cutover | #262 | planned | ROS machine runs this workspace; fork archived read-only with a pointer here |
+| 8 | Variant-branch refinement (step 7) | — | planned | After cutover, on the live instance |
+
 ## Priority: Improve Local Reviews
 
 The biggest actionable time sink: push -> wait for Copilot review -> triage
