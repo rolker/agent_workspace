@@ -960,6 +960,18 @@ PREOF
 fi
 
 # --- Next steps ---
+# A qualified --issue owner/repo#N (ADR-0012) must be echoed back qualified
+# here too — worktree_enter.sh/worktree_remove.sh resolve a package
+# worktree by matching that exact ref against its .worktree-repos header
+# (find_worktree_by_issue); a bare number is ambiguous for a project that
+# has more than one package worktree and would send the user to the wrong
+# command. --project is included whenever this worktree was created
+# against a registered project, for the same reason.
+_NEXT_STEPS_ISSUE="$ISSUE_NUM"
+[ -n "$ISSUE_OWNER_REPO" ] && _NEXT_STEPS_ISSUE="$ISSUE_REF"
+_NEXT_STEPS_PROJECT_FLAG=""
+[ -n "$PROJECT_NAME" ] && _NEXT_STEPS_PROJECT_FLAG=" --project $PROJECT_NAME"
+
 if [ -n "$SKILL_NAME" ]; then
     echo "To enter this worktree:"
     echo "  source $SCRIPT_DIR/worktree_enter.sh --skill $SKILL_NAME --type $WORKTREE_TYPE"
@@ -968,10 +980,10 @@ if [ -n "$SKILL_NAME" ]; then
     echo "  $SCRIPT_DIR/worktree_remove.sh --skill $SKILL_NAME --type $WORKTREE_TYPE"
 else
     echo "To enter this worktree:"
-    echo "  source $SCRIPT_DIR/worktree_enter.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
+    echo "  source $SCRIPT_DIR/worktree_enter.sh --issue $_NEXT_STEPS_ISSUE --type $WORKTREE_TYPE$_NEXT_STEPS_PROJECT_FLAG"
     echo ""
     echo "When done, remove with:"
-    echo "  $SCRIPT_DIR/worktree_remove.sh --issue $ISSUE_NUM --type $WORKTREE_TYPE"
+    echo "  $SCRIPT_DIR/worktree_remove.sh --issue $_NEXT_STEPS_ISSUE --type $WORKTREE_TYPE$_NEXT_STEPS_PROJECT_FLAG"
 fi
 echo ""
 

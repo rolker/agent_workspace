@@ -279,6 +279,12 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
     assert_eq "manifest written" "true" "$([ -f "$wt/.worktree-repos" ] && echo true || echo false)"
     assert_eq "sourcing env.sh under set -e with no install present still exits 0" \
         "ok" "$(bash -c "set -e; source '$wt/env.sh'; echo ok" 2>&1)"
+    assert_contains "enter banner uses the qualified issue and --project" \
+        "worktree_enter.sh --issue owner/pkg_a#111 --type project --project p11" "$out"
+    assert_contains "remove banner uses the qualified issue and --project" \
+        "worktree_remove.sh --issue owner/pkg_a#111 --type project --project p11" "$out"
+    assert_not_contains "banner never prints the bare number for a package worktree" \
+        "--issue 111 --type project" "$out"
 }
 
 test_worktree_create_rolls_back_on_second_repo_failure() {
