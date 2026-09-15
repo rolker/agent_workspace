@@ -344,6 +344,29 @@ test_sibling_check_failure_fails_closed() {
         "$(git -C "$origin_a" show-ref --verify --quiet refs/heads/feature/issue-555 && echo true || echo false)"
 }
 
+test_sibling_without_remote_fails_closed() {
+    echo "TEST: a sibling whose GitHub remote cannot be resolved fails closed — keeps the worktree"
+    local sb out rc=0 origin_a origin_b wt
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    origin_b="$(make_origin_repo "$sb" pkg_b owner)"
+    # Strip pkg_b's origin so its slug cannot be resolved: the PR check is
+    # unverifiable, which must block cleanup exactly like a gh failure.
+    git -C "$origin_b" remote remove origin
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-556" \
+        p11 "owner/pkg_a#556" l1 \
+        "$origin_a|l1_ws/src/pkg_a|feature/issue-556" \
+        "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-556")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 556 "feature/issue-556"
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#556 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "names the unverifiable sibling" "$origin_b" "$out"
+    assert_contains "says why" "no resolvable GitHub remote" "$out"
+    assert_contains "explains what happened" "COULD NOT CHECK" "$out"
+    assert_eq "worktree kept (fail closed)" "true" "$([ -d "$wt" ] && echo true || echo false)"
+}
+
 test_orphaned_local_branch_swept_on_final_merge() {
     echo "TEST: a local branch left over from an earlier merge (remote already gone) is swept once the last sibling merges"
     local sb out rc=0 origin_a origin_b wt
@@ -445,6 +468,7 @@ test_sibling_pr_open_keeps_worktree
 test_repo_flag_equivalent_to_qualified_ref
 test_conflicting_repo_and_qualified_ref_rejected
 test_sibling_check_failure_fails_closed
+test_sibling_without_remote_fails_closed
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression

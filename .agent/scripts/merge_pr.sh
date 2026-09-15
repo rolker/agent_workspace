@@ -531,7 +531,8 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
             continue
         fi
         if [[ -z "$_m_slug" ]]; then
-            echo "  ⚠️  Sibling entry at $_m_origin has no resolvable GitHub remote — skipping its PR check" >&2
+            # Unverifiable sibling: fail closed, same as a gh failure below.
+            _SIBLING_CHECK_FAILURES+=("${_m_origin} (branch: ${_m_branch}): no resolvable GitHub remote (origin='${_m_remote:-unset}')")
             continue
         fi
         _pr_list_err_file="$(mktemp)"
