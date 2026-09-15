@@ -3,8 +3,8 @@
 # Enter a worktree and set up the environment
 #
 # Usage:
-#   source ./worktree_enter.sh --issue <number> --type workspace|project [--repo <name>] [--repo-slug <slug>]
-#   source ./worktree_enter.sh --skill <name> --type workspace|project [--repo <name>] [--repo-slug <slug>]
+#   source ./worktree_enter.sh --issue <number> --type workspace|project [--project <name>] [--repo-slug <slug>]
+#   source ./worktree_enter.sh --skill <name> --type workspace|project [--project <name>] [--repo-slug <slug>]
 #   ./worktree_enter.sh --issue <number> --type workspace|project --print-path
 #   ./worktree_enter.sh --issue <number> --type workspace|project --shell-snippet
 #
@@ -46,7 +46,7 @@ show_usage() {
     echo "  --issue <number>        Issue number (required, unless --skill is used)"
     echo "  --skill <name>          Skill name (alternative to --issue)"
     echo "  --type <type>           Worktree type: 'workspace' or 'project' (required)"
-    echo "  --repo <name>           Project repo name (for multi-project disambiguation)"
+    echo "  --project <name>        Registered project name (for multi-project disambiguation; alias: --repo)"
     echo "  --repo-slug <slug>      Repository slug (optional, for disambiguation)"
     echo "  --print-path            Print the resolved worktree path and exit"
     echo "  --shell-snippet         Print 'cd' and 'export' commands for one-shot eval"
@@ -80,7 +80,7 @@ while [[ $# -gt 0 ]]; do
             WORKTREE_TYPE="$2"
             shift 2
             ;;
-        --repo)
+        --project|--repo)
             PROJECT_REPO="$2"
             shift 2
             ;;
@@ -132,7 +132,7 @@ if [ "$PRINT_PATH" = true ] && [ "$SHELL_SNIPPET" = true ]; then
     return 1 2>/dev/null || exit 1
 fi
 if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" == "workspace" ]; then
-    echo "Error: --repo is only valid with --type project"
+    echo "Error: --project is only valid with --type project"
     return 1 2>/dev/null || exit 1
 fi
 
@@ -168,9 +168,9 @@ _resolve_base_dirs() {
                 if [ "${#repo_dirs[@]}" -eq 1 ]; then
                     NEW_BASE="${repo_dirs[0]%/}"
                 elif [ "${#repo_dirs[@]}" -gt 1 ]; then
-                    echo "Error: Multiple project repos found. Use --repo to specify:" >&2
+                    echo "Error: Multiple projects registered. Use --project to specify:" >&2
                     for d in "${repo_dirs[@]}"; do
-                        echo "  --repo $(basename "${d%/}")" >&2
+                        echo "  --project $(basename "${d%/}")" >&2
                     done
                     return 1
                 fi

@@ -103,7 +103,7 @@ fi
 - Both scripts exit non-zero on real failures; the `elif`/`else` chain handles each.
 - If `worktree_create.sh` accepts an unknown flag (e.g., a typo), it errors with `Unknown option <flag>` on stderr (in `--print-path-only` mode, set up by an early pre-scan in the script) and exits non-zero.
 
-> Argument compatibility: `worktree_enter.sh` accepts `--issue`/`--skill`/`--type`/`--repo`/`--repo-slug`. `worktree_create.sh` accepts those plus `--branch`/`--parent-issue`/`--plan-file`/`--workflow`, but does **not** accept `--repo` (only `--repo-slug`). For multi-project disambiguation, use `--repo-slug`. Creation-only flags (`--branch`, `--parent-issue`, `--plan-file`, `--workflow`) cause `worktree_enter.sh` to reject the call as "Unknown option", which makes the `if` branch fail and the `elif` (creation) branch run. That's the correct behavior: those flags only make sense at creation time.
+> Argument compatibility: `worktree_enter.sh` accepts `--issue`/`--skill`/`--type`/`--project`/`--repo-slug`. `worktree_create.sh` accepts those plus `--branch`/`--parent-issue`/`--plan-file`/`--workflow`. For multi-project disambiguation, use `--project <name>` (a registered project name; `--repo` is a deprecated alias) — both scripts accept it. `--repo-slug` only overrides the repository slug used for naming. Creation-only flags (`--branch`, `--parent-issue`, `--plan-file`, `--workflow`) cause `worktree_enter.sh` to reject the call as "Unknown option", which makes the `if` branch fail and the `elif` (creation) branch run. That's the correct behavior: those flags only make sense at creation time.
 
 ### 4. Enter the worktree
 

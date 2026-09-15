@@ -79,7 +79,7 @@ this table tracks the seven migration steps.
 | Step | Item | Issue | Status | Notes |
 |------|------|-------|--------|-------|
 | 1 | Adapter contract + `single_project` adapter | #210 | done | 10-verb contract (ADR-0011); pure facade over the pre-adapter scripts (PR #226) |
-| 2 | Multi-tenant hosting: `projects/<name>/` + registry | #227 | done | `.agent/projects.local`, `--project`/cwd discovery, worktree `--repo` wiring (PR #232) |
+| 2 | Multi-tenant hosting: `projects/<name>/` + registry | #227 | done | `.agent/projects.local`, `--project`/cwd discovery, worktree `--project` wiring (was `--repo`, #255) (PR #232) |
 | 3 | `multi_repo` adapter | — | deferred | Re-sequenced 2026-07-24 (see #172 comment): waits for a sibling-repos project to materialize |
 | 4 | Manifest support | — | planned | `.project_config` schema + `agent project add --manifest-repo/--manifest-ref`; standalone manifest repos first, embedded branches later. Role variants (dev/operator/robot) designed here with step 7 |
 | 5 | Migrate hosted project into `projects/` | — | planned | Retire the legacy `project/` symlink; unlocks project-rooted sessions with layered CLAUDE.md |

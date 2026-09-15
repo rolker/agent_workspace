@@ -71,7 +71,7 @@ show_usage() {
     echo "  --issue <number>      Issue number (required, unless --skill is used)"
     echo "  --skill <name>        Skill name (alternative to --issue; allowed: ${ALLOWED_SKILLS[*]})"
     echo "  --type <type>         Worktree type: 'workspace' or 'project' (required)"
-    echo "  --repo <name>         Registered project name from .agent/projects.local"
+    echo "  --project <name>      Registered project name from .agent/projects.local (alias: --repo)"
     echo "                        (--type project only; default: legacy project/, or the"
     echo "                        single registered project when project/ is absent)"
     echo "  --repo-slug <slug>    Repository slug for naming (auto-detected if not provided)"
@@ -109,9 +109,9 @@ while [[ $# -gt 0 ]]; do
             WORKTREE_TYPE="$2"
             shift 2
             ;;
-        --repo)
+        --project|--repo)
             if [[ -z "${2:-}" || "$2" == -* ]]; then
-                echo "Error: --repo requires a project name"
+                echo "Error: --project requires a project name"
                 show_usage
                 exit 1
             fi
@@ -241,17 +241,18 @@ if [ -n "$WORKFLOW" ]; then
 fi
 
 if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" != "project" ]; then
-    echo "Error: --repo is only valid with --type project"
+    echo "Error: --project is only valid with --type project"
     exit 1
 fi
 
-# For project type, resolve the project checkout: an explicit --repo name
+# For project type, resolve the project checkout: an explicit --project name
 # from the registry, the legacy project/ symlink, or — when project/ is
 # absent — the single registered project (issue #227).
 PROJECT_NAME=""
 if [ "$WORKTREE_TYPE" == "project" ]; then
     PROJECT_DIR=""
     if [ -n "$PROJECT_REPO" ]; then
+        # --project (alias: --repo)
         _RC=0
         _ENTRY="$(registry_lookup "$ROOT_DIR" "$PROJECT_REPO")" || _RC=$?
         if [ "$_RC" -ne 0 ]; then
@@ -281,8 +282,8 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
             PROJECT_DIR="$(cut -f3 <<< "$_ENTRIES")"
             echo "Using registered project '$PROJECT_NAME' ($PROJECT_DIR)"
         elif [ "$_COUNT" -gt 1 ]; then
-            echo "Error: Multiple projects registered. Use --repo to specify:"
-            cut -f1 <<< "$_ENTRIES" | sed 's/^/  --repo /'
+            echo "Error: Multiple projects registered. Use --project to specify:"
+            cut -f1 <<< "$_ENTRIES" | sed 's/^/  --project /'
             exit 1
         else
             echo "Error: project/ is not configured."
@@ -307,10 +308,10 @@ if [ -z "$REPO_SLUG" ]; then
 
     if [ -n "$PROJECT_NAME" ]; then
         # Registry-selected project: the registry name is the worktree repo
-        # key (worktrees/project/<name>/ — matches enter/remove --repo), so
+        # key (worktrees/project/<name>/ — matches enter/remove --project), so
         # it must be used raw. Its charset is validated by the registry
         # parser and is a subset of what wt_project_base accepts; sanitizing
-        # '.'/'-' to '_' here would break enter/remove --repo <name> lookup.
+        # '.'/'-' to '_' here would break enter/remove --project <name> lookup.
         GH_REPO_SLUG=$(extract_gh_slug "$REMOTE_URL")
         REPO_SLUG="$PROJECT_NAME"
     else
