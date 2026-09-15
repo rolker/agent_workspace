@@ -501,6 +501,43 @@ test_sweep_reports_unmerged_local_branch() {
         "$(git -C "$origin_b" show-ref --verify --quiet refs/heads/feature/pkg_b-issue-562 && echo true || echo false)"
 }
 
+test_failed_worktree_removal_marks_cleanup_incomplete() {
+    echo "TEST: a failed worktree removal (dirty nested checkout) is reported as cleanup incomplete, not success"
+    local sb out rc=0 origin_a wt
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-563" \
+        p11 "owner/pkg_a#563" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-563")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 563 "feature/issue-563"
+    echo dirty > "$wt/l1_ws/src/pkg_a/uncommitted.txt"
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#563 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0 (merge itself succeeded)" "0" "$rc"
+    assert_contains "removal failure surfaced" "Worktree removal failed" "$out"
+    assert_contains "banner says cleanup incomplete" "cleanup incomplete" "$out"
+    assert_eq "banner does not claim cleaned up" "false" "$(grep -q 'cleaned up, and synced' <<< "$out" && echo true || echo false)"
+    assert_eq "worktree still present" "true" "$([ -d "$wt" ] && echo true || echo false)"
+}
+
+test_kept_worktree_banner() {
+    echo "TEST: when a sibling PR keeps the worktree, the banner says so rather than 'cleaned up'"
+    local sb out rc=0 origin_a origin_b
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    origin_b="$(make_origin_repo "$sb" pkg_b owner)"
+    make_package_worktree "$sb" "worktrees/project/p11/issue-p11-owner-pkg_a-564" \
+        p11 "owner/pkg_a#564" l1 \
+        "$origin_a|l1_ws/src/pkg_a|feature/issue-564" \
+        "$origin_b|l1_ws/src/pkg_b|feature/pkg_b-issue-564" >/dev/null
+    write_pr_view_fixture "$sb" "owner/pkg_a" 564 "feature/issue-564"
+    write_pr_list_fixture "$sb" "owner/pkg_b" "feature/pkg_b-issue-564" 1
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#564 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "banner says worktree kept" "worktree kept until the sibling package PR" "$out"
+    assert_eq "banner does not claim cleaned up" "false" "$(grep -q 'cleaned up, and synced' <<< "$out" && echo true || echo false)"
+}
+
 test_orphaned_local_branch_swept_on_final_merge() {
     echo "TEST: a local branch left over from an earlier merge (remote already gone) is swept once the last sibling merges"
     local sb out rc=0 origin_a origin_b wt
@@ -609,6 +646,8 @@ test_repo_conflicting_type_rejected
 test_same_repo_under_two_instances_requires_project
 test_remote_branch_already_gone_is_not_a_failure
 test_sweep_reports_unmerged_local_branch
+test_failed_worktree_removal_marks_cleanup_incomplete
+test_kept_worktree_banner
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression

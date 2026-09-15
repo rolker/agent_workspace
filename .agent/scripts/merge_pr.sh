@@ -606,6 +606,7 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
     # the cleanup incomplete (final summary below), rather than letting the
     # script go on to report an unqualified success.
     _CLEANUP_INCOMPLETE=false
+    _WORKTREE_KEPT=false
     if [[ -n "$_OWN_ORIGIN" ]]; then
         _git_err=""
         # GitHub may auto-delete the head branch on merge; an absent ref is
@@ -637,6 +638,7 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
     fi
 
     if [[ "${#_SIBLING_BLOCKERS[@]}" -gt 0 ]] || [[ "${#_SIBLING_CHECK_FAILURES[@]}" -gt 0 ]]; then
+        _WORKTREE_KEPT=true
         echo "  ⚠️  Keeping worktree $PKG_WT_DIR — sibling package PR(s) still open or unchecked:"
         for _b in "${_SIBLING_BLOCKERS[@]}"; do
             echo "     - $_b"
@@ -694,6 +696,7 @@ if [[ "$IS_PACKAGE_PR" == true ]]; then
             unset _cm_origin _cm_rel _cm_branch _cm_remote _cm_slug _cm_lsremote_rc
         else
             echo "  ⚠️  Worktree removal failed — check for uncommitted changes" >&2
+            _CLEANUP_INCOMPLETE=true
         fi
     fi
     unset _entries
@@ -716,6 +719,7 @@ else
             echo "  ✅ Worktree removed"
         else
             echo "  ⚠️  Worktree removal failed — check for uncommitted changes" >&2
+            _CLEANUP_INCOMPLETE=true
         fi
     fi
 
@@ -747,6 +751,8 @@ echo ""
 echo "========================================"
 if [[ "${_CLEANUP_INCOMPLETE:-false}" == true ]]; then
     echo "⚠️  Done: PR #${PR_NUMBER} merged, but cleanup incomplete — see warnings above"
+elif [[ "${_WORKTREE_KEPT:-false}" == true ]]; then
+    echo "✅ Done: PR #${PR_NUMBER} merged; worktree kept until the sibling package PR(s) above are resolved"
 else
     echo "✅ Done: PR #${PR_NUMBER} merged, cleaned up, and synced"
 fi

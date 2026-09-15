@@ -223,8 +223,15 @@ make merge-pr PR=57 REPO=owner/marine_msgs
   unchecked), `merge_pr.sh` sweeps *every* named repo's local branch, not just
   the one just merged — a repo whose PR merged earlier, while a sibling PR
   was still open, only had its remote branch deleted at the time (its local
-  branch was deferred, since it was still checked out); this sweep is what
-  actually deletes it, once the whole worktree — and its checkout — is gone.
+  branch was deferred, since it was still checked out). The sweep deletes a
+  local branch only when its remote ref is gone *and* git's safe delete
+  accepts it; a branch still on origin, or one holding unmerged work (a
+  sibling PR closed without merging), is reported and left in place with the
+  command to delete it by hand.
+- The final banner says what actually happened: cleaned up and synced; merged
+  with the worktree kept pending sibling PRs; or merged with cleanup
+  incomplete (a failed branch delete, sync, or worktree removal is never
+  reported as success).
 - The roadmap update (`update_roadmap.sh`) is skipped for a package-repo PR
   with a one-line note — the roadmap file lives in this repo, not the package
   repo, so there's nothing to commit there.
