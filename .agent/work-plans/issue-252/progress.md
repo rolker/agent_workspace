@@ -26,3 +26,25 @@ Resolved the three open questions with the owner: AGENTS.md untouched, p11-jazzy
 smoke, explicit CLI (`--type project --project <name> --issue owner/repo#N --layer
 --package-repos`, nothing inferred) with qualified branch names in non-owning repos.
 Depends on #255 (`--repo` → `--project` rename).
+
+## External Review
+**Status**: complete
+**When**: 2026-09-15 15:10
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**PR**: #254 — 1 review(s), 8 valid, 0 false positives
+**CI**: all-pass
+
+All eight Copilot comments target `plan.md` (plan-only PR, no implementation
+yet). Each was verified against the cited script lines and holds; the plan
+needs revision before `/review-plan`.
+
+### Actions
+- [ ] Decide (owner): ADR-0011 conflict — steps 1/5/6 branch generic scripts on `ros2_colcon`; ADR's own verb test ("workflow needs it, how differs per type") says add adapter verbs (e.g. `worktree_add` / `worktree_remove` / `worktree_env`, with `single_project` implementing today's single-repo path) or record a superseding decision
+- [ ] Plan step 6: `merge_pr.sh` resolution starts too early to fix at lines 389-410 — it queries only workspace + `project/` remotes and parses `feature/issue-N`; package PRs (other repos, `feature/<owner-repo>-issue-N`) need repo-qualified PR lookup, aggregate-worktree lookup, and a rule for cleanup when sibling package PRs are still open
+- [ ] Plan step 3: multi-repo creation must roll back earlier successful `git worktree add`s on a later failure; hermetic test must fail on the *second* repo
+- [ ] Plan step 4: generated `build.sh`/`test.sh` must `unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX` before sourcing the underlay (mirror `adapter_build` line 452); add a polluted-shell ordering test
+- [ ] Plan step 4: `test.sh` must source the worktree `install/local_setup.bash` *before* `colcon test` (mirror `adapter_test`); provide a sourceable `env.sh` since an executed script cannot set the caller's env
+- [ ] Plan step 5: `worktree_remove.sh` dirty check (lines 228-240) runs `git status` at the aggregate root, which is not a repo — preflight every nested package repo before removing any, remove the aggregate dir last; add multi-package dirty case to hermetic suite
+- [ ] Files to Change: add `.claude/skills/start-task/SKILL.md` (compat note) and state that re-entry uses the `--issue owner/repo#N --type project --project <name>` form only, consistent with existing creation-only flags
+- [ ] Files to Change: add `worktree_list.sh` (regex at lines 118-125 rejects `issue-<project>-<owner-repo>-<N>` — hyphens in project names — and lines 238-248 run git at the aggregate root) and `dashboard.sh` (lines 337-346 count only `$PROJECT_DIR/worktrees`); hermetic test for issue metadata + dirty state of nested worktrees
