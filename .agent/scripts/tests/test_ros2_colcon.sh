@@ -391,6 +391,64 @@ test_worktree_enter_disambiguates_by_qualified_issue() {
     assert_contains "gives the qualified ref for pkg_c" "--issue owner/pkg_c#555" "$out"
 }
 
+# Replace the sandbox's _issue_helpers.sh with a stub that records the
+# --repo it's called with (issue_lookup) to $ISSUE_LOOKUP_LOG, instead of
+# doing any real lookup. extract_gh_slug is the real implementation (still
+# needed by worktree_create.sh's own remote-URL parsing).
+stub_issue_lookup_recorder() {
+    local sb="$1"
+    cat > "$sb/.agent/scripts/_issue_helpers.sh" << 'STUBEOF'
+extract_gh_slug() {
+    local url="$1" slug
+    slug=$(echo "$url" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
+    if [[ "$slug" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
+        echo "$slug"
+    fi
+}
+issue_lookup() {
+    local issue_num="" repo_slug="" root_dir=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --repo) repo_slug="$2"; shift 2 ;;
+            --root) root_dir="$2"; shift 2 ;;
+            *) issue_num="$1"; shift ;;
+        esac
+    done
+    printf '%s\n' "$repo_slug" >> "${ISSUE_LOOKUP_LOG:?}"
+    ISSUE_TITLE="stub title"
+    ISSUE_STATE="OPEN"
+    ISSUE_BODY=""
+    return 0
+}
+STUBEOF
+}
+
+test_worktree_create_issue_lookup_uses_qualified_repo() {
+    echo "TEST: a qualified --issue looks up its own repo, not the project/workspace remote"
+    local sb out rc=0 proj log
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    # The workspace stand-in has its OWN remote — pre-#252 code would have
+    # resolved the lookup repo from this (or the registered project's own
+    # remote, which for ros2_colcon is the hosting dir and isn't a git repo
+    # at all) instead of the issue's qualified owner/repo.
+    git -C "$sb" remote add origin "git@github.com:rolker/agent_workspace.git"
+    stub_issue_lookup_recorder "$sb"
+    log="$sb/issue_lookup.log"
+    : > "$log"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" ISSUE_LOOKUP_LOG="$log" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue rolker/ros2_network_monitor#27 \
+        --type project --project p11 --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "issue_lookup called with exactly the qualified repo" \
+        "rolker/ros2_network_monitor" "$(< "$log")"
+    assert_contains "printed issue line names the qualified ref" \
+        "Issue rolker/ros2_network_monitor#27:" "$out"
+    assert_not_contains "workspace remote's repo never used" "rolker/agent_workspace" "$(< "$log")"
+}
+
 # ---- Contract & validator ----
 
 test_validator_accepts_ros2_colcon() {
@@ -1188,6 +1246,7 @@ test_worktree_create_rolls_back_on_second_repo_failure
 test_worktree_remove_multi_package_dirty_refuses_all
 test_worktree_list_json_reports_package_worktree
 test_worktree_enter_disambiguates_by_qualified_issue
+test_worktree_create_issue_lookup_uses_qualified_repo
 test_distro_from_bootstrap_yaml
 test_distro_from_project_config
 test_distro_unresolvable_fails

@@ -420,13 +420,30 @@ fi
 # --- Validate issue and fetch title ---
 ISSUE_TITLE=""
 ISSUE_STATE=""
+# Display form for messages: the qualified ref when --issue was qualified,
+# else the bare number (unchanged from before ADR-0012).
+if [ -n "$ISSUE_OWNER_REPO" ]; then
+    ISSUE_DISPLAY_REF="${ISSUE_OWNER_REPO}#${ISSUE_NUM}"
+else
+    ISSUE_DISPLAY_REF="#${ISSUE_NUM}"
+fi
 if [ -n "$ISSUE_NUM" ]; then
-    # Look up issue via git-bug (with sync-on-miss) then gh fallback
-    _LOOKUP_REPO="${GH_REPO_SLUG:-}"
-    if [ -z "$_LOOKUP_REPO" ]; then
-        # Best-effort: extract from workspace remote
-        _WS_URL=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
-        _LOOKUP_REPO=$(extract_gh_slug "$_WS_URL")
+    # A qualified --issue owner/repo#N names its own repo explicitly — the
+    # lookup, the PR-not-issue check, and any error/status message must all
+    # target that repo, never the workspace remote or an auto-detected
+    # GH_REPO_SLUG (which is the *project*'s repo, not necessarily the
+    # issue's — e.g. a package worktree's owning repo can differ from the
+    # registered project's own remote).
+    if [ -n "$ISSUE_OWNER_REPO" ]; then
+        _LOOKUP_REPO="$ISSUE_OWNER_REPO"
+    else
+        # Look up issue via git-bug (with sync-on-miss) then gh fallback
+        _LOOKUP_REPO="${GH_REPO_SLUG:-}"
+        if [ -z "$_LOOKUP_REPO" ]; then
+            # Best-effort: extract from workspace remote
+            _WS_URL=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
+            _LOOKUP_REPO=$(extract_gh_slug "$_WS_URL")
+        fi
     fi
     if [ -n "$_LOOKUP_REPO" ]; then
         issue_lookup "$ISSUE_NUM" --repo "$_LOOKUP_REPO" --root "$ROOT_DIR" || true
@@ -437,28 +454,29 @@ if [ -n "$ISSUE_NUM" ]; then
         ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state --jq '.state' 2>/dev/null || echo "")
     fi
 
-    # PR check stays gh-only — git-bug doesn't track PRs
+    # PR check stays gh-only — git-bug doesn't track PRs. Same repo as the
+    # lookup above: the qualified ref's own repo, or the fallback chain.
     if command -v gh &>/dev/null; then
         _PR_CHECK=""
-        if [ -n "$GH_REPO_SLUG" ]; then
-            _PR_CHECK=$(gh pr view "$ISSUE_NUM" --repo "$GH_REPO_SLUG" --json state --jq '.state' 2>/dev/null || echo "")
+        if [ -n "$_LOOKUP_REPO" ]; then
+            _PR_CHECK=$(gh pr view "$ISSUE_NUM" --repo "$_LOOKUP_REPO" --json state --jq '.state' 2>/dev/null || echo "")
         else
             _PR_CHECK=$(gh pr view "$ISSUE_NUM" --json state --jq '.state' 2>/dev/null || echo "")
         fi
         if [ -n "$_PR_CHECK" ]; then
-            echo "Error: #$ISSUE_NUM is a pull request, not an issue."
+            echo "Error: $ISSUE_DISPLAY_REF is a pull request, not an issue."
             echo "Use the original issue number instead."
             exit 1
         fi
     fi
 
     if [ -n "$ISSUE_TITLE" ]; then
-        echo "Issue #$ISSUE_NUM: $ISSUE_TITLE"
+        echo "Issue $ISSUE_DISPLAY_REF: $ISSUE_TITLE"
         if [ "$ISSUE_STATE" = "CLOSED" ]; then
-            echo "   ⚠️  Warning: Issue #$ISSUE_NUM is CLOSED"
+            echo "   ⚠️  Warning: Issue $ISSUE_DISPLAY_REF is CLOSED"
         fi
     else
-        echo "⚠️  Could not fetch issue #$ISSUE_NUM title (offline or issue does not exist)"
+        echo "⚠️  Could not fetch issue $ISSUE_DISPLAY_REF title (offline or issue does not exist)"
         echo "   Proceeding anyway — verify the issue number is correct."
     fi
 else
@@ -541,7 +559,7 @@ if [ -n "$SKILL_NAME" ]; then
     echo "  Skill:      $SKILL_NAME"
     echo "  ID:         $SYNTHETIC_ID"
 else
-    echo "  Issue:      #$ISSUE_NUM"
+    echo "  Issue:      $ISSUE_DISPLAY_REF"
 fi
 echo "  Repository: $REPO_SLUG"
 echo "  Type:       $WORKTREE_TYPE"
@@ -747,7 +765,7 @@ echo "========================================"
 if [ -n "$SKILL_NAME" ]; then
     echo "  Skill: $SKILL_NAME (ID: $SYNTHETIC_ID)"
 elif [ -n "$ISSUE_TITLE" ]; then
-    echo "  Issue #$ISSUE_NUM: $ISSUE_TITLE"
+    echo "  Issue $ISSUE_DISPLAY_REF: $ISSUE_TITLE"
 fi
 [ -n "$PARENT_BRANCH" ] && echo "  Parent: #$PARENT_ISSUE_NUM ($PARENT_BRANCH)"
 [ -n "$WORKFLOW" ] && echo "  Workflow: $WORKFLOW"
