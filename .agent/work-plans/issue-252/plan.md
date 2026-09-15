@@ -121,11 +121,16 @@ stderr, hard-stop, never `ln -s`) is still implemented explicitly.
    - `REQUIRED_VERBS` in `.agent/scripts/adapter` → 12; `validate_adapter.sh` and
      `test_adapter.sh` cover both types.
 
-3. **Per-worktree repo manifest.** `worktree_create.sh` writes the `worktree_repos`
-   output to `<worktree>/.worktree-repos` (gitignored by being outside every repo's
-   tree). Every later script (`enter`, `remove`, `merge_pr`, `list`, `dashboard`) reads
-   that file and never calls the adapter or checks the type. A worktree without the
-   file is a legacy single-repo worktree: treat the root as the one entry.
+3. **Per-worktree repo manifest.** `worktree_create.sh` writes
+   `<worktree>/.worktree-repos` (outside every repo's tree, so never committed): a
+   header `# project=<name> issue=<owner/repo#N> layer=<l>` followed by the
+   `worktree_repos` output. Every later script (`enter`, `remove`, `merge_pr`, `list`,
+   `dashboard`) reads that file and never calls the adapter or checks the type.
+   **Directory names are never parsed for this shape** — project, issue and owning
+   repo come from the header, which sidesteps the hyphen ambiguity in
+   `issue-<project>-<owner-repo>-<N>` (project, owner and repo names can all contain
+   hyphens). A worktree without the file is a legacy single-repo worktree: today's
+   regex and root-as-the-one-entry fallback apply.
 
 4. **`worktree_create.sh`**: factor the branch-resolution waterfall (local → remote →
    parent → new; lines 469-493) into `_wt_add_repo <origin> <dest> <branch>` that
@@ -154,10 +159,13 @@ stderr, hard-stop, never `ln -s`) is still implemented explicitly.
    it and print which package PRs are still open. Accept both branch-name forms when
    extracting the issue number.
 
-7. **`worktree_list.sh` / `dashboard.sh`**: parse `issue-<project>-<owner-repo>-<N>`
-   (project names contain hyphens; today's regex rejects them); per worktree, branch
-   and dirty state come from the `.worktree-repos` entries (aggregate dirty = any entry
-   dirty, changed-file count summed); dashboard counts `worktrees/project/*/*`.
+7. **`worktree_list.sh` / `dashboard.sh`**: when `.worktree-repos` exists, issue,
+   project and owning repo come from its header (step 3), and branch/dirty state from
+   its entries (aggregate dirty = any entry dirty, changed-file count summed); the
+   directory-name regex is only the legacy path. Dashboard counts
+   `worktrees/project/*/*`. **Remove `wt_layer_branch`/`wt_layer_is_dirty`** from
+   `_worktree_helpers.sh` (added for #25, zero callers, and they encode design A's
+   symlink-skipping layout that design B rejects).
 
 8. **`/start-task` SKILL.md**: update the argument-compatibility note. Creation flags
    (`--layer`, `--package-repos`) are creation-only like `--branch`/`--plan-file`;
@@ -177,6 +185,10 @@ stderr, hard-stop, never `ln -s`) is still implemented explicitly.
     `worktree_remove.sh`, main checkout unaffected.
 
 11. **Docs**: `docs/decisions/0012-worktree-composition-is-an-adapter-concern.md`;
+    ADR-0011 gets an ADR-0008 cross-reference addendum in its Status section
+    ("amended by ADR-0012: +2 verbs") so its 10-verb table does not go stale;
+    `.agent/knowledge/principles_review_guide.md` line 37 ("10-verb contract") and its
+    ADR table updated per that guide's own consequences map;
     `docs/ROADMAP.md` row 6 → phase 3 done; `.agent/WORKTREE_GUIDE.md` subsection on
     package worktrees (qualified `--issue`, `--layer`, `--package-repos`, branch
     naming, `env.sh`/`build.sh`/`test.sh`, structural no-symlink rule). **`AGENTS.md`
@@ -196,10 +208,12 @@ stderr, hard-stop, never `ln -s`) is still implemented explicitly.
 | `.agent/scripts/merge_pr.sh` | `--repo`/qualified PR ref; manifest-driven worktree lookup; sibling-PR cleanup rule; both branch forms |
 | `.agent/scripts/worktree_list.sh` | New name regex; per-entry branch/dirty from manifest |
 | `.agent/scripts/dashboard.sh` | Count `worktrees/project/*/*` |
-| `.agent/scripts/_worktree_helpers.sh` | `.worktree-repos` reader with legacy fallback, shared by the five scripts |
+| `.agent/scripts/_worktree_helpers.sh` | `.worktree-repos` writer/reader with legacy fallback, shared by the five scripts; delete dead `wt_layer_branch`/`wt_layer_is_dirty` |
 | `.agent/scripts/tests/test_adapter.sh`, `test_ros2_colcon.sh` | Cases in step 9 |
 | `.claude/skills/start-task/SKILL.md` | Compat note (step 8) |
 | `docs/decisions/0012-…md` | New ADR |
+| `docs/decisions/0011-project-type-adapter-contract.md` | Status-section cross-reference addendum (ADR-0008) |
+| `.agent/knowledge/principles_review_guide.md` | "10-verb" wording and ADR table |
 | `docs/ROADMAP.md`, `.agent/WORKTREE_GUIDE.md` | Step 11 |
 
 ## Principles Self-Check
@@ -231,7 +245,7 @@ stderr, hard-stop, never `ln -s`) is still implemented explicitly.
 
 | If we change... | Also update... | Included? |
 |---|---|---|
-| Adapter contract (+2 verbs) | Both adapters, `validate_adapter.sh`, `test_adapter.sh`, ADR-0012, ADR-0011 status line | Yes |
+| Adapter contract (+2 verbs) | Both adapters, `validate_adapter.sh`, `test_adapter.sh`, ADR-0012, ADR-0011 status addendum, `principles_review_guide.md` | Yes |
 | `worktree_create.sh` CLI | `WORKTREE_GUIDE.md`, `/start-task` SKILL.md; `AGENTS.md` deliberately not | Yes |
 | Worktree directory/branch naming | `worktree_list.sh`, `dashboard.sh`, `worktree_enter.sh` | Yes |
 | Cleanup logic (`remove`, `merge_pr`) | Tests for those scripts | Yes — new cases in `test_ros2_colcon.sh` with a stubbed `gh`; no standalone suites exist today |

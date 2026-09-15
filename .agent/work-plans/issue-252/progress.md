@@ -135,7 +135,7 @@ done, to avoid a second review round-trip.
 
 - [ ] Add "ADR-0011 status line cross-reference to ADR-0012" as an explicit
       action in Approach step 11 and Files to Change.
-- [ ] Add `.agent/knowledge/principles_review_guide.md` (verb count +
+- [x] Add `.agent/knowledge/principles_review_guide.md` (verb count +
       ADR-0012 row) to Files to Change.
 - [ ] Decide on and record disposition of `wt_layer_branch`/`wt_layer_is_dirty`
       (remove as dead/superseded, or state why kept) in the
@@ -143,3 +143,13 @@ done, to avoid a second review round-trip.
 - [ ] Specify the disambiguation mechanism for parsing
       `issue-<project>-<owner-repo>-<N>` in `worktree_list.sh`/`dashboard.sh`
       (e.g. registry-first segment resolution) before coding step 7.
+
+## Plan revision 3
+**Status**: complete
+**When**: 2026-09-15 16:05
+**By**: Claude Code Agent (claude-fable-5-1)
+
+All four plan-review actions folded in: ADR-0011 status addendum and
+principles_review_guide.md added to scope; dead `wt_layer_branch`/
+`wt_layer_is_dirty` removed in PR 1; `.worktree-repos` gains a header carrying
+project/issue/layer so directory names are never parsed for this shape.
