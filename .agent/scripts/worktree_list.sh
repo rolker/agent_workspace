@@ -233,15 +233,20 @@ _scan_project_worktrees() {
         if [ -f "$proj_wt/.worktree-repos" ]; then
             # ADR-0012 package worktree: the manifest header and entries are
             # authoritative — never parse the directory name for this shape.
-            local _manifest_entries
-            _manifest_entries="$(wt_read_manifest "$proj_wt")"
-            local_repo="$WT_MANIFEST_PROJECT"
+            # Header fields are read directly (not via wt_read_manifest's
+            # side-effect globals, which a command substitution would run
+            # in a subshell and discard); entries come from wt_read_manifest.
+            local _header _issue_full _manifest_entries
+            _header="$(head -n1 "$proj_wt/.worktree-repos")"
+            local_repo="$(sed -n 's/^# project=\([^ ]*\).*/\1/p' <<< "$_header")"
+            _issue_full="$(sed -n 's/.* issue=\([^ ]*\).*/\1/p' <<< "$_header")"
             local_skill=""
-            if [[ "$WT_MANIFEST_ISSUE" == *#* ]]; then
-                local_issue="${WT_MANIFEST_ISSUE##*#}"
+            if [[ "$_issue_full" == *#* ]]; then
+                local_issue="${_issue_full##*#}"
             else
-                local_issue="$WT_MANIFEST_ISSUE"
+                local_issue="$_issue_full"
             fi
+            _manifest_entries="$(wt_read_manifest "$proj_wt")"
             local_status="clean"
             local_changed=0
             local -a _wt_branches=()

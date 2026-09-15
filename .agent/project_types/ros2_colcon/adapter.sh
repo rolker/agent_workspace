@@ -698,7 +698,13 @@ adapter_worktree_repos() {
             echo "ERROR: package repo '$pkg' not found under layer '$layer' ($pkg_dir)" >&2
             return 1
         fi
-        if ! git -C "$pkg_dir" rev-parse --git-dir >/dev/null 2>&1; then
+        # rev-parse --git-dir alone would walk up to an ancestor's .git (the
+        # workspace repo, say) when $pkg_dir has none of its own — compare
+        # against --show-toplevel to require a repo rooted at $pkg_dir itself.
+        local pkg_toplevel pkg_dir_real
+        pkg_toplevel="$(git -C "$pkg_dir" rev-parse --show-toplevel 2>/dev/null || true)"
+        pkg_dir_real="$(cd "$pkg_dir" && pwd -P)"
+        if [ -z "$pkg_toplevel" ] || [ "$pkg_toplevel" != "$pkg_dir_real" ]; then
             echo "ERROR: $pkg_dir (layer '$layer', package '$pkg') is not a git repository" >&2
             return 1
         fi

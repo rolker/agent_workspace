@@ -192,6 +192,161 @@ populate_layer() {
     done
 }
 
+# ---- worktree_create.sh / worktree_remove.sh / worktree_list.sh
+#      package-worktree integration (ADR-0012, plan step 9) ----
+
+# A sandbox with the worktree scripts added, plus a real (committed) git
+# repo standing in for the workspace so worktree_create.sh's own git
+# operations (fetch/show-ref against ROOT_DIR) have something to work
+# with. A failing gh/git-bug stub keeps issue lookups offline.
+make_worktree_sandbox() {
+    local sb
+    sb="$(make_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_create.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/worktree_enter.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/_worktree_helpers.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/_issue_helpers.sh" "$sb/.agent/scripts/"
+    mkdir -p "$sb/stubbin"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/gh"
+    printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/git-bug"
+    chmod +x "$sb/stubbin/gh" "$sb/stubbin/git-bug"
+    git -C "$sb" init --quiet
+    git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+    echo "$sb"
+}
+
+# A real (committed, no origin fetch needed since it's all local) git repo
+# for a package under a layer's src/, standing in for a real package
+# checkout post-`adapter setup`.
+make_committed_pkg_repo() {
+    local proj="$1" layer="$2" name="$3"
+    local dir="$proj/layers/main/${layer}_ws/src/$name"
+    mkdir -p "$dir"
+    git -C "$dir" init --quiet
+    echo "$name" > "$dir/README.md"
+    git -C "$dir" add README.md
+    git -C "$dir" -c user.name=t -c user.email=t@t commit --quiet -m init
+    git -C "$dir" remote add origin "git@github.com:owner/${name}.git"
+    git -C "$dir" branch -m main 2>/dev/null || true
+}
+
+run_worktree_create() {
+    local sb="$1"
+    shift
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_create.sh" "$@")
+}
+
+run_worktree_remove() {
+    local sb="$1"
+    shift
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" "$@")
+}
+
+test_worktree_create_package_success() {
+    echo "TEST: worktree_create makes a real package worktree; sibling untouched; env.sh generated"
+    local sb out rc=0 proj wt
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    make_committed_pkg_repo "$proj" l1 pkg_b
+    mkdir -p "$proj/layers/main/l1_ws/install"
+    touch "$proj/layers/main/l1_ws/install/local_setup.bash"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#111 --type project --project p11 \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-111"
+    assert_eq "aggregate dir created" "true" "$([ -d "$wt" ] && echo true || echo false)"
+    assert_eq "named package is a real worktree (not a symlink)" \
+        "false" "$([ -L "$wt/l1_ws/src/pkg_a" ] && echo true || echo false)"
+    assert_eq "worktree checked out on feature/issue-111" \
+        "feature/issue-111" "$(git -C "$wt/l1_ws/src/pkg_a" branch --show-current)"
+    assert_eq "sibling package untouched in the hosted instance" \
+        "false" "$([ -L "$proj/layers/main/l1_ws/src/pkg_b" ] && echo true || echo false)"
+    assert_eq "sibling still on its original branch in the hosted instance" \
+        "main" "$(git -C "$proj/layers/main/l1_ws/src/pkg_b" branch --show-current)"
+    assert_eq "env.sh generated" "true" "$([ -f "$wt/env.sh" ] && echo true || echo false)"
+    assert_eq "env.sh scrubs, then sources underlay+l1 install, in order" \
+        "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+source $sb/rosroot/fakefox/setup.bash
+source $proj/layers/main/l1_ws/install/local_setup.bash" \
+        "$(< "$wt/env.sh")"
+    assert_eq "build.sh generated and executable" "true" "$([ -x "$wt/build.sh" ] && echo true || echo false)"
+    assert_eq "test.sh generated and executable" "true" "$([ -x "$wt/test.sh" ] && echo true || echo false)"
+    assert_eq "manifest written" "true" "$([ -f "$wt/.worktree-repos" ] && echo true || echo false)"
+}
+
+test_worktree_create_rolls_back_on_second_repo_failure() {
+    echo "TEST: a failure on the second repo rolls back the first and leaves no aggregate dir"
+    local sb out rc=0 proj wt
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    # pkg_b exists but is NOT a git repo — worktree_repos still lists it
+    # (validated by adapter_worktree_repos only checking existence + git-ness
+    # at read time, both present-but-non-git here), so its `git worktree add`
+    # must fail and trigger rollback of pkg_a.
+    mkdir -p "$proj/layers/main/l1_ws/src/pkg_b"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#222 --type project --project p11 \
+        --layer l1 --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-222"
+    assert_eq "no aggregate dir left behind" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "pkg_a's worktree removed from the origin repo" \
+        "" "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain \
+            | grep -A2 "worktree $wt" || true)"
+    assert_contains "captured stderr surfaced" "not a git repository" "$out"
+}
+
+test_worktree_remove_multi_package_dirty_refuses_all() {
+    echo "TEST: dirty entry anywhere refuses the whole removal before touching anything"
+    local sb out rc=0 proj wt
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    make_committed_pkg_repo "$proj" l1 pkg_b
+    run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project p11 \
+        --layer l1 --package-repos pkg_a,pkg_b >/dev/null 2>&1
+    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-333"
+    echo dirty >> "$wt/l1_ws/src/pkg_b/README.md"
+    out="$(run_worktree_remove "$sb" --issue owner/pkg_a#333 --type project --project p11 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "names the dirty entry" "l1_ws/src/pkg_b" "$out"
+    assert_eq "nothing removed: pkg_a worktree still present" \
+        "true" "$([ -d "$wt/l1_ws/src/pkg_a" ] && echo true || echo false)"
+    assert_eq "nothing removed: pkg_b worktree still present" \
+        "true" "$([ -d "$wt/l1_ws/src/pkg_b" ] && echo true || echo false)"
+    rc=0
+    out="$(run_worktree_remove "$sb" --issue owner/pkg_a#333 --type project --project p11 --force 2>&1)" || rc=$?
+    assert_eq "--force removes it" "0" "$rc"
+    assert_eq "aggregate dir gone" "false" "$([ -e "$wt" ] && echo true || echo false)"
+}
+
+test_worktree_list_json_reports_package_worktree() {
+    echo "TEST: worktree_list.sh --json reports issue/project/branches/dirty for a nested worktree"
+    local sb out rc=0 proj wt
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    make_committed_pkg_repo "$proj" l1 pkg_b
+    run_worktree_create "$sb" --issue owner/pkg_a#444 --type project --project p11 \
+        --layer l1 --package-repos pkg_a,pkg_b >/dev/null 2>&1
+    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-444"
+    echo dirty >> "$wt/l1_ws/src/pkg_b/README.md"
+    out="$(cd "$sb" && "$sb/.agent/scripts/worktree_list.sh" --json)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "issue 444 reported" '"issue":444' "$out"
+    assert_contains "project p11 reported as repo" '"repo":"p11"' "$out"
+    assert_contains "owning branch reported" "feature/issue-444" "$out"
+    assert_contains "sibling branch reported" "feature/pkg_a-issue-444" "$out"
+    assert_contains "dirty status reported" '"status":"dirty"' "$out"
+}
+
 # ---- Contract & validator ----
 
 test_validator_accepts_ros2_colcon() {
@@ -956,6 +1111,10 @@ echo "=== ros2_colcon adapter tests ==="
 echo ""
 
 test_validator_accepts_ros2_colcon
+test_worktree_create_package_success
+test_worktree_create_rolls_back_on_second_repo_failure
+test_worktree_remove_multi_package_dirty_refuses_all
+test_worktree_list_json_reports_package_worktree
 test_distro_from_bootstrap_yaml
 test_distro_from_project_config
 test_distro_unresolvable_fails
