@@ -150,6 +150,7 @@ make_merge_sandbox() {
     cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_worktree_helpers.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/_issue_helpers.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$sb/.agent/scripts/"
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/git-bug"
     chmod +x "$sb/stubbin/git-bug"
     write_gh_stub "$sb"
