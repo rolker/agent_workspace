@@ -592,6 +592,14 @@ test_registry_fields_rejected() {
     mkdir -p "$sb/globdir/worktrees=wt-secret-evil" "$sb/g"
     echo "g single_project $sb/g worktrees=wt-*" > "$sb/.agent/projects.local"
     assert_eq "no pathname expansion of field tokens" "$sb/wt-*" "$(cd "$sb/globdir" && reg "$sb" registry_field "$sb" g worktrees 2>&1)"
+    # The getter itself must not glob either: a file whose name matches a
+    # serialized field must not change what registry_field returns.
+    mkdir -p "$sb/globdir2" && touch "$sb/globdir2/role=x" "$sb/globdir2/role=y"
+    echo "g2 single_project $sb/g2 role=* distro=jazzy" > "$sb/.agent/projects.local"
+    rc=0; out="$(cd "$sb/globdir2" && reg "$sb" registry_field "$sb" g2 distro 2>&1)" || rc=$?
+    assert_eq "role=* is rejected by the role regex, not expanded" "2" "$rc"
+    echo "g2 single_project $sb/g2 worktrees=$sb/g2/role=* distro=jazzy" > "$sb/.agent/projects.local"
+    assert_eq "getter does not expand a value that looks like a glob" "$sb/g2/role=*" "$(cd "$sb/globdir2" && reg "$sb" registry_field "$sb" g2 worktrees 2>&1)"
     # CRLF line endings are tolerated and never leak '\r' into paths.
     printf 'crlf single_project %s/crlf distro=jazzy\r\n' "$sb" > "$sb/.agent/projects.local"
     mkdir -p "$sb/crlf"
@@ -684,6 +692,15 @@ test_registry_worktree_dir() {
     out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
     assert_eq "worktrees outside root → rc 2" "2" "$rc"
     assert_contains "says where it must lie" "must lie under $sb/delta or under the workspace root" "$out"
+    # A relative override that climbs out with '..' is normalized before the
+    # containment check, so it is rejected too.
+    echo "eps single_project $sb/eps worktrees=../outside" > "$sb/.agent/projects.local"
+    rc=0; out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
+    assert_eq "worktrees=../outside → rc 2" "2" "$rc"
+    echo "zeta single_project $sb/zeta worktrees=$sb/zeta/../zeta/wt" > "$sb/.agent/projects.local"
+    assert_eq "'..' that stays inside is normalized and kept" "$sb/zeta/wt" "$(reg "$sb" registry_worktree_dir "$sb" zeta 2>&1)"
+    echo "eta single_project $sb/eta/../eta" > "$sb/.agent/projects.local"
+    assert_eq "entry path itself is normalized" "$(printf 'eta\tsingle_project\t%s/eta' "$sb")" "$(reg "$sb" registry_entries "$sb" 2>&1)"
     echo "a..b single_project" > "$sb/.agent/projects.local"
     assert_eq "parse error → rc 2" "2" "$(reg "$sb" registry_worktree_dir "$sb" alpha >/dev/null 2>&1; echo $?)"
 }
@@ -785,8 +802,8 @@ test_validate_parent_root() {
 }
 
 test_validate_python_parser_matches_shell() {
-    echo "TEST: python registry parser agrees with the shell parser on fields and rules"
-    local sb out
+    echo "TEST: python and shell parsers produce the same entries and the same errors"
+    local sb shell_out py_out
     sb="$(make_sandbox)"
     make_parent_layout "$sb" p11-rolling
     echo "bad single_project $sb/bad colour=red" >> "$sb/.agent/projects.local"
@@ -794,21 +811,33 @@ test_validate_python_parser_matches_shell() {
     echo "nest project $sb/nest parent=p11" >> "$sb/.agent/projects.local"
     printf 'crlf single_project %s/crlf distro=jazzy\r\n' "$sb" >> "$sb/.agent/projects.local"
     echo "far single_project $sb/far worktrees=/tmp/elsewhere" >> "$sb/.agent/projects.local"
+    echo "climb single_project $sb/climb worktrees=../outside" >> "$sb/.agent/projects.local"
     mkdir -p "$sb/real2" "$sb/crlf" && ln -s "$sb/real2" "$sb/alias2"
     echo "r1 single_project $sb/real2" >> "$sb/.agent/projects.local"
     echo "r2 single_project $sb/alias2" >> "$sb/.agent/projects.local"
-    out="$(cd "$sb/.agent/scripts/lib" && python3 -c "
+    echo "h single_project $sb/h distro=my-distro" >> "$sb/.agent/projects.local"
+    echo "w single_project $sb/w worktrees=$sb/w/../w/x" >> "$sb/.agent/projects.local"
+    # Shell: entries as name|type|path|fields, then errors without the file prefix.
+    shell_out="$( { reg "$sb" registry_entries_full "$sb" 2>/dev/null | tr '\t' '|' || true; echo "--errors--"; reg "$sb" registry_entries_full "$sb" 2>&1 >/dev/null | sed -E 's/^ERROR: [^:]+:([0-9]+): /\1: /' || true; } )"
+    # Python: the same shape from read_projects_registry.
+    py_out="$(cd "$sb/.agent/scripts/lib" && python3 -c "
 import workspace
 entries, errors = workspace.read_projects_registry('$sb')
-print(','.join(e['name'] for e in entries))
-print(entries[0]['fields'].get('default_instance'))
-print(entries[1]['fields'])
-print(len(errors))
-for e in errors: print(e.split(': ',1)[1])
+for e in entries:
+    fields = ' '.join(f'{k}={v}' for k, v in e['fields'].items())
+    print(f\"{e['name']}|{e['type']}|{e['path']}|{fields}\")
+print('--errors--')
+for err in errors:
+    print(err.split(':', 1)[1].lstrip() if err.startswith('$sb') else err)
 ")"
-    assert_eq "entries, fields, and the same errors as the shell parser" \
-        "$(printf "p11,p11-jazzy,p11-rolling,crlf,r1\np11-rolling\n{'parent': 'p11', 'distro': 'jazzy', 'role': 'dev'}\n5\nunknown field 'colour' for 'bad' (known: parent worktrees role distro default_instance)\nworktrees '/tmp/elsewhere' for 'far' must lie under %s/far or under the workspace root %s\nduplicate project name 'p11'\nparent root 'nest' may not itself have a parent (no nesting)\n'r2' resolves to %s/real2, already registered by another entry" "$sb" "$sb" "$sb")" \
-        "$out"
+    if [[ "$shell_out" != "$py_out" ]]; then
+        echo "  --- parser diff (shell < > python) ---"
+        diff <(printf '%s\n' "$shell_out") <(printf '%s\n' "$py_out") | sed 's/^/    /' || true
+    fi
+    assert_eq "identical entries and errors from both parsers" "$shell_out" "$py_out"
+    assert_contains "the comparison covered the '..' escape" "for 'climb' must lie under" "$shell_out"
+    assert_contains "the comparison covered the alias collision" "'r2' resolves to $sb/real2" "$shell_out"
+    assert_contains "the comparison kept the in-root '..' override" "w|single_project|$sb/w|worktrees=$sb/w/x" "$shell_out"
 }
 
 test_worktree_create_parent_default_instance() {

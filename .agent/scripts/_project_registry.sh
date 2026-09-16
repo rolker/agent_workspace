@@ -70,7 +70,7 @@ registry_file() {
 # Usage: entries=$(registry_entries_full "$root") || { ...parse error... }
 registry_entries_full() {
     local root="$1" file lineno=0 rc=0
-    local raw name type path rest field key value fields
+    local raw name type path rest field key value fields known
     local -a lines=()
     file="$(registry_file "$root")"
     [ -f "$file" ] || return 0
@@ -111,7 +111,8 @@ registry_entries_full() {
                 break
             fi
             if [[ "$_REGISTRY_KEYS" != *" $key "* ]]; then
-                echo "ERROR: ${file}:${lineno}: unknown field '$key' for '$name' (known: ${_REGISTRY_KEYS# })" >&2
+                known="${_REGISTRY_KEYS# }"; known="${known% }"
+                echo "ERROR: ${file}:${lineno}: unknown field '$key' for '$name' (known: $known)" >&2
                 bad=1
                 break
             fi
@@ -149,6 +150,7 @@ registry_entries_full() {
                         /*) : ;;
                         *) value="$root/$value" ;;
                     esac
+                    value="$(_registry_normpath "$value")"
                     ;;
             esac
             fields="${fields:+$fields }$key=$value"
@@ -159,6 +161,7 @@ registry_entries_full() {
             /*) : ;;
             *) path="$root/$path" ;;
         esac
+        path="$(_registry_normpath "$path")"
         local wt
         wt="$(_registry_field_of "$fields" worktrees)" || wt=""
         if [ -n "$wt" ] && ! _registry_path_under "$wt" "$path" && ! _registry_path_under "$wt" "$root"; then
@@ -218,16 +221,40 @@ registry_entries_full() {
     return $rc
 }
 
-# True when <path> equals <base> or lies beneath it (lexical, both absolute).
+# Lexically normalize an absolute path: collapse '//', drop '.', resolve
+# '..' against the preceding segment. No filesystem access, so the answer
+# does not depend on what exists yet (a ros2_colcon hosting dir may not).
+_registry_normpath() {
+    local -a in out=()
+    local seg
+    IFS='/' read -r -a in <<< "$1"
+    for seg in ${in[@]+"${in[@]}"}; do
+        case "$seg" in
+            ''|'.') ;;
+            '..') [ "${#out[@]}" -gt 0 ] && unset 'out[${#out[@]}-1]' ;;
+            *) out+=("$seg") ;;
+        esac
+    done
+    local joined=""
+    for seg in ${out[@]+"${out[@]}"}; do joined="$joined/$seg"; done
+    echo "${joined:-/}"
+}
+
+# True when <path> equals <base> or lies beneath it (both absolute; both
+# normalized first so '..' segments cannot escape the check).
 _registry_path_under() {
-    local p="${1%/}" b="${2%/}"
+    local p b
+    p="$(_registry_normpath "$1")"
+    b="$(_registry_normpath "$2")"
     [ "$p" = "$b" ] || [[ "$p" == "$b/"* ]]
 }
 
 # Value of <key> in a space-separated "k=v k=v" list, or empty.
 _registry_field_of() {
     local fields="$1" key="$2" f
-    for f in $fields; do
+    local -a arr=()
+    read -r -a arr <<< "$fields"   # array, never word-splitting-with-globbing
+    for f in ${arr[@]+"${arr[@]}"}; do
         [ "${f%%=*}" = "$key" ] && { echo "${f#*=}"; return 0; }
     done
     return 1

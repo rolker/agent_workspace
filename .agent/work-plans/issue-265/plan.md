@@ -244,7 +244,7 @@ no registry awareness; a global no-prompt allow-rule for their absolute
 path would let a session in an untrusted, unregistered repo run them
 against that repo's remote. Therefore:
 
-- `_project_registry.sh` gains `require_registered_root [dir]`: exits
+- `_project_registry.sh` gains `registry_require_root [dir]`: exits
   non-zero with a one-line reason unless `dir` (default `$PWD`) is under a
   registered root or under the workspace checkout itself.
 - The user-tier allow-list is **generated from a manifest**

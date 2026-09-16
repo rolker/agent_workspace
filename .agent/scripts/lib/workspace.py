@@ -6,6 +6,7 @@ general-purpose Agent Workspace: the legacy single-repo model (project/)
 and the per-machine project registry (.agent/projects.local, issue #227).
 """
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -58,10 +59,11 @@ def is_project_configured(project=None):
 
 
 def _path_under(path, base):
-    """True when path equals base or lies beneath it (lexical, both absolute)."""
-    p = str(path).rstrip("/")
-    b = str(base).rstrip("/")
-    return p == b or p.startswith(b + "/")
+    """True when path equals base or lies beneath it (both absolute, normalized
+    lexically first so '..' segments cannot escape the check)."""
+    p = os.path.normpath(str(path))
+    b = os.path.normpath(str(base))
+    return p == b or p.startswith(b.rstrip("/") + "/")
 
 
 def _canonical(path):
@@ -150,8 +152,10 @@ def read_projects_registry(root=None):
             if key == "distro" and not _REGISTRY_DISTRO_RE.match(value):
                 bad = f"{registry}:{lineno}: invalid {key} '{value}' for '{name}'"
                 break
-            if key == "worktrees" and not Path(value).is_absolute():
-                value = str(root / value)
+            if key == "worktrees":
+                if not Path(value).is_absolute():
+                    value = str(root / value)
+                value = os.path.normpath(value)
             fields[key] = value
         if bad:
             errors.append(bad)
@@ -161,6 +165,7 @@ def read_projects_registry(root=None):
         abs_path = Path(path)
         if not abs_path.is_absolute():
             abs_path = root / path
+        abs_path = Path(os.path.normpath(str(abs_path)))
         wt = fields.get("worktrees")
         if wt is not None and not (_path_under(wt, abs_path) or _path_under(wt, root)):
             errors.append(
