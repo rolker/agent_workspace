@@ -445,7 +445,7 @@ Revision 5 correctly resolves three of revision 4's four must-fixes (CI wiring, 
 **Status**: complete
 **When**: 2026-09-16 14:52 -04:00
 **By**: Claude Code Agent (claude-fable-5-1), with owner approval
-**Plan**: `.agent/work-plans/issue-269/plan.md` at (see next commit) — revision 6
+**Plan**: `.agent/work-plans/issue-269/plan.md` at `11c2c37` — revision 6
 
 - revision-5 must-fix (fallback merge record uncommittable on protected main) → record posted as a comment on the merged PR; no file, no commit; PR F tests stub `gh`
 - revision-5 suggestion (always_run hook cost) → ~18 s per commit stated; `SKIP=validate-script-tests` sanctioned for WIP
