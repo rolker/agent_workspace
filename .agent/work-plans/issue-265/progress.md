@@ -260,6 +260,43 @@ migrating p11 instances is PR 4.
 **Round**: 1 | **Ship**: continue — one must-fix (a skill's plan-file fallback glob doesn't cover the registered-root location this PR just introduced)
 
 ### Findings
-- [ ] (must-fix) `review-plan`'s plan-file fallback glob only searches `worktrees/project/*/issue-*-<N>/` (the workspace tree); it can never find a plan file for a project worktree under a registered out-of-tree root, the exact case PR 2 makes real — `.claude/skills/review-plan/SKILL.md:62`
-- [ ] (suggestion) `WORKFORCE_PROTOCOL.md` and `start-task/SKILL.md` still state the pre-#265 `worktrees/project/<repo>/...` location unconditionally, with no mention of the registered-root case or the transition fallback; acceptable to defer to PR 3's skill-path pass per the plan's PR sequencing, but worth flagging so it isn't dropped — `.agent/WORKFORCE_PROTOCOL.md:27`, `.claude/skills/start-task/SKILL.md:136`
-- [ ] (suggestion) `merge_pr.sh`'s ambiguous-registration case (`WORKTREE_TYPE=project`, no `--project`, more than one non-parent project registered) prints `wt_resolve_project_repo_root`'s error to stderr but doesn't exit — falls through with `PJ_REPO_ROOT=""` into the rest of the script rather than failing fast; not covered by a test — `.agent/scripts/merge_pr.sh:206-213`
+- [x] (must-fix) `review-plan`'s plan-file fallback glob only searches `worktrees/project/*/issue-*-<N>/` (the workspace tree); it can never find a plan file for a project worktree under a registered out-of-tree root, the exact case PR 2 makes real — `.claude/skills/review-plan/SKILL.md:62`
+- [x] (suggestion) `WORKFORCE_PROTOCOL.md` and `start-task/SKILL.md` still state the pre-#265 `worktrees/project/<repo>/...` location unconditionally, with no mention of the registered-root case or the transition fallback; acceptable to defer to PR 3's skill-path pass per the plan's PR sequencing, but worth flagging so it isn't dropped — `.agent/WORKFORCE_PROTOCOL.md:27`, `.claude/skills/start-task/SKILL.md:136`
+- [x] (suggestion) `merge_pr.sh`'s ambiguous-registration case (`WORKTREE_TYPE=project`, no `--project`, more than one non-parent project registered) prints `wt_resolve_project_repo_root`'s error to stderr but doesn't exit — falls through with `PJ_REPO_ROOT=""` into the rest of the script rather than failing fast; not covered by a test — `.agent/scripts/merge_pr.sh:206-213`
+
+## Implementation
+
+**Status**: complete
+**When**: 2026-09-16
+**By**: Claude Code Agent (claude-sonnet-5)
+
+**PR**: #273 at `34c6e1e`
+
+Addressed every open item of the round-1 Local Review:
+
+- `.claude/skills/review-plan/SKILL.md:62` (must-fix) — `eac75e9`: the
+  `--issue <N>` fallback now sources `_worktree_helpers.sh` and enumerates
+  `wt_registry_worktree_dirs` + `wt_legacy_worktree_dirs` (every registered
+  root's worktree dir, plus the legacy fallback) instead of only globbing
+  `worktrees/project/*/issue-*-<N>/`; hermetic test
+  `test_review_plan_issue_fallback_finds_plan_under_registered_root` added
+  to `test_project_registry.sh`, driving the exact helper invocation the
+  skill prescribes.
+- `.agent/scripts/merge_pr.sh:206-213` (suggestion) — `ec4250b`: when
+  `--type project` is explicit and `wt_resolve_project_repo_root` fails
+  (ambiguous registration, nothing configured, etc.), the script now exits
+  1 with the resolver's error instead of falling through with
+  `PJ_REPO_ROOT=""` (which line ~485 would otherwise default to
+  `$ROOT_DIR/project`, silently operating on the wrong or a nonexistent
+  checkout). `test_ambiguous_project_root_type_project_fails_fast` added
+  to `test_merge_pr.sh`.
+- `.agent/WORKFORCE_PROTOCOL.md:27`, `.claude/skills/start-task/SKILL.md:136`
+  (suggestion) — `34c6e1e`: one sentence each noting a registered project's
+  worktrees live under its own root (`registry_worktree_dir`) and that
+  `worktrees/project/<repo>/` is the legacy/unregistered fallback. No
+  larger rewrite (that's PR 3).
+
+**Results** (all seven suites): test_project_registry 182/182, test_adapter
+86/86, test_ros2_colcon 184/184, test_merge_pr 88/88,
+test_merge_pr_root_resolution 5/5, test_cross_model_review 52/52,
+test_resolve_work_plans_dir 21/21 — all green.
