@@ -89,16 +89,47 @@ Minimum matrix to trust the group-filter-through-import behavior on real shape, 
 | simulation | dev (sim group present) | jazzy |
 | ui | dev | jazzy |
 
-Pass criterion: for every (layer, role, distro) cell, the west-based variant's resolved repo set
-for that layer equals the own resolver's (`select_repos` + `resolve_distro_ref` in
-`ros_manifest.selectors`) resolved set for the same inputs, exactly — this reuses the own
-resolver's already-passing acceptance fixture (`tests/fixtures/p11/`) as the oracle, so the two
-prototypes are compared against each other and both against the real jazzy `.repos` files
-already verified by `tests/test_acceptance_p11.py`.
+Pass criterion: for every (layer, role, distro) cell, **both** prototypes are judged
+independently against the same ground truth — the real p11 `.repos` fixtures at
+`tests/fixtures/p11/expected/<distro>/<layer>.repos`, the same fixtures
+`test_acceptance_p11.py` already resolves the own resolver against. Concretely:
+
+- The own resolver's cell passes iff its resolved repo set (`select_repos` +
+  `resolve_distro_ref` in `ros_manifest.selectors`, as already exercised by
+  `test_acceptance_p11.py`) matches the fixture `.repos` file for that
+  (layer, role, distro), exactly as it does today.
+- The west-based variant's cell passes iff its resolved-and-converted repo set (via the
+  `.repos` converter above) matches the *same* fixture `.repos` file, independently — not
+  the own resolver's output.
+- The two prototypes are never compared against each other. A cell where west disagrees
+  with the fixture is a west failure regardless of what the own resolver produced for that
+  cell, and vice versa; either prototype can fail a cell the other passes.
 
 If the matrix fails anywhere (the documented risk), that's a finding to record on issue #267,
 not a bug to route around silently — west's precedence rule for that cell needs to be worked out
 from its importer source (per the issue's survey note) before the tool decision can rely on it.
+
+## Decision record (own-vs-west, next milestone must score both)
+
+The own-vs-west choice and the role-model choice (groups vs. dependency closure, previous
+section) are **both explicitly left open** by this milestone — nothing below decides them. The
+rows are the non-functional criteria from the issue #267 compromise-list comment (2026-09-16);
+the next milestone scores both candidates against each row from evidence (the conformance
+matrix above plus direct inspection), not assumption, before either decision is made.
+
+| Criterion | What to check for each candidate |
+|---|---|
+| Checkout-ownership conflict / detached HEAD | Does driving the tool (`vcs import` for the own resolver's `.repos` output vs. `west update` for the west variant) leave repos in a state compatible with a developer's own git workflow, or does it detach HEAD / fight manual checkouts? |
+| Stale transitive dependency (`pykwalify`) | West's manifest schema validation depends on `pykwalify`, which is effectively unmaintained upstream — does pulling in west as a runtime dependency reintroduce that stale transitive dependency, versus the own resolver's PyYAML-only dependency footprint (ADR-0009)? |
+| Imports read committed content only | Do both variants resolve strictly from committed manifest content (no working-tree/uncommitted state leaking into resolution), matching the own resolver's `load_manifest_file` behavior? |
+| No per-distro ref | West has exactly one `revision:` per project (no per-distro concept, see "Per-distro pre-processing" above) — confirm the pre-processing workaround holds up across the full matrix, not just the cells tested so far. |
+| Import + groups exclusivity | Does west's `import:` chain interact cleanly with `groups:`/`group-filter:` at every import depth exercised by the matrix, or does it hit the "not documented behavior" precedence risk flagged in "Group-filter mapping" above? |
+| Community fit | Would adopting west align with or diverge from common ROS 2 workspace tooling conventions that contributors and downstream users already expect? |
+| Output format | Does the `.repos` converter output stay a faithful, lossless vcstool `.repos` shape for every cell, so `adapter_setup`'s `vcs import` loop is unaffected by which resolver produced the file? |
+
+Both the own-vs-west tool decision and the role-model decision stay open until the next
+milestone records, for each row above and each (layer, role, distro) matrix cell, which
+candidate(s) pass — not before.
 
 ## Role-model experiment (open question, both prototypes)
 
