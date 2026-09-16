@@ -71,15 +71,24 @@ Two hosting shapes coexist during the #172 migration (issue #227):
   (`ln -s /path/to/existing/clone project`). `PROJECT_TYPE` comes from
   `.agent/project_config.sh` (default `single_project`).
 - **Registry**: `.agent/projects.local` (per-machine, gitignored) maps
-  project names to hosting dirs (default `projects/<name>/`) and project
-  types. Per-project build/test commands live in
+  project names to hosting dirs (anywhere on disk; default `projects/<name>/`)
+  and project types, plus optional trailing `key=value` fields (issue #265):
+  `parent=` groups instances under a **parent root** (pseudo-type `project`,
+  no adapter — the session and memory unit for a multi-instance project such
+  as one per ROS distro), `worktrees=` overrides where a root's worktrees
+  live, `role=`/`distro=` reach the adapter as `ACTIVE_PROJECT_ROLE` /
+  `ACTIVE_PROJECT_DISTRO`, and `default_instance=` names the instance a
+  parent resolves to. Per-project build/test commands live in
   `.agent/projects.d/<name>.sh`, falling back to `.agent/project_config.sh`.
   See `.agent/projects.local.example` for the format.
 
 The dispatcher resolves the active project in order: explicit
 `--project <name>` (`make build PROJECT=<name>`), the caller's cwd inside a
-registered hosting dir, then the legacy `project/` shape. A machine with only
-the legacy symlink behaves exactly as before.
+registered hosting dir (longest match, so a cwd inside an instance resolves
+to the instance rather than its parent), then the legacy `project/` shape. A
+parent root resolves to its `default_instance`, else its only instance;
+several instances without a default is an error that lists them. A machine
+with only the legacy symlink behaves exactly as before.
 
 The project's `remote.origin.url` (from `.git/config`) is the source of truth for the
 project URL — no `configs/` directory is needed.

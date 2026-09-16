@@ -118,7 +118,10 @@ On `worktree_create.sh`, `--project <name>` selects a registered project from
 `worktrees/project/<name>/` so `enter`/`remove --project <name>` find it by the
 same key. Without `--project`, the legacy `project/` checkout is used; when
 `project/` is absent and exactly one project is registered, that project is
-auto-selected (multiple registrations require `--project`).
+auto-selected (multiple registrations require `--project`). Parent roots
+(registry pseudo-type `project`, issue #265) are never auto-selected;
+`--project <parent>` resolves to the parent's `default_instance`, else its
+only instance, and the worktree is keyed by the instance name.
 
 `--repo` remains accepted as a silent alias for `--project` on all three
 worktree scripts.

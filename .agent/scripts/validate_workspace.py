@@ -30,6 +30,7 @@ from workspace import (
     get_project_path,
     get_project_remote_url,
     read_projects_registry,
+    REGISTRY_PARENT_TYPE,
 )
 
 
@@ -98,6 +99,20 @@ def validate_workspace(verbose=False):
     # Validate registry entries: known project type, valid checkout
     for entry in registry_entries:
         name, ptype, path = entry["name"], entry["type"], entry["path"]
+        if ptype == REGISTRY_PARENT_TYPE:
+            # Parent root (issue #265): a directory that groups instances;
+            # no adapter, need not be a git repository.
+            instances = [e["name"] for e in registry_entries if e["fields"].get("parent") == name]
+            if not path.is_dir():
+                issues.append(f"parent root '{name}': directory does not exist: {path}")
+            elif not instances:
+                issues.append(
+                    f"parent root '{name}': no instances registered "
+                    f"(add parent={name} to its instances)"
+                )
+            elif verbose:
+                print(f"  parent root '{name}': {path} OK ({', '.join(instances)})")
+            continue
         adapter_file = workspace_root / ".agent" / "project_types" / ptype / "adapter.sh"
         if not adapter_file.is_file():
             issues.append(
