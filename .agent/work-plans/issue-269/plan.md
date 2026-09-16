@@ -1,5 +1,7 @@
 # Plan: Port the review loop from ros2_agent_workspace: progress entry vocabulary, convergence verdict, integrated triage, address-findings, merge gate
 
+**Revision 6 (merge-record fallback → PR comment; pre-commit cost stated)** — revision 5's plan review left one must-fix: the cross-repo merge-record fallback file could never be committed (protected `main`, `no-commit-to-branch` hook); it is now posted as a comment on the merged PR. The `always_run` hook's per-commit cost and `SKIP=validate-script-tests` are stated. Applied directly by the host with the owner's approval (2026-09-16), no further review round.
+
 **Revision 5 (CI wiring, B2/B3 split)** — revision 4's plan review
 (`## Plan Review`, revision 4, in `progress.md`) found four must-fixes:
 `test_checkpoint_269.sh` was never actually wired into anything that runs
@@ -191,7 +193,14 @@ exactly nothing running it in CI.
 **Decision**: PR A adds a `.pre-commit-config.yaml` local hook —
 `validate-script-tests`, `always_run: true`, `pass_filenames: false` —
 that runs a new runner, `.agent/scripts/tests/run_script_tests.sh`,
-executing **every** `test_*.sh` in `.agent/scripts/tests/`. This hook runs
+executing **every** `test_*.sh` in `.agent/scripts/tests/`. Because the
+hook is `always_run`, its ~18 s cost lands on **every** commit in every
+worktree regardless of the diff (revision 6, from the revision-5 review);
+that is accepted for the enforcement it buys, and
+`SKIP=validate-script-tests git commit …` is the sanctioned escape for
+work-in-progress commits — the same `SKIP=` mechanism this repo's CI
+already uses for other local hooks. The runner's own output states the
+elapsed time so drift above ~30 s is noticed. This hook runs
 inside the existing `Lint (pre-commit)` job (`validate.yml:10-25`, `run:
 make lint`) exactly the way `validate-adapter-contract`
 (`.pre-commit-config.yaml:50-55`) already does — no `validate.yml` edit at
@@ -732,15 +741,20 @@ through Step 1 (roadmap update), Step 2 (`gh pr checks --watch
   in the repo that owns it, precisely as Step 1 already does for the
   roadmap update. **When that timeline is unreachable from the host** —
   `find_worktree_for_branch()` returns empty and `$PKG_WT_DIR` is unset,
-  meaning no local worktree is open for the PR's repo — the append falls
-  back to a documented workspace-local file,
-  `.agent/work-plans/merges/<owner>-<repo>-pr<N>.md`, created via the same
-  `progress_append.sh` helper (`-C` pointed at the workspace tree) using
-  the same entry schema. The stdout report line names this fallback
-  explicitly when it's taken (e.g. "no open worktree for
-  `rolker/some-project` — durable record written to
-  `.agent/work-plans/merges/rolker-some-project-pr42.md`"), so a
-  report-only observer never has to guess which file holds the record.
+  meaning no local worktree is open for the PR's repo — the record is
+  **not written to any file** (revision 6: the workspace's main tree sits
+  on protected `main`, and this repo's `no-commit-to-branch` hook plus
+  branch protection make a commit there impossible; the earlier
+  `.agent/work-plans/merges/` fallback could never have been committed).
+  Instead the same entry text is **posted as a comment on the merged PR**
+  via `gh pr comment <N> -R <owner/repo>` — the PR is already the durable
+  artifact for that merge, the script is already authenticated to it, and
+  nothing needs a commit. The stdout report line names the fallback when
+  it's taken (e.g. "no open worktree for `rolker/some-project` — merge
+  record posted as a comment on rolker/some-project#42"), so a report-only
+  observer never has to guess where the record is. Tests in PR F stub
+  `gh` and assert the comment body carries the same fields as the
+  timeline entry.
   This is consistent with the refusal-scoping section immediately above:
   refusal itself stays scoped to `$WORKTREE_TYPE == "workspace"` only,
   but the durable *record* of a report-only pass/fail is written for
@@ -814,9 +828,8 @@ through Step 1 (roadmap update), Step 2 (`gh pr checks --watch
   same resolve-via-`find_worktree_for_branch()`/`$PKG_WT_DIR`-or-fallback
   rule as the `## Merge (report-only)` entry above (see "Target
   `progress.md` for project/package-scope PRs" above) — a bypass on a
-  project/package PR with no open worktree also lands in
-  `.agent/work-plans/merges/<owner>-<repo>-pr<N>.md`, not silently
-  nowhere. Never auto-merges anything it wasn't already going to merge: the actual
+  project/package PR with no open worktree is posted as a comment on the
+  merged PR (revision 6), not silently nowhere. Never auto-merges anything it wasn't already going to merge: the actual
   human gate remains "a human chose to run `make merge-pr`" — this check
   only adds a refusal *precondition* (when `--enforce`d and scoped to a
   workspace PR) before Step 3 is reached, it does not add or remove any
