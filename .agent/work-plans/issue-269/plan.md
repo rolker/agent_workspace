@@ -1,9 +1,13 @@
 # Plan: Port the review loop from ros2_agent_workspace: progress entry vocabulary, convergence verdict, integrated triage, address-findings, merge gate
 
-**Revision 2 (review findings applied)** — see `## Plan Review` in
-`progress.md` for the findings this revision addresses; a one-line
-resolution summary is recorded in the `## Plan Authored` entry appended
-for this revision.
+**Revision 3 (blast-radius containment)** — the owner (2026-09-16)
+accepted four containment measures for this port's blast radius (merge
+gate scope, gate default posture, checkpoint discipline, and
+no-issue/skill-worktree degradation); they are folded below as
+decisions, not options. See the `## Plan Authored` entry appended for
+this revision for a one-line-per-measure summary and where each landed.
+Revision 2's own findings (see `## Plan Review` in `progress.md`) remain
+applied; this revision layers on top of it, it does not re-open them.
 
 ## Issue
 
@@ -42,12 +46,41 @@ folded into this plan:
 6. Existing non-conformant `progress.md` files are declared explicitly
    non-migrated.
 
+A second owner decision, same day (2026-09-16), accepted four blast-radius
+containment measures after reviewing revision 2 — folded below as
+decisions, not options:
+
+1. **Merge gate ships report-only first.** PR F's Layer 1 prints what it
+   would have refused and why, never blocks, until a `--enforce` flag is
+   passed; the flip to enforce-by-default is a separate, later one-line
+   PR after the owner has watched the report on several merges.
+2. **Gate scoped to workspace PRs at first.** For project PRs, Layer 1
+   only ever prints the report line — never refuses, report-only or
+   enforced — until #265 PRs 2–4 settle where project timelines live.
+3. **Checkpoint after PRs A and B.** The sequence pauses after B; A+B are
+   exercised on PR 2 of #265 (a real project-affecting workspace PR)
+   before C–F start.
+4. **Degradation test for no-issue / skill-worktree cases.** The move to
+   the fail-loud `resolve_work_plans_dir()` in `review-code`/
+   `triage-reviews` must keep skill worktrees and no-issue branches
+   degrading with a clear "Progress persistence skipped (<reason>)"
+   message, never an abort mid-review.
+
+See "Blast radius" below for what the port does not touch and how each
+of the three risk points the owner discussed is contained.
+
 ## PR sequence
 
 Six independently mergeable PRs, in order. Later PRs build on earlier
 ones; nothing here needs #265's remaining PRs 2–4 to merge first (see
 "#265 dependency and progress.md path resolution" below), so this
 sequence can start immediately.
+
+**Checkpoint after PR B (owner's containment measure 3):** the sequence
+pauses once PR B merges. Before PR C starts, A+B are exercised on PR 2 of
+#265 (a real project-affecting workspace PR) — see "Checkpoint after PR
+B" under Estimated Scope for what "exercised" means concretely. C–F do
+not start until that checkpoint is recorded.
 
 ### PR A — ADR + `progress_append.sh` + `progress_read.py`
 
@@ -156,8 +189,27 @@ with 0/1/2 prior `## Local Review (Pre-Push)` entries; ship-verdict cases
 (no must-fix → recommended; round 2, 2 mechanical must-fixes → recommended;
 round 1, 3 must-fixes → continue); a `resolve_work_plans_dir()` unification
 test asserting the step aborts (non-zero, remediation message) rather than
-silently falling back to the current worktree when `WORKTREE_ISSUE` is
-unset/mismatched and cwd is outside the owning worktree.
+silently falling back to the current worktree when `WORKTREE_ISSUE` is set
+but mismatched, or is unset and neither the worktree path nor the branch
+encodes an issue number, and cwd is outside the owning worktree.
+
+**Degradation test (owner's containment measure 4)**: `resolve_work_plans_dir()`
+requires an issue number as input, so the call site in `review-code`'s
+step 8 must decide, before calling it, whether an issue is resolvable at
+all. Two hermetic cases, neither aborting: (a) a skill-worktree branch
+(`skill/{name}-{timestamp}`, no `WORKTREE_ISSUE`, no
+`feature/issue-<N>`-shaped branch) — `review-code` detects no issue
+number is derivable, skips the `resolve_work_plans_dir()` call entirely,
+and prints "Progress persistence skipped (no linked issue — skill
+worktree)" to its report, then completes the review with no
+`progress.md` write; (b) an ordinary branch with no linked issue (not a
+`feature/issue-<N>` shape, `WORKTREE_ISSUE` unset) — same detection,
+same skip, message reads "Progress persistence skipped (no linked
+issue)". Both are distinct from the existing mismatched-worktree case
+above, which still aborts (fail-loud, per issue #147) because an issue
+number *is* resolvable there, just the wrong worktree. `--no-progress`
+(if passed) short-circuits to the same skip path without needing the
+detection step.
 
 **Enforcement**: mechanical (round-counting test); decision-summary shape
 is prose guidance (Suggestion-tier per the guidance-doc calibration this
@@ -193,7 +245,13 @@ one here (see Non-migration).
 GitHub Copilot finding at the same head SHA asserts the pair surfaces as
 a single cross-source-confirmed row, not two; the same
 `resolve_work_plans_dir()` silent-fallback-is-gone test as PR B, run
-against `triage-reviews`'s resolution step.
+against `triage-reviews`'s resolution step; the same degradation test as
+PR B (owner's containment measure 4) — skill-worktree branch and
+no-linked-issue branch both skip the resolver call and print "Progress
+persistence skipped (<reason>)" rather than aborting or writing into the
+wrong worktree — run against `triage-reviews`'s own call site
+(`triage-reviews/SKILL.md:197-199`), since PR C changes that call site
+independently of PR B's.
 
 **Enforcement**: mechanical (fixture test); no whitelist gate on
 `triage-reviews`'s own write (it always writes the one type).
@@ -290,17 +348,16 @@ through Step 1 (roadmap update), Step 2 (`gh pr checks --watch
 `merge_pr.sh:540-547`) without pausing for confirmation.
 
 **Lands**:
-- **Layer 1 (this repo's scope, done in this PR)**: `merge_pr.sh` gains a
-  new pre-merge check — a "Step 2.5" inserted after the existing
-  `# --- Step 2: Wait for CI ---` block ends (`merge_pr.sh:538`) and
-  before `# --- Step 3: Merge ---` begins (`merge_pr.sh:540`), i.e.
-  immediately before the `gh pr merge` call at `merge_pr.sh:544`. It
-  reads the target PR's linked issue `progress.md` via
-  `progress_read.py --type "Local Review" --type "Integrated Review"`
-  and refuses to proceed (exit non-zero, explicit message, no merge
-  attempted) unless **both** of issue #269's original two conditions
-  hold — restored here after the plan review flagged their earlier
-  silent drop:
+- **Layer 1 (this repo's scope, done in this PR), report-only by default
+  (owner's containment measure 1)**: `merge_pr.sh` gains a new pre-merge
+  check — a "Step 2.5" inserted after the existing `# --- Step 2: Wait
+  for CI ---` block ends (`merge_pr.sh:538`) and before
+  `# --- Step 3: Merge ---` begins (`merge_pr.sh:540`), i.e. immediately
+  before the `gh pr merge` call at `merge_pr.sh:544`. It reads the
+  target PR's linked issue `progress.md` via `progress_read.py --type
+  "Local Review" --type "Integrated Review"` and evaluates **both** of
+  issue #269's original two conditions — restored here after the plan
+  review flagged their earlier silent drop:
   (a) the latest `## Local Review` / `## Integrated Review` entry's
   correlation SHA matches the PR head SHA and its status is not
   `changes-requested`-equivalent (i.e., `**Verdict**: approved` for
@@ -313,22 +370,74 @@ through Step 1 (roadmap update), Step 2 (`gh pr checks --watch
   '.comments[].body' | grep -qF "## Decision summary"` (`gh pr view
   --comments` alone prints comments but doesn't give a greppable exit
   code cleanly, hence `--json comments`).
-  If either (a) or (b) is missing, the script refuses with a message
-  naming which one. `--force-unreviewed` bypasses both checks together
-  (not selectively) with a loud warning banner printed to
-  stdout/stderr, following the same `echo "⚠️  ..."` idiom the script
-  already uses elsewhere for non-fatal warnings (e.g. `merge_pr.sh:498,
-  501, 618`) — this is a new banner for a new check, not a pre-existing
-  confirmation gate; the plan no longer claims one exists. The bypass also
-  appends a `## Merge (unreviewed)` entry to the target issue's
-  `progress.md` via `progress_append.sh` (see "Estimated Scope" above for
-  why this, not a git note, is the durable record) before proceeding to
-  Step 3. Never
+
+  **Default mode (no `--enforce`): report-only.** If either (a) or (b)
+  is missing, the script prints exactly what it would have refused and
+  why — naming which condition(s) failed — and proceeds to Step 3
+  anyway; it never blocks a merge in this PR's shipped default. This
+  mirrors the fork's own `janitor-sweep` precedent (report-only,
+  publish-nothing, on its first slice — confirmed by reading
+  `~/project11/.claude/skills/janitor-sweep/SKILL.md`: "Report-only —
+  opens no PRs, files no issues, and publishes nothing"): land the
+  detector, let the owner watch its output on real merges, flip to
+  enforcement only once its signal is trusted.
+
+  **`--enforce` mode**: the same two-condition check, but on failure the
+  script refuses to proceed (exit non-zero, explicit message naming
+  which condition(s) failed, no merge attempted). A CLI flag was chosen
+  over a `.agent/project_config.sh` config switch or a `make` variable
+  because (i) `merge_pr.sh` already parses several behavior-changing CLI
+  flags this way (`--type`, `--no-wait`, `--no-roadmap-update`), so
+  `--enforce` is consistent with the script's existing interface rather
+  than a new configuration surface; (ii) `project_config.sh` is
+  gitignored and per-developer (see "Build & Test" in AGENTS.md) — a
+  switch there would not give the owner one shared, reviewable point of
+  truth for when enforcement turned on across the team; (iii) the later
+  flip to enforce-by-default is then a literal one-line diff (the
+  default value the flag parser assigns `ENFORCE_MERGE_GATE`), visible
+  and reviewable in its own PR, rather than a docs/config change that
+  could drift from the code. **The flip to enforce-by-default is a
+  separate, later one-line PR, opened only after the owner has watched
+  the report-only output on several real merges — not part of this PR
+  sequence.**
+
+  **Gate scoped to workspace PRs at first (owner's containment measure
+  2).** By the time Step 2.5 runs, `merge_pr.sh` has already set
+  `$WORKTREE_TYPE` to `"workspace"`, `"project"`, or `""` (the empty
+  case is a package-repo PR resolved via `--repo owner/repo#N` or a
+  qualified `--pr owner/repo#N`, which sets `REPO_KIND="package"` and
+  clears `WORKTREE_TYPE` at `merge_pr.sh:296-297`) — this is the exact
+  detection the script already has; Step 2.5 reads it, it does not add
+  a new one. Step 2.5's refusal path (the `--enforce`-mode block above)
+  only ever fires when `$WORKTREE_TYPE == "workspace"`. For `"project"`
+  or `""` (project PRs via `--type project`, project auto-detection, or
+  any package-worktree/qualified-repo PR), Step 2.5 **always** stays in
+  report-only mode — it prints the same "would have refused because..."
+  line but never refuses, regardless of `--enforce` — until #265 PRs
+  2–4 settle where project timelines live (see "#265 dependency and
+  progress.md path resolution" below: project-repo `progress.md`
+  location is not yet stable, so a project-PR refusal could be reading
+  a soon-to-move path). Widening enforcement to project PRs is a later,
+  separate PR once #265 PRs 2–4 land, not part of this sequence.
+
+  **Both modes, all scopes**: `--force-unreviewed` bypasses both
+  conditions together (not selectively) with a loud warning banner
+  printed to stdout/stderr, following the same `echo "⚠️  ..."` idiom the
+  script already uses elsewhere for non-fatal warnings (e.g.
+  `merge_pr.sh:498, 501, 618`) — this is a new banner for a new check,
+  not a pre-existing confirmation gate; the plan no longer claims one
+  exists. `--force-unreviewed` is meaningful even in report-only mode
+  (it still suppresses the "would have refused" print and instead prints
+  the bypass banner) so its behavior doesn't silently change the day
+  `--enforce` becomes default. The bypass also appends a
+  `## Merge (unreviewed)` entry to the target issue's `progress.md` via
+  `progress_append.sh` (see "Estimated Scope" above for why this, not a
+  git note, is the durable record) before proceeding to Step 3. Never
   auto-merges anything it wasn't already going to merge: the actual
   human gate remains "a human chose to run `make merge-pr`" — this check
-  only adds a refusal *precondition* before Step 3 is reached, it does
-  not add or remove any interactive confirmation (there was none to
-  begin with).
+  only adds a refusal *precondition* (when `--enforce`d and scoped to a
+  workspace PR) before Step 3 is reached, it does not add or remove any
+  interactive confirmation (there was none to begin with).
 - **Layer 2 (Ask-First, NOT implemented in this PR — see Open
   Questions)**: a GitHub required status check or branch-protection rule
   enforcing the same precondition server-side, so a direct "Merge" click
@@ -365,22 +474,44 @@ bypass message, since that is the one existing pattern in this script
 worth reusing; it does not reuse a merge-confirmation pattern because
 none exists.
 
-**Tests**: `merge_pr.sh` refuses (exit non-zero, no worktree/branch
-mutation, no `gh pr merge` call reached) against a sandbox PR with
-(a) no `## Local Review` entry at any SHA, (b) a `## Local Review` at a
-stale SHA, (c) a `## Local Review` with `**Verdict**: changes-requested`,
-(d) a matching-SHA `**Verdict**: approved` entry but no
-`## Decision summary` PR comment; proceeds past the check (reaches Step 3,
-the `gh pr merge` call) only with both a matching-SHA
-`**Verdict**: approved` entry **and** a `## Decision summary` comment
-present; `--force-unreviewed` bypasses all four refusal cases together
-with the warning banner present in its output **and** asserts a
-`## Merge (unreviewed)` entry was appended to `progress.md` naming which
-check(s) were bypassed.
+**Tests**: both modes and both in-scope/out-of-scope cases are covered,
+against a sandbox workspace-type PR with the same four gap fixtures used
+throughout — (a) no `## Local Review` entry at any SHA, (b) a
+`## Local Review` at a stale SHA, (c) a `## Local Review` with
+`**Verdict**: changes-requested`, (d) a matching-SHA
+`**Verdict**: approved` entry but no `## Decision summary` PR comment:
+- **Report-only mode (default, no `--enforce`)**: each of (a)–(d)
+  proceeds to Step 3 (the `gh pr merge` call is reached) with the
+  "would have refused because..." line present in stdout naming the
+  failing condition(s); a fifth fixture (matching-SHA approved entry
+  **and** decision-summary comment present) proceeds with no such line.
+- **`--enforce` mode, `$WORKTREE_TYPE == "workspace"`**: `merge_pr.sh`
+  refuses (exit non-zero, no worktree/branch mutation, no `gh pr merge`
+  call reached) against each of (a)–(d); proceeds past the check (reaches
+  Step 3) only with both a matching-SHA `**Verdict**: approved` entry
+  **and** a `## Decision summary` comment present.
+- **`--enforce` mode, `$WORKTREE_TYPE == "project"` and `""` (package/
+  qualified-repo PR)**: fixture (a) (no review entry at all) still
+  reaches Step 3 with the report-only "would have refused" line present
+  — `--enforce` has no refusal effect outside `WORKTREE_TYPE ==
+  "workspace"`, asserted explicitly so scope-widening can't regress
+  silently.
+- `--force-unreviewed` bypasses all four refusal cases together (tested
+  under `--enforce` + workspace scope, where it has a refusal to bypass)
+  with the warning banner present in its output **and** asserts a
+  `## Merge (unreviewed)` entry was appended to `progress.md` naming
+  which check(s) were bypassed; a further case asserts
+  `--force-unreviewed` under report-only mode still prints the bypass
+  banner and appends `## Merge (unreviewed)` instead of the "would have
+  refused" line.
 
-**Enforcement**: mechanical (Layer 1, this PR); Layer 2 is explicitly
-**not yet enforced** pending the Ask-First decision (ADR-0004 gap, noted
-honestly rather than assumed either way).
+**Enforcement**: mechanical (Layer 1, this PR) — but the enforcement
+itself ships off by default (report-only) and scoped to workspace PRs
+only, per the owner's containment measures 1–2; the later flip to
+`--enforce`-by-default and, separately, to project-PR scope, are each
+their own one-line follow-up PR, not part of this sequence. Layer 2 is
+explicitly **not yet enforced** pending the Ask-First decision (ADR-0004
+gap, noted honestly rather than assumed either way).
 
 ## #265 dependency and progress.md path resolution
 
@@ -474,6 +605,86 @@ were never a *named* predecessor type, just ad hoc prose). New entries
 from PR B onward, on any issue, use the new vocabulary; issue #265's file
 is not touched by this port.
 
+## Blast radius
+
+**What this port does not touch** (verified by listing `.claude/skills/`,
+20 entries total; this port's PR sequence touches 4 existing skills
+plus 1 new one):
+
+- **The 16 skills outside the lifecycle chain**: `analyze-permissions`,
+  `audit-project`, `audit-workspace`, `brainstorm`, `brand-guidelines`,
+  `document-project`, `gather-project-knowledge`, `inspiration-tracker`,
+  `issue-triage`, `onboard-project`, `research`, `review-issue`,
+  `skill-importer`, `start-task`, `test-engineering`, `what-next`. None
+  of these read or write `progress.md`, call `progress_append.sh`/
+  `progress_read.py`, or reference the ADR-0013 vocabulary; none is
+  edited by any PR in this sequence.
+- **Adapters** (`.agent/scripts/adapter`, `.agent/project_types/*/adapter.sh`,
+  ADR-0011) — this port adds no new adapter verb and does not change
+  `build`/`test`/`install`/`setup` dispatch.
+- **Worktree scripts** (`worktree_create.sh`, `worktree_enter.sh`,
+  `worktree_remove.sh`, `worktree_list.sh`) — PR B/C read worktree state
+  (`WORKTREE_ISSUE`, branch name, `git rev-parse --show-toplevel`) through
+  the existing `resolve_work_plans_dir()` helper; none of these scripts'
+  own logic is modified.
+- **The registry** (`.agent/scripts/_project_registry.sh` and the #265
+  registry work) — this port reads through #265 PR 1's shared resolver
+  as a consumer, same as `plan-task` already does; it does not modify
+  registry logic, and no PR in this sequence depends on #265 PRs 2–4
+  (see "#265 dependency and progress.md path resolution" below).
+- **Hosting** — no CI workflow, branch-protection rule, or GitHub App/
+  webhook configuration is changed by this port. PR F's Layer 2 (server-
+  side enforcement) is explicitly not implemented (Open Questions); Layer
+  1 is a local script change only.
+
+**The three risk points the owner discussed, and how each is contained**:
+
+1. **The gate hits project PRs before #265 settles project timelines.**
+   Contained by containment measure 2: Step 2.5 reads the exact
+   `$WORKTREE_TYPE` value `merge_pr.sh` already computes (`"workspace"` /
+   `"project"` / `""` for package-repo PRs) and only ever refuses when it
+   is `"workspace"`; `"project"` and `""` stay report-only regardless of
+   `--enforce`, until a follow-up PR widens scope after #265 PRs 2–4
+   land.
+2. **The fail-loud `resolve_work_plans_dir()` change breaks daily-use
+   skills for skill worktrees or issue-less branches.** Contained by
+   containment measure 4: PR B and PR C each add a call-site check
+   before invoking the resolver — if no issue number is derivable (skill
+   worktree, or a branch that isn't `feature/issue-<N>`-shaped), the
+   skill prints "Progress persistence skipped (<reason>)" and completes
+   the review with no `progress.md` write, rather than aborting
+   mid-review. The resolver's existing fail-loud abort (issue #147) is
+   preserved for the case it was built for — a resolvable issue number
+   in the wrong worktree — and is not weakened.
+3. **The vocabulary rename (`## External Review` → `## Integrated
+   Review`, `## Plan` → `## Plan Authored`, `## Plan Review: PR #<N> —
+   <title>` → `## Plan Review`) breaks readers of the old headings.**
+   Contained by scope, verified with `grep -rn "## External
+   Review\|## Plan Review:\|^## Plan$" .agent/ .claude/ .github/`: the
+   only files that *write* these headings today are the three SKILL.md
+   files this port already edits — `triage-reviews/SKILL.md:216`
+   (`## External Review`), `review-plan/SKILL.md:181,217,227` (`## Plan
+   Review: ...`), `plan-task/SKILL.md:211` (`## Plan`) — plus
+   `progress_read.py` itself as the one automated *reader*, which PR A
+   ships with predecessor recognition for `## External Review` from day
+   one, and human eyes reading `progress.md` files directly. The grep's
+   other hits are not readers of this vocabulary and are contained by
+   being out of namespace or out of scope, not by this port touching
+   them: the ~30 `.agent/work-plans/issue-<N>/progress.md` files it
+   also matches are historical *data*, not code — covered by the
+   Non-migration statement above, which keeps their old headings
+   unrewritten rather than treating them as something to fix;
+   `.github/ISSUE_TEMPLATE/feature_track.md:22`'s `## Plan` is a
+   different namespace entirely (an issue-body planning checklist
+   section, unrelated to `progress.md` entry types — confirmed by
+   reading it: `### Phase 1: {Name}` subsections, no `**Status**`/
+   `**When**`/`**By**` fields); and `.agent/workflows/README.md:65`'s
+   `## Plan` is an illustrative worked example that already predates
+   ADR-0013 (it also shows `## Brainstorm` and `## Implement`, neither
+   of which is ADR-0013 vocabulary either) — real but pre-existing
+   documentation drift this port neither causes nor is positioned to
+   fix; left as a residual gap, not silently claimed clean.
+
 ## Files to Change
 
 | File | Change |
@@ -491,7 +702,7 @@ is not touched by this port.
 | `.claude/skills/plan-task/SKILL.md` | `## Plan` → `## Plan Authored`, plan-commit-SHA correlation field, `progress_append.sh` swap (PR E) |
 | `.claude/skills/review-plan/SKILL.md` | `## Plan Review: PR #<N> — <title>` → `## Plan Review` (title moves to body), correlation field, `progress_append.sh` swap (PR E) |
 | `.agent/scripts/tests/test_plan_correlation.sh` (new) | Plan-commit-SHA correlation fixture (PR E) |
-| `.agent/scripts/merge_pr.sh` | Layer-1 gate: `progress_read.py`-backed precondition check, `--force-unreviewed` bypass (PR F) |
+| `.agent/scripts/merge_pr.sh` | Layer-1 gate: `progress_read.py`-backed precondition check, report-only by default with `--enforce` flag, scoped to `$WORKTREE_TYPE == "workspace"`, `--force-unreviewed` bypass (PR F) |
 | `.agent/scripts/tests/test_merge_pr_gate.sh` (new) | Refusal/pass/bypass cases (PR F) |
 | `.github/PULL_REQUEST_TEMPLATE.md` | Decision-summary section (PR F) |
 | `.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md` | Add `address-findings` to skill lists (PR D) |
@@ -505,14 +716,14 @@ is not touched by this port.
 
 | Principle | Consideration |
 |---|---|
-| Enforcement over documentation | Every PR pairs its behavior change with a hermetic test (PR A's whitelist test, PR B's round-counting, PR C's cross-source fixture, PR D's fix/defer fixture, PR E's correlation fixture, PR F's refusal/pass/bypass cases). PR F Layer 2 is the one deliberately-unenforced-so-far item, and it's called out, not hidden. |
+| Enforcement over documentation | Every PR pairs its behavior change with a hermetic test (PR A's whitelist test, PR B's round-counting + degradation test, PR C's cross-source fixture + degradation test, PR D's fix/defer fixture, PR E's correlation fixture, PR F's report-only/enforce/scope/bypass cases). PR F Layer 2, and PR F Layer 1's enforce-by-default flip, are the two deliberately-unenforced-so-far items, and both are called out, not hidden. |
 | Capture decisions, not just implementations | PR A puts the vocabulary in an ADR, not five SKILL.md copies (the exact failure mode ADR-0013 itself documents and this workspace already exhibits: `triage-reviews` still says `## External Review`). |
 | A change includes its consequences | Files to Change lists every skill-list/knowledge-doc consequence flagged by the `review-issue` comment and the Consequences Map. |
 | Only what's needed | Ollama, Copilot-CLI, and container-dispatch specialists are explicitly dropped, not silently ported as dead code. |
-| Improve incrementally | Six independently mergeable PRs, each with its own tests, per the owner's adjustment #1. |
+| Improve incrementally | Six independently mergeable PRs, each with its own tests, per the owner's adjustment #1; the checkpoint after PR B (containment measure 3) and the report-only-before-enforce sequencing (measure 1) are the same principle applied a second time, at the gate's rollout rather than at the PR split. |
 | Test what breaks | Each PR's Tests subsection is concrete (fixture shape, not "add tests"). |
-| Human control and transparency | Merge gate never auto-merges; the CI/branch-protection layer is Ask-First, not assumed; convergence verdicts are advisory, never blocking. |
-| Workspace vs. project separation | Nothing project-specific introduced; all vocabulary and scripts are generic over any `.agent/work-plans/issue-<N>/`. |
+| Human control and transparency | Merge gate never auto-merges; ships report-only so the owner sees its verdicts before it can block anyone (measure 1); the CI/branch-protection layer is Ask-First, not assumed; convergence verdicts are advisory, never blocking. |
+| Workspace vs. project separation | Nothing project-specific introduced; all vocabulary and scripts are generic over any `.agent/work-plans/issue-<N>/`; the merge gate additionally stays out of project-PR enforcement entirely at first (measure 2), on top of that existing separation. |
 
 ## ADR Compliance
 
@@ -554,6 +765,36 @@ is not touched by this port.
 
 ## Estimated Scope
 
+**Checkpoint after PR B (owner's containment measure 3)**: the sequence
+pauses after PR B merges. Before PR C starts, PR A + PR B are exercised
+on PR 2 of #265 (a real project-affecting workspace PR, not a synthetic
+fixture) — concretely, all three of the following must be observed on
+that PR before the pause lifts:
+
+1. **`review-code` writes its entry via `progress_append.sh` with the
+   convergence verdict** — the `## Local Review (Pre-Push)` (or
+   `## Local Review`) entry `progress_append.sh` commits for #265 PR 2
+   carries the `**Round**`/`**Ship**` fields PR B adds, and the commit
+   is the one `progress_append.sh` made (not a hand-typed entry
+   resembling one).
+2. **The fail-loud `resolve_work_plans_dir()` path is hit from a
+   worktree** — #265 PR 2's own worktree is a project worktree (per
+   #265's design), so `review-code`'s new `resolve_work_plans_dir()`
+   call resolves through it live, not just in PR B's own hermetic test
+   fixtures; any resolution failure on this real PR is the checkpoint's
+   signal to fix PR B before C starts, not to route around it.
+3. **The decision summary is produced from the pinned template** —
+   `review-code`'s report on #265 PR 2 includes the "Decision summary"
+   section using the exact template pinned in PR B ("Decision-summary
+   template" above), confirming the shape holds on a real, non-trivial
+   PR before PR F is built to consume it.
+
+Only once all three are observed and recorded (a note in this
+`progress.md`, not just verbal confirmation) does PR C start. This holds
+PR E back too, despite PR E depending only on PR A structurally — the
+owner's sequencing measure names "C–F," which includes E; see the
+adjusted dependency note below.
+
 **Merge-adjacent-seams check** (owner's 2026-09-16 decision comment: "merge
 adjacent seams where a PR would otherwise be trivial"), applied explicitly
 rather than restated from the original A-F split:
@@ -584,15 +825,22 @@ rather than restated from the original A-F split:
 
 Six PRs (A–F) remain, each independently mergeable and individually
 tested, per the owner's adjustment #1. PR A is the foundation (nothing
-downstream compiles/tests cleanly without it). PR B and PR E can land in
-either order relative to each other (both depend only on PR A); PR C
-depends on PR A (reads `## Local Review` via `progress_read.py`) but not
-on PR B. PR D depends on PR A and PR C (`## Integrated Review`); PR B is a
-soft, not hard, dependency (see above — PR D must read
-`## Local Review (Pre-Push)` defensively whether or not PR B's round/ship
-fields are present). PR F depends on PR A (`progress_read.py`) only, not
-on B–E, and per the issue's own framing does not need to wait on C–E. No
-PR in this sequence is blocked on #265 PRs 2–4.
+downstream compiles/tests cleanly without it). Structurally, PR B and PR
+E depend only on PR A and could land in either order relative to each
+other; PR C depends on PR A (reads `## Local Review` via
+`progress_read.py`) but not on PR B; PR D depends on PR A and PR C
+(`## Integrated Review`), with PR B a soft, not hard, dependency (see
+above — PR D must read `## Local Review (Pre-Push)` defensively whether
+or not PR B's round/ship fields are present); PR F depends on PR A
+(`progress_read.py`) only, not on B–E. **The checkpoint above overrides
+this structural freedom**: per the owner's containment measure 3, C
+through F — which includes E, despite E's structural dependency being on
+A alone — do not start until PR B has merged and been exercised on #265
+PR 2. So the only real ordering freedom left is A → B, then the
+checkpoint, then C/D/E/F in the dependency order above. No PR in this
+sequence is blocked on #265 PRs 2–4 merging (the checkpoint uses #265 PR
+2 as a real-world exercise target, which is independent of whether #265
+PRs 2–4 land first).
 
 **`--force-unreviewed` audit record**: the bypass gets a durable,
 git-tracked record rather than terminal-only stdout — PR F's Layer 1 check
