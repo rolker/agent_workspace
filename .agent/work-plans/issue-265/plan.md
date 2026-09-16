@@ -276,10 +276,14 @@ launched at `~/src/gz4d`:
    from under `~/src/gz4d`, syncs.
 6. `user_tier_install.sh --check` and `make validate` pass before and after.
 
-For **project11** the same cycle runs on the ROS machine after cutover, with
-a "port to rolling" issue on a package repo as the first real task
-(`p11-rolling` instance, package worktree, first real Rolling build) — that
-is #262's checklist item, not this step's gate.
+For **project11** the same cycle runs **on this machine, before cutover, in
+parallel with ongoing project11 work in `ros2_agent_workspace`** — the fork
+stays the production workspace until design B is fully tested here. The
+project11 acceptance task is a real **"port to rolling" issue** on a package
+repo: `p11-rolling` instance under `~/project11/rolling`, package worktree
+under the instance, first real Rolling build via the adapter, PR, merge. It
+gates #262 (cutover); it is not a post-cutover check. Both cycles (`gz4d`,
+project11) must pass before step 5 is called done.
 
 ## Files to Change
 
@@ -367,5 +371,6 @@ Additive, each independently mergeable and tested:
 
 Four PRs (above). PR 1 and 2 are mechanical with hermetic tests; PR 3 is
 the new surface (hook, install/check, skill scopes); PR 4 is removal plus
-migration and the Ask-First `AGENTS.md` edit. Acceptance test on `gz4d`
-closes the issue; the project11 rolling-port cycle is tracked under #262.
+migration and the Ask-First `AGENTS.md` edit. Acceptance tests on `gz4d`
+and on project11 (port-to-rolling, on this machine, before cutover) close
+the issue.
