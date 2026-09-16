@@ -4,7 +4,7 @@
 
 https://github.com/rolker/agent_workspace/issues/265
 
-Revision 2 (2026-09-16). Replaces the `projects/`-centred draft (revision 1,
+Revision 2 (2026-09-16; review findings 1–9 applied the same day). Replaces the `projects/`-centred draft (revision 1,
 2026-09-15). Direction and decisions: issue comments of 2026-09-15 (owner
 direction) and 2026-09-16 (superseding brief). Evidence: `spike-results.md`
 beside this file (Claude Code 2.1.273).
@@ -124,9 +124,17 @@ p11-rolling  ros2_colcon     /home/roland/project11-ng/rolling parent=p11 distro
 - Resolution rule for a cwd: the **longest registered path that is a
   prefix** of the physical cwd. `~/project11-ng/jazzy/worktrees/x` → `p11-jazzy`;
   `~/project11-ng` → `p11`. The adapter's `--from` discovery and the hook share
-  one implementation (`_project_registry.sh: registry_resolve_from_dir`, extended to longest-prefix over absolute paths).
+  one implementation (`_project_registry.sh: registry_resolve_from_dir`, which already does
+  longest-prefix ancestor matching). New parser work is limited to accepting
+  `key=value` trailing fields (any extra field is a hard parse error today)
+  and dropping the `projects/<name>` default path.
 - `registry_worktree_dir <name>` is the single source for where a root's
   worktrees live; every script that today walks `<ws>/worktrees/` calls it.
+  **Transition rule (PR 2 → PR 4):** for a project that has no registry
+  entry (legacy `project/` symlink only), it returns today's
+  `<ws>/worktrees/project/<repo>/` so nothing breaks mid-rollout; a test
+  covers the no-entry case. PR 4 removes the fallback together with the
+  symlink support.
 
 ### 2. User-tier layer (install, hook, skills, permissions)
 
@@ -174,6 +182,21 @@ p11-rolling  ros2_colcon     /home/roland/project11-ng/rolling parent=p11 distro
      that file).
 3. Also print `WORKTREE_TYPE=project` / `PROJECT=<name>` lines so
    `/start-task` can default `--type` and `--project` from the session.
+   **Parent-root rule (decision pending owner confirmation on the PR):**
+   when the resolved root is a parent, the hook prints `PROJECT=<parent>`
+   plus `INSTANCES=<a,b,...>`. Scripts never prompt: `worktree_create.sh`
+   with a parent selected and no `--project <instance>` errors, listing
+   the instances, unless the parent has exactly one instance, which is
+   used. The `/start-task` skill turns that error into an
+   `AskUserQuestion` over the listed instances. The dispatcher's existing
+   "no adapter for project type 'project'" error is therefore never
+   reached from the skill path; it stays as the backstop for direct calls.
+
+The heading list the renderer keys on is pinned by a test
+(`tests/test_session_start_layer.sh`) that asserts every keyed heading
+exists verbatim in `AGENTS.md` and fails loudly on drift, so a section
+rename cannot silently drop content (ADR-0006: render, never fork; and
+"enforcement over documentation").
 
 Rendering happens on every session start; budget: keep the injected
 workspace layer under ~3,000 tokens (measured in the PR; the unconditional
@@ -206,6 +229,36 @@ inert outside registered roots** (absolute-path scripts that themselves
 check the registry, hooks that stand down). Global hooks run in every repo,
 including untrusted clones, so nothing installed there may act on repo
 content without the registry check.
+
+**Scripts promoted to the user tier must enforce that rule themselves.**
+Today `gh_create_pr.sh`, `gh_create_issue.sh`, `merge_pr.sh`,
+`fetch_pr_reviews.sh`, `update_roadmap.sh`, `cross_model_review.sh` and
+the worktree scripts resolve their target repo from the caller's cwd with
+no registry awareness; a global no-prompt allow-rule for their absolute
+path would let a session in an untrusted, unregistered repo run them
+against that repo's remote. Therefore:
+
+- `_project_registry.sh` gains `require_registered_root [dir]`: exits
+  non-zero with a one-line reason unless `dir` (default `$PWD`) is under a
+  registered root or under the workspace checkout itself.
+- The user-tier allow-list is **generated from a manifest**
+  (`.agent/user_tier_scripts.txt`) listing exactly the scripts promoted.
+  Initial list: `worktree_create.sh`, `worktree_enter.sh`,
+  `worktree_remove.sh`, `worktree_list.sh`, `merge_pr.sh`,
+  `gh_create_pr.sh`, `gh_create_issue.sh`, `fetch_pr_reviews.sh`,
+  `cross_model_review.sh`, `build.sh`, `test.sh`, `adapter`,
+  `dashboard.sh`, `register_project.sh`, and the sourced helpers
+  (`set_git_identity_env.sh`, `_issue_helpers.sh`,
+  `_resolve_work_plans_dir.sh`) — the sourced helpers are inert (they set
+  variables/functions) and are exempt from the guard by an explicit
+  `# user-tier: inert` marker that the test recognises.
+- Every non-inert script on the list calls `require_registered_root` before
+  any repo-affecting action. A test (`tests/test_user_tier_guard.sh`) runs
+  each listed script from a sandbox unregistered git repo and asserts it
+  refuses with the guard's message and touches nothing; it also fails if a
+  script is on the list without either the guard call or the inert marker.
+- `user_tier_install.sh --check` verifies install state; the guard test
+  verifies behaviour. Both run under `make validate`.
 
 ### 3. Scripts: cwd-relative → root-resolved
 
@@ -291,11 +344,21 @@ under the instance, first real Rolling build via the adapter, PR, merge. It
 gates #262 (cutover); it is not a post-cutover check. Both cycles (`gz4d`,
 project11) must pass before step 5 is called done.
 
+The project11 cycle **does not depend on #267**: `adapter setup` bootstraps
+`p11-rolling` from today's `rolling` manifest branch exactly as it did for
+`projects/p11-rolling` (#248), and ROS Rolling is installed on this machine
+(`/opt/ros/rolling`). What this plan must deliver for it is the
+`~/project11-ng/<distro>` registration (PR 4) and worktrees under the
+instance (PR 2); the port-to-rolling issue itself is opened on the package
+repo when the cycle starts, and the first Rolling build is expected to
+surface real porting work — that is the point of the test, not a
+precondition of it.
+
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/_project_registry.sh` | `key=value` trailing fields; `parent`, `worktrees`, `role`, `distro`; `registry_resolve_from_dir` longest-prefix, `registry_worktree_dir`; drop `projects/<name>` default path |
+| `.agent/scripts/_project_registry.sh` | `key=value` trailing fields; `parent`, `worktrees`, `role`, `distro`; `registry_worktree_dir` (with legacy fallback until PR 4); `require_registered_root` guard helper; drop `projects/<name>` default path (PR 4) |
 | `.agent/projects.local.example` | New format, parent/instance example, no hosting-dir wording |
 | `.claude/hooks/session_start_project_layer.sh` (new) | Registry-gated layer injection; `WORKTREE_TYPE`/`PROJECT` lines |
 | `.claude/hooks/block-bash-tool-mapping.sh`, `log-tool-use.sh` | Registry guard, stand down elsewhere |
@@ -305,12 +368,13 @@ project11) must pass before step 5 is called done.
 | `.claude/settings.json` | Hook commands by absolute path resolved at install (file keeps relative for workspace sessions; install rewrites into user tier) |
 | `.agent/scripts/register_project.sh` (new) | Register/unregister, setup, exclusions, relaunch hint |
 | `.claude/commands/register-project.md` (new, installed to user tier) | Bootstrap command |
-| `.agent/scripts/_worktree_helpers.sh`, `worktree_create.sh`, `worktree_enter.sh`, `worktree_remove.sh`, `worktree_list.sh`, `merge_pr.sh`, `dashboard.sh` | `registry_worktree_dir`; registry iteration; exclusion writing; work from any cwd |
+| `.agent/scripts/_worktree_helpers.sh`, `worktree_create.sh`, `worktree_enter.sh`, `worktree_remove.sh`, `worktree_list.sh`, `merge_pr.sh` | `registry_worktree_dir`; registry iteration; exclusion writing; work from any cwd |
+| `.agent/scripts/dashboard.sh` | Replace the hardcoded path-substring root classification and worktree counting (`*/worktrees/project/*`, `*/project/worktrees/*`, `*/.workspace-worktrees/*`, `*/worktrees/workspace/*`) with registry-driven enumeration of each root's worktree dir |
 | `.agent/scripts/adapter` | Drop `project/` fallback; pass `ACTIVE_PROJECT_ROLE/DISTRO` |
 | `.agent/project_types/ros2_colcon/adapter.sh` | `distro` from registry first, `ROS_DISTRO` config as fallback |
 | `.agent/scripts/validate_workspace.py` | Fail on `project/`/`projects/`; call `user_tier_install.sh --check` |
 | `.claude/skills/start-task/SKILL.md` | Default `--type`/`--project` from session lines |
-| `.agent/scripts/tests/` | Registry parser cases; resolve-by-prefix; worktree dir; exclusion idempotency; hook silent/inject; skill-path regression test; install `--check` drift |
+| `.agent/scripts/tests/` | Registry parser cases (incl. `key=value`, parent/instance); worktree dir incl. legacy no-entry fallback; exclusion idempotency; hook silent/inject; heading-drift test; user-tier guard behaviour test; skill-path regression test; install `--check` drift |
 | `.agent/WORKTREE_GUIDE.md`, `README.md`, `ARCHITECTURE.md` | Session roots, worktrees-in-root, user tier, registration |
 | `AGENTS.md` | Terminology, Build & Test, Worktree Workflow wording (Ask First) |
 | `docs/ROADMAP.md` | Step 5 row → #265 in progress; cutover row 1 → done; note step 4 re-scope (#267) |
@@ -338,10 +402,10 @@ Additive, each independently mergeable and tested:
 
 | ADR | Triggered | How addressed |
 |---|---|---|
-| ADR-0011 (adapter contract) | Yes | No new verb. `ACTIVE_PROJECT_ROLE/DISTRO` are dispatcher-provided variables like `ACTIVE_PROJECT_*` today; `single_project` ignores them. The `project/` fallback removal changes the dispatcher's discovery order (registry only) — documented as an ADR-0011 addendum per ADR-0008 |
+| ADR-0011 (adapter contract) | Yes | No new verb. `ACTIVE_PROJECT_ROLE/DISTRO` are dispatcher-provided variables like `ACTIVE_PROJECT_*` today; `single_project` ignores them. The `project/` fallback removal changes the dispatcher's documented discovery order (registry only) — a substantive change by ADR-0008's test, so it is recorded in the new ADR below (which supersedes that part of ADR-0011's Decision), not as an addendum |
 | ADR-0012 (worktree composition) | Yes | Package worktrees keep `.worktree-repos`; only `registry_worktree_dir` changes where they are created. No new verb |
 | ADR-0006 (adapter files as thin routers) | Yes | The hook renders sections of `AGENTS.md`; it does not fork them. `CLAUDE.md` unchanged |
-| New ADR: **session roots and the user tier** | Yes | Records decisions 2–6, the user-tier rule ("only entries inert outside registered roots"), and the worktree-boundary finding that made ancestry insufficient. Status Provisional (roadmap's "ADR Provisional" item) until the acceptance test passes on the ROS machine |
+| New ADR: **session roots and the user tier** | Yes | Records decisions 2–6, the user-tier rule ("only entries inert outside registered roots") with its enforcement (guard helper + generated allow-list + behaviour test), the registry-only discovery order (superseding ADR-0011's legacy `project/` step), and the worktree-boundary finding that made ancestry insufficient. Status Provisional (roadmap's "ADR Provisional" item) until the acceptance test passes on the ROS machine |
 
 ## Consequences
 
@@ -360,10 +424,6 @@ Additive, each independently mergeable and tested:
 - **Project layer size.** Rendering the applicable `AGENTS.md` sections may
   still be ~3k tokens per project session. Acceptable now; #259 is the real
   fix. Measure in PR 3 and record.
-- **Parent-root sessions and `/start-task`.** A session at `~/project11`
-  (parent) must pick an instance for a package worktree. Proposal: `/start-
-  task --project p11-rolling`; without it, if the parent has exactly one
-  instance use it, else ask. Confirm on the plan review.
 - **Cross-session duplicate-spawn awareness** (roadmap item): with
   worktrees per root, "is someone already on this issue" is a per-root
   check; `worktree_create.sh` already refuses an existing worktree. Not

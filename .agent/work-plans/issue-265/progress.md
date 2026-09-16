@@ -38,3 +38,19 @@ a worktree boundary, so ancestry is not relied on); registry gains
 outright; four additive PRs; acceptance test on real `gz4d` issues. Design A
 recorded as set aside with the finding that removed its advantage. Manifest
 support (step 4) re-scoped to #267 (general ROS manifest resolver).
+
+## Plan review
+
+**Status**: complete (findings applied)
+**When**: 2026-09-16
+**By**: independent Sonnet reviewer via /review-plan; findings applied by Claude Code Agent (claude-fable-5-1)
+
+Nine findings, one Concern (user-tier allow-rules for scripts with no
+registry awareness). Applied: `require_registered_root` guard + generated
+allow-list manifest + behaviour test; legacy no-entry worktree fallback for
+the PR 2→4 window; heading-drift test for the SessionStart renderer;
+`dashboard.sh` substring logic called out; parent-root instance selection
+decided (pending owner confirmation); project11 cycle stated as not
+depending on #267; `registry_resolve_from_dir` claim corrected; discovery-
+order change moved into the new ADR; PR title fixed. Review posted on PR
+#266.
