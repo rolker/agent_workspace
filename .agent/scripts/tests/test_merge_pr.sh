@@ -666,6 +666,21 @@ test_registered_project_root_pr_regression() {
         "$(git -C "$outside/farrepo" show-ref --verify --quiet refs/heads/feature/issue-78 && echo true || echo false)"
 }
 
+test_ambiguous_project_root_type_project_fails_fast() {
+    echo "TEST: --type project with >1 non-parent project registered and no --project fails fast instead of falling through with an empty project root (#273 round-1 review)"
+    local sb out rc=0
+    sb="$(make_merge_sandbox)"
+    echo "alpha single_project $sb/alpha" >> "$sb/.agent/projects.local"
+    echo "beta single_project $sb/beta" >> "$sb/.agent/projects.local"
+
+    out="$(run_merge_pr "$sb" --pr 88 --type project --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "surfaces wt_resolve_project_repo_root's ambiguity error" \
+        "multiple projects registered; pass --project" "$out"
+    assert_eq "no gh calls made (fails before any PR lookup)" \
+        "false" "$([ -f "$sb/gh_calls.log" ] && echo true || echo false)"
+}
+
 # ---- Run all tests ----
 echo "=== merge_pr.sh package-worktree tests (#252 PR 2) ==="
 echo ""
@@ -689,6 +704,7 @@ test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression
 test_registered_project_root_pr_regression
+test_ambiguous_project_root_type_project_fails_fast
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

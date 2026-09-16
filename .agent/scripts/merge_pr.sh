@@ -208,7 +208,16 @@ if [[ -z "$REPO_ARG" ]]; then
     else
         PJ_REPO_ROOT=""
         if [[ "$WORKTREE_TYPE" == "project" ]]; then
+            # --type project was explicit, so a project root is required —
+            # falling through with PJ_REPO_ROOT empty would let later code
+            # default to $ROOT_DIR/project (line ~485) regardless of why
+            # resolution failed (ambiguous registration, no --project given,
+            # or nothing configured at all), silently operating on the
+            # wrong (or a nonexistent) checkout instead of failing fast.
             cat "$_pj_root_err" >&2
+            rm -f "$_pj_root_err"
+            unset _pj_root_err
+            exit 1
         fi
     fi
     rm -f "$_pj_root_err"
