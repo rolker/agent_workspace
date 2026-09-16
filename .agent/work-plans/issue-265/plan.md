@@ -106,9 +106,9 @@ trailing fields so existing three-column lines keep working):
 ```
 # <name>  <type>  <path>  [key=value ...]
 gz4d         single_project  /home/roland/src/gz4d
-p11          project         /home/roland/project11           # parent root: session/memory unit, no adapter
-p11-jazzy    ros2_colcon     /home/roland/project11/jazzy     parent=p11 distro=jazzy   role=dev
-p11-rolling  ros2_colcon     /home/roland/project11/rolling   parent=p11 distro=rolling role=dev
+p11          project         /home/roland/project11-ng        # parent root: session/memory unit, no adapter
+p11-jazzy    ros2_colcon     /home/roland/project11-ng/jazzy  parent=p11 distro=jazzy   role=dev
+p11-rolling  ros2_colcon     /home/roland/project11-ng/rolling parent=p11 distro=rolling role=dev
 ```
 
 - `parent=<name>` declares an instance of a parent root. The parent line
@@ -122,8 +122,8 @@ p11-rolling  ros2_colcon     /home/roland/project11/rolling   parent=p11 distro=
   now (replacing `ROS_DISTRO` in `projects.d/<name>.sh` as the primary
   source), `role` once #267's resolver lands. `single_project` ignores both.
 - Resolution rule for a cwd: the **longest registered path that is a
-  prefix** of the physical cwd. `~/project11/jazzy/worktrees/x` → `p11-jazzy`;
-  `~/project11` → `p11`. The adapter's `--from` discovery and the hook share
+  prefix** of the physical cwd. `~/project11-ng/jazzy/worktrees/x` → `p11-jazzy`;
+  `~/project11-ng` → `p11`. The adapter's `--from` discovery and the hook share
   one implementation (`_project_registry.sh: registry_resolve_from_dir`, extended to longest-prefix over absolute paths).
 - `registry_worktree_dir <name>` is the single source for where a root's
   worktrees live; every script that today walks `<ws>/worktrees/` calls it.
@@ -233,7 +233,7 @@ content without the registry check.
   absent; for ros2_colcon roots write `<root>/worktrees/COLCON_IGNORE`.
   Idempotent; never touches tracked files.
 - Package worktrees (ADR-0012) keep their `.worktree-repos` manifest; only
-  their location changes. `p11-jazzy` layout: `~/project11/jazzy/worktrees/
+  their location changes. `p11-jazzy` layout: `~/project11-ng/jazzy/worktrees/
   issue-<N>/` beside `layers/` and `configs/`.
 - Unregister (`register_project.sh --remove <name>`) refuses while the root
   has live worktrees, listing them.
@@ -246,8 +246,11 @@ content without the registry check.
   auto-detection when `--type` is omitted: `configs/manifest/` or a
   bootstrap URL → `ros2_colcon`, else `single_project`.
 - Migration on this machine: `gz4d` unchanged (already out-of-tree);
-  `p11-jazzy`/`p11-rolling` re-registered at `~/project11/<distro>` with a
-  parent `p11`, hosting dirs moved (or re-bootstrapped with `adapter setup`
+  `p11-jazzy`/`p11-rolling` re-registered at `~/project11-ng/<distro>` with a
+  parent `p11` (`-ng` while the fork's `~/project11` stays in production on
+  the ROS machine; renamed to `~/project11` at cutover — a registry path
+  edit plus moving the Claude Code auto-memory directory, which is keyed by
+  path), hosting dirs moved (or re-bootstrapped with `adapter setup`
   from the existing `projects.d/*.sh` URLs). `projects/` and `project/`
   removed from the workspace tree; the dispatcher's legacy fallback, the
   `projects/<name>` default path and `migrate_legacy_project.sh` from
@@ -280,7 +283,7 @@ For **project11** the same cycle runs **on this machine, before cutover, in
 parallel with ongoing project11 work in `ros2_agent_workspace`** — the fork
 stays the production workspace until design B is fully tested here. The
 project11 acceptance task is a real **"port to rolling" issue** on a package
-repo: `p11-rolling` instance under `~/project11/rolling`, package worktree
+repo: `p11-rolling` instance under `~/project11-ng/rolling`, package worktree
 under the instance, first real Rolling build via the adapter, PR, merge. It
 gates #262 (cutover); it is not a post-cutover check. Both cycles (`gz4d`,
 project11) must pass before step 5 is called done.
