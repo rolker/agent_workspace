@@ -1,13 +1,24 @@
 # Plan: Port the review loop from ros2_agent_workspace: progress entry vocabulary, convergence verdict, integrated triage, address-findings, merge gate
 
-**Revision 3 (blast-radius containment)** — the owner (2026-09-16)
-accepted four containment measures for this port's blast radius (merge
-gate scope, gate default posture, checkpoint discipline, and
-no-issue/skill-worktree degradation); they are folded below as
-decisions, not options. See the `## Plan Authored` entry appended for
-this revision for a one-line-per-measure summary and where each landed.
-Revision 2's own findings (see `## Plan Review` in `progress.md`) remain
-applied; this revision layers on top of it, it does not re-open them.
+**Revision 4 (containment enforced)** — revision 3's plan review
+(`## Plan Review`, revision 3, in `progress.md`) found the checkpoint
+measure real in name but not in effect: it didn't gate PR B's own live
+exposure, wasn't mechanically checked, and report-only mode's default
+path left no durable record. This revision resolves all three must-fixes
+by putting containment in code, not prose: PR B (and, for the same
+reason, PR C and PR E's `plan-task` swap) ship their persistence-path
+change behind a `PROGRESS_PERSISTENCE_STRICT` switch that defaults to
+today's behavior plus a one-line notice; a new `## Checkpoint` entry type
+and a hermetic CI check (`test_checkpoint_269.sh`, added in PR A) block
+any PR touching C–F's files until that entry exists on `main`; and every
+report-only merge-gate refusal — not just the `--force-unreviewed`
+bypass — now appends a durable `## Merge (report-only)` entry. The switch
+flip is a separate one-line PR, **B2**, gated by the same mechanical
+check. See the `## Plan Authored` entry appended for this revision for a
+one-line-per-finding summary and where each landed, and "Blast radius"
+below for the per-PR worst-case table the review asked for. Revisions 2
+and 3's own findings remain applied; this revision layers on top of
+them, it does not re-open them.
 
 ## Issue
 
@@ -76,11 +87,19 @@ ones; nothing here needs #265's remaining PRs 2–4 to merge first (see
 "#265 dependency and progress.md path resolution" below), so this
 sequence can start immediately.
 
-**Checkpoint after PR B (owner's containment measure 3):** the sequence
-pauses once PR B merges. Before PR C starts, A+B are exercised on PR 2 of
-#265 (a real project-affecting workspace PR) — see "Checkpoint after PR
-B" under Estimated Scope for what "exercised" means concretely. C–F do
-not start until that checkpoint is recorded.
+**Checkpoint after PR B (owner's containment measure 3, mechanically
+enforced from revision 4):** the sequence pauses once PR B merges. Before
+PR C starts, A+B are exercised on PR 2 of #265 (a real project-affecting
+workspace PR) — see "Checkpoint after PR B" under Estimated Scope for
+what "exercised" means concretely, and "New vocabulary: `## Checkpoint`
+and `## Merge (report-only)`" under PR A for the entry type and the CI
+check (`test_checkpoint_269.sh`) that refuses to let any PR touching a
+C–F file merge until that entry exists on `main`. This is no longer
+discipline-only: revision 3's plan review found the checkpoint unenforced
+and PR B's own live exposure ungated by it; both gaps are closed below
+(PR B ships its persistence-path change behind a switch defaulting to
+today's behavior, and the checkpoint's existence is a mechanical
+precondition, not a note someone might forget to write).
 
 ### PR A — ADR + `progress_append.sh` + `progress_read.py`
 
@@ -90,13 +109,74 @@ not start until that checkpoint is recorded.
 `## Implementation`, `## Merge (unreviewed)` — added for PR F's
 `--force-unreviewed` audit record, not present in the fork's own
 ADR-0013 (this workspace's Layer-1 gate is new work, not a port; see PR
-F); header schema with offset-bearing `**When**`;
+F), `## Merge (report-only)` — added in revision 4 for every report-only
+gate refusal, not just the bypass case (see PR F), and `## Checkpoint` —
+added in revision 4 as the durable, machine-checkable record that the
+owner's containment measure 3 (checkpoint after PR B) has been exercised
+(see "New vocabulary: `## Checkpoint` and `## Merge (report-only)`"
+below); header schema with offset-bearing `**When**`;
 correlation-key table; checkbox findings schema), citing fork ADR-0013 as
 source. `.agent/scripts/progress_append.sh` (append + commit in one
 prompt-free step, writable-type whitelist, identity fail-loud, idempotency
 guard). `.agent/scripts/progress_read.py` (JSON parse of entries,
 `--type` filter, correlation-key extraction, fence-aware parsing,
 predecessor recognition for `## External Review`).
+`.agent/scripts/tests/test_checkpoint_269.sh` (new, revision 4) — the
+mechanical enforcement for the checkpoint; see below.
+
+**New vocabulary: `## Checkpoint` and `## Merge (report-only)` (revision
+4, resolving must-fix 2 and must-fix 3 of revision 3's plan review)**:
+
+- **`## Checkpoint`** — written once, by the owner (the host who ran the
+  #265 PR 2 exercise, not by any script — this is a human attestation
+  that the three observations happened, same "human writes it" pattern
+  as every other entry in this file), to
+  `.agent/work-plans/issue-269/progress.md`. Required fields:
+  `**PR**` (the #265 PR 2 number), `**Review entry SHA**` (the
+  correlation SHA of the `## Local Review (Pre-Push)` entry
+  `progress_append.sh` wrote during the exercise), `**Resolver-hit**`
+  (one line confirming `resolve_work_plans_dir()` — run with
+  `PROGRESS_PERSISTENCE_STRICT=1` for this one exercise, see PR B below —
+  resolved correctly from #265 PR 2's real project worktree, quoting its
+  output), and `**Decision summary URL**` (the PR comment URL where the
+  pinned decision-summary template appeared). This is the same three
+  observations Estimated Scope's "Checkpoint after PR B" already
+  describes; revision 4 adds the required-fields schema and a consumer
+  that checks for it (below) instead of leaving the record informal.
+- **`## Merge (report-only)`** — written by `merge_pr.sh` itself (via
+  `progress_append.sh`, same helper the `## Merge (unreviewed)` bypass
+  entry uses) every time a report-only run (no `--enforce`) evaluates
+  Layer 1 and at least one condition fails. Fields: which condition(s)
+  failed, the PR head SHA. See PR F for why this closes must-fix 3 (the
+  report-only observation window previously left no durable record of
+  its own stated purpose).
+
+**Checkpoint enforcement (must-fix 2)**:
+`.agent/scripts/tests/test_checkpoint_269.sh` is a hermetic CI check —
+added as a test script under the existing `.agent/scripts/tests/`
+convention (picked over a new step in `validate.yml` because editing a
+CI workflow file is itself an AGENTS.md Ask-First item — "changing CI or
+branch protection configuration" — while a test script under this
+workspace's own `.agent/scripts/tests/` convention needs no such
+approval and is picked up by the existing test harness the same way
+every other PR's new `test_*.sh` file is). It fails (non-zero) when the
+PR's diff against its merge base touches any of: `.claude/skills/
+triage-reviews/SKILL.md`, `.claude/skills/address-findings/` (any file
+under the new skill dir), the heading lines in `.claude/skills/
+plan-task/SKILL.md` and `.claude/skills/review-plan/SKILL.md` that PR E
+changes, the gate step in `.agent/scripts/merge_pr.sh`, or `.github/
+PULL_REQUEST_TEMPLATE.md` — **unless** `main`'s
+`.agent/work-plans/issue-269/progress.md` contains a `## Checkpoint`
+entry with all four fields above non-empty. Because B2 (below) touches
+`triage-reviews/SKILL.md` and `plan-task/SKILL.md` to flip
+`PROGRESS_PERSISTENCE_STRICT`'s default, B2 is gated by this same check
+with no special-casing. **What removes the check**: nothing needs to —
+once the `## Checkpoint` entry is committed to `main`, the check is
+permanently satisfied for every later PR (it checks for the entry's
+existence, not currency). PR F's cleanup step deletes
+`test_checkpoint_269.sh` once F merges, since its one job (gating C–F
+until the checkpoint is recorded) is then complete and leaving it in
+place would be dead weight, not additional safety.
 
 Adaptations from fork source:
 - Both scripts are read as-is from
@@ -118,7 +198,12 @@ only the one file. `progress_read.py` — one hermetic fixture per entry
 type, fence-aware parsing (a `## Foo` heading inside a fenced block does
 not produce a phantom entry), predecessor-recognition filter
 (`--type "Integrated Review"` also returns `## External Review`),
-offset-missing `when_has_offset: false` case.
+offset-missing `when_has_offset: false` case. `test_checkpoint_269.sh`
+(revision 4) — a synthetic PR diff touching each gated file (one case
+per file named above) fails against a fixture `progress.md` with no
+`## Checkpoint` entry, and passes against a fixture with a complete one;
+a fixture with a `## Checkpoint` entry missing one required field still
+fails, asserting the check reads fields, not just heading presence.
 
 **Enforcement**: mechanical (test suite); the whitelist is itself the
 enforcement for "only ADR-0013-vocabulary types get committed."
@@ -142,6 +227,52 @@ non-rising must-fixes; continue otherwise), surfaced in the report header
 decision-summary report shape using the single pinned
 "Decision-summary template" below, as an additional top-of-report
 section, alongside — not replacing — the existing findings tables.
+
+**Behind a switch, defaulting to today's behavior (revision 4, resolving
+must-fix 1 of revision 3's plan review — "PR B does not actually contain
+PR B")**: (a) and (a2) above are the risky part of this PR — a daily-use
+skill's fail-loud resolver call and its swap onto `progress_append.sh`
+(whose identity check itself fail-loud-aborts when git identity is
+unset, a new abort path this workspace's existing inline `git add &&
+git commit` never had). Revision 3's checkpoint paused *starting PR C*
+on this being exercised first, but did nothing to stop PR B's own
+change from going live workspace-wide the moment PR B merges — every
+other in-flight PR's `review-code` invocation hits the new code
+immediately, before the #265 PR 2 exercise even runs. PR B closes that
+gap by shipping (a)/(a2) behind an environment variable,
+`PROGRESS_PERSISTENCE_STRICT` (default unset, treated as `0`), read at
+the top of step 8:
+- **`0` (default — what PR B ships with)**: step 8 keeps today's ad hoc
+  resolution prose and today's inline `git add && git commit`, exactly
+  as before PR B. It additionally evaluates (does not act on)
+  `resolve_work_plans_dir()`'s own abort condition against the current
+  worktree/branch, and if that check would have aborted, prints one line
+  to the report — `"Progress persistence notice: would have aborted
+  (resolve_work_plans_dir: <reason>) — running in compatibility mode
+  (PROGRESS_PERSISTENCE_STRICT=0)"` — then proceeds with the old path
+  regardless. The convergence fields and decision-summary section (b)/(c)
+  still land in the entry via the old commit mechanism; only the
+  resolution/commit *mechanism* is switched, not the entry content.
+- **`1`**: step 8 uses `resolve_work_plans_dir()` and `progress_append.sh`
+  for real — this is the code path B2 (below) makes the default.
+- **Why an env var, not a `progress_append.sh` flag**: the switch has to
+  gate the *resolution* step, which runs before `progress_append.sh` is
+  ever invoked in `0` mode — a flag on that script wouldn't be reachable
+  at the point being guarded. `review-code` is invoked as a skill (a
+  natural-language instruction set followed by an agent), not a CLI
+  command with a stable flag surface the way `merge_pr.sh` is, so a flag
+  can't be threaded through invocation the way PR F's `--enforce` can.
+  An env var is trivial to set for the one exercise run that needs it
+  (`PROGRESS_PERSISTENCE_STRICT=1`, used for the #265 PR 2 checkpoint
+  exercise — see PR A's `## Checkpoint` entry's `**Resolver-hit**`
+  field) without changing how the skill is invoked day to day, and it
+  mirrors PR F's own flag-then-flip precedent at the mechanism level
+  appropriate to a skill instead of a script.
+- PR C reuses the same switch for the identical risk in `triage-reviews`
+  (see PR C below); PR E reuses it for `plan-task`'s persistence swap
+  specifically (see PR E below) — `review-plan`'s change is a new
+  capability, not a swap of an existing mechanism, so it doesn't need the
+  switch (see PR E for why its failure mode is instead made non-fatal).
 
 **Decision-summary template** (the one concrete shape PR B and PR F both
 produce/consume — referenced, not re-described, by PR F's PR-template
@@ -191,7 +322,16 @@ round 1, 3 must-fixes → continue); a `resolve_work_plans_dir()` unification
 test asserting the step aborts (non-zero, remediation message) rather than
 silently falling back to the current worktree when `WORKTREE_ISSUE` is set
 but mismatched, or is unset and neither the worktree path nor the branch
-encodes an issue number, and cwd is outside the owning worktree.
+encodes an issue number, and cwd is outside the owning worktree — this
+case is run under `PROGRESS_PERSISTENCE_STRICT=1` (the mode the abort
+path is reachable in). **Switch tests (revision 4)**: with
+`PROGRESS_PERSISTENCE_STRICT` unset, the same mismatched-worktree fixture
+completes (no abort), the entry is committed via the old inline
+mechanism, and the report contains the "would have aborted" notice line;
+with it set to `1`, the same fixture aborts as described above. A third
+case asserts a *matching*-worktree fixture under `0` produces no notice
+line (the compatibility-mode check doesn't false-positive when there is
+nothing to warn about).
 
 **Degradation test (owner's containment measure 4)**: `resolve_work_plans_dir()`
 requires an issue number as input, so the call site in `review-code`'s
@@ -211,9 +351,10 @@ number *is* resolvable there, just the wrong worktree. `--no-progress`
 (if passed) short-circuits to the same skip path without needing the
 detection step.
 
-**Enforcement**: mechanical (round-counting test); decision-summary shape
-is prose guidance (Suggestion-tier per the guidance-doc calibration this
-workspace already applies), no new mechanical check.
+**Enforcement**: mechanical (round-counting test, switch-mode tests);
+decision-summary shape is prose guidance (Suggestion-tier per the
+guidance-doc calibration this workspace already applies), no new
+mechanical check.
 
 ### PR C — `triage-reviews`: `## Integrated Review`
 
@@ -231,6 +372,17 @@ rule as the fork); refactors its existing inline commit onto
 `resolve_work_plans_dir()` call, same as PR B does for `review-code` — see
 "#265 dependency and progress.md path resolution" above.
 
+**Behind the same switch as PR B (revision 4)**: `triage-reviews`'s
+resolver call and `progress_append.sh` swap carry the identical risk PR
+B's must-fix 1 resolution describes (daily-use skill, new fail-loud
+abort path) — they're gated by the same `PROGRESS_PERSISTENCE_STRICT`
+env var, checked at the top of `triage-reviews`'s commit step: `0`
+(default) keeps today's ad hoc resolution and inline commit, with the
+same "would have aborted" notice line when `resolve_work_plans_dir()`
+would have refused; `1` uses the new mechanism for real. This is why
+Blast radius's per-PR table (below) can give PR C the same worst case as
+PR B instead of "breaks a daily-use skill."
+
 **Dropped**: none — this item is a rename + integration, not new
 capability the fork gates behind other absent infrastructure.
 
@@ -245,16 +397,21 @@ one here (see Non-migration).
 GitHub Copilot finding at the same head SHA asserts the pair surfaces as
 a single cross-source-confirmed row, not two; the same
 `resolve_work_plans_dir()` silent-fallback-is-gone test as PR B, run
-against `triage-reviews`'s resolution step; the same degradation test as
-PR B (owner's containment measure 4) — skill-worktree branch and
+against `triage-reviews`'s resolution step under
+`PROGRESS_PERSISTENCE_STRICT=1`; the same degradation test as PR B
+(owner's containment measure 4) — skill-worktree branch and
 no-linked-issue branch both skip the resolver call and print "Progress
 persistence skipped (<reason>)" rather than aborting or writing into the
 wrong worktree — run against `triage-reviews`'s own call site
 (`triage-reviews/SKILL.md:197-199`), since PR C changes that call site
-independently of PR B's.
+independently of PR B's; the same switch-mode tests as PR B (default `0`
+completes with the old commit mechanism and a "would have aborted"
+notice, `1` aborts for real, a matching-worktree fixture under `0`
+produces no notice).
 
-**Enforcement**: mechanical (fixture test); no whitelist gate on
-`triage-reviews`'s own write (it always writes the one type).
+**Enforcement**: mechanical (fixture test, switch-mode tests); no
+whitelist gate on `triage-reviews`'s own write (it always writes the one
+type).
 
 ### PR D — `address-findings` (new skill)
 
@@ -310,6 +467,24 @@ hand. PR E gives `review-plan` a new step 6 that sources
 `resolve_work_plans_dir()` and calls `progress_append.sh`, bringing it in
 line with `plan-task`, `review-code`, and `triage-reviews`.
 
+**Behind the same switch as PR B/C, `plan-task` only (revision 4)**:
+`plan-task` already has an append step today (unlike `review-plan`), so
+its `progress_append.sh` swap carries the same new-abort-path risk as PR
+B/C in a third daily-use skill (every issue starts with `plan-task`).
+Gated by the same `PROGRESS_PERSISTENCE_STRICT` env var at `plan-task`'s
+step 6: `0` (default) keeps `plan-task`'s current commit mechanism with
+the same "would have aborted" notice when applicable; `1` switches to
+`progress_append.sh` for real. `review-plan`'s new step 6 does *not* use
+this switch — it isn't replacing an existing mechanism, so there's
+nothing to preserve compatibility with. Instead its failure mode is made
+non-fatal: if `resolve_work_plans_dir()` or `progress_append.sh` fails,
+`review-plan` prints "Progress persistence failed: <reason> — the report
+above is unaffected" and exits 0 (the report, step 5's actual product,
+has already been produced by the time step 6 runs) rather than turning a
+successful review into a failed skill invocation. This keeps PR E's
+worst case at "notice printed," not "blocks a daily-use skill," for both
+halves of the PR — see Blast radius below.
+
 **Dropped**: none.
 
 **Evaluate while porting**: this workspace's #265 timeline
@@ -329,9 +504,16 @@ own text, ported verbatim as the schema requirement).
 `progress_read.py --type "Plan Authored" --type "Plan Review"` and their
 `correlation.sha` asserted against the plan-commit SHA of a synthetic
 two-commit fixture repo (one commit touches `plan.md`, a second touches
-something else — the correlation must key off the first, not HEAD).
+something else — the correlation must key off the first, not HEAD). The
+same switch-mode tests as PR B/C, run against `plan-task`'s step 6.
+`review-plan`'s new step 6 non-fatal path: a fixture where
+`resolve_work_plans_dir()` fails asserts the skill still exits 0 with the
+report intact and the "Progress persistence failed" notice present, and
+a second fixture where it succeeds asserts the `## Plan Review` entry is
+written with the correlation field.
 
-**Enforcement**: mechanical (correlation-parsing test).
+**Enforcement**: mechanical (correlation-parsing test, switch-mode
+tests, non-fatal-path test).
 
 ### PR F — merge gate (local + Ask-First CI decision) + PR template
 
@@ -382,6 +564,21 @@ through Step 1 (roadmap update), Step 2 (`gh pr checks --watch
   detector, let the owner watch its output on real merges, flip to
   enforcement only once its signal is trusted.
 
+  **Durable record for every report-only refusal (revision 4, resolving
+  must-fix 3 of revision 3's plan review)**: a stdout line is only ever
+  seen synchronously by whoever ran `make merge-pr`, which undercuts
+  report-only mode's own stated purpose — letting the owner review its
+  output *retrospectively* across several merges before flipping
+  `--enforce`. So every report-only run where (a) or (b) is missing also
+  appends a `## Merge (report-only)` entry to the target issue's
+  `progress.md` via `progress_append.sh` — same helper, same file, as
+  the `--force-unreviewed` bypass's `## Merge (unreviewed)` entry below
+  — recording which condition(s) failed and the PR head SHA. A
+  report-only run where both conditions pass appends nothing (nothing to
+  observe). This makes the observation window something the owner can
+  review after the fact across every workspace PR, not just the one
+  terminal it happened to run in.
+
   **`--enforce` mode**: the same two-condition check, but on failure the
   script refuses to proceed (exit non-zero, explicit message naming
   which condition(s) failed, no merge attempted). A CLI flag was chosen
@@ -400,6 +597,18 @@ through Step 1 (roadmap update), Step 2 (`gh pr checks --watch
   separate, later one-line PR, opened only after the owner has watched
   the report-only output on several real merges — not part of this PR
   sequence.**
+
+  **Invocation path (revision 4 suggestion 1, re-verified against this
+  worktree)**: `--enforce` and `--force-unreviewed` reach `merge_pr.sh`
+  via `make merge-pr PR=<N> MERGE_PR_ARGS=--enforce` — confirmed at
+  `Makefile:132-134` (the `merge-pr:` target passes `$(MERGE_PR_ARGS)`
+  through verbatim to `.agent/scripts/merge_pr.sh`; the target's own
+  usage line at `Makefile:133` already documents
+  `[MERGE_PR_ARGS=...]`). The one gap: the `make help` utilities listing
+  at `Makefile:70` documents `make merge-pr PR=<N|owner/repo#N>
+  [REPO=owner/repo]` but omits `MERGE_PR_ARGS`, so the flag isn't
+  rediscoverable from `make help` alone. PR F updates `Makefile:70`'s
+  help text to add `[MERGE_PR_ARGS=--enforce|--force-unreviewed]`.
 
   **Gate scoped to workspace PRs at first (owner's containment measure
   2).** By the time Step 2.5 runs, `merge_pr.sh` has already set
@@ -483,8 +692,11 @@ throughout — (a) no `## Local Review` entry at any SHA, (b) a
 - **Report-only mode (default, no `--enforce`)**: each of (a)–(d)
   proceeds to Step 3 (the `gh pr merge` call is reached) with the
   "would have refused because..." line present in stdout naming the
-  failing condition(s); a fifth fixture (matching-SHA approved entry
-  **and** decision-summary comment present) proceeds with no such line.
+  failing condition(s), **and (revision 4) a `## Merge (report-only)`
+  entry appended to `progress.md` naming the same failing condition(s)
+  and the PR head SHA**; a fifth fixture (matching-SHA approved entry
+  **and** decision-summary comment present) proceeds with no such line
+  and appends no entry.
 - **`--enforce` mode, `$WORKTREE_TYPE == "workspace"`**: `merge_pr.sh`
   refuses (exit non-zero, no worktree/branch mutation, no `gh pr merge`
   call reached) against each of (a)–(d); proceeds past the check (reaches
@@ -512,6 +724,44 @@ only, per the owner's containment measures 1–2; the later flip to
 their own one-line follow-up PR, not part of this sequence. Layer 2 is
 explicitly **not yet enforced** pending the Ask-First decision (ADR-0004
 gap, noted honestly rather than assumed either way).
+
+### PR B2 — flip `PROGRESS_PERSISTENCE_STRICT`'s default (revision 4, not part of the A–F sequence)
+
+**Lands**: a one-line default-value change in `review-code/SKILL.md`,
+`triage-reviews/SKILL.md`, and `plan-task/SKILL.md`'s step-6/step-8
+switch checks, from `PROGRESS_PERSISTENCE_STRICT` defaulting to `0` to
+defaulting to `1` — the fail-loud `resolve_work_plans_dir()` call and
+`progress_append.sh`'s commit mechanism become each skill's real,
+unconditional behavior; the compatibility-mode "would have aborted"
+notice path and the old ad hoc resolution/inline-commit code it guards
+are deleted (dead code once the default flips and nothing exercises it).
+
+**Gate**: `test_checkpoint_269.sh` (PR A) blocks this PR from merging
+until `main`'s `.agent/work-plans/issue-269/progress.md` contains a
+`## Checkpoint` entry with all four evidence fields — the same
+mechanism that gates C–F, triggered here because B2 touches
+`triage-reviews/SKILL.md` and `plan-task/SKILL.md`, both on the gated
+file list. No separate check needed.
+
+**When it's opened**: after the checkpoint entry exists (mechanically
+required) and, as a matter of judgment the mechanical check can't
+enforce, after the owner has seen the "would have aborted" notice line
+stay silent (or print only expected, understood cases) across enough
+real report-only invocations of `review-code`/`triage-reviews`/
+`plan-task` to trust the strict path — this is the one place in the
+sequence where human judgment, not just a mechanical gate, decides
+timing; see Blast radius's B2 row above for the worst case this doesn't
+eliminate.
+
+**Tests**: the default-value assertion for all three call sites; the
+compatibility-mode notice tests from PR B/C/E are deleted along with the
+dead code they tested (or repointed to assert the notice path no longer
+exists, per whatever this workspace's convention is for retiring a
+test — confirmed at PR B2 implementation time, not fixed here).
+
+**Enforcement**: mechanical (the checkpoint-entry precondition via
+`test_checkpoint_269.sh`); the "has the owner watched enough" judgment
+call is explicitly not mechanized — see "When it's opened" above.
 
 ## #265 dependency and progress.md path resolution
 
@@ -615,10 +865,17 @@ plus 1 new one):
   `audit-project`, `audit-workspace`, `brainstorm`, `brand-guidelines`,
   `document-project`, `gather-project-knowledge`, `inspiration-tracker`,
   `issue-triage`, `onboard-project`, `research`, `review-issue`,
-  `skill-importer`, `start-task`, `test-engineering`, `what-next`. None
-  of these read or write `progress.md`, call `progress_append.sh`/
-  `progress_read.py`, or reference the ADR-0013 vocabulary; none is
-  edited by any PR in this sequence.
+  `skill-importer`, `start-task`, `test-engineering`, `what-next`.
+  **Scoped precisely (revision 4 suggestion 2)**: none of these writes
+  any ADR-0013 entry type, calls `progress_append.sh`/`progress_read.py`,
+  or is edited by any PR in this sequence — but one is not clean of
+  `progress.md` outright: `start-task/SKILL.md:156` documents that
+  `--workflow` initializes `progress.md`'s front-matter and an H1 title,
+  delegated to `worktree_create.sh:797-816` (confirmed unmodified by this
+  port, and confirmed to write only front-matter + an H1, no ADR-0013
+  `##` entry heading — so it doesn't collide with the vocabulary rename
+  in "risk point 3" below, but the flat "none of these read or write
+  progress.md" claim in revision 3 was overstated and is corrected here).
 - **Adapters** (`.agent/scripts/adapter`, `.agent/project_types/*/adapter.sh`,
   ADR-0011) — this port adds no new adapter verb and does not change
   `build`/`test`/`install`/`setup` dispatch.
@@ -646,16 +903,30 @@ plus 1 new one):
    is `"workspace"`; `"project"` and `""` stay report-only regardless of
    `--enforce`, until a follow-up PR widens scope after #265 PRs 2–4
    land.
-2. **The fail-loud `resolve_work_plans_dir()` change breaks daily-use
-   skills for skill worktrees or issue-less branches.** Contained by
-   containment measure 4: PR B and PR C each add a call-site check
-   before invoking the resolver — if no issue number is derivable (skill
-   worktree, or a branch that isn't `feature/issue-<N>`-shaped), the
-   skill prints "Progress persistence skipped (<reason>)" and completes
-   the review with no `progress.md` write, rather than aborting
-   mid-review. The resolver's existing fail-loud abort (issue #147) is
-   preserved for the case it was built for — a resolvable issue number
-   in the wrong worktree — and is not weakened.
+2. **The fail-loud `resolve_work_plans_dir()` change (and the
+   `progress_append.sh` swap alongside it) breaks daily-use skills —
+   `review-code`, `triage-reviews`, `plan-task`.** Revision 3 credited
+   the checkpoint (measure 3) with containing this; revision 3's own plan
+   review (must-fix 1) correctly found that wrong — the checkpoint pauses
+   *PR C's start*, not PR B's exposure, so PR B's change would have gone
+   live workspace-wide the instant PR B merged, before the #265 PR 2
+   exercise the checkpoint waits for even ran. **Corrected containment
+   (revision 4)**: this risk is contained by the
+   `PROGRESS_PERSISTENCE_STRICT` switch (PR B/C/E, default `0` = today's
+   behavior + a notice, detailed in each PR's section above), not by the
+   checkpoint. The checkpoint's role is narrower and honestly stated:
+   it's the gate on *flipping the switch's default* (B2, below) and on
+   *starting PR C onward*, not on PR B's own merge. The skill-worktree/
+   issue-less-branch case (containment measure 4) is a second, additive
+   protection for the same call sites, independent of the switch: even
+   under `PROGRESS_PERSISTENCE_STRICT=1`, PR B and PR C each add a
+   call-site check before invoking the resolver — if no issue number is
+   derivable, the skill prints "Progress persistence skipped (<reason>)"
+   and completes the review with no `progress.md` write, rather than
+   aborting mid-review. The resolver's existing fail-loud abort (issue
+   #147) is preserved for the case it was built for — a resolvable issue
+   number in the wrong worktree — and is not weakened by either
+   protection.
 3. **The vocabulary rename (`## External Review` → `## Integrated
    Review`, `## Plan` → `## Plan Authored`, `## Plan Review: PR #<N> —
    <title>` → `## Plan Review`) breaks readers of the old headings.**
@@ -685,6 +956,21 @@ plus 1 new one):
    documentation drift this port neither causes nor is positioned to
    fix; left as a residual gap, not silently claimed clean.
 
+**Per-PR worst case (revision 4, resolving must-fix 1's demand for an
+honest table, not the prose containment claims above)**: every row below
+must read "notice printed" or "test fails in CI" — except one, named
+plainly rather than forced into that shape.
+
+| PR | Worst case |
+|---|---|
+| A | Test fails in CI. New ADR + two new scripts + two new tests only; no existing skill's live behavior changes. |
+| B | Notice printed (the "would have aborted" compatibility-mode line) or test fails in CI. `PROGRESS_PERSISTENCE_STRICT=0` is the ship default — `review-code`'s resolution and commit mechanism are unchanged from today; only the entry's new fields (convergence, decision summary) and the notice line are new, and a wrong field value is a misleading report, not a blocked skill. |
+| C | Same as B, same switch, same default. Notice printed or test fails in CI. |
+| D | Test fails in CI. New skill, not invoked by anything automatically — no existing skill's behavior is touched, and a human chooses each invocation. |
+| E | Notice printed or test fails in CI. `plan-task`'s persistence swap is gated by the same switch (default `0`) as B/C; `review-plan`'s new append step is made non-fatal (a failure there prints a notice and exits 0 — the report it produces is unaffected), so neither half of this PR can turn a working skill invocation into a failed one. |
+| F | Notice printed (report-only "would have refused" line, now also durably recorded as `## Merge (report-only)`) or test fails in CI. Ships report-only by default, scoped to `$WORKTREE_TYPE == "workspace"` only; `--enforce` is opt-in, not this PR's default. |
+| **B2** | **Not bounded to notice/test-fails — stated plainly, not hand-waved.** B2 flips `PROGRESS_PERSISTENCE_STRICT`'s default from `0` to `1` for `review-code`, `triage-reviews`, and `plan-task` at once. That is the point at which the fail-loud resolver and `progress_append.sh`'s identity check go live by default in three daily-use skills. If the `#265` PR 2 exercise (or the smaller, organic exercise PR C/E get in report-only mode before B2) missed an edge case, B2 is what actually exposes it — a hard abort in a skill that previously always completed. This is contained, not eliminated: B2 touches `triage-reviews/SKILL.md` and `plan-task/SKILL.md`, both on the checkpoint-gated file list, so `test_checkpoint_269.sh` blocks B2 from merging until the `## Checkpoint` entry exists on `main` (same mechanism as C–F, no special-casing); the exercise happens on a real, non-trivial PR first, not a synthetic fixture; and the flip is a one-line diff, reviewable and revertible back to `0` in a single follow-up commit if it regresses something the checkpoint didn't catch. |
+
 ## Files to Change
 
 | File | Change |
@@ -702,9 +988,11 @@ plus 1 new one):
 | `.claude/skills/plan-task/SKILL.md` | `## Plan` → `## Plan Authored`, plan-commit-SHA correlation field, `progress_append.sh` swap (PR E) |
 | `.claude/skills/review-plan/SKILL.md` | `## Plan Review: PR #<N> — <title>` → `## Plan Review` (title moves to body), correlation field, `progress_append.sh` swap (PR E) |
 | `.agent/scripts/tests/test_plan_correlation.sh` (new) | Plan-commit-SHA correlation fixture (PR E) |
-| `.agent/scripts/merge_pr.sh` | Layer-1 gate: `progress_read.py`-backed precondition check, report-only by default with `--enforce` flag, scoped to `$WORKTREE_TYPE == "workspace"`, `--force-unreviewed` bypass (PR F) |
-| `.agent/scripts/tests/test_merge_pr_gate.sh` (new) | Refusal/pass/bypass cases (PR F) |
+| `.agent/scripts/merge_pr.sh` | Layer-1 gate: `progress_read.py`-backed precondition check, report-only by default with `--enforce` flag, scoped to `$WORKTREE_TYPE == "workspace"`, `--force-unreviewed` bypass, `## Merge (report-only)` durable record for every refusal (PR F, revision 4) |
+| `.agent/scripts/tests/test_merge_pr_gate.sh` (new) | Refusal/pass/bypass cases, `## Merge (report-only)` entry assertions (PR F) |
 | `.github/PULL_REQUEST_TEMPLATE.md` | Decision-summary section (PR F) |
+| `Makefile` (help text, `:70`) | Add `MERGE_PR_ARGS` to the `make merge-pr` help line (PR F, revision 4) |
+| `.agent/scripts/tests/test_checkpoint_269.sh` (new) | Hermetic CI check: refuses PRs touching C–F files without a `## Checkpoint` entry on `main` (PR A, revision 4) |
 | `.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md` | Add `address-findings` to skill lists (PR D) |
 | `.agent/knowledge/principles_review_guide.md` | New ADR row in the ADR-applicability table (PR A) |
 | `.agent/knowledge/review_depth_classification.md` | Note convergence/round fields now appear in the review-code report header (PR B) |
@@ -716,7 +1004,7 @@ plus 1 new one):
 
 | Principle | Consideration |
 |---|---|
-| Enforcement over documentation | Every PR pairs its behavior change with a hermetic test (PR A's whitelist test, PR B's round-counting + degradation test, PR C's cross-source fixture + degradation test, PR D's fix/defer fixture, PR E's correlation fixture, PR F's report-only/enforce/scope/bypass cases). PR F Layer 2, and PR F Layer 1's enforce-by-default flip, are the two deliberately-unenforced-so-far items, and both are called out, not hidden. |
+| Enforcement over documentation | Every PR pairs its behavior change with a hermetic test (PR A's whitelist test + `test_checkpoint_269.sh`, PR B's round-counting + degradation + switch-mode tests, PR C's cross-source fixture + degradation + switch-mode tests, PR D's fix/defer fixture, PR E's correlation + switch-mode + non-fatal-path tests, PR F's report-only/enforce/scope/bypass + durable-record cases). Revision 4 closes the one place this principle was violated on paper only (the checkpoint, revision 3's must-fix 2) with `test_checkpoint_269.sh`. PR F Layer 2, PR F Layer 1's enforce-by-default flip, and B2's judgment-call timing (see PR B2) remain the deliberately-unenforced-so-far items, and all are called out, not hidden. |
 | Capture decisions, not just implementations | PR A puts the vocabulary in an ADR, not five SKILL.md copies (the exact failure mode ADR-0013 itself documents and this workspace already exhibits: `triage-reviews` still says `## External Review`). |
 | A change includes its consequences | Files to Change lists every skill-list/knowledge-doc consequence flagged by the `review-issue` comment and the Consequences Map. |
 | Only what's needed | Ollama, Copilot-CLI, and container-dispatch specialists are explicitly dropped, not silently ported as dead code. |
@@ -765,11 +1053,12 @@ plus 1 new one):
 
 ## Estimated Scope
 
-**Checkpoint after PR B (owner's containment measure 3)**: the sequence
-pauses after PR B merges. Before PR C starts, PR A + PR B are exercised
-on PR 2 of #265 (a real project-affecting workspace PR, not a synthetic
-fixture) — concretely, all three of the following must be observed on
-that PR before the pause lifts:
+**Checkpoint after PR B (owner's containment measure 3, mechanically
+enforced from revision 4)**: the sequence pauses after PR B merges.
+Before PR C starts, PR A + PR B are exercised on PR 2 of #265 (a real
+project-affecting workspace PR, not a synthetic fixture) — concretely,
+all three of the following must be observed on that PR before the pause
+lifts:
 
 1. **`review-code` writes its entry via `progress_append.sh` with the
    convergence verdict** — the `## Local Review (Pre-Push)` (or
@@ -778,21 +1067,29 @@ that PR before the pause lifts:
    is the one `progress_append.sh` made (not a hand-typed entry
    resembling one).
 2. **The fail-loud `resolve_work_plans_dir()` path is hit from a
-   worktree** — #265 PR 2's own worktree is a project worktree (per
-   #265's design), so `review-code`'s new `resolve_work_plans_dir()`
-   call resolves through it live, not just in PR B's own hermetic test
-   fixtures; any resolution failure on this real PR is the checkpoint's
-   signal to fix PR B before C starts, not to route around it.
+   worktree** — for this one exercise run, `review-code` is invoked with
+   `PROGRESS_PERSISTENCE_STRICT=1` (PR B's default stays `0` for every
+   other invocation; see PR B above) so `resolve_work_plans_dir()` runs
+   for real against #265 PR 2's actual project worktree (per #265's
+   design), not just PR B's own hermetic test fixtures; any resolution
+   failure on this real PR is the checkpoint's signal to fix PR B before
+   the default flips (B2) or C starts, not to route around it.
 3. **The decision summary is produced from the pinned template** —
    `review-code`'s report on #265 PR 2 includes the "Decision summary"
    section using the exact template pinned in PR B ("Decision-summary
    template" above), confirming the shape holds on a real, non-trivial
    PR before PR F is built to consume it.
 
-Only once all three are observed and recorded (a note in this
-`progress.md`, not just verbal confirmation) does PR C start. This holds
-PR E back too, despite PR E depending only on PR A structurally — the
-owner's sequencing measure names "C–F," which includes E; see the
+Only once all three are observed does the owner write a `## Checkpoint`
+entry to this `progress.md` (schema and required fields — `**PR**`,
+`**Review entry SHA**`, `**Resolver-hit**`, `**Decision summary
+URL**` — defined in PR A above). This is no longer a note that might be
+forgotten: `test_checkpoint_269.sh` (PR A) mechanically refuses to let
+any PR touching a C–F file (or B2) merge without that entry present on
+`main` — see "Blast radius" above for the finding this closes (revision
+3's must-fix 2) and PR A for the check itself. This holds PR E back too,
+despite PR E depending only on PR A structurally — the owner's
+sequencing measure names "C–F," which includes E; see the
 adjusted dependency note below.
 
 **Merge-adjacent-seams check** (owner's 2026-09-16 decision comment: "merge
@@ -837,10 +1134,13 @@ this structural freedom**: per the owner's containment measure 3, C
 through F — which includes E, despite E's structural dependency being on
 A alone — do not start until PR B has merged and been exercised on #265
 PR 2. So the only real ordering freedom left is A → B, then the
-checkpoint, then C/D/E/F in the dependency order above. No PR in this
-sequence is blocked on #265 PRs 2–4 merging (the checkpoint uses #265 PR
-2 as a real-world exercise target, which is independent of whether #265
-PRs 2–4 land first).
+checkpoint, then C/D/E/F in the dependency order above, with B2 (the
+`PROGRESS_PERSISTENCE_STRICT` default flip — revision 4, not part of the
+six-PR count, see PR B2 above) landing any time after the checkpoint is
+recorded, independent of where C–F are in their own sequence. No PR in
+this sequence is blocked on #265 PRs 2–4 merging (the checkpoint uses
+#265 PR 2 as a real-world exercise target, which is independent of
+whether #265 PRs 2–4 land first).
 
 **`--force-unreviewed` audit record**: the bypass gets a durable,
 git-tracked record rather than terminal-only stdout — PR F's Layer 1 check
