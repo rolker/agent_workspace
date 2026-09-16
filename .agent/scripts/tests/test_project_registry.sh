@@ -1037,6 +1037,51 @@ test_merge_pr_finds_worktree_under_registered_root() {
         "no" "$([ -d "$outside/faraway2/worktrees/issue-faraway2-333" ] && echo yes || echo no)"
 }
 
+# Helper invocation SKILL.md's review-plan `--issue <N>` fallback
+# prescribes: enumerate every root's worktree dir via
+# wt_registry_worktree_dirs + wt_legacy_worktree_dirs, and glob each for
+# issue-*-<issue>/.agent/work-plans/issue-<issue>/plan.md. Defined at file
+# scope (not inline in the test) so `wt` — which runs its command in the
+# same sourced subshell rather than a fresh process — can call it directly.
+# Usage: _review_plan_find_plan <root_dir> <issue>
+_review_plan_find_plan() {
+    local root_dir="$1" issue="$2" name wtdir plan found=""
+    while IFS=$'\t' read -r name wtdir; do
+        for plan in "$wtdir"/issue-*-"$issue"/.agent/work-plans/issue-"$issue"/plan.md; do
+            [ -f "$plan" ] && { found="$plan"; break 2; }
+        done
+    done < <(wt_registry_worktree_dirs "$root_dir"; wt_legacy_worktree_dirs "$root_dir")
+    echo "$found"
+}
+
+# review-plan's SKILL.md `--issue <N>` fallback prescribes enumerating
+# wt_registry_worktree_dirs + wt_legacy_worktree_dirs and globbing each for
+# issue-*-<N>/.agent/work-plans/issue-<N>/plan.md (issue #273 round-1
+# review — the fallback used to only glob the legacy
+# worktrees/project/*/issue-*-<N>/ path, which can never see a project
+# worktree under a registered out-of-tree root). SKILL.md is prose, so this
+# test exercises the helper invocation it prescribes (_review_plan_find_plan
+# above) rather than parsing the doc.
+test_review_plan_issue_fallback_finds_plan_under_registered_root() {
+    echo "TEST: review-plan's --issue <N> fallback (wt_registry_worktree_dirs + wt_legacy_worktree_dirs) finds a plan file under a registered out-of-tree root"
+    local sb outside rc=0 out
+    sb="$(make_worktree_sandbox)"
+    outside="$(mktemp -d)"
+    SANDBOXES+=("$outside")
+    make_registered_project "$sb" faraway3 "$outside/faraway3"
+    seed_commit "$outside/faraway3"
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 444 --type project --project faraway3 >/dev/null 2>&1)
+    local plan_dir="$outside/faraway3/worktrees/issue-faraway3-444/.agent/work-plans/issue-444"
+    mkdir -p "$plan_dir"
+    echo "plan body" > "$plan_dir/plan.md"
+
+    out="$(wt "$sb" _review_plan_find_plan "$sb" 444)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "finds the plan file under the registered out-of-tree root" \
+        "$plan_dir/plan.md" "$out"
+}
+
 # ---- Run all tests ----
 echo "=== project registry / multi-tenant hosting tests ==="
 echo ""
@@ -1090,6 +1135,7 @@ test_wt_ensure_exclusion_colcon_ignore
 test_wt_ensure_exclusion_noop_for_unregistered
 test_registry_worktree_enumeration_for_dashboard
 test_merge_pr_finds_worktree_under_registered_root
+test_review_plan_issue_fallback_finds_plan_under_registered_root
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
