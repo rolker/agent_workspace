@@ -39,12 +39,21 @@ def _clone_or_reuse(url: str, ref: str, cache_dir: Path) -> Path:
 
 def _resolve_one(ext: ExtendsRef, declaring_dir: Path, cache_dir: Path) -> Path:
     if ext.url is None:
-        candidate = (declaring_dir / ext.path).resolve()
+        base = declaring_dir.resolve()
+        candidate = (base / ext.path).resolve()
+        if not candidate.is_relative_to(base):
+            raise ManifestError(
+                f"extends path '{ext.path}' escapes its declaring directory {base}: {candidate}"
+            )
         if not candidate.is_file():
             raise ManifestError(f"extends path not found: {candidate}")
         return candidate
-    clone_dir = _clone_or_reuse(ext.url, ext.ref, cache_dir)
+    clone_dir = _clone_or_reuse(ext.url, ext.ref, cache_dir).resolve()
     candidate = (clone_dir / ext.path).resolve()
+    if not candidate.is_relative_to(clone_dir):
+        raise ManifestError(
+            f"extends path '{ext.path}' escapes its clone directory {clone_dir}: {candidate}"
+        )
     if not candidate.is_file():
         raise ManifestError(
             f"extends path '{ext.path}' not found in {ext.url}@{ext.ref} (clone: {clone_dir})"

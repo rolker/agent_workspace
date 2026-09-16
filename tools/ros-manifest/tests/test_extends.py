@@ -76,6 +76,53 @@ repos:
         merge_chain(chain)
 
 
+def test_local_extends_path_escape_is_rejected(tmp_path):
+    outside = _write(
+        tmp_path / "outside.yaml",
+        "layers: [underlay]\n"
+        "repos:\n"
+        "  underlay:\n"
+        "    a:\n"
+        "      url: https://example.com/a.git\n"
+        "      ref: main\n",
+    )
+    nested_dir = tmp_path / "manifests" / "leaf"
+    leaf = _write(
+        nested_dir / "leaf.yaml",
+        f"""
+extends:
+  path: ../../{outside.name}
+layers: [core]
+""",
+    )
+    with pytest.raises(ManifestError, match="escapes"):
+        resolve_chain(leaf)
+
+
+def test_local_extends_nested_path_still_works(tmp_path):
+    base = _write(
+        tmp_path / "config" / "manifest.yaml",
+        """
+layers: [underlay]
+repos:
+  underlay:
+    a:
+      url: https://example.com/a.git
+      ref: main
+""",
+    )
+    leaf = _write(
+        tmp_path / "leaf.yaml",
+        """
+extends:
+  path: config/manifest.yaml
+layers: [core]
+""",
+    )
+    chain = resolve_chain(leaf)
+    assert [m.source for m in chain] == [str(base), str(leaf)]
+
+
 def test_extends_cycle_is_error(tmp_path):
     a = tmp_path / "a.yaml"
     b = tmp_path / "b.yaml"
@@ -206,3 +253,33 @@ repos:
     # Re-resolving reuses the cache instead of re-cloning.
     chain2 = resolve_chain(leaf, cache_dir=cache_dir)
     assert len(chain2) == 2
+
+
+@pytest.mark.skipif(
+    subprocess.run(["git", "--version"], capture_output=True).returncode != 0,
+    reason="git not available",
+)
+def test_git_backed_extends_path_escape_is_rejected(tmp_path):
+    remote = tmp_path / "remote_manifest_repo"
+    remote.mkdir()
+    _git(remote, "init", "-q")
+    _git(remote, "config", "user.email", "t@example.com")
+    _git(remote, "config", "user.name", "t")
+    _write(remote / "manifest.yaml", "layers: [underlay]\n")
+    _git(remote, "add", "-A")
+    _git(remote, "commit", "-q", "-m", "init")
+    _git(remote, "branch", "-m", "main")
+
+    leaf = _write(
+        tmp_path / "leaf.yaml",
+        f"""
+extends:
+  path: ../../outside.yaml
+  url: {remote}
+  ref: main
+layers: [core]
+""",
+    )
+    cache_dir = tmp_path / "cache"
+    with pytest.raises(ManifestError, match="escapes"):
+        resolve_chain(leaf, cache_dir=cache_dir)
