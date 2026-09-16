@@ -100,3 +100,69 @@ new skill; depends on A + C, soft-depends on B) → E (`plan-task` heading
 rename + `review-plan` heading rename and new automated append step) → F
 (merge gate: two-condition Layer 1 gate + unreviewed-bypass audit record
 + Layer 2 left Ask-First + PR template decision-summary section).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-16 (offset not captured by this session; UTC-agnostic timestamp)
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-269/plan.md` at `ac4aa23`
+
+Revision 3 — blast-radius containment. The owner (2026-09-16) accepted
+four containment measures after reviewing revision 2; one line per
+measure → where it landed:
+
+1. **Merge gate ships report-only first, `--enforce` flips it on** →
+   PR F's Layer 1 "Lands" section rewritten: default mode prints what it
+   would have refused and why, never blocks; `--enforce` turns on the
+   same two-condition refusal. Cites the fork's `janitor-sweep`
+   precedent (verified: `~/project11/.claude/skills/janitor-sweep/SKILL.md`
+   describes itself as "Report-only — opens no PRs, files no issues, and
+   publishes nothing"). A CLI flag was chosen over a
+   `.agent/project_config.sh` switch or a `make` variable, with the
+   choice justified inline (consistency with `merge_pr.sh`'s existing
+   flag interface; `project_config.sh` is gitignored/per-developer, not
+   a shared point of truth; the later flip is then a reviewable one-line
+   diff). The flip to enforce-by-default is named as a separate, later
+   PR, not part of this sequence. PR F's Tests subsection now covers
+   both modes explicitly.
+2. **Gate scoped to workspace PRs at first** → PR F's Layer 1 now reads
+   `$WORKTREE_TYPE` (the exact detection `merge_pr.sh` already computes
+   at `merge_pr.sh:296-297,313-355` — `"workspace"`, `"project"`, or
+   `""` for package-repo/qualified-`--repo` PRs) and only refuses when it
+   is `"workspace"`; `"project"` and `""` stay report-only regardless of
+   `--enforce`, until #265 PRs 2–4 settle project `progress.md` location.
+   PR F's Tests subsection adds a case asserting `--enforce` has no
+   refusal effect outside workspace scope.
+3. **Checkpoint after PRs A and B** → added to the PR sequence intro and
+   as its own subsection at the top of Estimated Scope, with "exercised"
+   defined concretely as three observed facts on #265 PR 2: (a)
+   `review-code` writes its entry via `progress_append.sh` with the
+   `**Round**`/`**Ship**` convergence fields present; (b) the fail-loud
+   `resolve_work_plans_dir()` call is hit from #265 PR 2's own (project)
+   worktree, not just PR B's hermetic fixtures; (c) the decision summary
+   on that PR's report uses the exact template pinned in PR B. The
+   Estimated Scope dependency-ordering paragraph is corrected to note the
+   checkpoint holds PR E back too, despite E's structural dependency
+   being on PR A alone.
+4. **Degradation test for no-issue / skill-worktree cases** → PR B and PR
+   C's Tests subsections each add a hermetic degradation test: a
+   skill-worktree branch and a branch with no linked issue both skip the
+   `resolve_work_plans_dir()` call (no issue number is derivable) and
+   print "Progress persistence skipped (<reason>)," completing the
+   review with no `progress.md` write, distinct from the existing
+   mismatched-worktree case (which still aborts per issue #147, since an
+   issue number *is* resolvable there).
+
+Also added a "Blast radius" section (before Files to Change): the 16
+skills outside the lifecycle chain this port never edits (verified by
+listing `.claude/skills/`, 20 entries total), plus adapters, worktree
+scripts, the registry, and hosting, each stated as untouched with why;
+and the three risk points the owner discussed with how each is
+contained (gate scoped off project PRs until #265 settles; fail-loud
+`resolve_work_plans_dir()` change degrades gracefully rather than
+aborting for skill worktrees/issue-less branches; the vocabulary rename
+verified to have exactly the three SKILL.md files this port already
+edits as writers plus `progress_read.py` and human eyes as readers — two
+other grep hits, an issue-template checklist section and a pre-ADR-0013
+illustrative doc example, are named as out-of-namespace/pre-existing,
+not silently waved off as clean).
