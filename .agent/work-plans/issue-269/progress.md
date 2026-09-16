@@ -176,11 +176,11 @@ not silently waved off as clean).
 
 ### Findings
 
-- [ ] (must-fix) Containment measure 3 (checkpoint after PR B) does not actually gate PR B's blast radius, only PR C's start. Once PR B merges, its fail-loud `resolve_work_plans_dir()` call and `progress_append.sh` refactor go live for every `review-code` invocation on every other in-flight PR immediately — the "exercise on #265 PR 2" observation happens after the risk is already live workspace-wide. PR B (`review-code`, a daily-use skill) is the one PR in this sequence whose worst case is genuinely "breaks a daily-use skill," and the checkpoint does not contain that; only the hermetic degradation tests do. Either correct the "Blast radius" section (risk point 2) to stop crediting the checkpoint for containing this, relying explicitly on the degradation tests alone, or ship PR B's fail-loud resolver call behind its own opt-in switch until the #265 PR 2 exercise passes, so the checkpoint is a real gate rather than a paperwork step. — plan.md:640,649-658 (Blast radius risk point 2), plan.md:768-796 (Estimated Scope checkpoint)
-- [ ] (must-fix) The checkpoint itself (measure 3) is unenforced: nothing in the plan mechanically prevents a session from starting PR C/D/E/F before the three observations on #265 PR 2 are recorded. The stated gate is "a note in this progress.md, not just verbal confirmation" (plan.md:792-793), but no script or worktree-creation check verifies that note exists before work on C–F begins — it is the one containment measure of the four not backed by a test or code path (1, 2, and 4 all are). Given this workspace's own "enforcement over documentation" standard (cited by PR F's own report-only design), either add a mechanical check (e.g., a precondition on creating the PR C/D/E/F worktree/branch that greps issue-269's progress.md for the checkpoint record) or explicitly name this measure as discipline-only, not parity with the other three. — plan.md:768-796
-- [ ] (must-fix) Report-only mode's default (non-bypass) path — the common case during the entire observation window this containment measure exists for — produces no durable record, only a stdout "would have refused because..." line (plan.md:374-377). `--force-unreviewed` gets a `## Merge (unreviewed)` progress.md entry (plan.md:432-435), but a report-only merge that fails both gate conditions and is *not* bypassed gets nothing durable. The plan's stated purpose for report-only mode is to "let the owner watch its output on real merges" before flipping to `--enforce` (plan.md:401-402) — but a stdout line captured nowhere can only be seen synchronously by whoever ran `make merge-pr`, not reviewed retrospectively by the owner across "several merges," which undercuts the stated purpose of the observation period. Add a durable record for every report-only refusal-line case, not just the `--force-unreviewed` bypass case. — plan.md:374-377, 423-435, Tests subsection plan.md:477-506
-- [ ] (suggestion) The plan doesn't note that `--enforce`/`--force-unreviewed` reach `merge_pr.sh` via `make merge-pr PR=<N> MERGE_PR_ARGS=--enforce` — verified: `Makefile:132-134` passes `$(MERGE_PR_ARGS)` through to `merge_pr.sh`, and AGENTS.md names `make merge-pr` as the preferred invocation path. Worth a one-line addition to PR F's "Lands" section and a Makefile help-text update (Makefile:70) so this isn't rediscovered at implementation time.
-- [ ] (suggestion) The "Blast radius" section's claim that the 16 untouched skills "None of these read or write progress.md" (plan.md:614-621) is slightly overstated: `start-task/SKILL.md:156` documents that `--workflow` initializes `progress.md`'s front-matter/title, delegated to `worktree_create.sh:797-816` (confirmed unmodified by this port, and confirmed it writes only front-matter + an H1, no ADR-0013 `##` entry heading — so the vocabulary-collision risk claim still holds). Scope the sentence to "no ADR-0013 entry types," not a flat "none... read or write progress.md."
+- [x] (must-fix) Containment measure 3 (checkpoint after PR B) does not actually gate PR B's blast radius, only PR C's start. Once PR B merges, its fail-loud `resolve_work_plans_dir()` call and `progress_append.sh` refactor go live for every `review-code` invocation on every other in-flight PR immediately — the "exercise on #265 PR 2" observation happens after the risk is already live workspace-wide. PR B (`review-code`, a daily-use skill) is the one PR in this sequence whose worst case is genuinely "breaks a daily-use skill," and the checkpoint does not contain that; only the hermetic degradation tests do. Either correct the "Blast radius" section (risk point 2) to stop crediting the checkpoint for containing this, relying explicitly on the degradation tests alone, or ship PR B's fail-loud resolver call behind its own opt-in switch until the #265 PR 2 exercise passes, so the checkpoint is a real gate rather than a paperwork step. — plan.md:640,649-658 (Blast radius risk point 2), plan.md:768-796 (Estimated Scope checkpoint)
+- [x] (must-fix) The checkpoint itself (measure 3) is unenforced: nothing in the plan mechanically prevents a session from starting PR C/D/E/F before the three observations on #265 PR 2 are recorded. The stated gate is "a note in this progress.md, not just verbal confirmation" (plan.md:792-793), but no script or worktree-creation check verifies that note exists before work on C–F begins — it is the one containment measure of the four not backed by a test or code path (1, 2, and 4 all are). Given this workspace's own "enforcement over documentation" standard (cited by PR F's own report-only design), either add a mechanical check (e.g., a precondition on creating the PR C/D/E/F worktree/branch that greps issue-269's progress.md for the checkpoint record) or explicitly name this measure as discipline-only, not parity with the other three. — plan.md:768-796
+- [x] (must-fix) Report-only mode's default (non-bypass) path — the common case during the entire observation window this containment measure exists for — produces no durable record, only a stdout "would have refused because..." line (plan.md:374-377). `--force-unreviewed` gets a `## Merge (unreviewed)` progress.md entry (plan.md:432-435), but a report-only merge that fails both gate conditions and is *not* bypassed gets nothing durable. The plan's stated purpose for report-only mode is to "let the owner watch its output on real merges" before flipping to `--enforce` (plan.md:401-402) — but a stdout line captured nowhere can only be seen synchronously by whoever ran `make merge-pr`, not reviewed retrospectively by the owner across "several merges," which undercuts the stated purpose of the observation period. Add a durable record for every report-only refusal-line case, not just the `--force-unreviewed` bypass case. — plan.md:374-377, 423-435, Tests subsection plan.md:477-506
+- [x] (suggestion) The plan doesn't note that `--enforce`/`--force-unreviewed` reach `merge_pr.sh` via `make merge-pr PR=<N> MERGE_PR_ARGS=--enforce` — verified: `Makefile:132-134` passes `$(MERGE_PR_ARGS)` through to `merge_pr.sh`, and AGENTS.md names `make merge-pr` as the preferred invocation path. Worth a one-line addition to PR F's "Lands" section and a Makefile help-text update (Makefile:70) so this isn't rediscovered at implementation time.
+- [x] (suggestion) The "Blast radius" section's claim that the 16 untouched skills "None of these read or write progress.md" (plan.md:614-621) is slightly overstated: `start-task/SKILL.md:156` documents that `--workflow` initializes `progress.md`'s front-matter/title, delegated to `worktree_create.sh:797-816` (confirmed unmodified by this port, and confirmed it writes only front-matter + an H1, no ADR-0013 `##` entry heading — so the vocabulary-collision risk claim still holds). Scope the sentence to "no ADR-0013 entry types," not a flat "none... read or write progress.md."
 - [ ] (suggestion) The call-site "is an issue number derivable" pre-check in PR B/C (containment measure 4) re-implements `resolve_work_plans_dir()`'s own rule-2/2b branch/worktree-basename pattern matching rather than reusing it — two independent copies of the same detection logic risk drifting apart later (e.g. if issue #147-style branch-naming conventions change). Consider a shared detection entry point (e.g. a `--detect-only` mode on the resolver) instead of re-deriving the pattern at each call site.
 
 ### Verified claims (spot-checked against the tree in this worktree)
@@ -200,8 +200,80 @@ Revision 3's four containment measures are largely real decisions, not options, 
 
 ### Recommended Actions
 
-- [ ] Correct or strengthen containment measure 3 so it actually gates PR B's live exposure, not just PR C's start (add an opt-in switch for PR B's fail-loud resolver call, or explicitly stop crediting the checkpoint for risk point 2's containment) — plan.md:640,649-658, 768-796
-- [ ] Add a mechanical check for the checkpoint itself, or explicitly name it as discipline-only — plan.md:768-796
-- [ ] Give report-only mode's default (non-bypass) refusal case a durable record, not just stdout — plan.md:374-377, 423-435, 477-506
-- [ ] Note the `make merge-pr PR=<N> MERGE_PR_ARGS=--enforce` invocation path in PR F's Lands section and Makefile help text — Makefile:70,132-134
-- [ ] Scope the "16 untouched skills" claim to "no ADR-0013 entry types" given `start-task`'s front-matter-only `progress.md` reference — plan.md:614-621
+- [x] Correct or strengthen containment measure 3 so it actually gates PR B's live exposure, not just PR C's start (add an opt-in switch for PR B's fail-loud resolver call, or explicitly stop crediting the checkpoint for risk point 2's containment) — plan.md:640,649-658, 768-796
+- [x] Add a mechanical check for the checkpoint itself, or explicitly name it as discipline-only — plan.md:768-796
+- [x] Give report-only mode's default (non-bypass) refusal case a durable record, not just stdout — plan.md:374-377, 423-435, 477-506
+- [x] Note the `make merge-pr PR=<N> MERGE_PR_ARGS=--enforce` invocation path in PR F's Lands section and Makefile help text — Makefile:70,132-134
+- [x] Scope the "16 untouched skills" claim to "no ADR-0013 entry types" given `start-task`'s front-matter-only `progress.md` reference — plan.md:614-621
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-16 (offset not captured by this session; UTC-agnostic timestamp)
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-269/plan.md` at `4f9e934`
+
+Revision 4 — containment enforced in code, PR B behind a switch. One
+line per revision-3 plan-review finding → resolution:
+
+1. **Must-fix 1** (checkpoint didn't gate PR B's own exposure) → PR B,
+   PR C, and PR E's `plan-task` swap now ship their fail-loud
+   `resolve_work_plans_dir()` call and `progress_append.sh` swap behind
+   a `PROGRESS_PERSISTENCE_STRICT` env var, default `0` (today's
+   resolution/commit mechanism, plus a one-line "would have aborted"
+   notice when the strict path would have refused); default `1` is what
+   PR B2 flips to, after the checkpoint. `review-plan`'s brand-new
+   append step (no existing mechanism to preserve compatibility with)
+   is made non-fatal instead. Blast radius's risk point 2 no longer
+   credits the checkpoint for containing PR B — the switch does that;
+   the checkpoint's role is corrected to gating B2's flip and C's start.
+2. **Must-fix 2** (checkpoint unenforced) → new `## Checkpoint` entry
+   type (ADR, PR A), written by the owner after the #265 PR 2 exercise
+   with four required evidence fields (`**PR**`, `**Review entry
+   SHA**`, `**Resolver-hit**`, `**Decision summary URL**`); new
+   hermetic CI check `.agent/scripts/tests/test_checkpoint_269.sh` (PR
+   A) refuses any PR touching a C–F file (named: triage-reviews/
+   SKILL.md, address-findings/, plan-task/review-plan heading changes,
+   merge_pr.sh gate step, PR template) — or B2, which touches two of
+   those files — without that entry present on `main`. Picked a test
+   script over a validate.yml step specifically to avoid AGENTS.md's
+   Ask-First gate on CI-config changes.
+3. **Must-fix 3** (report-only mode's default path had no durable
+   record) → new `## Merge (report-only)` entry type (ADR, PR A),
+   appended via `progress_append.sh` (same helper as the
+   `## Merge (unreviewed)` bypass entry) every time a report-only
+   `merge_pr.sh` run fails a gate condition, naming which condition(s)
+   failed and the PR head SHA. PR F's Tests subsection now asserts both
+   entry types, not just stdout lines.
+4. **Suggestion 1** (make merge-pr MERGE_PR_ARGS invocation path) →
+   re-verified against this worktree: `Makefile:132-134` confirmed
+   (the `merge-pr:` target passes `$(MERGE_PR_ARGS)` through verbatim;
+   its usage line already documents the flag). PR F's Lands section now
+   cites this, and PR F adds `Makefile:70`'s help text (currently
+   missing `MERGE_PR_ARGS`) to the Files to Change table.
+5. **Suggestion 2** (16-untouched-skills claim overstated) → scoped to
+   "writes no ADR-0013 entry type, calls no progress_append.sh/
+   progress_read.py, and is edited by no PR in this sequence," with
+   `start-task/SKILL.md:156`'s front-matter-only `--workflow`
+   initialization of `progress.md` named as the exception that doesn't
+   collide with the vocabulary rename but does touch the file.
+
+New "Blast radius" per-PR worst-case table (A–F, B2) added per the
+review's own request: every row reads "notice printed" or "test fails
+in CI" except B2, which is named plainly as the one PR that actually
+flips the fail-loud paths live — contained by the same
+`test_checkpoint_269.sh` mechanical gate (B2 touches two of the gated
+files), not forced into the clean bucket.
+
+PR sequence: A (ADR + scripts + `test_checkpoint_269.sh`) → B
+(`review-code`, `PROGRESS_PERSISTENCE_STRICT=0` default) → **checkpoint**
+(A+B exercised on #265 PR 2, `## Checkpoint` entry recorded, mechanically
+required from here on) → **B2** (flips the switch's default to `1` for
+review-code/triage-reviews/plan-task; gated by the same mechanical check;
+opened after the checkpoint plus the owner's own judgment on the notice
+track record) → C (`triage-reviews`, same switch) → D (`address-findings`,
+new skill) → E (`plan-task`/`review-plan` headings, same switch on
+`plan-task`, non-fatal new step on `review-plan`) → F (merge gate,
+report-only default + `## Merge (report-only)` durable record + PR
+template). B2's ordering relative to C–F is flexible (any time after the
+checkpoint), not fixed at this position — see "Estimated Scope" for the
+dependency detail.
