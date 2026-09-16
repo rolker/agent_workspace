@@ -255,6 +255,44 @@ repos:
     assert len(chain2) == 2
 
 
+def test_git_backed_extends_rejects_option_like_url(tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: called.append((a, k)))
+
+    leaf = _write(
+        tmp_path / "leaf.yaml",
+        """
+extends:
+  path: manifest.yaml
+  url: --upload-pack=evil
+  ref: main
+layers: [core]
+""",
+    )
+    with pytest.raises(ManifestError, match="looks like a command-line option"):
+        resolve_chain(leaf, cache_dir=tmp_path / "cache")
+    assert called == []
+
+
+def test_git_backed_extends_rejects_option_like_ref(tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: called.append((a, k)))
+
+    leaf = _write(
+        tmp_path / "leaf.yaml",
+        """
+extends:
+  path: manifest.yaml
+  url: https://example.com/repo.git
+  ref: -x
+layers: [core]
+""",
+    )
+    with pytest.raises(ManifestError, match="looks like a command-line option"):
+        resolve_chain(leaf, cache_dir=tmp_path / "cache")
+    assert called == []
+
+
 @pytest.mark.skipif(
     subprocess.run(["git", "--version"], capture_output=True).returncode != 0,
     reason="git not available",

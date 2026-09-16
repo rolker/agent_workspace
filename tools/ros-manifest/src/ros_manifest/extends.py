@@ -22,13 +22,23 @@ def _cache_key(url: str, ref: str) -> str:
     return digest
 
 
+def _reject_option_like(value: str, field_name: str) -> None:
+    if value.startswith("-"):
+        raise ManifestError(
+            f"extends {field_name} '{value}' looks like a command-line option "
+            "(starts with '-') and is rejected to prevent git argument injection"
+        )
+
+
 def _clone_or_reuse(url: str, ref: str, cache_dir: Path) -> Path:
+    _reject_option_like(url, "url")
+    _reject_option_like(ref, "ref")
     cache_dir.mkdir(parents=True, exist_ok=True)
     dest = cache_dir / _cache_key(url, ref)
     if dest.is_dir():
         return dest
     result = subprocess.run(
-        ["git", "clone", "--branch", ref, "--depth", "1", url, str(dest)],
+        ["git", "clone", "--branch", ref, "--depth", "1", "--", url, str(dest)],
         capture_output=True,
         text=True,
     )
