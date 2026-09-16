@@ -54,3 +54,21 @@ decided (pending owner confirmation); project11 cycle stated as not
 depending on #267; `registry_resolve_from_dir` claim corrected; discovery-
 order change moved into the new ADR; PR title fixed. Review posted on PR
 #266.
+
+## Implement — PR 1 of 4 (registry)
+
+**Status**: complete
+**When**: 2026-09-16
+**By**: Claude Code Agent (claude-fable-5-1)
+
+Commit `35ea1ed`: trailing `key=value` registry fields (`parent`,
+`worktrees`, `role`, `distro`, `default_instance`), parent roots
+(pseudo-type `project`), `registry_entries_full` / `registry_field` /
+`registry_instances` / `registry_default_instance` /
+`registry_worktree_dir` (legacy fallback until PR 4) /
+`registry_require_root`; adapter parent→instance resolution and
+`ACTIVE_PROJECT_ROLE/DISTRO`; ros2_colcon distro from the registry with
+manifest-mismatch hard error; worktree_create parent handling; validate and
+dashboard parent awareness; Python parser parity. 15 new tests; all suites
+green; pre-commit clean. Docs: ARCHITECTURE.md, WORKTREE_GUIDE.md,
+projects.local.example, ROADMAP rows for steps 4/5 and cutover rows 1–3.
