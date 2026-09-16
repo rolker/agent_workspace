@@ -162,10 +162,13 @@ if [ -n "$REGISTRY_ENTRIES" ]; then
         [ -z "$_name" ] && continue
         if [ "$_type" = "$REGISTRY_PARENT_TYPE" ]; then
             # Parent root (#265): groups instances; not a git repo itself.
-            if [ -d "$_path" ]; then
-                check_pass "parent root '$_name' at $_path ($(registry_instances "${MAIN_ROOT:-$ROOT_DIR}" "$_name" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'))"
-            else
+            _INSTANCES="$(registry_instances "${MAIN_ROOT:-$ROOT_DIR}" "$_name" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+            if [ ! -d "$_path" ]; then
                 check_warn "parent root '$_name' registered but directory missing: $_path"
+            elif [ -z "$_INSTANCES" ]; then
+                check_warn "parent root '$_name' has no instances (add parent=$_name to its instances)"
+            else
+                check_pass "parent root '$_name' at $_path ($_INSTANCES)"
             fi
             continue
         fi

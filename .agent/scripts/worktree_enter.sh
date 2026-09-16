@@ -26,6 +26,8 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_issue_helpers.sh"
+# shellcheck source=_project_registry.sh
+source "$SCRIPT_DIR/_project_registry.sh"
 
 ISSUE_NUM=""
 SKILL_NAME=""
@@ -164,6 +166,10 @@ _resolve_base_dirs() {
     else
         # Project type: resolve repo-specific directory
         if [ -n "$PROJECT_REPO" ]; then
+            # A parent root resolves to its instance, exactly as create did (#265).
+            if ! PROJECT_REPO="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_REPO")"; then
+                return 1 2>/dev/null || exit 1
+            fi
             if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then
                 return 1 2>/dev/null || exit 1
             fi

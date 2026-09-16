@@ -14,6 +14,8 @@ from pathlib import Path
 _REGISTRY_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _REGISTRY_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9_]*$")
 _REGISTRY_ROLE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+# Same rule as ros2_colcon's _rc_distro.
+_REGISTRY_DISTRO_RE = re.compile(r"^[a-z0-9_]+$")
 # Pseudo-type of a parent root (issue #265): groups instances, has no adapter.
 REGISTRY_PARENT_TYPE = "project"
 # Trailing key=value fields accepted on a registry line (issue #265).
@@ -53,6 +55,24 @@ def is_project_configured(project=None):
         return True
     # project may be a symlink to a checkout
     return (project.resolve() / ".git").exists()
+
+
+def _path_under(path, base):
+    """True when path equals base or lies beneath it (lexical, both absolute)."""
+    p = str(path).rstrip("/")
+    b = str(base).rstrip("/")
+    return p == b or p.startswith(b + "/")
+
+
+def _canonical(path):
+    """Physical path when it exists (resolves symlinks), else the path as given."""
+    p = Path(path)
+    try:
+        if p.is_dir():
+            return str(p.resolve())
+    except OSError:
+        pass
+    return str(p)
 
 
 def get_projects_registry_path(root=None):
@@ -124,7 +144,10 @@ def read_projects_registry(root=None):
             ):
                 bad = f"{registry}:{lineno}: invalid {key} '{value}' for '{name}'"
                 break
-            if key in ("role", "distro") and not _REGISTRY_ROLE_RE.match(value):
+            if key == "role" and not _REGISTRY_ROLE_RE.match(value):
+                bad = f"{registry}:{lineno}: invalid {key} '{value}' for '{name}'"
+                break
+            if key == "distro" and not _REGISTRY_DISTRO_RE.match(value):
                 bad = f"{registry}:{lineno}: invalid {key} '{value}' for '{name}'"
                 break
             if key == "worktrees" and not Path(value).is_absolute():
@@ -138,6 +161,13 @@ def read_projects_registry(root=None):
         abs_path = Path(path)
         if not abs_path.is_absolute():
             abs_path = root / path
+        wt = fields.get("worktrees")
+        if wt is not None and not (_path_under(wt, abs_path) or _path_under(wt, root)):
+            errors.append(
+                f"{registry}:{lineno}: worktrees '{wt}' for '{name}' must lie under "
+                f"{abs_path} or under the workspace root {root}"
+            )
+            continue
         parsed.append((lineno, {"name": name, "type": ptype, "path": abs_path, "fields": fields}))
 
     # First definition wins for lookups; a repeated name is an error.
@@ -146,12 +176,23 @@ def read_projects_registry(root=None):
         by_name.setdefault(e["name"], e)
     entries = []
     seen = set()
+    seen_paths = set()
     for lineno, entry in parsed:
         name, ptype, fields = entry["name"], entry["type"], entry["fields"]
         if name in seen:
             errors.append(f"{registry}:{lineno}: duplicate project name '{name}'")
             continue
         seen.add(name)
+        # Two entries must never resolve to one directory (literal duplicate
+        # or symlink alias): cwd discovery would be ambiguous.
+        canon = _canonical(entry["path"])
+        if canon in seen_paths:
+            errors.append(
+                f"{registry}:{lineno}: '{name}' resolves to {canon}, "
+                "already registered by another entry"
+            )
+            continue
+        seen_paths.add(canon)
         parent = fields.get("parent")
         if parent is not None:
             if ptype == REGISTRY_PARENT_TYPE:

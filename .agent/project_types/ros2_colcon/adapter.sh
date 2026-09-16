@@ -113,7 +113,9 @@ _rc_layer_dir() {
 # Resolve the ROS distro: the registry's distro= field first (#265), then
 # the manifest, then config. A registry distro that contradicts the
 # manifest is a hard error — two sources of truth must never disagree
-# silently. Errors loudly.
+# silently. ROS_DISTRO in the per-project config is a pure fallback: it is
+# not consulted (and not compared) once the registry or manifest resolved
+# the distro. Errors loudly.
 _rc_distro() {
     local mdir distro="" config manifest_distro=""
     mdir="$(_rc_manifest_dir)"

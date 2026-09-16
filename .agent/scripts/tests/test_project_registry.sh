@@ -585,9 +585,31 @@ test_registry_fields_rejected() {
     assert_eq "'=' in a path is rejected" "2" "$rc"
     # A value containing '=' (e.g. a worktrees path) is not a duplicate key.
     mkdir -p "$sb/w"
-    echo "w single_project $sb/w worktrees=/tmp/role=foo role=dev" > "$sb/.agent/projects.local"
+    echo "w single_project $sb/w worktrees=$sb/w/role=foo role=dev" > "$sb/.agent/projects.local"
     assert_eq "value with '=' is not a duplicate key" "dev" "$(reg "$sb" registry_field "$sb" w role 2>&1)"
-    assert_eq "worktrees value keeps its '='" "/tmp/role=foo" "$(reg "$sb" registry_field "$sb" w worktrees 2>&1)"
+    assert_eq "worktrees value keeps its '='" "$sb/w/role=foo" "$(reg "$sb" registry_field "$sb" w worktrees 2>&1)"
+    # Field tokens are never glob-expanded against the caller's cwd.
+    mkdir -p "$sb/globdir/worktrees=wt-secret-evil" "$sb/g"
+    echo "g single_project $sb/g worktrees=wt-*" > "$sb/.agent/projects.local"
+    assert_eq "no pathname expansion of field tokens" "$sb/wt-*" "$(cd "$sb/globdir" && reg "$sb" registry_field "$sb" g worktrees 2>&1)"
+    # CRLF line endings are tolerated and never leak '\r' into paths.
+    printf 'crlf single_project %s/crlf distro=jazzy\r\n' "$sb" > "$sb/.agent/projects.local"
+    mkdir -p "$sb/crlf"
+    assert_eq "CRLF path clean" "$(printf 'crlf\tsingle_project\t%s/crlf' "$sb")" "$(reg "$sb" registry_entries "$sb" 2>&1)"
+    assert_eq "CRLF field clean" "jazzy" "$(reg "$sb" registry_field "$sb" crlf distro 2>&1 | od -c | grep -c '\\r' | sed 's/^0$/jazzy/')"
+    # distro follows the ros2_colcon rule (no hyphens); role may have them.
+    echo "h single_project $sb/h distro=my-distro" > "$sb/.agent/projects.local"
+    rc=0; out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
+    assert_eq "hyphenated distro rejected" "2" "$rc"
+    echo "h single_project $sb/h role=my-role distro=jazzy" > "$sb/.agent/projects.local"
+    assert_eq "hyphenated role accepted" "my-role" "$(reg "$sb" registry_field "$sb" h role 2>&1)"
+    # Two entries resolving to one directory (literal or symlink alias).
+    mkdir -p "$sb/real" && ln -s "$sb/real" "$sb/alias"
+    printf 'r1 single_project %s/real\nr2 single_project %s/alias\n' "$sb" "$sb" > "$sb/.agent/projects.local"
+    rc=0; out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
+    assert_eq "aliased path → rc 2" "2" "$rc"
+    assert_contains "names the collision" "'r2' resolves to $sb/real, already registered" "$out"
+    assert_eq "first entry kept" "r1" "$(reg "$sb" registry_names "$sb" 2>/dev/null)"
     # Duplicate names are rejected (first definition wins for lookups).
     printf 'dup single_project %s/a\ndup single_project %s/b\n' "$sb" "$sb" > "$sb/.agent/projects.local"
     rc=0; out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
@@ -647,12 +669,21 @@ test_registry_worktree_dir() {
     local sb
     sb="$(make_sandbox)"
     make_registered_project "$sb" alpha >/dev/null
-    echo "beta single_project $sb/beta worktrees=/tmp/elsewhere" >> "$sb/.agent/projects.local"
+    echo "beta single_project $sb/beta worktrees=$sb/beta/.wt" >> "$sb/.agent/projects.local"
     echo "gamma single_project $sb/gamma worktrees=wt/gamma" >> "$sb/.agent/projects.local"
     assert_eq "default under the hosting dir" "$sb/projects/alpha/worktrees" "$(reg "$sb" registry_worktree_dir "$sb" alpha)"
-    assert_eq "absolute override" "/tmp/elsewhere" "$(reg "$sb" registry_worktree_dir "$sb" beta)"
+    assert_eq "absolute override under the entry's path" "$sb/beta/.wt" "$(reg "$sb" registry_worktree_dir "$sb" beta)"
     assert_eq "relative override resolves against the workspace" "$sb/wt/gamma" "$(reg "$sb" registry_worktree_dir "$sb" gamma)"
     assert_eq "unregistered name → legacy location" "$sb/worktrees/project/legacy" "$(reg "$sb" registry_worktree_dir "$sb" legacy)"
+    assert_eq "legacy fallback rejects a traversal name" "1" "$(reg "$sb" registry_worktree_dir "$sb" "../../outside" >/dev/null 2>&1; echo $?)"
+    assert_eq "legacy fallback rejects a slash" "1" "$(reg "$sb" registry_worktree_dir "$sb" "a/b" >/dev/null 2>&1; echo $?)"
+    # An override outside both the entry's path and the workspace would be
+    # refused by registry_require_root, so the parser rejects it up front.
+    echo "delta single_project $sb/delta worktrees=/tmp/elsewhere" > "$sb/.agent/projects.local"
+    local rc=0 out
+    out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
+    assert_eq "worktrees outside root → rc 2" "2" "$rc"
+    assert_contains "says where it must lie" "must lie under $sb/delta or under the workspace root" "$out"
     echo "a..b single_project" > "$sb/.agent/projects.local"
     assert_eq "parse error → rc 2" "2" "$(reg "$sb" registry_worktree_dir "$sb" alpha >/dev/null 2>&1; echo $?)"
 }
@@ -761,6 +792,11 @@ test_validate_python_parser_matches_shell() {
     echo "bad single_project $sb/bad colour=red" >> "$sb/.agent/projects.local"
     echo "p11 single_project $sb/dup" >> "$sb/.agent/projects.local"
     echo "nest project $sb/nest parent=p11" >> "$sb/.agent/projects.local"
+    printf 'crlf single_project %s/crlf distro=jazzy\r\n' "$sb" >> "$sb/.agent/projects.local"
+    echo "far single_project $sb/far worktrees=/tmp/elsewhere" >> "$sb/.agent/projects.local"
+    mkdir -p "$sb/real2" "$sb/crlf" && ln -s "$sb/real2" "$sb/alias2"
+    echo "r1 single_project $sb/real2" >> "$sb/.agent/projects.local"
+    echo "r2 single_project $sb/alias2" >> "$sb/.agent/projects.local"
     out="$(cd "$sb/.agent/scripts/lib" && python3 -c "
 import workspace
 entries, errors = workspace.read_projects_registry('$sb')
@@ -771,7 +807,7 @@ print(len(errors))
 for e in errors: print(e.split(': ',1)[1])
 ")"
     assert_eq "entries, fields, and the same errors as the shell parser" \
-        "$(printf "p11,p11-jazzy,p11-rolling\np11-rolling\n{'parent': 'p11', 'distro': 'jazzy', 'role': 'dev'}\n3\nunknown field 'colour' for 'bad' (known: parent worktrees role distro default_instance)\nduplicate project name 'p11'\nparent root 'nest' may not itself have a parent (no nesting)")" \
+        "$(printf "p11,p11-jazzy,p11-rolling,crlf,r1\np11-rolling\n{'parent': 'p11', 'distro': 'jazzy', 'role': 'dev'}\n5\nunknown field 'colour' for 'bad' (known: parent worktrees role distro default_instance)\nworktrees '/tmp/elsewhere' for 'far' must lie under %s/far or under the workspace root %s\nduplicate project name 'p11'\nparent root 'nest' may not itself have a parent (no nesting)\n'r2' resolves to %s/real2, already registered by another entry" "$sb" "$sb" "$sb")" \
         "$out"
 }
 
@@ -787,6 +823,27 @@ test_worktree_create_parent_default_instance() {
     assert_contains "announces the instance" "Using instance 'p11-rolling' of 'p11'" "$out"
     assert_eq "worktree keyed by the instance name" \
         "yes" "$([ -d "$sb/worktrees/project/p11-rolling/issue-p11-rolling-996" ] && echo yes || echo no)"
+}
+
+test_worktree_parent_round_trip() {
+    echo "TEST: create/enter/remove --project <parent> all resolve to the same instance"
+    local sb out rc=0
+    sb="$(make_worktree_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    make_parent_layout "$sb" p11-rolling
+    seed_commit "$sb/p11-ng/rolling"
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 994 --type project --project p11 >/dev/null 2>&1) || rc=$?
+    assert_eq "create exit 0" "0" "$rc"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_enter.sh" --issue 994 --type project --project p11 --print-path 2>&1)" || rc=$?
+    assert_eq "enter --project parent finds the instance worktree" "$sb/worktrees/project/p11-rolling/issue-p11-rolling-994" "$out"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_remove.sh" --issue 994 --type project --project p11 --force 2>&1)" || rc=$?
+    assert_eq "remove --project parent exit 0" "0" "$rc"
+    assert_eq "worktree gone" "no" "$([ -d "$sb/worktrees/project/p11-rolling/issue-p11-rolling-994" ] && echo yes || echo no)"
 }
 
 test_worktree_create_parent_not_autoselected() {
@@ -848,6 +905,7 @@ test_adapter_registry_distro_and_role_exported
 test_validate_parent_root
 test_validate_python_parser_matches_shell
 test_worktree_create_parent_default_instance
+test_worktree_parent_round_trip
 test_worktree_create_parent_not_autoselected
 
 echo ""

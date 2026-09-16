@@ -258,7 +258,7 @@ against that repo's remote. Therefore:
   `_resolve_work_plans_dir.sh`) — the sourced helpers are inert (they set
   variables/functions) and are exempt from the guard by an explicit
   `# user-tier: inert` marker that the test recognises.
-- Every non-inert script on the list calls `require_registered_root` before
+- Every non-inert script on the list calls `registry_require_root` before
   any repo-affecting action. A test (`tests/test_user_tier_guard.sh`) runs
   each listed script from a sandbox unregistered git repo and asserts it
   refuses with the guard's message and touches nothing; it also fails if a
@@ -364,7 +364,7 @@ precondition of it.
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/_project_registry.sh` | `key=value` trailing fields; `parent`, `worktrees`, `role`, `distro`; `registry_worktree_dir` (with legacy fallback until PR 4); `require_registered_root` guard helper; drop `projects/<name>` default path (PR 4) |
+| `.agent/scripts/_project_registry.sh` | `key=value` trailing fields; `parent`, `worktrees`, `role`, `distro`; `registry_worktree_dir` (with legacy fallback until PR 4); `registry_require_root` guard helper; drop `projects/<name>` default path (PR 4) |
 | `.agent/projects.local.example` | New format, parent/instance example, no hosting-dir wording |
 | `.claude/hooks/session_start_project_layer.sh` (new) | Registry-gated layer injection; `WORKTREE_TYPE`/`PROJECT` lines |
 | `.claude/hooks/block-bash-tool-mapping.sh`, `log-tool-use.sh` | Registry guard, stand down elsewhere |

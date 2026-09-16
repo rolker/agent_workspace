@@ -24,10 +24,13 @@
 # - trailing fields (values must not contain spaces):
 #     parent=<name>            this entry is an instance of parent root <name>
 #                              (<name> must be a "project"-type entry)
-#     worktrees=<path>         where this root's worktrees live
-#                              (default <path>/worktrees)
+#     worktrees=<path>         where this root's worktrees live (default
+#                              <path>/worktrees); must lie under the entry's
+#                              own path or under the workspace root, so the
+#                              root guard always accepts a worktree
 #     role=<name>              passed to the adapter as ACTIVE_PROJECT_ROLE
 #     distro=<name>            passed to the adapter as ACTIVE_PROJECT_DISTRO
+#                              ([a-z0-9_]+, the same rule ros2_colcon applies)
 #     default_instance=<name>  parent lines only: the instance used when the
 #                              parent is selected without --project
 #
@@ -39,7 +42,9 @@
 # All functions take the workspace root as their first argument and are
 # silent on stdout except for their documented output. Malformed registry
 # lines are reported on stderr and make the parse fail (return 2) — a bad
-# registry must never silently resolve to the wrong project.
+# registry must never silently resolve to the wrong project. Duplicate
+# names and two entries with the same canonical path are parse errors
+# (the first definition is kept). CRLF line endings are tolerated.
 
 # The pseudo-type of a parent root.
 # shellcheck disable=SC2034
@@ -71,6 +76,7 @@ registry_entries_full() {
     [ -f "$file" ] || return 0
     while IFS= read -r raw || [ -n "$raw" ]; do
         lineno=$((lineno + 1))
+        raw="${raw%$'\r'}"
         raw="${raw%%#*}"
         name=""; type=""; path=""; rest=""; fields=""
         read -r name type path rest <<< "$raw" || true
@@ -94,7 +100,9 @@ registry_entries_full() {
             continue
         fi
         local bad=0
-        for field in $rest; do
+        local -a rest_fields=()
+        read -r -a rest_fields <<< "$rest"   # array, never word-splitting-with-globbing
+        for field in ${rest_fields[@]+"${rest_fields[@]}"}; do
             key="${field%%=*}"
             value="${field#*=}"
             if [ "$key" = "$field" ] || [ -z "$key" ] || [ -z "$value" ]; then
@@ -120,8 +128,17 @@ registry_entries_full() {
                         break
                     fi
                     ;;
-                role|distro)
+                role)
                     if ! [[ "$value" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+                        echo "ERROR: ${file}:${lineno}: invalid $key '$value' for '$name'" >&2
+                        bad=1
+                        break
+                    fi
+                    ;;
+                distro)
+                    # Same rule as ros2_colcon's _rc_distro, so a registry-
+                    # valid distro can never fail in the adapter.
+                    if ! [[ "$value" =~ ^[a-z0-9_]+$ ]]; then
                         echo "ERROR: ${file}:${lineno}: invalid $key '$value' for '$name'" >&2
                         bad=1
                         break
@@ -142,11 +159,18 @@ registry_entries_full() {
             /*) : ;;
             *) path="$root/$path" ;;
         esac
+        local wt
+        wt="$(_registry_field_of "$fields" worktrees)" || wt=""
+        if [ -n "$wt" ] && ! _registry_path_under "$wt" "$path" && ! _registry_path_under "$wt" "$root"; then
+            echo "ERROR: ${file}:${lineno}: worktrees '$wt' for '$name' must lie under $path or under the workspace root $root" >&2
+            rc=2
+            continue
+        fi
         lines+=("$(printf '%s\t%s\t%s\t%s\t%s' "$lineno" "$name" "$type" "$path" "$fields")")
     done < "$file"
 
     # Cross-line rules.
-    local l lno lname ltype lpath lfields ref reftype seen=" "
+    local l lno lname ltype lpath lfields ref reftype seen=" " seen_paths=$'\n' canon
     for l in ${lines[@]+"${lines[@]}"}; do
         IFS=$'\t' read -r lno lname ltype lpath lfields <<< "$l"
         if [[ "$seen" == *" $lname "* ]]; then
@@ -154,6 +178,14 @@ registry_entries_full() {
             rc=2; continue
         fi
         seen="$seen$lname "
+        # Two entries must never resolve to one directory (literal duplicate
+        # or symlink alias): cwd discovery would be ambiguous.
+        canon="$(cd "$lpath" 2>/dev/null && pwd -P || echo "$lpath")"
+        if [[ "$seen_paths" == *$'\n'"$canon"$'\n'* ]]; then
+            echo "ERROR: ${file}:${lno}: '$lname' resolves to $canon, already registered by another entry" >&2
+            rc=2; continue
+        fi
+        seen_paths="$seen_paths$canon"$'\n'
         ref="$(_registry_field_of "$lfields" parent)"
         if [ -n "$ref" ]; then
             if [ "$ltype" = "$REGISTRY_PARENT_TYPE" ]; then
@@ -184,6 +216,12 @@ registry_entries_full() {
         printf '%s\t%s\t%s\t%s\n' "$lname" "$ltype" "$lpath" "$lfields"
     done
     return $rc
+}
+
+# True when <path> equals <base> or lies beneath it (lexical, both absolute).
+_registry_path_under() {
+    local p="${1%/}" b="${2%/}"
+    [ "$p" = "$b" ] || [[ "$p" == "$b/"* ]]
 }
 
 # Value of <key> in a space-separated "k=v k=v" list, or empty.
@@ -326,14 +364,41 @@ registry_default_instance() {
     return 1
 }
 
+# Resolve a --project argument the way every worktree script must (#265):
+# a registered parent root becomes its default/only instance (or an error
+# listing the instances); any other name — registered or not — is printed
+# back unchanged so legacy callers keep working. Return 1 on an ambiguous
+# parent, 2 on registry parse errors.
+# Usage: name=$(registry_resolve_project_arg "$root" "$arg") || exit 1
+registry_resolve_project_arg() {
+    local root="$1" arg="$2" entry rc=0
+    entry="$(registry_lookup "$root" "$arg")" || rc=$?
+    [ "$rc" -eq 2 ] && return 2
+    if [ "$rc" -eq 1 ]; then
+        echo "$arg"
+        return 0
+    fi
+    if [ "$(cut -f1 <<< "$entry")" = "$REGISTRY_PARENT_TYPE" ]; then
+        registry_default_instance "$root" "$arg"
+        return $?
+    fi
+    echo "$arg"
+}
+
 # Print the directory a root's worktrees live in: its worktrees= field,
 # else <hosting_dir>/worktrees. Transition rule (#265, until the legacy
 # project/ shape is removed): a name that is not registered maps to the
 # pre-#265 location <root>/worktrees/project/<name>, so unregistered
-# legacy projects keep working mid-rollout. Return 2 on parse errors.
+# legacy projects keep working mid-rollout. The name is validated like a
+# registry name (no '/', no '..') so the fallback can never leave the
+# workspace. Return 1 on an invalid name, 2 on parse errors.
 # Usage: dir=$(registry_worktree_dir "$root" "$name")
 registry_worktree_dir() {
     local root="$1" name="$2" entries ename etype epath efields override
+    if ! [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$name" == *..* ]]; then
+        echo "ERROR: invalid project name '$name'" >&2
+        return 1
+    fi
     entries="$(registry_entries_full "$root")" || return 2
     while IFS=$'\t' read -r ename etype epath efields; do
         [ -z "$ename" ] && continue

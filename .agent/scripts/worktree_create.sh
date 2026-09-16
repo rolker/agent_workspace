@@ -334,9 +334,10 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         fi
         PROJECT_NAME="$PROJECT_REPO"
         PROJECT_DIR="$(cut -f2 <<< "$_ENTRY")"
-        # A parent root (#265): use its default_instance / only instance.
+        # A parent root (#265): use its default_instance / only instance —
+        # the same resolution enter/remove apply, so the round trip holds.
         if [ "$(cut -f1 <<< "$_ENTRY")" = "$REGISTRY_PARENT_TYPE" ]; then
-            PROJECT_NAME="$(registry_default_instance "$ROOT_DIR" "$PROJECT_REPO")" || exit 1
+            PROJECT_NAME="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_REPO")" || exit 1
             _ENTRY="$(registry_lookup "$ROOT_DIR" "$PROJECT_NAME")" || exit 1
             PROJECT_DIR="$(cut -f2 <<< "$_ENTRY")"
             echo "Using instance '$PROJECT_NAME' of '$PROJECT_REPO' ($PROJECT_DIR)"

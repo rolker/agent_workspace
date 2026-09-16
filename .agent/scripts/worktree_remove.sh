@@ -92,6 +92,8 @@ done
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 source "$SCRIPT_DIR/_worktree_helpers.sh"
+# shellcheck source=_project_registry.sh
+source "$SCRIPT_DIR/_project_registry.sh"
 
 if [ -n "$REPO_SLUG" ]; then
     REPO_SLUG=$(echo "$REPO_SLUG" | sed 's/[^A-Za-z0-9_]/_/g')
@@ -141,6 +143,8 @@ _resolve_base_dirs() {
         LEGACY_BASE="$(wt_legacy_workspace_base "$ROOT_DIR")"
     else
         if [ -n "$PROJECT_REPO" ]; then
+            # A parent root resolves to its instance, exactly as create did (#265).
+            PROJECT_REPO="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_REPO")" || exit 1
             if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then
                 exit 1
             fi
