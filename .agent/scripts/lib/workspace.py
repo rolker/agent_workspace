@@ -13,6 +13,11 @@ from pathlib import Path
 # Mirror the validation rules in .agent/scripts/_project_registry.sh.
 _REGISTRY_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _REGISTRY_TYPE_RE = re.compile(r"^[a-z0-9][a-z0-9_]*$")
+_REGISTRY_ROLE_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+# Pseudo-type of a parent root (issue #265): groups instances, has no adapter.
+REGISTRY_PARENT_TYPE = "project"
+# Trailing key=value fields accepted on a registry line (issue #265).
+REGISTRY_FIELD_KEYS = ("parent", "worktrees", "role", "distro", "default_instance")
 
 
 def get_workspace_root():
@@ -59,42 +64,115 @@ def get_projects_registry_path(root=None):
 
 def read_projects_registry(root=None):
     """
-    Parse .agent/projects.local (issue #227).
+    Parse .agent/projects.local (issue #227; trailing fields and parent
+    roots: issue #265).
 
     Returns (entries, errors) where entries is a list of dicts with keys
-    'name', 'type', and 'path' (absolute Path), and errors is a list of
-    human-readable strings for malformed lines. A missing registry file
-    yields ([], []) — the registry is optional.
+    'name', 'type', 'path' (absolute Path), and 'fields' (dict of the
+    trailing key=value fields, with 'worktrees' made absolute), and errors
+    is a list of human-readable strings for malformed lines. A missing
+    registry file yields ([], []) — the registry is optional. Cross-line
+    rules (parent must be a registered REGISTRY_PARENT_TYPE entry;
+    default_instance must be an instance of that parent) are reported as
+    errors and drop the offending line, matching _project_registry.sh.
     """
     if root is None:
         root = get_workspace_root()
     root = Path(root)
     registry = get_projects_registry_path(root)
-    entries = []
+    parsed = []
     errors = []
     if not registry.is_file():
-        return entries, errors
+        return [], errors
     for lineno, raw in enumerate(registry.read_text().splitlines(), start=1):
         line = raw.split("#", 1)[0].strip()
         if not line:
             continue
-        fields = line.split()
-        if len(fields) > 3:
-            errors.append(f"{registry}:{lineno}: too many fields (paths must not contain spaces)")
-            continue
-        name = fields[0]
-        ptype = fields[1] if len(fields) > 1 else ""
-        path = fields[2] if len(fields) > 2 else f"projects/{name}"
+        tokens = line.split()
+        name = tokens[0]
+        ptype = tokens[1] if len(tokens) > 1 else ""
+        rest = tokens[2:]
+        path = ""
+        if rest and "=" not in rest[0]:
+            path = rest[0]
+            rest = rest[1:]
         if not _REGISTRY_NAME_RE.match(name) or ".." in name:
             errors.append(f"{registry}:{lineno}: invalid project name '{name}'")
             continue
         if not _REGISTRY_TYPE_RE.match(ptype):
             errors.append(f"{registry}:{lineno}: invalid or missing project type for '{name}'")
             continue
+        fields = {}
+        bad = None
+        for tok in rest:
+            key, sep, value = tok.partition("=")
+            if not sep or not key or not value:
+                bad = (
+                    f"{registry}:{lineno}: expected key=value, got '{tok}' "
+                    "(paths must not contain spaces)"
+                )
+                break
+            if key not in REGISTRY_FIELD_KEYS:
+                known = " ".join(REGISTRY_FIELD_KEYS)
+                bad = f"{registry}:{lineno}: unknown field '{key}' for '{name}' (known: {known})"
+                break
+            if key in fields:
+                bad = f"{registry}:{lineno}: duplicate field '{key}' for '{name}'"
+                break
+            if key in ("parent", "default_instance") and (
+                not _REGISTRY_NAME_RE.match(value) or ".." in value
+            ):
+                bad = f"{registry}:{lineno}: invalid {key} '{value}' for '{name}'"
+                break
+            if key in ("role", "distro") and not _REGISTRY_ROLE_RE.match(value):
+                bad = f"{registry}:{lineno}: invalid {key} '{value}' for '{name}'"
+                break
+            if key == "worktrees" and not Path(value).is_absolute():
+                value = str(root / value)
+            fields[key] = value
+        if bad:
+            errors.append(bad)
+            continue
+        if not path:
+            path = f"projects/{name}"
         abs_path = Path(path)
         if not abs_path.is_absolute():
             abs_path = root / path
-        entries.append({"name": name, "type": ptype, "path": abs_path})
+        parsed.append((lineno, {"name": name, "type": ptype, "path": abs_path, "fields": fields}))
+
+    by_name = {e["name"]: e for _, e in parsed}
+    entries = []
+    for lineno, entry in parsed:
+        name, ptype, fields = entry["name"], entry["type"], entry["fields"]
+        parent = fields.get("parent")
+        if parent is not None:
+            ref = by_name.get(parent)
+            if ref is None:
+                errors.append(
+                    f"{registry}:{lineno}: parent '{parent}' of '{name}' is not registered"
+                )
+                continue
+            if ref["type"] != REGISTRY_PARENT_TYPE:
+                errors.append(
+                    f"{registry}:{lineno}: parent '{parent}' of '{name}' is type "
+                    f"'{ref['type']}', not '{REGISTRY_PARENT_TYPE}'"
+                )
+                continue
+        dflt = fields.get("default_instance")
+        if dflt is not None:
+            if ptype != REGISTRY_PARENT_TYPE:
+                errors.append(
+                    f"{registry}:{lineno}: default_instance is only valid on a "
+                    f"'{REGISTRY_PARENT_TYPE}' line ('{name}' is '{ptype}')"
+                )
+                continue
+            ref = by_name.get(dflt)
+            if ref is None or ref["fields"].get("parent") != name:
+                errors.append(
+                    f"{registry}:{lineno}: default_instance '{dflt}' is not an instance of '{name}'"
+                )
+                continue
+        entries.append(entry)
     return entries, errors
 
 

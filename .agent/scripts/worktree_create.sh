@@ -334,11 +334,20 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
         fi
         PROJECT_NAME="$PROJECT_REPO"
         PROJECT_DIR="$(cut -f2 <<< "$_ENTRY")"
+        # A parent root (#265): use its default_instance / only instance.
+        if [ "$(cut -f1 <<< "$_ENTRY")" = "$REGISTRY_PARENT_TYPE" ]; then
+            PROJECT_NAME="$(registry_default_instance "$ROOT_DIR" "$PROJECT_REPO")" || exit 1
+            _ENTRY="$(registry_lookup "$ROOT_DIR" "$PROJECT_NAME")" || exit 1
+            PROJECT_DIR="$(cut -f2 <<< "$_ENTRY")"
+            echo "Using instance '$PROJECT_NAME' of '$PROJECT_REPO' ($PROJECT_DIR)"
+        fi
     elif [ -d "$ROOT_DIR/project" ] && git -C "$ROOT_DIR/project" rev-parse --git-dir &>/dev/null; then
         PROJECT_DIR="$ROOT_DIR/project"
     else
-        # No legacy project/ — fall back to the registry.
+        # No legacy project/ — fall back to the registry (parent roots are
+        # not candidates: their instances are, #265).
         _ENTRIES="$(registry_entries "$ROOT_DIR")" || exit 1
+        [ -n "$_ENTRIES" ] && _ENTRIES="$(awk -F'\t' -v p="$REGISTRY_PARENT_TYPE" '$2 != p' <<< "$_ENTRIES")"
         _COUNT=0
         [ -n "$_ENTRIES" ] && _COUNT="$(wc -l <<< "$_ENTRIES")"
         if [ "$_COUNT" -eq 1 ]; then

@@ -1,47 +1,75 @@
-# .agent/projects.local — per-machine project registry (issue #227, #172 step 2)
+# .agent/projects.local — per-machine project registry (issue #227, #172 step 2;
+# parent roots and trailing fields: issue #265)
 #
-# Copy this file to .agent/projects.local (gitignored) to host named
-# projects under projects/<name>/ alongside — or instead of — the legacy
-# project/ symlink.
+# Copy this file to .agent/projects.local (gitignored). The registry is the
+# only link between the workspace and the projects it serves; a project may
+# live anywhere on disk.
 #
 # One project per line, whitespace-separated:
 #
-#   <name>  <project_type>  [<path>]
+#   <name>  <project_type>  [<path>]  [key=value ...]
 #
-#   name          Project identity on this machine. Also the default hosting
-#                 dir (projects/<name>/) and the worktree repo key
-#                 (worktrees/project/<name>/). Allowed: [A-Za-z0-9._-],
-#                 must start with a letter or digit; '..' is not allowed.
+#   name          Project identity on this machine. Also the worktree repo
+#                 key and (for now) the default hosting dir projects/<name>.
+#                 Allowed: [A-Za-z0-9._-], must start with a letter or
+#                 digit; '..' is not allowed.
 #   project_type  Adapter type; must exist at .agent/project_types/<type>/
 #                 (ADR-0011). Currently: single_project, ros2_colcon.
-#   path          Optional hosting directory. Relative paths resolve against
-#                 the workspace root; default is projects/<name>. Paths must
-#                 not contain spaces.
+#                 The pseudo-type "project" declares a PARENT ROOT: a
+#                 directory that groups several instances of one project
+#                 (e.g. one per ROS distro). It has no adapter and need not
+#                 be a git repository; it is the session and memory unit.
+#   path          Optional hosting directory (absolute, or relative to the
+#                 workspace root; default projects/<name>). No spaces.
+#   key=value     Optional trailing fields (no spaces in values):
+#                   parent=<name>            this line is an instance of
+#                                            parent root <name>
+#                   worktrees=<path>         where this root's worktrees
+#                                            live (default <path>/worktrees)
+#                   role=<name>              passed to the adapter as
+#                                            ACTIVE_PROJECT_ROLE
+#                   distro=<name>            passed to the adapter as
+#                                            ACTIVE_PROJECT_DISTRO; for
+#                                            ros2_colcon this is the ROS
+#                                            distro (overrides ROS_DISTRO in
+#                                            projects.d/<name>.sh; must agree
+#                                            with the manifest if that names
+#                                            one)
+#                   default_instance=<name>  parent lines only: the instance
+#                                            used when the parent is
+#                                            selected without --project
 #
-# single_project checkouts are managed manually: clone (or symlink) the
-# project into its hosting dir, then register it here. ros2_colcon
-# instances bootstrap themselves from an empty hosting dir — register the
-# name, point MANIFEST_BOOTSTRAP_URL at the project's bootstrap.yaml, and
-# run `.agent/scripts/adapter --project <name> setup` (or `make build
+# single_project checkouts are managed manually: clone the project into
+# its hosting dir, then register it here. ros2_colcon instances bootstrap
+# themselves from an empty hosting dir — register the name, point
+# MANIFEST_BOOTSTRAP_URL at the project's bootstrap.yaml, and run
+# `.agent/scripts/adapter --project <name> setup` (or `make build
 # PROJECT=<name>` after setup). Per-project build/test commands go in
 # .agent/projects.d/<name>.sh (gitignored), with .agent/project_config.sh
 # as the shared fallback. A ros2_colcon config looks like:
 #
 #   # .agent/projects.d/p11-jazzy.sh
-#   ROS_DISTRO="jazzy"          # when the manifest has no distro: field
 #   MANIFEST_BOOTSTRAP_URL="https://<host>/<manifest-repo>/raw/jazzy/config/bootstrap.yaml"
 #
 # One instance per distro: a second distro of the same project is a second
-# registry entry with its OWN hosting dir (e.g. p11-rolling next to
-# p11-jazzy). Never point two entries at one dir — setup reuses an existing
-# manifest checkout with only a warning on a branch mismatch, so the second
-# instance would silently read the first one's manifest.
+# registry entry with its OWN hosting dir. Group them under a parent root
+# so sessions, memory and instructions have one home. Never point two
+# entries at one dir — setup reuses an existing manifest checkout with only
+# a warning on a branch mismatch, so the second instance would silently
+# read the first one's manifest.
 #
 # How the active project is resolved (adapter dispatcher):
 #   1. --project <name> (or: make build PROJECT=<name>)
-#   2. current directory inside a registered hosting dir
+#   2. current directory inside a registered hosting dir (longest match, so
+#      a cwd inside an instance resolves to the instance, not its parent)
 #   3. legacy project/ symlink (unchanged behavior)
+#   A parent root selected by 1 or 2 resolves to its default_instance, else
+#   its only instance; several instances without a default is an error
+#   that lists them.
 #
 # Examples:
-#gz4d      single_project
-#coastal   single_project   /data/checkouts/coastal_mapper
+#gz4d         single_project  /home/me/src/gz4d
+#coastal      single_project  /data/checkouts/coastal_mapper
+#p11          project         /home/me/project11-ng          default_instance=p11-rolling
+#p11-jazzy    ros2_colcon     /home/me/project11-ng/jazzy    parent=p11 distro=jazzy   role=dev
+#p11-rolling  ros2_colcon     /home/me/project11-ng/rolling  parent=p11 distro=rolling role=dev

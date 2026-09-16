@@ -160,6 +160,15 @@ fi
 if [ -n "$REGISTRY_ENTRIES" ]; then
     while IFS=$'\t' read -r _name _type _path; do
         [ -z "$_name" ] && continue
+        if [ "$_type" = "$REGISTRY_PARENT_TYPE" ]; then
+            # Parent root (#265): groups instances; not a git repo itself.
+            if [ -d "$_path" ]; then
+                check_pass "parent root '$_name' at $_path ($(registry_instances "${MAIN_ROOT:-$ROOT_DIR}" "$_name" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'))"
+            else
+                check_warn "parent root '$_name' registered but directory missing: $_path"
+            fi
+            continue
+        fi
         if [ -d "$_path" ] && git -C "$_path" rev-parse --git-dir &>/dev/null; then
             check_pass "project '$_name' ($_type) checked out"
         else
@@ -305,6 +314,11 @@ if [ -n "${REGISTRY_ENTRIES:-}" ]; then
     while IFS=$'\t' read -r _name _type _path; do
         [ -z "$_name" ] && continue
         echo "#### $_name ($_type)"
+        if [ "$_type" = "$REGISTRY_PARENT_TYPE" ]; then
+            echo "- **Parent root**: $_path"
+            echo "- **Instances**: $(registry_instances "${MAIN_ROOT:-$ROOT_DIR}" "$_name" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+            continue
+        fi
         if [ -d "$_path" ] && git -C "$_path" rev-parse --git-dir &>/dev/null; then
             _BRANCH=$(git -C "$_path" branch --show-current 2>/dev/null || echo "detached HEAD")
             _REMOTE=$(git -C "$_path" remote get-url origin 2>/dev/null || echo "(no remote)")

@@ -110,13 +110,25 @@ _rc_layer_dir() {
     echo "$(_rc_root)/layers/main/${1}_ws"
 }
 
-# Resolve the ROS distro (manifest first, then config). Errors loudly.
+# Resolve the ROS distro: the registry's distro= field first (#265), then
+# the manifest, then config. A registry distro that contradicts the
+# manifest is a hard error — two sources of truth must never disagree
+# silently. Errors loudly.
 _rc_distro() {
-    local mdir distro="" config
+    local mdir distro="" config manifest_distro=""
     mdir="$(_rc_manifest_dir)"
     if [ -f "$mdir/bootstrap.yaml" ]; then
-        distro="$(grep '^distro:' "$mdir/bootstrap.yaml" 2>/dev/null \
+        manifest_distro="$(grep '^distro:' "$mdir/bootstrap.yaml" 2>/dev/null \
             | head -1 | cut -d '#' -f 1 | awk '{print $2}')"
+    fi
+    if [ -n "${ACTIVE_PROJECT_DISTRO:-}" ]; then
+        distro="$ACTIVE_PROJECT_DISTRO"
+        if [ -n "$manifest_distro" ] && [ "$manifest_distro" != "$distro" ]; then
+            echo "ERROR: registry says distro '$distro' for '${ACTIVE_PROJECT_NAME:-?}' but $mdir/bootstrap.yaml says '$manifest_distro'" >&2
+            return 1
+        fi
+    else
+        distro="$manifest_distro"
     fi
     if [ -z "$distro" ]; then
         config="$(_rc_config_file)"
@@ -138,6 +150,7 @@ _rc_distro() {
     if [ -z "$distro" ]; then
         echo "ERROR: cannot resolve the ROS distro for this project." >&2
         echo "Declare it in one of:" >&2
+        echo "  .agent/projects.local            distro=<name> on the project's line" >&2
         echo "  $mdir/bootstrap.yaml            distro: <name>" >&2
         echo "  $(_rc_config_file)   ROS_DISTRO=<name>" >&2
         return 1

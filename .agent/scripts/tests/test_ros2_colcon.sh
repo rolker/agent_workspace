@@ -537,6 +537,34 @@ test_distro_from_project_config() {
     assert_contains "underlay from config distro" "rosroot/fakefox/setup.bash" "$out"
 }
 
+
+test_distro_from_registry() {
+    echo "TEST: distro= on the registry line wins; mismatch with the manifest fails loud (#265)"
+    local sb out rc=0 proj
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    # Manifest silent on distro; registry declares it.
+    printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\n' \
+        > "$proj/configs/manifest/bootstrap.yaml"
+    make_underlay "$sb" regfox
+    sed -i'' -e "s|^p11 ros2_colcon.*|p11 ros2_colcon $proj distro=regfox|" "$sb/.agent/projects.local"
+    out="$(run_adapter "$sb" env)" || true
+    assert_contains "underlay from registry distro" "rosroot/regfox/setup.bash" "$out"
+    # Registry and manifest agree: fine.
+    printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\ndistro: regfox\n' \
+        > "$proj/configs/manifest/bootstrap.yaml"
+    out="$(run_adapter "$sb" env)" || true
+    assert_contains "agreeing sources resolve" "rosroot/regfox/setup.bash" "$out"
+    # Registry says regfox, manifest says fakefox: hard error.
+    printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\ndistro: fakefox\n' \
+        > "$proj/configs/manifest/bootstrap.yaml"
+    out="$(run_adapter "$sb" env 2>&1)" || rc=$?
+    assert_eq "mismatch exits nonzero" "1" "$rc"
+    assert_contains "names both values" "registry says distro 'regfox'" "$out"
+    assert_contains "names the manifest value" "says 'fakefox'" "$out"
+}
+
 test_distro_unresolvable_fails() {
     echo "TEST: undeclared distro fails loudly (no silent default)"
     local sb out rc=0 proj
@@ -1320,6 +1348,7 @@ test_worktree_enter_disambiguates_by_qualified_issue
 test_worktree_create_issue_lookup_uses_qualified_repo
 test_distro_from_bootstrap_yaml
 test_distro_from_project_config
+test_distro_from_registry
 test_distro_unresolvable_fails
 test_missing_underlay_fails
 test_missing_manifest_fails

@@ -199,9 +199,33 @@ else
     fi
 fi
 
+# A parent root (pseudo-type "project", #265) has no adapter: operate on its
+# default_instance, or its only instance; several without a default is an
+# error that lists them.
+if [ "$PROJECT_TYPE_NAME" = "$REGISTRY_PARENT_TYPE" ] && [ -n "$ACTIVE_PROJECT_NAME" ]; then
+    _INSTANCE="$(registry_default_instance "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME")" || exit 1
+    _ENTRY="$(registry_lookup "$WORKSPACE_ROOT" "$_INSTANCE")" || {
+        echo "ERROR: instance '$_INSTANCE' of '$ACTIVE_PROJECT_NAME' is not registered" >&2
+        exit 1
+    }
+    ACTIVE_PROJECT_NAME="$_INSTANCE"
+    PROJECT_TYPE_NAME="$(cut -f1 <<< "$_ENTRY")"
+    # shellcheck disable=SC2034
+    ACTIVE_PROJECT_ROOT="$(cut -f2 <<< "$_ENTRY")"
+fi
+
+# shellcheck disable=SC2034
+ACTIVE_PROJECT_ROLE=""
+# shellcheck disable=SC2034
+ACTIVE_PROJECT_DISTRO=""
 if [ -n "$ACTIVE_PROJECT_NAME" ]; then
     # shellcheck disable=SC2034
     ACTIVE_PROJECT_CONFIG="$WORKSPACE_ROOT/.agent/projects.d/${ACTIVE_PROJECT_NAME}.sh"
+    # Registry trailing fields (#265); adapters read these as shell variables.
+    # shellcheck disable=SC2034
+    ACTIVE_PROJECT_ROLE="$(registry_field "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" role 2>/dev/null || true)"
+    # shellcheck disable=SC2034
+    ACTIVE_PROJECT_DISTRO="$(registry_field "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" distro 2>/dev/null || true)"
 fi
 
 ADAPTER_TYPE_DIR="$WORKSPACE_ROOT/.agent/project_types/$PROJECT_TYPE_NAME"
