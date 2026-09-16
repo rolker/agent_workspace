@@ -195,10 +195,29 @@ find_worktree_for_branch() {
 # is irrelevant (deliverable 1, #252 PR 2).
 WS_REMOTE=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
 PJ_REMOTE=""
-if [[ -e "$ROOT_DIR/project/.git" ]]; then
-    PJ_REMOTE=$(git -C "$ROOT_DIR/project" remote get-url origin 2>/dev/null || echo "")
+PJ_REPO_ROOT=""
+# The project's checkout root (#265): an explicit --project name, the
+# legacy project/ symlink, or the single registered non-parent project —
+# same precedence worktree_create.sh applies. Silent when nothing
+# resolves (no project configured at all — unchanged pre-#265 behaviour);
+# --repo/a qualified --pr skips this whole block, same as before.
+if [[ -z "$REPO_ARG" ]]; then
+    _pj_root_err="$(mktemp)"
+    if PJ_REPO_ROOT="$(wt_resolve_project_repo_root "$ROOT_DIR" "$PROJECT_ARG" 2>"$_pj_root_err")"; then
+        :
+    else
+        PJ_REPO_ROOT=""
+        if [[ "$WORKTREE_TYPE" == "project" ]]; then
+            cat "$_pj_root_err" >&2
+        fi
+    fi
+    rm -f "$_pj_root_err"
+    unset _pj_root_err
+fi
+if [[ -n "$PJ_REPO_ROOT" ]] && [[ -e "$PJ_REPO_ROOT/.git" ]]; then
+    PJ_REMOTE=$(git -C "$PJ_REPO_ROOT" remote get-url origin 2>/dev/null || echo "")
     if [[ -z "$REPO_ARG" ]] && [[ -z "$PJ_REMOTE" ]] && [[ "$WORKTREE_TYPE" != "workspace" ]]; then
-        echo "ERROR: $ROOT_DIR/project has no 'origin' remote configured." >&2
+        echo "ERROR: $PJ_REPO_ROOT has no 'origin' remote configured." >&2
         echo "  Cannot resolve project PRs. Configure the remote, or pass" >&2
         echo "  --type workspace if this is intentionally workspace-only." >&2
         exit 1
@@ -380,10 +399,12 @@ echo "Merging PR #${PR_NUMBER} (issue #${ISSUE_NUM})"
 echo "========================================"
 
 # --- Manifest-driven worktree lookup (ADR-0012 package worktrees) ---
-# Scan every `.worktree-repos` manifest under worktrees/project/*/*/ for an
-# entry whose owning repo matches PR_REPO_SLUG and whose recorded branch
-# matches PR_BRANCH. Directory names are never parsed for this shape — only
-# the manifest's entries (and header) are read. A miss here (no manifest
+# Scan every `.worktree-repos` manifest for an entry whose owning repo
+# matches PR_REPO_SLUG and whose recorded branch matches PR_BRANCH:
+# under every registered non-parent root's worktree dir (#265), and under
+# the legacy fallback worktrees/project/*/*/ for still-unregistered
+# projects. Directory names are never parsed for this shape — only the
+# manifest's entries (and header) are read. A miss here (no manifest
 # matches, e.g. a legacy single-repo project PR or a workspace PR) falls
 # back to find_worktree_for_branch below, unchanged from before #252 PR 2.
 PKG_WT_DIR=""
@@ -391,7 +412,15 @@ PKG_WT_PROJECT=""
 PKG_WT_ISSUE=""
 declare -a _PKG_MATCHES=()
 if [[ -n "$PR_REPO_SLUG" ]]; then
-    for _manifest in "$ROOT_DIR"/worktrees/project/*/*/.worktree-repos; do
+    declare -a _PKG_MANIFESTS=()
+    while IFS=$'\t' read -r _reg_name _reg_dir; do
+        [[ -z "$_reg_dir" ]] && continue
+        for _m in "$_reg_dir"/*/.worktree-repos; do
+            [[ -f "$_m" ]] && _PKG_MANIFESTS+=("$_m")
+        done
+    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+    unset _reg_name _reg_dir _m
+    for _manifest in "${_PKG_MANIFESTS[@]:-}"; do
         [[ -f "$_manifest" ]] || continue
         _wtdir="$(dirname "$_manifest")"
         _entries="$(wt_read_manifest "$_wtdir")"
@@ -453,7 +482,7 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
         # conventions here. For project worktrees, list against the project
         # repo since project worktrees are tracked there.
         _WT_REPO="$ROOT_DIR"
-        [[ "$WORKTREE_TYPE" == "project" ]] && _WT_REPO="$ROOT_DIR/project"
+        [[ "$WORKTREE_TYPE" == "project" ]] && _WT_REPO="${PJ_REPO_ROOT:-$ROOT_DIR/project}"
         _WT_ROOT=$(find_worktree_for_branch "$_WT_REPO" "$PR_BRANCH")
 
         if [[ -z "$_WT_ROOT" ]]; then
@@ -710,25 +739,29 @@ elif [[ "${REPO_KIND:-}" == "package" ]]; then
     echo "  No local package worktree has $PR_REPO_SLUG on branch '$PR_BRANCH' — nothing local to clean up."
     echo "  (Remote branch left as-is; delete it on GitHub if the merge did not.)"
 else
-    # --- Step 4 (workspace / legacy single-repo project PR): unchanged ---
+    # --- Step 4 (workspace / legacy single-repo project PR) ---
     if [[ -n "$WORKTREE_TYPE" ]]; then
         echo "  Removing worktree..."
         # Must run from root, not from inside the worktree
         cd "$ROOT_DIR"
-        if "$SCRIPT_DIR/worktree_remove.sh" --issue "$ISSUE_NUM" --type "$WORKTREE_TYPE"; then
+        _WR_ARGS=(--issue "$ISSUE_NUM" --type "$WORKTREE_TYPE")
+        [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PROJECT_ARG" ]] && _WR_ARGS+=(--project "$PROJECT_ARG")
+        if "$SCRIPT_DIR/worktree_remove.sh" "${_WR_ARGS[@]}"; then
             echo "  ✅ Worktree removed"
         else
             echo "  ⚠️  Worktree removal failed — check for uncommitted changes" >&2
             _CLEANUP_INCOMPLETE=true
         fi
+        unset _WR_ARGS
     fi
 
     # --- Step 5: Delete branches ---
     echo "  Cleaning up branches..."
-    # Use [[ -e ]] (not [[ -d ]]) to handle submodule layouts where project/.git
-    # is a file containing `gitdir:` rather than a directory.
-    if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -e "$ROOT_DIR/project/.git" ]]; then
-        BRANCH_REPO="$ROOT_DIR/project"
+    # The project's checkout root (#265): PJ_REPO_ROOT (registered or
+    # legacy project/, resolved above) when this is a project PR, else the
+    # workspace root.
+    if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PJ_REPO_ROOT" ]]; then
+        BRANCH_REPO="$PJ_REPO_ROOT"
     else
         BRANCH_REPO="$ROOT_DIR"
     fi
@@ -741,9 +774,9 @@ else
     echo "  ✅ Workspace synced"
 
     # Also sync project repo for project-type merges
-    if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -e "$ROOT_DIR/project/.git" ]]; then
+    if [[ "$WORKTREE_TYPE" == "project" ]] && [[ -n "$PJ_REPO_ROOT" ]] && [[ -e "$PJ_REPO_ROOT/.git" ]]; then
         echo "  Syncing project..."
-        git -C "$ROOT_DIR/project" pull --ff-only 2>/dev/null && echo "  ✅ Project synced" || true
+        git -C "$PJ_REPO_ROOT" pull --ff-only 2>/dev/null && echo "  ✅ Project synced" || true
     fi
 fi
 

@@ -11,9 +11,12 @@
 #               Created in: worktrees/workspace/issue-<slug>-<N>/
 #               Git worktree of the workspace repo
 #
-#   project   - For changes to the managed project repo
-#               Created in: worktrees/project/<repo>/issue-<slug>-<N>/
-#               Git worktree of the project/ repo
+#   project   - For changes to a project repo
+#               Created in: <registered root>/worktrees/issue-<slug>-<N>/
+#               (or, for an unregistered project — legacy project/ symlink
+#               only — the transition fallback
+#               worktrees/project/<repo>/issue-<slug>-<N>/, #265)
+#               Git worktree of the project repo
 #               Draft PRs target the project repo (-R <project-remote>)
 
 set -e
@@ -577,6 +580,14 @@ echo "  Branch:     $BRANCH_NAME"
 [ -n "$PARENT_BRANCH" ] && echo "  Parent:     #$PARENT_ISSUE_NUM ($PARENT_BRANCH)"
 echo "  Path:       $WORKTREE_DIR"
 echo ""
+
+# For a registered project, ensure its root excludes worktrees/ from its
+# own git status (and, for ros2_colcon roots, from colcon) before the
+# first worktree lands there. Idempotent; a no-op for legacy/unregistered
+# projects (#265).
+if [ "$WORKTREE_TYPE" == "project" ] && [ -n "$PROJECT_NAME" ]; then
+    wt_ensure_exclusion "$ROOT_DIR" "$PROJECT_NAME"
+fi
 
 mkdir -p "$(dirname "$WORKTREE_DIR")"
 

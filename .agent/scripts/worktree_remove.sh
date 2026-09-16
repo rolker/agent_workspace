@@ -149,22 +149,23 @@ _resolve_base_dirs() {
                 exit 1
             fi
         else
-            local proj_base
-            proj_base="$(wt_project_base_glob "$ROOT_DIR")"
-            if [ -d "$proj_base" ]; then
-                local repo_dirs=()
-                for d in "$proj_base"/*/; do
-                    [ -d "$d" ] && repo_dirs+=("$d")
+            # Auto-detect: find the single project worktree base directory
+            # (registered roots + the legacy fallback location), or list
+            # every candidate for --project to disambiguate (#265).
+            local -a candidates=()
+            local cname cdir
+            while IFS=$'\t' read -r cname cdir; do
+                [ -z "$cdir" ] && continue
+                candidates+=("$cname"$'\t'"$cdir")
+            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+            if [ "${#candidates[@]}" -eq 1 ]; then
+                NEW_BASE="$(cut -f2 <<< "${candidates[0]}")"
+            elif [ "${#candidates[@]}" -gt 1 ]; then
+                echo "Error: Multiple projects registered. Use --project to specify:" >&2
+                for c in "${candidates[@]}"; do
+                    echo "  --project $(cut -f1 <<< "$c")" >&2
                 done
-                if [ "${#repo_dirs[@]}" -eq 1 ]; then
-                    NEW_BASE="${repo_dirs[0]%/}"
-                elif [ "${#repo_dirs[@]}" -gt 1 ]; then
-                    echo "Error: Multiple projects registered. Use --project to specify:" >&2
-                    for d in "${repo_dirs[@]}"; do
-                        echo "  --project $(basename "${d%/}")" >&2
-                    done
-                    return 1
-                fi
+                return 1
             fi
         fi
         LEGACY_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
@@ -300,6 +301,11 @@ done
 # Aggregate dir last: a no-op for the legacy/single-entry shape (already
 # removed above, since dest == WORKTREE_DIR); deletes the leftover
 # .worktree-repos/env.sh/build.sh/test.sh/layer dirs for a package worktree.
+# Only $WORKTREE_DIR itself is removed — never its parent (the root's
+# worktrees/ dir, registered or legacy). Unregistering a project that has
+# no worktrees left is PR 4's concern (#265); this script never deletes a
+# directory the user may have customized (a worktrees= override, say),
+# so an empty worktrees/ dir is simply left behind.
 rm -rf "$WORKTREE_DIR"
 
 echo ""

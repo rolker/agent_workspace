@@ -174,23 +174,23 @@ _resolve_base_dirs() {
                 return 1 2>/dev/null || exit 1
             fi
         else
-            # Auto-detect: find the single project repo directory, or scan all
-            local proj_base
-            proj_base="$(wt_project_base_glob "$ROOT_DIR")"
-            if [ -d "$proj_base" ]; then
-                local repo_dirs=()
-                for d in "$proj_base"/*/; do
-                    [ -d "$d" ] && repo_dirs+=("$d")
+            # Auto-detect: find the single project worktree base directory
+            # (registered roots + the legacy fallback location), or list
+            # every candidate for --project to disambiguate (#265).
+            local -a candidates=()
+            local cname cdir
+            while IFS=$'\t' read -r cname cdir; do
+                [ -z "$cdir" ] && continue
+                candidates+=("$cname"$'\t'"$cdir")
+            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+            if [ "${#candidates[@]}" -eq 1 ]; then
+                NEW_BASE="$(cut -f2 <<< "${candidates[0]}")"
+            elif [ "${#candidates[@]}" -gt 1 ]; then
+                echo "Error: Multiple projects registered. Use --project to specify:" >&2
+                for c in "${candidates[@]}"; do
+                    echo "  --project $(cut -f1 <<< "$c")" >&2
                 done
-                if [ "${#repo_dirs[@]}" -eq 1 ]; then
-                    NEW_BASE="${repo_dirs[0]%/}"
-                elif [ "${#repo_dirs[@]}" -gt 1 ]; then
-                    echo "Error: Multiple projects registered. Use --project to specify:" >&2
-                    for d in "${repo_dirs[@]}"; do
-                        echo "  --project $(basename "${d%/}")" >&2
-                    done
-                    return 1
-                fi
+                return 1
             fi
         fi
         LEGACY_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
@@ -234,8 +234,23 @@ else
                     fi
                     ;;
                 project)
+                    # A registered root's worktree dir rarely contains the
+                    # literal "worktrees/project" segment (only the legacy
+                    # fallback does), so also accept any toplevel that is
+                    # a registered root's worktree dir plus one path
+                    # component (#265).
                     if [[ "$CURRENT_TOPLEVEL" == */worktrees/project/* ]]; then
                         WORKTREE_DIR="$CURRENT_TOPLEVEL"
+                    else
+                        _ct_parent="$(dirname "$CURRENT_TOPLEVEL")"
+                        while IFS=$'\t' read -r _ct_name _ct_dir; do
+                            [ -z "$_ct_dir" ] && continue
+                            if [ "$_ct_dir" = "$_ct_parent" ]; then
+                                WORKTREE_DIR="$CURRENT_TOPLEVEL"
+                                break
+                            fi
+                        done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+                        unset _ct_parent _ct_name _ct_dir
                     fi
                     ;;
             esac

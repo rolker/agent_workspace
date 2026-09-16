@@ -315,16 +315,16 @@ _scan_project_worktrees() {
     done
 }
 
-# New location: worktrees/project/<repo>/
-NEW_PROJECT_BASE="$(wt_project_base_glob "$ROOT_DIR")"
-if [ -d "$NEW_PROJECT_BASE" ]; then
-    for repo_dir in "$NEW_PROJECT_BASE"/*/; do
-        [ -d "$repo_dir" ] || continue
-        _scan_project_worktrees "${repo_dir%/}" false
-    done
-fi
+# Registered roots: <root>/worktrees/ (or its worktrees= override), one
+# per registered non-parent project (#265) — plus the transition fallback
+# for still-unregistered projects, <ws>/worktrees/project/<name>/.
+while IFS=$'\t' read -r _reg_name _reg_dir; do
+    [ -z "$_reg_dir" ] && continue
+    _scan_project_worktrees "$_reg_dir" false
+done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+unset _reg_name _reg_dir
 
-# Legacy location: project/worktrees/
+# Legacy location: project/worktrees/ (pre-#25 shape)
 LEGACY_PROJECT_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
 _scan_project_worktrees "$LEGACY_PROJECT_BASE" true
 
@@ -367,4 +367,4 @@ echo "  Project worktrees:   $PROJECT_COUNT"
 echo ""
 echo "Locations:"
 echo "  Workspace: worktrees/workspace/"
-echo "  Project:   worktrees/project/<repo>/"
+echo "  Project:   <registered root>/worktrees/ (or worktrees/project/<name>/ if unregistered)"

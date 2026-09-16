@@ -29,8 +29,8 @@ ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # shellcheck source=_issue_helpers.sh
 source "$SCRIPT_DIR/_issue_helpers.sh"
-# shellcheck source=_project_registry.sh
-source "$SCRIPT_DIR/_project_registry.sh"
+# shellcheck source=_worktree_helpers.sh
+source "$SCRIPT_DIR/_worktree_helpers.sh"
 
 # --- Parse arguments ---
 SKIP_SYNC=false
@@ -53,15 +53,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Worktree detection ---
+# dashboard.sh is a workspace-only script (it reads .agent/project_config.sh,
+# the registry, etc. relative to the workspace checkout), so the only
+# question here is whether THIS COPY of the workspace repo is itself a
+# worktree of the workspace repo — never a project worktree: post-#265,
+# project worktrees live under their own root, never inside the workspace
+# tree, so that case is dead (it could only ever fire for the pre-#265
+# `<ws>/worktrees/project/<repo>/` shape, which is now the *legacy
+# fallback* project worktree location, not a location dashboard.sh's own
+# script could be running from).
 WORKTREE_INFO=""
-if [[ "$ROOT_DIR" == *"/worktrees/project/"* ]]; then
-    WORKTREE_INFO="project worktree"
-    MAIN_ROOT="$(dirname "$(dirname "$(dirname "$(dirname "$ROOT_DIR")")")")"
-elif [[ "$ROOT_DIR" == *"/worktrees/workspace/"* ]]; then
+if [[ "$ROOT_DIR" == *"/worktrees/workspace/"* ]]; then
     WORKTREE_INFO="workspace worktree"
-    MAIN_ROOT="$(dirname "$(dirname "$(dirname "$ROOT_DIR")")")"
-elif [[ "$ROOT_DIR" == *"/project/worktrees/"* ]]; then
-    WORKTREE_INFO="project worktree (legacy)"
     MAIN_ROOT="$(dirname "$(dirname "$(dirname "$ROOT_DIR")")")"
 elif [[ "$ROOT_DIR" == *"/.workspace-worktrees/"* ]]; then
     WORKTREE_INFO="workspace worktree (legacy)"
@@ -354,12 +357,11 @@ echo ""
 WORKTREE_SCRIPT="$SCRIPT_DIR/worktree_list.sh"
 if [ -x "$WORKTREE_SCRIPT" ]; then
     WT_COUNT=$(git -C "$ROOT_DIR" worktree list 2>/dev/null | grep -v "(bare)" | grep -vF "$ROOT_DIR " | wc -l)
-    # Also count project worktrees: current layout (worktrees/project/<project>/<worktree>)
-    # plus the legacy shape (project/worktrees/<worktree>).
-    PROJ_WT_COUNT=0
-    if [ -d "$ROOT_DIR/worktrees/project" ]; then
-        PROJ_WT_COUNT=$(find "$ROOT_DIR/worktrees/project" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l)
-    fi
+    # Also count project worktrees: every registered non-parent root's
+    # worktree dir, plus the legacy fallback (worktrees/project/<name>/)
+    # for still-unregistered projects (#265), plus the ancient pre-#25
+    # shape (project/worktrees/<worktree>).
+    PROJ_WT_COUNT="$(wt_count_project_worktrees "${MAIN_ROOT:-$ROOT_DIR}")"
     if [ -d "$PROJECT_DIR/worktrees" ]; then
         PROJ_WT_COUNT=$((PROJ_WT_COUNT + $(find "$PROJECT_DIR/worktrees" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | wc -l)))
     fi
