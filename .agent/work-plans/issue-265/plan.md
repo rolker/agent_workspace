@@ -249,8 +249,11 @@ content without the registry check.
   `p11-jazzy`/`p11-rolling` re-registered at `~/project11-ng/<distro>` with a
   parent `p11` (`-ng` while the fork's `~/project11` stays in production on
   the ROS machine; renamed to `~/project11` at cutover — a registry path
-  edit plus moving the Claude Code auto-memory directory, which is keyed by
-  path), hosting dirs moved (or re-bootstrapped with `adapter setup`
+  edit only. Auto-memory is keyed by path and is deliberately **left
+  behind**: the workspace and each project must stand on their own, so
+  anything load-bearing learned during testing is promoted into
+  repo-tracked docs (`.agent/knowledge/`, the project's own `.agent/`
+  files) before the rename, and the memory directory starts empty), hosting dirs moved (or re-bootstrapped with `adapter setup`
   from the existing `projects.d/*.sh` URLs). `projects/` and `project/`
   removed from the workspace tree; the dispatcher's legacy fallback, the
   `projects/<name>` default path and `migrate_legacy_project.sh` from
