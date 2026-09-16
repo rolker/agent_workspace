@@ -165,3 +165,84 @@ lines incl. CRLF, alias collision, `..` escape, distro regex) and asserts
 identical entries and errors. Deferred, unchanged: the ADR-0011
 pseudo-type note (new ADR, PR 3). Registry suite 154, adapter 86,
 ros2_colcon 184, merge_pr 5; pre-commit clean.
+
+## Implementation (PR 2)
+**Status**: complete
+**When**: 2026-09-16 (date per session)
+**By**: Claude Code Agent (claude-sonnet-5)
+
+**PR**: "feat(#265): worktrees under each registered root (step 5, PR 2 of 4)"
+(branch `feature/issue-265-pr2`), built on PR 1 (#266, merged).
+
+Implements plan §4 ("Worktrees under the root"): every script that walked
+`<ws>/worktrees/project/<repo>/` now resolves a project's worktree dir via
+`registry_worktree_dir` (PR 1), iterating the registry instead of assuming
+`$PWD` is the workspace. Scope, precisely:
+
+- `_worktree_helpers.sh`: sources `_project_registry.sh` itself so every
+  caller gets registry helpers for free; `wt_project_base` now delegates
+  to `registry_worktree_dir` (registered name -> its own root/override,
+  unregistered name -> the pre-#265 fallback, unchanged); new
+  `wt_registry_worktree_dirs` / `wt_legacy_worktree_dirs` enumerate every
+  registered non-parent root's (existing) worktree dir plus the legacy
+  fallback; `wt_count_project_worktrees` sums worktree counts across both
+  for dashboard.sh; `wt_resolve_project_repo_root` resolves a project's
+  checkout root (explicit name / legacy `project/` / the single registered
+  project) for merge_pr.sh's PR/branch resolution; `wt_ensure_exclusion`
+  writes `<root>/.git/info/exclude` (append-if-absent) and, for
+  `ros2_colcon` roots, an untracked `worktrees/COLCON_IGNORE` marker —
+  idempotent, never touches a tracked file, a no-op for unregistered
+  projects (their fallback location is already under the workspace's own
+  gitignored `worktrees/`).
+- `worktree_create.sh`: calls `wt_ensure_exclusion` for a registered
+  project right before the first worktree lands under its root.
+- `worktree_enter.sh` / `worktree_remove.sh`: `--project`-less auto-detect
+  now scans the registry (+ legacy fallback) instead of globbing
+  `<ws>/worktrees/project/*`; the `EnterWorktree`-toplevel fallback in
+  `worktree_enter.sh` also recognizes a toplevel one level under any
+  registered root's worktree dir.
+- `worktree_list.sh`: registry-driven enumeration replaces the
+  `worktrees/project/*/` glob; footer text updated.
+- `merge_pr.sh`: the project checkout root used for PR/branch resolution,
+  the manifest scan for package worktrees, the post-merge worktree
+  removal, and the final branch-delete/sync step all resolve through
+  `wt_resolve_project_repo_root` / `wt_registry_worktree_dirs` instead of
+  hardcoding `$ROOT_DIR/project`; `--project` is forwarded to
+  `worktree_remove.sh` when given.
+- `dashboard.sh`: self-location classification drops the dead
+  `*/worktrees/project/*` / `*/project/worktrees/*` branches (dashboard.sh
+  is workspace-only; a project worktree can never contain it post-#265);
+  worktree counting uses `wt_count_project_worktrees`.
+- Unregister-time orphaning (item 5): unchanged by design —
+  `worktree_remove.sh` only ever deletes the specific worktree dir, never
+  its parent, so an emptied `worktrees/` dir is left in place; documented
+  inline. Unregistering a project is PR 4's concern.
+- `cross_model_review.sh --work-dir` (item 6): verified — its default
+  (no `--work-dir`) resolves via `_resolve_work_plans_dir.sh`, which uses
+  `git rev-parse --show-toplevel` / `$WORKTREE_ISSUE`, neither of which
+  hardcodes a worktree location. No change needed.
+- Docs: `.agent/WORKTREE_GUIDE.md` and `ARCHITECTURE.md` describe the new
+  per-root location, the transition fallback, and the exclusion/
+  COLCON_IGNORE writes. `.agent/projects.local.example` already matched
+  (no wording changes needed).
+- Tests: extended `test_project_registry.sh` (existing worktree-location
+  assertions updated to the new per-root paths; new: legacy-still-works
+  end to end, out-of-tree registered-root exclusion + idempotency,
+  `ros2_colcon` `COLCON_IGNORE`, no-op on an unregistered name, registry
+  enumeration for dashboard's counting function, and a full
+  create -> merge_pr-driven removal cycle under an out-of-tree root),
+  `test_ros2_colcon.sh` (path assertions updated to the new location under
+  the instance's own root; `.worktree-repos` manifest behaviour
+  unaffected), `test_merge_pr.sh` (new: a registered out-of-tree project's
+  PR is resolved and its worktree, under its own root, is cleaned up).
+
+**Results**: test_project_registry 180/180, test_adapter 86/86,
+test_ros2_colcon 184/184, test_merge_pr 85/85,
+test_merge_pr_root_resolution 5/5, test_cross_model_review 52/52,
+test_resolve_work_plans_dir 21/21 — all green.
+
+**Not in this PR** (deferred per plan's PR sequence): the user tier (hook,
+install/check, skill `session_scope`, tool-mapping guard, permissions
+subset, `register_project.sh`, `register-project` command) is PR 3;
+retiring `project/`/`projects/`, the `projects/<name>` default path, and
+migrating p11 instances is PR 4.
