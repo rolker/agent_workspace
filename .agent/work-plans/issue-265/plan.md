@@ -106,7 +106,7 @@ trailing fields so existing three-column lines keep working):
 ```
 # <name>  <type>  <path>  [key=value ...]
 gz4d         single_project  /home/roland/src/gz4d
-p11          project         /home/roland/project11-ng        # parent root: session/memory unit, no adapter
+p11          project         /home/roland/project11-ng        default_instance=p11-rolling   # parent root: session/memory unit, no adapter
 p11-jazzy    ros2_colcon     /home/roland/project11-ng/jazzy  parent=p11 distro=jazzy   role=dev
 p11-rolling  ros2_colcon     /home/roland/project11-ng/rolling parent=p11 distro=rolling role=dev
 ```
@@ -117,6 +117,8 @@ p11-rolling  ros2_colcon     /home/roland/project11-ng/rolling parent=p11 distro
   so the hook, memory and per-project instructions have a single root for a
   multi-instance project; instances stay the build/worktree unit.
 - `worktrees=<path>` overrides the default `<path>/worktrees/`.
+- `default_instance=<name>` (parent lines only) names the instance used
+  when a parent root is selected without `--project`.
 - `role=` and `distro=` are passed through to the adapter as
   `ACTIVE_PROJECT_ROLE` / `ACTIVE_PROJECT_DISTRO`; ros2_colcon uses `distro`
   now (replacing `ROS_DISTRO` in `projects.d/<name>.sh` as the primary
@@ -182,15 +184,19 @@ p11-rolling  ros2_colcon     /home/roland/project11-ng/rolling parent=p11 distro
      that file).
 3. Also print `WORKTREE_TYPE=project` / `PROJECT=<name>` lines so
    `/start-task` can default `--type` and `--project` from the session.
-   **Parent-root rule (decision pending owner confirmation on the PR):**
-   when the resolved root is a parent, the hook prints `PROJECT=<parent>`
-   plus `INSTANCES=<a,b,...>`. Scripts never prompt: `worktree_create.sh`
-   with a parent selected and no `--project <instance>` errors, listing
-   the instances, unless the parent has exactly one instance, which is
-   used. The `/start-task` skill turns that error into an
+   **Parent-root rule (owner, 2026-09-16):** the two-instance layout is a
+   transition state (the shared-source model of #267 makes the distro a
+   build parameter and removes the question), and day-to-day sessions
+   launch in the instance being worked on (`~/project11-ng/rolling`), so
+   the rule stays minimal. When the resolved root is a parent, the hook
+   prints `PROJECT=<parent>` plus `INSTANCES=<a,b,...>`. Scripts never
+   prompt: `worktree_create.sh` with a parent selected and no
+   `--project <instance>` uses the parent's `default_instance=` registry
+   field if set, else the only instance if there is one, else errors
+   listing the instances. `/start-task` passes the error through as an
    `AskUserQuestion` over the listed instances. The dispatcher's existing
-   "no adapter for project type 'project'" error is therefore never
-   reached from the skill path; it stays as the backstop for direct calls.
+   "no adapter for project type 'project'" error stays as the backstop for
+   direct calls.
 
 The heading list the renderer keys on is pinned by a test
 (`tests/test_session_start_layer.sh`) that asserts every keyed heading
