@@ -48,19 +48,37 @@ Git worktrees create separate checkouts of the same repository:
 
 ## Directory Structure
 
+Worktrees live under whichever root owns them (issue #265). The workspace's
+own worktrees stay inside the workspace checkout; a registered project's
+worktrees live under that project's own root, wherever it is on disk:
+
 ```
 agent_workspace/
 ├── worktrees/
 │   ├── workspace/                 # Workspace repo worktrees
 │   │   └── issue-workspace-42/
 │   │       └── ... (workspace files)
-│   └── project/                   # Project repo worktrees (per-repo)
-│       └── <repo_name>/
-│           └── issue-<repo_name>-42/
-│               └── ... (project files)
+│   └── project/                   # TRANSITION FALLBACK only: an
+│       └── <name>/                # unregistered project (legacy project/
+│           └── issue-<name>-42/   # symlink) still lands here. Dropped in
+│               └── ...            # PR 4 together with project/ itself.
+
+/anywhere/on/disk/<registered-root>/   # e.g. ~/src/gz4d, ~/project11-ng/rolling
+└── worktrees/                         # <root>/worktrees/ by default; a
+    └── issue-<name>-42/               # registry `worktrees=` field overrides
+        └── ...                        # the location per project
 ```
 
-The repo-name tier under `project/` supports multiple managed project repos.
+`registry_worktree_dir` (`.agent/scripts/_project_registry.sh`) is the single
+source of truth for where a project's worktrees live: a registered name
+resolves to its own root (or its `worktrees=` override); an unregistered name
+falls back to the pre-#265 `worktrees/project/<name>/` shape shown above, so
+legacy projects keep working mid-rollout. On first worktree creation under a
+registered root, the workspace appends `worktrees/` to that root's own
+`.git/info/exclude` (never a tracked file) so the worktree dir never shows up
+in the project's own `git status`; a `ros2_colcon` root additionally gets an
+untracked `worktrees/COLCON_IGNORE` marker so colcon never descends into a
+package worktree's own colcon workspace(s).
 
 ## Worktree Types
 
@@ -79,13 +97,16 @@ For infrastructure changes: `.agent/`, `docs/`, `.claude/skills/`, `Makefile`, e
 
 ### Project Worktrees
 
-For changes to the managed project repo (`project/`).
+For changes to a project repo — registered in `.agent/projects.local`, or the
+legacy `project/` checkout.
 
 ```bash
 .agent/scripts/worktree_create.sh --issue <N> --type project
 ```
 
-- Created in: `worktrees/project/<repo>/issue-<slug>-<N>/`
+- Created in: `<registered root>/worktrees/issue-<slug>-<N>/` (or, for an
+  unregistered project, the transition fallback
+  `worktrees/project/<repo>/issue-<slug>-<N>/`)
 - Git worktree of the **project repo**
 - Branch: `feature/issue-<N>` in the project repo
 - PRs target the project repo with `-R <project-remote>`
@@ -114,9 +135,9 @@ source .agent/scripts/worktree_enter.sh --issue 42 --type project --project <nam
 ```
 
 On `worktree_create.sh`, `--project <name>` selects a registered project from
-`.agent/projects.local` (issue #227); the worktree is created under
-`worktrees/project/<name>/` so `enter`/`remove --project <name>` find it by the
-same key. Without `--project`, the legacy `project/` checkout is used; when
+`.agent/projects.local` (issue #227); the worktree is created under that
+project's own root (`registry_worktree_dir`, issue #265) so `enter`/`remove
+--project <name>` find it by the same key. Without `--project`, the legacy `project/` checkout is used; when
 `project/` is absent and exactly one project is registered, that project is
 auto-selected (multiple registrations require `--project`). Parent roots
 (registry pseudo-type `project`, issue #265) are never auto-selected;
@@ -155,9 +176,10 @@ package repos, and issue are all explicit:
 - Branch names: the repo that owns the issue gets `feature/issue-<N>`; every
   other named repo gets `feature/<repo>-issue-<N>` (e.g.
   `feature/cube_bathymetry-issue-111` in `marine_msgs`).
-- Directory: `worktrees/project/<project>/issue-<project>-<owner>-<repo>-<N>/`
-  — cosmetic only. Every script that needs project/issue/layer reads the
-  `.worktree-repos` manifest header, never this name.
+- Directory: `<project root>/worktrees/issue-<project>-<owner>-<repo>-<N>/`
+  (under the instance's own worktree dir, issue #265) — cosmetic only. Every
+  script that needs project/issue/layer reads the `.worktree-repos` manifest
+  header, never this name.
 - Untouched sibling packages and lower/other layers are **not symlinked** —
   colcon's own overlay resolves them via the hosted instance's already-built
   installs (design B in the issue #252 plan). No code path in this workflow

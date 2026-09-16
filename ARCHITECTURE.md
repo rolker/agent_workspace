@@ -126,12 +126,20 @@ Git worktrees of the **workspace repo**. Used for:
 
 ### Project Worktrees
 
-Location: `worktrees/project/<repo>/issue-<slug>-<N>/`
+Location: a registered project's own `worktrees/` (or its `worktrees=`
+override in `.agent/projects.local`), resolved by `registry_worktree_dir`
+(issue #265) — e.g. `~/src/gz4d/worktrees/issue-gz4d-<N>/`. An unregistered
+project (legacy `project/` checkout only) falls back to the pre-#265
+transition location `worktrees/project/<repo>/issue-<slug>-<N>/`, dropped
+together with `project/` in a later PR.
 
 Git worktrees of the **project repo**. Used for all changes to the managed project.
 Draft PRs target the project repo using `gh pr create -R <project-remote>`.
 
-`worktrees/` is gitignored at the workspace root.
+`worktrees/` is gitignored at the workspace root. A registered project's own
+`worktrees/` dir is excluded via that root's `.git/info/exclude` on first use
+(never a tracked file); a `ros2_colcon` root additionally gets an untracked
+`worktrees/COLCON_IGNORE` marker.
 
 ## Stamp-Based Setup (ADR-0007)
 
