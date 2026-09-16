@@ -578,6 +578,22 @@ test_registry_fields_rejected() {
     echo "a single_project $sb/a colour=red" > "$sb/.agent/projects.local"
     out="$(reg "$sb" registry_entries "$sb" 2>&1)" || true
     assert_contains "unknown field names the known keys" "known: parent worktrees role distro default_instance" "$out"
+    # '=' is forbidden in paths (a third token with '=' is a field), so this
+    # is rejected as an unknown field rather than silently misparsed.
+    echo "eq single_project /srv/project=blue" > "$sb/.agent/projects.local"
+    rc=0; out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
+    assert_eq "'=' in a path is rejected" "2" "$rc"
+    # A value containing '=' (e.g. a worktrees path) is not a duplicate key.
+    mkdir -p "$sb/w"
+    echo "w single_project $sb/w worktrees=/tmp/role=foo role=dev" > "$sb/.agent/projects.local"
+    assert_eq "value with '=' is not a duplicate key" "dev" "$(reg "$sb" registry_field "$sb" w role 2>&1)"
+    assert_eq "worktrees value keeps its '='" "/tmp/role=foo" "$(reg "$sb" registry_field "$sb" w worktrees 2>&1)"
+    # Duplicate names are rejected (first definition wins for lookups).
+    printf 'dup single_project %s/a\ndup single_project %s/b\n' "$sb" "$sb" > "$sb/.agent/projects.local"
+    rc=0; out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
+    assert_eq "duplicate name → rc 2" "2" "$rc"
+    assert_contains "names the duplicate" "projects.local:2: duplicate project name 'dup'" "$out"
+    assert_eq "first definition kept" "$(printf 'dup\tsingle_project\t%s/a' "$sb")" "$(reg "$sb" registry_entries "$sb" 2>/dev/null)"
 }
 
 test_registry_parent_rules() {
@@ -599,6 +615,10 @@ test_registry_parent_rules() {
     printf 'p project %s/p default_instance=other\nother single_project %s/o\n' "$sb" "$sb" > "$sb/.agent/projects.local"
     rc=0; out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
     assert_contains "default_instance must be an instance" "default_instance 'other' is not an instance of 'p'" "$out"
+    printf 'outer project %s/o\ninner project %s/o/i parent=outer\nleaf single_project %s/o/i/l parent=inner\n' "$sb" "$sb" "$sb" > "$sb/.agent/projects.local"
+    rc=0; out="$(reg "$sb" registry_entries "$sb" 2>&1)" || rc=$?
+    assert_eq "nested parent → rc 2" "2" "$rc"
+    assert_contains "no nesting" "parent root 'inner' may not itself have a parent" "$out"
 }
 
 test_registry_instances_and_default() {
@@ -739,16 +759,19 @@ test_validate_python_parser_matches_shell() {
     sb="$(make_sandbox)"
     make_parent_layout "$sb" p11-rolling
     echo "bad single_project $sb/bad colour=red" >> "$sb/.agent/projects.local"
+    echo "p11 single_project $sb/dup" >> "$sb/.agent/projects.local"
+    echo "nest project $sb/nest parent=p11" >> "$sb/.agent/projects.local"
     out="$(cd "$sb/.agent/scripts/lib" && python3 -c "
 import workspace
 entries, errors = workspace.read_projects_registry('$sb')
 print(','.join(e['name'] for e in entries))
 print(entries[0]['fields'].get('default_instance'))
 print(entries[1]['fields'])
-print(len(errors), errors[0].split(': ',1)[1] if errors else '')
+print(len(errors))
+for e in errors: print(e.split(': ',1)[1])
 ")"
-    assert_eq "entries and fields" \
-        "$(printf "p11,p11-jazzy,p11-rolling\np11-rolling\n{'parent': 'p11', 'distro': 'jazzy', 'role': 'dev'}\n1 unknown field 'colour' for 'bad' (known: parent worktrees role distro default_instance)")" \
+    assert_eq "entries, fields, and the same errors as the shell parser" \
+        "$(printf "p11,p11-jazzy,p11-rolling\np11-rolling\n{'parent': 'p11', 'distro': 'jazzy', 'role': 'dev'}\n3\nunknown field 'colour' for 'bad' (known: parent worktrees role distro default_instance)\nduplicate project name 'p11'\nparent root 'nest' may not itself have a parent (no nesting)")" \
         "$out"
 }
 

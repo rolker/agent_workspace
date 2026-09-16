@@ -140,12 +140,26 @@ def read_projects_registry(root=None):
             abs_path = root / path
         parsed.append((lineno, {"name": name, "type": ptype, "path": abs_path, "fields": fields}))
 
-    by_name = {e["name"]: e for _, e in parsed}
+    # First definition wins for lookups; a repeated name is an error.
+    by_name = {}
+    for _, e in parsed:
+        by_name.setdefault(e["name"], e)
     entries = []
+    seen = set()
     for lineno, entry in parsed:
         name, ptype, fields = entry["name"], entry["type"], entry["fields"]
+        if name in seen:
+            errors.append(f"{registry}:{lineno}: duplicate project name '{name}'")
+            continue
+        seen.add(name)
         parent = fields.get("parent")
         if parent is not None:
+            if ptype == REGISTRY_PARENT_TYPE:
+                errors.append(
+                    f"{registry}:{lineno}: parent root '{name}' may not itself have a parent "
+                    "(no nesting)"
+                )
+                continue
             ref = by_name.get(parent)
             if ref is None:
                 errors.append(

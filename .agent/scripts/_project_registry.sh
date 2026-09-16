@@ -19,7 +19,8 @@
 #   except the pseudo-type "project": a parent root that groups instances
 #   (session and memory unit, no adapter of its own)
 # - path: optional hosting dir; relative paths resolve against the
-#   workspace root; default projects/<name>. Paths must not contain spaces.
+#   workspace root; default projects/<name>. Paths must not contain spaces
+#   or '=' (a third token containing '=' is read as a field).
 # - trailing fields (values must not contain spaces):
 #     parent=<name>            this entry is an instance of parent root <name>
 #                              (<name> must be a "project"-type entry)
@@ -74,7 +75,8 @@ registry_entries_full() {
         name=""; type=""; path=""; rest=""; fields=""
         read -r name type path rest <<< "$raw" || true
         [ -z "$name" ] && continue
-        # A third token containing '=' is a field, not a path.
+        # A third token containing '=' is a field, not a path ('=' is
+        # forbidden in paths so the two can never be confused).
         if [[ "$path" == *=* ]]; then
             rest="$path${rest:+ $rest}"
             path=""
@@ -105,7 +107,7 @@ registry_entries_full() {
                 bad=1
                 break
             fi
-            if [[ "$fields" == *"$key="* ]]; then
+            if _registry_field_of "$fields" "$key" >/dev/null; then
                 echo "ERROR: ${file}:${lineno}: duplicate field '$key' for '$name'" >&2
                 bad=1
                 break
@@ -144,11 +146,20 @@ registry_entries_full() {
     done < "$file"
 
     # Cross-line rules.
-    local l lno lname ltype lpath lfields ref reftype
+    local l lno lname ltype lpath lfields ref reftype seen=" "
     for l in ${lines[@]+"${lines[@]}"}; do
         IFS=$'\t' read -r lno lname ltype lpath lfields <<< "$l"
+        if [[ "$seen" == *" $lname "* ]]; then
+            echo "ERROR: ${file}:${lno}: duplicate project name '$lname'" >&2
+            rc=2; continue
+        fi
+        seen="$seen$lname "
         ref="$(_registry_field_of "$lfields" parent)"
         if [ -n "$ref" ]; then
+            if [ "$ltype" = "$REGISTRY_PARENT_TYPE" ]; then
+                echo "ERROR: ${file}:${lno}: parent root '$lname' may not itself have a parent (no nesting)" >&2
+                rc=2; continue
+            fi
             reftype="$(_registry_type_in_lines "$ref" ${lines[@]+"${lines[@]}"})"
             if [ -z "$reftype" ]; then
                 echo "ERROR: ${file}:${lno}: parent '$ref' of '$lname' is not registered" >&2

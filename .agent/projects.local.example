@@ -20,7 +20,8 @@
 #                 (e.g. one per ROS distro). It has no adapter and need not
 #                 be a git repository; it is the session and memory unit.
 #   path          Optional hosting directory (absolute, or relative to the
-#                 workspace root; default projects/<name>). No spaces.
+#                 workspace root; default projects/<name>). No spaces or
+#                 "=" (a third token containing "=" is read as a field).
 #   key=value     Optional trailing fields (no spaces in values):
 #                   parent=<name>            this line is an instance of
 #                                            parent root <name>
