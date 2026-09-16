@@ -246,3 +246,20 @@ install/check, skill `session_scope`, tool-mapping guard, permissions
 subset, `register_project.sh`, `register-project` command) is PR 3;
 retiring `project/`/`projects/`, the `projects/<name>` default path, and
 migrating p11 instances is PR 4.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-16 (date per session)
+**By**: independent reviewer (claude-sonnet-5), fresh context, round 1
+**Verdict**: changes-requested
+
+**PR**: #273 at `6737065`
+**Mode**: post-PR
+**Depth**: standard (reason: registry/adapter/worktree-lifecycle infrastructure; skip fork-only cross-model tooling)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — one must-fix (a skill's plan-file fallback glob doesn't cover the registered-root location this PR just introduced)
+
+### Findings
+- [ ] (must-fix) `review-plan`'s plan-file fallback glob only searches `worktrees/project/*/issue-*-<N>/` (the workspace tree); it can never find a plan file for a project worktree under a registered out-of-tree root, the exact case PR 2 makes real — `.claude/skills/review-plan/SKILL.md:62`
+- [ ] (suggestion) `WORKFORCE_PROTOCOL.md` and `start-task/SKILL.md` still state the pre-#265 `worktrees/project/<repo>/...` location unconditionally, with no mention of the registered-root case or the transition fallback; acceptable to defer to PR 3's skill-path pass per the plan's PR sequencing, but worth flagging so it isn't dropped — `.agent/WORKFORCE_PROTOCOL.md:27`, `.claude/skills/start-task/SKILL.md:136`
+- [ ] (suggestion) `merge_pr.sh`'s ambiguous-registration case (`WORKTREE_TYPE=project`, no `--project`, more than one non-parent project registered) prints `wt_resolve_project_repo_root`'s error to stderr but doesn't exit — falls through with `PJ_REPO_ROOT=""` into the rest of the script rather than failing fast; not covered by a test — `.agent/scripts/merge_pr.sh:206-213`
