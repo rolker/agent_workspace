@@ -51,6 +51,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.egg-info/
+.pytest_cache/
+
+# ros-manifest git-backed extends cache (tools/ros-manifest, #267)
+.ros-manifest-cache/
 
 # CodeQL generated files
 _codeql_detected_source_root
