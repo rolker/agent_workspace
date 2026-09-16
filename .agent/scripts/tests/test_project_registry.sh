@@ -423,10 +423,10 @@ test_worktree_create_registry_repo() {
         "$sb/.agent/scripts/worktree_create.sh" --issue 999 --type project --project alpha 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "worktree exists under the registry name" \
-        "yes" "$([ -d "$sb/worktrees/project/alpha/issue-alpha-999" ] && echo yes || echo no)"
+        "yes" "$([ -d "$sb/projects/alpha/worktrees/issue-alpha-999" ] && echo yes || echo no)"
     assert_eq "worktree is a checkout of the alpha repo" \
         "feature/issue-999" \
-        "$(git -C "$sb/worktrees/project/alpha/issue-alpha-999" branch --show-current 2>/dev/null)"
+        "$(git -C "$sb/projects/alpha/worktrees/issue-alpha-999" branch --show-current 2>/dev/null)"
 }
 
 test_worktree_create_single_registry_autoselect() {
@@ -440,7 +440,7 @@ test_worktree_create_single_registry_autoselect() {
     assert_eq "exit 0" "0" "$rc"
     assert_contains "announces the auto-selection" "Using registered project 'alpha'" "$out"
     assert_eq "worktree created" \
-        "yes" "$([ -d "$sb/worktrees/project/alpha/issue-alpha-998" ] && echo yes || echo no)"
+        "yes" "$([ -d "$sb/projects/alpha/worktrees/issue-alpha-998" ] && echo yes || echo no)"
 }
 
 test_worktree_create_dashed_name_roundtrip() {
@@ -453,13 +453,13 @@ test_worktree_create_dashed_name_roundtrip() {
         "$sb/.agent/scripts/worktree_create.sh" --issue 996 --type project --project my-proj 2>&1)" || rc=$?
     assert_eq "create exit 0" "0" "$rc"
     assert_eq "worktree dir uses the raw name" \
-        "yes" "$([ -d "$sb/worktrees/project/my-proj/issue-my-proj-996" ] && echo yes || echo no)"
+        "yes" "$([ -d "$sb/projects/my-proj/worktrees/issue-my-proj-996" ] && echo yes || echo no)"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
         "$sb/.agent/scripts/worktree_enter.sh" --issue 996 --type project --project my-proj --print-path 2>&1)" || rc=$?
     assert_eq "enter --project finds it" "0" "$rc"
     assert_eq "enter resolves the same path" \
-        "$sb/worktrees/project/my-proj/issue-my-proj-996" "$out"
+        "$sb/projects/my-proj/worktrees/issue-my-proj-996" "$out"
 }
 
 test_worktree_create_repo_alias() {
@@ -472,7 +472,7 @@ test_worktree_create_repo_alias() {
         "$sb/.agent/scripts/worktree_create.sh" --issue 995 --type project --repo alpha 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "worktree exists under the registry name" \
-        "yes" "$([ -d "$sb/worktrees/project/alpha/issue-alpha-995" ] && echo yes || echo no)"
+        "yes" "$([ -d "$sb/projects/alpha/worktrees/issue-alpha-995" ] && echo yes || echo no)"
 }
 
 test_worktree_create_single_repo_no_manifest_file() {
@@ -484,7 +484,7 @@ test_worktree_create_single_repo_no_manifest_file() {
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
         "$sb/.agent/scripts/worktree_create.sh" --issue 994 --type project --project alpha 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    wt="$sb/worktrees/project/alpha/issue-alpha-994"
+    wt="$sb/projects/alpha/worktrees/issue-alpha-994"
     assert_eq "no .worktree-repos file written" \
         "false" "$([ -e "$wt/.worktree-repos" ] && echo true || echo false)"
     assert_eq "worktree checkout has no untracked/uncommitted files" \
@@ -515,6 +515,20 @@ reg() {
     (
         # shellcheck source=/dev/null
         source "$sb/.agent/scripts/_project_registry.sh"
+        "$@"
+    )
+}
+
+# Source the worktree helper (which itself sources the registry helper) in
+# a subshell and run a function against a sandbox. Requires
+# _worktree_helpers.sh to have been copied into the sandbox (make_sandbox
+# does not do this by itself — make_worktree_sandbox does).
+# Usage: wt <sb> <function> [args...]
+wt() {
+    local sb="$1"; shift
+    (
+        # shellcheck source=/dev/null
+        source "$sb/.agent/scripts/_worktree_helpers.sh"
         "$@"
     )
 }
@@ -851,7 +865,7 @@ test_worktree_create_parent_default_instance() {
     assert_eq "exit 0" "0" "$rc"
     assert_contains "announces the instance" "Using instance 'p11-rolling' of 'p11'" "$out"
     assert_eq "worktree keyed by the instance name" \
-        "yes" "$([ -d "$sb/worktrees/project/p11-rolling/issue-p11-rolling-996" ] && echo yes || echo no)"
+        "yes" "$([ -d "$sb/p11-ng/rolling/worktrees/issue-p11-rolling-996" ] && echo yes || echo no)"
 }
 
 test_worktree_parent_round_trip() {
@@ -867,12 +881,12 @@ test_worktree_parent_round_trip() {
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
         "$sb/.agent/scripts/worktree_enter.sh" --issue 994 --type project --project p11 --print-path 2>&1)" || rc=$?
-    assert_eq "enter --project parent finds the instance worktree" "$sb/worktrees/project/p11-rolling/issue-p11-rolling-994" "$out"
+    assert_eq "enter --project parent finds the instance worktree" "$sb/p11-ng/rolling/worktrees/issue-p11-rolling-994" "$out"
     rc=0
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
         "$sb/.agent/scripts/worktree_remove.sh" --issue 994 --type project --project p11 --force 2>&1)" || rc=$?
     assert_eq "remove --project parent exit 0" "0" "$rc"
-    assert_eq "worktree gone" "no" "$([ -d "$sb/worktrees/project/p11-rolling/issue-p11-rolling-994" ] && echo yes || echo no)"
+    assert_eq "worktree gone" "no" "$([ -d "$sb/p11-ng/rolling/worktrees/issue-p11-rolling-994" ] && echo yes || echo no)"
 }
 
 test_worktree_create_parent_not_autoselected() {
@@ -887,6 +901,140 @@ test_worktree_create_parent_not_autoselected() {
         "$sb/.agent/scripts/worktree_create.sh" --issue 995 --type project 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "auto-selects the instance, not the parent" "Using registered project 'only'" "$out"
+}
+
+test_worktree_create_legacy_still_uses_old_location() {
+    echo "TEST: an unregistered project (legacy project/ symlink only) still worktrees under <ws>/worktrees/project/<repo>/"
+    local sb out rc=0
+    sb="$(make_worktree_sandbox)"
+    make_git_repo "$sb/project" "file:///nonexistent/legacyrepo.git"
+    seed_commit "$sb/project"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 993 --type project 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "worktree lands in the pre-#265 legacy location" \
+        "yes" "$([ -d "$sb/worktrees/project/legacyrepo/issue-legacyrepo-993" ] && echo yes || echo no)"
+    local _excl_count
+    _excl_count="$(grep -cxF 'worktrees/' "$sb/project/.git/info/exclude" 2>/dev/null)" || _excl_count=0
+    assert_eq "no 'worktrees/' line added for an unregistered project (already gitignored under worktrees/)" \
+        "0" "$_excl_count"
+}
+
+test_worktree_create_outoftree_root_exclusion() {
+    echo "TEST: worktree_create under a registered root OUTSIDE the sandbox's own tree writes .git/info/exclude, idempotently"
+    local sb outside out rc=0
+    sb="$(make_worktree_sandbox)"
+    outside="$(mktemp -d)"
+    SANDBOXES+=("$outside")
+    make_registered_project "$sb" faraway "$outside/faraway"
+    seed_commit "$outside/faraway"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 111 --type project --project faraway 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "worktree created under the out-of-tree root's own worktrees/ dir" \
+        "yes" "$([ -d "$outside/faraway/worktrees/issue-faraway-111" ] && echo yes || echo no)"
+    assert_eq "exclude line written" \
+        "1" "$(grep -cxF 'worktrees/' "$outside/faraway/.git/info/exclude" 2>/dev/null || echo 0)"
+    assert_eq "git status in the root is clean (worktrees/ excluded)" \
+        "" "$(git -C "$outside/faraway" status --porcelain --ignored=no 2>/dev/null)"
+
+    # A second worktree in the same root must not duplicate the exclude line.
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 112 --type project --project faraway 2>&1)" || rc=$?
+    assert_eq "second create exit 0" "0" "$rc"
+    assert_eq "exclude file still has exactly one 'worktrees/' line (idempotent)" \
+        "1" "$(grep -cxF 'worktrees/' "$outside/faraway/.git/info/exclude")"
+}
+
+test_wt_ensure_exclusion_colcon_ignore() {
+    echo "TEST: wt_ensure_exclusion writes a COLCON_IGNORE marker for a ros2_colcon root"
+    local sb rc=0
+    sb="$(make_worktree_sandbox)"
+    make_registered_project "$sb" p11colcon >/dev/null
+    sed -i'' -e "s|^p11colcon single_project|p11colcon ros2_colcon|" "$sb/.agent/projects.local"
+    wt "$sb" wt_ensure_exclusion "$sb" p11colcon || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "COLCON_IGNORE marker created" \
+        "yes" "$([ -f "$sb/projects/p11colcon/worktrees/COLCON_IGNORE" ] && echo yes || echo no)"
+    assert_eq "marker is empty" "" "$(cat "$sb/projects/p11colcon/worktrees/COLCON_IGNORE")"
+    assert_eq "exclude line also written (it's still a git repo)" \
+        "1" "$(grep -cxF 'worktrees/' "$sb/projects/p11colcon/.git/info/exclude" 2>/dev/null || echo 0)"
+
+    # Idempotent: calling again must not duplicate the exclude line or fail
+    # on an existing marker.
+    rc=0
+    wt "$sb" wt_ensure_exclusion "$sb" p11colcon || rc=$?
+    assert_eq "second call exit 0" "0" "$rc"
+    assert_eq "exclude line still appears exactly once" \
+        "1" "$(grep -cxF 'worktrees/' "$sb/projects/p11colcon/.git/info/exclude")"
+}
+
+test_wt_ensure_exclusion_noop_for_unregistered() {
+    echo "TEST: wt_ensure_exclusion is a no-op for an unregistered project name"
+    local sb rc=0
+    sb="$(make_worktree_sandbox)"
+    make_git_repo "$sb/project" "file:///nonexistent/legacyrepo.git"
+    local before after
+    before="$(cat "$sb/project/.git/info/exclude" 2>/dev/null || true)"
+    wt "$sb" wt_ensure_exclusion "$sb" legacyrepo || rc=$?
+    assert_eq "exit 0 (silent no-op)" "0" "$rc"
+    after="$(cat "$sb/project/.git/info/exclude" 2>/dev/null || true)"
+    assert_eq "exclude file untouched for an unregistered project" "$before" "$after"
+}
+
+test_registry_worktree_enumeration_for_dashboard() {
+    echo "TEST: wt_registry_worktree_dirs / wt_count_project_worktrees enumerate an out-of-tree registered root (dashboard.sh's own enumeration function)"
+    local sb outside rc=0 out
+    sb="$(make_worktree_sandbox)"
+    outside="$(mktemp -d)"
+    SANDBOXES+=("$outside")
+    make_registered_project "$sb" gz4d "$outside/gz4d"
+    seed_commit "$outside/gz4d"
+
+    # Before any worktree exists, the root's worktree dir isn't there yet —
+    # enumeration returns nothing for it (dashboard.sh must not crash or
+    # miscount on a freshly-registered, never-worktreed root).
+    out="$(wt "$sb" wt_registry_worktree_dirs "$sb")" || rc=$?
+    assert_eq "no entries before any worktree exists" "" "$out"
+    assert_eq "count is 0" "0" "$(wt "$sb" wt_count_project_worktrees "$sb")"
+
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 222 --type project --project gz4d >/dev/null 2>&1)
+    out="$(wt "$sb" wt_registry_worktree_dirs "$sb")"
+    assert_eq "enumerates the out-of-tree root by name and worktree dir" \
+        "gz4d	$outside/gz4d/worktrees" "$out"
+    assert_eq "count reflects the one worktree just created" \
+        "1" "$(wt "$sb" wt_count_project_worktrees "$sb")"
+}
+
+test_merge_pr_finds_worktree_under_registered_root() {
+    echo "TEST: worktree_remove.sh (as merge_pr.sh drives it) finds a worktree under an out-of-tree registered root"
+    local sb outside out rc=0
+    sb="$(make_worktree_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
+    outside="$(mktemp -d)"
+    SANDBOXES+=("$outside")
+    make_registered_project "$sb" faraway2 "$outside/faraway2"
+    seed_commit "$outside/faraway2"
+    (cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 333 --type project --project faraway2 >/dev/null 2>&1)
+    assert_eq "worktree exists under the out-of-tree root" \
+        "yes" "$([ -d "$outside/faraway2/worktrees/issue-faraway2-333" ] && echo yes || echo no)"
+
+    # wt_resolve_project_repo_root (used by merge_pr.sh) must resolve the
+    # registered root, not the (nonexistent) legacy project/ symlink.
+    out="$(wt "$sb" wt_resolve_project_repo_root "$sb" faraway2)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_eq "resolves to the out-of-tree checkout" "$outside/faraway2" "$out"
+
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_remove.sh" --issue 333 --type project --project faraway2 --force 2>&1)" || rc=$?
+    assert_eq "remove exit 0" "0" "$rc"
+    assert_eq "worktree removed from under the out-of-tree root" \
+        "no" "$([ -d "$outside/faraway2/worktrees/issue-faraway2-333" ] && echo yes || echo no)"
 }
 
 # ---- Run all tests ----
@@ -936,6 +1084,12 @@ test_validate_python_parser_matches_shell
 test_worktree_create_parent_default_instance
 test_worktree_parent_round_trip
 test_worktree_create_parent_not_autoselected
+test_worktree_create_legacy_still_uses_old_location
+test_worktree_create_outoftree_root_exclusion
+test_wt_ensure_exclusion_colcon_ignore
+test_wt_ensure_exclusion_noop_for_unregistered
+test_registry_worktree_enumeration_for_dashboard
+test_merge_pr_finds_worktree_under_registered_root
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

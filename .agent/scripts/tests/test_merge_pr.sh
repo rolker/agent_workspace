@@ -630,6 +630,42 @@ test_legacy_single_repo_project_pr_regression() {
         "$(git -C "$sb/project" show-ref --verify --quiet refs/heads/feature/issue-77 && echo true || echo false)"
 }
 
+test_registered_project_root_pr_regression() {
+    echo "TEST: a registered (out-of-tree) single-repo project PR is resolved and its worktree, under the project's OWN root, is cleaned up (#265 PR 2)"
+    local sb out rc=0 wt bare curbr pj_remote outside
+    sb="$(make_merge_sandbox)"
+    outside="$(mktemp -d)"
+    SANDBOXES+=("$outside")
+    mkdir -p "$outside/farrepo"
+    git -C "$outside/farrepo" init --quiet
+    git -C "$outside/farrepo" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+    bare="${sb}.farrepo.remote.git"
+    SANDBOXES+=("$bare")
+    git init --bare --quiet "$bare"
+    git -C "$outside/farrepo" remote add origin "$bare"
+    curbr="$(git -C "$outside/farrepo" symbolic-ref --short HEAD)"
+    git -C "$outside/farrepo" push --quiet -u origin "$curbr"
+    pj_remote="$(git -C "$outside/farrepo" remote get-url origin)"
+    echo "farrepo single_project $outside/farrepo" >> "$sb/.agent/projects.local"
+
+    # No new commit on the feature branch (see the legacy-project test
+    # above for why: `gh pr merge` is stubbed, so a real new commit would
+    # leave the branch "not fully merged" and defeat the safe `branch -d`).
+    git -C "$outside/farrepo" branch feature/issue-78
+    wt="$outside/farrepo/worktrees/issue-farrepo-78"
+    mkdir -p "$(dirname "$wt")"
+    git -C "$outside/farrepo" worktree add --quiet "$wt" feature/issue-78
+    write_pr_view_fixture "$sb" "$pj_remote" 78 "feature/issue-78"
+
+    out="$(run_merge_pr "$sb" --pr 78 --project farrepo --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "project type auto-detected" "Merging PR #78 (issue #78)" "$out"
+    assert_eq "worktree removed from under the registered (out-of-tree) root" \
+        "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "feature branch deleted in the registered project's own repo" "false" \
+        "$(git -C "$outside/farrepo" show-ref --verify --quiet refs/heads/feature/issue-78 && echo true || echo false)"
+}
+
 # ---- Run all tests ----
 echo "=== merge_pr.sh package-worktree tests (#252 PR 2) ==="
 echo ""
@@ -652,6 +688,7 @@ test_kept_worktree_banner
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression
+test_registered_project_root_pr_regression
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
