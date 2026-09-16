@@ -1,24 +1,35 @@
 # Plan: Port the review loop from ros2_agent_workspace: progress entry vocabulary, convergence verdict, integrated triage, address-findings, merge gate
 
-**Revision 4 (containment enforced)** — revision 3's plan review
-(`## Plan Review`, revision 3, in `progress.md`) found the checkpoint
-measure real in name but not in effect: it didn't gate PR B's own live
-exposure, wasn't mechanically checked, and report-only mode's default
-path left no durable record. This revision resolves all three must-fixes
-by putting containment in code, not prose: PR B (and, for the same
-reason, PR C and PR E's `plan-task` swap) ship their persistence-path
-change behind a `PROGRESS_PERSISTENCE_STRICT` switch that defaults to
-today's behavior plus a one-line notice; a new `## Checkpoint` entry type
-and a hermetic CI check (`test_checkpoint_269.sh`, added in PR A) block
-any PR touching C–F's files until that entry exists on `main`; and every
-report-only merge-gate refusal — not just the `--force-unreviewed`
-bypass — now appends a durable `## Merge (report-only)` entry. The switch
-flip is a separate one-line PR, **B2**, gated by the same mechanical
-check. See the `## Plan Authored` entry appended for this revision for a
+**Revision 5 (CI wiring, B2/B3 split)** — revision 4's plan review
+(`## Plan Review`, revision 4, in `progress.md`) found four must-fixes:
+`test_checkpoint_269.sh` was never actually wired into anything that runs
+it (a verifiable, not judgment-call, gap); nothing stopped a PR from
+editing or deleting the checkpoint test itself; the two new durable-record
+entry types (`## Merge (report-only)`, `## Merge (unreviewed)`) didn't say
+which `progress.md` they target for project/package-scope PRs; and the
+`PROGRESS_PERSISTENCE_STRICT` env-var carrier was justified by a claim
+(`review-code` "not a CLI command with a stable flag surface") that
+`review-code`'s own existing `--no-progress` flag contradicts. This
+revision resolves all four: PR A now adds a `.pre-commit-config.yaml`
+local hook running every `.agent/scripts/tests/test_*.sh` (including
+`test_checkpoint_269.sh`) inside the existing Lint job, with no
+`validate.yml` edit and measured runtime low enough to need no two-tier
+split; the runner both globs and explicitly names
+`test_checkpoint_269.sh` so its own deletion breaks the runner rather than
+silently dropping coverage; the durable-record entries now resolve their
+target `progress.md` the same way `merge_pr.sh`'s existing roadmap-update
+step already resolves a PR's worktree, with a documented workspace-local
+fallback when no worktree is open for it; and the switch is now both an
+invocation flag (`--strict-progress`, mirroring `--no-progress`) and an
+env-var default-setter, each named for the different job it does. B2 is
+also split: it is now only the default flip (one line per skill, three
+lines, one commit, cleanly revertible); deleting the compatibility path
+and its tests is deferred to a new **B3**, opened only after B2 has been
+in use. See the `## Plan Authored` entry appended for this revision for a
 one-line-per-finding summary and where each landed, and "Blast radius"
-below for the per-PR worst-case table the review asked for. Revisions 2
-and 3's own findings remain applied; this revision layers on top of
-them, it does not re-open them.
+below for the updated per-PR worst-case table. Revisions 2–4's own
+findings remain applied; this revision layers on top of them, it does not
+re-open them.
 
 ## Issue
 
@@ -123,6 +134,11 @@ guard). `.agent/scripts/progress_read.py` (JSON parse of entries,
 predecessor recognition for `## External Review`).
 `.agent/scripts/tests/test_checkpoint_269.sh` (new, revision 4) — the
 mechanical enforcement for the checkpoint; see below.
+`.agent/scripts/tests/run_script_tests.sh` (new, revision 5) — the runner
+that gives the checkpoint test (and the seven pre-existing `test_*.sh`
+scripts that had no CI wiring at all) something that actually executes
+them; see "Checkpoint enforcement" below. A new `.pre-commit-config.yaml`
+local hook invokes it.
 
 **New vocabulary: `## Checkpoint` and `## Merge (report-only)` (revision
 4, resolving must-fix 2 and must-fix 3 of revision 3's plan review)**:
@@ -136,7 +152,7 @@ mechanical enforcement for the checkpoint; see below.
   correlation SHA of the `## Local Review (Pre-Push)` entry
   `progress_append.sh` wrote during the exercise), `**Resolver-hit**`
   (one line confirming `resolve_work_plans_dir()` — run with
-  `PROGRESS_PERSISTENCE_STRICT=1` for this one exercise, see PR B below —
+  `--strict-progress` for this one exercise, see PR B below —
   resolved correctly from #265 PR 2's real project worktree, quoting its
   output), and `**Decision summary URL**` (the PR comment URL where the
   pinned decision-summary template appeared). This is the same three
@@ -151,32 +167,115 @@ mechanical enforcement for the checkpoint; see below.
   report-only observation window previously left no durable record of
   its own stated purpose).
 
-**Checkpoint enforcement (must-fix 2)**:
-`.agent/scripts/tests/test_checkpoint_269.sh` is a hermetic CI check —
-added as a test script under the existing `.agent/scripts/tests/`
-convention (picked over a new step in `validate.yml` because editing a
-CI workflow file is itself an AGENTS.md Ask-First item — "changing CI or
-branch protection configuration" — while a test script under this
-workspace's own `.agent/scripts/tests/` convention needs no such
-approval and is picked up by the existing test harness the same way
-every other PR's new `test_*.sh` file is). It fails (non-zero) when the
-PR's diff against its merge base touches any of: `.claude/skills/
-triage-reviews/SKILL.md`, `.claude/skills/address-findings/` (any file
-under the new skill dir), the heading lines in `.claude/skills/
-plan-task/SKILL.md` and `.claude/skills/review-plan/SKILL.md` that PR E
-changes, the gate step in `.agent/scripts/merge_pr.sh`, or `.github/
-PULL_REQUEST_TEMPLATE.md` — **unless** `main`'s
-`.agent/work-plans/issue-269/progress.md` contains a `## Checkpoint`
-entry with all four fields above non-empty. Because B2 (below) touches
-`triage-reviews/SKILL.md` and `plan-task/SKILL.md` to flip
-`PROGRESS_PERSISTENCE_STRICT`'s default, B2 is gated by this same check
-with no special-casing. **What removes the check**: nothing needs to —
-once the `## Checkpoint` entry is committed to `main`, the check is
-permanently satisfied for every later PR (it checks for the entry's
-existence, not currency). PR F's cleanup step deletes
-`test_checkpoint_269.sh` once F merges, since its one job (gating C–F
-until the checkpoint is recorded) is then complete and leaving it in
-place would be dead weight, not additional safety.
+**Checkpoint enforcement — CI wiring (revision 5, resolving revision 4's
+must-fix 1: "picked up by the existing test harness" was false)**:
+
+Revision 4 claimed `test_checkpoint_269.sh` would be "picked up by the
+existing test harness the same way every other PR's new `test_*.sh` file
+is." Verified false against this tree: `.github/workflows/validate.yml`
+calls out exactly **three** of this repo's **ten** existing
+`.agent/scripts/tests/test_*.sh` files by explicit, individually-named
+`run:` steps — `test_adapter.sh`, `test_project_registry.sh`,
+`test_ros2_colcon.sh` (`validate.yml:38,41,44`). The other seven —
+`test_merge_pr.sh`, `test_merge_pr_root_resolution.sh`,
+`test_resolve_work_plans_dir.sh`, `test_gh_create_pr.sh`,
+`test_block_bash_tool_mapping.sh`, `test_cross_model_review.sh`,
+`test_sync_gitbug.sh` — are not referenced anywhere in `validate.yml`,
+`.pre-commit-config.yaml`, or the Makefile. There is no auto-discovery
+loop anywhere in `.agent/scripts/` that globs `test_*.sh` and runs it;
+`make test` dispatches to the project adapter's `TEST_CMD`, not this
+workspace's own test scripts. Dropping `test_checkpoint_269.sh` into
+`.agent/scripts/tests/` as revision 4 designed it would have gotten it
+exactly nothing running it in CI.
+
+**Decision**: PR A adds a `.pre-commit-config.yaml` local hook —
+`validate-script-tests`, `always_run: true`, `pass_filenames: false` —
+that runs a new runner, `.agent/scripts/tests/run_script_tests.sh`,
+executing **every** `test_*.sh` in `.agent/scripts/tests/`. This hook runs
+inside the existing `Lint (pre-commit)` job (`validate.yml:10-25`, `run:
+make lint`) exactly the way `validate-adapter-contract`
+(`.pre-commit-config.yaml:50-55`) already does — no `validate.yml` edit at
+all. This closes the wider gap the plan review's evidence exposed (seven
+of ten existing suites never ran in CI; the roadmap already lists "Run
+`.agent/scripts/tests/` in CI" as a To Consider item, tracing to the
+fork's #509/#510), and it carries `test_checkpoint_269.sh` along with it
+as one more suite the runner executes — the checkpoint gate is a
+consequence of fixing the wider gap, not a special case bolted on. The
+false "picked up automatically" sentence above is corrected by this
+section, not carried forward.
+
+**Runtime cost, measured**: each of the ten existing `test_*.sh` scripts
+was timed with `time bash .agent/scripts/tests/test_*.sh` in this
+worktree (all passing, `rc=0`):
+
+| Script | Seconds |
+|---|---|
+| `test_adapter.sh` | 1.18 |
+| `test_block_bash_tool_mapping.sh` | 1.27 |
+| `test_cross_model_review.sh` | 0.38 |
+| `test_gh_create_pr.sh` | 0.32 |
+| `test_merge_pr_root_resolution.sh` | 0.05 |
+| `test_merge_pr.sh` | 2.74 |
+| `test_project_registry.sh` | 3.22 |
+| `test_resolve_work_plans_dir.sh` | 0.05 |
+| `test_ros2_colcon.sh` | 7.65 |
+| `test_sync_gitbug.sh` | 0.17 |
+| **Total** | **~17.0s** |
+
+~17 seconds is not too slow for a pre-commit hook (this repo's existing
+`Lint (pre-commit)` job already runs `black`/`flake8`/`pylint`/`shellcheck`
+across the tree in the same job). **No two-tier split is needed**: every
+`test_*.sh`, including `test_checkpoint_269.sh` and the new
+`test_run_script_tests.sh` (below), runs in the single pre-commit hook,
+with no CI-only Makefile target and no `validate.yml` change. Per the
+instruction that made this a hard requirement regardless of runtime:
+`test_checkpoint_269.sh` is one of the fast suites (0.05–7.65s range, well
+under a "too slow for pre-commit" threshold), so this holds even under the
+stricter reading.
+
+**Protecting the checkpoint test from edit/deletion (revision 5, resolving
+revision 4's must-fix 2 — nothing stopped a PR from routing around the
+gate by editing or deleting it)**: defense in depth, stated plainly as
+that and not as proof:
+
+1. `run_script_tests.sh` globs `.agent/scripts/tests/test_*.sh` for
+   general coverage (any new suite is picked up automatically) **and**
+   separately asserts, by explicit filename, that
+   `test_checkpoint_269.sh` is present in that glob result and was
+   executed. If the file is deleted, the runner itself fails — the
+   check doesn't just silently lose one suite's coverage, the whole
+   pre-commit hook goes red, which is a much louder signal than a
+   glob quietly running one fewer script.
+2. `test_checkpoint_269.sh` itself asserts its own filename appears (by
+   exact string) in `run_script_tests.sh`'s explicit checkpoint-presence
+   assertion — a PR that edits the runner to drop the explicit check
+   (leaving only the glob) fails the checkpoint test's own self-check.
+3. A CODEOWNERS-free social rule, since this workspace has no file-level
+   review-gating mechanism: any PR touching `run_script_tests.sh` or
+   `test_checkpoint_269.sh` must say so plainly in its decision summary
+   (see PR B's pinned template), and the reviewer (human or fresh-context
+   `review-code`) checks that claim against the diff.
+
+None of these three are proof against a determined or careless PR — (1)
+and (2) are both ordinary repo files a PR could still edit together in
+one diff, and (3) is discipline, not mechanism. This is exactly the same
+honest limit PR F's own Layer 1 reasons through for the merge gate
+itself: pre-Layer-2, human review is the actual backstop for any
+self-referential gate in this repo, and this section says that plainly
+rather than implying the runner+self-check pair is unbreakable.
+
+Because B2 (below) touches `triage-reviews/SKILL.md` and
+`plan-task/SKILL.md` to flip `PROGRESS_PERSISTENCE_STRICT`'s default, B2
+is still gated by `test_checkpoint_269.sh` with no special-casing — that
+part of revision 4's design is unchanged, only how the test actually runs
+is corrected. **What removes the check**: nothing needs to — once the
+`## Checkpoint` entry is committed to `main`, the check is permanently
+satisfied for every later PR (it checks for the entry's existence, not
+currency). PR F's cleanup step deletes `test_checkpoint_269.sh` (and its
+explicit mention in `run_script_tests.sh`) once F merges, since its one
+job (gating C–F/B2 until the checkpoint is recorded) is then complete;
+`run_script_tests.sh` itself stays, continuing to run the other nine (by
+then possibly more) suites.
 
 Adaptations from fork source:
 - Both scripts are read as-is from
@@ -204,9 +303,17 @@ per file named above) fails against a fixture `progress.md` with no
 `## Checkpoint` entry, and passes against a fixture with a complete one;
 a fixture with a `## Checkpoint` entry missing one required field still
 fails, asserting the check reads fields, not just heading presence.
+`.agent/scripts/tests/test_run_script_tests.sh` (new, revision 5) —
+asserts the runner (a) discovers and runs a synthetic `test_*.sh` fixture
+dropped into a scratch copy of the tests dir (glob coverage), (b) fails
+loudly when `test_checkpoint_269.sh` is absent from that scratch copy
+(explicit-presence assertion), and (c) exits non-zero as soon as any one
+suite fails, without silently continuing past it.
 
-**Enforcement**: mechanical (test suite); the whitelist is itself the
-enforcement for "only ADR-0013-vocabulary types get committed."
+**Enforcement**: mechanical (test suite, plus the new pre-commit hook
+that actually runs the suite — see "Checkpoint enforcement" above); the
+whitelist is itself the enforcement for "only ADR-0013-vocabulary types
+get committed."
 
 ### PR B — `review-code`: `progress_append.sh` refactor + convergence + decision summary
 
@@ -255,19 +362,42 @@ the top of step 8:
   resolution/commit *mechanism* is switched, not the entry content.
 - **`1`**: step 8 uses `resolve_work_plans_dir()` and `progress_append.sh`
   for real — this is the code path B2 (below) makes the default.
-- **Why an env var, not a `progress_append.sh` flag**: the switch has to
-  gate the *resolution* step, which runs before `progress_append.sh` is
-  ever invoked in `0` mode — a flag on that script wouldn't be reachable
-  at the point being guarded. `review-code` is invoked as a skill (a
-  natural-language instruction set followed by an agent), not a CLI
-  command with a stable flag surface the way `merge_pr.sh` is, so a flag
-  can't be threaded through invocation the way PR F's `--enforce` can.
-  An env var is trivial to set for the one exercise run that needs it
-  (`PROGRESS_PERSISTENCE_STRICT=1`, used for the #265 PR 2 checkpoint
-  exercise — see PR A's `## Checkpoint` entry's `**Resolver-hit**`
-  field) without changing how the skill is invoked day to day, and it
-  mirrors PR F's own flag-then-flip precedent at the mechanism level
-  appropriate to a skill instead of a script.
+- **Carrier (revision 5, correcting revision 4's must-fix 4): both a
+  skill flag and an env var, each doing a different job.** Revision 4
+  justified the env-var-only design with "`review-code` is invoked as a
+  skill..., not a CLI command with a stable flag surface..., so a flag
+  can't be threaded through invocation the way PR F's `--enforce` can" —
+  that claim is false against this tree: `review-code/SKILL.md` already
+  has exactly such a flag today, `--no-progress`
+  (`review-code/SKILL.md:15,20,108,110,117,392,498`), documented in the
+  skill's own invocation line (`/review-code --branch [<base-ref>]
+  [--issue <N>] [--no-progress] [--skip-static] [light|standard|deep]`).
+  A flag can and does thread through this exact skill's invocation. The
+  premise is dropped; the design is corrected to carry the switch two
+  ways, matched to two different needs:
+  - **`--strict-progress`** (a skill flag, consistent with the existing
+    `--no-progress` naming and placement in the invocation line) — an
+    agent invoking `/review-code --strict-progress` for a single run
+    forces the strict path (`resolve_work_plans_dir()` +
+    `progress_append.sh`) for that run only, regardless of the ambient
+    default. This is what the #265 PR 2 checkpoint exercise uses instead
+    of an out-of-band `export` (see PR A's `## Checkpoint` entry's
+    `**Resolver-hit**` field): the flag is discoverable from the
+    invocation line itself, the same way `--no-progress` already is,
+    so nothing has to separately tell the invoking agent to set an
+    environment variable it has no reason to know about.
+  - **`PROGRESS_PERSISTENCE_STRICT`** (an env var, unchanged from
+    revision 4) — remains the mechanism because B2 needs to flip a
+    *default* across every ordinary invocation, and a flag cannot do
+    that without editing every call site's invocation text; the env var
+    is what the skill's step-6/step-8 logic reads to decide which path
+    to take when `--strict-progress` is not passed, and it is this env
+    var's default (unset/`0` pre-B2, `1` post-B2) that B2's one-line
+    change actually flips. In short: `--strict-progress` is a per-run
+    override for the one-off exercise case; `PROGRESS_PERSISTENCE_STRICT`
+    is the ambient default B2 flips for every other invocation. Both are
+    documented in the skill's invocation line and step-6/step-8 logic so
+    neither is a hidden mechanism.
 - PR C reuses the same switch for the identical risk in `triage-reviews`
   (see PR C below); PR E reuses it for `plan-task`'s persistence swap
   specifically (see PR E below) — `review-plan`'s change is a new
@@ -579,6 +709,45 @@ through Step 1 (roadmap update), Step 2 (`gh pr checks --watch
   review after the fact across every workspace PR, not just the one
   terminal it happened to run in.
 
+  **Target `progress.md` for project/package-scope PRs (revision 5,
+  resolving revision 4's must-fix 3b)**: revision 4 said "every
+  report-only run... appends" without saying which `progress.md` that is
+  for a PR whose issue lives outside the workspace worktree — the exact
+  case PR F's own refusal-scoping (containment measure 2) already flags
+  as unresolved ("project-repo `progress.md` location is not yet stable,"
+  see above). This is resolved by reusing `merge_pr.sh`'s own existing
+  worktree-resolution pattern rather than inventing a new one: Step 1
+  (roadmap update) already resolves the worktree that has `$PR_BRANCH`
+  checked out via `find_worktree_for_branch()` (`merge_pr.sh:176`,
+  called at `merge_pr.sh:457`), choosing `_WT_REPO="$ROOT_DIR"` for
+  `$WORKTREE_TYPE == "workspace"` or `"$ROOT_DIR/project"` for
+  `"project"` (`merge_pr.sh:455-456`), and for package PRs the script has
+  already resolved `$PKG_WT_DIR` earlier in the same run
+  (`merge_pr.sh:389-436`, the qualified `owner/repo#N` /
+  `--repo owner/repo` handling) if a package worktree happens to be open.
+  Step 2.5's durable-record append reuses exactly this: resolve the PR's
+  worktree via `find_worktree_for_branch()` (workspace/project) or
+  `$PKG_WT_DIR` (package), and if found, append to that worktree's
+  `.agent/work-plans/issue-<N>/progress.md` — the issue's own timeline,
+  in the repo that owns it, precisely as Step 1 already does for the
+  roadmap update. **When that timeline is unreachable from the host** —
+  `find_worktree_for_branch()` returns empty and `$PKG_WT_DIR` is unset,
+  meaning no local worktree is open for the PR's repo — the append falls
+  back to a documented workspace-local file,
+  `.agent/work-plans/merges/<owner>-<repo>-pr<N>.md`, created via the same
+  `progress_append.sh` helper (`-C` pointed at the workspace tree) using
+  the same entry schema. The stdout report line names this fallback
+  explicitly when it's taken (e.g. "no open worktree for
+  `rolker/some-project` — durable record written to
+  `.agent/work-plans/merges/rolker-some-project-pr42.md`"), so a
+  report-only observer never has to guess which file holds the record.
+  This is consistent with the refusal-scoping section immediately above:
+  refusal itself stays scoped to `$WORKTREE_TYPE == "workspace"` only,
+  but the durable *record* of a report-only pass/fail is written for
+  every scope (workspace, project, package) using this resolve-or-fallback
+  rule, so the observation window PR F exists to serve isn't silently
+  empty for project/package PRs.
+
   **`--enforce` mode**: the same two-condition check, but on failure the
   script refuses to proceed (exit non-zero, explicit message naming
   which condition(s) failed, no merge attempted). A CLI flag was chosen
@@ -641,8 +810,13 @@ through Step 1 (roadmap update), Step 2 (`gh pr checks --watch
   `--enforce` becomes default. The bypass also appends a
   `## Merge (unreviewed)` entry to the target issue's `progress.md` via
   `progress_append.sh` (see "Estimated Scope" above for why this, not a
-  git note, is the durable record) before proceeding to Step 3. Never
-  auto-merges anything it wasn't already going to merge: the actual
+  git note, is the durable record) before proceeding to Step 3, using the
+  same resolve-via-`find_worktree_for_branch()`/`$PKG_WT_DIR`-or-fallback
+  rule as the `## Merge (report-only)` entry above (see "Target
+  `progress.md` for project/package-scope PRs" above) — a bypass on a
+  project/package PR with no open worktree also lands in
+  `.agent/work-plans/merges/<owner>-<repo>-pr<N>.md`, not silently
+  nowhere. Never auto-merges anything it wasn't already going to merge: the actual
   human gate remains "a human chose to run `make merge-pr`" — this check
   only adds a refusal *precondition* (when `--enforce`d and scoped to a
   workspace PR) before Step 3 is reached, it does not add or remove any
@@ -727,14 +901,31 @@ gap, noted honestly rather than assumed either way).
 
 ### PR B2 — flip `PROGRESS_PERSISTENCE_STRICT`'s default (revision 4, not part of the A–F sequence)
 
-**Lands**: a one-line default-value change in `review-code/SKILL.md`,
-`triage-reviews/SKILL.md`, and `plan-task/SKILL.md`'s step-6/step-8
-switch checks, from `PROGRESS_PERSISTENCE_STRICT` defaulting to `0` to
-defaulting to `1` — the fail-loud `resolve_work_plans_dir()` call and
-`progress_append.sh`'s commit mechanism become each skill's real,
-unconditional behavior; the compatibility-mode "would have aborted"
-notice path and the old ad hoc resolution/inline-commit code it guards
-are deleted (dead code once the default flips and nothing exercises it).
+**Lands (revision 5, resolving revision 4's suggestion on B2's revert
+framing): the default flip only, nothing else.** A one-line default-value
+change in each of `review-code/SKILL.md`, `triage-reviews/SKILL.md`, and
+`plan-task/SKILL.md`'s step-6/step-8 switch checks, from
+`PROGRESS_PERSISTENCE_STRICT` defaulting to `0` to defaulting to `1` — the
+fail-loud `resolve_work_plans_dir()` call and `progress_append.sh`'s
+commit mechanism become each skill's real, default behavior (still
+overridable per-run the other direction if ever needed, since the switch
+itself isn't removed).
+
+Revision 4 also had B2 delete the compatibility-mode "would have
+aborted" notice path, the old ad hoc resolution/inline-commit code it
+guarded, and the switch-mode tests that exercised it — that is a second,
+different kind of change (code removal) bundled into what revision 4
+called "a one-line default-value change... revertible back to `0` in a
+single follow-up commit." Those two claims don't square: a one-line
+default flip is trivially revertible; deleting the code that flip
+depended on is not — a regression found after B2 would need the deleted
+code restored, not just the default flipped back. **Revision 5
+un-bundles them**: B2 is now only the default flip (one line per skill,
+three lines total, one commit), and the old compatibility-mode code
+stays in place, untouched, after B2 merges — genuinely one-line and
+genuinely one-commit-revertible, as originally claimed. Removing the
+now-dead compatibility path and its tests is deferred to **PR B3**
+(below).
 
 **Gate**: `test_checkpoint_269.sh` (PR A) blocks this PR from merging
 until `main`'s `.agent/work-plans/issue-269/progress.md` contains a
@@ -753,15 +944,38 @@ sequence where human judgment, not just a mechanical gate, decides
 timing; see Blast radius's B2 row above for the worst case this doesn't
 eliminate.
 
-**Tests**: the default-value assertion for all three call sites; the
-compatibility-mode notice tests from PR B/C/E are deleted along with the
-dead code they tested (or repointed to assert the notice path no longer
-exists, per whatever this workspace's convention is for retiring a
-test — confirmed at PR B2 implementation time, not fixed here).
+**Tests**: the default-value assertion for all three call sites only.
+The compatibility-mode notice tests from PR B/C/E are **not** touched by
+B2 — they keep passing because the code they test is still present, just
+no longer reached by default (it stays reachable via the switch's `0`
+override, unused day to day after B2).
 
 **Enforcement**: mechanical (the checkpoint-entry precondition via
 `test_checkpoint_269.sh`); the "has the owner watched enough" judgment
 call is explicitly not mechanized — see "When it's opened" above.
+
+### PR B3 — remove the compatibility-mode path (revision 5, later, opened only after B2 has been in use)
+
+**Not part of this plan's committed sequence** — named here so the
+cleanup B2 no longer carries isn't lost, and so nobody mistakes B2's
+"one-line flip" framing for "the compatibility path is gone." **Lands**
+(when opened): deletes the `PROGRESS_PERSISTENCE_STRICT == 0`
+compatibility-mode branch (old ad hoc resolution prose, old inline
+`git add && git commit`, the "would have aborted" notice line) from
+`review-code/SKILL.md`, `triage-reviews/SKILL.md`, and
+`plan-task/SKILL.md`'s step-6/step-8 logic, and retires the
+compatibility-mode notice tests from PR B/C/E along with it (or repoints
+them to assert the path no longer exists, per whatever this workspace's
+convention is for retiring a test — confirmed at B3 implementation time).
+**Opened**: only after B2 has been in ordinary use long enough that the
+owner is confident nothing needs the `0` fallback — B2's own default flip
+is the exercise period for B3, the same relationship the checkpoint has
+to B2. Not gated by `test_checkpoint_269.sh` (B3 doesn't touch any of the
+checkpoint-gated files unless it also happens to touch
+`triage-reviews/SKILL.md`/`plan-task/SKILL.md`, which it does — so in
+practice it stays gated by the same mechanism, no special-casing needed
+either way, since the checkpoint entry is already on `main` by the time
+B3 is opened).
 
 ## #265 dependency and progress.md path resolution
 
@@ -963,13 +1177,14 @@ plainly rather than forced into that shape.
 
 | PR | Worst case |
 |---|---|
-| A | Test fails in CI. New ADR + two new scripts + two new tests only; no existing skill's live behavior changes. |
+| A | Test fails in the new pre-commit hook (revision 5: `validate-script-tests`, running every `test_*.sh` including the seven that previously ran nowhere). New ADR + two new scripts + a new runner + new tests only; no existing skill's live behavior changes. |
 | B | Notice printed (the "would have aborted" compatibility-mode line) or test fails in CI. `PROGRESS_PERSISTENCE_STRICT=0` is the ship default — `review-code`'s resolution and commit mechanism are unchanged from today; only the entry's new fields (convergence, decision summary) and the notice line are new, and a wrong field value is a misleading report, not a blocked skill. |
 | C | Same as B, same switch, same default. Notice printed or test fails in CI. |
 | D | Test fails in CI. New skill, not invoked by anything automatically — no existing skill's behavior is touched, and a human chooses each invocation. |
 | E | Notice printed or test fails in CI. `plan-task`'s persistence swap is gated by the same switch (default `0`) as B/C; `review-plan`'s new append step is made non-fatal (a failure there prints a notice and exits 0 — the report it produces is unaffected), so neither half of this PR can turn a working skill invocation into a failed one. |
 | F | Notice printed (report-only "would have refused" line, now also durably recorded as `## Merge (report-only)`) or test fails in CI. Ships report-only by default, scoped to `$WORKTREE_TYPE == "workspace"` only; `--enforce` is opt-in, not this PR's default. |
-| **B2** | **Not bounded to notice/test-fails — stated plainly, not hand-waved.** B2 flips `PROGRESS_PERSISTENCE_STRICT`'s default from `0` to `1` for `review-code`, `triage-reviews`, and `plan-task` at once. That is the point at which the fail-loud resolver and `progress_append.sh`'s identity check go live by default in three daily-use skills. If the `#265` PR 2 exercise (or the smaller, organic exercise PR C/E get in report-only mode before B2) missed an edge case, B2 is what actually exposes it — a hard abort in a skill that previously always completed. This is contained, not eliminated: B2 touches `triage-reviews/SKILL.md` and `plan-task/SKILL.md`, both on the checkpoint-gated file list, so `test_checkpoint_269.sh` blocks B2 from merging until the `## Checkpoint` entry exists on `main` (same mechanism as C–F, no special-casing); the exercise happens on a real, non-trivial PR first, not a synthetic fixture; and the flip is a one-line diff, reviewable and revertible back to `0` in a single follow-up commit if it regresses something the checkpoint didn't catch. |
+| **B2** | **Not bounded to notice/test-fails — stated plainly, not hand-waved.** B2 flips `PROGRESS_PERSISTENCE_STRICT`'s default from `0` to `1` for `review-code`, `triage-reviews`, and `plan-task` at once. That is the point at which the fail-loud resolver and `progress_append.sh`'s identity check go live by default in three daily-use skills. If the `#265` PR 2 exercise (or the smaller, organic exercise PR C/E get in report-only mode before B2) missed an edge case, B2 is what actually exposes it — a hard abort in a skill that previously always completed. This is contained, not eliminated: B2 touches `triage-reviews/SKILL.md` and `plan-task/SKILL.md`, both on the checkpoint-gated file list, so `test_checkpoint_269.sh` blocks B2 from merging until the `## Checkpoint` entry exists on `main` (same mechanism as C–F, no special-casing); the exercise happens on a real, non-trivial PR first, not a synthetic fixture; and the flip is genuinely a one-line diff, reviewable and revertible back to `0` in a single follow-up commit if it regresses something the checkpoint didn't catch — true as of revision 5, because B2 no longer deletes the compatibility-mode code it flips away from (see PR B2/B3 split above; that deletion is B3's job, opened only after B2 has been trusted in use). |
+| **B3** | Test fails in CI (its own removed-path assertions) or a straightforward code-review catch — B3 deletes dead code (the `PROGRESS_PERSISTENCE_STRICT == 0` branch, unreachable by default after B2) and its own now-obsolete tests; no skill's default behavior changes, since B2 already made `1` the default. Opened only after B2 has been in use, per B2's own risk profile above serving as B3's exercise window. |
 
 ## Files to Change
 
@@ -992,7 +1207,10 @@ plainly rather than forced into that shape.
 | `.agent/scripts/tests/test_merge_pr_gate.sh` (new) | Refusal/pass/bypass cases, `## Merge (report-only)` entry assertions (PR F) |
 | `.github/PULL_REQUEST_TEMPLATE.md` | Decision-summary section (PR F) |
 | `Makefile` (help text, `:70`) | Add `MERGE_PR_ARGS` to the `make merge-pr` help line (PR F, revision 4) |
-| `.agent/scripts/tests/test_checkpoint_269.sh` (new) | Hermetic CI check: refuses PRs touching C–F files without a `## Checkpoint` entry on `main` (PR A, revision 4) |
+| `.agent/scripts/tests/test_checkpoint_269.sh` (new) | Hermetic CI check: refuses PRs touching C–F/B2 files without a `## Checkpoint` entry on `main` (PR A, revision 4) |
+| `.agent/scripts/tests/run_script_tests.sh` (new) | Runner: globs and executes every `.agent/scripts/tests/test_*.sh`, plus an explicit presence assertion for `test_checkpoint_269.sh` (PR A, revision 5) |
+| `.agent/scripts/tests/test_run_script_tests.sh` (new) | Fixture tests for the runner's glob discovery, explicit-presence check, and fail-fast behavior (PR A, revision 5) |
+| `.pre-commit-config.yaml` | New local hook `validate-script-tests` (`always_run: true`, `pass_filenames: false`) invoking `run_script_tests.sh` inside the existing `Lint (pre-commit)` job; no `validate.yml` edit (PR A, revision 5) |
 | `.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md` | Add `address-findings` to skill lists (PR D) |
 | `.agent/knowledge/principles_review_guide.md` | New ADR row in the ADR-applicability table (PR A) |
 | `.agent/knowledge/review_depth_classification.md` | Note convergence/round fields now appear in the review-code report header (PR B) |
@@ -1004,7 +1222,7 @@ plainly rather than forced into that shape.
 
 | Principle | Consideration |
 |---|---|
-| Enforcement over documentation | Every PR pairs its behavior change with a hermetic test (PR A's whitelist test + `test_checkpoint_269.sh`, PR B's round-counting + degradation + switch-mode tests, PR C's cross-source fixture + degradation + switch-mode tests, PR D's fix/defer fixture, PR E's correlation + switch-mode + non-fatal-path tests, PR F's report-only/enforce/scope/bypass + durable-record cases). Revision 4 closes the one place this principle was violated on paper only (the checkpoint, revision 3's must-fix 2) with `test_checkpoint_269.sh`. PR F Layer 2, PR F Layer 1's enforce-by-default flip, and B2's judgment-call timing (see PR B2) remain the deliberately-unenforced-so-far items, and all are called out, not hidden. |
+| Enforcement over documentation | Every PR pairs its behavior change with a hermetic test (PR A's whitelist test + `test_checkpoint_269.sh` + `run_script_tests.sh`'s own tests, PR B's round-counting + degradation + switch-mode tests, PR C's cross-source fixture + degradation + switch-mode tests, PR D's fix/defer fixture, PR E's correlation + switch-mode + non-fatal-path tests, PR F's report-only/enforce/scope/bypass + durable-record cases). Revision 4 closed the checkpoint's paper-only gap (revision 3's must-fix 2) with `test_checkpoint_269.sh`; revision 5 closes the layer under that — the test existing is not the same as the test running, and revision 4's `test_checkpoint_269.sh` ran nowhere until revision 5's pre-commit hook wired it (and seven pre-existing suites) in. PR F Layer 2, PR F Layer 1's enforce-by-default flip, and B2's judgment-call timing (see PR B2) remain the deliberately-unenforced-so-far items, and all are called out, not hidden. |
 | Capture decisions, not just implementations | PR A puts the vocabulary in an ADR, not five SKILL.md copies (the exact failure mode ADR-0013 itself documents and this workspace already exhibits: `triage-reviews` still says `## External Review`). |
 | A change includes its consequences | Files to Change lists every skill-list/knowledge-doc consequence flagged by the `review-issue` comment and the Consequences Map. |
 | Only what's needed | Ollama, Copilot-CLI, and container-dispatch specialists are explicitly dropped, not silently ported as dead code. |
@@ -1047,9 +1265,14 @@ plainly rather than forced into that shape.
   ADR lands first). Confirm at PR A implementation time, not now.
 - **Test-harness convention for the six new `.agent/scripts/tests/test_*`
   files** — this workspace's existing test runner conventions should be
-  followed exactly (shell vs. Python per script under test); confirm the
-  harness entry point (`make test` / `.agent/scripts/adapter test`) picks
-  them up automatically or needs a registration step.
+  followed exactly (shell vs. Python per script under test) for the files
+  themselves. **Resolved (revision 5), no longer open**: how they get
+  *executed* in CI is the new `.pre-commit-config.yaml` local hook running
+  `run_script_tests.sh` (see "Checkpoint enforcement — CI wiring" above)
+  — not an entry-point question, since neither `make test` nor
+  `.agent/scripts/adapter test` was ever going to pick up this workspace's
+  own `.agent/scripts/tests/` scripts (those dispatch to the *project*
+  adapter's `TEST_CMD`, confirmed by reading `.agent/scripts/test.sh`).
 
 ## Estimated Scope
 
@@ -1068,8 +1291,9 @@ lifts:
    resembling one).
 2. **The fail-loud `resolve_work_plans_dir()` path is hit from a
    worktree** — for this one exercise run, `review-code` is invoked with
-   `PROGRESS_PERSISTENCE_STRICT=1` (PR B's default stays `0` for every
-   other invocation; see PR B above) so `resolve_work_plans_dir()` runs
+   `--strict-progress` (revision 5; PR B's ambient default stays `0` for
+   every other invocation; see PR B above) so `resolve_work_plans_dir()`
+   runs
    for real against #265 PR 2's actual project worktree (per #265's
    design), not just PR B's own hermetic test fixtures; any resolution
    failure on this real PR is the checkpoint's signal to fix PR B before
@@ -1135,10 +1359,16 @@ through F — which includes E, despite E's structural dependency being on
 A alone — do not start until PR B has merged and been exercised on #265
 PR 2. So the only real ordering freedom left is A → B, then the
 checkpoint, then C/D/E/F in the dependency order above, with B2 (the
-`PROGRESS_PERSISTENCE_STRICT` default flip — revision 4, not part of the
-six-PR count, see PR B2 above) landing any time after the checkpoint is
-recorded, independent of where C–F are in their own sequence. No PR in
-this sequence is blocked on #265 PRs 2–4 merging (the checkpoint uses
+`PROGRESS_PERSISTENCE_STRICT` default flip only, revision 4/5 — not part
+of the six-PR count, see PR B2 above) landing any time after the
+checkpoint is recorded, independent of where C–F are in their own
+sequence, and **B3** (revision 5 — deleting the now-dead compatibility
+path B2 leaves in place, see PR B3 above) landing later still, opened
+only once B2 has been trusted in ordinary use; B3 is not gated by the
+checkpoint mechanism's C–F file list directly, but touches the same two
+skill files B2 does, so it stays behind `test_checkpoint_269.sh` anyway
+by the time it's opened, with no special-casing needed. No PR in this
+sequence is blocked on #265 PRs 2–4 merging (the checkpoint uses
 #265 PR 2 as a real-world exercise target, which is independent of
 whether #265 PRs 2–4 land first).
 
