@@ -247,7 +247,17 @@ cmd_persist() {
         echo "Progress already persisted (compatibility mode): identical entry committed earlier to $file_rel"
         return 0
     fi
-    git -C "$root" commit -q -m "progress: local review for #$issue" -- "$file_rel" || {
+    # Identity: the agent identity when set_git_identity_env.sh exported it
+    # (same as progress_append.sh), otherwise whatever git config provides —
+    # the pre-PR-B inline commit behaved the same way. A host with neither
+    # (a bare CI runner) fails here with git's own "Author identity unknown".
+    local -a ident=()
+    if [[ -n "${AGENT_NAME:-}" && -n "${AGENT_EMAIL:-}" ]]; then
+        ident=(-c "user.name=$AGENT_NAME" -c "user.email=$AGENT_EMAIL")
+        export GIT_AUTHOR_NAME="$AGENT_NAME" GIT_AUTHOR_EMAIL="$AGENT_EMAIL" \
+               GIT_COMMITTER_NAME="$AGENT_NAME" GIT_COMMITTER_EMAIL="$AGENT_EMAIL"
+    fi
+    git -C "$root" "${ident[@]}" commit -q -m "progress: local review for #$issue" -- "$file_rel" || {
         echo "error: persist: commit failed — $file_rel is appended and staged; fix and re-commit" >&2; exit 3; }
     echo "Progress persisted (compatibility mode) to $file_rel"
 }
