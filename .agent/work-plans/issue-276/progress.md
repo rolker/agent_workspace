@@ -110,3 +110,11 @@ Every round-1 finding is genuinely addressed in the text, and the three owner de
 - [ ] Replace `_resolve_work_plans_dir.sh` with `find_worktree_by_issue` (`_worktree_helpers.sh`) for worktree lookup; keep the resolver for the in-worktree refusal
 - [ ] Split review-issue persistence into its own PR ahead of the dispatcher; move ADR-0014 to PR 2
 - [ ] Add the one-driver convention and the model-tier rationale to ADR-0014's outline
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-17 14:45 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `f40a542`
+
+Revision 4 after plan review round 2 (needs-work, 8 findings, all addressed): former PR 0 withdrawn (misread gate run), checkpoints and inline implementation become entries, `next` contract pinned with 22 rows, review-issue checkbox source named, four-PR split. One owner question remains open (Open Question 5: review surviving a merge-from-main), with a no-gate-change recommendation.
