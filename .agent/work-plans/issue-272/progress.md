@@ -93,3 +93,13 @@ Both Integrated Review findings verified fixed: the shared-venv recipes serializ
 **Mode**: report-only
 **Scope**: workspace
 **Conditions**: latest Local Review entry is at `cbe4f8f`, not the PR head `46641ce` (stale review)
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-09-17 14:52 -04:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #282 at `7afaf1c`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: latest Local Review entry is at `cbe4f8f`, not the PR head `7afaf1c` (stale review)
