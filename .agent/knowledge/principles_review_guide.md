@@ -55,7 +55,7 @@ humans use it as a checklist.
 | `review-code` skill | `.agent/knowledge/review_depth_classification.md`; `.agent/scripts/cross_model_review.sh` |
 | Review depth classification doc | `review-code` skill (if tier definitions change) |
 | Work-plan directory convention | `plan-task`, `review-plan`, `triage-reviews`, `review-code` skills; `ARCHITECTURE.md` directory tree |
-| Review accumulator format (plan file `## Review:` blocks) | `review-code` skill step 8; `triage-reviews` skill (if it gains plan-file writes) |
+| `progress.md` review entries (`## Local Review`, `## Local Review (Pre-Push)`, `## Integrated Review` — ADR-0013) | `review-code` step 8 and `triage-reviews` step 7 write them via `review_progress.sh persist`; `review_progress.sh round` / `sources` read them back — change the entry shape and all four move together |
 
 ## Governance Layering
 

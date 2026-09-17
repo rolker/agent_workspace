@@ -570,3 +570,40 @@ Revision 5 correctly resolves three of revision 4's four must-fixes (CI wiring, 
 **Decision summary URL**: https://github.com/rolker/agent_workspace/pull/273#issuecomment-5716905535
 
 Observations 1-3 from the plan's "Checkpoint after PR B" all held on a real, non-trivial PR. The exercise also found PR 273 needs work (4 must-fix); that is #265's concern, not a defect in PR A/B.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 11:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-269-prC at `976aad2`
+**Base**: main
+**Depth**: Deep (reason: skill + knowledge files are governance triggers; 370 lines)
+**Must-fix**: 4 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 4 must-fix, one (same-file rule) a design choice
+
+### Findings
+- [x] (must-fix) malformed reviews JSON crashed with a traceback, exit 1 — `.agent/scripts/review_progress.sh` → a6b774e
+- [x] (must-fix) suffix path matching produced false cross-source candidates — `.agent/scripts/review_progress.sh` → a6b774e (exact repo-relative path)
+- [x] (must-fix) a finding citing two files lost the first — `.agent/scripts/review_progress.sh` → a6b774e
+- [x] (must-fix) --progress naming a directory degraded silently to an empty timeline — `.agent/scripts/review_progress.sh` → a6b774e
+- [x] (suggestion) checked findings were emitted as "open" — `.agent/scripts/review_progress.sh` → a6b774e
+- [x] (suggestion) Usage block omitted the flags; local_findings contents under-described — `.claude/skills/triage-reviews/SKILL.md` → a6b774e
+- [x] (governance) stale consequences-map row for plan-file review blocks — `.agent/knowledge/principles_review_guide.md` → 54ca477
+- [x] (governance) helper + PR B test touched beyond the plan's file list — justified drift, disclosed in the PR
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 11:52 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**Branch**: feature/issue-269-prC at `a6b774e`
+**Base**: main
+**Depth**: Deep (reason: re-review of the fix commits)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — all seven round-1 items verified fixed by reproduction; no new findings
+
+### Findings
+- [ ] No issues found. LGTM.

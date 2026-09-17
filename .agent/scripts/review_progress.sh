@@ -41,6 +41,10 @@
 #                                        current worktree's progress.md, inline
 #                                        append + `git add` + `git commit`.
 #
+# sources  Integrator input for triage-reviews: local review findings at the
+#          PR head, GitHub inline comments, and candidate cross-source
+#          confirmations (same file, same head SHA) as JSON. See cmd_sources.
+#
 # Exit codes: 0 ok; 2 usage; 3 append/commit failure; 4 strict-mode resolver
 # abort.
 
@@ -62,6 +66,7 @@ Usage:
   review_progress.sh verdict --must-fix <N> --round <R> [--prev-must-fix <P>] [--mechanical]
   review_progress.sh persist --issue <N|""> [--branch <name>] [--title <t>]
                              [--strict] [--no-progress] < entry.md
+  review_progress.sh sources --head <sha> --reviews <fetch_pr_reviews.json> [--progress <file>]
 See the header comment of this script for what each subcommand prints.
 Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort.
 EOF
@@ -182,7 +187,11 @@ cmd_persist() {
     # file itself, so it must not be the one writer without them.
     # shellcheck source=_progress_entry.sh
     source "$SCRIPT_DIR/_progress_entry.sh"
-    progress_entry_validate "$entry" "$title" >/dev/null || exit 2
+    local entry_type type_msg
+    entry_type=$(progress_entry_validate "$entry" "$title") || exit 2
+    # Same fixed-message shape progress_append.sh uses, so both persistence
+    # paths leave the same commit subject (PR C: triage-reviews shares this).
+    type_msg=$(printf '%s' "$entry_type" | tr '[:upper:]' '[:lower:]')
 
     # shellcheck source=_resolve_work_plans_dir.sh
     source "$SCRIPT_DIR/_resolve_work_plans_dir.sh"
@@ -257,15 +266,98 @@ cmd_persist() {
         export GIT_AUTHOR_NAME="$AGENT_NAME" GIT_AUTHOR_EMAIL="$AGENT_EMAIL" \
                GIT_COMMITTER_NAME="$AGENT_NAME" GIT_COMMITTER_EMAIL="$AGENT_EMAIL"
     fi
-    git -C "$root" "${ident[@]}" commit -q -m "progress: local review for #$issue" -- "$file_rel" || {
+    git -C "$root" "${ident[@]}" commit -q -m "progress: $type_msg for #$issue" -- "$file_rel" || {
         echo "error: persist: commit failed — $file_rel is appended and staged; fix and re-commit" >&2; exit 3; }
     echo "Progress persisted (compatibility mode) to $file_rel"
+}
+
+# -------------------------------------------------------------- sources ---
+# sources --progress <file> --head <sha> --reviews <fetch_pr_reviews json>
+# Integrator input for triage-reviews (PR C): the local review findings at
+# the PR head plus the GitHub-side inline comments, and the CANDIDATE
+# cross-source confirmations — a local finding and a GitHub comment that
+# name the same file at the same head SHA. The skill confirms each
+# candidate semantically; this only does the mechanical correlation
+# (ADR-0013: review entries correlate by head SHA).
+cmd_sources() {
+    local progress="" head="" reviews=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --progress) [[ $# -ge 2 ]] || usage; progress="$2"; shift 2 ;;
+            --head)     [[ $# -ge 2 ]] || usage; head="$2"; shift 2 ;;
+            --reviews)  [[ $# -ge 2 ]] || usage; reviews="$2"; shift 2 ;;
+            *) usage ;;
+        esac
+    done
+    [[ -n "$head" && -n "$reviews" ]] || { echo "error: sources: --head <sha> and --reviews <json> required" >&2; exit 2; }
+    [[ -f "$reviews" ]] || { echo "error: sources: reviews file not found: $reviews" >&2; exit 2; }
+    local json="{\"entries\": []}"
+    if [[ -n "$progress" && -e "$progress" && ! -f "$progress" ]]; then
+        echo "error: sources: --progress '$progress' exists but is not a regular file (pass the progress.md path, not its directory)" >&2; exit 2
+    fi
+    if [[ -n "$progress" && -f "$progress" ]]; then
+        json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Local Review" --type "Local Review (Pre-Push)" --type "Integrated Review") || {
+            echo "error: sources: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
+    fi
+    if ! "$PYTHON" -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$reviews" 2>/dev/null; then
+        echo "error: sources: reviews file is not valid JSON: $reviews (truncated fetch_pr_reviews.sh output?)" >&2; exit 2
+    fi
+    printf '%s' "$json" | HEAD="$head" REVIEWS="$reviews" "$PYTHON" -c '
+import json, os, re, sys
+head = os.environ["HEAD"]
+data = json.load(sys.stdin)
+reviews = json.load(open(os.environ["REVIEWS"], encoding="utf-8"))
+short = lambda s: (s or "")[:7]
+# OPEN local findings at this head (entries correlate by head SHA, short or
+# full). Checked boxes are resolved; False-positives bullets are dismissals.
+# Every repo-relative path cited in backticks counts, not only the last.
+local = []
+loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
+for e in data.get("entries", []):
+    c = e.get("correlation") or {}
+    if c.get("kind") not in ("pr", "branch") or short(c.get("sha")) != short(head):
+        continue
+    for f in e.get("findings", []):
+        if f.get("section") == "False positives" or f.get("checked"):
+            continue
+        cited = [(m.group(1), int(m.group(2)) if m.group(2) else None)
+                 for m in loc_re.finditer(f.get("text", "")) if "/" in m.group(1) or "." in m.group(1)]
+        local.append({"entry_type": e["type"], "sha": short(c.get("sha")), "text": f.get("text"),
+                      "source_hint": f.get("source_hint"),
+                      "files": [p for p, _ in cited],
+                      "lines": {p: ln for p, ln in cited if ln is not None}})
+github = []
+for r in reviews.get("reviews", []):
+    src = "{} ({})".format(r.get("user_login"), r.get("user_type"))
+    for cm in r.get("comments", []):
+        github.append({"source": src, "review_id": r.get("review_id"), "commit_id": short(r.get("commit_id")),
+                       "at_head": short(r.get("commit_id")) == short(head),
+                       "path": cm.get("path"), "line": cm.get("line"), "body": cm.get("body")})
+# Same file means the same repo-relative path (GitHub comment paths are
+# repo-relative; findings cite repo-relative paths). No suffix matching:
+# scripts/x.sh and vendor/scripts/x.sh are different files.
+norm = lambda p: re.sub(r"^\./", "", p or "")
+candidates = []
+for lf in local:
+    for gc in github:
+        if not gc["at_head"]:
+            continue
+        hit = [p for p in lf["files"] if norm(p) == norm(gc["path"])]
+        if hit:
+            candidates.append({"file": gc["path"], "local": lf["text"], "local_entry": lf["entry_type"],
+                               "github": gc["body"], "github_source": gc["source"],
+                               "local_line": lf["lines"].get(hit[0]), "github_line": gc["line"]})
+json.dump({"head": short(head), "local_findings": local, "github_comments": github,
+           "candidates": candidates}, sys.stdout, indent=2)
+print()
+'
 }
 
 case "$SUB" in
     round)   cmd_round "$@" ;;
     verdict) cmd_verdict "$@" ;;
     persist) cmd_persist "$@" ;;
+    sources) cmd_sources "$@" ;;
     -h|--help|help) usage ;;
     *) echo "error: unknown subcommand '$SUB'" >&2; usage ;;
 esac

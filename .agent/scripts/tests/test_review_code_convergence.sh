@@ -97,7 +97,7 @@ if [[ "$rc" -eq 0 ]] && [[ "$out" == *"Progress persistence notice: would have a
     && grep -q '^## Local Review (Pre-Push)$' "$MIS/.agent/work-plans/issue-7/progress.md" \
     && grep -q '^# Issue #7 — Seven$' "$MIS/.agent/work-plans/issue-7/progress.md" \
     && [[ "$(git -C "$MIS" rev-parse HEAD)" != "$head_before" ]] \
-    && [[ "$(git -C "$MIS" log -1 --format=%s)" == "progress: local review for #7" ]]; then
+    && [[ "$(git -C "$MIS" log -1 --format=%s)" == "progress: local review (pre-push) for #7" ]]; then
     pass "persist compat: mismatched worktree completes with the 'would have aborted' notice; entry committed inline"
 else
     fail "persist compat: mismatched worktree (rc=$rc out=$out)"
@@ -107,7 +107,7 @@ fi
 MATCH="$TMPD/issue-workspace-7"; mk_repo "$MATCH" feature/issue-7
 out=$(cd "$MATCH" && printf '%s\n' "$ENTRY" | "$RP" persist --issue 7 --title "Seven" 2>&1); rc=$?
 if [[ "$rc" -eq 0 ]] && [[ "$out" != *"notice"* ]] && [[ "$out" == *"compatibility mode"* ]] \
-    && [[ "$(git -C "$MATCH" log -1 --format=%s)" == "progress: local review for #7" ]]; then
+    && [[ "$(git -C "$MATCH" log -1 --format=%s)" == "progress: local review (pre-push) for #7" ]]; then
     pass "persist compat: matching worktree produces no notice (no false positive) and commits"
 else
     fail "persist compat: matching worktree no-notice (rc=$rc out=$out)"
@@ -177,7 +177,7 @@ out=$(cd "$IDEM" && printf '%s\n' "$ENTRY" | "$RP" persist --issue 7 2>&1); rc1=
 rm -f "$IDEM/.git/hooks/pre-commit"
 out2=$(cd "$IDEM" && printf '%s\n' "$ENTRY" | "$RP" persist --issue 7 2>&1); rc2=$?
 n=$(grep -c '^## Local Review (Pre-Push)$' "$IDEM/.agent/work-plans/issue-7/progress.md")
-if [[ "$rc1" -eq 3 && "$rc2" -eq 0 && "$n" -eq 1 ]] && [[ "$(git -C "$IDEM" log -1 --format=%s)" == "progress: local review for #7" ]]; then
+if [[ "$rc1" -eq 3 && "$rc2" -eq 0 && "$n" -eq 1 ]] && [[ "$(git -C "$IDEM" log -1 --format=%s)" == "progress: local review (pre-push) for #7" ]]; then
     pass "persist compat: retry after a failed commit re-attempts the commit without double-appending"
 else
     fail "persist compat idempotency (rc1=$rc1 rc2=$rc2 entries=$n out2=$out2)"
