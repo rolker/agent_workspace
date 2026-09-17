@@ -114,6 +114,9 @@ if [[ "$rc" -eq 0 && "$out" == "Progress persistence failed: refusing to resolve
 else
     fail "persist --soft failure path (rc=$rc out=$out)"
 fi
+# --soft failure path: the full diagnostic (remediation lines) is still on stderr
+err=$(cd "$MIS" && printf '%s\n' "$ENTRY_PR" | WORKTREE_ISSUE=99 "$RP" persist --issue 7 --strict --soft 2>&1 >/dev/null)
+[[ "$err" == *"worktree_enter.sh"* ]] && pass "persist --soft failure: the resolver's remediation text is on stderr" || fail "persist --soft stderr (err=$err)"
 # --soft success path keeps notes on stderr: an identical re-run prints one stdout line
 out=$(cd "$MATCH" && printf '%s\n' "${ENTRY_PA//issue-7/issue-8}" | "$RP" persist --issue 8 --strict --soft 2>/dev/null); rc=$?
 [[ "$rc" -eq 0 && "$out" != *"note:"* ]] && pass "persist --soft success: stderr notes are not merged into stdout" || fail "persist --soft streams (rc=$rc out=$out)"

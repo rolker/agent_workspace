@@ -191,6 +191,9 @@ cmd_persist() {
         printf '%s\n' "$out"
         return 0
     fi
+    # The full diagnostic (e.g. the resolver's remediation lines) still
+    # reaches stderr; stdout gets the one-line summary.
+    [[ -n "$err" ]] && printf '%s\n' "$err" >&2
     reason=$(printf '%s\n' "$err" | grep -m1 -i 'error' || printf '%s\n%s\n' "$err" "$out" | grep -v '^$' | tail -1)
     reason=$(printf '%s' "$reason" | sed -E 's/^[Ee][Rr][Rr][Oo][Rr]: *//')
     echo "Progress persistence failed: ${reason:-exit $rc} (exit $rc) — the report above is unaffected"
