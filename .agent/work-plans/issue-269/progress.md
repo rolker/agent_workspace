@@ -558,3 +558,15 @@ Revision 5 correctly resolves three of revision 4's four must-fixes (CI wiring, 
 
 ### Findings
 - [x] (suggestion) strict abort created the override dir before checking it — `.agent/scripts/review_progress.sh:201` → 9fb9876
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-17 11:35 -04:00
+**By**: Roland Arsenault (owner), attested in session after reading the condensed decision summary; exercise run by Claude Code Agent (claude-fable-5-1)
+
+**PR**: #273
+**Review entry SHA**: fd8e935 (entry committed at 7c43fba on feature/issue-265-pr2 by progress_append.sh, with **Round**/**Ship** fields)
+**Resolver-hit**: resolve_work_plans_dir 265 under --strict-progress returned /home/roland/agent_workspace/worktrees/workspace/issue-workspace-265/.agent/work-plans/issue-265 (no fallback, no notice)
+**Decision summary URL**: https://github.com/rolker/agent_workspace/pull/273#issuecomment-5716905535
+
+Observations 1-3 from the plan's "Checkpoint after PR B" all held on a real, non-trivial PR. The exercise also found PR 273 needs work (4 must-fix); that is #265's concern, not a defect in PR A/B.
