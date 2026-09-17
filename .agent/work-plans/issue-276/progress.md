@@ -192,3 +192,11 @@ All eight round-2 findings are genuinely addressed — the withdrawn gate change
 - [ ] Spell out rows 14/15/16-19's antecedents literally, and hoist `stop` and `--pr merged` above the rows that can intercept them
 - [ ] Add a "merge refused" row (enforce-mode refusal writes no entry, `merge_pr.sh:737-744`) and distinguish a passing `## Merge (report-only)` from a would-have-refused one; add the gate coupling to the consequences table
 - [ ] State whether `next` routes on entry adjacency or on the Checkpoint's `**After**` field, and use that one mechanism throughout
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-17 14:58 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `f0200b4`
+
+Revision 5 after plan review round 3 (needs-work, 9 findings, all addressed). Three review rounds without an approved verdict: per the #269 standing rule the loop stops here and the owner decides whether to approve revision 5 or run a fourth round. Open Question 5 decided by the owner 2026-09-17: a merge from main gets a new review; no gate change.
