@@ -677,3 +677,59 @@ Observations 1-3 from the plan's "Checkpoint after PR B" all held on a real, non
 
 ### Findings
 - [x] (must-fix) --soft failure path discarded the captured stderr (remediation lines lost) — `.agent/scripts/review_progress.sh` → re-emitted to stderr, test added
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 12:50 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-269-prF at `4988fb1`
+**Base**: main
+**Depth**: Deep (reason: merge_pr.sh is an enforcement file; gated files)
+**Must-fix**: 5 | **Suggestions**: 6
+**Round**: 1 | **Ship**: continue — round 1: 5 must-fix, two design-level (PR body, External Review); fixed in 4c57015
+
+### Findings
+- [x] (must-fix) condition (b) ignored the PR body where the template puts the summary — `.agent/scripts/merge_pr.sh` → body + comments
+- [x] (must-fix) jq filter dropped External Review predecessor entries — `.agent/scripts/merge_pr.sh` → honoured under the Integrated Review rule
+- [x] (must-fix) PR-comment record lacked the AI signature format — `.agent/scripts/merge_pr.sh` → Authored-By + Model
+- [x] (must-fix) package worktree treated as a repo; timeline path structurally dead — `.agent/scripts/merge_pr.sh` → explicit comment path with reason
+- [x] (must-fix) push failure after the record commit left a stranded commit plus a comment — `.agent/scripts/merge_pr.sh` → commit undone, one comment
+- [x] (suggestion) malformed progress.md reported as "no entry" — `.agent/scripts/merge_pr.sh` → named as malformed
+- [x] (suggestion) bypass banner printed twice via tee — `.agent/scripts/merge_pr.sh` → once
+- [x] (governance) Layer 2 design absent from shipped artifacts — `.agent/scripts/merge_pr.sh` header, PR template
+- [x] (governance) plan not amended for the Step 1.5 placement — `.agent/work-plans/issue-269/plan.md` implementation note
+- [x] (governance) review-code / triage-reviews did not say the summary must be posted on the PR — both SKILL.md files
+- [ ] (governance) AGENTS.md "Merging PRs from Worktrees" section could mention the gate — Ask-First beyond script rows; left for the owner
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 12:56 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-269-prF at `4c57015`
+**Base**: main
+**Depth**: Deep (reason: re-review of the round-1 fixes)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 2 | **Ship**: continue — round-1 items 1,2,3,5,6,7 fixed; item 4 (package container treated as a repo) was NOT fixed and is high severity; fixed in 0c10e62
+
+### Findings
+- [x] (must-fix) rev-parse --show-toplevel walks up: a nested package container resolved to the main tree and the record would have been committed there — `.agent/scripts/merge_pr.sh` → exact-root check + PKG_WT_DIR guard, production-shaped test
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**Branch**: feature/issue-269-prF at `0c10e62`
+**Base**: main
+**Depth**: Deep (reason: narrow verification of the container fix)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — round-2 item fixed; one adjacent policy gap (main tree on the PR branch) fixed in e5d808f with a test; three rounds run, merge decision returns to the owner per the standing rules
+
+### Findings
+- [x] (must-fix) main tree checked out on the PR branch would receive the record commit — `.agent/scripts/merge_pr.sh` → excluded, PR comment instead
+- [ ] (suggestion) Step 1's roadmap commit has the same pre-existing main-tree exposure — follow-up, not in this PR

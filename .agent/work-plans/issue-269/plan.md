@@ -656,6 +656,17 @@ tests, non-fatal-path test).
 
 ### PR F — merge gate (local + Ask-First CI decision) + PR template
 
+> **Implementation note (2026-09-17, PR F as landed).** The gate runs as
+> "Step 1.5", *before* the CI wait, not as the "Step 2.5" placement below.
+> Reason: the durable record is a commit pushed to the PR branch; pushed
+> after `gh pr checks --watch` it would need its own CI wait and race the
+> merge call. Before the wait, the existing CI wait covers it. The
+> conditions, modes, scoping, records, and fallback are as written below.
+> Two further details from the round-1 review: condition (b) accepts the
+> heading in the PR **body** (where the PR template puts it) as well as a
+> comment; and a `## External Review` entry at the head is honoured as
+> Integrated Review's predecessor (ADR-0013).
+
 **Verified premise** (full-file grep of `.agent/scripts/merge_pr.sh`, 766
 lines, for `confirm`/`read -p`/`MERGE`/`WARNING`): there is **no**
 interactive "type MERGE to confirm" banner in this repo's `merge_pr.sh`.

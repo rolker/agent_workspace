@@ -332,6 +332,13 @@ def parse_progress(text, path=None):
             "base_type": base,
             "recognized": base in CANONICAL_TYPES,
             "predecessor_of": PREDECESSOR_OF.get(base),
+            # Every `**Key**: value` header line, so consumers (the merge gate
+            # reads **Verdict**) need no second parser.
+            "fields": {
+                m.group(1).strip(): m.group(2).strip()
+                for m in (re.match(r"^\*\*([^*]+)\*\*:\s*(.*)$", ln) for ln in header_lines)
+                if m
+            },
             "status": _field(header_lines, "Status"),
             "when": when,
             "when_has_offset": bool(when and _OFFSET.search(when.strip())),
