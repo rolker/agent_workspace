@@ -83,3 +83,13 @@ Both Integrated Review findings verified fixed: the shared-venv recipes serializ
 ### Findings
 - [x] (suggestion) hook preflight on a package worktree resolved the enclosing repo, not the package repos that commit — `.agent/scripts/worktree_create.sh:1036` (fixed in `ee80a63`, test added to `test_ros2_colcon.sh`)
 - [ ] (suggestion) `make setup`'s git-bug and project-clone stamps still run outside the lock; pre-existing, both recipes can prompt interactively so holding the lock across them would stall a second agent on a prompt — `Makefile:175-188` (deferred: stated in the PR body)
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-09-17 14:49 -04:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #282 at `46641ce`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: latest Local Review entry is at `cbe4f8f`, not the PR head `46641ce` (stale review)
