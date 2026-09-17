@@ -332,14 +332,26 @@ else
     REGISTRY_MALFORMED=true
 fi
 
-# Legacy location: project/worktrees/ (pre-#25 shape)
-LEGACY_PROJECT_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
-_scan_project_worktrees "$LEGACY_PROJECT_BASE" true
+# Legacy location: project/worktrees/ (pre-#25 shape). Same gate: with a
+# malformed registry no project worktree is listed at all, so the summary
+# and the detail section never contradict each other.
+if [ "$REGISTRY_MALFORMED" != true ]; then
+    LEGACY_PROJECT_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
+    _scan_project_worktrees "$LEGACY_PROJECT_BASE" true
+fi
 
 # --- Output ---
 
 if [ "$JSON_OUTPUT" = true ]; then
     TOTAL=$(( PROJECT_COUNT + WORKSPACE_COUNT ))
+    # JSON consumers usually drop stderr, so the malformed state must be in
+    # the document itself: "project" is null (unknown), not 0, and the flag
+    # says why.
+    if [ "$REGISTRY_MALFORMED" = true ]; then
+        PROJECT_JSON=null
+    else
+        PROJECT_JSON="$PROJECT_COUNT"
+    fi
 
     # Build JSON array
     printf '{"worktrees":['
@@ -352,8 +364,8 @@ if [ "$JSON_OUTPUT" = true ]; then
         fi
         printf '%s' "$entry"
     done
-    printf '],"summary":{"total":%d,"project":%d,"workspace":%d,"dirty":%d}}\n' \
-        "$TOTAL" "$PROJECT_COUNT" "$WORKSPACE_COUNT" "$DIRTY_COUNT"
+    printf '],"summary":{"total":%d,"project":%s,"workspace":%d,"dirty":%d,"registry_malformed":%s}}\n' \
+        "$TOTAL" "$PROJECT_JSON" "$WORKSPACE_COUNT" "$DIRTY_COUNT" "$REGISTRY_MALFORMED"
     exit 0
 fi
 

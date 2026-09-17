@@ -966,6 +966,20 @@ test_malformed_registry_fails_closed_for_legacy_enumeration_and_remove() {
     assert_eq "worktree_list exit 0 (read-only)" "0" "$rc"
     assert_eq "worktree_list warns about the malformed registry" "1" "$(grep -c 'registry (.agent/projects.local) is malformed' <<< "$out")"
     assert_eq "worktree_list summary says NOT LISTED, not a count of 0" "1" "$(grep -c 'Project worktrees:   NOT LISTED' <<< "$out")"
+    # a pre-#25 project/worktrees entry must not be shown either (detail vs summary would contradict)
+    mkdir -p "$sb/project/worktrees/issue-foo-99"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" 2>&1)" || true
+    assert_eq "no [project] entries at all while the registry is malformed" "0" "$(grep -c '^\[project\]' <<< "$out")"
+    # workspace worktrees stay visible
+    mkdir -p "$sb/worktrees/workspace/issue-workspace-42"
+    git -C "$sb" worktree add -q "$sb/worktrees/workspace/issue-workspace-42" -b feature/issue-42 >/dev/null 2>&1
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" 2>&1)" || true
+    assert_eq "workspace worktree still listed alongside the warning" "1" "$(grep -c '^\[workspace\] Issue #42' <<< "$out")"
+    # --json carries the state in the document: project null + flag, not a silent 0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" --json 2>/dev/null)" || true
+    assert_eq "--json: summary.project is null" "null" "$(jq -r '.summary.project' <<< "$out")"
+    assert_eq "--json: summary.registry_malformed is true" "true" "$(jq -r '.summary.registry_malformed' <<< "$out")"
+    assert_eq "--json: workspace count still 1" "1" "$(jq -r '.summary.workspace' <<< "$out")"
 }
 
 test_worktree_create_outoftree_root_exclusion() {
