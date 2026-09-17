@@ -181,7 +181,13 @@ make_origin_repo() {
     local dir="$sb/origins/$name"
     local remote_dir="$sb/fake_remotes/github.com/${owner}/${name}.git"
     mkdir -p "$dir" "$(dirname "$remote_dir")"
+    # HEAD must point at main explicitly: on a host with no init.defaultBranch
+    # (GitHub's runners) a bare init points HEAD at `master`, and a later
+    # `git clone` of it lands on an unborn branch, so `push origin main` fails
+    # with "src refspec main does not match any" (seen once run_script_tests
+    # wired this suite into CI).
     git init --bare --quiet "$remote_dir"
+    git -C "$remote_dir" symbolic-ref HEAD refs/heads/main
     git -C "$dir" init --quiet
     echo "$name" > "$dir/README.md"
     git -C "$dir" add README.md

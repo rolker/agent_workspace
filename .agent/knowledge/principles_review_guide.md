@@ -36,6 +36,7 @@ humans use it as a checklist.
 | 0010 — git-bug installed by default | Adding or modifying issue lookup scripts, bootstrap, or sync | git-bug installed by default; scripts use `_issue_helpers.sh` (git-bug first with sync-on-miss, fall back to `gh`); graceful degradation required |
 | 0011 — Project-type adapter contract | Adding workspace content, touching build/test/setup/sync scripts, or anything that branches on project shape | Shape-specific behavior lives in `.agent/project_types/<type>/adapter.sh` behind the 12-verb contract; workspace content stays project-agnostic; `validate_adapter.sh` must pass |
 | 0012 — Worktree composition is an adapter concern | Touching worktree creation/removal/listing, or any script that composes a multi-repo worktree | Multi-repo composition knowledge lives behind `worktree_repos`/`worktree_env` adapter verbs, not in generic worktree scripts; those scripts loop over the `.worktree-repos` manifest and never check project type; no symlink fallback anywhere in the creation path |
+| 0013 — `progress.md` entry-type vocabulary | Writing a new `progress.md` entry from a workflow skill or script, or introducing a new entry type | Use one of the canonical `## <Entry Type>` headings from the ADR's Decision table; write via `.agent/scripts/progress_append.sh`; a new type requires a superseding ADR, not an addendum |
 
 ## Consequences Map
 
@@ -54,7 +55,7 @@ humans use it as a checklist.
 | `review-code` skill | `.agent/knowledge/review_depth_classification.md`; `.agent/scripts/cross_model_review.sh` |
 | Review depth classification doc | `review-code` skill (if tier definitions change) |
 | Work-plan directory convention | `plan-task`, `review-plan`, `triage-reviews`, `review-code` skills; `ARCHITECTURE.md` directory tree |
-| Review accumulator format (plan file `## Review:` blocks) | `review-code` skill step 8; `triage-reviews` skill (if it gains plan-file writes) |
+| `progress.md` review entries (`## Local Review`, `## Local Review (Pre-Push)`, `## Integrated Review` — ADR-0013) | `review-code` step 8 and `triage-reviews` step 7 write them via `review_progress.sh persist`; `review_progress.sh round` / `sources` read them back — change the entry shape and all four move together |
 
 ## Governance Layering
 

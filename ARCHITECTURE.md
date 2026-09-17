@@ -23,7 +23,9 @@ agent_workspace/
 │   ├── project_config.sh  # PROJECT_TYPE / BUILD_CMD / TEST_CMD / INSTALL_CMD (gitignored, per-developer)
 │   ├── projects.local     # Per-machine project registry (gitignored; see projects.local.example)
 │   ├── projects.d/        # Per-project command configs, <name>.sh (gitignored)
-│   ├── work-plans/        # issue-<N>/plan.md and review artifacts
+│   ├── work-plans/        # issue-<N>/plan.md and progress.md (per-issue lifecycle timeline;
+│   │                       # entry-type vocabulary is ADR-0013, docs/decisions/0013-progress-md-entry-type-vocabulary.md;
+│   │                       # written via .agent/scripts/progress_append.sh, read via .agent/scripts/progress_read.py)
 │   ├── work-artifacts/    # Generated outputs
 │   ├── scratchpad/        # Temp workspace (gitignored)
 │   ├── templates/         # Issue/PR/ADR templates
