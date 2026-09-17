@@ -702,3 +702,18 @@ Observations 1-3 from the plan's "Checkpoint after PR B" all held on a real, non
 - [x] (governance) plan not amended for the Step 1.5 placement — `.agent/work-plans/issue-269/plan.md` implementation note
 - [x] (governance) review-code / triage-reviews did not say the summary must be posted on the PR — both SKILL.md files
 - [ ] (governance) AGENTS.md "Merging PRs from Worktrees" section could mention the gate — Ask-First beyond script rows; left for the owner
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 12:56 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-269-prF at `4c57015`
+**Base**: main
+**Depth**: Deep (reason: re-review of the round-1 fixes)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 2 | **Ship**: continue — round-1 items 1,2,3,5,6,7 fixed; item 4 (package container treated as a repo) was NOT fixed and is high severity; fixed in 0c10e62
+
+### Findings
+- [x] (must-fix) rev-parse --show-toplevel walks up: a nested package container resolved to the main tree and the record would have been committed there — `.agent/scripts/merge_pr.sh` → exact-root check + PKG_WT_DIR guard, production-shaped test
