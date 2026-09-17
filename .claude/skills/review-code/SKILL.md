@@ -649,6 +649,14 @@ Key points:
 in this entry are the fix plan; print `/address-findings` as the next
 command, then this skill runs again to re-review. Never chain it yourself.
 
+**Before the merge.** `merge_pr.sh`'s review gate checks two things on the
+PR: this entry (at the PR head, approved) and a `## Decision summary` on
+the PR itself, in the body or a comment. Post the Decision summary from
+step 7 on the PR (`gh pr comment <N> --body-file ...`) or fill the PR
+template's section; a summary that only exists in the conversation does
+not count. The gate is report-only by default and local-only (a GitHub
+"Merge" click bypasses it).
+
 ## Guidelines
 
 - **Report first, then persist** — output the review in the conversation,
