@@ -204,6 +204,60 @@ else
     fail "'External Review' is rejected as a fresh write (rc=$rc, out=$out)"
 fi
 
+# 16. one entry per call: a body with a second top-level '## ' heading (e.g. a
+#     forged '## Checkpoint' smuggled inside an '## Implementation' body) is
+#     rejected outright — nothing appended, nothing committed. The whitelist
+#     only checks the first heading, so this is what keeps it meaningful.
+head_before=$(git -C "$REPO" rev-parse HEAD)
+before=$(grep -c '^## Checkpoint$' "$REPO/$PROG")
+out=$(printf '## Implementation\n**Status**: complete\n\n## Checkpoint\n**PR**: #1\n**Review entry SHA**: x\n**Resolver-hit**: y\n**Decision summary URL**: z\n' \
+      | "$PA" -C "$REPO" 7 2>&1); rc=$?
+after=$(grep -c '^## Checkpoint$' "$REPO/$PROG")
+if [ "$rc" -eq 2 ] && [ "$before" -eq "$after" ] \
+    && [ "$(git -C "$REPO" rev-parse HEAD)" = "$head_before" ] \
+    && printf '%s' "$out" | grep -qi 'more than one'; then
+    pass "second top-level heading in the body is rejected (no smuggled entries)"
+else
+    fail "second top-level heading in the body is rejected (rc=$rc before=$before after=$after out=$out)"
+fi
+
+# 16b. ...but a heading quoted inside a fenced code block is body text, not a
+#      second entry, and is accepted.
+out=$(printf '## Implementation\nquoting:\n```\n## Checkpoint\n```\ndone\n' | "$PA" -C "$REPO" 7 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && grep -q '^done$' "$REPO/$PROG"; then
+    pass "a '## ' line inside a code fence is accepted as body text"
+else
+    fail "a '## ' line inside a code fence is accepted (rc=$rc, out=$out)"
+fi
+
+# 17. --title with an embedded newline would forge lines in the new file's
+#     header (the title is written verbatim); it must be rejected, no file.
+out=$(printf '## Issue Review\nx\n' | "$PA" -C "$REPO" 55 --title $'Real\n\n## Checkpoint\n**PR**: forged' 2>&1); rc=$?
+if [ "$rc" -eq 2 ] && [ ! -e "$REPO/.agent/work-plans/issue-55/progress.md" ] \
+    && printf '%s' "$out" | grep -qi 'single line'; then
+    pass "--title with a newline is rejected before any file is written"
+else
+    fail "--title with a newline is rejected (rc=$rc, out=$out)"
+fi
+
+# 18. append failure is not reported as success: an unwritable progress.md
+#     must exit 3 with no commit, not fall through to the exit-0 no-op path.
+if [ "$(id -u)" -eq 0 ]; then
+    pass "unwritable progress.md exits 3 (skipped: running as root, chmod is not enforced)"
+else
+    head_before=$(git -C "$REPO" rev-parse HEAD)
+    chmod a-w "$REPO/$PROG"
+    out=$(printf '## Implementation\nnew body\n' | "$PA" -C "$REPO" 7 2>&1); rc=$?
+    chmod u+w "$REPO/$PROG"
+    if [ "$rc" -eq 3 ] && [ "$(git -C "$REPO" rev-parse HEAD)" = "$head_before" ] \
+        && printf '%s' "$out" | grep -qi 'could not append' \
+        && ! printf '%s' "$out" | grep -qi 'already committed'; then
+        pass "unwritable progress.md exits 3 with no commit (not a false no-op success)"
+    else
+        fail "unwritable progress.md exits 3 (rc=$rc, out=$out)"
+    fi
+fi
+
 echo ""
 echo "test_progress_append: $TEST_PASS passed, $TEST_FAIL failed"
 [ "$TEST_FAIL" -eq 0 ]

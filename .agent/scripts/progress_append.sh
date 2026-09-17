@@ -85,6 +85,28 @@ ENTRY_TYPE="${FIRST#\#\# }"
 # heading) so it can't leak `\r`/double-space into the commit subject.
 ENTRY_TYPE="${ENTRY_TYPE%"${ENTRY_TYPE##*[![:space:]]}"}"
 
+# Exactly ONE entry per call. Only the first heading is type-checked, so any
+# further top-level `## ` line in the body would be appended verbatim and then
+# parsed by progress_read.py / the checkpoint gate as a separate, unvalidated
+# entry — a body could smuggle a forged `## Checkpoint` past the whitelist.
+# Fenced code blocks (``` or ~~~) are exempt so an entry can quote a heading.
+EXTRA_HEADINGS=$(printf '%s\n' "$ENTRY" | awk '
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    /^## / { n++; if (n > 1) print }
+')
+if [[ -n "$EXTRA_HEADINGS" ]]; then
+    echo "error: entry contains more than one top-level '## ' heading; one entry per call." >&2
+    echo "       extra heading(s): $(printf '%s' "$EXTRA_HEADINGS" | tr '\n' '|')" >&2
+    exit 2
+fi
+# The title lands on the `# Issue #N — <title>` line of a new file; a newline
+# inside it would forge arbitrary following lines (including entries).
+if [[ "$TITLE" == *$'\n'* || "$TITLE" == *$'\r'* ]]; then
+    echo "error: --title must be a single line (contains a newline)" >&2
+    exit 2
+fi
+
 # Validate against the WRITABLE ADR-0013 entry types. A free-text heading would
 # defeat the fixed-commit-message scope rationale (see the header comment) and be
 # invisible to progress_read.py's type filters, so a consumer would misread the
@@ -139,7 +161,15 @@ CURRENT=$(cat "$FILE")   # $(…) strips trailing newlines, so CURRENT ends at t
 if [[ "$CURRENT" == *$'\n'"$ENTRY" ]]; then
     echo "note: identical entry already present as file tail (uncommitted from a prior run?) — skipping re-append, re-attempting commit" >&2
 else
-    { printf '\n'; printf '%s\n' "$ENTRY"; } >> "$FILE"
+    # Checked explicitly: the script runs without `set -e`, and a silent append
+    # failure would fall through to the "already committed" no-op path below and
+    # exit 0 without ever writing the entry.
+    # (A simple command, not a `{ }` group: bash does not reliably surface a
+    # failed redirection on a compound command to `if !`.)
+    if ! printf '\n%s\n' "$ENTRY" >> "$FILE"; then
+        echo "error: could not append to $FILE_REL (not writable?) — nothing committed" >&2
+        exit 3
+    fi
 fi
 
 git -C "$ROOT" add -- "$FILE_REL" || exit 3
