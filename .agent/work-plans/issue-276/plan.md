@@ -133,11 +133,11 @@ changes:
   --before <count>` compares the entry count of the expected type before
   and after the dispatch (via `progress_read.py`) and reports `OK <sha>`,
   `PARTIAL`, `FAILED`, or `MISSING` so the host never assumes an outcome.
-- **Per-phase model table** (revision 2): every dispatched phase →
-  `sonnet` by default, per the owner's standing rule (main session on
-  Fable, sub-agents on Sonnet); `--model <alias>` overrides per dispatch.
-  The fork's Opus tier for review phases is NOT ported by default — Open
-  Question 1 asks whether any phase should get it. Aliases only.
+- **Per-phase model table** (revision 3, owner decision): `review-plan`,
+  `review-code`, `triage-reviews`, `address-findings`, and the inline
+  implementation pass → `opus`; `review-issue`, `plan-task` → `sonnet`;
+  `--model <alias>` overrides per dispatch. Aliases only. This is the
+  fork's tier; the owner confirmed usage headroom for it on 2026-09-17.
 - **Failed or partial phases** (revision 2): `--check-exit` reporting
   `PARTIAL`, `FAILED`, or `MISSING` is always a checkpoint, never a
   silent retry. The host surfaces the phase, the outcome, and the last
@@ -242,22 +242,23 @@ already print their next command; run-issue reads entries, not prompts.
 
 ## Open Questions
 
-1. **Model tier per phase (owner).** Default is Sonnet for every dispatched
-   phase per the standing rule. The fork gives review-plan, review-code,
-   triage-reviews, and address-findings Opus. Should any phase here get a
-   larger model by default, or stay on Sonnet with `--model` as the
-   per-run override?
+1. **Model tier per phase — decided (owner, 2026-09-17).** Usage has
+   headroom, so the fork's tier is adopted: `review-plan`, `review-code`,
+   `triage-reviews`, `address-findings`, and inline implementation on
+   Opus; `review-issue` and `plan-task` on Sonnet; `--model` overrides per
+   dispatch. The host session itself stays on whatever the owner runs.
 2. **Implementation phase inline (decided, flag if you disagree).** Kept
    inline in the host, matching the fork today. A dispatched `implement`
    skill would be a follow-up issue; the table gets its "bare
    Implementation" row then.
-3. **Three-round surface.** The plan hard-codes surfacing the loop state
-   after three pre-push rounds, matching the standing rule on #269. Keep
-   as a constant, or a flag?
-4. **Where run-issue runs from.** The host must be inside the issue's
-   worktree for `_resolve_work_plans_dir.sh` to resolve. `/run-issue <N>`
-   will `cd` via `/start-task` semantics first (create or enter). Confirm
-   that is acceptable for a session that started elsewhere.
+3. **Three-round surface — decided.** A constant in the skill, not a
+   flag: it is the same three-round rule the owner set on #269, it is
+   only a point where the human is asked (never a hard stop), and a knob
+   nobody tunes is surface area. If it ever needs changing it is one
+   number in one place.
+4. **Where run-issue runs from — not an owner question.** The skill
+   enters the issue's worktree itself (`/start-task` semantics) before
+   anything else, so it works from wherever the session started.
 
 ## Estimated Scope
 
