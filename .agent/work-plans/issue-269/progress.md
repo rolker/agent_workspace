@@ -607,3 +607,23 @@ Observations 1-3 from the plan's "Checkpoint after PR B" all held on a real, non
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 12:10 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-269-prD at `f5bc2fe`
+**Base**: main
+**Depth**: Deep (reason: new skill + gated files; helper change)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: a critical index-divergence bug in check (fixed in f5bc2fe)
+
+### Findings
+- [x] (must-fix) check's own checkbox scanner diverged from progress_read.py (fenced/indented/header boxes) and could flip the wrong line — `.agent/scripts/review_progress.sh` → fixed: reader reports line numbers, check uses them
+- [x] (suggestion) CRLF files rewritten to LF file-wide — `.agent/scripts/review_progress.sh` → fixed (newline="")
+- [x] (suggestion) --deferred "" silently indistinguishable from omitted — `.agent/scripts/review_progress.sh` → refused
+- [x] (suggestion) heredoc-in-substitution warning in the test — `.agent/scripts/tests/test_address_findings.sh` → entry written to a file
+- [x] (governance) review-code / triage-reviews had no hand-off to address-findings — both SKILL.md files → next-step paragraphs
+- [ ] (governance) plan's Files-to-Change claims copilot/gemini instruction files list skills; they do not — plan claim wrong, noted in the PR, no file change
