@@ -274,3 +274,11 @@ Revision 5 genuinely closes eight of the nine round-3 findings and over-delivers
 - [ ] (suggestion) Make "write the merge-refused / phase-failed checkpoint before calling `next` again" an explicit contract line in `run-issue`, and add fixtures for those checkpoint states
 - [ ] (suggestion) Qualify the resume claim at plan:117-119 for an absorbing `stop`, and say how to resume in row 2's `reason=`
 - [ ] (suggestion) Give exit 3 a definition covering both sources, or route an out-of-vocabulary `**Decision**` to row 28 as an unrecognised `**After**` already is
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-17 15:18 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `52472fa`
+
+Revision 6 after plan review round 4 (needs-work, 4 must-fix + 5 minor, all addressed). Round 4's must-fixes were integration edges (plan-task's draft PR, who pushes, Mode on the inline entry, worktree removed by the merge), not the table's core; owner decides whether to approve revision 6 or run round 5.
