@@ -335,3 +335,18 @@ test_resolve_work_plans_dir 21/21 — all green.
 ### Findings
 - [x] (must-fix) legacy project/ create resolved its worktree dir through the registry; a same-named registered project captured it under the wrong root — `.agent/scripts/worktree_create.sh:548` (Copilot #4 confirmed) → fixed
 - [x] (must-fix) wt_legacy_worktree_dirs / wt_transition_project_base treated a malformed registry (rc 2) like "not registered" and enumerated on partial state — `.agent/scripts/_worktree_helpers.sh:101` (Copilot #5 confirmed) → fixed; enter/remove refuse
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 12:14 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265-pr2 at `de4589b`
+**Base**: main
+**Depth**: Deep (reason: re-review of the round-2 fixes and their fail-closed story end to end)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 3 | **Ship**: continue — round-2 items fixed; one display-layer gap in the same fail-closed story, fixed in 2503896
+
+### Findings
+- [x] (must-fix) worktree_list.sh silently showed 0 project worktrees on a malformed registry (fail-open at the display layer) — `.agent/scripts/worktree_list.sh:324` → fixed: warning + NOT LISTED
