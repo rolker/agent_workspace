@@ -37,3 +37,20 @@ issue: 272
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-17 14:30 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**PR**: #282 at `aecf5eb`
+**Sources**: 2 (Copilot @ `aecf5eb`; Local Review (Pre-Push) rounds 1-2 @ `64d97ca`, no open findings)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [ ] (must-fix, Copilot) setup/repair/clean mutate the now-shared venv, stamps, and hook without a lock — `Makefile`
+- [ ] (must-fix, Copilot) worktree_create's hook preflight always checks the workspace hook, wrong for project worktrees — `.agent/scripts/worktree_create.sh`
+
+### False positives
+- none
