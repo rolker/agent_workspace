@@ -198,8 +198,13 @@ cmd_persist() {
         # repo (true for rules 2/2b; a WORK_PLANS_DIR_OVERRIDE may point
         # anywhere). Refuse rather than silently write elsewhere and claim
         # the override was honored.
-        mkdir -p "$dir" 2>/dev/null || true
-        root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || root=""
+        # No mkdir here: an abort must leave nothing behind. The target dir
+        # may not exist yet (first entry for an issue), so find the repo from
+        # its nearest existing ancestor.
+        local probe
+        probe=$(realpath -m "$dir")
+        while [[ ! -d "$probe" && "$probe" != "/" ]]; do probe=$(dirname "$probe"); done
+        root=$(git -C "$probe" rev-parse --show-toplevel 2>/dev/null) || root=""
         expected="$root/.agent/work-plans/issue-$issue"
         if [[ -z "$root" || "$(realpath -m "$dir")" != "$(realpath -m "$expected")" ]]; then
             echo "error: progress persistence aborted (strict mode): resolved work-plans dir '$dir' is not <repo-root>/.agent/work-plans/issue-$issue, which is the only target progress_append.sh writes (WORK_PLANS_DIR_OVERRIDE set?)" >&2

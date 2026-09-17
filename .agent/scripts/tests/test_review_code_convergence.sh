@@ -189,10 +189,10 @@ out3=$(cd "$IDEM" && printf '%s\n' "$ENTRY" | "$RP" persist --issue 7 2>&1); rc3
 # --- (6) strict + WORK_PLANS_DIR_OVERRIDE: progress_append.sh can only write
 #     <root>/.agent/work-plans/issue-<N>; an override elsewhere must abort
 #     (rc 4), never write to the default path while claiming the override.
-OV="$TMPD/override-target"; mkdir -p "$OV"
+OV="$TMPD/override-target/not-yet-created"
 out=$(cd "$MATCH" && printf '%s\n' "${ENTRY//abc1234/1111111}" | WORK_PLANS_DIR_OVERRIDE="$OV" "$RP" persist --issue 7 --strict 2>&1); rc=$?
-if [[ "$rc" -eq 4 ]] && [[ ! -e "$OV/progress.md" ]] && ! grep -q '1111111' "$MATCH/.agent/work-plans/issue-7/progress.md"; then
-    pass "persist strict: non-standard WORK_PLANS_DIR_OVERRIDE aborts (rc 4); nothing written anywhere"
+if [[ "$rc" -eq 4 ]] && [[ ! -e "$OV" ]] && ! grep -q '1111111' "$MATCH/.agent/work-plans/issue-7/progress.md"; then
+    pass "persist strict: non-standard WORK_PLANS_DIR_OVERRIDE aborts (rc 4); nothing written or created anywhere"
 else
     fail "persist strict: non-standard override (rc=$rc out=$out)"
 fi
