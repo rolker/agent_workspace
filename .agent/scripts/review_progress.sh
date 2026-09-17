@@ -45,6 +45,12 @@
 #          PR head, GitHub inline comments, and candidate cross-source
 #          confirmations (same file, same head SHA) as JSON. See cmd_sources.
 #
+# plan-sha The plan-commit SHA (last commit touching plan.md) for the
+#          **Plan** correlation field of Plan Authored / Plan Review
+#          entries; refuses an uncommitted plan. See cmd_plan_sha.
+#          persist --soft: any failure becomes a printed notice, exit 0
+#          (review-plan's non-fatal step 6).
+#
 # findings The address-findings source entry (latest Integrated Review or
 #          Local Review (Pre-Push)) and its open findings with indexes.
 # check    Flip one of that entry's checkboxes to [x], optionally with a
@@ -70,7 +76,8 @@ Usage:
   review_progress.sh round   --issue <N> --branch <name> [--progress <file>]
   review_progress.sh verdict --must-fix <N> --round <R> [--prev-must-fix <P>] [--mechanical]
   review_progress.sh persist --issue <N|""> [--branch <name>] [--title <t>]
-                             [--strict] [--no-progress] < entry.md
+                             [--strict] [--no-progress] [--soft] < entry.md
+  review_progress.sh plan-sha --plan <path/to/plan.md> [--ref <commit-ish>]
   review_progress.sh sources --head <sha> --reviews <fetch_pr_reviews.json> [--progress <file>]
   review_progress.sh findings --progress <file>
   review_progress.sh check --progress <file> --index <i> [--deferred "<reason>"]
@@ -159,7 +166,41 @@ cmd_verdict() {
 }
 
 # -------------------------------------------------------------- persist ---
+# persist wrapper: --soft makes ANY failure (validation, resolver refusal,
+# append/commit error) a printed notice with exit 0 — review-plan's step 6,
+# whose report has already been produced by the time persistence runs
+# (issue #269 PR E). Without --soft the real exit code passes through.
 cmd_persist() {
+    local soft=0 a
+    local -a rest=()
+    for a in "$@"; do
+        if [[ "$a" == "--soft" ]]; then soft=1; else rest+=("$a"); fi
+    done
+    if [[ "$soft" -eq 0 ]]; then
+        _persist_impl "${rest[@]}"
+        return $?
+    fi
+    # Streams stay separate: stdout is the one line a skill echoes; notes and
+    # errors stay on stderr exactly as in non-soft mode.
+    local out err rc=0 reason errf
+    errf=$(mktemp)
+    out=$(_persist_impl "${rest[@]}" 2>"$errf") || rc=$?
+    err=$(cat "$errf"); rm -f "$errf"
+    if [[ "$rc" -eq 0 ]]; then
+        [[ -n "$err" ]] && printf '%s\n' "$err" >&2
+        printf '%s\n' "$out"
+        return 0
+    fi
+    # The full diagnostic (e.g. the resolver's remediation lines) still
+    # reaches stderr; stdout gets the one-line summary.
+    [[ -n "$err" ]] && printf '%s\n' "$err" >&2
+    reason=$(printf '%s\n' "$err" | grep -m1 -i 'error' || printf '%s\n%s\n' "$err" "$out" | grep -v '^$' | tail -1)
+    reason=$(printf '%s' "$reason" | sed -E 's/^[Ee][Rr][Rr][Oo][Rr]: *//')
+    echo "Progress persistence failed: ${reason:-exit $rc} (exit $rc) — the report above is unaffected"
+    return 0
+}
+
+_persist_impl() {
     local issue="" branch="" title="" strict="${PROGRESS_PERSISTENCE_STRICT:-0}" no_progress=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -450,7 +491,49 @@ print(new)
 '
 }
 
+# ------------------------------------------------------------- plan-sha ---
+# plan-sha --plan <path>
+# The plan-commit SHA ADR-0013 requires on `## Plan Authored` / `## Plan
+# Review`: the last commit that touched plan.md — not the branch head and
+# not a blob SHA. Refuses (exit 2) a missing, untracked, or uncommitted
+# plan file, so the entry can never cite a SHA that does not contain the
+# plan text it describes.
+cmd_plan_sha() {
+    local plan="" ref="" dir base sha top
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --plan) [[ $# -ge 2 ]] || usage; plan="$2"; shift 2 ;;
+            --ref)  [[ $# -ge 2 ]] || usage; ref="$2"; shift 2 ;;
+            *) usage ;;
+        esac
+    done
+    [[ -n "$plan" ]] || usage
+    if [[ -n "$ref" ]]; then
+        # --ref <commit-ish>: the plan as committed on that ref (a fetched PR
+        # head, a branch) — no local checkout of the file needed. <plan> is
+        # repo-relative here; the ref must resolve and must contain the file.
+        top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "error: plan-sha: not in a git repository" >&2; exit 2; }
+        git -C "$top" rev-parse --verify -q "${ref}^{commit}" >/dev/null || { echo "error: plan-sha: ref '$ref' does not resolve (fetch it first?)" >&2; exit 2; }
+        git -C "$top" cat-file -e "${ref}:${plan}" 2>/dev/null || { echo "error: plan-sha: '$plan' does not exist at ref '$ref'" >&2; exit 2; }
+        sha=$(git -C "$top" log -1 --format=%h "$ref" -- "$plan") && [[ -n "$sha" ]] || {
+            echo "error: plan-sha: no commit on '$ref' touches $plan" >&2; exit 2; }
+        echo "$sha"
+        return 0
+    fi
+    [[ -f "$plan" ]] || { echo "error: plan-sha: plan file not found: $plan (reviewing a PR from another tree? pass --ref <head>)" >&2; exit 2; }
+    dir=$(dirname "$plan"); base=$(basename "$plan")
+    git -C "$dir" ls-files --error-unmatch -- "$base" >/dev/null 2>&1 || {
+        echo "error: plan-sha: $plan is not tracked by git — commit the plan first" >&2; exit 2; }
+    if ! git -C "$dir" diff --quiet -- "$base" || ! git -C "$dir" diff --cached --quiet -- "$base"; then
+        echo "error: plan-sha: $plan has uncommitted changes — commit the plan first so the SHA contains it" >&2; exit 2
+    fi
+    sha=$(git -C "$dir" log -1 --format=%h -- "$base") && [[ -n "$sha" ]] || {
+        echo "error: plan-sha: no commit touches $plan" >&2; exit 2; }
+    echo "$sha"
+}
+
 case "$SUB" in
+    plan-sha) cmd_plan_sha "$@" ;;
     round)    cmd_round "$@" ;;
     verdict)  cmd_verdict "$@" ;;
     persist)  cmd_persist "$@" ;;

@@ -178,11 +178,15 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 ### 5. Produce the report
 
 ```markdown
-## Plan Review: PR #<N> — <title>
+## Plan Review
+**Status**: complete
+**When**: <YYYY-MM-DD HH:MM ±HH:MM>
+**By**: <agent name> (<model>)
+**Verdict**: <ready | needs-work>
 
-**PR**: <url>
+**PR**: <url> — <title>
 **Issue**: #<issue> — <issue-title>
-**Plan file**: `.agent/work-plans/issue-<issue>/plan.md`
+**Plan**: `.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
 
 ### Evaluation
 
@@ -210,25 +214,78 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 - [ ] <specific action items before implementation begins>
 ```
 
+The report IS the progress entry (step 6 appends it verbatim), so it opens
+with ADR-0013's header fields. The heading is the plain type,
+`## Plan Review`; the PR number and title live in the body, and `**Plan**`
+carries the plan-commit SHA, which is how this entry is correlated with
+the `## Plan Authored` entry it reviews. Get the SHA from the helper, not
+by hand:
+
+```bash
+# Plan checked out locally (worktree / --issue / file path):
+.agent/scripts/review_progress.sh plan-sha --plan <path>
+# PR-number form, reviewing from any tree: fetch the head, then ask by ref —
+# no local checkout of the file is needed.
+git fetch -q origin "<headRefName>"
+.agent/scripts/review_progress.sh plan-sha --plan .agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
+```
+
+(In the PR-number form, read the plan text the same way: `git show
+<headRefOid>:.agent/work-plans/issue-<issue>/plan.md`.)
+
 **PR-less format** — when reviewing via `--issue` or file path (no PR exists),
-replace the PR header:
+replace the PR line:
 
 ```markdown
-## Plan Review: #<issue> — <title>
+## Plan Review
+**Status**: complete
+**When**: <YYYY-MM-DD HH:MM ±HH:MM>
+**By**: <agent name> (<model>)
+**Verdict**: <ready | needs-work>
 
 **Issue**: #<issue> — <issue-title>
-**Plan file**: `.agent/work-plans/issue-<issue>/plan.md`
+**Plan**: `.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
 **Branch**: `<branch-name>` (if in a worktree, otherwise omit)
 ```
 
 If no findings, output:
 
 ```markdown
-## Plan Review: PR #<N> — <title>
+## Plan Review
+**Status**: complete
+**When**: <YYYY-MM-DD HH:MM ±HH:MM>
+**By**: <agent name> (<model>)
+**Verdict**: ready
 
-**PR**: <url>
+**PR**: <url> — <title>
+**Plan**: `.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
 Plan looks solid. Ready for implementation.
 ```
+
+### 6. Persist the review to progress.md
+
+The report above is this skill's product; this step records it and must
+never turn a finished review into a failed invocation. Append the report
+as the entry, through the shared persistence call with `--soft`:
+
+```bash
+.agent/scripts/review_progress.sh persist --issue "<issue>" \
+    --branch "<plan's branch>" --title "<issue title>" --strict --soft <<'ENTRY'
+## Plan Review
+...the report exactly as produced in step 5 (it already carries
+   **Status** / **When** / **By** / **Verdict** and the **Plan** field)...
+ENTRY
+```
+
+`--soft` turns any failure — the worktree resolver refusing because this
+is not the issue's worktree, an invalid entry, a commit error — into one
+printed line, "Progress persistence failed: <reason> — the report above
+is unaffected", with exit 0. Echo that line (its stdout; notes stay on
+stderr) to the user when it appears; they can append the entry by hand
+from the issue's worktree. On success the printed line names where the
+entry landed. Run this from the plan's worktree when possible (the
+resolver then hits); from elsewhere, the notice is the expected outcome,
+not an error.
 
 ## Guidelines
 
