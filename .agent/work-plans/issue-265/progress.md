@@ -350,3 +350,19 @@ test_resolve_work_plans_dir 21/21 — all green.
 
 ### Findings
 - [x] (must-fix) worktree_list.sh silently showed 0 project worktrees on a malformed registry (fail-open at the display layer) — `.agent/scripts/worktree_list.sh:324` → fixed: warning + NOT LISTED
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 12:21 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**Branch**: feature/issue-265-pr2 at `2503896`
+**Base**: main
+**Depth**: Deep (reason: verification of the round-3 list fix)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 4 | **Ship**: recommended — round-3 item fixed; two same-file consistency gaps (--json, pre-#25 scan) fixed in 97384ae; loop has run four rounds, merge decision handed to the owner per the standing rules
+
+### Findings
+- [x] (suggestion) --json summary showed project 0 with no malformed signal — `.agent/scripts/worktree_list.sh` → null + registry_malformed flag
+- [x] (suggestion) pre-#25 project/worktrees scan ran outside the gate, contradicting the summary — `.agent/scripts/worktree_list.sh` → gated
