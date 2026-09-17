@@ -463,3 +463,26 @@ Revision 5 correctly resolves three of revision 4's four must-fixes (CI wiring, 
 - `3911bc9` test_checkpoint_269.sh: C–F/B2 file changes refused until a `## Checkpoint` entry is on main
 - ADR-0013, principles_review_guide row, and ARCHITECTURE note landed in earlier commits on this branch
 - All 14 script suites pass locally; this entry is the first written by progress_append.sh itself
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 08:35 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**PR**: #270 at `88bbb3c`
+**Depth**: Deep (reason: 10+ files, 200+ lines, enforcement + ADR files)
+**Must-fix**: 6 | **Suggestions**: 4
+**Cross-model**: gemini failed (argv too long, 242 KB prompt), copilot failed (#212), codex not installed
+
+### Findings
+- [ ] (must-fix) CI red: sandbox bare remote lacks `-b main`; clone lands on unborn master, push main fails on runners with default init branch — `.agent/scripts/tests/test_merge_pr.sh:184,383`
+- [ ] (must-fix) Real checkpoint gate records PASS when origin/main is unresolvable; CI's depth-1 checkout hits this, gate inert in CI (confirmed in run log) — `.agent/scripts/tests/test_checkpoint_269.sh:211-213`
+- [ ] (must-fix) checkpoint_entry_complete unions fields across adjacent Checkpoint entries; two incomplete entries pass — `.agent/scripts/tests/test_checkpoint_269.sh:72-76`
+- [ ] (must-fix) Only the first heading is validated; extra `## ` lines in the body smuggle forged entries past the whitelist — `.agent/scripts/progress_append.sh:76-116,142`
+- [ ] (must-fix) --title written unsanitized; embedded newlines forge entries — `.agent/scripts/progress_append.sh:126-127`
+- [ ] (must-fix) Append redirect unchecked; write failure exits 0 as "already committed" — `.agent/scripts/progress_append.sh:142`
+- [ ] (suggestion) AGENTS.md Script Reference lacks progress_append.sh / progress_read.py (Ask-First) — `AGENTS.md`
+- [ ] (suggestion) Runner should preflight jq with a clear message (bootstrap installs it; CI has it) — `.agent/scripts/tests/run_script_tests.sh`
+- [ ] (suggestion) Loose correlation regexes; frontmatter `issue:7` without space yields None — `.agent/scripts/progress_read.py:148,155,234`
+- [ ] (suggestion) cross_model_review.sh passes a 242 KB prompt as argv to agy; open an issue — `.agent/scripts/cross_model_review.sh:110`
