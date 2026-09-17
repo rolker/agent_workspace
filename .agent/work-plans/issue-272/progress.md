@@ -54,3 +54,16 @@ issue: 272
 
 ### False positives
 - none
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-17 14:30 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**PR**: #282 at `cbe4f8f`
+**Addressed**: Integrated Review at `aecf5eb` (Copilot round 1)
+**Commits**: cbe4f8f
+
+### Actions
+- [x] shared-state recipes under flock; clean keeps the lock's directory — `Makefile`
+- [x] hook preflight keyed on the new worktree's own common dir — `.agent/scripts/worktree_create.sh`
