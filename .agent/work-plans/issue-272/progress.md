@@ -22,3 +22,18 @@ issue: 272
 - [x] (suggestion) make clean now clears the shared stamps — documented in the Makefile comment; intended (stamps are main-tree state)
 - [ ] (suggestion) bare-repo WS_ROOT would be the bare dir itself — not a supported layout; noted
 - [ ] (suggestion) #239 remains open for MAIN_ROOT itself — stated in the PR
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 14:15 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**Branch**: feature/issue-272 at `64d97ca`
+**Base**: main
+**Depth**: Standard (reason: re-review of the fix commit)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — both round-1 items verified fixed by dry-run and tests; no new findings
+
+### Findings
+- [ ] No issues found. LGTM.
