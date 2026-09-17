@@ -67,3 +67,19 @@ issue: 272
 ### Actions
 - [x] shared-state recipes under flock; clean keeps the lock's directory — `Makefile`
 - [x] hook preflight keyed on the new worktree's own common dir — `.agent/scripts/worktree_create.sh`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 14:40 -0400
+**By**: Claude Code Agent (claude-opus-5, fresh-context verifier; integrated by claude-fable-5-1)
+**Verdict**: approved
+
+**PR**: #282 at `cbe4f8f`
+**Depth**: standard (reason: round 3, verifying the Copilot fixes from the Integrated Review)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Both Integrated Review findings verified fixed: the shared-venv recipes serialize under flock (two parallel setup-dev runs proven non-interleaving), and the project-worktree preflight names the project repo's hook. 19/19 and 208/208 suites green.
+
+### Findings
+- [x] (suggestion) hook preflight on a package worktree resolved the enclosing repo, not the package repos that commit — `.agent/scripts/worktree_create.sh:1036` (fixed in `ee80a63`, test added to `test_ros2_colcon.sh`)
+- [ ] (suggestion) `make setup`'s git-bug and project-clone stamps still run outside the lock; pre-existing, both recipes can prompt interactively so holding the lock across them would stall a second agent on a prompt — `Makefile:175-188` (deferred: stated in the PR body)
