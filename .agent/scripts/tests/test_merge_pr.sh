@@ -458,6 +458,28 @@ test_same_repo_under_two_instances_requires_project() {
     assert_eq "inst1 worktree untouched" "true" "$([ -d "$wt1" ] && echo true || echo false)"
 }
 
+test_project_parent_alias_selects_instance_manifest() {
+    echo "TEST: --project <parent> matches a manifest whose header names the resolved instance (#273 round-2 review)"
+    local sb out rc=0 origin_a wt
+    sb="$(make_merge_sandbox)"
+    # Registry: parent p11 with default instance p11-rolling. worktree_create
+    # resolves the parent before writing the manifest header, so the header
+    # says p11-rolling; the user still types --project p11.
+    mkdir -p "$sb/p11root/rolling"
+    git -C "$sb/p11root/rolling" init --quiet
+    printf 'p11 project %s default_instance=p11-rolling\np11-rolling ros2_colcon %s parent=p11\n' \
+        "$sb/p11root" "$sb/p11root/rolling" >> "$sb/.agent/projects.local"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11-rolling/issue-p11-rolling-owner-pkg_a-562" \
+        p11-rolling "owner/pkg_a#562" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-562")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 562 "feature/issue-562"
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#562 --project p11 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0 with --project p11 (parent alias)" "0" "$rc"
+    assert_eq "instance's package worktree removed" "false" "$([ -d "$wt" ] && echo true || echo false)"
+    assert_eq "merged" "true" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
+}
+
 test_remote_branch_already_gone_is_not_a_failure() {
     echo "TEST: a head branch GitHub already auto-deleted counts as cleaned up, not incomplete"
     local sb out rc=0 origin_a wt
@@ -696,6 +718,7 @@ test_own_repo_sync_failure_is_reported
 test_package_repo_without_worktree_never_uses_legacy_cleanup
 test_repo_conflicting_type_rejected
 test_same_repo_under_two_instances_requires_project
+test_project_parent_alias_selects_instance_manifest
 test_remote_branch_already_gone_is_not_a_failure
 test_sweep_reports_unmerged_local_branch
 test_failed_worktree_removal_marks_cleanup_incomplete

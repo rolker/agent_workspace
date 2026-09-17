@@ -454,9 +454,16 @@ if [[ -n "$PR_REPO_SLUG" ]]; then
             # --project narrows to one registered instance; otherwise collect
             # every match — the same repo+branch can be worktreed under more
             # than one ros2_colcon instance (each has its own checkout), and
-            # glob order must not silently pick one.
-            if [[ -n "$PROJECT_ARG" ]] && [[ "$_hdr_project" != "$PROJECT_ARG" ]]; then
-                continue
+            # glob order must not silently pick one. The manifest header
+            # stores the RESOLVED instance name (worktree_create resolves a
+            # parent such as p11 to p11-rolling before writing it), so the
+            # selector is resolved the same way before comparing; the raw
+            # --project value stays for user-facing messages.
+            if [[ -n "$PROJECT_ARG" ]]; then
+                _PROJECT_SEL="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_ARG" 2>/dev/null || echo "$PROJECT_ARG")"
+                if [[ "$_hdr_project" != "$_PROJECT_SEL" ]]; then
+                    continue
+                fi
             fi
             _PKG_MATCHES+=("$_wtdir"$'\t'"$_hdr_project"$'\t'"$_hdr_issue")
         fi
