@@ -147,7 +147,10 @@ changes:
   type is written by `address-findings` without `**Mode**`; that field
   is how `next` names the failed phase (`phase=implement` vs
   `phase=address-findings`) when such an entry is partial or failed
-  (revision 6, review finding 3).
+  (revision 6, review finding 3). `**Mode**: inline` marks the post-plan
+  inline pass only; a row-27 takeover writes exactly the entry the
+  taken-over skill would have written, with no `**Mode**` unless the
+  phase taken over was the inline pass (revision 7, finding 6).
 - **Merge-from-main before the final review, not after.** Before each
   `review-code --branch` dispatch the host runs
   `check_branch_updates.sh`; if the branch is behind, it merges main
@@ -171,10 +174,15 @@ changes:
   pinned Decision summary in the body (the gate's condition (b)). PR
   state is not inferred from the timeline: the host reads it with `gh pr
   list --head <branch> --state all --json number,state,isDraft,title`
-  and passes it to `next` as `--pr <state>`. If a PR titled `[PLAN] …`
-  exists anyway (the issue was started by hand before run-issue took
-  over), the host treats it as `none` for routing and publishes with `gh
-  pr ready` plus a body replace instead of `gh pr create`.
+  and passes it to `next` as `--pr <state>`. A **draft** PR
+  (`isDraft == true`, the `[PLAN]` draft of an issue started by hand
+  before run-issue took over) is passed as `--pr none`; the publish step
+  then, in one turn, retitles and replaces the body with `gh pr edit
+  --title <real title> --body-file <body>` (the host appends the AI
+  signature itself, since `gh_create_pr.sh` is create-only) and marks it
+  ready with `gh pr ready`, after which the probe reads `open` and row
+  17 takes over. Keying on `isDraft`, not the title, is what makes the
+  state change (revision 7, review finding 2).
 - **The host owns every push** (revision 6, review finding 2): dispatched
   phases never push (the exit contract; true for every phase once
   `plan-task` runs with `--no-pr`). The host pushes at publish, and after
@@ -186,11 +194,25 @@ changes:
   `merge` action the host `cd`s to the main tree, and `next` short-
   circuits `--pr merged` to `done` before any worktree or progress
   resolution (row 1 needs no file).
-- **Waiting for reviews**: after publish the host waits for CI and bot
+- **Entry commits after the last review** (revision 7, review finding
+  9): every entry is a commit, and the gate compares the review entry's
+  SHA to the remote head exactly, so pushing the `## Integrated Review`
+  and the merge checkpoint after the review makes the head differ from
+  the reviewed SHA and the gate reports stale (PR 282 showed exactly
+  this). The host pushes those entry commits anyway — the audit trail
+  is the point of the checkpoint design — and the gate's exact-SHA
+  comparison is fixed in #284 (progress-only commits after the reviewed
+  SHA count as at-head). Until #284 lands the report-only gate prints a
+  stale notice on every run-issue merge; the enforce flip waits on #284.
+- **Waiting for reviews**: after publish, and after every PR-mode
+  `## Local Review` (a re-review of a fix), the host waits for CI and bot
   reviews to settle (`fetch_pr_reviews.sh` shows no pending checks) before
   dispatching `triage-reviews`; `triage-reviews` with only the local
-  pre-push review as a source still writes its `## Integrated Review`,
-  which is the entry the merge gate reads.
+  review as a source still writes its `## Integrated Review`, which is
+  the only entry that reaches the merge checkpoints (revision 7, review
+  finding 1). A `merge-refused` checkpoint answered `retriage` means:
+  merge main if the branch is behind, push, then dispatch
+  `triage-reviews` at the new head (finding 10).
 - **No auto-chaining** (Scope E) kept: phases never dispatch each other.
 - **Dropped**: the container mode and everything listed in Context; the
   Copilot opt-in paragraph (no Copilot specialist here); field-mode
@@ -209,7 +231,9 @@ changes:
   own `## Checkpoint` / `## Implementation` appends), where its
   refuse-outside-the-worktree rule (#147) is the point.
 - Expected entry type from a skill→entry-type table (`review-issue` →
-  Issue Review, `plan-task` → Plan Authored, `review-plan` → Plan Review,
+  Issue Review, `plan-task` → Plan Authored **with the task line pinned
+  to `/plan-task <N> --no-pr`** so a retry can never resurrect the draft
+  PR (revision 7, review finding 3), `review-plan` → Plan Review,
   `review-code` → Local Review (Pre-Push), `triage-reviews` → Integrated
   Review, `address-findings` → Implementation).
 - Prints the **handoff block** to stdout: the task line ("run
@@ -273,7 +297,10 @@ dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--progress <fi
   action concerns the pre-push loop, `phase=<skill>` with
   `checkpoint:phase-failed` (the failed entry's type mapped through the
   entry-type→skill table, `## Implementation` with `**Mode**: inline` →
-  `implement`, without → `address-findings`), and `mode=inline` when a
+  `implement`, without → `address-findings`; omitted for a partial entry
+  of a type with no skill mapping — `## Checkpoint`, `## External
+  Review` — in which case the checkpoint has no `**Phase**` and the run
+  ends at row 28, with a fixture), and `mode=inline` when a
   phase is to be run by the host itself rather than dispatched. Nothing
   else.
 - **Exit codes.** 0 = action decided; 2 = usage; 3 = the timeline could
@@ -317,7 +344,7 @@ dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--progress <fi
 | # | Condition | `action=` |
 |---|---|---|
 | 1 | `--pr merged` (checked before any file is read) | `done` |
-| 2 | `E` is `## Checkpoint` with `**Decision**: stop` | `done` (`reason=` names the stopped checkpoint and `--resume`) |
+| 2 | `E` is `## Checkpoint` with `**Decision**: stop` | `done` (`reason=` names the stopped checkpoint, its `**Phase**` if any, and `--resume`; the replacement checkpoint copies `**After**` and `**Phase**` from it) |
 | 3 | `E` has `**Status**: partial` or `failed` | `checkpoint:phase-failed` |
 | 4 | no entries (including no file) | `review-issue` |
 | 5 | `E` is `## Issue Review`, open boxes | `checkpoint:issue-actions` |
@@ -334,10 +361,12 @@ dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--progress <fi
 | 16 | Checkpoint `publish` or `rounds` / `publish`, `--pr none` | `publish` |
 | 17 | Checkpoint `publish` or `rounds` / `publish`, `--pr draft` or `open` | `triage-reviews` |
 | 18 | Checkpoint `publish` or `rounds` / `address` | `address-findings` |
-| 19 | `E` is `## Integrated Review` or `## Local Review`, open boxes | `checkpoint:findings` |
-| 20 | `E` is `## Integrated Review` or `## Local Review`, none open | `checkpoint:merge` |
+| 19 | `E` is `## Integrated Review`, open boxes | `checkpoint:findings` |
+| 20 | `E` is `## Integrated Review`, none open | `checkpoint:merge` |
 | 21 | Checkpoint `findings` or `merge` / `merge` | `merge` |
 | 22 | Checkpoint `findings` or `merge` / `address` | `address-findings` |
+| 22a | `E` is `## Local Review` (PR-mode re-review), open boxes | `address-findings` |
+| 22b | `E` is `## Local Review` (PR-mode re-review), none open | `triage-reviews` (host waits for reviews first) |
 | 23 | `E` is `## Merge (report-only)` or `## Merge (unreviewed)` (and, by row 1, the PR is not merged) | `checkpoint:merge-refused` |
 | 24 | Checkpoint `merge-refused` / `retriage` | `triage-reviews` |
 | 25 | Checkpoint `merge-refused` / `address` | `address-findings` |
@@ -355,9 +384,10 @@ dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--progress <fi
   host writing a checkpoint first (an `--enforce` refusal, a `MISSING`
   dispatch) are contract lines in the skill, and their checkpoint states
   have fixtures. `test_dispatch_phase.sh` has one fixture per row plus
-  four end-to-end timelines (clean run to merge; needs-work plan then
-  revise; three pre-push rounds then stop; stop then `--resume`) that
-  must never hit row 28.
+  five end-to-end timelines (clean run to merge; needs-work plan then
+  revise; three pre-push rounds then stop; stop then `--resume`; publish
+  with the `--pr` flip `none` → `open` into row 17, then a fix round
+  through rows 22, 12, 22b, 20) that must never hit row 28.
 
 ### 3. `review-issue` persistence (revision 4, review finding 4)
 
@@ -374,12 +404,15 @@ outside a worktree, `--soft` prints the notice and writes nothing, as
 `review-plan` does today. Under run-issue the worktree always exists
 first (§1), so the entry always lands.
 
-### 4. Merge gate: unchanged
+### 4. Merge gate: unchanged here; #284 is the prerequisite for enforce
 
-`merge_pr.sh` is not touched. In run-issue's flow the entry the gate's
-condition (a) reads is the `## Integrated Review` that `triage-reviews`
-writes at the PR head, and the merge-from-main rule in §1 keeps the head
-at the reviewed SHA. Whether the gate should *also* accept an older
+`merge_pr.sh` is not touched by this plan. In run-issue's flow the entry
+the gate's condition (a) reads is always the `## Integrated Review` that
+`triage-reviews` writes at the PR head (rows 19-22b guarantee no other
+review type reaches the merge checkpoints), and the merge-from-main rule
+in §1 keeps the head at the reviewed code SHA. The entry commits pushed
+after that review make the gate report stale until #284 teaches it to
+ignore progress-only commits; that fix is scoped to #284, not this port. Whether the gate should *also* accept an older
 review across a merge-from-main is Open Question 5.
 
 ### 5. Handoff ADR
@@ -397,7 +430,7 @@ are cheaper and get Sonnet; scoped to this loop, overridable per
 dispatch). Cites fork ADR-0015/0019 as sources and states what was
 declined. It also records, in its Decision, that `run-issue` writes
 `## Checkpoint` entries on the owner's behalf from `AskUserQuestion`
-answers with `**Recorded-by**`, `**After**`, `**Decision**`. **ADR-0013**
+answers with `**Decided-by**`, `**After**`, `**Decision**`. **ADR-0013**
 is not reworded (ADR-0008 forbids softening an accepted Decision inline):
 it gets the permitted Status-line note "Scoped exception in ADR-0014:
 checkpoint entries recorded by run-issue" and a References line, in the
@@ -417,9 +450,9 @@ files to understand the loop.
 | `.claude/skills/review-issue/SKILL.md` | Step 8: `## Issue Review` entry via `review_progress.sh persist --strict --soft`; `### Actions` checkboxes from Action-needed rows + Recommendations | 1 |
 | `.agent/scripts/tests/test_issue_review_entry.sh` (new) | A fixture comment persisted per step 8 parses with `correlation.kind == "issue"` and exactly the Action-needed rows + Recommendations as `findings[]` | 1 |
 | `.agent/scripts/dispatch_phase.sh` (new) | Handoff block emitter, skill→entry-type and skill→model tables, `--check-exit`, `next` per the contract above | 2 |
-| `.agent/scripts/tests/test_dispatch_phase.sh` (new) | Hermetic: handoff content (identity literals, model, exit contract, worktree); exit 2 when no worktree; exit check OK/PARTIAL/FAILED/MISSING; one fixture per `next` row (28) plus three end-to-end timelines; missing file = empty timeline; `round=` count and `MAX_ROUNDS`; `--pr` branches; `phase=` line and `**Mode**: inline` mapping; `--pr merged` with no file present; exit 3 only on an unparseable fixture, row 28 for out-of-vocabulary fields | 2 |
+| `.agent/scripts/tests/test_dispatch_phase.sh` (new) | Hermetic: handoff content (identity literals, model, exit contract, worktree); exit 2 when no worktree; exit check OK/PARTIAL/FAILED/MISSING; one fixture per `next` row (28) plus five end-to-end timelines; missing file = empty timeline; `round=` count and `MAX_ROUNDS`; `--pr` branches; `phase=` line and `**Mode**: inline` mapping; `--pr merged` with no file present; exit 3 only on an unparseable fixture, row 28 for out-of-vocabulary fields | 2 |
 | `docs/decisions/0013-progress-md-entry-type-vocabulary.md` | Status-line scoped-exception note + References line pointing at ADR-0014 (ADR-0008 permitted form; Decision text untouched) | 3 |
-| `.claude/skills/run-issue/SKILL.md` (new) | Host orchestrator: worktree entry, `next` routing, checkpoint entries (written before the next call), `plan-task --no-pr`, inline `## Implementation` with `**Mode**`, host-owned pushes, merge-from-main rule, publish (`gh pr ready` path for a pre-existing `[PLAN]` PR), wait-for-reviews, leave-worktree-before-merge, `--resume`; in-process only | 3 |
+| `.claude/skills/run-issue/SKILL.md` (new) | Host orchestrator: worktree entry, `next` routing, checkpoint entries (written before the next call), `plan-task --no-pr`, inline `## Implementation` with `**Mode**`, host-owned pushes, merge-from-main rule, publish (`gh pr edit` + `gh pr ready` path for a pre-existing draft PR, keyed on `isDraft`), wait-for-reviews, leave-worktree-before-merge, `--resume`; in-process only | 3 |
 | `docs/decisions/0014-in-process-phase-handoff.md` (new) | Handoff contract ADR incl. one-driver convention, model tier, and the run-issue-recorded checkpoint rule | 3 |
 | `.agent/knowledge/review_loop_lifecycle.md` (new) | Lifecycle one-pager | 3 |
 | `.agent/knowledge/principles_review_guide.md` | ADR-0014 row; consequences row (entry types ↔ `dispatch_phase.sh next`) | 3 |
