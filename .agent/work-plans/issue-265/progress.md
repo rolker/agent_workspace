@@ -300,3 +300,22 @@ Addressed every open item of the round-1 Local Review:
 86/86, test_ros2_colcon 184/184, test_merge_pr 88/88,
 test_merge_pr_root_resolution 5/5, test_cross_model_review 52/52,
 test_resolve_work_plans_dir 21/21 — all green.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 11:23 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265-pr2 at `fd8e935`
+**Base**: main
+**Depth**: Deep (reason: 16 files, 790 lines; every worktree script + two skills)
+**Must-fix**: 4 | **Suggestions**: 1
+**Round**: 1 | **Ship**: continue — round 1: 4 must-fix, one a design gap (transition orphaning), one an ADR-0012 human call
+
+### Findings
+- [ ] (must-fix) registering a project orphans its pre-existing legacy-path worktrees: enumeration skips names that resolve in the registry, and remove's explicit --project path never searches the transition location — `.agent/scripts/_worktree_helpers.sh:91-101` (Copilot #1 confirmed)
+- [ ] (must-fix) merge_pr compares the raw --project parent name against the manifest's resolved instance name, skipping the real manifest — `.agent/scripts/merge_pr.sh:458` (Copilot #2 confirmed)
+- [ ] (must-fix) review-plan's --issue fallback never checks the workspace worktree its prose says to check first — `.claude/skills/review-plan/SKILL.md:61-75` (Copilot #3 confirmed)
+- [ ] (must-fix) ADR-0012: wt_ensure_exclusion branches on `etype = ros2_colcon` inside the shared helper; the plan specified the COLCON_IGNORE marker without routing it through an adapter verb — `.agent/scripts/_worktree_helpers.sh:192` (human call: adapter verb now, or documented scoped exception)
+- [ ] (suggestion) AGENTS.md worktree section still describes the old location; plan defers to PR 4 (Ask-First) — `AGENTS.md`
