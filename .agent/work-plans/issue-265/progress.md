@@ -366,3 +366,13 @@ test_resolve_work_plans_dir 21/21 — all green.
 ### Findings
 - [x] (suggestion) --json summary showed project 0 with no malformed signal — `.agent/scripts/worktree_list.sh` → null + registry_malformed flag
 - [x] (suggestion) pre-#25 project/worktrees scan ran outside the gate, contradicting the summary — `.agent/scripts/worktree_list.sh` → gated
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-09-17 13:12 -04:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #273 at `1b5ff2d`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: latest Local Review entry is at `6737065`, not the PR head `1b5ff2d` (stale review)
