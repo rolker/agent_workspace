@@ -77,7 +77,7 @@ Usage:
   review_progress.sh verdict --must-fix <N> --round <R> [--prev-must-fix <P>] [--mechanical]
   review_progress.sh persist --issue <N|""> [--branch <name>] [--title <t>]
                              [--strict] [--no-progress] [--soft] < entry.md
-  review_progress.sh plan-sha --plan <path/to/plan.md>
+  review_progress.sh plan-sha --plan <path/to/plan.md> [--ref <commit-ish>]
   review_progress.sh sources --head <sha> --reviews <fetch_pr_reviews.json> [--progress <file>]
   review_progress.sh findings --progress <file>
   review_progress.sh check --progress <file> --index <i> [--deferred "<reason>"]
@@ -180,14 +180,20 @@ cmd_persist() {
         _persist_impl "${rest[@]}"
         return $?
     fi
-    local out rc=0 reason
-    out=$(_persist_impl "${rest[@]}" 2>&1) || rc=$?
+    # Streams stay separate: stdout is the one line a skill echoes; notes and
+    # errors stay on stderr exactly as in non-soft mode.
+    local out err rc=0 reason errf
+    errf=$(mktemp)
+    out=$(_persist_impl "${rest[@]}" 2>"$errf") || rc=$?
+    err=$(cat "$errf"); rm -f "$errf"
     if [[ "$rc" -eq 0 ]]; then
+        [[ -n "$err" ]] && printf '%s\n' "$err" >&2
         printf '%s\n' "$out"
         return 0
     fi
-    reason=$(printf '%s\n' "$out" | grep -m1 -i 'error' || printf '%s\n' "$out" | tail -1)
-    echo "Progress persistence failed: ${reason#error: } (exit $rc) — the report above is unaffected"
+    reason=$(printf '%s\n' "$err" | grep -m1 -i 'error' || printf '%s\n%s\n' "$err" "$out" | grep -v '^$' | tail -1)
+    reason=$(printf '%s' "$reason" | sed -E 's/^[Ee][Rr][Rr][Oo][Rr]: *//')
+    echo "Progress persistence failed: ${reason:-exit $rc} (exit $rc) — the report above is unaffected"
     return 0
 }
 
@@ -490,14 +496,28 @@ print(new)
 # plan file, so the entry can never cite a SHA that does not contain the
 # plan text it describes.
 cmd_plan_sha() {
-    local plan="" dir base sha
+    local plan="" ref="" dir base sha top
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --plan) [[ $# -ge 2 ]] || usage; plan="$2"; shift 2 ;;
+            --ref)  [[ $# -ge 2 ]] || usage; ref="$2"; shift 2 ;;
             *) usage ;;
         esac
     done
-    [[ -f "$plan" ]] || { echo "error: plan-sha: plan file not found: $plan" >&2; exit 2; }
+    [[ -n "$plan" ]] || usage
+    if [[ -n "$ref" ]]; then
+        # --ref <commit-ish>: the plan as committed on that ref (a fetched PR
+        # head, a branch) — no local checkout of the file needed. <plan> is
+        # repo-relative here; the ref must resolve and must contain the file.
+        top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "error: plan-sha: not in a git repository" >&2; exit 2; }
+        git -C "$top" rev-parse --verify -q "${ref}^{commit}" >/dev/null || { echo "error: plan-sha: ref '$ref' does not resolve (fetch it first?)" >&2; exit 2; }
+        git -C "$top" cat-file -e "${ref}:${plan}" 2>/dev/null || { echo "error: plan-sha: '$plan' does not exist at ref '$ref'" >&2; exit 2; }
+        sha=$(git -C "$top" log -1 --format=%h "$ref" -- "$plan") && [[ -n "$sha" ]] || {
+            echo "error: plan-sha: no commit on '$ref' touches $plan" >&2; exit 2; }
+        echo "$sha"
+        return 0
+    fi
+    [[ -f "$plan" ]] || { echo "error: plan-sha: plan file not found: $plan (reviewing a PR from another tree? pass --ref <head>)" >&2; exit 2; }
     dir=$(dirname "$plan"); base=$(basename "$plan")
     git -C "$dir" ls-files --error-unmatch -- "$base" >/dev/null 2>&1 || {
         echo "error: plan-sha: $plan is not tracked by git — commit the plan first" >&2; exit 2; }
