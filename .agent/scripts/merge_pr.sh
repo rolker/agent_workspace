@@ -643,6 +643,14 @@ _gate_record() {  # <entry type> <one-line why>
         if [[ -z "$wt_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$wt_top" && pwd -P)" ]]; then
             wt_top=""
         fi
+        # Never the main tree (or the legacy project/ checkout), even when it
+        # happens to have the PR branch checked out: AGENTS.md forbids
+        # feature commits there (round-3 review). The record goes on the PR.
+        if [[ -n "$wt_top" ]]; then
+            for _mt in "$ROOT_DIR" "$ROOT_DIR/project"; do
+                [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$wt_top" && pwd -P)" ]] && { wt_top=""; why_comment="the PR branch is checked out in the main tree, which never takes feature commits"; break; }
+            done
+        fi
     fi
     if [[ -n "$wt_top" ]]; then
         if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then

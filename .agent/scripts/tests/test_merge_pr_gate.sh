@@ -300,6 +300,22 @@ else
     fail "package PR nested container (out=${out:0:400})"
 fi
 
+# ================================================= main tree on the PR branch =====
+echo "TEST: the main tree checked out on the PR branch never receives the record commit"
+sb="$(make_sandbox "$STALE" with_summary)"
+git -C "$sb" worktree remove --force "$sb/worktrees/workspace/issue-workspace-7" >/dev/null 2>&1
+git -C "$sb" checkout -q feature/issue-7      # the forbidden shape: feature branch in the main tree
+root_before=$(git -C "$sb" rev-parse HEAD)
+out="$(run_merge "$sb" 2>&1)" || true
+if [[ "$(git -C "$sb" rev-parse HEAD)" == "$root_before" ]] \
+    && ! git -C "$sb" log -1 --format=%s | grep -q '^progress: merge' \
+    && [[ "$out" == *"checked out in the main tree"*"posted as a comment"* ]] \
+    && [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md" 2>/dev/null)" -eq 1 ]]; then
+    pass "main tree on the PR branch: no commit there, record posted as a PR comment"
+else
+    fail "main tree on PR branch (out=${out:0:400})"
+fi
+
 # ================================================= --enforce, project scope =====
 echo "TEST: --enforce on a project PR stays report-only"
 sb="$(make_sandbox "" "")"
