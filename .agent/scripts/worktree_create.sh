@@ -1025,12 +1025,15 @@ _NEXT_STEPS_ISSUE="$ISSUE_NUM"
 _NEXT_STEPS_PROJECT_FLAG=""
 [ -n "$PROJECT_NAME" ] && _NEXT_STEPS_PROJECT_FLAG=" --project $PROJECT_NAME"
 
-# Shared pre-commit hook preflight (issue #272): every worktree runs the
-# main checkout's .git/hooks/pre-commit, which pins the interpreter that
-# installed it. If that path is gone (a hook installed from a since-removed
-# worktree's venv), every commit here fails with "`pre-commit` not found"
-# unless a venv happens to be on PATH. Say so now, with the fix.
-_HOOK_COMMON="$(git -C "$ROOT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+# Shared pre-commit hook preflight (issue #272): a worktree runs the hook of
+# the repository that OWNS it — the workspace's .git/hooks for a workspace
+# worktree, the project checkout's for a project worktree — and that hook
+# pins the interpreter that installed it. If that path is gone (a hook
+# installed from a since-removed worktree's venv), every commit here fails
+# with "`pre-commit` not found" unless a venv happens to be on PATH. Ask the
+# new worktree itself which common dir it belongs to (a package worktree
+# container is not a repo; its sibling repos are checked by nothing here).
+_HOOK_COMMON="$(git -C "$WORKTREE_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 if [ -n "$_HOOK_COMMON" ] && [ -f "$_HOOK_COMMON/hooks/pre-commit" ]; then
     _HOOK_PY="$(sed -n 's/^INSTALL_PYTHON=//p' "$_HOOK_COMMON/hooks/pre-commit" | head -1 | tr -d "'\"")"
     if [ -n "$_HOOK_PY" ] && [ ! -x "$_HOOK_PY" ]; then

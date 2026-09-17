@@ -79,6 +79,12 @@ recipe="$(cd "$wt" && make -n -f "$sb/Makefile" repair 2>/dev/null | grep 'pip i
 recipe="$(cd "$wt" && rm -rf "$sb/.make" && make -n -f "$sb/Makefile" "$sb/.make/setup-dev.done" 2>/dev/null | grep 'pip install -r\|pip install --quiet -r')"
 [[ "$recipe" == *"-r $sb/requirements.txt"* ]] && pass "setup-dev installs from <main>/requirements.txt" || fail "setup-dev requirements source (got: $recipe)"
 
+# the shared-state recipes run under one lock (Copilot round 1: two agents on a fresh machine)
+for tgt in repair clean "$sb/.make/setup-dev.done"; do
+    recipe="$(cd "$wt" && rm -rf "$sb/.make" && make -n -f "$sb/Makefile" "$tgt" 2>/dev/null | grep -c "flock $sb/.make/.lock")"
+    [[ "$recipe" -ge 1 ]] && pass "make $tgt runs its shared-state mutation under flock on <main>/.make/.lock" || fail "lock on $tgt (matches=$recipe)"
+done
+
 # ---- layer 2: validate_workspace.py from a worktree ----
 echo "TEST: validate_workspace.py finds the shared hook from a worktree and flags a vanished interpreter"
 write_hook "$sb" "$sb/worktrees/workspace/issue-workspace-99/.venv/bin/python3"   # a removed worktree's venv
@@ -124,6 +130,22 @@ mkdir -p "$sb2/.venv/bin"; printf '#!/bin/sh\n' > "$sb2/.venv/bin/python3"; chmo
 write_hook "$sb2" "$sb2/.venv/bin/python3"
 rc=0; out="$(cd "$sb2" && PATH="$sb2/stubbin:$PATH" "$sb2/.agent/scripts/worktree_create.sh" --issue 7 --type workspace 2>&1)" || rc=$?
 [[ "$rc" -eq 0 && "$out" != *"pre-commit hook points"* ]] && pass "healthy hook: no warning" || fail "healthy hook (rc=$rc out=${out:0:300})"
+
+# a PROJECT worktree is checked against the project repo's hook, not the workspace's (Copilot round 1)
+sb3="$(mk_ws)"
+mkdir -p "$sb3/.venv/bin"; printf '#!/bin/sh\n' > "$sb3/.venv/bin/python3"; chmod +x "$sb3/.venv/bin/python3"
+write_hook "$sb3" "$sb3/.venv/bin/python3"                       # workspace hook healthy
+mkdir -p "$sb3/project"; git -C "$sb3/project" init --quiet -b main
+git -C "$sb3/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+git -C "$sb3/project" remote add origin "file:///nonexistent/legacyrepo.git"
+printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' "$sb3/gone/.venv/bin/python3" > "$sb3/project/.git/hooks/pre-commit"
+chmod +x "$sb3/project/.git/hooks/pre-commit"                     # project hook broken
+rc=0; out="$(cd "$sb3" && PATH="$sb3/stubbin:$PATH" "$sb3/.agent/scripts/worktree_create.sh" --issue 8 --type project 2>&1)" || rc=$?
+if [[ "$rc" -eq 0 && "$out" == *"shared pre-commit hook points to a Python that no longer exists"*"$sb3/gone/.venv/bin/python3"*"make -C \"$sb3/project\" repair"* ]]; then
+    pass "project worktree: the warning names the PROJECT repo's broken hook and its repair root"
+else
+    fail "project worktree hook (rc=$rc out=${out:0:400})"
+fi
 
 echo ""
 echo "test_precommit_hook_path: $PASS passed, $FAIL failed"

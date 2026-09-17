@@ -46,6 +46,12 @@ STAMP    := $(WS_ROOT)/.make
 VENV_DIR := $(WS_ROOT)/.venv
 VENV_BIN := $(VENV_DIR)/bin
 PRE_COMMIT := $(VENV_BIN)/pre-commit
+# The venv, stamps, and hook are shared by every worktree, so the recipes
+# that mutate them (setup-dev, repair, clean) run under one lock: two agents
+# running `make setup` on a fresh machine must not race pip or the hook
+# install. flock is util-linux; without it (macOS) the recipe runs unlocked.
+FLOCK := $(shell command -v flock 2>/dev/null)
+LOCKED = $(if $(FLOCK),$(FLOCK) $(STAMP)/.lock sh -c,sh -c)
 
 # --- Phony targets ---
 .PHONY: help setup build test install lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug repair merge-pr
@@ -109,9 +115,9 @@ install: $(STAMP)/setup-dev.done
 lint: $(STAMP)/setup-dev.done
 	$(PRE_COMMIT) run --all-files
 
-clean:
-	rm -rf $(STAMP)
-	@echo "Stamp files removed. Run 'make setup' to re-initialize."
+clean: | $(STAMP)
+	@$(LOCKED) 'rm -f $(STAMP)/*.done'
+	@echo "Stamp files removed (shared by every worktree). Run 'make setup' to re-initialize."
 
 dashboard:
 	@$(MAIN_ROOT)/.agent/scripts/dashboard.sh
@@ -119,11 +125,9 @@ dashboard:
 validate:
 	python3 $(MAIN_ROOT)/.agent/scripts/validate_workspace.py --verbose
 
-repair:
+repair: | $(STAMP)
 	@echo "--- Repairing venv and pre-commit hook ---"
-	$(VENV_BIN)/python3 -m pip install --quiet --force-reinstall -r $(WS_ROOT)/requirements.txt
-	cd $(WS_ROOT) && $(PRE_COMMIT) install
-	@rm -f $(STAMP)/setup-dev.done
+	@$(LOCKED) '$(VENV_BIN)/python3 -m pip install --quiet --force-reinstall -r $(WS_ROOT)/requirements.txt && cd $(WS_ROOT) && $(PRE_COMMIT) install && rm -f $(STAMP)/setup-dev.done'
 	@$(MAKE) --no-print-directory $(STAMP)/setup-dev.done
 	@echo "✅ Repair complete. Run 'make validate' to verify."
 
@@ -165,11 +169,7 @@ $(STAMP):
 # setup-dev: install venv + pre-commit
 $(STAMP)/setup-dev.done: $(WS_ROOT)/requirements.txt | $(STAMP)
 	@echo "--- Setting up dev tools ---"
-	python3 -m venv $(VENV_DIR)
-	$(VENV_BIN)/python3 -m pip install --quiet --upgrade pip
-	$(VENV_BIN)/python3 -m pip install --quiet -r $(WS_ROOT)/requirements.txt
-	cd $(WS_ROOT) && $(PRE_COMMIT) install
-	touch $@
+	@$(LOCKED) 'python3 -m venv $(VENV_DIR) && $(VENV_BIN)/python3 -m pip install --quiet --upgrade pip && $(VENV_BIN)/python3 -m pip install --quiet -r $(WS_ROOT)/requirements.txt && cd $(WS_ROOT) && $(PRE_COMMIT) install && touch $@'
 
 # git-bug: configure identity + GitHub bridge
 $(STAMP)/git-bug.done: $(STAMP)/setup-dev.done
