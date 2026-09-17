@@ -361,3 +361,11 @@ Revision 6 closes all nine round-4 findings at the level they were raised, and i
 - [ ] Pick one of `**Decided-by**` (plan:112) / `**Recorded-by**` (plan:400) before ADR-0014 is written
 - [ ] (suggestion) State the push rule for entry commits after the last review — they cannot be pushed without failing the gate's exact-SHA check (`merge_pr.sh:632-646`) and are destroyed by `merge_pr.sh:961,980-981`
 - [ ] (suggestion) Add an `update`/merge-main decision to the `merge-refused` vocabulary, or state that a branch falling behind main after publish is handled by the owner at the merge checkpoint
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-17 15:30 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `ad23fd5`
+
+Revision 7 after plan review round 5 (needs-work, 2 must-fix + 8 minor, all addressed). Round 5 confirmed all nine round-4 fixes against the tree; its must-fixes were the PR-mode re-review routing and the draft-PR publish loop. #284 gains the exact-SHA gate scope this plan depends on for enforce.
