@@ -292,9 +292,15 @@ cmd_sources() {
     [[ -n "$head" && -n "$reviews" ]] || { echo "error: sources: --head <sha> and --reviews <json> required" >&2; exit 2; }
     [[ -f "$reviews" ]] || { echo "error: sources: reviews file not found: $reviews" >&2; exit 2; }
     local json="{\"entries\": []}"
+    if [[ -n "$progress" && -e "$progress" && ! -f "$progress" ]]; then
+        echo "error: sources: --progress '$progress' exists but is not a regular file (pass the progress.md path, not its directory)" >&2; exit 2
+    fi
     if [[ -n "$progress" && -f "$progress" ]]; then
         json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Local Review" --type "Local Review (Pre-Push)" --type "Integrated Review") || {
             echo "error: sources: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
+    fi
+    if ! "$PYTHON" -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$reviews" 2>/dev/null; then
+        echo "error: sources: reviews file is not valid JSON: $reviews (truncated fetch_pr_reviews.sh output?)" >&2; exit 2
     fi
     printf '%s' "$json" | HEAD="$head" REVIEWS="$reviews" "$PYTHON" -c '
 import json, os, re, sys
@@ -302,21 +308,24 @@ head = os.environ["HEAD"]
 data = json.load(sys.stdin)
 reviews = json.load(open(os.environ["REVIEWS"], encoding="utf-8"))
 short = lambda s: (s or "")[:7]
-# Local findings at this head (entries correlate by head SHA, short or full).
+# OPEN local findings at this head (entries correlate by head SHA, short or
+# full). Checked boxes are resolved; False-positives bullets are dismissals.
+# Every repo-relative path cited in backticks counts, not only the last.
 local = []
-loc_re = re.compile(r"`([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
+loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
 for e in data.get("entries", []):
     c = e.get("correlation") or {}
     if c.get("kind") not in ("pr", "branch") or short(c.get("sha")) != short(head):
         continue
     for f in e.get("findings", []):
-        if f.get("section") == "False positives":
+        if f.get("section") == "False positives" or f.get("checked"):
             continue
-        paths = [(m.group(1), m.group(2)) for m in loc_re.finditer(f.get("text", "")) if "/" in m.group(1) or "." in m.group(1)]
+        cited = [(m.group(1), int(m.group(2)) if m.group(2) else None)
+                 for m in loc_re.finditer(f.get("text", "")) if "/" in m.group(1) or "." in m.group(1)]
         local.append({"entry_type": e["type"], "sha": short(c.get("sha")), "text": f.get("text"),
-                      "source_hint": f.get("source_hint"), "checked": f.get("checked"),
-                      "file": paths[-1][0] if paths else None,
-                      "line": int(paths[-1][1]) if paths and paths[-1][1] else None})
+                      "source_hint": f.get("source_hint"),
+                      "files": [p for p, _ in cited],
+                      "lines": {p: ln for p, ln in cited if ln is not None}})
 github = []
 for r in reviews.get("reviews", []):
     src = "{} ({})".format(r.get("user_login"), r.get("user_type"))
@@ -324,16 +333,20 @@ for r in reviews.get("reviews", []):
         github.append({"source": src, "review_id": r.get("review_id"), "commit_id": short(r.get("commit_id")),
                        "at_head": short(r.get("commit_id")) == short(head),
                        "path": cm.get("path"), "line": cm.get("line"), "body": cm.get("body")})
-def same_file(a, b):
-    if not a or not b: return False
-    return a == b or a.endswith("/" + b) or b.endswith("/" + a)
+# Same file means the same repo-relative path (GitHub comment paths are
+# repo-relative; findings cite repo-relative paths). No suffix matching:
+# scripts/x.sh and vendor/scripts/x.sh are different files.
+norm = lambda p: re.sub(r"^\./", "", p or "")
 candidates = []
 for lf in local:
     for gc in github:
-        if gc["at_head"] and same_file(lf["file"], gc["path"]):
+        if not gc["at_head"]:
+            continue
+        hit = [p for p in lf["files"] if norm(p) == norm(gc["path"])]
+        if hit:
             candidates.append({"file": gc["path"], "local": lf["text"], "local_entry": lf["entry_type"],
                                "github": gc["body"], "github_source": gc["source"],
-                               "local_line": lf["line"], "github_line": gc["line"]})
+                               "local_line": lf["lines"].get(hit[0]), "github_line": gc["line"]})
 json.dump({"head": short(head), "local_findings": local, "github_comments": github,
            "candidates": candidates}, sys.stdout, indent=2)
 print()

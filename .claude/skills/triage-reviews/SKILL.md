@@ -8,7 +8,7 @@ description: Integrator — evaluate PR review comments (human and bot) together
 ## Usage
 
 ```
-/triage-reviews <pr-number>
+/triage-reviews <pr-number> [--strict-progress] [--no-progress]
 ```
 
 ## Overview
@@ -104,12 +104,15 @@ not the PR number. One call correlates both sides by head SHA:
     --progress .agent/work-plans/issue-<issue>/progress.md
 ```
 
-It prints JSON with `local_findings` (open findings from `## Local Review`,
-`## Local Review (Pre-Push)`, and prior `## Integrated Review` entries whose
-correlation SHA is this head; entries at older heads are prior rounds and
-are dropped), `github_comments` (every inline comment, with `at_head`
-marking those submitted against the current head), and `candidates`: a
-local finding and a GitHub comment that name the same file at this head.
+It prints JSON with `local_findings` (unchecked findings, never the
+`### False positives` bullets, from `## Local Review`, `## Local Review
+(Pre-Push)`, prior `## Integrated Review`, and legacy `## External Review`
+entries whose correlation SHA is this head; entries at older heads are
+prior rounds and are dropped), `github_comments` (every inline comment,
+with `at_head` marking those submitted against the current head), and
+`candidates`: a local finding and a GitHub comment that name the same
+repo-relative file at this head. Every file a finding cites in backticks
+counts; the match is exact path, never a suffix.
 A candidate is mechanical; step 5g decides whether the two really describe
 the same defect. A missing `progress.md` is treated as an empty timeline; a
 malformed one (unterminated code fence) fails loudly rather than

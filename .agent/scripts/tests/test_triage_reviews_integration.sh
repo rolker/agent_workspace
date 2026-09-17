@@ -115,6 +115,44 @@ out=$("$RP" sources --head "$HEAD" --reviews "$REVIEWS"); rc=$?
 printf '## Implementation\n```\nopen\n' > "$TMPD/bad.md"
 "$RP" sources --progress "$TMPD/bad.md" --head "$HEAD" --reviews "$REVIEWS" >/dev/null 2>&1; rc=$?
 [[ "$rc" -ne 0 ]] && pass "sources: malformed progress.md fails loudly (rc=$rc)" || fail "sources: malformed progress.md should fail"
+# --progress given a directory -> error, not "empty timeline"
+err=$("$RP" sources --progress "$TMPD" --head "$HEAD" --reviews "$REVIEWS" 2>&1 >/dev/null); rc=$?
+[[ "$rc" -eq 2 && "$err" == *"not a regular file"* ]] && pass "sources: --progress pointing at a directory is an error (rc 2)" || fail "sources: directory progress (rc=$rc err=$err)"
+# malformed reviews JSON -> clean error, rc 2, no traceback
+printf '{"reviews": [' > "$TMPD/trunc.json"
+err=$("$RP" sources --head "$HEAD" --reviews "$TMPD/trunc.json" 2>&1 >/dev/null); rc=$?
+[[ "$rc" -eq 2 && "$err" == error:*"not valid JSON"* && "$err" != *Traceback* ]] && pass "sources: truncated reviews JSON is a clean rc-2 error" || fail "sources: bad reviews json (rc=$rc err=$err)"
+# matching rules: every cited file counts; exact path only; checked findings are not open
+cat > "$TMPD/rules.md" <<'EOF2'
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 11:00 -04:00
+**By**: t (m)
+
+**PR**: #70 at `abc1234`
+
+### Findings
+- [ ] (must-fix) two files cited, first is the real one — `scripts/x.sh:3` and `docs/y.md`
+- [ ] (must-fix) unrelated file whose path is a suffix of a comment path — `scripts/foo.sh:9`
+- [x] (must-fix) already resolved on this head — `.pre-commit-config.yaml:62`
+EOF2
+cat > "$TMPD/rules.json" <<EOF2
+{"head_sha": "$HEAD", "reviews": [{"review_id": 1, "commit_id": "$HEAD", "user_login": "c", "user_type": "Bot", "comments": [
+  {"path": "scripts/x.sh", "line": 3, "body": "on the first cited file"},
+  {"path": "vendor/scripts/foo.sh", "line": 9, "body": "different file, same tail"},
+  {"path": ".pre-commit-config.yaml", "line": 62, "body": "matches only a resolved finding"}
+]}], "ci_checks": [], "conversation_comments": []}
+EOF2
+out=$("$RP" sources --progress "$TMPD/rules.md" --head "$HEAD" --reviews "$TMPD/rules.json")
+c_first=$(printf '%s' "$out" | jq '[.candidates[] | select(.file == "scripts/x.sh")] | length')
+c_suffix=$(printf '%s' "$out" | jq '[.candidates[] | select(.file == "vendor/scripts/foo.sh")] | length')
+c_checked=$(printf '%s' "$out" | jq '[.candidates[] | select(.file == ".pre-commit-config.yaml")] | length')
+n_open=$(printf '%s' "$out" | jq '.local_findings | length')
+if [[ "$c_first" -eq 1 && "$c_suffix" -eq 0 && "$c_checked" -eq 0 && "$n_open" -eq 2 ]]; then
+    pass "sources: first-cited file matches; suffix-only path does not; checked findings are excluded"
+else
+    fail "sources: matching rules (first=$c_first suffix=$c_suffix checked=$c_checked open=$n_open)"
+fi
 
 # ========================================================== persist =====
 mk_repo() { mkdir -p "$1"; git -C "$1" init -q -b "$2"; git -C "$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init; }
