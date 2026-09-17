@@ -717,3 +717,19 @@ Observations 1-3 from the plan's "Checkpoint after PR B" all held on a real, non
 
 ### Findings
 - [x] (must-fix) rev-parse --show-toplevel walks up: a nested package container resolved to the main tree and the record would have been committed there — `.agent/scripts/merge_pr.sh` → exact-root check + PKG_WT_DIR guard, production-shaped test
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**Branch**: feature/issue-269-prF at `0c10e62`
+**Base**: main
+**Depth**: Deep (reason: narrow verification of the container fix)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — round-2 item fixed; one adjacent policy gap (main tree on the PR branch) fixed in e5d808f with a test; three rounds run, merge decision returns to the owner per the standing rules
+
+### Findings
+- [x] (must-fix) main tree checked out on the PR branch would receive the record commit — `.agent/scripts/merge_pr.sh` → excluded, PR comment instead
+- [ ] (suggestion) Step 1's roadmap commit has the same pre-existing main-tree exposure — follow-up, not in this PR
