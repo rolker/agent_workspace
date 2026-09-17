@@ -632,8 +632,19 @@ _gate_record() {  # <entry type> <one-line why>
     # (a package worktree is a container of sibling repos, not a repo — it
     # has no issue timeline, so it always takes the PR-comment path) and an
     # agent identity is set (progress_append.sh refuses to commit without).
-    local why_comment="no open worktree for the PR's repo"
-    if [[ -n "$_gate_wt" ]] && git -C "$_gate_wt" rev-parse --show-toplevel >/dev/null 2>&1; then
+    local why_comment="no open worktree for the PR's repo" wt_top=""
+    # "Is a repo" must mean the directory IS a repo root, not that some
+    # ancestor is one: `git rev-parse --show-toplevel` walks up, and a
+    # package worktree container lives under the workspace checkout, so the
+    # naive check would resolve to the live main tree and commit there
+    # (round-2 review). Package worktrees never take this path at all.
+    if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
+        wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
+        if [[ -z "$wt_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$wt_top" && pwd -P)" ]]; then
+            wt_top=""
+        fi
+    fi
+    if [[ -n "$wt_top" ]]; then
         if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then
             why_comment="no agent identity set (source set_git_identity_env.sh) for a timeline commit"
         elif printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1; then

@@ -272,6 +272,34 @@ else
     fail "PR comment fallback (out=${out:0:300})"
 fi
 
+# ================================================= package worktree (nested container) =====
+echo "TEST: a package-worktree PR (container nested inside the workspace checkout) never commits a record into the main tree"
+sb="$(make_sandbox "" "")"
+# a package repo with a github-shaped remote so extract_gh_slug -> owner/pkg_a
+mkdir -p "$sb/fake_remotes/github.com/owner" "$sb/origins"
+git init --bare --quiet "$sb/fake_remotes/github.com/owner/pkg_a.git"; git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" symbolic-ref HEAD refs/heads/main
+git -C "$sb/origins" init --quiet -b main pkg_a >/dev/null 2>&1 || { mkdir -p "$sb/origins/pkg_a"; git -C "$sb/origins/pkg_a" init --quiet -b main; }
+git -C "$sb/origins/pkg_a" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+git -C "$sb/origins/pkg_a" remote add origin "$sb/fake_remotes/github.com/owner/pkg_a.git"
+git -C "$sb/origins/pkg_a" push --quiet -u origin main
+# the container: under the sandbox's own worktrees/project/, NOT a repo itself
+cont="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-901"
+mkdir -p "$cont/l1_ws/src"
+git -C "$sb/origins/pkg_a" worktree add --quiet -b feature/issue-901 "$cont/l1_ws/src/pkg_a" >/dev/null 2>&1
+printf '# project=p11 issue=owner/pkg_a#901 layer=l1\n%s\tl1_ws/src/pkg_a\tfeature/issue-901\n' "$sb/origins/pkg_a" > "$cont/.worktree-repos"
+printf '{"state":"OPEN","headRefName":"feature/issue-901","title":"Pkg PR","headRefOid":"%s","comments":[],"body":""}\n' "$HEAD_SHA" > "$sb/gh_fixtures/pr_view_owner_pkg_a_901.json"
+root_before=$(git -C "$sb" rev-parse HEAD); status_before=$(git -C "$sb" status --porcelain)
+out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=1 \
+    "$sb/.agent/scripts/merge_pr.sh" --pr owner/pkg_a#901 --no-wait --no-roadmap-update 2>&1)" || true
+if [[ "$(git -C "$sb" rev-parse HEAD)" == "$root_before" ]] && [[ "$(git -C "$sb" status --porcelain | grep -v 'gh_calls.log\|comments_posted')" == "$(grep -v 'gh_calls.log\|comments_posted' <<< "$status_before")" ]] \
+    && [[ ! -e "$sb/.agent/work-plans" ]] && [[ ! -e "$cont/.agent" ]] \
+    && [[ "$out" == *"package worktrees carry no issue timeline"*"posted as a comment"* ]] \
+    && grep -q '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md"; then
+    pass "package PR: main tree untouched, container untouched, record posted as a PR comment"
+else
+    fail "package PR nested container (out=${out:0:400})"
+fi
+
 # ================================================= --enforce, project scope =====
 echo "TEST: --enforce on a project PR stays report-only"
 sb="$(make_sandbox "" "")"
