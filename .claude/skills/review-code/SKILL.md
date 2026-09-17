@@ -12,14 +12,17 @@ description: Lead reviewer that orchestrates specialist sub-reviews (static anal
 /review-code <pr-number-or-url> [light|standard|deep] [--skip-static]
 
 # Branch mode (local pre-push self-review)
-/review-code --branch [<base-ref>] [--issue <N>] [--no-progress] [--skip-static] [light|standard|deep]
+/review-code --branch [<base-ref>] [--issue <N>] [--no-progress] [--strict-progress] [--skip-static] [light|standard|deep]
 ```
 
 Optional depth keyword overrides automatic classification. `--skip-static`
 suppresses the static-analysis specialist in either mode (useful when
 pre-commit was clean). `--no-progress` (branch mode only) skips the
 progress.md persistence step — used for skill worktrees and one-off
-branches that don't have an issue to track against.
+branches that don't have an issue to track against. `--strict-progress`
+forces step 8's strict persistence path (`resolve_work_plans_dir()` +
+`progress_append.sh`, fail-loud) for this one run regardless of the
+ambient `PROGRESS_PERSISTENCE_STRICT` default — see step 8.
 
 ## Overview
 
@@ -56,6 +59,14 @@ modify the PR unless the user asks.
 - **Plan Drift** — compares implementation against the work plan (if one exists)
 - **Claude Adversarial** — fresh subagent, independent review for missed issues (Standard + Deep)
 - **Gemini Adversarial** — cross-model review via Gemini CLI in tmux (Deep only)
+
+**Not ported from ros2_agent_workspace** (issue #269 PR B, documented so
+nobody looks for them): the Ollama `local_review.sh` / `--local`
+specialist (no local-model serving story here), the Copilot-CLI
+`--copilot` specialist and its untrusted-PR gate (no `copilot` CLI
+integration), and the container dispatcher (`dispatch_subagent.sh --mode
+container`). This skill is invoked directly; nothing dispatches it. Each
+would need its own issue if wanted.
 
 ## Steps
 
@@ -107,8 +118,10 @@ git diff "$BASE"...HEAD
 # Linked issue: parse `feature/issue-<N>` or `feature/ISSUE-<N>-<desc>`
 # from the branch name. `--issue <N>` overrides; `--no-progress`
 # opts out of progress.md persistence for skill worktrees / one-off
-# branches. If neither resolves and `--no-progress` not passed, hard
-# error with remediation.
+# branches. If neither resolves and `--no-progress` not passed, the
+# review still runs; step 8 records "Progress persistence skipped (no
+# linked issue)" instead of writing. Also capture `--strict-progress`
+# here: it is consumed in step 8 (passed through as `--strict`).
 ```
 
 Identify (both modes):
@@ -366,7 +379,60 @@ Collect all findings from all dispatched specialists and filter:
    found." Do not invent feedback to fill the report. Target: >=85% of
    reported findings should be actionable.
 
+**Convergence assessment (branch mode only).** Before writing the report,
+assess whether the review loop is converging, so the operator gets a
+ship-vs-continue signal instead of looping indefinitely. Both numbers come
+from `.agent/scripts/review_progress.sh` (tested in
+`test_review_code_convergence.sh`), not from memory:
+
+```bash
+# Round = prior `## Local Review (Pre-Push)` entries for THIS branch + 1;
+# prev_must_fix = must-fix count of the newest such entry ("-" if none).
+.agent/scripts/review_progress.sh round --issue <N> --branch "$BRANCH"
+
+# Ship verdict from the counts. Pass --mechanical only when EVERY must-fix
+# is a precise file:line fix with an obvious correction (no design question).
+.agent/scripts/review_progress.sh verdict --must-fix <count> --round <R> \
+    --prev-must-fix <P> [--mechanical]
+```
+
+The rule the script applies:
+- **recommended** when there are no must-fix findings.
+- **recommended** at round ≥ 2 when must-fix is ≤ 2, not rising versus the
+  previous round, and every must-fix is mechanical — fix and ship rather
+  than pay for another full dispatch cycle.
+- **continue** otherwise: rising, high (> 2), or any design/correctness
+  concern that warrants another independent read.
+
+Surface the round, verdict, and reason in the report header (`**Round**`),
+the Decision summary, and the `progress.md` entry (step 8). The verdict is
+advisory; the operator decides. This skill never blocks a ship. In PR mode
+there is no round counter; omit the `**Round**` line.
+
 ### 7. Produce the report
+
+Every report opens with a **Decision summary** — the section the owner
+reads instead of the diff. It is additional to, not a replacement for, the
+findings tables below. This is the one pinned shape (PR F's merge gate and
+PR template consume the same headings; do not vary them):
+
+```markdown
+## Decision summary
+
+**What changed**: <1-3 sentences, plain language, no diff references>
+
+**Reviews and outcomes**: <round/ship verdict if branch mode; findings
+count and verdict if PR mode>
+
+**Open human calls**: <anything requiring a human decision, or "None">
+
+**Verified**: <what was actually run/checked to confirm the above, e.g.
+"tests pass; grep confirmed X">
+
+**Recommendation**: <merge / needs-work / hold, one line>
+```
+
+Then the header for the mode:
 
 PR-mode header:
 
@@ -393,6 +459,7 @@ title-line PR number with the branch name):
 **Repo**: workspace | <project-repo>
 **Files changed**: <count> (+<additions> -<deletions>)
 **Review depth**: <Light|Standard|Deep> (reason: <primary signal>)
+**Round**: <R> — **Ship: <recommended | continue>** (<one-line reason; see Convergence assessment>)
 **Context**: <status of review-context.yaml — fresh / stale / not found>
 ```
 
@@ -456,7 +523,8 @@ PR-mode template body:
 ```
 
 **Light tier condensed format** — skip Governance, Plan Adherence, Cross-Model,
-and Existing Review Comments sections. Use:
+and Existing Review Comments sections. The Decision summary still opens
+the report. Use:
 
 ```markdown
 ## Code Review: #<N> — <title>
@@ -473,7 +541,8 @@ and Existing Review Comments sections. Use:
 No governance concerns for a change of this scope.
 ```
 
-**No findings format** — if no findings exist across all sections:
+**No findings format** — if no findings exist across all sections (the
+Decision summary still opens the report, with Recommendation: merge):
 
 ```markdown
 ## Code Review: #<N> — <title>
@@ -492,41 +561,61 @@ unchanged.
 ### 8. Persist review summary to progress file
 
 After outputting the report to the conversation, append a review-step
-entry to `progress.md` so findings persist across sessions.
+entry to `progress.md` so findings persist across sessions. The append,
+the commit, and the skip/notice logic all go through one tested call:
 
-**Skip this entire step** if branch mode was invoked with
-`--no-progress` — that flag explicitly opts out of progress.md writes
-(skill worktrees and one-off branches without an issue context).
-
-**Locate or create progress.md**: Use the issue number resolved in step 1.
-Determine which repo owns the linked issue (workspace repo for workspace
-issues, project repo for project issues). Check
-`.agent/work-plans/issue-<issue>/progress.md` in the owning repo's worktree
-first. If not found there, fall back to the current worktree. If it does not
-exist in either location, create it in the owning repo's worktree (or the
-current worktree if no owning worktree exists) with frontmatter. Fetch the
-issue title via
-`gh issue view <issue> --repo <owner/repo> --json title --jq '.title'`:
-
-```yaml
----
-issue: <issue>
----
-
-# Issue #<issue> — <issue title>
+```bash
+.agent/scripts/review_progress.sh persist --issue "<N or empty>" \
+    --branch "$BRANCH" --title "<issue title>" \
+    [--strict] [--no-progress] <<'ENTRY'
+## Local Review (Pre-Push)
+...the entry as specified below...
+ENTRY
 ```
 
-Append this step entry. Use `## Local Review` for PR mode and
+Echo the single line the script prints into the report's Summary. The
+script decides which of these happens, in this order:
+
+- **`--no-progress`** (branch mode) — nothing is written; the line reads
+  "Progress persistence skipped (--no-progress)".
+- **No issue number resolvable** (step 1 found none: a `skill/…` branch,
+  or an ordinary branch with no `feature/issue-<N>` shape and no
+  `--issue`) — pass `--issue ""`; nothing is written and nothing aborts;
+  the line reads "Progress persistence skipped (no linked issue — skill
+  worktree)" or "Progress persistence skipped (no linked issue)".
+- **Strict path** (`--strict-progress` was passed, so pass `--strict`; or
+  the ambient `PROGRESS_PERSISTENCE_STRICT=1`) — the target directory is
+  resolved with `resolve_work_plans_dir()` from
+  `.agent/scripts/_resolve_work_plans_dir.sh`, which refuses (exit 4, with
+  remediation) when the current worktree is not issue `<N>`'s; the entry is
+  then appended and committed by `progress_append.sh`, which creates the
+  file with frontmatter and the `--title` heading, commits only that file,
+  and fails loud if agent identity is unset.
+- **Compatibility path** (the default: `PROGRESS_PERSISTENCE_STRICT` unset
+  or `0`) — what this step did before issue #269 PR B: the current
+  worktree's `.agent/work-plans/issue-<N>/progress.md` is created if
+  absent, the entry is appended inline, and `git add` + `git commit` run
+  there. The strict path's refusal condition is still *evaluated*, and if
+  it would have refused, the script prints "Progress persistence notice:
+  would have aborted (resolve_work_plans_dir: <reason>) — running in
+  compatibility mode (PROGRESS_PERSISTENCE_STRICT=0)" before proceeding.
+  Copy that line into the Summary verbatim; it is the signal PR B2 uses to
+  decide when the default can flip.
+
+Fetch the issue title for `--title` via
+`gh issue view <issue> --repo <owner/repo> --json title --jq '.title'`.
+
+The entry. Use `## Local Review` for PR mode and
 `## Local Review (Pre-Push)` for branch mode so the same issue can carry
 both a pre-push and a post-PR entry on its timeline without one
-overwriting the other:
+overwriting the other. One heading per entry; `**When**` carries a numeric
+UTC offset (ADR-0013):
 
 ```markdown
-
 ## Local Review              <!-- PR mode -->
 ## Local Review (Pre-Push)   <!-- branch mode -->
 **Status**: complete
-**When**: <YYYY-MM-DD HH:MM>
+**When**: <YYYY-MM-DD HH:MM ±HH:MM>
 **By**: <agent name> (<model>)
 **Verdict**: <approved|changes-requested>
 
@@ -535,6 +624,7 @@ overwriting the other:
 **Base**: <base-ref>                 <!-- branch mode -->
 **Depth**: <tier> (reason: <signal>)
 **Must-fix**: <count> | **Suggestions**: <count>
+**Round**: <R> | **Ship**: <recommended | continue> — <one-line reason>  <!-- branch mode only -->
 
 ### Findings
 - [ ] (must-fix) <one-line summary> — `file:line`
@@ -542,16 +632,17 @@ overwriting the other:
 ```
 
 If no findings survived the silence filter, set `**Verdict**: approved`,
-`**Must-fix**: 0 | **Suggestions**: 0`, and write `No issues found. LGTM.`
-under Findings.
+`**Must-fix**: 0 | **Suggestions**: 0`, and write a single checkbox item
+under `### Findings` so the section stays parseable per ADR-0013:
+`- [ ] No issues found. LGTM.`
 
 Key points:
-- Use `- [ ]` checkboxes so findings can be checked off as addressed
-- Include only the one-line summary and location, not the full description
-- Commit progress.md after appending. Run `git add` and `git commit` in the
-  worktree where progress.md was found or created (which may differ from the
-  current working directory):
-  `git -C <worktree-path> add .agent/work-plans/issue-<issue>/progress.md && git -C <worktree-path> commit -m "progress: local review for #<issue>"`
+- Use `- [ ]` checkboxes so findings can be checked off as addressed.
+- Include only the one-line summary and location, not the full description.
+- The `**Branch**` line is what the next round's `review_progress.sh round`
+  matches on; write the exact branch name.
+- Never inline `cat >>` + `git commit` yourself; the script owns both
+  paths so the switch is one place, not two.
 
 ## Guidelines
 

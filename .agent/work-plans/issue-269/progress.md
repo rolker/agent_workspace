@@ -521,3 +521,40 @@ Revision 5 correctly resolves three of revision 4's four must-fixes (CI wiring, 
 - [x] (must-fix, round 3) NBSP-prefixed fence accepted by writer, rejected by reader → `a70a877` all three matchers use `[ \t]*`
 - [x] (suggestion, round 3) real-gate FAIL line carries the malformed-file reason → `a70a877`
 - [ ] (suggestion, round 2) the real gate's base-ref resolution hard-fails under CI on a transient fetch failure for every PR, not only gated ones — intentional fail-closed; revisit if it flakes
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 10:13 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-269-prB at `f79e35c`
+**Base**: main
+**Depth**: Deep (reason: 500+ lines; skill + knowledge files are governance triggers)
+**Must-fix**: 4 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 4 must-fix, two not mechanical (compat-path validation design, override handling)
+
+### Findings
+- [x] (must-fix) compat --title newline forges entries — `.agent/scripts/review_progress.sh:199` → 7539a35
+- [x] (must-fix) compat entry content unvalidated (second heading, open fence committed) — `.agent/scripts/review_progress.sh:199-209` → 7539a35
+- [x] (must-fix) compat retry after failed commit double-appends — `.agent/scripts/review_progress.sh:199-213` → 7539a35
+- [x] (must-fix) strict WORK_PLANS_DIR_OVERRIDE root mis-derived; claims override honored — `.agent/scripts/review_progress.sh:177-188` → 7539a35
+- [x] (suggestion) --strict-progress absent from step 1b parsing — `.claude/skills/review-code/SKILL.md` → 7539a35
+- [x] (suggestion) usage() sed line range brittle — `.agent/scripts/review_progress.sh:59` → 7539a35
+- [ ] (suggestion) progress_read.py branch regex captures backticks if **Branch** is backtick-wrapped; skill template does not wrap — `.agent/scripts/progress_read.py` deferred
+- [x] (governance) "documented as absent" note missing; AGENTS.md row is a human call — `.claude/skills/review-code/SKILL.md` → 7539a35
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 10:13 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**Branch**: feature/issue-269-prB at `9fb9876`
+**Base**: main
+**Depth**: Deep (reason: re-review of the fix commit only)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — no must-fix findings; all four round-1 fixes verified by reproduction; one low leftover (abort-path mkdir) fixed in 9fb9876
+
+### Findings
+- [x] (suggestion) strict abort created the override dir before checking it — `.agent/scripts/review_progress.sh:201` → 9fb9876
