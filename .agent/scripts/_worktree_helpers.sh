@@ -82,22 +82,42 @@ wt_registry_worktree_dirs() {
     return $rc
 }
 
-# Enumerate legacy (unregistered) project worktree dirs still under
-# <root>/worktrees/project/*, one "<name>\t<dir>" per line. A name that
-# IS registered is skipped even if a same-named leftover directory exists
-# here — it resolves through wt_registry_worktree_dirs instead, so a
-# project is never listed twice after being registered.
+# Enumerate legacy project worktree dirs still under
+# <root>/worktrees/project/*, one "<name>\t<dir>" per line — for
+# unregistered projects AND for registered ones whose worktrees were
+# created before registration (the transition case, #265 PR 2 review):
+# registering a project must never make its existing worktrees invisible
+# to list/enter/remove/merge. A dir is skipped only when it IS the
+# registered worktree dir (a worktrees= override pointing here), so a
+# project is never listed twice for the same directory.
 # Usage: while IFS=$'\t' read -r name dir; do ...; done < <(wt_legacy_worktree_dirs "$root")
 wt_legacy_worktree_dirs() {
-    local root_dir="$1" base name d
+    local root_dir="$1" base name d regdir
     base="$(wt_project_base_glob "$root_dir")"
     [ -d "$base" ] || return 0
     for d in "$base"/*/; do
         [ -d "$d" ] || continue
         name="$(basename "${d%/}")"
-        registry_lookup "$root_dir" "$name" >/dev/null 2>&1 && continue
+        if registry_lookup "$root_dir" "$name" >/dev/null 2>&1; then
+            regdir="$(registry_worktree_dir "$root_dir" "$name" 2>/dev/null || true)"
+            [ -n "$regdir" ] && [ "$(realpath -m "$regdir")" = "$(realpath -m "${d%/}")" ] && continue
+        fi
         printf '%s\t%s\n' "$name" "${d%/}"
     done
+}
+
+# The transition location for a registered project: <ws>/worktrees/project/
+# <name>/, where its worktrees lived before registration. Prints it when it
+# exists and differs from the project's current worktree dir; prints
+# nothing otherwise. enter/remove search it after the current dir.
+# Usage: t=$(wt_transition_project_base "$root_dir" "$name")
+wt_transition_project_base() {
+    local root_dir="$1" name="$2" cur t
+    t="$(wt_project_base_glob "$root_dir")/$name"
+    [ -d "$t" ] || return 0
+    cur="$(registry_worktree_dir "$root_dir" "$name" 2>/dev/null || true)"
+    [ -n "$cur" ] && [ "$(realpath -m "$cur")" = "$(realpath -m "$t")" ] && return 0
+    echo "$t"
 }
 
 # Count every existing project worktree (issue/skill subdirectory), across
@@ -154,8 +174,10 @@ wt_resolve_project_repo_root() {
 }
 
 # Ensure a registered project's worktree directory is excluded from that
-# root's own git status, and (ros2_colcon roots) invisible to colcon.
-# Idempotent; never touches a tracked file. A no-op for:
+# root's own git status. Type-specific markers (a ros2_colcon root's
+# COLCON_IGNORE) are the adapter's job — its worktree_env verb writes them
+# — never a type check here (ADR-0012). Idempotent; never touches a
+# tracked file. A no-op for:
 #   - an unregistered project (the transition fallback already lives
 #     under the WORKSPACE's own worktrees/, which is already gitignored)
 #   - a worktree dir that lies outside the project's own root (a
@@ -165,9 +187,6 @@ wt_resolve_project_repo_root() {
 #   - <epath>/.git/info/exclude gains the worktree dir's path relative to
 #     <epath> (with a trailing '/'), if <epath> is a git repo and the
 #     line is not already present.
-#   - ros2_colcon roots additionally get an empty
-#     <worktree_dir>/COLCON_IGNORE marker (mkdir -p first) so colcon never
-#     descends into a package worktree's own colcon workspace(s).
 # Usage: wt_ensure_exclusion "$root_dir" "$project_name"
 wt_ensure_exclusion() {
     local root_dir="$1" name="$2" entry etype epath wtdir rel exclude_file
@@ -188,10 +207,6 @@ wt_ensure_exclusion() {
                 fi
             fi
         fi
-    fi
-    if [ "$etype" = "ros2_colcon" ]; then
-        mkdir -p "$wtdir"
-        [ -f "$wtdir/COLCON_IGNORE" ] || : > "$wtdir/COLCON_IGNORE"
     fi
 }
 

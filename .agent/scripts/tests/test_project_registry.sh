@@ -947,27 +947,61 @@ test_worktree_create_outoftree_root_exclusion() {
         "1" "$(grep -cxF 'worktrees/' "$outside/faraway/.git/info/exclude")"
 }
 
-test_wt_ensure_exclusion_colcon_ignore() {
-    echo "TEST: wt_ensure_exclusion writes a COLCON_IGNORE marker for a ros2_colcon root"
+test_wt_ensure_exclusion_is_type_agnostic() {
+    echo "TEST: wt_ensure_exclusion writes only the exclude line for a ros2_colcon root — no type-specific marker (ADR-0012: that is the adapter's worktree_env job)"
     local sb rc=0
     sb="$(make_worktree_sandbox)"
     make_registered_project "$sb" p11colcon >/dev/null
     sed -i'' -e "s|^p11colcon single_project|p11colcon ros2_colcon|" "$sb/.agent/projects.local"
     wt "$sb" wt_ensure_exclusion "$sb" p11colcon || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    assert_eq "COLCON_IGNORE marker created" \
-        "yes" "$([ -f "$sb/projects/p11colcon/worktrees/COLCON_IGNORE" ] && echo yes || echo no)"
-    assert_eq "marker is empty" "" "$(cat "$sb/projects/p11colcon/worktrees/COLCON_IGNORE")"
-    assert_eq "exclude line also written (it's still a git repo)" \
+    assert_eq "no COLCON_IGNORE written by the generic helper" \
+        "no" "$([ -e "$sb/projects/p11colcon/worktrees/COLCON_IGNORE" ] && echo yes || echo no)"
+    assert_eq "exclude line written (it's a git repo)" \
         "1" "$(grep -cxF 'worktrees/' "$sb/projects/p11colcon/.git/info/exclude" 2>/dev/null || echo 0)"
+    assert_eq "helper source compares no project-type string literal" \
+        "0" "$(grep -c '"ros2_colcon"' "$sb/.agent/scripts/_worktree_helpers.sh")"
 
-    # Idempotent: calling again must not duplicate the exclude line or fail
-    # on an existing marker.
+    # Idempotent: calling again must not duplicate the exclude line.
     rc=0
     wt "$sb" wt_ensure_exclusion "$sb" p11colcon || rc=$?
     assert_eq "second call exit 0" "0" "$rc"
     assert_eq "exclude line still appears exactly once" \
         "1" "$(grep -cxF 'worktrees/' "$sb/projects/p11colcon/.git/info/exclude")"
+}
+
+test_transition_worktrees_survive_registration() {
+    echo "TEST: worktrees created before a project was registered stay discoverable after registration (enumeration, enter, remove)"
+    local sb out rc=0 twt
+    sb="$(make_worktree_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    # The project's checkout exists first; a worktree is created at the
+    # pre-#265 transition path BEFORE the registry line is written.
+    make_git_repo "$sb/projects/later" "file:///nonexistent/later.git"
+    twt="$sb/worktrees/project/later/issue-later-42"
+    mkdir -p "$(dirname "$twt")"
+    git -C "$sb/projects/later" worktree add -q "$twt" -b feature/issue-42 >/dev/null 2>&1
+    assert_eq "fixture: transition worktree exists" "yes" "$([ -d "$twt" ] && echo yes || echo no)"
+    # Now register it: its current worktree dir becomes <root>/worktrees.
+    echo "later single_project" >> "$sb/.agent/projects.local"
+    out="$(wt "$sb" wt_legacy_worktree_dirs "$sb")"
+    assert_eq "transition dir still enumerated after registration" \
+        "1" "$(grep -cF "later	$sb/worktrees/project/later" <<< "$out")"
+    assert_eq "wt_transition_project_base finds it" \
+        "$sb/worktrees/project/later" "$(wt "$sb" wt_transition_project_base "$sb" later)"
+    assert_eq "count includes the transition worktree" "1" "$(wt "$sb" wt_count_project_worktrees "$sb")"
+    # explicit --project remove finds and removes it
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 42 --type project --project later --force 2>&1)" || rc=$?
+    assert_eq "remove --project later exit 0 (out: ${out:0:200})" "0" "$rc"
+    assert_eq "remove reports the pre-registration location" "1" "$(grep -c 'pre-registration location' <<< "$out")"
+    assert_eq "transition worktree removed" "no" "$([ -d "$twt" ] && echo yes || echo no)"
+    # auto-detect (no --project) with one project that has only a transition dir
+    # must still resolve, not report "multiple projects"
+    git -C "$sb/projects/later" worktree add -q "$twt" -b feature/issue-42b >/dev/null 2>&1
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 42 --type project --force 2>&1)" || rc=$?
+    assert_eq "remove without --project resolves the single project across both locations" "0" "$rc"
 }
 
 test_wt_ensure_exclusion_noop_for_unregistered() {
@@ -1131,7 +1165,8 @@ test_worktree_parent_round_trip
 test_worktree_create_parent_not_autoselected
 test_worktree_create_legacy_still_uses_old_location
 test_worktree_create_outoftree_root_exclusion
-test_wt_ensure_exclusion_colcon_ignore
+test_wt_ensure_exclusion_is_type_agnostic
+test_transition_worktrees_survive_registration
 test_wt_ensure_exclusion_noop_for_unregistered
 test_registry_worktree_enumeration_for_dashboard
 test_merge_pr_finds_worktree_under_registered_root
