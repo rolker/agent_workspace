@@ -165,7 +165,10 @@ _resolve_base_dirs() {
         NEW_BASE="$(wt_workspace_base "$ROOT_DIR")"
         LEGACY_BASE="$(wt_legacy_workspace_base "$ROOT_DIR")"
     else
-        # Project type: resolve repo-specific directory
+        # Project type: resolve repo-specific directory. Fail closed on a
+        # malformed registry rather than entering on partial state.
+        registry_entries "$ROOT_DIR" >/dev/null 2>&1 || {
+            [ $? -eq 2 ] && { echo "Error: project registry is malformed; fix .agent/projects.local" >&2; return 1; }; }
         if [ -n "$PROJECT_REPO" ]; then
             # A parent root resolves to its instance, exactly as create did (#265).
             if ! PROJECT_REPO="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_REPO")"; then
@@ -206,7 +209,9 @@ _resolve_base_dirs() {
         fi
         # Worktrees created before the project was registered still live at
         # <ws>/worktrees/project/<name>/; keep finding them (#265 PR 2 review).
-        [ -n "$PROJECT_REPO" ] && TRANSITION_BASE="$(wt_transition_project_base "$ROOT_DIR" "$PROJECT_REPO")"
+        if [ -n "$PROJECT_REPO" ]; then
+            TRANSITION_BASE="$(wt_transition_project_base "$ROOT_DIR" "$PROJECT_REPO")" || return 1
+        fi
         LEGACY_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
     fi
 }

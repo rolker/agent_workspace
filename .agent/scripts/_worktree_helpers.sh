@@ -92,9 +92,16 @@ wt_registry_worktree_dirs() {
 # project is never listed twice for the same directory.
 # Usage: while IFS=$'\t' read -r name dir; do ...; done < <(wt_legacy_worktree_dirs "$root")
 wt_legacy_worktree_dirs() {
-    local root_dir="$1" base name d regdir
+    local root_dir="$1" base name d regdir lrc
     base="$(wt_project_base_glob "$root_dir")"
     [ -d "$base" ] || return 0
+    # Fail closed on a malformed registry: rc 2 from the parser means "cannot
+    # tell what is registered", so nothing here may be listed as legacy.
+    registry_entries "$root_dir" >/dev/null 2>&1; lrc=$?
+    if [ "$lrc" -eq 2 ]; then
+        echo "ERROR: project registry is malformed; refusing to enumerate legacy worktrees (fix .agent/projects.local)" >&2
+        return 2
+    fi
     for d in "$base"/*/; do
         [ -d "$d" ] || continue
         name="$(basename "${d%/}")"
@@ -112,10 +119,14 @@ wt_legacy_worktree_dirs() {
 # nothing otherwise. enter/remove search it after the current dir.
 # Usage: t=$(wt_transition_project_base "$root_dir" "$name")
 wt_transition_project_base() {
-    local root_dir="$1" name="$2" cur t
+    local root_dir="$1" name="$2" cur t rc=0
     t="$(wt_project_base_glob "$root_dir")/$name"
     [ -d "$t" ] || return 0
-    cur="$(registry_worktree_dir "$root_dir" "$name" 2>/dev/null || true)"
+    cur="$(registry_worktree_dir "$root_dir" "$name" 2>/dev/null)" || rc=$?
+    if [ "$rc" -eq 2 ]; then
+        echo "ERROR: project registry is malformed; cannot resolve the transition worktree dir for '$name'" >&2
+        return 2
+    fi
     [ -n "$cur" ] && [ "$(realpath -m "$cur")" = "$(realpath -m "$t")" ] && return 0
     echo "$t"
 }

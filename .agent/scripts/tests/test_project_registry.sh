@@ -920,6 +920,47 @@ test_worktree_create_legacy_still_uses_old_location() {
         "0" "$_excl_count"
 }
 
+test_legacy_create_never_uses_a_registered_root_on_slug_collision() {
+    echo "TEST: a legacy project/ create stays at the transition location even when a REGISTERED project shares the repo-slug name (#273 round-2 review)"
+    local sb out rc=0 other
+    sb="$(make_worktree_sandbox)"
+    make_git_repo "$sb/project" "file:///nonexistent/myrepo.git"
+    seed_commit "$sb/project"
+    # A different checkout, registered under the same name as project/'s slug.
+    other="$(make_registered_project "$sb" myrepo)"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue 995 --type project 2>&1)" || rc=$?
+    assert_eq "exit 0 (out: ${out:0:160})" "0" "$rc"
+    assert_eq "worktree created under the transition location for the legacy checkout" \
+        "yes" "$([ -d "$sb/worktrees/project/myrepo/issue-myrepo-995" ] && echo yes || echo no)"
+    assert_eq "nothing created under the registered project's root" \
+        "no" "$([ -e "$other/worktrees" ] && echo yes || echo no)"
+    assert_eq "the worktree belongs to project/ (branch exists there), not the registered checkout" \
+        "true" "$(git -C "$sb/project" show-ref --verify --quiet refs/heads/feature/issue-995 && echo true || echo false)"
+}
+
+test_malformed_registry_fails_closed_for_legacy_enumeration_and_remove() {
+    echo "TEST: a malformed registry makes legacy enumeration and project removal refuse (rc 2 / error), never list or delete on partial state"
+    local sb out rc=0
+    sb="$(make_worktree_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    make_git_repo "$sb/projects/foo" "file:///nonexistent/foo.git"
+    mkdir -p "$sb/worktrees/project/foo"
+    git -C "$sb/projects/foo" worktree add -q "$sb/worktrees/project/foo/issue-foo-43" -b feature/issue-43 >/dev/null 2>&1
+    echo "junk" >> "$sb/.agent/projects.local"
+    out="$(wt "$sb" wt_legacy_worktree_dirs "$sb" 2>/dev/null)" || rc=$?
+    assert_eq "wt_legacy_worktree_dirs returns 2" "2" "$rc"
+    assert_eq "and lists nothing" "" "$out"
+    rc=0
+    out="$(wt "$sb" wt_transition_project_base "$sb" foo 2>/dev/null)" || rc=$?
+    assert_eq "wt_transition_project_base returns 2" "2" "$rc"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_remove.sh" --issue 43 --type project --project foo --force 2>&1)" || rc=$?
+    assert_eq "worktree_remove refuses (non-zero)" "true" "$([ "$rc" -ne 0 ] && echo true || echo false)"
+    assert_eq "names the malformed registry" "1" "$(grep -c 'registry is malformed' <<< "$out")"
+    assert_eq "worktree untouched" "yes" "$([ -d "$sb/worktrees/project/foo/issue-foo-43" ] && echo yes || echo no)"
+}
+
 test_worktree_create_outoftree_root_exclusion() {
     echo "TEST: worktree_create under a registered root OUTSIDE the sandbox's own tree writes .git/info/exclude, idempotently"
     local sb outside out rc=0
@@ -1164,6 +1205,8 @@ test_worktree_create_parent_default_instance
 test_worktree_parent_round_trip
 test_worktree_create_parent_not_autoselected
 test_worktree_create_legacy_still_uses_old_location
+test_legacy_create_never_uses_a_registered_root_on_slug_collision
+test_malformed_registry_fails_closed_for_legacy_enumeration_and_remove
 test_worktree_create_outoftree_root_exclusion
 test_wt_ensure_exclusion_is_type_agnostic
 test_transition_worktrees_survive_registration
