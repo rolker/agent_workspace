@@ -67,7 +67,7 @@ help:
 	@echo "Utilities:"
 	@echo "  make lock             Lock workspace (prevent concurrent agent work)"
 	@echo "  make unlock           Unlock workspace"
-	@echo "  make merge-pr PR=<N|owner/repo#N> [REPO=owner/repo]  Merge PR, remove worktree, delete branch, sync"
+	@echo "  make merge-pr PR=<N|owner/repo#N> [REPO=owner/repo] [MERGE_PR_ARGS=--enforce|--force-unreviewed]  Merge PR (review gate: report-only by default), remove worktree, delete branch, sync"
 	@echo "  make pr-triage        Show PR status across workspace + project"
 	@echo "  make revert-feature ISSUE=<N>   Revert commits for issue <N>"
 	@echo "  make generate-skills  Regenerate /make_* slash commands"

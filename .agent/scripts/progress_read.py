@@ -210,7 +210,7 @@ def _parse_correlation(entry_type, header_lines):
     return None
 
 
-def _parse_findings(body_lines):
+def _parse_findings(body_lines, linenos=None):
     """Collect checkbox items appearing under a ``### `` sub-section of an entry.
 
     Checkboxes before the first sub-section header are ignored: ADR-0013 places
@@ -219,7 +219,9 @@ def _parse_findings(body_lines):
     """
     findings = []
     section = None
-    for line in body_lines:
+    if linenos is None:
+        linenos = [None] * len(body_lines)
+    for line, lineno in zip(body_lines, linenos):
         sub = _SUBSECTION.match(line)
         if sub:
             section = sub.group(1).strip()
@@ -234,13 +236,21 @@ def _parse_findings(body_lines):
                     "checked": box.group(1).lower() == "x",
                     "source_hint": hint.group(1) if hint else None,
                     "text": text,
+                    # 1-based file line of the checkbox: the authoritative target
+                    # for a writer that flips it (review_progress.sh check), so no
+                    # second parser has to agree with this one.
+                    "line": lineno,
                 }
             )
     return findings
 
 
 def _split_frontmatter(text):
-    """Return (issue_number_or_None, body_without_frontmatter)."""
+    """Return (issue_number_or_None, body_without_frontmatter, line_offset).
+
+    ``line_offset`` is how many lines were stripped before ``body`` starts, so
+    body-relative line numbers + offset are file line numbers (1-based).
+    """
     if text.startswith("---"):
         end = text.find("\n---", 3)
         if end != -1:
@@ -249,15 +259,15 @@ def _split_frontmatter(text):
             # `key:` line; otherwise a leading `---` horizontal rule with a later
             # `---` would swallow real body content.
             if re.search(r"^\s*[\w-]+:\s", front, re.MULTILINE):
-                body = text[end + 4 :]
+                body = text[end + 4 :].lstrip("\n")
                 match = re.search(r"^\s*issue:\s*(\d+)\s*$", front, re.MULTILINE)
                 issue = int(match.group(1)) if match else None
-                return issue, body.lstrip("\n")
-    return None, text
+                return issue, body, text.count("\n") - body.count("\n")
+    return None, text, 0
 
 
 def _split_entries(body):
-    """Yield (heading, [lines]) for each ``## `` entry block.
+    """Yield (heading, [lines], [body_line_numbers]) for each ``## `` entry block.
 
     Fence-aware: lines inside fenced code blocks are skipped entirely, so a
     ``## <Type>`` heading or checkbox quoted inside a ``` ```markdown ``` block
@@ -268,6 +278,7 @@ def _split_entries(body):
     entries = []
     current_heading = None
     current_lines = []
+    current_linenos = []
     in_fence = False
     fence_open_line = None
     for lineno, line in enumerate(body.splitlines(), start=1):
@@ -280,11 +291,13 @@ def _split_entries(body):
         heading = _ENTRY_HEADING.match(line)
         if heading:
             if current_heading is not None:
-                entries.append((current_heading, current_lines))
+                entries.append((current_heading, current_lines, current_linenos))
             current_heading = heading.group(1).strip()
             current_lines = []
+            current_linenos = []
         elif current_heading is not None:
             current_lines.append(line)
+            current_linenos.append(lineno)
     if in_fence:
         # Fence state spans the file, so an unterminated fence in ANY entry
         # would silently swallow every later heading — including a real
@@ -294,17 +307,17 @@ def _split_entries(body):
             "every later entry would be hidden — close the fence in progress.md"
         )
     if current_heading is not None:
-        entries.append((current_heading, current_lines))
+        entries.append((current_heading, current_lines, current_linenos))
     return entries
 
 
 def parse_progress(text, path=None):
     """Parse ``progress.md`` text into the JSON-able dict described in the
     module docstring."""
-    issue, body = _split_frontmatter(text)
+    issue, body, offset = _split_frontmatter(text)
     result = {"file": path, "issue": issue, "entries": []}
 
-    for heading, lines in _split_entries(body):
+    for heading, lines, linenos in _split_entries(body):
         # Header lines run until the first ``### `` sub-section.
         header_lines = []
         for line in lines:
@@ -319,12 +332,19 @@ def parse_progress(text, path=None):
             "base_type": base,
             "recognized": base in CANONICAL_TYPES,
             "predecessor_of": PREDECESSOR_OF.get(base),
+            # Every `**Key**: value` header line, so consumers (the merge gate
+            # reads **Verdict**) need no second parser.
+            "fields": {
+                m.group(1).strip(): m.group(2).strip()
+                for m in (re.match(r"^\*\*([^*]+)\*\*:\s*(.*)$", ln) for ln in header_lines)
+                if m
+            },
             "status": _field(header_lines, "Status"),
             "when": when,
             "when_has_offset": bool(when and _OFFSET.search(when.strip())),
             "by": _field(header_lines, "By"),
             "correlation": _parse_correlation(base, header_lines),
-            "findings": _parse_findings(lines),
+            "findings": _parse_findings(lines, [n + offset for n in linenos]),
         }
         result["entries"].append(entry)
 

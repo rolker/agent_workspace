@@ -307,6 +307,18 @@ class TestMalformedAndEdgeCases(unittest.TestCase):
         result = parse_progress(text)
         self.assertEqual([e["type"] for e in result["entries"]], ["Implementation", "Checkpoint"])
 
+    def test_findings_carry_file_line_numbers(self):
+        # Frontmatter offset + fence-skipping must both be accounted for: the
+        # reported line is the 1-based line in the FILE, the one a writer flips.
+        text = (
+            "---\nissue: 7\n---\n\n## Local Review (Pre-Push)\n**Branch**: b at `s`\n\n"
+            "### Findings\n```\n- [ ] fenced\n```\n- [ ] real one\n- [x] real two\n"
+        )
+        result = parse_progress(text)
+        lines = [f["line"] for f in result["entries"][0]["findings"]]
+        self.assertEqual(lines, [12, 13])
+        self.assertEqual(text.split("\n")[11], "- [ ] real one")
+
     def test_balanced_fences_across_entries_still_parse(self):
         text = "## Implementation\n```\n## not a heading\n```\n\n## Checkpoint\n**PR**: #1\n"
         result = parse_progress(text)

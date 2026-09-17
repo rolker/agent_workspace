@@ -398,7 +398,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
 | `.agent/scripts/gh_create_pr.sh` | Create PR with AI signature injection + label validation; reads body via `--body-stdin`, `--body-file`, or `--body` |
 | `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
-| `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, waits for CI on the latest HEAD before merging), remove worktree, delete branch, sync main; `--no-wait` to skip the CI wait |
+| `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, runs the review-loop merge gate, waits for CI on the latest HEAD before merging), remove worktree, delete branch, sync main; `--no-wait` to skip the CI wait; the gate is report-only by default (`--enforce` refuses on workspace PRs; `--force-unreviewed` bypasses with a `## Merge (unreviewed)` record) |
 | `.agent/scripts/update_roadmap.sh` | Auto-update roadmap status for completed issues |
 | `.agent/scripts/sync_project.py` | Sync workspace + project repos (dispatches via adapter) |
 | `.agent/scripts/validate_workspace.py` | Validate project/ configuration |
@@ -409,7 +409,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/progress_read.py` | Parse a `progress.md` timeline to JSON (`--type` filter, correlation keys, fence-aware) |
 | `.agent/scripts/tests/run_script_tests.sh` | Run every `.agent/scripts/tests/test_*.sh` suite; the `validate-script-tests` pre-commit hook (`SKIP=validate-script-tests` for WIP commits) |
 | `.agent/scripts/_progress_entry.sh` | Shared ADR-0013 entry validation + idempotency check for every `progress.md` writer **(source)** |
-| `.agent/scripts/review_progress.sh` | review-code / triage-reviews helpers: `round` / `verdict` (convergence), `persist` (progress.md persistence behind `PROGRESS_PERSISTENCE_STRICT` / `--strict`), `sources` (local findings + GitHub comments correlated by head SHA, cross-source candidates) |
+| `.agent/scripts/review_progress.sh` | Review-loop helpers shared by review-code / triage-reviews / address-findings / plan-task / review-plan: `round` / `verdict` (convergence), `persist` (progress.md persistence behind `PROGRESS_PERSISTENCE_STRICT` / `--strict`; `--soft` = non-fatal), `sources` (local findings + GitHub comments correlated by head SHA), `findings` / `check` (latest review entry's open boxes), `plan-sha` (plan-commit SHA for the `**Plan**` field) |
 
 ## References (Read When Needed, Not Upfront)
 

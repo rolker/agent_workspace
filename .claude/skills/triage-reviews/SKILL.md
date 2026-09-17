@@ -324,6 +324,14 @@ plain bullets, not checkboxes: they are dismissals, not action items, and
 the `sources` helper skips that section when it reads the file back next
 round. One `## ` heading per entry; the helper rejects anything else.
 
+**Next step.** Open checkboxes in this entry are the fix plan: print
+`/address-findings` as the next command for the calling session, which
+works them and then re-reviews with `review-code`. With no open findings,
+the PR is ready for the merge decision: `merge_pr.sh`'s review gate will
+look for this entry at the PR head with no open must-fix, and for a
+`## Decision summary` in the PR body or a comment — post one on the PR
+if none is there yet. Never chain the next skill yourself.
+
 ## Guidelines
 
 - **Triage, don't fix** — output the classified plan in the conversation. The user

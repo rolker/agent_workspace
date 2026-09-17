@@ -77,8 +77,14 @@ PROJECT_ARG="" # registered project name; selects among package worktrees that
                # host the same repo+branch under different instances
 NO_ROADMAP_UPDATE=false
 NO_WAIT=false
+# Review-loop merge gate (issue #269 PR F). Report-only by default: the gate
+# prints what it would have refused and records it, but never blocks. The
+# flip to enforce-by-default is a separate one-line PR, once the report-only
+# output has been watched on real merges.
+ENFORCE_MERGE_GATE=false
+FORCE_UNREVIEWED=false
 
-USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait]"
+USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait] [--enforce] [--force-unreviewed]"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -98,6 +104,10 @@ while [[ $# -gt 0 ]]; do
             NO_ROADMAP_UPDATE=true; shift ;;
         --no-wait)
             NO_WAIT=true; shift ;;
+        --enforce)
+            ENFORCE_MERGE_GATE=true; shift ;;
+        --force-unreviewed)
+            FORCE_UNREVIEWED=true; shift ;;
         *)
             echo "ERROR: Unknown argument: $1" >&2
             echo "$USAGE" >&2
@@ -552,6 +562,192 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
     fi
 else
     echo "  Roadmap update skipped (--no-roadmap-update)"
+fi
+
+# --- Step 1.5: Review-loop merge gate (issue #269 PR F, Layer 1) ---
+# Two preconditions from issue #269:
+#   (a) the linked issue's latest `## Local Review` / `## Integrated Review`
+#       entry correlates with the PR head SHA and is not changes-requested
+#       (Local Review: **Verdict**: approved; Integrated Review: no open
+#       must-fix / cross-confirmed finding);
+#   (b) a PR comment carrying the pinned "## Decision summary" heading.
+# Modes:
+#   default        report-only — names what it would have refused, proceeds,
+#                  and records a `## Merge (report-only)` entry
+#   --enforce      refuses (exit 1, no merge) — workspace PRs only (owner's
+#                  containment measure 2; project/package PRs stay
+#                  report-only until #265 settles where their timelines live)
+#   --force-unreviewed
+#                  bypasses both conditions with a banner and records a
+#                  `## Merge (unreviewed)` entry (all modes, all scopes)
+# The durable record goes to the issue's progress.md in the PR's open
+# worktree (via progress_append.sh, then pushed — this runs BEFORE the CI
+# wait so the push is covered by it and never races the merge), or, when
+# no worktree is open for the PR's repo, as a comment on the PR itself.
+# A pass in report-only mode records nothing.
+# Layer 2 (NOT implemented — Ask-First, ADR-0004): this gate is local-only.
+# A "Merge" click on GitHub bypasses it entirely. The server-side complement
+# would be a required status check on workspace PRs asserting the same two
+# conditions from the PR's own data — a workflow step that reads the linked
+# issue's progress.md at the head commit and the PR body/comments — and a
+# branch-protection rule requiring it. Enabling that changes CI and branch
+# protection, so it waits on the owner's explicit decision.
+_gate_reasons=()
+_gate_head=""
+_gate_json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json headRefOid,comments,body 2>/dev/null || echo "")
+if [[ -n "$_gate_json" ]]; then
+    _gate_head=$(jq -r '.headRefOid // empty' <<<"$_gate_json" 2>/dev/null || echo "")
+fi
+_gate_head_short="${_gate_head:0:7}"
+# Which worktree holds the issue's timeline (same resolution Step 1 uses).
+_gate_wt=""
+if [[ -n "$PKG_WT_DIR" ]]; then
+    _gate_wt="$PKG_WT_DIR"
+else
+    _gate_wt_repo="$ROOT_DIR"
+    [[ "$WORKTREE_TYPE" == "project" ]] && _gate_wt_repo="$ROOT_DIR/project"
+    _gate_wt=$(find_worktree_for_branch "$_gate_wt_repo" "$PR_BRANCH" || true)
+fi
+_gate_progress=""
+[[ -n "$_gate_wt" && -f "$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md" ]] \
+    && _gate_progress="$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+# (a) latest review entry at the head, approved. The reader's --type filter
+# already includes `## External Review` as Integrated Review's recognized
+# predecessor (ADR-0013); it is judged by the Integrated Review rule.
+_gate_review=""
+if [[ -z "$_gate_head" ]]; then
+    _gate_reasons+=("could not read the PR head SHA")
+elif [[ -z "$_gate_progress" ]]; then
+    if [[ -n "$PKG_WT_DIR" ]]; then
+        _gate_reasons+=("package worktree ${PKG_WT_DIR} carries no issue timeline (no progress.md for issue #${ISSUE_NUM})")
+    else
+        _gate_reasons+=("no progress.md for issue #${ISSUE_NUM} in an open worktree (looked for ${_gate_wt:-<no worktree found for $PR_BRANCH>})")
+    fi
+else
+    _gate_read_rc=0
+    _gate_read_json=$(python3 "$SCRIPT_DIR/progress_read.py" "$_gate_progress" --type "Local Review" --type "Integrated Review" 2>/dev/null) || _gate_read_rc=$?
+    if [[ "$_gate_read_rc" -ne 0 ]]; then
+        _gate_reasons+=("progress.md at $_gate_progress could not be parsed (progress_read.py exit $_gate_read_rc — malformed file, e.g. an unterminated code fence)")
+    else
+        _gate_review=$(jq -c --arg head "$_gate_head_short" '
+            .entries | map(select(.base_type == "Local Review" or .base_type == "Integrated Review" or .base_type == "External Review")) | last // empty
+            | {type, sha: (.correlation.sha // ""), verdict: (.fields.Verdict // ""),
+               open_mustfix: ([.findings[] | select((.checked | not) and ((.source_hint // "") | test("^(must-fix|cross-confirmed)")))] | length),
+               at_head: (((.correlation.sha // "")[0:7]) == $head)}' <<<"$_gate_read_json" 2>/dev/null || echo "")
+    fi
+    if [[ "$_gate_read_rc" -ne 0 ]]; then
+        :
+    elif [[ -z "$_gate_review" ]]; then
+        _gate_reasons+=("no ## Local Review / ## Integrated Review entry in $_gate_progress")
+    else
+        _gate_r_type=$(jq -r '.type' <<<"$_gate_review")
+        _gate_r_sha=$(jq -r '.sha' <<<"$_gate_review")
+        if [[ "$(jq -r '.at_head' <<<"$_gate_review")" != "true" ]]; then
+            _gate_reasons+=("latest ${_gate_r_type} entry is at \`${_gate_r_sha:-?}\`, not the PR head \`${_gate_head_short}\` (stale review)")
+        elif [[ "$_gate_r_type" == "Local Review" && "$(jq -r '.verdict' <<<"$_gate_review")" != "approved" ]]; then
+            _gate_reasons+=("latest Local Review at the head has **Verdict**: $(jq -r '.verdict' <<<"$_gate_review"), not approved")
+        elif [[ "$_gate_r_type" != "Local Review" && "$(jq -r '.open_mustfix' <<<"$_gate_review")" != "0" ]]; then
+            _gate_reasons+=("latest Integrated Review at the head still has $(jq -r '.open_mustfix' <<<"$_gate_review") open must-fix/cross-confirmed finding(s)")
+        fi
+    fi
+fi
+# (b) decision summary on the PR: in its body (the PR template's section)
+# or in any comment.
+if [[ -z "$_gate_json" ]] || ! jq -e '[(.body // ""), (.comments[]? | .body // "")] | map(select(test("(^|\\n)## Decision summary"))) | length > 0' <<<"$_gate_json" >/dev/null 2>&1; then
+    _gate_reasons+=("no \"## Decision summary\" heading in the PR body or a PR comment")
+fi
+
+_gate_record() {  # <entry type> <one-line why>
+    local etype="$1" why="$2" entry body_file mode
+    # Plain string assembly, not `$([[ ... ]] && ...)`: under `set -e` a
+    # false test as the last command of a substitution aborts the script.
+    mode="report-only"
+    [[ "$ENFORCE_MERGE_GATE" == true ]] && mode="enforce"
+    [[ "$FORCE_UNREVIEWED" == true ]] && mode="${mode}, --force-unreviewed"
+    entry="## ${etype}
+**Status**: complete
+**When**: $(date '+%Y-%m-%d %H:%M %:z')
+**By**: merge_pr.sh (${AGENT_NAME:-unknown agent})
+
+**PR**: #${PR_NUMBER} at \`${_gate_head_short:-unknown}\`
+**Mode**: ${mode}
+**Scope**: ${WORKTREE_TYPE:-package}
+**Conditions**: ${why}"
+    # Timeline path: only when the resolved worktree is itself a git repo
+    # (a package worktree is a container of sibling repos, not a repo — it
+    # has no issue timeline, so it always takes the PR-comment path) and an
+    # agent identity is set (progress_append.sh refuses to commit without).
+    local why_comment="no open worktree for the PR's repo" wt_top=""
+    # "Is a repo" must mean the directory IS a repo root, not that some
+    # ancestor is one: `git rev-parse --show-toplevel` walks up, and a
+    # package worktree container lives under the workspace checkout, so the
+    # naive check would resolve to the live main tree and commit there
+    # (round-2 review). Package worktrees never take this path at all.
+    if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
+        wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
+        if [[ -z "$wt_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$wt_top" && pwd -P)" ]]; then
+            wt_top=""
+        fi
+        # Never the main tree (or the legacy project/ checkout), even when it
+        # happens to have the PR branch checked out: AGENTS.md forbids
+        # feature commits there (round-3 review). The record goes on the PR.
+        if [[ -n "$wt_top" ]]; then
+            for _mt in "$ROOT_DIR" "$ROOT_DIR/project"; do
+                [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$wt_top" && pwd -P)" ]] && { wt_top=""; why_comment="the PR branch is checked out in the main tree, which never takes feature commits"; break; }
+            done
+        fi
+    fi
+    if [[ -n "$wt_top" ]]; then
+        if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then
+            why_comment="no agent identity set (source set_git_identity_env.sh) for a timeline commit"
+        elif printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1; then
+            if git -C "$_gate_wt" push -q origin "$PR_BRANCH" 2>/dev/null; then
+                echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed"
+                return 0
+            fi
+            # Push refused: undo exactly that one-file commit so nothing is
+            # left half-recorded, then fall back to the PR comment (one record,
+            # never a stranded commit plus a comment).
+            git -C "$_gate_wt" reset -q --soft HEAD~1 2>/dev/null || true
+            git -C "$_gate_wt" restore --staged --worktree -- ".agent/work-plans/issue-${ISSUE_NUM}/progress.md" 2>/dev/null || true
+            why_comment="the timeline commit could not be pushed to origin (undone locally)"
+        else
+            why_comment="progress_append.sh refused the timeline entry"
+        fi
+    elif [[ -n "$PKG_WT_DIR" ]]; then
+        why_comment="package worktrees carry no issue timeline"
+    fi
+    body_file=$(mktemp)
+    printf '%s\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$entry" "${AGENT_NAME:-merge_pr.sh}" "${AGENT_MODEL:-unknown}" > "$body_file"
+    if gh pr comment "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --body-file "$body_file" >/dev/null 2>&1; then
+        echo "  📝 ${why_comment} — ${etype} record posted as a comment on ${PR_REPO_SLUG:-the PR}#${PR_NUMBER}"
+    else
+        echo "  ⚠️  ${etype} record could not be written anywhere (${why_comment}; PR comment failed)" >&2
+    fi
+    rm -f "$body_file"
+}
+
+if [[ "${#_gate_reasons[@]}" -eq 0 ]]; then
+    echo "  ✅ Review gate: approved review at head \`${_gate_head_short}\` and a decision summary are present"
+else
+    _gate_why=$(IFS=';'; echo "${_gate_reasons[*]}")
+    if [[ "$FORCE_UNREVIEWED" == true ]]; then
+        echo "  ⚠️  --force-unreviewed: bypassing the review gate — ${_gate_why}"
+        _gate_record "Merge (unreviewed)" "$_gate_why"
+    elif [[ "$ENFORCE_MERGE_GATE" == true && "$WORKTREE_TYPE" == "workspace" ]]; then
+        {
+            echo "ERROR: review gate refused to merge PR #${PR_NUMBER}:"
+            for _r in "${_gate_reasons[@]}"; do echo "  - $_r"; done
+            echo "  Run the review loop (review-code / triage-reviews, then post the decision summary),"
+            echo "  or pass --force-unreviewed to bypass with an audit record."
+        } >&2
+        exit 1
+    else
+        _gate_mode_note="report-only"
+        [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: --enforce applies to workspace PRs only until #265 settles project timelines"
+        echo "  ⚠️  Review gate (${_gate_mode_note}): would have refused — ${_gate_why}"
+        _gate_record "Merge (report-only)" "$_gate_why"
+    fi
 fi
 
 # --- Step 2: Wait for CI ---
