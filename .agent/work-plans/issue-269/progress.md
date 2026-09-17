@@ -662,3 +662,18 @@ Observations 1-3 from the plan's "Checkpoint after PR B" all held on a real, non
 - [x] (suggestion) --soft merged stderr notes into stdout — `.agent/scripts/review_progress.sh` → streams separated
 - [x] (suggestion, governance) consequences-map row named only the review entry types — `.agent/knowledge/principles_review_guide.md` → all six types, five writers
 - [ ] (suggestion) --branch is ignored when --issue is set (pre-existing across B–E) — deferred; harmless, documented arity
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 12:34 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**Branch**: feature/issue-269-prE at `4af56b6`
+**Base**: main
+**Depth**: Deep (reason: re-review of the fix commit)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 2), not rising; fixed in 1988c5f and covered by a test
+
+### Findings
+- [x] (must-fix) --soft failure path discarded the captured stderr (remediation lines lost) — `.agent/scripts/review_progress.sh` → re-emitted to stderr, test added
