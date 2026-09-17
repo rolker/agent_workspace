@@ -85,10 +85,12 @@ make_sandbox() {  # <progress-body|""> [with_summary]
         git -C "$sb/worktrees/workspace/issue-workspace-7" -c user.name=t -c user.email=t@t commit --quiet -m "progress"
     fi
     git -C "$sb/worktrees/workspace/issue-workspace-7" push --quiet -u origin feature/issue-7
-    # PR fixture keyed on the workspace remote
-    local comments='[]'
+    # PR fixture keyed on the workspace remote. with_summary puts the section
+    # in a comment; body_summary puts it in the PR body (the template's place).
+    local comments='[]' body='"## Summary\n\nplain body"'
     [[ "${2:-}" == with_summary ]] && comments='[{"body":"## Decision summary\n\n**What changed**: x\n\n**Recommendation**: merge"}]'
-    printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":%s}\n' "$HEAD_SHA" "$comments" \
+    [[ "${2:-}" == body_summary ]] && body='"## Summary\n\nx\n\n## Decision summary\n\n**What changed**: in the body\n\n**Recommendation**: merge"'
+    printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":%s,"body":%s}\n' "$HEAD_SHA" "$comments" "$body" \
         > "$sb/gh_fixtures/pr_view_$(printf '%s' "$bare" | tr '/' '_')_${PR}.json"
     echo "$sb"
 }
@@ -165,7 +167,7 @@ run_case "(a2) progress.md without any review entry"     "## Plan Authored
 **Plan**: \`p.md\` at \`1111111\`" ""            "no ## Local Review"
 run_case "(b) review at a stale SHA"                     "$STALE"             with_summary  "not the PR head"
 run_case "(c) changes-requested at the head"             "$CHANGES_REQUESTED" with_summary  "not approved"
-run_case "(d) approved at head, no decision summary"     "$APPROVED_AT_HEAD"  ""            "no PR comment with a \"## Decision summary\""
+run_case "(d) approved at head, no decision summary"     "$APPROVED_AT_HEAD"  ""            "no \"## Decision summary\" heading in the PR body or a PR comment"
 run_case "(d2) Integrated Review with an open cross-confirmed finding" "$IR_OPEN" with_summary "open must-fix/cross-confirmed"
 # record is pushed to origin (survives the worktree's later removal)
 sb="$(make_sandbox "$STALE" with_summary)"; run_merge "$sb" >/dev/null 2>&1 || true
@@ -183,6 +185,35 @@ fi
 sb="$(make_sandbox "$IR_CLEAN" with_summary)"
 out="$(run_merge "$sb" 2>&1)" || true
 [[ "$out" == *"Review gate: approved review at head"* ]] && pass "(e2) Integrated Review at head with only a suggestion open passes" || fail "(e2) IR clean (out=${out:0:300})"
+# the decision summary in the PR BODY (where the template puts it) satisfies (b)
+sb="$(make_sandbox "$APPROVED_AT_HEAD" body_summary)"
+out="$(run_merge "$sb" 2>&1)" || true
+[[ "$out" == *"Review gate: approved review at head"* ]] && pass "(e3) decision summary in the PR body (no comment) satisfies condition (b)" || fail "(e3) body summary (out=${out:0:300})"
+# a legacy External Review at the head is honoured as Integrated Review's predecessor
+EXT_CLEAN="${IR_CLEAN/Integrated Review/External Review}"
+sb="$(make_sandbox "$EXT_CLEAN" with_summary)"
+out="$(run_merge "$sb" 2>&1)" || true
+[[ "$out" == *"Review gate: approved review at head"* ]] && pass "(e4) a legacy External Review at head with no open must-fix passes (ADR-0013 predecessor)" || fail "(e4) External Review (out=${out:0:300})"
+# a malformed progress.md is named as such, not as "no review entry"
+sb="$(make_sandbox $'## Implementation\n```\nunterminated' with_summary)"
+out="$(run_merge "$sb" 2>&1)" || true
+[[ "$out" == *"could not be parsed"* && "$out" != *"no ## Local Review"* ]] && pass "(f) a malformed progress.md is reported as malformed, not as missing" || fail "(f) malformed (out=${out:0:300})"
+# push refused after the record commit: the commit is undone and ONE PR comment posted
+sb="$(make_sandbox "$STALE" with_summary)"
+rm -rf "${sb}.remote.git"; mkdir -p "${sb}.remote.git"   # origin gone -> push fails
+before=$(git -C "$sb/worktrees/workspace/issue-workspace-7" rev-parse HEAD)
+out="$(run_merge "$sb" 2>&1)" || true
+if [[ "$(git -C "$sb/worktrees/workspace/issue-workspace-7" rev-parse HEAD)" == "$before" ]] \
+    && [[ -z "$(git -C "$sb/worktrees/workspace/issue-workspace-7" status --porcelain)" ]] \
+    && [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md" 2>/dev/null)" -eq 1 ]] \
+    && [[ "$out" == *"could not be pushed"*"posted as a comment"* ]]; then
+    pass "(g) push failure undoes the timeline commit and posts exactly one PR comment"
+else
+    fail "(g) push failure (out=${out:0:300})"
+fi
+# the PR comment carries the workspace signature (Authored-By + Model)
+grep -q '^\*\*Model\*\*: `' "$sb/gh_fixtures/comments_posted.md" && grep -q '^\*\*Authored-By\*\*: `Test Agent`' "$sb/gh_fixtures/comments_posted.md" \
+    && pass "(h) PR comment record carries the AI signature (Authored-By + Model)" || fail "(h) signature"
 
 # ================================================= --enforce, workspace =====
 echo "TEST: --enforce on a workspace PR refuses every gap; passes the all-good fixture"
@@ -201,6 +232,9 @@ enforce_refuses "(a) no progress.md"                 "" "" "no progress.md for i
 enforce_refuses "(b) stale SHA"                      "$STALE" with_summary "not the PR head"
 enforce_refuses "(c) changes-requested"              "$CHANGES_REQUESTED" with_summary "not approved"
 enforce_refuses "(d) no decision summary"            "$APPROVED_AT_HEAD" "" "Decision summary"
+sb="$(make_sandbox "$APPROVED_AT_HEAD" body_summary)"
+out="$(GH_MERGE_EXIT=0 run_merge "$sb" --enforce 2>&1)"; rc=$?
+[[ "$rc" -eq 0 ]] && merged_called "$sb" && pass "(e-body) --enforce with the summary in the PR body merges" || fail "(e-body) (rc=$rc out=${out:0:200})"
 sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
 out="$(GH_MERGE_EXIT=0 run_merge "$sb" --enforce 2>&1)"; rc=$?
 [[ "$rc" -eq 0 ]] && merged_called "$sb" && pass "(e) --enforce with both conditions met merges (exit 0)" || fail "(e) enforce all-good (rc=$rc out=${out:0:300})"

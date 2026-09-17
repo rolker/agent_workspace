@@ -540,9 +540,16 @@ fi
 # wait so the push is covered by it and never races the merge), or, when
 # no worktree is open for the PR's repo, as a comment on the PR itself.
 # A pass in report-only mode records nothing.
+# Layer 2 (NOT implemented — Ask-First, ADR-0004): this gate is local-only.
+# A "Merge" click on GitHub bypasses it entirely. The server-side complement
+# would be a required status check on workspace PRs asserting the same two
+# conditions from the PR's own data — a workflow step that reads the linked
+# issue's progress.md at the head commit and the PR body/comments — and a
+# branch-protection rule requiring it. Enabling that changes CI and branch
+# protection, so it waits on the owner's explicit decision.
 _gate_reasons=()
 _gate_head=""
-_gate_json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json headRefOid,comments 2>/dev/null || echo "")
+_gate_json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json headRefOid,comments,body 2>/dev/null || echo "")
 if [[ -n "$_gate_json" ]]; then
     _gate_head=$(jq -r '.headRefOid // empty' <<<"$_gate_json" 2>/dev/null || echo "")
 fi
@@ -559,20 +566,33 @@ fi
 _gate_progress=""
 [[ -n "$_gate_wt" && -f "$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md" ]] \
     && _gate_progress="$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
-# (a) latest review entry at the head, approved
+# (a) latest review entry at the head, approved. The reader's --type filter
+# already includes `## External Review` as Integrated Review's recognized
+# predecessor (ADR-0013); it is judged by the Integrated Review rule.
 _gate_review=""
 if [[ -z "$_gate_head" ]]; then
     _gate_reasons+=("could not read the PR head SHA")
 elif [[ -z "$_gate_progress" ]]; then
-    _gate_reasons+=("no progress.md for issue #${ISSUE_NUM} in an open worktree (looked for ${_gate_wt:-<no worktree found for $PR_BRANCH>})")
+    if [[ -n "$PKG_WT_DIR" ]]; then
+        _gate_reasons+=("package worktree ${PKG_WT_DIR} carries no issue timeline (no progress.md for issue #${ISSUE_NUM})")
+    else
+        _gate_reasons+=("no progress.md for issue #${ISSUE_NUM} in an open worktree (looked for ${_gate_wt:-<no worktree found for $PR_BRANCH>})")
+    fi
 else
-    _gate_review=$(python3 "$SCRIPT_DIR/progress_read.py" "$_gate_progress" --type "Local Review" --type "Integrated Review" 2>/dev/null \
-        | jq -c --arg head "$_gate_head_short" '
-            .entries | map(select(.base_type == "Local Review" or .base_type == "Integrated Review")) | last // empty
+    _gate_read_rc=0
+    _gate_read_json=$(python3 "$SCRIPT_DIR/progress_read.py" "$_gate_progress" --type "Local Review" --type "Integrated Review" 2>/dev/null) || _gate_read_rc=$?
+    if [[ "$_gate_read_rc" -ne 0 ]]; then
+        _gate_reasons+=("progress.md at $_gate_progress could not be parsed (progress_read.py exit $_gate_read_rc — malformed file, e.g. an unterminated code fence)")
+    else
+        _gate_review=$(jq -c --arg head "$_gate_head_short" '
+            .entries | map(select(.base_type == "Local Review" or .base_type == "Integrated Review" or .base_type == "External Review")) | last // empty
             | {type, sha: (.correlation.sha // ""), verdict: (.fields.Verdict // ""),
                open_mustfix: ([.findings[] | select((.checked | not) and ((.source_hint // "") | test("^(must-fix|cross-confirmed)")))] | length),
-               at_head: (((.correlation.sha // "")[0:7]) == $head)}' 2>/dev/null || echo "")
-    if [[ -z "$_gate_review" ]]; then
+               at_head: (((.correlation.sha // "")[0:7]) == $head)}' <<<"$_gate_read_json" 2>/dev/null || echo "")
+    fi
+    if [[ "$_gate_read_rc" -ne 0 ]]; then
+        :
+    elif [[ -z "$_gate_review" ]]; then
         _gate_reasons+=("no ## Local Review / ## Integrated Review entry in $_gate_progress")
     else
         _gate_r_type=$(jq -r '.type' <<<"$_gate_review")
@@ -586,9 +606,10 @@ else
         fi
     fi
 fi
-# (b) decision summary comment
-if [[ -z "$_gate_json" ]] || ! jq -e '[.comments[]? | .body // "" | select(test("(^|\\n)## Decision summary"))] | length > 0' <<<"$_gate_json" >/dev/null 2>&1; then
-    _gate_reasons+=("no PR comment with a \"## Decision summary\" heading")
+# (b) decision summary on the PR: in its body (the PR template's section)
+# or in any comment.
+if [[ -z "$_gate_json" ]] || ! jq -e '[(.body // ""), (.comments[]? | .body // "")] | map(select(test("(^|\\n)## Decision summary"))) | length > 0' <<<"$_gate_json" >/dev/null 2>&1; then
+    _gate_reasons+=("no \"## Decision summary\" heading in the PR body or a PR comment")
 fi
 
 _gate_record() {  # <entry type> <one-line why>
@@ -607,18 +628,37 @@ _gate_record() {  # <entry type> <one-line why>
 **Mode**: ${mode}
 **Scope**: ${WORKTREE_TYPE:-package}
 **Conditions**: ${why}"
-    if [[ -n "$_gate_wt" && -n "${AGENT_NAME:-}" && -n "${AGENT_EMAIL:-}" ]] \
-        && printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1 \
-        && git -C "$_gate_wt" push -q origin "$PR_BRANCH" 2>/dev/null; then
-        echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed"
-        return 0
+    # Timeline path: only when the resolved worktree is itself a git repo
+    # (a package worktree is a container of sibling repos, not a repo — it
+    # has no issue timeline, so it always takes the PR-comment path) and an
+    # agent identity is set (progress_append.sh refuses to commit without).
+    local why_comment="no open worktree for the PR's repo"
+    if [[ -n "$_gate_wt" ]] && git -C "$_gate_wt" rev-parse --show-toplevel >/dev/null 2>&1; then
+        if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then
+            why_comment="no agent identity set (source set_git_identity_env.sh) for a timeline commit"
+        elif printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1; then
+            if git -C "$_gate_wt" push -q origin "$PR_BRANCH" 2>/dev/null; then
+                echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed"
+                return 0
+            fi
+            # Push refused: undo exactly that one-file commit so nothing is
+            # left half-recorded, then fall back to the PR comment (one record,
+            # never a stranded commit plus a comment).
+            git -C "$_gate_wt" reset -q --soft HEAD~1 2>/dev/null || true
+            git -C "$_gate_wt" restore --staged --worktree -- ".agent/work-plans/issue-${ISSUE_NUM}/progress.md" 2>/dev/null || true
+            why_comment="the timeline commit could not be pushed to origin (undone locally)"
+        else
+            why_comment="progress_append.sh refused the timeline entry"
+        fi
+    elif [[ -n "$PKG_WT_DIR" ]]; then
+        why_comment="package worktrees carry no issue timeline"
     fi
     body_file=$(mktemp)
-    printf '%s\n\n---\n**Authored-By**: \`merge_pr.sh\`\n' "$entry" > "$body_file"
+    printf '%s\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$entry" "${AGENT_NAME:-merge_pr.sh}" "${AGENT_MODEL:-unknown}" > "$body_file"
     if gh pr comment "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --body-file "$body_file" >/dev/null 2>&1; then
-        echo "  📝 no open worktree for the PR's repo (or no agent identity) — ${etype} record posted as a comment on ${PR_REPO_SLUG:-the PR}#${PR_NUMBER}"
+        echo "  📝 ${why_comment} — ${etype} record posted as a comment on ${PR_REPO_SLUG:-the PR}#${PR_NUMBER}"
     else
-        echo "  ⚠️  ${etype} record could not be written anywhere (no worktree; PR comment failed)" >&2
+        echo "  ⚠️  ${etype} record could not be written anywhere (${why_comment}; PR comment failed)" >&2
     fi
     rm -f "$body_file"
 }
@@ -628,7 +668,7 @@ if [[ "${#_gate_reasons[@]}" -eq 0 ]]; then
 else
     _gate_why=$(IFS=';'; echo "${_gate_reasons[*]}")
     if [[ "$FORCE_UNREVIEWED" == true ]]; then
-        echo "  ⚠️  --force-unreviewed: bypassing the review gate — ${_gate_why}" | tee /dev/stderr
+        echo "  ⚠️  --force-unreviewed: bypassing the review gate — ${_gate_why}"
         _gate_record "Merge (unreviewed)" "$_gate_why"
     elif [[ "$ENFORCE_MERGE_GATE" == true && "$WORKTREE_TYPE" == "workspace" ]]; then
         {
