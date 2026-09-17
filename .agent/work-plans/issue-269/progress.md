@@ -486,3 +486,21 @@ Revision 5 correctly resolves three of revision 4's four must-fixes (CI wiring, 
 - [ ] (suggestion) Runner should preflight jq with a clear message (bootstrap installs it; CI has it) — `.agent/scripts/tests/run_script_tests.sh`
 - [ ] (suggestion) Loose correlation regexes; frontmatter `issue:7` without space yields None — `.agent/scripts/progress_read.py:148,155,234`
 - [ ] (suggestion) cross_model_review.sh passes a 242 KB prompt as argv to agy; open an issue — `.agent/scripts/cross_model_review.sh:110`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-17 08:54 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**PR**: #270 at `3d4ca6c`
+**Scope**: round-1 Local Review findings (entry at `20fdaab`), all six must-fixes + two suggestions
+
+- [x] (must-fix) CI red / bare remote default branch → `f8a1cc9` pins HEAD to main; verified with init.defaultBranch=master
+- [x] (must-fix) real gate inert in CI → `e7ff184` shallow-fetches origin/main, fails under CI when unresolvable, tree-diffs without a merge-base
+- [x] (must-fix) adjacent Checkpoint blocks pooled → `e7ff184` per-block judgement, fence-aware
+- [x] (must-fix) multi-heading body smuggles entries → `18ef777` one top-level heading per call
+- [x] (must-fix) newline in --title → `18ef777` rejected
+- [x] (must-fix) unchecked append redirect → `18ef777` exit 3, no false no-op
+- [x] (suggestion) AGENTS.md Script Reference → `3d4ca6c` (owner-approved Ask-First edit)
+- [x] (suggestion) jq preflight in runner → `3d4ca6c`
+- [ ] (suggestion) progress_read.py loose regexes / frontmatter without space — deferred, hand-edited files only
+- [ ] (suggestion) cross_model_review.sh argv limit with agy — filed as a separate issue
