@@ -504,3 +504,20 @@ Revision 5 correctly resolves three of revision 4's four must-fixes (CI wiring, 
 - [x] (suggestion) jq preflight in runner → `3d4ca6c`
 - [ ] (suggestion) progress_read.py loose regexes / frontmatter without space — deferred, hand-edited files only
 - [ ] (suggestion) cross_model_review.sh argv limit with agy — filed as a separate issue
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 09:08 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**PR**: #270 at `a70a877`
+**Depth**: Deep (rounds 2 and 3: fresh adversarial re-review of the fix commits only)
+**Must-fix**: 0 | **Suggestions**: 1
+**Convergence**: round 1 → 6 must-fix; round 2 → 1 new (unterminated fence hides later entries); round 3 → 1 new (fence-regex NBSP parity) + 1 diagnostic gap; round-3 items fixed in `a70a877` and verified by the affected suites; no further review round
+
+### Findings
+- [x] (must-fix, round 2) unterminated fence silently hid later entries in progress_read.py and the gate → `a1107c4` writer refuses, both readers exit 2 loudly
+- [x] (must-fix, round 3) NBSP-prefixed fence accepted by writer, rejected by reader → `a70a877` all three matchers use `[ \t]*`
+- [x] (suggestion, round 3) real-gate FAIL line carries the malformed-file reason → `a70a877`
+- [ ] (suggestion, round 2) the real gate's base-ref resolution hard-fails under CI on a transient fetch failure for every PR, not only gated ones — intentional fail-closed; revisit if it flakes
