@@ -67,19 +67,48 @@ GATED_FILES=(
 # **Review entry SHA**, **Resolver-hit**, **Decision summary URL**. Reads
 # fields, not just heading presence — a Checkpoint heading with one field
 # missing still fails.
+#
+# Each "## Checkpoint" block is judged on its own: a new "## Checkpoint"
+# heading closes the previous block, so two adjacent incomplete entries can
+# never pool their fields into one false pass (round-1 review must-fix).
+# Fenced code (``` / ~~~) is skipped so a quoted heading or field is not
+# mistaken for a real one.
 checkpoint_entry_complete() {
-    local content="$1" entry
-    entry=$(printf '%s\n' "$content" | awk '
-        /^## Checkpoint[[:space:]]*$/ { flag=1; next }
-        /^## / { flag=0 }
-        flag { print }
-    ')
-    [[ -n "$entry" ]] || return 1
-    grep -q '^\*\*PR\*\*:' <<<"$entry" || return 1
-    grep -q '^\*\*Review entry SHA\*\*:' <<<"$entry" || return 1
-    grep -q '^\*\*Resolver-hit\*\*:' <<<"$entry" || return 1
-    grep -q '^\*\*Decision summary URL\*\*:' <<<"$entry" || return 1
-    return 0
+    local content="$1"
+    printf '%s\n' "$content" | awk '
+        function close_block() { if (inblk && pr && sha && res && url) ok = 1; inblk = 0 }
+        /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+        fence { next }
+        /^## Checkpoint[[:space:]]*$/ { close_block(); inblk = 1; pr = sha = res = url = 0; next }
+        /^## / { close_block(); next }
+        inblk && /^\*\*PR\*\*:/ { pr = 1 }
+        inblk && /^\*\*Review entry SHA\*\*:/ { sha = 1 }
+        inblk && /^\*\*Resolver-hit\*\*:/ { res = 1 }
+        inblk && /^\*\*Decision summary URL\*\*:/ { url = 1 }
+        END { close_block(); exit ok ? 0 : 1 }
+    '
+}
+
+# resolve_base_ref <repo-dir>
+# Prints the ref the real gate compares against: origin/main if resolvable,
+# else a local main. If neither exists (a depth-1, single-ref CI checkout —
+# actions/checkout@v4's default — or a remote-less clone), tries a shallow
+# fetch of origin's main into refs/remotes/origin/main and re-checks. Prints
+# nothing (rc 1) when no base can be found even after that.
+resolve_base_ref() {
+    local repo="$1"
+    if git -C "$repo" rev-parse --verify -q origin/main >/dev/null; then
+        echo "origin/main"; return 0
+    fi
+    if git -C "$repo" rev-parse --verify -q main >/dev/null; then
+        echo "main"; return 0
+    fi
+    if git -C "$repo" remote get-url origin >/dev/null 2>&1 \
+        && git -C "$repo" fetch -q --depth=1 origin +main:refs/remotes/origin/main 2>/dev/null \
+        && git -C "$repo" rev-parse --verify -q origin/main >/dev/null; then
+        echo "origin/main"; return 0
+    fi
+    return 1
 }
 
 # checkpoint_gate <repo-dir> <base-ref> <head-ref>
@@ -163,6 +192,64 @@ for gf in "${GATED_FILES[@]}"; do
     rm -rf "$REPO"
 done
 
+# --- Two adjacent incomplete Checkpoint entries must NOT pool their fields
+#     into a pass (round-1 review must-fix): each block is judged alone. ---
+HALF_A=$'## Checkpoint\n**Status**: partial\n\n**PR**: #300\n**Review entry SHA**: `abc1234`\n'
+HALF_B=$'## Checkpoint\n**Status**: partial\n\n**Resolver-hit**: yes\n**Decision summary URL**: https://example.invalid/1\n'
+if ! checkpoint_entry_complete "$HALF_A"$'\n'"$HALF_B"; then
+    pass "two adjacent incomplete Checkpoint entries do not combine into a pass"
+else
+    fail "two adjacent incomplete Checkpoint entries do not combine into a pass"
+fi
+if checkpoint_entry_complete "$HALF_A"$'\n'"$COMPLETE_ENTRY"; then
+    pass "an incomplete Checkpoint entry followed by a complete one passes on the complete one"
+else
+    fail "an incomplete Checkpoint entry followed by a complete one passes on the complete one"
+fi
+FENCED=$'## Implementation\n**Status**: complete\n\n```\n'"$COMPLETE_ENTRY"$'```\n'
+if ! checkpoint_entry_complete "$FENCED"; then
+    pass "a complete Checkpoint entry quoted inside a code fence does not count"
+else
+    fail "a complete Checkpoint entry quoted inside a code fence does not count"
+fi
+
+# --- Base-ref resolution: a depth-1 single-branch clone (the shape
+#     actions/checkout@v4 produces) has no origin/main; the gate must fetch
+#     it rather than skip. A clone with no remote and no main resolves
+#     nothing. ---
+ORIGIN=$(_sandbox_repo)
+_write_progress "$ORIGIN" ""
+git -C "$ORIGIN" checkout -q -b feature
+printf 'x\n' > "$ORIGIN/f.txt"
+git -C "$ORIGIN" add -A
+git -C "$ORIGIN" -c user.name=t -c user.email=t@example.com commit -q -m feature
+SHALLOW=$(mktemp -d)
+git clone -q --depth=1 --branch feature --single-branch "file://$ORIGIN" "$SHALLOW/clone" 2>/dev/null
+if ! git -C "$SHALLOW/clone" rev-parse --verify -q origin/main >/dev/null \
+    && [[ "$(resolve_base_ref "$SHALLOW/clone")" == "origin/main" ]] \
+    && git -C "$SHALLOW/clone" rev-parse --verify -q origin/main >/dev/null; then
+    pass "real gate fetches origin/main into a depth-1 single-branch (CI-shaped) clone instead of skipping"
+else
+    fail "real gate fetches origin/main into a depth-1 single-branch (CI-shaped) clone instead of skipping"
+fi
+# In that shallow clone there is no merge-base; the gate still evaluates by
+# tree diff against origin/main (feature touched f.txt only: not gated -> pass).
+if [[ -z "$(git -C "$SHALLOW/clone" merge-base HEAD origin/main 2>/dev/null)" ]] \
+    && checkpoint_gate "$SHALLOW/clone" origin/main HEAD; then
+    pass "gate evaluates by tree diff against origin/main when a shallow clone has no merge-base"
+else
+    fail "gate evaluates by tree diff against origin/main when a shallow clone has no merge-base"
+fi
+NOREMOTE=$(mktemp -d)
+git -C "$NOREMOTE" init -q -b other
+git -C "$NOREMOTE" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
+if ! resolve_base_ref "$NOREMOTE" >/dev/null; then
+    pass "base-ref resolution fails (does not guess) when no origin and no main exist"
+else
+    fail "base-ref resolution fails (does not guess) when no origin and no main exist"
+fi
+rm -rf "$ORIGIN" "$SHALLOW" "$NOREMOTE"
+
 # --- A file NOT on the gated list is unaffected by an absent Checkpoint
 #     entry (the gate is scoped, not a blanket refusal of every PR). ---
 REPO=$(_sandbox_repo)
@@ -191,31 +278,38 @@ else
     fail "own filename ('$SELF_NAME') appears in run_script_tests.sh's presence assertion"
 fi
 
-# --- Real gate: this repo's actual current branch vs. origin/main (falling
-#     back to the merge-base with main, then to main itself, if origin/main
-#     isn't a resolvable ref — e.g. a shallow or remote-less clone). This is
-#     the enforcement that actually blocks a PR: if it fails here, a gated
-#     file changed on this branch and no complete Checkpoint entry exists on
-#     the base. No network access is required — only local refs already
-#     fetched are read. ---
+# --- Real gate: this repo's actual current branch vs. origin/main (or a
+#     local main). This is the enforcement that actually blocks a PR: if it
+#     fails here, a gated file changed on this branch and no complete
+#     Checkpoint entry exists on the base. A CI checkout (actions/checkout@v4
+#     default: depth 1, single ref) has no origin/main, so resolve_base_ref
+#     fetches it — the round-1 review found the gate silently passing there.
+#     If no base can be resolved at all, that is a FAILURE under CI
+#     (CI/GITHUB_ACTIONS set): the gate must never pass by default where it
+#     is meant to enforce. Outside CI (a remote-less scratch clone) it is
+#     skipped with a note. ---
 REAL_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"
 if [[ -z "$REAL_ROOT" ]]; then
     fail "real gate: could not resolve this repo's toplevel"
 else
-    BASE_REF=""
-    if git -C "$REAL_ROOT" rev-parse --verify -q origin/main >/dev/null; then
-        BASE_REF="origin/main"
-    elif git -C "$REAL_ROOT" rev-parse --verify -q main >/dev/null; then
-        BASE_REF="main"
-    fi
+    BASE_REF="$(resolve_base_ref "$REAL_ROOT" || true)"
     if [[ -z "$BASE_REF" ]]; then
-        echo "note: real gate skipped — neither origin/main nor main is a resolvable ref in this checkout" >&2
-        pass "real gate: skipped (no origin/main or main ref available — not a failure of the gate itself)"
+        if [[ -n "${CI:-}${GITHUB_ACTIONS:-}" ]]; then
+            fail "real gate: no origin/main or main ref could be resolved or fetched in this CI checkout — refusing to pass by default"
+        else
+            echo "note: real gate skipped — neither origin/main nor main is resolvable and no origin to fetch from (not CI)" >&2
+            pass "real gate: skipped outside CI (no origin/main, main, or fetchable origin)"
+        fi
     else
         MERGE_BASE="$(git -C "$REAL_ROOT" merge-base HEAD "$BASE_REF" 2>/dev/null)"
         if [[ -z "$MERGE_BASE" ]]; then
-            fail "real gate: could not compute merge-base of HEAD and $BASE_REF"
-        elif checkpoint_gate "$REAL_ROOT" "$MERGE_BASE" HEAD; then
+            # Shallow checkout (no shared history to walk): compare trees
+            # against the base tip directly. For a PR merge commit whose
+            # first parent is main's tip, that is the PR's own change set.
+            echo "note: real gate: no merge-base with $BASE_REF (shallow clone) — comparing against $BASE_REF's tree directly" >&2
+            MERGE_BASE="$BASE_REF"
+        fi
+        if checkpoint_gate "$REAL_ROOT" "$MERGE_BASE" HEAD; then
             pass "real gate: this branch vs. $BASE_REF (merge-base $MERGE_BASE) — no gated file blocked"
         else
             fail "real gate: this branch touches a checkpoint-gated file (${GATED_FILES[*]}) without a complete ## Checkpoint entry on $BASE_REF's .agent/work-plans/issue-269/progress.md"
