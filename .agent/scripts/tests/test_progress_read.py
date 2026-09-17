@@ -300,6 +300,13 @@ class TestMalformedAndEdgeCases(unittest.TestCase):
             parse_progress(text)
         self.assertIn("line 3", str(ctx.exception))
 
+    def test_nbsp_prefixed_backticks_are_not_a_fence(self):
+        # Parity with the awk matchers (ASCII space/tab only): an NBSP-prefixed
+        # ``` line is body text to every parser, not an unterminated fence.
+        text = "## Implementation\n ```\nbody\n\n## Checkpoint\n**PR**: #1\n"
+        result = parse_progress(text)
+        self.assertEqual([e["type"] for e in result["entries"]], ["Implementation", "Checkpoint"])
+
     def test_balanced_fences_across_entries_still_parse(self):
         text = "## Implementation\n```\n## not a heading\n```\n\n## Checkpoint\n**PR**: #1\n"
         result = parse_progress(text)

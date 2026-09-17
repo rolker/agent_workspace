@@ -91,7 +91,7 @@ ENTRY_TYPE="${ENTRY_TYPE%"${ENTRY_TYPE##*[![:space:]]}"}"
 # entry — a body could smuggle a forged `## Checkpoint` past the whitelist.
 # Fenced code blocks (``` or ~~~) are exempt so an entry can quote a heading.
 EXTRA_HEADINGS=$(printf '%s\n' "$ENTRY" | awk '
-    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    /^[ \t]*(```|~~~)/ { fence = !fence; next }
     fence { next }
     /^## / { n++; if (n > 1) print }
 ')
@@ -104,7 +104,7 @@ fi
 # every reader (progress_read.py, the checkpoint gate), so one unterminated
 # fence here would hide every entry appended after it. Refuse at write time.
 if ! printf '%s\n' "$ENTRY" | awk '
-    /^[[:space:]]*(```|~~~)/ { fence = !fence }
+    /^[ \t]*(```|~~~)/ { fence = !fence }
     END { exit fence ? 1 : 0 }
 '; then
     echo "error: entry has an unterminated code fence (\`\`\` or ~~~); it would hide every later entry from readers" >&2

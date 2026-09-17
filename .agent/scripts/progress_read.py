@@ -104,7 +104,11 @@ _CHECKBOX = re.compile(r"^- \[([ xX])\]\s+(.*)$")
 _LEADING_PAREN = re.compile(r"^\(([^)]*)\)")
 _OFFSET = re.compile(r"(?:[+-]\d{2}:\d{2}|Z)$")
 # Fenced code block delimiter (``` or ~~~, optionally indented / with info string).
-_FENCE = re.compile(r"^\s*(?:```|~~~)")
+# ASCII space/tab only (CommonMark fence indentation), and deliberately NOT
+# ``\s``: Python's ``\s`` also matches NBSP and other Unicode whitespace, which
+# the awk matchers in progress_append.sh and test_checkpoint_269.sh do not, so
+# the three parsers would disagree on what is a fence (round-3 review).
+_FENCE = re.compile(r"^[ \t]*(?:```|~~~)")
 
 
 class MalformedProgressError(ValueError):

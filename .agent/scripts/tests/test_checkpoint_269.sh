@@ -77,7 +77,7 @@ checkpoint_entry_complete() {
     local content="$1"
     printf '%s\n' "$content" | awk '
         function close_block() { if (inblk && pr && sha && res && url) ok = 1; inblk = 0 }
-        /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+        /^[ \t]*(```|~~~)/ { fence = !fence; next }
         fence { next }
         /^## Checkpoint[[:space:]]*$/ { close_block(); inblk = 1; pr = sha = res = url = 0; next }
         /^## / { close_block(); next }
@@ -327,8 +327,14 @@ else
             echo "note: real gate: no merge-base with $BASE_REF (shallow clone) — comparing against $BASE_REF's tree directly" >&2
             MERGE_BASE="$BASE_REF"
         fi
-        if checkpoint_gate "$REAL_ROOT" "$MERGE_BASE" HEAD; then
+        GATE_ERR=$(checkpoint_gate "$REAL_ROOT" "$MERGE_BASE" HEAD 2>&1 >/dev/null); GATE_RC=$?
+        if [[ "$GATE_RC" -eq 0 ]]; then
             pass "real gate: this branch vs. $BASE_REF (merge-base $MERGE_BASE) — no gated file blocked"
+        elif [[ "$GATE_RC" -eq 2 ]]; then
+            # Carry the real reason into the FAIL line itself, not just stderr
+            # above it (round-3 review): rc 2 is a malformed file, not a
+            # missing entry.
+            fail "real gate: $BASE_REF's .agent/work-plans/issue-269/progress.md is malformed — $GATE_ERR"
         else
             fail "real gate: this branch touches a checkpoint-gated file (${GATED_FILES[*]}) without a complete ## Checkpoint entry on $BASE_REF's .agent/work-plans/issue-269/progress.md"
         fi
