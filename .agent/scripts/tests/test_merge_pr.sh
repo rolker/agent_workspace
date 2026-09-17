@@ -464,6 +464,28 @@ test_same_repo_under_two_instances_requires_project() {
     assert_eq "inst1 worktree untouched" "true" "$([ -d "$wt1" ] && echo true || echo false)"
 }
 
+test_project_parent_alias_selects_instance_manifest() {
+    echo "TEST: --project <parent> matches a manifest whose header names the resolved instance (#273 round-2 review)"
+    local sb out rc=0 origin_a wt
+    sb="$(make_merge_sandbox)"
+    # Registry: parent p11 with default instance p11-rolling. worktree_create
+    # resolves the parent before writing the manifest header, so the header
+    # says p11-rolling; the user still types --project p11.
+    mkdir -p "$sb/p11root/rolling"
+    git -C "$sb/p11root/rolling" init --quiet
+    printf 'p11 project %s default_instance=p11-rolling\np11-rolling ros2_colcon %s parent=p11\n' \
+        "$sb/p11root" "$sb/p11root/rolling" >> "$sb/.agent/projects.local"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11-rolling/issue-p11-rolling-owner-pkg_a-562" \
+        p11-rolling "owner/pkg_a#562" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-562")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 562 "feature/issue-562"
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#562 --project p11 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0 with --project p11 (parent alias)" "0" "$rc"
+    assert_eq "instance's package worktree removed" "false" "$([ -d "$wt" ] && echo true || echo false)"
+    assert_eq "merged" "true" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
+}
+
 test_remote_branch_already_gone_is_not_a_failure() {
     echo "TEST: a head branch GitHub already auto-deleted counts as cleaned up, not incomplete"
     local sb out rc=0 origin_a wt
@@ -636,6 +658,57 @@ test_legacy_single_repo_project_pr_regression() {
         "$(git -C "$sb/project" show-ref --verify --quiet refs/heads/feature/issue-77 && echo true || echo false)"
 }
 
+test_registered_project_root_pr_regression() {
+    echo "TEST: a registered (out-of-tree) single-repo project PR is resolved and its worktree, under the project's OWN root, is cleaned up (#265 PR 2)"
+    local sb out rc=0 wt bare curbr pj_remote outside
+    sb="$(make_merge_sandbox)"
+    outside="$(mktemp -d)"
+    SANDBOXES+=("$outside")
+    mkdir -p "$outside/farrepo"
+    git -C "$outside/farrepo" init --quiet
+    git -C "$outside/farrepo" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+    bare="${sb}.farrepo.remote.git"
+    SANDBOXES+=("$bare")
+    git init --bare --quiet "$bare"
+    git -C "$outside/farrepo" remote add origin "$bare"
+    curbr="$(git -C "$outside/farrepo" symbolic-ref --short HEAD)"
+    git -C "$outside/farrepo" push --quiet -u origin "$curbr"
+    pj_remote="$(git -C "$outside/farrepo" remote get-url origin)"
+    echo "farrepo single_project $outside/farrepo" >> "$sb/.agent/projects.local"
+
+    # No new commit on the feature branch (see the legacy-project test
+    # above for why: `gh pr merge` is stubbed, so a real new commit would
+    # leave the branch "not fully merged" and defeat the safe `branch -d`).
+    git -C "$outside/farrepo" branch feature/issue-78
+    wt="$outside/farrepo/worktrees/issue-farrepo-78"
+    mkdir -p "$(dirname "$wt")"
+    git -C "$outside/farrepo" worktree add --quiet "$wt" feature/issue-78
+    write_pr_view_fixture "$sb" "$pj_remote" 78 "feature/issue-78"
+
+    out="$(run_merge_pr "$sb" --pr 78 --project farrepo --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "project type auto-detected" "Merging PR #78 (issue #78)" "$out"
+    assert_eq "worktree removed from under the registered (out-of-tree) root" \
+        "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "feature branch deleted in the registered project's own repo" "false" \
+        "$(git -C "$outside/farrepo" show-ref --verify --quiet refs/heads/feature/issue-78 && echo true || echo false)"
+}
+
+test_ambiguous_project_root_type_project_fails_fast() {
+    echo "TEST: --type project with >1 non-parent project registered and no --project fails fast instead of falling through with an empty project root (#273 round-1 review)"
+    local sb out rc=0
+    sb="$(make_merge_sandbox)"
+    echo "alpha single_project $sb/alpha" >> "$sb/.agent/projects.local"
+    echo "beta single_project $sb/beta" >> "$sb/.agent/projects.local"
+
+    out="$(run_merge_pr "$sb" --pr 88 --type project --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "surfaces wt_resolve_project_repo_root's ambiguity error" \
+        "multiple projects registered; pass --project" "$out"
+    assert_eq "no gh calls made (fails before any PR lookup)" \
+        "false" "$([ -f "$sb/gh_calls.log" ] && echo true || echo false)"
+}
+
 # ---- Run all tests ----
 echo "=== merge_pr.sh package-worktree tests (#252 PR 2) ==="
 echo ""
@@ -651,6 +724,7 @@ test_own_repo_sync_failure_is_reported
 test_package_repo_without_worktree_never_uses_legacy_cleanup
 test_repo_conflicting_type_rejected
 test_same_repo_under_two_instances_requires_project
+test_project_parent_alias_selects_instance_manifest
 test_remote_branch_already_gone_is_not_a_failure
 test_sweep_reports_unmerged_local_branch
 test_failed_worktree_removal_marks_cleanup_incomplete
@@ -658,6 +732,8 @@ test_kept_worktree_banner
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression
+test_registered_project_root_pr_regression
+test_ambiguous_project_root_type_project_fails_fast
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

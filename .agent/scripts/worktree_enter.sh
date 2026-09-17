@@ -159,12 +159,16 @@ _resolve_base_dirs() {
     local type="$1"
     NEW_BASE=""
     LEGACY_BASE=""
+    TRANSITION_BASE=""
 
     if [ "$type" == "workspace" ]; then
         NEW_BASE="$(wt_workspace_base "$ROOT_DIR")"
         LEGACY_BASE="$(wt_legacy_workspace_base "$ROOT_DIR")"
     else
-        # Project type: resolve repo-specific directory
+        # Project type: resolve repo-specific directory. Fail closed on a
+        # malformed registry rather than entering on partial state.
+        registry_entries "$ROOT_DIR" >/dev/null 2>&1 || {
+            [ $? -eq 2 ] && { echo "Error: project registry is malformed; fix .agent/projects.local" >&2; return 1; }; }
         if [ -n "$PROJECT_REPO" ]; then
             # A parent root resolves to its instance, exactly as create did (#265).
             if ! PROJECT_REPO="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_REPO")"; then
@@ -174,24 +178,39 @@ _resolve_base_dirs() {
                 return 1 2>/dev/null || exit 1
             fi
         else
-            # Auto-detect: find the single project repo directory, or scan all
-            local proj_base
-            proj_base="$(wt_project_base_glob "$ROOT_DIR")"
-            if [ -d "$proj_base" ]; then
-                local repo_dirs=()
-                for d in "$proj_base"/*/; do
-                    [ -d "$d" ] && repo_dirs+=("$d")
-                done
-                if [ "${#repo_dirs[@]}" -eq 1 ]; then
-                    NEW_BASE="${repo_dirs[0]%/}"
-                elif [ "${#repo_dirs[@]}" -gt 1 ]; then
-                    echo "Error: Multiple projects registered. Use --project to specify:" >&2
-                    for d in "${repo_dirs[@]}"; do
-                        echo "  --project $(basename "${d%/}")" >&2
-                    done
-                    return 1
+            # Auto-detect: find the single project, or list every candidate
+            # for --project to disambiguate (#265). The enumeration lists a
+            # registered project's current dir AND its pre-registration
+            # transition dir under the same name, so distinct names decide.
+            local -a candidates=()
+            local cname cdir
+            while IFS=$'\t' read -r cname cdir; do
+                [ -z "$cdir" ] && continue
+                candidates+=("$cname"$'\t'"$cdir")
+            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+            local -a names=()
+            local c n
+            for c in "${candidates[@]}"; do
+                n="$(cut -f1 <<< "$c")"
+                [[ " ${names[*]} " == *" $n "* ]] || names+=("$n")
+            done
+            if [ "${#names[@]}" -eq 1 ]; then
+                PROJECT_REPO="${names[0]}"
+                if ! NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")"; then
+                    return 1 2>/dev/null || exit 1
                 fi
+            elif [ "${#names[@]}" -gt 1 ]; then
+                echo "Error: Multiple projects registered. Use --project to specify:" >&2
+                for n in "${names[@]}"; do
+                    echo "  --project $n" >&2
+                done
+                return 1
             fi
+        fi
+        # Worktrees created before the project was registered still live at
+        # <ws>/worktrees/project/<name>/; keep finding them (#265 PR 2 review).
+        if [ -n "$PROJECT_REPO" ]; then
+            TRANSITION_BASE="$(wt_transition_project_base "$ROOT_DIR" "$PROJECT_REPO")" || return 1
         fi
         LEGACY_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
     fi
@@ -205,6 +224,9 @@ if [ -n "$SKILL_NAME" ]; then
     # Skill mode: search new location, then legacy
     if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_skill "$NEW_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
+    elif [ -n "$TRANSITION_BASE" ] && FOUND=$(find_worktree_by_skill "$TRANSITION_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
+        WORKTREE_DIR="$FOUND"
+        echo "⚠️  Found worktree at the pre-registration location ($TRANSITION_BASE). Remove and recreate to move it under the project root." >&2
     elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_skill "$LEGACY_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
         echo "⚠️  Found worktree in legacy location. Remove and recreate to use new layout." >&2
@@ -221,6 +243,9 @@ else
     # header exactly (ADR-0012) — never by the trailing number alone.
     if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_issue "$NEW_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
+    elif [ -n "$TRANSITION_BASE" ] && FOUND=$(find_worktree_by_issue "$TRANSITION_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
+        WORKTREE_DIR="$FOUND"
+        echo "⚠️  Found worktree at the pre-registration location ($TRANSITION_BASE). Remove and recreate to move it under the project root." >&2
     elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_issue "$LEGACY_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
         echo "⚠️  Found worktree in legacy location. Remove and recreate to use new layout." >&2
@@ -234,8 +259,23 @@ else
                     fi
                     ;;
                 project)
+                    # A registered root's worktree dir rarely contains the
+                    # literal "worktrees/project" segment (only the legacy
+                    # fallback does), so also accept any toplevel that is
+                    # a registered root's worktree dir plus one path
+                    # component (#265).
                     if [[ "$CURRENT_TOPLEVEL" == */worktrees/project/* ]]; then
                         WORKTREE_DIR="$CURRENT_TOPLEVEL"
+                    else
+                        _ct_parent="$(dirname "$CURRENT_TOPLEVEL")"
+                        while IFS=$'\t' read -r _ct_name _ct_dir; do
+                            [ -z "$_ct_dir" ] && continue
+                            if [ "$_ct_dir" = "$_ct_parent" ]; then
+                                WORKTREE_DIR="$CURRENT_TOPLEVEL"
+                                break
+                            fi
+                        done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+                        unset _ct_parent _ct_name _ct_dir
                     fi
                     ;;
             esac

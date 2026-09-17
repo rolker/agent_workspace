@@ -137,11 +137,16 @@ _resolve_base_dirs() {
     local type="$1"
     NEW_BASE=""
     LEGACY_BASE=""
+    TRANSITION_BASE=""
 
     if [ "$type" == "workspace" ]; then
         NEW_BASE="$(wt_workspace_base "$ROOT_DIR")"
         LEGACY_BASE="$(wt_legacy_workspace_base "$ROOT_DIR")"
     else
+        # Fail closed: a malformed registry means we cannot tell which
+        # worktree belongs to which project — never remove on partial state.
+        registry_entries "$ROOT_DIR" >/dev/null 2>&1 || {
+            [ $? -eq 2 ] && { echo "Error: project registry is malformed; fix .agent/projects.local before removing project worktrees" >&2; return 1; }; }
         if [ -n "$PROJECT_REPO" ]; then
             # A parent root resolves to its instance, exactly as create did (#265).
             PROJECT_REPO="$(registry_resolve_project_arg "$ROOT_DIR" "$PROJECT_REPO")" || exit 1
@@ -149,23 +154,37 @@ _resolve_base_dirs() {
                 exit 1
             fi
         else
-            local proj_base
-            proj_base="$(wt_project_base_glob "$ROOT_DIR")"
-            if [ -d "$proj_base" ]; then
-                local repo_dirs=()
-                for d in "$proj_base"/*/; do
-                    [ -d "$d" ] && repo_dirs+=("$d")
+            # Auto-detect: find the single project, or list every candidate
+            # for --project to disambiguate (#265). The enumeration lists a
+            # registered project's current dir AND its pre-registration
+            # transition dir under the same name, so distinct names decide.
+            local -a candidates=()
+            local cname cdir
+            while IFS=$'\t' read -r cname cdir; do
+                [ -z "$cdir" ] && continue
+                candidates+=("$cname"$'\t'"$cdir")
+            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+            local -a names=()
+            local c n
+            for c in "${candidates[@]}"; do
+                n="$(cut -f1 <<< "$c")"
+                [[ " ${names[*]} " == *" $n "* ]] || names+=("$n")
+            done
+            if [ "${#names[@]}" -eq 1 ]; then
+                PROJECT_REPO="${names[0]}"
+                NEW_BASE="$(wt_project_base "$ROOT_DIR" "$PROJECT_REPO")" || exit 1
+            elif [ "${#names[@]}" -gt 1 ]; then
+                echo "Error: Multiple projects registered. Use --project to specify:" >&2
+                for n in "${names[@]}"; do
+                    echo "  --project $n" >&2
                 done
-                if [ "${#repo_dirs[@]}" -eq 1 ]; then
-                    NEW_BASE="${repo_dirs[0]%/}"
-                elif [ "${#repo_dirs[@]}" -gt 1 ]; then
-                    echo "Error: Multiple projects registered. Use --project to specify:" >&2
-                    for d in "${repo_dirs[@]}"; do
-                        echo "  --project $(basename "${d%/}")" >&2
-                    done
-                    return 1
-                fi
+                return 1
             fi
+        fi
+        # Worktrees created before the project was registered still live at
+        # <ws>/worktrees/project/<name>/; keep finding them (#265 PR 2 review).
+        if [ -n "$PROJECT_REPO" ]; then
+            TRANSITION_BASE="$(wt_transition_project_base "$ROOT_DIR" "$PROJECT_REPO")" || return 1
         fi
         LEGACY_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
     fi
@@ -178,6 +197,9 @@ _resolve_base_dirs "$WORKTREE_TYPE" || exit 1
 if [ -n "$SKILL_NAME" ]; then
     if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_skill "$NEW_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
+    elif [ -n "$TRANSITION_BASE" ] && FOUND=$(find_worktree_by_skill "$TRANSITION_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
+        WORKTREE_DIR="$FOUND"
+        echo "⚠️  Found worktree at the pre-registration location ($TRANSITION_BASE)." >&2
     elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_skill "$LEGACY_BASE" "$SKILL_NAME" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
         echo "⚠️  Found worktree in legacy location." >&2
@@ -190,6 +212,9 @@ if [ -n "$SKILL_NAME" ]; then
 else
     if [ -n "$NEW_BASE" ] && FOUND=$(find_worktree_by_issue "$NEW_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
+    elif [ -n "$TRANSITION_BASE" ] && FOUND=$(find_worktree_by_issue "$TRANSITION_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
+        WORKTREE_DIR="$FOUND"
+        echo "⚠️  Found worktree at the pre-registration location ($TRANSITION_BASE)." >&2
     elif [ -n "$LEGACY_BASE" ] && FOUND=$(find_worktree_by_issue "$LEGACY_BASE" "$ISSUE_REF" "$REPO_SLUG"); then
         WORKTREE_DIR="$FOUND"
         echo "⚠️  Found worktree in legacy location." >&2
@@ -300,6 +325,11 @@ done
 # Aggregate dir last: a no-op for the legacy/single-entry shape (already
 # removed above, since dest == WORKTREE_DIR); deletes the leftover
 # .worktree-repos/env.sh/build.sh/test.sh/layer dirs for a package worktree.
+# Only $WORKTREE_DIR itself is removed — never its parent (the root's
+# worktrees/ dir, registered or legacy). Unregistering a project that has
+# no worktrees left is PR 4's concern (#265); this script never deletes a
+# directory the user may have customized (a worktrees= override, say),
+# so an empty worktrees/ dir is simply left behind.
 rm -rf "$WORKTREE_DIR"
 
 echo ""

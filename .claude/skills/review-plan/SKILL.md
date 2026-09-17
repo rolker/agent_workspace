@@ -57,10 +57,34 @@ Read the plan file directly. Extract the issue number from the path
 
 **Issue number** (e.g., `/review-plan --issue 45`):
 
-Resolve to `.agent/work-plans/issue-<N>/plan.md`. If the file doesn't
-exist, check worktrees (`worktrees/workspace/issue-workspace-<N>/` and
-`worktrees/project/*/issue-*-<N>/`) for the plan file. If not
-found, stop and inform the user.
+Resolve to `.agent/work-plans/issue-<N>/plan.md`. If the file doesn't exist,
+check the workspace worktree (`worktrees/workspace/issue-workspace-<N>/`)
+first, then every project worktree location — not just the legacy
+`worktrees/project/*/issue-*-<N>/` glob, since a registered project's
+worktrees live under its own root as of issue #265. Enumerate every root's
+worktree dir with the shared helper, the same way the worktree scripts do,
+rather than re-deriving the glob:
+
+```bash
+# shellcheck source=../../../.agent/scripts/_worktree_helpers.sh
+source .agent/scripts/_worktree_helpers.sh
+WS_ROOT="$(git rev-parse --show-toplevel)"
+# Workspace worktree first (a workspace-repo issue's plan lives here) …
+plan="$(wt_workspace_base "$WS_ROOT")/issue-workspace-<N>/.agent/work-plans/issue-<N>/plan.md"
+if [ -f "$plan" ]; then echo "$plan"; else
+    # … then every project worktree location: registered roots and the
+    # legacy / transition worktrees/project/<name>/ dirs.
+    while IFS=$'\t' read -r _name wtdir; do
+        plan="$wtdir/issue-"*"-<N>/.agent/work-plans/issue-<N>/plan.md"
+        [ -f $plan ] && { echo "$plan"; break; }
+    done < <(wt_registry_worktree_dirs "$WS_ROOT"; wt_legacy_worktree_dirs "$WS_ROOT")
+fi
+```
+
+`wt_registry_worktree_dirs` covers every registered non-parent root's
+worktree dir (in-tree or out-of-tree); `wt_legacy_worktree_dirs` covers the
+pre-#265 `worktrees/project/<name>/` fallback for unregistered projects. If
+no match is found in any of these locations, stop and inform the user.
 
 ### 2. Read the issue and any review-issue comments
 

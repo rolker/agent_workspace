@@ -257,7 +257,7 @@ test_worktree_create_package_success() {
     out="$(run_worktree_create "$sb" --issue owner/pkg_a#111 --type project --project p11 \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-111"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-111"
     assert_eq "aggregate dir created" "true" "$([ -d "$wt" ] && echo true || echo false)"
     assert_eq "named package is a real worktree (not a symlink)" \
         "false" "$([ -L "$wt/l1_ws/src/pkg_a" ] && echo true || echo false)"
@@ -315,7 +315,7 @@ test_worktree_create_rolls_back_on_second_repo_failure() {
     out="$(run_worktree_create "$sb" --issue owner/pkg_a#222 --type project --project p11 \
         --layer l1 --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-222"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-222"
     assert_eq "no aggregate dir left behind" "false" "$([ -e "$wt" ] && echo true || echo false)"
     assert_eq "pkg_a's worktree removed from the origin repo" \
         "" "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain \
@@ -338,7 +338,7 @@ test_worktree_create_rollback_on_worktree_env_failure() {
     out="$(run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project p11 \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-333"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-333"
     assert_eq "no aggregate dir left behind" "false" "$([ -e "$wt" ] && echo true || echo false)"
     assert_eq "package repo's worktree list shows only the main checkout" \
         "1" "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain | grep -c '^worktree ')"
@@ -359,7 +359,7 @@ test_worktree_remove_multi_package_dirty_refuses_all() {
     make_committed_pkg_repo "$proj" l1 pkg_b
     run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project p11 \
         --layer l1 --package-repos pkg_a,pkg_b >/dev/null 2>&1
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-333"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-333"
     echo dirty >> "$wt/l1_ws/src/pkg_b/README.md"
     out="$(run_worktree_remove "$sb" --issue owner/pkg_a#333 --type project --project p11 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
@@ -384,7 +384,7 @@ test_worktree_list_json_reports_package_worktree() {
     make_committed_pkg_repo "$proj" l1 pkg_b
     run_worktree_create "$sb" --issue owner/pkg_a#444 --type project --project p11 \
         --layer l1 --package-repos pkg_a,pkg_b >/dev/null 2>&1
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-444"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-444"
     echo dirty >> "$wt/l1_ws/src/pkg_b/README.md"
     out="$(cd "$sb" && "$sb/.agent/scripts/worktree_list.sh" --json)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
@@ -413,8 +413,8 @@ test_worktree_enter_disambiguates_by_qualified_issue() {
         --layer l1 --package-repos pkg_a >/dev/null 2>&1
     run_worktree_create "$sb" --issue owner/pkg_c#555 --type project --project p11 \
         --layer l2 --package-repos pkg_c >/dev/null 2>&1
-    wt_a="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-555"
-    wt_c="$sb/worktrees/project/p11/issue-p11-owner-pkg_c-555"
+    wt_a="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-555"
+    wt_c="$sb/projects/p11/worktrees/issue-p11-owner-pkg_c-555"
     assert_eq "pkg_a worktree exists" "true" "$([ -d "$wt_a" ] && echo true || echo false)"
     assert_eq "pkg_c worktree exists" "true" "$([ -d "$wt_c" ] && echo true || echo false)"
 
@@ -1161,6 +1161,12 @@ if [ -f $proj/layers/main/l1_ws/install/local_setup.bash ]; then source $proj/la
 if [ -f $proj/layers/main/l2_ws/install/local_setup.bash ]; then source $proj/layers/main/l2_ws/install/local_setup.bash; fi
 if [ -f $wt/l2_ws/install/local_setup.bash ]; then source $wt/l2_ws/install/local_setup.bash; fi"
     assert_eq "below-layer, same-layer (hosted, not built), worktree's own — all runtime-guarded" "$expected" "$out"
+    # ADR-0012: the colcon-specific COLCON_IGNORE marker for the worktrees dir
+    # is written here by the adapter, not by the generic worktree helpers.
+    assert_eq "worktree_env writes an empty COLCON_IGNORE in the worktree's parent dir" \
+        "yes" "$([ -f "$sb/COLCON_IGNORE" ] && [ ! -s "$sb/COLCON_IGNORE" ] && echo yes || echo no)"
+    out="$(run_adapter "$sb" worktree_env --worktree "$wt")" || true
+    assert_eq "second worktree_env call is idempotent (marker still present, output unchanged)" "$expected" "$out"
 
     local wt_env="$sb/wt_env.sh"
     printf '%s\n' "$out" > "$wt_env"

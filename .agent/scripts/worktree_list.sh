@@ -103,6 +103,7 @@ WORKTREES=$(git worktree list --porcelain)
 
 WORKSPACE_COUNT=0
 PROJECT_COUNT=0
+REGISTRY_MALFORMED=false
 
 # Helper: extract issue/repo/skill from worktree directory basename
 extract_issue_repo() {
@@ -315,23 +316,42 @@ _scan_project_worktrees() {
     done
 }
 
-# New location: worktrees/project/<repo>/
-NEW_PROJECT_BASE="$(wt_project_base_glob "$ROOT_DIR")"
-if [ -d "$NEW_PROJECT_BASE" ]; then
-    for repo_dir in "$NEW_PROJECT_BASE"/*/; do
-        [ -d "$repo_dir" ] || continue
-        _scan_project_worktrees "${repo_dir%/}" false
-    done
+# Registered roots: <root>/worktrees/ (or its worktrees= override), one
+# per registered non-parent project (#265) — plus the transition fallback
+# for still-unregistered projects, <ws>/worktrees/project/<name>/.
+# A malformed registry is reported, not silently shown as "no project
+# worktrees" (same fail-closed rule dashboard.sh applies).
+if registry_entries "$ROOT_DIR" >/dev/null 2>&1 || [ $? -ne 2 ]; then
+    while IFS=$'\t' read -r _reg_name _reg_dir; do
+        [ -z "$_reg_dir" ] && continue
+        _scan_project_worktrees "$_reg_dir" false
+    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+    unset _reg_name _reg_dir
+else
+    echo "⚠️  Project registry (.agent/projects.local) is malformed; project worktrees are NOT listed until it is fixed." >&2
+    REGISTRY_MALFORMED=true
 fi
 
-# Legacy location: project/worktrees/
-LEGACY_PROJECT_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
-_scan_project_worktrees "$LEGACY_PROJECT_BASE" true
+# Legacy location: project/worktrees/ (pre-#25 shape). Same gate: with a
+# malformed registry no project worktree is listed at all, so the summary
+# and the detail section never contradict each other.
+if [ "$REGISTRY_MALFORMED" != true ]; then
+    LEGACY_PROJECT_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
+    _scan_project_worktrees "$LEGACY_PROJECT_BASE" true
+fi
 
 # --- Output ---
 
 if [ "$JSON_OUTPUT" = true ]; then
     TOTAL=$(( PROJECT_COUNT + WORKSPACE_COUNT ))
+    # JSON consumers usually drop stderr, so the malformed state must be in
+    # the document itself: "project" is null (unknown), not 0, and the flag
+    # says why.
+    if [ "$REGISTRY_MALFORMED" = true ]; then
+        PROJECT_JSON=null
+    else
+        PROJECT_JSON="$PROJECT_COUNT"
+    fi
 
     # Build JSON array
     printf '{"worktrees":['
@@ -344,8 +364,8 @@ if [ "$JSON_OUTPUT" = true ]; then
         fi
         printf '%s' "$entry"
     done
-    printf '],"summary":{"total":%d,"project":%d,"workspace":%d,"dirty":%d}}\n' \
-        "$TOTAL" "$PROJECT_COUNT" "$WORKSPACE_COUNT" "$DIRTY_COUNT"
+    printf '],"summary":{"total":%d,"project":%s,"workspace":%d,"dirty":%d,"registry_malformed":%s}}\n' \
+        "$TOTAL" "$PROJECT_JSON" "$WORKSPACE_COUNT" "$DIRTY_COUNT" "$REGISTRY_MALFORMED"
     exit 0
 fi
 
@@ -363,8 +383,12 @@ echo "========================================"
 echo "Summary"
 echo "========================================"
 echo "  Workspace worktrees: $WORKSPACE_COUNT"
-echo "  Project worktrees:   $PROJECT_COUNT"
+if [ "$REGISTRY_MALFORMED" = true ]; then
+    echo "  Project worktrees:   NOT LISTED (project registry malformed — fix .agent/projects.local)"
+else
+    echo "  Project worktrees:   $PROJECT_COUNT"
+fi
 echo ""
 echo "Locations:"
 echo "  Workspace: worktrees/workspace/"
-echo "  Project:   worktrees/project/<repo>/"
+echo "  Project:   <registered root>/worktrees/ (or worktrees/project/<name>/ if unregistered)"
