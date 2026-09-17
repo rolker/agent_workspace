@@ -100,6 +100,16 @@ if [[ -n "$EXTRA_HEADINGS" ]]; then
     echo "       extra heading(s): $(printf '%s' "$EXTRA_HEADINGS" | tr '\n' '|')" >&2
     exit 2
 fi
+# Fences must balance within the entry: fence state spans the whole file for
+# every reader (progress_read.py, the checkpoint gate), so one unterminated
+# fence here would hide every entry appended after it. Refuse at write time.
+if ! printf '%s\n' "$ENTRY" | awk '
+    /^[[:space:]]*(```|~~~)/ { fence = !fence }
+    END { exit fence ? 1 : 0 }
+'; then
+    echo "error: entry has an unterminated code fence (\`\`\` or ~~~); it would hide every later entry from readers" >&2
+    exit 2
+fi
 # The title lands on the `# Issue #N — <title>` line of a new file; a newline
 # inside it would forge arbitrary following lines (including entries).
 if [[ "$TITLE" == *$'\n'* || "$TITLE" == *$'\r'* ]]; then

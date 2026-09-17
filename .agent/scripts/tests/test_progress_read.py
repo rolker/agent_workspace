@@ -21,7 +21,7 @@ from pathlib import Path
 # Import the module under test (mirrors test_build_report_generator.py in the
 # fork source).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from progress_read import parse_progress, _matches_type  # noqa: E402
+from progress_read import MalformedProgressError, parse_progress, _matches_type  # noqa: E402
 
 SCRIPT = str(Path(__file__).resolve().parent.parent / "progress_read.py")
 
@@ -289,6 +289,22 @@ class TestNewEntryTypes(unittest.TestCase):
 
 
 class TestMalformedAndEdgeCases(unittest.TestCase):
+    def test_unterminated_fence_raises_instead_of_hiding_later_entries(self):
+        text = (
+            "## Implementation\n**Status**: complete\n"
+            "```\nunclosed\n"
+            "## Checkpoint\n**PR**: #1\n**Review entry SHA**: a\n"
+            "**Resolver-hit**: b\n**Decision summary URL**: c\n"
+        )
+        with self.assertRaises(MalformedProgressError) as ctx:
+            parse_progress(text)
+        self.assertIn("line 3", str(ctx.exception))
+
+    def test_balanced_fences_across_entries_still_parse(self):
+        text = "## Implementation\n```\n## not a heading\n```\n\n## Checkpoint\n**PR**: #1\n"
+        result = parse_progress(text)
+        self.assertEqual([e["type"] for e in result["entries"]], ["Implementation", "Checkpoint"])
+
     def test_missing_correlation_field_does_not_crash(self):
         text = (
             "## Issue Review\n"
@@ -421,6 +437,27 @@ class TestCli(unittest.TestCase):
             text=True,
         )
         self.assertEqual(proc.returncode, 1)
+
+    def test_cli_unterminated_fence_exits_2_with_message(self):
+        # Round-2 review: an unterminated fence in an early entry used to
+        # silently hide every later entry (a real Checkpoint vanished with
+        # exit 0). The CLI must refuse loudly instead.
+        text = (
+            "## Implementation\n**Status**: complete\n"
+            "```\nquoted snippet, closing fence forgotten\n"
+            "## Checkpoint\n**PR**: #1\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "progress.md"
+            p.write_text(text, encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, SCRIPT, str(p), "--type", "Checkpoint"],
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("unterminated code fence", proc.stderr)
+        self.assertEqual(proc.stdout, "")
 
 
 if __name__ == "__main__":

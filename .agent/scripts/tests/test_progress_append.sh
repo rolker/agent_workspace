@@ -230,6 +230,17 @@ else
     fail "a '## ' line inside a code fence is accepted (rc=$rc, out=$out)"
 fi
 
+# 16c. an unterminated fence in the entry is refused at write time: every
+#      reader's fence state spans the file, so it would hide all later entries.
+head_before=$(git -C "$REPO" rev-parse HEAD)
+out=$(printf '## Implementation\n```\nforgot to close\n' | "$PA" -C "$REPO" 7 2>&1); rc=$?
+if [ "$rc" -eq 2 ] && [ "$(git -C "$REPO" rev-parse HEAD)" = "$head_before" ] \
+    && printf '%s' "$out" | grep -qi 'unterminated code fence'; then
+    pass "an entry with an unterminated code fence is rejected (would hide later entries)"
+else
+    fail "an entry with an unterminated code fence is rejected (rc=$rc, out=$out)"
+fi
+
 # 17. --title with an embedded newline would forge lines in the new file's
 #     header (the title is written verbatim); it must be rejected, no file.
 out=$(printf '## Issue Review\nx\n' | "$PA" -C "$REPO" 55 --title $'Real\n\n## Checkpoint\n**PR**: forged' 2>&1); rc=$?

@@ -51,6 +51,10 @@ full heading, the canonical ``base_type`` (so legacy suffixed headings like
 ``External Review (Round 5-6)`` match ``External Review``), and predecessor
 recognition (filtering ``Integrated Review`` also returns ``External Review``
 entries, since ADR-0013 recognizes the latter as the predecessor of the former).
+
+Exit codes: 0 parsed; 1 path is not a file; 2 the file is malformed (an
+unterminated code fence would hide every later entry, so the parser refuses
+rather than returning a partial, misleading result).
 """
 
 import argparse
@@ -101,6 +105,15 @@ _LEADING_PAREN = re.compile(r"^\(([^)]*)\)")
 _OFFSET = re.compile(r"(?:[+-]\d{2}:\d{2}|Z)$")
 # Fenced code block delimiter (``` or ~~~, optionally indented / with info string).
 _FENCE = re.compile(r"^\s*(?:```|~~~)")
+
+
+class MalformedProgressError(ValueError):
+    """progress.md cannot be parsed safely (e.g. an unterminated code fence).
+
+    Raised rather than returning a partial result: a consumer such as the
+    merge gate must not mistake "parser stopped early" for "no such entry".
+    The CLI maps it to exit code 2.
+    """
 
 
 def _canonical_base(heading):
@@ -252,9 +265,11 @@ def _split_entries(body):
     current_heading = None
     current_lines = []
     in_fence = False
-    for line in body.splitlines():
+    fence_open_line = None
+    for lineno, line in enumerate(body.splitlines(), start=1):
         if _FENCE.match(line):
             in_fence = not in_fence
+            fence_open_line = lineno if in_fence else None
             continue
         if in_fence:
             continue
@@ -266,6 +281,14 @@ def _split_entries(body):
             current_lines = []
         elif current_heading is not None:
             current_lines.append(line)
+    if in_fence:
+        # Fence state spans the file, so an unterminated fence in ANY entry
+        # would silently swallow every later heading — including a real
+        # ``## Checkpoint`` the merge gate depends on. Fail loudly instead.
+        raise MalformedProgressError(
+            f"unterminated code fence opened at body line {fence_open_line}; "
+            "every later entry would be hidden — close the fence in progress.md"
+        )
     if current_heading is not None:
         entries.append((current_heading, current_lines))
     return entries
@@ -336,7 +359,11 @@ def main(argv=None):
         print(f"error: not a file: {path}", file=sys.stderr)
         return 1
 
-    result = parse_progress(path.read_text(encoding="utf-8"), path=str(path))
+    try:
+        result = parse_progress(path.read_text(encoding="utf-8"), path=str(path))
+    except MalformedProgressError as exc:
+        print(f"error: {path}: {exc}", file=sys.stderr)
+        return 2
     if args.types:
         wanted = set(args.types)
         result["entries"] = [e for e in result["entries"] if _matches_type(e, wanted)]

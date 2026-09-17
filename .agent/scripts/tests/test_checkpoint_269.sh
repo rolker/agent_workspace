@@ -85,7 +85,16 @@ checkpoint_entry_complete() {
         inblk && /^\*\*Review entry SHA\*\*:/ { sha = 1 }
         inblk && /^\*\*Resolver-hit\*\*:/ { res = 1 }
         inblk && /^\*\*Decision summary URL\*\*:/ { url = 1 }
-        END { close_block(); exit ok ? 0 : 1 }
+        END {
+            if (fence) {
+                # An unterminated fence hides every later entry; say so
+                # instead of reporting "no complete Checkpoint" as if the
+                # file were simply missing one (round-2 review).
+                print "error: progress.md has an unterminated code fence — entries after it are hidden; close it" > "/dev/stderr"
+                exit 2
+            }
+            close_block(); exit ok ? 0 : 1
+        }
     '
 }
 
@@ -211,6 +220,15 @@ if ! checkpoint_entry_complete "$FENCED"; then
     pass "a complete Checkpoint entry quoted inside a code fence does not count"
 else
     fail "a complete Checkpoint entry quoted inside a code fence does not count"
+fi
+# An unterminated fence before a real, complete entry must be reported as a
+# malformed file (rc 2 + message), not as a silent "no Checkpoint" (rc 1).
+UNTERMINATED=$'## Implementation\n**Status**: complete\n```\nforgot to close\n'"$COMPLETE_ENTRY"
+err=$(checkpoint_entry_complete "$UNTERMINATED" 2>&1 >/dev/null); rc=$?
+if [[ "$rc" -eq 2 ]] && [[ "$err" == *"unterminated code fence"* ]]; then
+    pass "an unterminated fence is reported loudly (rc 2) rather than silently hiding a complete entry"
+else
+    fail "an unterminated fence is reported loudly (rc=$rc err=$err)"
 fi
 
 # --- Base-ref resolution: a depth-1 single-branch clone (the shape
