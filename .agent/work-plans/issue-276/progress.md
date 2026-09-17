@@ -25,3 +25,11 @@ Three-PR port of run-issue as an in-process host: a tested dispatcher with a mec
 - [x] (suggestion) fork's implement phase: digest says dispatched, plan says inline → verified inline against the scratchpad clone; digest stale
 - [x] (suggestion) split the gate change out of PR 1 → PR 0
 - [x] (suggestion) state partial/failed handling, concurrency, resume, Claude-Code-only scoping → revision 2
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-17 14:20 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `73eac30`
+
+Revision 2, addressing all five plan-review findings; four PRs (0-3); four open questions for the owner, one of them the model tier.
