@@ -752,6 +752,19 @@ adapter_worktree_env() {
         return 1
     fi
     _rc_require_manifest || return 1
+    # The worktrees dir that holds this package worktree must be invisible
+    # to colcon, or a build of the hosted instance descends into every
+    # issue worktree's own <layer>_ws. An empty COLCON_IGNORE marker in the
+    # parent does that. Type-specific, so it lives here, not in the generic
+    # worktree helpers (ADR-0012). Idempotent.
+    local wt_parent
+    wt_parent="$(dirname "$worktree")"
+    if [ -d "$wt_parent" ] && [ ! -f "$wt_parent/COLCON_IGNORE" ]; then
+        : > "$wt_parent/COLCON_IGNORE" || {
+            echo "ERROR: worktree_env: cannot write $wt_parent/COLCON_IGNORE" >&2
+            return 1
+        }
+    fi
     local layer="" ws_dir base
     for ws_dir in "$worktree"/*_ws; do
         [ -d "$ws_dir" ] || continue

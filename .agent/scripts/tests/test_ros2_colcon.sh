@@ -1161,6 +1161,12 @@ if [ -f $proj/layers/main/l1_ws/install/local_setup.bash ]; then source $proj/la
 if [ -f $proj/layers/main/l2_ws/install/local_setup.bash ]; then source $proj/layers/main/l2_ws/install/local_setup.bash; fi
 if [ -f $wt/l2_ws/install/local_setup.bash ]; then source $wt/l2_ws/install/local_setup.bash; fi"
     assert_eq "below-layer, same-layer (hosted, not built), worktree's own — all runtime-guarded" "$expected" "$out"
+    # ADR-0012: the colcon-specific COLCON_IGNORE marker for the worktrees dir
+    # is written here by the adapter, not by the generic worktree helpers.
+    assert_eq "worktree_env writes an empty COLCON_IGNORE in the worktree's parent dir" \
+        "yes" "$([ -f "$sb/COLCON_IGNORE" ] && [ ! -s "$sb/COLCON_IGNORE" ] && echo yes || echo no)"
+    out="$(run_adapter "$sb" worktree_env --worktree "$wt")" || true
+    assert_eq "second worktree_env call is idempotent (marker still present, output unchanged)" "$expected" "$out"
 
     local wt_env="$sb/wt_env.sh"
     printf '%s\n' "$out" > "$wt_env"

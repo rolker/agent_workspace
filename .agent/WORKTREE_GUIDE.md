@@ -76,9 +76,17 @@ falls back to the pre-#265 `worktrees/project/<name>/` shape shown above, so
 legacy projects keep working mid-rollout. On first worktree creation under a
 registered root, the workspace appends `worktrees/` to that root's own
 `.git/info/exclude` (never a tracked file) so the worktree dir never shows up
-in the project's own `git status`; a `ros2_colcon` root additionally gets an
-untracked `worktrees/COLCON_IGNORE` marker so colcon never descends into a
-package worktree's own colcon workspace(s).
+in the project's own `git status`. Type-specific markers are the adapter's
+job (ADR-0012): the `ros2_colcon` adapter's `worktree_env` verb writes an
+untracked `worktrees/COLCON_IGNORE` so colcon never descends into a package
+worktree's own colcon workspace(s).
+
+**Transition.** Worktrees created before a project was registered stay at
+`worktrees/project/<name>/` and remain discoverable: `worktree_list.sh`,
+`dashboard.sh`, and `merge_pr.sh` enumerate that location alongside the
+registered dir, and `worktree_enter.sh` / `worktree_remove.sh` search it
+after the registered dir (with a notice). Remove and recreate to move a
+worktree under the project root; nothing migrates it silently.
 
 ## Worktree Types
 

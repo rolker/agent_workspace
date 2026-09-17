@@ -138,8 +138,10 @@ Draft PRs target the project repo using `gh pr create -R <project-remote>`.
 
 `worktrees/` is gitignored at the workspace root. A registered project's own
 `worktrees/` dir is excluded via that root's `.git/info/exclude` on first use
-(never a tracked file); a `ros2_colcon` root additionally gets an untracked
-`worktrees/COLCON_IGNORE` marker.
+(never a tracked file); the `ros2_colcon` adapter's `worktree_env` verb
+additionally writes an untracked `worktrees/COLCON_IGNORE` marker (ADR-0012:
+type-specific behaviour stays in the adapter). Worktrees created before
+registration remain discoverable at `worktrees/project/<name>/`.
 
 ## Stamp-Based Setup (ADR-0007)
 
