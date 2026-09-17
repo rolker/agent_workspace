@@ -450,3 +450,16 @@ Revision 5 correctly resolves three of revision 4's four must-fixes (CI wiring, 
 - revision-5 must-fix (fallback merge record uncommittable on protected main) → record posted as a comment on the merged PR; no file, no commit; PR F tests stub `gh`
 - revision-5 suggestion (always_run hook cost) → ~18 s per commit stated; `SKIP=validate-script-tests` sanctioned for WIP
 - owner (2026-09-16): implementation may start with PR A
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-17 08:16 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**PR**: #270 at `3911bc9`
+**Scope**: PR A of the plan at `11c2c37` (revision 6)
+
+- `484fb94` run_script_tests.sh + validate-script-tests pre-commit hook (all 14 suites, ~18 s per commit)
+- `a7acae7` progress_append.sh + progress_read.py ported, with test_progress_append.sh / test_progress_read.py
+- `3911bc9` test_checkpoint_269.sh: C–F/B2 file changes refused until a `## Checkpoint` entry is on main
+- ADR-0013, principles_review_guide row, and ARCHITECTURE note landed in earlier commits on this branch
+- All 14 script suites pass locally; this entry is the first written by progress_append.sh itself
