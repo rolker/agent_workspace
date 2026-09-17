@@ -409,7 +409,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/progress_read.py` | Parse a `progress.md` timeline to JSON (`--type` filter, correlation keys, fence-aware) |
 | `.agent/scripts/tests/run_script_tests.sh` | Run every `.agent/scripts/tests/test_*.sh` suite; the `validate-script-tests` pre-commit hook (`SKIP=validate-script-tests` for WIP commits) |
 | `.agent/scripts/_progress_entry.sh` | Shared ADR-0013 entry validation + idempotency check for every `progress.md` writer **(source)** |
-| `.agent/scripts/review_progress.sh` | review-code / triage-reviews helpers: `round` / `verdict` (convergence), `persist` (progress.md persistence behind `PROGRESS_PERSISTENCE_STRICT` / `--strict`), `sources` (local findings + GitHub comments correlated by head SHA, cross-source candidates) |
+| `.agent/scripts/review_progress.sh` | review-code / triage-reviews / address-findings helpers: `round` / `verdict` (convergence), `persist` (progress.md persistence behind `PROGRESS_PERSISTENCE_STRICT` / `--strict`), `sources` (local findings + GitHub comments correlated by head SHA, cross-source candidates), `findings` / `check` (latest review entry's open boxes; flip one, optionally deferred) |
 
 ## References (Read When Needed, Not Upfront)
 

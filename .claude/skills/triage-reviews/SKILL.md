@@ -324,6 +324,12 @@ plain bullets, not checkboxes: they are dismissals, not action items, and
 the `sources` helper skips that section when it reads the file back next
 round. One `## ` heading per entry; the helper rejects anything else.
 
+**Next step.** Open checkboxes in this entry are the fix plan: print
+`/address-findings` as the next command for the calling session, which
+works them and then re-reviews with `review-code`. With no open findings,
+the PR is ready for the merge decision. Never chain the next skill
+yourself.
+
 ## Guidelines
 
 - **Triage, don't fix** — output the classified plan in the conversation. The user

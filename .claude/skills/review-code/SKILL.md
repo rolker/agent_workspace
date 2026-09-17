@@ -644,6 +644,11 @@ Key points:
 - Never inline `cat >>` + `git commit` yourself; the script owns both
   paths so the switch is one place, not two.
 
+**Next step.** Verdict `approved` → push (branch mode) or hand to
+`triage-reviews` (PR mode). Verdict `changes-requested` → the open boxes
+in this entry are the fix plan; print `/address-findings` as the next
+command, then this skill runs again to re-review. Never chain it yourself.
+
 ## Guidelines
 
 - **Report first, then persist** — output the review in the conversation,

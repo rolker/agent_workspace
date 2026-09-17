@@ -45,6 +45,11 @@
 #          PR head, GitHub inline comments, and candidate cross-source
 #          confirmations (same file, same head SHA) as JSON. See cmd_sources.
 #
+# findings The address-findings source entry (latest Integrated Review or
+#          Local Review (Pre-Push)) and its open findings with indexes.
+# check    Flip one of that entry's checkboxes to [x], optionally with a
+#          "(deferred: <reason>)" annotation. See cmd_findings / cmd_check.
+#
 # Exit codes: 0 ok; 2 usage; 3 append/commit failure; 4 strict-mode resolver
 # abort.
 
@@ -67,6 +72,8 @@ Usage:
   review_progress.sh persist --issue <N|""> [--branch <name>] [--title <t>]
                              [--strict] [--no-progress] < entry.md
   review_progress.sh sources --head <sha> --reviews <fetch_pr_reviews.json> [--progress <file>]
+  review_progress.sh findings --progress <file>
+  review_progress.sh check --progress <file> --index <i> [--deferred "<reason>"]
 See the header comment of this script for what each subcommand prints.
 Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort.
 EOF
@@ -353,11 +360,103 @@ print()
 '
 }
 
+# ------------------------------------------------------------- findings ---
+# findings --progress <file>
+# The address-findings source: the SINGLE latest `## Integrated Review` or
+# `## Local Review (Pre-Push)` entry (by base_type, so a legacy External
+# Review never qualifies), with its open (unchecked) findings and their
+# index among the entry's checkbox lines — the index `check` flips.
+# Exit 0 with "source": null when no qualifying entry exists.
+cmd_findings() {
+    local progress=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --progress) [[ $# -ge 2 ]] || usage; progress="$2"; shift 2 ;;
+            *) usage ;;
+        esac
+    done
+    [[ -f "$progress" ]] || { echo "error: findings: progress file not found: $progress" >&2; exit 2; }
+    local json
+    json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Integrated Review" --type "Local Review (Pre-Push)") || {
+        echo "error: findings: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
+    printf '%s' "$json" | "$PYTHON" -c '
+import json, sys
+data = json.load(sys.stdin)
+ok = [e for e in data["entries"] if e.get("base_type") in ("Integrated Review", "Local Review (Pre-Push)")]
+if not ok:
+    json.dump({"source": None, "open": []}, sys.stdout, indent=2); print(); sys.exit(0)
+src = ok[-1]  # file order is chronological; the last one is the latest review
+opens = [dict(f, index=i) for i, f in enumerate(src["findings"]) if not f.get("checked")]
+json.dump({"source": {"type": src["type"], "when": src.get("when"), "correlation": src.get("correlation"),
+                      "ordinal": len(ok) - 1, "total_findings": len(src["findings"])},
+           "open": opens}, sys.stdout, indent=2)
+print()
+'
+}
+
+# ---------------------------------------------------------------- check ---
+# check --progress <file> --index <i> [--deferred "<reason>"]
+# Flip the i-th checkbox (0-based, in file order) of the latest source
+# review entry from `- [ ]` to `- [x]`, appending " (deferred: <reason>)"
+# when --deferred is given. Refuses (exit 2) if the box is already checked
+# or the index is out of range. Rewrites only that one line.
+cmd_check() {
+    local progress="" index="" deferred="" deferred_given=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --progress) [[ $# -ge 2 ]] || usage; progress="$2"; shift 2 ;;
+            --index)    [[ $# -ge 2 ]] || usage; index="$2"; shift 2 ;;
+            --deferred) [[ $# -ge 2 ]] || usage; deferred="$2"; deferred_given=1; shift 2 ;;
+            *) usage ;;
+        esac
+    done
+    [[ -f "$progress" && "$index" =~ ^[0-9]+$ ]] || { echo "error: check: --progress <file> and --index <i> required" >&2; exit 2; }
+    [[ "$deferred" == *$'\n'* ]] && { echo "error: check: --deferred reason must be a single line" >&2; exit 2; }
+    if [[ "$deferred_given" == 1 && -z "$deferred" ]]; then
+        echo "error: check: --deferred needs a non-empty reason" >&2; exit 2
+    fi
+    # The reader is the ONE parser: it reports each finding's file line
+    # (round-1 review found a second checkbox scanner here diverging from it
+    # on fenced, indented, and header-area lines). check only rewrites the
+    # line the reader named, after confirming it is still an unchecked box.
+    local json
+    json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Integrated Review" --type "Local Review (Pre-Push)") || {
+        echo "error: check: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
+    printf '%s' "$json" | PROGRESS="$progress" INDEX="$index" DEFERRED="$deferred" "$PYTHON" -c '
+import json, os, re, sys
+path, index, deferred = os.environ["PROGRESS"], int(os.environ["INDEX"]), os.environ["DEFERRED"]
+data = json.load(sys.stdin)
+ok = [e for e in data["entries"] if e.get("base_type") in ("Integrated Review", "Local Review (Pre-Push)")]
+if not ok:
+    print("error: check: no Integrated Review / Local Review (Pre-Push) entry to check a box in", file=sys.stderr); sys.exit(2)
+src = ok[-1]
+if index >= len(src["findings"]):
+    print("error: check: index %d out of range (%d findings in the latest %s entry)" % (index, len(src["findings"]), src["type"]), file=sys.stderr); sys.exit(2)
+f = src["findings"][index]
+if f.get("checked"):
+    print("error: check: finding %d is already checked: %s" % (index, f["text"]), file=sys.stderr); sys.exit(2)
+# newline="" keeps CRLF files CRLF; only the one line changes.
+with open(path, encoding="utf-8", newline="") as fh:
+    lines = fh.read().splitlines(keepends=True)
+i = f["line"] - 1
+m = re.match(r"^(- \[)( )(\] .*?)(\r?\n?)$", lines[i])
+if not m:
+    print("error: check: line %d is not the unchecked box the reader reported (%r); file changed underneath?" % (f["line"], lines[i]), file=sys.stderr); sys.exit(2)
+new = m.group(1) + "x" + m.group(3) + ((" (deferred: %s)" % deferred) if deferred else "")
+lines[i] = new + m.group(4)
+with open(path, "w", encoding="utf-8", newline="") as fh:
+    fh.write("".join(lines))
+print(new)
+'
+}
+
 case "$SUB" in
-    round)   cmd_round "$@" ;;
-    verdict) cmd_verdict "$@" ;;
-    persist) cmd_persist "$@" ;;
-    sources) cmd_sources "$@" ;;
+    round)    cmd_round "$@" ;;
+    verdict)  cmd_verdict "$@" ;;
+    persist)  cmd_persist "$@" ;;
+    sources)  cmd_sources "$@" ;;
+    findings) cmd_findings "$@" ;;
+    check)    cmd_check "$@" ;;
     -h|--help|help) usage ;;
     *) echo "error: unknown subcommand '$SUB'" >&2; usage ;;
 esac
