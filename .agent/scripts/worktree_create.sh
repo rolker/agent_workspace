@@ -1025,6 +1025,23 @@ _NEXT_STEPS_ISSUE="$ISSUE_NUM"
 _NEXT_STEPS_PROJECT_FLAG=""
 [ -n "$PROJECT_NAME" ] && _NEXT_STEPS_PROJECT_FLAG=" --project $PROJECT_NAME"
 
+# Shared pre-commit hook preflight (issue #272): every worktree runs the
+# main checkout's .git/hooks/pre-commit, which pins the interpreter that
+# installed it. If that path is gone (a hook installed from a since-removed
+# worktree's venv), every commit here fails with "`pre-commit` not found"
+# unless a venv happens to be on PATH. Say so now, with the fix.
+_HOOK_COMMON="$(git -C "$ROOT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+if [ -n "$_HOOK_COMMON" ] && [ -f "$_HOOK_COMMON/hooks/pre-commit" ]; then
+    _HOOK_PY="$(sed -n 's/^INSTALL_PYTHON=//p' "$_HOOK_COMMON/hooks/pre-commit" | head -1 | tr -d "'\"")"
+    if [ -n "$_HOOK_PY" ] && [ ! -x "$_HOOK_PY" ]; then
+        echo "⚠️  The shared pre-commit hook points to a Python that no longer exists:" >&2
+        echo "     $_HOOK_PY" >&2
+        echo "   Commits in this (and every) worktree will fail with '\`pre-commit\` not found'." >&2
+        echo "   Fix once, from the main checkout:  make -C \"$(dirname "$_HOOK_COMMON")\" repair" >&2
+        echo "" >&2
+    fi
+fi
+
 if [ -n "$SKILL_NAME" ]; then
     echo "To enter this worktree:"
     echo "  source $SCRIPT_DIR/worktree_enter.sh --skill $SKILL_NAME --type $WORKTREE_TYPE"

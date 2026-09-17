@@ -147,16 +147,43 @@ def validate_workspace(verbose=False):
     elif verbose:
         print("  venv: not installed (run make setup)")
 
-    # Check pre-commit hook for stale Python path
-    hook_file = workspace_root / ".git" / "hooks" / "pre-commit"
+    # Check the pre-commit hook for a stale interpreter path. The hook lives
+    # in the MAIN checkout's .git/hooks (shared by every worktree), so ask git
+    # for the common dir rather than assuming .git is a directory here
+    # (issue #272: from a worktree, .git is a file and the old check said
+    # "not installed" while the shared hook was silently broken).
+    hook_file = None
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=str(workspace_root),
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        hook_file = Path(common) / "hooks" / "pre-commit"
+        hook_root = Path(common).parent
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        hook_file = workspace_root / ".git" / "hooks" / "pre-commit"
+        hook_root = workspace_root
     if hook_file.exists():
         try:
             hook_content = hook_file.read_text()
             for line in hook_content.split("\n"):
                 if line.startswith("INSTALL_PYTHON="):
                     hook_python = line.split("=", 1)[1].strip().strip("'\"")
-                    expected_hook = str(workspace_root / ".venv" / "bin" / "python3")
-                    if hook_python != expected_hook:
+                    expected_hook = str(hook_root / ".venv" / "bin" / "python3")
+                    if not Path(hook_python).is_file():
+                        issues.append(
+                            "pre-commit hook points to a Python that no longer exists: "
+                            f"{hook_python}"
+                        )
+                        issues.append(
+                            "  Every commit in every worktree fails with '`pre-commit` not found'"
+                        )
+                        issues.append(f"  Expected: {expected_hook}")
+                        issues.append("  Run: make repair")
+                    elif hook_python != expected_hook:
                         issues.append(f"pre-commit hook points to wrong path: {hook_python}")
                         issues.append(f"  Expected: {expected_hook}")
                         issues.append("  Run: make repair")

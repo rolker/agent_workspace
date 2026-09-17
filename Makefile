@@ -27,9 +27,19 @@ else
   MAIN_ROOT := $(CURDIR)
 endif
 
-# --- Stamp directory ---
-STAMP    := $(MAIN_ROOT)/.make
-VENV_DIR := $(MAIN_ROOT)/.venv
+# --- Dev-tools root: the checkout that owns .git (issue #272) ---
+# The venv, the stamps, and the pre-commit hook belong to the main checkout,
+# never to a worktree: every worktree shares the main .git/hooks, and a hook
+# installed from a worktree's own venv breaks for everyone once that
+# worktree is removed ("`pre-commit` not found"). git's common dir names the
+# main checkout from anywhere; fall back to MAIN_ROOT outside a repo.
+# (MAIN_ROOT itself still governs which script copies run — issue #239.)
+WS_ROOT := $(patsubst %/.git,%,$(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))
+ifeq ($(WS_ROOT),)
+  WS_ROOT := $(MAIN_ROOT)
+endif
+STAMP    := $(WS_ROOT)/.make
+VENV_DIR := $(WS_ROOT)/.venv
 VENV_BIN := $(VENV_DIR)/bin
 PRE_COMMIT := $(VENV_BIN)/pre-commit
 
@@ -108,7 +118,7 @@ validate:
 repair:
 	@echo "--- Repairing venv and pre-commit hook ---"
 	$(VENV_BIN)/python3 -m pip install --quiet --force-reinstall -r $(MAIN_ROOT)/requirements.txt
-	cd $(MAIN_ROOT) && $(PRE_COMMIT) install
+	cd $(WS_ROOT) && $(PRE_COMMIT) install
 	@rm -f $(STAMP)/setup-dev.done
 	@$(MAKE) --no-print-directory $(STAMP)/setup-dev.done
 	@echo "✅ Repair complete. Run 'make validate' to verify."
@@ -154,7 +164,7 @@ $(STAMP)/setup-dev.done: requirements.txt | $(STAMP)
 	python3 -m venv $(VENV_DIR)
 	$(VENV_BIN)/python3 -m pip install --quiet --upgrade pip
 	$(VENV_BIN)/python3 -m pip install --quiet -r $(MAIN_ROOT)/requirements.txt
-	$(PRE_COMMIT) install
+	cd $(WS_ROOT) && $(PRE_COMMIT) install
 	touch $@
 
 # git-bug: configure identity + GitHub bridge
