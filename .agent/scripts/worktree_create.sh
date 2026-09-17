@@ -1030,20 +1030,32 @@ _NEXT_STEPS_PROJECT_FLAG=""
 # worktree, the project checkout's for a project worktree — and that hook
 # pins the interpreter that installed it. If that path is gone (a hook
 # installed from a since-removed worktree's venv), every commit here fails
-# with "`pre-commit` not found" unless a venv happens to be on PATH. Ask the
-# new worktree itself which common dir it belongs to (a package worktree
-# container is not a repo; its sibling repos are checked by nothing here).
-_HOOK_COMMON="$(git -C "$WORKTREE_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-if [ -n "$_HOOK_COMMON" ] && [ -f "$_HOOK_COMMON/hooks/pre-commit" ]; then
+# with "`pre-commit` not found" unless a venv happens to be on PATH. Ask each
+# checkout that commits will actually run in which common dir it belongs
+# to: the worktree itself for workspace and single-repo project worktrees,
+# every manifest entry for a package worktree (its container is a plain
+# directory inside the project tree — asking it would walk up to the
+# enclosing repo and report a hook that never runs for these commits).
+_HOOK_CHECKOUTS=()
+for _hook_entry in ${WT_ADDED_ENTRIES[@]+"${WT_ADDED_ENTRIES[@]}"}; do
+    _HOOK_CHECKOUTS+=("${_hook_entry%%|*}")
+done
+[ "${#_HOOK_CHECKOUTS[@]}" -gt 0 ] || _HOOK_CHECKOUTS=("$WORKTREE_DIR")
+_HOOK_SEEN=" "
+for _hook_checkout in "${_HOOK_CHECKOUTS[@]}"; do
+    _HOOK_COMMON="$(git -C "$_hook_checkout" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    [ -n "$_HOOK_COMMON" ] && [ -f "$_HOOK_COMMON/hooks/pre-commit" ] || continue
+    case "$_HOOK_SEEN" in *" $_HOOK_COMMON "*) continue ;; esac
+    _HOOK_SEEN="$_HOOK_SEEN$_HOOK_COMMON "
     _HOOK_PY="$(sed -n 's/^INSTALL_PYTHON=//p' "$_HOOK_COMMON/hooks/pre-commit" | head -1 | tr -d "'\"")"
     if [ -n "$_HOOK_PY" ] && [ ! -x "$_HOOK_PY" ]; then
-        echo "⚠️  The shared pre-commit hook points to a Python that no longer exists:" >&2
+        echo "⚠️  The shared pre-commit hook points to a Python that no longer exists ($(dirname "$_HOOK_COMMON")):" >&2
         echo "     $_HOOK_PY" >&2
-        echo "   Commits in this (and every) worktree will fail with '\`pre-commit\` not found'." >&2
-        echo "   Fix once, from the main checkout:  make -C \"$(dirname "$_HOOK_COMMON")\" repair" >&2
+        echo "   Commits in this (and every) worktree of that repo will fail with '\`pre-commit\` not found'." >&2
+        echo "   Fix once, from that checkout:  make -C \"$(dirname "$_HOOK_COMMON")\" repair" >&2
         echo "" >&2
     fi
-fi
+done
 
 if [ -n "$SKILL_NAME" ]; then
     echo "To enter this worktree:"

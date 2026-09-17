@@ -300,6 +300,44 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
         "--issue 111 --type project" "$out"
 }
 
+test_worktree_create_package_hook_preflight_checks_package_repos() {
+    echo "TEST: package worktree hook preflight checks the package repos that commit, not the enclosing project tree"
+    local sb out rc=0 proj
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    make_committed_pkg_repo "$proj" l1 pkg_b
+    mkdir -p "$proj/layers/main/l1_ws/install"
+    touch "$proj/layers/main/l1_ws/install/local_setup.bash"
+    # The enclosing workspace repo's hook is broken; the package repo's is
+    # healthy. Only the package repo runs hooks for commits in this worktree.
+    mkdir -p "$sb/.git/hooks" "$sb/.venv/bin"
+    printf '#!/bin/sh\n' > "$sb/.venv/bin/python3"; chmod +x "$sb/.venv/bin/python3"
+    printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' \
+        "$sb/gone/.venv/bin/python3" > "$sb/.git/hooks/pre-commit"
+    chmod +x "$sb/.git/hooks/pre-commit"
+    printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' \
+        "$sb/.venv/bin/python3" > "$proj/layers/main/l1_ws/src/pkg_a/.git/hooks/pre-commit"
+    chmod +x "$proj/layers/main/l1_ws/src/pkg_a/.git/hooks/pre-commit"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#112 --type project --project p11 \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_not_contains "healthy package hook: no warning about the enclosing repo's broken hook" \
+        "no longer exists" "$out"
+    # Now break the package repo's hook: the warning names that repo.
+    printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' \
+        "$sb/gone/.venv/bin/python3" > "$proj/layers/main/l1_ws/src/pkg_a/.git/hooks/pre-commit"
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#113 --type project --project p11 \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "exit 0 (warning is advisory)" "0" "$rc"
+    assert_contains "broken package hook: warning names the package repo" \
+        "no longer exists ($proj/layers/main/l1_ws/src/pkg_a)" "$out"
+    assert_contains "broken package hook: repair root is the package repo" \
+        "make -C \"$proj/layers/main/l1_ws/src/pkg_a\" repair" "$out"
+}
+
 test_worktree_create_rolls_back_on_second_repo_failure() {
     echo "TEST: a failure on the second repo rolls back the first and leaves no aggregate dir"
     local sb out rc=0 proj wt
@@ -1346,6 +1384,7 @@ echo ""
 
 test_validator_accepts_ros2_colcon
 test_worktree_create_package_success
+test_worktree_create_package_hook_preflight_checks_package_repos
 test_worktree_create_rolls_back_on_second_repo_failure
 test_worktree_create_rollback_on_worktree_env_failure
 test_worktree_remove_multi_package_dirty_refuses_all
