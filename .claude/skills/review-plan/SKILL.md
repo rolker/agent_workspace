@@ -69,10 +69,16 @@ rather than re-deriving the glob:
 # shellcheck source=../../../.agent/scripts/_worktree_helpers.sh
 source .agent/scripts/_worktree_helpers.sh
 WS_ROOT="$(git rev-parse --show-toplevel)"
-while IFS=$'\t' read -r _name wtdir; do
-    plan="$wtdir/issue-"*"-<N>/.agent/work-plans/issue-<N>/plan.md"
-    [ -f $plan ] && { echo "$plan"; break; }
-done < <(wt_registry_worktree_dirs "$WS_ROOT"; wt_legacy_worktree_dirs "$WS_ROOT")
+# Workspace worktree first (a workspace-repo issue's plan lives here) …
+plan="$(wt_workspace_base "$WS_ROOT")/issue-workspace-<N>/.agent/work-plans/issue-<N>/plan.md"
+if [ -f "$plan" ]; then echo "$plan"; else
+    # … then every project worktree location: registered roots and the
+    # legacy / transition worktrees/project/<name>/ dirs.
+    while IFS=$'\t' read -r _name wtdir; do
+        plan="$wtdir/issue-"*"-<N>/.agent/work-plans/issue-<N>/plan.md"
+        [ -f $plan ] && { echo "$plan"; break; }
+    done < <(wt_registry_worktree_dirs "$WS_ROOT"; wt_legacy_worktree_dirs "$WS_ROOT")
+fi
 ```
 
 `wt_registry_worktree_dirs` covers every registered non-parent root's
