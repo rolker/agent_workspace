@@ -140,8 +140,51 @@ n=$(python3 "$PR" "$PROG" --type "Local Review (Pre-Push)" | jq '[.entries[-1].f
 [[ "$n" -eq 3 ]] && pass "check: progress_read.py still parses all three boxes as checked findings" || fail "check: parser (n=$n)"
 
 # ---- Implementation entry via persist, Addressed points at the source ----
+# ---- divergence traps (round-1 review): a fenced decoy, an indented box, and
+#      a header-area box must not shift indexes or be flipped ----
+TRAP="$TMPD/trap.md"
+cat > "$TRAP" <<'EOF'
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 10:00 -04:00
+**By**: t (m)
+- [ ] header-area box, not a finding
+
+**Branch**: feature/issue-7 at `abc1234`
+
+### Findings
+```
+- [ ] fenced example, not a finding
+```
+  - [ ] indented, not a finding
+- [ ] (must-fix) real finding A — `a.sh:1`
+- [ ] (suggestion) real finding B — `b.sh:2`
+EOF
+out=$("$RP" findings --progress "$TRAP")
+[[ "$(printf '%s' "$out" | jq '.open|length')" -eq 2 && "$(printf '%s' "$out" | jq -r '.open[0].text')" == *"real finding A"* ]] \
+    && pass "findings: decoys (header box, fenced box, indented box) are not findings" || fail "findings: decoys (out=$out)"
+line=$("$RP" check --progress "$TRAP" --index 0)
+if [[ "$line" == *"real finding A"* ]] && grep -q '^- \[x\] (must-fix) real finding A' "$TRAP" \
+    && grep -q '^- \[ \] header-area box' "$TRAP" && grep -q '^- \[ \] fenced example' "$TRAP" && grep -q '^  - \[ \] indented' "$TRAP"; then
+    pass "check: index 0 flips real finding A, never a decoy line"
+else
+    fail "check: decoy divergence (line=$line)"
+fi
+# CRLF file stays CRLF, only the one line changes
+CR="$TMPD/crlf.md"
+printf '## Local Review (Pre-Push)\r\n**Branch**: feature/issue-7 at `abc1234`\r\n\r\n### Findings\r\n- [ ] one — `x:1`\r\n- [ ] two — `y:2`\r\n' > "$CR"
+before=$(md5sum < "$CR")
+"$RP" check --progress "$CR" --index 1 --deferred "reason" >/dev/null
+crlf=$(grep -c $'\r$' "$CR"); flipped=$(grep -c $'^- \[x\] two — `y:2` (deferred: reason)\r$' "$CR")
+[[ "$crlf" -eq 6 && "$flipped" -eq 1 && "$(md5sum < "$CR")" != "$before" ]] \
+    && pass "check: a CRLF file keeps CRLF on every line; only the target line changes" || fail "check: CRLF (crlf=$crlf flipped=$flipped)"
+# --deferred "" is an error, not a silent plain check
+"$RP" check --progress "$TRAP" --index 1 --deferred "" >/dev/null 2>&1; rc=$?
+[[ "$rc" -eq 2 ]] && grep -q '^- \[ \] (suggestion) real finding B' "$TRAP" && pass "check: --deferred with an empty reason is refused (rc 2), box untouched" || fail "check: empty deferred (rc=$rc)"
+
 git -C "$REPO" add -A && git -C "$REPO" -c user.name=t -c user.email=t@t commit -q -m "fix: findings"
-out=$(cd "$REPO" && "$RP" persist --issue 7 --branch feature/issue-7 --strict <<'EOF' 2>&1); rc=$?
+ENTRY_FILE="$TMPD/impl_entry.md"
+cat > "$ENTRY_FILE" <<'EOF'
 ## Implementation
 **Status**: complete
 **When**: 2026-09-17 12:00 -04:00
@@ -155,6 +198,7 @@ out=$(cd "$REPO" && "$RP" persist --issue 7 --branch feature/issue-7 --strict <<
 - [x] unchecked append redirect exits 0 on failure — `.agent/scripts/progress_append.sh:142`
 - [x] usage text mentions a removed flag — `.agent/scripts/review_progress.sh:59` (deferred: flag is still documented on purpose)
 EOF
+out=$(cd "$REPO" && "$RP" persist --issue 7 --branch feature/issue-7 --strict < "$ENTRY_FILE" 2>&1); rc=$?
 impl=$(python3 "$PR" "$PROG" --type Implementation | jq -c '.entries[-1] | {kind: .correlation.kind, branch: .correlation.branch, n: (.findings|length), checked: ([.findings[]|select(.checked)]|length)}')
 if [[ "$rc" -eq 0 && "$impl" == '{"kind":"branch","branch":"feature/issue-7","n":2,"checked":2}' ]] \
     && grep -q '^\*\*Addressed\*\*: Local Review (Pre-Push) at `abc1234`' "$PROG" \

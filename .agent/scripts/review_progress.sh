@@ -401,55 +401,53 @@ print()
 # when --deferred is given. Refuses (exit 2) if the box is already checked
 # or the index is out of range. Rewrites only that one line.
 cmd_check() {
-    local progress="" index="" deferred=""
+    local progress="" index="" deferred="" deferred_given=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --progress) [[ $# -ge 2 ]] || usage; progress="$2"; shift 2 ;;
             --index)    [[ $# -ge 2 ]] || usage; index="$2"; shift 2 ;;
-            --deferred) [[ $# -ge 2 ]] || usage; deferred="$2"; shift 2 ;;
+            --deferred) [[ $# -ge 2 ]] || usage; deferred="$2"; deferred_given=1; shift 2 ;;
             *) usage ;;
         esac
     done
     [[ -f "$progress" && "$index" =~ ^[0-9]+$ ]] || { echo "error: check: --progress <file> and --index <i> required" >&2; exit 2; }
     [[ "$deferred" == *$'\n'* ]] && { echo "error: check: --deferred reason must be a single line" >&2; exit 2; }
-    PROGRESS="$progress" INDEX="$index" DEFERRED="$deferred" "$PYTHON" - <<'PY' || exit $?
-import os, re, sys
+    if [[ "$deferred_given" == 1 && -z "$deferred" ]]; then
+        echo "error: check: --deferred needs a non-empty reason" >&2; exit 2
+    fi
+    # The reader is the ONE parser: it reports each finding's file line
+    # (round-1 review found a second checkbox scanner here diverging from it
+    # on fenced, indented, and header-area lines). check only rewrites the
+    # line the reader named, after confirming it is still an unchecked box.
+    local json
+    json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Integrated Review" --type "Local Review (Pre-Push)") || {
+        echo "error: check: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
+    printf '%s' "$json" | PROGRESS="$progress" INDEX="$index" DEFERRED="$deferred" "$PYTHON" -c '
+import json, os, re, sys
 path, index, deferred = os.environ["PROGRESS"], int(os.environ["INDEX"]), os.environ["DEFERRED"]
-lines = open(path, encoding="utf-8").read().split("\n")
-fence = re.compile(r"^[ \t]*(?:```|~~~)")
-head = re.compile(r"^## ([^#].*)$")
-box = re.compile(r"^(\s*- \[)( |x|X)(\] .*)$")
-# Locate the latest qualifying entry: heading -> lines until the next '## '.
-def base(t):
-    t = t.strip()
-    return t if t in ("Local Review (Pre-Push)",) else re.sub(r"\s*\([^)]*\)\s*$", "", t)
-entries, cur, infence = [], None, False
-for i, l in enumerate(lines):
-    if fence.match(l): infence = not infence; continue
-    if infence: continue
-    m = head.match(l)
-    if m:
-        cur = {"type": m.group(1).strip(), "start": i, "end": len(lines)}
-        entries.append(cur)
-        if len(entries) > 1: entries[-2]["end"] = i
-ok = [e for e in entries if base(e["type"]) in ("Integrated Review", "Local Review (Pre-Push)")]
+data = json.load(sys.stdin)
+ok = [e for e in data["entries"] if e.get("base_type") in ("Integrated Review", "Local Review (Pre-Push)")]
 if not ok:
     print("error: check: no Integrated Review / Local Review (Pre-Push) entry to check a box in", file=sys.stderr); sys.exit(2)
 src = ok[-1]
-boxes = [i for i in range(src["start"], src["end"]) if box.match(lines[i])]
-if index >= len(boxes):
-    print(f"error: check: index {index} out of range ({len(boxes)} checkbox lines in the latest {src['type']} entry)", file=sys.stderr); sys.exit(2)
-i = boxes[index]
-m = box.match(lines[i])
-if m.group(2).lower() == "x":
-    print(f"error: check: finding {index} is already checked: {lines[i].strip()}", file=sys.stderr); sys.exit(2)
-new = m.group(1) + "x" + m.group(3)
-if deferred:
-    new += f" (deferred: {deferred})"
-lines[i] = new
-open(path, "w", encoding="utf-8").write("\n".join(lines))
-print(new.strip())
-PY
+if index >= len(src["findings"]):
+    print("error: check: index %d out of range (%d findings in the latest %s entry)" % (index, len(src["findings"]), src["type"]), file=sys.stderr); sys.exit(2)
+f = src["findings"][index]
+if f.get("checked"):
+    print("error: check: finding %d is already checked: %s" % (index, f["text"]), file=sys.stderr); sys.exit(2)
+# newline="" keeps CRLF files CRLF; only the one line changes.
+with open(path, encoding="utf-8", newline="") as fh:
+    lines = fh.read().splitlines(keepends=True)
+i = f["line"] - 1
+m = re.match(r"^(- \[)( )(\] .*?)(\r?\n?)$", lines[i])
+if not m:
+    print("error: check: line %d is not the unchecked box the reader reported (%r); file changed underneath?" % (f["line"], lines[i]), file=sys.stderr); sys.exit(2)
+new = m.group(1) + "x" + m.group(3) + ((" (deferred: %s)" % deferred) if deferred else "")
+lines[i] = new + m.group(4)
+with open(path, "w", encoding="utf-8", newline="") as fh:
+    fh.write("".join(lines))
+print(new)
+'
 }
 
 case "$SUB" in
