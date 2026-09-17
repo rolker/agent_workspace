@@ -545,7 +545,17 @@ else
 fi
 
 if [ "$WORKTREE_TYPE" == "project" ]; then
-    WORKTREE_DIR="$(wt_project_base "$ROOT_DIR" "$REPO_SLUG")/${DIR_PREFIX}"
+    if [ -n "$PROJECT_NAME" ]; then
+        # Registry-selected project: its own root's worktree dir.
+        WORKTREE_DIR="$(wt_project_base "$ROOT_DIR" "$PROJECT_NAME")/${DIR_PREFIX}"
+    else
+        # Legacy project/ checkout: always the transition location. Going
+        # through the registry here would let a registered project that
+        # happens to share this checkout's repo-slug name capture the
+        # worktree under ITS root while git operations target project/
+        # (#273 round-2 review).
+        WORKTREE_DIR="$(wt_project_base_glob "$ROOT_DIR")/${REPO_SLUG}/${DIR_PREFIX}"
+    fi
 else
     WORKTREE_DIR="$(wt_workspace_base "$ROOT_DIR")/${DIR_PREFIX}"
 fi
