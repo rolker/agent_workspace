@@ -84,6 +84,16 @@ if [[ "$found_required" -ne 1 ]]; then
     exit 1
 fi
 
+# Tool preflight: several suites shell out to these; name the missing tool
+# up front instead of letting a suite fail opaquely. jq is installed by
+# bootstrap.sh and present on GitHub's runners.
+for tool in jq python3; do
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "error: '$tool' not found on PATH — required by the script test suites (see .agent/scripts/bootstrap.sh)" >&2
+        exit 1
+    fi
+done
+
 start_ts=$(date +%s)
 total=0
 for s in "${suites[@]}"; do

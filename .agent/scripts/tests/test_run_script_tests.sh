@@ -112,6 +112,30 @@ else
     fail "elapsed time is printed on the failure path (out=$out)"
 fi
 
+# --- Case (d): tool preflight — with jq missing from PATH the runner names
+#     the missing tool and exits 1 before running any suite (round-1 review
+#     suggestion: an opaque per-suite failure otherwise). A minimal PATH with
+#     only the tools the runner itself needs, minus jq. ---
+CASE_D="$TMPD/case_d"
+mkdir -p "$CASE_D" "$TMPD/bin_nojq"
+write_checkpoint_stub "$CASE_D"
+MARKER_D="$TMPD/case_d_marker"
+cat > "$CASE_D/test_synthetic.sh" <<EOF
+#!/usr/bin/env bash
+touch "$MARKER_D"
+exit 0
+EOF
+chmod +x "$CASE_D/test_synthetic.sh"
+for t in bash date basename dirname env python3; do
+    p=$(command -v "$t") && ln -s "$p" "$TMPD/bin_nojq/$t"
+done
+out=$(PATH="$TMPD/bin_nojq" "$RUNNER" "$CASE_D" 2>&1); rc=$?
+if [ "$rc" -eq 1 ] && [ ! -f "$MARKER_D" ] && printf '%s' "$out" | grep -q "'jq' not found"; then
+    pass "(d) missing jq is named by the preflight and no suite runs"
+else
+    fail "(d) missing jq is named by the preflight and no suite runs (rc=$rc, out=$out)"
+fi
+
 echo ""
 echo "test_run_script_tests: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
