@@ -319,3 +319,19 @@ test_resolve_work_plans_dir 21/21 — all green.
 - [ ] (must-fix) review-plan's --issue fallback never checks the workspace worktree its prose says to check first — `.claude/skills/review-plan/SKILL.md:61-75` (Copilot #3 confirmed)
 - [ ] (must-fix) ADR-0012: wt_ensure_exclusion branches on `etype = ros2_colcon` inside the shared helper; the plan specified the COLCON_IGNORE marker without routing it through an adapter verb — `.agent/scripts/_worktree_helpers.sh:192` (human call: adapter verb now, or documented scoped exception)
 - [ ] (suggestion) AGENTS.md worktree section still describes the old location; plan defers to PR 4 (Ask-First) — `AGENTS.md`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 12:06 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-265-pr2 at `38e0f14`
+**Base**: main
+**Depth**: Deep (reason: re-review of the four round-1 fixes; Copilot's second pass integrated)
+**Must-fix**: 2 | **Suggestions**: 0
+**Round**: 2 | **Ship**: continue — round-1 items all fixed; Copilot's second pass found 2 new must-fix in the same subsystem, fixed in de4589b
+
+### Findings
+- [x] (must-fix) legacy project/ create resolved its worktree dir through the registry; a same-named registered project captured it under the wrong root — `.agent/scripts/worktree_create.sh:548` (Copilot #4 confirmed) → fixed
+- [x] (must-fix) wt_legacy_worktree_dirs / wt_transition_project_base treated a malformed registry (rc 2) like "not registered" and enumerated on partial state — `.agent/scripts/_worktree_helpers.sh:101` (Copilot #5 confirmed) → fixed; enter/remove refuse
