@@ -56,7 +56,15 @@ PROGRESS_APPEND="$SCRIPT_DIR/progress_append.sh"
 PYTHON="${PYTHON:-python3}"
 
 usage() {
-    sed -n '2,45p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    cat >&2 <<'EOF'
+Usage:
+  review_progress.sh round   --issue <N> --branch <name> [--progress <file>]
+  review_progress.sh verdict --must-fix <N> --round <R> [--prev-must-fix <P>] [--mechanical]
+  review_progress.sh persist --issue <N|""> [--branch <name>] [--title <t>]
+                             [--strict] [--no-progress] < entry.md
+See the header comment of this script for what each subcommand prints.
+Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort.
+EOF
     exit 2
 }
 
@@ -169,18 +177,34 @@ cmd_persist() {
     [[ "$issue" =~ ^[0-9]+$ ]] || { echo "error: persist: --issue must be numeric or empty" >&2; exit 2; }
     local entry
     entry=$(cat)
-    [[ -n "$entry" ]] || { echo "error: persist: empty entry on stdin" >&2; exit 2; }
+    # Same guards as progress_append.sh (one entry, writable type, balanced
+    # fences, single-line title) — the compatibility path below writes the
+    # file itself, so it must not be the one writer without them.
+    # shellcheck source=_progress_entry.sh
+    source "$SCRIPT_DIR/_progress_entry.sh"
+    progress_entry_validate "$entry" "$title" >/dev/null || exit 2
 
     # shellcheck source=_resolve_work_plans_dir.sh
     source "$SCRIPT_DIR/_resolve_work_plans_dir.sh"
 
     if [[ "$strict" == "1" ]]; then
-        local dir root
+        local dir root expected
         dir=$(resolve_work_plans_dir "$issue") || {
             echo "error: progress persistence aborted (strict mode): resolve_work_plans_dir refused — see remediation above" >&2
             exit 4
         }
-        root=$(git -C "$(dirname "$dir")" rev-parse --show-toplevel 2>/dev/null) || root="$(git rev-parse --show-toplevel)"
+        # progress_append.sh only writes <repo-root>/.agent/work-plans/issue-<N>/,
+        # so the resolved directory must be exactly that shape inside some
+        # repo (true for rules 2/2b; a WORK_PLANS_DIR_OVERRIDE may point
+        # anywhere). Refuse rather than silently write elsewhere and claim
+        # the override was honored.
+        mkdir -p "$dir" 2>/dev/null || true
+        root=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || root=""
+        expected="$root/.agent/work-plans/issue-$issue"
+        if [[ -z "$root" || "$(realpath -m "$dir")" != "$(realpath -m "$expected")" ]]; then
+            echo "error: progress persistence aborted (strict mode): resolved work-plans dir '$dir' is not <repo-root>/.agent/work-plans/issue-$issue, which is the only target progress_append.sh writes (WORK_PLANS_DIR_OVERRIDE set?)" >&2
+            exit 4
+        fi
         local args=(-C "$root" "$issue")
         [[ -n "$title" ]] && args+=(--title "$title")
         printf '%s\n' "$entry" | "$PROGRESS_APPEND" "${args[@]}" || exit 3
@@ -206,8 +230,18 @@ cmd_persist() {
           if [[ -n "$title" ]]; then printf '# Issue #%s — %s\n' "$issue" "$title"; else printf '# Issue #%s\n' "$issue"; fi
         } > "$file" || exit 3
     fi
-    printf '\n%s\n' "$entry" >> "$file" || { echo "error: persist: could not append to $file_rel" >&2; exit 3; }
+    # Idempotency: a re-run after a failed commit must re-attempt the commit,
+    # not append the same entry twice (same guard as progress_append.sh).
+    if progress_entry_is_tail "$file" "$entry"; then
+        echo "note: identical entry already present as file tail (uncommitted from a prior run?) — skipping re-append, re-attempting commit" >&2
+    else
+        printf '\n%s\n' "$entry" >> "$file" || { echo "error: persist: could not append to $file_rel" >&2; exit 3; }
+    fi
     git -C "$root" add -- "$file_rel" || exit 3
+    if git -C "$root" diff --cached --quiet -- "$file_rel"; then
+        echo "Progress already persisted (compatibility mode): identical entry committed earlier to $file_rel"
+        return 0
+    fi
     git -C "$root" commit -q -m "progress: local review for #$issue" -- "$file_rel" || {
         echo "error: persist: commit failed — $file_rel is appended and staged; fix and re-commit" >&2; exit 3; }
     echo "Progress persisted (compatibility mode) to $file_rel"

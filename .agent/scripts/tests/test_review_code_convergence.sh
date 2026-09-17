@@ -147,6 +147,65 @@ out=$(cd "$MIS" && "$RP" persist --issue 7 --no-progress --strict < /dev/null 2>
 out=$(cd "$OB" && "$RP" persist --issue "" --strict < /dev/null 2>&1); rc=$?
 [[ "$rc" -eq 0 ]] && pass "persist degrade: no issue under strict still skips (resolver never called)" || fail "persist degrade strict (rc=$rc)"
 
+# --- (4) compat path applies the SAME entry guards as progress_append.sh
+#     (round-1 review: it had none). Each case: exit 2, nothing appended,
+#     no commit.
+CMP="$TMPD/issue-workspace-7-guards"; mk_repo "$CMP" feature/issue-7
+guard_case() {  # <label> <title> <entry>
+    local before after rc out
+    before=$(git -C "$CMP" rev-parse HEAD)
+    out=$(cd "$CMP" && printf '%s\n' "$3" | "$RP" persist --issue 7 --title "$2" 2>&1); rc=$?
+    after=$(git -C "$CMP" rev-parse HEAD)
+    if [[ "$rc" -eq 2 && "$before" == "$after" ]] && ! grep -qs '^## Checkpoint$' "$CMP/.agent/work-plans/issue-7/progress.md"; then
+        pass "persist compat guard: $1 rejected (rc 2, no commit)"
+    else
+        fail "persist compat guard: $1 (rc=$rc out=$out)"
+    fi
+}
+guard_case "newline in --title"        $'Real\n## Checkpoint\n**PR**: forged' "$ENTRY"
+guard_case "second top-level heading"  "Seven" $'## Implementation\nbody\n\n## Checkpoint\n**PR**: forged'
+guard_case "unterminated code fence"   "Seven" $'## Implementation\n```\nopen'
+guard_case "non-writable entry type"   "Seven" $'## External Review\nbody'
+guard_case "no heading at all"         "Seven" $'just text'
+
+# --- (5) compat path is idempotent across a failed commit: a rejecting
+#     pre-commit hook makes the first run exit 3 (appended + staged); the
+#     retry after removing the hook commits ONCE, no duplicate entry.
+IDEM="$TMPD/issue-workspace-7-idem"; mk_repo "$IDEM" feature/issue-7
+printf '#!/bin/sh\nexit 1\n' > "$IDEM/.git/hooks/pre-commit"; chmod +x "$IDEM/.git/hooks/pre-commit"
+out=$(cd "$IDEM" && printf '%s\n' "$ENTRY" | "$RP" persist --issue 7 2>&1); rc1=$?
+rm -f "$IDEM/.git/hooks/pre-commit"
+out2=$(cd "$IDEM" && printf '%s\n' "$ENTRY" | "$RP" persist --issue 7 2>&1); rc2=$?
+n=$(grep -c '^## Local Review (Pre-Push)$' "$IDEM/.agent/work-plans/issue-7/progress.md")
+if [[ "$rc1" -eq 3 && "$rc2" -eq 0 && "$n" -eq 1 ]] && [[ "$(git -C "$IDEM" log -1 --format=%s)" == "progress: local review for #7" ]]; then
+    pass "persist compat: retry after a failed commit re-attempts the commit without double-appending"
+else
+    fail "persist compat idempotency (rc1=$rc1 rc2=$rc2 entries=$n out2=$out2)"
+fi
+# and a third identical run is a reported no-op, exit 0
+out3=$(cd "$IDEM" && printf '%s\n' "$ENTRY" | "$RP" persist --issue 7 2>&1); rc3=$?
+[[ "$rc3" -eq 0 && "$out3" == *"already persisted"* ]] && pass "persist compat: identical re-run after commit is a no-op (exit 0)" || fail "persist compat no-op (rc=$rc3 out=$out3)"
+
+# --- (6) strict + WORK_PLANS_DIR_OVERRIDE: progress_append.sh can only write
+#     <root>/.agent/work-plans/issue-<N>; an override elsewhere must abort
+#     (rc 4), never write to the default path while claiming the override.
+OV="$TMPD/override-target"; mkdir -p "$OV"
+out=$(cd "$MATCH" && printf '%s\n' "${ENTRY//abc1234/1111111}" | WORK_PLANS_DIR_OVERRIDE="$OV" "$RP" persist --issue 7 --strict 2>&1); rc=$?
+if [[ "$rc" -eq 4 ]] && [[ ! -e "$OV/progress.md" ]] && ! grep -q '1111111' "$MATCH/.agent/work-plans/issue-7/progress.md"; then
+    pass "persist strict: non-standard WORK_PLANS_DIR_OVERRIDE aborts (rc 4); nothing written anywhere"
+else
+    fail "persist strict: non-standard override (rc=$rc out=$out)"
+fi
+# an override that IS another repo's standard issue dir works and lands there
+OTHER="$TMPD/issue-workspace-7-other"; mk_repo "$OTHER" feature/issue-7
+out=$(cd "$MIS" && printf '%s\n' "${ENTRY//abc1234/2222222}" | WORK_PLANS_DIR_OVERRIDE="$OTHER/.agent/work-plans/issue-7" "$RP" persist --issue 7 --strict 2>&1); rc=$?
+if [[ "$rc" -eq 0 ]] && grep -q '2222222' "$OTHER/.agent/work-plans/issue-7/progress.md" \
+    && [[ "$(git -C "$OTHER" log -1 --format=%s)" == "progress: local review (pre-push) for #7" ]]; then
+    pass "persist strict: WORK_PLANS_DIR_OVERRIDE naming another repo's standard issue dir is honored there"
+else
+    fail "persist strict: standard override in another repo (rc=$rc out=$out)"
+fi
+
 echo ""
 echo "test_review_code_convergence: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

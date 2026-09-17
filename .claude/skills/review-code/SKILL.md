@@ -60,6 +60,14 @@ modify the PR unless the user asks.
 - **Claude Adversarial** — fresh subagent, independent review for missed issues (Standard + Deep)
 - **Gemini Adversarial** — cross-model review via Gemini CLI in tmux (Deep only)
 
+**Not ported from ros2_agent_workspace** (issue #269 PR B, documented so
+nobody looks for them): the Ollama `local_review.sh` / `--local`
+specialist (no local-model serving story here), the Copilot-CLI
+`--copilot` specialist and its untrusted-PR gate (no `copilot` CLI
+integration), and the container dispatcher (`dispatch_subagent.sh --mode
+container`). This skill is invoked directly; nothing dispatches it. Each
+would need its own issue if wanted.
+
 ## Steps
 
 ### 1. Gather review context
@@ -110,8 +118,10 @@ git diff "$BASE"...HEAD
 # Linked issue: parse `feature/issue-<N>` or `feature/ISSUE-<N>-<desc>`
 # from the branch name. `--issue <N>` overrides; `--no-progress`
 # opts out of progress.md persistence for skill worktrees / one-off
-# branches. If neither resolves and `--no-progress` not passed, hard
-# error with remediation.
+# branches. If neither resolves and `--no-progress` not passed, the
+# review still runs; step 8 records "Progress persistence skipped (no
+# linked issue)" instead of writing. Also capture `--strict-progress`
+# here: it is consumed in step 8 (passed through as `--strict`).
 ```
 
 Identify (both modes):

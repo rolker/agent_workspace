@@ -74,78 +74,13 @@ ROOT=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null) \
     || { echo "error: '$DIR' is not inside a git repository" >&2; exit 2; }
 
 ENTRY=$(cat)
-FIRST=$(printf '%s\n' "$ENTRY" | sed -n '/[^[:space:]]/{p;q;}')
-[[ -n "$FIRST" ]] || { echo "error: empty entry on stdin" >&2; exit 2; }
-if [[ ! "$FIRST" =~ ^##\ [A-Za-z] ]]; then
-    echo "error: entry must start with an ADR-0013 '## <Entry Type>' heading (got: $FIRST)" >&2
-    exit 2
-fi
-ENTRY_TYPE="${FIRST#\#\# }"
-# Strip any trailing whitespace run (a CR from a CRLF heading, or a padded
-# heading) so it can't leak `\r`/double-space into the commit subject.
-ENTRY_TYPE="${ENTRY_TYPE%"${ENTRY_TYPE##*[![:space:]]}"}"
-
-# Exactly ONE entry per call. Only the first heading is type-checked, so any
-# further top-level `## ` line in the body would be appended verbatim and then
-# parsed by progress_read.py / the checkpoint gate as a separate, unvalidated
-# entry — a body could smuggle a forged `## Checkpoint` past the whitelist.
-# Fenced code blocks (``` or ~~~) are exempt so an entry can quote a heading.
-EXTRA_HEADINGS=$(printf '%s\n' "$ENTRY" | awk '
-    /^[ \t]*(```|~~~)/ { fence = !fence; next }
-    fence { next }
-    /^## / { n++; if (n > 1) print }
-')
-if [[ -n "$EXTRA_HEADINGS" ]]; then
-    echo "error: entry contains more than one top-level '## ' heading; one entry per call." >&2
-    echo "       extra heading(s): $(printf '%s' "$EXTRA_HEADINGS" | tr '\n' '|')" >&2
-    exit 2
-fi
-# Fences must balance within the entry: fence state spans the whole file for
-# every reader (progress_read.py, the checkpoint gate), so one unterminated
-# fence here would hide every entry appended after it. Refuse at write time.
-if ! printf '%s\n' "$ENTRY" | awk '
-    /^[ \t]*(```|~~~)/ { fence = !fence }
-    END { exit fence ? 1 : 0 }
-'; then
-    echo "error: entry has an unterminated code fence (\`\`\` or ~~~); it would hide every later entry from readers" >&2
-    exit 2
-fi
-# The title lands on the `# Issue #N — <title>` line of a new file; a newline
-# inside it would forge arbitrary following lines (including entries).
-if [[ "$TITLE" == *$'\n'* || "$TITLE" == *$'\r'* ]]; then
-    echo "error: --title must be a single line (contains a newline)" >&2
-    exit 2
-fi
-
-# Validate against the WRITABLE ADR-0013 entry types. A free-text heading would
-# defeat the fixed-commit-message scope rationale (see the header comment) and be
-# invisible to progress_read.py's type filters, so a consumer would misread the
-# phase outcome. Keep this list in sync with CANONICAL_TYPES in
-# .agent/scripts/progress_read.py — but EXCLUDE "External Review": it is a
-# read-only predecessor the reader still recognizes for legacy history, never a
-# type a writer should freshly emit (docs/decisions/0013-progress-md-entry-type-vocabulary.md,
-# "Predecessor recognition").
-WRITABLE_TYPES=(
-    "Issue Review"
-    "Plan Authored"
-    "Plan Review"
-    "Local Review"
-    "Local Review (Pre-Push)"
-    "Integrated Review"
-    "Implementation"
-    "Checkpoint"
-    "Merge (report-only)"
-    "Merge (unreviewed)"
-)
-_type_ok=0
-for _t in "${WRITABLE_TYPES[@]}"; do
-    [[ "$ENTRY_TYPE" == "$_t" ]] && { _type_ok=1; break; }
-done
-if [[ "$_type_ok" -ne 1 ]]; then
-    echo "error: '$ENTRY_TYPE' is not a writable ADR-0013 entry type." >&2
-    { printf '       allowed:'; printf ' "%s";' "${WRITABLE_TYPES[@]}"; printf '\n'; } >&2
-    exit 2
-fi
+# All entry/title validation (heading, writable-type whitelist, one heading
+# per call, balanced fences, single-line title) lives in _progress_entry.sh,
+# shared with review_progress.sh's compatibility path so both writers apply
+# identical guards. See that file for the rationale of each check.
+# shellcheck source=_progress_entry.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_progress_entry.sh"
+ENTRY_TYPE=$(progress_entry_validate "$ENTRY" "$TITLE") || exit 2
 
 TYPE_MSG=$(printf '%s' "$ENTRY_TYPE" | tr '[:upper:]' '[:lower:]')
 
@@ -167,8 +102,7 @@ fi
 # with this exact entry (a prior run appended but its commit failed), skip the
 # re-append and just re-attempt the commit. This is not full transactionality —
 # it only covers the append-then-commit-failed replay.
-CURRENT=$(cat "$FILE")   # $(…) strips trailing newlines, so CURRENT ends at the last entry's last non-blank line
-if [[ "$CURRENT" == *$'\n'"$ENTRY" ]]; then
+if progress_entry_is_tail "$FILE" "$ENTRY"; then
     echo "note: identical entry already present as file tail (uncommitted from a prior run?) — skipping re-append, re-attempting commit" >&2
 else
     # Checked explicitly: the script runs without `set -e`, and a silent append
