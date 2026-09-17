@@ -103,6 +103,7 @@ WORKTREES=$(git worktree list --porcelain)
 
 WORKSPACE_COUNT=0
 PROJECT_COUNT=0
+REGISTRY_MALFORMED=false
 
 # Helper: extract issue/repo/skill from worktree directory basename
 extract_issue_repo() {
@@ -318,11 +319,18 @@ _scan_project_worktrees() {
 # Registered roots: <root>/worktrees/ (or its worktrees= override), one
 # per registered non-parent project (#265) — plus the transition fallback
 # for still-unregistered projects, <ws>/worktrees/project/<name>/.
-while IFS=$'\t' read -r _reg_name _reg_dir; do
-    [ -z "$_reg_dir" ] && continue
-    _scan_project_worktrees "$_reg_dir" false
-done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
-unset _reg_name _reg_dir
+# A malformed registry is reported, not silently shown as "no project
+# worktrees" (same fail-closed rule dashboard.sh applies).
+if registry_entries "$ROOT_DIR" >/dev/null 2>&1 || [ $? -ne 2 ]; then
+    while IFS=$'\t' read -r _reg_name _reg_dir; do
+        [ -z "$_reg_dir" ] && continue
+        _scan_project_worktrees "$_reg_dir" false
+    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+    unset _reg_name _reg_dir
+else
+    echo "⚠️  Project registry (.agent/projects.local) is malformed; project worktrees are NOT listed until it is fixed." >&2
+    REGISTRY_MALFORMED=true
+fi
 
 # Legacy location: project/worktrees/ (pre-#25 shape)
 LEGACY_PROJECT_BASE="$(wt_legacy_project_base "$ROOT_DIR")"
@@ -363,7 +371,11 @@ echo "========================================"
 echo "Summary"
 echo "========================================"
 echo "  Workspace worktrees: $WORKSPACE_COUNT"
-echo "  Project worktrees:   $PROJECT_COUNT"
+if [ "$REGISTRY_MALFORMED" = true ]; then
+    echo "  Project worktrees:   NOT LISTED (project registry malformed — fix .agent/projects.local)"
+else
+    echo "  Project worktrees:   $PROJECT_COUNT"
+fi
 echo ""
 echo "Locations:"
 echo "  Workspace: worktrees/workspace/"

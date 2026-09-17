@@ -959,6 +959,13 @@ test_malformed_registry_fails_closed_for_legacy_enumeration_and_remove() {
     assert_eq "worktree_remove refuses (non-zero)" "true" "$([ "$rc" -ne 0 ] && echo true || echo false)"
     assert_eq "names the malformed registry" "1" "$(grep -c 'registry is malformed' <<< "$out")"
     assert_eq "worktree untouched" "yes" "$([ -d "$sb/worktrees/project/foo/issue-foo-43" ] && echo yes || echo no)"
+    # worktree_list.sh: warns and says NOT LISTED instead of silently "0 project worktrees"
+    cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" 2>&1)" || rc=$?
+    assert_eq "worktree_list exit 0 (read-only)" "0" "$rc"
+    assert_eq "worktree_list warns about the malformed registry" "1" "$(grep -c 'registry (.agent/projects.local) is malformed' <<< "$out")"
+    assert_eq "worktree_list summary says NOT LISTED, not a count of 0" "1" "$(grep -c 'Project worktrees:   NOT LISTED' <<< "$out")"
 }
 
 test_worktree_create_outoftree_root_exclusion() {
