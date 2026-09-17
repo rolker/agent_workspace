@@ -405,6 +405,9 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/detect_agent_identity.sh` | Auto-detect agent framework + model |
 | `.agent/scripts/fetch_pr_reviews.sh` | Fetch all PR reviews and CI status |
 | `.agent/scripts/cross_model_review.sh` | Cross-model adversarial review for a PR (`--pr <N>`) or local branch (`--branch [<ref>]`); `--no-progress` for skill worktrees; `--repo`, `--work-dir` for cross-repo use |
+| `.agent/scripts/progress_append.sh` | Append one ADR-0013 `## <Entry Type>` entry to `.agent/work-plans/issue-<N>/progress.md` and commit only that file (entry on stdin; `-C <dir>` for another worktree) |
+| `.agent/scripts/progress_read.py` | Parse a `progress.md` timeline to JSON (`--type` filter, correlation keys, fence-aware) |
+| `.agent/scripts/tests/run_script_tests.sh` | Run every `.agent/scripts/tests/test_*.sh` suite; the `validate-script-tests` pre-commit hook (`SKIP=validate-script-tests` for WIP commits) |
 
 ## References (Read When Needed, Not Upfront)
 
