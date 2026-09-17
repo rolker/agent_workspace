@@ -33,3 +33,11 @@ Three-PR port of run-issue as an in-process host: a tested dispatcher with a mec
 **Plan**: `.agent/work-plans/issue-276/plan.md` at `73eac30`
 
 Revision 2, addressing all five plan-review findings; four PRs (0-3); four open questions for the owner, one of them the model tier.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-17 14:27 -04:00
+**By**: Claude Code Agent (claude-fable-5-1), with owner decisions
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `4e60515`
+
+Revision 3: owner (2026-09-17) chose the fork's Opus tier for review phases; three-round surface is a constant; worktree entry is the skill's own job. Implementation may start with PR 0 once the owner approves the plan.
