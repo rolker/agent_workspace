@@ -26,13 +26,28 @@ The owner's decision (2026-09-17, recorded in #276): auto mode replaced
 containers; port **in-process only** and bring none of that. The fork's
 own #607 already defaults to in-process under auto mode.
 
-**Verified against this tree (2026-09-17):**
-- Every phase the decision table names exists here: `review-issue`,
-  `plan-task`, `review-plan`, `review-code` (branch mode writes
-  `## Local Review (Pre-Push)` with `**Round**`/`**Ship**`),
-  `triage-reviews` (`## Integrated Review`), `address-findings`
-  (`## Implementation`). There is no `implement` skill; the fork runs
-  implementation inline and so will this port.
+**Verified against this tree (2026-09-17; revision 2 corrections
+marked):**
+- Every phase the decision table names exists here: `plan-task`
+  (`## Plan Authored`), `review-plan` (`## Plan Review`), `review-code`
+  (branch mode writes `## Local Review (Pre-Push)` with
+  `**Round**`/`**Ship**`), `triage-reviews` (`## Integrated Review`),
+  `address-findings` (`## Implementation`). **Revision 2:** `review-issue`
+  exists but writes only a GitHub issue comment (`review-issue/SKILL.md`
+  step 7); it writes no `## Issue Review` entry although ADR-0013 names
+  one. The table's first two rows cannot fire until it does, so PR 1
+  gives `review-issue` a persistence step through `review_progress.sh
+  persist` (same pattern as PR E gave `review-plan`, `--soft`), writing
+  `## Issue Review` with `**Issue**: #<N>` and the open-question actions
+  as checkboxes.
+- There is no `implement` skill here. The fork's run-issue (read directly
+  from the scratchpad clone at `.agent/scratchpad/inspiration/
+  ros2_agent_workspace`, SKILL.md lines 432-439: "there is no `implement`
+  skill yet. After `## Plan Review`, the host runs implementation
+  inline") runs implementation inline too; the workspace's older
+  inspiration digest saying otherwise is stale. This port keeps
+  implementation inline and adds the table row for a dispatched
+  `implement` only when such a skill exists.
 - `review_progress.sh findings` already selects "the latest Integrated
   Review or Local Review (Pre-Push)"; `progress_read.py` emits
   `base_type`, `fields` (e.g. `Verdict`, `Ship`), `correlation`, and
@@ -118,11 +133,29 @@ changes:
   --before <count>` compares the entry count of the expected type before
   and after the dispatch (via `progress_read.py`) and reports `OK <sha>`,
   `PARTIAL`, `FAILED`, or `MISSING` so the host never assumes an outcome.
-- **Per-phase model table**: reasoning-heavy phases (`review-plan`,
-  `review-code`, `triage-reviews`, `address-findings`, implementation) →
-  `opus`; `review-issue`, `plan-task` → `sonnet`; `--model` overrides.
-  Aliases only. This matches the owner's model-usage rule (main session
-  on Fable, sub-agents on cheaper models) and the fork's table.
+- **Per-phase model table** (revision 2): every dispatched phase →
+  `sonnet` by default, per the owner's standing rule (main session on
+  Fable, sub-agents on Sonnet); `--model <alias>` overrides per dispatch.
+  The fork's Opus tier for review phases is NOT ported by default — Open
+  Question 1 asks whether any phase should get it. Aliases only.
+- **Failed or partial phases** (revision 2): `--check-exit` reporting
+  `PARTIAL`, `FAILED`, or `MISSING` is always a checkpoint, never a
+  silent retry. The host surfaces the phase, the outcome, and the last
+  entry's text (or "no entry written") and offers: re-dispatch the same
+  phase, take over inline, or stop. The fork's guideline "surface, don't
+  swallow" becomes a table row, not prose.
+- **Resume** (revision 2): every invocation re-derives the next action
+  from the newest entry, so `/run-issue <N>` on a half-done issue simply
+  continues; the skill states this and never keeps state outside
+  `progress.md`.
+- **One driver per issue** (revision 2): a stated convention, recorded in
+  ADR-0014 — a second `run-issue` on the same issue, or hand edits to
+  `progress.md` mid-run, are out of contract; `--check-exit`'s
+  entry-count comparison is the only detection and it reports
+  `MISSING`/unexpected type rather than guessing.
+- **Claude Code only** (revision 2): run-issue depends on the Agent tool
+  and `AskUserQuestion`; its description says so, exactly as
+  `start-task` does. Codex/Gemini sessions keep driving phases by hand.
 - **`next` subcommand**: `dispatch_phase.sh next --issue <N>` evaluates
   the decision table mechanically from the timeline (newest entry type,
   verdict, ship, open findings, preceding entry) and prints
@@ -163,8 +196,10 @@ files to understand the loop.
 | `.claude/skills/run-issue/SKILL.md` (new) | Host orchestrator: decision table, checkpoints with re-orientation headers, publish step, guidelines; in-process dispatch only |
 | `.agent/scripts/dispatch_phase.sh` (new) | Handoff block emitter, skill→entry-type and skill→model tables, `--check-exit`, `next` decision-table evaluator |
 | `.agent/scripts/tests/test_dispatch_phase.sh` (new) | Hermetic: handoff content (identity literals, model, exit contract, worktree), refusal outside the worktree, exit check OK/PARTIAL/FAILED/MISSING, every decision-table row from fixture timelines incl. the Ship rule and the three-round surface, the bare Local Review fallback, Implementation-preceded-by routing |
-| `.agent/scripts/merge_pr.sh` | Gate condition (a) accepts `## Local Review (Pre-Push)` at the head |
-| `.agent/scripts/tests/test_merge_pr_gate.sh` | Pre-push-at-head passes; stale pre-push still refused |
+| `.agent/scripts/merge_pr.sh` | Gate condition (a) accepts `## Local Review (Pre-Push)` at the head (**PR 0**, its own small PR) |
+| `.agent/scripts/tests/test_merge_pr_gate.sh` | Pre-push-at-head passes; stale pre-push still refused (PR 0) |
+| `.claude/skills/review-issue/SKILL.md` | New persistence step: `## Issue Review` entry via `review_progress.sh persist --soft`, open questions as checkboxes (PR 1) |
+| `.agent/scripts/tests/test_issue_review_entry.sh` (new) | The entry parses with `correlation.kind == "issue"` and its open-question checkboxes are what `dispatch_phase.sh next` routes on (PR 1) |
 | `docs/decisions/0014-in-process-phase-handoff.md` (new) | Handoff contract ADR |
 | `.agent/knowledge/review_loop_lifecycle.md` (new) | Lifecycle one-pager |
 | `.agent/knowledge/principles_review_guide.md` | ADR-0014 row; consequences row for the decision table (skill entry types ↔ `dispatch_phase.sh next`) |
@@ -207,26 +242,34 @@ already print their next command; run-issue reads entries, not prompts.
 
 ## Open Questions
 
-1. **Implementation phase inline vs an `implement` skill.** The fork runs
-   implementation in the host after Plan Review. This plan keeps that
-   (no new skill). The owner may prefer a dispatched `implement` phase so
-   the host stays thin; that would be a follow-up issue, and the table
-   gets its "bare Implementation" row then.
-2. **Three-round surface.** The plan hard-codes surfacing the loop state
+1. **Model tier per phase (owner).** Default is Sonnet for every dispatched
+   phase per the standing rule. The fork gives review-plan, review-code,
+   triage-reviews, and address-findings Opus. Should any phase here get a
+   larger model by default, or stay on Sonnet with `--model` as the
+   per-run override?
+2. **Implementation phase inline (decided, flag if you disagree).** Kept
+   inline in the host, matching the fork today. A dispatched `implement`
+   skill would be a follow-up issue; the table gets its "bare
+   Implementation" row then.
+3. **Three-round surface.** The plan hard-codes surfacing the loop state
    after three pre-push rounds, matching the standing rule on #269. Keep
    as a constant, or a flag?
-3. **Where run-issue runs from.** The host must be inside the issue's
+4. **Where run-issue runs from.** The host must be inside the issue's
    worktree for `_resolve_work_plans_dir.sh` to resolve. `/run-issue <N>`
    will `cd` via `/start-task` semantics first (create or enter). Confirm
    that is acceptable for a session that started elsewhere.
 
 ## Estimated Scope
 
-Three PRs, each independently mergeable, each through the review loop:
+Four PRs, each independently mergeable, each through the review loop
+(revision 2 split the gate change out):
 
-- **PR 1 — dispatcher + decision table + gate change** (`dispatch_phase.sh`,
-  its test, `merge_pr.sh` condition (a), ADR-0014). Largest; ~600 lines
-  of script and test.
+- **PR 0 — gate accepts a pre-push review at the head** (`merge_pr.sh`
+  condition (a) + one test). Tiny, load-bearing, independently motivated
+  by the first live gate run on #273.
+- **PR 1 — dispatcher + decision table + review-issue entry + ADR**
+  (`dispatch_phase.sh`, its test, `review-issue/SKILL.md` persistence
+  step and its test, ADR-0014). Largest; ~600 lines of script and test.
 - **PR 2 — the skill + docs** (`run-issue/SKILL.md`, lifecycle note,
   onboarding, AGENTS.md rows, ARCHITECTURE paragraph). Prose over PR 1's
   mechanics.
