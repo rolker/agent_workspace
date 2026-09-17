@@ -642,3 +642,23 @@ Observations 1-3 from the plan's "Checkpoint after PR B" all held on a real, non
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 12:29 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-269-prE at `5898888`
+**Base**: main
+**Depth**: Deep (reason: two gated skill files + helper)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix (spec gaps in the new review-plan step), fixed in 4af56b6
+
+### Findings
+- [x] (must-fix) review-plan report had no Status/When/By; step 6 referenced a field that did not exist — `.claude/skills/review-plan/SKILL.md` → header fields in all three templates
+- [x] (must-fix) plan-sha required a local checkout; the PR-number form could not get the plan-commit SHA — `.agent/scripts/review_progress.sh` → --ref mode + fetch in the skill
+- [x] (suggestion) "ERROR: " prefix not stripped (case) in the soft notice — `.agent/scripts/review_progress.sh` → fixed
+- [x] (suggestion) --soft merged stderr notes into stdout — `.agent/scripts/review_progress.sh` → streams separated
+- [x] (suggestion, governance) consequences-map row named only the review entry types — `.agent/knowledge/principles_review_guide.md` → all six types, five writers
+- [ ] (suggestion) --branch is ignored when --issue is set (pre-existing across B–E) — deferred; harmless, documented arity
