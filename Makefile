@@ -33,7 +33,11 @@ endif
 # installed from a worktree's own venv breaks for everyone once that
 # worktree is removed ("`pre-commit` not found"). git's common dir names the
 # main checkout from anywhere; fall back to MAIN_ROOT outside a repo.
-# (MAIN_ROOT itself still governs which script copies run — issue #239.)
+# The shared venv is fed by the shared requirements.txt for the same reason
+# (a branch that edits requirements.txt must not change dev-tool versions
+# for every other worktree via `make setup` there), and `make clean` clears
+# the shared stamps. (MAIN_ROOT itself still governs which script copies
+# run — issue #239.)
 WS_ROOT := $(patsubst %/.git,%,$(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))
 ifeq ($(WS_ROOT),)
   WS_ROOT := $(MAIN_ROOT)
@@ -117,7 +121,7 @@ validate:
 
 repair:
 	@echo "--- Repairing venv and pre-commit hook ---"
-	$(VENV_BIN)/python3 -m pip install --quiet --force-reinstall -r $(MAIN_ROOT)/requirements.txt
+	$(VENV_BIN)/python3 -m pip install --quiet --force-reinstall -r $(WS_ROOT)/requirements.txt
 	cd $(WS_ROOT) && $(PRE_COMMIT) install
 	@rm -f $(STAMP)/setup-dev.done
 	@$(MAKE) --no-print-directory $(STAMP)/setup-dev.done
@@ -159,11 +163,11 @@ $(STAMP):
 	mkdir -p $(STAMP)
 
 # setup-dev: install venv + pre-commit
-$(STAMP)/setup-dev.done: requirements.txt | $(STAMP)
+$(STAMP)/setup-dev.done: $(WS_ROOT)/requirements.txt | $(STAMP)
 	@echo "--- Setting up dev tools ---"
 	python3 -m venv $(VENV_DIR)
 	$(VENV_BIN)/python3 -m pip install --quiet --upgrade pip
-	$(VENV_BIN)/python3 -m pip install --quiet -r $(MAIN_ROOT)/requirements.txt
+	$(VENV_BIN)/python3 -m pip install --quiet -r $(WS_ROOT)/requirements.txt
 	cd $(WS_ROOT) && $(PRE_COMMIT) install
 	touch $@
 

@@ -72,6 +72,12 @@ vars_nogit="$(cd "$nogit" && make -pn -f "$nogit/Makefile" 2>/dev/null | grep -E
 # the repair / setup recipes cd to the common root before `pre-commit install`
 recipe="$(cd "$wt" && make -n -f "$sb/Makefile" repair 2>/dev/null | grep 'pre-commit install')"
 [[ "$recipe" == *"cd $sb && "*"pre-commit install"* ]] && pass "make repair installs the hook from the main checkout" || fail "repair recipe (got: $recipe)"
+# and the shared venv is fed by the SHARED requirements.txt, not the worktree's copy
+recipe="$(cd "$wt" && make -n -f "$sb/Makefile" repair 2>/dev/null | grep 'pip install')"
+[[ "$recipe" == *"-r $sb/requirements.txt"* && "$recipe" != *"-r $wt/requirements.txt"* ]] \
+    && pass "make repair installs from <main>/requirements.txt" || fail "repair requirements source (got: $recipe)"
+recipe="$(cd "$wt" && rm -rf "$sb/.make" && make -n -f "$sb/Makefile" "$sb/.make/setup-dev.done" 2>/dev/null | grep 'pip install -r\|pip install --quiet -r')"
+[[ "$recipe" == *"-r $sb/requirements.txt"* ]] && pass "setup-dev installs from <main>/requirements.txt" || fail "setup-dev requirements source (got: $recipe)"
 
 # ---- layer 2: validate_workspace.py from a worktree ----
 echo "TEST: validate_workspace.py finds the shared hook from a worktree and flags a vanished interpreter"
@@ -93,6 +99,11 @@ mkdir -p "$sb/.venv/bin"; printf '#!/bin/sh\n' > "$sb/.venv/bin/python3"; chmod 
 write_hook "$sb" "$sb/.venv/bin/python3"
 rc=0; out="$(cd "$wt" && python3 "$wt/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
 [[ "$out" == *"pre-commit hook: OK"* ]] && pass "a hook pinned to the main venv is OK, checked from the worktree" || fail "ok hook (out=${out:0:300})"
+# a present but non-executable interpreter is what the hook's own `-x` test rejects
+chmod -x "$sb/.venv/bin/python3"
+rc=0; out="$(cd "$wt" && python3 "$wt/.agent/scripts/validate_workspace.py" 2>&1)" || rc=$?
+[[ "$rc" -ne 0 && "$out" == *"no longer exists"* ]] && pass "a present but non-executable interpreter is flagged (mirrors the hook's -x test)" || fail "non-executable (rc=$rc out=${out:0:200})"
+chmod +x "$sb/.venv/bin/python3"
 # an existing but foreign interpreter is still "wrong path"
 write_hook "$sb" "/bin/sh"
 rc=0; out="$(cd "$wt" && python3 "$wt/.agent/scripts/validate_workspace.py" 2>&1)" || rc=$?

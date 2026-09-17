@@ -17,6 +17,7 @@ Usage:
     python3 validate_workspace.py [--verbose]
 """
 
+import os
 import sys
 import subprocess
 import argparse
@@ -173,7 +174,9 @@ def validate_workspace(verbose=False):
                 if line.startswith("INSTALL_PYTHON="):
                     hook_python = line.split("=", 1)[1].strip().strip("'\"")
                     expected_hook = str(hook_root / ".venv" / "bin" / "python3")
-                    if not Path(hook_python).is_file():
+                    # The hook itself tests `-x`, so mirror that: a present but
+                    # non-executable interpreter still falls through to PATH.
+                    if not os.access(hook_python, os.X_OK) or not Path(hook_python).is_file():
                         issues.append(
                             "pre-commit hook points to a Python that no longer exists: "
                             f"{hook_python}"
