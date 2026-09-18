@@ -37,6 +37,7 @@ humans use it as a checklist.
 | 0011 — Project-type adapter contract | Adding workspace content, touching build/test/setup/sync scripts, or anything that branches on project shape | Shape-specific behavior lives in `.agent/project_types/<type>/adapter.sh` behind the 12-verb contract; workspace content stays project-agnostic; `validate_adapter.sh` must pass |
 | 0012 — Worktree composition is an adapter concern | Touching worktree creation/removal/listing, or any script that composes a multi-repo worktree | Multi-repo composition knowledge lives behind `worktree_repos`/`worktree_env` adapter verbs, not in generic worktree scripts; those scripts loop over the `.worktree-repos` manifest and never check project type; no symlink fallback anywhere in the creation path |
 | 0013 — `progress.md` entry-type vocabulary | Writing a new `progress.md` entry from a workflow skill or script, or introducing a new entry type | Use one of the canonical `## <Entry Type>` headings from the ADR's Decision table; write via `.agent/scripts/progress_append.sh`; a new type requires a superseding ADR, not an addendum |
+| 0014 — In-process phase handoff | Touching `dispatch_phase.sh`, the `run-issue` skill, or a phase's task-line / entry-type / model tier | One dispatch path (Agent tool, in-process only); the handoff contract (worktree, task, identity, model, exit contract) prints from `dispatch_phase.sh`; exit checked mechanically via `--check-exit`, never assumed from a sub-agent's own summary; one driver per issue; checkpoint entries carry `**Decided-by**: owner` |
 
 ## Consequences Map
 
@@ -56,6 +57,7 @@ humans use it as a checklist.
 | Review depth classification doc | `review-code` skill (if tier definitions change) |
 | Work-plan directory convention | `plan-task`, `review-plan`, `triage-reviews`, `review-code` skills; `ARCHITECTURE.md` directory tree |
 | `progress.md` entries (`## Plan Authored`, `## Plan Review`, `## Local Review`, `## Local Review (Pre-Push)`, `## Integrated Review`, `## Implementation` — ADR-0013) | `plan-task`, `review-plan`, `review-code`, `triage-reviews`, `address-findings` write them via `review_progress.sh persist`; `round` / `sources` / `findings` / `plan-sha` read them back — change an entry's shape or correlation field and the writer, the readers, and ADR-0013's tables move together |
+| A phase's entry type, verdict field, or `progress.md` shape | `.agent/scripts/dispatch_phase.sh`'s per-skill tables and `next`'s decision-table rows, `test_dispatch_phase.sh`'s fixtures, `.agent/knowledge/review_loop_lifecycle.md` |
 
 ## Governance Layering
 

@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Accepted. Scoped exception in [ADR-0014](0014-in-process-phase-handoff.md):
+`/run-issue` records `## Checkpoint` entries on the owner's behalf from
+`AskUserQuestion` answers.
 
 ## Context
 
@@ -216,3 +218,9 @@ file is rewritten by this ADR's adoption.
   the review loop from `ros2_agent_workspace`: this ADR is PR A of that
   port's PR sequence.
 - [Principles review guide](../../.agent/knowledge/principles_review_guide.md) — references this ADR in the ADR-applicability table.
+- [ADR-0014](0014-in-process-phase-handoff.md) — `/run-issue`'s handoff
+  contract and its scoped exception recording `## Checkpoint` entries on
+  the owner's behalf. Consumers' routing rules — **Verdict** for `## Local
+  Review` / `## Local Review (Pre-Push)`, open boxes for `## Issue Review`
+  / `## Integrated Review` — are defined in ADR-0014's Decision and in
+  `dispatch_phase.sh`, not restated here.
