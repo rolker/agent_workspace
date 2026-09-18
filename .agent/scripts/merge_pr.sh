@@ -25,8 +25,15 @@
 # Steps:
 #   1. Roadmap update (commit + push to feature branch before merge) — skipped
 #      for a package-repo PR; the roadmap lives in this repo, not the package repo
-#   2. Wait for CI on the (possibly new) HEAD before merging (--no-wait skips)
-#   3. Merge the PR (--merge strategy)
+#   1.5. Review-loop merge gate (records a Merge entry; see below)
+#   2. Decide the CI target SHA — the reviewed head (pre-Step-1) when the
+#      only diff since then is paths this run committed itself (the
+#      roadmap file, the gate's own progress.md record), else the actual
+#      current head (issue #284); this decision always runs. Then wait
+#      for CI on that target SHA and let mergeability settle — --no-wait
+#      skips only the polling/waiting, not the CI-target computation
+#   3. Merge the PR (--merge strategy; one retry on a "not mergeable"
+#      refusal, after re-polling mergeability once)
 #   4. Remove the worktree:
 #      - Workspace/project (legacy, single-repo) PR: cd to root first; fails
 #        safely if uncommitted changes.
@@ -40,20 +47,12 @@
 #      did this for a package-repo PR, in its own repo)
 #   6. Pull main to sync (workspace and project repos; legacy path only)
 #
-# Manual verification of the wait step (issue #186):
-#   1. On any open PR branch in this repo, push a trivial commit:
-#        git commit --allow-empty -m "poke ci"
-#        git push
-#   2. Immediately run:
-#        make merge-pr PR=<N>
-#   3. Expected: script prints "Waiting for CI..." and blocks until checks
-#      complete, then merges.
-#   4. Without the wait step (pre-#186), step 2 would have errored
-#      "Pull Request is not mergeable" instantly.
-#
-#   An automated equivalent would need to mock gh pr checks --watch
-#   (drift risk) or spin throwaway PRs (network + auth dependencies);
-#   declined as out of scope for #186.
+# The wait step (issue #186; SHA-targeted poll and mergeability settle
+# added by #284/#271) is covered by automated tests, not manual steps:
+# see test_merge_pr_gate.sh's "CI wait" and "mergeability" cases, which
+# drive a stubbed `gh api`/`gh pr view` through no-CI, not-yet-registered,
+# pending, failed, and UNKNOWN-mergeable sequences without any network,
+# auth, or throwaway PR dependency.
 #
 # Exit codes:
 #   0 — success
@@ -494,6 +493,22 @@ fi
 IS_PACKAGE_PR=false
 [[ -n "$PKG_WT_DIR" ]] && IS_PACKAGE_PR=true
 
+# --- Capture the reviewed head, before any push this run makes (#284) ---
+# This is the SHA a `## Local Review` / `## Integrated Review` entry
+# correlates with, and the SHA CI is already considered verified for.
+# Read once here and reuse it for the Step 1.5 gate's own headRefOid /
+# comments / body fetch below, instead of a second `gh pr view` call.
+_head_json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json headRefOid,comments,body 2>/dev/null || echo "")
+HEAD_REVIEWED=""
+[[ -n "$_head_json" ]] && HEAD_REVIEWED=$(jq -r '.headRefOid // empty' <<<"$_head_json" 2>/dev/null || echo "")
+
+# Paths this run's own steps commit, so the Step 3 CI-target decision can
+# tell "the head moved because this script updated a document it owns" from
+# "the head moved for any other reason". Populated only when the commit
+# actually lands (not merely staged).
+declare -a _STEP1_COMMITTED_PATHS=()
+_STEP15_COMMITTED_PATH=""
+
 # --- Step 1: Roadmap update (pre-merge) ---
 if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
     if [[ "$IS_PACKAGE_PR" == true ]] || [[ "${REPO_KIND:-}" == "package" ]]; then
@@ -532,12 +547,13 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
                         echo "  ⚠️  Unable to resolve worktree root — skipping roadmap commit"
                     else
                         # Stage changed files using paths relative to the worktree root
+                        declare -a _ROADMAP_STAGED_PATHS=()
                         while IFS= read -r changed_file; do
                             [[ -z "$changed_file" ]] && continue
                             case "$changed_file" in
                                 "${_WT_TOPLEVEL}"/*)
                                     _REL="${changed_file#"${_WT_TOPLEVEL}/"}"
-                                    git -C "$_WT_ROOT" add -- "$_REL" 2>/dev/null || true
+                                    git -C "$_WT_ROOT" add -- "$_REL" 2>/dev/null && _ROADMAP_STAGED_PATHS+=("$_REL")
                                     ;;
                                 *)
                                     echo "  ⚠️  Skipping non-repo path: $changed_file" >&2
@@ -548,9 +564,12 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
                         if git -C "$_WT_ROOT" diff --cached --quiet 2>/dev/null; then
                             echo "  ⚠️  No staged changes — skipping roadmap commit"
                         else
-                            git -C "$_WT_ROOT" commit -m "Update roadmap: mark #${ISSUE_NUM} as done" 2>/dev/null \
-                                && echo "  ✅ Roadmap updated" \
-                                || echo "  ⚠️  Roadmap commit failed — proceeding with merge"
+                            if git -C "$_WT_ROOT" commit -m "Update roadmap: mark #${ISSUE_NUM} as done" 2>/dev/null; then
+                                echo "  ✅ Roadmap updated"
+                                [[ "${#_ROADMAP_STAGED_PATHS[@]}" -gt 0 ]] && _STEP1_COMMITTED_PATHS+=("${_ROADMAP_STAGED_PATHS[@]}")
+                            else
+                                echo "  ⚠️  Roadmap commit failed — proceeding with merge"
+                            fi
                             git -C "$_WT_ROOT" push origin "$PR_BRANCH" 2>/dev/null \
                                 && echo "  ✅ Roadmap commit pushed" \
                                 || echo "  ⚠️  Roadmap push failed — proceeding with merge"
@@ -581,10 +600,13 @@ fi
 #                  bypasses both conditions with a banner and records a
 #                  `## Merge (unreviewed)` entry (all modes, all scopes)
 # The durable record goes to the issue's progress.md in the PR's open
-# worktree (via progress_append.sh, then pushed — this runs BEFORE the CI
-# wait so the push is covered by it and never races the merge), or, when
-# no worktree is open for the PR's repo, as a comment on the PR itself.
-# A pass in report-only mode records nothing.
+# worktree (via progress_append.sh, then pushed), or, when no worktree is
+# open for the PR's repo, as a comment on the PR itself. This push moves
+# the PR head — Step 2 below (issue #284) is what actually keeps that push
+# from racing the merge: it targets CI at the pre-push reviewed head when
+# the only diff is this script's own committed paths (this record among
+# them), instead of waiting on "whatever runs exist" for a head that has
+# already moved. A pass in report-only mode records nothing.
 # Layer 2 (NOT implemented — Ask-First, ADR-0004): this gate is local-only.
 # A "Merge" click on GitHub bypasses it entirely. The server-side complement
 # would be a required status check on workspace PRs asserting the same two
@@ -593,11 +615,12 @@ fi
 # branch-protection rule requiring it. Enabling that changes CI and branch
 # protection, so it waits on the owner's explicit decision.
 _gate_reasons=()
-_gate_head=""
-_gate_json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json headRefOid,comments,body 2>/dev/null || echo "")
-if [[ -n "$_gate_json" ]]; then
-    _gate_head=$(jq -r '.headRefOid // empty' <<<"$_gate_json" 2>/dev/null || echo "")
-fi
+# Reuse the pre-Step-1 read (#284) instead of a second `gh pr view` call.
+# This is also correctness-bearing: the review entry the gate looks for
+# correlates with the head as of BEFORE this run's own roadmap push, not
+# whatever the head has moved to by the time Step 1.5 runs.
+_gate_json="$_head_json"
+_gate_head="$HEAD_REVIEWED"
 _gate_head_short="${_gate_head:0:7}"
 # Which worktree holds the issue's timeline (same resolution Step 1 uses).
 _gate_wt=""
@@ -702,6 +725,7 @@ _gate_record() {  # <entry type> <one-line why>
             why_comment="no agent identity set (source set_git_identity_env.sh) for a timeline commit"
         elif printf '%s\n' "$entry" | "$SCRIPT_DIR/progress_append.sh" -C "$_gate_wt" "$ISSUE_NUM" >/dev/null 2>&1; then
             if git -C "$_gate_wt" push -q origin "$PR_BRANCH" 2>/dev/null; then
+                _STEP15_COMMITTED_PATH=".agent/work-plans/issue-${ISSUE_NUM}/progress.md"
                 echo "  📝 ${etype} entry recorded in ${_gate_wt}/.agent/work-plans/issue-${ISSUE_NUM}/progress.md and pushed"
                 return 0
             fi
@@ -727,13 +751,67 @@ _gate_record() {  # <entry type> <one-line why>
     rm -f "$body_file"
 }
 
+# --- Idempotent record (issue #284) ---
+# A retry after a failed merge (or any second run against the same PR)
+# must not append a second Merge entry for the SAME situation: that grows
+# the timeline unboundedly and, worse, moves the head again (progress.md
+# push) for no new information. "Same situation" means the latest existing
+# Merge (report-only)/(unreviewed) entry for this PR carries the identical
+# entry type AND the identical **Conditions** text this run just computed
+# — an exact match, not "any prior record exists": a run whose reasons
+# have genuinely changed (a review landed, a new gap appeared) still gets
+# a fresh entry so the timeline reflects what actually happened. Checked
+# against progress.md when a worktree is open, else the PR's own comments
+# (the same store `_gate_record` itself falls back to).
+#
+# Deliberate ADR-0013 exception: matching is keyed on PR number + entry
+# type + Conditions text, NOT the entry's SHA correlation field, even
+# though ADR-0013 otherwise correlates Merge entries by head SHA. The SHA
+# in these entries is `HEAD_REVIEWED`, which the CI-target exemption above
+# can hold constant across an otherwise-legitimate repeat run (the script's
+# own paths-only pushes don't move it) — keying on SHA would make the
+# idempotency check trivially always match (nothing to compare) or never
+# match (the SHA is identical by construction), neither of which is what
+# "same situation" means here. Owner's decision on #284.
+_gate_already_recorded() {  # <entry type> <conditions text>
+    local etype="$1" why="$2" read_json rc=0 latest l_type l_cond l_sha
+    if [[ -n "$_gate_progress" ]]; then
+        read_json=$(python3 "$SCRIPT_DIR/progress_read.py" "$_gate_progress" --type "Merge (report-only)" --type "Merge (unreviewed)" 2>/dev/null) || rc=$?
+        [[ $rc -ne 0 ]] && return 1
+        latest=$(jq -c --arg pr "$PR_NUMBER" \
+            '.entries | map(select(.correlation.kind == "pr" and (.correlation.pr|tostring) == $pr)) | last // empty' \
+            <<<"$read_json" 2>/dev/null || echo "")
+        [[ -z "$latest" || "$latest" == "null" ]] && return 1
+        l_type=$(jq -r '.type' <<<"$latest")
+        l_cond=$(jq -r '.fields.Conditions // ""' <<<"$latest")
+        l_sha=$(jq -r '.correlation.sha // ""' <<<"$latest")
+        if [[ "$l_type" == "$etype" && "$l_cond" == "$why" ]]; then
+            echo "  ℹ️  already recorded at \`${l_sha:0:7}\`, same conditions — skipping a duplicate ${etype} entry"
+            return 0
+        fi
+        return 1
+    elif [[ -n "$_gate_json" ]]; then
+        latest=$(jq -r --arg h "## ${etype}" \
+            '[.comments[]? | .body // ""] | map(select(startswith($h))) | last // empty' \
+            <<<"$_gate_json" 2>/dev/null || echo "")
+        [[ -z "$latest" ]] && return 1
+        l_cond=$(grep -m1 '^\*\*Conditions\*\*: ' <<<"$latest" | sed 's/^\*\*Conditions\*\*: //')
+        if [[ "$l_cond" == "$why" ]]; then
+            echo "  ℹ️  already recorded (as a PR comment), same conditions — skipping a duplicate ${etype} entry"
+            return 0
+        fi
+        return 1
+    fi
+    return 1
+}
+
 if [[ "${#_gate_reasons[@]}" -eq 0 ]]; then
     echo "  ✅ Review gate: approved review at head \`${_gate_head_short}\` and a decision summary are present"
 else
     _gate_why=$(IFS=';'; echo "${_gate_reasons[*]}")
     if [[ "$FORCE_UNREVIEWED" == true ]]; then
         echo "  ⚠️  --force-unreviewed: bypassing the review gate — ${_gate_why}"
-        _gate_record "Merge (unreviewed)" "$_gate_why"
+        _gate_already_recorded "Merge (unreviewed)" "$_gate_why" || _gate_record "Merge (unreviewed)" "$_gate_why"
     elif [[ "$ENFORCE_MERGE_GATE" == true && "$WORKTREE_TYPE" == "workspace" ]]; then
         {
             echo "ERROR: review gate refused to merge PR #${PR_NUMBER}:"
@@ -746,34 +824,280 @@ else
         _gate_mode_note="report-only"
         [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: --enforce applies to workspace PRs only until #265 settles project timelines"
         echo "  ⚠️  Review gate (${_gate_mode_note}): would have refused — ${_gate_why}"
-        _gate_record "Merge (report-only)" "$_gate_why"
+        _gate_already_recorded "Merge (report-only)" "$_gate_why" || _gate_record "Merge (report-only)" "$_gate_why"
     fi
 fi
 
-# --- Step 2: Wait for CI ---
-# When the roadmap-update step pushes a fresh commit, the new commit's
-# CI hasn't started yet — `gh pr merge` below would fail with
-# "Pull Request is not mergeable" until checks complete. Avoid the
-# manual `gh pr checks --watch` round-trip by waiting here. --no-wait
-# skips when the user knows CI is already green.
-#
-# `--fail-fast` exits as soon as any check fails (gh exit 8) so we
-# don't waste time waiting for the rest. The error path captures gh's
-# exit code, surfaces the PR URL, and aborts the merge with context.
-if [[ "$NO_WAIT" == false ]]; then
-    echo "  Waiting for CI..."
-    if gh pr checks "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --watch --fail-fast; then
-        echo "  ✅ CI checks passed"
+# --- Step 2: Decide the CI target (issue #284) ---
+# The naive target is "whatever the head is right now", but Step 1.5's own
+# record push (and Step 1's roadmap push) may have moved the head past
+# HEAD_REVIEWED. When the ONLY diff between HEAD_REVIEWED and the current
+# head is paths this run committed itself, CI on HEAD_REVIEWED already
+# covers the change that matters and the new head is exempt from a second
+# CI round. Every other case — a concurrent push, a force-push, or a path
+# this script did not write — targets the actual current head, in full.
+CI_TARGET_SHA=""
+_ci_wt=""
+if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
+    _ci_wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$_ci_wt_top" ]]; then
+        _ci_is_main=false
+        for _mt in "$ROOT_DIR" "$ROOT_DIR/project"; do
+            if [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$_ci_wt_top" && pwd -P)" ]]; then
+                _ci_is_main=true
+            fi
+        done
+        [[ "$_ci_is_main" == false ]] && _ci_wt="$_ci_wt_top"
+    fi
+fi
+
+HEAD_NOW=""
+if [[ -n "$_ci_wt" ]] && git -C "$_ci_wt" fetch --quiet origin "$PR_BRANCH" 2>/dev/null; then
+    HEAD_NOW=$(git -C "$_ci_wt" rev-parse "origin/$PR_BRANCH" 2>/dev/null || echo "")
+fi
+if [[ -z "$HEAD_NOW" ]]; then
+    # No local worktree to fetch in (package PR, no open worktree for this
+    # branch, or the fetch/rev-parse failed) — fall back to a fresh gh
+    # read. No exemption is possible without a local diff to verify.
+    _ci_now_json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json headRefOid 2>/dev/null || echo "")
+    HEAD_NOW=$(jq -r '.headRefOid // empty' <<<"${_ci_now_json:-}" 2>/dev/null || echo "")
+fi
+
+if [[ -z "$HEAD_NOW" ]]; then
+    CI_TARGET_SHA="$HEAD_REVIEWED"
+    echo "  ⚠️  could not determine the current PR head — waiting for CI on the reviewed head \`${HEAD_REVIEWED:0:7}\`"
+elif [[ -z "$HEAD_REVIEWED" ]] || [[ "$HEAD_NOW" == "$HEAD_REVIEWED" ]]; then
+    CI_TARGET_SHA="$HEAD_NOW"
+elif [[ -z "$_ci_wt" ]]; then
+    CI_TARGET_SHA="$HEAD_NOW"
+    echo "  CI target: new head \`${HEAD_NOW:0:7}\` (no local worktree to verify ancestry/paths for an exemption)"
+elif ! git -C "$_ci_wt" merge-base --is-ancestor "$HEAD_REVIEWED" "$HEAD_NOW" 2>/dev/null; then
+    CI_TARGET_SHA="$HEAD_NOW"
+    echo "  CI target: new head \`${HEAD_NOW:0:7}\` (reviewed head \`${HEAD_REVIEWED:0:7}\` is not an ancestor — force-push or a concurrent history change)"
+else
+    declare -a _ci_committed_paths=()
+    [[ "${#_STEP1_COMMITTED_PATHS[@]}" -gt 0 ]] && _ci_committed_paths+=("${_STEP1_COMMITTED_PATHS[@]}")
+    [[ -n "$_STEP15_COMMITTED_PATH" ]] && _ci_committed_paths+=("$_STEP15_COMMITTED_PATH")
+    _ci_diff_paths=$(git -C "$_ci_wt" diff --name-only "$HEAD_REVIEWED" "$HEAD_NOW" 2>/dev/null || echo "")
+    if [[ -z "$_ci_diff_paths" ]]; then
+        CI_TARGET_SHA="$HEAD_NOW"
     else
-        _wait_rc=$?
+        _ci_all_exempt=true
+        _ci_offender=""
+        while IFS= read -r _ci_p; do
+            [[ -z "$_ci_p" ]] && continue
+            _ci_p_ok=false
+            for _ci_cp in ${_ci_committed_paths[@]+"${_ci_committed_paths[@]}"}; do
+                [[ "$_ci_p" == "$_ci_cp" ]] && { _ci_p_ok=true; break; }
+            done
+            if [[ "$_ci_p_ok" == false ]]; then
+                _ci_all_exempt=false
+                _ci_offender="$_ci_p"
+                break
+            fi
+        done <<<"$_ci_diff_paths"
+        if [[ "$_ci_all_exempt" == true ]]; then
+            CI_TARGET_SHA="$HEAD_REVIEWED"
+            echo "  CI target: reviewed head \`${HEAD_REVIEWED:0:7}\` — new head \`${HEAD_NOW:0:7}\` only touches paths this script committed itself ($(IFS=,; echo "${_ci_committed_paths[*]}"))"
+        else
+            CI_TARGET_SHA="$HEAD_NOW"
+            echo "  CI target: new head \`${HEAD_NOW:0:7}\` — touches \`${_ci_offender}\`, which this script did not commit"
+        fi
+    fi
+fi
+
+# --- Step 2 (cont.): Wait for CI on the CI target SHA (issue #284, fixes #271) ---
+# Replaces `gh pr checks --watch --fail-fast`, which watches whatever runs
+# exist for "the current head" at call time — the wrong SHA once Step 1 /
+# Step 1.5 have pushed, and indistinguishable-from-failure when a repo has
+# no CI at all (#271: "no checks reported" treated as a hard failure).
+#
+# MERGE_PR_CI_POLL_SECONDS / _GRACE_SECONDS / _TIMEOUT_SECONDS exist so
+# tests can run with zero sleeps; --no-wait skips this whole step (and
+# Step 5's mergeability settle below) when the user knows CI is green.
+MERGE_PR_CI_POLL_SECONDS="${MERGE_PR_CI_POLL_SECONDS:-10}"
+MERGE_PR_CI_GRACE_SECONDS="${MERGE_PR_CI_GRACE_SECONDS:-120}"
+MERGE_PR_CI_TIMEOUT_SECONDS="${MERGE_PR_CI_TIMEOUT_SECONDS:-1800}"
+
+_ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
+    # "error" (issue #284 review) is distinct from "none": a nonzero `gh
+    # api` exit (rate limit, network, 5xx, auth) or unparseable JSON is a
+    # failure to LEARN the CI state, not evidence the repo has no CI — the
+    # caller must keep retrying it (bounded by the grace deadline) rather
+    # than falling through to the no-CI pass.
+    local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed
+    runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" --paginate -f per_page=100 2>/dev/null \
+        | jq -c -s '{check_runs: [.[].check_runs[]?]}') || runs_rc=$?
+    status_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/status" 2>/dev/null) || status_rc=$?
+    if [[ $runs_rc -ne 0 ]] || [[ $status_rc -ne 0 ]]; then
+        echo "error"
+        return
+    fi
+    [[ -z "$runs_json" ]] && runs_json='{"check_runs":[]}'
+    [[ -z "$status_json" ]] && status_json='{"statuses":[]}'
+    if ! jq -e . >/dev/null 2>&1 <<<"$runs_json" || ! jq -e . >/dev/null 2>&1 <<<"$status_json"; then
+        echo "error"
+        return
+    fi
+    registered=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" \
+        '(($r.check_runs // []) | length) + (($s.statuses // []) | length) > 0' 2>/dev/null || echo false)
+    if [[ "$registered" != "true" ]]; then
+        echo "none"
+        return
+    fi
+    failed=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" '
+        (([($r.check_runs // [])[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale")] | length) > 0)
+        or (([($s.statuses // [])[] | select(.state == "failure" or .state == "error")] | length) > 0)' 2>/dev/null || echo false)
+    if [[ "$failed" == "true" ]]; then
+        echo "failed"
+        return
+    fi
+    pending=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" '
+        (([($r.check_runs // [])[] | select(.conclusion == null)] | length) > 0)
+        or (([($s.statuses // [])[] | select(.state == "pending")] | length) > 0)' 2>/dev/null || echo false)
+    if [[ "$pending" == "true" ]]; then
+        echo "pending"
+    else
+        echo "success"
+    fi
+}
+
+_wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout (still UNKNOWN), rc 2 on CONFLICTING
+    local start deadline now state json
+    start=$(date +%s)
+    deadline=$((start + MERGE_PR_CI_GRACE_SECONDS))
+    while :; do
+        json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json mergeable,mergeStateStatus 2>/dev/null || echo "")
+        [[ -z "$json" ]] && json='{}'
+        state=$(jq -r '.mergeable // "UNKNOWN"' <<<"$json" 2>/dev/null || echo "UNKNOWN")
+        if [[ "$state" == "CONFLICTING" ]]; then
+            echo "$state"
+            return 2
+        fi
+        if [[ "$state" != "UNKNOWN" ]]; then
+            echo "$state"
+            return 0
+        fi
+        now=$(date +%s)
+        if [[ "$now" -ge "$deadline" ]]; then
+            echo "$state"
+            return 1
+        fi
+        [[ "$MERGE_PR_CI_POLL_SECONDS" -gt 0 ]] && sleep "$MERGE_PR_CI_POLL_SECONDS"
+    done
+}
+
+if [[ "$NO_WAIT" == false ]]; then
+    echo "  Waiting for CI on \`${CI_TARGET_SHA:0:7}\`..."
+    # A failed workflows-count lookup must NOT be assumed to mean "zero
+    # workflows" (issue #284 review) — that would let a `gh api` outage
+    # masquerade as "no CI configured" and merge unverified. "unknown"
+    # keeps the `none` branch below from taking the no-ci exit; it waits
+    # out the grace window and errors instead, same as a real repo whose
+    # checks just haven't registered yet.
+    _ci_wf_rc=0
+    _ci_wf_json=$(gh api "repos/${PR_REPO_SLUG}/actions/workflows" 2>/dev/null) || _ci_wf_rc=$?
+    if [[ $_ci_wf_rc -ne 0 ]]; then
+        _ci_wf_count="unknown"
+    else
+        [[ -z "$_ci_wf_json" ]] && _ci_wf_json='{}'
+        if jq -e . >/dev/null 2>&1 <<<"$_ci_wf_json"; then
+            _ci_wf_count=$(jq -r '.total_count // 0' <<<"$_ci_wf_json" 2>/dev/null || echo "unknown")
+        else
+            _ci_wf_count="unknown"
+        fi
+    fi
+    _ci_start=$(date +%s)
+    _ci_deadline=$((_ci_start + MERGE_PR_CI_TIMEOUT_SECONDS))
+    _ci_grace_deadline=$((_ci_start + MERGE_PR_CI_GRACE_SECONDS))
+    _ci_result=""
+    while :; do
+        _ci_state=$(_ci_poll_state "$CI_TARGET_SHA")
+        _ci_now=$(date +%s)
+        case "$_ci_state" in
+            success) _ci_result="success"; break ;;
+            failed)  _ci_result="failed"; break ;;
+            error)
+                if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
+                    _ci_result="api-error"; break
+                fi
+                ;;
+            none)
+                if [[ "$_ci_wf_count" != "unknown" ]] && [[ "${_ci_wf_count:-0}" -eq 0 ]]; then
+                    _ci_result="no-ci"; break
+                fi
+                if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
+                    _ci_result="never-registered"; break
+                fi
+                ;;
+            *)  # pending, registered
+                if [[ "$_ci_now" -ge "$_ci_deadline" ]]; then
+                    _ci_result="timeout"; break
+                fi
+                ;;
+        esac
+        [[ "$MERGE_PR_CI_POLL_SECONDS" -gt 0 ]] && sleep "$MERGE_PR_CI_POLL_SECONDS"
+    done
+    case "$_ci_result" in
+        success)
+            echo "  ✅ CI checks passed on \`${CI_TARGET_SHA:0:7}\`" ;;
+        no-ci)
+            echo "  no CI configured for ${PR_REPO_SLUG}; nothing to wait for" ;;
+        failed)
+            _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+            {
+                echo "ERROR: CI checks failed on \`${CI_TARGET_SHA:0:7}\`"
+                [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+                echo "  Fix the failure and re-run, or pass --no-wait to skip the CI wait."
+            } >&2
+            exit 1 ;;
+        api-error)
+            {
+                echo "ERROR: gh api failed repeatedly while checking CI for \`${CI_TARGET_SHA:0:7}\` (rate limit, network, 5xx, or auth) after ${MERGE_PR_CI_GRACE_SECONDS}s"
+                echo "  No merge attempted — re-run once the API is reachable, or pass --no-wait to skip the CI wait."
+            } >&2
+            exit 1 ;;
+        never-registered)
+            {
+                echo "ERROR: no checks registered for \`${CI_TARGET_SHA:0:7}\` after ${MERGE_PR_CI_GRACE_SECONDS}s"
+                echo "  if this commit is excluded by workflow path filters, re-run with --no-wait"
+            } >&2
+            exit 1 ;;
+        timeout)
+            _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+            {
+                echo "ERROR: CI checks did not complete on \`${CI_TARGET_SHA:0:7}\` within ${MERGE_PR_CI_TIMEOUT_SECONDS}s"
+                [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+            } >&2
+            exit 1 ;;
+    esac
+
+    # --- Step 2 (cont.): Let mergeability settle before merging (#282) ---
+    # Right after Step 1.5's own push, GitHub may still report
+    # `mergeable: UNKNOWN` while it recomputes — `gh pr merge` refuses
+    # instantly in that window. Poll until it resolves, bounded by the
+    # same grace window as the "checks never register" case above.
+    # rc 2 means it settled to `CONFLICTING`: fail fast with a clear
+    # message instead of letting `gh pr merge` fail on it below.
+    _mg_state=""
+    _mg_rc=0
+    _mg_state=$(_wait_for_mergeable) || _mg_rc=$?
+    if [[ $_mg_rc -eq 2 ]]; then
         _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
         {
-            echo "ERROR: CI checks failed (gh exit $_wait_rc)"
+            echo "ERROR: PR #${PR_NUMBER} has merge conflicts (mergeable: CONFLICTING) — resolve them before merging"
             [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
-            echo "  Fix the failure and re-run, or pass --no-wait to skip the CI wait."
+        } >&2
+        exit 1
+    elif [[ $_mg_rc -ne 0 ]]; then
+        _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+        {
+            echo "ERROR: mergeability for PR #${PR_NUMBER} never settled (still UNKNOWN) after ${MERGE_PR_CI_GRACE_SECONDS}s"
+            [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
         } >&2
         exit 1
     fi
+    echo "  mergeability: $_mg_state"
 else
     echo "  CI wait skipped (--no-wait)"
 fi
@@ -781,8 +1105,38 @@ fi
 # --- Step 3: Merge ---
 # GH_REPO_ARGS was set during PR resolution above (-R <repo> for a package
 # or project PR, empty for a workspace PR). Don't re-resolve.
+#
+# GitHub's GraphQL merge has been observed refusing right after our own
+# push with a mergeability recompute still in flight even after Step 5
+# settled `mergeable` — a narrow remaining race. On a "not mergeable"
+# refusal, re-poll mergeability once more and retry the merge once before
+# giving up (--no-wait skips the retry too — there's nothing to re-poll).
+_do_merge_once() {
+    local ef rc=0
+    ef=$(mktemp)
+    gh pr merge "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --merge 2>"$ef" || rc=$?
+    _merge_err="$(cat "$ef")"
+    [[ -n "$_merge_err" ]] && cat "$ef" >&2
+    rm -f "$ef"
+    return $rc
+}
+
 echo "  Merging PR..."
-if ! gh pr merge "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --merge; then
+_merge_rc=0
+_merge_err=""
+_do_merge_once || _merge_rc=$?
+if [[ $_merge_rc -ne 0 ]] && [[ "$NO_WAIT" == false ]] && grep -qi "not mergeable" <<<"$_merge_err"; then
+    echo "  ⚠️  gh pr merge refused (not mergeable) — re-polling mergeability once and retrying"
+    _mg_retry_rc=0
+    _wait_for_mergeable >/dev/null || _mg_retry_rc=$?
+    if [[ $_mg_retry_rc -eq 2 ]]; then
+        echo "ERROR: PR #${PR_NUMBER} now has merge conflicts (mergeable: CONFLICTING) — resolve them before merging" >&2
+        exit 1
+    fi
+    _merge_rc=0
+    _do_merge_once || _merge_rc=$?
+fi
+if [[ $_merge_rc -ne 0 ]]; then
     echo "ERROR: Merge failed for PR #${PR_NUMBER}" >&2
     exit 1
 fi

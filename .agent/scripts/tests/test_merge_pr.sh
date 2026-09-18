@@ -11,6 +11,13 @@
 # pointing each sandbox repo's `origin` at a local bare clone instead of a
 # real GitHub URL.
 #
+# The CI-target decision, the SHA-targeted `gh api` check-runs/mergeability
+# poll, and the idempotent Merge record (issue #284) have their own
+# hermetic coverage in test_merge_pr_gate.sh; every case here uses
+# --no-wait, so none of that machinery (or `gh pr checks`, which the
+# script no longer calls at all — see the stub comment below) is exercised
+# by this suite.
+#
 # Run: bash .agent/scripts/tests/test_merge_pr.sh
 
 set -uo pipefail
@@ -60,11 +67,13 @@ trap cleanup EXIT
 
 # A fixture-driven `gh` stub: `pr view` and `pr list` answer from files
 # under $GH_FIXTURES_DIR (written by the tests), keyed by repo+number or
-# repo+branch. `pr merge` and `pr checks` always succeed (tests use
-# --no-wait, so `pr checks` is never actually invoked, but a stub is
-# provided for completeness). Every invocation is appended to
-# $GH_CALL_LOG (one line per call) so tests can assert which repo/branch
-# a lookup targeted.
+# repo+branch. `pr merge` always succeeds per GH_MERGE_EXIT; `pr checks`
+# is stubbed for completeness but merge_pr.sh does not call it any more
+# (issue #284 replaced `gh pr checks --watch` with a SHA-targeted `gh api`
+# poll — see test_merge_pr_gate.sh). Every case in this suite uses
+# --no-wait, so neither `pr checks` nor the new `gh api` poll is ever
+# invoked here. Every gh invocation is appended to $GH_CALL_LOG (one line
+# per call) so tests can assert which repo/branch a lookup targeted.
 write_gh_stub() {
     local sb="$1"
     cat > "$sb/stubbin/gh" <<'EOF'
