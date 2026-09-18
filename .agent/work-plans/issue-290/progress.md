@@ -174,3 +174,17 @@ The code fix and the three new tests are sound and discriminating. The harness c
 **Decision**: proceed
 
 proceed (Recommended) — implement now, folding in the three round-2 findings (ci-8 needs UNKNOWN forever; the two direct merge_pr.sh --no-wait callers need the zero-sleep env and a fixture; the Step 5 check must skip the real "Step 5: Delete branches" header).
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-18 14:11 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: `feature/issue-290` at `0573773`
+**Plan**: `.agent/work-plans/issue-290/plan.md` at `2bebbdc`
+**Mode**: inline
+
+- merge_pr.sh: mergeability settle moved outside the NO_WAIT gate; Step 3 retry un-gated; header, Step 2 and Step 3 comments corrected (only the real "Step 5: Delete branches" header remains).
+- test_merge_pr_gate.sh: stub GH_MERGEABLE_DEFAULT fallback (in place of the plan's make_sandbox fixture, which would have broken ci-8 per plan review round 2), set to MERGEABLE with zero sleeps by run_merge and the two direct --no-wait callers; sequenced pr-merge exit/stderr fixture + write_merge_fixture; cases nw-1..nw-3, which fail against origin/main's script and pass here.
+- test_merge_pr.sh (not in the plan; found when the commit hook hung): its runner also passes --no-wait and its stub had no mergeability answer, so every case would poll for 120 s. Stub now answers the poll; runner sets zero sleeps. Neither plan review round caught this suite.
+- AGENTS.md: merge_pr.sh row notes the settle and retry always run.
+- Suites: gate 57/57 (18 s), merge 91/91 (6 s), root-resolution 5/5.
