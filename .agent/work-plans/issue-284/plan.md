@@ -82,13 +82,11 @@ can make this exemption itself.
 5. **Let mergeability settle before `gh pr merge`.** Poll
    `gh pr view --json mergeable,mergeStateStatus` until `mergeable` is not
    `UNKNOWN`, bounded by the grace window; if it never settles, error out
-   with the PR URL and no merge. Then merge. If GitHub's GraphQL
-   merge refuses an `UNSTABLE` head (pending non-required checks on a
-   progress-only commit), fall back to the REST merge
-   (`gh api -X PUT repos/<slug>/pulls/<N>/merge -f merge_method=merge`),
-   which accepts unstable. Verify which of the two GitHub refuses during
-   implementation against a throwaway PR rather than from memory, and keep
-   only the path that is needed.
+   with the PR URL and no merge. Then merge (GraphQL, via `gh pr merge
+   --merge`); if that refuses with "not mergeable", re-poll mergeability
+   once more and retry the merge once, then error. See Implementation
+   Notes: the REST fallback described in an earlier revision of this step
+   was not implemented — see there for why.
 6. **Update the header comments** in `merge_pr.sh` (Steps list, the Step
    1.5 note that the push "is covered by" the CI wait, the #186 manual
    verification block, which becomes an automated test).
@@ -121,9 +119,15 @@ can make this exemption itself.
    - concurrent push: the fixture's `headRefOid` after the record push is
      a commit not descended from the reviewed head; the check-runs call
      targets that new SHA (no exemption) and the output names the failed
-     ancestry condition.
-   Update `test_merge_pr.sh`'s stub comment ("`pr checks` is never actually
-   invoked") to match.
+     ancestry condition;
+   - a check-run stuck pending forever (registered, never resolves): the
+     overall timeout error, distinct from the never-registered case.
+   Landed as 15 cases in `test_merge_pr_gate.sh` (four idempotency + eleven
+   CI-target/wait/mergeability) plus a header/comment update in
+   `test_merge_pr.sh` ("`pr checks` is never actually invoked" -> the
+   script doesn't call `pr checks` at all any more; replaced by the
+   SHA-targeted `gh api` poll, which this suite's --no-wait cases never
+   exercise either).
 8. **Docs**: every mention of `gh pr checks --watch --fail-fast` as the
    script's wait mechanism in `agent_wait_patterns.md` (five places: the
    prose around lines 31 and 40, the table row, and the two list items near
@@ -175,11 +179,29 @@ can make this exemption itself.
 - ~~Roadmap commit exemption~~ — answered 2026-09-18: yes, any document
   file the script updates once the merge is approved is exempt; the plan
   now keys the exemption on the paths the script committed itself.
-- **AGENTS.md row edit** (Ask-First): change "waits for CI on the latest
-  HEAD before merging" to "waits for CI on the reviewed head; the script's
-  own roadmap and progress.md commits are exempt". Yes/no.
-- Which merge call GitHub refuses on an `UNSTABLE` head is verified during
-  implementation (step 5); if GraphQL accepts it, no REST fallback lands.
+- ~~AGENTS.md row edit~~ (Ask-First) — approved 2026-09-18: changed "waits
+  for CI on the latest HEAD before merging" to "waits for CI on the
+  reviewed head; the script's own roadmap and progress.md commits are
+  exempt".
+- ~~Which merge call GitHub refuses on an `UNSTABLE` head~~ — resolved
+  during implementation without a throwaway PR: see Implementation Notes.
+
+## Implementation Notes
+
+- **REST merge fallback not implemented.** Step 5's `gh pr merge` retry
+  path is GraphQL-only (`gh pr merge --merge`, re-poll mergeability once,
+  retry once), not the GraphQL-then-REST fallback this plan originally
+  described. The observed #282 failure mode was `gh pr view`'s
+  `mergeable` field reading `UNKNOWN` right after the push — a
+  recompute-in-flight race, not GitHub refusing an `UNSTABLE` merge. The
+  mergeability-settle poll (wait until `mergeable != UNKNOWN`) directly
+  addresses that race, so the REST fallback (`gh api -X PUT
+  repos/<slug>/pulls/<N>/merge -f merge_method=merge`, which accepts
+  `UNSTABLE`) had nothing left to cover and was left out rather than
+  built speculatively. If a future merge is ever refused specifically
+  because `mergeStateStatus` settled to `UNSTABLE` (not `UNKNOWN`) and
+  GraphQL's `pr merge` still refuses it, that observation is the trigger
+  for adding the REST fallback — not before.
 
 ## Estimated Scope
 
