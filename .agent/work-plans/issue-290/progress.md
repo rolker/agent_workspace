@@ -116,3 +116,11 @@ The diagnosis and the code fix are right and minimal. The test half is not: as s
 **Decision**: revise
 
 revise (Recommended)
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-18 18:35 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-290/plan.md` at `2bebbdc`
+
+Revision 2: addressed all five plan-review findings — zero-sleep test defaults so the unconditional settle doesn't stall the 27 existing run_merge cases, a gh_calls.log-ordering assertion in place of the non-discriminating merge-succeeded check, a new sequenced merge-exit/stderr fixture and test for the un-gated Step 3 retry, both stale "Step 5" comment fixes, and the AGENTS.md script-row edit deferred to the existing #269 standing rule instead of a fresh Ask-First round.
