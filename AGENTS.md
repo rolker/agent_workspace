@@ -398,7 +398,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
 | `.agent/scripts/gh_create_pr.sh` | Create PR with AI signature injection + label validation; reads body via `--body-stdin`, `--body-file`, or `--body` |
 | `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
-| `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, runs the review-loop merge gate, waits for CI on the reviewed head; the script's own roadmap and progress.md commits are exempt), remove worktree, delete branch, sync main; `--no-wait` to skip the CI wait; the gate is report-only by default (`--enforce` refuses on workspace PRs; `--force-unreviewed` bypasses with a `## Merge (unreviewed)` record) |
+| `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, runs the review-loop merge gate, waits for CI on the reviewed head; the script's own roadmap and progress.md commits are exempt), remove worktree, delete branch, sync main; `--no-wait` to skip the CI wait (the mergeability settle and one merge retry always run); the gate is report-only by default (`--enforce` refuses on workspace PRs; `--force-unreviewed` bypasses with a `## Merge (unreviewed)` record) |
 | `.agent/scripts/update_roadmap.sh` | Auto-update roadmap status for completed issues |
 | `.agent/scripts/sync_project.py` | Sync workspace + project repos (dispatches via adapter) |
 | `.agent/scripts/validate_workspace.py` | Validate project/ configuration |
