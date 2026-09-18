@@ -187,6 +187,25 @@ INSTALL_CMD=""         # optional deploy/install; empty = make install no-ops
 adapter, which runs the configured command in the project tree
 (`adapter project_root` — `project/` for `single_project`).
 
+## Review Loop Lifecycle
+
+An issue moves through a fixed phase order — `review-issue` → `plan-task`
+→ `review-plan` → implement → `review-code` (pre-push, then post-push) →
+`triage-reviews` → merge — each phase appending one canonical entry
+(ADR-0013) to `.agent/work-plans/issue-<N>/progress.md`, the timeline that
+is the only record of where an issue stands. `.claude/skills/run-issue/
+SKILL.md` (Claude Code only) is the one script-driven path through this
+table: `.agent/scripts/dispatch_phase.sh next` reads the timeline and
+returns the next action, `dispatch_phase.sh --issue <N> --skill <phase>`
+hands that phase to a fresh sub-agent via the Agent tool (ADR-0014), and
+`--check-exit` verifies the phase kept its exit contract before the loop
+advances. Nine `AskUserQuestion` checkpoints pause the loop for a human
+decision, each recorded as its own `## Checkpoint` entry before the next
+step is asked for — no loop state lives outside `progress.md`. Codex/
+Gemini sessions, which cannot drive the Agent tool or `AskUserQuestion`
+the same way, walk the same phase order by hand, one `SKILL.md` at a time.
+See `.agent/knowledge/review_loop_lifecycle.md` for the one-page summary.
+
 ## Governance
 
 - **Issue-first policy**: No code without a GitHub issue

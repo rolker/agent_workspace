@@ -63,8 +63,15 @@ task, review a PR, brainstorm, or run research, read the corresponding
 Available workflow skills: `review-issue`, `plan-task`, `review-plan`,
 `review-code`, `brainstorm`, `research`, `audit-workspace`, `audit-project`,
 `gather-project-knowledge`, `onboard-project`, `brand-guidelines`,
-`triage-reviews`, `address-findings`, `skill-importer`, `document-package`,
-`issue-triage`, `test-engineering`.
+`triage-reviews`, `address-findings`, `run-issue`, `skill-importer`,
+`document-package`, `issue-triage`, `test-engineering`.
+
+`run-issue` (Claude Code only) drives an issue through the whole loop
+above end to end, dispatching each phase via the Agent tool and pausing at
+`AskUserQuestion` checkpoints — see
+`.agent/knowledge/review_loop_lifecycle.md` and
+`.claude/skills/run-issue/SKILL.md`. Codex/Gemini agents keep driving the
+loop by hand, one skill at a time.
 
 `address-findings` closes the loop between a review and its re-review: it
 works the open checkboxes of the latest `## Integrated Review` or
