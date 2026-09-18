@@ -19,9 +19,11 @@ carries two duplicate entries.
 Owner decision (recorded on #284, 2026-09-18): keep GitHub's server-side
 protection (`require_pr` ruleset, no bypass actors). The script may merge
 **without waiting for CI on the new head** when the only difference from the
-last CI-verified head is that issue's `progress.md`. GitHub currently
-requires no status checks on `main`, so the CI wait is entirely this
-script's policy and it can make this exemption itself.
+last CI-verified head is the document files the script itself updates once
+the merge is approved: the roadmap commit (Step 1, `docs/ROADMAP.md`) and
+the issue's `progress.md` (Step 1.5). GitHub currently requires no status
+checks on `main`, so the CI wait is entirely this script's policy and it
+can make this exemption itself.
 
 ## Approach
 
@@ -46,13 +48,15 @@ script's policy and it can make this exemption itself.
    `HEAD_NOW`. The exemption applies only when all of these hold:
    `HEAD_NOW != HEAD_REVIEWED`; `HEAD_NOW` resolves locally after the
    fetch; `git merge-base --is-ancestor HEAD_REVIEWED HEAD_NOW` (so a
-   force-push or an unrelated concurrent push never qualifies); and
-   `git diff --name-only HEAD_REVIEWED HEAD_NOW` lists exactly one path,
-   `.agent/work-plans/issue-<N>/progress.md`. Then the target is
-   `HEAD_REVIEWED` and the script prints why the new head is exempt. In
-   every other case, including the Step 1 roadmap commit (see open
-   questions), a concurrent push by another agent, or a SHA the fetch did
-   not bring in, the target is `HEAD_NOW` and the script says which
+   force-push or an unrelated concurrent push never qualifies); and every
+   path in `git diff --name-only HEAD_REVIEWED HEAD_NOW` is one the script
+   committed itself in this run (Step 1 records the roadmap path it
+   committed, Step 1.5 records `.agent/work-plans/issue-<N>/progress.md`;
+   the set is built from what was actually committed, not a hardcoded
+   list). Then the target is `HEAD_REVIEWED` and the script prints why the
+   new head is exempt. In every other case, including a concurrent push by
+   another agent, a SHA the fetch did not bring in, or any path the script
+   did not write, the target is `HEAD_NOW` and the script says which
    condition failed.
 4. **Wait for CI on the target SHA, not on "whatever runs exist".**
    Replace `gh pr checks --watch` with a bounded poll of
@@ -95,8 +99,11 @@ script's policy and it can make this exemption itself.
      pushes nothing;
    - entry push moves the head, diff is progress-only: the check-runs call
      targets the reviewed SHA and the merge proceeds;
-   - entry push plus a roadmap commit: the check-runs call targets the new
-     SHA;
+   - entry push plus the script's own roadmap commit: still exempt, the
+     check-runs call targets the reviewed SHA;
+   - a commit touching a path the script did not write (e.g. a `.sh`
+     alongside progress.md): no exemption, the check-runs call targets the
+     new SHA;
    - check-runs empty for the first N calls then green: merges (#271);
    - check-runs never appear: timeout error, no `pr merge` call;
    - a failed check-run: error, no merge;
@@ -127,8 +134,8 @@ script's policy and it can make this exemption itself.
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/merge_pr.sh` | Reviewed-head capture; per-PR, per-conditions idempotent record; fetch + ancestry + diff-based CI target; SHA-targeted CI poll with no-CI / not-started / registered rules; mergeability settle; header comments |
-| `.agent/scripts/tests/test_merge_pr_gate.sh` | Stub for `gh api` check-runs / status / workflows and mergeability; fourteen new cases above |
+| `.agent/scripts/merge_pr.sh` | Reviewed-head capture; per-PR, per-conditions idempotent record; fetch + ancestry + script-written-paths CI target; SHA-targeted CI poll with no-CI / not-started / registered rules; mergeability settle; header comments |
+| `.agent/scripts/tests/test_merge_pr_gate.sh` | Stub for `gh api` check-runs / status / workflows and mergeability; fifteen new cases above |
 | `.agent/scripts/tests/test_merge_pr.sh` | Stub comment about `pr checks` |
 | `.agent/knowledge/agent_wait_patterns.md` | Wait mechanism is now a SHA-targeted poll |
 | `AGENTS.md` | Script-table row for `merge_pr.sh` (Ask-First; one phrase) |
@@ -165,13 +172,12 @@ script's policy and it can make this exemption itself.
 
 ## Open Questions
 
-- **Roadmap commit exemption.** Step 1 also pushes a commit (docs/ROADMAP.md
-  only) before the wait. The owner's rule names only `progress.md`, so the
-  plan waits for full CI after a roadmap commit. Extend the exemption to
-  the roadmap file? Default: no.
+- ~~Roadmap commit exemption~~ — answered 2026-09-18: yes, any document
+  file the script updates once the merge is approved is exempt; the plan
+  now keys the exemption on the paths the script committed itself.
 - **AGENTS.md row edit** (Ask-First): change "waits for CI on the latest
-  HEAD before merging" to "waits for CI on the reviewed head; a
-  progress.md-only record commit is exempt". Yes/no.
+  HEAD before merging" to "waits for CI on the reviewed head; the script's
+  own roadmap and progress.md commits are exempt". Yes/no.
 - Which merge call GitHub refuses on an `UNSTABLE` head is verified during
   implementation (step 5); if GraphQL accepts it, no REST fallback lands.
 
