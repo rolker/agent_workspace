@@ -46,3 +46,13 @@ Confirmed against source (`.agent/scripts/merge_pr.sh`, current `feature/issue-2
 - [ ] Split the single `if [[ "$NO_WAIT" == false ]]` block into two independent gates: one for the CI poll (skippable), one for the mergeability settle + merge-retry (not skippable) — rather than adding a second flag or an early exception inside the same block, to keep the "skips only CI" contract structurally obvious.
 - [ ] Add the fixture-driven test case named in the issue (`--no-wait` + `mergeable: UNKNOWN`-then-`MERGEABLE`) using the existing `run_merge`/`write_mergeable_fixture` helpers, and verify it currently fails (merge attempted while still UNKNOWN, or the settle poll skipped) before the fix, then passes after.
 - [ ] Update the two comment sites (script header, Step 2 inline comment) and the `AGENTS.md` script-reference row together with the code change, not as a follow-up.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-18 13:40 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+proceed, but this question suffers from an issue I complained about in ros2 agent workspace where the question is a dense, hard to read paragraph.
