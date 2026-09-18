@@ -722,10 +722,12 @@ write_mergeable_fixture "$sb" "MERGEABLE"
 out="$(GH_MERGE_EXIT=0 run_merge "$sb" 2>&1)" || true
 mg_line=$(grep -n "mergeable,mergeStateStatus" "$sb/gh_calls.log" 2>/dev/null | head -1 | cut -d: -f1)
 mr_line=$(grep -n "^pr merge" "$sb/gh_calls.log" 2>/dev/null | head -1 | cut -d: -f1)
-if [[ -n "$mg_line" && -n "$mr_line" && "$mg_line" -lt "$mr_line" ]] && [[ "$out" == *"CI wait skipped (--no-wait)"* ]] && [[ "$out" == *"mergeability: MERGEABLE"* ]]; then
+# Two polls: the UNKNOWN answer was read and waited through, not skipped.
+mg_polls=$(grep -c "mergeable,mergeStateStatus" "$sb/gh_calls.log" 2>/dev/null || true)
+if [[ -n "$mg_line" && -n "$mr_line" && "$mg_line" -lt "$mr_line" ]] && [[ "$mg_polls" -ge 2 ]] && [[ "$out" == *"CI wait skipped (--no-wait)"* ]] && [[ "$out" == *"mergeability: MERGEABLE"* ]]; then
     pass "(nw-1) --no-wait: CI poll skipped, mergeability polled (UNKNOWN then MERGEABLE) before gh pr merge"
 else
-    fail "(nw-1) (mergeable-poll line=${mg_line:-none} merge line=${mr_line:-none} out=${out:0:300})"
+    fail "(nw-1) (mergeable-poll line=${mg_line:-none} polls=${mg_polls} merge line=${mr_line:-none} out=${out:0:300})"
 fi
 
 echo "TEST: --no-wait with mergeability UNKNOWN for the whole grace window: error, no merge (#290)"

@@ -204,4 +204,4 @@ proceed (Recommended) — implement now, folding in the three round-2 findings (
 ### Findings
 - [x] (must-fix) Planned AGENTS.md merge_pr.sh row edit is missing from the branch, yet the `## Implementation` entry claims "AGENTS.md: merge_pr.sh row notes the settle and retry always run" — make the edit (row still reads only "`--no-wait` to skip the CI wait") or correct the record — `AGENTS.md:401`
 - [x] (suggestion) Under --no-wait a gh/API outage during the now-always-on settle waits the full grace window then reports "never settled (still UNKNOWN)", indistinguishable from a real UNKNOWN; consider naming the lookup failure — `.agent/scripts/merge_pr.sh:1028`
-- [ ] (suggestion) nw-1 checks the first mergeable poll precedes the merge but not that the UNKNOWN answer was consumed (a second poll); assert the mergeable_seq count is 2 — `.agent/scripts/tests/test_merge_pr_gate.sh:716`
+- [x] (suggestion) nw-1 checks the first mergeable poll precedes the merge but not that the UNKNOWN answer was consumed (a second poll); assert the mergeable_seq count is 2 — `.agent/scripts/tests/test_merge_pr_gate.sh:716`
