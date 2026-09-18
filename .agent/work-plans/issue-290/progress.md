@@ -221,3 +221,18 @@ proceed (Recommended) — implement now, folding in the three round-2 findings (
 - [x] nw-1 asserts at least two mergeability polls (UNKNOWN read, then MERGEABLE) — `.agent/scripts/tests/test_merge_pr_gate.sh:716`
 
 Checks: test_merge_pr_gate 58/0, test_merge_pr 91/0, test_merge_pr_root_resolution 5/0; shellcheck --severity=warning clean.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-18 14:23 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-290 at `cce43e2`
+**Base**: main
+**Depth**: Standard (reason: caller override; merge-path enforcement script)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+### Findings
+- [ ] (suggestion) LOOKUP_FAILED error says "could not reach GitHub", but `gh pr view` also fails on auth expiry, rate limit, or a bad PR number and its stderr is discarded; say "the last `gh pr view` lookup failed (network, auth, or API error)" and drop the awkward "rather than reported UNKNOWN" clause — `.agent/scripts/merge_pr.sh:1160`
