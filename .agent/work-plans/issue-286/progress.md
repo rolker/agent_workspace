@@ -102,3 +102,13 @@ c6d5b72 helper `_only_bookkeeping_between` + gate condition (a) ancestry rule + 
 
 ### Findings
 - [ ] No issues found. LGTM. Gate suite 54/54 with the method check; 38/54 without the fix.
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-09-18 11:14 -04:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #287 at `ac47347`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: latest Local Review entry is at `5d3658e`, not the PR head `ac47347` (stale review)
