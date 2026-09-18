@@ -64,3 +64,45 @@ proceed, but this question suffers from an issue I complained about in ros2 agen
 **Plan**: `.agent/work-plans/issue-290/plan.md` at `ff4bf0e`
 
 Split Step 2's `--no-wait` gate so only the CI poll is skippable; the mergeability settle (`_wait_for_mergeable`) and the Step 3 merge retry always run, since they guard the script's own Step 1.5 push, not CI. Adds a regression test for `--no-wait` + `UNKNOWN`→`MERGEABLE` (merges) and `UNKNOWN` for the whole grace window (errors), plus fixes to the three comment sites describing the old behavior.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-18 13:46 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #290 — merge_pr.sh: --no-wait also skips the mergeability settle, so the script's own push makes the merge refuse
+**Plan**: `.agent/work-plans/issue-290/plan.md` at `ff4bf0e`
+**Branch**: `feature/issue-290`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One script, one flag's semantics, three comment sites, one test file. Single PR. |
+| Issue alignment | Good | All four `## Issue Review` actions are covered (split the gate, un-gate the retry, fix comments + AGENTS.md row, add the named fixture test). |
+| File targeting | Needs work | Correct files, but the test file needs more than "add 2 cases" — see finding 1. |
+| Consequences | Concern | The consequences table misses the blast radius on the 27 existing `run_merge` call sites (finding 1) and on the un-gated retry's own coverage (finding 3). |
+| Principle alignment | Needs work | "Test what breaks": case 1 as written passes against the unfixed code (finding 2), so it is not a regression test; the retry un-gating ships untested. |
+| ADR compliance | Good | Only ADR-0013, handled. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences]** — `run_merge()` (line 157) always passes `--no-wait` and sets no `MERGE_PR_CI_*` env; `make_sandbox` writes no `.mergeable.json`, so the gh stub answers `UNKNOWN` forever. Once the settle runs unconditionally, all 27 existing `run_merge` tests poll for the default 120 s grace at 10 s intervals and then exit 1 at "mergeability never settled" — they never reach Step 3. The plan must also give `run_merge` zero-sleep env (`MERGE_PR_CI_POLL_SECONDS=0`, `MERGE_PR_CI_GRACE_SECONDS`) and a default `MERGEABLE` fixture (in `run_merge` or `make_sandbox`), or ~27 assertions break and the suite stalls for ~54 minutes.
+2. **[Principle alignment]** — Plan step 5 says case 1 (`--no-wait`, UNKNOWN seq 1 → MERGEABLE, `GH_MERGE_EXIT=0`) should "assert it merges" and "fail against the current code". It will not fail: the stub's `pr merge` exits `GH_MERGE_EXIT` unconditionally and never consults the mergeable fixture, so the unfixed script (settle skipped) merges too. The assertion must be on the settle actually happening — e.g. `gh_calls.log` contains a `pr view ... --json mergeable,mergeStateStatus` call before the `pr merge` line — otherwise it is a no-op test.
+3. **[File targeting]** — Approach step 2 (un-gating the Step 3 retry) has no test at all. Exercising it needs the gh stub to fail the first `pr merge` with "not mergeable" on stderr and succeed on the second; today `pr merge` has a single fixed exit code and no stderr. Add a sequenced merge-exit/stderr fixture (same pattern as `.mergeable_<N>.json`) plus a `--no-wait` retry case, or state explicitly why the retry ships uncovered.
+4. **[Consequences]** — Plan step 3 rewrites the line-1168 sentence but leaves the stale "Step 5" references at lines 969–970 and 1166; the settle lives in Step 2. Fix both while editing those comments.
+5. **[Scope]** — Editing `AGENTS.md` is an "Ask First" boundary (instruction file). The current row ("`--no-wait` to skip the CI wait") is not wrong post-fix but is ambiguous; if tightening it to "skips only the CI wait — the mergeability settle and merge retry always run", get approval rather than treating it as a drive-by.
+
+### Summary
+
+The diagnosis and the code fix are right and minimal. The test half is not: as specified, one new case cannot fail against the unfixed code, the retry un-gating is untested, and the unconditional settle silently breaks every existing `--no-wait` test. Revise step 5 before implementing.
+
+### Recommended Actions
+
+- [ ] Give `run_merge` (or `make_sandbox`) zero-sleep `MERGE_PR_CI_*` env and a default `MERGEABLE` fixture so the 27 existing cases still reach Step 3.
+- [ ] Re-specify case 1 to assert the settle poll occurred before `pr merge` (gh_calls.log ordering), not merely that a merge happened.
+- [ ] Add a `--no-wait` retry test, which requires a sequenced `pr merge` exit/stderr fixture in the gh stub; or record why the retry ships uncovered.
+- [ ] Correct the stale "Step 5" wording at lines 969–970 and 1166 alongside the other comment fixes.
+- [ ] Confirm with the owner before touching the `AGENTS.md` row (Ask First).
