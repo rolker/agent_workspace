@@ -78,3 +78,20 @@ PR 2 of the #276 port (PR #293): dispatch_phase.sh (03121fe), test_dispatch_phas
 **Branch**: `feature/issue-276-pr3` at `6d12f37`
 
 PR 3 of the #276 port (PR #294): run-issue SKILL.md (0b1efa4), ADR-0014 + ADR-0013 note (673f14f), lifecycle note + principles guide + onboarding + ARCHITECTURE (7bae93c), AGENTS.md script row (6d12f37). Skill is ~325 lines vs the plan's ~300 target; claims verified against dispatch_phase.sh as merged.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-18 13:25 -04:00
+**By**: Claude Code Agent (lead: claude-fable-5-1; specialists: claude-sonnet-5 doc-accuracy/adversarial + governance; gemini skipped per owner)
+**Verdict**: changes-requested
+
+**PR**: #294 at `6e7063c`
+**Depth**: Standard (reason: 639 lines of skill + docs; AGENTS.md one row under standing rule 2)
+**Must-fix**: 3 | **Suggestions**: 2
+
+### Findings
+- [x] (must-fix, adversarial) step 4's before-count called progress_read.py on a not-yet-existing progress.md (exit 1); guarded, missing file = 0 — `.claude/skills/run-issue/SKILL.md`
+- [x] (must-fix, adversarial) step 4 never checked `mode=inline`, which row 27 emits for any taken-over phase; step 4 checks first and step 5 covers non-implement takeovers with no **Mode** field — `.claude/skills/run-issue/SKILL.md`
+- [x] (must-fix, governance) step 10 omitted that entry commits after the last review are pushed before merging and why that is safe (#286 ancestry rule) — `.claude/skills/run-issue/SKILL.md`
+- [x] (suggestion, governance) Scope section with the three owner notes (#208/#209, #265, ADR-0012) — `.claude/skills/run-issue/SKILL.md`
+- [x] (suggestion, adversarial) ADR-0013 References bullet trimmed to a pointer; routing detail moved to ADR-0014 Decision — `docs/decisions/0013-progress-md-entry-type-vocabulary.md`
