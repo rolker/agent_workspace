@@ -1020,12 +1020,13 @@ _ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
     fi
 }
 
-_wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout (still UNKNOWN), rc 2 on CONFLICTING
-    local start deadline now state json
+_wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout (prints UNKNOWN, or LOOKUP_FAILED when the last poll could not reach GitHub), rc 2 on CONFLICTING
+    local start deadline now state json lookup_failed
     start=$(date +%s)
     deadline=$((start + MERGE_PR_CI_GRACE_SECONDS))
     while :; do
-        json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json mergeable,mergeStateStatus 2>/dev/null || echo "")
+        lookup_failed=false
+        json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json mergeable,mergeStateStatus 2>/dev/null) || lookup_failed=true
         [[ -z "$json" ]] && json='{}'
         state=$(jq -r '.mergeable // "UNKNOWN"' <<<"$json" 2>/dev/null || echo "UNKNOWN")
         if [[ "$state" == "CONFLICTING" ]]; then
@@ -1038,7 +1039,8 @@ _wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout
         fi
         now=$(date +%s)
         if [[ "$now" -ge "$deadline" ]]; then
-            echo "$state"
+            # Keep an unreachable GitHub distinguishable from a real UNKNOWN.
+            if [[ "$lookup_failed" == true ]]; then echo "LOOKUP_FAILED"; else echo "$state"; fi
             return 1
         fi
         [[ "$MERGE_PR_CI_POLL_SECONDS" -gt 0 ]] && sleep "$MERGE_PR_CI_POLL_SECONDS"
@@ -1154,7 +1156,11 @@ if [[ $_mg_rc -eq 2 ]]; then
 elif [[ $_mg_rc -ne 0 ]]; then
     _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
     {
-        echo "ERROR: mergeability for PR #${PR_NUMBER} never settled (still UNKNOWN) after ${MERGE_PR_CI_GRACE_SECONDS}s"
+        if [[ "$_mg_state" == "LOOKUP_FAILED" ]]; then
+            echo "ERROR: mergeability for PR #${PR_NUMBER} never settled after ${MERGE_PR_CI_GRACE_SECONDS}s — the last poll could not reach GitHub (\`gh pr view\` failed), so the state is unknown rather than reported UNKNOWN"
+        else
+            echo "ERROR: mergeability for PR #${PR_NUMBER} never settled (still UNKNOWN) after ${MERGE_PR_CI_GRACE_SECONDS}s"
+        fi
         [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
     } >&2
     exit 1

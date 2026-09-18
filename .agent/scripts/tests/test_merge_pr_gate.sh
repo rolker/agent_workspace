@@ -59,11 +59,13 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
         # <base>.mergeable.json fallback, else GH_MERGEABLE_DEFAULT
         # (UNKNOWN forever when unset — ci-8 relies on that; run_merge sets
         # it to MERGEABLE so the always-on settle (#290) resolves at once).
+        # GH_MERGEABLE_DEFAULT=FAIL makes the fallback a failed lookup (an
+        # unreachable GitHub) instead of an answer.
         cnt_file="${base}.mergeable_seq"
         n=$(( $(cat "$cnt_file" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$cnt_file"
         mf="${base}.mergeable_${n}.json"
         [ -f "$mf" ] || mf="${base}.mergeable.json"
-        if [ -f "$mf" ]; then cat "$mf"; else d="${GH_MERGEABLE_DEFAULT:-UNKNOWN}"; printf '{"mergeable":"%s","mergeStateStatus":"%s"}\n' "$d" "$d"; fi
+        if [ -f "$mf" ]; then cat "$mf"; else d="${GH_MERGEABLE_DEFAULT:-UNKNOWN}"; [ "$d" = "FAIL" ] && { echo "error connecting to api.github.com" >&2; exit 1; }; printf '{"mergeable":"%s","mergeStateStatus":"%s"}\n' "$d" "$d"; fi
     else
         cat "$f"
     fi
@@ -733,6 +735,15 @@ if ! merged_called "$sb" && [[ "$out" == *"mergeability for PR #${PR} never sett
     pass "(nw-2) --no-wait: mergeability never settles -> error, no gh pr merge"
 else
     fail "(nw-2) (out=${out:0:300})"
+fi
+
+echo "TEST: --no-wait with every mergeability poll failing to reach GitHub: lookup-failure error, no merge (#290)"
+sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
+out="$(GH_MERGE_EXIT=0 GH_MERGEABLE_DEFAULT=FAIL MERGE_PR_CI_GRACE_SECONDS=0 run_merge "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"could not reach GitHub"* ]] && [[ "$out" != *"still UNKNOWN"* ]]; then
+    pass "(nw-2b) --no-wait: failed mergeability lookups -> error names the lookup failure, not UNKNOWN; no gh pr merge"
+else
+    fail "(nw-2b) (out=${out:0:300})"
 fi
 
 echo "TEST: --no-wait still retries once after a 'not mergeable' refusal (#290)"
