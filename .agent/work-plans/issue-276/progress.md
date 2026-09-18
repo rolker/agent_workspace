@@ -40,3 +40,18 @@ PR 1 of the #276 port (PR #291): review-issue step 8 writes an ADR-0013 `## Issu
 **Branch**: `feature/issue-276-pr2` at `ba88f24`
 
 PR 2 of the #276 port (PR #293): dispatch_phase.sh (03121fe), test_dispatch_phase.sh with 73 cases incl. all 28 next rows and five end-to-end timelines (28bbd1a), and one plan deviation decided by the lead: PR-mode Local Review routes on **Verdict** for rows 22a/22b, not open boxes, because the unchecked LGTM placeholder would loop forever (ba88f24). Plan text to be updated under PR 3.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-18 12:43 -04:00
+**By**: Claude Code Agent (lead: claude-fable-5-1; specialists: claude-sonnet-5 governance + adversarial; shellcheck; gemini skipped per owner)
+**Verdict**: changes-requested
+
+**PR**: #293 at `ba88f24`
+**Depth**: Deep (reason: 990 lines; enforcement script)
+**Must-fix**: 1 | **Suggestions**: 2
+
+### Findings
+- [x] (must-fix, adversarial) round_count counted partial/failed Pre-Push reviews, so a retried round hit MAX_ROUNDS one round early; filter status == complete, fixture added — `.agent/scripts/dispatch_phase.sh:425-435`
+- [x] (suggestion, adversarial) no --type project fixture for resolve_worktree; two added — `.agent/scripts/tests/test_dispatch_phase.sh`
+- [x] (suggestion, adversarial) --check-exit inspects only the newest entry when a phase writes twice; comment added — `.agent/scripts/dispatch_phase.sh:287`
