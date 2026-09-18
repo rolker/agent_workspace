@@ -54,3 +54,13 @@ Approach is sound; the plan needs to name the comparison endpoint and the dynami
 **Plan**: `.agent/work-plans/issue-286/plan.md` at `847a170`
 
 Revision 2: gate compares R against HEAD_REVIEWED with allowed paths progress.md + ROADMAP.md + docs/ROADMAP.md; ambiguous short SHA = unresolvable; make_gate_sandbox with real SHAs, five cases; ADR-0013 addendum.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-18 10:51 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-286/plan.md` at `847a170`
+
+**Branch**: `feature/issue-286` at `34dfcb6`
+
+c6d5b72 helper `_only_bookkeeping_between` + gate condition (a) ancestry rule + Step 2 call site; 2ca3c13 five gate cases (g1–g5) on real histories, ci-3 assertion updated to the helper's message; 34dfcb6 ADR-0013 references addendum. Gate suite 53/53, full suite 20/20, shellcheck clean. No deviations from the plan.
