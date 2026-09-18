@@ -236,3 +236,13 @@ Checks: test_merge_pr_gate 58/0, test_merge_pr 91/0, test_merge_pr_root_resoluti
 
 ### Findings
 - [ ] (suggestion) LOOKUP_FAILED error says "could not reach GitHub", but `gh pr view` also fails on auth expiry, rate limit, or a bad PR number and its stderr is discarded; say "the last `gh pr view` lookup failed (network, auth, or API error)" and drop the awkward "rather than reported UNKNOWN" clause — `.agent/scripts/merge_pr.sh:1160`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-18 14:35 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+publish (Recommended)
