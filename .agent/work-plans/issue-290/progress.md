@@ -258,3 +258,19 @@ publish (Recommended)
 - merge_pr.sh: mergeability settle moved outside the NO_WAIT gate; Step 3 retry un-gated; header, Step 2 and Step 3 comments corrected (only the real "Step 5: Delete branches" header remains).
 - test_merge_pr_gate.sh: stub GH_MERGEABLE_DEFAULT fallback (instead of the plan's make_sandbox fixture, which would have broken ci-8 per plan review round 2) set to MERGEABLE by run_merge and the two direct --no-wait callers, with zero sleeps; sequenced pr-merge exit/stderr fixture + write_merge_fixture; cases nw-1..nw-3. 57/57 pass in ~15 s; nw-1..3 fail against origin/main's merge_pr.sh.
 - AGENTS.md: merge_pr.sh row notes the settle and retry always run.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-18 14:40 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #296 at `bf8277c`
+**Sources**: 2 (Local Review (Pre-Push) R2 @ `cce43e2` — later commits touch only progress.md; CI rollup @ `aa81bc3`; Copilot review requested but not yet posted)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [x] (suggestion, deferred, Local Review R2) LOOKUP_FAILED message says "could not reach GitHub" though `gh pr view` also fails on auth expiry / rate limit / bad PR number; imprecise but still tells the operator the lookup failed and the state is unknown, so it does not mislead the merge decision — optional rewording, not merge-blocking — `.agent/scripts/merge_pr.sh`
+
+### False positives
+- (none)
