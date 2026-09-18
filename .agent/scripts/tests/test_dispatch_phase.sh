@@ -191,6 +191,11 @@ TWO_ROUNDS="$(local_review_prepush complete changes-requested feature/issue-9 aa
 $(local_review_prepush complete changes-requested feature/issue-9 bbb2222)"
 assert_next "row 15: round 2 of 3, not approved -> address-findings, round=2" none \
     "$TWO_ROUNDS" address-findings "round=2"
+PARTIAL_PLUS_TWO="$(local_review_prepush partial changes-requested feature/issue-9 zzz0000)
+$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$(local_review_prepush complete changes-requested feature/issue-9 bbb2222)"
+assert_next "round_count: a partial Pre-Push review on the branch does not count as a round -- 2 complete rounds, round=2, address-findings (not checkpoint:rounds at MAX_ROUNDS=3)" none \
+    "$PARTIAL_PLUS_TWO" address-findings "round=2"
 
 echo "TEST: next -- rows 16-18 (checkpoint publish/rounds)"
 assert_next "row 16: checkpoint publish answered publish, --pr none -> publish" none \
@@ -381,6 +386,38 @@ out=$(run_handoff --issue 9 --skill not-a-real-skill); rc=$?
 [[ "$rc" -eq 2 && "$out" == *"unknown --skill"* ]] && pass "handoff: an unknown --skill is a usage error" || fail "handoff unknown skill (rc=$rc out=$out)"
 out=$(run_handoff --issue 999 --skill review-issue); rc=$?
 [[ "$rc" -eq 2 && "$out" == *"no workspace worktree found"* ]] && pass "handoff: no worktree for --issue is a usage error" || fail "handoff no worktree (rc=$rc out=$out)"
+
+echo ""
+echo "TEST: resolve_worktree -- --type project (registry lookup, then the deprecated project/worktrees fallback)"
+# (a) registry lookup: one registered project, resolved via registry_worktree_dir
+# (default <path>/worktrees, no worktrees= override).
+SBP1="$(mktemp -d)"
+git -C "$SBP1" init -q -b main
+git -C "$SBP1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+mkdir -p "$SBP1/.agent/scripts"
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+    cp "$SCRIPT_DIR/../$f" "$SBP1/.agent/scripts/"
+done
+mkdir -p "$SBP1/myproj/worktrees/issue-9"
+printf 'myproj\tsingle_project\t%s\n' "$SBP1/myproj" > "$SBP1/.agent/projects.local"
+out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == *"worktree=$SBP1/myproj/worktrees/issue-9"* ]] \
+    && pass "resolve_worktree --type project: a single registered project resolves via registry_worktree_dir" || fail "resolve_worktree project registry (rc=$rc out=$out)"
+
+# (b) the deprecated project/worktrees fallback (wt_legacy_project_base): no
+# registry entry at all, worktree living inside a project/ checkout's own
+# worktrees/ dir (the pre-#265 shape).
+SBP2="$(mktemp -d)"
+git -C "$SBP2" init -q -b main
+git -C "$SBP2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+mkdir -p "$SBP2/.agent/scripts"
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+    cp "$SCRIPT_DIR/../$f" "$SBP2/.agent/scripts/"
+done
+mkdir -p "$SBP2/project/worktrees/issue-9"
+out=$(cd "$SBP2" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == *"worktree=$SBP2/project/worktrees/issue-9"* ]] \
+    && pass "resolve_worktree --type project: no registry entry -- falls back to the deprecated project/worktrees/ shape" || fail "resolve_worktree project legacy fallback (rc=$rc out=$out)"
 
 echo ""
 echo "TEST: --check-exit -- OK/PARTIAL/FAILED/MISSING per expected type"

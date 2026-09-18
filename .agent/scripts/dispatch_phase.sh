@@ -284,6 +284,10 @@ cmd_check_exit() {
             echo "error: check-exit: progress_read.py failed on $progress (malformed file? see message above)" >&2
             exit 3
         }
+        # If a single dispatch appends more than one entry of the expected
+        # type (a phase that misbehaves and writes twice), only the newest
+        # one below is inspected for status=/sha=; the count check above
+        # still catches "nothing new appeared" regardless.
         count=$(printf '%s' "$json" | "$PYTHON" -c "import json, sys; print(len(json.load(sys.stdin)[\"entries\"]))")
     fi
 
@@ -423,14 +427,18 @@ def open_findings(entry, section):
 
 
 def round_count():
-    # The count of completed "## Local Review (Pre-Push)" entries sharing the
-    # newest such entrys branch correlation (hermetic under --progress).
+    # The count of COMPLETED "## Local Review (Pre-Push)" entries sharing the
+    # newest such entrys branch correlation (hermetic under --progress). Only
+    # status == "complete" counts as a round: a partial/failed review that
+    # was retried (row 3 already routed it to checkpoint:phase-failed) must
+    # not inflate the round count toward MAX_ROUNDS.
     branch = (E.get("correlation") or {}).get("branch")
     n = 0
     for e in entries:
         if e.get("base_type") == "Local Review (Pre-Push)":
             c = e.get("correlation") or {}
-            if c.get("kind") == "branch" and c.get("branch") == branch:
+            if c.get("kind") == "branch" and c.get("branch") == branch \
+                    and (e.get("status") or "").strip().lower() == "complete":
                 n += 1
     return n
 
