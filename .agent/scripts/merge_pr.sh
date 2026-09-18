@@ -29,8 +29,9 @@
 #   2. Decide the CI target SHA — the reviewed head (pre-Step-1) when the
 #      only diff since then is paths this run committed itself (the
 #      roadmap file, the gate's own progress.md record), else the actual
-#      current head (issue #284) — then wait for CI on that target SHA,
-#      then let mergeability settle (--no-wait skips all of Step 2)
+#      current head (issue #284); this decision always runs. Then wait
+#      for CI on that target SHA and let mergeability settle — --no-wait
+#      skips only the polling/waiting, not the CI-target computation
 #   3. Merge the PR (--merge strategy; one retry on a "not mergeable"
 #      refusal, after re-polling mergeability once)
 #   4. Remove the worktree:
@@ -565,7 +566,7 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
                         else
                             if git -C "$_WT_ROOT" commit -m "Update roadmap: mark #${ISSUE_NUM} as done" 2>/dev/null; then
                                 echo "  ✅ Roadmap updated"
-                                _STEP1_COMMITTED_PATHS+=("${_ROADMAP_STAGED_PATHS[@]}")
+                                [[ "${#_ROADMAP_STAGED_PATHS[@]}" -gt 0 ]] && _STEP1_COMMITTED_PATHS+=("${_ROADMAP_STAGED_PATHS[@]}")
                             else
                                 echo "  ⚠️  Roadmap commit failed — proceeding with merge"
                             fi
@@ -762,6 +763,16 @@ _gate_record() {  # <entry type> <one-line why>
 # a fresh entry so the timeline reflects what actually happened. Checked
 # against progress.md when a worktree is open, else the PR's own comments
 # (the same store `_gate_record` itself falls back to).
+#
+# Deliberate ADR-0013 exception: matching is keyed on PR number + entry
+# type + Conditions text, NOT the entry's SHA correlation field, even
+# though ADR-0013 otherwise correlates Merge entries by head SHA. The SHA
+# in these entries is `HEAD_REVIEWED`, which the CI-target exemption above
+# can hold constant across an otherwise-legitimate repeat run (the script's
+# own paths-only pushes don't move it) — keying on SHA would make the
+# idempotency check trivially always match (nothing to compare) or never
+# match (the SHA is identical by construction), neither of which is what
+# "same situation" means here. Owner's decision on #284.
 _gate_already_recorded() {  # <entry type> <conditions text>
     local etype="$1" why="$2" read_json rc=0 latest l_type l_cond l_sha
     if [[ -n "$_gate_progress" ]]; then
@@ -908,12 +919,26 @@ MERGE_PR_CI_POLL_SECONDS="${MERGE_PR_CI_POLL_SECONDS:-10}"
 MERGE_PR_CI_GRACE_SECONDS="${MERGE_PR_CI_GRACE_SECONDS:-120}"
 MERGE_PR_CI_TIMEOUT_SECONDS="${MERGE_PR_CI_TIMEOUT_SECONDS:-1800}"
 
-_ci_poll_state() {  # <sha> -- prints one of: none pending failed success
-    local sha="$1" runs_json status_json registered pending failed
-    runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" 2>/dev/null || echo "")
+_ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
+    # "error" (issue #284 review) is distinct from "none": a nonzero `gh
+    # api` exit (rate limit, network, 5xx, auth) or unparseable JSON is a
+    # failure to LEARN the CI state, not evidence the repo has no CI — the
+    # caller must keep retrying it (bounded by the grace deadline) rather
+    # than falling through to the no-CI pass.
+    local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed
+    runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" --paginate -f per_page=100 2>/dev/null \
+        | jq -c -s '{check_runs: [.[].check_runs[]?]}') || runs_rc=$?
+    status_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/status" 2>/dev/null) || status_rc=$?
+    if [[ $runs_rc -ne 0 ]] || [[ $status_rc -ne 0 ]]; then
+        echo "error"
+        return
+    fi
     [[ -z "$runs_json" ]] && runs_json='{"check_runs":[]}'
-    status_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/status" 2>/dev/null || echo "")
     [[ -z "$status_json" ]] && status_json='{"statuses":[]}'
+    if ! jq -e . >/dev/null 2>&1 <<<"$runs_json" || ! jq -e . >/dev/null 2>&1 <<<"$status_json"; then
+        echo "error"
+        return
+    fi
     registered=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" \
         '(($r.check_runs // []) | length) + (($s.statuses // []) | length) > 0' 2>/dev/null || echo false)
     if [[ "$registered" != "true" ]]; then
@@ -921,7 +946,7 @@ _ci_poll_state() {  # <sha> -- prints one of: none pending failed success
         return
     fi
     failed=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" '
-        (([($r.check_runs // [])[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required")] | length) > 0)
+        (([($r.check_runs // [])[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale")] | length) > 0)
         or (([($s.statuses // [])[] | select(.state == "failure" or .state == "error")] | length) > 0)' 2>/dev/null || echo false)
     if [[ "$failed" == "true" ]]; then
         echo "failed"
@@ -937,7 +962,7 @@ _ci_poll_state() {  # <sha> -- prints one of: none pending failed success
     fi
 }
 
-_wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout (still UNKNOWN)
+_wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout (still UNKNOWN), rc 2 on CONFLICTING
     local start deadline now state json
     start=$(date +%s)
     deadline=$((start + MERGE_PR_CI_GRACE_SECONDS))
@@ -945,6 +970,10 @@ _wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout
         json=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json mergeable,mergeStateStatus 2>/dev/null || echo "")
         [[ -z "$json" ]] && json='{}'
         state=$(jq -r '.mergeable // "UNKNOWN"' <<<"$json" 2>/dev/null || echo "UNKNOWN")
+        if [[ "$state" == "CONFLICTING" ]]; then
+            echo "$state"
+            return 2
+        fi
         if [[ "$state" != "UNKNOWN" ]]; then
             echo "$state"
             return 0
@@ -960,9 +989,24 @@ _wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout
 
 if [[ "$NO_WAIT" == false ]]; then
     echo "  Waiting for CI on \`${CI_TARGET_SHA:0:7}\`..."
-    _ci_wf_json=$(gh api "repos/${PR_REPO_SLUG}/actions/workflows" 2>/dev/null || echo "")
-    [[ -z "$_ci_wf_json" ]] && _ci_wf_json='{}'
-    _ci_wf_count=$(jq -r '.total_count // 0' <<<"$_ci_wf_json" 2>/dev/null || echo 0)
+    # A failed workflows-count lookup must NOT be assumed to mean "zero
+    # workflows" (issue #284 review) — that would let a `gh api` outage
+    # masquerade as "no CI configured" and merge unverified. "unknown"
+    # keeps the `none` branch below from taking the no-ci exit; it waits
+    # out the grace window and errors instead, same as a real repo whose
+    # checks just haven't registered yet.
+    _ci_wf_rc=0
+    _ci_wf_json=$(gh api "repos/${PR_REPO_SLUG}/actions/workflows" 2>/dev/null) || _ci_wf_rc=$?
+    if [[ $_ci_wf_rc -ne 0 ]]; then
+        _ci_wf_count="unknown"
+    else
+        [[ -z "$_ci_wf_json" ]] && _ci_wf_json='{}'
+        if jq -e . >/dev/null 2>&1 <<<"$_ci_wf_json"; then
+            _ci_wf_count=$(jq -r '.total_count // 0' <<<"$_ci_wf_json" 2>/dev/null || echo "unknown")
+        else
+            _ci_wf_count="unknown"
+        fi
+    fi
     _ci_start=$(date +%s)
     _ci_deadline=$((_ci_start + MERGE_PR_CI_TIMEOUT_SECONDS))
     _ci_grace_deadline=$((_ci_start + MERGE_PR_CI_GRACE_SECONDS))
@@ -973,8 +1017,13 @@ if [[ "$NO_WAIT" == false ]]; then
         case "$_ci_state" in
             success) _ci_result="success"; break ;;
             failed)  _ci_result="failed"; break ;;
+            error)
+                if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
+                    _ci_result="api-error"; break
+                fi
+                ;;
             none)
-                if [[ "${_ci_wf_count:-0}" -eq 0 ]]; then
+                if [[ "$_ci_wf_count" != "unknown" ]] && [[ "${_ci_wf_count:-0}" -eq 0 ]]; then
                     _ci_result="no-ci"; break
                 fi
                 if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
@@ -1002,6 +1051,12 @@ if [[ "$NO_WAIT" == false ]]; then
                 echo "  Fix the failure and re-run, or pass --no-wait to skip the CI wait."
             } >&2
             exit 1 ;;
+        api-error)
+            {
+                echo "ERROR: gh api failed repeatedly while checking CI for \`${CI_TARGET_SHA:0:7}\` (rate limit, network, 5xx, or auth) after ${MERGE_PR_CI_GRACE_SECONDS}s"
+                echo "  No merge attempted — re-run once the API is reachable, or pass --no-wait to skip the CI wait."
+            } >&2
+            exit 1 ;;
         never-registered)
             {
                 echo "ERROR: no checks registered for \`${CI_TARGET_SHA:0:7}\` after ${MERGE_PR_CI_GRACE_SECONDS}s"
@@ -1022,8 +1077,19 @@ if [[ "$NO_WAIT" == false ]]; then
     # `mergeable: UNKNOWN` while it recomputes — `gh pr merge` refuses
     # instantly in that window. Poll until it resolves, bounded by the
     # same grace window as the "checks never register" case above.
+    # rc 2 means it settled to `CONFLICTING`: fail fast with a clear
+    # message instead of letting `gh pr merge` fail on it below.
     _mg_state=""
-    if ! _mg_state=$(_wait_for_mergeable); then
+    _mg_rc=0
+    _mg_state=$(_wait_for_mergeable) || _mg_rc=$?
+    if [[ $_mg_rc -eq 2 ]]; then
+        _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+        {
+            echo "ERROR: PR #${PR_NUMBER} has merge conflicts (mergeable: CONFLICTING) — resolve them before merging"
+            [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+        } >&2
+        exit 1
+    elif [[ $_mg_rc -ne 0 ]]; then
         _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
         {
             echo "ERROR: mergeability for PR #${PR_NUMBER} never settled (still UNKNOWN) after ${MERGE_PR_CI_GRACE_SECONDS}s"
@@ -1061,7 +1127,12 @@ _merge_err=""
 _do_merge_once || _merge_rc=$?
 if [[ $_merge_rc -ne 0 ]] && [[ "$NO_WAIT" == false ]] && grep -qi "not mergeable" <<<"$_merge_err"; then
     echo "  ⚠️  gh pr merge refused (not mergeable) — re-polling mergeability once and retrying"
-    _wait_for_mergeable >/dev/null || true
+    _mg_retry_rc=0
+    _wait_for_mergeable >/dev/null || _mg_retry_rc=$?
+    if [[ $_mg_retry_rc -eq 2 ]]; then
+        echo "ERROR: PR #${PR_NUMBER} now has merge conflicts (mergeable: CONFLICTING) — resolve them before merging" >&2
+        exit 1
+    fi
     _merge_rc=0
     _do_merge_once || _merge_rc=$?
 fi
