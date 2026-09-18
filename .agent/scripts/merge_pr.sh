@@ -979,7 +979,9 @@ _ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
     # caller must keep retrying it (bounded by the grace deadline) rather
     # than falling through to the no-CI pass.
     local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed
-    runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" --paginate -f per_page=100 2>/dev/null \
+    # -X GET is load-bearing (#289): `-f` alone turns the request into a
+    # POST, which GitHub answers with 404 on every poll.
+    runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" -X GET --paginate -f per_page=100 2>/dev/null \
         | jq -c -s '{check_runs: [.[].check_runs[]?]}') || runs_rc=$?
     status_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/status" 2>/dev/null) || status_rc=$?
     if [[ $runs_rc -ne 0 ]] || [[ $status_rc -ne 0 ]]; then

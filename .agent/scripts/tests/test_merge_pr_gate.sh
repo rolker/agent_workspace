@@ -86,6 +86,20 @@ elif [ "$1" = "api" ]; then
     # answering from the .json fixture — simulates a `gh api` failure
     # (rate limit, network, 5xx, auth) independent of the JSON payload.
     path="$2"
+    # Method check (#289): real `gh api` turns `-f`/`-F` into a POST unless
+    # `-X GET` is given, and GitHub 404s a POST to these read endpoints.
+    # Mirror that so a missing `-X GET` fails here instead of only live.
+    has_param=false; has_get=false; prev=""
+    for a in "$@"; do
+        case "$a" in -f|-F|--raw-field|--field) has_param=true ;; esac
+        [ "$prev" = "-X" ] && [ "$a" = "GET" ] && has_get=true
+        [ "$a" = "--method=GET" ] && has_get=true
+        prev="$a"
+    done
+    if [ "$has_param" = true ] && [ "$has_get" = false ]; then
+        echo 'gh: Not Found (HTTP 404) — -f without -X GET sends a POST' >&2
+        exit 1
+    fi
     key="$(sanitize "$path")"
     cnt_file="$GH_FIXTURES_DIR/.api_seq_${key}"
     n=$(( $(cat "$cnt_file" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$cnt_file"
