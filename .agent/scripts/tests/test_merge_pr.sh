@@ -86,13 +86,19 @@ sanitize() { printf '%s' "$1" | tr '/' '_'; }
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
     num="$3"
     shift 3
-    repo=""
+    repo=""; jf=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -R) repo="$2"; shift 2 ;;
+            --json) jf="$2"; shift 2 ;;
             *) shift ;;
         esac
     done
+    # merge_pr.sh's mergeability settle runs even under --no-wait (#290);
+    # answer it as settled so these resolution/cleanup cases never poll.
+    if [ "$jf" = "mergeable,mergeStateStatus" ]; then
+        echo '{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}'; exit 0
+    fi
     f="$GH_FIXTURES_DIR/pr_view_$(sanitize "$repo")_${num}.json"
     if [ -f "$f" ]; then
         cat "$f"
@@ -232,6 +238,7 @@ run_merge_pr() {
     local sb="$1"
     shift
     (cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" \
+        MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 \
         "$sb/.agent/scripts/merge_pr.sh" "$@")
 }
 

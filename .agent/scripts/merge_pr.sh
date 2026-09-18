@@ -30,8 +30,10 @@
 #      only diff since then is paths this run committed itself (the
 #      roadmap file, the gate's own progress.md record), else the actual
 #      current head (issue #284); this decision always runs. Then wait
-#      for CI on that target SHA and let mergeability settle — --no-wait
-#      skips only the polling/waiting, not the CI-target computation
+#      for CI on that target SHA — --no-wait skips only this CI poll — and
+#      let mergeability settle, which always runs (#290): this script's own
+#      Step 1 / 1.5 pushes make GitHub recompute mergeability whether or
+#      not CI is waited on
 #   3. Merge the PR (--merge strategy; one retry on a "not mergeable"
 #      refusal, after re-polling mergeability once)
 #   4. Remove the worktree:
@@ -966,8 +968,9 @@ fi
 # no CI at all (#271: "no checks reported" treated as a hard failure).
 #
 # MERGE_PR_CI_POLL_SECONDS / _GRACE_SECONDS / _TIMEOUT_SECONDS exist so
-# tests can run with zero sleeps; --no-wait skips this whole step (and
-# Step 5's mergeability settle below) when the user knows CI is green.
+# tests can run with zero sleeps. --no-wait skips only this CI poll, for
+# when the user knows CI is green; the mergeability settle below always
+# runs (#290), since it guards against this script's own pushes, not CI.
 MERGE_PR_CI_POLL_SECONDS="${MERGE_PR_CI_POLL_SECONDS:-10}"
 MERGE_PR_CI_GRACE_SECONDS="${MERGE_PR_CI_GRACE_SECONDS:-120}"
 MERGE_PR_CI_TIMEOUT_SECONDS="${MERGE_PR_CI_TIMEOUT_SECONDS:-1800}"
@@ -1126,46 +1129,48 @@ if [[ "$NO_WAIT" == false ]]; then
             } >&2
             exit 1 ;;
     esac
-
-    # --- Step 2 (cont.): Let mergeability settle before merging (#282) ---
-    # Right after Step 1.5's own push, GitHub may still report
-    # `mergeable: UNKNOWN` while it recomputes — `gh pr merge` refuses
-    # instantly in that window. Poll until it resolves, bounded by the
-    # same grace window as the "checks never register" case above.
-    # rc 2 means it settled to `CONFLICTING`: fail fast with a clear
-    # message instead of letting `gh pr merge` fail on it below.
-    _mg_state=""
-    _mg_rc=0
-    _mg_state=$(_wait_for_mergeable) || _mg_rc=$?
-    if [[ $_mg_rc -eq 2 ]]; then
-        _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
-        {
-            echo "ERROR: PR #${PR_NUMBER} has merge conflicts (mergeable: CONFLICTING) — resolve them before merging"
-            [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
-        } >&2
-        exit 1
-    elif [[ $_mg_rc -ne 0 ]]; then
-        _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
-        {
-            echo "ERROR: mergeability for PR #${PR_NUMBER} never settled (still UNKNOWN) after ${MERGE_PR_CI_GRACE_SECONDS}s"
-            [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
-        } >&2
-        exit 1
-    fi
-    echo "  mergeability: $_mg_state"
 else
     echo "  CI wait skipped (--no-wait)"
 fi
+
+# --- Step 2 (cont.): Let mergeability settle before merging (#282, #290) ---
+# Right after Step 1 / 1.5's own push, GitHub may still report
+# `mergeable: UNKNOWN` while it recomputes — `gh pr merge` refuses
+# instantly in that window. Poll until it resolves, bounded by the same
+# grace window as the "checks never register" case above. This runs with
+# or without --no-wait (#290): the recompute is caused by this script's own
+# push, not by CI. rc 2 means it settled to `CONFLICTING`: fail fast with a
+# clear message instead of letting `gh pr merge` fail on it below.
+_mg_state=""
+_mg_rc=0
+_mg_state=$(_wait_for_mergeable) || _mg_rc=$?
+if [[ $_mg_rc -eq 2 ]]; then
+    _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+    {
+        echo "ERROR: PR #${PR_NUMBER} has merge conflicts (mergeable: CONFLICTING) — resolve them before merging"
+        [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+    } >&2
+    exit 1
+elif [[ $_mg_rc -ne 0 ]]; then
+    _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+    {
+        echo "ERROR: mergeability for PR #${PR_NUMBER} never settled (still UNKNOWN) after ${MERGE_PR_CI_GRACE_SECONDS}s"
+        [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+    } >&2
+    exit 1
+fi
+echo "  mergeability: $_mg_state"
 
 # --- Step 3: Merge ---
 # GH_REPO_ARGS was set during PR resolution above (-R <repo> for a package
 # or project PR, empty for a workspace PR). Don't re-resolve.
 #
 # GitHub's GraphQL merge has been observed refusing right after our own
-# push with a mergeability recompute still in flight even after Step 5
-# settled `mergeable` — a narrow remaining race. On a "not mergeable"
-# refusal, re-poll mergeability once more and retry the merge once before
-# giving up (--no-wait skips the retry too — there's nothing to re-poll).
+# push with a mergeability recompute still in flight even after Step 2's
+# settle reported `mergeable` — a narrow remaining race. On a "not
+# mergeable" refusal, re-poll mergeability once more and retry the merge
+# once before giving up. Like the settle, this runs with or without
+# --no-wait (#290).
 _do_merge_once() {
     local ef rc=0
     ef=$(mktemp)
@@ -1180,7 +1185,7 @@ echo "  Merging PR..."
 _merge_rc=0
 _merge_err=""
 _do_merge_once || _merge_rc=$?
-if [[ $_merge_rc -ne 0 ]] && [[ "$NO_WAIT" == false ]] && grep -qi "not mergeable" <<<"$_merge_err"; then
+if [[ $_merge_rc -ne 0 ]] && grep -qi "not mergeable" <<<"$_merge_err"; then
     echo "  ⚠️  gh pr merge refused (not mergeable) — re-polling mergeability once and retrying"
     _mg_retry_rc=0
     _wait_for_mergeable >/dev/null || _mg_retry_rc=$?

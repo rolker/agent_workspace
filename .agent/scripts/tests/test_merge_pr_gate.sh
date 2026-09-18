@@ -56,17 +56,27 @@ if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
         # Sequenced per call so a test can express "UNKNOWN for the first
         # N pr view calls, then MERGEABLE" without any real sleeping:
         # <base>.mergeable_<N>.json for call N, else the static
-        # <base>.mergeable.json fallback, else UNKNOWN forever.
+        # <base>.mergeable.json fallback, else GH_MERGEABLE_DEFAULT
+        # (UNKNOWN forever when unset — ci-8 relies on that; run_merge sets
+        # it to MERGEABLE so the always-on settle (#290) resolves at once).
         cnt_file="${base}.mergeable_seq"
         n=$(( $(cat "$cnt_file" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$cnt_file"
         mf="${base}.mergeable_${n}.json"
         [ -f "$mf" ] || mf="${base}.mergeable.json"
-        if [ -f "$mf" ]; then cat "$mf"; else echo '{"mergeable":"UNKNOWN","mergeStateStatus":"UNKNOWN"}'; fi
+        if [ -f "$mf" ]; then cat "$mf"; else d="${GH_MERGEABLE_DEFAULT:-UNKNOWN}"; printf '{"mergeable":"%s","mergeStateStatus":"%s"}\n' "$d" "$d"; fi
     else
         cat "$f"
     fi
     exit 0
-elif [ "$1" = "pr" ] && [ "$2" = "merge" ]; then exit "${GH_MERGE_EXIT:-0}"
+elif [ "$1" = "pr" ] && [ "$2" = "merge" ]; then
+    # Sequenced per call (#290): merge_exit_<N> / merge_stderr_<N> under
+    # GH_FIXTURES_DIR drive call N; absent files fall back to GH_MERGE_EXIT
+    # and no stderr, so every pre-existing test behaves as before.
+    mcnt="$GH_FIXTURES_DIR/.merge_seq"
+    m=$(( $(cat "$mcnt" 2>/dev/null || echo 0) + 1 )); echo "$m" > "$mcnt"
+    [ -f "$GH_FIXTURES_DIR/merge_stderr_${m}" ] && cat "$GH_FIXTURES_DIR/merge_stderr_${m}" >&2
+    if [ -f "$GH_FIXTURES_DIR/merge_exit_${m}" ]; then exit "$(cat "$GH_FIXTURES_DIR/merge_exit_${m}")"; fi
+    exit "${GH_MERGE_EXIT:-0}"
 elif [ "$1" = "pr" ] && [ "$2" = "checks" ]; then exit 0
 elif [ "$1" = "pr" ] && [ "$2" = "comment" ]; then
     shift 3; body=""
@@ -156,7 +166,11 @@ make_sandbox() {  # <progress-body|""> [with_summary]
 
 run_merge() {  # <sb> [args...]
     local sb="$1"; shift
+    # The mergeability settle runs even under --no-wait (#290): default the
+    # stub to MERGEABLE and zero sleeps so these cases never poll for real.
     (cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT="${GH_MERGE_EXIT:-1}" \
+        GH_MERGEABLE_DEFAULT="${GH_MERGEABLE_DEFAULT:-MERGEABLE}" MERGE_PR_CI_POLL_SECONDS=0 \
+        MERGE_PR_CI_GRACE_SECONDS="${MERGE_PR_CI_GRACE_SECONDS:-5}" \
         "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace --no-wait --no-roadmap-update "$@")
 }
 progress_of() { cat "$1/worktrees/workspace/issue-workspace-7/.agent/work-plans/issue-7/progress.md" 2>/dev/null; }
@@ -201,6 +215,12 @@ write_mergeable_fixture() {  # <sb> <state> [seq_n]
     base="$sb/gh_fixtures/pr_view_$(printf '%s' "$remote" | tr '/' '_')_${PR}"
     if [[ -n "$n" ]]; then f="${base}.mergeable_${n}.json"; else f="${base}.mergeable.json"; fi
     printf '{"mergeable":"%s","mergeStateStatus":"%s"}\n' "$state" "$state" > "$f"
+}
+write_merge_fixture() {  # <sb> <exit_code> <stderr> <seq_n> -- drives the Nth `gh pr merge` call (#290)
+    local sb="$1" rc="$2" err="$3" n="$4"
+    printf '%s\n' "$rc" > "$sb/gh_fixtures/merge_exit_${n}"
+    [[ -n "$err" ]] && printf '%s\n' "$err" > "$sb/gh_fixtures/merge_stderr_${n}"
+    return 0
 }
 # A sandbox whose PR fixture's headRefOid is the REAL current SHA of the
 # feature branch (not the fake constant $HEAD_SHA), so `git merge-base
@@ -416,6 +436,7 @@ printf '# project=p11 issue=owner/pkg_a#901 layer=l1\n%s\tl1_ws/src/pkg_a\tfeatu
 printf '{"state":"OPEN","headRefName":"feature/issue-901","title":"Pkg PR","headRefOid":"%s","comments":[],"body":""}\n' "$HEAD_SHA" > "$sb/gh_fixtures/pr_view_owner_pkg_a_901.json"
 root_before=$(git -C "$sb" rev-parse HEAD); status_before=$(git -C "$sb" status --porcelain)
 out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=1 \
+    GH_MERGEABLE_DEFAULT=MERGEABLE MERGE_PR_CI_POLL_SECONDS=0 \
     "$sb/.agent/scripts/merge_pr.sh" --pr owner/pkg_a#901 --no-wait --no-roadmap-update 2>&1)" || true
 if [[ "$(git -C "$sb" rev-parse HEAD)" == "$root_before" ]] && [[ "$(git -C "$sb" status --porcelain | grep -v 'gh_calls.log\|comments_posted')" == "$(grep -v 'gh_calls.log\|comments_posted' <<< "$status_before")" ]] \
     && [[ ! -e "$sb/.agent/work-plans" ]] && [[ ! -e "$cont/.agent" ]] \
@@ -455,6 +476,7 @@ git -C "$sb/project" push --quiet -u origin main
 printf '{"state":"OPEN","headRefName":"feature/issue-9","title":"Proj PR","headRefOid":"%s","comments":[]}\n' "$HEAD_SHA" \
     > "$sb/gh_fixtures/pr_view_$(printf '%s' "$sb/fake_remotes/github.com/owner/proj.git" | tr '/' '_')_9.json"
 out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=1 \
+    GH_MERGEABLE_DEFAULT=MERGEABLE MERGE_PR_CI_POLL_SECONDS=0 \
     "$sb/.agent/scripts/merge_pr.sh" --pr 9 --type project --no-wait --no-roadmap-update --enforce 2>&1)" || true
 if merged_called "$sb" && [[ "$out" == *"would have refused"* ]] && [[ "$out" == *"--enforce applies to workspace PRs only"* ]] && [[ "$out" != *"review gate refused"* ]]; then
     pass "project scope under --enforce: proceeds with the report-only line naming the scoping rule"
@@ -688,6 +710,40 @@ if ! merged_called "$sb" && [[ "$out" == *"mergeability for PR #${PR} never sett
     pass "(ci-8) mergeable stays UNKNOWN for the whole grace window: error, no merge"
 else
     fail "(ci-8) (out=${out:0:400})"
+fi
+
+# ---- --no-wait keeps the mergeability settle and the merge retry (#290) ----
+echo "TEST: --no-wait still polls mergeability before merging (#290)"
+sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
+write_mergeable_fixture "$sb" "UNKNOWN" 1
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 run_merge "$sb" 2>&1)" || true
+mg_line=$(grep -n "mergeable,mergeStateStatus" "$sb/gh_calls.log" 2>/dev/null | head -1 | cut -d: -f1)
+mr_line=$(grep -n "^pr merge" "$sb/gh_calls.log" 2>/dev/null | head -1 | cut -d: -f1)
+if [[ -n "$mg_line" && -n "$mr_line" && "$mg_line" -lt "$mr_line" ]] && [[ "$out" == *"CI wait skipped (--no-wait)"* ]] && [[ "$out" == *"mergeability: MERGEABLE"* ]]; then
+    pass "(nw-1) --no-wait: CI poll skipped, mergeability polled (UNKNOWN then MERGEABLE) before gh pr merge"
+else
+    fail "(nw-1) (mergeable-poll line=${mg_line:-none} merge line=${mr_line:-none} out=${out:0:300})"
+fi
+
+echo "TEST: --no-wait with mergeability UNKNOWN for the whole grace window: error, no merge (#290)"
+sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
+out="$(GH_MERGE_EXIT=0 GH_MERGEABLE_DEFAULT=UNKNOWN MERGE_PR_CI_GRACE_SECONDS=0 run_merge "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"mergeability for PR #${PR} never settled"* ]]; then
+    pass "(nw-2) --no-wait: mergeability never settles -> error, no gh pr merge"
+else
+    fail "(nw-2) (out=${out:0:300})"
+fi
+
+echo "TEST: --no-wait still retries once after a 'not mergeable' refusal (#290)"
+sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
+write_merge_fixture "$sb" 1 "GraphQL: Pull Request is not mergeable (mergePullRequest)" 1
+write_merge_fixture "$sb" 0 "" 2
+out="$(run_merge "$sb" 2>&1)" || true
+if [[ "$(merge_count "$sb")" == "2" ]] && [[ "$out" == *"re-polling mergeability once and retrying"* ]] && [[ "$out" == *"PR merged"* ]]; then
+    pass "(nw-3) --no-wait: first merge refused 'not mergeable', re-polled and retried once, merged"
+else
+    fail "(nw-3) (merges=$(merge_count "$sb") out=${out:0:300})"
 fi
 
 echo "TEST: mergeability — CONFLICTING settles to a distinct fail-fast error, not a merge attempt"
