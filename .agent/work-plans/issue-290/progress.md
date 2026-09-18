@@ -164,3 +164,13 @@ The code fix and the three new tests are sound and discriminating. The harness c
 - [ ] Keep ci-8 on UNKNOWN-forever: explicit static `UNKNOWN` fixture, or move the default into `run_merge()` as write-if-absent.
 - [ ] Give the package-PR (line 418) and project-enforce (line 457) `--no-wait` calls a MERGEABLE fixture for their own PR key and `MERGE_PR_CI_POLL_SECONDS=0`.
 - [ ] Replace the bare `grep "Step 5"` acceptance check with one scoped to the two stale comments.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-18 13:58 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+proceed (Recommended) — implement now, folding in the three round-2 findings (ci-8 needs UNKNOWN forever; the two direct merge_pr.sh --no-wait callers need the zero-sleep env and a fixture; the Step 5 check must skip the real "Step 5: Delete branches" header).
