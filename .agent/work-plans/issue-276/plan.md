@@ -88,10 +88,13 @@ each review round corrected):**
 `.claude/skills/run-issue/SKILL.md`, ported from the fork with these
 changes:
 
-- **Enters the worktree first.** Before anything else (including
-  `review-issue`), run-issue creates or enters the issue's worktree with
-  `/start-task` semantics (`worktree_create.sh` if `find_worktree_by_issue`
-  finds none, then `cd`). Every persistence step below resolves through
+- **Enters the worktree first.** `/run-issue <N> [--type
+  workspace|project] [--resume]`; `--type` defaults to `workspace` and
+  is the same value `/start-task` requires (revision 8, review finding
+  2). Before anything else (including `review-issue`), run-issue creates
+  or enters the issue's worktree with `/start-task` semantics
+  (`worktree_create.sh --type <type>` if `find_worktree_by_issue` finds
+  none, then `cd`). Every persistence step below resolves through
   `_resolve_work_plans_dir.sh`, which refuses outside the issue's
   worktree, so this ordering is what makes the first table row's entry
   land (revision 4, review finding 4).
@@ -188,22 +191,29 @@ changes:
   `plan-task` runs with `--no-pr`). The host pushes at publish, and after
   every `## Implementation` written while a PR exists, before dispatching
   `review-code` in PR mode or `triage-reviews`, so the head those phases
-  correlate on always contains the fix.
+  correlate on always contains the fix. One named exception (revision
+  8): `merge_pr.sh` pushes its own `## Merge (…)` record commit from
+  inside `_gate_record`; that is the merge script's contract, not a
+  phase's, and run-issue leaves it alone.
 - **Leave the worktree before merging** (revision 6, review finding 4):
   `merge_pr.sh` removes the worktree and deletes the branch, so before a
   `merge` action the host `cd`s to the main tree, and `next` short-
   circuits `--pr merged` to `done` before any worktree or progress
   resolution (row 1 needs no file).
 - **Entry commits after the last review** (revision 7, review finding
-  9): every entry is a commit, and the gate compares the review entry's
-  SHA to the remote head exactly, so pushing the `## Integrated Review`
-  and the merge checkpoint after the review makes the head differ from
-  the reviewed SHA and the gate reports stale (PR 282 showed exactly
-  this). The host pushes those entry commits anyway — the audit trail
-  is the point of the checkpoint design — and the gate's exact-SHA
-  comparison is fixed in #284 (progress-only commits after the reviewed
-  SHA count as at-head). Until #284 lands the report-only gate prints a
-  stale notice on every run-issue merge; the enforce flip waits on #284.
+  9; corrected in revision 8): every entry is a commit, so pushing the
+  `## Integrated Review` and the merge checkpoint after the review moves
+  the head past the SHA the review names. The host pushes those entry
+  commits anyway — the audit trail is the point of the checkpoint design
+  — and the gate already accepts them: since #286 (merged 2026-09-18 in
+  PR #287) condition (a) reads a review at `R` as current when `R` is an
+  ancestor of the head and only the issue's `progress.md` or the roadmap
+  files changed since (`_only_bookkeeping_between` in `merge_pr.sh`;
+  ambiguous or unresolvable short SHAs stay stale). #284 (merged in PR
+  #285) is the companion change that targets CI at the reviewed head
+  when only the script's own commits follow it. Nothing here waits on
+  either; a run-issue merge sees a clean gate as long as the last
+  `## Integrated Review` sits at the code head.
 - **Waiting for reviews**: after publish, and after every PR-mode
   `## Local Review` (a re-review of a fix), the host waits for CI and bot
   reviews to settle (`fetch_pr_reviews.sh` shows no pending checks) before
@@ -221,23 +231,45 @@ changes:
 ### 2. `dispatch_phase.sh` (new script, replaces `dispatch_subagent.sh`)
 
 `.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase>
-[--prompt-file <f>] [--entry-type <T>] [--model <alias>]`:
+[--type workspace|project] [--pr <M>] [--prompt-file <f>]
+[--entry-type <T>] [--model <alias>]`:
 
 - **Worktree lookup vs refusal** (revision 4, review finding 5): the
-  script locates issue N's worktree with `find_worktree_by_issue`
-  (`_worktree_helpers.sh`) and fails with exit 2 if there is none;
-  `_resolve_work_plans_dir.sh` is not a locator and is used only where
-  something is written (persistence steps inside the phases, the host's
-  own `## Checkpoint` / `## Implementation` appends), where its
-  refuse-outside-the-worktree rule (#147) is the point.
-- Expected entry type from a skill→entry-type table (`review-issue` →
-  Issue Review, `plan-task` → Plan Authored **with the task line pinned
-  to `/plan-task <N> --no-pr`** so a retry can never resurrect the draft
-  PR (revision 7, review finding 3), `review-plan` → Plan Review,
-  `review-code` → Local Review (Pre-Push), `triage-reviews` → Integrated
-  Review, `address-findings` → Implementation).
-- Prints the **handoff block** to stdout: the task line ("run
-  `/<skill>` for issue #N in worktree <path>"), the commit-identity
+  script locates issue N's worktree with `find_worktree_by_issue
+  <base_dir> <issue_ref> <repo_slug>` (`_worktree_helpers.sh`) and fails
+  with exit 2 if there is none. The base dir and slug come from
+  `--type` (revision 8, review finding 2): `workspace` (the default)
+  resolves to the workspace root's worktree dir and slug exactly as
+  `worktree_enter.sh --type workspace` does; `project` goes through the
+  same `_project_registry.sh` lookup `worktree_enter.sh --type project`
+  uses. `run-issue` takes the same `--type` (default `workspace`), passes
+  it to every `dispatch_phase.sh` call, uses it for `worktree_create.sh`
+  at entry, `gh_create_pr.sh` targeting at publish, and `merge_pr.sh
+  --type` at merge. `_resolve_work_plans_dir.sh` is not a locator and is
+  used only where something is written (persistence steps inside the
+  phases, the host's own `## Checkpoint` / `## Implementation` appends),
+  where its refuse-outside-the-worktree rule (#147) is the point.
+- **Per-skill task lines and expected entry types** (revision 8, review
+  finding 1). The handoff's task line is a literal per skill, carrying
+  the arguments each skill actually parses (verified against each
+  `SKILL.md` usage block), and the expected entry type follows the
+  invocation mode:
+
+  | `--skill` | Task line | Needs `--pr` | Expected entry |
+  |---|---|---|---|
+  | `review-issue` | `/review-issue <N>` | no | `## Issue Review` |
+  | `plan-task` | `/plan-task <N> --no-pr` (pinned; a retry can never resurrect the draft PR, revision 7) | no | `## Plan Authored` |
+  | `review-plan` | `/review-plan --issue <N>` | no | `## Plan Review` |
+  | `review-code` | without `--pr`: `/review-code --branch --issue <N>`; with `--pr <M>`: `/review-code <M>` | optional | `## Local Review (Pre-Push)` without `--pr`; `## Local Review` with it |
+  | `triage-reviews` | `/triage-reviews <M>` | **required** (exit 2 without) | `## Integrated Review` |
+  | `address-findings` | `/address-findings --issue <N>` | no | `## Implementation` |
+
+  Rows 12 (pre-push review), 17/22b/24 (`triage-reviews <M>`) and 22a
+  (PR-mode `review-code <M>`) in the table below name which form the
+  host dispatches; the host reads `<M>` from the same `gh pr list` probe
+  that feeds `next --pr`. `--entry-type <T>` still overrides the table.
+- Prints the **handoff block** to stdout: the task line from the table
+  ("in worktree <path>, run `<task line>`"), the commit-identity
   literals (`AGENT_NAME`/`AGENT_EMAIL` from `set_git_identity_env.sh`, no
   fallback to the human config), the model to stamp in `**By**`, and the
   exit contract (append the expected entry; `**Status**: partial|failed`
@@ -246,9 +278,12 @@ changes:
   minus the untrusted-context fence (no injected body: the phase fetches
   its own).
 - **Exit-contract check**: `--check-exit --issue <N> --skill <phase>
-  --before <count>` compares the entry count of the expected type before
-  and after the dispatch (via `progress_read.py`) and reports `OK <sha>`,
-  `PARTIAL`, `FAILED`, or `MISSING` so the host never assumes an outcome.
+  [--type ..] [--pr <M>] --before <count>` compares the entry count of
+  the expected type (from the same table, so a PR-mode `review-code`
+  expects `## Local Review`) before and after the dispatch (via
+  `progress_read.py`) and reports `OK <sha>`, `PARTIAL`, `FAILED`, or
+  `MISSING` so the host never assumes an outcome. Fixtures: one
+  `--check-exit` case per table row, and both `review-code` modes.
 - **Per-phase model table** (revision 3, owner decision): `review-plan`,
   `review-code`, `triage-reviews`, `address-findings`, and the inline
   implementation pass → `opus`; `review-issue`, `plan-task` → `sonnet`;
@@ -278,7 +313,7 @@ changes:
 #### `dispatch_phase.sh next` — the contract (revision 4, pinned; revision 5 made total)
 
 ```
-dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--progress <file>]
+dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--type workspace|project] [--progress <file>]
 ```
 
 - **Inputs.** `--pr` is required and is the only non-timeline input; the
@@ -404,16 +439,19 @@ outside a worktree, `--soft` prints the notice and writes nothing, as
 `review-plan` does today. Under run-issue the worktree always exists
 first (§1), so the entry always lands.
 
-### 4. Merge gate: unchanged here; #284 is the prerequisite for enforce
+### 4. Merge gate: unchanged here; no prerequisite outstanding
 
 `merge_pr.sh` is not touched by this plan. In run-issue's flow the entry
 the gate's condition (a) reads is always the `## Integrated Review` that
 `triage-reviews` writes at the PR head (rows 19-22b guarantee no other
 review type reaches the merge checkpoints), and the merge-from-main rule
 in §1 keeps the head at the reviewed code SHA. The entry commits pushed
-after that review make the gate report stale until #284 teaches it to
-ignore progress-only commits; that fix is scoped to #284, not this port. Whether the gate should *also* accept an older
-review across a merge-from-main is Open Question 5.
+after that review are exactly what #286's ancestry rule exempts (§1,
+"Entry commits after the last review"), so the gate is expected to pass
+on a run-issue merge today, in report-only and in `--enforce` mode
+alike; the enforce flip is the owner's separate call on #269 and is not
+gated by this port. Whether the gate should *also* accept an older
+review across a merge-from-main is Open Question 5 (decided: no).
 
 ### 5. Handoff ADR
 
@@ -449,8 +487,8 @@ files to understand the loop.
 |------|--------|----|
 | `.claude/skills/review-issue/SKILL.md` | Step 8: `## Issue Review` entry via `review_progress.sh persist --strict --soft`; `### Actions` checkboxes from Action-needed rows + Recommendations | 1 |
 | `.agent/scripts/tests/test_issue_review_entry.sh` (new) | A fixture comment persisted per step 8 parses with `correlation.kind == "issue"` and exactly the Action-needed rows + Recommendations as `findings[]` | 1 |
-| `.agent/scripts/dispatch_phase.sh` (new) | Handoff block emitter, skill→entry-type and skill→model tables, `--check-exit`, `next` per the contract above | 2 |
-| `.agent/scripts/tests/test_dispatch_phase.sh` (new) | Hermetic: handoff content (identity literals, model, exit contract, worktree); exit 2 when no worktree; exit check OK/PARTIAL/FAILED/MISSING; one fixture per `next` row (28) plus five end-to-end timelines; missing file = empty timeline; `round=` count and `MAX_ROUNDS`; `--pr` branches; `phase=` line and `**Mode**: inline` mapping; `--pr merged` with no file present; exit 3 only on an unparseable fixture, row 28 for out-of-vocabulary fields | 2 |
+| `.agent/scripts/dispatch_phase.sh` (new) | Handoff block emitter with per-skill task lines, mode-aware skill→entry-type and skill→model tables, `--type` / `--pr` inputs, `--check-exit`, `next` per the contract above | 2 |
+| `.agent/scripts/tests/test_dispatch_phase.sh` (new) | Hermetic: handoff content (identity literals, model, exit contract, worktree, the literal task line per skill incl. both `review-code` modes and `triage-reviews` exit 2 without `--pr`); `--check-exit` expected type per mode; exit 2 when no worktree; exit check OK/PARTIAL/FAILED/MISSING; one fixture per `next` row (28) plus five end-to-end timelines; missing file = empty timeline; `round=` count and `MAX_ROUNDS`; `--pr` branches; `phase=` line and `**Mode**: inline` mapping; `--pr merged` with no file present; exit 3 only on an unparseable fixture, row 28 for out-of-vocabulary fields | 2 |
 | `docs/decisions/0013-progress-md-entry-type-vocabulary.md` | Status-line scoped-exception note + References line pointing at ADR-0014 (ADR-0008 permitted form; Decision text untouched) | 3 |
 | `.claude/skills/run-issue/SKILL.md` (new) | Host orchestrator: worktree entry, `next` routing, checkpoint entries (written before the next call), `plan-task --no-pr`, inline `## Implementation` with `**Mode**`, host-owned pushes, merge-from-main rule, publish (`gh pr edit` + `gh pr ready` path for a pre-existing draft PR, keyed on `isDraft`), wait-for-reviews, leave-worktree-before-merge, `--resume`; in-process only | 3 |
 | `docs/decisions/0014-in-process-phase-handoff.md` (new) | Handoff contract ADR incl. one-driver convention, model tier, and the run-issue-recorded checkpoint rule | 3 |
