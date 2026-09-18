@@ -535,9 +535,16 @@ if base == "Local Review (Pre-Push)":
     emit("address-findings", "round " + str(r) + ": pre-push review needs work", round_=r)
 
 if base == "Local Review":
-    if open_findings(E, "Findings"):
-        emit("address-findings", "PR-mode re-review has open findings")
-    emit("triage-reviews", "PR-mode re-review has no open findings -- host waits for reviews first")
+    # Rows 22a/22b route on **Verdict**, exactly like rows 13-15 -- NOT on
+    # open findings (plan defect fixed post-review): review-codes unchecked
+    # LGTM placeholder (`- [ ] No issues found. LGTM.`) must never misroute
+    # an approved PR-mode re-review into address-findings. Open findings are
+    # the routing key only for Integrated Review (rows 19-21) and Issue
+    # Review (rows 5/6).
+    verdict = (fields.get("Verdict") or "").strip().lower()
+    if verdict == "approved":
+        emit("triage-reviews", "PR-mode re-review approved -- host waits for reviews first")
+    emit("address-findings", "PR-mode re-review not approved")
 
 if base == "Integrated Review":
     if open_findings(E, "Findings"):

@@ -84,9 +84,12 @@ local_review_prepush() {  # <status> <verdict> <branch> <round-suffix-sha>
     printf '## Local Review (Pre-Push)\n**Status**: %s\n**When**: %s\n**By**: t (m)\n**Verdict**: %s\n**Branch**: %s at `%s`\n\n### Findings\n- [ ] No issues found. LGTM.\n' \
         "$1" "$NOW" "$2" "$3" "${4:-3333333}"
 }
-local_review_pr() {  # <status> <verdict> <box: open|clean>
+local_review_pr() {  # <status> <verdict> <box: open|clean|lgtm>
     local box="- [x] (must-fix) fixed already"
-    [[ "$3" == open ]] && box="- [ ] (must-fix) still open"
+    case "$3" in
+        open) box="- [ ] (must-fix) still open" ;;
+        lgtm) box="- [ ] No issues found. LGTM." ;;
+    esac
     printf '## Local Review\n**Status**: %s\n**When**: %s\n**By**: t (m)\n**Verdict**: %s\n**PR**: #9 at `4444444`\n\n### Findings\n%s\n' \
         "$1" "$NOW" "$2" "$box"
 }
@@ -211,11 +214,11 @@ assert_next "row 21: checkpoint findings answered merge -> merge" open \
 assert_next "row 22: checkpoint merge answered address -> address-findings" open \
     "$(checkpoint merge address)" address-findings
 
-echo "TEST: next -- rows 22a-22b (Local Review, PR-mode re-review)"
-assert_next "row 22a: PR-mode Local Review with an open finding -> address-findings" open \
-    "$(local_review_pr complete approved open)" address-findings
-assert_next "row 22b: PR-mode Local Review with no open finding -> triage-reviews" open \
-    "$(local_review_pr complete approved clean)" triage-reviews
+echo "TEST: next -- rows 22a-22b (Local Review, PR-mode re-review: routes on Verdict, not open boxes -- plan defect fixed post-review)"
+assert_next "row 22a: PR-mode Local Review changes-requested with an open finding -> address-findings" open \
+    "$(local_review_pr complete changes-requested open)" address-findings
+assert_next "row 22b: PR-mode Local Review approved with the unchecked LGTM placeholder -> triage-reviews (verdict overrides the open box)" open \
+    "$(local_review_pr complete approved lgtm)" triage-reviews
 
 echo "TEST: next -- row 23 (a merge that did not end merged)"
 assert_next "row 23: Merge (report-only) -> checkpoint:merge-refused" open \
