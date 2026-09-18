@@ -348,10 +348,18 @@ dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--type workspa
   `findings[]`), `--pr`, and for `## Checkpoint` entries their
   `**After**` and `**Decision**` fields. Adjacency to the entry before
   `E` is never consulted (revision 5, review finding 9). `round` is the
-  count of `## Local Review (Pre-Push)` entries whose
-  `correlation.branch` equals the newest such entry's branch (hermetic
-  under `--progress`; `MAX_ROUNDS=3` compares against this count of
-  *completed* rounds, so the third `needs-work` review surfaces).
+  count of `## Local Review (Pre-Push)` entries with `**Status**:
+  complete` whose `correlation.branch` equals the newest such entry's
+  branch (hermetic under `--progress`; a partial or failed review that
+  row 3 already surfaced and the owner retried does not count — PR 2
+  review finding; `MAX_ROUNDS=3` compares against this count of
+  *completed* rounds, so the third `needs-work` review surfaces). Rows
+  22a/22b route on `**Verdict**` like rows 13-15, not on open boxes
+  (PR 2, lead decision): `review-code`'s "No issues found" placeholder is
+  an unchecked box, so an open-box rule would loop an approved re-review
+  into `address-findings` forever. Open boxes remain the key only for
+  `## Issue Review` (rows 5/6, `### Actions` section only) and
+  `## Integrated Review` (rows 19/20).
   "Open" means an unchecked `findings[]` box. "`## Local Review`" below
   means that exact `base_type`; the pre-push type is always written out.
 - **Tokens.** `review-issue`, `plan-task`, `review-plan`, `implement`,
@@ -400,8 +408,8 @@ dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--type workspa
 | 20 | `E` is `## Integrated Review`, none open | `checkpoint:merge` |
 | 21 | Checkpoint `findings` or `merge` / `merge` | `merge` |
 | 22 | Checkpoint `findings` or `merge` / `address` | `address-findings` |
-| 22a | `E` is `## Local Review` (PR-mode re-review), open boxes | `address-findings` |
-| 22b | `E` is `## Local Review` (PR-mode re-review), none open | `triage-reviews` (host waits for reviews first) |
+| 22a | `E` is `## Local Review` (PR-mode re-review), `**Verdict**` not approved | `address-findings` |
+| 22b | `E` is `## Local Review` (PR-mode re-review), `**Verdict**: approved` | `triage-reviews` (host waits for reviews first) |
 | 23 | `E` is `## Merge (report-only)` or `## Merge (unreviewed)` (and, by row 1, the PR is not merged) | `checkpoint:merge-refused` |
 | 24 | Checkpoint `merge-refused` / `retriage` | `triage-reviews` |
 | 25 | Checkpoint `merge-refused` / `address` | `address-findings` |
