@@ -51,3 +51,11 @@ The plan implements the owner's decision and stays tightly scoped, but has three
 - [ ] Compare current gate reasons against the latest Merge entry's `**Conditions**`; refresh when they differ, skip only on exact match
 - [ ] `git fetch` + `git merge-base --is-ancestor` before trusting the path-only diff, with a full-CI-wait fallback
 - [ ] Extend tests: no-CI repo, mergeability never settles, PR-comment fallback + idempotency, ancestry race
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-18 09:06 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-284/plan.md` at `c4f81f4`
+
+Revision 2 after the plan review: the CI poll distinguishes "no CI configured" (proceed) from "configured but unregistered" (grace-window error); the Merge record is idempotent per PR and per conditions; the progress.md exemption requires a fetch, ancestry, and a one-path diff; seven extra test cases.
