@@ -943,7 +943,9 @@ else
     # Allowed set here is exactly what THIS run committed (Step 1 roadmap
     # paths, Step 1.5 progress.md) — narrower than the gate's, because the
     # question is "did anything but our own bookkeeping land since we
-    # captured HEAD_REVIEWED", not "is the review still current".
+    # captured HEAD_REVIEWED", not "is the review still current". A head
+    # whose tree equals HEAD_REVIEWED's (empty diff, e.g. an empty commit)
+    # is exempt too (#286 review): CI on the reviewed tree already covers it.
     declare -a _ci_committed_paths=()
     [[ "${#_STEP1_COMMITTED_PATHS[@]}" -gt 0 ]] && _ci_committed_paths+=("${_STEP1_COMMITTED_PATHS[@]}")
     [[ -n "$_STEP15_COMMITTED_PATH" ]] && _ci_committed_paths+=("$_STEP15_COMMITTED_PATH")

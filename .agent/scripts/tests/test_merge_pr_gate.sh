@@ -792,6 +792,22 @@ else
     fail "(ci-10) (reviewed=$reviewed new=$new_head out=${out:0:400})"
 fi
 
+echo "TEST: CI target — a same-tree commit (empty diff) after the reviewed head is exempt (#286)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"
+reviewed=$(git -C "$wt" rev-parse HEAD)
+git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "empty"
+git -C "$wt" push --quiet origin feature/issue-7
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI target: reviewed head \`${reviewed:0:7}\`"* ]] \
+    && grep -qF "api repos//commits/${reviewed}/check-runs" "$sb/gh_calls.log"; then
+    pass "(ci-11) empty-diff head after the reviewed head: exempt, check-runs targets the reviewed head"
+else
+    fail "(ci-11) (out=${out:0:400})"
+fi
+
 # ============================== gate condition (a): ancestry (#286) =====
 # A review entry is committed to progress.md on the branch, so the literal
 # head is always one commit past the SHA the entry names. The gate must
