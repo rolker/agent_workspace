@@ -86,6 +86,17 @@ type at all) — a mechanical count, not a content review. The host never
 assumes an outcome from the sub-agent's own turn-ending prose; it always
 asks the script.
 
+**Routing consumes entry type and fields, never uniformly by open boxes.**
+`dispatch_phase.sh next` (issue #276 PR 2) routes `## Local Review` and
+`## Local Review (Pre-Push)` entries on the **Verdict** field alone
+(`approved` vs. not), never on open findings — `review-code` writes an
+unchecked "LGTM" placeholder box even on an approved review, and
+open-findings routing would misfire on it. `## Issue Review` and
+`## Integrated Review` route the other way, on whether their `### Actions`
+/ `### Findings` checkboxes are open. ADR-0013's "consume by entry-type
+filter" rule already requires filtering by entry type and correlation key;
+this is that rule applied per entry type, not a departure from it.
+
 **Why in-process is the only mode.** Per ADR-0004's enforcement hierarchy,
 this exit check is a fast, local, convention-plus-mechanical-check layer —
 there is no server-side enforcement that a dispatched phase kept the

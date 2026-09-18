@@ -110,10 +110,30 @@ Route on `action=` per "Action tokens" below.
 
 ### 4. Dispatching a phase
 
-For any `action=` naming a skill (`review-issue`, `plan-task`,
+**Check `mode=inline` first.** If the `next` output from step 3 included a
+`mode=inline` line, do not dispatch — go to step 5 instead. This covers
+`action=implement` (rows 10, 26 when `**Phase**: implement`) and, just as
+much, a `checkpoint:phase-failed` / `takeover` answer (row 27): row 27
+always emits `mode=inline` for the named phase, whatever that phase is —
+`test_dispatch_phase.sh`'s `"row 27: takeover always carries mode=inline"`
+fixture pins this. Only an `action=<skill>` with no `mode=inline` line is
+actually dispatched below.
+
+For any such `action=` naming a skill (`review-issue`, `plan-task`,
 `review-plan`, `review-code`, `address-findings`, `triage-reviews`), record
-the current entry count for the expected type (from `progress_read.py
---type <entry-type>`, see `--check-exit`'s contract) as `$BEFORE`, then:
+the current entry count for the expected type as `$BEFORE` — the same
+missing-file-is-zero rule `--check-exit` itself applies (`progress_read.py`
+exits 1 on a file that doesn't exist yet, e.g. before `review-issue`'s
+first run, so guard it rather than calling the script unconditionally):
+
+```bash
+PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
+BEFORE=0
+[[ -f "$PF" ]] && BEFORE=$(python3 .agent/scripts/progress_read.py "$PF" --type "<entry-type>" \
+    | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["entries"]))')
+```
+
+then:
 
 ```bash
 .agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>] [--type <type>]
@@ -138,30 +158,48 @@ silent retry: surface the phase, the outcome, and the last entry's text (or
 or stop, then write the `## Checkpoint` entry (below) before calling `next`
 again.
 
-### 5. The inline `implement` action
+### 5. Running a phase inline (`mode=inline`)
 
-`action=implement` with `mode=inline` (rows 10, 26 when `**Phase**:
-implement`, 27) is never dispatched — the host itself implements the plan
-in the worktree, then appends:
+Any `action=<token>` carrying `mode=inline` (from step 4's check) means the
+host runs that phase itself, in the worktree, instead of dispatching a
+sub-agent. Two cases produce this, and they write differently:
 
-```markdown
-## Implementation
-**Status**: complete | partial | failed
-**When**: <YYYY-MM-DD HH:MM ±HH:MM>
-**By**: <agent name> (<model>)
-**PR**: #<M> at `<sha>`   <!-- or **Branch**: <name> at `<sha>` before a PR exists -->
-**Mode**: inline
+- **`action=implement`** (rows 10, 26 when `**Phase**: implement`) — the
+  post-plan implementation pass. The host implements the plan, then
+  appends:
 
-<short list of what changed>
-```
+  ```markdown
+  ## Implementation
+  **Status**: complete | partial | failed
+  **When**: <YYYY-MM-DD HH:MM ±HH:MM>
+  **By**: <agent name> (<model>)
+  **PR**: #<M> at `<sha>`   <!-- or **Branch**: <name> at `<sha>` before a PR exists -->
+  **Mode**: inline
 
-via `.agent/scripts/progress_append.sh <N> --title "<issue title>" <<'ENTRY'`
-(the script header documents the exact stdin/flag contract). `**Mode**:
-inline` is what makes `next`'s row-3/26/27 mapping name `implement` rather
-than `address-findings` when this entry is later partial or failed. A
-row-27 takeover of a *different* failed phase writes exactly the entry that
-phase would have written, with no `**Mode**` field unless the phase taken
-over was this inline pass.
+  <short list of what changed>
+  ```
+
+  `**Mode**: inline` is what makes `next`'s row-3/26/27 mapping name
+  `implement` rather than `address-findings` when this entry is later
+  partial or failed.
+
+- **A `checkpoint:phase-failed` / `takeover` answer** (row 27) — the phase
+  named in `**Phase**` failed or produced only a partial entry, and the
+  owner chose to have the host finish it rather than re-dispatch. Row 27
+  always prints `mode=inline` for the named phase (the takeover-always
+  fixture cited in step 4), so this branch fires for *any* phase, not only
+  `implement`. The host does the phase's own work and writes **exactly the
+  entry that phase would have written** (its `SKILL.md`'s own persistence
+  step and entry shape — e.g. a taken-over `review-plan` still writes
+  `## Plan Review` with a verdict and findings checklist). `**Mode**:
+  inline` is added **only** when the phase taken over is the post-plan
+  implement pass (i.e. `**Phase**: implement`); every other taken-over
+  phase's entry carries no `**Mode**` field at all, identical in shape to
+  what a normal dispatch of that phase would have written.
+
+Both cases use `.agent/scripts/progress_append.sh <N> --title "<issue
+title>" <<'ENTRY'` (the script header documents the exact stdin/flag
+contract).
 
 ### 6. Checkpoints are entries, written before the next call
 
@@ -268,6 +306,16 @@ landed (step 8). One exception: `merge_pr.sh` pushes its own `## Merge
 (...)` record commit from inside its own gate — that is the merge script's
 contract, not a phase's, and `run-issue` leaves it alone.
 
+The host also pushes the entry commits that come *after* the last review —
+the `## Integrated Review` `triage-reviews` writes and every `## Checkpoint`
+entry recorded on the way to the merge checkpoint — before running
+`merge_pr.sh`. This is safe even though those commits move the head past
+the SHA the review named: the merge gate (`merge_pr.sh`, #286) treats a
+review at SHA `R` as still current for head `H` when `R` is an ancestor of
+`H` and only bookkeeping files (`progress.md`, the roadmap) changed between
+them (`_only_bookkeeping_between`). See ADR-0013's References for the gate
+rule.
+
 ### 11. Leave the worktree before merging
 
 `merge_pr.sh` removes the worktree and deletes the branch. Before
@@ -306,9 +354,9 @@ normally on the following `next` call.
 checkpoint names) and the 28-row decision table that produces them live in
 `.agent/scripts/dispatch_phase.sh`'s header comment and inline comments —
 read there, not here. This skill's job is routing on the printed token
-(dispatch per step 4, inline-implement per step 5, publish per step 7,
-merge per step 11, checkpoint per step 6, `done` ends the run cleanly) —
-it does not re-derive or restate the table.
+(dispatch per step 4, inline per step 5 (implement or a takeover), publish
+per step 7, merge per step 11, checkpoint per step 6, `done` ends the run
+cleanly) — it does not re-derive or restate the table.
 
 ## No auto-chaining
 
@@ -323,3 +371,20 @@ A second `run-issue` on the same issue, or a hand edit to `progress.md`
 mid-run, is out of contract (ADR-0014). `--check-exit`'s entry-count
 comparison is the only detection available, and it reports `MISSING` or an
 unexpected type rather than guessing at what happened.
+
+## Scope
+
+Three things this loop deliberately does not cover, per the owner's own
+notes on the plan for issue #276:
+
+- **Field mode** (#208/#209) — the publish and merge steps here are
+  GitHub-only; a non-GitHub publish path is a separate, later change to
+  those two steps, not something this loop's design anticipates.
+- **`--type project` end to end** — threaded through `run-issue` and
+  `dispatch_phase.sh` today, but its path still inherits `merge_pr.sh`'s
+  legacy single-repo project handling; a full multi-project story follows
+  issue #265, not this loop.
+- **ADR-0012 package worktrees** (`--issue owner/repo#N --layer …`) — out
+  of scope here. Multi-repo worktree composition is an adapter concern
+  (ADR-0012), not orchestrator logic; `run-issue` stays repo-agnostic and
+  does not grow layer/package awareness.
