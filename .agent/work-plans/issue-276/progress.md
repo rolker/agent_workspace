@@ -416,3 +416,14 @@ Rounds 1–5 are genuinely closed and the 28-row table holds under a fresh re-wa
 **Plan**: `.agent/work-plans/issue-276/plan.md` at `b21f467`
 
 Revision 8 after round 6: dispatch_phase.sh gets per-skill literal task lines (review-code --branch vs <pr>, triage-reviews <pr> required) and a mode-aware expected-entry table with fixtures for both review-code modes; --type (default workspace) threads from run-issue through find_worktree_by_issue, publish and merge; §1/§4 corrected to cite #286 as the merged gate fix and #284 as the merged CI-target change with nothing outstanding; merge_pr.sh's own record push named as the exception to host-owns-every-push.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-18 11:38 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: approve
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `cd1de96`
+
+Owner approved revision 8 for implementation on 2026-09-18 ("approve with notes") after asking about field mode (not ported: #208/#209), ROS-specific content (none; package worktrees are an adapter concern), and the hosted-project layout (#265 governs `--type project` end to end and skill availability from project-rooted sessions). The three notes are recorded in the plan's Consequences table and Estimated Scope. First cut targets workspace issues. PR 1 (review-issue writes `## Issue Review`) starts now.
