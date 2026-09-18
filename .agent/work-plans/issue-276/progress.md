@@ -369,3 +369,42 @@ Revision 6 closes all nine round-4 findings at the level they were raised, and i
 **Plan**: `.agent/work-plans/issue-276/plan.md` at `ad23fd5`
 
 Revision 7 after plan review round 5 (needs-work, 2 must-fix + 8 minor, all addressed). Round 5 confirmed all nine round-4 fixes against the tree; its must-fixes were the PR-mode re-review routing and the draft-PR publish loop. #284 gains the exact-SHA gate scope this plan depends on for enforce.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-18 11:23 -04:00
+**By**: Independent plan reviewer (claude-opus-5)
+**Verdict**: needs-work
+
+**PR**: https://github.com/rolker/agent_workspace/pull/283 — [PLAN] Port run-issue: in-process orchestrator over the #269 review loop
+**Issue**: #276 — Port run-issue from ros2_agent_workspace: in-process orchestrator over the #269 review loop, no container baggage
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `ad23fd5`
+
+### Evaluation
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Four PRs; containers/field mode/Copilot/context-fence declined and enumerated |
+| Issue alignment | Good | In-process only; no gate widening |
+| File targeting | Needs work | Dispatch contract cannot express three of six phases' invocations; `find_worktree_by_issue` lacks a base dir/type input; §1/§4 attribute the gate fix to the wrong issue and call it unlanded |
+| Consequences | Good | Table covers entry-type↔next, gate records, --no-pr, worktree removal, review-code line format |
+| Principle alignment | Good | 28-row table re-walked for publish, post-PR fix round, merge-refused, phase-failed/resume; no unintended row 28 |
+| ADR compliance | Good | 0008 form for the 0013 note; 0002/0004/0009/0013 answered; Checkpoint header matches 0013 |
+| ROS conventions | N/A | workspace plan |
+
+### Prior findings
+- Rounds 1–5: every must-fix resolved in revision 7 and re-confirmed against the plan text (R2 PR 0 withdrawal, `next` contract, worktree lookup split, four-PR split, ADR-0014; R3 checkpoint vocabulary, `**Ship**`, round counting, row 23; R4 `--no-pr`, host owns pushes, `**Mode**: inline`, `--pr merged`, exit 3; R5 rows 22a/22b, publish via `gh pr ready`, `**Phase**` on resume, unmapped phase → row 28, five fixtures).
+
+### Findings
+1. **[File targeting / Approach]** (must-fix) — The dispatch task line "run `/<skill>` for issue #N in worktree <path>" has no argument channel: `review-code` needs `--branch` vs `<pr-number>`, `triage-reviews` needs `<pr-number>`; the PR number never reaches the sub-agent. And the skill→entry-type table gives `review-code` one type, but it writes `## Local Review (Pre-Push)` in branch mode and `## Local Review` in PR mode, so `--check-exit` reports MISSING on every successful PR-mode review (always `checkpoint:phase-failed`). Fix: per-row task lines carrying the arguments, and a mode-aware entry-type lookup with fixtures for both modes.
+2. **[File targeting]** (must-fix) — `find_worktree_by_issue` takes `(base_dir, issue_ref, repo_slug)`; `next`/`--check-exit` take only `--issue/--pr/--progress`, and neither §1 nor §2 says where the base dir / `--type` comes from. Pin it: workspace-only for now, or carry `--type`/repo slug through run-issue → dispatch_phase.sh.
+3. **[Consequences / factual]** (must-fix) — §1's entry-commit bullet and §4 are stale: the progress-only-commits-count-as-at-head fix is #286 (merged in #287), #284 was the CI-target change (merged in #285); both are on main. Drop "until #284 lands" and state the exemption's real shape (ancestry + progress.md/roadmap paths only; ambiguous short SHAs stay stale).
+4. **[Consequences]** (suggestion) — "the host owns every push" has one exception: `merge_pr.sh`'s own record push in `_gate_record`. Name it so an implementer does not "fix" it.
+
+### Summary
+Rounds 1–5 are genuinely closed and the 28-row table holds under a fresh re-walk. What remains is the host↔skill seam: the dispatch handoff cannot invoke review-code in either mode or triage-reviews at all, expects the wrong entry type from a PR-mode review, the worktree lookup has no type input, and §4's prerequisite is stale. All three are mechanical edits to §1/§2/§4.
+
+### Recommended Actions
+- [ ] Argument channel in dispatch_phase.sh (per-skill task lines with `--branch` / `<pr-number>` / `--issue`); mode-aware entry-type lookup for review-code; fixtures for both modes
+- [ ] Pin the worktree base dir / `--type` for `find_worktree_by_issue` and publish/merge
+- [ ] Correct §1/§4: #286 is the gate fix (merged), #284 the CI target (merged); state the exemption's shape
+- [ ] (suggestion) Name merge_pr.sh's record push as the exception to host-owns-every-push
