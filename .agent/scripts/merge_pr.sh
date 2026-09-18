@@ -586,7 +586,9 @@ fi
 # --- Step 1.5: Review-loop merge gate (issue #269 PR F, Layer 1) ---
 # Two preconditions from issue #269:
 #   (a) the linked issue's latest `## Local Review` / `## Integrated Review`
-#       entry correlates with the PR head SHA and is not changes-requested
+#       entry correlates with the PR head SHA — equal to it, or an ancestor
+#       with only progress.md / roadmap commits in between (#286) — and is
+#       not changes-requested
 #       (Local Review: **Verdict**: approved; Integrated Review: no open
 #       must-fix / cross-confirmed finding);
 #   (b) a PR comment carrying the pinned "## Decision summary" heading.
@@ -614,6 +616,42 @@ fi
 # issue's progress.md at the head commit and the PR body/comments — and a
 # branch-protection rule requiring it. Enabling that changes CI and branch
 # protection, so it waits on the owner's explicit decision.
+# _only_bookkeeping_between <wt> <from-sha> <to-sha> <allowed-path>...
+# The one equivalence rule shared by gate condition (a) (#286) and the
+# Step 2 CI target (#284): <to> is "the same reviewed state" as <from> when
+# <from> is an ancestor of <to> and every path that differs is one of the
+# document files this workflow writes on the reviewed branch after review
+# (progress.md records, roadmap updates). Returns 0 on equivalence; on
+# failure returns 1 and prints the reason (one line, for the caller to
+# quote). Both SHAs must be full and resolvable in <wt>; callers resolve
+# short SHAs first (see the gate) so an ambiguous prefix is a failure
+# there, not a silent match here.
+_only_bookkeeping_between() {
+    local wt="$1" from="$2" to="$3"; shift 3
+    local -a allowed=("$@")
+    local diff_paths p a ok
+    if ! git -C "$wt" merge-base --is-ancestor "$from" "$to" 2>/dev/null; then
+        echo "\`${from:0:7}\` is not an ancestor of \`${to:0:7}\` (force-push or a concurrent history change)"
+        return 1
+    fi
+    diff_paths=$(git -C "$wt" diff --name-only "$from" "$to" 2>/dev/null) || {
+        echo "could not diff \`${from:0:7}\`..\`${to:0:7}\` in $wt"
+        return 1
+    }
+    while IFS= read -r p; do
+        [[ -z "$p" ]] && continue
+        ok=false
+        for a in ${allowed[@]+"${allowed[@]}"}; do
+            [[ "$p" == "$a" ]] && { ok=true; break; }
+        done
+        if [[ "$ok" == false ]]; then
+            echo "touches \`${p}\`, which is not a merge-time document file"
+            return 1
+        fi
+    done <<<"$diff_paths"
+    return 0
+}
+
 _gate_reasons=()
 # Reuse the pre-Step-1 read (#284) instead of a second `gh pr view` call.
 # This is also correctness-bearing: the review entry the gate looks for
@@ -634,9 +672,30 @@ fi
 _gate_progress=""
 [[ -n "$_gate_wt" && -f "$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md" ]] \
     && _gate_progress="$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
+# The git repo the ancestry/paths checks run in (gate condition (a) and the
+# Step 2 CI target): the PR's own worktree, and never the main tree even if
+# it happens to have the branch checked out (AGENTS.md forbids feature
+# commits there). Empty means "no local history to verify against".
+_ci_wt=""
+if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
+    _ci_wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$_ci_wt_top" ]]; then
+        _ci_is_main=false
+        for _mt in "$ROOT_DIR" "$ROOT_DIR/project"; do
+            if [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$_ci_wt_top" && pwd -P)" ]]; then
+                _ci_is_main=true
+            fi
+        done
+        [[ "$_ci_is_main" == false ]] && _ci_wt="$_ci_wt_top"
+    fi
+fi
 # (a) latest review entry at the head, approved. The reader's --type filter
 # already includes `## External Review` as Integrated Review's recognized
 # predecessor (ADR-0013); it is judged by the Integrated Review rule.
+# "At the head" (#286): the entry's SHA equals HEAD_REVIEWED, or is an
+# ancestor of it with only merge-time document files changed in between —
+# recording the review itself commits progress.md on the branch, so the
+# literal head is always one commit past the SHA the entry names.
 _gate_review=""
 if [[ -z "$_gate_head" ]]; then
     _gate_reasons+=("could not read the PR head SHA")
@@ -665,8 +724,28 @@ else
     else
         _gate_r_type=$(jq -r '.type' <<<"$_gate_review")
         _gate_r_sha=$(jq -r '.sha' <<<"$_gate_review")
-        if [[ "$(jq -r '.at_head' <<<"$_gate_review")" != "true" ]]; then
-            _gate_reasons+=("latest ${_gate_r_type} entry is at \`${_gate_r_sha:-?}\`, not the PR head \`${_gate_head_short}\` (stale review)")
+        _gate_covered=$(jq -r '.at_head' <<<"$_gate_review")
+        _gate_stale_why=""
+        if [[ "$_gate_covered" != "true" ]]; then
+            if [[ -z "$_ci_wt" ]]; then
+                _gate_stale_why="no local worktree to verify ancestry"
+            else
+                git -C "$_ci_wt" fetch --quiet origin "$PR_BRANCH" 2>/dev/null || true
+                _gate_r_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_r_sha}^{commit}" 2>/dev/null || echo "")
+                _gate_h_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_head}^{commit}" 2>/dev/null || echo "")
+                if [[ -z "$_gate_r_full" ]]; then
+                    _gate_stale_why="\`${_gate_r_sha:-?}\` does not resolve to one commit in ${_ci_wt}"
+                elif [[ -z "$_gate_h_full" ]]; then
+                    _gate_stale_why="head \`${_gate_head_short}\` is not present locally"
+                elif _gate_stale_why=$(_only_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" \
+                        ".agent/work-plans/issue-${ISSUE_NUM}/progress.md" "ROADMAP.md" "docs/ROADMAP.md"); then
+                    _gate_covered=true
+                    echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only progress.md / roadmap changed since"
+                fi
+            fi
+        fi
+        if [[ "$_gate_covered" != "true" ]]; then
+            _gate_reasons+=("latest ${_gate_r_type} entry is at \`${_gate_r_sha:-?}\`, not the PR head \`${_gate_head_short}\` (stale review: ${_gate_stale_why})")
         elif [[ "$_gate_r_type" == "Local Review" && "$(jq -r '.verdict' <<<"$_gate_review")" != "approved" ]]; then
             _gate_reasons+=("latest Local Review at the head has **Verdict**: $(jq -r '.verdict' <<<"$_gate_review"), not approved")
         elif [[ "$_gate_r_type" != "Local Review" && "$(jq -r '.open_mustfix' <<<"$_gate_review")" != "0" ]]; then
@@ -837,19 +916,8 @@ fi
 # CI round. Every other case — a concurrent push, a force-push, or a path
 # this script did not write — targets the actual current head, in full.
 CI_TARGET_SHA=""
-_ci_wt=""
-if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
-    _ci_wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
-    if [[ -n "$_ci_wt_top" ]]; then
-        _ci_is_main=false
-        for _mt in "$ROOT_DIR" "$ROOT_DIR/project"; do
-            if [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$_ci_wt_top" && pwd -P)" ]]; then
-                _ci_is_main=true
-            fi
-        done
-        [[ "$_ci_is_main" == false ]] && _ci_wt="$_ci_wt_top"
-    fi
-fi
+# (_ci_wt — the PR's own worktree, never the main tree — was resolved
+# alongside the gate above, since both use it.)
 
 HEAD_NOW=""
 if [[ -n "$_ci_wt" ]] && git -C "$_ci_wt" fetch --quiet origin "$PR_BRANCH" 2>/dev/null; then
@@ -871,38 +939,23 @@ elif [[ -z "$HEAD_REVIEWED" ]] || [[ "$HEAD_NOW" == "$HEAD_REVIEWED" ]]; then
 elif [[ -z "$_ci_wt" ]]; then
     CI_TARGET_SHA="$HEAD_NOW"
     echo "  CI target: new head \`${HEAD_NOW:0:7}\` (no local worktree to verify ancestry/paths for an exemption)"
-elif ! git -C "$_ci_wt" merge-base --is-ancestor "$HEAD_REVIEWED" "$HEAD_NOW" 2>/dev/null; then
-    CI_TARGET_SHA="$HEAD_NOW"
-    echo "  CI target: new head \`${HEAD_NOW:0:7}\` (reviewed head \`${HEAD_REVIEWED:0:7}\` is not an ancestor — force-push or a concurrent history change)"
 else
+    # Allowed set here is exactly what THIS run committed (Step 1 roadmap
+    # paths, Step 1.5 progress.md) — narrower than the gate's, because the
+    # question is "did anything but our own bookkeeping land since we
+    # captured HEAD_REVIEWED", not "is the review still current". A head
+    # whose tree equals HEAD_REVIEWED's (empty diff, e.g. an empty commit)
+    # is exempt too (#286 review): CI on the reviewed tree already covers it.
     declare -a _ci_committed_paths=()
     [[ "${#_STEP1_COMMITTED_PATHS[@]}" -gt 0 ]] && _ci_committed_paths+=("${_STEP1_COMMITTED_PATHS[@]}")
     [[ -n "$_STEP15_COMMITTED_PATH" ]] && _ci_committed_paths+=("$_STEP15_COMMITTED_PATH")
-    _ci_diff_paths=$(git -C "$_ci_wt" diff --name-only "$HEAD_REVIEWED" "$HEAD_NOW" 2>/dev/null || echo "")
-    if [[ -z "$_ci_diff_paths" ]]; then
-        CI_TARGET_SHA="$HEAD_NOW"
+    _ci_why=""
+    if _ci_why=$(_only_bookkeeping_between "$_ci_wt" "$HEAD_REVIEWED" "$HEAD_NOW" ${_ci_committed_paths[@]+"${_ci_committed_paths[@]}"}); then
+        CI_TARGET_SHA="$HEAD_REVIEWED"
+        echo "  CI target: reviewed head \`${HEAD_REVIEWED:0:7}\` — new head \`${HEAD_NOW:0:7}\` only touches paths this script committed itself ($(IFS=,; echo "${_ci_committed_paths[*]}"))"
     else
-        _ci_all_exempt=true
-        _ci_offender=""
-        while IFS= read -r _ci_p; do
-            [[ -z "$_ci_p" ]] && continue
-            _ci_p_ok=false
-            for _ci_cp in ${_ci_committed_paths[@]+"${_ci_committed_paths[@]}"}; do
-                [[ "$_ci_p" == "$_ci_cp" ]] && { _ci_p_ok=true; break; }
-            done
-            if [[ "$_ci_p_ok" == false ]]; then
-                _ci_all_exempt=false
-                _ci_offender="$_ci_p"
-                break
-            fi
-        done <<<"$_ci_diff_paths"
-        if [[ "$_ci_all_exempt" == true ]]; then
-            CI_TARGET_SHA="$HEAD_REVIEWED"
-            echo "  CI target: reviewed head \`${HEAD_REVIEWED:0:7}\` — new head \`${HEAD_NOW:0:7}\` only touches paths this script committed itself ($(IFS=,; echo "${_ci_committed_paths[*]}"))"
-        else
-            CI_TARGET_SHA="$HEAD_NOW"
-            echo "  CI target: new head \`${HEAD_NOW:0:7}\` — touches \`${_ci_offender}\`, which this script did not commit"
-        fi
+        CI_TARGET_SHA="$HEAD_NOW"
+        echo "  CI target: new head \`${HEAD_NOW:0:7}\` — ${_ci_why}"
     fi
 fi
 
@@ -926,7 +979,9 @@ _ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
     # caller must keep retrying it (bounded by the grace deadline) rather
     # than falling through to the no-CI pass.
     local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed
-    runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" --paginate -f per_page=100 2>/dev/null \
+    # -X GET is load-bearing (#289): `-f` alone turns the request into a
+    # POST, which GitHub answers with 404 on every poll.
+    runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" -X GET --paginate -f per_page=100 2>/dev/null \
         | jq -c -s '{check_runs: [.[].check_runs[]?]}') || runs_rc=$?
     status_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/status" 2>/dev/null) || status_rc=$?
     if [[ $runs_rc -ne 0 ]] || [[ $status_rc -ne 0 ]]; then
