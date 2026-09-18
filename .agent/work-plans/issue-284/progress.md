@@ -120,3 +120,23 @@ Revision 3 on the owner's answer: the CI exemption covers every document file th
 Four commits: 96e716e (merge_pr.sh: reviewed-head capture, committed-path tracking, fetch + ancestry + paths-only exemption, SHA-targeted check-runs/status poll with no-CI / not-registered / registered rules, mergeability settle poll with one retry, per-PR per-conditions idempotent record; also fixed a latent `${var:-{}}` brace-parsing bug that corrupted JSON), f0fa2aa (15 new gate test cases, 41 total), d307b31 (agent_wait_patterns.md, AGENTS.md row), 2561ff9 (plan synced; REST-fallback decision in Implementation Notes).
 
 Deviation: REST merge fallback not added; the observed #282 failure was `mergeable: UNKNOWN`, which the settle poll fixes. Tests: gate 41/41, merge 91/91, root-resolution 5/5, full suite 20/20; shellcheck clean.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-18 09:59 -04:00
+**By**: Claude Code Agent (lead: claude-fable-5-1; specialists: claude-sonnet-5 governance + adversarial, gemini cross-model, shellcheck)
+**Verdict**: changes-requested
+
+**PR**: #285 at `4068195`
+**Depth**: Deep (reason: 1107 lines changed; enforcement script + AGENTS.md)
+**Must-fix**: 2 | **Suggestions**: 6
+
+### Findings
+- [ ] (must-fix, cross-confirmed: gemini + adversarial) a failed `gh api` call (rate limit, network, 5xx) is folded into "no CI configured" and the script proceeds to merge unverified; distinguish API failure from an empty result and retry/error instead — `.agent/scripts/merge_pr.sh:913-918,963-965`
+- [ ] (must-fix, gemini) `startup_failure` (and `stale`) check-run conclusions are not in the failed list, so a broken workflow counts as success — `.agent/scripts/merge_pr.sh:924`
+- [ ] (suggestion, adversarial) check-runs call is not paginated; failures past the 30th run are invisible — `.agent/scripts/merge_pr.sh:913`
+- [ ] (suggestion, gemini) `_wait_for_mergeable` returns 0 on `CONFLICTING`; fail early with a clear message instead of letting `gh pr merge` fail — `.agent/scripts/merge_pr.sh:940-959`
+- [ ] (suggestion, gemini) guard the empty-array append of `_ROADMAP_STAGED_PATHS` like line 868 does — `.agent/scripts/merge_pr.sh:568`
+- [ ] (suggestion, adversarial) no test covers the CI wait when no local worktree exists (the `_ci_wt` empty branch at 860-862) — `.agent/scripts/tests/test_merge_pr_gate.sh`
+- [ ] (suggestion, governance) header comment says `--no-wait` skips all of Step 2, but the CI-target computation runs unconditionally — `.agent/scripts/merge_pr.sh:32`
+- [ ] (suggestion, governance) note near `_gate_already_recorded` that matching on PR number without the SHA is a deliberate exception to ADR-0013's SHA correlation — `.agent/scripts/merge_pr.sh:765`
