@@ -205,3 +205,19 @@ proceed (Recommended) — implement now, folding in the three round-2 findings (
 - [x] (must-fix) Planned AGENTS.md merge_pr.sh row edit is missing from the branch, yet the `## Implementation` entry claims "AGENTS.md: merge_pr.sh row notes the settle and retry always run" — make the edit (row still reads only "`--no-wait` to skip the CI wait") or correct the record — `AGENTS.md:401`
 - [x] (suggestion) Under --no-wait a gh/API outage during the now-always-on settle waits the full grace window then reports "never settled (still UNKNOWN)", indistinguishable from a real UNKNOWN; consider naming the lookup failure — `.agent/scripts/merge_pr.sh:1028`
 - [x] (suggestion) nw-1 checks the first mergeable poll precedes the merge but not that the UNKNOWN answer was consumed (a second poll); assert the mergeable_seq count is 2 — `.agent/scripts/tests/test_merge_pr_gate.sh:716`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-18 14:19 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-290 at `51ca92a`
+**Addressed**: Local Review (Pre-Push) at `c446d9e` (2026-09-18 14:13 -04:00)
+**Commits**: f24bf31, 556549b, 51ca92a
+
+### Actions
+- [x] AGENTS.md merge_pr.sh row now says `--no-wait` skips the CI wait (the mergeability settle and one merge retry always run) — `AGENTS.md:401`
+- [x] `_wait_for_mergeable` reports LOOKUP_FAILED when the last poll could not reach GitHub; the never-settled error names the lookup failure instead of "still UNKNOWN"; new test nw-2b (stub `GH_MERGEABLE_DEFAULT=FAIL`) — `.agent/scripts/merge_pr.sh:1028`
+- [x] nw-1 asserts at least two mergeability polls (UNKNOWN read, then MERGEABLE) — `.agent/scripts/tests/test_merge_pr_gate.sh:716`
+
+Checks: test_merge_pr_gate 58/0, test_merge_pr 91/0, test_merge_pr_root_resolution 5/0; shellcheck --severity=warning clean.
