@@ -108,3 +108,15 @@ All four must-fix items are addressed with matching test coverage and no new gap
 **Plan**: `.agent/work-plans/issue-284/plan.md` at `83e9355`
 
 Revision 3 on the owner's answer: the CI exemption covers every document file the script itself commits once the merge is approved (roadmap and progress.md), keyed on the paths actually committed in the run. One test case added.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-18 09:54 -04:00
+**By**: Claude Code Agent (implementer: claude-sonnet-5; lead: claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-284/plan.md` at `2561ff9`
+
+**Branch**: `feature/issue-284` at `2561ff9`
+
+Four commits: 96e716e (merge_pr.sh: reviewed-head capture, committed-path tracking, fetch + ancestry + paths-only exemption, SHA-targeted check-runs/status poll with no-CI / not-registered / registered rules, mergeability settle poll with one retry, per-PR per-conditions idempotent record; also fixed a latent `${var:-{}}` brace-parsing bug that corrupted JSON), f0fa2aa (15 new gate test cases, 41 total), d307b31 (agent_wait_patterns.md, AGENTS.md row), 2561ff9 (plan synced; REST-fallback decision in Implementation Notes).
+
+Deviation: REST merge fallback not added; the observed #282 failure was `mergeable: UNKNOWN`, which the settle poll fixes. Tests: gate 41/41, merge 91/91, root-resolution 5/5, full suite 20/20; shellcheck clean.
