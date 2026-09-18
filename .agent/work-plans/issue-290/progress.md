@@ -106,3 +106,13 @@ The diagnosis and the code fix are right and minimal. The test half is not: as s
 - [ ] Add a `--no-wait` retry test, which requires a sequenced `pr merge` exit/stderr fixture in the gh stub; or record why the retry ships uncovered.
 - [ ] Correct the stale "Step 5" wording at lines 969–970 and 1166 alongside the other comment fixes.
 - [ ] Confirm with the owner before touching the `AGENTS.md` row (Ask First).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-18 13:49 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+revise (Recommended)
