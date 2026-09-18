@@ -408,3 +408,11 @@ Rounds 1–5 are genuinely closed and the 28-row table holds under a fresh re-wa
 - [ ] Pin the worktree base dir / `--type` for `find_worktree_by_issue` and publish/merge
 - [ ] Correct §1/§4: #286 is the gate fix (merged), #284 the CI target (merged); state the exemption's shape
 - [ ] (suggestion) Name merge_pr.sh's record push as the exception to host-owns-every-push
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-18 11:27 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `b21f467`
+
+Revision 8 after round 6: dispatch_phase.sh gets per-skill literal task lines (review-code --branch vs <pr>, triage-reviews <pr> required) and a mode-aware expected-entry table with fixtures for both review-code modes; --type (default workspace) threads from run-issue through find_worktree_by_issue, publish and merge; §1/§4 corrected to cite #286 as the merged gate fix and #284 as the merged CI-target change with nothing outstanding; merge_pr.sh's own record push named as the exception to host-owns-every-push.
