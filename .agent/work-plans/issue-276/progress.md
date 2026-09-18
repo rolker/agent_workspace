@@ -427,3 +427,11 @@ Revision 8 after round 6: dispatch_phase.sh gets per-skill literal task lines (r
 **Plan**: `.agent/work-plans/issue-276/plan.md` at `cd1de96`
 
 Owner approved revision 8 for implementation on 2026-09-18 ("approve with notes") after asking about field mode (not ported: #208/#209), ROS-specific content (none; package worktrees are an adapter concern), and the hosted-project layout (#265 governs `--type project` end to end and skill availability from project-rooted sessions). The three notes are recorded in the plan's Consequences table and Estimated Scope. First cut targets workspace issues. PR 1 (review-issue writes `## Issue Review`) starts now.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-18 13:08 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `0ace344`
+
+Revision 9, sync with landed code: PR 1 (#291) and PR 2 (#293) merged; rows 22a/22b route on **Verdict** (the unchecked LGTM placeholder would loop an open-box rule); round counts only completed Pre-Push reviews. No design change beyond those two PR-2 outcomes.
