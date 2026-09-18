@@ -64,3 +64,18 @@ Revision 2: gate compares R against HEAD_REVIEWED with allowed paths progress.md
 **Branch**: `feature/issue-286` at `34dfcb6`
 
 c6d5b72 helper `_only_bookkeeping_between` + gate condition (a) ancestry rule + Step 2 call site; 2ca3c13 five gate cases (g1–g5) on real histories, ci-3 assertion updated to the helper's message; 34dfcb6 ADR-0013 references addendum. Gate suite 53/53, full suite 20/20, shellcheck clean. No deviations from the plan.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-18 10:56 -04:00
+**By**: Claude Code Agent (lead: claude-fable-5-1; specialists: claude-sonnet-5 governance + adversarial; shellcheck; gemini unavailable — headless permission denial)
+**Verdict**: approved
+
+**PR**: #287 at `db6c8ed`
+**Depth**: Deep (reason: 395 lines changed; enforcement script)
+**Must-fix**: 0 | **Suggestions**: 2
+
+### Findings
+- [x] (suggestion, adversarial) empty-diff head after the reviewed head now exempt rather than re-targeted; documented in a comment and covered by test ci-11 — `.agent/scripts/merge_pr.sh`
+- [ ] (suggestion, governance) the ADR-0013 References bullet states an interpretive rule; borderline addendum vs. supersede under ADR-0008, for the owner to confirm — `docs/decisions/0013-progress-md-entry-type-vocabulary.md:206`
+- [ ] Gemini cross-model review produced no output: headless agy was auto-denied a command permission (tooling gap, filed separately)
