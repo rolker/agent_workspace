@@ -28,37 +28,57 @@ script's policy and it can make this exemption itself.
 1. **Capture the reviewed head once, before any push.** Read
    `headRefOid` at the top of the script (before Step 1) into
    `HEAD_REVIEWED`. Step 1.5 already reads it for the gate; reuse one read.
-2. **Make the Merge record idempotent per PR, not per head.** Before
-   appending, parse the timeline with `progress_read.py` and, if the
-   *latest* entry is a `## Merge (report-only)` or `## Merge (unreviewed)`
-   whose correlation is this PR number, print "already recorded at
-   `<sha>`" and skip both the append and the push. The entry's `**PR**` SHA
-   stays the reviewed head, which is the SHA the review entries correlate
-   with. Applies to the PR-comment fallback too (skip when the latest PR
-   comment already carries the heading for the same conditions).
-3. **Decide the CI target in Step 2 from what actually changed.** After
-   Steps 1 and 1.5, re-read `headRefOid` as `HEAD_NOW`. If
-   `HEAD_NOW == HEAD_REVIEWED`, the target is `HEAD_NOW`. Otherwise compute
-   `git diff --name-only HEAD_REVIEWED..HEAD_NOW` in the PR's worktree
-   (both commits are local because this script made them). If every path
-   equals `.agent/work-plans/issue-<N>/progress.md`, the target is
-   `HEAD_REVIEWED` and the script prints why the new head is exempt. Any
-   other path (including the Step 1 roadmap commit, see open questions)
-   makes the target `HEAD_NOW`.
+2. **Make the Merge record idempotent per PR and per outcome, not per
+   head.** Before appending, parse the timeline with `progress_read.py`
+   and take the *latest* `## Merge (report-only)` / `## Merge (unreviewed)`
+   entry whose correlation is this PR number. Skip the append and the push
+   only when that entry's type **and** its `**Conditions**` line equal the
+   freshly computed ones (print "already recorded at `<sha>`, same
+   conditions"). When the reasons differ (a review was added, a new gap
+   appeared), append a fresh entry so the timeline reflects the run that
+   actually merged. The entry's `**PR**` SHA stays the reviewed head, which
+   is the SHA the review entries correlate with. Same rule for the
+   PR-comment fallback: compare against the latest PR comment carrying the
+   heading.
+3. **Decide the CI target in Step 2 from what actually changed, after
+   verifying ancestry.** After Steps 1 and 1.5, `git fetch origin
+   <PR branch>` in the PR's worktree and re-read `headRefOid` as
+   `HEAD_NOW`. The exemption applies only when all of these hold:
+   `HEAD_NOW != HEAD_REVIEWED`; `HEAD_NOW` resolves locally after the
+   fetch; `git merge-base --is-ancestor HEAD_REVIEWED HEAD_NOW` (so a
+   force-push or an unrelated concurrent push never qualifies); and
+   `git diff --name-only HEAD_REVIEWED HEAD_NOW` lists exactly one path,
+   `.agent/work-plans/issue-<N>/progress.md`. Then the target is
+   `HEAD_REVIEWED` and the script prints why the new head is exempt. In
+   every other case, including the Step 1 roadmap commit (see open
+   questions), a concurrent push by another agent, or a SHA the fetch did
+   not bring in, the target is `HEAD_NOW` and the script says which
+   condition failed.
 4. **Wait for CI on the target SHA, not on "whatever runs exist".**
    Replace `gh pr checks --watch` with a bounded poll of
-   `gh api repos/<slug>/commits/<sha>/check-runs` (plus the legacy
-   `/status` endpoint for commit statuses): treat "zero check runs
-   registered" as *not started yet* and keep polling (fixes #271), fail on
-   any `conclusion` in failure/cancelled/timed_out, succeed when all are
-   completed and successful. Poll interval and overall timeout come from
-   env vars (`MERGE_PR_CI_POLL_SECONDS`, default 10; `MERGE_PR_CI_TIMEOUT_SECONDS`,
-   default 1800) so tests can run with a zero interval. A timeout with no
-   checks ever registered is a clear error and no merge. `--no-wait` still
-   skips the whole step.
+   `gh api repos/<slug>/commits/<sha>/check-runs` plus the
+   `/commits/<sha>/status` endpoint for legacy commit statuses. Rules:
+   - **No CI configured**: if `gh api repos/<slug>/actions/workflows`
+     reports zero active workflows and the target SHA has no check runs
+     and no statuses, print "no CI configured for <slug>; nothing to wait
+     for" and proceed. This keeps project repos without workflows and test
+     sandboxes mergeable (today they fail on "no checks reported").
+   - **CI configured, nothing registered yet**: keep polling for a grace
+     window (`MERGE_PR_CI_GRACE_SECONDS`, default 120). If still nothing
+     after the window, error out with no merge: "no checks registered for
+     <sha> after N s; if this commit is excluded by workflow path filters,
+     re-run with --no-wait". Explicit, never a silent pass (fixes #271
+     without hiding a real gap).
+   - **Registered**: fail on any `conclusion` in failure / cancelled /
+     timed_out / action_required, succeed when every run and status is
+     completed and successful, otherwise keep polling until
+     `MERGE_PR_CI_TIMEOUT_SECONDS` (default 1800) and then error.
+   Poll interval is `MERGE_PR_CI_POLL_SECONDS` (default 10) so tests can
+   run with zero. `--no-wait` still skips the whole step.
 5. **Let mergeability settle before `gh pr merge`.** Poll
    `gh pr view --json mergeable,mergeStateStatus` until `mergeable` is not
-   `UNKNOWN` (bounded by the same timeout). Then merge. If GitHub's GraphQL
+   `UNKNOWN`, bounded by the grace window; if it never settles, error out
+   with the PR URL and no merge. Then merge. If GitHub's GraphQL
    merge refuses an `UNSTABLE` head (pending non-required checks on a
    progress-only commit), fall back to the REST merge
    (`gh api -X PUT repos/<slug>/pulls/<N>/merge -f merge_method=merge`),
@@ -81,20 +101,34 @@ script's policy and it can make this exemption itself.
    - check-runs never appear: timeout error, no `pr merge` call;
    - a failed check-run: error, no merge;
    - `mergeable: UNKNOWN` for the first N `pr view` calls then
-     `MERGEABLE`: merge proceeds.
+     `MERGEABLE`: merge proceeds;
+   - `mergeable: UNKNOWN` for the whole grace window: error, no merge;
+   - repo with zero workflows and no runs on the target: proceeds with the
+     "no CI configured" note;
+   - CI configured, checks never register: grace-window error, no merge
+     (distinct from the no-CI case);
+   - second invocation with *different* gate reasons: a fresh entry is
+     appended; with identical reasons: none;
+   - PR-comment fallback (no open worktree) run twice: one comment, and a
+     differing-reasons run posts a second;
+   - concurrent push: the fixture's `headRefOid` after the record push is
+     a commit not descended from the reviewed head; the check-runs call
+     targets that new SHA (no exemption) and the output names the failed
+     ancestry condition.
    Update `test_merge_pr.sh`'s stub comment ("`pr checks` is never actually
    invoked") to match.
-8. **Docs**: `agent_wait_patterns.md` rows that name
-   `gh pr checks --watch --fail-fast` as the script's wait mechanism; the
-   `merge_pr.sh` row in the AGENTS.md script table (Ask-First, see open
-   questions).
+8. **Docs**: every mention of `gh pr checks --watch --fail-fast` as the
+   script's wait mechanism in `agent_wait_patterns.md` (five places: the
+   prose around lines 31 and 40, the table row, and the two list items near
+   lines 57 to 65); the `merge_pr.sh` row in the AGENTS.md script table
+   (Ask-First, see open questions).
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/merge_pr.sh` | Reviewed-head capture; per-PR idempotent record; diff-based CI target; SHA-targeted CI poll with "not started" handling; mergeability settle; header comments |
-| `.agent/scripts/tests/test_merge_pr_gate.sh` | Stub for `gh api` check-runs / status and mergeability; seven new cases above |
+| `.agent/scripts/merge_pr.sh` | Reviewed-head capture; per-PR, per-conditions idempotent record; fetch + ancestry + diff-based CI target; SHA-targeted CI poll with no-CI / not-started / registered rules; mergeability settle; header comments |
+| `.agent/scripts/tests/test_merge_pr_gate.sh` | Stub for `gh api` check-runs / status / workflows and mergeability; fourteen new cases above |
 | `.agent/scripts/tests/test_merge_pr.sh` | Stub comment about `pr checks` |
 | `.agent/knowledge/agent_wait_patterns.md` | Wait mechanism is now a SHA-targeted poll |
 | `AGENTS.md` | Script-table row for `merge_pr.sh` (Ask-First; one phrase) |
@@ -107,7 +141,8 @@ script's policy and it can make this exemption itself.
 | Enforcement over documentation | The exemption and the idempotency rule are code plus tests, not a note telling agents to re-run carefully |
 | Test what breaks | Every failure mode observed on #266 and #282 gets a hermetic case with the stubbed `gh` |
 | A change includes its consequences | Header comments, wait-patterns doc, script table, and the stale `pr checks` stub comment are in scope |
-| Only what's needed | No new flags; two env vars exist only so tests do not sleep |
+| Only what's needed | No new flags; three env vars (poll, grace, timeout) exist only so tests do not sleep |
+| Workspace serves the product | Project repos without workflows keep merging via the script instead of failing on "no checks" |
 
 ## ADR Compliance
 
@@ -123,6 +158,8 @@ script's policy and it can make this exemption itself.
 |---|---|---|
 | The CI wait mechanism | `agent_wait_patterns.md`, `merge_pr.sh` header, `#186` manual-verification block | Yes |
 | Merge record idempotency | `test_merge_pr_gate.sh` report-only cases (still one entry each) | Yes |
+| The CI wait now handles repos with no workflows | Nothing else; `--no-wait` semantics unchanged | Yes |
+| Exemption depends on the worktree having fetched the PR branch | A `git fetch` in the script; no user-visible change | Yes |
 | `merge_pr.sh` behaviour summary | AGENTS.md script table row | Yes, pending Ask-First |
 | Merge gate enforce-by-default decision (#269 follow-up) | Nothing here; the "Pre-Push at head" question stays open on #269 | No — out of scope |
 
