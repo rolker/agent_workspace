@@ -560,8 +560,12 @@ printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headR
     > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_SUCCESS"
 write_mergeable_fixture "$sb" "MERGEABLE"
+# Step 1's roadmap commit uses the ambient git identity (unlike Step 1.5,
+# which goes through progress_append.sh and AGENT_NAME/AGENT_EMAIL), so
+# supply one explicitly: CI runners have no user.name/user.email.
 out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=0 \
     MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 MERGE_PR_CI_TIMEOUT_SECONDS=5 \
+    GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
     "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace 2>&1)" || true
 if merged_called "$sb" && [[ "$out" == *"Roadmap updated"* ]] && [[ "$out" == *"CI target: reviewed head \`${reviewed:0:7}\`"* ]] \
     && grep -qF "api repos//commits/${reviewed}/check-runs" "$sb/gh_calls.log"; then
