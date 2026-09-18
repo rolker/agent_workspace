@@ -161,3 +161,16 @@ Deviation: REST merge fallback not added; the observed #282 failure was `mergeab
 - [x] (suggestion) header comment on `--no-wait` scope corrected — `.agent/scripts/merge_pr.sh:31-33`
 - [x] (suggestion) ADR-0013 SHA-correlation exception documented — `.agent/scripts/merge_pr.sh:767-777`
 - [ ] No open issues. LGTM. Gate suite 48/48, merge suite 91/91, shellcheck clean.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-18 10:18 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**PR**: #285 at `19d8df3`
+**Depth**: Light (reason: delta a0b1370..19d8df3 is one test-only commit: explicit git identity for the ci-2 roadmap-commit case, which failed on the CI runner for lack of user.name/user.email)
+**Must-fix**: 0 | **Suggestions**: 0
+
+### Findings
+- [ ] No issues found. LGTM. Verified locally with HOME pointed at an empty dir and no git identity env: gate suite 48/48.
