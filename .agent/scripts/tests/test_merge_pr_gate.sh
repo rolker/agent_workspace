@@ -583,7 +583,7 @@ git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --qu
 git -C "$wt" push --quiet origin feature/issue-7
 out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
 new_head=$(git -C "${sb}.remote.git" rev-parse feature/issue-7)
-if [[ "$out" == *"CI target: new head \`${new_head:0:7}\`"*"did not commit"* ]] \
+if [[ "$out" == *"CI target: new head \`${new_head:0:7}\`"*"touches \`some_file.txt\`"* ]] \
     && grep -qF "api repos//commits/${new_head}/check-runs" "$sb/gh_calls.log" \
     && ! grep -qF "api repos//commits/${reviewed}/check-runs" "$sb/gh_calls.log"; then
     pass "(ci-3) a committed path the script didn't write voids the exemption; check-runs targets the new head"
@@ -790,6 +790,98 @@ if [[ "$new_head" != "$reviewed" ]] \
     pass "(ci-10) a concurrent force-push after our own push denies the exemption; targets the new (non-descendant) head"
 else
     fail "(ci-10) (reviewed=$reviewed new=$new_head out=${out:0:400})"
+fi
+
+# ============================== gate condition (a): ancestry (#286) =====
+# A review entry is committed to progress.md on the branch, so the literal
+# head is always one commit past the SHA the entry names. The gate must
+# read "review at R" as current for head H when R is an ancestor of H and
+# only merge-time document files changed between them.
+#
+# make_gate_sandbox <mode>: real two-commit history. Commit a code change
+# (reviewed state R), then optionally an extra commit per <mode>, then the
+# review entry citing R, and point the PR fixture at the resulting head H.
+#   progress-only  R -> progress.md (the live failure shape)
+#   code-after     R -> some_file.sh -> progress.md
+#   roadmap-after  R -> docs/ROADMAP.md -> progress.md
+#   unrelated      review cites a commit on main that is not in H's history
+make_gate_sandbox() {  # <mode>
+    local mode="$1" sb wt r head remote comments body review
+    sb="$(make_sandbox "" with_summary)"
+    wt="$(ci_wt "$sb")"
+    echo "reviewed code" > "$wt/reviewed.sh"
+    git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "reviewed code"
+    r=$(git -C "$wt" rev-parse HEAD)
+    case "$mode" in
+        code-after)
+            echo "later code" > "$wt/some_file.sh"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "later code" ;;
+        roadmap-after)
+            mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/docs/ROADMAP.md"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "roadmap" ;;
+        unrelated)
+            git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "elsewhere"
+            r=$(git -C "$sb" rev-parse HEAD) ;;
+    esac
+    review="${APPROVED_AT_HEAD/abc1234/${r:0:7}}"
+    mkdir -p "$wt/.agent/work-plans/issue-7"
+    printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n%s\n' "$review" > "$wt/.agent/work-plans/issue-7/progress.md"
+    git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "progress: local review"
+    git -C "$wt" push --quiet origin feature/issue-7
+    head=$(git -C "$wt" rev-parse HEAD)
+    remote="${sb}.remote.git"
+    comments='[{"body":"## Decision summary\n\n**What changed**: x\n\n**Recommendation**: merge"}]'
+    body='"## Summary\n\nplain body"'
+    printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":%s,"body":%s}\n' "$head" "$comments" "$body" \
+        > "$sb/gh_fixtures/pr_view_$(printf '%s' "$remote" | tr '/' '_')_${PR}.json"
+    echo "$sb"
+}
+
+echo "TEST: gate (a) — a review followed only by its own progress.md commit is current (#286)"
+sb="$(make_gate_sandbox progress-only)"
+out="$(run_merge "$sb" 2>&1)" || true
+if [[ "$out" == *"covers head"* ]] && [[ "$out" == *"✅ Review gate"* ]] && [[ "$out" != *"would have refused"* ]] \
+    && ! progress_of "$sb" | grep -q '^## Merge'; then
+    pass "(g1) review + its own progress.md commit: gate passes, nothing recorded"
+else
+    fail "(g1) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a code commit after the review is still stale"
+sb="$(make_gate_sandbox code-after)"
+out="$(run_merge "$sb" 2>&1)" || true
+if [[ "$out" == *"would have refused"*"stale review"*"touches \`some_file.sh\`"* ]] \
+    && progress_of "$sb" | grep -q '^## Merge (report-only)$'; then
+    pass "(g2) code commit after the review: stale, names the path"
+else
+    fail "(g2) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a review SHA that is not an ancestor of the head is stale"
+sb="$(make_gate_sandbox unrelated)"
+out="$(run_merge "$sb" 2>&1)" || true
+if [[ "$out" == *"would have refused"*"stale review"*"not an ancestor"* ]]; then
+    pass "(g3) review SHA outside the head's history: stale, says not an ancestor"
+else
+    fail "(g3) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — --enforce merges the progress-only shape"
+sb="$(make_gate_sandbox progress-only)"
+out="$(GH_MERGE_EXIT=0 run_merge "$sb" --enforce 2>&1)" || true
+if merged_called "$sb" && [[ "$out" != *"review gate refused"* ]]; then
+    pass "(g4) --enforce: review + own progress.md commit merges"
+else
+    fail "(g4) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a leftover roadmap commit between review and head is also current"
+sb="$(make_gate_sandbox roadmap-after)"
+out="$(run_merge "$sb" 2>&1)" || true
+if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]]; then
+    pass "(g5) roadmap + progress.md after the review: gate passes"
+else
+    fail "(g5) (out=${out:0:400})"
 fi
 
 echo ""
