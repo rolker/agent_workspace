@@ -46,3 +46,11 @@ Approach is sound; the plan needs to name the comparison endpoint and the dynami
 - [x] `make_gate_sandbox` builder with interpolated real SHAs; five cases
 - [x] Ambiguous short SHA folds into "not resolvable"
 - [x] ADR-0013 addendum added to scope
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-18 10:41 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-286/plan.md` at `847a170`
+
+Revision 2: gate compares R against HEAD_REVIEWED with allowed paths progress.md + ROADMAP.md + docs/ROADMAP.md; ambiguous short SHA = unresolvable; make_gate_sandbox with real SHAs, five cases; ADR-0013 addendum.
