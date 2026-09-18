@@ -188,3 +188,20 @@ proceed (Recommended) — implement now, folding in the three round-2 findings (
 - test_merge_pr.sh (not in the plan; found when the commit hook hung): its runner also passes --no-wait and its stub had no mergeability answer, so every case would poll for 120 s. Stub now answers the poll; runner sets zero sleeps. Neither plan review round caught this suite.
 - AGENTS.md: merge_pr.sh row notes the settle and retry always run.
 - Suites: gate 57/57 (18 s), merge 91/91 (6 s), root-resolution 5/5.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-18 14:13 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-290 at `c446d9e`
+**Base**: main
+**Depth**: Standard (reason: caller override; merge-path enforcement script)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) Planned AGENTS.md merge_pr.sh row edit is missing from the branch, yet the `## Implementation` entry claims "AGENTS.md: merge_pr.sh row notes the settle and retry always run" — make the edit (row still reads only "`--no-wait` to skip the CI wait") or correct the record — `AGENTS.md:401`
+- [ ] (suggestion) Under --no-wait a gh/API outage during the now-always-on settle waits the full grace window then reports "never settled (still UNKNOWN)", indistinguishable from a real UNKNOWN; consider naming the lookup failure — `.agent/scripts/merge_pr.sh:1028`
+- [ ] (suggestion) nw-1 checks the first mergeable poll precedes the merge but not that the UNKNOWN answer was consumed (a second poll); assert the mergeable_seq count is 2 — `.agent/scripts/tests/test_merge_pr_gate.sh:716`
