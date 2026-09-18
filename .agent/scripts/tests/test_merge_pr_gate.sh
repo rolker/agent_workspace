@@ -803,9 +803,9 @@ write_mergeable_fixture "$sb" "MERGEABLE"
 out="$(run_merge_wait "$sb" 2>&1)" || true
 if merged_called "$sb" && [[ "$out" == *"CI target: reviewed head \`${reviewed:0:7}\`"* ]] \
     && grep -qF "api repos//commits/${reviewed}/check-runs" "$sb/gh_calls.log"; then
-    pass "(ci-11) empty-diff head after the reviewed head: exempt, check-runs targets the reviewed head"
+    pass "(ci-18) empty-diff head after the reviewed head: exempt, check-runs targets the reviewed head"
 else
-    fail "(ci-11) (out=${out:0:400})"
+    fail "(ci-18) (out=${out:0:400})"
 fi
 
 # ============================== gate condition (a): ancestry (#286) =====
