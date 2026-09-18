@@ -56,3 +56,11 @@ Confirmed against source (`.agent/scripts/merge_pr.sh`, current `feature/issue-2
 **Decision**: proceed
 
 proceed, but this question suffers from an issue I complained about in ros2 agent workspace where the question is a dense, hard to read paragraph.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-18 18:10 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-290/plan.md` at `ff4bf0e`
+
+Split Step 2's `--no-wait` gate so only the CI poll is skippable; the mergeability settle (`_wait_for_mergeable`) and the Step 3 merge retry always run, since they guard the script's own Step 1.5 push, not CI. Adds a regression test for `--no-wait` + `UNKNOWN`→`MERGEABLE` (merges) and `UNKNOWN` for the whole grace window (errors), plus fixes to the three comment sites describing the old behavior.
