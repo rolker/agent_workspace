@@ -140,3 +140,24 @@ Deviation: REST merge fallback not added; the observed #282 failure was `mergeab
 - [ ] (suggestion, adversarial) no test covers the CI wait when no local worktree exists (the `_ci_wt` empty branch at 860-862) — `.agent/scripts/tests/test_merge_pr_gate.sh`
 - [ ] (suggestion, governance) header comment says `--no-wait` skips all of Step 2, but the CI-target computation runs unconditionally — `.agent/scripts/merge_pr.sh:32`
 - [ ] (suggestion, governance) note near `_gate_already_recorded` that matching on PR number without the SHA is a deliberate exception to ADR-0013's SHA correlation — `.agent/scripts/merge_pr.sh:765`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-18 10:14 -04:00
+**By**: Claude Code Agent (lead: claude-fable-5-1; round-2 verifier: claude-sonnet-5)
+**Verdict**: approved
+
+**PR**: #285 at `a0b1370`
+**Depth**: Deep (reason: round 2 of the Deep review; delta ff18697..a0b1370)
+**Must-fix**: 0 | **Suggestions**: 0
+
+### Findings
+- [x] (must-fix) gh api failure no longer masquerades as "no CI": distinct `error` state, retried to the grace deadline, then `api-error` exit; workflows-count failure yields `unknown` and blocks the no-ci exit — `.agent/scripts/merge_pr.sh:929-935,1020-1024`
+- [x] (must-fix) `startup_failure` and `stale` in the failed list; tests ci-12 and ci-12b — `.agent/scripts/merge_pr.sh:949`
+- [x] (suggestion) check-runs paginated and slurped with jq -s — `.agent/scripts/merge_pr.sh:929`
+- [x] (suggestion) CONFLICTING fails fast before `gh pr merge`; test ci-13 — `.agent/scripts/merge_pr.sh:973-976`
+- [x] (suggestion) empty-array guard on the roadmap paths — `.agent/scripts/merge_pr.sh:569`
+- [x] (suggestion) no-worktree CI wait covered by test ci-17
+- [x] (suggestion) header comment on `--no-wait` scope corrected — `.agent/scripts/merge_pr.sh:31-33`
+- [x] (suggestion) ADR-0013 SHA-correlation exception documented — `.agent/scripts/merge_pr.sh:767-777`
+- [ ] No open issues. LGTM. Gate suite 48/48, merge suite 91/91, shellcheck clean.
