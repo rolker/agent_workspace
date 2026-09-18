@@ -537,6 +537,9 @@ run-issue reads entries, not prompts.
 | `review-code`'s `**Round**`/`**Verdict**` lines | `next` rows 13-15, `round` counting, their fixtures |
 | `plan-task`'s `--no-pr` flag or its draft-PR step | run-issue's dispatch of `plan-task`, the publish step's `[PLAN]` handling |
 | `merge_pr.sh`'s worktree removal | run-issue's leave-before-merge step, `next`'s `--pr merged` short-circuit |
+| Field mode lands (#208/#209) | run-issue's publish step (push + PR creation) and merge step grow a non-GitHub branch; nothing else in the loop is remote-aware (owner note, 2026-09-18) |
+| #265 retires the legacy `project/` symlink or settles project-rooted sessions | `--type project` in run-issue and `dispatch_phase.sh` (today it inherits `merge_pr.sh`'s legacy project path); whether `/run-issue` is available from a project-rooted session follows #265's answer for every workspace skill (owner note) |
+| ADR-0012 package worktrees (`--issue owner/repo#N --layer …`) | Out of scope for this port; run-issue stays repo-agnostic and package-worktree support is an adapter extension, not orchestrator logic (owner note) |
 
 ## Open Questions
 
@@ -569,6 +572,12 @@ run-issue reads entries, not prompts.
    merge checkpoint when main moved afterwards.
 
 ## Estimated Scope
+
+**Approved for implementation** (owner, 2026-09-18, revision 8 plus the
+three owner notes in Consequences). First cut targets workspace issues;
+`--type project` is threaded but its end-to-end path waits on #265, and
+package worktrees are an adapter concern (ADR-0012). No ROS-specific
+logic lives in the orchestrator.
 
 Four PRs, each independently mergeable, each through the review loop
 (revision 4 re-split per review finding 6; revision 5 moved the ADR-0013
