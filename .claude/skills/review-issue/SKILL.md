@@ -179,6 +179,55 @@ gh issue comment <N> --body-file "$BODY_FILE"
 rm "$BODY_FILE"
 ```
 
+### 8. Persist the review to progress.md
+
+The posted comment **is** the entry (ADR-0013 `## Issue Review`; the same
+shape `review-plan`'s step 6 gives `## Plan Review`). Append it through
+the shared persistence call with `--soft`, so a review run by hand outside
+the issue's worktree still succeeds and just prints the notice:
+
+```bash
+.agent/scripts/review_progress.sh persist --issue "<N>" \
+    --branch "$(git branch --show-current)" --title "<issue title>" \
+    --strict --soft <<'ENTRY'
+## Issue Review
+**Status**: complete
+**When**: <YYYY-MM-DD HH:MM ±HH:MM>
+**By**: <agent name> (<model>)
+
+**Issue**: #<N>
+
+### Scope Assessment
+...the comment body from step 7, verbatim, from "### Scope Assessment"
+   through the last "### Recommendations" bullet — WITHOUT the leading
+   "## Review" line (a second "## " heading is a second entry to every
+   reader) and WITHOUT the signature footer...
+
+### Actions
+- [ ] <Notes text of the first Principle Alignment row whose Status is "Action needed">
+- [ ] <... one box per Action-needed row, in table order ...>
+- [ ] <first Recommendations bullet, verbatim>
+- [ ] <... one box per Recommendations bullet, in order ...>
+ENTRY
+```
+
+Rules for `### Actions` (they are what `run-issue` routes on):
+
+- Exactly these become checkboxes, in this order: every **Principle
+  Alignment** row with Status `Action needed` (box text = that row's
+  Notes), then every **Recommendations** bullet (box text = the bullet).
+  Nothing else — not Watch rows, not ADR notes, not Consequences items.
+- If there are no Action-needed rows and no Recommendations, write the
+  single checked box `- [x] No actions needed.` so the section stays
+  parseable and carries no open box.
+- `**Issue**: #<N>` is the entry's correlation key (ADR-0013: issue
+  number, no SHA).
+
+Echo the one line the script prints ("Progress persisted ..." or
+"Progress persistence failed: <reason> — the report above is unaffected")
+after the comment URL. On a failure the comment on GitHub is still the
+review; the entry can be appended by hand from the issue's worktree.
+
 ## Guidelines
 
 - **Comment, don't edit** — the issue body is the authoritative spec. Review
