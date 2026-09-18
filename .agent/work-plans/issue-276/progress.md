@@ -68,3 +68,13 @@ PR 2 of the #276 port (PR #293): dispatch_phase.sh (03121fe), test_dispatch_phas
 
 ### Findings
 - [ ] No issues found. LGTM. test_dispatch_phase 76/76, full suite 22/22, shellcheck clean.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-18 13:17 -04:00
+**By**: Claude Code Agent (implementer: claude-sonnet-5; lead: claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `0ace344`
+
+**Branch**: `feature/issue-276-pr3` at `6d12f37`
+
+PR 3 of the #276 port (PR #294): run-issue SKILL.md (0b1efa4), ADR-0014 + ADR-0013 note (673f14f), lifecycle note + principles guide + onboarding + ARCHITECTURE (7bae93c), AGENTS.md script row (6d12f37). Skill is ~325 lines vs the plan's ~300 target; claims verified against dispatch_phase.sh as merged.
