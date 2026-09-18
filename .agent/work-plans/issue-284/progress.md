@@ -59,3 +59,44 @@ The plan implements the owner's decision and stays tightly scoped, but has three
 **Plan**: `.agent/work-plans/issue-284/plan.md` at `c4f81f4`
 
 Revision 2 after the plan review: the CI poll distinguishes "no CI configured" (proceed) from "configured but unregistered" (grace-window error); the Merge record is idempotent per PR and per conditions; the progress.md exemption requires a fetch, ancestry, and a one-path diff; seven extra test cases.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-18 09:08 -04:00
+**By**: Independent plan reviewer (claude-sonnet-5)
+**Verdict**: ready
+
+**PR**: https://github.com/rolker/agent_workspace/pull/285 — [PLAN] merge_pr.sh: wait for CI on the reviewed head; exempt progress.md-only record commits; idempotent Merge record
+**Issue**: #284 — merge_pr.sh: gate record push moves the PR head after the CI wait; retries duplicate the Merge entry
+**Plan**: `.agent/work-plans/issue-284/plan.md` at `c4f81f4`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged from round 1; single PR, tightly bounded. |
+| Issue alignment | Good | Owner's decision honoured literally. |
+| File targeting | Good | Same files. |
+| Consequences | Good | No-CI-repo gap and ancestry/local-availability gap now covered in the Approach and Consequences table. |
+| Principle alignment | Good | Idempotency refreshes on differing conditions; audit trail no longer risks going stale. |
+| ADR compliance | Good | Unchanged. |
+| ROS conventions | N/A | workspace plan |
+
+### Findings
+
+Round-1 findings re-checked against revision c4f81f4:
+
+1. **No-CI rule** — Resolved. Three cases: zero workflows + no runs → proceed with a note; workflows but nothing registered within the grace window → explicit error naming the SHA; registered but pending → poll to the timeout.
+2. **Idempotency** — Resolved. Skip keyed on PR + entry type + exact `**Conditions**` match; any difference appends a fresh entry; applies to the PR-comment fallback; both cases tested.
+3. **Ancestry / fetch / single-path diff** — Resolved. Fetch, local resolution, `merge-base --is-ancestor`, and a one-path diff are all required; otherwise full CI wait on the new head with the failed condition named.
+4. **Test cases** — Resolved. Seven added cases cover every round-1 gap.
+
+No new problems found; the added logic is consistent with the script's existing worktree resolution, PR-comment fallback, and package-PR exclusion.
+
+### Summary
+
+All four must-fix items are addressed with matching test coverage and no new gaps. Ready for implementation.
+
+### Recommended Actions
+
+- [x] None outstanding; proceed to implementation
