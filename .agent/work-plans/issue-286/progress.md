@@ -89,3 +89,16 @@ c6d5b72 helper `_only_bookkeeping_between` + gate condition (a) ancestry rule + 
 **Mode**: report-only
 **Scope**: workspace
 **Conditions**: latest Local Review entry is at `db6c8ed`, not the PR head `43e3003` (stale review)
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-18 11:11 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**PR**: #287 at `5d3658e`
+**Depth**: Light (reason: delta since the approved review at db6c8ed is one test renumber and the one-line #289 fix with its stub method check; verified live that -X GET returns the runs and the bare form 404s)
+**Must-fix**: 0 | **Suggestions**: 0
+
+### Findings
+- [ ] No issues found. LGTM. Gate suite 54/54 with the method check; 38/54 without the fix.
