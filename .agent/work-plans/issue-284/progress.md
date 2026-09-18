@@ -174,3 +174,13 @@ Deviation: REST merge fallback not added; the observed #282 failure was `mergeab
 
 ### Findings
 - [ ] No issues found. LGTM. Verified locally with HOME pointed at an empty dir and no git identity env: gate suite 48/48.
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-09-18 10:23 -04:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #285 at `547f56d`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: latest Local Review entry is at `19d8df3`, not the PR head `547f56d` (stale review)
