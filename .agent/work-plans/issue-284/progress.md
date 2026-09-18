@@ -100,3 +100,11 @@ All four must-fix items are addressed with matching test coverage and no new gap
 ### Recommended Actions
 
 - [x] None outstanding; proceed to implementation
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-18 09:13 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-284/plan.md` at `83e9355`
+
+Revision 3 on the owner's answer: the CI exemption covers every document file the script itself commits once the merge is approved (roadmap and progress.md), keyed on the paths actually committed in the run. One test case added.
