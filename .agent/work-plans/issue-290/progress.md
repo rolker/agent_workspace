@@ -124,3 +124,43 @@ revise (Recommended)
 **Plan**: `.agent/work-plans/issue-290/plan.md` at `2bebbdc`
 
 Revision 2: addressed all five plan-review findings — zero-sleep test defaults so the unconditional settle doesn't stall the 27 existing run_merge cases, a gh_calls.log-ordering assertion in place of the non-discriminating merge-succeeded check, a new sequenced merge-exit/stderr fixture and test for the un-gated Step 3 retry, both stale "Step 5" comment fixes, and the AGENTS.md script-row edit deferred to the existing #269 standing rule instead of a fresh Ask-First round.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-18 13:57 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #290 — merge_pr.sh: --no-wait also skips the mergeability settle, so the script's own push makes the merge refuse
+**Plan**: `.agent/work-plans/issue-290/plan.md` at `2bebbdc`
+**Branch**: `feature/issue-290`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one script, one test file, one AGENTS.md script row. |
+| Issue alignment | Good | All Issue Review actions covered. |
+| File targeting | Good | Stub extension + `write_merge_fixture` is the right shape (mirrors `.mergeable_<N>` / `_seq`). |
+| Consequences | Needs work | The new default-fixture change breaks an existing test, and two `--no-wait` call sites bypass `run_merge()` (findings 1–2). |
+| Principle alignment | Good | Round-1 findings 2 and 3 resolved: settle-ordering assertion fails on today's code; retry test fails on today's gated retry. |
+| ADR compliance | Good | ADR-0013 only. |
+| ROS conventions | N/A | Workspace plan. |
+
+Round-1 status: 1 (stall) partially resolved — see 1–2; 2, 3 resolved; 4 resolved (but see 3); 5 settled via the #269 script-row rule.
+
+### Findings
+
+1. **[Consequences]** — Item 4 writes a static `MERGEABLE` fixture in `make_sandbox()`, but `make_ci_sandbox()` calls `make_sandbox()`, and ci-8 (test file ~683, "UNKNOWN for the whole grace window") writes *no* mergeable fixture — it relies on the stub's UNKNOWN-forever fallback. With the default in place ci-8 settles to MERGEABLE, merges, and fails. Fix: have ci-8 (and the plan's new case 2) write an explicit static `UNKNOWN`, or put the default in `run_merge()` only (write-if-absent), not `make_sandbox()`.
+2. **[Consequences]** — Two tests invoke `merge_pr.sh --no-wait` directly, not via `run_merge()`: the package-PR test (line 418, fixture `pr_view_owner_pkg_a_901`) and the project `--enforce` test (line 457, PR 9 on `fake_remotes/.../proj.git`). The `make_sandbox` default is keyed on `<sb>.remote.git` PR 70, so neither sees it, and neither sets `MERGE_PR_CI_POLL_SECONDS=0`. After the fix each polls UNKNOWN for the 120 s grace and exits 1 at "never settled"; the project test asserts `merged_called` and will fail. Add a mergeable fixture for each PR key plus zero-sleep/short-grace env to both calls.
+3. **[Consequences]** — Item 3's check "`grep -n "Step 5"` must return nothing" is wrong: line 1379 is the legitimate `# --- Step 5: Delete branches ---` header. Narrow the check to the two comment sites (e.g. grep for "Step 5's mergeability" / "after Step 5").
+
+### Summary
+
+The code fix and the three new tests are sound and discriminating. The harness change fixes the 27 `run_merge` stalls but breaks ci-8 and misses the two direct `--no-wait` invocations. Both are small, concrete edits to item 4.
+
+### Recommended Actions
+
+- [ ] Keep ci-8 on UNKNOWN-forever: explicit static `UNKNOWN` fixture, or move the default into `run_merge()` as write-if-absent.
+- [ ] Give the package-PR (line 418) and project-enforce (line 457) `--no-wait` calls a MERGEABLE fixture for their own PR key and `MERGE_PR_CI_POLL_SECONDS=0`.
+- [ ] Replace the bare `grep "Step 5"` acceptance check with one scoped to the two stale comments.
