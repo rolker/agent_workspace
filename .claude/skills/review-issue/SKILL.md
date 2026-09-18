@@ -1,6 +1,6 @@
 ---
 name: review-issue
-description: Evaluate a GitHub issue against workspace principles and ADRs before work begins. Posts findings as a comment on the issue.
+description: Evaluate a GitHub issue against workspace principles and ADRs before work begins. Posts findings as a comment on the issue and records them as an ADR-0013 Issue Review entry on the issue's progress timeline.
 ---
 
 # Review Issue
