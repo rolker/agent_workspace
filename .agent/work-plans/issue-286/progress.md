@@ -79,3 +79,13 @@ c6d5b72 helper `_only_bookkeeping_between` + gate condition (a) ancestry rule + 
 - [x] (suggestion, adversarial) empty-diff head after the reviewed head now exempt rather than re-targeted; documented in a comment and covered by test ci-11 — `.agent/scripts/merge_pr.sh`
 - [ ] (suggestion, governance) the ADR-0013 References bullet states an interpretive rule; borderline addendum vs. supersede under ADR-0008, for the owner to confirm — `docs/decisions/0013-progress-md-entry-type-vocabulary.md:206`
 - [ ] Gemini cross-model review produced no output: headless agy was auto-denied a command permission (tooling gap, filed separately)
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-09-18 11:04 -04:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #287 at `43e3003`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: latest Local Review entry is at `db6c8ed`, not the PR head `43e3003` (stale review)
