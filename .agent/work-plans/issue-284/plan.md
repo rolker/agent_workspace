@@ -74,17 +74,38 @@ can make this exemption itself.
      re-run with --no-wait". Explicit, never a silent pass (fixes #271
      without hiding a real gap).
    - **Registered**: fail on any `conclusion` in failure / cancelled /
-     timed_out / action_required, succeed when every run and status is
-     completed and successful, otherwise keep polling until
-     `MERGE_PR_CI_TIMEOUT_SECONDS` (default 1800) and then error.
+     timed_out / action_required / startup_failure / stale, succeed when
+     every run and status is completed and successful, otherwise keep
+     polling until `MERGE_PR_CI_TIMEOUT_SECONDS` (default 1800) and then
+     error.
+   - **API call failure** (round-1 review, must-fix): a nonzero `gh api`
+     exit (rate limit, network, 5xx, auth) or unparseable JSON on either
+     the check-runs or the status call is a distinct `error` state, never
+     folded into "no CI configured" or "nothing registered yet" — those
+     both let the script proceed or pass on grace-window expiry, which
+     would merge unverified on a transient API outage. `error` retries
+     like `none` (bounded by the grace window) but always ends in a hard
+     error, never a pass. Same rule for the workflows-count lookup: a
+     failed `gh api .../actions/workflows` call sets an `unknown` marker
+     (not "zero workflows"), which keeps the `none` branch from taking the
+     no-CI exit — it waits out the grace window and errors instead.
+   - **Pagination** (round-1 review, suggestion): the check-runs call uses
+     `gh api --paginate -f per_page=100` so a run with more than the
+     default page's worth of check runs is fully visible; pages are
+     merged (`jq -s`-style) before evaluating conclusions.
    Poll interval is `MERGE_PR_CI_POLL_SECONDS` (default 10) so tests can
-   run with zero. `--no-wait` still skips the whole step.
+   run with zero. `--no-wait` skips the polling and the mergeability
+   settle, not the CI-target computation, which always runs.
 5. **Let mergeability settle before `gh pr merge`.** Poll
    `gh pr view --json mergeable,mergeStateStatus` until `mergeable` is not
    `UNKNOWN`, bounded by the grace window; if it never settles, error out
-   with the PR URL and no merge. Then merge (GraphQL, via `gh pr merge
-   --merge`); if that refuses with "not mergeable", re-poll mergeability
-   once more and retry the merge once, then error. See Implementation
+   with the PR URL and no merge. A settled `CONFLICTING` (round-1 review,
+   suggestion) is its own distinct failure — a clear "PR has merge
+   conflicts" error, no `gh pr merge` call — rather than falling through
+   to let the merge itself fail on it. Otherwise merge (GraphQL, via
+   `gh pr merge --merge`); if that refuses with "not mergeable", re-poll
+   mergeability once more (erroring the same way on a newly-discovered
+   `CONFLICTING`) and retry the merge once, then error. See Implementation
    Notes: the REST fallback described in an earlier revision of this step
    was not implemented — see there for why.
 6. **Update the header comments** in `merge_pr.sh` (Steps list, the Step
@@ -128,6 +149,17 @@ can make this exemption itself.
    script doesn't call `pr checks` at all any more; replaced by the
    SHA-targeted `gh api` poll, which this suite's --no-wait cases never
    exercise either).
+
+   Round-1 review (2026-09-18, changes-requested) added six more cases:
+   a `startup_failure` check-run (error, no merge); mergeable `CONFLICTING`
+   (distinct fail-fast error, no `gh pr merge` call); `gh api` failing on
+   every check-runs call (bounded retry, then a hard error distinct from
+   no-CI) and on the first N calls then recovering (merges); the
+   workflows-count call failing while check-runs stays empty (waits and
+   errors as "never-registered", never assumes zero workflows); and the
+   CI wait with no local worktree open (falls back to `gh pr view` for
+   `HEAD_NOW`, still waits and merges correctly). 21 cases total in the
+   #284-added set; 47 in the whole suite.
 8. **Docs**: every mention of `gh pr checks --watch --fail-fast` as the
    script's wait mechanism in `agent_wait_patterns.md` (five places: the
    prose around lines 31 and 40, the table row, and the two list items near
