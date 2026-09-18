@@ -80,11 +80,21 @@ elif [ "$1" = "api" ]; then
     # way as `pr view --json mergeable,...` above: api_<key>_<N>.json for
     # call N against that exact path, else the static api_<key>.json,
     # else an empty/zero default — so "empty for the first N calls, then
-    # green" needs no real sleeping either.
+    # green" needs no real sleeping either. A sibling api_<key>_<N>.exit
+    # (or the static api_<key>.exit) file, containing a nonzero exit code,
+    # makes that call fail (empty stdout, that exit code) instead of
+    # answering from the .json fixture — simulates a `gh api` failure
+    # (rate limit, network, 5xx, auth) independent of the JSON payload.
     path="$2"
     key="$(sanitize "$path")"
     cnt_file="$GH_FIXTURES_DIR/.api_seq_${key}"
     n=$(( $(cat "$cnt_file" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$cnt_file"
+    ef="$GH_FIXTURES_DIR/api_${key}_${n}.exit"
+    [ -f "$ef" ] || ef="$GH_FIXTURES_DIR/api_${key}.exit"
+    if [ -f "$ef" ]; then
+        echo "simulated gh api failure" >&2
+        exit "$(cat "$ef")"
+    fi
     f="$GH_FIXTURES_DIR/api_${key}_${n}.json"
     [ -f "$f" ] || f="$GH_FIXTURES_DIR/api_${key}.json"
     if [ -f "$f" ]; then cat "$f"; else echo '{}'; fi
@@ -157,9 +167,18 @@ write_api_fixture() {  # <sb> <path> <json> [seq_n]
 }
 write_checkruns() { write_api_fixture "$1" "$(checkruns_path "$2")" "$3" "${4:-}"; }
 write_workflows() { write_api_fixture "$1" "$(workflows_path)" "$2" "${3:-}"; }
+write_api_exit() {  # <sb> <path> <code> [seq_n]
+    local sb="$1" path="$2" code="$3" n="${4:-}" key f
+    key="$(api_key "$path")"
+    if [[ -n "$n" ]]; then f="$sb/gh_fixtures/api_${key}_${n}.exit"; else f="$sb/gh_fixtures/api_${key}.exit"; fi
+    printf '%s' "$code" > "$f"
+}
+write_checkruns_exit() { write_api_exit "$1" "$(checkruns_path "$2")" "$3" "${4:-}"; }
+write_workflows_exit() { write_api_exit "$1" "$(workflows_path)" "$2" "${3:-}"; }
 CHECKRUNS_SUCCESS='{"check_runs":[{"conclusion":"success","status":"completed"}]}'
 CHECKRUNS_PENDING='{"check_runs":[{"conclusion":null,"status":"in_progress"}]}'
 CHECKRUNS_FAILED='{"check_runs":[{"conclusion":"failure","status":"completed"}]}'
+CHECKRUNS_STARTUP_FAILURE='{"check_runs":[{"conclusion":"startup_failure","status":"completed"}]}'
 CHECKRUNS_NONE='{"check_runs":[]}'
 write_mergeable_fixture() {  # <sb> <state> [seq_n]
     local sb="$1" state="$2" n="${3:-}" remote base f
@@ -605,6 +624,17 @@ else
     fail "(ci-6) (out=${out:0:400})"
 fi
 
+echo "TEST: CI wait — a startup_failure check-run: error, no merge (review round 1, must-fix 2)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_STARTUP_FAILURE"
+out="$(run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"CI checks failed on"*"${reviewed:0:7}"* ]]; then
+    pass "(ci-12) a startup_failure check-run: error, no merge call"
+else
+    fail "(ci-12) (out=${out:0:400})"
+fi
+
 echo "TEST: mergeability — UNKNOWN for the first pr-view calls then MERGEABLE: merge proceeds"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
@@ -630,6 +660,18 @@ else
     fail "(ci-8) (out=${out:0:400})"
 fi
 
+echo "TEST: mergeability — CONFLICTING settles to a distinct fail-fast error, not a merge attempt"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_SUCCESS"
+write_mergeable_fixture "$sb" "CONFLICTING"
+out="$(run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"merge conflicts"*"CONFLICTING"* ]]; then
+    pass "(ci-13) mergeable CONFLICTING: clear error, no gh pr merge call"
+else
+    fail "(ci-13) (out=${out:0:400})"
+fi
+
 echo "TEST: CI wait — zero workflows and no runs: proceeds with a 'no CI configured' note (not a failure)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"
@@ -651,6 +693,58 @@ if ! merged_called "$sb" && [[ "$out" == *"CI checks did not complete on"*"${rev
     pass "(ci-11) a check-run stuck pending forever: overall timeout error, no merge (distinct from never-registered)"
 else
     fail "(ci-11) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — gh api fails on every check-runs call: bounded retry, then a distinct hard error, no merge"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns_exit "$sb" "$reviewed" 1
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"gh api failed repeatedly"*"${reviewed:0:7}"* ]]; then
+    pass "(ci-14) gh api failing on every call: bounded retry then hard error, no merge (not folded into no-CI)"
+else
+    fail "(ci-14) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — gh api fails on the first check-runs calls, then recovers: merges"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns_exit "$sb" "$reviewed" 1 1
+write_checkruns_exit "$sb" "$reviewed" 1 2
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=5 run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI checks passed"* ]]; then
+    pass "(ci-15) gh api recovers after transient failures: merges once check-runs succeeds"
+else
+    fail "(ci-15) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — the workflows-count call fails while check-runs stays empty: never-registered, not no-ci"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+write_workflows_exit "$sb" 1
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] && [[ "$out" != *"no CI configured"* ]]; then
+    pass "(ci-16) workflows-count lookup fails: treated as unknown, waits and errors (never assumes zero workflows)"
+else
+    fail "(ci-16) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — no local worktree for the PR's branch: targets HEAD_NOW directly and still waits/merges"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"
+git -C "$sb" worktree remove --force "$wt" >/dev/null 2>&1
+head_now=$(git -C "${sb}.remote.git" rev-parse feature/issue-7)
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI checks passed on \`${head_now:0:7}\`"* ]] \
+    && grep -qF "api repos//commits/${head_now}/check-runs" "$sb/gh_calls.log"; then
+    pass "(ci-17) no local worktree: CI target falls back to HEAD_NOW (via gh), waits and merges correctly"
+else
+    fail "(ci-17) (head_now=$head_now out=${out:0:400})"
 fi
 
 echo "TEST: CI target — a concurrent force-push after this run's own push denies the exemption (ancestry check)"
