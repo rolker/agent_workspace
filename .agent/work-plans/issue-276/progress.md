@@ -30,3 +30,41 @@ PR 1 of the #276 port (PR #291): review-issue step 8 writes an ADR-0013 `## Issu
 - [ ] (suggestion, adversarial; carried to PR 2) `progress_read.py` tags checkboxes by section but does not filter; `dispatch_phase.sh next` must count only `section == "Actions"` boxes for rows 5/6, with a distractor fixture — `.agent/scripts/progress_read.py:213-245`
 - [ ] (suggestion, adversarial; carried to PR 2) review-code's LGTM placeholder is an unchecked box while Issue Review's no-actions box is checked; rows 13-15 route on `**Verdict**`, not boxes, so no change here, but the asymmetry is noted for the dispatcher's fixtures — `.claude/skills/review-code/SKILL.md:637`
 - [ ] (suggestion, governance; unassigned) review-plan's "check review-issue comments" prose could name the persisted `### Actions` as a source — `.claude/skills/review-plan/SKILL.md:165`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-18 12:35 -04:00
+**By**: Claude Code Agent (implementer: claude-sonnet-5; lead: claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-276/plan.md` at `cd1de96`
+
+**Branch**: `feature/issue-276-pr2` at `ba88f24`
+
+PR 2 of the #276 port (PR #293): dispatch_phase.sh (03121fe), test_dispatch_phase.sh with 73 cases incl. all 28 next rows and five end-to-end timelines (28bbd1a), and one plan deviation decided by the lead: PR-mode Local Review routes on **Verdict** for rows 22a/22b, not open boxes, because the unchecked LGTM placeholder would loop forever (ba88f24). Plan text to be updated under PR 3.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-18 12:43 -04:00
+**By**: Claude Code Agent (lead: claude-fable-5-1; specialists: claude-sonnet-5 governance + adversarial; shellcheck; gemini skipped per owner)
+**Verdict**: changes-requested
+
+**PR**: #293 at `ba88f24`
+**Depth**: Deep (reason: 990 lines; enforcement script)
+**Must-fix**: 1 | **Suggestions**: 2
+
+### Findings
+- [x] (must-fix, adversarial) round_count counted partial/failed Pre-Push reviews, so a retried round hit MAX_ROUNDS one round early; filter status == complete, fixture added — `.agent/scripts/dispatch_phase.sh:425-435`
+- [x] (suggestion, adversarial) no --type project fixture for resolve_worktree; two added — `.agent/scripts/tests/test_dispatch_phase.sh`
+- [x] (suggestion, adversarial) --check-exit inspects only the newest entry when a phase writes twice; comment added — `.agent/scripts/dispatch_phase.sh:287`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-18 12:44 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**PR**: #293 at `f84c784`
+**Depth**: Light (reason: round 2; delta ba88f24..f84c784 is the one fix commit, verified by reading the diff and rerunning the suite)
+**Must-fix**: 0 | **Suggestions**: 0
+
+### Findings
+- [ ] No issues found. LGTM. test_dispatch_phase 76/76, full suite 22/22, shellcheck clean.
