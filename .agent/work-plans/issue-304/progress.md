@@ -135,3 +135,13 @@ The core design is sound and verified against the files: the guard dir is genuin
 - [ ] Correct the cleanup note's `.git`-filter caveat and the stale directory count; add a dry-run form (findings 4–6)
 - [ ] State the guard's coverage boundary, naming the production-script `/tmp` sites left out of scope (finding 7)
 - [ ] Confirm or cite the Ask-First carve-out for the `AGENTS.md` Script Reference row (finding 8)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 12:37 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise (Sonnet) — fold in both must-fixes (guard dir via `mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX` so the lint's own pattern never matches it; lint lives in the runner, lints `$TESTS_DIR`, exits 1 as a preflight failure, documented in the header) and the six suggestions (concrete independence test; cleanup caveat restated on the depth-1 .git mechanism, count re-measured — 16,679 today, 5,934 with a depth-1 .git; dry-run form first; guard boundary stated incl. the eight production-script absolute-/tmp sites; AGENTS.md row). Owner approved the one-row AGENTS.md edit for this PR at this checkpoint — cite that, not a standing rule.
