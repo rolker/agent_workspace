@@ -238,3 +238,22 @@ Plan implemented as written plus the three round-2 review-plan suggestions (34c8
 ### Verification
 - `bash .agent/scripts/tests/test_worktree_enter_stderr.sh` — 36 passed, 0 failed
 - Pre-commit on the fix commit: all hooks passed, including the full `.agent/scripts/tests/` suite and shellcheck
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-21 09:25 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-194 at `704d7e9`
+**Base**: main
+**Depth**: Standard (reason: enforcement-adjacent `.agent/scripts/tests/` change; round-2 re-verification of a state-mutation finding)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: delta `34c8d1b..eef8fb6` plus verification that each round-1 item is genuinely resolved. Verified by execution, not by reading: the suite run under `strace` shows 36 passed / 0 failed and zero `execve` of the real `/usr/bin/gh` or `/usr/local/bin/git-bug` — only the sandbox stubs (4x `git-bug`, 2x `gh`); `refs/bugs` + `refs/identities` hashes are byte-identical before and after; `git bug bridge` returns empty so `has_bridge` is 0 and no `bridge pull github` is attempted. Working tree clean afterwards and no `/tmp` sandbox leak. `pre-commit` on the changed file passes (shellcheck included). The broadened invariant grep was probed against a deliberately un-routed `printf 'Error: %s\n'` line and catches it. The deferred round-1 item is tracked as open issue #298 with a matching title.
+
+### Findings
+- [ ] (suggestion) The stub-log assertion's `command -v` guard and its comment are inaccurate — the stubs are on PATH during the run, so the script's own `command -v` always succeeds and the log is always non-empty; the guard needlessly skips a valid assertion where the real tools are absent — `.agent/scripts/tests/test_worktree_enter_stderr.sh:196`
+- [ ] (suggestion) The invariant grep is line-scoped and unanchored: a correctly-routed `{ echo "Error: ..."; ... } >&2` block, a line-continued `printf`, or a comment containing both tokens would report as un-routed; worth a one-line note of the assumption — `.agent/scripts/tests/test_worktree_enter_stderr.sh:217`
+- [ ] (suggestion) Stub isolation is scoped to `test_must_be_sourced` only; hoisting `make_offline_stubs` + the PATH override to suite level would make the offline guarantee structural, since this leak class already bit once — `.agent/scripts/tests/test_worktree_enter_stderr.sh:180`
