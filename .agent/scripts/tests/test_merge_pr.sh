@@ -56,14 +56,12 @@ assert_contains() {
 
 # ---- Sandbox helpers ----
 
-SANDBOXES=()
-cleanup() {
-    local sb
-    for sb in ${SANDBOXES[@]+"${SANDBOXES[@]}"}; do
-        rm -rf "$sb"
-    done
-}
-trap cleanup EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. Helpers carve per-test
+# directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
+# shared state and so survives being called as `sb="$(make_merge_sandbox)"`.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
 
 # A fixture-driven `gh` stub: `pr view` and `pr list` answer from files
 # under $GH_FIXTURES_DIR (written by the tests), keyed by repo+number or
@@ -157,8 +155,7 @@ write_pr_list_fixture() {
 # URL) so the legacy Step 6 `git pull --ff-only` succeeds offline.
 make_merge_sandbox() {
     local sb bare curbr
-    sb="$(mktemp -d)"
-    SANDBOXES+=("$sb")
+    sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts" "$sb/stubbin" "$sb/gh_fixtures"
     cp "$REAL_ROOT/.agent/scripts/merge_pr.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
@@ -173,9 +170,10 @@ make_merge_sandbox() {
     git -C "$sb" init --quiet
     git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
 
+    # String-derived sibling of $sb (so it lands under $SANDBOX too); the
+    # gh fixture filenames are keyed on this exact path string.
     bare="${sb}.remote.git"
     git init --bare --quiet "$bare"
-    SANDBOXES+=("$bare")
     git -C "$sb" remote add origin "$bare"
     curbr="$(git -C "$sb" symbolic-ref --short HEAD)"
     git -C "$sb" push --quiet -u origin "$curbr"
@@ -649,7 +647,6 @@ test_legacy_single_repo_project_pr_regression() {
     git -C "$sb/project" init --quiet
     git -C "$sb/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
     bare="${sb}.project.remote.git"
-    SANDBOXES+=("$bare")
     git init --bare --quiet "$bare"
     # Same offline-pull trick as make_merge_sandbox: origin is a local bare
     # clone, and the gh fixture is keyed on that same string, whatever it is.
@@ -678,13 +675,13 @@ test_registered_project_root_pr_regression() {
     echo "TEST: a registered (out-of-tree) single-repo project PR is resolved and its worktree, under the project's OWN root, is cleaned up (#265 PR 2)"
     local sb out rc=0 wt bare curbr pj_remote outside
     sb="$(make_merge_sandbox)"
-    outside="$(mktemp -d)"
-    SANDBOXES+=("$outside")
+    # Sibling of $sb under $SANDBOX, never a child of it: the test needs a
+    # repo that sits outside the sandbox workspace root.
+    outside="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$outside/farrepo"
     git -C "$outside/farrepo" init --quiet
     git -C "$outside/farrepo" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
     bare="${sb}.farrepo.remote.git"
-    SANDBOXES+=("$bare")
     git init --bare --quiet "$bare"
     git -C "$outside/farrepo" remote add origin "$bare"
     curbr="$(git -C "$outside/farrepo" symbolic-ref --short HEAD)"
