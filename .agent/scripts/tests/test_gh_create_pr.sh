@@ -23,12 +23,18 @@ if [[ ! -x "$SCRIPT" ]]; then
     exit 1
 fi
 
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. No hardcoded /tmp templates
+# anywhere in this file: `mktemp` honors TMPDIR, and every scratch file the
+# tests write is a child of $SANDBOX, so the trap covers abort paths too.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
+
 # --- shims ------------------------------------------------------------------
-SHIM_DIR=$(mktemp -d /tmp/gh_create_pr_shim-XXXXXX)
+SHIM_DIR="$SANDBOX/shim"
 ARGV_LOG="$SHIM_DIR/argv.log"
 BODY_CAPTURE_DIR="$SHIM_DIR/body-capture"
 mkdir -p "$BODY_CAPTURE_DIR"
-trap 'rm -rf "$SHIM_DIR"' EXIT
 
 # Real gh path for command discovery; we only shim `gh pr create`
 REAL_GH=$(command -v gh || true)
@@ -137,7 +143,7 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-TMPF=$(mktemp /tmp/test_body.XXXXXX.md)
+TMPF=$(mktemp "$SANDBOX/test_body.XXXXXX.md")
 echo "File body" > "$TMPF"
 assert_calls_gh "--body-file, signature appended" \
     --title "T" --body-file "$TMPF"
@@ -150,11 +156,10 @@ else
     echo "  FAIL [body content]: body-file signature missing or original lost"
     FAIL=$((FAIL + 1))
 fi
-rm -f "$TMPF"
 
 echo
 echo "=== Signature already present (no duplicate) ==="
-TMPF=$(mktemp /tmp/test_body.XXXXXX.md)
+TMPF=$(mktemp "$SANDBOX/test_body.XXXXXX.md")
 cat > "$TMPF" <<'EOM'
 This PR already has a signature
 
@@ -173,7 +178,6 @@ else
     echo "  FAIL [body content]: expected 1 Authored-By, got $SIG_COUNT"
     FAIL=$((FAIL + 1))
 fi
-rm -f "$TMPF"
 
 echo
 echo "=== --no-signature flag ==="
@@ -204,7 +208,7 @@ assert_exit_code "unset AGENT_NAME hard-fails" 2 \
 assert_calls_gh "unset + --no-signature still calls gh" \
     --title "T" --body "B" --no-signature
 # Already-signed body also bypasses the env-var check
-TMPF=$(mktemp /tmp/test_body.XXXXXX.md)
+TMPF=$(mktemp "$SANDBOX/test_body.XXXXXX.md")
 cat > "$TMPF" <<'EOM'
 Already signed body
 
@@ -214,7 +218,6 @@ Already signed body
 EOM
 assert_calls_gh "unset + already-signed body calls gh" \
     --title "T" --body-file "$TMPF"
-rm -f "$TMPF"
 
 echo
 echo "=== Joined-equals forms (--body=X, --body-file=X) ==="
@@ -236,7 +239,7 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-TMPF=$(mktemp /tmp/test_body.XXXXXX.md)
+TMPF=$(mktemp "$SANDBOX/test_body.XXXXXX.md")
 echo "Eq form body" > "$TMPF"
 assert_calls_gh "--body-file=PATH shape" \
     --title "T" "--body-file=$TMPF"
@@ -250,7 +253,6 @@ else
     echo "  FAIL [body]:       --body-file=PATH handling broken"
     FAIL=$((FAIL + 1))
 fi
-rm -f "$TMPF"
 
 echo
 echo "=== --body-stdin path ==="
@@ -347,7 +349,7 @@ echo "=== Mutually exclusive body sources ==="
 # Specifying more than one of --body / --body-file / --body-stdin would
 # let the wrapper sign one source while gh uses another (or errors),
 # leaving the PR unsigned. Reject with exit 2.
-TMPF_MX=$(mktemp /tmp/test_body.XXXXXX.md)
+TMPF_MX=$(mktemp "$SANDBOX/test_body.XXXXXX.md")
 echo "file body" > "$TMPF_MX"
 assert_exit_code "--body + --body-file → exit 2" 2 \
     --title "T" --body "B" --body-file "$TMPF_MX"
@@ -355,7 +357,6 @@ assert_exit_code "--body + --body-stdin → exit 2" 2 \
     --title "T" --body "B" --body-stdin
 assert_exit_code "--body-file + --body-stdin → exit 2" 2 \
     --title "T" --body-file "$TMPF_MX" --body-stdin
-rm -f "$TMPF_MX"
 
 echo
 echo "=== Empty body flag (--body \"\") is non-interactive ==="
