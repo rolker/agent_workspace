@@ -451,3 +451,29 @@ further lint escapes, both of which I reproduced myself before accepting.
 - `bash .agent/scripts/tests/test_run_script_tests.sh` → 17 passed, 0 failed (was 14; +2 attached-form lint cases, +1 trailing-boundary case).
 - Hand-run: a scratch tests dir containing `mktemp -d -p/tmp ...` and `mktemp -dp/tmp ...` fixtures → runner exits 1 naming both files; the pre-fix pattern matched neither.
 - Self-check: the new pattern finds no hit in `.agent/scripts/tests/test_*.sh`, so no fixture line trips the lint on this repo's own run. Pre-commit (which runs the suite) passed on all three commits.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-21 13:55 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-304 at `1df412c`
+**Base**: main
+**Depth**: Light (reason: caller-specified; delta is three commits of test fixtures, comment prose, and one doc row)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+All four round-2 items verified by execution: attached-argument `-p/tmp` and
+`-dp/tmp` fixtures reject with exit 1 (`p_flag_attached`, `dp_cluster_attached`);
+exhaustiveness claim replaced by a named three-spelling coverage boundary; bare
+relative template confirmed to ignore TMPDIR and land in cwd, with no such site
+in the suites; AGENTS.md row matches lint behaviour; trailing-boundary fixture
+`(j2)` added. 17/17 in test_run_script_tests.sh; full runner green (23 suites,
+45s, exit 0) with zero new /tmp residue. Direct regex probe: 8 escaping
+spellings hit, 6 safe ones miss — including `$HOME/opt-p/tmp/x`, the false
+positive the attached-flag branch risked. pre-commit (shellcheck included)
+clean on all three changed files. Nothing changed outside the three commits.
+
+### Findings
+- [ ] (suggestion) list insertion stranded "Eight absolute-/tmp" as a mid-sentence fragment; reflow the coverage-boundary paragraph — `.agent/scripts/tests/run_script_tests.sh:180`
