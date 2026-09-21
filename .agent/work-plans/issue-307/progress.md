@@ -75,3 +75,11 @@ No item from the write-up's numbered 1–8 set is missing from this issue once #
 **Decision**: proceed
 
 Proceed — reuse the existing convention (Recommended): item 6 becomes "when the owner defers suggestions at a checkpoint (publish/findings answered with them left open), the host marks those boxes via `review_progress.sh check --deferred "<reason>"` before the next `next` call, so the dispatcher's open_findings() no longer sees them"; no new `[~]` marker, no changes to review_progress.sh findings/check or the lifecycle note beyond documenting the host step in run-issue SKILL.md §6.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-21 14:32 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-307/plan.md` at `165e1d1`
+
+Text edits to `.claude/skills/run-issue/SKILL.md` (identity-sourcing note in step 1, exact `entry_type=` string in step 4, Copilot check-run wait in step 9, a new deferred-suggestion host sub-step in step 6) and `.claude/skills/plan-task/SKILL.md` (test-file exec-bit guidance), plus a new `conventions=` line printed by `dispatch_phase.sh`'s handoff block (When-format + scratch hygiene) with one extended assertion in `test_dispatch_phase.sh`. Item 6's checkpoint decision is followed as-is: reuse the existing `review_progress.sh check --deferred` convention — `dispatch_phase.sh`'s `next` decision-table routing is unchanged, so no new fixture row is added.
