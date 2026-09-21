@@ -305,3 +305,40 @@ The revision folds in all ten round-1 findings and the two substantive design de
 **Decision**: revise
 
 Revise with Opus (Recommended) — one-off tier override for this revision (plan-task normally runs on Sonnet): the remaining must-fixes are per-file line-inventory errors that two Sonnet passes got wrong and the Opus reviewer pinned exactly. Fold in round-2 findings 1–7.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-21 10:56 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Plan**: `.agent/work-plans/issue-297/plan.md` at `ffb93d9`
+**Round**: revision 2 (after the round-2 Plan Review `needs-work` and the owner's `revise` checkpoint)
+
+Revision 2 folds in all seven round-2 findings and makes the per-file
+inventory line-accurate: every line number and variable name in Context,
+Approach, and Files to Change was re-verified by opening the file.
+Corrections: `test_gh_create_pr.sh` has six absolute-`/tmp` `mktemp` sites
+(27, 140, 157, 207, 239, 350), and the five inline `rm -f` calls (153, 176,
+217, 253, 358) are dropped in favour of the single `$SANDBOX` trap;
+`test_checkpoint_269.sh` has three `mktemp -d` sites (141, plus top-level
+`SHALLOW` 244 and `NOREMOTE` 261), all routed under `$SANDBOX` *before* the
+`rm -rf` at 269 is dropped; the `test_merge_pr_gate.sh` rows were describing
+`test_merge_pr.sh` code and are corrected (appends only at 137/146, both
+inside `make_sandbox()` 136–167, both swallowed; no `$outside`; no sandboxes
+at 679–692). Also: `bare` stays a string-derived sibling of `$sb` because the
+`gh` fixture filename key is computed from that path string (165, 241);
+`test_dispatch_phase.sh:394`/`:410` named as direct top-level `mktemp -d`
+sites, not `mk_sandbox` calls; `test_resolve_work_plans_dir.sh:174–184` cited
+as a second in-tree reference for the target helper shape; PR 2 step 3
+reworded to "never derived from the caller-supplied `[tests-dir]`".
+
+The plan's Context now carries a **measured** leak table rather than an
+inferred one: each of the 23 suites was run in isolation with
+`TMPDIR`/`TMP`/`TEMP` pointed at a fresh empty directory (all exited 0) and
+the leftovers counted, with `/tmp`'s top level diffed around each run.
+Result — `test_merge_pr_gate.sh` 112, `test_project_registry.sh` 56,
+`test_ros2_colcon.sh` 55, `test_adapter.sh` 47, `test_merge_pr.sh` 42,
+`test_dispatch_phase.sh` 5, `test_precommit_hook_path.sh` 3, all other
+suites 0; **320 leaked directories per full run**, not the issue's ~100. No
+suite wrote new top-level `/tmp` entries on a clean pass, which confirms the
+five absolute-template suites and `test_checkpoint_269.sh` are in scope for
+guard visibility and abort paths rather than for the boot-stall symptom.
