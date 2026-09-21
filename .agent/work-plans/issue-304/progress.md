@@ -394,3 +394,39 @@ suggestions are folded in below.
 - `bash .agent/scripts/tests/run_script_tests.sh` — exit 0, all 23 suites passed in 46s (lint green on the real tree under the broadened, anchored pattern).
 - `bash .agent/scripts/tests/test_run_script_tests.sh` — 14 passed, 0 failed, including the three new per-spelling lint cases, the anchoring case and the recursive-listing case.
 - Hand-run in a scratch tests-dir, one run per spelling (`/tmp/<template>`, `-p /tmp`, `--tmpdir=/tmp`, `--tmpdir /tmp`): every run exited 1 and named the offending fixture; zero directories left in `/tmp` before and after.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-21 13:52 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-304 at `e26e4d4`
+**Base**: main
+**Depth**: Standard (reason: enforcement script wired into pre-commit)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 1), not rising — fix and ship rather than another full round
+
+Round-2 delta review of `5f6e5a1..e26e4d4` against the round-1 entry at
+`c80228f` (1 must-fix, 4 suggestions). All five round-1 items verified
+resolved by execution, not by reading: every bypass spelling
+(`/tmp/<template>`, a quoted template, `-p /tmp`, `--tmpdir=/tmp`,
+`--tmpdir /tmp`) now exits 1 naming the offending fixture, with no suite
+run and nothing left in `/tmp`; the anchoring holds in both directions —
+`"$HOME/local/tmp/x.XXXXXX"` and `"${TMPDIR}/tmpfile.XXXXXX"` both stay
+green; full real suite 23/23 exit 0 in 46s; `test_run_script_tests.sh`
+14 passed / 0 failed; shellcheck (via pre-commit) clean on both changed
+scripts; the delta touches only the two test scripts plus `progress.md`;
+worktree clean. Both undeclared-but-noted additions are sound: the removed
+"do not fix this back" comment is obsolete because the `test_*.sh` glob now
+exempts the runner's own guard `mktemp` by scope rather than by pattern
+contortion (verified), and case (k) + `LEAK_LIST_MAX` implement the
+round-1 recursive-listing suggestion, with the cap arithmetic verified
+exact on a 251-entry leak. An independent adversarial subagent found two
+further lint escapes, both of which I reproduced myself before accepting.
+
+### Findings
+- [ ] (must-fix) comment claims the pattern "covers every mktemp spelling that escapes TMPDIR", but two still escape — verified each leaves a real dir in /tmp with the run exiting 0: the attached-argument form (`mktemp -d -p/tmp t.XXXXXX`, `mktemp -dp/tmp t.XXXXXX`, a one-line regex fix) and a backslash line-continuation splitting `mktemp` from `-p /tmp` across two lines (out of reach of any line grep — belongs in the coverage boundary); either way the exhaustiveness claim must go — `.agent/scripts/tests/run_script_tests.sh:120`
+- [ ] (suggestion) a bare relative template (`mktemp -d leak.XXXXXX`) ignores TMPDIR and lands in the runner's cwd — the repo root under pre-commit — invisible to both the lint and the sweep; verified run-green with the directory left behind; name it in the coverage boundary or open a follow-up — `.agent/scripts/tests/run_script_tests.sh:161`
+- [ ] (suggestion) AGENTS.md Script Reference row still says the lint rejects absolute-`/tmp` mktemp *templates*; it now also rejects `-p /tmp` / `--tmpdir=/tmp` roots, and the runner's own error string was updated to "destination(s)" — `AGENTS.md:411`
+- [ ] (suggestion) case (j) pins only the leading boundary anchor; the trailing half of the claim (`/tmpfile.XXXXXX` is not a hit) has no fixture — verified green by hand, but uncovered — `.agent/scripts/tests/test_run_script_tests.sh:281`
