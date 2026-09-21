@@ -179,9 +179,11 @@ fi
 # the sandbox root (the root itself was `git init`'d). Suites that nest their
 # fixture repos deeper are not matched, and test_adapter.sh,
 # test_project_registry.sh and test_dispatch_phase.sh create no git repos at
-# all — none of their leftovers match. Measured 2026-09-21: 16,679 /tmp/tmp.*
-# directories, 5,934 with a depth-1 .git. For the rest, an age-based sweep a
-# human eyeballs first: find /tmp -maxdepth 1 -type d -name 'tmp.*' -mtime +7
+# all — none of their leftovers match. The backlog this leaves behind was
+# measured on 2026-09-21; see the #297 timeline for the figures rather than
+# trusting a number frozen into this comment. For the rest, an age-based
+# sweep a human eyeballs first:
+#   find /tmp -maxdepth 1 -type d -name 'tmp.*' -mtime +7
 RUN_TMPDIR=$(mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX) || {
     echo "error: could not create the per-run TMPDIR guard directory under /tmp" >&2
     exit 1
