@@ -14,8 +14,15 @@ PASS=0
 FAIL=0
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
-TMPD="$(mktemp -d)"
-trap 'rm -rf "$TMPD"' EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. mk_sandbox() carves per-test
+# directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
+# shared state and so survives being called as `sb="$(mk_sandbox 1)"`.
+# $TMPD (the fixture scratch dir) is just a subdirectory of it.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
+TMPD="$SANDBOX/fixtures"
+mkdir -p "$TMPD"
 unset WORKTREE_ISSUE WORK_PLANS_DIR_OVERRIDE PROGRESS_PERSISTENCE_STRICT AGENT_NAME AGENT_EMAIL
 
 NOW="2026-09-17 10:00 -04:00"
@@ -26,7 +33,7 @@ NOW="2026-09-17 10:00 -04:00"
 # as the issue's worktree — same shape merge_pr_gate's tests use.
 mk_sandbox() {  # <issue-num>
     local n="$1" sb
-    sb="$(mktemp -d)"
+    sb="$(mktemp -d -p "$SANDBOX")"
     git -C "$sb" init -q -b main
     git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
     mkdir -p "$sb/.agent/scripts" "$sb/worktrees/workspace"
@@ -391,7 +398,7 @@ echo ""
 echo "TEST: resolve_worktree -- --type project (registry lookup, then the deprecated project/worktrees fallback)"
 # (a) registry lookup: one registered project, resolved via registry_worktree_dir
 # (default <path>/worktrees, no worktrees= override).
-SBP1="$(mktemp -d)"
+SBP1="$(mktemp -d -p "$SANDBOX")"
 git -C "$SBP1" init -q -b main
 git -C "$SBP1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 mkdir -p "$SBP1/.agent/scripts"
@@ -407,7 +414,7 @@ out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_ph
 # (b) the deprecated project/worktrees fallback (wt_legacy_project_base): no
 # registry entry at all, worktree living inside a project/ checkout's own
 # worktrees/ dir (the pre-#265 shape).
-SBP2="$(mktemp -d)"
+SBP2="$(mktemp -d -p "$SANDBOX")"
 git -C "$SBP2" init -q -b main
 git -C "$SBP2" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 mkdir -p "$SBP2/.agent/scripts"
