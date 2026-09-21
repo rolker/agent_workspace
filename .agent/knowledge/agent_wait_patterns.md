@@ -35,14 +35,18 @@ Monitor(processId=<bg-id>)
 # returns when gh exits; non-zero exit = check failed; abort the merge
 ```
 
+(`merge_pr.sh` itself does not use this form any more — see below — but
+`gh pr checks --watch` is still the right building block for an ad hoc
+wait outside that script.)
+
 ## When to fall back to busy-poll
 
-`gh pr checks --watch` (or any other foreground blocking call) is the
-right choice in:
+A foreground blocking call — `gh pr checks --watch`, or a bounded poll
+loop of your own — is the right choice in:
 
 - **Shell scripts.** `merge_pr.sh`, `cross_model_review.sh`, anything
-  bash. `Monitor` is a Claude Code tool; bash can't call it. The
-  blocking `--watch` form works for every framework.
+  bash. `Monitor` is a Claude Code tool; bash can't call it. A blocking
+  form works for every framework.
 - **Sandboxed / non-interactive environments.** CI runs, automated
   pipelines, anything where there's no Claude Code session to use
   `Monitor` from.
@@ -55,15 +59,16 @@ right choice in:
 | Caller | Recommended wait |
 |--------|------------------|
 | Claude Code agent (interactive) | `Monitor` over a background `gh pr checks --watch` (or similar) |
-| `merge_pr.sh` (bash) | `gh pr checks --watch --fail-fast` directly |
+| `merge_pr.sh` (bash) | a bounded, SHA-targeted `gh api .../check-runs` + `.../status` poll (issue #284; replaced `gh pr checks --watch --fail-fast`, which watched the wrong SHA once the script's own commits had moved the head, and treated "no checks reported yet" as a hard failure — #271) |
 | `cross_model_review.sh` polling tmux session output | tmux session-status check (existing busy-poll, OK as-is) |
 | Codex / Gemini agents calling workspace scripts | The script's bash busy-poll fires for them automatically |
 | CI / sandboxed pipeline | The script's bash busy-poll fires for them automatically |
 
 ## See also
 
-- `.agent/scripts/merge_pr.sh` — uses `gh pr checks --watch --fail-fast`
-  internally; works for every caller (issue #186)
+- `.agent/scripts/merge_pr.sh` — bounded, SHA-targeted `gh api` poll for
+  CI plus a `mergeable`/`mergeStateStatus` settle poll before merging
+  (issue #284, fixes #271); works for every caller (issue #186)
 - `.agent/scripts/cross_model_review.sh` — the tmux session approach
   for cross-model adversarial dispatch; busy-poll on session status is
   fine since it's tmux-internal

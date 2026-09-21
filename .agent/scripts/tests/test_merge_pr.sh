@@ -11,6 +11,13 @@
 # pointing each sandbox repo's `origin` at a local bare clone instead of a
 # real GitHub URL.
 #
+# The CI-target decision, the SHA-targeted `gh api` check-runs/mergeability
+# poll, and the idempotent Merge record (issue #284) have their own
+# hermetic coverage in test_merge_pr_gate.sh; every case here uses
+# --no-wait, so none of that machinery (or `gh pr checks`, which the
+# script no longer calls at all — see the stub comment below) is exercised
+# by this suite.
+#
 # Run: bash .agent/scripts/tests/test_merge_pr.sh
 
 set -uo pipefail
@@ -49,22 +56,22 @@ assert_contains() {
 
 # ---- Sandbox helpers ----
 
-SANDBOXES=()
-cleanup() {
-    local sb
-    for sb in ${SANDBOXES[@]+"${SANDBOXES[@]}"}; do
-        rm -rf "$sb"
-    done
-}
-trap cleanup EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. Helpers carve per-test
+# directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
+# shared state and so survives being called as `sb="$(make_merge_sandbox)"`.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
 
 # A fixture-driven `gh` stub: `pr view` and `pr list` answer from files
 # under $GH_FIXTURES_DIR (written by the tests), keyed by repo+number or
-# repo+branch. `pr merge` and `pr checks` always succeed (tests use
-# --no-wait, so `pr checks` is never actually invoked, but a stub is
-# provided for completeness). Every invocation is appended to
-# $GH_CALL_LOG (one line per call) so tests can assert which repo/branch
-# a lookup targeted.
+# repo+branch. `pr merge` always succeeds per GH_MERGE_EXIT; `pr checks`
+# is stubbed for completeness but merge_pr.sh does not call it any more
+# (issue #284 replaced `gh pr checks --watch` with a SHA-targeted `gh api`
+# poll — see test_merge_pr_gate.sh). Every case in this suite uses
+# --no-wait, so neither `pr checks` nor the new `gh api` poll is ever
+# invoked here. Every gh invocation is appended to $GH_CALL_LOG (one line
+# per call) so tests can assert which repo/branch a lookup targeted.
 write_gh_stub() {
     local sb="$1"
     cat > "$sb/stubbin/gh" <<'EOF'
@@ -77,13 +84,19 @@ sanitize() { printf '%s' "$1" | tr '/' '_'; }
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
     num="$3"
     shift 3
-    repo=""
+    repo=""; jf=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -R) repo="$2"; shift 2 ;;
+            --json) jf="$2"; shift 2 ;;
             *) shift ;;
         esac
     done
+    # merge_pr.sh's mergeability settle runs even under --no-wait (#290);
+    # answer it as settled so these resolution/cleanup cases never poll.
+    if [ "$jf" = "mergeable,mergeStateStatus" ]; then
+        echo '{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}'; exit 0
+    fi
     f="$GH_FIXTURES_DIR/pr_view_$(sanitize "$repo")_${num}.json"
     if [ -f "$f" ]; then
         cat "$f"
@@ -142,8 +155,7 @@ write_pr_list_fixture() {
 # URL) so the legacy Step 6 `git pull --ff-only` succeeds offline.
 make_merge_sandbox() {
     local sb bare curbr
-    sb="$(mktemp -d)"
-    SANDBOXES+=("$sb")
+    sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts" "$sb/stubbin" "$sb/gh_fixtures"
     cp "$REAL_ROOT/.agent/scripts/merge_pr.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
@@ -158,9 +170,10 @@ make_merge_sandbox() {
     git -C "$sb" init --quiet
     git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
 
+    # String-derived sibling of $sb (so it lands under $SANDBOX too); the
+    # gh fixture filenames are keyed on this exact path string.
     bare="${sb}.remote.git"
     git init --bare --quiet "$bare"
-    SANDBOXES+=("$bare")
     git -C "$sb" remote add origin "$bare"
     curbr="$(git -C "$sb" symbolic-ref --short HEAD)"
     git -C "$sb" push --quiet -u origin "$curbr"
@@ -223,6 +236,7 @@ run_merge_pr() {
     local sb="$1"
     shift
     (cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" \
+        MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 \
         "$sb/.agent/scripts/merge_pr.sh" "$@")
 }
 
@@ -633,7 +647,6 @@ test_legacy_single_repo_project_pr_regression() {
     git -C "$sb/project" init --quiet
     git -C "$sb/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
     bare="${sb}.project.remote.git"
-    SANDBOXES+=("$bare")
     git init --bare --quiet "$bare"
     # Same offline-pull trick as make_merge_sandbox: origin is a local bare
     # clone, and the gh fixture is keyed on that same string, whatever it is.
@@ -662,13 +675,13 @@ test_registered_project_root_pr_regression() {
     echo "TEST: a registered (out-of-tree) single-repo project PR is resolved and its worktree, under the project's OWN root, is cleaned up (#265 PR 2)"
     local sb out rc=0 wt bare curbr pj_remote outside
     sb="$(make_merge_sandbox)"
-    outside="$(mktemp -d)"
-    SANDBOXES+=("$outside")
+    # Sibling of $sb under $SANDBOX, never a child of it: the test needs a
+    # repo that sits outside the sandbox workspace root.
+    outside="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$outside/farrepo"
     git -C "$outside/farrepo" init --quiet
     git -C "$outside/farrepo" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
     bare="${sb}.farrepo.remote.git"
-    SANDBOXES+=("$bare")
     git init --bare --quiet "$bare"
     git -C "$outside/farrepo" remote add origin "$bare"
     curbr="$(git -C "$outside/farrepo" symbolic-ref --short HEAD)"

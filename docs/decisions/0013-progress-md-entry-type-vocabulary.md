@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Accepted. Scoped exception in [ADR-0014](0014-in-process-phase-handoff.md):
+`/run-issue` records `## Checkpoint` entries on the owner's behalf from
+`AskUserQuestion` answers.
 
 ## Context
 
@@ -203,7 +205,22 @@ file is rewritten by this ADR's adoption.
 - `ros2_agent_workspace` ADR-0013 (`docs/decisions/0013-progress-md-entry-type-vocabulary.md`
   in that repo) — source this ADR ports from. That repo is not a GitHub
   remote reachable from this one; see issue #269 for the port context.
+- Issue [#286](https://github.com/rolker/agent_workspace/issues/286) —
+  how `merge_pr.sh` consumes the PR/branch head SHA key: a review entry
+  at SHA `R` is read as current for head `H` when `R` is an ancestor of
+  `H` and only merge-time document files (the issue's `progress.md`, the
+  roadmap files) changed between them, because recording the review
+  itself commits `progress.md` on the branch. One helper
+  (`_only_bookkeeping_between`) applies the rule for both the gate and
+  the CI target (#284). Cross-reference addendum per ADR-0008; the key
+  itself is unchanged.
 - Issue [#269](https://github.com/rolker/agent_workspace/issues/269) — Port
   the review loop from `ros2_agent_workspace`: this ADR is PR A of that
   port's PR sequence.
 - [Principles review guide](../../.agent/knowledge/principles_review_guide.md) — references this ADR in the ADR-applicability table.
+- [ADR-0014](0014-in-process-phase-handoff.md) — `/run-issue`'s handoff
+  contract and its scoped exception recording `## Checkpoint` entries on
+  the owner's behalf. Consumers' routing rules — **Verdict** for `## Local
+  Review` / `## Local Review (Pre-Push)`, open boxes for `## Issue Review`
+  / `## Integrated Review` — are defined in ADR-0014's Decision and in
+  `dispatch_phase.sh`, not restated here.

@@ -398,7 +398,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/gh_create_issue.sh` | Create issue with label validation (`GITBUG_CREATE=1` for offline) |
 | `.agent/scripts/gh_create_pr.sh` | Create PR with AI signature injection + label validation; reads body via `--body-stdin`, `--body-file`, or `--body` |
 | `.agent/scripts/revert_feature.sh` | Revert all commits for an issue |
-| `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, runs the review-loop merge gate, waits for CI on the latest HEAD before merging), remove worktree, delete branch, sync main; `--no-wait` to skip the CI wait; the gate is report-only by default (`--enforce` refuses on workspace PRs; `--force-unreviewed` bypasses with a `## Merge (unreviewed)` record) |
+| `.agent/scripts/merge_pr.sh` | Merge PR (auto-updates roadmap, runs the review-loop merge gate, waits for CI on the reviewed head; the script's own roadmap and progress.md commits are exempt), remove worktree, delete branch, sync main; `--no-wait` to skip the CI wait (the mergeability settle and one merge retry always run); the gate is report-only by default (`--enforce` refuses on workspace PRs; `--force-unreviewed` bypasses with a `## Merge (unreviewed)` record) |
 | `.agent/scripts/update_roadmap.sh` | Auto-update roadmap status for completed issues |
 | `.agent/scripts/sync_project.py` | Sync workspace + project repos (dispatches via adapter) |
 | `.agent/scripts/validate_workspace.py` | Validate project/ configuration |
@@ -407,7 +407,8 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/cross_model_review.sh` | Cross-model adversarial review for a PR (`--pr <N>`) or local branch (`--branch [<ref>]`); `--no-progress` for skill worktrees; `--repo`, `--work-dir` for cross-repo use |
 | `.agent/scripts/progress_append.sh` | Append one ADR-0013 `## <Entry Type>` entry to `.agent/work-plans/issue-<N>/progress.md` and commit only that file (entry on stdin; `-C <dir>` for another worktree) |
 | `.agent/scripts/progress_read.py` | Parse a `progress.md` timeline to JSON (`--type` filter, correlation keys, fence-aware) |
-| `.agent/scripts/tests/run_script_tests.sh` | Run every `.agent/scripts/tests/test_*.sh` suite; the `validate-script-tests` pre-commit hook (`SKIP=validate-script-tests` for WIP commits) |
+| `.agent/scripts/dispatch_phase.sh` | In-process phase handoff for `/run-issue`: prints a phase's handoff block (`--issue <N> --skill <phase>`), checks a dispatch's exit contract (`--check-exit ... --before <count>`), and returns the run-issue decision-table action (`next --issue <N> --pr <state>`) |
+| `.agent/scripts/tests/run_script_tests.sh` | Run every `.agent/scripts/tests/test_*.sh` suite; the `validate-script-tests` pre-commit hook (`SKIP=validate-script-tests` for WIP commits). Runs each suite under a private per-run `TMPDIR` and fails with exit 2 naming any suite that leaves files behind; a preflight lint rejects absolute-`/tmp` `mktemp` destinations in the suites — a `/tmp` template, or a `-p /tmp` / `--tmpdir=/tmp` root (exit 1) |
 | `.agent/scripts/_progress_entry.sh` | Shared ADR-0013 entry validation + idempotency check for every `progress.md` writer **(source)** |
 | `.agent/scripts/review_progress.sh` | Review-loop helpers shared by review-code / triage-reviews / address-findings / plan-task / review-plan: `round` / `verdict` (convergence), `persist` (progress.md persistence behind `PROGRESS_PERSISTENCE_STRICT` / `--strict`; `--soft` = non-fatal), `sources` (local findings + GitHub comments correlated by head SHA), `findings` / `check` (latest review entry's open boxes), `plan-sha` (plan-commit SHA for the `**Plan**` field) |
 
