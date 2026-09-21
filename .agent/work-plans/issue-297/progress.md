@@ -227,3 +227,71 @@ fixtures, a fuller one-time-cleanup caveat, and PR 2 landing promptly after
 PR 1. `main` (with #194 / PR #299) was merged into this branch first so the
 plan's reference to `test_worktree_enter_stderr.sh` points at `main`
 instead of the old unmerged branch.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-21 10:35 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #297 — script tests: mktemp sandboxes registered inside $() never get cleaned — ~100 leaked into /tmp per run, stalling boot 2 min
+**Plan**: `.agent/work-plans/issue-297/plan.md` at `cadf1a9`
+**Branch**: `feature/issue-297`
+**Round**: 2 (revision of the `needs-work` review at round 1)
+
+### Round-1 findings — verification against the tree
+
+| # | Round-1 finding | Resolved? |
+|---|---|---|
+| 1 | counter/function-name subdirs | Yes — step 2 now mandates `mktemp -d -p "$SANDBOX"` and explains why counters collapse inside `$()` |
+| 2 | `TMPDIR` under `.agent/scratchpad/` | Yes — PR 2 step 1 puts it under `/tmp`, with the git-discovery rationale and the gitignore caveat |
+| 3 | `test_run_script_tests.sh` coverage | Yes — PR 2 step 3 adds leak/no-leak fixture cases, the exit-codes header update, and the re-check of the fail-fast assertion. Verified against the file: the runner's header block is lines 26–27 as cited; the existing cases (b)/(c) assert `rc -ne 0`, not an exact code, so a new distinct code will not break them |
+| 4 | absolute `/tmp/...` templates | **Partial** — see must-fix 1 |
+| 5 | eighth suite `test_checkpoint_269.sh` | **Partial** — the suite is now in scope, but see must-fix 2 |
+| 6 | stale `origin/feature/issue-194` reference | Yes — `main` merged (`f56458c`); `.agent/scripts/tests/test_worktree_enter_stderr.sh` exists on this branch with `SANDBOX="$(mktemp -d)"` (line 22) + `trap ... EXIT` (line 23) |
+| 7 | sweep inside the per-suite loop | Yes — PR 2 step 2 sweeps after each suite, names the offending suite and paths, stops the run, uses a distinct exit code, and `rm -rf`s the per-run dir unconditionally |
+| 8 | `.git` filter clears only part of the ~2,800 | Yes — PR 2 step 5 states the partial coverage and offers complementary selectors for the owner |
+| 9 | `outside` / `bare` must stay siblings | Yes — step 3 requires `$SANDBOX/outside-<x>` as a sibling of `$SANDBOX/<x>` |
+| 10 | gap between the two PRs | Yes — stated in the Approach preamble and Estimated Scope |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Two-PR split and ordering are right; PR 1 stays behaviour-neutral |
+| Issue alignment | Good | Covers the three named suites plus the five the reviews found |
+| File targeting | Needs work | Two per-line inventories are still incomplete and one file's shape is described incorrectly (must-fix 1–3) |
+| Consequences | Good | `AGENTS.md` script table, `test_run_script_tests.sh`, exit-code consumers all covered |
+| Principle alignment | Good | Enforcement over documentation, only-what's-needed, human control on the cleanup command |
+| ADR compliance | Good | ADR-0011 correction (runner, not `adapter test`) carried through; ADR-0013 persistence noted |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[File targeting] (must-fix)** — The absolute-template inventory (Context, and Files to Change) is still incomplete for `test_gh_create_pr.sh`. It names only line 27 (`SHIM_DIR=$(mktemp -d /tmp/gh_create_pr_shim-XXXXXX)`), but the same file has five more absolute `/tmp` templates: lines 140, 157, 207, 239 (`TMPF=$(mktemp /tmp/test_body.XXXXXX.md)`) and 350 (`TMPF_MX=...`). They are `rm -f`'d inline on the success path (153, 176, 217, 253, 358), so they are not the recurring leak — but they ignore `TMPDIR` exactly as line 27 does, survive any abort, and are invisible to PR 2's sweep, which is the precise failure mode round-1 finding 4 raised. An implementer working from the per-line list will normalise one of six sites. List all six (and say whether the inline `rm -f` calls stay or are dropped in favour of the trap).
+
+2. **[File targeting / Approach] (must-fix)** — `test_checkpoint_269.sh` has two further top-level `mktemp -d` sandboxes the plan does not mention anywhere: `SHALLOW=$(mktemp -d)` (line 244) and `NOREMOTE=$(mktemp -d)` (line 261). Today they are cleaned only by the explicit `rm -rf "$ORIGIN" "$SHALLOW" "$NOREMOTE"` at line 269 — one of the three `rm -rf` calls PR 1 step 6 directs the implementer to *drop* in favour of the new trap. As written, the conversion removes their only cleanup while routing only `_sandbox_repo()` under `$SANDBOX`, turning a clean-pass-safe pattern into an unconditional leak on every run. Step 6, the Context row, and the Files to Change row must name lines 244 and 261 and route both through `mktemp -d -p "$SANDBOX"`.
+
+3. **[File targeting] (must-fix)** — The `test_merge_pr_gate.sh` row in the Context table is factually wrong, and the error is repeated in Files to Change. The plan says "several call sites also do a second `SANDBOXES+=("$outside")` / `SANDBOXES+=("$bare")` directly in the test body (those direct appends *do* work …), plus per-test extra sandboxes (e.g. 679–692)". In that file `SANDBOXES+=` appears exactly twice — lines 137 and 146 — both inside `make_sandbox()`, both swallowed by the `$()`; there is no `$outside` variable in the file and lines 679–692 create no sandboxes. The shape described belongs to `test_merge_pr.sh` (direct appends at 652, 682, 687). Consequence for the implementer: line 146's `bare="${sb}.remote.git"` leaks today too and is currently mis-filed as "works", and the Files to Change row asks them to fold a `$outside` that does not exist. Correct both rows. (The round-1 review asked specifically for this inventory to be verified against the tree, so the accuracy bar here is the finding's own bar.)
+
+4. **[Approach] (suggestion)** — Several sandboxes are string-derived siblings of `$sb`, not separate `mktemp` calls: `test_merge_pr_gate.sh:146` (`${sb}.remote.git`, re-derived at line 236 in `make_ci_sandbox` and used as the `gh` fixture *filename key* at 241) and `test_merge_pr.sh` (`${sb}.project.remote.git`, `${sb}.farrepo.remote.git`). Once `sb` becomes `mktemp -d -p "$SANDBOX"` these land under `$SANDBOX` automatically and need no separate handling — but the fixture key is computed from that path, so the plan should state the rule explicitly ("keep `bare` derived from `$sb` by string append; do not give it its own `mktemp`") rather than leaving "fold `$bare` into `$SANDBOX`" open to an implementation that changes the path shape and silently breaks fixture lookup.
+
+5. **[File targeting] (suggestion)** — The `test_dispatch_phase.sh` row calls `SBP1` / `SBP2` "`mk_sandbox` calls"; lines 394 and 410 are direct top-level `SBP1="$(mktemp -d)"` / `SBP2="$(mktemp -d)"`, not helper calls. Same fix applies (fold under `$SANDBOX`), but the Files to Change row should name them so they are not missed while converting the helper.
+
+6. **[Context] (suggestion)** — `test_worktree_enter_stderr.sh` is not the only file already using the target convention: `test_resolve_work_plans_dir.sh` (lines 174–184) does eager top-level `TMP_ROOT=$(mktemp -d)` + `trap 'rm -rf "$TMP_ROOT"' EXIT` with an explicit comment about why the helper cannot register from inside `$(...)`. Citing it as a second reference — a helper that builds `${TMP_ROOT}/$base` subdirs — gives the implementer a worked example of the exact helper shape PR 1 wants, and confirms the convention was already the considered choice elsewhere in the tree.
+
+7. **[Approach] (suggestion)** — PR 2 step 3's "derive the guard's per-run `TMPDIR` from `SCRIPT_DIR` context (i.e. it is always a location the guard itself controls under `/tmp`)" reads as a contradiction: the directory comes from `mktemp -d /tmp/run-script-tests.XXXXXX` and has nothing to do with `SCRIPT_DIR`. The intent from round-1 finding 3 is "never derive it from the caller-supplied `[tests-dir]`" — say that plainly and drop the `SCRIPT_DIR` phrasing.
+
+### Summary
+
+The revision folds in all ten round-1 findings and the two substantive design decisions (per-run `TMPDIR` under `/tmp`, per-suite sweep with attribution) are now well argued and correct. What is still not right is the thing round-1 finding 5 was about: the per-line inventories. Spot-checking the tree turns up six absolute-template sites in `test_gh_create_pr.sh` where the plan lists one, two untracked sandboxes in `test_checkpoint_269.sh` whose only cleanup the plan tells the implementer to delete, and a `test_merge_pr_gate.sh` row describing code that is not in that file. These are small edits to the plan but each one changes what an implementer does.
+
+### Recommended Actions
+
+- [ ] List all six absolute-`/tmp` `mktemp` sites in `test_gh_create_pr.sh` (27, 140, 157, 207, 239, 350) and say what happens to the inline `rm -f` calls
+- [ ] Add `test_checkpoint_269.sh:244` (`SHALLOW`) and `:261` (`NOREMOTE`) to the Context row, step 6, and the Files to Change row; route both through `mktemp -d -p "$SANDBOX"` before dropping the `rm -rf` at line 269
+- [ ] Correct the `test_merge_pr_gate.sh` Context and Files-to-Change rows: the only appends are 137 and 146, both inside `make_sandbox()` and both swallowed; no `$outside`; no sandboxes at 679–692
+- [ ] State that `bare` stays a string-derived sibling of `$sb` so the `gh` fixture filename key keeps resolving
+- [ ] Name `test_dispatch_phase.sh:394` / `:410` as direct top-level `mktemp -d` sites, not `mk_sandbox()` calls
+- [ ] Cite `test_resolve_work_plans_dir.sh:174–184` as a second in-tree reference for the target helper shape
+- [ ] Reword PR 2 step 3's `SCRIPT_DIR` sentence to "not derived from the caller-supplied `[tests-dir]`"
