@@ -342,3 +342,61 @@ suites 0; **320 leaked directories per full run**, not the issue's ~100. No
 suite wrote new top-level `/tmp` entries on a clean pass, which confirms the
 five absolute-template suites and `test_checkpoint_269.sh` are in scope for
 guard visibility and abort paths rather than for the boot-stall symptom.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-21 11:05 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**Issue**: #297 — script tests: mktemp sandboxes registered inside $() never get cleaned — ~100 leaked into /tmp per run, stalling boot 2 min
+**Plan**: `.agent/work-plans/issue-297/plan.md` at `ffb93d9`
+**Branch**: `feature/issue-297`
+**Round**: 3 (review of revision 2, after the round-2 `needs-work` at `6098570`)
+
+### Round-2 findings — verification against the tree
+
+Every line number cited below was re-read in the file, not taken from the plan.
+
+| # | Round-2 finding | Resolved? |
+|---|---|---|
+| 1 (must-fix) | `test_gh_create_pr.sh` absolute templates: one listed, six exist | Yes — Context table, Approach step 7 and the Files-to-Change row all name 27, 140, 157, 207, 239, 350. Verified: those are exactly the six `mktemp /tmp/...` sites in the file, and the inline `rm -f` calls are at 153, 176, 217, 253, 358 with the single `trap 'rm -rf "$SHIM_DIR"' EXIT` at 31. The plan now also states the disposition the finding asked for: drop all five inline `rm -f`, with the reason (success-path only; each `TMPF` is freshly named) |
+| 2 (must-fix) | `test_checkpoint_269.sh`'s `SHALLOW` / `NOREMOTE` unmentioned; conversion would delete their only cleanup | Yes — verified `dir=$(mktemp -d)` at 141 inside `_sandbox_repo()` (139–145), `SHALLOW=$(mktemp -d)` at 244, `NOREMOTE=$(mktemp -d)` at 261, `rm -rf` at 201 / 269 / 288, `set -u` at 34 and no trap in the file. All three sites appear in the Context row, step 6 and the Files-to-Change row, and step 6 states the ordering constraint explicitly ("only *after* all three are routed under `$SANDBOX`") with the regression it prevents named |
+| 3 (must-fix) | `test_merge_pr_gate.sh` row described `test_merge_pr.sh` code | Yes — verified in the file: `SANDBOXES+=` appears exactly twice, at 137 and 146, both inside `make_sandbox()`; no `$outside` variable; lines 679–692 create no sandboxes (they call `make_ci_sandbox`). Both the Context row and the Files-to-Change row now say this, and `bare` (146) is correctly re-filed as leaking today rather than "works" |
+| 4 (suggestion) | State that `bare` stays string-derived so the `gh` fixture key resolves | Yes — step 3a carries the rule verbatim for the implementer. Verified the key really is computed from that path string at 165 and at 241 |
+| 5 (suggestion) | `SBP1`/`SBP2` are direct `mktemp -d`, not `mk_sandbox` calls | Yes — verified 394 and 410 are direct `"$(mktemp -d)"`; `mk_sandbox()` is 27–38 with `mktemp -d` at 29; call sites 121, 350, 424; `TMPD` at 17 with its trap at 18. Step 4 and the Files-to-Change row both call them out |
+| 6 (suggestion) | Cite `test_resolve_work_plans_dir.sh` as a second in-tree reference | Yes — verified 174–176 is the comment about `$(...)` subshells, 177 the eager `TMP_ROOT=$(mktemp -d)`, 178–183 `make_temp_repo()`, 184 the trap. Context cites exactly that |
+| 7 (suggestion) | Drop PR 2 step 3's `SCRIPT_DIR` phrasing | Yes — now reads "never derived from the caller-supplied `[tests-dir]` argument" |
+
+Other claims spot-checked and confirmed: the trap/array blocks at `test_ros2_colcon.sh` 61–68 and `make_sandbox()` 71–82 (73/74), `test_merge_pr.sh` 59–66 and `make_merge_sandbox()` 158–184 (160/161, second append 178) with the working body appends at 652, 681/682, 687; `test_precommit_hook_path.sh` 24–26, 30, 69; `test_project_registry.sh` 50–57, 59–70 (61/62) and the five `outside` pairs at 726/727, 989/990, 1086/1087, 1113/1114, 1165/1166; `test_adapter.sh` 62–69, 75/76; `test_worktree_enter_stderr.sh` 22–23 on `main`; the four other absolute-template suites (22/23, 19/57, 28/51, 23/48 and 122/126). The inventory claim also holds: the tree has exactly 23 `test_*.sh` suites, and every one outside the eight-suite set either uses no `mktemp` or does a top-level `TMPD="$(mktemp -d)"` + trap.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Two-PR split unchanged and still right; PR 1 stays behaviour-neutral |
+| Issue alignment | Good | Three named suites + five found by review, plus the ten absolute-template sites |
+| File targeting | Good | Per-line inventory now matches the tree on every point the last two rounds got wrong; three residual off-by-one/omission nits below, none of which change what an implementer does |
+| Consequences | Good | `AGENTS.md` table, `test_run_script_tests.sh`, exit-code consumers, fixture-key coupling |
+| Principle alignment | Good | Enforcement over documentation; measured baseline satisfies "test what breaks"; cleanup command stays manual and caveated |
+| ADR compliance | Good | ADR-0011 correction carried; ADR-0013 persistence noted |
+| ROS conventions | N/A | Workspace plan |
+
+The measured leak table is the substantive addition this round and it changes the plan's standing: the verification step in PR 1 step 8 now has per-suite numbers to regress against (320 per full run across seven suites), and the two zero rows — the five absolute-template suites and `test_checkpoint_269.sh` — are correctly re-scoped as abort-path/guard-visibility work rather than boot-stall work.
+
+### Findings
+
+1. **[File targeting] (suggestion)** — `make_sandbox()` in `test_merge_pr_gate.sh` starts at line **135** (the function header), not 136 (`local sb bare`). The plan cites "136–167" in both the Context row and the Files-to-Change row. Cosmetic; the two lines that matter (137, 146) are right.
+
+2. **[Approach] (suggestion)** — PR 2 step 3 cites the runner's `TESTS_DIR="${1:-$SCRIPT_DIR}"` as "line 59"; it is line **58** of `.agent/scripts/tests/run_script_tests.sh`. The `# Exit codes:` header is at 26–27 as stated.
+
+3. **[File targeting] (suggestion)** — The `${sb}.remote.git` re-derivations in `test_merge_pr_gate.sh` are enumerated as 216 and 236 (plus the fixture keys at 165 and 241), but the same string is re-derived twice more in test bodies: line **853** and line **931**, the latter keying a fixture at 935. Step 3a's rule ("keep `bare` derived from `$sb` by string append; never give it its own `mktemp`") already covers them, and none of them is a `mktemp` site, so nothing leaks — but an implementer working from the line list will not see them. Worth appending "and at 853, 931/935" to the enumeration.
+
+### Summary
+
+The revision holds up under a line-by-line re-check: all three round-2 must-fixes are resolved against the actual files, and the four suggestions are folded in. The three residual items above are cosmetic line-citation nits, not behaviour-changing errors, so they do not warrant another revision round — fold them in during implementation if convenient. The plan is ready.
+
+### Recommended Actions
+
+- [ ] (optional, at implementation time) Correct `make_sandbox()`'s range in `test_merge_pr_gate.sh` to 135–167 and the runner's `TESTS_DIR` line to 58
+- [ ] (optional, at implementation time) Add `test_merge_pr_gate.sh:853` and `:931`/`:935` to the `${sb}.remote.git` re-derivation list so the string-derivation rule is applied there too
