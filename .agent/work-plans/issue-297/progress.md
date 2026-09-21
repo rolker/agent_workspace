@@ -515,3 +515,45 @@ its own `read_file` permission, copilot rejected the script's argv
 **Decision**: publish
 
 Publish (Recommended) — PR 1 of #297 (Refs, not Closes; PR 2 adds the guard). The three suggestions are tracked, not applied: rev-parse self-check in the outside-any-repo test and the TMP_HOME note can ride with PR 2.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-21 11:58 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #303 at `d380785`
+**Sources**: 2 (Local Review (Pre-Push) R1 @ `caef899`, carried forward to this head; CI rollup @ `d380785`). Copilot R1 @ `d380785` is not a source — its only content is "Copilot was unable to review this pull request because the user who requested the review has reached their quota limit."
+**Cross-source confirmations**: 0 (only one substantive source exists)
+**CI**: all-pass
+
+The `sources` helper returned zero local findings at this head because the
+local review's correlation SHA is `caef899` while the head is `d380785`. The
+only commits between them are `6e183d3` (the review's own progress entry) and
+`d380785` (the checkpoint entry): `git diff --stat caef899 d380785` touches
+`progress.md` alone — no reviewed file changed. This is the known #286 pattern
+(a review's own progress commit makes the head look stale), so the three round-1
+suggestions are carried forward verbatim rather than dropped, and each was
+re-verified against the working tree at `d380785`:
+`test_merge_pr_root_resolution.sh:133` still probes via `mktemp -d -p "$SANDBOX"`
+with no `git rev-parse` self-check; `test_block_bash_tool_mapping.sh:29` still
+uses the fixed-name `TMP_HOME="$SANDBOX/home"` + `mkdir -p`; `run_script_tests.sh`
+still contains no leak guard (`grep -n 'SANDBOX\|TMPDIR\|leak'` returns nothing).
+
+Six real checks are green (Lint (pre-commit), Validate Adapter Contract,
+Validate Documentation — two workflow runs each). A seventh check-run,
+`copilot-pull-request-reviewer`, reports `failure`; its failure is the review
+quota exhaustion above, not a signal about the code, so the rollup is treated as
+all-pass.
+
+Round 1 found 0 must-fix and the owner's `## Checkpoint` (publish) already
+decided the three suggestions ride with PR 2. Nothing in this triage reopens
+that: no must-fix is outstanding and no new finding was raised. The open boxes
+below are the PR 2 backlog, deliberately not blocking this PR.
+
+### Findings
+- [ ] (suggestion, Local Review R1 @ `caef899`) outside-any-repo probe's premise is now TMPDIR-dependent, not hardcoded; add a `git rev-parse` self-check so it asserts its own precondition — `.agent/scripts/tests/test_merge_pr_root_resolution.sh:133` (deferred to PR 2 by owner checkpoint)
+- [ ] (suggestion, Local Review R1 @ `caef899`) TMP_HOME became a fixed-name `mkdir` subdir instead of the `mktemp -d -p "$SANDBOX"` the plan's wording implied; harmless and matches SHIM_DIR, but undeclared — `.agent/scripts/tests/test_block_bash_tool_mapping.sh:29` (deferred to PR 2 by owner checkpoint)
+- [ ] (suggestion, Local Review R1 @ `caef899`) PR 1 fixes the leak but no guard yet prevents a new suite reintroducing it; PR 2 should follow with no unrelated work in between — `.agent/scripts/tests/run_script_tests.sh` (PR 2)
+
+### False positives
+- (Copilot R1 @ `d380785`) No finding claimed — the review body is only a quota-limit notice with 0 inline comments, so there is nothing to classify; recorded here so the round shows Copilot produced no code signal rather than an implicit approval.
