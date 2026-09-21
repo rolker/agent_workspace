@@ -410,3 +410,54 @@ The revision holds up under a line-by-line re-check: all three round-2 must-fixe
 **Decision**: proceed
 
 Proceed (Recommended) — implement PR 1 of the plan (eight leaking suites onto the top-level SANDBOX + trap convention; five absolute-template suites normalised) on this branch with Refs #297; PR 2 (runner guard) follows as a second drive. The three round-3 nits (make_sandbox starts at 135; runner line 58; ${sb}.remote.git also at 853, 931/935) are folded in during implementation. Implementer: Opus sub-agent under the host's direction.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-21 11:38 -04:00
+**By**: Claude Code Agent (implementer: claude-opus-5; lead: claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-297/plan.md` at `ffb93d9`
+
+**Branch**: `feature/issue-297` at `16fadfa`
+**Mode**: inline
+
+PR 1 of #297: all thirteen suites named in the plan were converted to the
+single-top-level-`SANDBOX` + `trap 'rm -rf "$SANDBOX"' EXIT` convention, one
+commit per file (`a649c62`..`16fadfa`), with no test logic, assertion, fixture
+or stub touched. The eight `$()`-swallowed-array / untrapped-helper suites
+(`test_ros2_colcon.sh`, `test_merge_pr.sh`, `test_precommit_hook_path.sh`,
+`test_project_registry.sh`, `test_adapter.sh`, `test_merge_pr_gate.sh`,
+`test_dispatch_phase.sh`, `test_checkpoint_269.sh`) lost their `SANDBOXES`
+arrays, `cleanup()` functions and per-array traps entirely — `grep -rn
+SANDBOXES .agent/scripts/tests/` now returns nothing — and every helper builds
+its per-test directory with `mktemp -d -p "$SANDBOX"` (never a counter, which
+would collapse across the `$()` subshell). String-derived siblings
+(`${sb}.remote.git`, `.project.remote.git`, `.farrepo.remote.git`) were left
+string-derived so the `gh` fixture filename keys still resolve; the six real
+"outside" sandboxes (`test_project_registry.sh` x5, `test_merge_pr.sh` x1) became
+`$SANDBOX` siblings of the per-test dir, not children. `test_dispatch_phase.sh`
+folded its `TMPD` fixture dir into `$SANDBOX/fixtures` and converted the two
+direct `SBP1`/`SBP2` assignments; `test_checkpoint_269.sh` routed all three
+`mktemp -d` sites first and only then dropped its three success-path `rm -rf`
+calls. The five absolute-template suites
+(`test_block_bash_tool_mapping.sh`, `test_cross_model_review.sh`,
+`test_sync_gitbug.sh`, `test_merge_pr_root_resolution.sh`,
+`test_gh_create_pr.sh`) lost all ten hardcoded `/tmp/...` templates so `mktemp`
+honors `TMPDIR`; `test_gh_create_pr.sh` also dropped its five success-path-only
+inline `rm -f` calls in favour of the trap, and
+`test_merge_pr_root_resolution.sh:122`'s outside-any-repo probe now sits under
+`$SANDBOX` (a temp root outside any git work tree, so the assertion is
+unchanged and it gains trap coverage). Measured before/after with each suite run
+under a fresh `TMPDIR`/`TMP`/`TEMP`: the plan's baseline of 320 leaked entries
+per full run (112 `test_merge_pr_gate.sh`, 56 `test_project_registry.sh`, 55
+`test_ros2_colcon.sh`, 47 `test_adapter.sh`, 42 `test_merge_pr.sh`, 5
+`test_dispatch_phase.sh`, 3 `test_precommit_hook_path.sh`) is now **0 for all 23
+suites**, and no previously-zero suite regressed. `bash
+.agent/scripts/tests/run_script_tests.sh` exits 0 with all 23 suites passing;
+pre-commit (which runs the whole suite) passed on every one of the 13 commits.
+No deviation from the plan's PR 1 scope — `run_script_tests.sh`, `AGENTS.md` and
+the cleanup documentation are untouched and remain PR 2. One judgement call
+inside the plan's latitude: in the three suites with per-test `setup`/`teardown`
+pairs (`test_cross_model_review.sh`, `test_sync_gitbug.sh`,
+`test_merge_pr_root_resolution.sh`) the `EXIT` trap was moved from `teardown` to
+`rm -rf "$SANDBOX"`, since two `EXIT` traps cannot coexist; `teardown` keeps its
+per-test `rm -rf "$TMPDIR_BASE"` and the `$SANDBOX` trap is the abort backstop.
