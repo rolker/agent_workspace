@@ -24,8 +24,16 @@ PASS=0
 FAIL=0
 TMPDIR_BASE=""
 
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. No hardcoded /tmp template:
+# `mktemp -d` honors TMPDIR, so the run stays inside whatever temp root the
+# caller set. Each test's setup/teardown still carves and drops its own
+# TMPDIR_BASE under it; the trap is the backstop for an abort.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
+
 setup() {
-    TMPDIR_BASE=$(mktemp -d /tmp/test_sync_gitbug.XXXXXX)
+    TMPDIR_BASE=$(mktemp -d -p "$SANDBOX")
     mkdir -p "${TMPDIR_BASE}/bin" "${TMPDIR_BASE}/repo"
     git init -q "${TMPDIR_BASE}/repo"
 
@@ -48,7 +56,6 @@ teardown() {
         rm -rf "$TMPDIR_BASE"
     fi
 }
-trap teardown EXIT
 
 assert_log_has() {
     local label="$1" needle="$2" log="$3"
