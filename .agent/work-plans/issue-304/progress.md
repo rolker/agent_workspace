@@ -269,3 +269,13 @@ design change.
 - [ ] State that the in-script boundary comment cites sites as `file:line`, without reproducing absolute templates (finding 2)
 - [ ] Note that step 9's full-suite run is the false-positive check for the sweep (finding 3)
 - [ ] Add a clause explaining why the guard dir hardcodes `/tmp` (finding 4)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 12:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed to implementation (Recommended) — implement the plan at `a39284e` with the round-2 review's four items applied as construction details: the lint test's fixture generator assembles the absolute template so no single line contains `mktemp`…`/tmp/` (e.g. `T=/tmp; printf '… mktemp -d %s/…' "$T"`); the in-script boundary comment names production sites as file:line only, never reproducing an absolute template; step 9's full run is the empirical check against sweep false positives from tools a suite shells to; the comment states the guard deliberately ignores the caller's TMPDIR. Implementer: Opus sub-agent under the host.
