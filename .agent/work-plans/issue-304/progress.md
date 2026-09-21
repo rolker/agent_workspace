@@ -145,3 +145,21 @@ The core design is sound and verified against the files: the guard dir is genuin
 **Decision**: revise
 
 Revise (Sonnet) — fold in both must-fixes (guard dir via `mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX` so the lint's own pattern never matches it; lint lives in the runner, lints `$TESTS_DIR`, exits 1 as a preflight failure, documented in the header) and the six suggestions (concrete independence test; cleanup caveat restated on the depth-1 .git mechanism, count re-measured — 16,679 today, 5,934 with a depth-1 .git; dry-run form first; guard boundary stated incl. the eight production-script absolute-/tmp sites; AGENTS.md row). Owner approved the one-row AGENTS.md edit for this PR at this checkpoint — cite that, not a standing rule.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-21 12:41 -0400
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-304/plan.md` at `a39284e`
+
+Revision of `be1dd1e` addressing the Plan Review at `8714a44` (needs-work).
+Resolves both must-fix findings (guard dir now created with
+`mktemp -d --tmpdir=/tmp ...` so it never matches the lint it introduces;
+lint relocated into `run_script_tests.sh` as a `$TESTS_DIR` preflight
+exiting 1, documented in the exit-codes header) and all six suggestions
+(concretized independence test case; cleanup caveat restated on the
+depth-1-`.git` mechanism with re-measured counts; dry-run-first cleanup
+form; guard coverage boundary stated with the eight out-of-scope
+production-script sites; AGENTS.md row edit now cites the owner's
+Checkpoint approval). Design unchanged from `be1dd1e` — text-level fixes
+only, per the owner's `revise` decision at this issue's Checkpoint.
