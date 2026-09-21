@@ -121,3 +121,21 @@ than inventing a second "correct" pattern.
 **Decision**: proceed
 
 Proceed to planning (Recommended) — the Issue Review's action items carry into the plan: widen the fix to all seven leaking suites (add test_project_registry.sh, test_adapter.sh, test_merge_pr_gate.sh, test_dispatch_phase.sh); make the suite-level per-run TMPDIR guard + sweep required, in run_script_tests.sh (not .agent/scripts/test.sh); standardise on the top-level mktemp + trap shape used by test_worktree_enter_stderr.sh on feature/issue-194.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-21 10:04 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-297/plan.md` at `8fb917f`
+
+Two PRs: PR 1 converts all seven suites with the $()-swallowed-array (or,
+for test_dispatch_phase.sh, never-registered) sandbox leak — the three the
+issue named plus test_project_registry.sh, test_adapter.sh,
+test_merge_pr_gate.sh, and test_dispatch_phase.sh, found by the Issue
+Review — to a single top-level `SANDBOX="$(mktemp -d)"` + `trap 'rm -rf
+"$SANDBOX"' EXIT`, matching test_worktree_enter_stderr.sh on the unmerged
+feature/issue-194 branch. PR 2 adds the required per-run TMPDIR guard +
+sweep to run_script_tests.sh (not adapter test/test.sh), updates AGENTS.md's
+script table, and documents (not automates) a one-time cleanup command for
+the ~2,800 pre-existing /tmp/tmp.* leaks. PR 1 lands before PR 2 so the
+guard passes on first run instead of failing on suites not yet converted.
