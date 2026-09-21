@@ -163,3 +163,109 @@ form; guard coverage boundary stated with the eight out-of-scope
 production-script sites; AGENTS.md row edit now cites the owner's
 Checkpoint approval). Design unchanged from `be1dd1e` — text-level fixes
 only, per the owner's `revise` decision at this issue's Checkpoint.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-21 12:43 -0400
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #304 — run_script_tests.sh: per-run TMPDIR guard that fails the run on a leaked sandbox (#297 PR 2)
+**Plan**: `.agent/work-plans/issue-304/plan.md` at `a39284e`
+**Branch**: `feature/issue-304`
+
+Round 2 — light-depth delta review of the revision of `be1dd1e`, against the
+round-1 `## Plan Review` at `8714a44` (2 must-fix, 6 suggestions).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged from round 1 — text-level revision only, no design change |
+| Issue alignment | Good | Enforcement layer intact: exit 2 leak failure with per-suite attribution, exit 1 preflight lint |
+| File targeting | Good | Re-verified on this branch: runner lines 26–27, 58, 99–110 still accurate; `AGENTS.md:411` is the `run_script_tests.sh` row; all eight production-script sites in step 7 verified exact (`worktree_create.sh:933,974`, `pr_status.sh:321,336`, `gh_create_pr.sh:237,306`, `fetch_pr_reviews.sh:148`, `gh_create_issue.sh:205`) |
+| Consequences | Good | Coverage boundary now stated (round-1 finding 7); AGENTS.md row cites the owner's Checkpoint approval rather than a claimed standing rule (round-1 finding 8) |
+| Principle alignment | Needs work | The lint/guard collision is fixed for the guard line, but the same collision is reintroduced by the new lint *test* case (finding 1 below) |
+| ADR compliance | Good | ADR-0011 not triggered; ADR-0013 vocabulary followed |
+| ROS conventions | N/A | Workspace plan |
+
+### Round-1 items — verified resolved
+
+- **Must-fix 1 (lint vs. guard)** — resolved. Verified empirically: the new
+  line `RUN_TMPDIR=$(mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX)` piped
+  through `grep -nE 'mktemp[^|]*/tmp/'` returns no match (rc 1), because the
+  regex needs a literal `/tmp/` after `mktemp` and `--tmpdir=/tmp ` has a
+  space, not a slash, before the template. The form also works: it creates
+  the directory directly under `/tmp` with the same random-suffix semantics.
+  `grep -rnE 'mktemp[^|]*/tmp/' .agent/scripts/tests/*.sh` returns nothing on
+  the current tree, so the lint starts green.
+- **Must-fix 2 (lint placement / exit code)** — resolved. Step 5 now fixes
+  both open choices (in `run_script_tests.sh`, lints `$TESTS_DIR`) and
+  assigns exit `1` as a preflight-class failure; step 3 folds that into the
+  `# Exit codes:` header text alongside the missing-tool case.
+- **Suggestion 3** — resolved: the independence check is now an observable
+  assertion (leak fixture run from a scratch tests-dir outside `$TMPDIR`,
+  exit 2 either way).
+- **Suggestions 4–6** — resolved: the caveat is restated on the depth-1
+  `.git` mechanism with the verified "no `git init` in any of the three
+  suites" fact; the count is re-measured and dated (16,679 / 5,934 on
+  2026-09-21); the dry-run form is given first, deleting form second.
+- **Suggestion 7** — resolved: boundary stated, with the eight sites named.
+- **Suggestion 8** — resolved: the `AGENTS.md` edit now cites the owner's
+  `## Checkpoint` approval for this specific one-row edit.
+
+### Findings
+
+**Must-fix**
+
+1. **[Principle alignment / internal consistency]** — The new lint test case
+   in step 5 recreates the exact collision must-fix 1 just removed, one level
+   up. The case is "a fixture file containing an absolute-`/tmp/` `mktemp`
+   call, placed in a scratch tests-dir" — but that fixture has to be written
+   by `test_run_script_tests.sh`, and the generator line lives in
+   `.agent/scripts/tests/test_run_script_tests.sh`, which the real run's lint
+   scans via `"$TESTS_DIR"/*.sh`. Verified: a natural generator line such as
+   `printf 'd=$(mktemp -d /tmp/leak.XXXXXX)\n' > "$scratch/test_lintfix.sh"`
+   matches `mktemp[^|]*/tmp/`, so the full-suite run in step 9 would fail the
+   preflight lint on the test file that tests the lint. Fix in the plan text:
+   require the fixture's absolute template to be assembled so no single line
+   of the generator contains `mktemp`…`/tmp/` — e.g.
+   `T=/tmp; printf 'd=$(mktemp -d %s/leak.XXXXXX)\n' "$T"` (verified: 0
+   matches) — and state that step 9's full run is the check that this held.
+
+**Suggestions**
+
+2. **[Consequences / implementation caution]** — Step 7 puts the coverage-
+   boundary note *inside* `run_script_tests.sh` as a comment near the guard
+   (see the Files-to-Change row). If that comment reproduces any of the eight
+   production-script lines verbatim (they all read `mktemp /tmp/...`), the
+   file lints itself red. Say in the plan that the in-script comment names
+   those sites as `file:line` only and never reproduces an absolute template.
+
+3. **[Test coverage]** — The sweep fires on *anything* left in `TMPDIR`,
+   including residue from tools a suite shells out to (git, gh, pre-commit),
+   not just the suite's own sandbox. Step 9's full real-suite run is the
+   empirical check that no such false positive exists today; worth saying
+   that explicitly, so a failure there is read as "investigate the
+   attribution", not "the guard is broken".
+
+4. **[Documentation]** — Minor: the guard hardcodes `/tmp` and so ignores a
+   caller's own `TMPDIR` for its own directory. Deliberate and trapped, but
+   one clause in the in-script comment saying so would prevent a future
+   reader from "fixing" it back into a lint collision.
+
+### Summary
+
+The revision resolves both round-1 must-fixes and all six suggestions, and
+every re-verified line number and count in the new text is accurate. One new
+must-fix arrived with the revision itself: the lint's own test fixture, as
+described, would make the real run's preflight lint fail on
+`test_run_script_tests.sh`. Like round 1's, it is a text-level fix, not a
+design change.
+
+### Recommended Actions
+
+- [ ] Specify how the lint-fixture generator avoids matching the lint pattern on its own line, and note that step 9's full run verifies it (finding 1)
+- [ ] State that the in-script boundary comment cites sites as `file:line`, without reproducing absolute templates (finding 2)
+- [ ] Note that step 9's full-suite run is the false-positive check for the sweep (finding 3)
+- [ ] Add a clause explaining why the guard dir hardcodes `/tmp` (finding 4)
