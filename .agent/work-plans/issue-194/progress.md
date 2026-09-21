@@ -217,6 +217,24 @@ Plan implemented as written plus the three round-2 review-plan suggestions (34c8
 **Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
 
 ### Findings
-- [ ] (must-fix) `test_must_be_sourced` reaches the sourced-check through the issue-title lookup, so every suite run does a live `git bug bridge pull github` + `gh issue view 999999` against the real repo and mutates shared local git-bug state — `.agent/scripts/tests/test_worktree_enter_stderr.sh:145`
-- [ ] (suggestion) The `echo "Error:` invariant is a literal-substring grep; a future `printf "Error: ..."` or differently-worded error message evades it — `.agent/scripts/tests/test_worktree_enter_stderr.sh:171`
-- [ ] (suggestion) Pre-existing: a dangling option value (`--issue`, `--type`, `--project`, `--repo-slug` as the last argument) makes `shift 2` fail and the parse loop spin forever; confirmed by timeout. Out of this plan's scope — warrants its own issue — `.agent/scripts/worktree_enter.sh:66`
+- [x] (must-fix) `test_must_be_sourced` reaches the sourced-check through the issue-title lookup, so every suite run does a live `git bug bridge pull github` + `gh issue view 999999` against the real repo and mutates shared local git-bug state — `.agent/scripts/tests/test_worktree_enter_stderr.sh:145`
+- [x] (suggestion) The `echo "Error:` invariant is a literal-substring grep; a future `printf "Error: ..."` or differently-worded error message evades it — `.agent/scripts/tests/test_worktree_enter_stderr.sh:171`
+- [x] (suggestion) Pre-existing: a dangling option value (`--issue`, `--type`, `--project`, `--repo-slug` as the last argument) makes `shift 2` fail and the parse loop spin forever; confirmed by timeout. Out of this plan's scope — warrants its own issue — `.agent/scripts/worktree_enter.sh:66` (deferred: pre-existing arg-parsing bug, out of this PR's scope; needs its own issue)
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-21 09:12 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-194 at `eef8fb6`
+**Addressed**: Local Review (Pre-Push) at `202999e` (2026-09-21 09:05 -04:00)
+**Commits**: eef8fb6
+
+### Actions
+- [x] (must-fix) `test_must_be_sourced` made a live `gh issue view` call and could fire `git bug bridge pull github` on every suite run — `.agent/scripts/tests/test_worktree_enter_stderr.sh:145`. Fixed: the two invocations that reach the sourced-check now run with `gh` and `git-bug` shadowed by inert logging stubs on PATH. Both lookup entry points in `_issue_helpers.sh: issue_lookup` are gated on `command -v`, and `git bug …` dispatches through `git-bug` on PATH, so the lookup finds nothing, writes nothing, and still falls through to the path under test. The suite asserts the stubs were the ones consulted. Verified: the stub log for a run records `git-bug bug -m …`, `git-bug bridge`, `gh issue view 999999 …` and nothing else — `git-bug bridge` returns empty, so `has_bridge` is 0 and no `bridge pull github` is attempted; the workspace's `refs/bugs/**` hashes are byte-identical before and after a suite run.
+- [x] (suggestion) The `echo "Error:` invariant was a literal-substring grep — `.agent/scripts/tests/test_worktree_enter_stderr.sh:171`. Broadened to `grep -nE '(echo|printf)[[:space:]].*Error:'`, so a future `printf "Error: …"` (either quoting style) is covered. Still reports zero un-routed emitters against the current script.
+- [x] (suggestion) Dangling option value makes `shift 2` fail and the parse loop spin forever — `.agent/scripts/worktree_enter.sh:66` (deferred: pre-existing arg-parsing bug, out of this PR's scope; needs its own issue — the host will open it)
+
+### Verification
+- `bash .agent/scripts/tests/test_worktree_enter_stderr.sh` — 36 passed, 0 failed
+- Pre-commit on the fix commit: all hooks passed, including the full `.agent/scripts/tests/` suite and shellcheck
