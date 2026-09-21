@@ -60,3 +60,11 @@ issue: 194
 **Decision**: proceed
 
 Proceed to planning (Recommended) — the three Issue Review action items (regression test for every error path under 2>/dev/null; cover unknown option, missing --skill name, exclusive --issue/--skill, missing --type; route the line-74 and 125–148 errors too) carry into the plan.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-21 08:36 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-194/plan.md` at `dddd51e`
+
+Route every un-routed `Error: ...` echo in `worktree_enter.sh` (lines 74, 106, 125, 130, 135, 140, 144, 148, 365, 383) to stderr with `>&2`, no behavioral change beyond stream routing; add a new regression test (`test_worktree_enter_stderr.sh`) covering unknown option, missing `--skill` name, mutually-exclusive `--issue`/`--skill`, and missing `--type` (plus the remaining un-routed paths) under `2>/dev/null` asserting empty stdout; and remove the now-stale stdout-leak caveat at `start-task/SKILL.md` line 70.
