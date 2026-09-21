@@ -207,3 +207,23 @@ The plan's diagnosis, scope widening, PR split and ordering are all sound, and i
 **Decision**: revise
 
 Revise the plan with all ten Plan Review findings folded in (5 must-fix: mktemp -d under the trapped root, not a counter; per-run TMPDIR outside the git work tree; test_run_script_tests.sh cases for the guard; absolute-template mktemp sites normalised or linted; test_checkpoint_269.sh as the eighth file). Owner asked whether .agent/scratchpad/ being gitignored changes finding 2 — it does not: ignore rules affect tracking, not `git rev-parse` discovery, so a sandbox there still resolves to the workspace root.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-21 12:00 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-297/plan.md` at `cadf1a9`
+
+Revised plan folding in all ten Plan Review findings (five must-fix, five
+suggestions): replaced the counter-based per-test subdirectory scheme with
+`mktemp -d -p "$SANDBOX"`, moved the PR 2 per-run `TMPDIR` from
+`.agent/scratchpad/` to `/tmp` (outside any git work tree), added
+`test_run_script_tests.sh` leak/no-leak coverage for the new guard,
+normalised the five suites that hardcode an absolute `/tmp` `mktemp`
+template, added `test_checkpoint_269.sh` as the eighth suite in scope
+(correcting the earlier "no additional suites" claim), and moved the sweep
+inside the per-suite loop, sibling-not-child placement for `outside`/`bare`
+fixtures, a fuller one-time-cleanup caveat, and PR 2 landing promptly after
+PR 1. `main` (with #194 / PR #299) was merged into this branch first so the
+plan's reference to `test_worktree_enter_stderr.sh` points at `main`
+instead of the old unmerged branch.
