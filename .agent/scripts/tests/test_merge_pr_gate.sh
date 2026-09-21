@@ -23,9 +23,12 @@ PASS=0
 FAIL=0
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
-SANDBOXES=()
-cleanup() { local s; for s in ${SANDBOXES[@]+"${SANDBOXES[@]}"}; do rm -rf "$s"; done; }
-trap cleanup EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. make_sandbox() carves per-test
+# directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
+# shared state and so survives being called as `sb="$(make_sandbox)"`.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
 export AGENT_NAME="Test Agent"
 export AGENT_EMAIL="test+agent@example.com"
 unset WORKTREE_ISSUE WORK_PLANS_DIR_OVERRIDE PROGRESS_PERSISTENCE_STRICT
@@ -134,7 +137,7 @@ EOF
 # with a bare origin, a feature/issue-7 worktree, and a progress.md fixture.
 make_sandbox() {  # <progress-body|""> [with_summary]
     local sb bare
-    sb="$(mktemp -d)"; SANDBOXES+=("$sb")
+    sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts" "$sb/stubbin" "$sb/gh_fixtures"
     for f in merge_pr.sh worktree_remove.sh worktree_list.sh _worktree_helpers.sh _issue_helpers.sh _project_registry.sh progress_read.py progress_append.sh _progress_entry.sh update_roadmap.sh; do
         cp "$REAL_ROOT/.agent/scripts/$f" "$sb/.agent/scripts/"
@@ -143,7 +146,9 @@ make_sandbox() {  # <progress-body|""> [with_summary]
     write_gh_stub "$sb"
     git -C "$sb" init --quiet -b main
     git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
-    bare="${sb}.remote.git"; git init --bare --quiet "$bare"; git -C "$bare" symbolic-ref HEAD refs/heads/main; SANDBOXES+=("$bare")
+    # String-derived sibling of $sb (so it lands under $SANDBOX too); the
+    # gh fixture filenames are keyed on this exact path string.
+    bare="${sb}.remote.git"; git init --bare --quiet "$bare"; git -C "$bare" symbolic-ref HEAD refs/heads/main
     git -C "$sb" remote add origin "$bare"
     git -C "$sb" push --quiet -u origin main
     # the PR's worktree with its timeline
