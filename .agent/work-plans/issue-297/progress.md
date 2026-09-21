@@ -295,3 +295,13 @@ The revision folds in all ten round-1 findings and the two substantive design de
 - [ ] Name `test_dispatch_phase.sh:394` / `:410` as direct top-level `mktemp -d` sites, not `mk_sandbox()` calls
 - [ ] Cite `test_resolve_work_plans_dir.sh:174–184` as a second in-tree reference for the target helper shape
 - [ ] Reword PR 2 step 3's `SCRIPT_DIR` sentence to "not derived from the caller-supplied `[tests-dir]`"
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 10:48 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise with Opus (Recommended) — one-off tier override for this revision (plan-task normally runs on Sonnet): the remaining must-fixes are per-file line-inventory errors that two Sonnet passes got wrong and the Opus reviewer pinned exactly. Fold in round-2 findings 1–7.
