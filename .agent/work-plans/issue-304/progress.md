@@ -279,3 +279,65 @@ design change.
 **Decision**: proceed
 
 Proceed to implementation (Recommended) — implement the plan at `a39284e` with the round-2 review's four items applied as construction details: the lint test's fixture generator assembles the absolute template so no single line contains `mktemp`…`/tmp/` (e.g. `T=/tmp; printf '… mktemp -d %s/…' "$T"`); the in-script boundary comment names production sites as file:line only, never reproducing an absolute template; step 9's full run is the empirical check against sweep false positives from tools a suite shells to; the comment states the guard deliberately ignores the caller's TMPDIR. Implementer: Opus sub-agent under the host.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-21 13:00 -04:00
+**By**: Claude Code Agent (implementer: claude-opus-5; lead: claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-304/plan.md` at `a39284e`
+
+**Branch**: `feature/issue-304` at `5887915`
+**Mode**: inline
+
+Four atomic commits. `4b06617` — `run_script_tests.sh` gains a preflight lint
+(`grep -rnE 'mktemp[^|]*/tmp/' "$TESTS_DIR"/*.sh`, exit 1, names the offending
+file, runs after the existing tool preflight and before any suite) and the
+per-run guard: `RUN_TMPDIR=$(mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX)`
+created immediately before the suite loop with an unconditional `EXIT` trap,
+exported as `TMPDIR`/`TMP`/`TEMP`, plus a sweep inside the loop on the
+continue path that exits 2 naming the suite and the leftover paths; the
+`# Exit codes:` header now documents 0/1/2. The same commit adds cases (e)–(h)
+to `test_run_script_tests.sh`: leak fixture → exit 2 naming the suite; a suite
+that creates and removes its own `TMPDIR` files → still exit 0; the same leak
+fixture run from a tests-dir outside a caller-supplied `TMPDIR` → still exit 2
+and the caller's `TMPDIR` is asserted untouched (the observable form of guard
+independence from both `[tests-dir]` and caller `TMPDIR`); an absolute-`/tmp`
+template fixture → exit 1, naming the file, with a marker proving no suite
+ran. Cases (a)–(d) unmodified and still passing. `11751a8` —
+`test_merge_pr_root_resolution.sh` `test_resolution_outside_repo()` asserts the
+precondition with `git rev-parse --is-inside-work-tree` before asserting
+`resolve_root` returns empty. `92e50f4` — `test_block_bash_tool_mapping.sh`
+records why `TMP_HOME` keeps a fixed name under `$SANDBOX`. `5887915` —
+the one-row `AGENTS.md` Script Reference edit, per the owner's Checkpoint
+approval.
+
+Round-2 review items, all four applied: (1) the lint fixture's template is
+assembled via `ABS_TMP_ROOT=/tmp` on its own line and a `printf '%s'`
+substitution, so no line of `test_run_script_tests.sh` contains
+`mktemp`…`/tmp/` — the green full-suite run (which lints that file) is the
+empirical proof; (2) the in-script coverage-boundary comment cites the eight
+production sites as `file:line` only and says explicitly that reproducing a
+template there would trip the lint; (3) the comment states the sweep catches
+anything left in `TMPDIR`, including residue from tools a suite shells out to,
+and that the full real-suite run is the empirical check that no false positive
+exists today — read a future firing as an attribution question, not a broken
+guard; (4) the comment states the guard hardcodes `/tmp` and deliberately
+ignores the caller's `TMPDIR`, with both reasons (nested-run isolation and
+lint-collision avoidance) so nobody "fixes" it back.
+
+Verification: `bash .agent/scripts/tests/run_script_tests.sh` → exit 0, all 23
+suites in 48s with the guard active (no tool-residue false positives);
+`bash .agent/scripts/tests/test_run_script_tests.sh` → 9 passed, 0 failed;
+PR 1's per-suite measurement re-run across all 23 suites → 0 leftovers for
+every suite. Pre-commit hooks (including the full script-test suite) passed on
+each of the four commits.
+
+Deviations from the plan, both minor: the one-time-cleanup note landed inside
+`4b06617` with the guard comment it belongs to rather than as a fifth commit
+(it is a comment block in the same file; the PR-description paragraph is still
+owed at publish time). And the guard directory is created after the existing
+preflight checks, not before them, so the plan's parenthetical "removed on an
+early exit 1 from the preflight checks above the loop" is vacuous — no guard
+directory exists on those paths, so there is nothing to remove; creating it
+earlier would have required adding `mktemp`/`find` to case (d)'s minimal
+`PATH`, editing an existing case the plan said to leave intact.
