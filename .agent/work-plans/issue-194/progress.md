@@ -114,3 +114,13 @@ The plan's diagnosis, line inventory and file targeting are accurate and verifie
 - [ ] Add a test case for the non-sourced "must be sourced" path (lines 365–366); state explicitly that line 383's failed-`cd` path is covered by code change only.
 - [ ] Generalise `start-task/SKILL.md` line 70's first sentence to cover all failure paths, not just "not found".
 - [ ] Consider an invariant assertion in the new test file: no `echo "Error:` in `worktree_enter.sh` without `>&2`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 08:42 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise the plan — fold in the must-fix (show_usage >&2 at the error call sites; -h/--help stays on stdout, exit 0) and the four suggestions (test auto-discovery stated; cover line 365, declare 383 deliberately untested; generalise start-task SKILL.md line 70; grep-assert no un-routed `echo "Error:`). Owner note on the dialog itself: make checkpoint questions easier to read, not an unformatted block of text.
