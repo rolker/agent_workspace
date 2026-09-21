@@ -343,6 +343,11 @@ visible to plan review without further wiring.
   draft PR.
 - **Concrete, not generic** — "Update tests" is not a plan step. "Add test
   for edge case X in `test_foo.py`" is.
+- **A new `test_*.sh` needs its exec bit** — when a plan step creates a new
+  shell script, say `chmod +x` in the step. The
+  `check-shebang-scripts-are-executable` pre-commit hook fails the commit
+  otherwise, so the exec bit belongs in the plan as an explicit step rather
+  than as an implicit assumption.
 - **Flag conflicts early** — if the plan would violate a principle or ADR,
   say so and propose an alternative.
 - **Include open questions** — if the approach depends on a choice the user
