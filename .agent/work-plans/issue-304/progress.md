@@ -430,3 +430,24 @@ further lint escapes, both of which I reproduced myself before accepting.
 - [x] (suggestion) a bare relative template (`mktemp -d leak.XXXXXX`) ignores TMPDIR and lands in the runner's cwd — the repo root under pre-commit — invisible to both the lint and the sweep; verified run-green with the directory left behind; name it in the coverage boundary or open a follow-up — `.agent/scripts/tests/run_script_tests.sh:161`
 - [x] (suggestion) AGENTS.md Script Reference row still says the lint rejects absolute-`/tmp` mktemp *templates*; it now also rejects `-p /tmp` / `--tmpdir=/tmp` roots, and the runner's own error string was updated to "destination(s)" — `AGENTS.md:411`
 - [x] (suggestion) case (j) pins only the leading boundary anchor; the trailing half of the claim (`/tmpfile.XXXXXX` is not a hit) has no fixture — verified green by hand, but uncovered — `.agent/scripts/tests/test_run_script_tests.sh:281`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-21 13:51 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-304 at `b67b4e9`
+**Addressed**: Local Review (Pre-Push) at `e26e4d4` (2026-09-21 13:52 -04:00)
+**Commits**: 7941db0, 1a9bec2, b67b4e9
+
+### Actions
+- [x] (must-fix) attached-argument `-p/tmp` / `-dp/tmp` escaped the lint, and the "covers every mktemp spelling" claim was false — `.agent/scripts/tests/run_script_tests.sh:120`. The pattern now allows an optional attached short-flag cluster ending in `p` between the boundary character and `/tmp` (`(-[[:alpha:]]*p)?`); the comment lists the covered spellings without claiming exhaustiveness, and the coverage boundary names the backslash line-continuation form as out of reach of any line-oriented grep. Fixtures `(i) p_flag_attached` and `(i) dp_cluster_attached` added.
+- [x] (suggestion) bare relative template (`mktemp -d leak.XXXXXX`) lands in the runner's cwd, invisible to lint and sweep — named in the coverage boundary alongside the line-continuation and variable-root cases; verified no such site exists in `.agent/scripts/tests/` today, so no follow-up issue — `.agent/scripts/tests/run_script_tests.sh:161`
+- [x] (suggestion) Script Reference row now says the lint rejects absolute-`/tmp` mktemp *destinations* — a `/tmp` template, or a `-p /tmp` / `--tmpdir=/tmp` root — matching the runner's "destination(s)" error string — `AGENTS.md:411`
+- [x] (suggestion) case (j) pinned only the leading anchor; new case (j2) asserts a `/tmp`-prefixed sibling (`/tmpfile.XXXXXX`, both in prose after a whitespace boundary and under `${TMPDIR}`) stays green — `.agent/scripts/tests/test_run_script_tests.sh:306`
+
+### Verification
+- `bash .agent/scripts/tests/run_script_tests.sh` → exit 0, all suites passed; `/tmp` entry count unchanged before/after.
+- `bash .agent/scripts/tests/test_run_script_tests.sh` → 17 passed, 0 failed (was 14; +2 attached-form lint cases, +1 trailing-boundary case).
+- Hand-run: a scratch tests dir containing `mktemp -d -p/tmp ...` and `mktemp -dp/tmp ...` fixtures → runner exits 1 naming both files; the pre-fix pattern matched neither.
+- Self-check: the new pattern finds no hit in `.agent/scripts/tests/test_*.sh`, so no fixture line trips the lint on this repo's own run. Pre-commit (which runs the suite) passed on all three commits.
