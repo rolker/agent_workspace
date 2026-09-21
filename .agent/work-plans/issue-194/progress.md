@@ -124,3 +124,11 @@ The plan's diagnosis, line inventory and file targeting are accurate and verifie
 **Decision**: revise
 
 Revise the plan — fold in the must-fix (show_usage >&2 at the error call sites; -h/--help stays on stdout, exit 0) and the four suggestions (test auto-discovery stated; cover line 365, declare 383 deliberately untested; generalise start-task SKILL.md line 70; grep-assert no un-routed `echo "Error:`). Owner note on the dialog itself: make checkpoint questions easier to read, not an unformatted block of text.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-21 08:45 -0400
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-194/plan.md` at `6f0df98`
+
+Revised plan per Plan Review verdict needs-work: routes `show_usage` to stderr at the five error call sites (lines 75, 107, 126, 131, 136) while keeping `-h|--help` on stdout with exit 0; states `run_script_tests.sh`'s auto-glob discovery as verified fact; adds test coverage for the line-365 non-sourced error while explicitly declaring line-383's failed-cd path deliberately untested; generalises the `start-task/SKILL.md` line-70 invariant to cover all failure paths, not just "not found"; and adds a grep-based invariant assertion in the new test file so any future un-routed `echo "Error:` line fails the suite.
