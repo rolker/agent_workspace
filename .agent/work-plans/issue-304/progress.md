@@ -70,3 +70,11 @@ issue: 304
 **Decision**: proceed
 
 Proceed, keep the lint (Recommended) — plan PR 2 as scoped in the parent plan (.agent/work-plans/issue-297/plan.md, PR 2 section) plus the absolute-/tmp-template lint, declared as an addition beyond the parent plan (a deliberate regression guard, not plan scope).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-21 12:17 -0400
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-304/plan.md` at `be1dd1e`
+
+Lifts PR 2 of the approved parent plan (`.agent/work-plans/issue-297/plan.md`) unchanged: a per-run TMPDIR guard in `run_script_tests.sh` that sweeps inside the per-suite loop, fails with a distinct exit code naming the leaking suite, and removes the directory unconditionally on exit, plus its test coverage, the two PR 1 review carry-overs, the AGENTS.md row, and the documented (not automated) one-time cleanup note. Adds, and explicitly declares as beyond the parent plan, the absolute-`/tmp` mktemp lint the owner kept at this issue's Checkpoint as a regression guard.
