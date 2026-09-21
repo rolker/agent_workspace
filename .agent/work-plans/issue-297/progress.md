@@ -139,3 +139,61 @@ sweep to run_script_tests.sh (not adapter test/test.sh), updates AGENTS.md's
 script table, and documents (not automates) a one-time cleanup command for
 the ~2,800 pre-existing /tmp/tmp.* leaks. PR 1 lands before PR 2 so the
 guard passes on first run instead of failing on suites not yet converted.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-21 10:09 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #297 — script tests: mktemp sandboxes registered inside $() never get cleaned — ~100 leaked into /tmp per run, stalling boot 2 min
+**Plan**: `.agent/work-plans/issue-297/plan.md` at `8fb917f`
+**Branch**: `feature/issue-297`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | Two-PR split and ordering are sound and well argued. But the inventory misses an eighth suite with the same shape, and five suites whose `mktemp` calls the PR 2 guard structurally cannot see are out of scope. |
+| Issue alignment | Good | All six Issue Review action items and the owner's checkpoint decision (seven suites, required guard in `run_script_tests.sh`, the `test_worktree_enter_stderr.sh` shape) are carried into the plan. |
+| File targeting | Needs work | `test_run_script_tests.sh` (the runner's own suite) and `test_checkpoint_269.sh` are both missing from the Files to Change table. |
+| Consequences | Needs work | `AGENTS.md` script table is covered. The runner's own test suite, and its header "Exit codes:" contract, are not. |
+| Principle alignment | Needs work | "Enforcement over documentation" is the plan's stated point, but the enforcement layer ships with no test ("Test what breaks"). |
+| ADR compliance | Good | ADR-0011 correction (guard belongs in `run_script_tests.sh`, not `adapter test`) carried from the Issue Review; ADR-0013 satisfied by this plan's own persistence. No other ADR triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Approach] (must-fix)** — PR 1 step 2 says per-test subdirectories can be named by "a monotonic counter or the calling test's function name". A counter reintroduces exactly the bug being fixed: the helpers are invoked as `sb="$(make_sandbox)"`, so a counter incremented inside the helper increments a subshell copy, the parent's value never moves, and every call returns the same subdirectory — tests silently share one sandbox instead of leaking. Use `mktemp -d "$SANDBOX/XXXXXX"` (or `mktemp -d -p "$SANDBOX"`) inside the helper: unique without any parent-shell state, everything under the one trapped root.
+
+2. **[Approach / File targeting] (must-fix)** — Putting the per-run `TMPDIR` under `.agent/scratchpad/` places every sandbox *inside the workspace git work tree*. `test_adapter.sh` and `test_project_registry.sh` `make_sandbox()` deliberately create sandbox roots that are **not** git repos (they `git init` only nested fixture repos) and then run `adapter` / `_project_registry.sh` inside them; `test_merge_pr_root_resolution.sh::test_resolution_outside_repo` (line 122) asserts root resolution returns empty outside any repo — and hardcodes `/tmp` for precisely this reason. Inside the repo tree, upward `git rev-parse` discovery finds the real workspace root and those become false passes or false failures. Put the per-run dir under `/tmp` — AGENTS.md permits `/tmp` for ephemeral files cleaned up in the same command, and the guard deletes it unconditionally — or anywhere outside a git work tree.
+
+3. **[Consequences] (must-fix)** — PR 2 changes `run_script_tests.sh` but the plan omits `.agent/scripts/tests/test_run_script_tests.sh`, the existing suite that tests the runner against scratch tests directories via its `[tests-dir]` argument. As written the enforcement layer ships untested. Add cases: a fixture suite that leaks into `TMPDIR` makes the runner fail with the leak message, a clean fixture still passes. Also update the runner's header "Exit codes:" block (lines 26–27), and if a distinct exit code is chosen, re-check the existing fail-fast case's exit-code assertion. Related: derive the guard's directory from `SCRIPT_DIR`, not the caller-supplied `TESTS_DIR`, or the nested runs inside that suite write to the wrong place.
+
+4. **[Scope / Approach] (must-fix)** — The guard is blind to `mktemp` invoked with an absolute template, which ignores `TMPDIR`. Five suites do this today: `test_block_bash_tool_mapping.sh:22`, `test_cross_model_review.sh:19`, `test_gh_create_pr.sh:27`, `test_merge_pr_root_resolution.sh:23,122`, `test_sync_gitbug.sh:28`. A future suite copying that shape leaks straight past the sweep, so the plan's claim that the guard stops an eighth suite reintroducing the bug does not hold as designed. Either normalise those to `TMPDIR`-honouring form in PR 1 (subject to finding 2 for the no-repo test), or have the guard also lint for literal `/tmp/` mktemp templates under `.agent/scripts/tests/`.
+
+5. **[Issue alignment / File targeting] (must-fix)** — The plan's statement "No additional suites with this shape were found beyond the seven above" is not accurate. `test_checkpoint_269.sh` has `_sandbox_repo()` (lines 139–145) doing `dir=$(mktemp -d)` and echoing it, called as `REPO=$(_sandbox_repo)` (161, 273) and `ORIGIN=$(_sandbox_repo)` (238), with **no `SANDBOXES` array and no `EXIT` trap anywhere in the file** (`set -u` only, line 34); cleanup is explicit `rm -rf` on the success path (201, 269, 288). It does not leak on a clean pass, but leaks on any abort or early exit — the `test_dispatch_phase.sh` shape with a happy-path-only mitigation — and it is the one suite `run_script_tests.sh` hard-requires. Fold it into PR 1 as an eighth file or state explicitly why it is excluded. Smaller instance of the same: `test_merge_pr_root_resolution.sh:122`'s `tmp` has no trap coverage.
+
+6. **[Context] (suggestion)** — #194 merged while this plan was being written: `main` is at `f1e6694` "Merge pull request #299 from rolker/feature/issue-194". The plan's instructions to read the reference shape via `git show origin/feature/issue-194:...` are stale — read `.agent/scripts/tests/test_worktree_enter_stderr.sh` on `main`. This worktree's branch predates the merge and does not contain that file; rebase onto `main` before implementing so the converted suites and the reference suite share a base.
+
+7. **[Approach] (suggestion)** — Sweep inside the existing per-suite loop rather than once after it. The runner already iterates suite by suite, so sweeping after each gives exact attribution instead of "which suite ran last" (which is only accurate on the fail-fast path) and stops the run at the suite that actually leaked.
+
+8. **[Approach] (suggestion)** — The documented one-time cleanup filters on `[ -d "$1/.git" ]`, but many leaked sandbox roots are never git-init'd (`test_adapter.sh` / `test_project_registry.sh` `make_sandbox()` create plain directories; `test_dispatch_phase.sh`'s fixture dirs likewise). The command will clear only part of the ~2,800 and leave the boot-stall symptom partly in place. Say so where it is documented, and offer a complementary selector (content match such as `.agent/scripts/adapter`, or a plain age-based variant for the owner to run with judgement).
+
+9. **[Approach] (suggestion)** — When folding the extra `outside` / `bare` sandboxes into `$SANDBOX`, preserve their semantics: the `outside` dirs in `test_project_registry.sh` (726, 989, 1086, 1113, 1165) and `test_merge_pr.sh` (681) exist to be *outside* the sandbox workspace root, so they must become siblings under `$SANDBOX`, never children of `$sb`.
+
+10. **[Scope] (suggestion)** — The PR split and ordering are right on the merits: PR 1 is behaviour-neutral plumbing, PR 2 is the enforcement layer, and landing the guard first would turn pre-commit red on `main` for every suite not yet converted. One caveat: PR 1's only verification is a manual per-suite `TMPDIR` check, so nothing protects the gap between the two — land PR 2 promptly and verify it with a full `run_script_tests.sh` run.
+
+### Summary
+
+The plan's diagnosis, scope widening, PR split and ordering are all sound, and it carries every Issue Review action item and the owner's checkpoint decision. It is not ready to implement as written: the per-test subdirectory scheme reintroduces the same subshell bug, the per-run `TMPDIR` location would silently break the suites that depend on sandboxes sitting outside a git repo, the guard cannot see the five suites that pass `mktemp` an absolute `/tmp` template, and the enforcement layer arrives with no test because the runner's own suite is missing from the file list.
+
+### Recommended Actions
+
+- [ ] Replace the counter/function-name subdirectory scheme with `mktemp -d "$SANDBOX/XXXXXX"` inside each helper (finding 1)
+- [ ] Move the per-run `TMPDIR` out of the git work tree — `/tmp`, deleted unconditionally by the guard (finding 2)
+- [ ] Add `.agent/scripts/tests/test_run_script_tests.sh` to PR 2's file list with leak/no-leak cases, and update the runner's "Exit codes:" header (finding 3)
+- [ ] Decide how the guard covers absolute-template `mktemp` calls — normalise the five suites or lint for the pattern (finding 4)
+- [ ] Add `test_checkpoint_269.sh` to PR 1's file list, or record why it is excluded; correct the plan's "no additional suites" claim (finding 5)
+- [ ] Update the plan's `feature/issue-194` references to `main` and rebase this worktree onto `main` (finding 6)
+- [ ] Consider per-suite sweeping, a fuller cleanup-command caveat, and `outside`/`bare` sibling placement (findings 7–9)
