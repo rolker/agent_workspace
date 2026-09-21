@@ -47,19 +47,16 @@ assert_contains() {
 
 # ---- Sandbox helpers ----
 
-SANDBOXES=()
-cleanup() {
-    local sb
-    for sb in ${SANDBOXES[@]+"${SANDBOXES[@]}"}; do
-        rm -rf "$sb"
-    done
-}
-trap cleanup EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. Helpers carve per-test
+# directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
+# shared state and so survives being called as `sb="$(make_sandbox)"`.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
 
 make_sandbox() {
     local sb
-    sb="$(mktemp -d)"
-    SANDBOXES+=("$sb")
+    sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts/lib" "$sb/.agent/project_types"
     cp "$REAL_ROOT/.agent/scripts/adapter" "$sb/.agent/scripts/adapter"
     cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$sb/.agent/scripts/_project_registry.sh"
@@ -723,8 +720,9 @@ test_registry_require_root() {
     echo "TEST: registry_require_root accepts workspace and registered roots, refuses elsewhere"
     local sb out rc outside
     sb="$(make_sandbox)"
-    outside="$(mktemp -d)"
-    SANDBOXES+=("$outside")
+    # Sibling of the per-test sandbox under $SANDBOX, never a child of it:
+    # the point of this dir is to sit outside the sandbox workspace root.
+    outside="$(mktemp -d -p "$SANDBOX")"
     make_registered_project "$sb" alpha "$outside/alpha" >/dev/null
     mkdir -p "$outside/alpha/deep" "$outside/unrelated"
     assert_eq "workspace root ok" "0" "$(reg "$sb" registry_require_root "$sb" "$sb"; echo $?)"
@@ -986,8 +984,9 @@ test_worktree_create_outoftree_root_exclusion() {
     echo "TEST: worktree_create under a registered root OUTSIDE the sandbox's own tree writes .git/info/exclude, idempotently"
     local sb outside out rc=0
     sb="$(make_worktree_sandbox)"
-    outside="$(mktemp -d)"
-    SANDBOXES+=("$outside")
+    # Sibling of the per-test sandbox under $SANDBOX, never a child of it:
+    # the point of this dir is to sit outside the sandbox workspace root.
+    outside="$(mktemp -d -p "$SANDBOX")"
     make_registered_project "$sb" faraway "$outside/faraway"
     seed_commit "$outside/faraway"
     out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
@@ -1083,8 +1082,9 @@ test_registry_worktree_enumeration_for_dashboard() {
     echo "TEST: wt_registry_worktree_dirs / wt_count_project_worktrees enumerate an out-of-tree registered root (dashboard.sh's own enumeration function)"
     local sb outside rc=0 out
     sb="$(make_worktree_sandbox)"
-    outside="$(mktemp -d)"
-    SANDBOXES+=("$outside")
+    # Sibling of the per-test sandbox under $SANDBOX, never a child of it:
+    # the point of this dir is to sit outside the sandbox workspace root.
+    outside="$(mktemp -d -p "$SANDBOX")"
     make_registered_project "$sb" gz4d "$outside/gz4d"
     seed_commit "$outside/gz4d"
 
@@ -1110,8 +1110,9 @@ test_merge_pr_finds_worktree_under_registered_root() {
     sb="$(make_worktree_sandbox)"
     cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
-    outside="$(mktemp -d)"
-    SANDBOXES+=("$outside")
+    # Sibling of the per-test sandbox under $SANDBOX, never a child of it:
+    # the point of this dir is to sit outside the sandbox workspace root.
+    outside="$(mktemp -d -p "$SANDBOX")"
     make_registered_project "$sb" faraway2 "$outside/faraway2"
     seed_commit "$outside/faraway2"
     (cd "$sb" && PATH="$sb/stubbin:$PATH" \
@@ -1162,8 +1163,9 @@ test_review_plan_issue_fallback_finds_plan_under_registered_root() {
     echo "TEST: review-plan's --issue <N> fallback (wt_registry_worktree_dirs + wt_legacy_worktree_dirs) finds a plan file under a registered out-of-tree root"
     local sb outside rc=0 out
     sb="$(make_worktree_sandbox)"
-    outside="$(mktemp -d)"
-    SANDBOXES+=("$outside")
+    # Sibling of the per-test sandbox under $SANDBOX, never a child of it:
+    # the point of this dir is to sit outside the sandbox workspace root.
+    outside="$(mktemp -d -p "$SANDBOX")"
     make_registered_project "$sb" faraway3 "$outside/faraway3"
     seed_commit "$outside/faraway3"
     (cd "$sb" && PATH="$sb/stubbin:$PATH" \

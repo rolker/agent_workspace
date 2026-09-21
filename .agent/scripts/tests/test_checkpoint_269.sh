@@ -41,6 +41,15 @@ FAIL=0
 pass() { echo "PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "FAIL: $1"; FAIL=$((FAIL + 1)); }
 
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. Every throwaway repo below is
+# carved out of it with `mktemp -d -p "$SANDBOX"`, which needs no shared
+# state and so survives being called as `REPO=$(_sandbox_repo)`. The trap
+# replaces the success-path-only `rm -rf` calls this file used to carry,
+# so an abort mid-suite cleans up too.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
+
 # The files this workspace's issue #269 plan names as gated by the checkpoint
 # after PR B: everything PR C, PR D, PR E, and PR F land (per "Files to
 # Change" in .agent/work-plans/issue-269/plan.md), plus the two files PR B2
@@ -138,7 +147,7 @@ COMPLETE_ENTRY=$'## Checkpoint\n**Status**: complete\n**When**: 2026-09-20 10:00
 
 _sandbox_repo() {
     local dir
-    dir=$(mktemp -d)
+    dir=$(mktemp -d -p "$SANDBOX")
     git -C "$dir" init -q -b main
     git -C "$dir" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
     printf '%s' "$dir"
@@ -197,8 +206,6 @@ for gf in "${GATED_FILES[@]}"; do
     else
         fail "gate refuses '$gf' change against a Checkpoint entry missing one required field"
     fi
-
-    rm -rf "$REPO"
 done
 
 # --- Two adjacent incomplete Checkpoint entries must NOT pool their fields
@@ -241,7 +248,7 @@ git -C "$ORIGIN" checkout -q -b feature
 printf 'x\n' > "$ORIGIN/f.txt"
 git -C "$ORIGIN" add -A
 git -C "$ORIGIN" -c user.name=t -c user.email=t@example.com commit -q -m feature
-SHALLOW=$(mktemp -d)
+SHALLOW=$(mktemp -d -p "$SANDBOX")
 git clone -q --depth=1 --branch feature --single-branch "file://$ORIGIN" "$SHALLOW/clone" 2>/dev/null
 if ! git -C "$SHALLOW/clone" rev-parse --verify -q origin/main >/dev/null \
     && [[ "$(resolve_base_ref "$SHALLOW/clone")" == "origin/main" ]] \
@@ -258,7 +265,7 @@ if [[ -z "$(git -C "$SHALLOW/clone" merge-base HEAD origin/main 2>/dev/null)" ]]
 else
     fail "gate evaluates by tree diff against origin/main when a shallow clone has no merge-base"
 fi
-NOREMOTE=$(mktemp -d)
+NOREMOTE=$(mktemp -d -p "$SANDBOX")
 git -C "$NOREMOTE" init -q -b other
 git -C "$NOREMOTE" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init
 if ! resolve_base_ref "$NOREMOTE" >/dev/null; then
@@ -266,7 +273,6 @@ if ! resolve_base_ref "$NOREMOTE" >/dev/null; then
 else
     fail "base-ref resolution fails (does not guess) when no origin and no main exist"
 fi
-rm -rf "$ORIGIN" "$SHALLOW" "$NOREMOTE"
 
 # --- A file NOT on the gated list is unaffected by an absent Checkpoint
 #     entry (the gate is scoped, not a blanket refusal of every PR). ---
@@ -285,7 +291,6 @@ if checkpoint_gate "$REPO" "$BASE_SHA" feature; then
 else
     fail "gate does not refuse a PR that touches no gated file, even with no Checkpoint entry"
 fi
-rm -rf "$REPO"
 
 # --- Self-check: this file's own name must appear in run_script_tests.sh's
 #     explicit presence-assertion, so a PR that edits the runner to drop that

@@ -58,20 +58,17 @@ assert_not_contains() {
 
 # ---- Sandbox helpers ----
 
-SANDBOXES=()
-cleanup() {
-    local sb
-    for sb in ${SANDBOXES[@]+"${SANDBOXES[@]}"}; do
-        rm -rf "$sb"
-    done
-}
-trap cleanup EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. Helpers carve per-test
+# directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
+# shared state and so survives being called as `sb="$(make_sandbox)"`.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
 
 # Base sandbox: dispatcher + registry lib + both adapter types.
 make_sandbox() {
     local sb
-    sb="$(mktemp -d)"
-    SANDBOXES+=("$sb")
+    sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts" "$sb/.agent/project_types" "$sb/.agent/projects.d"
     cp "$REAL_ROOT/.agent/scripts/adapter" "$sb/.agent/scripts/adapter"
     cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$sb/.agent/scripts/_project_registry.sh"
