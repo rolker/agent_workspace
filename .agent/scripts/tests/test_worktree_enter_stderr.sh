@@ -142,6 +142,34 @@ test_help_stays_on_stdout() {
 # exactly that shape in the sandbox with an issue number no real worktree
 # uses. Asserting on the stderr text (not just the exit code) is what
 # proves this path — and not an earlier "not found" exit — was taken.
+#
+# On the way there the script runs its issue-title lookup
+# (`_issue_helpers.sh: issue_lookup`), which would otherwise hit the
+# network (`gh issue view`) and mutate the shared local git-bug store
+# (`git bug bridge pull github`) on every suite run — and this suite runs
+# from the pre-commit hook. Both entry points are gated behind
+# `command -v gh` / `command -v git-bug`, and `git bug …` dispatches to
+# `git-bug` on PATH, so shadowing those two names with inert stubs makes
+# the lookup a no-op: it finds nothing, leaves no state behind, and falls
+# through to the path under test. The stubs log every call so the suite
+# can assert that nothing network-reaching was attempted.
+STUB_BIN="$SANDBOX/stub-bin"
+STUB_LOG="$SANDBOX/stub-calls.log"
+
+make_offline_stubs() {
+    mkdir -p "$STUB_BIN"
+    local name
+    for name in gh git-bug; do
+        cat > "$STUB_BIN/$name" <<STUB
+#!/usr/bin/env bash
+# Inert stub: records the call, reaches nothing, fails like a missing tool.
+printf '%s %s\n' "$name" "\$*" >> "$STUB_LOG"
+exit 1
+STUB
+        chmod +x "$STUB_BIN/$name"
+    done
+}
+
 test_must_be_sourced() {
     echo "TEST: running as a command without --print-path/--shell-snippet"
     local issue=999999
@@ -149,27 +177,45 @@ test_must_be_sourced() {
     mkdir -p "$wt"
     git -C "$wt" init -q
 
+    make_offline_stubs
+    : > "$STUB_LOG"
+
     local stdout stderr rc=0
-    stdout=$(cd "$wt" && bash "$SCRIPT" --issue "$issue" --type workspace 2>/dev/null) || rc=$?
+    stdout=$(cd "$wt" && PATH="$STUB_BIN:$PATH" bash "$SCRIPT" \
+        --issue "$issue" --type workspace 2>/dev/null) || rc=$?
     assert_eq "stdout is empty" "" "$stdout"
     assert_eq "exit status is 1" "1" "$rc"
 
-    stderr=$(cd "$wt" && bash "$SCRIPT" --issue "$issue" --type workspace 2>&1 >/dev/null) || true
+    stderr=$(cd "$wt" && PATH="$STUB_BIN:$PATH" bash "$SCRIPT" \
+        --issue "$issue" --type workspace 2>&1 >/dev/null) || true
     assert_contains "stderr says it must be sourced" "must be sourced" "$stderr"
     assert_contains "stderr carries the follow-up hint" "Use --print-path or --shell-snippet" "$stderr"
+
+    # Prove the shadowing was actually in effect: the lookup's calls landed
+    # on the stubs, so no real `gh` / `git-bug` ran — no network request and
+    # no write to the shared git-bug store. (Skipped where neither tool is
+    # installed: the lookup then makes no calls at all, which is also fine.)
+    if command -v gh &>/dev/null || command -v git-bug &>/dev/null; then
+        assert_eq "issue lookup was served by the inert stubs" \
+            "1" "$([[ -s "$STUB_LOG" ]] && echo 1 || echo 0)"
+    fi
 }
 
 # ---- Invariants against future additions ----
 #
 # Per-path tests only cover the paths that exist today. These two greps
 # turn the rule the fix establishes into something the suite enforces:
-# every `echo "Error:` line carries `>&2`, and every `show_usage` call
-# except the one on the -h|--help path carries `>&2`.
+# every line that emits an `Error:` message carries `>&2`, and every
+# `show_usage` call except the one on the -h|--help path carries `>&2`.
+#
+# The emitter pattern matches `echo` and `printf` alike, and doesn't
+# anchor on the quoting style, so a future `printf "Error: ..."` or
+# `printf 'Error: %s\n' ...` is covered too.
 test_invariant_error_echoes_routed() {
-    echo "TEST: no echo \"Error:\" line lacks >&2"
+    echo "TEST: no echo/printf line emitting \"Error:\" lacks >&2"
     local unrouted
-    unrouted=$(grep -n 'echo "Error:' "$SCRIPT" | grep -v '>&2' || true)
-    assert_eq "un-routed Error echoes" "" "$unrouted"
+    unrouted=$(grep -nE '(echo|printf)[[:space:]].*Error:' "$SCRIPT" | grep -v '>&2' || true)
+    assert_eq "un-routed Error emitters" "" "$unrouted"
 }
 
 test_invariant_show_usage_routed() {
