@@ -461,3 +461,47 @@ pairs (`test_cross_model_review.sh`, `test_sync_gitbug.sh`,
 `test_merge_pr_root_resolution.sh`) the `EXIT` trap was moved from `teardown` to
 `rm -rf "$SANDBOX"`, since two `EXIT` traps cannot coexist; `teardown` keeps its
 per-test `rm -rf "$TMPDIR_BASE"` and the `$SANDBOX` trap is the abort backstop.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-21 11:55 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-297 at `caef899`
+**Base**: main
+**Depth**: Deep (reason: 13 files / 242 changed lines, both over the Deep thresholds)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Re-measured the leak independently rather than trusting the implementation
+entry: each suite run with `TMPDIR`/`TMP`/`TEMP` redirected to a fresh empty
+directory. Pre-change (suites restored from `main`): `test_merge_pr_gate.sh`
+112, `test_project_registry.sh` 56, `test_ros2_colcon.sh` 55 — exactly the
+plan's baseline, which also validates the harness. Post-change: 0 leftovers
+for all 13 changed suites, every suite exiting 0 with its pass count intact
+(58 / 208 / 191 / 86 / 91 / 76 / 19 / 43 / 113 / 52 / 10 / 5 / 35).
+`grep -rn SANDBOXES .agent/scripts/tests/` returns nothing; every changed file
+carries exactly one `trap 'rm -rf "$SANDBOX"' EXIT`; no absolute `/tmp/...`
+`mktemp` template remains. shellcheck (pre-commit, `--severity=warning`) passes
+on all 13 files. Plan drift: none — the diff matches the plan's line-accurate
+Files to Change table file for file, and `run_script_tests.sh`,
+`test_run_script_tests.sh` and `AGENTS.md` (PR 2) are untouched. No assertion,
+fixture or stub changed. `.remote.git` / `.project.remote.git` /
+`.farrepo.remote.git` siblings stay string-derived from `$sb`, so the `gh`
+fixture filename keys (`test_merge_pr_gate.sh:170,222,246`;
+`test_merge_pr.sh:143`) still resolve — confirmed by the suites passing and by
+the resulting names staying ~60 chars, far under the 255-byte limit. All six
+"outside" dirs are `mktemp -d -p "$SANDBOX"` siblings of the per-test `$sb`,
+never children. The declared deviation is sound: two `EXIT` traps cannot
+coexist, `teardown` is still called explicitly at the end of every test in all
+three affected suites (setup/teardown call counts pair 1:1), and the `$SANDBOX`
+trap is a strictly wider abort-path backstop than the `teardown` trap it
+replaced. Cross-model specialists both unavailable: gemini headless auto-denied
+its own `read_file` permission, copilot rejected the script's argv
+(`option '-p, --prompt <text>' argument missing`).
+
+### Findings
+- [ ] (suggestion) outside-any-repo probe's premise is now TMPDIR-dependent, not hardcoded; add a `git rev-parse` self-check so it asserts its own precondition — `.agent/scripts/tests/test_merge_pr_root_resolution.sh:133`
+- [ ] (suggestion) TMP_HOME became a fixed-name `mkdir` subdir instead of the `mktemp -d -p "$SANDBOX"` the plan's wording implied; harmless and matches SHIM_DIR, but undeclared — `.agent/scripts/tests/test_block_bash_tool_mapping.sh:29`
+- [ ] (suggestion) PR 1 fixes the leak but no guard yet prevents a new suite reintroducing it; PR 2 should follow with no unrelated work in between — `.agent/scripts/tests/run_script_tests.sh` (PR 2)
