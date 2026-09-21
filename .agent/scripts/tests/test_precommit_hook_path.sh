@@ -21,13 +21,16 @@ PASS=0
 FAIL=0
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
-SANDBOXES=()
-cleanup() { local s; for s in ${SANDBOXES[@]+"${SANDBOXES[@]}"}; do rm -rf "$s"; done; }
-trap cleanup EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. Helpers carve per-test
+# directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
+# shared state and so survives being called as `sb="$(mk_ws)"`.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
 
 mk_ws() {  # a workspace-shaped repo with a worktree
     local sb
-    sb="$(mktemp -d)"; SANDBOXES+=("$sb")
+    sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts/lib" "$sb/.agent/project_types" "$sb/worktrees/workspace"
     cp "$REAL_ROOT/Makefile" "$sb/Makefile"
     cp "$REAL_ROOT/.agent/scripts/validate_workspace.py" "$sb/.agent/scripts/"
@@ -66,7 +69,7 @@ vars="$(cd "$wt" && make -pn -f "$sb/Makefile" 2>/dev/null | grep -E '^(WS_ROOT|
 vars_main="$(cd "$sb" && make -pn -f "$sb/Makefile" 2>/dev/null | grep -E '^(VENV_DIR|WS_ROOT) ')"
 [[ "$vars_main" == *"VENV_DIR := $sb/.venv"* ]] && pass "from the main checkout VENV_DIR is <main>/.venv" || fail "main VENV_DIR (got: $vars_main)"
 # outside any git repo the fallback keeps make usable
-nogit="$(mktemp -d)"; SANDBOXES+=("$nogit"); cp "$sb/Makefile" "$nogit/"
+nogit="$(mktemp -d -p "$SANDBOX")"; cp "$sb/Makefile" "$nogit/"
 vars_nogit="$(cd "$nogit" && make -pn -f "$nogit/Makefile" 2>/dev/null | grep -E '^VENV_DIR ')"
 [[ "$vars_nogit" == *"VENV_DIR := $nogit/.venv"* ]] && pass "outside a repo WS_ROOT falls back to MAIN_ROOT" || fail "no-git fallback (got: $vars_nogit)"
 # the repair / setup recipes cd to the common root before `pre-commit install`
