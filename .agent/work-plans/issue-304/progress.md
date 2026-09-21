@@ -373,3 +373,24 @@ suggestions are folded in below.
 - [x] (suggestion) lint pattern is not anchored to a root `/tmp/`, so `"$HOME/local/tmp/x.XXXXXX"` would false-positive; anchor it or say in the comment that it is a heuristic over file text — `.agent/scripts/tests/run_script_tests.sh:116`
 - [x] (suggestion) hardcoded "16,679 / 5,934" measurement bakes a decaying point-in-time number into permanent script documentation; it already lives in the Checkpoint entry and belongs in the PR description — `.agent/scripts/tests/run_script_tests.sh:170`
 - [x] (suggestion) undeclared third deviation: the plan's Files-to-Change row said "No code change; PR description states why", but the TMP_HOME rationale landed as a code comment; the PR description still owes that rationale plus plan step 7's one-time-cleanup paragraph and the #297 closing comment — `.agent/scripts/tests/test_block_bash_tool_mapping.sh:28` (deferred: comment is the better home than the PR description; host carries the rationale, the one-time-cleanup paragraph and the #297 closing text into the PR body)
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-21 13:29 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-304 at `c0a555b`
+**Addressed**: Local Review (Pre-Push) at `5f6e5a1` (2026-09-21 13:32 -04:00)
+**Commits**: e028c54, 67a7816, 4a4a208, c0a555b
+
+### Actions
+- [x] (must-fix) lint caught only `mktemp … /tmp/<template>`; `-p /tmp`, `--tmpdir=/tmp` and `--tmpdir /tmp` escaped the guard root with the run exiting 0 — lint scope is now `"$TESTS_DIR"/test_*.sh` (the runner is exempt by glob, not by dodging its own pattern) and the pattern covers all four spellings; `test_run_script_tests.sh` case (i) adds one fixture per bypass spelling, templates assembled via `printf` so no line of the suite matches the pattern it lints itself with — `.agent/scripts/tests/run_script_tests.sh:116`, `.agent/scripts/tests/test_run_script_tests.sh:240`
+- [x] (suggestion) leak message printed only `-maxdepth 1` entries that the EXIT trap then deleted — the sweep now lists the leaked tree recursively, capped at `LEAK_LIST_MAX=200` lines with the remainder summarised as a count, and the headline states the entry count; case (k) asserts a nested leak path appears in the message — `.agent/scripts/tests/run_script_tests.sh:199`
+- [x] (suggestion) lint pattern was unanchored — `/tmp` must now follow a whitespace/quote/`=`/`(` boundary and be followed by `/`, whitespace, a quote, `)` or end of line, so `"$HOME/local/tmp/x.XXXXXX"` is not a hit; the comment also states outright that this is a heuristic over file text, not a shell parse. Case (j) pins the anchoring with a literal (not assembled) nested `.../tmp/` fixture, so the real run lints that very line — `.agent/scripts/tests/run_script_tests.sh:116`, `.agent/scripts/tests/test_run_script_tests.sh:300`
+- [x] (suggestion) frozen "16,679 / 5,934" counts removed from the in-script cleanup note — it now cites the 2026-09-21 measurement date and the #297 timeline; the figures belong in the PR description — `.agent/scripts/tests/run_script_tests.sh:170`
+- [x] (suggestion) TMP_HOME rationale landed as a code comment rather than PR-description text (deferred: the comment is the better home — it sits where a future editor reads it, not in a PR body nobody re-opens; left in place. The host still owes the PR description that rationale, plan step 7's one-time-cleanup paragraph and the #297 closing text) — `.agent/scripts/tests/test_block_bash_tool_mapping.sh:28`
+
+### Verification
+- `bash .agent/scripts/tests/run_script_tests.sh` — exit 0, all 23 suites passed in 46s (lint green on the real tree under the broadened, anchored pattern).
+- `bash .agent/scripts/tests/test_run_script_tests.sh` — 14 passed, 0 failed, including the three new per-spelling lint cases, the anchoring case and the recursive-listing case.
+- Hand-run in a scratch tests-dir, one run per spelling (`/tmp/<template>`, `-p /tmp`, `--tmpdir=/tmp`, `--tmpdir /tmp`): every run exited 1 and named the offending fixture; zero directories left in `/tmp` before and after.
