@@ -78,3 +78,60 @@ Proceed, keep the lint (Recommended) — plan PR 2 as scoped in the parent plan 
 **Plan**: `.agent/work-plans/issue-304/plan.md` at `be1dd1e`
 
 Lifts PR 2 of the approved parent plan (`.agent/work-plans/issue-297/plan.md`) unchanged: a per-run TMPDIR guard in `run_script_tests.sh` that sweeps inside the per-suite loop, fails with a distinct exit code naming the leaking suite, and removes the directory unconditionally on exit, plus its test coverage, the two PR 1 review carry-overs, the AGENTS.md row, and the documented (not automated) one-time cleanup note. Adds, and explicitly declares as beyond the parent plan, the absolute-`/tmp` mktemp lint the owner kept at this issue's Checkpoint as a regression guard.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-21 12:22 -0400
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #304 — run_script_tests.sh: per-run TMPDIR guard that fails the run on a leaked sandbox (#297 PR 2)
+**Plan**: `.agent/work-plans/issue-304/plan.md` at `be1dd1e`
+**Branch**: `feature/issue-304`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One script, one test file, two small carry-over edits, one AGENTS.md row — proportionate to the parent estimate; the one addition beyond the approved PR 2 text (the lint) is declared as such |
+| Issue alignment | Good | Enforcement layer as the issue asks: the guard fails the run (exit 2) rather than warning, and attributes the leak to the suite that caused it |
+| File targeting | Good | Every file named exists and every cited line number is accurate (runner 26–27, 58, 99–110; `test_run_script_tests.sh` 68 / 99 / 133; `test_merge_pr_root_resolution.sh` 128–137 with the `mktemp -d -p "$SANDBOX"` at 133; `test_block_bash_tool_mapping.sh` 29; `AGENTS.md` 411) |
+| Consequences | Good | AGENTS.md row, exit-code header, and test coverage all in-PR; the one-time cleanup is documented, not automated |
+| Principle alignment | Needs work | "Enforcement over documentation" is met, but the lint as specified would fire on the guard the same PR introduces (finding 1), and the guard's coverage boundary is not stated (finding 7) |
+| ADR compliance | Good | ADR-0011 correctly identified as not triggered; ADR-0013 entry vocabulary followed |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+**Must-fix**
+
+1. **[Principle alignment / internal consistency]** — Step 1 and step 5 contradict each other. Step 1 creates the guard dir with `RUN_TMPDIR=$(mktemp -d /tmp/run-script-tests.XXXXXX)` inside `run_script_tests.sh`; step 5's lint greps `mktemp[^|]*/tmp/` over `.agent/scripts/tests/*.sh`, a glob that includes `run_script_tests.sh` itself. Verified: that exact line matches the pattern (`printf` of the proposed line through the plan's own grep returns a hit), and the lint currently returns nothing on the tree, so the PR would take the lint from green to red on its own first run. Pick one resolution before implementing: scope the lint glob to `test_*.sh`; keep `*.sh` and add an explicit, commented exemption for the guard line; or create the dir as `TMPDIR=/tmp mktemp -d` / `mktemp -d --tmpdir=/tmp` (neither form matches the pattern, since the regex needs `/tmp/` *after* `mktemp`) — the third is cleanest, as it keeps the "no absolute template anywhere under tests/" invariant literally true.
+
+2. **[Scope / consequences]** — The lint's failure path has no exit code and is not in the exit-code header. Step 3 documents exactly three codes (0, 1, 2) but step 5 adds a fourth failure mode. Step 5 also leaves two implementation choices open that change what the test case in step 4 can even assert: (a) runner vs. test file, and (b) if in the runner, whether it lints `$TESTS_DIR` or a hardcoded `.agent/scripts/tests/`. Only the `$TESTS_DIR` form makes step 5's own "fixture file with an absolute `/tmp` template makes the lint fail" case reachable via `[tests-dir]`; the hardcoded form always lints the real directory and cannot be exercised by a fixture. Decide both, assign the lint a code (reusing `1` is defensible — it is a preflight failure like the missing-tool case — but say so), and document it in the header.
+
+**Suggestions**
+
+3. **[Test coverage]** — Step 4's leak-case bullet "Assert the check does **not** depend on the scratch tests-dir path itself" is not something an assertion can express directly; as written it will likely become prose in a comment. Concretize it or drop it: e.g. run the same leak fixture from a scratch tests-dir that is *not* under `$TMPDIR` and assert exit 2 either way, which is the observable form of the independence claim.
+
+4. **[Documentation accuracy]** — Step 7's caveat is wrong in its specifics. It says `test_adapter.sh`, `test_project_registry.sh` and `test_dispatch_phase.sh` roots are plain directories and "only *nested* fixture repos inside them are git repos" — verified: none of those three suites calls `git init` at all, so nothing inside them is a git repo. The caveat's conclusion (the `.git` filter clears only part of the leftovers) is still right, and measurable: of 16,679 `/tmp/tmp.*` directories on this machine right now, 5,934 have a depth-1 `.git`, so the command as written catches roughly a third. Restate the caveat with that mechanism (the `.git` must sit at depth 1 of the sandbox root; most suites nest their repos deeper, and these three create none) rather than the current claim.
+
+5. **[Documentation accuracy]** — The "~2,800-directory figure" is stale (current count: 16,679). Either attribute it explicitly to the #297 measurement date or re-measure when the note is posted.
+
+6. **[Human control and transparency]** — The recommended cleanup command deletes in the same invocation. `-name 'tmp.*'` plus a depth-1 `.git` also matches any unrelated `mktemp -d` that happens to hold a clone. Give the note a dry-run form first (same `find`, `-print` instead of the `rm -rf` exec) and the deleting form second, so the owner sees the match set before anything is removed.
+
+7. **[Consequences]** — State the guard's coverage boundary in the PR. The sweep only sees what lands in `TMPDIR`; the lint deliberately covers only `.agent/scripts/tests/*.sh`. Eight absolute-`/tmp` `mktemp` sites remain in production scripts the suites invoke — `worktree_create.sh:933,974`, `pr_status.sh:321,336`, `gh_create_pr.sh:237,306`, `fetch_pr_reviews.sh:148`, `gh_create_issue.sh:205` — and their temp files bypass both `TMPDIR` and the sweep. Not this PR's job to fix; saying so keeps the guard from reading as total.
+
+8. **[ADR compliance / governance]** — Step 6 self-exempts the `AGENTS.md` Script Reference row edit from the "Ask First: modifying instruction files" boundary by citing a workspace convention. `AGENTS.md` records no such carve-out. Either cite where that standing rule was agreed, or take the one-line confirmation — it costs less than the claim.
+
+### Summary
+
+The core design is sound and verified against the files: the guard dir is genuinely independent of the caller-supplied `[tests-dir]` (hardcoded under `/tmp`, so a nested run against a scratch tests-dir cannot redirect it), the in-loop sweep does fail the run immediately with per-suite attribution, the distinct exit code 2 does not disturb the existing cases — (b) and (c) assert `rc -ne 0`, and (d) asserts `rc -eq 1` before any suite runs — and both PR-1 carry-overs are handled soundly (the `git rev-parse` self-check asserts the real precondition; the fixed-name `TMP_HOME` rationale is correct, since it is one purpose-named fixture per run inside a trapped `$SANDBOX`, not a per-iteration sandbox). What blocks it is the lint colliding with the very `mktemp` line the guard introduces, and the lint's undecided placement/exit code. Both are mechanical fixes to the plan text, not design changes.
+
+### Recommended Actions
+
+- [ ] Resolve the lint-vs-guard collision (finding 1) — preferably by creating `RUN_TMPDIR` in a form that does not embed an absolute template
+- [ ] Decide the lint's placement and scanned directory, assign it an exit code, and add it to the `# Exit codes:` header (finding 2)
+- [ ] Concretize or drop the "independent of the scratch tests-dir" assertion (finding 3)
+- [ ] Correct the cleanup note's `.git`-filter caveat and the stale directory count; add a dry-run form (findings 4–6)
+- [ ] State the guard's coverage boundary, naming the production-script `/tmp` sites left out of scope (finding 7)
+- [ ] Confirm or cite the Ask-First carve-out for the `AGENTS.md` Script Reference row (finding 8)
