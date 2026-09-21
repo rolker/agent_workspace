@@ -71,8 +71,8 @@ while [[ $# -gt 0 ]]; do
             ;;
         --skill)
             if [[ -z "${2:-}" || "$2" == -* ]]; then
-                echo "Error: --skill requires a skill name"
-                show_usage
+                echo "Error: --skill requires a skill name" >&2
+                show_usage >&2
                 return 1 2>/dev/null || exit 1
             fi
             SKILL_NAME="$2"
@@ -103,8 +103,8 @@ while [[ $# -gt 0 ]]; do
             return 0 2>/dev/null || exit 0
             ;;
         *)
-            echo "Error: Unknown option $1"
-            show_usage
+            echo "Error: Unknown option $1" >&2
+            show_usage >&2
             return 1 2>/dev/null || exit 1
             ;;
     esac
@@ -122,30 +122,30 @@ if [ -n "$ISSUE_NUM" ] && [[ "$ISSUE_NUM" == *#* ]]; then
 fi
 
 if [ -n "$ISSUE_NUM" ] && [ -n "$SKILL_NAME" ]; then
-    echo "Error: --issue and --skill are mutually exclusive"
-    show_usage
+    echo "Error: --issue and --skill are mutually exclusive" >&2
+    show_usage >&2
     return 1 2>/dev/null || exit 1
 fi
 if [ -z "$ISSUE_NUM" ] && [ -z "$SKILL_NAME" ]; then
-    echo "Error: either --issue or --skill is required"
-    show_usage
+    echo "Error: either --issue or --skill is required" >&2
+    show_usage >&2
     return 1 2>/dev/null || exit 1
 fi
 if [ -z "$WORKTREE_TYPE" ]; then
-    echo "Error: --type is required (workspace or project)"
-    show_usage
+    echo "Error: --type is required (workspace or project)" >&2
+    show_usage >&2
     return 1 2>/dev/null || exit 1
 fi
 if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; then
-    echo "Error: --type must be 'workspace' or 'project'"
+    echo "Error: --type must be 'workspace' or 'project'" >&2
     return 1 2>/dev/null || exit 1
 fi
 if [ "$PRINT_PATH" = true ] && [ "$SHELL_SNIPPET" = true ]; then
-    echo "Error: --print-path and --shell-snippet are mutually exclusive"
+    echo "Error: --print-path and --shell-snippet are mutually exclusive" >&2
     return 1 2>/dev/null || exit 1
 fi
 if [ -n "$PROJECT_REPO" ] && [ "$WORKTREE_TYPE" == "workspace" ]; then
-    echo "Error: --project is only valid with --type project"
+    echo "Error: --project is only valid with --type project" >&2
     return 1 2>/dev/null || exit 1
 fi
 
@@ -362,8 +362,8 @@ if [ "$SHELL_SNIPPET" = true ]; then
 fi
 
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
-    echo "Error: This script must be sourced for interactive use."
-    echo "Use --print-path or --shell-snippet when running it as a command."
+    echo "Error: This script must be sourced for interactive use." >&2
+    echo "Use --print-path or --shell-snippet when running it as a command." >&2
     exit 1
 fi
 
@@ -380,7 +380,7 @@ echo "  Path:   $WORKTREE_DIR"
 echo ""
 
 # Change to worktree directory
-cd "$WORKTREE_DIR" || { echo "Error: Failed to cd to $WORKTREE_DIR"; return 1 2>/dev/null || exit 1; }
+cd "$WORKTREE_DIR" || { echo "Error: Failed to cd to $WORKTREE_DIR" >&2; return 1 2>/dev/null || exit 1; }
 
 # Set environment variables
 export WORKTREE_TYPE="$WORKTREE_TYPE"
