@@ -82,6 +82,18 @@ outside it — issue #147). Follow `.claude/skills/start-task/SKILL.md` steps
 1–4 with `--issue <N> --type <type>`. If step 1 there refuses (already in a
 worktree), stop and tell the user to exit first.
 
+**Identity, on every command chain.** `dispatch_phase.sh`'s handoff mode
+hard-fails with exit 2 when `AGENT_NAME`/`AGENT_EMAIL` are unset — there is
+no fallback to the human's git config. Shell state does not persist between
+tool calls, so source the identity in the *same* chain as every
+`dispatch_phase.sh` call (and every `progress_append.sh` / `git commit`),
+not once at the start of the run:
+
+```bash
+source .agent/scripts/set_git_identity_env.sh "<agent name>" "<agent email>" "<model-id>" \
+  && .agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [...]
+```
+
 ### 2. Probe PR state
 
 ```bash
@@ -133,6 +145,13 @@ BEFORE=0
     | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["entries"]))')
 ```
 
+`<entry-type>` is the **exact** string the handoff block's `entry_type=`
+line printed for this dispatch — `Local Review (Pre-Push)`, not `Local
+Review`. The two are distinct types in `skill_entry_type()` (branch-mode
+vs. PR-mode `review-code`), and `--check-exit` counts the same exact type,
+so a `$BEFORE` taken against the other one silently reports `MISSING` or a
+false `OK`.
+
 then:
 
 ```bash
@@ -140,9 +159,11 @@ then:
 ```
 
 prints the handoff block: `worktree=`, `task=`, `agent_name=`,
-`agent_email=`, `model=`, `entry_type=`, `exit_contract=`. Paste the task
-line, the worktree, and the exit contract into a fresh Agent tool call
-using the printed `model=` as the model override. The dispatched phase
+`agent_email=`, `model=`, `entry_type=`, `exit_contract=`, `conventions=`.
+Paste the task line, the worktree, the exit contract, and the
+`conventions=` line (the `**When**` format and scratch-file hygiene every
+dispatched phase must follow) into a fresh Agent tool call using the
+printed `model=` as the model override. The dispatched phase
 fetches its own inputs (issue/PR body via `gh`) — nothing is injected.
 
 After the sub-agent returns, check the exit contract:
@@ -231,6 +252,26 @@ full table; anything outside it routes `next` to row 28,
 `**Decided-by**: owner` records that this entry captures the human's answer
 to an `AskUserQuestion`, not a phase's own output.
 
+**Deferred suggestion-only boxes.** One reachable case needs a second write
+before the next `next` call: an `**After**: findings` checkpoint answered
+`merge` while suggestion-only boxes in the latest `## Integrated Review`'s
+`### Findings` section are still open. `next` reads open boxes, not the owner's intent, so those
+boxes must be closed as deferred or the following call routes back to
+`checkpoint:findings`. For each such box, run:
+
+```bash
+.agent/scripts/review_progress.sh check --progress "$PF" --index <i> \
+  --deferred "<the owner's reason, from the checkpoint entry's own text>"
+```
+
+This flips `- [ ]` to `- [x] … (deferred: <reason>)`; a checked box is
+excluded from `open_findings()` whatever its annotation, so no new marker
+and no dispatcher change is involved. `check` rewrites `progress.md` in
+place and does **not** commit — the host commits the flipped file itself
+(a plain `git commit` of `progress.md`, in the same chain as the identity
+source), after the `## Checkpoint` entry and before the next
+`dispatch_phase.sh next` call.
+
 **Every dialog is self-contained.** Open every `AskUserQuestion` (and every
 message ending a turn) with:
 
@@ -291,7 +332,16 @@ fix, row 22a/22b), wait for CI and bot reviews to settle before dispatching
 .agent/scripts/fetch_pr_reviews.sh --pr <M>
 ```
 
-until no checks are pending. `triage-reviews` with only the local review as
+until no checks are pending. "No checks pending" includes the
+`copilot-pull-request-reviewer` check-run — wait for it to complete (or
+confirm it is absent from the check list entirely), not just for CI, or
+`triage-reviews` runs before Copilot's review exists and triages a source
+that lands minutes later. One case looks like a completed review but is
+not: when Copilot's quota is exhausted it posts a plain issue comment
+saying so instead of a review — that comment is not a review source for
+`triage-reviews`, so note it and move on rather than waiting further.
+
+`triage-reviews` with only the local review as
 a source still writes `## Integrated Review` — the only entry type that
 reaches the `findings`/`merge` checkpoints.
 
