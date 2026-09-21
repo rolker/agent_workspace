@@ -341,3 +341,35 @@ early exit 1 from the preflight checks above the loop" is vacuous — no guard
 directory exists on those paths, so there is nothing to remove; creating it
 earlier would have required adding `mktemp`/`find` to case (d)'s minimal
 `PATH`, editing an existing case the plan said to leave intact.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-21 13:32 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-304 at `5f6e5a1`
+**Base**: main
+**Depth**: Standard (reason: enforcement script wired into pre-commit + an AGENTS.md governance row)
+**Must-fix**: 1 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Verified by running, not by reading: full real suite 23/23 in 53s exit 0 (no
+tool-residue false positive, lint green on the real tree); a leak fixture →
+exit 2 naming `test_aaa_leaker.sh` and the leftover path, later suites not run,
+guard dir removed by the trap; a nested-subdirectory leak → also exit 2; a
+literal `/tmp/` template fixture → exit 1 naming the file with a marker proving
+no suite ran; `test_run_script_tests.sh` 9 passed / 0 failed; shellcheck via
+pre-commit passed on all four changed scripts. Both declared deviations are
+sound — the cleanup note belongs with the guard comment it annotates, and
+creating the guard dir after the preflights is strictly better than the plan's
+text (a lint failure now leaves no stray dir, and case (d)'s minimal `PATH` has
+no `mktemp`). An independent adversarial subagent found no must-fix; its three
+suggestions are folded in below.
+
+### Findings
+- [ ] (must-fix) lint catches only the `mktemp … /tmp/<template>` spelling — fixtures using `mktemp -d --tmpdir=/tmp …` and `mktemp -d -p /tmp …` both passed the lint, escaped the guard root and left a real dir in /tmp with the run exiting 0; fix by linting `"$TESTS_DIR"/test_*.sh` (drops the self-exemption) and broadening the pattern to `-p /tmp` / `--tmpdir=/tmp`, with a fixture case per spelling — `.agent/scripts/tests/run_script_tests.sh:116`
+- [ ] (suggestion) leak message lists only `-maxdepth 1` entries and the EXIT trap then deletes them, so a leaked directory is unreadable by the time it is reported — print the recursive listing in the message — `.agent/scripts/tests/run_script_tests.sh:199`
+- [ ] (suggestion) lint pattern is not anchored to a root `/tmp/`, so `"$HOME/local/tmp/x.XXXXXX"` would false-positive; anchor it or say in the comment that it is a heuristic over file text — `.agent/scripts/tests/run_script_tests.sh:116`
+- [ ] (suggestion) hardcoded "16,679 / 5,934" measurement bakes a decaying point-in-time number into permanent script documentation; it already lives in the Checkpoint entry and belongs in the PR description — `.agent/scripts/tests/run_script_tests.sh:170`
+- [ ] (suggestion) undeclared third deviation: the plan's Files-to-Change row said "No code change; PR description states why", but the TMP_HOME rationale landed as a code comment; the PR description still owes that rationale plus plan step 7's one-time-cleanup paragraph and the #297 closing comment — `.agent/scripts/tests/test_block_bash_tool_mapping.sh:28`
