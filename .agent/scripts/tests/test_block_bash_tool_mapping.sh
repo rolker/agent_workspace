@@ -18,9 +18,15 @@ if [[ ! -x "$HOOK" ]]; then
     exit 1
 fi
 
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. No hardcoded /tmp template:
+# `mktemp -d` honors TMPDIR, so the run stays inside whatever temp root the
+# caller set.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
+
 # Tests need a writable HOME so the sidecar log doesn't pollute the real one
-TMP_HOME=$(mktemp -d /tmp/tool-mapping-test-XXXXXX)
-trap 'rm -rf "$TMP_HOME"' EXIT
+TMP_HOME="$SANDBOX/home"
 mkdir -p "$TMP_HOME/.claude"
 
 PASS=0
