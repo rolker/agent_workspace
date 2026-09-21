@@ -203,3 +203,20 @@ Proceed, apply the 3 suggestions — implement inline, folding in the round-2 su
 **Mode**: inline
 
 Plan implemented as written plus the three round-2 review-plan suggestions (34c8d1b): ten `echo "Error:"` lines and the five error-path `show_usage` calls in `worktree_enter.sh` routed to stderr (`-h/--help` stays on stdout, exit 0); new `test_worktree_enter_stderr.sh` — 13 tests / 35 assertions covering every argument-validation path, the usage-on-error and help-on-stdout split, the "must be sourced" path from a staged worktree-shaped sandbox asserting on stderr text, and two grep invariants (no un-routed `Error:` echo; only the `-h|--help` `show_usage` lacks `>&2`); start-task SKILL.md line 70 states the invariant. Full suite 23/23; issue repro `--foo bar --print-path 2>/dev/null` prints nothing. Line 383 (failed cd) routed but deliberately untested, per plan.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-21 09:05 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-194 at `202999e`
+**Base**: main
+**Depth**: Standard (reason: enforcement-adjacent `.agent/scripts/` + skill doc change, 4 files)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) `test_must_be_sourced` reaches the sourced-check through the issue-title lookup, so every suite run does a live `git bug bridge pull github` + `gh issue view 999999` against the real repo and mutates shared local git-bug state — `.agent/scripts/tests/test_worktree_enter_stderr.sh:145`
+- [ ] (suggestion) The `echo "Error:` invariant is a literal-substring grep; a future `printf "Error: ..."` or differently-worded error message evades it — `.agent/scripts/tests/test_worktree_enter_stderr.sh:171`
+- [ ] (suggestion) Pre-existing: a dangling option value (`--issue`, `--type`, `--project`, `--repo-slug` as the last argument) makes `shift 2` fail and the parse loop spin forever; confirmed by timeout. Out of this plan's scope — warrants its own issue — `.agent/scripts/worktree_enter.sh:66`
