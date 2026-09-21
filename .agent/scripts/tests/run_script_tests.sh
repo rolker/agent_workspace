@@ -62,6 +62,8 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR \
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TESTS_DIR="${1:-$SCRIPT_DIR}"
 REQUIRED_SUITE="test_checkpoint_269.sh"
+# Cap on how many leaked paths the exit-2 message prints (see the leak sweep).
+LEAK_LIST_MAX=200
 
 if [[ ! -d "$TESTS_DIR" ]]; then
     echo "error: tests directory not found: $TESTS_DIR" >&2
@@ -206,13 +208,24 @@ for s in "${suites[@]}"; do
     # Leak sweep — see "Per-run TMPDIR guard" above. Runs only on the path
     # that would otherwise advance to the next suite, so the leak is
     # attributed to the suite that just finished.
-    leaked=$(find "$RUN_TMPDIR" -mindepth 1 -maxdepth 1 2>/dev/null)
-    if [[ -n "$leaked" ]]; then
+    #
+    # The listing is recursive, not -maxdepth 1: the EXIT trap deletes
+    # $RUN_TMPDIR on the way out, so this message is the only chance anyone
+    # gets to see what was left behind. A top-level name alone ("tmp.AbC123")
+    # says nothing about which suite or which tool created it; the contents
+    # usually do. Capped at $LEAK_LIST_MAX lines so a suite that leaks a
+    # whole source tree does not bury its own failure message — the tail is
+    # summarised as a count.
+    mapfile -t leaked < <(find "$RUN_TMPDIR" -mindepth 1 2>/dev/null)
+    if [[ ${#leaked[@]} -gt 0 ]]; then
         end_ts=$(date +%s)
         elapsed=$((end_ts - start_ts))
         echo "" >&2
-        echo "run_script_tests: FAILED at $name (suite $total of ${#suites[@]}) after ${elapsed}s — it left files behind in TMPDIR ($RUN_TMPDIR):" >&2
-        echo "$leaked" >&2
+        echo "run_script_tests: FAILED at $name (suite $total of ${#suites[@]}) after ${elapsed}s — it left ${#leaked[@]} entr$([[ ${#leaked[@]} -eq 1 ]] && echo y || echo ies) behind in TMPDIR ($RUN_TMPDIR):" >&2
+        printf '%s\n' "${leaked[@]:0:$LEAK_LIST_MAX}" >&2
+        if [[ ${#leaked[@]} -gt $LEAK_LIST_MAX ]]; then
+            echo "... and $(( ${#leaked[@]} - LEAK_LIST_MAX )) more entries (listing truncated)" >&2
+        fi
         echo "Every suite must clean up what it creates — one top-level sandbox plus an EXIT trap (see issue #297)." >&2
         exit 2
     fi

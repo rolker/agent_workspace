@@ -4,10 +4,11 @@
 # every .agent/scripts/tests/test_*.sh suite into the validate-script-tests
 # pre-commit hook.
 #
-# Cases (a)–(d) cover discovery, fail-fast and the tool preflight; (e)–(j)
+# Cases (a)–(d) cover discovery, fail-fast and the tool preflight; (e)–(k)
 # cover the per-run TMPDIR leak guard and the absolute-/tmp mktemp lint
 # added for issue #304 — (h)–(i) one case per mktemp spelling that escapes
-# TMPDIR, (j) the anchoring that keeps a nested .../tmp/ path green.
+# TMPDIR, (j) the anchoring that keeps a nested .../tmp/ path green, (k) the
+# recursive listing in the leak message.
 #
 # Every case runs against a scratch copy of a tests directory
 # (run_script_tests.sh's optional [tests-dir] argument), never the real
@@ -300,6 +301,28 @@ if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
     pass "(j) a non-root .../tmp/ path is not a lint hit"
 else
     fail "(j) a non-root .../tmp/ path is not a lint hit (rc=$rc, out=$out)"
+fi
+
+# --- Case (k): the leak message lists the leaked tree recursively, not just
+#     its top-level entries. The EXIT trap deletes the guard directory on the
+#     way out, so whatever this message does not print is gone for good. ---
+CASE_K="$TMPD/case_k"
+mkdir -p "$CASE_K"
+write_checkpoint_stub "$CASE_K"
+cat > "$CASE_K/test_aaa_nested_leaker.sh" <<'EOF'
+#!/usr/bin/env bash
+mkdir -p "${TMPDIR:?TMPDIR must be set by the runner}/sandbox/deeper"
+: > "${TMPDIR:?}/sandbox/deeper/telltale_file"
+exit 0
+EOF
+chmod +x "$CASE_K/test_aaa_nested_leaker.sh"
+
+out=$("$RUNNER" "$CASE_K" 2>&1); rc=$?
+if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'test_aaa_nested_leaker.sh' \
+    && printf '%s' "$out" | grep -q 'sandbox/deeper/telltale_file'; then
+    pass "(k) the leak message lists the leaked tree recursively"
+else
+    fail "(k) the leak message lists the leaked tree recursively (rc=$rc, out=$out)"
 fi
 
 echo ""
