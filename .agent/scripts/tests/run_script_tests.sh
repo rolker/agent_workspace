@@ -23,8 +23,13 @@
 #   so test_run_script_tests.sh can point the runner at a scratch copy of the
 #   tests directory without touching the real one.
 #
-# Exit codes: 0 all suites passed; 1 a suite failed, or test_checkpoint_269.sh
-# is missing from the discovered set.
+# Exit codes:
+#   0  all suites passed
+#   1  a suite failed, or a preflight check failed — test_checkpoint_269.sh
+#      missing from the discovered set, a required tool missing, or the
+#      absolute-/tmp mktemp lint found a violation (the message says which)
+#   2  a suite left files behind in TMPDIR after it ran (leak detected; the
+#      message names the suite that leaked and the leftover paths)
 #
 # Wired into .pre-commit-config.yaml as the `validate-script-tests` local
 # hook (always_run: true) inside the existing Lint (pre-commit) job — no
@@ -94,6 +99,86 @@ for tool in jq python3; do
     fi
 done
 
+# Preflight lint: no absolute-/tmp mktemp templates under $TESTS_DIR
+# (issue #304, #297 PR 2). A suite that writes to a hardcoded /tmp/... path
+# bypasses TMPDIR entirely, so the per-run guard below can neither contain
+# nor see what it leaves behind. Issue #297 PR 1 normalised every such site
+# in this directory; this lint is the regression guard that keeps it that
+# way. It scans $TESTS_DIR (the caller-supplied [tests-dir]), not a
+# hardcoded path, so test_run_script_tests.sh can exercise it against a
+# scratch fixture directory.
+#
+# The pattern excludes `|` between the two tokens so it matches a template
+# argument rather than a pipeline; it is the same pattern PR 1's own
+# verification used. Neither this grep line nor the guard's mktemp call
+# below matches it — verified by the full-suite run, which lints this very
+# file.
+lint_hits=$(grep -rnE 'mktemp[^|]*/tmp/' "$TESTS_DIR"/*.sh 2>/dev/null) || true
+if [[ -n "$lint_hits" ]]; then
+    echo "error: absolute /tmp mktemp template(s) found in $TESTS_DIR — suites must honor TMPDIR (use \`mktemp -d\` or \`mktemp -d -p \"\$SANDBOX\"\`) so the per-run leak guard can see their temp files:" >&2
+    echo "$lint_hits" >&2
+    exit 1
+fi
+
+# --- Per-run TMPDIR guard (issue #304, #297 PR 2) ---
+#
+# Give the whole run one private temp root and point every suite at it via
+# TMPDIR/TMP/TEMP. After each suite returns successfully the loop below
+# sweeps this directory: anything still in it means that suite leaked, and
+# the run fails with exit 2 naming that suite. Attribution is why the sweep
+# sits inside the loop rather than at the end — a leak is charged to the
+# suite that caused it, not to whichever suite happened to run last.
+#
+# The sweep sees *everything* left in TMPDIR, not just a suite's own
+# sandbox — including residue from tools a suite shells out to (git, gh,
+# pre-commit, python3). That is deliberate: such residue is a leak too. The
+# full real-suite run is the empirical check that no false positive exists
+# today; if this ever fires on tool residue, investigate the attribution
+# rather than assuming the guard is broken.
+#
+# The guard directory hardcodes /tmp and deliberately ignores the caller's
+# own TMPDIR. Two reasons: (1) a nested run — this repo's
+# test_run_script_tests.sh drives this runner against scratch tests
+# directories — must not have its guard redirected into the outer run's
+# temp root or into the scratch tests directory itself; (2) the
+# `--tmpdir=/tmp <relative-template>` spelling (rather than the equivalent
+# `-d /tmp/run-script-tests.XXXXXX`) keeps this line from matching the
+# preflight lint above, which scans this file too. Do not "fix" either
+# detail back: `-d /tmp/...` would make the runner lint itself red.
+#
+# Coverage boundary: the sweep only sees what lands in TMPDIR while a suite
+# runs, and the lint only covers "$TESTS_DIR"/*.sh. Eight absolute-/tmp
+# mktemp sites remain in production scripts that suites may invoke —
+# worktree_create.sh:933,974, pr_status.sh:321,336, gh_create_pr.sh:237,306,
+# fetch_pr_reviews.sh:148, gh_create_issue.sh:205 (cited as file:line only;
+# reproducing one of those templates here would trip the lint above).
+# Temp files those calls create bypass both TMPDIR and this sweep. Fixing
+# them is out of scope for #304.
+#
+# One-time cleanup of the historical leak (#297 measured 320 dirs/run before
+# PR 1): this is a manual step for a human, not something this script does.
+# Review the dry run first —
+#   find /tmp -maxdepth 1 -type d -name 'tmp.*' -mtime +1 \
+#       -exec sh -c '[ -d "$1/.git" ] && echo "$1"' _ {} \;
+# and only then the deleting form —
+#   find /tmp -maxdepth 1 -type d -name 'tmp.*' -mtime +1 \
+#       -exec sh -c '[ -d "$1/.git" ] && rm -rf "$1"' _ {} \;
+# Caveat: the .git filter only matches when .git sits directly at depth 1 of
+# the sandbox root (the root itself was `git init`'d). Suites that nest their
+# fixture repos deeper are not matched, and test_adapter.sh,
+# test_project_registry.sh and test_dispatch_phase.sh create no git repos at
+# all — none of their leftovers match. Measured 2026-09-21: 16,679 /tmp/tmp.*
+# directories, 5,934 with a depth-1 .git. For the rest, an age-based sweep a
+# human eyeballs first: find /tmp -maxdepth 1 -type d -name 'tmp.*' -mtime +7
+RUN_TMPDIR=$(mktemp -d --tmpdir=/tmp run-script-tests.XXXXXX) || {
+    echo "error: could not create the per-run TMPDIR guard directory under /tmp" >&2
+    exit 1
+}
+# Unconditional cleanup on every exit path after this point — all suites
+# passed, a suite failed, a leak was detected, or an interrupt.
+trap 'rm -rf "$RUN_TMPDIR"' EXIT
+export TMPDIR="$RUN_TMPDIR" TMP="$RUN_TMPDIR" TEMP="$RUN_TMPDIR"
+
 start_ts=$(date +%s)
 total=0
 for s in "${suites[@]}"; do
@@ -106,6 +191,20 @@ for s in "${suites[@]}"; do
         echo "" >&2
         echo "run_script_tests: FAILED at $name (suite $total of ${#suites[@]}) after ${elapsed}s — stopping, remaining suites not run" >&2
         exit 1
+    fi
+
+    # Leak sweep — see "Per-run TMPDIR guard" above. Runs only on the path
+    # that would otherwise advance to the next suite, so the leak is
+    # attributed to the suite that just finished.
+    leaked=$(find "$RUN_TMPDIR" -mindepth 1 -maxdepth 1 2>/dev/null)
+    if [[ -n "$leaked" ]]; then
+        end_ts=$(date +%s)
+        elapsed=$((end_ts - start_ts))
+        echo "" >&2
+        echo "run_script_tests: FAILED at $name (suite $total of ${#suites[@]}) after ${elapsed}s — it left files behind in TMPDIR ($RUN_TMPDIR):" >&2
+        echo "$leaked" >&2
+        echo "Every suite must clean up what it creates — one top-level sandbox plus an EXIT trap (see issue #297)." >&2
+        exit 2
     fi
 done
 
