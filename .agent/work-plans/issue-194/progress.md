@@ -193,3 +193,13 @@ The round-1 must-fix is genuinely resolved in the plan text, not merely claimed,
 **Decision**: proceed
 
 Proceed, apply the 3 suggestions — implement inline, folding in the round-2 suggestions: (1) line-365 test asserts stderr matches "must be sourced" from a staged worktree-named temp dir; (2) grep invariant also covers show_usage calls other than -h/--help; (3) line 366 routed explicitly.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-21 08:59 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-194/plan.md` at `6f0df98`
+**Branch**: `feature/issue-194` at `34c8d1b`
+**Mode**: inline
+
+Plan implemented as written plus the three round-2 review-plan suggestions (34c8d1b): ten `echo "Error:"` lines and the five error-path `show_usage` calls in `worktree_enter.sh` routed to stderr (`-h/--help` stays on stdout, exit 0); new `test_worktree_enter_stderr.sh` — 13 tests / 35 assertions covering every argument-validation path, the usage-on-error and help-on-stdout split, the "must be sourced" path from a staged worktree-shaped sandbox asserting on stderr text, and two grep invariants (no un-routed `Error:` echo; only the `-h|--help` `show_usage` lacks `>&2`); start-task SKILL.md line 70 states the invariant. Full suite 23/23; issue repro `--foo bar --print-path 2>/dev/null` prints nothing. Line 383 (failed cd) routed but deliberately untested, per plan.
