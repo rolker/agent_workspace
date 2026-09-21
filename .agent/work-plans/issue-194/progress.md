@@ -302,3 +302,13 @@ Address the 3 suggestions first — drop the dead `command -v` guard on the stub
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 09:42 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish (Recommended) — pre-push review round 3 approved with nothing outstanding.
