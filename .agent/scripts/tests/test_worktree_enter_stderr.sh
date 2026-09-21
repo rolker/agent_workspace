@@ -22,6 +22,42 @@ FAIL=0
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 
+# ---- Offline guarantee (suite-wide) ----
+#
+# Any path that reaches the script's issue-title lookup
+# (`_issue_helpers.sh: issue_lookup`) would otherwise hit the network
+# (`gh issue view`) and mutate the shared local git-bug store
+# (`git bug bridge pull github`) on every suite run — and this suite runs
+# from the pre-commit hook. Both entry points are gated behind
+# `command -v gh` / `command -v git-bug`, and `git bug …` dispatches to
+# `git-bug` on PATH, so shadowing those two names with inert stubs makes
+# the lookup a no-op: it finds nothing and leaves no state behind.
+#
+# The stubs are installed once here and exported on PATH for the whole
+# run, so the guarantee is structural rather than per-test — an added test
+# cannot forget the override and leak a real call. The stubs log every
+# call so the suite can assert that nothing network-reaching was attempted.
+STUB_BIN="$SANDBOX/stub-bin"
+STUB_LOG="$SANDBOX/stub-calls.log"
+
+make_offline_stubs() {
+    mkdir -p "$STUB_BIN"
+    local name
+    for name in gh git-bug; do
+        cat > "$STUB_BIN/$name" <<STUB
+#!/usr/bin/env bash
+# Inert stub: records the call, reaches nothing, fails like a missing tool.
+printf '%s %s\n' "$name" "\$*" >> "$STUB_LOG"
+exit 1
+STUB
+        chmod +x "$STUB_BIN/$name"
+    done
+}
+
+make_offline_stubs
+: > "$STUB_LOG"
+export PATH="$STUB_BIN:$PATH"
+
 assert_eq() {
     local label="$1" expected="$2" actual="$3"
     if [[ "$expected" == "$actual" ]]; then
@@ -143,33 +179,9 @@ test_help_stays_on_stdout() {
 # uses. Asserting on the stderr text (not just the exit code) is what
 # proves this path — and not an earlier "not found" exit — was taken.
 #
-# On the way there the script runs its issue-title lookup
-# (`_issue_helpers.sh: issue_lookup`), which would otherwise hit the
-# network (`gh issue view`) and mutate the shared local git-bug store
-# (`git bug bridge pull github`) on every suite run — and this suite runs
-# from the pre-commit hook. Both entry points are gated behind
-# `command -v gh` / `command -v git-bug`, and `git bug …` dispatches to
-# `git-bug` on PATH, so shadowing those two names with inert stubs makes
-# the lookup a no-op: it finds nothing, leaves no state behind, and falls
-# through to the path under test. The stubs log every call so the suite
-# can assert that nothing network-reaching was attempted.
-STUB_BIN="$SANDBOX/stub-bin"
-STUB_LOG="$SANDBOX/stub-calls.log"
-
-make_offline_stubs() {
-    mkdir -p "$STUB_BIN"
-    local name
-    for name in gh git-bug; do
-        cat > "$STUB_BIN/$name" <<STUB
-#!/usr/bin/env bash
-# Inert stub: records the call, reaches nothing, fails like a missing tool.
-printf '%s %s\n' "$name" "\$*" >> "$STUB_LOG"
-exit 1
-STUB
-        chmod +x "$STUB_BIN/$name"
-    done
-}
-
+# On the way there the script runs its issue-title lookup, which the
+# suite-level stubs above neutralise; this test clears the stub log first
+# so it can assert those calls landed on the stubs.
 test_must_be_sourced() {
     echo "TEST: running as a command without --print-path/--shell-snippet"
     local issue=999999
@@ -177,16 +189,15 @@ test_must_be_sourced() {
     mkdir -p "$wt"
     git -C "$wt" init -q
 
-    make_offline_stubs
     : > "$STUB_LOG"
 
     local stdout stderr rc=0
-    stdout=$(cd "$wt" && PATH="$STUB_BIN:$PATH" bash "$SCRIPT" \
+    stdout=$(cd "$wt" && bash "$SCRIPT" \
         --issue "$issue" --type workspace 2>/dev/null) || rc=$?
     assert_eq "stdout is empty" "" "$stdout"
     assert_eq "exit status is 1" "1" "$rc"
 
-    stderr=$(cd "$wt" && PATH="$STUB_BIN:$PATH" bash "$SCRIPT" \
+    stderr=$(cd "$wt" && bash "$SCRIPT" \
         --issue "$issue" --type workspace 2>&1 >/dev/null) || true
     assert_contains "stderr says it must be sourced" "must be sourced" "$stderr"
     assert_contains "stderr carries the follow-up hint" "Use --print-path or --shell-snippet" "$stderr"
