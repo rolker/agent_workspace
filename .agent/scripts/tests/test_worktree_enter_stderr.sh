@@ -193,12 +193,11 @@ test_must_be_sourced() {
 
     # Prove the shadowing was actually in effect: the lookup's calls landed
     # on the stubs, so no real `gh` / `git-bug` ran — no network request and
-    # no write to the shared git-bug store. (Skipped where neither tool is
-    # installed: the lookup then makes no calls at all, which is also fine.)
-    if command -v gh &>/dev/null || command -v git-bug &>/dev/null; then
-        assert_eq "issue lookup was served by the inert stubs" \
-            "1" "$([[ -s "$STUB_LOG" ]] && echo 1 || echo 0)"
-    fi
+    # no write to the shared git-bug store. The stubs are on PATH for the
+    # whole run, so the lookup's `command -v` gates always resolve to them
+    # and the log is always written — assert it unconditionally.
+    assert_eq "issue lookup was served by the inert stubs" \
+        "1" "$([[ -s "$STUB_LOG" ]] && echo 1 || echo 0)"
 }
 
 # ---- Invariants against future additions ----
