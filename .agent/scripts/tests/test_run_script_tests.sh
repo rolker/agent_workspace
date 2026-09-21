@@ -309,6 +309,29 @@ else
     fail "(j) a non-root .../tmp/ path is not a lint hit (rc=$rc, out=$out)"
 fi
 
+# --- Case (j2): the other half of the anchor claim — the *trailing* boundary.
+#     `/tmp` only counts when the next character ends the path component, so
+#     `/tmpfile.XXXXXX` (a sibling of /tmp, not a child) is not a hit, whether
+#     it follows a real boundary character in prose or sits under $TMPDIR.
+#
+#     Assembled via printf from $ABS_TMP_ROOT like cases (h) and (i): the
+#     prose line puts a whitespace boundary directly before the root, which
+#     is exactly the shape the trailing anchor has to reject, so writing it
+#     literally here would trip the lint on this very file. ---
+CASE_J2="$TMPD/case_j2"
+mkdir -p "$CASE_J2"
+write_checkpoint_stub "$CASE_J2"
+printf '#!/usr/bin/env bash\n# mktemp is never handed %sfile.XXXXXX as a template here\nd=$(mktemp -d "${TMPDIR:?}%sfile.XXXXXX")\n[ -d "$d" ] || exit 1\nrm -rf "$d"\nexit 0\n' \
+    "$ABS_TMP_ROOT" "$ABS_TMP_ROOT" > "$CASE_J2/test_tmpfile_sibling.sh"
+chmod +x "$CASE_J2/test_tmpfile_sibling.sh"
+
+out=$("$RUNNER" "$CASE_J2" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
+    pass "(j2) a /tmp-prefixed sibling name is not a lint hit"
+else
+    fail "(j2) a /tmp-prefixed sibling name is not a lint hit (rc=$rc, out=$out)"
+fi
+
 # --- Case (k): the leak message lists the leaked tree recursively, not just
 #     its top-level entries. The EXIT trap deletes the guard directory on the
 #     way out, so whatever this message does not print is gone for good. ---
