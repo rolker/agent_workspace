@@ -132,3 +132,54 @@ Revise the plan — fold in the must-fix (show_usage >&2 at the error call sites
 **Plan**: `.agent/work-plans/issue-194/plan.md` at `6f0df98`
 
 Revised plan per Plan Review verdict needs-work: routes `show_usage` to stderr at the five error call sites (lines 75, 107, 126, 131, 136) while keeping `-h|--help` on stdout with exit 0; states `run_script_tests.sh`'s auto-glob discovery as verified fact; adds test coverage for the line-365 non-sourced error while explicitly declaring line-383's failed-cd path deliberately untested; generalises the `start-task/SKILL.md` line-70 invariant to cover all failure paths, not just "not found"; and adds a grep-based invariant assertion in the new test file so any future un-routed `echo "Error:` line fails the suite.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-21 08:47 -0400
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**Issue**: #194 — worktree_enter.sh: route Unknown-option (and other arg-validation) errors to stderr
+**Plan**: `.agent/work-plans/issue-194/plan.md` at `6f0df98`
+**Branch**: `feature/issue-194`
+**Round**: 2 (revision of `dddd51e`, reviewed needs-work)
+
+### Round-1 finding verification
+
+| # | Round-1 finding | Status in `6f0df98` |
+|---|---|---|
+| 1 | must-fix — `show_usage` leaks to stdout on five error paths | **Resolved.** Step 1 now requires `show_usage >&2` (or a `show_usage_err()` wrapper) at lines 75, 107, 126, 131, 136 and states the `-h\|--help` split (line 102 stays stdout, exit 0). Verified against source: those are exactly the five error-path `show_usage` calls, and 102 is the only help one. |
+| 2 | suggestion — state `run_script_tests.sh` discovery as fact | **Resolved.** Step 2 states the auto-glob and cites lines 66–68/103. Verified: `shopt -s nullglob; suites=("$TESTS_DIR"/test_*.sh)` and `bash "$s"` — no registration or exec bit needed. |
+| 3 | suggestion — cover line 365, declare 383 untested | **Resolved in text** (step 2 adds the non-sourced case and explicitly declares 383 code-change-only). See finding 1 below for a gap in how the 365 case is asserted. |
+| 4 | suggestion — generalise SKILL.md line 70's first sentence | **Resolved.** Step 4 now replaces both sentences and drops the `#194` reference. Verified the quoted current text matches `.claude/skills/start-task/SKILL.md` line 70 verbatim. |
+| 5 | suggestion — grep invariant against future un-routed errors | **Resolved in text** (step 2, plus a Principles Self-Check row). See finding 2 for a coverage gap in the proposed pattern. |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged from round 1: one script edit, one new test file, one doc line. Well bounded. |
+| Issue alignment | Good | With `show_usage >&2` folded in, the issue's repro (`--foo bar --print-path 2>/dev/null`) now yields empty stdout under the plan as written. Acceptance criteria 1–3 all covered. |
+| File targeting | Good | Re-verified the full inventory against the file at this revision: un-routed `echo "Error:` at 74, 106, 125, 130, 135, 140, 144, 148, 365, 383 (10, as claimed); 171, 203, 234, 285 already `>&2`. Follow-up line 366 is in the inventory table. |
+| Consequences | Good | SKILL.md, regression test, and runner discovery all accounted for. |
+| Principle alignment | Good | "Test what breaks" and "enforcement over documentation" both now have concrete mechanisms; the fix and the test no longer contradict each other. |
+| ADR compliance | Good | ADR-0012 correctly not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences — suggestion]** The planned line-365 test asserts only "empty stdout, non-zero exit" from `bash worktree_enter.sh --issue <valid> --type <valid>`. That assertion does not discriminate: when no worktree exists for the chosen issue (a fresh clone, CI, or any tree where that worktree was removed), the script exits at line 285's not-found path — also empty stdout, also exit 1 — and the test passes without ever reaching line 365. Run from inside this worktree it happens to reach 365 only because `git rev-parse --show-toplevel` basename matches `issue-*-194` (lines 253–259). Resolution: assert stderr matches `must be sourced`, and stage the precondition deterministically — e.g. `git init` a temp dir at `<tmp>/worktrees/workspace/issue-workspace-<N>` and run the script with that as cwd so the lines 253–259 branch resolves — rather than relying on the ambient worktree layout.
+
+2. **[Principle alignment — suggestion]** The grep invariant as specified (`echo "Error:` lines lacking `>&2`) would not catch the exact regression class round 1 found: a `show_usage` call left on stdout at an error site, or a non-`Error:`-prefixed follow-up `echo` on an error path (line 366 is one such line today). Resolution: extend the invariant to also assert that every `show_usage` call other than the `-h|--help` one carries `>&2`, so the rule the fix establishes is the rule the suite enforces.
+
+3. **[Approach — suggestion]** Step 1's instruction reads "add `>&2` to each `echo \"Error: ...\"` line listed above"; line 366 (`Use --print-path or --shell-snippet when running it as a command.`) is not `Error:`-prefixed and appears only parenthetically in the Context table. It must be routed too or the "must be sourced" path still leaks one line to stdout. Name it explicitly in step 1 and in the Files-to-Change row so implementation does not have to infer it from the test failure.
+
+### Summary
+
+The round-1 must-fix is genuinely resolved in the plan text, not merely claimed, and all four suggestions were folded in; the line inventory and call-site line numbers re-verify exactly against the source at this revision. The three remaining items are refinements to the new test and invariant, none blocking. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] Make the line-365 test discriminate the path it claims to test (assert stderr contains "must be sourced" and stage the worktree precondition deterministically).
+- [ ] Extend the grep invariant to cover `show_usage` at error call sites, not just `echo "Error:` lines.
+- [ ] Name line 366 explicitly in step 1 / Files-to-Change as one of the lines to route.
