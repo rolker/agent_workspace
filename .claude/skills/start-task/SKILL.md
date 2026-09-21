@@ -67,7 +67,7 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 
 ### 3. Resolve the worktree path (existing → create-new fallback)
 
-Exit-code-checked idiom — error text from the "not found" path goes to stderr, so `2>/dev/null` suppresses it. The `worktree_enter.sh` "Unknown option" path still writes to stdout (caught harmlessly by the elif chain when it overwrites `$WT`); see #194 for routing that to stderr too.
+Exit-code-checked idiom — error text from `worktree_enter.sh`'s failure paths goes to stderr, so `2>/dev/null` suppresses it and `$WT` never captures error or usage text (enforced by `.agent/scripts/tests/test_worktree_enter_stderr.sh`).
 
 ```bash
 # Disable glob expansion for the unquoted $ARGUMENTS expansion below.
