@@ -11,10 +11,11 @@
 #     Prints the handoff block for a phase the host is about to dispatch
 #     via the Agent tool: the worktree, the phase's literal task line (per
 #     the plan's per-skill table), the commit identity, the model to stamp
-#     in **By**, the expected entry type, and the exit contract. Output is
+#     in **By**, the expected entry type, the exit contract, and the
+#     workspace conventions every dispatched phase must follow. Output is
 #     `key=value` lines, one per line, in this order: worktree, task,
-#     agent_name, agent_email, model, entry_type, exit_contract, and
-#     prompt_file (only when --prompt-file was given).
+#     agent_name, agent_email, model, entry_type, exit_contract,
+#     conventions, and prompt_file (only when --prompt-file was given).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--pr <M>] --before <count>
@@ -237,6 +238,7 @@ cmd_handoff() {
     echo "model=$model"
     echo "entry_type=$entry_type"
     echo "exit_contract=Append exactly one \`## $entry_type\` entry to $wt/.agent/work-plans/issue-$issue/progress.md via the phase's own persistence step. If you cannot finish, still append it with **Status**: partial or **Status**: failed and say why. Never push — the host owns every push."
+    echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create."
     if [[ -n "$prompt_file" ]]; then
         echo "prompt_file=$prompt_file"
     fi
