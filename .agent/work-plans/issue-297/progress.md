@@ -111,3 +111,13 @@ than inventing a second "correct" pattern.
 - [ ] Make the "suite-level `TMPDIR` guard" a required part of this issue's fix, not an optional "consider" — it's the only enforcement-layer defense against a fifth suite reintroducing the same bug.
 - [ ] Point the guard at `run_script_tests.sh` (the actual suite runner wired into the `validate-script-tests` pre-commit hook), not at `.agent/scripts/test.sh` / `adapter test`, which runs the project's own `TEST_CMD` and has nothing to do with this repo's script-test suite.
 - [ ] Standardize on the single-`mktemp`-plus-`trap`-at-top-level shape already used by `test_worktree_enter_stderr.sh` (`feature/issue-194`, unmerged) rather than inventing a new correct pattern in this PR — reference it explicitly so whichever branch merges second reconciles onto the same convention instead of a second bespoke fix.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 10:00 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to planning (Recommended) — the Issue Review's action items carry into the plan: widen the fix to all seven leaking suites (add test_project_registry.sh, test_adapter.sh, test_merge_pr_gate.sh, test_dispatch_phase.sh); make the suite-level per-run TMPDIR guard + sweep required, in run_script_tests.sh (not .agent/scripts/test.sh); standardise on the top-level mktemp + trap shape used by test_worktree_enter_stderr.sh on feature/issue-194.
