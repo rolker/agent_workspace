@@ -83,3 +83,52 @@ Proceed — reuse the existing convention (Recommended): item 6 becomes "when th
 **Plan**: `.agent/work-plans/issue-307/plan.md` at `165e1d1`
 
 Text edits to `.claude/skills/run-issue/SKILL.md` (identity-sourcing note in step 1, exact `entry_type=` string in step 4, Copilot check-run wait in step 9, a new deferred-suggestion host sub-step in step 6) and `.claude/skills/plan-task/SKILL.md` (test-file exec-bit guidance), plus a new `conventions=` line printed by `dispatch_phase.sh`'s handoff block (When-format + scratch hygiene) with one extended assertion in `test_dispatch_phase.sh`. Item 6's checkpoint decision is followed as-is: reuse the existing `review_progress.sh check --deferred` convention — `dispatch_phase.sh`'s `next` decision-table routing is unchanged, so no new fixture row is added.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-21 14:37 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**Issue**: #307 — run-issue: fold in the live-exercise fixes (identity env, BEFORE type string, Copilot wait, scratch hygiene, deferred-suggestion checkpoint)
+**Plan**: `.agent/work-plans/issue-307/plan.md` at `165e1d1`
+**Branch**: `feature/issue-307`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Four files, seven small text/one-line edits; one `/run-issue` drive is a realistic acceptance test. |
+| Issue alignment | Good | All seven issue items are carried; the Issue Review's three open Actions are all resolved by the owner's Checkpoint and followed as decided (reuse `check --deferred`, no `[~]` marker, no `review_progress.sh` / `review_loop_lifecycle.md` change). |
+| File targeting | Needs work | The one file the plan misses is `dispatch_phase.sh`'s own header comment — see finding 1. |
+| Consequences | Needs work | Same omission; everything else in the table checks out. |
+| Principle alignment | Good | "Only what's needed" and "Enforcement over documentation" are both argued correctly; the deferred-box reuse is the minimal mechanism. |
+| ADR compliance | Good | ADR-0014 triggered and satisfied; ADR-0013 correctly not triggered (no new checkbox state). |
+| ROS conventions | N/A | Workspace plan. |
+
+Claims verified against source (this is the part the plan rests on):
+
+- **The central claim holds.** `open_findings()` (`dispatch_phase.sh:421-426`) filters on `f.get("section") == section and not f.get("checked")` — annotation text is never inspected. Verified end to end on a scratch fixture: an `## Integrated Review` with one open `(suggestion)` box routed `next --pr open` → `action=checkpoint:findings`; after `review_progress.sh check --progress <f> --index 0 --deferred "<reason>"` rewrote the line to `- [x] (suggestion) … (deferred: <reason>)`, the same `next` call returned `action=checkpoint:merge`, `reason=Integrated Review has no open findings`. The plan is right that no decision-table fixture row is needed.
+- **Existing test coverage already pins both halves**, so declining a new fixture is well-founded, not a gap: `test_dispatch_phase.sh:220-221` (row 20) pins "a checked box is not an open finding" using a plain `- [x]` box, and `test_address_findings.sh:129-140` pins the deferred form itself — that `check --deferred` produces `- [x] … (deferred: …)` and that `progress_read.py` still parses such boxes as checked (including the CRLF case at :175-180).
+- **The deferral is load-bearing beyond the immediate routing hop.** `triage-reviews` sources only *unchecked* prior findings at the head SHA (`triage-reviews/SKILL.md:107-111`), so flipping the boxes is what stops a deferred suggestion being carried forward into the next `## Integrated Review` and re-asking the owner — the #303 symptom the issue cites.
+- Identity hard-fail is at `dispatch_phase.sh:228-231` as cited; `cmd_handoff` prints `exit_contract=` at `:239` inside `:233-242`; `run-issue/SKILL.md` step 1 (`:74-83`) has no identity note today; step 4's `--type "<entry-type>"` is at `:132` and the printed-field list at `:142-143`; step 6's `## Checkpoint` template is at `:211-222`; step 9 (`:284-296`) says only "until no checks are pending"; `fetch_pr_reviews.sh:134-143` does fetch check-runs, so item 3 is indeed a text clarification; `plan-task/SKILL.md` has "Concrete, not generic" at `:344` and no exec-bit guidance anywhere; `test_dispatch_phase.sh:356-395` is the handoff block and `:362-365` is the `review-issue` assertion that already checks `Never push`; `:373`/`:376` do show branch-mode vs PR-mode `entry_type=` differing.
+
+### Findings
+
+1. **[Consequences]** — `dispatch_phase.sh`'s own header comment enumerates the handoff block's fields in order: "Output is `key=value` lines, one per line, in this order: worktree, task, agent_name, agent_email, model, entry_type, exit_contract, and prompt_file" (`dispatch_phase.sh:14-17`). Adding `conventions=` makes that comment wrong, and the workspace rule is that documentation is verified against source. Add the header comment to the plan's Files to Change / Consequences rows for `dispatch_phase.sh` (one-line edit, fold into the same commit).
+2. **[Approach — item 5]** — The plan describes the trigger as "a `publish`/`merge`-style decision over a `checkpoint:findings` state" (plan.md:74-76). That combination does not exist in the dispatcher's vocabulary: `**After**: findings` (and `merge`) accepts only `merge` / `address`; `publish` is a decision for `**After**: publish` / `rounds` (`dispatch_phase.sh:493-505`), and those rows route on the pre-push review's `**Verdict**`, never on open boxes. The new SKILL.md sub-step must name the reachable case — an `**After**: findings` checkpoint answered `merge` with suggestion-only boxes left open — or it will document a state the loop cannot be in.
+3. **[Approach — item 5]** — The plan does not say the host must commit the flipped `progress.md`. `check` rewrites the one line in place and prints it; it does not commit (`review_progress.sh:444-491`), unlike `progress_append.sh`. `address-findings` covers this by folding the flip into "the same commit as the fix, or a trailing progress commit" (`address-findings/SKILL.md:115`); the host has no fix commit, so the new sub-step should say to commit `progress.md` itself — otherwise the annotation rides into whatever the next phase's persistence step commits, or is lost.
+4. **[File targeting — placement]** — The plan says to add the sub-step "immediately after the `## Checkpoint` entry template" (plan.md:83-85). The template at `run-issue/SKILL.md:211-222` is followed by its own field explanations (`:224-232`) before the next topic at `:234`. Inserting between the template and its explanation splits them; place the sub-step after `:232`, before "Every dialog is self-contained."
+5. **[ADR compliance — optional]** — ADR-0014's handoff-contract bullet list (`docs/decisions/0014-in-process-phase-handoff.md:55-72`) enumerates what the host provides on every dispatch; `conventions=` becomes a sixth item not in that list. The repo has no ADR-amendment convention, so leaving the ADR as a point-in-time record is defensible — noting it here so the choice is deliberate rather than overlooked.
+
+### Summary
+
+The plan's shape is right and its one load-bearing technical claim is verified by both code reading and an end-to-end run: a checked (deferred) box already disappears from `open_findings()`, existing suites already pin both halves of that behaviour, and no new fixture row is needed. Findings 1–3 are additions to fold into implementation, not reasons to re-plan: one missed consequence (the script's own header comment), one imprecise state description that would otherwise be written into `SKILL.md` verbatim, and one missing "commit the flip" step.
+
+### Recommended Actions
+
+- [ ] (must-fix) Update `dispatch_phase.sh`'s header comment field list (`:14-17`) in the same commit that adds the `conventions=` line.
+- [ ] (must-fix) Write item 5's sub-step against the reachable checkpoint state — `**After**: findings` answered `merge` with suggestion-only boxes open — not "publish/merge-style over checkpoint:findings".
+- [ ] (suggestion) Say in the new sub-step that the host commits the flipped `progress.md` (`check` does not commit).
+- [ ] (suggestion) Place the new sub-step after `run-issue/SKILL.md:232`, not immediately after the entry template at `:222`.
+- [ ] (suggestion) Decide explicitly whether ADR-0014's handoff-contract list gets the `conventions=` bullet, or record that it stays as written.
