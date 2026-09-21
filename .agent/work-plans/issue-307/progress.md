@@ -65,3 +65,13 @@ No item from the write-up's numbered 1–8 set is missing from this issue once #
 - [ ] See below — item 6 doesn't account for `review_progress.sh` or `review_loop_lifecycle.md`.
 - [ ] Before implementation, decide item 6's mechanism explicitly in the plan rather than leaving both options open: prefer investigating and reusing the existing `check --deferred` checked-box convention (see Consequences above) over adding new routing state, since it requires no new progress.md syntax and no reader changes elsewhere.
 - [ ] If the `[~]` marker option is chosen instead, expand item 6's scope to include `review_progress.sh` (`findings`/`check`) and `.agent/knowledge/review_loop_lifecycle.md`, per the consequences map's rule that a `progress.md` entry shape change moves its writers and readers together.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 14:29 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed — reuse the existing convention (Recommended): item 6 becomes "when the owner defers suggestions at a checkpoint (publish/findings answered with them left open), the host marks those boxes via `review_progress.sh check --deferred "<reason>"` before the next `next` call, so the dispatcher's open_findings() no longer sees them"; no new `[~]` marker, no changes to review_progress.sh findings/check or the lifecycle note beyond documenting the host step in run-issue SKILL.md §6.
