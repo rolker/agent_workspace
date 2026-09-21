@@ -142,3 +142,55 @@ The plan's shape is right and its one load-bearing technical claim is verified b
 **Decision**: proceed
 
 Proceed (Recommended) — implement the plan at `165e1d1` with the five Plan Review additions applied: dispatch_phase.sh header comment lists `conventions=`; the new run-issue §6 sub-step names the reachable case (an `After: findings` checkpoint answered `merge` with suggestion-only boxes open) and says the host commits the flipped progress.md itself; placed after the checkpoint template's field notes (after SKILL.md:232); ADR-0014's handoff list left as a point-in-time record with a one-line note. Implementer: Opus sub-agent under the host. Owner also decided (same checkpoint) NOT to open the run-issue package-worktree issue yet — revisit after #265 PR 3.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-21 14:57 -04:00
+**By**: Claude Code Agent (implementer: claude-opus-5; lead: claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-307/plan.md` at `165e1d1`
+
+**Branch**: `feature/issue-307` at `ab0f5c8`
+**Mode**: inline
+
+Four commits, one per logical change. `dispatch_phase.sh` (d24fbb0, with
+`test_dispatch_phase.sh`): `cmd_handoff` prints a new `conventions=` line after
+`exit_contract=` carrying the `**When**` local-time-with-offset format and the
+scratch-hygiene rule, and the header comment's ordered field enumeration now
+lists `conventions` between `exit_contract` and `prompt_file` (addition 1,
+same commit as the field); the existing `review-issue` handoff assertion gained
+`conventions=`/`local time with offset`/`scratchpad` substring checks rather
+than a new fixture, per plan item 7. `.claude/skills/run-issue/SKILL.md`
+(f96f80e): step 1 gained an identity paragraph with a sourced-in-the-same-chain
+example (`dispatch_phase.sh:228-231` hard-fails on unset `AGENT_NAME`/
+`AGENT_EMAIL`); step 4 states `$BEFORE`'s `--type` must be the exact
+`entry_type=` string the handoff printed (`Local Review (Pre-Push)` vs `Local
+Review` are distinct in `skill_entry_type()`) and adds `conventions=` to the
+printed-field list with an instruction to relay it; step 9 extends "no checks
+pending" to the `copilot-pull-request-reviewer` check-run (`fetch_pr_reviews.sh`
+already emits every check-run's `name`/`conclusion`) and names the
+quota-exhausted comment-only non-source; §6 gained the deferred-box sub-step,
+placed after the `## Checkpoint` field explanations and immediately before
+"Every dialog is self-contained" (addition 4), naming only the reachable case —
+an `**After**: findings` checkpoint answered `merge` with suggestion-only boxes
+still open in the latest `## Integrated Review`'s `### Findings` section
+(addition 2; `open_findings(E, "Findings")` at `dispatch_phase.sh:560` is the
+router, and `f.get("checked")` its only test) — and stating that
+`review_progress.sh check` rewrites `progress.md` in place and does not commit,
+so the host commits the flipped file itself before the next `next` call
+(addition 3). `.claude/skills/plan-task/SKILL.md` (e15be78): a Guidelines bullet
+requiring a plan step that creates a new `test_*.sh` to include `chmod +x`,
+because the `check-shebang-scripts-are-executable` hook fails the commit
+otherwise. `docs/decisions/0014-in-process-phase-handoff.md` (ab0f5c8):
+addition 5 applied as a **References bullet**, not the Status line — ADR-0008
+permits both, but its Status-line clause is scoped to pointers at related ADRs
+while its References clause covers issue cross-references, and the section
+already lists #269/#276 the same way; the bullet says the Decision section's
+handoff-contract list is a point-in-time record and that `dispatch_phase.sh`'s
+header comment is the current field enumeration. Verification:
+`run_script_tests.sh` 23/23 suites, exit 0; `test_dispatch_phase.sh` 76 passed,
+0 failed with the extended assertion; `dispatch_phase.sh --issue 307 --skill
+review-code --type workspace` prints the `conventions=` line; pre-commit's full
+suite ran green on all four commits. One deviation from a draft claim, caught
+before commit: the plan-task bullet initially also said `run_script_tests.sh`
+only picks up executable suites — false, it invokes `bash "$s"` (line 220) — so
+the bullet now cites only the pre-commit hook.
