@@ -487,3 +487,34 @@ clean on all three changed files. Nothing changed outside the three commits.
 **Decision**: publish
 
 Publish (Recommended) — round-3 pre-push review approved; the one cosmetic suggestion (comment reflow at run_script_tests.sh:180) is tracked, not applied.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-21 14:06 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #306 at `a698ff7`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `1df412c`, carried forward; CI rollup @ `a698ff7`) — Copilot submitted a review at `a698ff7` but produced no findings (quota limit reached), so it is not a source
+**Cross-source confirmations**: 0
+**CI**: all-pass — six repo checks green (Lint (pre-commit), Validate Documentation, Validate Adapter Contract, across both workflow runs); the seventh check-run, `copilot-pull-request-reviewer`, is the quota-limited reviewer bot failing to run, not a repo check
+
+Only one GitHub review exists and it carries no content: Copilot's
+"unable to review this pull request because the user who requested the
+review has reached their quota limit", submitted against the current head.
+No inline comments, no conversation comments. The `sources` helper returned
+zero `local_findings` at this head because the round-3 `## Local Review
+(Pre-Push)` correlates to `1df412c`, two progress-only commits back. That
+entry is not stale: `git diff 1df412c..a698ff7` touches `progress.md`
+alone, so its one open suggestion still describes the code at the PR head
+and is carried forward here rather than dropped. Verified by reading
+`.agent/scripts/tests/run_script_tests.sh:180` at head — the stranded
+fragment is still there, exactly as round 3 described it. Rounds 1 and 2
+(1 must-fix each, 7 suggestions total) were closed by the two
+`## Implementation` entries and re-verified by execution in round 3; they
+are not re-listed.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) round 3 @ `1df412c`) list insertion stranded "Eight absolute-/tmp" as a mid-sentence fragment; reflow the coverage-boundary paragraph — `.agent/scripts/tests/run_script_tests.sh:180`
+
+### False positives
+- (Copilot @ `a698ff7`) no claim to dismiss — the review body is a quota-limit notice, not a finding; treated as an absent source, not as an approval
