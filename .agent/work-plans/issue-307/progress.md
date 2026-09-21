@@ -132,3 +132,13 @@ The plan's shape is right and its one load-bearing technical claim is verified b
 - [ ] (suggestion) Say in the new sub-step that the host commits the flipped `progress.md` (`check` does not commit).
 - [ ] (suggestion) Place the new sub-step after `run-issue/SKILL.md:232`, not immediately after the entry template at `:222`.
 - [ ] (suggestion) Decide explicitly whether ADR-0014's handoff-contract list gets the `conventions=` bullet, or record that it stays as written.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 14:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed (Recommended) — implement the plan at `165e1d1` with the five Plan Review additions applied: dispatch_phase.sh header comment lists `conventions=`; the new run-issue §6 sub-step names the reachable case (an `After: findings` checkpoint answered `merge` with suggestion-only boxes open) and says the host commits the flipped progress.md itself; placed after the checkpoint template's field notes (after SKILL.md:232); ADR-0014's handoff list left as a point-in-time record with a one-line note. Implementer: Opus sub-agent under the host. Owner also decided (same checkpoint) NOT to open the run-issue package-worktree issue yet — revisit after #265 PR 3.
