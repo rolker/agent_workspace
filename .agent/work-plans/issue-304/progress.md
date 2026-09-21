@@ -518,3 +518,13 @@ are not re-listed.
 
 ### False positives
 - (Copilot @ `a698ff7`) no claim to dismiss — the review body is a quota-limit notice, not a finding; treated as an absent source, not as an approval
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 14:11 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Merge (Recommended) — PR #306: 0 must-fix, CI green; the one open box is the cosmetic comment reflow the owner chose to track at the publish checkpoint. Closes #304 and #297.
