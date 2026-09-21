@@ -178,6 +178,12 @@ any other file.
 - Issue [#276](https://github.com/rolker/agent_workspace/issues/276) — this
   port (PR 1 `review-issue` persistence, PR 2 `dispatch_phase.sh`, PR 3
   this ADR + the `run-issue` skill + docs, PR 4 the live exercise).
+- Issue [#307](https://github.com/rolker/agent_workspace/issues/307) — the
+  live exercise's follow-ups. The handoff-contract list above is a
+  point-in-time record; #307 added a `conventions=` line to the printed
+  block (the `**When**` format and scratch-file hygiene), so
+  `dispatch_phase.sh`'s header comment, not this list, is the current
+  enumeration of the printed fields.
 - `ros2_agent_workspace` ADR-0015 ("handoff context contract") and
   ADR-0019 ("dispatch default flipped to in-process") — the fork ADRs this
   one adapts. That repo is not a GitHub remote reachable from this one; see
