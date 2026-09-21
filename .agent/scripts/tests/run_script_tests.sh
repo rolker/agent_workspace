@@ -117,18 +117,23 @@ done
 # contortion. test_run_script_tests.sh *is* in scope, so its lint fixtures
 # assemble their templates at runtime rather than spelling them inline.
 #
-# The pattern covers every mktemp spelling that escapes TMPDIR:
+# The pattern covers these mktemp spellings that escape TMPDIR:
 #   mktemp [-d] /tmp/<template>      bare absolute template
 #   mktemp -d -p /tmp <template>     -p / --tmpdir root
+#   mktemp -d -p/tmp <template>      attached-argument -p, incl. clustered
+#   mktemp -dp/tmp <template>        short flags (`-dp`, `-up`, ...)
 #   mktemp -d --tmpdir=/tmp <t>      (and the space-separated --tmpdir /tmp)
-# `/tmp` must be preceded by a whitespace/quote/`=`/`(` boundary, so a path
-# that merely ends in .../tmp/... (e.g. "$HOME/local/tmp/x.XXXXXX") is not a
-# hit, and must be followed by `/`, whitespace, a quote, `)` or end of line
-# so `/tmpfile.XXXXXX` is not one either. `[^|]*` keeps the match inside one
-# command rather than spanning a pipeline. This is a heuristic over file
-# text, not a shell parse: it reads literals only, so a /tmp root that
-# arrives through a variable is invisible to it.
-lint_hits=$(grep -rnE 'mktemp[^|]*[[:space:]"'"'"'=(]/tmp(/|$|[[:space:]"'"'"')])' "$TESTS_DIR"/test_*.sh 2>/dev/null) || true
+# It is not claimed to be exhaustive — see the coverage boundary below for
+# the spellings that are knowingly out of reach.
+# `/tmp` must be preceded by a whitespace/quote/`=`/`(` boundary — optionally
+# followed by an attached short-flag cluster ending in `p` — so a path that
+# merely ends in .../tmp/... (e.g. "$HOME/local/tmp/x.XXXXXX", or
+# "$HOME/opt-p/tmp/x") is not a hit, and must be followed by `/`, whitespace,
+# a quote, `)` or end of line so `/tmpfile.XXXXXX` is not one either.
+# `[^|]*` keeps the match inside one command rather than spanning a pipeline.
+# This is a heuristic over file text, not a shell parse: it reads literals
+# only, so a /tmp root that arrives through a variable is invisible to it.
+lint_hits=$(grep -rnE 'mktemp[^|]*[[:space:]"'"'"'=(](-[[:alpha:]]*p)?/tmp(/|$|[[:space:]"'"'"')])' "$TESTS_DIR"/test_*.sh 2>/dev/null) || true
 if [[ -n "$lint_hits" ]]; then
     echo "error: absolute /tmp mktemp destination(s) found in $TESTS_DIR — suites must honor TMPDIR (use \`mktemp -d\` or \`mktemp -d -p \"\$SANDBOX\"\`, never a /tmp template, \`-p /tmp\` or \`--tmpdir=/tmp\`) so the per-run leak guard can see their temp files:" >&2
     echo "$lint_hits" >&2
@@ -159,7 +164,20 @@ fi
 # scans "$TESTS_DIR"/test_*.sh and this file is the runner, not a suite.
 #
 # Coverage boundary: the sweep only sees what lands in TMPDIR while a suite
-# runs, and the lint only covers "$TESTS_DIR"/test_*.sh. Eight absolute-/tmp
+# runs, and the lint only covers "$TESTS_DIR"/test_*.sh.
+#
+# Three mktemp spellings are knowingly out of the lint's reach, each verified
+# to leave a real directory behind with the run still exiting 0:
+#   - a backslash line-continuation splitting the command across lines
+#     (`mktemp -d \` / `    -p /tmp t.XXXXXX`). The lint is a line-oriented
+#     grep; no single-line pattern can see it.
+#   - a /tmp root that arrives through a variable — the lint reads literals,
+#     not shell semantics.
+#   - a bare *relative* template (`mktemp -d leak.XXXXXX`), which ignores
+#     TMPDIR and lands in the runner's cwd — the repo root under pre-commit —
+#     so it is invisible to both the lint and the sweep. No such site exists
+#     in this directory today.
+# Eight absolute-/tmp
 # mktemp sites remain in production scripts that suites may invoke —
 # worktree_create.sh:933,974, pr_status.sh:321,336, gh_create_pr.sh:237,306,
 # fetch_pr_reviews.sh:148, gh_create_issue.sh:205 (cited as file:line only;

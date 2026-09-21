@@ -239,7 +239,9 @@ else
 fi
 
 # --- Case (i): the mktemp spellings that name an absolute root without a
-#     literal template — `-p`, `--tmpdir=`, `--tmpdir `. Each one
+#     literal template — `-p`, `-p<root>` (attached argument), `-dp<root>`
+#     (attached argument on a short-flag cluster), `--tmpdir=`,
+#     `--tmpdir `. Each one
 #     creates its directory outside the runner's guard root, so the leak
 #     sweep cannot see it and the run would otherwise exit 0 with a real
 #     directory left in /tmp. The lint must reject all of them.
@@ -273,6 +275,10 @@ EOF
 
 run_lint_spelling_case "p_flag" \
     '#!/usr/bin/env bash\nd=$(mktemp -d -p %s leakfixture.XXXXXX)\nrm -rf "$d"\nexit 0\n'
+run_lint_spelling_case "p_flag_attached" \
+    '#!/usr/bin/env bash\nd=$(mktemp -d -p%s leakfixture.XXXXXX)\nrm -rf "$d"\nexit 0\n'
+run_lint_spelling_case "dp_cluster_attached" \
+    '#!/usr/bin/env bash\nd=$(mktemp -dp%s leakfixture.XXXXXX)\nrm -rf "$d"\nexit 0\n'
 run_lint_spelling_case "tmpdir_eq" \
     '#!/usr/bin/env bash\nd=$(mktemp -d --tmpdir=%s leakfixture.XXXXXX)\nrm -rf "$d"\nexit 0\n'
 run_lint_spelling_case "tmpdir_space" \
