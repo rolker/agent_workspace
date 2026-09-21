@@ -43,14 +43,20 @@ ones enumerated in the issue body.
 
 ## Approach
 
-1. **Route every un-routed `Error:` echo to stderr** — add `>&2` to each
-   line listed above in `.agent/scripts/worktree_enter.sh`. No behavioral
-   change: exit codes, `show_usage` calls, and control flow are untouched;
-   only the output file descriptor changes. `show_usage()` itself writes
-   the multi-line help via `echo` with no explicit stream — leave that as
-   stdout (usage/help text is conventionally stdout, and the issue's
-   acceptance criteria and repro command target only the `Error: ...`
-   lines, not `show_usage`'s body).
+1. **Route every un-routed `Error:` echo to stderr, and `show_usage` at the
+   error call sites** — add `>&2` to each `echo "Error: ..."` line listed
+   above in `.agent/scripts/worktree_enter.sh`. In addition, the five error
+   paths that call `show_usage` immediately after the error echo (lines 75,
+   107, 126, 131, 136) must also route that `show_usage` call to stderr
+   (`show_usage >&2`, or a `show_usage_err()` wrapper that calls
+   `show_usage >&2`) — otherwise the 18-line usage block still prints to
+   stdout on those paths and the issue's own repro command
+   (`worktree_enter.sh --foo bar --print-path 2>/dev/null`) still fails
+   acceptance criterion 1. The `-h|--help` path (line 102) is explicitly
+   **not** touched: it keeps `show_usage` on stdout with `exit 0`, since
+   help output on request is conventional and out of scope. No other
+   behavioral change: exit codes and control flow are untouched; only the
+   output file descriptor changes for error paths.
 2. **Add a regression test** — new file
    `.agent/scripts/tests/test_worktree_enter_stderr.sh`, following the
    style of `test_resolve_work_plans_dir.sh` (plain bash, `assert_*`
@@ -58,37 +64,58 @@ ones enumerated in the issue body.
    the four required error paths (unknown option, missing `--skill` name,
    mutually-exclusive `--issue`/`--skill`, missing `--type`), invoke
    `worktree_enter.sh` as a subprocess with `2>/dev/null` and assert stdout
-   is empty and the exit status is non-zero. Also cover the remaining
-   un-routed paths found in step 1 (either/or missing, `--type` value
-   validation, `--print-path`/`--shell-snippet` mutual exclusivity,
-   `--project` without `--type project`) for full coverage of what
-   changed, and register the new file in `run_script_tests.sh`'s
-   discovery if that script requires explicit registration (verify — it
-   may glob `test_*.sh` automatically).
+   is empty and the exit status is non-zero — this now also exercises the
+   `show_usage >&2` routing from step 1, since those four paths are among
+   the five that call `show_usage`. Also cover the remaining un-routed
+   paths found in step 1 (either/or missing, `--type` value validation,
+   `--print-path`/`--shell-snippet` mutual exclusivity, `--project`
+   without `--type project`) for full coverage of what changed. Also cover
+   the "must be sourced" error at line 365: run the script non-sourced
+   (`bash worktree_enter.sh --issue <valid> --type <valid>`, no
+   `--print-path`/`--shell-snippet`) with `2>/dev/null` and assert empty
+   stdout and non-zero exit. The failed-`cd` error at line 383 is
+   deliberately left untested — it requires the worktree directory to
+   exist at resolution time and then disappear before the `cd`, which
+   isn't practical to stage in a unit test; the `>&2` fix still applies to
+   that line, just without dedicated coverage. `run_script_tests.sh` globs
+   `test_*.sh` in its tests directory and runs each with `bash "$s"`
+   (verified: lines 66–68 and 103), so the new file is auto-discovered —
+   no registration or exec bit needed. Finally, add one invariant
+   assertion to the new test file: grep `worktree_enter.sh` for any line
+   matching `echo "Error:` that lacks `>&2` on the same line, and fail the
+   suite if any are found, so a future un-routed `Error:` echo is caught
+   automatically rather than requiring a new per-path test.
 3. **Manual verification** — re-run the issue's own repro command
    (`worktree_enter.sh --foo bar --print-path 2>/dev/null`) and confirm
    empty output, matching acceptance criterion 1.
 4. **SKILL.md caveat removal (acceptance criterion 3)** — `.claude/skills/start-task/SKILL.md`
-   line 70 reads: "The `worktree_enter.sh` 'Unknown option' path still
-   writes to stdout ... see #194 for routing that to stderr too." Remove
-   that sentence (and the dangling `#194` reference) now that the fix
-   lands, so the PR doesn't leave that comment stale. (Confirmed in
-   scope: the Issue Review's Consequences section flags this as required
-   in the same PR, not deferred.)
+   line 70 currently reads: "Exit-code-checked idiom — error text from the
+   'not found' path goes to stderr, so `2>/dev/null` suppresses it. The
+   `worktree_enter.sh` 'Unknown option' path still writes to stdout ...
+   see #194 for routing that to stderr too." Replace both sentences: the
+   first is narrower than the post-fix reality (it names only the
+   "not found" path), the second is the stale caveat. New text states the
+   general invariant: "error text from `worktree_enter.sh`'s failure paths
+   goes to stderr, so `2>/dev/null` suppresses it." Remove the dangling
+   `#194` reference entirely now that the fix lands, so the PR doesn't
+   leave that comment stale. (Confirmed in scope: the Issue Review's
+   Consequences section flags this as required in the same PR, not
+   deferred.)
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/worktree_enter.sh` | Add `>&2` to the 10 un-routed `Error: ...` echo lines listed above |
-| `.agent/scripts/tests/test_worktree_enter_stderr.sh` | New regression test covering all error paths under `2>/dev/null` |
-| `.claude/skills/start-task/SKILL.md` (line 70) | Remove/tighten the stdout-leak caveat now that all paths route to stderr |
+| `.agent/scripts/worktree_enter.sh` | Add `>&2` to the 10 un-routed `Error: ...` echo lines listed above, plus route the five `show_usage` calls at lines 75, 107, 126, 131, 136 to stderr (`-h`/`--help` at line 102 stays on stdout) |
+| `.agent/scripts/tests/test_worktree_enter_stderr.sh` | New regression test covering all error paths (including the line-365 "must be sourced" case) under `2>/dev/null`, plus a grep-based invariant assertion that no `echo "Error:` line lacks `>&2` |
+| `.claude/skills/start-task/SKILL.md` (line 70) | Replace both sentences with the general invariant now that all failure paths route to stderr |
 
 ## Principles Self-Check
 
 | Principle | Consideration |
 |---|---|
 | Test what breaks | This is exactly a "no test existed, regression already happened once" case (PR #180 fixed some paths, missed others) — the new test file directly targets that failure mode. |
+| Enforcement over documentation | The grep-based invariant assertion in step 2 converts "every `Error:` echo routes to stderr" from a convention documented in the plan into a check the test suite enforces against future additions, not just the paths that exist today. |
 | A change includes its consequences | SKILL.md caveat removal is included in this plan, not deferred, per the Issue Review's explicit flag. |
 | Only what's needed | Scope stays to stream-routing only; no exit-code or interface changes, no touching `worktree_create.sh` (explicitly out of scope in the issue). |
 | Improve incrementally | Small, single-file behavioral fix plus one small test file — reviewable in one PR. |
@@ -105,7 +132,7 @@ ones enumerated in the issue body.
 |---|---|---|
 | `worktree_enter.sh` error routing | `start-task/SKILL.md`'s stdout-leak caveat | Yes — step 4 |
 | `worktree_enter.sh` error routing | Regression test coverage | Yes — step 2 |
-| Test suite | `run_script_tests.sh` discovery (if not auto-globbed) | Yes — verified in step 2 |
+| Test suite | `run_script_tests.sh` discovery | Yes — auto-globbed via `test_*.sh`, verified in step 2; no registration needed |
 
 ## Open Questions
 
