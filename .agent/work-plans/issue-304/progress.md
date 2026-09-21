@@ -477,3 +477,13 @@ clean on all three changed files. Nothing changed outside the three commits.
 
 ### Findings
 - [ ] (suggestion) list insertion stranded "Eight absolute-/tmp" as a mid-sentence fragment; reflow the coverage-boundary paragraph — `.agent/scripts/tests/run_script_tests.sh:180`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 14:01 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish (Recommended) — round-3 pre-push review approved; the one cosmetic suggestion (comment reflow at run_script_tests.sh:180) is tracked, not applied.
