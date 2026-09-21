@@ -400,3 +400,13 @@ The revision holds up under a line-by-line re-check: all three round-2 must-fixe
 
 - [ ] (optional, at implementation time) Correct `make_sandbox()`'s range in `test_merge_pr_gate.sh` to 135–167 and the runner's `TESTS_DIR` line to 58
 - [ ] (optional, at implementation time) Add `test_merge_pr_gate.sh:853` and `:931`/`:935` to the `${sb}.remote.git` re-derivation list so the string-derivation rule is applied there too
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 11:12 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed (Recommended) — implement PR 1 of the plan (eight leaking suites onto the top-level SANDBOX + trap convention; five absolute-template suites normalised) on this branch with Refs #297; PR 2 (runner guard) follows as a second drive. The three round-3 nits (make_sandbox starts at 135; runner line 58; ${sb}.remote.git also at 853, 931/935) are folded in during implementation. Implementer: Opus sub-agent under the host's direction.
