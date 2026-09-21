@@ -131,6 +131,17 @@ test_resolution_outside_repo() {
     # $SANDBOX is a temp root outside any git work tree, so this probe still
     # sits outside every repo — and it picks up EXIT-trap coverage.
     tmp=$(mktemp -d -p "$SANDBOX")
+    # Self-check the precondition rather than assuming it: if a future change
+    # to where $SANDBOX is rooted moved this probe inside a git work tree,
+    # resolve_root would legitimately return a path and the assertion below
+    # would fail for the wrong reason — or, worse, a change to resolve_root
+    # could make it return empty while the probe is inside a repo and the
+    # test would still "pass".
+    local inside="outside"
+    if git -C "$tmp" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        inside="inside $(git -C "$tmp" rev-parse --show-toplevel 2>/dev/null)"
+    fi
+    assert_eq "probe dir is outside any git work tree" "outside" "$inside"
     local root
     root=$(resolve_root "$tmp")
     assert_eq "outside repo -> empty string" "" "$root"
