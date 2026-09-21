@@ -557,3 +557,13 @@ below are the PR 2 backlog, deliberately not blocking this PR.
 
 ### False positives
 - (Copilot R1 @ `d380785`) No finding claimed — the review body is only a quota-limit notice with 0 inline comments, so there is nothing to classify; recorded here so the round shows Copilot produced no code signal rather than an implicit approval.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 12:03 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Merge (Recommended) — PR 1 (#303): 0 must-fix, CI green; the three open suggestions are PR 2's backlog by the earlier publish decision. #297 stays open for PR 2 (the run_script_tests.sh guard).
