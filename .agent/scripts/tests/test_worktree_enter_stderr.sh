@@ -212,6 +212,9 @@ test_must_be_sourced() {
 # `printf 'Error: %s\n' ...` is covered too.
 test_invariant_error_echoes_routed() {
     echo "TEST: no echo/printf line emitting \"Error:\" lacks >&2"
+    # Assumes one emitter per line with its redirect on the same line: a
+    # `{ echo "Error: ..."; } >&2` block, a line-continued printf, or a
+    # comment holding both tokens would be misread by this line-scoped grep.
     local unrouted
     unrouted=$(grep -nE '(echo|printf)[[:space:]].*Error:' "$SCRIPT" | grep -v '>&2' || true)
     assert_eq "un-routed Error emitters" "" "$unrouted"

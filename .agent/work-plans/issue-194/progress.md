@@ -255,7 +255,7 @@ Scope: delta `34c8d1b..eef8fb6` plus verification that each round-1 item is genu
 
 ### Findings
 - [x] (suggestion) The stub-log assertion's `command -v` guard and its comment are inaccurate — the stubs are on PATH during the run, so the script's own `command -v` always succeeds and the log is always non-empty; the guard needlessly skips a valid assertion where the real tools are absent — `.agent/scripts/tests/test_worktree_enter_stderr.sh:196`
-- [ ] (suggestion) The invariant grep is line-scoped and unanchored: a correctly-routed `{ echo "Error: ..."; ... } >&2` block, a line-continued `printf`, or a comment containing both tokens would report as un-routed; worth a one-line note of the assumption — `.agent/scripts/tests/test_worktree_enter_stderr.sh:217`
+- [x] (suggestion) The invariant grep is line-scoped and unanchored: a correctly-routed `{ echo "Error: ..."; ... } >&2` block, a line-continued `printf`, or a comment containing both tokens would report as un-routed; worth a one-line note of the assumption — `.agent/scripts/tests/test_worktree_enter_stderr.sh:217`
 - [ ] (suggestion) Stub isolation is scoped to `test_must_be_sourced` only; hoisting `make_offline_stubs` + the PATH override to suite level would make the offline guarantee structural, since this leak class already bit once — `.agent/scripts/tests/test_worktree_enter_stderr.sh:180`
 
 ## Checkpoint
