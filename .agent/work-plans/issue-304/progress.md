@@ -60,3 +60,13 @@ issue: 304
 
 ### Actions
 - [ ] Resolve the "lint for absolute `/tmp/` mktemp templates" bullet before implementing. It traces to Plan Review round-1 finding 4, which offered two alternatives — normalise the five suites' `mktemp` calls, or have the guard lint for the literal-`/tmp/`-template pattern — and the plan's final, approved text (Approach step 7, Files to Change) resolved that finding by choosing normalisation only, executed in PR 1 (confirmed merged, confirmed no absolute templates remain). The plan's PR 2 section does not describe a lint check anywhere. The issue's "per plan" attribution for this bullet is not accurate as the plan currently reads. Either: (a) drop the bullet, since normalisation already closes the gap the lint would catch, or (b) keep it as a deliberate regression guard against a future suite reintroducing an absolute template, and say so explicitly in the PR description rather than citing it as already-approved plan scope.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 12:12 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed, keep the lint (Recommended) — plan PR 2 as scoped in the parent plan (.agent/work-plans/issue-297/plan.md, PR 2 section) plus the absolute-/tmp-template lint, declared as an addition beyond the parent plan (a deliberate regression guard, not plan scope).
