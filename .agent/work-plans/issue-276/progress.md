@@ -540,3 +540,13 @@ PR 3 of the #276 port (PR #294): run-issue SKILL.md (0b1efa4), ADR-0014 + ADR-00
 
 ### Findings
 - [ ] No issues found. LGTM. All five round-1 items resolved; no new inaccuracy introduced.
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-09-21 14:17 -04:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #283 at `3110b2b`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: latest Local Review entry is at `c350499`, not the PR head `3110b2b` (stale review: touches `.agent/scripts/merge_pr.sh`, which is not a merge-time document file);no "## Decision summary" heading in the PR body or a PR comment
