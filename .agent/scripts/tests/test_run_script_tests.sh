@@ -4,9 +4,10 @@
 # every .agent/scripts/tests/test_*.sh suite into the validate-script-tests
 # pre-commit hook.
 #
-# Cases (a)–(d) cover discovery, fail-fast and the tool preflight; (e)–(h)
+# Cases (a)–(d) cover discovery, fail-fast and the tool preflight; (e)–(j)
 # cover the per-run TMPDIR leak guard and the absolute-/tmp mktemp lint
-# added for issue #304.
+# added for issue #304 — (h)–(i) one case per mktemp spelling that escapes
+# TMPDIR, (j) the anchoring that keeps a nested .../tmp/ path green.
 #
 # Every case runs against a scratch copy of a tests directory
 # (run_script_tests.sh's optional [tests-dir] argument), never the real
@@ -212,7 +213,7 @@ fi
 #
 #     The fixture's template is assembled from a variable so that no single
 #     line of THIS file contains the lint's own pattern — the real run lints
-#     "$TESTS_DIR"/*.sh, which includes this file, so a literal template
+#     "$TESTS_DIR"/test_*.sh, which includes this file, so a literal template
 #     written inline here would make the whole suite fail its own lint. ---
 CASE_H="$TMPD/case_h"
 mkdir -p "$CASE_H"
@@ -234,6 +235,71 @@ if [ "$rc" -eq 1 ] && [ ! -f "$MARKER_H" ] \
     pass "(h) the preflight lint names an absolute-/tmp template and exits 1 before any suite runs"
 else
     fail "(h) the preflight lint names an absolute-/tmp template and exits 1 before any suite runs (rc=$rc, marker_exists=$([ -f "$MARKER_H" ] && echo yes || echo no), out=$out)"
+fi
+
+# --- Case (i): the mktemp spellings that name an absolute root without a
+#     literal template — `-p`, `--tmpdir=`, `--tmpdir `. Each one
+#     creates its directory outside the runner's guard root, so the leak
+#     sweep cannot see it and the run would otherwise exit 0 with a real
+#     directory left in /tmp. The lint must reject all of them.
+#
+#     Same assembly trick as case (h): every fixture's /tmp root comes from
+#     $ABS_TMP_ROOT via printf, so no line of THIS file matches the lint's
+#     own pattern (the real run lints this file). ---
+run_lint_spelling_case() {
+    local label="$1" fmt="$2"
+    local dir="$TMPD/case_i_$label" marker="$TMPD/case_i_${label}_marker"
+    mkdir -p "$dir"
+    write_checkpoint_stub "$dir"
+    # shellcheck disable=SC2059  # $fmt is a caller-supplied format string
+    printf "$fmt" "$ABS_TMP_ROOT" > "$dir/test_absolute_${label}.sh"
+    cat > "$dir/test_should_not_run.sh" <<EOF
+#!/usr/bin/env bash
+touch "$marker"
+exit 0
+EOF
+    chmod +x "$dir"/test_*.sh
+
+    local out rc
+    out=$("$RUNNER" "$dir" 2>&1); rc=$?
+    if [ "$rc" -eq 1 ] && [ ! -f "$marker" ] \
+        && printf '%s' "$out" | grep -q "test_absolute_${label}.sh"; then
+        pass "(i) the lint rejects the $label spelling before any suite runs"
+    else
+        fail "(i) the lint rejects the $label spelling before any suite runs (rc=$rc, marker_exists=$([ -f "$marker" ] && echo yes || echo no), out=$out)"
+    fi
+}
+
+run_lint_spelling_case "p_flag" \
+    '#!/usr/bin/env bash\nd=$(mktemp -d -p %s leakfixture.XXXXXX)\nrm -rf "$d"\nexit 0\n'
+run_lint_spelling_case "tmpdir_eq" \
+    '#!/usr/bin/env bash\nd=$(mktemp -d --tmpdir=%s leakfixture.XXXXXX)\nrm -rf "$d"\nexit 0\n'
+run_lint_spelling_case "tmpdir_space" \
+    '#!/usr/bin/env bash\nd=$(mktemp -d --tmpdir %s leakfixture.XXXXXX)\nrm -rf "$d"\nexit 0\n'
+
+# --- Case (j): the lint is anchored to a root /tmp, so a path that merely
+#     contains a .../tmp/ segment is not a hit. The fixture below is written
+#     literally (not assembled), which is the point: this very line is linted
+#     by the real run, and it must stay green. ---
+CASE_J="$TMPD/case_j"
+mkdir -p "$CASE_J"
+write_checkpoint_stub "$CASE_J"
+cat > "$CASE_J/test_nested_tmp_path.sh" <<'EOF'
+#!/usr/bin/env bash
+base="${TMPDIR:?}/nest"
+mkdir -p "$base/local/tmp"
+d=$(mktemp -d "$base/local/tmp/fixture.XXXXXX")
+[ -d "$d" ] || exit 1
+rm -rf "$base"
+exit 0
+EOF
+chmod +x "$CASE_J/test_nested_tmp_path.sh"
+
+out=$("$RUNNER" "$CASE_J" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "all 2 suites passed"; then
+    pass "(j) a non-root .../tmp/ path is not a lint hit"
+else
+    fail "(j) a non-root .../tmp/ path is not a lint hit (rc=$rc, out=$out)"
 fi
 
 echo ""

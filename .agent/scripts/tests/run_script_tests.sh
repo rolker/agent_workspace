@@ -99,23 +99,36 @@ for tool in jq python3; do
     fi
 done
 
-# Preflight lint: no absolute-/tmp mktemp templates under $TESTS_DIR
-# (issue #304, #297 PR 2). A suite that writes to a hardcoded /tmp/... path
-# bypasses TMPDIR entirely, so the per-run guard below can neither contain
-# nor see what it leaves behind. Issue #297 PR 1 normalised every such site
-# in this directory; this lint is the regression guard that keeps it that
-# way. It scans $TESTS_DIR (the caller-supplied [tests-dir]), not a
-# hardcoded path, so test_run_script_tests.sh can exercise it against a
-# scratch fixture directory.
+# Preflight lint: no absolute-/tmp mktemp destinations in the suites under
+# $TESTS_DIR (issue #304, #297 PR 2). A suite that writes to a hardcoded
+# /tmp path bypasses TMPDIR entirely, so the per-run guard below can
+# neither contain nor see what it leaves behind. Issue #297 PR 1 normalised
+# every such site in this directory; this lint is the regression guard that
+# keeps it that way. It scans $TESTS_DIR (the caller-supplied [tests-dir]),
+# not a hardcoded path, so test_run_script_tests.sh can exercise it against
+# a scratch fixture directory.
 #
-# The pattern excludes `|` between the two tokens so it matches a template
-# argument rather than a pipeline; it is the same pattern PR 1's own
-# verification used. Neither this grep line nor the guard's mktemp call
-# below matches it — verified by the full-suite run, which lints this very
-# file.
-lint_hits=$(grep -rnE 'mktemp[^|]*/tmp/' "$TESTS_DIR"/*.sh 2>/dev/null) || true
+# Scope is "$TESTS_DIR"/test_*.sh — the suites the runner actually executes.
+# That glob is also what exempts this file: the runner's own guard mktemp
+# below legitimately hardcodes /tmp (see below) and is excluded because
+# run_script_tests.sh is not a test_*.sh suite, not because of any pattern
+# contortion. test_run_script_tests.sh *is* in scope, so its lint fixtures
+# assemble their templates at runtime rather than spelling them inline.
+#
+# The pattern covers every mktemp spelling that escapes TMPDIR:
+#   mktemp [-d] /tmp/<template>      bare absolute template
+#   mktemp -d -p /tmp <template>     -p / --tmpdir root
+#   mktemp -d --tmpdir=/tmp <t>      (and the space-separated --tmpdir /tmp)
+# `/tmp` must be preceded by a whitespace/quote/`=`/`(` boundary, so a path
+# that merely ends in .../tmp/... (e.g. "$HOME/local/tmp/x.XXXXXX") is not a
+# hit, and must be followed by `/`, whitespace, a quote, `)` or end of line
+# so `/tmpfile.XXXXXX` is not one either. `[^|]*` keeps the match inside one
+# command rather than spanning a pipeline. This is a heuristic over file
+# text, not a shell parse: it reads literals only, so a /tmp root that
+# arrives through a variable is invisible to it.
+lint_hits=$(grep -rnE 'mktemp[^|]*[[:space:]"'"'"'=(]/tmp(/|$|[[:space:]"'"'"')])' "$TESTS_DIR"/test_*.sh 2>/dev/null) || true
 if [[ -n "$lint_hits" ]]; then
-    echo "error: absolute /tmp mktemp template(s) found in $TESTS_DIR — suites must honor TMPDIR (use \`mktemp -d\` or \`mktemp -d -p \"\$SANDBOX\"\`) so the per-run leak guard can see their temp files:" >&2
+    echo "error: absolute /tmp mktemp destination(s) found in $TESTS_DIR — suites must honor TMPDIR (use \`mktemp -d\` or \`mktemp -d -p \"\$SANDBOX\"\`, never a /tmp template, \`-p /tmp\` or \`--tmpdir=/tmp\`) so the per-run leak guard can see their temp files:" >&2
     echo "$lint_hits" >&2
     exit 1
 fi
@@ -137,17 +150,14 @@ fi
 # rather than assuming the guard is broken.
 #
 # The guard directory hardcodes /tmp and deliberately ignores the caller's
-# own TMPDIR. Two reasons: (1) a nested run — this repo's
-# test_run_script_tests.sh drives this runner against scratch tests
-# directories — must not have its guard redirected into the outer run's
-# temp root or into the scratch tests directory itself; (2) the
-# `--tmpdir=/tmp <relative-template>` spelling (rather than the equivalent
-# `-d /tmp/run-script-tests.XXXXXX`) keeps this line from matching the
-# preflight lint above, which scans this file too. Do not "fix" either
-# detail back: `-d /tmp/...` would make the runner lint itself red.
+# own TMPDIR: a nested run — this repo's test_run_script_tests.sh drives
+# this runner against scratch tests directories — must not have its guard
+# redirected into the outer run's temp root or into the scratch tests
+# directory itself. The preflight lint above does not object, because it
+# scans "$TESTS_DIR"/test_*.sh and this file is the runner, not a suite.
 #
 # Coverage boundary: the sweep only sees what lands in TMPDIR while a suite
-# runs, and the lint only covers "$TESTS_DIR"/*.sh. Eight absolute-/tmp
+# runs, and the lint only covers "$TESTS_DIR"/test_*.sh. Eight absolute-/tmp
 # mktemp sites remain in production scripts that suites may invoke —
 # worktree_create.sh:933,974, pr_status.sh:321,336, gh_create_pr.sh:237,306,
 # fetch_pr_reviews.sh:148, gh_create_issue.sh:205 (cited as file:line only;
