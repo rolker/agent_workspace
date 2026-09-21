@@ -197,3 +197,13 @@ The plan's diagnosis, scope widening, PR split and ordering are all sound, and i
 - [ ] Add `test_checkpoint_269.sh` to PR 1's file list, or record why it is excluded; correct the plan's "no additional suites" claim (finding 5)
 - [ ] Update the plan's `feature/issue-194` references to `main` and rebase this worktree onto `main` (finding 6)
 - [ ] Consider per-suite sweeping, a fuller cleanup-command caveat, and `outside`/`bare` sibling placement (findings 7–9)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 10:26 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise the plan with all ten Plan Review findings folded in (5 must-fix: mktemp -d under the trapped root, not a counter; per-run TMPDIR outside the git work tree; test_run_script_tests.sh cases for the guard; absolute-template mktemp sites normalised or linted; test_checkpoint_269.sh as the eighth file). Owner asked whether .agent/scratchpad/ being gitignored changes finding 2 — it does not: ignore rules affect tracking, not `git rev-parse` discovery, so a sandbox there still resolves to the workspace root.
