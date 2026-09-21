@@ -505,3 +505,13 @@ its own `read_file` permission, copilot rejected the script's argv
 - [ ] (suggestion) outside-any-repo probe's premise is now TMPDIR-dependent, not hardcoded; add a `git rev-parse` self-check so it asserts its own precondition — `.agent/scripts/tests/test_merge_pr_root_resolution.sh:133`
 - [ ] (suggestion) TMP_HOME became a fixed-name `mkdir` subdir instead of the `mktemp -d -p "$SANDBOX"` the plan's wording implied; harmless and matches SHIM_DIR, but undeclared — `.agent/scripts/tests/test_block_bash_tool_mapping.sh:29`
 - [ ] (suggestion) PR 1 fixes the leak but no guard yet prevents a new suite reintroducing it; PR 2 should follow with no unrelated work in between — `.agent/scripts/tests/run_script_tests.sh` (PR 2)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 11:53 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish (Recommended) — PR 1 of #297 (Refs, not Closes; PR 2 adds the guard). The three suggestions are tracked, not applied: rev-parse self-check in the outside-any-repo test and the TMP_HOME note can ride with PR 2.
