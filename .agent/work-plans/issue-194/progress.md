@@ -183,3 +183,13 @@ The round-1 must-fix is genuinely resolved in the plan text, not merely claimed,
 - [ ] Make the line-365 test discriminate the path it claims to test (assert stderr contains "must be sourced" and stage the worktree precondition deterministically).
 - [ ] Extend the grep invariant to cover `show_usage` at error call sites, not just `echo "Error:` lines.
 - [ ] Name line 366 explicitly in step 1 / Files-to-Change as one of the lines to route.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-21 08:50 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed, apply the 3 suggestions — implement inline, folding in the round-2 suggestions: (1) line-365 test asserts stderr matches "must be sourced" from a staged worktree-named temp dir; (2) grep invariant also covers show_usage calls other than -h/--help; (3) line 366 routed explicitly.
