@@ -267,3 +267,23 @@ Scope: delta `34c8d1b..eef8fb6` plus verification that each round-1 item is genu
 **Decision**: address
 
 Address the 3 suggestions first — drop the dead `command -v` guard on the stub-log assertion; note the line-scoped grep assumption; hoist the gh/git-bug stubs + PATH override to suite level so the offline guarantee is structural. Then re-review before publishing.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-21 10:05 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-194 at `5505d5a`
+**Addressed**: Local Review (Pre-Push) at `704d7e9` (2026-09-21 09:25 -04:00)
+**Commits**: 37d884c, 3ddf31c, 5505d5a
+
+### Actions
+- [x] Removed the dead `command -v gh || command -v git-bug` guard around the stub-log assertion and its inaccurate comment; the assertion now runs unconditionally — `.agent/scripts/tests/test_worktree_enter_stderr.sh:196`
+- [x] Added a one-line note that the `Error:` routing invariant is line-scoped: it assumes one emitter per line with its redirect on the same line, so a `{ ...; } >&2` block, a line-continued printf, or a comment holding both tokens would be misread — `.agent/scripts/tests/test_worktree_enter_stderr.sh:217`
+- [x] Hoisted `make_offline_stubs` and the `PATH="$STUB_BIN:$PATH"` override to suite level (installed once after the sandbox, exported for every invocation); `test_must_be_sourced` keeps the stub-log assertion and clears the log before its invocations — `.agent/scripts/tests/test_worktree_enter_stderr.sh:180`
+
+### Verification
+- `bash .agent/scripts/tests/test_worktree_enter_stderr.sh` — 36 passed, 0 failed
+- `strace -f -e trace=execve` over the suite: zero execs of `/usr/bin/gh` or `/usr/local/bin/git-bug`; the only `gh` / `git-bug` execs are the sandbox stubs
+- `bash .agent/scripts/tests/run_script_tests.sh` — all 23 suites passed
+- Sandbox removed by the EXIT trap; nothing left in `/tmp`
