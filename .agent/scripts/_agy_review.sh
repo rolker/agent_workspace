@@ -91,9 +91,11 @@ fi
 # failure the useful parts are copied into the findings file first.
 TMP_DIR=$(mktemp -d -t agy-review.XXXXXX) || fail "mktemp failed"
 trap 'rm -rf "$TMP_DIR"' EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM HUP
-# (re-armed below to also stop agy once it is running)
+# Armed before agy is launched (AGY_PID empty until then) so a signal in
+# the launch window cannot leave agy running behind an exited helper.
+AGY_PID=""
+trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 130' INT
+trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 143' TERM HUP
 INPUT_FILE="${TMP_DIR}/input.ndjson"
 STREAM_FILE="${TMP_DIR}/stream.ndjson"
 STDERR_FILE="${TMP_DIR}/stderr.txt"
@@ -119,10 +121,9 @@ fi
     --disable-slash-commands \
     -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE" &
 AGY_PID=$!
-trap 'kill "$AGY_PID" 2>/dev/null; exit 130' INT
-trap 'kill "$AGY_PID" 2>/dev/null; exit 143' TERM HUP
 AGY_EXIT=0
 wait "$AGY_PID" || AGY_EXIT=$?
+AGY_PID=""
 
 # Last 20 lines of stderr, for failure reports: a fatal error lands at
 # the end, after any startup chatter.

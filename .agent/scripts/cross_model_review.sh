@@ -761,9 +761,12 @@ run_agent_job() {
     # a TERM from the parent's cleanup reaches the CLI, not just this
     # shell. `wait` is interruptible by the trap; a plain foreground
     # command would defer it until the CLI finished on its own.
+    # Trap armed BEFORE the spawn so a TERM landing in the launch window
+    # cannot leave the CLI running behind a dead job shell.
+    child=""
+    trap '[[ -n "$child" ]] && kill "$child" 2>/dev/null; exit 143' TERM INT
     run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file" &
     child=$!
-    trap 'kill "$child" 2>/dev/null; exit 143' TERM INT
     rc=0
     wait "$child" || rc=$?
     if [[ "$rc" -eq 124 ]]; then
@@ -809,6 +812,9 @@ ANY_FAILED=false
 for agent in "${AGENTS_TO_RUN[@]}"; do
     rc=0
     wait "${AGENT_PID[$agent]}" || rc=$?
+    # Reaped: drop the PID so the exit cleanup cannot signal a recycled
+    # PID belonging to an unrelated process.
+    unset "AGENT_PID[$agent]"
     AGENT_EXIT["$agent"]=$rc
     [[ "$rc" -eq 0 ]] || ANY_FAILED=true
 done
