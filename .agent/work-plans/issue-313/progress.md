@@ -785,7 +785,7 @@ No real agy/codex/claude/copilot prompt was run (quota); nothing pushed.
 
 ## Implementation
 **Status**: complete
-**When**: 2026-09-22 14:35 -04:00
+**When**: 2026-09-22 14:21 -04:00
 **By**: Claude Code Agent (claude-opus-5)
 **Branch**: feature/issue-313 at fb8b6d9
 **Plan**: `.agent/work-plans/issue-313/plan.md` at `2c24f22`
