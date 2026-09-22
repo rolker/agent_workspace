@@ -396,3 +396,13 @@ The prior `## Integrated Review` at `8e9c0c8` is an earlier round: both of its f
 
 ### False positives
 - (Copilot @ `8e9c0c8` and @ `688d1e9`) Both GitHub reviews state Copilot "was unable to review this pull request because the user who requested the review has reached their quota limit" — COMMENTED reviews with zero inline comments and no claim about the code. Recorded so the absence of bot findings is not mistaken for bot approval.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 09:23 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Address: one more address-findings pass for the three wording suggestions (run-issue step 10 "one path" overstatement, step 11's less precise sibling caveat, and the review_loop_lifecycle.md gate row), then re-review, triage, and merge.
