@@ -618,3 +618,13 @@ should be recorded in the PR description rather than re-planned.
 - [ ] Drop `--permission-mode plan` in favour of `--permission-prompts none` alone, or add a claude-mock assertion that the findings file holds a review rather than a plan
 - [ ] Decide the copilot size guard's form (test-enforced invariant, warn-and-proceed, or a 128 KiB bound) and record the choice in the PR description
 - [ ] Scope the `CLI_REVIEW_HELPER` availability check to codex/claude/copilot, matching the existing gemini-only `AGY_REVIEW_HELPER` check
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 13:18 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed to implementation with the round-2 suggestions folded in: no --permission-mode plan for claude (--output-format json + --permission-prompts none only); Copilot prompt-size guard at 128 KiB (the kernel MAX_ARG_STRLEN bound) with the stdin contract test as the real enforcement; the CLI_REVIEW_HELPER availability precheck scoped to codex/claude/copilot. Main merged into the branch first so implementation runs under the post-#314 dispatched-implement rules.
