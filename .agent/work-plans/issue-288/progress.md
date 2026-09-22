@@ -73,3 +73,11 @@ The diagnosis is right and the stream-json approach is the correct fix for both 
 - [ ] Address #274's prompt-trimming half, or record in the plan and PR why it is deferred
 - [ ] Give the helper its own jq guard, explicit agy exit-status capture (not pipefail), and separate stderr capture
 - [ ] Fix the "exits 3" wording (sync-only) and write the `review-code` note against the marker + reason line
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 09:38 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-288/plan.md` at `2fd9866`
+
+Revision after plan review round 1: the helper owns the findings file with no wrapper redirect, agy's raw stream lives in mktemp files (kept only on failure) so nothing new lands under the work-plans dir, the print-timeout stderr marker is treated as a failed review, the tool-use paragraph is gemini-only, and a mock-tmux test covers the default execution path.
