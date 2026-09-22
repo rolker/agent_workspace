@@ -458,3 +458,13 @@ Publish now: round 3 approved with no findings, main merged in (39b772a), item 4
 - (tooling note, not a review claim) `review_progress.sh sources` returned empty `local_findings` here: it correlates by exact head SHA and the round-3 entry is recorded at `8e1ffd1`, one bookkeeping commit behind the PR head. Known helper gap #309; the timeline was read directly instead.
 
 **Merge recommendation**: merge. No open must-fix at the PR head, CI green on every substantive check, and the PR body already carries a `## Decision summary`, so `merge_pr.sh`'s review gate has both artefacts it looks for.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 13:28 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge with no skips: zero open findings, CI green, decision summary present. First live run of the #300 merge-script changes (Copilot check-run excluded from CI, enforce-by-default gate, bookkeeping walk-back).
