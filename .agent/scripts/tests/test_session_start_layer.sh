@@ -19,7 +19,7 @@
 #    can prove -- that Claude Code actually splices this stdout into context
 #    -- stays in the acceptance test.
 #
-# Hermetic: one mktemp -d sandbox (TMPDIR-honouring), HOME redirected, no
+# Hermetic: one `mktemp -d` sandbox, which honours TMPDIR; HOME redirected, no
 # network, no gh.
 #
 # Run: bash .agent/scripts/tests/test_session_start_layer.sh

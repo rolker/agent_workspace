@@ -22,6 +22,11 @@
 # Trimmed to what the #317 acceptance loop actually invokes from a project
 # cwd. dashboard.sh and register_project.sh are deliberately absent —
 # deferred to PR 4 (each row costs a guard call plus a test row).
+#
+# cross_model_review.sh is absent for a different reason: it CANNOT satisfy
+# the rule. Reviewing a repo that is neither the workspace nor registered is
+# a documented feature of it (`--repo`, `--work-dir`, `--no-progress`), so a
+# cwd guard would refuse its own interface. See the note in that script.
 
 .agent/scripts/worktree_create.sh
 .agent/scripts/worktree_enter.sh
@@ -31,7 +36,6 @@
 .agent/scripts/gh_create_pr.sh
 .agent/scripts/gh_create_issue.sh
 .agent/scripts/fetch_pr_reviews.sh
-.agent/scripts/cross_model_review.sh
 .agent/scripts/build.sh
 .agent/scripts/test.sh
 .agent/scripts/adapter

@@ -15,6 +15,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 
 PASS=0
+
+# The adapter (and the build.sh/test.sh shims that exec it) carries the
+# user-tier guard added in #317: it refuses when the cwd is neither inside
+# its own workspace checkout nor under a registered project root. These
+# fixtures drive a SANDBOX workspace, so every invocation runs from inside
+# that sandbox -- which is what a real `make build` does too.
+run_in_ws() {  # <sandbox> <command> [args...]
+    local sb="$1"; shift
+    (cd "$sb" && "$@")
+}
 FAIL=0
 
 assert_eq() {
@@ -165,7 +175,7 @@ run_adapter() {
     shift
     (cd "$sb" && PATH="$sb/bin:$PATH" \
         COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
-        "$sb/.agent/scripts/adapter" --project p11 "$@")
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 "$@")
 }
 
 # Create src/ checkouts matching the manifest (as if setup had run with
@@ -737,7 +747,7 @@ test_setup_optional_layer_failure_tolerated() {
     make_toolchain_stubs "$sb"
     make_colcon_project "$sb" >/dev/null
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l3" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "setup still exits 0" "0" "$rc"
     assert_contains "warns about the optional layer" "optional layer 'l3'" "$out"
 }
@@ -749,7 +759,7 @@ test_setup_required_layer_failure_aborts() {
     make_toolchain_stubs "$sb"
     make_colcon_project "$sb" >/dev/null
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" VCS_FAIL_LAYERS="l2" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the failing layer" "vcs import failed for layer 'l2'" "$out"
 }
@@ -769,7 +779,7 @@ test_setup_requires_vcs() {
             && ln -s "$(command -v "$tool")" "$sb/isolatedbin/$tool"
     done
     out="$(cd "$sb" && PATH="$sb/isolatedbin" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the missing tool" "'vcs' (vcstool) not found" "$out"
 }
@@ -861,7 +871,7 @@ test_setup_bootstrap_env_url_wins() {
     url="$(make_manifest_remote "$sb" l1)"
     echo 'MANIFEST_BOOTSTRAP_URL="file:///nonexistent/config.yaml"' >> "$sb/.agent/projects.d/p11.sh"
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "fetched the env URL" "Fetching bootstrap config from $url" "$out"
     assert_eq "manifest present" "true" "$([ -f "$proj/configs/manifest/layers.txt" ] && echo true || echo false)"
@@ -889,7 +899,7 @@ test_setup_bootstrap_rejects_unsafe_fields() {
     printf 'git_url: file://%s/remote/manifest_repo\nbranch: fakefox\nconfig_path: ../../etc\n' "$sb" \
         > "$sb/remote/bootstrap.yaml"
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "traversal config_path exits nonzero" "1" "$rc"
     assert_contains "names config_path" "invalid 'config_path'" "$out"
     assert_eq "nothing cloned" "false" "$([ -e "$proj/configs/manifest_repo" ] && echo true || echo false)"
@@ -897,7 +907,7 @@ test_setup_bootstrap_rejects_unsafe_fields() {
         > "$sb/remote/bootstrap.yaml"
     rc=0
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "bad layer exits nonzero" "1" "$rc"
     assert_contains "names layer" "invalid 'layer'" "$out"
 }
@@ -911,7 +921,7 @@ test_setup_bootstrap_missing_fields_fails() {
     url="$(make_manifest_remote "$sb" l1)"
     printf 'branch: fakefox\n' > "$sb/remote/bootstrap.yaml"
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the fields" "must define 'git_url' and 'branch'" "$out"
 }
@@ -924,7 +934,7 @@ test_setup_bootstrap_config_path_dotdot_component_only() {
     proj="$(make_fresh_project "$sb")"
     url="$(make_manifest_remote "$sb" "" config..d)"
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "config..d exits 0" "0" "$rc"
     assert_eq "symlink targets config..d" \
         "manifest_repo/manifest_repo/config..d" "$(readlink "$proj/configs/manifest")"
@@ -934,7 +944,7 @@ test_setup_bootstrap_config_path_dotdot_component_only() {
     rm -rf "$proj/configs"
     rc=0
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "nested .. component exits nonzero" "1" "$rc"
     assert_contains "names config_path" "invalid 'config_path'" "$out"
 }
@@ -952,7 +962,7 @@ test_setup_bootstrap_reuse_requires_matching_origin() {
     git -C "$clone_dir" init --quiet
     git -C "$clone_dir" remote add origin "file:///elsewhere/other_manifest.git"
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "mismatched origin exits nonzero" "1" "$rc"
     assert_contains "names both repos" "is a checkout of file:///elsewhere/other_manifest.git, not file://$sb/remote/manifest_repo" "$out"
     assert_eq "no symlink created" "false" "$([ -e "$proj/configs/manifest" ] && echo true || echo false)"
@@ -960,7 +970,7 @@ test_setup_bootstrap_reuse_requires_matching_origin() {
     rm -rf "$clone_dir" && mkdir -p "$clone_dir"
     rc=0
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "non-git dir exits nonzero" "1" "$rc"
     assert_contains "says it is not a checkout" "not a git checkout" "$out"
 }
@@ -977,7 +987,7 @@ test_setup_bootstrap_reuse_warns_on_branch_mismatch() {
     git clone -q -b fakefox "file://$sb/remote/manifest_repo" "$clone_dir"
     git -C "$clone_dir" checkout -q -b feature/work
     out="$(cd "$sb" && PATH="$sb/bin:$PATH" VCS_LOG="$sb/vcs.log" BOOTSTRAP_URL="$url" \
-        "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
+        run_in_ws "$sb" "$sb/.agent/scripts/adapter" --project p11 setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "warns with both branches" "on 'feature/work', bootstrap pins 'fakefox'" "$out"
     assert_eq "checkout left on its branch" "feature/work" "$(git -C "$clone_dir" branch --show-current)"

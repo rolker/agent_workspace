@@ -17,7 +17,7 @@
 #      no `gh` auth and no network.
 #
 # Hermetic: HOME, the workspace copy, and the registry all live under one
-# mktemp -d sandbox (TMPDIR-honouring, never an absolute /tmp template).
+# `mktemp -d` sandbox, which honours TMPDIR.
 # The real ~/.claude is never read or written.
 #
 # Run: bash .agent/scripts/tests/test_user_tier_guard.sh

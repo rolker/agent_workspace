@@ -17,6 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 
 PASS=0
+
 FAIL=0
 
 assert_eq() {
