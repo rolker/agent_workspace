@@ -330,3 +330,13 @@ Round 1 (2 must-fix) and round 2 (1 must-fix, 1 suggestion) are all recorded res
 
 ### False positives
 - (Copilot @ `8e9c0c8`) The only GitHub review on the PR states Copilot "was unable to review this pull request because the user who requested the review has reached their quota limit" — a COMMENTED review with zero inline comments and no claim about the code. Per the run-issue skill a quota-exhausted comment-only Copilot review is not a review source; it is recorded here so the absence of bot findings is not mistaken for bot approval.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 09:05 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Address: apply the one-clause `--enforce` wording fix in run-issue step 10 here, and open a follow-up issue for the sources-helper bug (a progress-only commit ages out prior open findings). Then re-review and back to triage.
