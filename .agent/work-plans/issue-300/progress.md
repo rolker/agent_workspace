@@ -68,3 +68,48 @@ Proceed to plan-task with the four review notes carried into the plan (test suit
 **Plan**: `.agent/work-plans/issue-300/plan.md` at `cd009f8`
 
 Excludes the `copilot-pull-request-reviewer` check-run by name (any conclusion) from `_ci_poll_state`'s CI classification in `merge_pr.sh`, with stderr diagnostics naming the excluded run and any real failing run, plus three new fixtures/tests in `test_merge_pr_gate.sh` (the file confirmed to own this coverage).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 10:18 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #300 — merge_pr.sh: Copilot's review check-run ('changes recommended', no findings) is counted as a CI failure and blocks the merge
+**Plan**: `.agent/work-plans/issue-300/plan.md` at `cd009f8`
+**Branch**: `feature/issue-300`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One script + one test file; correctly sized for a single PR, and correctly declines the allow/deny-list generalisation the issue floated. |
+| Issue alignment | Good | Covers all three issue asks (exclude by name, fixtures, diagnose a `failed` verdict) and both Issue-Review recommendations (any conclusion, no new API round trip, diagnostic says "not used to block"). |
+| File targeting | Needs work | `merge_pr.sh` / `test_merge_pr_gate.sh` are right (verified: `test_merge_pr.sh` has no check-run fixtures). But step 4's "Run all tests list at the bottom of the file (lines 729-749)" does not exist — see finding 2. |
+| Consequences | Good | The stderr-vs-stdout consequence is identified correctly; the "no test does full-output equality" claim checks out, and existing `CHECKRUNS_*` fixtures carry no `name` key so `select(.name != $exclude)` leaves them untouched. |
+| Principle alignment | Needs work | "Test what breaks" is not fully met: the one case where the filter changes classification (Copilot as the only check-run) is untested — finding 1. |
+| ADR compliance | Good | No new entry type; 0004/0005 satisfied by putting the regression in the suite rather than a doc note. |
+| ROS conventions | N/A | Workspace script. |
+
+### Findings
+
+1. **[Test adequacy / Principle: Test what breaks]** — No fixture covers the case the reviewer is asked to protect: Copilot's check-run as the **only** check-run, with no commit statuses. That is the single case where the filter changes the `registered` computation (line 1000-1005), and it is the one that decides whether the gate merges an unverified head. All three planned fixtures include a second, non-excluded run, so all three would still pass if the implementer applied the filter to only the `failed` and `pending` jq expressions and left `registered` on the raw `$r.check_runs` — and in that variant a Copilot-only head classifies as `registered=true, failed=false, pending=false` → **`success`**, merging a PR whose real CI never ran. Add a fourth fixture (`CHECKRUNS_COPILOT_ONLY`, workflows `total_count` ≥ 1, `MERGE_PR_CI_GRACE_SECONDS=0`): expect `merged_called` false and output containing `no checks registered for` (the `never-registered` branch, line 1120-1125), i.e. identical to an empty `check_runs` array. The plan's uniform application of the filter to all three computations is the correct call — this fixture is what pins it.
+
+2. **[File targeting]** — Step 4's closing instruction, "Wire all three into the 'Run all tests' list at the bottom of the file (mirroring lines 729-749)", does not match `test_merge_pr_gate.sh`. The suite has no test-function registry: tests are straight-line inline blocks (`echo "TEST: …"` → fixtures → `if … pass/fail`), lines 722-749 are the body of the `--no-wait` mergeability test (#290), and the file ends at line 993 with the `$PASS passed, $FAIL failed` tally. New tests are added by appending an inline block in the CI-wait section (after ci-12b at line 695 is the right spot); there is nothing to wire. Highest existing id is ci-18, so ci-19/ci-20 are free.
+
+3. **[Approach — diagnostics]** — The excluded-run stderr note is written inside `_ci_poll_state`, which is called once per iteration of the poll loop (line 1075) with `MERGE_PR_CI_POLL_SECONDS` defaulting to 10s and `MERGE_PR_CI_TIMEOUT_SECONDS` to 1800s — up to ~180 identical lines while waiting on a slow CI run. Emit it once (a `_ci_excl_noted` guard flag, or hoist the note to the caller after the loop breaks). The `CI failed: <names>` line needs no guard: `failed` breaks the loop on the first occurrence.
+
+4. **[Test adequacy — ci-20 precision]** — "state stays pending/times out … it should time out or report `never-registered`/timeout wording" is under-specified. With `Lint` present-and-in-progress, `registered` is true regardless of the filter, so the only reachable outcome is `timeout`. Pin it: run with `MERGE_PR_CI_TIMEOUT_SECONDS=0` (as ci-11 does) and assert `merged_called` false **and** output contains `CI checks did not complete` (line 1129), in addition to the planned negative assertion on `CI checks failed`.
+
+5. **[Verified — no action]** — The check-run name is exact: on PR #308's head `84d17a1`, `.name` is literally `copilot-pull-request-reviewer` (app slug `github-actions`, alongside `Lint (pre-commit)`, `Validate Adapter Contract`, `Validate Documentation`). Name-based matching hits; no `app.slug` fallback is needed, and the slug would be wrong to match on since it is shared with the real CI. Also confirmed: the exclusion cannot affect `_ci_wf_count`, which comes from the separate `actions/workflows` lookup, so the `no-ci` exit is unchanged.
+
+### Summary
+
+The approach is correct, minimal, and faithful to the owner's settled constraints — in particular, applying the filter uniformly to `registered`/`failed`/`pending` is the right choice and avoids the dangerous half-fix. One substantive gap: the plan tests three multi-run scenarios but not the Copilot-only scenario that the `registered` filter exists for, so the test suite would not catch the half-fix. Findings 2-4 are precision corrections to the plan's implementation notes; all five are minutes of work.
+
+### Recommended Actions
+
+- [ ] Add a Copilot-only fixture/test (finding 1): copilot failure as the sole check-run with workflows present → no merge, `no checks registered for` in output.
+- [ ] Drop the "Run all tests list" step (finding 2); append inline test blocks after ci-12b instead, using ids ci-19 / ci-20 / ci-21.
+- [ ] Emit the excluded-check-run stderr note once per run, not once per poll (finding 3).
+- [ ] Tighten ci-20 to `MERGE_PR_CI_TIMEOUT_SECONDS=0` and assert the `CI checks did not complete` wording (finding 4).
