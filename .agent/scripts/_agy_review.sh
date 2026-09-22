@@ -4,8 +4,9 @@
 # Usage:
 #   _agy_review.sh <agy-bin> <prompt-file> <findings-file> [<print-timeout>]
 #
-# Called by cross_model_review.sh for the "gemini" agent in both tmux and
-# sync mode, so the two paths share one invocation and one success test.
+# Called by cross_model_review.sh for the "gemini" agent (in its own
+# background job alongside the other agents, ADR-0015), so there is one
+# invocation and one success test.
 #
 # Why this exists (issues #274, #288):
 #   * agy print mode takes the prompt as the -p argument value; large PR

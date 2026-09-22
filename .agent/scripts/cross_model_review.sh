@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Cross-model adversarial review via external CLI agents
 #
-# Launches an external CLI agent to provide an independent adversarial review
-# of a PR. Writes prompt and findings to .agent/work-plans/issue-<N>/
-# alongside the work plan — or to a /tmp dir under --no-progress. These
-# files are not committed (gitignored under .agent/work-plans/, outside
-# the repo under --no-progress). Regenerated each run, not part of the
-# audit trail (durable findings live in progress.md). See #193 for the
-# recursive-bloat failure mode that motivated this.
+# Runs one or more external CLI agents to provide independent adversarial
+# reviews of a PR or local branch. Writes prompt and findings to
+# .agent/work-plans/issue-<N>/ alongside the work plan — or to a /tmp dir
+# under --no-progress. These files are not committed (gitignored under
+# .agent/work-plans/, outside the repo under --no-progress). Regenerated
+# each run, not part of the audit trail (durable findings live in
+# progress.md). See #193 for the recursive-bloat failure mode that
+# motivated this.
 #
 # Supported agents: gemini, codex, claude, copilot
 # (the gemini agent runs via the `agy` binary — see AGENT_BINS — through
@@ -18,35 +19,63 @@
 # review artifacts): review bookkeeping, not code under review, and the
 # main source of oversized prompts (#312).
 #
-# Two execution modes:
-#   tmux (default) — runs the agent in a background tmux session
-#   sync           — runs the agent synchronously (for sandboxed environments)
+# Execution model (ADR-0015, issue #206): every agent runs synchronously in
+# its own background job, all selected agents in parallel, and the script
+# blocks until the last one finishes. There is no tmux mode any more —
+# reviews run headless, so the interactive session it provided had no
+# remaining value, and the sandboxed callers it silently downgraded to
+# sequential runs get parallelism back. `--sync` (the old opt-out) is
+# rejected as removed. Live observation: `tail -f <findings-file>`.
 #
-# Sync mode is selected automatically when tmux is unavailable, or explicitly
-# with --sync.
+# Each non-gemini agent is bounded by `timeout "$AGENT_TIMEOUT"` (seconds,
+# env-overridable, default 1800) so one hung CLI cannot hang the call;
+# gemini is bounded by _agy_review.sh's own --print-timeout (an outer
+# SIGTERM would race its timeout-then-partial-response contract, #288).
 #
 # Usage:
 #   .agent/scripts/cross_model_review.sh --pr <N>                              # gemini (default)
-#   .agent/scripts/cross_model_review.sh --pr <N> --agent codex                # specific agent
-#   .agent/scripts/cross_model_review.sh --pr <N> --agent claude --sync        # force sync
+#   .agent/scripts/cross_model_review.sh --pr <N> --agent codex                # one specific agent
+#   .agent/scripts/cross_model_review.sh --pr <N> --agents gemini,codex,copilot # several, in parallel
+#   .agent/scripts/cross_model_review.sh --branch --agents gemini,codex        # local pre-push review
 #   .agent/scripts/cross_model_review.sh --pr <N> --repo owner/repo            # explicit repo target
 #   .agent/scripts/cross_model_review.sh --pr <N> --work-dir /path/to/worktree # explicit artifact dir
+#
+# --agent and --agents are mutually exclusive. --agents takes a comma list:
+# entries are trimmed and lowercased, empty entries (stray commas) are
+# rejected, exact duplicates collapse to one run, unknown names exit 2.
 #
 # The script runs in whichever repo worktree it's invoked from.
 # Workspace issues run in workspace worktrees, project issues in project worktrees.
 #
-# Output (stdout):
-#   MODE=tmux|sync                 (machine-parseable)
-#   AGENT=<agent-key>              (machine-parseable)
-#   TMUX_SESSION=<session-name>    (tmux mode only)
+# Output (stdout), --agent <X> (single-agent, unchanged contract):
+#   MODE=sync                        (machine-parseable)
+#   AGENT=<agent-key>                (machine-parseable)
 #   FINDINGS_FILE=<path-to-findings> (machine-parseable)
 #   followed by informational lines for human consumption
 #
+# Output (stdout), --agents <list> (one entry or more):
+#   MODE=parallel-sync               (once)
+#   AGENT=<agent-key>                (one triplet per agent, after all
+#   FINDINGS_FILE=<path-to-findings>  agents have finished; EXIT= is that
+#   EXIT=<n>                          agent's own exit status, 0 = success)
+#   followed by informational lines for human consumption
+#
+# Per-agent findings files always end with `--- Review complete ---` or
+# `--- Review failed ---` (reason on the lines above), written by the
+# agent's own job the moment it finishes — a slow agent never delays a
+# fast agent's marker.
+#
 # Exit codes:
-#   0 — review launched (tmux) or completed (sync) successfully
-#   1 — missing dependencies (gh or target agent CLI)
+#   0 — every selected agent completed successfully
+#   1 — missing dependencies: gh (PR mode), or no selected agent has a
+#       usable CLI (with --agents, every agent's findings file still gets
+#       a failed marker and a triplet with EXIT=1)
 #   2 — invalid arguments
-#   3 — failed to create prompt or launch session
+#   3 — failed to build the prompt (no AGENT= triplets printed under
+#       --agents: the shared diff fetch failed or was empty and every
+#       selected findings file carries the `--- Review error: ... ---`
+#       marker), OR at least one agent failed (triplets printed — read
+#       EXIT= per agent). The presence of triplets is the disambiguator.
 #   4 — wrong worktree / invalid environment (see _resolve_work_plans_dir.sh)
 
 set -euo pipefail
@@ -65,65 +94,58 @@ declare -A AGENT_BINS=(
 
 # Timeout for agy print mode (Go duration format). agy's own default is
 # 0s = wait until the turn completes; the explicit cap keeps a hung
-# review from blocking a tmux session or a sync caller forever. On
-# expiry agy exits 0 with a partial response — _agy_review.sh treats
-# that as a failed review (#288).
+# review from blocking the caller forever. On expiry agy exits 0 with a
+# partial response — _agy_review.sh treats that as a failed review (#288).
 AGY_PRINT_TIMEOUT="30m"
 
-# Helper that owns the gemini invocation (both modes). Resolved once so
-# the tmux command string carries an absolute path.
+# Outer per-agent bound for codex/claude/copilot, in seconds (coreutils
+# `timeout`). Env-overridable so tests can inject a small value. 124 is
+# timeout's own "expired" status and counts as that agent's failure.
+AGENT_TIMEOUT="${AGENT_TIMEOUT:-1800}"
+
+# Helper that owns the gemini invocation. A missing helper makes the
+# gemini agent unavailable (that agent fails; others still run).
 AGY_REVIEW_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_agy_review.sh"
-# Checked here rather than at invocation so a missing helper is a
-# dependency error (exit 1) up front, not a failed review later.
-AGY_REVIEW_HELPER_MISSING=false
-[[ -x "$AGY_REVIEW_HELPER" ]] || AGY_REVIEW_HELPER_MISSING=true
 
-# Build the shell command string to invoke an agent.
-# Args: agent_key, bin_path, prompt_file, findings_file
-# Stdout: a shell command string safe for tmux new-session.
-# Agents use stdin-based invocation to avoid argv limits on large diffs.
-build_invoke_cmd() {
-    local agent="$1" bin="$2" prompt="$3" findings="$4"
-
-    case "$agent" in
-        gemini)
-            # _agy_review.sh feeds the prompt to agy over stdin
-            # (stream-json) and writes the findings file itself — no
-            # stdout redirect here, it would truncate the helper's
-            # output. Issues #274, #288.
-            printf '%q %q %q %q %q\n' "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT"
-            ;;
-        codex)
-            # Codex exec reads prompt via stdin
-            echo "\"${bin}\" exec < \"${prompt}\" > \"${findings}\" 2>&1"
-            ;;
-        claude)
-            echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
-            ;;
-        copilot)
-            echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
-            ;;
-        *)
-            # Unknown agent — try stdin style as fallback
-            echo "\"${bin}\" -p < \"${prompt}\" > \"${findings}\" 2>&1"
-            ;;
-    esac
-}
-
-# Run an agent directly (sync mode) without eval.
-# Args: agent_key, bin_path, prompt_file, findings_file
-# Returns: exit code from the agent CLI.
+# Run one agent to completion. Args: agent_key, bin_path, prompt_file,
+# findings_file. Returns the agent CLI's exit status (124 on timeout).
+# Agents read the prompt from stdin, so prompt size is not bounded by
+# argv limits.
 run_agent_sync() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
         # Helper owns the findings file; no stdout redirect (#274, #288).
         gemini)  "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
-        codex)   "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
-        claude)  "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
-        copilot) "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
-        *)       "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        codex)   timeout "$AGENT_TIMEOUT" "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
+        claude)  timeout "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        copilot) timeout "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        *)       timeout "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
     esac
+}
+
+# Resolve an agent's CLI: PATH first, then common install locations.
+# Prints the path on stdout (empty when not found); never exits.
+resolve_agent_bin() {
+    local agent="$1"
+    local name="${AGENT_BINS[$agent]}"
+    if command -v "$name" &>/dev/null; then
+        command -v "$name"
+        return 0
+    fi
+    local candidate
+    for candidate in \
+        "${HOME}/.nvm/versions/node"/*/bin/"${name}" \
+        "${HOME}/.local/bin/${name}" \
+        "${HOME}/.npm-global/bin/${name}" \
+        /usr/local/bin/"${name}"; do
+        if [[ -x "$candidate" ]]; then
+            echo "INFO: ${name} not in PATH, found at: ${candidate}" >&2
+            echo "$candidate"
+            return 0
+        fi
+    done
+    echo ""
 }
 
 # --- Argument parsing ---
@@ -132,13 +154,13 @@ BRANCH_MODE=false
 BRANCH_BASE=""
 NO_PROGRESS=false
 CLI_ISSUE_NUMBER=""
-FORCE_SYNC=false
-TARGET_AGENT="gemini"
+SINGLE_AGENT=""
+AGENTS_LIST=""
 EXPLICIT_REPO=""
 EXPLICIT_WORK_DIR=""
 CLI_WORK_PLANS_DIR=""
 
-USAGE="Usage: $0 (--pr <N> | --branch [<ref>]) [--issue <N>] [--agent <name>] [--repo owner/repo] [--work-dir <path>] [--work-plans-dir <path>] [--sync] [--no-progress]"
+USAGE="Usage: $0 (--pr <N> | --branch [<ref>]) [--issue <N>] [--agent <name> | --agents <a,b,...>] [--repo owner/repo] [--work-dir <path>] [--work-plans-dir <path>] [--no-progress]"
 
 # Helper: treat a missing value OR a value that looks like another long
 # flag (`--foo`) as "missing value." Narrower than `-*` so negative
@@ -185,7 +207,12 @@ while [[ $# -gt 0 ]]; do
             ;;
         --agent)
             require_value "--agent" "${2:-}"
-            TARGET_AGENT="${2,,}"  # lowercase
+            SINGLE_AGENT="${2,,}"  # lowercase
+            shift 2
+            ;;
+        --agents)
+            require_value "--agents" "${2:-}"
+            AGENTS_LIST="$2"
             shift 2
             ;;
         --repo|-R)
@@ -204,8 +231,9 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --sync)
-            FORCE_SYNC=true
-            shift
+            echo "ERROR: --sync was removed (#206, ADR-0015): synchronous parallel dispatch is the only mode now; drop the flag." >&2
+            echo "$USAGE" >&2
+            exit 2
             ;;
         *)
             echo "ERROR: Unknown argument: $1" >&2
@@ -228,11 +256,58 @@ if [[ -z "$PR_NUMBER" && "$BRANCH_MODE" != true ]]; then
     exit 2
 fi
 
-# Validate agent
-if [[ -z "${AGENT_BINS[$TARGET_AGENT]+x}" ]]; then
-    echo "ERROR: Unknown agent '${TARGET_AGENT}'" >&2
-    echo "Supported agents: ${!AGENT_BINS[*]}" >&2
+# --- Agent selection ---
+# --agent <X> (or neither flag: gemini) is the single-agent contract;
+# --agents <list> is the multi-agent contract, even with one entry.
+if [[ -n "$SINGLE_AGENT" && -n "$AGENTS_LIST" ]]; then
+    echo "ERROR: --agent and --agents are mutually exclusive." >&2
+    echo "$USAGE" >&2
     exit 2
+fi
+
+MULTI_AGENT=false
+AGENTS_TO_RUN=()
+if [[ -n "$AGENTS_LIST" ]]; then
+    MULTI_AGENT=true
+    # A leading or trailing comma is an empty entry too; `read -a` would
+    # silently drop a trailing one, so check the raw string first.
+    if [[ "$AGENTS_LIST" == ,* || "$AGENTS_LIST" == *, ]]; then
+        echo "ERROR: --agents has an empty entry (stray comma?): '${AGENTS_LIST}'" >&2
+        exit 2
+    fi
+    IFS=',' read -r -a raw_agents <<< "$AGENTS_LIST"
+    for raw in "${raw_agents[@]}"; do
+        # Trim surrounding whitespace, lowercase.
+        entry="${raw#"${raw%%[![:space:]]*}"}"
+        entry="${entry%"${entry##*[![:space:]]}"}"
+        entry="${entry,,}"
+        if [[ -z "$entry" ]]; then
+            echo "ERROR: --agents has an empty entry (stray comma?): '${AGENTS_LIST}'" >&2
+            exit 2
+        fi
+        if [[ -z "${AGENT_BINS[$entry]+x}" ]]; then
+            echo "ERROR: Unknown agent '${entry}' in --agents" >&2
+            echo "Supported agents: ${!AGENT_BINS[*]}" >&2
+            exit 2
+        fi
+        # Exact duplicates collapse to one run: two jobs for the same
+        # agent would race on one prompt/findings filename.
+        dup=false
+        for seen in "${AGENTS_TO_RUN[@]:-}"; do
+            [[ "$seen" == "$entry" ]] && dup=true
+        done
+        [[ "$dup" == true ]] || AGENTS_TO_RUN+=("$entry")
+    done
+    # A list that was entirely empty entries cannot reach here (each is
+    # rejected above), so AGENTS_TO_RUN has at least one element.
+else
+    SINGLE_AGENT="${SINGLE_AGENT:-gemini}"
+    if [[ -z "${AGENT_BINS[$SINGLE_AGENT]+x}" ]]; then
+        echo "ERROR: Unknown agent '${SINGLE_AGENT}'" >&2
+        echo "Supported agents: ${!AGENT_BINS[*]}" >&2
+        exit 2
+    fi
+    AGENTS_TO_RUN=("$SINGLE_AGENT")
 fi
 
 # Validate --repo slug (before dependency checks so bad input always exits 2)
@@ -275,47 +350,30 @@ if [[ -n "$GH_REPO_SLUG" && "$GH_REPO_SLUG" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]
     GH_REPO_ARGS=("-R" "$GH_REPO_SLUG")
 fi
 
-# Determine execution mode
-USE_SYNC=false
-if [[ "$FORCE_SYNC" == true ]]; then
-    USE_SYNC=true
-elif ! command -v tmux &>/dev/null; then
-    echo "INFO: tmux not available — falling back to sync mode" >&2
-    USE_SYNC=true
-fi
+# --- Per-agent CLI resolution ---
+# One missing CLI never aborts the others: the agent is recorded as
+# unavailable with a reason, gets a failed marker once the artifact dir
+# exists, and the run continues. Only "no selected agent is usable"
+# is a dependency error (exit 1).
+declare -A AGENT_BIN_FOR=()
+declare -A AGENT_UNAVAILABLE_REASON=()
+USABLE_AGENTS=0
+for agent in "${AGENTS_TO_RUN[@]}"; do
+    bin=$(resolve_agent_bin "$agent")
+    if [[ -z "$bin" ]]; then
+        AGENT_UNAVAILABLE_REASON["$agent"]="${AGENT_BINS[$agent]} CLI not found (PATH searched: ${PATH}; also ~/.nvm/versions/node/*/bin/, ~/.local/bin/, ~/.npm-global/bin/, /usr/local/bin/)"
+    elif [[ "$agent" == "gemini" && ! -x "$AGY_REVIEW_HELPER" ]]; then
+        AGENT_UNAVAILABLE_REASON["$agent"]="${AGY_REVIEW_HELPER} is missing or not executable"
+    else
+        AGENT_BIN_FOR["$agent"]="$bin"
+        USABLE_AGENTS=$((USABLE_AGENTS + 1))
+    fi
+done
 
-# The gemini agent needs its helper alongside this script.
-if [[ "$TARGET_AGENT" == "gemini" && "$AGY_REVIEW_HELPER_MISSING" == true ]]; then
-    echo "ERROR: ${AGY_REVIEW_HELPER} is missing or not executable — gemini review unavailable" >&2
-    exit 1
-fi
-
-# Find target agent CLI — check PATH first, then common install locations
-AGENT_BIN_NAME="${AGENT_BINS[$TARGET_AGENT]}"
-AGENT_BIN=""
-
-if command -v "$AGENT_BIN_NAME" &>/dev/null; then
-    AGENT_BIN="$(command -v "$AGENT_BIN_NAME")"
-else
-    FALLBACK_PATHS=(
-        "${HOME}/.nvm/versions/node"/*/bin/"${AGENT_BIN_NAME}"
-        "${HOME}/.local/bin/${AGENT_BIN_NAME}"
-        "${HOME}/.npm-global/bin/${AGENT_BIN_NAME}"
-        /usr/local/bin/"${AGENT_BIN_NAME}"
-    )
-    for candidate in "${FALLBACK_PATHS[@]}"; do
-        if [[ -x "$candidate" ]]; then
-            AGENT_BIN="$candidate"
-            echo "INFO: ${AGENT_BIN_NAME} not in PATH, found at: ${AGENT_BIN}" >&2
-            break
-        fi
+if [[ "$USABLE_AGENTS" -eq 0 ]]; then
+    for agent in "${AGENTS_TO_RUN[@]}"; do
+        echo "WARNING: ${agent} adversarial review unavailable — ${AGENT_UNAVAILABLE_REASON[$agent]}" >&2
     done
-fi
-
-if [[ -z "$AGENT_BIN" ]]; then
-    echo "WARNING: ${AGENT_BIN_NAME} CLI not found — ${TARGET_AGENT} adversarial review unavailable" >&2
-    echo "  PATH searched: ${PATH}" >&2
-    echo "  Also checked: ~/.nvm/versions/node/*/bin/, ~/.local/bin/, ~/.npm-global/bin/, /usr/local/bin/" >&2
     exit 1
 fi
 
@@ -340,8 +398,8 @@ elif [[ "$BRANCH_MODE" == true ]]; then
     if [[ "$CURRENT_BRANCH" =~ ^feature/[Ii][Ss][Ss][Uu][Ee]-([1-9][0-9]*)(-|$) ]]; then
         ISSUE_NUMBER="${BASH_REMATCH[1]}"
     elif [[ "$NO_PROGRESS" == true ]]; then
-        # Sentinel used for SESSION_NAME and findings filename; the
-        # per-issue artifact dir is replaced with a tmp dir below.
+        # Sentinel used for the findings filename; the per-issue
+        # artifact dir is replaced with a tmp dir below.
         ISSUE_NUMBER="noprogress"
     else
         {
@@ -396,7 +454,7 @@ else
     fi
 fi
 
-# --- Set up artifact directory (absolute paths for tmux session) ---
+# --- Set up artifact directory ---
 # Refuse to run outside the matching worktree (issue #147) unless the
 # caller explicitly overrides the location via --work-plans-dir (exact
 # path), --work-dir (repo root), or --no-progress (mktemp -d for
@@ -416,7 +474,8 @@ elif [[ -n "$EXPLICIT_WORK_DIR" ]]; then
         echo "ERROR: --work-dir is not an existing directory: ${EXPLICIT_WORK_DIR}" >&2
         exit 2
     fi
-    # Resolve to absolute path so tmux sessions find the directory.
+    # Resolve to absolute path so the findings paths printed are usable
+    # from any cwd.
     EXPLICIT_WORK_DIR=$(cd "$EXPLICIT_WORK_DIR" && pwd)
     export WORK_PLANS_DIR_OVERRIDE="${EXPLICIT_WORK_DIR}/.agent/work-plans/issue-${ISSUE_NUMBER}"
 elif [[ "$NO_PROGRESS" == true ]]; then
@@ -438,17 +497,20 @@ fi
 WORK_PLANS_DIR=$(resolve_work_plans_dir "$ISSUE_NUMBER") || exit 4
 mkdir -p "$WORK_PLANS_DIR"
 
-PROMPT_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-prompt.md"
-FINDINGS_FILE="${WORK_PLANS_DIR}/review-${TARGET_AGENT}-findings.md"
-SESSION_NAME="review-${TARGET_AGENT}-${ISSUE_NUMBER}"
-# Two concurrent --no-progress runs share ISSUE_NUMBER="noprogress"
-# and would collide on the tmux session name; the existing
-# "kill any pre-existing session" logic would silently terminate the
-# first run. Append the PID so concurrent skill-worktree pre-push
-# reviews coexist.
-if [[ "$ISSUE_NUMBER" == "noprogress" ]]; then
-    SESSION_NAME="${SESSION_NAME}-$$"
-fi
+prompt_file_for()   { echo "${WORK_PLANS_DIR}/review-$1-prompt.md"; }
+findings_file_for() { echo "${WORK_PLANS_DIR}/review-$1-findings.md"; }
+
+# Write one error marker into every selected agent's findings file
+# (truncating) and exit 3 — the shared prompt could not be built, so no
+# agent ran and no AGENT= triplet is printed.
+abort_all_agents() {
+    local marker="$1"
+    local agent
+    for agent in "${AGENTS_TO_RUN[@]}"; do
+        echo "$marker" > "$(findings_file_for "$agent")"
+    done
+    exit 3
+}
 
 # --- Get review-target metadata ---
 # PR mode: query gh for the PR's title and URL.
@@ -495,11 +557,17 @@ else
     TARGET_LABEL="PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
 fi
 
-# --- Write prompt ---
+# --- Write the shared prompt ---
+# The header, metadata, diff and output-format footer are identical for
+# every agent, so they are built once into a temp file and copied into
+# each agent's prompt file; only the per-agent tool-use footer differs.
 # Use a quoted heredoc for the static header to prevent shell expansion,
-# then stream the diff directly from gh to avoid storing it in a variable
-# (which could hit shell limits for large Deep-tier PRs).
-cat > "$PROMPT_FILE" << 'PROMPT_HEADER'
+# then stream the diff directly from gh/git to avoid storing it in a
+# variable (which could hit shell limits for large Deep-tier PRs).
+SHARED_PROMPT=$(mktemp -t "cross-model-review-prompt.XXXXXX")
+trap 'rm -f "$SHARED_PROMPT"' EXIT
+
+cat > "$SHARED_PROMPT" << 'PROMPT_HEADER'
 # Adversarial Code Review
 
 ## Your Role
@@ -526,10 +594,10 @@ PROMPT_HEADER
 # so the agent reviewing local pre-push work has the right framing.
 if [[ "$BRANCH_MODE" == true ]]; then
     printf '**Title**: %s\n**Branch**: %s\n**Base**: %s\n**HEAD**: %s\n\n' \
-        "$PR_TITLE" "$BRANCH_NAME" "$BASE_REF" "$HEAD_SHA" >> "$PROMPT_FILE"
+        "$PR_TITLE" "$BRANCH_NAME" "$BASE_REF" "$HEAD_SHA" >> "$SHARED_PROMPT"
 else
     printf '**Title**: %s\n**URL**: %s\n**PR Number**: #%s\n\n' \
-        "$PR_TITLE" "$PR_URL" "$PR_NUMBER" >> "$PROMPT_FILE"
+        "$PR_TITLE" "$PR_URL" "$PR_NUMBER" >> "$SHARED_PROMPT"
 fi
 
 # Drop .agent/work-plans/** file sections from a unified diff (#312).
@@ -549,54 +617,51 @@ filter_work_plans_diff() {
     '
 }
 
-# Stream diff into the prompt file through the work-plans filter. Branch
-# mode uses local `git diff <base>...HEAD`; PR mode uses `gh pr diff <N>`.
-# The pipeline sits inside `if !` so `set -e` does not abort the script
-# before the error branch runs; with `pipefail` the tested status is the
-# first failing stage's, so a failed gh/git call is not masked by the
-# filter succeeding on empty input, and a filter dying mid-stream cannot
-# leave a truncated diff looking complete.
-printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
-DIFF_START_LINE=$(wc -l < "$PROMPT_FILE")
+# Stream diff into the shared prompt through the work-plans filter.
+# Branch mode uses local `git diff <base>...HEAD`; PR mode uses `gh pr
+# diff <N>`. The pipeline sits inside `if !` so `set -e` does not abort
+# the script before the error branch runs; with `pipefail` the tested
+# status is the first failing stage's, so a failed gh/git call is not
+# masked by the filter succeeding on empty input, and a filter dying
+# mid-stream cannot leave a truncated diff looking complete.
+printf '## Diff\n\n```diff\n' >> "$SHARED_PROMPT"
+DIFF_START_LINE=$(wc -l < "$SHARED_PROMPT")
 if [[ "$BRANCH_MODE" == true ]]; then
     # Explicit a/ b/ prefixes so a diff.noprefix / diff.mnemonicPrefix
     # config cannot defeat the work-plans filter.
-    if ! git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"; then
+    if ! git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$SHARED_PROMPT"; then
         echo "ERROR: Could not produce diff for ${BRANCH_NAME} against ${BASE_REF}" >&2
-        echo '--- Review error: failed to produce branch diff ---' > "$FINDINGS_FILE"
-        exit 3
+        abort_all_agents '--- Review error: failed to produce branch diff ---'
     fi
 else
-    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"; then
+    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff >> "$SHARED_PROMPT"; then
         echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
-        echo '--- Review error: failed to retrieve diff ---' > "$FINDINGS_FILE"
-        exit 3
+        abort_all_agents '--- Review error: failed to retrieve diff ---'
     fi
 fi
-DIFF_END_LINE=$(wc -l < "$PROMPT_FILE")
+DIFF_END_LINE=$(wc -l < "$SHARED_PROMPT")
 
 # Guard: if diff is empty (before or after the work-plans filter), abort
-# with a clear error instead of launching an agent with no content to
+# with a clear error instead of launching agents with no content to
 # review.
 if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
     if [[ "$BRANCH_MODE" == true ]]; then
         echo "ERROR: branch '${BRANCH_NAME}' has no reviewable changes against '${BASE_REF}' — nothing to review" >&2
         echo "  Either the branch is up-to-date with the base, the base ref is wrong," >&2
         echo "  or every changed file is under .agent/work-plans/ (excluded from review, #312)." >&2
-        echo '--- Review error: diff was empty (branch matches base, or only .agent/work-plans/ changed) ---' > "$FINDINGS_FILE"
+        abort_all_agents '--- Review error: diff was empty (branch matches base, or only .agent/work-plans/ changed) ---'
     else
         echo "ERROR: PR #${PR_NUMBER} diff is empty — nothing to review" >&2
         echo "  This usually means the PR was not found in the target repo, or every" >&2
         echo "  changed file is under .agent/work-plans/ (excluded from review, #312)." >&2
         echo "  Try passing --repo <owner/repo> explicitly." >&2
-        echo '--- Review error: diff was empty (PR not found, no changes, or only .agent/work-plans/ changed) ---' > "$FINDINGS_FILE"
+        abort_all_agents '--- Review error: diff was empty (PR not found, no changes, or only .agent/work-plans/ changed) ---'
     fi
-    exit 3
 fi
-printf '```\n\n' >> "$PROMPT_FILE"
+printf '```\n\n' >> "$SHARED_PROMPT"
 
 # Append output format instructions (quoted heredoc, no expansion)
-cat >> "$PROMPT_FILE" << 'PROMPT_FOOTER'
+cat >> "$SHARED_PROMPT" << 'PROMPT_FOOTER'
 ## Output Format
 
 Write your findings to this exact format so they can be parsed:
@@ -618,12 +683,16 @@ No issues found.
 Write a 1-3 sentence overall assessment after the findings table.
 PROMPT_FOOTER
 
+# --- Per-agent prompt files ---
 # Gemini only: headless agy auto-denies shell commands and then returns
 # an empty response (#288). Reading files is permitted, so the
 # reviewer keeps that. Not added for codex/claude/copilot — codex reads
 # files through the shell, so the line would cost it context.
-if [[ "$TARGET_AGENT" == "gemini" ]]; then
-    cat >> "$PROMPT_FILE" << 'PROMPT_TOOL_USE'
+for agent in "${AGENTS_TO_RUN[@]}"; do
+    prompt_file=$(prompt_file_for "$agent")
+    cp "$SHARED_PROMPT" "$prompt_file"
+    if [[ "$agent" == "gemini" ]]; then
+        cat >> "$prompt_file" << 'PROMPT_TOOL_USE'
 
 ## Tool Use
 
@@ -634,55 +703,102 @@ Do NOT run shell commands: this is a headless session,
 command execution is denied without a prompt, and a denied command can end
 the review with no output.
 PROMPT_TOOL_USE
+    fi
+done
+
+# --- Run reviews: one background job per agent, all in parallel ---
+# Each job runs its agent, then appends that agent's completion marker
+# itself, so a slow agent never delays a fast agent's marker and the
+# parent only has to collect exit statuses. Jobs write nothing to stdout,
+# keeping the machine-parseable block contiguous.
+run_agent_job() {
+    local agent="$1"
+    local prompt_file findings_file rc
+    prompt_file=$(prompt_file_for "$agent")
+    findings_file=$(findings_file_for "$agent")
+
+    if [[ -n "${AGENT_UNAVAILABLE_REASON[$agent]+x}" ]]; then
+        {
+            echo "${agent} adversarial review unavailable."
+            echo ""
+            echo "Reason: ${AGENT_UNAVAILABLE_REASON[$agent]}"
+            echo '--- Review failed ---'
+        } > "$findings_file"
+        return 1
+    fi
+
+    # `if` keeps set -e from aborting the job before rc is captured.
+    if run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file"; then
+        rc=0
+    else
+        rc=$?
+    fi
+    if [[ "$rc" -eq 124 ]]; then
+        printf '\n%s review timed out after %ss (AGENT_TIMEOUT); partial output above, if any.\n' \
+            "$agent" "$AGENT_TIMEOUT" >> "$findings_file"
+    fi
+    if [[ "$rc" -eq 0 ]]; then
+        echo '--- Review complete ---' >> "$findings_file"
+    else
+        echo '--- Review failed ---' >> "$findings_file"
+    fi
+    return "$rc"
+}
+
+if [[ "$MULTI_AGENT" == true ]]; then
+    echo "MODE=parallel-sync"
+else
+    echo "MODE=sync"
+    echo "AGENT=${AGENTS_TO_RUN[0]}"
+    echo "FINDINGS_FILE=$(findings_file_for "${AGENTS_TO_RUN[0]}")"
+    echo ""
+    echo "Running ${AGENTS_TO_RUN[0]} adversarial review synchronously for ${TARGET_LABEL}..."
+    echo "  Prompt:  $(prompt_file_for "${AGENTS_TO_RUN[0]}")"
+    echo "  Results: $(findings_file_for "${AGENTS_TO_RUN[0]}")"
 fi
 
-# --- Run review ---
-if [[ "$USE_SYNC" == true ]]; then
-    # --- Sync mode: run agent directly (no eval) ---
-    echo "MODE=sync"
-    echo "AGENT=${TARGET_AGENT}"
-    echo "FINDINGS_FILE=${FINDINGS_FILE}"
-    echo ""
-    echo "Running ${TARGET_AGENT} adversarial review synchronously for ${TARGET_LABEL}..."
-    echo "  Prompt:  ${PROMPT_FILE}"
-    echo "  Results: ${FINDINGS_FILE}"
+declare -A AGENT_PID=()
+for agent in "${AGENTS_TO_RUN[@]}"; do
+    run_agent_job "$agent" &
+    AGENT_PID["$agent"]=$!
+done
 
-    if run_agent_sync "$TARGET_AGENT" "$AGENT_BIN" "$PROMPT_FILE" "$FINDINGS_FILE"; then
-        echo '--- Review complete ---' >> "${FINDINGS_FILE}"
-        echo ""
-        echo "Review complete. Results: ${FINDINGS_FILE}"
-    else
-        echo '--- Review failed ---' >> "${FINDINGS_FILE}"
-        echo "ERROR: ${TARGET_AGENT} CLI exited with an error" >&2
+# Collect in selection order. `wait` returns the job's own status; the
+# `|| rc=$?` keeps set -e from aborting the loop on the first failed
+# agent before the remaining ones are collected.
+declare -A AGENT_EXIT=()
+ANY_FAILED=false
+for agent in "${AGENTS_TO_RUN[@]}"; do
+    rc=0
+    wait "${AGENT_PID[$agent]}" || rc=$?
+    AGENT_EXIT["$agent"]=$rc
+    [[ "$rc" -eq 0 ]] || ANY_FAILED=true
+done
+
+if [[ "$MULTI_AGENT" == true ]]; then
+    for agent in "${AGENTS_TO_RUN[@]}"; do
+        echo "AGENT=${agent}"
+        echo "FINDINGS_FILE=$(findings_file_for "$agent")"
+        echo "EXIT=${AGENT_EXIT[$agent]}"
+    done
+    echo ""
+    echo "Ran ${#AGENTS_TO_RUN[@]} adversarial review(s) in parallel for ${TARGET_LABEL}."
+    for agent in "${AGENTS_TO_RUN[@]}"; do
+        if [[ "${AGENT_EXIT[$agent]}" -eq 0 ]]; then
+            echo "  ${agent}: complete — $(findings_file_for "$agent")"
+        else
+            echo "  ${agent}: FAILED (exit ${AGENT_EXIT[$agent]}) — $(findings_file_for "$agent")"
+        fi
+    done
+    if [[ "$ANY_FAILED" == true ]]; then
+        echo "ERROR: at least one agent failed — see EXIT= per agent above" >&2
         exit 3
     fi
 else
-    # --- Tmux mode: run agent in background session ---
-    # Build command string for tmux (tmux requires a single shell command string)
-    INVOKE_CMD=$(build_invoke_cmd "$TARGET_AGENT" "$AGENT_BIN" "$PROMPT_FILE" "$FINDINGS_FILE")
-
-    # Kill existing session if present
-    if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-        tmux kill-session -t "$SESSION_NAME"
-    fi
-
-    # Launch agent in tmux. On failure, an error marker is written so downstream
-    # consumers can distinguish "crashed" from "still running".
-    tmux new-session -d -s "$SESSION_NAME" \
-        "${INVOKE_CMD} && echo '--- Review complete ---' >> \"${FINDINGS_FILE}\" || echo '--- Review failed ---' >> \"${FINDINGS_FILE}\""
-
-    if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-        echo "ERROR: Failed to launch tmux session '${SESSION_NAME}'" >&2
+    if [[ "$ANY_FAILED" == true ]]; then
+        echo "ERROR: ${AGENTS_TO_RUN[0]} CLI exited with an error" >&2
         exit 3
     fi
-
-    echo "MODE=tmux"
-    echo "AGENT=${TARGET_AGENT}"
-    echo "TMUX_SESSION=${SESSION_NAME}"
-    echo "FINDINGS_FILE=${FINDINGS_FILE}"
     echo ""
-    echo "${TARGET_AGENT} adversarial review launched for ${TARGET_LABEL}"
-    echo "  Monitor: tmux attach -t ${SESSION_NAME}"
-    echo "  Prompt:  ${PROMPT_FILE}"
-    echo "  Results: ${FINDINGS_FILE}"
+    echo "Review complete. Results: $(findings_file_for "${AGENTS_TO_RUN[0]}")"
 fi

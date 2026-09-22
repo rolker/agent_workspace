@@ -236,13 +236,13 @@ GH_EOF
     export MOCK_GH_LOG="${TMPDIR_BASE}/gh_calls.log"
     true > "$MOCK_GH_LOG"
 
-    # Run the script with --repo and --sync (to avoid tmux). Set
+    # Run the script with --repo. Set
     # WORKTREE_ISSUE=42 (matching the mock PR body's "Closes #42") so the
     # work-plans-dir resolver (issue #147) accepts the invocation instead
     # of aborting with "not in matching worktree."
     cd "${MOCK_REPO}"
     PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --repo test/repo --sync >/dev/null 2>&1 || true
+        --pr 99 --repo test/repo  >/dev/null 2>&1 || true
 
     # Verify gh was called with -R test/repo
     if grep -q "REPO_FLAG=test/repo" "$MOCK_GH_LOG"; then
@@ -323,7 +323,7 @@ GH_EOF
 
     cd "${MOCK_REPO}"
     PATH="${MOCK_BIN}:${PATH}" bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --work-dir "${custom_dir}" --sync >/dev/null 2>&1 || true
+        --pr 99 --work-dir "${custom_dir}"  >/dev/null 2>&1 || true
 
     # Check that artifacts were written under custom_dir, not repo root
     if [[ -d "${custom_dir}/.agent/work-plans/issue-42" ]]; then
@@ -380,7 +380,7 @@ GH_EOF
     cd "${MOCK_REPO}"
     local exit_code=0
     STDERR=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync 2>&1) || exit_code=$?
+        --pr 99  2>&1) || exit_code=$?
 
     assert_exit_code "empty diff exits 3" "3" "$exit_code"
     assert_contains "error message mentions empty diff" "diff is empty" "$STDERR"
@@ -454,14 +454,14 @@ GH_EOF
     # Case 1: WORKTREE_ISSUE unset -> resolver rule 3 aborts with exit 4.
     local exit_code=0
     STDERR=$(unset WORKTREE_ISSUE; PATH="${MOCK_BIN}:${PATH}" \
-        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync 2>&1) || exit_code=$?
+        bash "${SCRIPT_UNDER_TEST}" --pr 99  2>&1) || exit_code=$?
     assert_exit_code "unset WORKTREE_ISSUE exits 4" "4" "$exit_code"
     assert_contains "error mentions worktree" "worktree" "$STDERR"
 
     # Case 2: WORKTREE_ISSUE mismatched -> same abort, different message.
     exit_code=0
     STDERR=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=100 \
-        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync 2>&1) || exit_code=$?
+        bash "${SCRIPT_UNDER_TEST}" --pr 99  2>&1) || exit_code=$?
     assert_exit_code "mismatched WORKTREE_ISSUE exits 4" "4" "$exit_code"
     assert_contains "error names the mismatch" "'100', not '42'" "$STDERR"
 
@@ -473,13 +473,13 @@ test_flag_as_value_rejected() {
     echo "TEST: --flag --other-flag pattern is rejected"
 
     local exit_code=0
-    STDERR=$(bash "${SCRIPT_UNDER_TEST}" --work-plans-dir --sync 2>&1) || exit_code=$?
-    assert_exit_code "--work-plans-dir --sync exits 2" "2" "$exit_code"
+    STDERR=$(bash "${SCRIPT_UNDER_TEST}" --work-plans-dir --no-progress 2>&1) || exit_code=$?
+    assert_exit_code "--work-plans-dir --no-progress exits 2" "2" "$exit_code"
     assert_contains "error mentions missing value" "Missing value for --work-plans-dir" "$STDERR"
 
     exit_code=0
-    STDERR=$(bash "${SCRIPT_UNDER_TEST}" --pr --sync 2>&1) || exit_code=$?
-    assert_exit_code "--pr --sync exits 2" "2" "$exit_code"
+    STDERR=$(bash "${SCRIPT_UNDER_TEST}" --pr --no-progress 2>&1) || exit_code=$?
+    assert_exit_code "--pr --no-progress exits 2" "2" "$exit_code"
     assert_contains "error mentions missing value" "Missing value for --pr" "$STDERR"
 }
 
@@ -547,7 +547,7 @@ GH_EOF
 
     cd "${MOCK_REPO}"
     PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync >/dev/null 2>&1 || true
+        --pr 99  >/dev/null 2>&1 || true
 
     # Assert `gh repo view --json nameWithOwner` was called.
     if grep -q "^repo view --json nameWithOwner" "$MOCK_GH_LOG"; then
@@ -620,7 +620,7 @@ GH_EOF
 
     cd "${MOCK_REPO}"
     PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync >/dev/null 2>&1 || true
+        --pr 99  >/dev/null 2>&1 || true
 
     # -R should NOT have been passed since slug resolution failed.
     if grep -q "REPO_FLAG=" "$MOCK_GH_LOG"; then
@@ -692,7 +692,7 @@ GH_EOF
     # wrong match (#42 from the loose fallback) would have been picked
     # before #149 and broken this test.
     PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=123 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --issue 123 --sync >/dev/null 2>&1 || true
+        --pr 99 --issue 123  >/dev/null 2>&1 || true
 
     # Artifacts should land under issue-123 (from --issue), not issue-42
     # (from the PR body).
@@ -760,7 +760,7 @@ GH_EOF
     local exit_code=0
     local stderr
     stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync 2>&1) || exit_code=$?
+        --pr 99  2>&1) || exit_code=$?
 
     assert_exit_code "missing keyword exits 2" "2" "$exit_code"
     # Pattern avoids `|` (which grep -E would treat as alternation and
@@ -839,7 +839,7 @@ GH_EOF
     local exit_code=0
     local stderr
     stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync 2>&1) || exit_code=$?
+        --pr 99  2>&1) || exit_code=$?
 
     assert_exit_code "gh failure exits 2" "2" "$exit_code"
     assert_contains "error mentions retrieval failure" \
@@ -860,12 +860,12 @@ GH_EOF
 # event (#288: a headless permission denial exits 0 with an empty response).
 # The mock agy in setup() implements that contract; see its knobs there.
 
-# Run the script in sync mode for PR 99 (issue 42) and echo the exit code.
+# Run the script (single-agent gemini) for PR 99 (issue 42) and echo the exit code.
 run_gemini_sync() {
     cd "${MOCK_REPO}"
     local exit_code=0
     PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync < /dev/null >/dev/null 2>&1 || exit_code=$?
+        --pr 99  < /dev/null >/dev/null 2>&1 || exit_code=$?
     echo "$exit_code"
 }
 
@@ -1028,7 +1028,7 @@ GH_EOF
     cd "${MOCK_REPO}"
     local exit_code=0 stderr
     stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync < /dev/null 2>&1 >/dev/null) || exit_code=$?
+        --pr 99  < /dev/null 2>&1 >/dev/null) || exit_code=$?
 
     assert_exit_code "failed diff fetch exits 3" "3" "$exit_code"
     assert_contains "error message names the diff retrieval" "Could not retrieve diff" "$stderr"
@@ -1092,67 +1092,15 @@ test_agy_no_temp_leak() {
 
     cd "${MOCK_REPO}"
     TMPDIR="$leak_dir" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
-        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync < /dev/null >/dev/null 2>&1 || true
+        bash "${SCRIPT_UNDER_TEST}" --pr 99  < /dev/null >/dev/null 2>&1 || true
     MOCK_AGY_DENY=1 TMPDIR="$leak_dir" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
-        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync < /dev/null >/dev/null 2>&1 || true
+        bash "${SCRIPT_UNDER_TEST}" --pr 99  < /dev/null >/dev/null 2>&1 || true
     MOCK_AGY_EXIT=3 TMPDIR="$leak_dir" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
-        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync < /dev/null >/dev/null 2>&1 || true
+        bash "${SCRIPT_UNDER_TEST}" --pr 99  < /dev/null >/dev/null 2>&1 || true
 
     local leftovers
     leftovers=$(ls -A "$leak_dir")
     assert_eq "no temp files left after success + denial + crash" "" "$leftovers"
-
-    teardown
-}
-
-test_agy_tmux_invocation() {
-    echo "TEST: tmux mode invokes the helper with quoted args and no findings redirect"
-    setup
-
-    # Mock tmux: records the new-session command string (its final arg),
-    # reports the session as present afterwards, never runs anything.
-    cat > "${MOCK_BIN}/tmux" << 'TMUX_EOF'
-#!/usr/bin/env bash
-if [[ "$1" == "new-session" ]]; then
-    printf '%s\n' "${@: -1}" > "${MOCK_TMUX_LOG}"
-    exit 0
-fi
-if [[ "$1" == "has-session" ]]; then
-    [[ -f "${MOCK_TMUX_LOG}" ]] && exit 0 || exit 1
-fi
-exit 0
-TMUX_EOF
-    chmod +x "${MOCK_BIN}/tmux"
-
-    export MOCK_TMUX_LOG="${TMPDIR_BASE}/tmux_cmd.log"
-    cd "${MOCK_REPO}"
-    local exit_code=0 stdout
-    stdout=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 < /dev/null 2>/dev/null) || exit_code=$?
-    unset MOCK_TMUX_LOG
-
-    assert_exit_code "tmux launch exits 0" "0" "$exit_code"
-    assert_contains "script reports tmux mode" "^MODE=tmux$" "$stdout"
-
-    local cmd
-    cmd=$(cat "${TMPDIR_BASE}/tmux_cmd.log")
-    assert_contains "command invokes _agy_review.sh" "/_agy_review.sh " "$cmd"
-    assert_contains "helper receives the findings path" "review-gemini-findings.md" "$cmd"
-    assert_contains "helper receives the print timeout" " 30m " "$cmd"
-    # The helper invocation is everything before the first " && " (the
-    # marker clauses that follow legitimately append to the findings file).
-    local helper_part="${cmd%% && *}"
-    assert_not_contains "no redirect in the helper invocation" ">" "$helper_part"
-    assert_contains "complete marker clause present" "Review complete" "$cmd"
-    assert_contains "failed marker clause present" "Review failed" "$cmd"
-
-    # Round-trip: the recorded string, run by a shell, must produce the
-    # same findings as sync mode (the quoting is real, not cosmetic).
-    (cd "${MOCK_REPO}" && PATH="${MOCK_BIN}:${PATH}" bash -c "$cmd") >/dev/null 2>&1 || true
-    local content
-    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
-    assert_contains "executed tmux command produced findings" "Adversarial Code Review" "$content"
-    assert_contains "executed tmux command appended the complete marker" "Review complete" "$content"
 
     teardown
 }
@@ -1176,7 +1124,7 @@ CODEX_EOF
     chmod +x "${MOCK_BIN}/codex"
     cd "${MOCK_REPO}"
     PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync --agent codex < /dev/null >/dev/null 2>&1 || true
+        --pr 99  --agent codex < /dev/null >/dev/null 2>&1 || true
     local codex_prompt
     codex_prompt=$(cat "${MOCK_REPO}/.agent/work-plans/issue-42/review-codex-prompt.md")
     assert_not_contains "codex prompt has no tool-use paragraph" \
@@ -1264,7 +1212,7 @@ DIFF_EOF
     cd "${MOCK_REPO}"
     local stderr exit2=0
     stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --sync < /dev/null 2>&1 >/dev/null) || exit2=$?
+        --pr 99  < /dev/null 2>&1 >/dev/null) || exit2=$?
     unset MOCK_GH_DIFF_FILE
     assert_exit_code "all-bookkeeping diff exits 3" "3" "$exit2"
     assert_contains "error names the work-plans exclusion" "work-plans" "$stderr"
@@ -1292,7 +1240,7 @@ test_branch_mode_filter_survives_noprefix() {
     cd "${MOCK_REPO}"
     local exit_code=0
     PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --branch "$base" --sync < /dev/null >/dev/null 2>&1 || exit_code=$?
+        --branch "$base"  < /dev/null >/dev/null 2>&1 || exit_code=$?
 
     assert_exit_code "branch review completes" "0" "$exit_code"
     local prompt
@@ -1300,6 +1248,266 @@ test_branch_mode_filter_survives_noprefix() {
     assert_contains "code file kept" "BRANCH CODE" "$prompt"
     assert_not_contains "work-plans file dropped despite diff.noprefix" "BRANCH BOOKKEEPING" "$prompt"
 
+    teardown
+}
+
+# ---- Parallel dispatch tests (#206, ADR-0015) ----
+#
+# tmux is gone: every agent runs in its own background job, all in
+# parallel, bounded by AGENT_TIMEOUT (non-gemini). These tests use generic
+# mock CLIs for codex/claude/copilot: each reads stdin, records its start
+# and end times, optionally sleeps, prints a line, and exits with a
+# configurable status. Knobs (env, per agent, NAME upper-cased):
+#   MOCK_<NAME>_SLEEP=<s>   sleep before answering
+#   MOCK_<NAME>_EXIT=<n>    exit status (default 0)
+#   MOCK_TIMES_DIR=<dir>    where <name>.start / <name>.end are written
+
+make_mock_agent() {
+    local name="$1"
+    cat > "${MOCK_BIN}/${name}" << 'AGENT_EOF'
+#!/usr/bin/env bash
+name=$(basename "$0")
+upper=${name^^}
+[[ -n "${MOCK_TIMES_DIR:-}" ]] && date +%s.%N > "${MOCK_TIMES_DIR}/${name}.start"
+cat > /dev/null
+sleep_var="MOCK_${upper}_SLEEP"; exit_var="MOCK_${upper}_EXIT"
+[[ -n "${!sleep_var:-}" ]] && sleep "${!sleep_var}"
+echo "### Findings"
+echo "reviewed by ${name}"
+[[ -n "${MOCK_TIMES_DIR:-}" ]] && date +%s.%N > "${MOCK_TIMES_DIR}/${name}.end"
+exit "${!exit_var:-0}"
+AGENT_EOF
+    chmod +x "${MOCK_BIN}/${name}"
+}
+
+# Run --agents <list> for PR 99 (issue 42); stdout captured to $1, exit
+# code echoed. Extra args after the list are passed through.
+# RUN_AGENTS_PATH (env) replaces the PATH prefix so a test can hide the
+# real CLIs installed on the developer's machine (~/.local/bin etc.).
+run_agents() {
+    local out_file="$1" agents="$2"; shift 2
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    PATH="${RUN_AGENTS_PATH:-${MOCK_BIN}:${PATH}}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents "$agents" "$@" < /dev/null > "$out_file" 2>/dev/null || exit_code=$?
+    echo "$exit_code"
+}
+
+# A PATH that has the mocks and the system tools but none of the real
+# agent CLIs; paired with HOME pointed at an empty dir so the script's
+# ~/.local/bin-style fallbacks find nothing either.
+HIDDEN_CLI_PATH() { echo "${MOCK_BIN}:/usr/bin:/bin"; }
+
+findings_of() { cat "${MOCK_REPO}/.agent/work-plans/issue-42/review-$1-findings.md"; }
+
+test_sync_flag_rejected() {
+    echo "TEST: --sync is rejected as removed (#206)"
+    setup
+    cd "${MOCK_REPO}"
+    local exit_code=0 stderr
+    stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync 2>&1 >/dev/null) || exit_code=$?
+    assert_exit_code "--sync exits 2" "2" "$exit_code"
+    assert_contains "message names --sync and the removal" "\-\-sync was removed" "$stderr"
+    teardown
+}
+
+test_agents_all_succeed() {
+    echo "TEST: --agents runs every agent, prints one triplet each, exits 0 (#206)"
+    setup
+    make_mock_agent codex; make_mock_agent copilot
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    exit_code=$(run_agents "$out" "gemini,codex,copilot")
+    assert_exit_code "all-succeed exits 0" "0" "$exit_code"
+    local stdout; stdout=$(cat "$out")
+    assert_contains "MODE=parallel-sync printed once" "^MODE=parallel-sync$" "$stdout"
+    assert_eq "exactly one MODE line" "1" "$(grep -c '^MODE=' "$out")"
+    assert_eq "three AGENT= lines" "3" "$(grep -c '^AGENT=' "$out")"
+    assert_eq "three EXIT=0 lines" "3" "$(grep -c '^EXIT=0$' "$out")"
+    assert_not_contains "no TMUX_SESSION line" "TMUX_SESSION" "$stdout"
+    # Triplet order follows the --agents order; EXIT immediately follows FINDINGS_FILE.
+    local block; block=$(grep -E '^(AGENT|FINDINGS_FILE|EXIT)=' "$out" | tr '\n' ' ')
+    assert_contains "triplets in selection order" \
+        "AGENT=gemini FINDINGS_FILE=[^ ]*review-gemini-findings.md EXIT=0 AGENT=codex FINDINGS_FILE=[^ ]*review-codex-findings.md EXIT=0 AGENT=copilot" "$block"
+    assert_contains "gemini findings complete" "Review complete" "$(findings_of gemini)"
+    assert_contains "codex findings hold its output" "reviewed by codex" "$(findings_of codex)"
+    assert_contains "codex findings complete" "Review complete" "$(findings_of codex)"
+    assert_contains "copilot findings complete" "Review complete" "$(findings_of copilot)"
+    assert_contains "each agent got its own prompt" "Adversarial Code Review" \
+        "$(cat "${MOCK_REPO}/.agent/work-plans/issue-42/review-codex-prompt.md")"
+    teardown
+}
+
+test_agents_partial_failure() {
+    echo "TEST: one failing agent does not disturb the others; exit 3 with per-agent EXIT= (#206)"
+    setup
+    make_mock_agent codex; make_mock_agent copilot
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    exit_code=$(MOCK_CODEX_EXIT=7 run_agents "$out" "gemini,codex,copilot")
+    assert_exit_code "partial failure exits 3" "3" "$exit_code"
+    assert_contains "codex EXIT=7" "^EXIT=7$" "$(cat "$out")"
+    assert_eq "two EXIT=0 lines" "2" "$(grep -c '^EXIT=0$' "$out")"
+    assert_contains "codex findings marked failed" "Review failed" "$(findings_of codex)"
+    assert_not_contains "codex findings not marked complete" "Review complete" "$(findings_of codex)"
+    assert_contains "gemini findings still complete" "Review complete" "$(findings_of gemini)"
+    assert_contains "copilot findings still complete" "Review complete" "$(findings_of copilot)"
+    teardown
+}
+
+test_agents_timeout() {
+    echo "TEST: a hung agent is cut off by AGENT_TIMEOUT; the fast agent's marker is not delayed (#206)"
+    setup
+    make_mock_agent codex; make_mock_agent copilot
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    exit_code=$(AGENT_TIMEOUT=1 MOCK_CODEX_SLEEP=6 MOCK_TIMES_DIR="$times" run_agents "$out" "codex,copilot")
+    assert_exit_code "timeout run exits 3" "3" "$exit_code"
+    assert_contains "codex EXIT=124 (timeout)" "^EXIT=124$" "$(cat "$out")"
+    assert_contains "codex findings name the timeout" "timed out after 1s" "$(findings_of codex)"
+    assert_contains "codex findings marked failed" "Review failed" "$(findings_of codex)"
+    assert_contains "copilot findings complete" "Review complete" "$(findings_of copilot)"
+    # codex must have been killed: its mock only writes .end when it ran
+    # to completion, which AGENT_TIMEOUT=1 forbids.
+    if [[ -f "$times/codex.end" ]]; then
+        echo "  FAIL: codex ran to completion despite AGENT_TIMEOUT=1"; FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: codex was killed before it could finish"; PASS=$((PASS + 1))
+    fi
+    teardown
+}
+
+test_agents_concurrency() {
+    echo "TEST: agents run concurrently, not one after another (#206)"
+    setup
+    make_mock_agent codex; make_mock_agent copilot; make_mock_agent claude
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    local t0 t1
+    t0=$(date +%s.%N)
+    exit_code=$(MOCK_CODEX_SLEEP=2 MOCK_COPILOT_SLEEP=2 MOCK_CLAUDE_SLEEP=2 MOCK_TIMES_DIR="$times" \
+        run_agents "$out" "codex,copilot,claude")
+    t1=$(date +%s.%N)
+    assert_exit_code "concurrent run exits 0" "0" "$exit_code"
+    # Primary: intervals overlap — every agent started before the first one ended.
+    local first_end; first_end=$(sort -n "$times"/*.end | head -n 1)
+    local overlap=true a
+    for a in codex copilot claude; do
+        if ! awk -v s="$(cat "$times/$a.start")" -v e="$first_end" 'BEGIN{exit !(s < e)}'; then overlap=false; fi
+    done
+    if [[ "$overlap" == true ]]; then
+        echo "  PASS: all three agents started before the first finished (intervals overlap)"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: agent intervals did not overlap"; FAIL=$((FAIL + 1))
+    fi
+    # Secondary, loose: three 2s sleeps must not take 6s.
+    if awk -v a="$t0" -v b="$t1" 'BEGIN{exit !((b - a) < 5.5)}'; then
+        echo "  PASS: wall clock under 5.5s for three 2s agents"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: wall clock $(awk -v a="$t0" -v b="$t1" 'BEGIN{print b-a}')s — looks sequential"; FAIL=$((FAIL + 1))
+    fi
+    teardown
+}
+
+test_agents_missing_binary() {
+    echo "TEST: a missing CLI fails only that agent (#206)"
+    setup
+    make_mock_agent codex
+    # copilot deliberately not mocked and hidden from PATH fallbacks.
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    exit_code=$(HOME="${TMPDIR_BASE}/nohome" RUN_AGENTS_PATH="$(HIDDEN_CLI_PATH)" run_agents "$out" "codex,copilot")
+    assert_exit_code "missing-binary run exits 3" "3" "$exit_code"
+    assert_contains "codex EXIT=0" "^EXIT=0$" "$(cat "$out")"
+    assert_contains "copilot EXIT=1" "^EXIT=1$" "$(cat "$out")"
+    assert_contains "copilot findings name the missing CLI" "copilot CLI not found" "$(findings_of copilot)"
+    assert_contains "copilot findings marked failed" "Review failed" "$(findings_of copilot)"
+    assert_contains "codex findings complete" "Review complete" "$(findings_of codex)"
+    teardown
+}
+
+test_agents_none_usable() {
+    echo "TEST: no usable CLI at all is a dependency error, exit 1 (#206)"
+    setup
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    exit_code=$(HOME="${TMPDIR_BASE}/nohome" RUN_AGENTS_PATH="$(HIDDEN_CLI_PATH)" run_agents "$out" "codex,copilot")
+    assert_exit_code "none usable exits 1" "1" "$exit_code"
+    assert_not_contains "no triplets printed" "^AGENT=" "$(cat "$out")"
+    teardown
+}
+
+test_agents_argument_hygiene() {
+    echo "TEST: --agents hygiene — exclusion, unknown, empty entry, dedupe, case/space (#206)"
+    setup
+    make_mock_agent codex
+    cd "${MOCK_REPO}"
+    local ec stderr
+    ec=0; stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agent codex --agents gemini 2>&1 >/dev/null) || ec=$?
+    assert_exit_code "--agent with --agents exits 2" "2" "$ec"
+    assert_contains "mutual-exclusion message" "mutually exclusive" "$stderr"
+
+    ec=0; stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents gemini,grok 2>&1 >/dev/null) || ec=$?
+    assert_exit_code "unknown agent exits 2" "2" "$ec"
+    assert_contains "unknown agent named" "Unknown agent 'grok'" "$stderr"
+
+    ec=0; stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents "gemini,,codex" 2>&1 >/dev/null) || ec=$?
+    assert_exit_code "empty entry exits 2" "2" "$ec"
+    assert_contains "empty-entry message" "empty entry" "$stderr"
+
+    ec=0; stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents "codex," 2>&1 >/dev/null) || ec=$?
+    assert_exit_code "trailing comma exits 2" "2" "$ec"
+
+    local out="${TMPDIR_BASE}/out.txt"
+    ec=$(run_agents "$out" " Codex , codex ")
+    assert_exit_code "dedupe + trim + case run exits 0" "0" "$ec"
+    assert_eq "duplicate collapses to one triplet" "1" "$(grep -c '^AGENT=' "$out")"
+    assert_contains "normalised to lowercase codex" "^AGENT=codex$" "$(cat "$out")"
+    teardown
+}
+
+test_agents_shared_diff_failure() {
+    echo "TEST: a failed shared diff marks every selected findings file, no triplets, exit 3 (#206)"
+    setup
+    make_mock_agent codex
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 3; [[ "${1:-}" == "-R" ]] && shift 2
+    case "$2" in body) echo "Closes #42" ;; title) echo "Test PR" ;; url) echo "https://github.com/test/repo/pull/99" ;; esac
+    exit 0
+elif [[ "$1" == "pr" && "$2" == "diff" ]]; then
+    echo "gh: connection reset" >&2; exit 1
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    exit_code=$(run_agents "$out" "gemini,codex")
+    assert_exit_code "shared diff failure exits 3" "3" "$exit_code"
+    assert_not_contains "no AGENT= triplets" "^AGENT=" "$(cat "$out")"
+    assert_contains "gemini findings carry the error marker" "Review error: failed to retrieve diff" "$(findings_of gemini)"
+    assert_contains "codex findings carry the error marker" "Review error: failed to retrieve diff" "$(findings_of codex)"
+    teardown
+}
+
+test_single_agent_output_unchanged() {
+    echo "TEST: --agent keeps the single-agent stdout contract (no EXIT=, no triplets) (#206)"
+    setup
+    make_mock_agent codex
+    cd "${MOCK_REPO}"
+    local out="${TMPDIR_BASE}/out.txt" ec=0
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agent codex < /dev/null > "$out" 2>/dev/null || ec=$?
+    assert_exit_code "single agent exits 0" "0" "$ec"
+    local stdout; stdout=$(cat "$out")
+    assert_contains "MODE=sync" "^MODE=sync$" "$stdout"
+    assert_contains "AGENT=codex" "^AGENT=codex$" "$stdout"
+    assert_contains "FINDINGS_FILE line" "^FINDINGS_FILE=.*review-codex-findings.md$" "$stdout"
+    assert_not_contains "no EXIT= line in single-agent mode" "^EXIT=" "$stdout"
+    assert_contains "completion line" "^Review complete. Results:" "$stdout"
+    assert_contains "codex findings complete" "Review complete" "$(findings_of codex)"
     teardown
 }
 
@@ -1331,10 +1539,19 @@ test_diff_fetch_failure_is_marked
 test_agy_api_error_message_kept
 test_agy_findings_truncated
 test_agy_no_temp_leak
-test_agy_tmux_invocation
 test_prompt_tool_use_guidance
 test_work_plans_excluded_from_diff
 test_branch_mode_filter_survives_noprefix
+test_sync_flag_rejected
+test_agents_all_succeed
+test_agents_partial_failure
+test_agents_timeout
+test_agents_concurrency
+test_agents_missing_binary
+test_agents_none_usable
+test_agents_argument_hygiene
+test_agents_shared_diff_failure
+test_single_agent_output_unchanged
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

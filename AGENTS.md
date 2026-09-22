@@ -404,7 +404,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/validate_workspace.py` | Validate project/ configuration |
 | `.agent/scripts/detect_agent_identity.sh` | Auto-detect agent framework + model |
 | `.agent/scripts/fetch_pr_reviews.sh` | Fetch all PR reviews and CI status |
-| `.agent/scripts/cross_model_review.sh` | Cross-model adversarial review for a PR (`--pr <N>`) or local branch (`--branch [<ref>]`); `--no-progress` for skill worktrees; `--repo`, `--work-dir` for cross-repo use; the embedded diff excludes `.agent/work-plans/**` |
+| `.agent/scripts/cross_model_review.sh` | Cross-model adversarial review for a PR (`--pr <N>`) or local branch (`--branch [<ref>]`); `--agents a,b,c` runs several reviewers in parallel with one `AGENT=`/`FINDINGS_FILE=`/`EXIT=` triplet each (`--agent <x>` keeps the single-agent output), every agent bounded by `AGENT_TIMEOUT` (ADR-0015, no tmux mode); `--no-progress` for skill worktrees; `--repo`, `--work-dir` for cross-repo use; the embedded diff excludes `.agent/work-plans/**` |
 | `.agent/scripts/_agy_review.sh` | Gemini (`agy`) turn for `cross_model_review.sh`: prompt over stdin (stream-json), result-event and timeout validation, owns the findings file; a headless permission denial or empty response exits 1 with the reason in the file |
 | `.agent/scripts/progress_append.sh` | Append one ADR-0013 `## <Entry Type>` entry to `.agent/work-plans/issue-<N>/progress.md` and commit only that file (entry on stdin; `-C <dir>` for another worktree) |
 | `.agent/scripts/progress_read.py` | Parse a `progress.md` timeline to JSON (`--type` filter, correlation keys, fence-aware) |
