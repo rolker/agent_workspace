@@ -54,7 +54,7 @@ FLOCK := $(shell command -v flock 2>/dev/null)
 LOCKED = $(if $(FLOCK),$(FLOCK) $(STAMP)/.lock sh -c,sh -c)
 
 # --- Phony targets ---
-.PHONY: help setup build test install lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug repair merge-pr
+.PHONY: help setup build test install lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills generate-user-tier-skills user-tier-install skip-git-bug repair merge-pr
 
 # =============================================================================
 # Tier 2 — Developer workflow
@@ -124,6 +124,7 @@ dashboard:
 
 validate:
 	python3 $(MAIN_ROOT)/.agent/scripts/validate_workspace.py --verbose
+	@$(MAIN_ROOT)/.agent/scripts/user_tier_install.sh --check
 
 repair: | $(STAMP)
 	@echo "--- Repairing venv and pre-commit hook ---"
@@ -153,6 +154,15 @@ merge-pr:
 
 generate-skills:
 	@$(MAIN_ROOT)/.agent/scripts/generate_make_skills.sh
+
+# The ~/.claude/skills/ symlink set, derived from each SKILL.md's
+# session_scope frontmatter (project and both; no field means workspace).
+# Unrelated to generate-skills, which writes the /make_* slash commands.
+generate-user-tier-skills:
+	@$(MAIN_ROOT)/.agent/scripts/user_tier_install.sh --sync-skills
+
+user-tier-install:
+	@$(MAIN_ROOT)/.agent/scripts/user_tier_install.sh
 
 skip-git-bug:
 	@mkdir -p $(STAMP)

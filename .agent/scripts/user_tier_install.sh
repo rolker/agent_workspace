@@ -1,0 +1,428 @@
+#!/usr/bin/env bash
+# .agent/scripts/user_tier_install.sh
+# Install (or check, or remove) the agent_workspace user tier in ~/.claude,
+# so a Claude Code session started anywhere under a registered project root
+# gets the workspace layer (#317, #265 PR 3).
+#
+# What the user tier consists of:
+#   1. ~/.claude/agent-workspace-root   -- one line, no trailing newline: the
+#      absolute path of this workspace checkout. THE way a skill command
+#      chain finds a workspace script from a project cwd. A plain file, not
+#      an environment variable and not hook output, so it works whether or
+#      not the SessionStart hook ran. See ADR-0016.
+#   2. ~/.claude/hooks/agent-workspace-session-start.sh -- a symlink to this
+#      checkout's .claude/hooks/session_start_project_layer.sh, registered
+#      as a SessionStart hook by absolute path.
+#   3. Two PreToolUse entries, by absolute path, for
+#      .claude/hooks/block-bash-tool-mapping.sh and log-tool-use.sh. Both
+#      carry the registry_require_root guard, so they are inert outside the
+#      workspace checkout and outside every registered root.
+#   4. Permission allow-rules for the promoted scripts in
+#      .agent/user_tier_scripts.txt, by absolute path.
+#   5. Symlinks in ~/.claude/skills/ for every skill whose SKILL.md declares
+#      `session_scope: project` or `session_scope: both`.
+#
+# Every entry this script writes into ~/.claude/settings.json is tagged
+# "_agent_workspace": "<this checkout>", which is what makes --check able to
+# tell OUR entries from the user's own and from another checkout's.
+#
+# Modes:
+#   (default)            install or repair; idempotent, safe to re-run
+#   --check              report drift. Exits 0 with a one-line note when the
+#                        user tier is simply not installed -- `make validate`
+#                        must stay green on a machine that never installed
+#                        it. Exits 1 on drift when it IS installed.
+#   --check --require    also exit 1 when it is not installed, for a machine
+#                        that expects it.
+#   --uninstall          remove every entry tagged with this checkout.
+#   --list-skills        print the skills that would be symlinked, one per
+#                        line (what `make generate-user-tier-skills` shows).
+#   --sync-skills        reconcile ~/.claude/skills/ only.
+#
+# Exit codes: 0 ok; 1 drift / failure; 2 usage; 3 missing dependency (jq).
+#
+# Scope: this script writes ONLY inside $HOME/.claude. It never edits the
+# tracked .claude/settings.json in the checkout, which stays exactly as it
+# is (Ask-First).
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+MANIFEST="$WS_ROOT/.agent/user_tier_scripts.txt"
+
+CLAUDE_DIR="${HOME}/.claude"
+SETTINGS="$CLAUDE_DIR/settings.json"
+ROOT_FILE="$CLAUDE_DIR/agent-workspace-root"
+HOOKS_DIR="$CLAUDE_DIR/hooks"
+SKILLS_DIR="$CLAUDE_DIR/skills"
+SESSION_HOOK_LINK="$HOOKS_DIR/agent-workspace-session-start.sh"
+SESSION_HOOK_TARGET="$WS_ROOT/.claude/hooks/session_start_project_layer.sh"
+
+TAG="$WS_ROOT"
+
+MODE="install"
+REQUIRE=false
+for arg in "$@"; do
+    case "$arg" in
+        --check)       MODE="check" ;;
+        --require)     REQUIRE=true ;;
+        --uninstall)   MODE="uninstall" ;;
+        --list-skills) MODE="list-skills" ;;
+        --sync-skills) MODE="sync-skills" ;;
+        -h|--help)
+            sed -n '2,45p' "${BASH_SOURCE[0]}"
+            exit 0
+            ;;
+        *)
+            echo "usage: user_tier_install.sh [--check [--require]] [--uninstall] [--list-skills] [--sync-skills]" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: jq is required to merge ~/.claude/settings.json" >&2
+    exit 3
+fi
+
+# ---------------------------------------------------------------- inputs ---
+# The promoted scripts (not the hooks -- those get hook entries, not
+# permission rules), as absolute paths.
+promoted_scripts() {
+    [[ -f "$MANIFEST" ]] || return 0
+    local line
+    while IFS= read -r line; do
+        line="${line%%#*}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [[ -z "$line" ]] && continue
+        [[ "$line" == .claude/hooks/* ]] && continue
+        echo "$WS_ROOT/$line"
+    done < "$MANIFEST"
+}
+
+# Skills whose SKILL.md declares session_scope: project | both. Skills with
+# no field are `workspace` (the documented default) and are excluded.
+selected_skills() {
+    local d name scope
+    for d in "$WS_ROOT"/.claude/skills/*/; do
+        [[ -f "$d/SKILL.md" ]] || continue
+        name="$(basename "$d")"
+        scope="$(awk '
+            NR == 1 && $0 == "---" { fm = 1; next }
+            fm && $0 == "---" { exit }
+            fm && /^session_scope:/ { sub(/^session_scope:[[:space:]]*/, ""); gsub(/["'"'"']/, ""); print; exit }
+        ' "$d/SKILL.md")"
+        case "$scope" in
+            project|both) echo "$name" ;;
+        esac
+    done
+}
+
+# The permission rules this checkout owns, as a JSON array.
+allow_rules_json() {
+    local s
+    { while IFS= read -r s; do
+        [[ -z "$s" ]] && continue
+        printf '%s\n' "Bash($s:*)"
+        printf '%s\n' "Bash($s)"
+      done < <(promoted_scripts)
+    } | jq -R . | jq -s .
+}
+
+hook_commands() {
+    echo "$WS_ROOT/.claude/hooks/log-tool-use.sh"
+    echo "$WS_ROOT/.claude/hooks/block-bash-tool-mapping.sh"
+}
+
+# --------------------------------------------------------------- helpers ---
+installed() {
+    [[ -f "$ROOT_FILE" ]] && [[ "$(cat "$ROOT_FILE" 2>/dev/null)" == "$WS_ROOT" ]]
+}
+
+read_settings() {
+    if [[ -f "$SETTINGS" ]]; then
+        jq '.' "$SETTINGS" 2>/dev/null || echo '{}'
+    else
+        echo '{}'
+    fi
+}
+
+write_settings() {  # <json on stdin>
+    local tmp
+    mkdir -p "$CLAUDE_DIR"
+    tmp="$(mktemp "$CLAUDE_DIR/.settings.json.XXXXXX")" || return 1
+    cat > "$tmp" || { rm -f "$tmp"; return 1; }
+    if ! jq -e . "$tmp" >/dev/null 2>&1; then
+        echo "ERROR: refusing to write malformed settings.json" >&2
+        rm -f "$tmp"
+        return 1
+    fi
+    mv "$tmp" "$SETTINGS"
+}
+
+# ------------------------------------------------------------- list mode ---
+if [[ "$MODE" == "list-skills" ]]; then
+    selected_skills
+    exit 0
+fi
+
+# ------------------------------------------------------------ skill sync ---
+sync_skills() {  # prints what it changed
+    local name target link changed=0
+    mkdir -p "$SKILLS_DIR"
+    # Add or repair.
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        target="$WS_ROOT/.claude/skills/$name"
+        link="$SKILLS_DIR/$name"
+        if [[ -L "$link" ]]; then
+            if [[ "$(readlink "$link")" == "$target" ]]; then
+                continue
+            fi
+            if [[ "$(readlink "$link")" == "$WS_ROOT"/* ]]; then
+                ln -sfn "$target" "$link"
+                echo "  repaired skill symlink: $name"
+                changed=1
+            else
+                echo "  SKIPPED skill $name: ~/.claude/skills/$name is a symlink to something else ($(readlink "$link")) -- not ours to replace"
+            fi
+        elif [[ -e "$link" ]]; then
+            echo "  SKIPPED skill $name: ~/.claude/skills/$name exists and is not a symlink -- not ours to replace"
+        else
+            ln -s "$target" "$link"
+            echo "  linked skill: $name"
+            changed=1
+        fi
+    done < <(selected_skills)
+
+    # Remove stale links this checkout owns but that are no longer selected.
+    # The selection is captured ONCE into a variable rather than re-run into
+    # `grep -q` per link: under `set -o pipefail`, grep -q exits on its first
+    # match and SIGPIPEs the producer, so the pipeline reports 141 and the
+    # first matching skill looks unselected -- and gets deleted.
+    local base selected
+    selected="$(selected_skills)"
+    for link in "$SKILLS_DIR"/*; do
+        [[ -L "$link" ]] || continue
+        [[ "$(readlink "$link")" == "$WS_ROOT/.claude/skills/"* ]] || continue
+        base="$(basename "$link")"
+        if ! grep -qxF "$base" <<< "$selected"; then
+            rm -f "$link"
+            echo "  removed stale skill symlink: $base"
+            changed=1
+        fi
+    done
+    return "$changed"
+}
+
+if [[ "$MODE" == "sync-skills" ]]; then
+    sync_skills || true
+    echo "Skill symlinks reconciled in $SKILLS_DIR"
+    exit 0
+fi
+
+# ------------------------------------------------------------- uninstall ---
+if [[ "$MODE" == "uninstall" ]]; then
+    if [[ ! -e "$ROOT_FILE" && ! -e "$SESSION_HOOK_LINK" && ! -f "$SETTINGS" ]]; then
+        echo "agent_workspace user tier: nothing installed at $CLAUDE_DIR"
+        exit 0
+    fi
+    [[ -f "$ROOT_FILE" ]] && [[ "$(cat "$ROOT_FILE")" == "$WS_ROOT" ]] && rm -f "$ROOT_FILE" \
+        && echo "  removed $ROOT_FILE"
+    [[ -L "$SESSION_HOOK_LINK" ]] && rm -f "$SESSION_HOOK_LINK" \
+        && echo "  removed $SESSION_HOOK_LINK"
+    for link in "$SKILLS_DIR"/*; do
+        [[ -L "$link" ]] || continue
+        [[ "$(readlink "$link")" == "$WS_ROOT/.claude/skills/"* ]] || continue
+        rm -f "$link"
+        echo "  removed skill symlink: $(basename "$link")"
+    done
+    if [[ -f "$SETTINGS" ]]; then
+        read_settings | jq --arg tag "$TAG" --argjson rules "$(allow_rules_json)" '
+            .hooks //= {} |
+            .hooks |= with_entries(
+                .value |= map(select((._agent_workspace // "") != $tag))
+            ) |
+            .hooks |= with_entries(select(.value | length > 0)) |
+            if (.permissions.allow? // null) != null then
+                .permissions.allow |= map(select(. as $a | ($rules | index($a)) == null))
+            else . end
+        ' | write_settings && echo "  removed settings entries tagged $TAG"
+    fi
+    echo "agent_workspace user tier removed."
+    exit 0
+fi
+
+# ----------------------------------------------------------------- check ---
+if [[ "$MODE" == "check" ]]; then
+    if ! installed; then
+        if [[ "$REQUIRE" == true ]]; then
+            echo "agent_workspace user tier: NOT INSTALLED (--require) -- run .agent/scripts/user_tier_install.sh" >&2
+            exit 1
+        fi
+        echo "agent_workspace user tier: not installed (optional; run .agent/scripts/user_tier_install.sh to enable project sessions)"
+        exit 0
+    fi
+
+    drift=0
+    note() { echo "  DRIFT: $1"; drift=1; }
+
+    [[ -L "$SESSION_HOOK_LINK" ]] || note "missing SessionStart hook symlink at $SESSION_HOOK_LINK"
+    if [[ -L "$SESSION_HOOK_LINK" && "$(readlink "$SESSION_HOOK_LINK")" != "$SESSION_HOOK_TARGET" ]]; then
+        note "stale SessionStart hook symlink: points at $(readlink "$SESSION_HOOK_LINK"), expected $SESSION_HOOK_TARGET"
+    fi
+    [[ -e "$SESSION_HOOK_TARGET" ]] || note "SessionStart hook target does not exist: $SESSION_HOOK_TARGET"
+
+    settings="$(read_settings)"
+
+    # Our hook entries, present and pointing at this checkout.
+    for cmd in $(hook_commands) "$SESSION_HOOK_LINK"; do
+        if ! jq -e --arg c "$cmd" --arg tag "$TAG" '
+            [.hooks // {} | to_entries[] | .value[]
+             | select((._agent_workspace // "") == $tag)
+             | .hooks[]? | .command] | index($c) != null
+        ' <<< "$settings" >/dev/null; then
+            note "missing hook entry for $cmd"
+        fi
+    done
+
+    # Entries tagged as ours but naming a path outside this checkout, or
+    # tagged for a DIFFERENT checkout (a second clone installed over us).
+    foreign="$(jq -r --arg tag "$TAG" '
+        [.hooks // {} | to_entries[] | .value[]
+         | select((._agent_workspace // "") != "" and (._agent_workspace != $tag))
+         | ._agent_workspace] | unique | .[]
+    ' <<< "$settings")"
+    if [[ -n "$foreign" ]]; then
+        while IFS= read -r f; do
+            note "settings.json has hook entries from another workspace checkout: $f"
+        done <<< "$foreign"
+    fi
+
+    # The SessionStart entry deliberately names the ~/.claude symlink, not
+    # the checkout path -- that indirection is what lets the hook be found
+    # without the user tier hard-coding a checkout into every session. Every
+    # OTHER command tagged as ours must live in this checkout.
+    stale="$(jq -r --arg tag "$TAG" --arg ws "$WS_ROOT/" --arg link "$SESSION_HOOK_LINK" '
+        [.hooks // {} | to_entries[] | .value[]
+         | select((._agent_workspace // "") == $tag)
+         | .hooks[]? | .command
+         | select(. != $link)
+         | select(startswith($ws) | not)] | .[]
+    ' <<< "$settings")"
+    if [[ -n "$stale" ]]; then
+        while IFS= read -r st; do
+            note "hook entry tagged as ours points outside this checkout: $st"
+        done <<< "$stale"
+    fi
+
+    # Permission rules.
+    # `. as $w` matters: inside `$have | index(...)` a bare `.` would refer
+    # to $have, not to the rule being tested, and every rule would look
+    # present.
+    missing_rules="$(jq -r --argjson want "$(allow_rules_json)" '
+        (.permissions.allow // []) as $have
+        | [$want[] | . as $w | select(($have | index($w)) == null)] | .[]
+    ' <<< "$settings")"
+    if [[ -n "$missing_rules" ]]; then
+        n=$(grep -c . <<< "$missing_rules")
+        note "$n permission allow-rule(s) missing (manifest changed? re-run the installer)"
+    fi
+
+    # Skills.
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        link="$SKILLS_DIR/$name"
+        if [[ ! -L "$link" ]]; then
+            note "skill not linked: $name"
+        elif [[ "$(readlink "$link")" != "$WS_ROOT/.claude/skills/$name" ]]; then
+            note "stale skill symlink: $name -> $(readlink "$link")"
+        fi
+    done < <(selected_skills)
+
+    # Captured once -- see sync_skills() for why a per-link pipeline into
+    # `grep -q` is wrong under pipefail.
+    selected_now="$(selected_skills)"
+    for link in "$SKILLS_DIR"/*; do
+        [[ -L "$link" ]] || continue
+        [[ "$(readlink "$link")" == "$WS_ROOT/.claude/skills/"* ]] || continue
+        base="$(basename "$link")"
+        grep -qxF "$base" <<< "$selected_now" \
+            || note "skill symlink is no longer selected (session_scope changed?): $base"
+    done
+
+    if [[ "$drift" -eq 0 ]]; then
+        echo "agent_workspace user tier: installed and current ($WS_ROOT)"
+        exit 0
+    fi
+    echo "agent_workspace user tier: DRIFT detected -- re-run .agent/scripts/user_tier_install.sh" >&2
+    exit 1
+fi
+
+# --------------------------------------------------------------- install ---
+mkdir -p "$CLAUDE_DIR" "$HOOKS_DIR" "$SKILLS_DIR"
+
+# 1. the workspace-root file (no trailing newline -- callers do a bare `cat`)
+printf '%s' "$WS_ROOT" > "$ROOT_FILE"
+echo "  wrote $ROOT_FILE"
+
+# 2. the SessionStart hook symlink
+if [[ ! -e "$SESSION_HOOK_TARGET" ]]; then
+    echo "ERROR: hook target missing: $SESSION_HOOK_TARGET" >&2
+    exit 1
+fi
+if [[ -e "$SESSION_HOOK_LINK" && ! -L "$SESSION_HOOK_LINK" ]]; then
+    echo "ERROR: $SESSION_HOOK_LINK exists and is not a symlink -- not overwriting" >&2
+    exit 1
+fi
+ln -sfn "$SESSION_HOOK_TARGET" "$SESSION_HOOK_LINK"
+echo "  linked $SESSION_HOOK_LINK -> $SESSION_HOOK_TARGET"
+
+# 3+4. settings.json: our hook entries and allow-rules, replacing any
+# previous generation of ours (that is what makes this idempotent) and
+# leaving everything else in the file untouched.
+PRE_HOOKS_JSON="$(jq -n --arg tag "$TAG" \
+    --arg log "$WS_ROOT/.claude/hooks/log-tool-use.sh" \
+    --arg block "$WS_ROOT/.claude/hooks/block-bash-tool-mapping.sh" '
+    {
+      _agent_workspace: $tag,
+      hooks: [
+        {type: "command", command: $log,   timeout: 5},
+        {type: "command", command: $block, timeout: 5}
+      ]
+    }')"
+
+SESSION_HOOKS_JSON="$(jq -n --arg tag "$TAG" --arg cmd "$SESSION_HOOK_LINK" '
+    {
+      _agent_workspace: $tag,
+      hooks: [{type: "command", command: $cmd, timeout: 10}]
+    }')"
+
+read_settings | jq \
+    --arg tag "$TAG" \
+    --argjson pre "$PRE_HOOKS_JSON" \
+    --argjson ses "$SESSION_HOOKS_JSON" \
+    --argjson rules "$(allow_rules_json)" '
+    .hooks //= {}
+    | .hooks.PreToolUse //= []
+    | .hooks.SessionStart //= []
+    # drop any previous generation of OUR entries, keep the user'"'"'s own
+    | .hooks.PreToolUse   |= map(select((._agent_workspace // "") != $tag))
+    | .hooks.SessionStart |= map(select((._agent_workspace // "") != $tag))
+    | .hooks.PreToolUse   += [$pre]
+    | .hooks.SessionStart += [$ses]
+    | .permissions //= {}
+    | .permissions.allow //= []
+    | .permissions.allow = ((.permissions.allow + $rules) | unique)
+' | write_settings || { echo "ERROR: failed to write $SETTINGS" >&2; exit 1; }
+echo "  merged hook entries and $(allow_rules_json | jq 'length') allow-rules into $SETTINGS"
+
+# 5. skills
+sync_skills || true
+
+echo ""
+echo "agent_workspace user tier installed from $WS_ROOT"
+echo "Verify with: .agent/scripts/user_tier_install.sh --check"
+exit 0
