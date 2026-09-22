@@ -82,10 +82,18 @@ plan_authored() {
 plan_review() {
     printf '## Plan Review\n**Status**: %s\n**When**: %s\n**By**: t (m)\n**Verdict**: ready\n**Plan**: `.agent/work-plans/issue-9/plan.md` at `1111111`\n' "$1" "$NOW"
 }
-implementation() {  # <status> <mode: inline|"">
-    local mode_line=""
-    [[ -n "$2" ]] && mode_line=$'**Mode**: '"$2"$'\n'
-    printf '## Implementation\n**Status**: %s\n**When**: %s\n**By**: t (m)\n%s**Branch**: feature/issue-9 at `2222222`\n' "$1" "$NOW" "$mode_line"
+implementation() {  # <status> <kind: ""|addressed|takeover>
+    # "" -- a dispatched post-plan implement pass; "addressed" -- an
+    # address-findings pass (its required **Addressed** field is what
+    # skill_for() discriminates on, issue #314); "takeover" -- an implement
+    # pass the host took over (row 27 still stamps **Mode**: inline as an
+    # informational marker, which no dispatcher reads any more).
+    local extra=""
+    case "${2:-}" in
+        addressed) extra=$'**Addressed**: Local Review (Pre-Push) at `3333333` (2026-09-17 09:00 -04:00)\n' ;;
+        takeover)  extra=$'**Mode**: inline\n' ;;
+    esac
+    printf '## Implementation\n**Status**: %s\n**When**: %s\n**By**: t (m)\n%s**Branch**: feature/issue-9 at `2222222`\n' "$1" "$NOW" "$extra"
 }
 local_review_prepush() {  # <status> <verdict> <branch> <round-suffix-sha>
     printf '## Local Review (Pre-Push)\n**Status**: %s\n**When**: %s\n**By**: t (m)\n**Verdict**: %s\n**Branch**: %s at `%s`\n\n### Findings\n- [ ] No issues found. LGTM.\n' \
@@ -146,10 +154,20 @@ assert_next "row 2: Checkpoint stop after phase-failed carries **Phase** into th
 echo "TEST: next -- row 3 (partial/failed newest entry is always a checkpoint)"
 assert_next "row 3: a partial Plan Review maps to review-plan" none \
     "$(plan_review partial)" checkpoint:phase-failed "phase=review-plan"
-assert_next "row 3: a failed Implementation with Mode: inline maps to implement" none \
-    "$(implementation failed inline)" checkpoint:phase-failed "phase=implement"
-assert_next "row 3: a failed Implementation with no Mode maps to address-findings" none \
-    "$(implementation failed "")" checkpoint:phase-failed "phase=address-findings"
+assert_next "row 3: a failed Implementation carrying **Addressed** maps to address-findings" none \
+    "$(implementation failed addressed)" checkpoint:phase-failed "phase=address-findings"
+assert_next "row 3: a failed Implementation with no **Addressed** and no prior Implementation maps to implement (the dispatched post-plan pass)" none \
+    "$(implementation failed "")" checkpoint:phase-failed "phase=implement"
+assert_next "row 3: a failed Implementation with no **Addressed** but a prior COMPLETE Implementation maps to address-findings" none \
+    "$(implementation complete "")
+$(implementation failed "")" checkpoint:phase-failed "phase=address-findings"
+DOUBLE_FAIL="$(implementation failed "")
+$(checkpoint phase-failed retry implement)
+$(implementation failed "")"
+assert_next "skill_for: a SECOND consecutive failed implement still maps to implement -- a prior FAILED Implementation is not a completed one (ordinal position alone would misroute the retry)" none \
+    "$DOUBLE_FAIL" checkpoint:phase-failed "phase=implement"
+assert_next "skill_for: a taken-over implement pass (**Mode**: inline, no **Addressed**) still maps to implement" none \
+    "$(implementation failed takeover)" checkpoint:phase-failed "phase=implement"
 out=$(run_next none "$(external_review partial)")
 if [[ "$out" == "action=checkpoint:phase-failed"* ]] && [[ "$out" != *"phase="* ]]; then
     pass "row 3: a partial External Review has no skill mapping -- checkpoint:phase-failed with no phase= line"
@@ -175,16 +193,18 @@ assert_next "row 8: Plan Authored -> review-plan" none "$(plan_authored complete
 assert_next "row 9: Plan Review (any verdict) -> checkpoint:plan" none "$(plan_review complete)" checkpoint:plan
 
 echo "TEST: next -- rows 10-11 (checkpoint plan)"
-assert_next "row 10: checkpoint plan answered proceed -> implement, mode=inline" none \
-    "$(checkpoint plan proceed)" implement "mode=inline"
+assert_next "row 10: checkpoint plan answered proceed -> implement (dispatched like every other phase, no mode=)" none \
+    "$(checkpoint plan proceed)" implement
+out=$(run_next none "$(checkpoint plan proceed)")
+[[ "$out" != *"mode="* ]] && pass "row 10: implement carries no mode= line (issue #314: the implement pass is dispatched, not inline)" || fail "row 10 mode leak (out=$out)"
 assert_next "row 11: checkpoint plan answered revise -> plan-task" none \
     "$(checkpoint plan revise)" plan-task
 
 echo "TEST: next -- row 12 (Implementation -> review-code, mode note follows --pr)"
 assert_next "row 12: Implementation with --pr none -> review-code (pre-push note)" none \
-    "$(implementation complete inline)" review-code "pre-push"
+    "$(implementation complete "")" review-code "pre-push"
 assert_next "row 12: Implementation with --pr open -> review-code (PR mode note)" open \
-    "$(implementation complete "")" review-code "PR mode"
+    "$(implementation complete addressed)" review-code "PR mode"
 
 echo "TEST: next -- rows 13-15 (Local Review Pre-Push: Verdict routes, never open findings)"
 assert_next "row 13: approved pre-push review -> checkpoint:publish, round=1 (LGTM box left unchecked, PR1 review requirement 2)" none \
@@ -249,8 +269,10 @@ assert_next "row 26: retry on a non-implement phase -> that skill token, no mode
     "$(checkpoint phase-failed retry review-code)" review-code
 out=$(run_next none "$(checkpoint phase-failed retry review-code)")
 [[ "$out" != *"mode="* ]] && pass "row 26: retry on review-code carries no mode= line" || fail "row 26 mode leak (out=$out)"
-assert_next "row 26: retry on the inline implementation pass -> implement, mode=inline" none \
-    "$(checkpoint phase-failed retry implement)" implement "mode=inline"
+assert_next "row 26: retry on the implement phase -> implement, no mode= (issue #314: re-dispatched, not run inline)" none \
+    "$(checkpoint phase-failed retry implement)" implement
+out=$(run_next none "$(checkpoint phase-failed retry implement)")
+[[ "$out" != *"mode="* ]] && pass "row 26: retry on implement carries no mode= line" || fail "row 26 implement mode leak (out=$out)"
 assert_next "row 27: takeover always carries mode=inline (the host runs the phase itself)" none \
     "$(checkpoint phase-failed takeover review-plan)" review-plan "mode=inline"
 
@@ -289,8 +311,8 @@ step "$TL" none review-plan
 append "$TL" "$(plan_review complete)"
 step "$TL" none checkpoint:plan
 append "$TL" "$(checkpoint plan proceed)"
-step "$TL" none implement mode=inline
-append "$TL" "$(implementation complete inline)"
+step "$TL" none implement
+append "$TL" "$(implementation complete "")"
 step "$TL" none review-code pre-push
 append "$TL" "$(local_review_prepush complete approved feature/issue-9)"
 step "$TL" none checkpoint:publish
@@ -344,7 +366,7 @@ append "$TL" "$(integrated_review complete open)"
 step "$TL" open checkpoint:findings
 append "$TL" "$(checkpoint findings address)"
 step "$TL" open address-findings
-append "$TL" "$(implementation complete "")"
+append "$TL" "$(implementation complete addressed)"
 step "$TL" open review-code "PR mode"
 append "$TL" "$(local_review_pr complete approved clean)"
 step "$TL" open triage-reviews
@@ -385,6 +407,13 @@ out=$(run_handoff --issue 9 --skill triage-reviews); rc=$?
 out=$(run_handoff --issue 9 --skill address-findings)
 [[ "$out" == *"task=/address-findings --issue 9"* && "$out" == *"model=opus"* && "$out" == *"entry_type=Implementation"* ]] \
     && pass "handoff: address-findings -- opus, Implementation" || fail "handoff address-findings (out=$out)"
+
+out=$(run_handoff --issue 9 --skill implement)
+[[ "$out" == *"task=implement the plan at .agent/work-plans/issue-9/plan.md on this branch"* \
+    && "$out" == *"model=opus"* && "$out" == *"entry_type=Implementation"* ]] \
+    && pass "handoff: implement -- literal task line (no /implement slash command), opus, Implementation" || fail "handoff implement (out=$out)"
+[[ "$out" == *"progress_append.sh 9"* && "$out" == *'**Branch**: <name> at <sha>'* && "$out" == *"Commit your work"* ]] \
+    && pass "handoff: implement's exit contract names progress_append.sh, the correlation line, and that the agent commits (plan review finding 1)" || fail "handoff implement exit contract (out=$out)"
 
 out=$(run_handoff --issue 9 --skill review-issue --entry-type "Custom Type" --model haiku)
 [[ "$out" == *"entry_type=Custom Type"* && "$out" == *"model=haiku"* ]] \
