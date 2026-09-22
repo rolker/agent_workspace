@@ -36,6 +36,9 @@ Verified against agy 1.2.8 (2026-09-22):
   would, but that is per-machine config the script cannot ship.
 - A plain "do not run commands" instruction in the prompt was honoured in a
   probe where the same prompt without it triggered `run_command`.
+- Headless file reads need no permission: a probe asking agy to read a
+  workspace file with `view_file` succeeded with no `denied_actions`. Only
+  `run_command` is auto-denied.
 - `--print-timeout` expiry (probed with `3s`): agy prints
   `[agy] print timeout after 3s with turn in progress; returning partial output`
   on stderr and still emits a `result` event with `status: SUCCESS` (empty
@@ -48,6 +51,11 @@ Verified against agy 1.2.8 (2026-09-22):
    (executed, not sourced) so tmux mode and sync mode share one code path.
    **The helper owns the findings file**; the wrapper arms pass no stdout
    redirect (see step 2). Helper diagnostics go to stderr only.
+   - **First statement, before any guard**: truncate the findings file
+     (`: > "$findings"`). The wrapper redirect used to do this; without it a
+     helper that dies at a guard would leave the previous run's review in
+     place under a fresh `--- Review failed ---` marker, which review-code
+     would read as current.
    - Guards: `jq` present (exit 1 with a message otherwise); prompt file
      readable.
    - `jq -Rs '{event:"user",message:{role:"user",content:.}}' "$prompt"` is
@@ -58,21 +66,26 @@ Verified against agy 1.2.8 (2026-09-22):
      agy exit status is read directly (no pipeline, no pipefail/SIGPIPE
      masking). Nothing is written under the work-plans dir except the
      findings file, so no new `.gitignore` rule and no behaviour question
-     under `--work-dir` / `--work-plans-dir`. On success both temp files are
-     removed; on failure they are kept and their paths named in the
-     findings file for debugging.
+     under `--work-dir` / `--work-plans-dir`. Both temp files are removed
+     on every exit path (`trap ... EXIT`); on failure the findings file
+     itself carries the diagnostics — agy's `error` field, the result
+     event's `denied_actions`, and the first 20 lines of agy's stderr — so
+     nothing is left on disk for `run_script_tests.sh`'s leftover sweep to
+     trip over.
    - Parse the last `result` event with jq. **Success** = agy exited 0, a
      `result` event exists, `status == "SUCCESS"`, `response` is non-empty,
      and stderr does **not** contain the `print timeout after` marker →
-     write `response` to the findings file (temp file + `mv`, so a reader
-     never sees a half-written file), exit 0. If `denied_actions` is
+     write `response` to the findings file with a plain `>` (no staging
+     temp: the file was truncated at helper start, and readers key off the
+     wrapper's `--- Review complete ---` marker, which is appended only
+     after the helper exits), exit 0. If `denied_actions` is
      non-empty but a response exists, append a
      `> Note: N tool action(s) were denied in headless mode` line so the
      integrator knows the review ran with less context.
    - **Failure** (anything else: launch error, non-zero exit, no result
      event, `status != SUCCESS`, empty response — the #288 case — or the
      timeout marker — a truncated review) → write a one-paragraph reason
-     into the findings file (agy's `error` field, the stderr notice, the
+     into the findings file (agy's `error` field, the stderr excerpt, the
      denied actions, or "print timeout — partial output discarded") and
      exit 1. The wrappers then append `--- Review failed ---` (sync: the
      script exits 3; tmux: the `||` branch in the session command), which
@@ -81,11 +94,15 @@ Verified against agy 1.2.8 (2026-09-22):
    `run_agent_sync` invoke the helper with `"$AGY_PRINT_TIMEOUT"`, **without**
    the `> "$findings" 2>&1` redirect the other arms keep (the helper writes
    the file; a wrapper redirect would truncate it). Header comment and the
-   "agy is the exception" note updated. The `--- Review complete ---` /
+   "agy is the exception" note updated, and the `AGY_PRINT_TIMEOUT`
+   comment corrected: agy's default is `0s` (wait until the turn ends),
+   not 5m; the script keeps an explicit 30m cap so a hung review cannot
+   block a tmux session or a sync caller forever. The `--- Review complete ---` /
    `--- Review failed ---` markers stay the wrappers' job.
 3. **Prompt footer, gemini only**: when `TARGET_AGENT == gemini`, append a
    short "Tool use" paragraph — the diff is complete; reading repository
-   files for context is fine; do **not** run shell commands, this is a
+   files for context is fine (verified: headless `view_file` is not denied);
+   do **not** run shell commands, this is a
    headless session and command execution is denied without a prompt.
    Not added for codex/claude/copilot: `codex exec` reads files through the
    shell, so the line would cost it context. This is the answer to the
@@ -101,6 +118,11 @@ Verified against agy 1.2.8 (2026-09-22):
    - `test_agy_stdin_invocation` — prompt content arrives via stdin, argv
      carries only flags, findings file gets the response and
      `--- Review complete ---`, no stray temp files remain.
+   - `test_agy_findings_truncated` — pre-seed the findings file with stale
+     text, force a guard failure (`MOCK_AGY_EXIT` or missing prompt); assert
+     the stale text is gone and only the reason + `--- Review failed ---`
+     remain. Every failure-path test also asserts the suite's TMPDIR is
+     empty afterwards (the runner enforces this with exit 2).
    - `test_agy_large_prompt` — `gh pr diff` mock emits a >200 KiB diff; the
      run succeeds. This genuinely exercises #274: an argv regression fails
      with E2BIG on a real kernel.
@@ -117,11 +139,11 @@ Verified against agy 1.2.8 (2026-09-22):
 5. **Docs**: `AGENTS.md` script table row for `_agy_review.sh`;
    `review-code` SKILL.md "Collecting findings": a `--- Review failed ---`
    file now carries the reason on the lines above the marker.
-6. **Deferred, on purpose**: #274 also suggested trimming
+6. **Deferred to #312**: #274 also suggested trimming
    `.agent/work-plans/**` out of the embedded diff. Stdin removes the size
    limit, and the plan/progress files are part of the PR under review, so
-   whether to hide them from reviewers is a separate scope decision. Noted
-   in the PR; not done here.
+   whether to hide them from reviewers is a separate scope decision, now
+   tracked in #312 so closing #274 here does not lose it.
 
 ## Files to Change
 
@@ -129,7 +151,7 @@ Verified against agy 1.2.8 (2026-09-22):
 |------|--------|
 | `.agent/scripts/_agy_review.sh` | New: stdin stream-json invocation, result-event + timeout validation, owns the findings file |
 | `.agent/scripts/cross_model_review.sh` | gemini arms call the helper with no stdout redirect; gemini-only tool-use footer; header comments |
-| `.agent/scripts/tests/test_cross_model_review.sh` | New agy mock; six tests above incl. a mock-tmux test; retire the `-p`-value assertions |
+| `.agent/scripts/tests/test_cross_model_review.sh` | New agy mock; seven tests above incl. a mock-tmux test and a stale-findings test; retire the `-p`-value assertions |
 | `AGENTS.md` | Script reference row |
 | `.claude/skills/review-code/SKILL.md` | One line: failed marker carries a reason |
 
@@ -164,7 +186,10 @@ Verified against agy 1.2.8 (2026-09-22):
 - None blocking. Plan review round 1 (needs-work) findings 1–5 are folded in
   above: no sidecar under the work-plans dir, helper owns the findings file,
   tmux-path test, gemini-only prompt paragraph, timeout marker treated as
-  failure. If the owner prefers agy to be allowed read-only git
+  failure. Round 2 findings folded in: helper truncates the findings file
+  first, no temp files survive any exit path, no staging `mv`, #312 opened
+  for the trimming half of #274, timeout comment corrected, headless file
+  reads verified. If the owner prefers agy to be allowed read-only git
   commands during review, that is an allow-rule in his agy settings and
   independent of this change.
 
