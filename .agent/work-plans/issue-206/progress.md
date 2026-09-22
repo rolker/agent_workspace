@@ -167,3 +167,19 @@ The plan is structurally sound, correctly scoped, and satisfies all four owner-c
 **Decision**: revise
 
 Revise. Fold in the round-1 plan review's action items (per-agent timeout with env override for every agent, per-agent binary resolution so one missing CLI does not abort the others, completion markers written inside each background job, per-agent findings files on the shared-diff error path, --agents hygiene, doc consequences in agent_wait_patterns.md and the AGENTS.md script row, mock codex/copilot binaries and a wall-clock concurrency assertion, exit-code disambiguator). Owner decision on the tmux open question: REMOVE the tmux path entirely, no --tmux flag; the ADR records the removal and why (headless reviews, parallel sync replaces the overlap, no quoted command strings). The existing mock-tmux test is retired with the path.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 11:08 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-206/plan.md` at `340e4e4`
+
+Revision of the round-1 plan: folds in all ten plan-review action items
+(per-agent timeout with env override, per-agent binary resolution so one
+missing CLI doesn't abort the run, in-job completion markers, per-agent
+findings files on the shared-diff error path, `--agents` hygiene, doc
+consequences in `agent_wait_patterns.md` and the `AGENTS.md` script row,
+mock codex/copilot/claude binaries plus a wall-clock concurrency test, and
+the exit-3 disambiguator) and implements the owner's checkpoint decision to
+remove tmux entirely (no `--tmux` flag; `--sync` also removed as it has no
+remaining meaning once tmux is gone).
