@@ -268,7 +268,11 @@ doesn't land: a merge attempt whose gate preconditions failed records
 succeeds — and while `--pr` is not `merged` that newest entry routes to
 `checkpoint:merge-refused` (row 23); answering that `retriage` writes a
 fresh `## Integrated Review`, and row 19 re-raises `checkpoint:findings` on
-those same still-open boxes. For each such box, run:
+those same still-open boxes. One path is the exception, the same caveat
+step 11 records: an `--enforce` refusal on a workspace PR writes no entry
+and exits 1 (`merge_pr.sh:896-903`), so there is no newest merge entry for
+`dispatch_phase.sh` to route on and no `checkpoint:merge-refused` re-route
+on that path. For each such box, run:
 
 ```bash
 PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
