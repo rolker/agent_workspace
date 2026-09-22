@@ -264,3 +264,38 @@ Round-1's four findings all verified resolved against source: routing prose matc
 ### Actions
 - [x] (must-fix) `_corr_pr_or_branch` now matches `` `?([^`\s]+)`? `` for the branch, so a backticked `**Branch**` correlates with a bare one and `round` / `dispatch_phase.sh next` no longer restart at 1 — `.agent/scripts/progress_read.py:192`; fixtures added in `test_progress_read.py` (backticked == bare correlation) and `test_review_code_convergence.sh` (a backticked prior entry counts: round=3)
 - [x] (suggestion) Step 10's note now says the gate records `## Merge (report-only)` (or `## Merge (unreviewed)` under `--force-unreviewed`) on a gate-precondition failure or bypass, written whether or not the merge then succeeds, matching step 11 — `.claude/skills/run-issue/SKILL.md:265`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 08:55 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-307 at `4ea250b`
+**Base**: main
+**Depth**: Standard, scoped to the fix diff (round-3 re-review of 3527104..4ea250b — commits b3a5949, bf067c5; +31/-3 across 4 code files)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; the one suggestion is a doc-precision nit, apply or track
+
+### Findings
+- [ ] (suggestion) The corrected sentence still omits the third gate path the same file names at line 400: under `--enforce` on a workspace PR a failed gate exits 1 and writes no entry at all (`merge_pr.sh:896-903`), so "written whether or not the merge itself then succeeds" overclaims — add the same `--enforce` caveat used at line 400 — `.claude/skills/run-issue/SKILL.md:265`
+
+### Verification
+Round-2's must-fix is resolved at the source: `_corr_pr_or_branch` now matches `` `?([^`\s]+)`? `` for the branch (`progress_read.py:192`). Ran both regexes side by side over eight `**Branch**` forms — every bare form extracts identically to before, only the backticked forms change, and neither over-matches past the ` at ` separator or across a trailing parenthetical. The fix is live-verified on this very timeline: `review_progress.sh round --issue 307 --branch feature/issue-307` now returns `round=3 prev_must_fix=1`, correlating the backticked round-1 entry (line 204) with the bare round-2 entry (line 243); the same key drives `dispatch_phase.sh:437 round_count()` and hence MAX_ROUNDS. `progress_read.py` is the only parser of the field — no divergent reader to keep in step; `merge_pr.sh` reads only `.correlation.pr` / `.sha`.
+
+Both fixtures are genuine regression guards, not restatements: patching the old regex into a throwaway copy makes `test_review_code_convergence.sh`'s new case fail (`round=2`, the silent restart), and the python case asserts ticked-vs-bare correlation equality. Full suite green — `run_script_tests.sh`: 23/23 suites; `test_progress_read.py`: 39 tests.
+
+Round-2's suggestion is resolved: the step-10 sentence now matches `merge_pr.sh:889-908` — the gate records `## Merge (report-only)` (or `## Merge (unreviewed)` under `--force-unreviewed`) on a precondition failure at step 1.5, before the CI wait and the merge itself, and records nothing on a pass. Row 23's routing claim checks out (`dispatch_phase.sh:564-566`), as does the `--pr merged` short-circuit ahead of it (`dispatch_phase.sh:339`). No contradiction with step 11. Round-1's four findings remain resolved; nothing in the fix range touches them.
+
+Plan drift: `progress_read.py` is outside the plan's "Files to Change" — expected, since it is the fix for a bug the loop's own round-2 review found in the loop's own machinery. Static analysis: shellcheck, flake8 and pre-commit are not installed in this environment, so the test suites are the only executed check; both changed script files are covered by suites that passed.
+
+### Decision summary
+**What changed**: A bug in how the review loop reads its own timeline — a branch name written inside backticks did not match the same branch written plain, so the round counter silently restarted at 1 and the three-round safety stop could never trip. The parser now accepts both forms, with tests covering it. A sentence in the run-issue instructions that described merge-gate records as marking a failed merge was corrected to say what the merge script actually does.
+
+**Reviews and outcomes**: Round 3 (scoped re-review of the round-2 fixes) — 0 must-fix, 1 suggestion; ship: recommended. Round 1 had 2 must-fix, round 2 had 1; all are verified resolved against source.
+
+**Open human calls**: None. The single suggestion is a one-clause wording caveat in run-issue's step 10; it can be applied before merge or tracked.
+
+**Verified**: 23/23 script suites and 39 progress_read tests pass; the new fixtures were confirmed to fail under the old regex; the round counter now reports round 3 on this timeline; the corrected wording was checked line by line against `merge_pr.sh` and `dispatch_phase.sh`.
+
+**Recommendation**: merge.
