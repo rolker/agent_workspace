@@ -223,6 +223,7 @@ CHECKRUNS_COPILOT_ONLY="{\"check_runs\":[${COPILOT_RUN}]}"
 CHECKRUNS_COPILOT_ONLY_RUNNING="{\"check_runs\":[${COPILOT_RUN_RUNNING}]}"
 CHECKRUNS_COPILOT_PLUS_LINT_SUCCESS="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"success\",\"status\":\"completed\"}]}"
 CHECKRUNS_COPILOT_PLUS_LINT_PENDING="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":null,\"status\":\"in_progress\"}]}"
+CHECKRUNS_COPILOT_RUNNING_PLUS_LINT_SUCCESS="{\"check_runs\":[${COPILOT_RUN_RUNNING},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"success\",\"status\":\"completed\"}]}"
 CHECKRUNS_COPILOT_PLUS_LINT_FAILED="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"failure\",\"status\":\"completed\"}]}"
 write_mergeable_fixture() {  # <sb> <state> [seq_n]
     local sb="$1" state="$2" n="${3:-}" remote base f
@@ -783,12 +784,71 @@ write_mergeable_fixture "$sb" "MERGEABLE"
 out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=5 run_merge_wait "$sb" 2>&1)" || true
 note_count=$(grep -c "check-run 'copilot-pull-request-reviewer'" <<<"$out" || true)
 # Guard the guard: if only one poll ran, "exactly once" would pass vacuously.
-poll_count=$(grep -c "check-runs" "$sb/gh_calls.log" 2>/dev/null || echo 0)
+poll_count=$(grep -c "check-runs" "$sb/gh_calls.log" 2>/dev/null || true)
 if merged_called "$sb" && [[ "$out" == *"CI checks passed"* ]] \
     && [[ "$poll_count" -ge 2 ]] && [[ "$note_count" -eq 1 ]]; then
     pass "(ci-24) two poll iterations: excluded-run note printed exactly once"
 else
     fail "(ci-24) (polls=${poll_count} note_count=${note_count}) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — Copilot review still running, real CI green: holds the merge (owner rule, #300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_RUNNING_PLUS_LINT_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"*"${reviewed:0:7}"* ]] \
+    && [[ "$out" == *"--allow-pending-review"* ]] \
+    && [[ "$out" == *"review still in progress — waiting"* ]] \
+    && [[ "$out" != *"CI checks passed"* ]] && [[ "$out" != *"CI checks failed"* ]]; then
+    pass "(ci-25) Copilot running + Lint success: no merge; review-pending error names the opt-in flag"
+else
+    fail "(ci-25) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — Copilot review still running, real CI green, --allow-pending-review: merges (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_RUNNING_PLUS_LINT_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 run_merge_wait "$sb" --allow-pending-review 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI checks passed"* ]] \
+    && [[ "$out" == *"not used to block the merge"* ]] \
+    && [[ "$out" != *"still in progress"* ]]; then
+    pass "(ci-26) Copilot running + Lint success + --allow-pending-review: merges, opt-in honoured"
+else
+    fail "(ci-26) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — Copilot review still running on a repo with no CI: still holds the merge (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" '{"total_count":0}'
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_ONLY_RUNNING"
+out="$(MERGE_PR_CI_TIMEOUT_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"* ]] \
+    && [[ "$out" != *"no CI configured"* ]]; then
+    pass "(ci-27) Copilot running, no CI workflows: review-pending error, not a no-CI merge"
+else
+    fail "(ci-27) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — Copilot review running then completed across polls: merges once it completes (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_RUNNING_PLUS_LINT_SUCCESS" 1
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_PLUS_LINT_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=5 run_merge_wait "$sb" 2>&1)" || true
+note_count=$(grep -c "check-run 'copilot-pull-request-reviewer'" <<<"$out" || true)
+if merged_called "$sb" && [[ "$out" == *"CI checks passed"* ]] \
+    && [[ "$out" == *"review still in progress — waiting"* ]] \
+    && [[ "$out" == *"conclusion=failure is a review signal"* ]] \
+    && [[ "$note_count" -eq 2 ]]; then
+    pass "(ci-28) Copilot running then completed: waited, then merged; one note per state"
+else
+    fail "(ci-28) (note_count=${note_count}) (out=${out:0:400})"
 fi
 
 echo "TEST: mergeability — UNKNOWN for the first pr-view calls then MERGEABLE: merge proceeds"

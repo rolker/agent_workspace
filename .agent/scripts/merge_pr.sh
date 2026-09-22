@@ -3,9 +3,9 @@
 # Merge a PR, remove its worktree, delete the branch, and sync main.
 #
 # Usage:
-#   .agent/scripts/merge_pr.sh --pr <N> [--type workspace|project] [--no-roadmap-update] [--no-wait]
-#   .agent/scripts/merge_pr.sh --pr <N> --repo <owner/repo> [--no-roadmap-update] [--no-wait]
-#   .agent/scripts/merge_pr.sh --pr <owner/repo#N> [--no-roadmap-update] [--no-wait]
+#   .agent/scripts/merge_pr.sh --pr <N> [--type workspace|project] [--no-roadmap-update] [--no-wait] [--allow-pending-review]
+#   .agent/scripts/merge_pr.sh --pr <N> --repo <owner/repo> [--no-roadmap-update] [--no-wait] [--allow-pending-review]
+#   .agent/scripts/merge_pr.sh --pr <owner/repo#N> [--no-roadmap-update] [--no-wait] [--allow-pending-review]
 #
 # --repo <owner/repo> (or an equivalent qualified --pr owner/repo#N) resolves
 # the PR against exactly that repo — no workspace/project auto-detection —
@@ -33,7 +33,10 @@
 #      for CI on that target SHA — --no-wait skips only this CI poll — and
 #      let mergeability settle, which always runs (#290): this script's own
 #      Step 1 / 1.5 pushes make GitHub recompute mergeability whether or
-#      not CI is waited on
+#      not CI is waited on. Copilot's review check-run is never CI (#300):
+#      its conclusion is ignored, but while it is still running the wait
+#      holds the merge until it completes (or the CI timeout) unless
+#      --allow-pending-review (or --no-wait) opts in.
 #   3. Merge the PR (--merge strategy; one retry on a "not mergeable"
 #      refusal, after re-polling mergeability once)
 #   4. Remove the worktree:
@@ -84,8 +87,13 @@ NO_WAIT=false
 # output has been watched on real merges.
 ENFORCE_MERGE_GATE=false
 FORCE_UNREVIEWED=false
+# A code-review check-run that is still running (Copilot's, #300) holds the
+# merge by default even when CI is green or absent: merging past an
+# unfinished review is opt-in (--allow-pending-review). --no-wait skips the
+# whole wait and so also opts in.
+ALLOW_PENDING_REVIEW=false
 
-USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait] [--enforce] [--force-unreviewed]"
+USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait] [--allow-pending-review] [--enforce] [--force-unreviewed]"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -105,6 +113,8 @@ while [[ $# -gt 0 ]]; do
             NO_ROADMAP_UPDATE=true; shift ;;
         --no-wait)
             NO_WAIT=true; shift ;;
+        --allow-pending-review)
+            ALLOW_PENDING_REVIEW=true; shift ;;
         --enforce)
             ENFORCE_MERGE_GATE=true; shift ;;
         --force-unreviewed)
@@ -1106,16 +1116,37 @@ if [[ "$NO_WAIT" == false ]]; then
         _ci_poll_out=$(_ci_poll_state "$CI_TARGET_SHA")
         _ci_state="${_ci_poll_out%%|*}"
         _ci_excluded="${_ci_poll_out#*|}"
-        if [[ -n "$_ci_excluded" ]] && [[ "$_ci_excluded_noted" == false ]]; then
-            # Once per run, not once per poll — and the flag lives HERE, in
-            # the loop's own shell, because `_ci_poll_state` is read through
-            # a command substitution and cannot carry state back out of it.
-            echo "  (check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' ${_ci_excluded} is a review signal, excluded from CI — not used to block the merge)"
-            _ci_excluded_noted=true
+        # A review check-run that has not finished (`status=...`, no
+        # conclusion) holds the merge unless the caller opted in: its
+        # verdict is not CI, but merging under an unfinished review is
+        # not the default (#300, owner rule).
+        _ci_review_pending=false
+        if [[ "$_ci_excluded" == status=* ]] && [[ "$ALLOW_PENDING_REVIEW" == false ]]; then
+            _ci_review_pending=true
+        fi
+        if [[ -n "$_ci_excluded" ]] && [[ "$_ci_excluded_noted" != "$_ci_excluded" ]]; then
+            # Once per distinct state (running -> completed), not once per
+            # poll — and the flag lives HERE, in the loop's own shell,
+            # because `_ci_poll_state` is read through a command
+            # substitution and cannot carry state back out of it.
+            if [[ "$_ci_review_pending" == true ]]; then
+                echo "  (check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' ${_ci_excluded}: review still in progress — waiting for it before merging; --allow-pending-review merges without it)"
+            else
+                echo "  (check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' ${_ci_excluded} is a review signal, excluded from CI — not used to block the merge)"
+            fi
+            _ci_excluded_noted="$_ci_excluded"
         fi
         _ci_now=$(date +%s)
         case "$_ci_state" in
-            success) _ci_result="success"; break ;;
+            success)
+                if [[ "$_ci_review_pending" == true ]]; then
+                    if [[ "$_ci_now" -ge "$_ci_deadline" ]]; then
+                        _ci_result="review-pending"; break
+                    fi
+                else
+                    _ci_result="success"; break
+                fi
+                ;;
             failed)  _ci_result="failed"; break ;;
             error)
                 if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
@@ -1124,9 +1155,15 @@ if [[ "$NO_WAIT" == false ]]; then
                 ;;
             none)
                 if [[ "$_ci_wf_count" != "unknown" ]] && [[ "${_ci_wf_count:-0}" -eq 0 ]]; then
-                    _ci_result="no-ci"; break
-                fi
-                if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
+                    # No CI at all — the pending-review rule still holds.
+                    if [[ "$_ci_review_pending" == true ]]; then
+                        if [[ "$_ci_now" -ge "$_ci_deadline" ]]; then
+                            _ci_result="review-pending"; break
+                        fi
+                    else
+                        _ci_result="no-ci"; break
+                    fi
+                elif [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
                     _ci_result="never-registered"; break
                 fi
                 ;;
@@ -1168,6 +1205,14 @@ if [[ "$NO_WAIT" == false ]]; then
             {
                 echo "ERROR: CI checks did not complete on \`${CI_TARGET_SHA:0:7}\` within ${MERGE_PR_CI_TIMEOUT_SECONDS}s"
                 [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+            } >&2
+            exit 1 ;;
+        review-pending)
+            _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+            {
+                echo "ERROR: review check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' still in progress on \`${CI_TARGET_SHA:0:7}\` after ${MERGE_PR_CI_TIMEOUT_SECONDS}s (CI itself is green or absent)"
+                [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+                echo "  Re-run once the review completes, or pass --allow-pending-review to merge without waiting for it."
             } >&2
             exit 1 ;;
     esac
