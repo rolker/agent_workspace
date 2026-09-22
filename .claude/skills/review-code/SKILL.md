@@ -357,7 +357,9 @@ agent's unavailability does not block the others. Do not fail the review.
 
 **Collecting findings**: After other specialists complete, check each
 dispatched agent's findings file (look for `--- Review complete ---` or
-`--- Review failed ---` markers). If a review is still running, note this
+`--- Review failed ---` markers; a failed file carries the reason on the
+lines above the marker — e.g. a headless permission denial or a
+print-timeout — so report that reason, not an empty review). If a review is still running, note this
 and tell the user which tmux session to check. Incorporate completed
 findings into the unified report.
 

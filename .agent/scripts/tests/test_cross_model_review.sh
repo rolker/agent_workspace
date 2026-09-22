@@ -36,27 +36,97 @@ setup() {
     MOCK_BIN="${TMPDIR_BASE}/bin"
     mkdir -p "${MOCK_BIN}"
 
-    # Mock agy CLI (the gemini agent's binary post-#223). Records argv to
-    # MOCK_AGY_LOG when set, and prints the -p/--print/--prompt argument
-    # value to stdout (the script redirects stdout to the findings file).
-    # Deliberately never reads stdin — real agy print mode takes the
-    # prompt as an argument value, not on stdin.
+    # Mock agy CLI (the gemini agent's binary post-#223), implementing the
+    # stream-json contract _agy_review.sh drives (#274, #288):
+    #   * argv is recorded to MOCK_AGY_LOG when set (one arg per line);
+    #   * the prompt arrives on stdin as one NDJSON line
+    #     {"event":"user","message":{"role":"user","content":...}};
+    #   * stdout is an NDJSON event stream ending in a `result` event
+    #     whose `response` echoes the prompt content back.
+    # Knobs (env):
+    #   MOCK_AGY_DENY=1     empty response + denied_actions, exit 0 (#288)
+    #   MOCK_AGY_TIMEOUT=1  SUCCESS result + the print-timeout stderr marker
+    #   MOCK_AGY_EXIT=<n>   exit <n> after printing "boom" on stderr
+    #   MOCK_AGY_ERROR=<m>  status ERROR with an object-valued `error`
+    #                       whose message is <m>, exit 0 (API failure)
+    #   MOCK_AGY_DENY_PARTIAL=1  normal response PLUS one denied action
+    # Every run also prints a non-JSON banner line on stdout first, as a
+    # real CLI may (update notice), so the parser must skip it.
     cat > "${MOCK_BIN}/agy" << 'MOCK_EOF'
 #!/usr/bin/env bash
 if [[ -n "${MOCK_AGY_LOG:-}" ]]; then
     printf '%s\n' "$@" >> "${MOCK_AGY_LOG}"
 fi
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -p|--print|--prompt)
-            printf '%s\n' "${2:-}"
-            shift 2 2>/dev/null || shift
-            ;;
-        *) shift ;;
-    esac
-done
+if [[ -n "${MOCK_AGY_EXIT:-}" ]]; then
+    echo "boom" >&2
+    exit "${MOCK_AGY_EXIT}"
+fi
+# Stream-json contract: exactly one NDJSON message per line. A
+# pretty-printed (multi-line) message is a contract violation even if a
+# lenient JSON reader would accept it, so the mock refuses it.
+input=$(cat)
+if [[ "$(printf '%s\n' "$input" | wc -l)" -ne 1 ]]; then
+    echo "mock agy: stdin is not a single NDJSON line" >&2
+    exit 9
+fi
+echo 'agy: a newer version is available (mock banner, not JSON)'
+echo '{"event":"init","init":{"tools":[]}}'
+if [[ -n "${MOCK_AGY_DENY:-}" ]]; then
+    echo 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.' >&2
+    echo '{"event":"result","result":{"status":"SUCCESS","response":"","denied_actions":[{"action":"command","display_name":"RunCommand"}]}}'
+    exit 0
+fi
+if [[ -n "${MOCK_AGY_ERROR:-}" ]]; then
+    jq -cn --arg m "$MOCK_AGY_ERROR" '{event:"result",result:{status:"ERROR",response:"",error:{code:429,message:$m}}}'
+    exit 0
+fi
+if [[ -n "${MOCK_AGY_TIMEOUT:-}" ]]; then
+    echo '[agy] print timeout after 1s with turn in progress; returning partial output' >&2
+    echo '{"event":"result","result":{"status":"SUCCESS","response":"partial text"}}'
+    exit 0
+fi
+# Echo the prompt back as the response. Streamed, never a shell variable
+# or argv: the whole point of the stdin contract is prompts larger than
+# the kernel's per-argument limit, and the mock must not reintroduce it.
+if [[ -n "${MOCK_AGY_DENY_PARTIAL:-}" ]]; then
+    printf '%s\n' "$input" | jq -r 'select(.event == "user") | .message.content' \
+        | jq -c -Rs '{event:"result",result:{status:"SUCCESS",response:.,denied_actions:[{"action":"command","display_name":"RunCommand"}]}}'
+    exit 0
+fi
+printf '%s\n' "$input" | jq -r 'select(.event == "user") | .message.content' \
+    | jq -c -Rs '{event:"result",result:{status:"SUCCESS",response:.}}'
 MOCK_EOF
     chmod +x "${MOCK_BIN}/agy"
+
+    # Mock gh: valid PR body, non-empty diff. MOCK_GH_DIFF_FILE (env)
+    # substitutes a prepared diff for `gh pr diff`.
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; PR="$1"; shift
+    [[ "${1:-}" == "-R" ]] && shift 2
+    if [[ "$1" == "--json" && "$2" == "body" ]]; then
+        echo "Closes #42"
+    elif [[ "$1" == "--json" && "$2" == "title" ]]; then
+        echo "Test PR"
+    elif [[ "$1" == "--json" && "$2" == "url" ]]; then
+        echo "https://github.com/test/repo/pull/99"
+    fi
+elif [[ "$1" == "pr" && "$2" == "diff" ]]; then
+    if [[ -n "${MOCK_GH_DIFF_FILE:-}" ]]; then
+        cat "${MOCK_GH_DIFF_FILE}"
+    else
+        echo "diff --git a/file.txt b/file.txt"
+        echo "--- a/file.txt"
+        echo "+++ b/file.txt"
+        echo "@@ -1 +1 @@"
+        echo "-old"
+        echo "+new"
+    fi
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
 }
 
 teardown() {
@@ -782,76 +852,453 @@ GH_EOF
     teardown
 }
 
-# ---- Test: gemini agent invokes agy with prompt as -p argument (#223) ----
+# ---- Gemini/agy tests (#223, #274, #288, #312) ----
 #
-# The Gemini CLI migrated to the `agy` binary. Print mode takes the prompt
-# as the argument value of -p/--print — the old `gemini -p "" < prompt`
-# stdin-append convention (#181) no longer applies. This test asserts:
-#   1. the script resolves and invokes the `agy` binary,
-#   2. agy receives --print-timeout and -p,
-#   3. the prompt content arrives as an argument value (not stdin), and
-#   4. the findings-file flow completes end-to-end.
-# The script is run with stdin from /dev/null so a regression back to
-# stdin-based invocation fails fast instead of hanging the suite.
-test_agy_invocation() {
-    echo "TEST: gemini agent invokes agy with prompt as -p argument (#223)"
-    setup
+# The Gemini CLI migrated to the `agy` binary (#223). cross_model_review.sh
+# drives it through _agy_review.sh, which feeds the prompt over stdin as a
+# stream-json message (#274: no argv size limit) and validates the result
+# event (#288: a headless permission denial exits 0 with an empty response).
+# The mock agy in setup() implements that contract; see its knobs there.
 
-    # Mock gh with a valid PR body and non-empty diff.
-    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
-#!/usr/bin/env bash
-if [[ "$1" == "pr" && "$2" == "view" ]]; then
-    shift 2; PR="$1"; shift
-    [[ "${1:-}" == "-R" ]] && shift 2
-    if [[ "$1" == "--json" && "$2" == "body" ]]; then
-        echo "Closes #42"
-    elif [[ "$1" == "--json" && "$2" == "title" ]]; then
-        echo "Test PR"
-    elif [[ "$1" == "--json" && "$2" == "url" ]]; then
-        echo "https://github.com/test/repo/pull/99"
-    fi
-elif [[ "$1" == "pr" && "$2" == "diff" ]]; then
-    echo "diff --git a/file.txt b/file.txt"
-    echo "--- a/file.txt"
-    echo "+++ b/file.txt"
-    echo "@@ -1 +1 @@"
-    echo "-old"
-    echo "+new"
-fi
-exit 0
-GH_EOF
-    chmod +x "${MOCK_BIN}/gh"
-
-    export MOCK_AGY_LOG="${TMPDIR_BASE}/agy_calls.log"
-    true > "$MOCK_AGY_LOG"
-
+# Run the script in sync mode for PR 99 (issue 42) and echo the exit code.
+run_gemini_sync() {
     cd "${MOCK_REPO}"
     local exit_code=0
     PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
         --pr 99 --sync < /dev/null >/dev/null 2>&1 || exit_code=$?
+    echo "$exit_code"
+}
+
+FINDINGS_REL=".agent/work-plans/issue-42/review-gemini-findings.md"
+PROMPT_REL=".agent/work-plans/issue-42/review-gemini-prompt.md"
+
+test_agy_stdin_invocation() {
+    echo "TEST: gemini agent feeds agy the prompt over stdin, argv carries only flags (#274)"
+    setup
+
+    export MOCK_AGY_LOG="${TMPDIR_BASE}/agy_calls.log"
+    true > "$MOCK_AGY_LOG"
+    local exit_code
+    exit_code=$(run_gemini_sync)
     unset MOCK_AGY_LOG
 
     assert_exit_code "review completes (exit 0)" "0" "$exit_code"
 
     local agy_log
     agy_log=$(cat "${TMPDIR_BASE}/agy_calls.log")
+    assert_contains "agy received --input-format=stream-json" "^--input-format=stream-json$" "$agy_log"
+    assert_contains "agy received --output-format=stream-json" "^--output-format=stream-json$" "$agy_log"
     assert_contains "agy received --print-timeout" "^--print-timeout$" "$agy_log"
-    assert_contains "agy received -p" "^-p$" "$agy_log"
-    assert_contains "prompt content passed as argument value" \
-        "Adversarial Code Review" "$agy_log"
+    assert_contains "agy received --disable-slash-commands" "^--disable-slash-commands$" "$agy_log"
+    assert_contains "agy received an empty -p=" "^-p=$" "$agy_log"
+    assert_not_contains "prompt content is NOT on argv" "Adversarial Code Review" "$agy_log"
 
-    local findings_file="${MOCK_REPO}/.agent/work-plans/issue-42/review-gemini-findings.md"
-    if [[ -f "$findings_file" ]]; then
-        local content
-        content=$(cat "$findings_file")
-        assert_contains "findings file received agy output" \
-            "Adversarial Code Review" "$content"
-        assert_contains "findings file has completion marker" \
-            "Review complete" "$content"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "findings file holds agy's response (prompt echoed via stdin)" \
+        "Adversarial Code Review" "$content"
+    assert_contains "findings file has completion marker" "Review complete" "$content"
+    assert_not_contains "no denial note on a clean run" "denied in headless mode" "$content"
+
+    teardown
+}
+
+test_agy_large_prompt() {
+    echo "TEST: a >200 KiB prompt reaches agy (argv limit no longer applies, #274)"
+    setup
+
+    # ~256 KiB of diff: well past MAX_ARG_STRLEN (128 KiB on Linux). An
+    # argv regression fails here with E2BIG on a real kernel.
+    local big="${TMPDIR_BASE}/big.diff"
+    {
+        echo "diff --git a/big.txt b/big.txt"
+        echo "--- a/big.txt"
+        echo "+++ b/big.txt"
+        echo "@@ -0,0 +1,4096 @@"
+        local i
+        for ((i = 0; i < 4096; i++)); do
+            printf '+%063d\n' "$i"
+        done
+    } > "$big"
+
+    export MOCK_GH_DIFF_FILE="$big"
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    unset MOCK_GH_DIFF_FILE
+
+    assert_exit_code "large prompt review completes (exit 0)" "0" "$exit_code"
+    local size
+    size=$(wc -c < "${MOCK_REPO}/${PROMPT_REL}")
+    if [[ "$size" -gt 200000 ]]; then
+        echo "  PASS: prompt file is >200 KiB (${size} bytes)"
+        PASS=$((PASS + 1))
     else
-        echo "  FAIL: findings file not created"
+        echo "  FAIL: prompt file only ${size} bytes — test did not exercise the limit"
         FAIL=$((FAIL + 1))
     fi
+    assert_contains "findings file has completion marker" "Review complete" \
+        "$(tail -n 1 "${MOCK_REPO}/${FINDINGS_REL}")"
+
+    teardown
+}
+
+test_agy_denial_is_failure() {
+    echo "TEST: headless permission denial is reported as a failed review (#288)"
+    setup
+
+    export MOCK_AGY_DENY=1
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    unset MOCK_AGY_DENY
+
+    assert_exit_code "denied review exits 3" "3" "$exit_code"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "findings file has failed marker" "Review failed" "$content"
+    assert_not_contains "findings file has NO complete marker" "Review complete" "$content"
+    assert_contains "findings file names the denied action" "RunCommand" "$content"
+    assert_contains "findings file explains the denial" "auto-denied in headless mode" "$content"
+
+    teardown
+}
+
+test_agy_timeout_is_failure() {
+    echo "TEST: print-timeout expiry is a failed review, not a partial success (#288)"
+    setup
+
+    export MOCK_AGY_TIMEOUT=1
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    unset MOCK_AGY_TIMEOUT
+
+    assert_exit_code "timed-out review exits 3" "3" "$exit_code"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "findings file has failed marker" "Review failed" "$content"
+    assert_contains "findings file names the timeout" "print timeout" "$content"
+    assert_not_contains "partial response is discarded" "partial text" "$content"
+
+    teardown
+}
+
+test_agy_partial_denial_is_noted() {
+    echo "TEST: a response with a denied action completes but carries a note"
+    setup
+
+    export MOCK_AGY_DENY_PARTIAL=1
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    unset MOCK_AGY_DENY_PARTIAL
+
+    assert_exit_code "partial-denial review completes (exit 0)" "0" "$exit_code"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "response is kept" "Adversarial Code Review" "$content"
+    assert_contains "denial note appended" "1 tool action\(s\) were denied in headless mode \(RunCommand\)" "$content"
+    assert_contains "findings file has completion marker" "Review complete" "$content"
+
+    teardown
+}
+
+test_diff_fetch_failure_is_marked() {
+    echo "TEST: a failing diff fetch writes the error marker and exits 3 (not a bare set -e abort)"
+    setup
+
+    # gh: PR metadata fine, `gh pr diff` fails after emitting one line.
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; shift
+    [[ "${1:-}" == "-R" ]] && shift 2
+    case "$2" in
+        body) echo "Closes #42" ;;
+        title) echo "Test PR" ;;
+        url) echo "https://github.com/test/repo/pull/99" ;;
+    esac
+    exit 0
+elif [[ "$1" == "pr" && "$2" == "diff" ]]; then
+    echo "diff --git a/file.txt b/file.txt"
+    echo "gh: connection reset" >&2
+    exit 1
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0 stderr
+    stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync < /dev/null 2>&1 >/dev/null) || exit_code=$?
+
+    assert_exit_code "failed diff fetch exits 3" "3" "$exit_code"
+    assert_contains "error message names the diff retrieval" "Could not retrieve diff" "$stderr"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}" 2>/dev/null || echo "MISSING")
+    assert_contains "findings file carries the error marker" "Review error: failed to retrieve diff" "$content"
+
+    teardown
+}
+
+test_agy_api_error_message_kept() {
+    echo "TEST: a non-SUCCESS result keeps agy's error message, even as an object (#288)"
+    setup
+
+    export MOCK_AGY_ERROR="quota exceeded for model"
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    unset MOCK_AGY_ERROR
+
+    assert_exit_code "API error exits 3" "3" "$exit_code"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "reason names the status" "result status ERROR" "$content"
+    assert_contains "reason carries the error message" "quota exceeded for model" "$content"
+    assert_contains "findings file has failed marker" "Review failed" "$content"
+
+    teardown
+}
+
+test_agy_findings_truncated() {
+    echo "TEST: a failed run never leaves the previous run's findings in place (#288)"
+    setup
+
+    mkdir -p "${MOCK_REPO}/.agent/work-plans/issue-42"
+    echo "STALE FINDINGS FROM LAST RUN" > "${MOCK_REPO}/${FINDINGS_REL}"
+
+    export MOCK_AGY_EXIT=7
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    unset MOCK_AGY_EXIT
+
+    assert_exit_code "crashed agy exits 3" "3" "$exit_code"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_not_contains "stale findings are gone" "STALE FINDINGS" "$content"
+    assert_contains "reason names the exit status" "agy exited 7" "$content"
+    assert_contains "reason carries agy stderr" "boom" "$content"
+    assert_contains "findings file has failed marker" "Review failed" "$content"
+
+    teardown
+}
+
+test_agy_no_temp_leak() {
+    echo "TEST: the helper leaves no temp files behind on success or failure"
+    setup
+
+    # Point TMPDIR at a private dir so only the helper's mktemp lands there;
+    # the mock repo and findings live under TMPDIR_BASE, outside it.
+    local leak_dir="${TMPDIR_BASE}/leakcheck"
+    mkdir -p "$leak_dir"
+
+    cd "${MOCK_REPO}"
+    TMPDIR="$leak_dir" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync < /dev/null >/dev/null 2>&1 || true
+    MOCK_AGY_DENY=1 TMPDIR="$leak_dir" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync < /dev/null >/dev/null 2>&1 || true
+    MOCK_AGY_EXIT=3 TMPDIR="$leak_dir" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --sync < /dev/null >/dev/null 2>&1 || true
+
+    local leftovers
+    leftovers=$(ls -A "$leak_dir")
+    assert_eq "no temp files left after success + denial + crash" "" "$leftovers"
+
+    teardown
+}
+
+test_agy_tmux_invocation() {
+    echo "TEST: tmux mode invokes the helper with quoted args and no findings redirect"
+    setup
+
+    # Mock tmux: records the new-session command string (its final arg),
+    # reports the session as present afterwards, never runs anything.
+    cat > "${MOCK_BIN}/tmux" << 'TMUX_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "new-session" ]]; then
+    printf '%s\n' "${@: -1}" > "${MOCK_TMUX_LOG}"
+    exit 0
+fi
+if [[ "$1" == "has-session" ]]; then
+    [[ -f "${MOCK_TMUX_LOG}" ]] && exit 0 || exit 1
+fi
+exit 0
+TMUX_EOF
+    chmod +x "${MOCK_BIN}/tmux"
+
+    export MOCK_TMUX_LOG="${TMPDIR_BASE}/tmux_cmd.log"
+    cd "${MOCK_REPO}"
+    local exit_code=0 stdout
+    stdout=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 < /dev/null 2>/dev/null) || exit_code=$?
+    unset MOCK_TMUX_LOG
+
+    assert_exit_code "tmux launch exits 0" "0" "$exit_code"
+    assert_contains "script reports tmux mode" "^MODE=tmux$" "$stdout"
+
+    local cmd
+    cmd=$(cat "${TMPDIR_BASE}/tmux_cmd.log")
+    assert_contains "command invokes _agy_review.sh" "/_agy_review.sh " "$cmd"
+    assert_contains "helper receives the findings path" "review-gemini-findings.md" "$cmd"
+    assert_contains "helper receives the print timeout" " 30m " "$cmd"
+    # The helper invocation is everything before the first " && " (the
+    # marker clauses that follow legitimately append to the findings file).
+    local helper_part="${cmd%% && *}"
+    assert_not_contains "no redirect in the helper invocation" ">" "$helper_part"
+    assert_contains "complete marker clause present" "Review complete" "$cmd"
+    assert_contains "failed marker clause present" "Review failed" "$cmd"
+
+    # Round-trip: the recorded string, run by a shell, must produce the
+    # same findings as sync mode (the quoting is real, not cosmetic).
+    (cd "${MOCK_REPO}" && PATH="${MOCK_BIN}:${PATH}" bash -c "$cmd") >/dev/null 2>&1 || true
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "executed tmux command produced findings" "Adversarial Code Review" "$content"
+    assert_contains "executed tmux command appended the complete marker" "Review complete" "$content"
+
+    teardown
+}
+
+test_prompt_tool_use_guidance() {
+    echo "TEST: tool-use paragraph is present for gemini and absent for codex (#288)"
+    setup
+
+    run_gemini_sync >/dev/null
+    local gemini_prompt
+    gemini_prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "gemini prompt tells the model not to run commands" \
+        "Do NOT run shell commands" "$gemini_prompt"
+
+    # codex: a mock that consumes stdin and prints something.
+    cat > "${MOCK_BIN}/codex" << 'CODEX_EOF'
+#!/usr/bin/env bash
+cat > /dev/null
+echo "codex ran"
+CODEX_EOF
+    chmod +x "${MOCK_BIN}/codex"
+    cd "${MOCK_REPO}"
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync --agent codex < /dev/null >/dev/null 2>&1 || true
+    local codex_prompt
+    codex_prompt=$(cat "${MOCK_REPO}/.agent/work-plans/issue-42/review-codex-prompt.md")
+    assert_not_contains "codex prompt has no tool-use paragraph" \
+        "Do NOT run shell commands" "$codex_prompt"
+
+    teardown
+}
+
+test_work_plans_excluded_from_diff() {
+    echo "TEST: .agent/work-plans/** sections are stripped from the embedded diff (#312)"
+    setup
+
+    local mixed="${TMPDIR_BASE}/mixed.diff"
+    cat > "$mixed" << 'DIFF_EOF'
+diff --git a/src/code.py b/src/code.py
+--- a/src/code.py
++++ b/src/code.py
+@@ -1 +1 @@
+-old code
++new code
+diff --git a/.agent/work-plans/issue-42/plan.md b/.agent/work-plans/issue-42/plan.md
+new file mode 100644
+--- /dev/null
++++ b/.agent/work-plans/issue-42/plan.md
+@@ -0,0 +1 @@
++PLAN BOOKKEEPING
+diff --git a/.agent/work-plans/issue-42/progress.md b/.agent/work-plans/issue-42/progress.md
+--- a/.agent/work-plans/issue-42/progress.md
++++ b/.agent/work-plans/issue-42/progress.md
+@@ -1 +1 @@
+-PROGRESS OLD
++PROGRESS NEW
+diff --git a/src/after.py b/src/after.py
+--- a/src/after.py
++++ b/src/after.py
+@@ -1 +1 @@
+-x
++y
+diff --git a/.agent/work-plans/issue-42/tool.sh b/src/tool.sh
+similarity index 90%
+rename from .agent/work-plans/issue-42/tool.sh
+rename to src/tool.sh
+--- a/.agent/work-plans/issue-42/tool.sh
++++ b/src/tool.sh
+@@ -1 +1 @@
+-RENAMED OUT old
++RENAMED OUT new
+diff --git "a/.agent/work-plans/issue-42/odd name.md" "b/.agent/work-plans/issue-42/odd name.md"
+--- "a/.agent/work-plans/issue-42/odd name.md"
++++ "b/.agent/work-plans/issue-42/odd name.md"
+@@ -1 +1 @@
+-q
++QUOTED BOOKKEEPING
+DIFF_EOF
+
+    export MOCK_GH_DIFF_FILE="$mixed"
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    unset MOCK_GH_DIFF_FILE
+
+    assert_exit_code "mixed diff review completes" "0" "$exit_code"
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "code file before the bookkeeping is kept" "\+new code" "$prompt"
+    assert_contains "code file after the bookkeeping is kept" "diff --git a/src/after.py" "$prompt"
+    assert_not_contains "plan.md section is dropped" "PLAN BOOKKEEPING" "$prompt"
+    assert_not_contains "progress.md section is dropped" "PROGRESS NEW" "$prompt"
+    assert_contains "file renamed OUT of work-plans stays in review (b/ path decides)" \
+        "RENAMED OUT new" "$prompt"
+    assert_not_contains "quoted work-plans path is dropped" "QUOTED BOOKKEEPING" "$prompt"
+    assert_not_contains "no work-plans post-image header survives" \
+        " \"?b/.agent/work-plans" "$prompt"
+
+    # All-bookkeeping diff: nothing to review.
+    local only="${TMPDIR_BASE}/only.diff"
+    cat > "$only" << 'DIFF_EOF'
+diff --git a/.agent/work-plans/issue-42/plan.md b/.agent/work-plans/issue-42/plan.md
+--- a/.agent/work-plans/issue-42/plan.md
++++ b/.agent/work-plans/issue-42/plan.md
+@@ -1 +1 @@
+-a
++b
+DIFF_EOF
+    export MOCK_GH_DIFF_FILE="$only"
+    cd "${MOCK_REPO}"
+    local stderr exit2=0
+    stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync < /dev/null 2>&1 >/dev/null) || exit2=$?
+    unset MOCK_GH_DIFF_FILE
+    assert_exit_code "all-bookkeeping diff exits 3" "3" "$exit2"
+    assert_contains "error names the work-plans exclusion" "work-plans" "$stderr"
+
+    teardown
+}
+
+test_branch_mode_filter_survives_noprefix() {
+    echo "TEST: branch mode filters work-plans even with diff.noprefix=true (#312)"
+    setup
+
+    # Feature branch off the mock repo's default branch with one code
+    # file and one work-plans file; diff.noprefix set to defeat a naive
+    # a/ b/ match.
+    local base
+    base=$(git -C "${MOCK_REPO}" branch --show-current)
+    git -C "${MOCK_REPO}" checkout -q -b feature/issue-42
+    mkdir -p "${MOCK_REPO}/src" "${MOCK_REPO}/.agent/work-plans/issue-42"
+    echo "BRANCH CODE" > "${MOCK_REPO}/src/code.py"
+    echo "BRANCH BOOKKEEPING" > "${MOCK_REPO}/.agent/work-plans/issue-42/plan.md"
+    git -C "${MOCK_REPO}" add -A
+    git -C "${MOCK_REPO}" -c user.name="Test" -c user.email="test@test" commit -q -m "feature"
+    git -C "${MOCK_REPO}" config diff.noprefix true
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --branch "$base" --sync < /dev/null >/dev/null 2>&1 || exit_code=$?
+
+    assert_exit_code "branch review completes" "0" "$exit_code"
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "code file kept" "BRANCH CODE" "$prompt"
+    assert_not_contains "work-plans file dropped despite diff.noprefix" "BRANCH BOOKKEEPING" "$prompt"
 
     teardown
 }
@@ -875,7 +1322,19 @@ test_issue_flag_overrides_extraction
 test_missing_keyword_aborts
 test_issue_flag_validates_integer
 test_gh_pr_view_failure_distinct_error
-test_agy_invocation
+test_agy_stdin_invocation
+test_agy_large_prompt
+test_agy_denial_is_failure
+test_agy_timeout_is_failure
+test_agy_partial_denial_is_noted
+test_diff_fetch_failure_is_marked
+test_agy_api_error_message_kept
+test_agy_findings_truncated
+test_agy_no_temp_leak
+test_agy_tmux_invocation
+test_prompt_tool_use_guidance
+test_work_plans_excluded_from_diff
+test_branch_mode_filter_survives_noprefix
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
