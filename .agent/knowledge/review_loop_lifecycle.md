@@ -31,7 +31,7 @@ in the loop advances a phase on its own judgment (no auto-chaining).
 | `review-code <PR>` | `## Local Review` | `review-code`, PR mode |
 | `triage-reviews` | `## Integrated Review` | `triage-reviews` |
 | a human's answer to an `AskUserQuestion` checkpoint | `## Checkpoint` | `/run-issue`, on the owner's behalf (`**Decided-by**: owner`) |
-| `merge_pr.sh`'s gate, when a precondition is unmet — except `--enforce` on a workspace PR, which refuses with no entry | `## Merge (report-only)` / `## Merge (unreviewed)` | `merge_pr.sh` |
+| `merge_pr.sh`'s gate under `--report-only` (or `--force-unreviewed`), when a precondition is unmet — the default (enforce, #300) on a workspace PR refuses with no entry | `## Merge (report-only)` / `## Merge (unreviewed)` | `merge_pr.sh` |
 
 Every entry lives on `.agent/work-plans/issue-<N>/progress.md`, appended
 via `.agent/scripts/progress_append.sh` and read back via

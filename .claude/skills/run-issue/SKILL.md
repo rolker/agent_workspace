@@ -262,20 +262,22 @@ merge — row 21 routes `**After**: findings` + `**Decision**: merge` to
 `test_dispatch_phase.sh` fixture `"row 21: checkpoint findings answered
 merge -> merge"`). Close them because they are the durable record that the
 owner deferred them, and because the re-route *is* reachable when the merge
-doesn't land: a merge attempt whose gate preconditions failed records
-`## Merge (report-only)` (or `## Merge (unreviewed)` under
-`--force-unreviewed`) — written whether or not the merge itself then
+doesn't land: a merge attempt whose gate preconditions failed under
+`--report-only` records `## Merge (report-only)` (or `## Merge (unreviewed)`
+under `--force-unreviewed`) — written whether or not the merge itself then
 succeeds — and while `--pr` is not `merged` that newest entry routes to
 `checkpoint:merge-refused` (row 23); answering that `retriage` writes a
 fresh `## Integrated Review`, and row 19 re-raises `checkpoint:findings` on
 those same still-open boxes. The re-route only happens when a merge entry
 was actually written, and two paths write none — the same caveat step 11
-records. An `--enforce` refusal on a *workspace* PR exits 1 before any
-record (`merge_pr.sh:896-903`), and a *passing* gate records nothing
-either (`:889-890`), so a run whose gate approved but whose merge then
-fails — CI, mergeability, or `gh pr merge` — also exits 1 with no entry.
-On both, there is no newest merge entry for `dispatch_phase.sh` to route
-on and no `checkpoint:merge-refused` re-route. For each such box, run:
+records. The gate's **default** refusal on a *workspace* PR (enforce, since
+#300) exits 1 before any record, and a *passing* gate records nothing
+either, so a run whose gate approved but whose merge then fails — CI,
+mergeability, a review check-run still running, or `gh pr merge` — also
+exits 1 with no entry. On both, there is no newest merge entry for
+`dispatch_phase.sh` to route on and no `checkpoint:merge-refused` re-route;
+the host surfaces the script's own error text at the merge checkpoint
+instead. For each such box, run:
 
 ```bash
 PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
@@ -403,17 +405,26 @@ rule.
 cd "$(git rev-parse --show-toplevel)"
 ```
 
-then run `.agent/scripts/merge_pr.sh --pr <M> --type <type>`. If the merge
-does not end merged *and* the run recorded a merge entry — a report-only
+then run `.agent/scripts/merge_pr.sh --pr <M> --type <type>`. The gate
+enforces by default on workspace PRs (#300): a gap refuses with exit 1 and
+no entry. Only the owner says skip — `--report-only` (record and proceed),
+`--no-wait` (skip the CI wait) and `--allow-pending-review` (merge under a
+review check-run that is still running) are passed only on the owner's
+explicit answer for that merge, never on the host's judgment. If the merge
+does not end merged *and* the run recorded a merge entry — a `--report-only`
 run (or `--force-unreviewed`) records its own `## Merge (report-only)` /
 `## Merge (unreviewed)` entry and can still fail later — the next `next`
 call routes to `checkpoint:merge-refused` (row 23) — surface it and record
 the owner's answer (`retriage`, `address`, or `stop`) as a `## Checkpoint`
 entry the same way as any other checkpoint. The entry-less paths do not
-re-route: an `--enforce` refusal on a *workspace* PR exits 1 with no entry
-(on a project PR `--enforce` falls through to the report-only branch,
-`merge_pr.sh:896,904-908`), and a gate that passed records nothing, so a
-later CI, mergeability, or `gh pr merge` failure leaves no entry either.
+re-route: the default (enforce) refusal on a *workspace* PR exits 1 with no
+entry (on a project PR the gate falls through to the report-only branch),
+and a gate that passed records nothing, so a later CI, mergeability,
+pending-review, or `gh pr merge` failure leaves no entry either — surface
+the script's error text and ask the owner at the merge checkpoint.
+Bookkeeping-only commits after the reviewed head (progress.md, work plans,
+roadmap) need no new review and no new CI wait: the gate and the CI target
+both walk back over them.
 `--pr merged` short-circuits
 `next` to `action=done` before any worktree or progress resolution is
 attempted (row 1) — the worktree may already be gone.
