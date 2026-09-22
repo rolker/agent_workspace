@@ -229,3 +229,13 @@ The revision folds in all ten round-1 items — the two it answers by deviating 
 - [ ] Note in the plan/PR that every existing `--sync` invocation in `test_cross_model_review.sh` is swept out (finding 4)
 - [ ] Optional: outer `timeout` backstop for gemini set above `AGY_PRINT_TIMEOUT` so it cannot race the #288 contract (finding 5)
 - [ ] In the rewritten 5d/5e, state that exit 3 with no triplets means nothing to read; keep the truncating write on the error path (finding 6)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 11:13 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed to implementation with the round-2 suggestions folded in: overlap-based concurrency assertion (wall clock only as a loose secondary), one defined exit code for the all-agents-unavailable case, sweep the existing --sync test invocations, and name --sync explicitly in the rejection message.
