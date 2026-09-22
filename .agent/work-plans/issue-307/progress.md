@@ -233,3 +233,21 @@ the bullet now cites only the pre-commit hook.
 - `.agent/scripts/tests/run_script_tests.sh`: 23 suites, all passed (43s). No script files changed in this round — the changes are skill and ADR prose only.
 
 Next: `/review-code --branch` to re-review the fixes cold.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 08:32 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-307 at `3527104`
+**Base**: main
+**Depth**: Standard, scoped to the fix diff (round-2 re-review of commits 0442a63, 473182a)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+### Findings
+- [ ] (must-fix) `_corr_pr_or_branch` captures the branch as `(\S+)` while tolerating `` `? `` on the sha, so an entry writing ``**Branch**: `feature/issue-307` `` yields a backticked correlation and `review_progress.sh round` silently restarts at 1 (MAX_ROUNDS never trips; this very review counted as round 1) — `.agent/scripts/progress_read.py:192`
+- [ ] (suggestion) "a refused or non-merging attempt records `## Merge (report-only)` / `## Merge (unreviewed)`" — those entries record a gate-precondition failure or bypass and are written even when the merge succeeds; step 11 (line 398) states it precisely — `.claude/skills/run-issue/SKILL.md:265`
+
+Round-1's four findings all verified resolved against source: routing prose matches `dispatch_phase.sh:503-505/559-566` and the row 19/21/23 fixtures; index provenance matches `review_progress.sh:430` + `progress_read.py:213-245`; `PF` re-assigned in-chain; ADR bullet matches `dispatch_phase.sh:241` verbatim. Pre-commit (incl. the script test suite) green on all changed files.
