@@ -56,8 +56,10 @@ governance note ("No governance concerns for a change of this scope").
 - Governance
 - Plan drift
 - Claude adversarial (fresh — no context from other specialists)
+- Cross-model adversarial (all available non-caller agents, via `cross_model_review.sh`)
 
-**Report format**: Full report with all sections.
+**Report format**: Full report with all sections, including a Cross-Model
+Reviews section with per-agent findings.
 
 ### Deep
 
@@ -74,8 +76,14 @@ governance note ("No governance concerns for a change of this scope").
 - Claude adversarial (fresh — no context from other specialists)
 - Cross-model adversarial (all available non-caller agents, via `cross_model_review.sh`)
 
-**Report format**: Full report with all sections plus a Cross-Model Reviews
-section with per-agent findings.
+**Report format**: Full report with all sections, including a Cross-Model
+Reviews section with per-agent findings.
+
+**What still distinguishes Deep from Standard**: nothing in what is
+dispatched or reported. Since issue #320 the two tiers run the same
+specialists and produce the same report sections; they differ only in the
+criteria above, which decide what lands in each. Light remains genuinely
+different — static analysis only, no cross-model dispatch.
 
 ## Override-Trigger Files
 

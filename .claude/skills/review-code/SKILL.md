@@ -50,15 +50,19 @@ modify the PR unless the user asks.
 
 **Depth tiers** (see `.agent/knowledge/review_depth_classification.md`):
 - **Light** — static analysis only (small, low-risk changes)
-- **Standard** — Static Analysis, Governance, Plan Drift + Claude adversarial (medium or governance-touching)
-- **Deep** — Standard tier + cross-model adversarial (every available non-caller CLI agent, in one `--agents` call) (large, security, or cross-layer)
+- **Standard** — Static Analysis, Governance, Plan Drift, Claude adversarial + cross-model adversarial (every available non-caller CLI agent, in one `--agents` call) (medium or governance-touching)
+- **Deep** — same specialists and same report sections as Standard (large, security, or cross-layer)
+
+Since #320 the Deep tier dispatches exactly what Standard does; the tiers
+differ only in the classification thresholds that select them. Light is
+unchanged: static analysis only, no cross-model dispatch.
 
 **Specialists**:
 - **Static Analysis** — runs linters on changed files using project or workspace configs
 - **Governance** — evaluates against principles, ADRs, and consequences
 - **Plan Drift** — compares implementation against the work plan (if one exists)
 - **Claude Adversarial** — fresh subagent, independent review for missed issues (Standard + Deep)
-- **Cross-model Adversarial** — independent reviews by the non-caller CLI agents (Gemini via agy, Codex, Copilot), run in parallel by `cross_model_review.sh` (Deep only)
+- **Cross-model Adversarial** — independent reviews by the non-caller CLI agents (Gemini via agy, Codex, Copilot), run in parallel by `cross_model_review.sh` (Standard + Deep)
 
 **Not ported from ros2_agent_workspace** (issue #269 PR B, documented so
 nobody looks for them): the Ollama `local_review.sh` / `--local`
@@ -205,11 +209,12 @@ Run all of:
 - **5b. Governance Specialist**
 - **5c. Plan Drift Specialist**
 - **5d. Claude Adversarial Specialist**
+- **5e. Cross-Model Adversarial Specialist(s)** — one `cross_model_review.sh --agents <non-caller agents>` call
 
 #### Deep tier
 
-Run all of Standard, plus:
-- **5e. Cross-Model Adversarial Specialist(s)** — one `cross_model_review.sh --agents <non-caller agents>` call
+Run all of Standard. Deep dispatches no additional specialist (#320); the
+difference is only in which changes get classified into it.
 
 ---
 
@@ -306,7 +311,7 @@ look for.
 
 #### 5e. Cross-Model Adversarial Specialist(s)
 
-**Activates at**: Deep only
+**Activates at**: Standard + Deep (Light never dispatches cross-model, #320)
 
 Determine the calling agent's framework and dispatch all available non-caller
 agents. Use `$AGENT_FRAMEWORK` if set; fall back to
@@ -540,6 +545,9 @@ PR-mode template body:
 <comparison summary, or "No work plan found">
 
 ### Cross-Model Reviews
+
+<!-- Present at Standard and Deep alike (#320); only the Light condensed
+     format below omits it, because Light dispatches no cross-model agent. -->
 
 <For each dispatched agent, a sub-section with its findings or status note>
 
