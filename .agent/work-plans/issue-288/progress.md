@@ -236,3 +236,13 @@ Both round-2 must-fixes are resolved in plan text, and the round-3 reading found
 **PR**: #311 at `f88f0b4`
 
 Addressed the round-1 Local Review (Pre-Push): the diff pipelines are back inside `if !` so a failing fetch writes the error marker instead of aborting under set -e (must-fix, regression test added); helper existence checked up front; line-wise fromjson? parse tolerates non-JSON stdout lines (mock now emits one); timeout checked before the no-result check; gemini prompt names the work-plans exclusion; success-with-denials note tested. Follow-up #313 opened for the codex/claude/copilot arms' missing result validation. Commits a84f324, 21bfe2d, 54d8c09, f88f0b4; 110 suite assertions, 23 runner suites green.
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-09-22 10:29 -04:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #311 at `7d95eb5`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: no ## Local Review / ## Integrated Review entry in /home/roland/agent_workspace/worktrees/workspace/issue-workspace-288/.agent/work-plans/issue-288/progress.md;no "## Decision summary" heading in the PR body or a PR comment
