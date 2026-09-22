@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/test_merge_pr_gate.sh
 # Tests for merge_pr.sh's review-loop merge gate (issue #269 PR F, Layer 1):
-#   report-only (default) — each gap fixture proceeds to `gh pr merge`, prints
+#   --report-only — each gap fixture proceeds to `gh pr merge`, prints
 #     the "would have refused" line naming the failing condition(s), and
 #     records a `## Merge (report-only)` entry; the all-good fixture prints
 #     nothing and records nothing
-#   --enforce, workspace scope — each gap fixture refuses (exit 1, no merge
-#     call, worktree untouched); the all-good fixture merges
-#   --enforce, project scope — stays report-only (asserted explicitly)
+#   enforce (the default), workspace scope — each gap fixture refuses (exit 1,
+#     no merge call, worktree untouched); the all-good fixture merges
+#   enforce, project scope — stays report-only (asserted explicitly)
 #   --force-unreviewed — bypasses with the banner and a `## Merge (unreviewed)`
 #     entry, in both modes
 #   no open worktree — the record is posted as a PR comment

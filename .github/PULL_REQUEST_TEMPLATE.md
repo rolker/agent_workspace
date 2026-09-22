@@ -7,8 +7,9 @@
 <!-- The section the owner reads instead of the diff. Keep this exact
      heading: merge_pr.sh's review gate looks for "## Decision summary" on
      the PR (body or a comment) before merging. Same shape review-code
-     produces. The gate is local to merge_pr.sh and report-only by default;
-     there is no server-side check yet (that is an Ask-First decision). -->
+     produces. The gate is local to merge_pr.sh and enforced by default on
+     workspace PRs (--report-only opts out); there is no server-side check
+     yet (that is an Ask-First decision). -->
 
 **What changed**: <1-3 sentences, plain language, no diff references>
 

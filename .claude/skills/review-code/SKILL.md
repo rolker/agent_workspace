@@ -656,8 +656,9 @@ PR: this entry (at the PR head, approved) and a `## Decision summary` on
 the PR itself, in the body or a comment. Post the Decision summary from
 step 7 on the PR (`gh pr comment <N> --body-file ...`) or fill the PR
 template's section; a summary that only exists in the conversation does
-not count. The gate is report-only by default and local-only (a GitHub
-"Merge" click bypasses it).
+not count. The gate enforces by default on workspace
+PRs (`--report-only` opts out, recording a `## Merge (report-only)` entry
+and proceeding) and is local-only (a GitHub "Merge" click bypasses it).
 
 ## Guidelines
 
