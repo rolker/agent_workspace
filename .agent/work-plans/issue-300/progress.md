@@ -322,7 +322,7 @@ Address all six round-4 findings (three must-fix: the CI walk-back bypasses the 
 **Dispatch**: resumed (round-4 reviewer, resume 1 of 3)
 
 ### Findings
-- [ ] (suggestion) On the first poll after a walk-back, `_ci_head_excluded_last` is still empty: the pre-switch poll's excluded state is dropped by the `continue`, so if that first head re-read returns `error`, the hold falls back to "" and a `success` target merges past a review that is in fact running. Seed it with the pre-switch `_ci_excluded` before the `continue` — `.agent/scripts/merge_pr.sh:1204-1222`
+- [x] (suggestion) On the first poll after a walk-back, `_ci_head_excluded_last` is still empty: the pre-switch poll's excluded state is dropped by the `continue`, so if that first head re-read returns `error`, the hold falls back to "" and a `success` target merges past a review that is in fact running. Seed it with the pre-switch `_ci_excluded` before the `continue` — `.agent/scripts/merge_pr.sh:1204-1222`
 - [ ] (suggestion) `_ci_review_sha` is captured from `CI_TARGET_SHA` after Step 2 has already decided it, so when Step 2's own-paths exemption applies it holds the reviewed head, not the real PR head the comment claims; the behaviour is defensible (a review re-triggered by this script's own bookkeeping push would otherwise deadlock every merge) but the comment should say which head it captures — `.agent/scripts/merge_pr.sh:1177-1181`
 
 ### Notes

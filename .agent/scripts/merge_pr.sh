@@ -1174,10 +1174,15 @@ if [[ "$NO_WAIT" == false ]]; then
     _ci_grace_deadline=$((_ci_start + MERGE_PR_CI_GRACE_SECONDS))
     _ci_result=""
     _ci_walked=false
-    # The review check-run (Copilot) is posted against the REAL PR head; the
-    # bookkeeping walk-back below may move CI_TARGET_SHA to an ancestor, whose
-    # check-runs say nothing about the head's review. Keep the head's SHA so
-    # the pending-review hold is always evaluated on it (#300 round 4).
+    # Which SHA the pending-review hold is read from. This captures
+    # CI_TARGET_SHA as Step 2 decided it — i.e. the current PR head, EXCEPT
+    # where Step 2's own-paths exemption applied, in which case it is the
+    # reviewed head this script's own bookkeeping push moved past. That is
+    # the right SHA in both cases: reading the literal head there would wait
+    # on a review re-triggered by our own push, deadlocking every merge the
+    # script makes. What it must never follow is the bookkeeping WALK-BACK
+    # below, which moves CI_TARGET_SHA to an ancestor whose check-runs say
+    # nothing about this head's review (#300 rounds 4-5).
     _ci_review_sha="$CI_TARGET_SHA"
     _ci_head_excluded_last=""
     while :; do
@@ -1201,7 +1206,15 @@ if [[ "$NO_WAIT" == false ]]; then
                         break
                     fi
                 done
-                [[ "$_ci_switched" == true ]] && continue
+                if [[ "$_ci_switched" == true ]]; then
+                    # This poll read the review SHA itself, so its excluded
+                    # state is the last one actually seen. Seed the carry-over
+                    # before the `continue` drops it: otherwise a failed first
+                    # head re-read after the switch falls back to "" and a
+                    # green target merges past a running review (#300 round 5).
+                    _ci_head_excluded_last="$_ci_excluded"
+                    continue
+                fi
             fi
         fi
         # Review state always comes from the real PR head, even after the

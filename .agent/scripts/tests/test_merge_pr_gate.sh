@@ -977,6 +977,25 @@ else
     fail "(ci-33) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
 fi
 
+echo "TEST: CI target — a failed head re-read right after the walk-back keeps the hold (#300 round 5)"
+read -r sb green head_now <<<"$(make_walkback_sandbox)"
+# Call 1 on the head (the pre-switch poll) sees the review running; call 2 —
+# the first re-read after the walk-back switched the target — fails; later
+# calls recover. Without the pre-`continue` seed, call 2's error would leave
+# the carry-over empty and the green target would merge past the review.
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_COPILOT_ONLY_RUNNING" 1
+write_checkruns_exit "$sb" "$head_now" 1 2
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_COPILOT_ONLY_RUNNING"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+head_polls=$(grep -cF "api repos//commits/${head_now}/check-runs" "$sb/gh_calls.log" 2>/dev/null || true)
+if ! merged_called "$sb" && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"*"${head_now:0:7}"* ]] \
+    && [[ "$head_polls" -ge 2 ]] && [[ "$out" != *"CI checks passed"* ]]; then
+    pass "(ci-34) head re-read fails on the first post-switch poll: the seeded carry-over still holds the merge"
+else
+    fail "(ci-34) (head_polls=${head_polls} green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
 echo "TEST: mergeability — UNKNOWN for the first pr-view calls then MERGEABLE: merge proceeds"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
