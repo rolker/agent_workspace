@@ -134,6 +134,15 @@ derive_project_name() {
         fi
     fi
 
+    # NOTE ON SCOPE: this second pass matches the cwd against every REGISTERED
+    # project's worktree dir, whatever `worktrees=` points at -- it is not
+    # limited to overrides that land under the workspace root. That is
+    # deliberate (the default location is matched by the same code, harmlessly,
+    # since a cwd there is usually under the hosting dir anyway), but it does
+    # mean a project whose `worktrees=` points somewhere surprising is matched
+    # too. The hosting-dir pass above still runs first, and an explicit
+    # --project still overrides both.
+    #
     # registry_resolve_from_dir matches a cwd against each project's HOSTING
     # dir. A project whose registry line carries a `worktrees=` override puts
     # its worktrees somewhere else -- commonly back under the workspace root --

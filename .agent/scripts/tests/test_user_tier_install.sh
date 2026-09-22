@@ -312,6 +312,59 @@ out="$(run2 --force)"; rc=$?
     && pass "--force takes the user tier over and says so" \
     || fail "--force did not take over (rc=$rc out=${out:0:200})"
 
+# A user-owned, untagged hook entry to prove the takeover stays surgical
+# (the earlier fixture was dropped when the malformed-settings case rebuilt
+# settings.json from scratch).
+jq '.hooks.PreToolUse += [{hooks: [{type: "command", command: "/opt/mine.sh"}]}]' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+run2 --force >/dev/null
+
+# Round 2 must-fix: --force is the remedy the refusal message prescribes, so
+# it has to leave a COMPLETE takeover, not a half one that exits 0 claiming
+# success. Previously the install jq pruned only entries tagged with the
+# incoming checkout, and sync_skills treated a link into another checkout as
+# "not ours to replace" -- so settings.json kept two SessionStart entries
+# (both layers injected every session) plus the old checkout's PreToolUse
+# entries, and every skill symlink still pointed into the old checkout: the
+# root file moved but the skills did not.
+n_session=$(jq '.hooks.SessionStart | length' "$SETTINGS")
+[[ "$n_session" -eq 1 ]] \
+    && pass "--force leaves exactly one SessionStart entry" \
+    || fail "--force left $n_session SessionStart entries (both layers would inject)"
+
+leftover=$(jq -r --arg old "$WSC" '
+    [.hooks // {} | to_entries[] | .value[]
+     | select((._agent_workspace // "") == $old)] | length' "$SETTINGS")
+[[ "$leftover" -eq 0 ]] \
+    && pass "--force removes every hook entry tagged with the old checkout" \
+    || fail "--force left $leftover entry/entries tagged $WSC"
+
+stale_cmds=$(jq -r --arg oldp "$WSC/" '
+    [.hooks // {} | to_entries[] | .value[] | .hooks[]? | .command
+     | select(startswith($oldp))] | length' "$SETTINGS")
+[[ "$stale_cmds" -eq 0 ]] \
+    && pass "--force leaves no hook command pointing into the old checkout" \
+    || fail "--force left $stale_cmds hook command(s) pointing into $WSC"
+
+bad_links=0
+while IFS= read -r l; do
+    [[ -L "$l" ]] || continue
+    [[ "$(readlink "$l")" == "$WSC2/.claude/skills/"* ]] || bad_links=$((bad_links + 1))
+done < <(ls -1d "$SKILLS_DIR"/* 2>/dev/null)
+[[ "$bad_links" -eq 0 ]] \
+    && pass "--force repoints every skill symlink into the taking-over checkout" \
+    || fail "$bad_links skill symlink(s) still point outside $WSC2"
+
+out="$(run2 --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean immediately after --force (the takeover is complete)" \
+    || fail "--check after --force still reports drift (rc=$rc out=${out:0:300})"
+
+# The user's own untagged entry must survive even a --force takeover.
+jq -e '[.hooks.PreToolUse[]?.hooks[]?.command] | index("/opt/mine.sh") != null' "$SETTINGS" >/dev/null \
+    && pass "--force leaves the user's own untagged hook entry alone" \
+    || fail "--force removed the user's own hook entry"
+
 # hand it back so the remaining cases run against the original checkout
 run --force >/dev/null
 
@@ -376,6 +429,16 @@ jq -e '[.permissions.allow[]] | index("Bash(mine *)") != null' "$SETTINGS" >/dev
 [[ ! -f "$RULES_FILE" ]] \
     && pass "uninstall removes the recorded-rules sidecar" \
     || fail "the rules sidecar survived uninstall"
+
+# ------------------------------------------------- backup rotation ---
+# Round 2 suggestion: backups accumulated unbounded, and two runs in the same
+# second collided on the same filename.
+rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+for _ in 1 2 3 4 5 6 7; do run >/dev/null; done
+n_backups=$(ls -1 "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* 2>/dev/null | wc -l)
+[[ "$n_backups" -eq 5 ]] \
+    && pass "seven back-to-back installs leave exactly 5 backups (rotation, no same-second collision)" \
+    || fail "expected 5 backups after 7 installs, found $n_backups"
 
 echo ""
 echo "test_user_tier_install: $PASS passed, $FAIL failed"

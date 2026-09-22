@@ -228,13 +228,33 @@ read_settings() {
 
 # A timestamped copy beside the original, before any rewrite. Cheap, and the
 # difference between a bad merge being an annoyance and being a data loss.
+BACKUP_KEEP=5
 backup_settings() {
-    local stamp dest
+    local stamp dest n=0
     [[ -f "$SETTINGS" ]] || return 0
-    stamp="$(date +%Y%m%d-%H%M%S)"
+    # Nanoseconds, so two runs in the same second do not collide and silently
+    # overwrite the older of the two backups. A counter suffix covers the
+    # coreutils builds where %N is not expanded.
+    stamp="$(date +%Y%m%d-%H%M%S-%N)"
+    [[ "$stamp" == *N ]] && stamp="$(date +%Y%m%d-%H%M%S)-$$"
     dest="$SETTINGS.agent-workspace-backup.$stamp"
+    while [[ -e "$dest" ]]; do
+        n=$((n + 1))
+        dest="$SETTINGS.agent-workspace-backup.$stamp-$n"
+    done
     cp -p "$SETTINGS" "$dest" || return 1
     echo "  backed up $SETTINGS -> $dest"
+
+    # Keep only the newest few: these accumulate on every install, and an
+    # unbounded pile of them in ~/.claude is its own small mess.
+    local -a old=()
+    while IFS= read -r f; do old+=("$f"); done < <(
+        ls -1t "$SETTINGS".agent-workspace-backup.* 2>/dev/null | tail -n +$((BACKUP_KEEP + 1))
+    )
+    if [[ "${#old[@]}" -gt 0 ]]; then
+        rm -f "${old[@]}"
+        echo "  pruned ${#old[@]} old backup(s), keeping the newest $BACKUP_KEEP"
+    fi
 }
 
 write_settings() {  # <json on stdin>
@@ -249,11 +269,24 @@ write_settings() {  # <json on stdin>
     fi
     if [[ -L "$SETTINGS" ]]; then
         # settings.json is a symlink -- commonly into a dotfiles repo. `mv`
-        # would replace the link with a regular file and silently detach the
-        # user's dotfiles. Write THROUGH the link instead, so their repo sees
-        # the edit.
-        cat "$tmp" > "$SETTINGS" || { rm -f "$tmp"; return 1; }
+        # onto the LINK would replace it with a regular file and silently
+        # detach the user's dotfiles, so resolve it and rename onto the real
+        # file instead. `cat > "$SETTINGS"` would write through the link but
+        # truncates first: an interrupted write leaves a half-file where a
+        # valid settings.json was. Rename is atomic.
+        local real
+        real="$(readlink -f "$SETTINGS" 2>/dev/null)"
+        if [[ -z "$real" ]]; then
+            echo "ERROR: $SETTINGS is a symlink that does not resolve" >&2
+            rm -f "$tmp"
+            return 1
+        fi
+        # The rename must land on the same filesystem as $tmp to be atomic;
+        # stage beside the real file when the dotfiles repo is elsewhere.
+        local staged="$real.agent-workspace.$$"
+        cp "$tmp" "$staged" || { rm -f "$tmp" "$staged"; return 1; }
         rm -f "$tmp"
+        mv "$staged" "$real"
         return 0
     fi
     mv "$tmp" "$SETTINGS"
@@ -264,6 +297,23 @@ if [[ "$MODE" == "list-skills" ]]; then
     selected_skills
     exit 0
 fi
+
+# Does <link> point into a DIFFERENT agent_workspace checkout? Recognised by
+# the manifest file that only a workspace checkout has. Used under --force:
+# a takeover that moves $WS_ROOT but leaves every skill symlink pointing into
+# the old checkout is worse than not taking over at all, because the root file
+# and the skills then disagree.
+foreign_skill_link() {  # <link path>
+    local tgt root
+    [[ "$FORCE" == true ]] || return 1
+    tgt="$(readlink -f "$1" 2>/dev/null)" || return 1
+    [[ -n "$tgt" ]] || return 1
+    # <checkout>/.claude/skills/<name> -> walk up three levels
+    root="$(cd "$tgt/../../.." 2>/dev/null && pwd -P)" || return 1
+    [[ -f "$root/.agent/user_tier_scripts.txt" ]] || return 1
+    [[ "$root" != "$WS_ROOT" ]] || return 1
+    return 0
+}
 
 # ------------------------------------------------------------ skill sync ---
 sync_skills() {  # prints what it changed
@@ -278,7 +328,7 @@ sync_skills() {  # prints what it changed
             if [[ "$(readlink "$link")" == "$target" ]]; then
                 continue
             fi
-            if [[ "$(readlink "$link")" == "$WS_ROOT"/* ]]; then
+            if [[ "$(readlink "$link")" == "$WS_ROOT"/* ]] || foreign_skill_link "$link"; then
                 ln -sfn "$target" "$link"
                 echo "  repaired skill symlink: $name"
                 changed=1
@@ -303,7 +353,14 @@ sync_skills() {  # prints what it changed
     selected="$(selected_skills)"
     for link in "$SKILLS_DIR"/*; do
         [[ -L "$link" ]] || continue
-        [[ "$(readlink "$link")" == "$WS_ROOT/.claude/skills/"* ]] || continue
+        # Ours, or -- under --force -- another checkout's, which the takeover
+        # is responsible for clearing out: a skill that this checkout does not
+        # select must not survive as a link into the checkout we just took the
+        # tier away from.
+        if [[ "$(readlink "$link")" != "$WS_ROOT/.claude/skills/"* ]] \
+           && ! foreign_skill_link "$link"; then
+            continue
+        fi
         base="$(basename "$link")"
         if ! grep -qxF "$base" <<< "$selected"; then
             rm -f "$link"
@@ -571,15 +628,25 @@ SESSION_HOOKS_JSON="$(jq -n --arg tag "$TAG" --arg cmd "$SESSION_HOOK_LINK" '
 
 read_settings | jq \
     --arg tag "$TAG" \
+    --argjson force "$([[ "$FORCE" == true ]] && echo true || echo false)" \
     --argjson pre "$PRE_HOOKS_JSON" \
     --argjson ses "$SESSION_HOOKS_JSON" \
     --argjson rules "$(allow_rules_json)" '
     .hooks //= {}
     | .hooks.PreToolUse //= []
     | .hooks.SessionStart //= []
-    # drop any previous generation of OUR entries, keep the user'"'"'s own
-    | .hooks.PreToolUse   |= map(select((._agent_workspace // "") != $tag))
-    | .hooks.SessionStart |= map(select((._agent_workspace // "") != $tag))
+    # Drop the previous generation of agent_workspace entries, keeping the
+    # user'"'"'s own (which carry no marker at all).
+    #
+    # Normally that means entries tagged with THIS checkout. Under --force we
+    # are deliberately taking the tier over from another checkout, so every
+    # marker-carrying entry goes regardless of which checkout tagged it --
+    # otherwise the takeover leaves the old checkout'"'"'s SessionStart and
+    # PreToolUse entries in place beside ours, both layers get injected into
+    # every session, and --check reports drift immediately after a --force
+    # that exited 0 claiming success.
+    | .hooks.PreToolUse   |= map(select(($force and (._agent_workspace // "") != "") | not) | select((._agent_workspace // "") != $tag))
+    | .hooks.SessionStart |= map(select(($force and (._agent_workspace // "") != "") | not) | select((._agent_workspace // "") != $tag))
     | .hooks.PreToolUse   += [$pre]
     | .hooks.SessionStart += [$ses]
     | .permissions //= {}
