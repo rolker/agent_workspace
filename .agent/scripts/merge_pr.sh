@@ -929,7 +929,9 @@ else
         exit 1
     else
         _gate_mode_note="report-only"
-        [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: --enforce applies to workspace PRs only until #265 settles project timelines (it is the default there)"
+        # Don't name --enforce here: enforcement is the default, so the
+        # caller usually passed no flag at all (#300 round 4).
+        [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: gate enforcement applies to workspace PRs only until #265 settles project timelines"
         echo "  ⚠️  Review gate (${_gate_mode_note}): would have refused — ${_gate_why}"
         _gate_already_recorded "Merge (report-only)" "$_gate_why" || _gate_record "Merge (report-only)" "$_gate_why"
     fi

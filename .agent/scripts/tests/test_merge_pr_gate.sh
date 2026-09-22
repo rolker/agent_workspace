@@ -503,8 +503,8 @@ else
     fail "main tree on PR branch (out=${out:0:400})"
 fi
 
-# ================================================= --enforce, project scope =====
-echo "TEST: --enforce on a project PR stays report-only"
+# ============================== enforce (the default), project scope =====
+echo "TEST: a project PR stays report-only under the enforce default"
 sb="$(make_sandbox "" "")"
 # a legacy project/ checkout with its own remote and a PR fixture there
 mkdir -p "$sb/fake_remotes/github.com/owner"
@@ -517,9 +517,10 @@ printf '{"state":"OPEN","headRefName":"feature/issue-9","title":"Proj PR","headR
     > "$sb/gh_fixtures/pr_view_$(printf '%s' "$sb/fake_remotes/github.com/owner/proj.git" | tr '/' '_')_9.json"
 out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=1 \
     GH_MERGEABLE_DEFAULT=MERGEABLE MERGE_PR_CI_POLL_SECONDS=0 \
-    "$sb/.agent/scripts/merge_pr.sh" --pr 9 --type project --no-wait --no-roadmap-update --enforce 2>&1)" || true
-if merged_called "$sb" && [[ "$out" == *"would have refused"* ]] && [[ "$out" == *"--enforce applies to workspace PRs only"* ]] && [[ "$out" != *"review gate refused"* ]]; then
-    pass "project scope under --enforce: proceeds with the report-only line naming the scoping rule"
+    "$sb/.agent/scripts/merge_pr.sh" --pr 9 --type project --no-wait --no-roadmap-update 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"would have refused"* ]] && [[ "$out" == *"applies to workspace PRs only"* ]] && [[ "$out" != *"--enforce"* ]] \
+    && [[ "$out" != *"review gate refused"* ]]; then
+    pass "project scope under enforce: report-only line names the scoping rule, not a flag the caller may not have passed"
 else
     fail "project scope enforce (out=${out:0:400})"
 fi
