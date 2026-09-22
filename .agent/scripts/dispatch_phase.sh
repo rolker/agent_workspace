@@ -6,6 +6,7 @@
 #
 # Usage:
 #   dispatch_phase.sh --issue <N> --skill <phase> [--type workspace|project]
+#                      [--project <name>]
 #                      [--pr <M>] [--prompt-file <f>] [--entry-type <T>]
 #                      [--model <alias>]
 #     Prints the handoff block for a phase the host is about to dispatch
@@ -18,14 +19,16 @@
 #     conventions, and prompt_file (only when --prompt-file was given).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
-#                      [--type workspace|project] [--pr <M>] --before <count>
+#                      [--type workspace|project] [--project <name>]
+#                      [--pr <M>] --before <count>
 #     Compares the entry count of the expected type (same table as above)
 #     before and after a dispatch. Prints `status=<OK|PARTIAL|FAILED|MISSING>`
 #     and, only for OK, a second line `sha=<short git sha>` (the worktree's
 #     HEAD after the phase's own commit).
 #
 #   dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged>
-#                      [--type workspace|project] [--progress <file>]
+#                      [--type workspace|project] [--project <name>]
+#                      [--progress <file>]
 #     The run-issue decision table (28 rows; see the plan for #276 PR 2).
 #     Prints `action=<token>`, `reason=<one line>`, then `round=<n>` when
 #     the action concerns the pre-push review loop, `phase=<skill>` when a
@@ -75,47 +78,92 @@ usage() {
     cat >&2 <<'EOF'
 Usage:
   dispatch_phase.sh --issue <N> --skill <phase> [--type workspace|project]
-                     [--pr <M>] [--prompt-file <f>] [--entry-type <T>]
-                     [--model <alias>]
+                     [--project <name>] [--pr <M>] [--prompt-file <f>]
+                     [--entry-type <T>] [--model <alias>]
   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
-                     [--type workspace|project] [--pr <M>] --before <count>
+                     [--type workspace|project] [--project <name>]
+                     [--pr <M>] --before <count>
   dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged>
-                     [--type workspace|project] [--progress <file>]
+                     [--type workspace|project] [--project <name>]
+                     [--progress <file>]
+
+--project <name> names the registered project for --type project; when
+omitted it is derived from $PWD via the registry (longest-prefix match).
 See the header comment of this script for what each mode prints.
 Exit codes: 0 ok; 2 usage; 3 the timeline could not be parsed.
 EOF
     exit 2
 }
 
+# ------------------------------------------------------- project selection ---
+# Which registered project a `--type project` dispatch belongs to (#317,
+# #265 PR 3). Kept as its own function so resolve_worktree() below stays a
+# thin caller.
+#
+# Precedence:
+#   1. an explicit --project <name> (always wins; not validated here — an
+#      unknown name simply finds no worktree, same as today's miss path),
+#   2. the project owning $PWD, via registry_resolve_from_dir's
+#      longest-prefix ancestor match. This is a direct registry call on the
+#      real cwd: the SessionStart hook's stdout is context text for the
+#      model, never environment in a tool-call shell, so nothing the hook
+#      printed is trusted here (ADR-0016, the workspace-root idiom).
+#   3. nothing — the caller falls back to the historical "exactly one
+#      project is registered" behaviour, so existing callers that pass
+#      neither a name nor a resolvable cwd behave exactly as before.
+#
+# Prints the project name and returns 0, or returns 1 when undetermined.
+derive_project_name() {
+    local explicit="${1:-}" entry name
+    if [[ -n "$explicit" ]]; then
+        printf '%s\n' "$explicit"
+        return 0
+    fi
+    entry=$(registry_resolve_from_dir "$ROOT_DIR" "$PWD" 2>/dev/null) || return 1
+    name="${entry%%$'\t'*}"
+    [[ -n "$name" ]] || return 1
+    printf '%s\n' "$name"
+    return 0
+}
+
 # --------------------------------------------------------- worktree lookup ---
 # Locates issue <N>'s worktree exactly as worktree_enter.sh --type <type>
 # would (new location, then the pre-registration transition location for a
-# registered project, then the legacy location). No --project disambiguation
-# flag here (out of scope for this port; #265's --type project path is
-# inherited as-is, per the plan's Consequences table): a project type
+# registered project, then the legacy location).
+#
+# For `--type project`, <project> (optional) names the project: passed
+# explicitly via --project, or derived from $PWD by derive_project_name().
+# When neither yields a name, the historical path applies — a project type
 # resolves only when exactly one project is registered or a legacy project/
 # checkout exists.
 resolve_worktree() {
-    local issue="$1" type="$2"
+    local issue="$1" type="$2" project="${3:-}"
     local new_base="" legacy_base="" transition_base=""
 
     if [[ "$type" == "workspace" ]]; then
         new_base=$(wt_workspace_base "$ROOT_DIR")
         legacy_base=$(wt_legacy_workspace_base "$ROOT_DIR")
     else
-        local -a names=()
-        local cname cdir n
-        while IFS=$'\t' read -r cname cdir; do
-            [[ -z "$cdir" ]] && continue
-            n=0
-            for existing in "${names[@]:-}"; do
-                [[ "$existing" == "$cname" ]] && { n=1; break; }
-            done
-            [[ "$n" -eq 0 ]] && names+=("$cname")
-        done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
-        if [[ "${#names[@]}" -eq 1 ]]; then
-            new_base=$(wt_project_base "$ROOT_DIR" "${names[0]}")
-            transition_base=$(wt_transition_project_base "$ROOT_DIR" "${names[0]}" 2>/dev/null || true)
+        local selected=""
+        selected=$(derive_project_name "$project") || selected=""
+        if [[ -n "$selected" ]]; then
+            new_base=$(wt_project_base "$ROOT_DIR" "$selected")
+            transition_base=$(wt_transition_project_base "$ROOT_DIR" "$selected" 2>/dev/null || true)
+        else
+            local -a names=()
+            local cname cdir n
+            while IFS=$'\t' read -r cname cdir; do
+                [[ -z "$cdir" ]] && continue
+                n=0
+                for existing in "${names[@]:-}"; do
+                    [[ "$existing" == "$cname" ]] && { n=1; break; }
+                done
+                [[ "$n" -eq 0 ]] && names+=("$cname")
+            done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+            if [[ "${#names[@]}" -eq 1 ]]; then
+                new_base=$(wt_project_base "$ROOT_DIR" "${names[0]}")
+                transition_base=$(wt_transition_project_base "$ROOT_DIR" "${names[0]}" 2>/dev/null || true)
+            fi
         fi
         legacy_base=$(wt_legacy_project_base "$ROOT_DIR")
     fi
@@ -188,12 +236,13 @@ skill_requires_pr() {
 
 # --------------------------------------------------------------- handoff ---
 cmd_handoff() {
-    local issue="" skill="" type="workspace" pr="" prompt_file="" entry_type_override="" model_override=""
+    local issue="" skill="" type="workspace" project="" pr="" prompt_file="" entry_type_override="" model_override=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue)       [[ $# -ge 2 ]] || usage; issue="$2"; shift 2 ;;
             --skill)       [[ $# -ge 2 ]] || usage; skill="$2"; shift 2 ;;
             --type)        [[ $# -ge 2 ]] || usage; type="$2"; shift 2 ;;
+            --project)     [[ $# -ge 2 ]] || usage; project="$2"; shift 2 ;;
             --pr)          [[ $# -ge 2 ]] || usage; pr="$2"; shift 2 ;;
             --prompt-file) [[ $# -ge 2 ]] || usage; prompt_file="$2"; shift 2 ;;
             --entry-type)  [[ $# -ge 2 ]] || usage; entry_type_override="$2"; shift 2 ;;
@@ -221,7 +270,7 @@ cmd_handoff() {
     [[ -n "$model_override" ]] && model="$model_override"
 
     local wt
-    wt=$(resolve_worktree "$issue" "$type") || {
+    wt=$(resolve_worktree "$issue" "$type" "$project") || {
         echo "error: dispatch: no $type worktree found for issue #$issue" >&2
         exit 2
     }
@@ -246,12 +295,13 @@ cmd_handoff() {
 
 # ------------------------------------------------------------ check-exit ---
 cmd_check_exit() {
-    local issue="" skill="" type="workspace" pr="" before=""
+    local issue="" skill="" type="workspace" project="" pr="" before=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue)  [[ $# -ge 2 ]] || usage; issue="$2"; shift 2 ;;
             --skill)  [[ $# -ge 2 ]] || usage; skill="$2"; shift 2 ;;
             --type)   [[ $# -ge 2 ]] || usage; type="$2"; shift 2 ;;
+            --project) [[ $# -ge 2 ]] || usage; project="$2"; shift 2 ;;
             --pr)     [[ $# -ge 2 ]] || usage; pr="$2"; shift 2 ;;
             --before) [[ $# -ge 2 ]] || usage; before="$2"; shift 2 ;;
             *) usage ;;
@@ -274,7 +324,7 @@ cmd_check_exit() {
     }
 
     local wt
-    wt=$(resolve_worktree "$issue" "$type") || {
+    wt=$(resolve_worktree "$issue" "$type" "$project") || {
         echo "error: check-exit: no $type worktree found for issue #$issue" >&2
         exit 2
     }
@@ -318,12 +368,13 @@ print((d[\"entries\"][-1].get(\"status\") or \"\").strip().lower())")
 
 # ------------------------------------------------------------------ next ---
 cmd_next() {
-    local issue="" pr="" type="workspace" progress=""
+    local issue="" pr="" type="workspace" project="" progress=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue)    [[ $# -ge 2 ]] || usage; issue="$2"; shift 2 ;;
             --pr)       [[ $# -ge 2 ]] || usage; pr="$2"; shift 2 ;;
             --type)     [[ $# -ge 2 ]] || usage; type="$2"; shift 2 ;;
+            --project)  [[ $# -ge 2 ]] || usage; project="$2"; shift 2 ;;
             --progress) [[ $# -ge 2 ]] || usage; progress="$2"; shift 2 ;;
             *) usage ;;
         esac
@@ -347,7 +398,7 @@ cmd_next() {
     else
         [[ "$issue" =~ ^[0-9]+$ ]] || { echo "error: next: --issue <N> is required (or pass --progress <file>)" >&2; exit 2; }
         local wt
-        wt=$(resolve_worktree "$issue" "$type") || {
+        wt=$(resolve_worktree "$issue" "$type" "$project") || {
             echo "error: next: no $type worktree found for issue #$issue" >&2
             exit 2
         }
