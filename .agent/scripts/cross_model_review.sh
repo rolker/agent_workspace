@@ -65,11 +65,19 @@
 # agent's own job the moment it finishes — a slow agent never delays a
 # fast agent's marker.
 #
+# Informational lines naming each agent's findings file are printed
+# BEFORE the agents launch (so `tail -f` works while they run); the
+# triplets follow once every agent has finished. Callers parse by line
+# prefix, not by position.
+#
+# Interrupting the script (SIGINT/SIGTERM) or any early exit kills every
+# agent job it started; nothing is left running in the background.
+#
 # Exit codes:
 #   0 — every selected agent completed successfully
 #   1 — missing dependencies: gh (PR mode), or no selected agent has a
-#       usable CLI (with --agents, every agent's findings file still gets
-#       a failed marker and a triplet with EXIT=1)
+#       usable CLI. Nothing is written and no triplet is printed; each
+#       unavailable agent is named on stderr. Distinct from exit 3.
 #   2 — invalid arguments
 #   3 — failed to build the prompt (no AGENT= triplets printed under
 #       --agents: the shared diff fetch failed or was empty and every
@@ -98,29 +106,35 @@ declare -A AGENT_BINS=(
 # partial response — _agy_review.sh treats that as a failed review (#288).
 AGY_PRINT_TIMEOUT="30m"
 
-# Outer per-agent bound for codex/claude/copilot, in seconds (coreutils
-# `timeout`). Env-overridable so tests can inject a small value. 124 is
-# timeout's own "expired" status and counts as that agent's failure.
+# Outer per-agent bound for codex/claude/copilot (coreutils `timeout`
+# duration: a number of seconds, or with an s/m/h suffix). Env-overridable
+# so tests can inject a small value. 124 is timeout's own "expired"
+# status and counts as that agent's failure. A CLI that ignores the
+# SIGTERM gets SIGKILL after AGENT_KILL_AFTER, so a stuck process cannot
+# outlive the bound.
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-1800}"
+AGENT_KILL_AFTER="${AGENT_KILL_AFTER:-10}"
 
 # Helper that owns the gemini invocation. A missing helper makes the
 # gemini agent unavailable (that agent fails; others still run).
 AGY_REVIEW_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_agy_review.sh"
 
 # Run one agent to completion. Args: agent_key, bin_path, prompt_file,
-# findings_file. Returns the agent CLI's exit status (124 on timeout).
-# Agents read the prompt from stdin, so prompt size is not bounded by
-# argv limits.
+# findings_file. Exits with the agent CLI's status (124 on timeout).
+# Always called in a background subshell; `exec` makes that subshell's
+# PID the CLI's own (or timeout's, which forwards signals to the CLI),
+# so killing the PID the parent holds really stops the agent. Agents
+# read the prompt from stdin, so prompt size is not bounded by argv.
 run_agent_sync() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
         # Helper owns the findings file; no stdout redirect (#274, #288).
-        gemini)  "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
-        codex)   timeout "$AGENT_TIMEOUT" "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
-        claude)  timeout "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
-        copilot) timeout "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
-        *)       timeout "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        gemini)  exec "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
+        codex)   exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
+        claude)  exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        copilot) exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        *)       exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
     esac
 }
 
@@ -267,6 +281,7 @@ fi
 
 MULTI_AGENT=false
 AGENTS_TO_RUN=()
+declare -A SEEN_AGENT=()
 if [[ -n "$AGENTS_LIST" ]]; then
     MULTI_AGENT=true
     # A leading or trailing comma is an empty entry too; `read -a` would
@@ -292,11 +307,10 @@ if [[ -n "$AGENTS_LIST" ]]; then
         fi
         # Exact duplicates collapse to one run: two jobs for the same
         # agent would race on one prompt/findings filename.
-        dup=false
-        for seen in "${AGENTS_TO_RUN[@]:-}"; do
-            [[ "$seen" == "$entry" ]] && dup=true
-        done
-        [[ "$dup" == true ]] || AGENTS_TO_RUN+=("$entry")
+        if [[ -z "${SEEN_AGENT[$entry]+x}" ]]; then
+            SEEN_AGENT["$entry"]=1
+            AGENTS_TO_RUN+=("$entry")
+        fi
     done
     # A list that was entirely empty entries cannot reach here (each is
     # rejected above), so AGENTS_TO_RUN has at least one element.
@@ -565,7 +579,23 @@ fi
 # then stream the diff directly from gh/git to avoid storing it in a
 # variable (which could hit shell limits for large Deep-tier PRs).
 SHARED_PROMPT=$(mktemp -t "cross-model-review-prompt.XXXXXX")
-trap 'rm -f "$SHARED_PROMPT"' EXIT
+
+# Cleanup on every exit path: stop any agent job still running (each
+# job's own TERM trap forwards to its CLI), then drop the temp prompt.
+# The INT/TERM traps turn a signal into an exit so the EXIT trap fires
+# — otherwise an interrupted run would leave the CLIs running for up to
+# AGENT_TIMEOUT, burning quota on an abandoned review.
+declare -A AGENT_PID=()
+cleanup_jobs() {
+    local pid
+    for pid in "${AGENT_PID[@]}"; do
+        kill "$pid" 2>/dev/null || true
+    done
+    rm -f "$SHARED_PROMPT"
+}
+trap cleanup_jobs EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
 cat > "$SHARED_PROMPT" << 'PROMPT_HEADER'
 # Adversarial Code Review
@@ -713,7 +743,7 @@ done
 # keeping the machine-parseable block contiguous.
 run_agent_job() {
     local agent="$1"
-    local prompt_file findings_file rc
+    local prompt_file findings_file rc child
     prompt_file=$(prompt_file_for "$agent")
     findings_file=$(findings_file_for "$agent")
 
@@ -727,14 +757,17 @@ run_agent_job() {
         return 1
     fi
 
-    # `if` keeps set -e from aborting the job before rc is captured.
-    if run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file"; then
-        rc=0
-    else
-        rc=$?
-    fi
+    # The CLI runs as this job's child (run_agent_sync execs into it) so
+    # a TERM from the parent's cleanup reaches the CLI, not just this
+    # shell. `wait` is interruptible by the trap; a plain foreground
+    # command would defer it until the CLI finished on its own.
+    run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file" &
+    child=$!
+    trap 'kill "$child" 2>/dev/null; exit 143' TERM INT
+    rc=0
+    wait "$child" || rc=$?
     if [[ "$rc" -eq 124 ]]; then
-        printf '\n%s review timed out after %ss (AGENT_TIMEOUT); partial output above, if any.\n' \
+        printf '\n%s review timed out (AGENT_TIMEOUT=%s); partial output above, if any.\n' \
             "$agent" "$AGENT_TIMEOUT" >> "$findings_file"
     fi
     if [[ "$rc" -eq 0 ]]; then
@@ -747,6 +780,12 @@ run_agent_job() {
 
 if [[ "$MULTI_AGENT" == true ]]; then
     echo "MODE=parallel-sync"
+    echo ""
+    echo "Running ${#AGENTS_TO_RUN[@]} adversarial review(s) in parallel for ${TARGET_LABEL}..."
+    for agent in "${AGENTS_TO_RUN[@]}"; do
+        echo "  ${agent}: $(findings_file_for "$agent")"
+    done
+    echo "  Live: tail -f <findings-file>; per-agent AGENT=/FINDINGS_FILE=/EXIT= lines follow when all have finished."
 else
     echo "MODE=sync"
     echo "AGENT=${AGENTS_TO_RUN[0]}"
@@ -757,7 +796,6 @@ else
     echo "  Results: $(findings_file_for "${AGENTS_TO_RUN[0]}")"
 fi
 
-declare -A AGENT_PID=()
 for agent in "${AGENTS_TO_RUN[@]}"; do
     run_agent_job "$agent" &
     AGENT_PID["$agent"]=$!
@@ -782,7 +820,6 @@ if [[ "$MULTI_AGENT" == true ]]; then
         echo "EXIT=${AGENT_EXIT[$agent]}"
     done
     echo ""
-    echo "Ran ${#AGENTS_TO_RUN[@]} adversarial review(s) in parallel for ${TARGET_LABEL}."
     for agent in "${AGENTS_TO_RUN[@]}"; do
         if [[ "${AGENT_EXIT[$agent]}" -eq 0 ]]; then
             echo "  ${agent}: complete — $(findings_file_for "$agent")"

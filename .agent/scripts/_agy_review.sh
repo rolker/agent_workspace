@@ -93,6 +93,7 @@ TMP_DIR=$(mktemp -d -t agy-review.XXXXXX) || fail "mktemp failed"
 trap 'rm -rf "$TMP_DIR"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
+# (re-armed below to also stop agy once it is running)
 INPUT_FILE="${TMP_DIR}/input.ndjson"
 STREAM_FILE="${TMP_DIR}/stream.ndjson"
 STDERR_FILE="${TMP_DIR}/stderr.txt"
@@ -108,13 +109,20 @@ fi
 # verified spelling for "print mode, prompt comes from stdin" on agy 1.2.8:
 # a bare -p swallows the next flag as its prompt and `-p ""` is rejected
 # as an empty prompt.
+# agy runs as a background child and is waited on, so a TERM/INT sent
+# to this helper (cross_model_review.sh's cleanup on interrupt) reaches
+# agy at once instead of being deferred until the turn ends on its own.
 "$AGY_BIN_RESOLVED" \
     --input-format=stream-json \
     --output-format=stream-json \
     --print-timeout "$PRINT_TIMEOUT" \
     --disable-slash-commands \
-    -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE"
-AGY_EXIT=$?
+    -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE" &
+AGY_PID=$!
+trap 'kill "$AGY_PID" 2>/dev/null; exit 130' INT
+trap 'kill "$AGY_PID" 2>/dev/null; exit 143' TERM HUP
+AGY_EXIT=0
+wait "$AGY_PID" || AGY_EXIT=$?
 
 # Last 20 lines of stderr, for failure reports: a fatal error lands at
 # the end, after any startup chatter.

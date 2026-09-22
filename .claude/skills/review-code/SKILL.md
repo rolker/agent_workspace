@@ -369,7 +369,12 @@ the others' findings are used as normal. One agent's failure does not
 block the others and does not fail the review. Exit 3 with **no**
 `AGENT=` triplets means the shared prompt could not be built (diff fetch
 failed or empty): nothing ran, every listed findings file holds a
-`--- Review error: ... ---` marker, and there is nothing to read.
+`--- Review error: ... ---` marker, and there is nothing to read. Exit 1
+means no listed agent had a usable CLI at all (or `gh` is missing in PR
+mode): nothing was written, each unavailable agent is named on stderr,
+and the cross-model specialist is reported as unavailable. Informational
+lines naming each findings file are printed before the agents launch
+(for `tail -f`); parse by line prefix, not by position.
 
 **Collecting findings**: After other specialists complete, read each
 agent's findings file (look for `--- Review complete ---` or

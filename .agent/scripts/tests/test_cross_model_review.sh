@@ -1269,6 +1269,7 @@ make_mock_agent() {
 name=$(basename "$0")
 upper=${name^^}
 [[ -n "${MOCK_TIMES_DIR:-}" ]] && date +%s.%N > "${MOCK_TIMES_DIR}/${name}.start"
+[[ -n "${MOCK_TIMES_DIR:-}" ]] && echo $$ > "${MOCK_TIMES_DIR}/${name}.pid"
 cat > /dev/null
 sleep_var="MOCK_${upper}_SLEEP"; exit_var="MOCK_${upper}_EXIT"
 [[ -n "${!sleep_var:-}" ]] && sleep "${!sleep_var}"
@@ -1325,6 +1326,16 @@ test_agents_all_succeed() {
     assert_eq "three AGENT= lines" "3" "$(grep -c '^AGENT=' "$out")"
     assert_eq "three EXIT=0 lines" "3" "$(grep -c '^EXIT=0$' "$out")"
     assert_not_contains "no TMUX_SESSION line" "TMUX_SESSION" "$stdout"
+    # Findings paths are announced before the agents run (tail -f contract):
+    # the informational line for codex must precede its AGENT= triplet.
+    local info_line triplet_line
+    info_line=$(grep -n "^  codex: .*review-codex-findings.md" "$out" | head -n1 | cut -d: -f1)
+    triplet_line=$(grep -n "^AGENT=codex$" "$out" | head -n1 | cut -d: -f1)
+    if [[ -n "$info_line" && -n "$triplet_line" && "$info_line" -lt "$triplet_line" ]]; then
+        echo "  PASS: findings path announced before the triplet"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: findings path not announced before the triplet (info=${info_line:-none} triplet=${triplet_line:-none})"; FAIL=$((FAIL + 1))
+    fi
     # Triplet order follows the --agents order; EXIT immediately follows FINDINGS_FILE.
     local block; block=$(grep -E '^(AGENT|FINDINGS_FILE|EXIT)=' "$out" | tr '\n' ' ')
     assert_contains "triplets in selection order" \
@@ -1363,7 +1374,7 @@ test_agents_timeout() {
     exit_code=$(AGENT_TIMEOUT=1 MOCK_CODEX_SLEEP=6 MOCK_TIMES_DIR="$times" run_agents "$out" "codex,copilot")
     assert_exit_code "timeout run exits 3" "3" "$exit_code"
     assert_contains "codex EXIT=124 (timeout)" "^EXIT=124$" "$(cat "$out")"
-    assert_contains "codex findings name the timeout" "timed out after 1s" "$(findings_of codex)"
+    assert_contains "codex findings name the timeout" "timed out \(AGENT_TIMEOUT=1\)" "$(findings_of codex)"
     assert_contains "codex findings marked failed" "Review failed" "$(findings_of codex)"
     assert_contains "copilot findings complete" "Review complete" "$(findings_of copilot)"
     # codex must have been killed: its mock only writes .end when it ran
@@ -1492,6 +1503,46 @@ GH_EOF
     teardown
 }
 
+test_agents_interrupt_kills_jobs() {
+    echo "TEST: terminating the script stops the running agents promptly (#206)"
+    setup
+    make_mock_agent codex; make_mock_agent copilot
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
+    cd "${MOCK_REPO}"
+    # SIGTERM, not SIGINT: bash ignores INT in background children of a
+    # non-interactive shell, so a test-sent INT would never arrive. TERM
+    # is what timeouts and callers send.
+    local t0; t0=$(date +%s)
+    MOCK_CODEX_SLEEP=30 MOCK_COPILOT_SLEEP=30 MOCK_TIMES_DIR="$times" \
+        PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex,copilot < /dev/null > /dev/null 2>&1 &
+    local script_pid=$!
+    local i
+    for ((i = 0; i < 50; i++)); do
+        [[ -f "$times/codex.pid" && -f "$times/copilot.pid" ]] && break
+        sleep 0.1
+    done
+    kill -TERM "$script_pid" 2>/dev/null || true
+    local ec=0; wait "$script_pid" || ec=$?
+    local elapsed=$(( $(date +%s) - t0 ))
+    assert_exit_code "terminated script exits 143" "143" "$ec"
+    if [[ "$elapsed" -lt 10 ]]; then
+        echo "  PASS: script returned in ${elapsed}s, not after the agents' 30s sleep"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: script took ${elapsed}s to return after TERM"; FAIL=$((FAIL + 1))
+    fi
+    sleep 0.3
+    local alive=0 p
+    for p in codex copilot; do
+        if [[ -f "$times/$p.pid" ]] && kill -0 "$(cat "$times/$p.pid")" 2>/dev/null; then
+            alive=$((alive + 1))
+            kill "$(cat "$times/$p.pid")" 2>/dev/null || true
+        fi
+    done
+    assert_eq "no agent process survives the termination" "0" "$alive"
+    teardown
+}
+
 test_single_agent_output_unchanged() {
     echo "TEST: --agent keeps the single-agent stdout contract (no EXIT=, no triplets) (#206)"
     setup
@@ -1551,6 +1602,7 @@ test_agents_missing_binary
 test_agents_none_usable
 test_agents_argument_hygiene
 test_agents_shared_diff_failure
+test_agents_interrupt_kills_jobs
 test_single_agent_output_unchanged
 
 echo ""
