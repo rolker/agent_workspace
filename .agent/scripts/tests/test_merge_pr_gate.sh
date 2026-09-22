@@ -218,7 +218,9 @@ CHECKRUNS_STALE='{"check_runs":[{"conclusion":"stale","status":"completed"}]}'
 CHECKRUNS_NONE='{"check_runs":[]}'
 # Copilot's review check-run (#300): excluded from CI classification by name.
 COPILOT_RUN='{"name":"copilot-pull-request-reviewer","conclusion":"failure","status":"completed"}'
+COPILOT_RUN_RUNNING='{"name":"copilot-pull-request-reviewer","conclusion":null,"status":"in_progress"}'
 CHECKRUNS_COPILOT_ONLY="{\"check_runs\":[${COPILOT_RUN}]}"
+CHECKRUNS_COPILOT_ONLY_RUNNING="{\"check_runs\":[${COPILOT_RUN_RUNNING}]}"
 CHECKRUNS_COPILOT_PLUS_LINT_SUCCESS="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"success\",\"status\":\"completed\"}]}"
 CHECKRUNS_COPILOT_PLUS_LINT_PENDING="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":null,\"status\":\"in_progress\"}]}"
 CHECKRUNS_COPILOT_PLUS_LINT_FAILED="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"failure\",\"status\":\"completed\"}]}"
@@ -753,6 +755,40 @@ if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed
     pass "(ci-22) Copilot-only head: never-registered error, not a false success"
 else
     fail "(ci-22) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — Copilot review check-run still running is the ONLY run: still no checks registered (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_ONLY_RUNNING"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] \
+    && [[ "$out" != *"CI checks did not complete"* ]] \
+    && [[ "$out" == *"check-run 'copilot-pull-request-reviewer' status=in_progress"* ]]; then
+    pass "(ci-23) Copilot-only head, conclusion null: never-registered (not pending/timeout); note reports status"
+else
+    fail "(ci-23) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — the excluded-run note is printed once per run, not once per poll (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+# Poll 1 sees Lint pending (sequenced _1), poll 2+ falls back to the static
+# green fixture — so the wait loop runs at least twice with the excluded
+# Copilot run present in both.
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_PLUS_LINT_PENDING" 1
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_PLUS_LINT_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=5 run_merge_wait "$sb" 2>&1)" || true
+note_count=$(grep -c "check-run 'copilot-pull-request-reviewer'" <<<"$out" || true)
+# Guard the guard: if only one poll ran, "exactly once" would pass vacuously.
+poll_count=$(grep -c "check-runs" "$sb/gh_calls.log" 2>/dev/null || echo 0)
+if merged_called "$sb" && [[ "$out" == *"CI checks passed"* ]] \
+    && [[ "$poll_count" -ge 2 ]] && [[ "$note_count" -eq 1 ]]; then
+    pass "(ci-24) two poll iterations: excluded-run note printed exactly once"
+else
+    fail "(ci-24) (polls=${poll_count} note_count=${note_count}) (out=${out:0:400})"
 fi
 
 echo "TEST: mergeability — UNKNOWN for the first pr-view calls then MERGEABLE: merge proceeds"
