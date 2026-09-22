@@ -309,3 +309,24 @@ Plan drift: `progress_read.py` is outside the plan's "Files to Change" — expec
 **Decision**: publish
 
 Publish now. The one open suggestion (the `--enforce` wording caveat in run-issue step 10) gets applied in the PR review round or tracked. Earlier in the session the owner also decided the round-counter regex fix stays on this branch.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-22 09:02 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #308 at `8e9c0c8`
+**Sources**: 1 (Local Review (Pre-Push) round 3 @ `4ea250b`, approved; Copilot @ `8e9c0c8` is a quota-exhausted comment-only review carrying no finding — not a source; CI rollup @ `8e9c0c8`)
+**Cross-source confirmations**: 0
+**CI**: all-pass — Lint (pre-commit), Validate Adapter Contract and Validate Documentation all green at `8e9c0c8`. The one `failure` check-run, `copilot-pull-request-reviewer`, is the quota exhaustion itself, not a repo gate.
+
+### Findings
+- [ ] (suggestion, Local Review @ `4ea250b`) The step-10 sentence still omits the third gate path that the same file names at line 400: under `--enforce` on a workspace PR a failed gate exits 1 and writes no entry at all (`merge_pr.sh:896-903`), so "written whether or not the merge itself then succeeds" overclaims — and with no `## Merge (report-only)`/`## Merge (unreviewed)` entry written, `dispatch_phase.sh:564` never routes to `checkpoint:merge-refused`, so the re-route the paragraph calls reachable is not reachable on that path. Add the same `--enforce` caveat used at line 400 — `.claude/skills/run-issue/SKILL.md:265`
+- [ ] (suggestion, integrator @ `8e9c0c8`) `review_progress.sh sources` returned `local_findings: []` on this very triage: the round-3 review correlates at `4ea250b` while the PR head is `8e9c0c8`, and the only commit between them is the loop's own `progress: checkpoint` commit — no code changed. A progress-only commit therefore ages out the prior round's still-open findings, and a triage that trusted the helper would have silently dropped the one open suggestion. Open a follow-up issue against the loop machinery (out of scope for this PR's diff) — `.agent/scripts/review_progress.sh`
+
+Both findings were verified against source at this head. The step-10 wording was re-read at `.claude/skills/run-issue/SKILL.md:255-271` and checked against `merge_pr.sh:889-910` (the `--enforce` + workspace branch exits 1 before any `_gate_record` call) and `dispatch_phase.sh:559-566` (only a `Merge (report-only)` / `Merge (unreviewed)` base emits `checkpoint:merge-refused`). The correlation gap was reproduced by running the `sources` call this skill's step 3 prescribes and then reading the timeline directly; `git diff --stat 1fada0d..HEAD` shows progress.md as the only changed file, so the round-3 verdict still applies to the code at head.
+
+Round 1 (2 must-fix) and round 2 (1 must-fix, 1 suggestion) are all recorded resolved and re-verified by round 3 against source; nothing here re-opens them.
+
+### False positives
+- (Copilot @ `8e9c0c8`) The only GitHub review on the PR states Copilot "was unable to review this pull request because the user who requested the review has reached their quota limit" — a COMMENTED review with zero inline comments and no claim about the code. Per the run-issue skill a quota-exhausted comment-only Copilot review is not a review source; it is recorded here so the absence of bot findings is not mistaken for bot approval.
