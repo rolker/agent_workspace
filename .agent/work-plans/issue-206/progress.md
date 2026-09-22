@@ -353,3 +353,29 @@ Proceed to implementation with the round-2 suggestions folded in: overlap-based 
 - `bash .agent/scripts/tests/test_cross_model_review.sh` — 196 passed, 0 failed (was 185; the validation case now covers shape, range, the Go subset, `AGENT_KILL_AFTER=0` and a unit-less `AGENT_TIMEOUT`, and the backstop case asserts its scratch root is empty afterwards)
 - `bash .agent/scripts/tests/run_script_tests.sh` — all 23 suites passed (61s)
 - pre-commit (incl. shellcheck) clean on both commits; nothing pushed
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 12:14 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-206 at `c1e84de`
+**Base**: main
+**Depth**: Deep (reason: enforcement + governance files; round-3 re-review of the round-2 fixes only — cross-model: run by host during implementation, findings incorporated)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+### Findings
+- [ ] No must-fix findings. All three round-2 items verified resolved in code and under test; no regressions found. Ready to push.
+- [ ] (suggestion) ADR-0015's env-knob consequence still reads "all four are shape-validated up front"; validation is now shape + range (non-zero) + a Go-duration subset for `AGY_PRINT_TIMEOUT`. One-line precision fix, not blocking — `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md:100`
+
+### Round-2 items verified resolved
+- [x] Zero rejected where it removes a bound: `validate_duration_knob` refuses `AGENT_TIMEOUT=0`, `AGY_PRINT_TIMEOUT=0s` and `GEMINI_BACKSTOP_MARGIN=0` with a per-knob message naming why zero is wrong; `AGENT_KILL_AFTER=0` stays valid via the explicit `allow_zero` argument and is exercised by a real run, not just an error assertion. Rounding is handled — the message says "whole seconds after rounding", so `0.4` is caught too
+- [x] `AGY_PRINT_TIMEOUT` held to the Go-duration subset (`^[0-9]+(\.[0-9]+)?[smh]$`) before the coreutils check, so `90` and `1d` — valid for `timeout`, rejected by `time.ParseDuration` — now fail at startup instead of inside agy after the job launched; `AGENT_TIMEOUT=90` still accepted, and both directions are tested
+- [x] SIGKILL tmpdir leak closed rather than documented: the parent creates one `cross-model-review-tmp.XXXXXX` scratch root, hands it to the gemini job as `TMPDIR`, and removes it in the `cleanup_jobs` EXIT trap it already runs. The backstop test now asserts the scratch root is empty afterwards, which covers the prompt file and the helper's dir together
+
+### Regression checks
+- [x] `exec env TMPDIR=... timeout -k ...` keeps the signal chain intact: `env` execs rather than forks, so the PID the job shell holds is still `timeout`'s, and the parent's TERM still reaches agy through the helper
+- [x] `test_agy_no_temp_leak` is not weakened — it points `TMPDIR` at a private dir, and both the scratch root and the helper's dir are created under it, so the `ls -A` assertion still covers the whole chain
+- [x] `AGENT_TMP_ROOT` is referenced in `run_agent_sync` but only ever called after the assignment, so `set -u` is satisfied; `_agy_review.sh`'s contract now names SIGKILL as the one untrappable path and points at the parent-owned root
