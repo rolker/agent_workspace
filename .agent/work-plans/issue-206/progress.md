@@ -472,7 +472,7 @@ Address then merge: apply the one open suggestion (ADR-0015 line 101 says the fo
 **CI**: all-pass — Lint (pre-commit), Validate Documentation, Validate Adapter Contract and ros-manifest tests (#267 prototype) all green on the head. The `copilot-pull-request-reviewer` check-run failure is the quota exhaustion, not a code or test failure.
 
 ### Findings
-- [ ] No open findings. This closes the loop opened by the `## Integrated Review` at `3b762b4`.
+- [x] No open findings. This closes the loop opened by the `## Integrated Review` at `3b762b4`. (deferred: placeholder 'No open findings' line, not a finding)
 
 ### Carried forward and closed
 - [x] (was: suggestion, Local Review round 3 @ `c1e84de`; carried in the Integrated Review @ `3b762b4`) ADR-0015's env-knob consequence under-described its own enforcement rule. Fixed in `c6461b8` and verified here against the code at this head: the ADR now says the four knobs are shape- **and** range-validated up front (exit 2), names the non-zero requirement wherever zero would remove a bound, states the `AGENT_KILL_AFTER=0` exception with its meaning (SIGKILL immediately after the SIGTERM), and records that `AGY_PRINT_TIMEOUT` is additionally held to agy's Go-duration subset (explicit `s`/`m`/`h`, no bare number, no `d`). That matches `validate_duration_knob` and its four call sites clause for clause — `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md:100-107`, `.agent/scripts/cross_model_review.sh:156-181`.
