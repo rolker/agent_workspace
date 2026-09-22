@@ -97,18 +97,21 @@ echo ""
 # on their own, and nothing in a tool-call shell knows where the workspace
 # is -- this file is how a command chain finds out.
 echo "--- Workspace root ---"
-echo "This session's cwd is NOT the workspace checkout. Every path written"
-echo "as \`.agent/scripts/...\` or \`.claude/hooks/...\` below is relative to"
-echo "the WORKSPACE ROOT, not to this project. The workspace root is"
-echo "recorded in ~/.claude/agent-workspace-root; read it at the head of any"
-echo "command chain that needs a workspace script:"
+echo "Every path written as \`.agent/scripts/...\` or \`.claude/hooks/...\`"
+echo "below is relative to the WORKSPACE ROOT ($WS_ROOT), not to this"
+echo "project's root ($P_PATH). Those are different directories, so a bare"
+echo "relative path will not resolve from this session's cwd."
 echo ""
-echo "    WS_ROOT=\"\$(cat ~/.claude/agent-workspace-root)\""
+echo "The workspace root is recorded in ~/.claude/agent-workspace-root. Read"
+echo "it at the head of any command chain that needs a workspace script:"
+echo ""
+echo "    WS_ROOT=\"\$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)\""
 echo "    \"\$WS_ROOT/.agent/scripts/<script>\" ..."
 echo ""
+echo "The \`|| echo .\` fallback matters: the user tier is optional, and"
+echo "without it an uninstalled machine would give you \`/.agent/scripts/...\`."
 echo "It is a plain file, not an environment variable and not something this"
 echo "hook exports: hook output is context text, never shell environment."
-echo "(For this machine right now it holds: $WS_ROOT)"
 echo ""
 
 # --- workspace layer -----------------------------------------------------
@@ -170,10 +173,24 @@ echo ""
 
 # The project's own conventions, verbatim and unedited -- the workspace
 # reads this file, it never writes it.
+# Capped: this is spliced into EVERY session under this root, on top of the
+# rendered AGENTS.md sections. An unbounded `cat` of a file the workspace
+# does not control is an open-ended context cost, and the parent plan's
+# "project layer size" open question is about exactly this.
+PROJECT_GUIDE_MAX_BYTES=16384
 PROJECT_CLAUDE="$P_PATH/.agent/CLAUDE.md"
 if [[ -f "$PROJECT_CLAUDE" ]]; then
     echo "--- $P_NAME's own agent guide ($PROJECT_CLAUDE) ---"
-    cat "$PROJECT_CLAUDE"
+    guide_bytes=$(wc -c < "$PROJECT_CLAUDE" 2>/dev/null || echo 0)
+    if [[ "$guide_bytes" -gt "$PROJECT_GUIDE_MAX_BYTES" ]]; then
+        head -c "$PROJECT_GUIDE_MAX_BYTES" "$PROJECT_CLAUDE"
+        echo ""
+        echo "[...truncated: $PROJECT_CLAUDE is $guide_bytes bytes, and only the"
+        echo " first $PROJECT_GUIDE_MAX_BYTES are spliced into a session. Read the"
+        echo " file directly for the rest.]"
+    else
+        cat "$PROJECT_CLAUDE"
+    fi
     echo ""
 fi
 

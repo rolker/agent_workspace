@@ -212,6 +212,41 @@ out=$(HOME="$FAKE_HOME" bash "$WSC/.claude/hooks/session_start_project_layer.sh"
 [[ "$rc" -eq 0 ]] && pass "a malformed payload still exits 0 (never blocks a session start)" \
     || fail "a malformed payload exited $rc"
 
+# ------------------------------------------------- project guide cap ---
+# Round 1 suggestion: the project's own guide was cat'ed unbounded into every
+# session under this root, on top of the rendered AGENTS.md sections.
+python3 - "$PROOT/.agent/CLAUDE.md" <<'PYEOF'
+import sys
+open(sys.argv[1], "w").write("# big\n" + ("x" * 40 + "\n") * 800)
+PYEOF
+out=$(run_hook "$PROOT")
+layer_bytes=$(wc -c <<< "$out")
+if [[ "$out" == *"truncated"* && "$layer_bytes" -lt 40000 ]]; then
+    pass "an oversized project guide is truncated with a note ($layer_bytes bytes of layer)"
+else
+    fail "oversized project guide not capped ($layer_bytes bytes, truncation note: $([[ "$out" == *truncated* ]] && echo yes || echo no))"
+fi
+[[ "$out" == *"end agent_workspace session layer"* ]] \
+    && pass "the layer still closes cleanly after truncation" \
+    || fail "the layer did not close after truncation"
+
+# A small guide is still included whole, uncut.
+printf '# demo conventions\nAlways run the demo linter.\n' > "$PROOT/.agent/CLAUDE.md"
+out=$(run_hook "$PROOT")
+[[ "$out" == *"Always run the demo linter."* && "$out" != *"truncated"* ]] \
+    && pass "a small project guide is included whole, with no truncation note" \
+    || fail "a small project guide was truncated"
+
+# The workspace-root section must not claim the cwd is "not the workspace
+# checkout" -- false for a project registered at projects/<name> INSIDE the
+# workspace tree. It should contrast the two paths instead.
+[[ "$out" != *"cwd is NOT the workspace checkout"* ]] \
+    && pass "the layer makes no false claim about the cwd not being the workspace" \
+    || fail "the layer still claims the cwd is not the workspace checkout"
+[[ "$out" == *"2>/dev/null || echo ."* ]] \
+    && pass "the layer's idiom carries the || echo . fallback" \
+    || fail "the layer's idiom omits the fallback"
+
 echo ""
 echo "test_session_start_layer: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

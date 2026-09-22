@@ -37,11 +37,17 @@ _UT_HOOK_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOU
 _UT_WS_ROOT="$(cd "$(dirname "$_UT_HOOK_PATH")/../.." 2>/dev/null && pwd)"
 _UT_CWD="$(echo "$INPUT" | jq -r '.cwd // ""')"
 [[ -z "$_UT_CWD" ]] && _UT_CWD="$PWD"
-if [[ -n "$_UT_WS_ROOT" && -f "$_UT_WS_ROOT/.agent/scripts/_project_registry.sh" ]]; then
-    # shellcheck source=../../.agent/scripts/_project_registry.sh
-    source "$_UT_WS_ROOT/.agent/scripts/_project_registry.sh"
-    registry_require_root "$_UT_WS_ROOT" "$_UT_CWD" >/dev/null 2>&1 || exit 0
+# Fail CLOSED, not open. If the workspace root or the registry helper cannot
+# be resolved -- a moved clone, a deleted checkout, a broken symlink -- we
+# cannot tell whether this cwd is a root we govern. Acting anyway would mean
+# logging a stranger's tool use in a repo that may have nothing to do with the workspace, which is
+# exactly what the user-tier rule forbids. So: do nothing and exit 0.
+if [[ -z "$_UT_WS_ROOT" || ! -f "$_UT_WS_ROOT/.agent/scripts/_project_registry.sh" ]]; then
+    exit 0
 fi
+# shellcheck source=../../.agent/scripts/_project_registry.sh
+source "$_UT_WS_ROOT/.agent/scripts/_project_registry.sh" 2>/dev/null || exit 0
+registry_require_root "$_UT_WS_ROOT" "$_UT_CWD" >/dev/null 2>&1 || exit 0
 
 # Extract fields and write log entry; any failure is silently ignored
 {

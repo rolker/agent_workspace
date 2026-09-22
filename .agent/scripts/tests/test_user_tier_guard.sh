@@ -251,6 +251,63 @@ out=$(cd "$PROOT" && HOME="$FAKE_HOME" bash "$BLOCK_HOOK" \
 [[ "$rc" -eq 2 ]] && pass "block hook blocks inside a registered project root" \
     || fail "block hook did not block inside a registered project root (rc=$rc)"
 
+# ------------------------------------------------- hooks fail CLOSED ---
+# Round 1 suggestion: if the workspace root or the registry helper cannot be
+# resolved (moved clone, deleted checkout), the guard block used to be
+# skipped entirely and the hook acted anyway -- logging or blocking in a repo
+# it could not prove it governs. It must now do nothing instead.
+BROKEN="$SANDBOX/broken"
+mkdir -p "$BROKEN/.claude/hooks"
+cp "$WSC/.claude/hooks/block-bash-tool-mapping.sh" "$BROKEN/.claude/hooks/"
+cp "$WSC/.claude/hooks/log-tool-use.sh" "$BROKEN/.claude/hooks/"
+# deliberately NO .agent/scripts/_project_registry.sh beside it
+
+rm -f "$FAKE_HOME/.claude/tool-mapping-blocks.jsonl"
+out=$(cd "$WSC" && HOME="$FAKE_HOME" bash "$BROKEN/.claude/hooks/block-bash-tool-mapping.sh" \
+    <<< "$(hook_payload "$WSC" "cat README.md")" 2>&1); rc=$?
+[[ "$rc" -eq 0 ]] \
+    && pass "block hook fails closed (no block) when the registry cannot be resolved" \
+    || fail "block hook acted with an unresolvable registry (rc=$rc out=${out:0:160})"
+
+rm -f "$FAKE_HOME/.claude/tool-use-log.jsonl"
+(cd "$WSC" && HOME="$FAKE_HOME" bash "$BROKEN/.claude/hooks/log-tool-use.sh" \
+    <<< "$(hook_payload "$WSC" "ls")" >/dev/null 2>&1)
+[[ ! -s "$FAKE_HOME/.claude/tool-use-log.jsonl" ]] \
+    && pass "log hook fails closed (no log line) when the registry cannot be resolved" \
+    || fail "log hook wrote a line with an unresolvable registry"
+
+# ------------------------------------------- guarded-by: shims exercised ---
+# Round 1 suggestion: both loops above iterate NONINERT, which excludes the
+# shims, so build.sh / test.sh and their probe_args cases were dead code.
+SHIMS=()
+for rel in "${ENTRIES[@]}"; do
+    abs="$WS_ROOT/$rel"
+    [[ -f "$abs" ]] || continue
+    [[ "$(marker_of "$abs")" == guarded-by:* ]] && SHIMS+=("$rel")
+done
+
+if [[ "${#SHIMS[@]}" -gt 0 ]]; then
+    pass "manifest carries ${#SHIMS[@]} guarded-by: shim(s) to exercise"
+else
+    fail "no guarded-by: shims found -- probe_args' build.sh/test.sh cases are unreachable"
+fi
+
+for rel in "${SHIMS[@]}"; do
+    abs="$WSC/$rel"
+    if ! args=$(probe_args "$rel"); then
+        fail "no probe invocation defined for the shim $rel"
+        continue
+    fi
+    # shellcheck disable=SC2086  # deliberate word-split argv
+    out=$(cd "$OUTSIDE" && HOME="$FAKE_HOME" AGENT_NAME=t AGENT_EMAIL=t@t \
+        timeout 30 bash "$abs" $args 2>&1); rc=$?
+    if [[ "$rc" -ne 0 && "$out" == *"refusing to run"* ]]; then
+        pass "shim refuses from an unregistered repo via its guarded target: $rel"
+    else
+        fail "$rel did not refuse from an unregistered repo (rc=$rc out=${out:0:200})"
+    fi
+done
+
 echo ""
 echo "test_user_tier_guard: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
