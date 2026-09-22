@@ -191,6 +191,18 @@ any other file.
   block (the `**When**` format and scratch-file hygiene), so
   `dispatch_phase.sh`'s header comment, not this list, is the current
   enumeration of the printed fields.
+- Issue [#314](https://github.com/rolker/agent_workspace/issues/314) — the
+  wall-clock follow-ups. Two amendments to what this ADR records: the
+  post-plan implement pass is now dispatched like every other phase (a
+  takeover is the only inline case left), and a *repeat* phase on the same
+  issue may resume the sub-agent that already ran it instead of dispatching
+  a fresh one. The reuse policy — when to resume, the never-list, and the
+  `**Dispatch**: resumed (agent <id>, resume <n> of 3)` field that records
+  it — is authored in `.claude/skills/run-issue/SKILL.md` step 4a, not
+  here; same pattern as the #307 entry above, where a later change moved
+  the authoritative text elsewhere. "One driver per issue" is unchanged: a
+  resumed agent is the same single driver's phase, held to the same exit
+  contract and the same `--check-exit` check as a fresh dispatch.
 - `ros2_agent_workspace` ADR-0015 ("handoff context contract") and
   ADR-0019 ("dispatch default flipped to in-process") — the fork ADRs this
   one adapts. That repo is not a GitHub remote reachable from this one; see
