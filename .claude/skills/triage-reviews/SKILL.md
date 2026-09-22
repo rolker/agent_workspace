@@ -334,7 +334,7 @@ never written again):
 **PR**: #<N> at `<short-sha>`
 **Sources**: <count> (e.g., Copilot R2 @ `<sha>`, Local Review @ `<sha>`, CI rollup)
 **Cross-source confirmations**: <count>
-**CI**: <all-pass | failures-noted>
+**CI**: <all-pass | failures-noted | pending>
 
 ### Findings
 - [ ] (cross-confirmed) <finding raised by 2+ sources> — `<file>`
@@ -343,6 +343,12 @@ never written again):
 ### False positives
 - (<source>) <what was claimed> — <specific reason the failure mode cannot occur>
 ```
+
+`**CI**: pending` is for a triage that ran before CI settled — `/run-issue`
+step 9 dispatches this skill once the *review sources* are in, without
+waiting for CI (issue #314). Record `pending` rather than guessing at a
+verdict; the caller re-checks CI before the merge checkpoint, and
+`merge_pr.sh` gates the merge on CI either way.
 
 Findings carry their source(s) in the leading `(...)`; cross-source
 confirmations use `(cross-confirmed)` and come first. False positives are
