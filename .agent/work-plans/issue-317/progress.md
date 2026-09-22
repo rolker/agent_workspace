@@ -677,3 +677,33 @@ Two of the round-1 fixes changed behaviour rather than just hardening it, and ar
 
 ### Round-1 resolution
 All four round-1 must-fix items are closed and tested. Re-verified independently: the unparseable-settings clobber now refuses in install, uninstall and `--check`, leaving the file byte-for-byte untouched, with a timestamped backup before every rewrite; a second checkout refuses and names both paths, and its `--check` exits 1 instead of the cheerful "not installed (optional)"; the `|| echo .` fallback is present in all 12 scoped skills that reference a workspace script (`what-next` references none), with no bare `cat` left anywhere; the ADR-0016 row is in the review guide. Of the 13 suggestions, 12 are resolved as described — `review-code`'s path-pattern cell is reverted, the jq check no longer reddens `make validate`, the hooks fail closed, the adapter guards the effective `--from` dir, the project guide is capped at 16 KiB, orphaned allow-rules are now recorded and cleared. The two widening fixes were cold-read first: nothing repo-affecting runs in the adapter between its old and new guard position (argument parsing only), `FROM_DIR` is initialised before use under `set -euo pipefail`, a non-existent `--from` correctly falls back to `$PWD`, and both widened directions match the guard's stated contract. Fail-closed is the safe direction for both hooks: neither is a security boundary, and the failure they now avoid — blocking or logging a stranger's commands in an unrelated repo — is the one the user-tier rule exists to prevent; in the workspace checkout the project-tier registration still covers the blocker. 27/27 suites pass (76s), shellcheck clean.
+
+## Implementation
+
+**Status**: complete
+**When**: 2026-09-22 14:23 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-317 at a7dc5d4
+**Addressed**: Local Review (Pre-Push) at `6f3a628` (round 2)
+**Dispatch**: resumed (implementer, resume 2 of 3)
+**Commits**: a7dc5d4
+
+All four round-2 findings actioned — 1 must-fix, 3 suggestions. None deferred.
+
+### Actions
+
+- [x] (must-fix) `--force` took the tier over incompletely and exited 0 claiming success — `user_tier_install.sh:412` and `:184`. Both causes fixed. The install jq pruned only entries tagged with *this* checkout; under `--force` it now prunes every entry carrying the `_agent_workspace` marker whatever its value, because taking the tier over means taking the entries over too. `sync_skills` treated a link into another checkout as "not ours to replace"; new `foreign_skill_link()` recognises a link into a different agent_workspace checkout — by the `.agent/user_tier_scripts.txt` that only a checkout has — and, under `--force` only, repoints it. The stale-link sweep recognises those links too, so a skill this checkout does not select cannot survive as a link into the checkout we just took the tier from. Entries with no marker (the user's own) are untouched in both modes.
+- [x] (suggestion) Non-atomic write through a symlinked settings.json — `:250` → `readlink -f`, stage beside the real file, `mv` onto it. `cat >` truncated first, so an interrupted write left a half-file where a valid settings.json had been; the dotfiles symlink still survives.
+- [x] (suggestion) Backups unbounded and same-second collisions — `:236` → nanosecond stamp with a pid fallback where `%N` is not expanded, a uniquifying counter, newest 5 kept.
+- [x] (suggestion) `derive_project_name`'s worktree pass is broader than "overrides under the workspace root" — `dispatch_phase.sh:145` → scope note added. Comment only, no behaviour change, as asked.
+
+### Tests
+
+`test_user_tier_install.sh` **53 → 60**. The two-checkout case now asserts the takeover is *complete* rather than merely announced: exactly one `SessionStart` entry, no entry tagged with the old checkout, no hook command pointing into it, every skill symlink repointed into the taking-over checkout, `--check` clean immediately afterwards, and the user's own untagged entry still present. Plus backup rotation across seven back-to-back installs.
+
+`run_script_tests.sh`: **27/27 suites green, 79s.** shellcheck clean on every touched script. Nothing pushed.
+
+### Note for the re-review
+
+Two test fixtures had to be re-established inside their own blocks rather than inherited: the round-1 malformed-settings case deletes and rebuilds `settings.json`, so the user's untagged `/opt/mine.sh` entry and the user allow-rule no longer survive into later blocks. That is a property of the suite's ordering, not of the code — but it means an assertion about "the user's own entry survives" is only meaningful if the block sets it up itself.
