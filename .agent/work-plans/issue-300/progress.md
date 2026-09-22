@@ -241,3 +241,14 @@ Everything else in the range verified against source. The `success` arm's new ne
 **Decision**: address
 
 Address the open must-fix (re-triggered review: two same-named runs slip the pending-review hold) and, per the owner's standing merge rules stated 2026-09-22 ("a merge should only happen when everything is clean unless I say we can skip"; "the exception is merging after adding an updated progress or related doc"), fold two more merge_pr.sh changes into the same pass: enforce the review gate by default, and exempt bookkeeping-only commits from a fresh CI wait. Owner also approved (Ask-First) updating the merge_pr.sh row in AGENTS.md's script table. Then re-review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 11:24 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-300/plan.md` at `d7ab4a1`
+**Branch**: feature/issue-300 at d7ab4a1
+**Mode**: inline
+**Addressed**: Local Review (Pre-Push) at 4d957b1
+
+Host ran the address pass inline (owner-directed additions bundled with the round-3 must-fix; rounds checkpoint answered `address`). d4bd095 (`merge_pr.sh`, `test_merge_pr_gate.sh`, `test_merge_pr.sh`): (1) round-3 must-fix — `_ci_review_pending` now matches `*status=*` anywhere in the comma-joined excluded list, so a re-triggered review (completed + running runs of one name) still holds; test ci-29; box ticked. (2) Gate enforced by default on workspace PRs: `ENFORCE_MERGE_GATE=true`, new `--report-only` opt-out, `--enforce` kept as alias, refusal text names both opt-outs, project/package PRs unchanged (report-only); tests def-1/2/3; gate-gap tests that exercise the CI wait / cleanup / idempotency now pass `--report-only` (gate suite helper `run_merge_wait`, 25 direct calls, `test_merge_pr.sh`'s plain workspace-PR case). (3) Bookkeeping walk-back for the CI target: `_is_bookkeeping_path` (patterns `.agent/work-plans/*`, `ROADMAP.md`, `docs/ROADMAP.md`) and `_ci_walk_bookkeeping` (newest-first ancestors through single-parent bookkeeping-only commits, stops at main / a merge / 25 steps); in the wait loop, once, on the first poll: when the target is `none` or `pending`, probe candidates and switch to the newest with `success`/`failed`, then re-poll; tests ci-30 (walks back to the green head, merges) and ci-31 (a code commit stops the walk, never-registered on the new head). Gate suite 74/74; all 23 suites green via the commit hook. 6136abc (docs): `AGENTS.md` `merge_pr.sh` row (owner-approved Ask-First), Makefile help line, run-issue steps 10/11, `review_loop_lifecycle.md` gate row. d7ab4a1: plan addendum 2. Not in this PR: run-issue step 9 "triage may start before CI" (skill text; tracked separately).
