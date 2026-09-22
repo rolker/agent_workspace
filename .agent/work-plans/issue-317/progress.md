@@ -92,3 +92,13 @@ each root) are already merged, so PR 3 builds on a landed foundation.
 - [ ] Add `session_scope: both` for `run-issue` and `review-issue` in this PR (and decide `address-findings`'s scope), and confirm the `make generate-user-tier-skills` symlink step covers them — otherwise the acceptance test as written in the issue cannot run.
 - [ ] Draft the new ADR ("session roots and the user tier", status Provisional) as part of this PR, since the hook/install/guard surface it must cover lands here.
 - [ ] Note in the PR description (or update the plan) that PR 3's acceptance coverage now includes parts of the plan's steps 4–5, so the plan's PR-sequence table doesn't silently drift from what's actually tested.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 12:23 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to plan-task with the issue-review actions folded in: run-issue, review-issue and address-findings classified for project sessions (session_scope both) and covered by the curated-skill symlink step; the provisional ADR "session roots and the user tier" drafted in this PR; the acceptance scope (full /run-issue loop from ~/src/gz4d through the merge checkpoint) recorded against the parent plan's PR-sequence table.
