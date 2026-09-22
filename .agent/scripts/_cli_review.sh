@@ -41,7 +41,10 @@
 #     INT/TERM/HUP traps armed BEFORE the spawn, so a TERM from the
 #     caller's `timeout -k` or its cleanup reaches the CLI itself instead
 #     of being deferred until the turn ends on its own. Leaving a CLI
-#     running would burn quota on an abandoned review.
+#     running would burn quota on an abandoned review. The handler then
+#     WAITS for the child, escalating to SIGKILL after
+#     REVIEW_KILL_ESCALATION seconds (default 5), so this helper never
+#     exits out from under a live CLI.
 #   * No temp files survive any exit path this script can observe (EXIT
 #     trap plus signal traps that exit). SIGKILL is the exception; the
 #     caller closes that gap by handing us a TMPDIR it owns and sweeps
@@ -53,8 +56,10 @@
 # no prompt argument is given and `-o/--output-last-message <FILE>` writes
 # only the final message; `claude -p --output-format json` emits a single
 # result object and `--permission-prompts none` auto-denies anything that
-# would prompt; `copilot -p <text> --allow-all-tools -s` prints only the
-# agent response, and the `-p ""` + stdin form is the one verified in #212.
+# would prompt; `copilot -p <text> -s` prints only the agent response,
+# with `--available-tools`, `--disable-builtin-mcps` and `--no-ask-user`
+# available to strip a headless run down to no tools at all, and the
+# `-p ""` + stdin form is the one verified in #212.
 
 set -uo pipefail
 
@@ -131,24 +136,38 @@ fi
 # logged out usually prints one of these and exits 0, so the exit code
 # alone cannot see it.
 ERROR_MARKER_RE='quota|rate limit|usage limit|overloaded|not logged in|unauthorized|authentication (failed|error|required)|please (log ?in|sign in)'
+# How a CLI opens a message that IS an error rather than an answer:
+# either an announcement ("Error:", "## Failure") or one of the known
+# error sentences itself.
+ERROR_OPENER_RE='^#{0,6}[[:space:]]*(error|fatal|failure|failed|warning)\b|^you( have|.ve)? exceeded|^(rate limit|usage limit|quota exceeded|quota exhausted|not logged in|unauthorized|authentication (failed|error|required)|please (log ?in|sign in))'
 
-# Scan the CLI's own stderr/transcript for those markers. Free text from
-# the CLI, not review prose, so the full pattern is safe here.
+# Scan a channel that carries only the CLI's own diagnostics — its
+# stderr. Never the prompt-echoing transcript: codex's stdout replays the
+# prompt (diff included), so scanning it fails any review of a diff that
+# merely mentions a rate limit. That false positive was observed live on
+# this branch's own review (#313 round 1).
 marker_in_log() {
     local file="$1"
     [[ -s "$file" ]] || return 1
     grep -qiE "$ERROR_MARKER_RE" "$file"
 }
 
-# Scan a *result* for the same markers. A genuine adversarial review may
-# legitimately discuss rate limits or authentication, so the scan applies
-# only to text short enough that it cannot be a review and that carries no
-# markdown structure — i.e. a bare error line the CLI printed in place of
-# an answer. Failing a real review would be worse than missing an error.
-marker_in_result() {
-    local text="$1"
-    [[ "${#text}" -le 400 ]] || return 1
-    [[ "$text" != *$'\n#'* && "$text" != '#'* ]] || return 1
+# Decide whether a *result* is an error the CLI printed in place of a
+# review. Neither length nor markdown structure can tell the two apart:
+# an adversarial review may be two concise bullets that both mention a
+# rate limit, and a real quota error may be six wrapped lines under a
+# "# Error" heading. Both heuristics were tried and produced exactly
+# those false positives and negatives (#313 round 1).
+#
+# What does separate them is how the text OPENS. A review never begins
+# by announcing an error or by stating a known error sentence; an error
+# response always does. So: the first non-empty line must match
+# ERROR_OPENER_RE, and a known marker must appear somewhere in the text.
+result_is_error_only() {
+    local text="$1" first
+    first=$(grep -m1 -v '^[[:space:]]*$' <<< "$text")
+    first="${first#"${first%%[![:space:]]*}"}"
+    grep -qiE "$ERROR_OPENER_RE" <<< "$first" || return 1
     grep -qiE "$ERROR_MARKER_RE" <<< "$text"
 }
 
@@ -163,9 +182,36 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # runs as a background child of a non-interactive shell, where bash makes
 # SIGINT ignored (and an ignored signal cannot be trapped). The INT trap
 # is for a direct interactive invocation, where Ctrl-C does arrive.
+#
+# The handler does not just signal and leave: it waits for the CLI to
+# actually die, escalating to SIGKILL after REVIEW_KILL_ESCALATION
+# seconds. Exiting straight after the `kill` would (a) let the EXIT trap
+# remove TMP_DIR out from under a CLI still writing into it, and (b)
+# defeat the caller's `timeout -k` backstop, whose SIGKILL is aimed at
+# this helper — once we are gone it has nothing left to kill and a CLI
+# that ignored SIGTERM would keep running, burning quota on an abandoned
+# review. The default sits below the caller's own kill-after grace
+# (AGENT_KILL_AFTER, default 10s) so this escalation always completes
+# first.
+REVIEW_KILL_ESCALATION="${REVIEW_KILL_ESCALATION:-5}"
 CLI_PID=""
-trap '[[ -n "$CLI_PID" ]] && kill "$CLI_PID" 2>/dev/null; exit 130' INT
-trap '[[ -n "$CLI_PID" ]] && kill "$CLI_PID" 2>/dev/null; exit 143' TERM HUP
+terminate_child() {
+    local code="$1" watchdog
+    if [[ -n "$CLI_PID" ]]; then
+        kill "$CLI_PID" 2>/dev/null
+        # A watchdog rather than a poll loop: an exited-but-unreaped
+        # child still answers `kill -0`, so polling that would always
+        # run the full escalation window.
+        ( sleep "$REVIEW_KILL_ESCALATION"; kill -9 "$CLI_PID" 2>/dev/null ) &
+        watchdog=$!
+        wait "$CLI_PID" 2>/dev/null
+        kill "$watchdog" 2>/dev/null
+        wait "$watchdog" 2>/dev/null
+    fi
+    exit "$code"
+}
+trap 'terminate_child 130' INT
+trap 'terminate_child 143' TERM HUP
 
 STDOUT_FILE="${TMP_DIR}/stdout.txt"
 STDERR_FILE="${TMP_DIR}/stderr.txt"
@@ -213,18 +259,27 @@ case "$AGENT" in
         # No [PROMPT] argument, so codex reads the prompt from stdin
         # (passing one would make stdin an appended <stdin> block
         # instead). `-o` writes ONLY the final assistant message; the
-        # stdout/stderr transcript — banner, echoed prompt, tool chatter —
-        # goes to a log that is discarded on success and excerpted into
-        # the reason on failure, never into the findings file.
-        run_cli "$STDOUT_FILE" - "$CLI_BIN_RESOLVED" exec -o "$CODEX_OUT_FILE"
+        # stdout transcript — banner, echoed prompt, tool chatter — goes
+        # to a log that is discarded on success and excerpted into the
+        # reason on failure, never into the findings file.
+        #
+        # stderr is kept SEPARATE from that transcript on purpose. The
+        # transcript replays the prompt, diff included, so an error-marker
+        # scan over it fails any review of a diff that mentions a rate
+        # limit — observed live on this branch (#313 round 1). Only
+        # stderr is scanned; the `-o` file's emptiness and the exit code
+        # remain the primary signals.
+        DIAG_LABEL='codex transcript'
+        DIAG_FILE="$STDOUT_FILE"
+        run_cli "$STDOUT_FILE" "$STDERR_FILE" "$CLI_BIN_RESOLVED" exec -o "$CODEX_OUT_FILE"
         if [[ "$CLI_EXIT" -ne 0 ]]; then
-            fail "codex exited ${CLI_EXIT}$(bound_note)$(log_excerpt 'codex output' "$STDOUT_FILE")"
+            fail "codex exited ${CLI_EXIT}$(bound_note)$(log_excerpt 'codex transcript' "$STDOUT_FILE")$(log_excerpt 'codex stderr' "$STDERR_FILE")"
         fi
-        if marker_in_log "$STDOUT_FILE"; then
-            fail "codex reported a quota / rate-limit / authentication error$(log_excerpt 'codex output' "$STDOUT_FILE")"
+        if marker_in_log "$STDERR_FILE"; then
+            fail "codex reported a quota / rate-limit / authentication error$(log_excerpt 'codex stderr' "$STDERR_FILE")"
         fi
         if [[ ! -s "$CODEX_OUT_FILE" ]]; then
-            fail "empty response: codex wrote no final message (its --output-last-message file is missing or empty). In headless mode this is what an aborted turn looks like — the exit code stays 0.$(log_excerpt 'codex output' "$STDOUT_FILE")"
+            fail "empty response: codex wrote no final message (its --output-last-message file is missing or empty). In headless mode this is what an aborted turn looks like — the exit code stays 0.$(log_excerpt 'codex transcript' "$STDOUT_FILE")$(log_excerpt 'codex stderr' "$STDERR_FILE")"
         fi
         RESULT=$(cat "$CODEX_OUT_FILE")
         ;;
@@ -236,6 +291,8 @@ case "$AGENT" in
         # --permission-mode: plan mode's terminal move is presenting a
         # plan for approval, which would pass every gate below while
         # putting a plan, not a review, in the findings file.
+        DIAG_LABEL='claude stderr'
+        DIAG_FILE="$STDERR_FILE"
         run_cli "$STDOUT_FILE" "$STDERR_FILE" \
             "$CLI_BIN_RESOLVED" -p --output-format json --permission-prompts none
         if [[ "$CLI_EXIT" -ne 0 ]]; then
@@ -250,34 +307,51 @@ case "$AGENT" in
         IS_ERROR=$(jq -r '(.is_error // false) | tostring' "$STDOUT_FILE")
         SUBTYPE=$(jq -r '.subtype // "missing"' "$STDOUT_FILE")
         RESULT=$(jq -r '.result // ""' "$STDOUT_FILE")
+        # `.error` may be a string or an object; take .message when it is
+        # an object. Without this, an is_error / bad-subtype failure whose
+        # `.result` is empty reports no cause at all.
+        ERROR_MSG=$(jq -r '((.error // "") | if type == "object" then (.message // (. | tostring)) else tostring end)' "$STDOUT_FILE")
+        CLAUDE_DETAIL="${RESULT:-}"
+        [[ -n "$ERROR_MSG" ]] && CLAUDE_DETAIL="${ERROR_MSG}${RESULT:+ | result: ${RESULT}}"
         if [[ "$IS_ERROR" == "true" ]]; then
-            fail "claude returned is_error=true (subtype ${SUBTYPE})${RESULT:+: ${RESULT}}"
+            fail "claude returned is_error=true (subtype ${SUBTYPE})${CLAUDE_DETAIL:+: ${CLAUDE_DETAIL}}$(log_excerpt 'claude stderr' "$STDERR_FILE")"
         fi
         if [[ "$SUBTYPE" != "success" ]]; then
-            fail "claude result subtype is '${SUBTYPE}', not 'success'${RESULT:+: ${RESULT}}"
+            fail "claude result subtype is '${SUBTYPE}', not 'success'${CLAUDE_DETAIL:+: ${CLAUDE_DETAIL}}$(log_excerpt 'claude stderr' "$STDERR_FILE")"
         fi
         ;;
     copilot)
-        # #212/#274: the prompt goes over STDIN, never argv. A single argv
-        # string is capped at MAX_ARG_STRLEN (128 KiB on Linux) regardless
-        # of ARG_MAX, and review prompts routinely pass that on Deep-tier
-        # PRs — putting the prompt on argv fails the exec outright. The
-        # guard below is a belt-and-braces bound at exactly that limit: on
-        # this stdin path it can only fire where the argv form would have
-        # exec-failed anyway, so it never converts a working review into a
-        # failure. The real enforcement of the channel is the stdin
-        # contract test in test_cross_model_review.sh.
-        COPILOT_PROMPT_MAX_BYTES=131072
-        PROMPT_BYTES=$(wc -c < "$PROMPT_FILE" | tr -d ' ')
-        if [[ "$PROMPT_BYTES" -gt "$COPILOT_PROMPT_MAX_BYTES" ]]; then
-            fail "prompt is ${PROMPT_BYTES} bytes, above the ${COPILOT_PROMPT_MAX_BYTES}-byte guard (Linux MAX_ARG_STRLEN). The prompt is passed on stdin, so shrink the review scope rather than the invocation."
-        fi
-        # -p "" keeps print mode without putting the prompt on argv; -s
-        # prints only the agent response (no stats footer), so the output
-        # is used as-is — no second strip, which could truncate a review
-        # body that happens to contain a footer-looking line.
+        # #212/#274: the prompt goes over STDIN, never argv — a single
+        # argv string is capped at MAX_ARG_STRLEN (128 KiB on Linux)
+        # regardless of ARG_MAX, and Deep-tier prompts pass that. There is
+        # deliberately NO prompt-size guard here: stdin has no such limit,
+        # so a bound could only reject large reviews that would otherwise
+        # work, re-imposing the ceiling the stdin path removed. The
+        # channel is enforced by the stdin-contract test in
+        # test_cross_model_review.sh, which asserts the prompt is absent
+        # from argv and present on stdin.
+        #
+        # Least privilege: a reviewer needs no tools at all — the diff is
+        # in the prompt — and the diff is untrusted input, so
+        # --allow-all-tools would be a privilege escalation driven by
+        # whatever the PR contains. --available-tools='' removes the tool
+        # set, --disable-builtin-mcps removes the built-in MCP servers,
+        # and --no-ask-user stops the agent blocking on a question no one
+        # can answer headlessly. -p "" keeps print mode without putting
+        # the prompt on argv; -s prints only the agent response (no stats
+        # footer), so the output is used as-is — no second strip, which
+        # could truncate a review body containing a footer-looking line.
+        #
+        # The empty tool set is read from `copilot --help` on 1.0.61 and
+        # still needs ONE live confirmation when Copilot quota returns
+        # (#313): if copilot rejects an empty --available-tools, the
+        # documented fallback is to drop it and deny the dangerous tools
+        # instead — `--deny-tool='shell' --deny-tool='write'` — keeping
+        # --disable-builtin-mcps and --no-ask-user.
+        DIAG_LABEL='copilot stderr'
+        DIAG_FILE="$STDERR_FILE"
         run_cli "$STDOUT_FILE" "$STDERR_FILE" \
-            "$CLI_BIN_RESOLVED" -p "" --allow-all-tools -s
+            "$CLI_BIN_RESOLVED" -p "" -s --available-tools='' --disable-builtin-mcps --no-ask-user
         if [[ "$CLI_EXIT" -ne 0 ]]; then
             fail "copilot exited ${CLI_EXIT}$(bound_note)$(log_excerpt 'copilot stderr' "$STDERR_FILE")"
         fi
@@ -289,10 +363,16 @@ case "$AGENT" in
 esac
 
 if [[ -z "${RESULT//[[:space:]]/}" ]]; then
-    fail "empty response$(bound_note). In headless mode this is what a permission denial or an aborted turn looks like — the exit code stays 0.$(log_excerpt "${AGENT} stderr" "$STDERR_FILE")"
+    # DIAG_FILE is the channel that actually carries this CLI's
+    # diagnostics: codex merges nothing into stderr, so for it the
+    # transcript is the only place a reason can be found.
+    fail "empty response$(bound_note). In headless mode this is what a permission denial or an aborted turn looks like — the exit code stays 0.$(log_excerpt "$DIAG_LABEL" "$DIAG_FILE")"
 fi
-if marker_in_result "$RESULT"; then
-    fail "${AGENT} returned an error in place of a review: ${RESULT}"
+# The result itself is the last channel an error can arrive on: a CLI
+# that prints "You have exceeded your usage limit" as its answer exits 0
+# with that text as the whole response.
+if result_is_error_only "$RESULT"; then
+    fail "${AGENT} returned an error in place of a review: ${RESULT}$(log_excerpt "$DIAG_LABEL" "$DIAG_FILE")"
 fi
 
 # Success. Plain > is safe: the file was truncated above and readers key

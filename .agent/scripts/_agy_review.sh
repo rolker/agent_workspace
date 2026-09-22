@@ -37,7 +37,9 @@
 #     the timeout-then-partial-response contract above.
 #   * No temp files survive any exit path this script can observe: the
 #     EXIT trap covers normal exits and the signal traps turn a kill into
-#     an exit so it still fires. SIGKILL is the exception — no trap runs,
+#     an exit so it still fires — after waiting for agy to die (with a
+#     bounded escalation to SIGKILL), so the temp dir is never removed
+#     under a running agy. SIGKILL is the exception — no trap runs,
 #     so the `agy-review.XXXXXX` dir would be left behind. The only sender
 #     is `timeout -k` on the caller's backstop (a wedged helper), and
 #     cross_model_review.sh closes that gap by pointing TMPDIR at a
@@ -108,9 +110,32 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # background child of a non-interactive shell, where bash makes SIGINT
 # ignored (and an ignored signal cannot be trapped). The INT trap is for a
 # direct interactive invocation of this script, where Ctrl-C does arrive.
+#
+# The handler waits for agy to actually die, escalating to SIGKILL after
+# REVIEW_KILL_ESCALATION seconds (#313): exiting straight after the
+# `kill` would let the EXIT trap remove TMP_DIR under an agy still
+# writing into it, and would defeat the caller's `timeout -k` backstop —
+# that SIGKILL is aimed at this helper, so once we are gone an agy that
+# ignored SIGTERM keeps running. The default sits below the caller's own
+# kill-after grace (AGENT_KILL_AFTER, default 10s).
+REVIEW_KILL_ESCALATION="${REVIEW_KILL_ESCALATION:-5}"
 AGY_PID=""
-trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 130' INT
-trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 143' TERM HUP
+terminate_child() {
+    local code="$1" watchdog
+    if [[ -n "$AGY_PID" ]]; then
+        kill "$AGY_PID" 2>/dev/null
+        # A watchdog rather than a poll loop: an exited-but-unreaped
+        # child still answers `kill -0`.
+        ( sleep "$REVIEW_KILL_ESCALATION"; kill -9 "$AGY_PID" 2>/dev/null ) &
+        watchdog=$!
+        wait "$AGY_PID" 2>/dev/null
+        kill "$watchdog" 2>/dev/null
+        wait "$watchdog" 2>/dev/null
+    fi
+    exit "$code"
+}
+trap 'terminate_child 130' INT
+trap 'terminate_child 143' TERM HUP
 INPUT_FILE="${TMP_DIR}/input.ndjson"
 STREAM_FILE="${TMP_DIR}/stream.ndjson"
 STDERR_FILE="${TMP_DIR}/stderr.txt"

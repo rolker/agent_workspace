@@ -59,6 +59,12 @@ setup() {
     # real CLI may (update notice), so the parser must skip it.
     cat > "${MOCK_BIN}/agy" << 'MOCK_EOF'
 #!/usr/bin/env bash
+# MOCK_AGY_IGNORE_TERM=1: an agy that ignores SIGTERM, so only the
+# helper's escalation to SIGKILL can end it (#313).
+[[ -n "${MOCK_AGY_IGNORE_TERM:-}" ]] && trap '' TERM HUP
+# Sleep in 0.1s slices so a SIGKILLed mock leaves no long-lived orphan
+# sleep behind. Whole seconds only.
+mock_sleep() { local n="$1" i; for ((i = 0; i < n * 10; i++)); do sleep 0.1; done; }
 if [[ -n "${MOCK_AGY_LOG:-}" ]]; then
     printf '%s\n' "$@" >> "${MOCK_AGY_LOG}"
 fi
@@ -79,10 +85,15 @@ if [[ -n "${MOCK_AGY_STALL:-}" ]]; then
     # Wedged: the prompt was consumed, but no result event and no
     # --print-timeout handling ever happens. Only an outer bound ends it.
     # `exec` so the recorded pid IS the sleep: killing it leaves no
-    # orphaned child behind.
+    # orphaned child behind. With IGNORE_TERM the trap above must stay
+    # installed, so this process sleeps in slices instead of exec'ing.
+    if [[ -n "${MOCK_AGY_IGNORE_TERM:-}" ]]; then
+        mock_sleep 60
+        exit 0
+    fi
     exec sleep 60
 fi
-[[ -n "${MOCK_AGY_SLEEP:-}" ]] && sleep "${MOCK_AGY_SLEEP}"
+[[ -n "${MOCK_AGY_SLEEP:-}" ]] && mock_sleep "${MOCK_AGY_SLEEP}"
 echo 'agy: a newer version is available (mock banner, not JSON)'
 echo '{"event":"init","init":{"tools":[]}}'
 if [[ -n "${MOCK_AGY_DENY:-}" ]]; then
@@ -1288,8 +1299,10 @@ test_branch_mode_filter_survives_noprefix() {
 #                            class: denial / aborted turn)
 #   MOCK_<NAME>_ERRMARK=<m>  return <m> as the result at exit 0 (a quota /
 #                            rate-limit / auth error printed as output)
-#   MOCK_<NAME>_STDERR=<m>   also write <m> to stderr (codex: to the
-#                            merged transcript)
+#   MOCK_<NAME>_STDERR=<m>   also write <m> to the CLI's stderr
+#   MOCK_CODEX_ECHO_FULL=1   codex echoes the WHOLE prompt into its
+#                            stdout transcript, as the real one does
+#   MOCK_CODEX_IGNORE_TERM=1 codex ignores SIGTERM (only SIGKILL ends it)
 #   MOCK_CLAUDE_RAW=<s>      claude prints <s> verbatim instead of JSON
 #   MOCK_CLAUDE_SUBTYPE=<s>  claude result subtype (default success)
 #   MOCK_CLAUDE_IS_ERROR=<b> claude is_error (default false)
@@ -1304,6 +1317,9 @@ test_branch_mode_filter_survives_noprefix() {
 # Preamble shared by every mock: record argv, times, pid and stdin.
 MOCK_PREAMBLE='
 name=$(basename "$0")
+# Sleep in 0.1s slices so a SIGKILLed mock leaves no long-lived orphan
+# sleep behind, and so a TERM is handled promptly. Whole seconds only.
+mock_sleep() { local n="$1" i; for ((i = 0; i < n * 10; i++)); do sleep 0.1; done; }
 [[ -n "${MOCK_ARGV_DIR:-}" ]] && printf "%s\n" "$@" > "${MOCK_ARGV_DIR}/${name}.argv"
 [[ -n "${MOCK_TIMES_DIR:-}" ]] && date +%s.%N > "${MOCK_TIMES_DIR}/${name}.start"
 [[ -n "${MOCK_TIMES_DIR:-}" ]] && echo $$ > "${MOCK_TIMES_DIR}/${name}.pid"
@@ -1327,10 +1343,21 @@ while [[ $i -lt ${#args[@]} ]]; do
     [[ "${args[$i]}" == "-o" || "${args[$i]}" == "--output-last-message" ]] && out="${args[$((i + 1))]}"
     i=$((i + 1))
 done
-[[ -n "${MOCK_CODEX_SLEEP:-}" ]] && sleep "${MOCK_CODEX_SLEEP}"
+# MOCK_CODEX_IGNORE_TERM=1: a CLI that ignores SIGTERM, so only an
+# escalation to SIGKILL can end it. Armed before the sleep.
+[[ -n "${MOCK_CODEX_IGNORE_TERM:-}" ]] && trap '' TERM HUP
+[[ -n "${MOCK_CODEX_SLEEP:-}" ]] && mock_sleep "${MOCK_CODEX_SLEEP}"
 echo "codex-cli 0.155.1 (mock banner)"
 echo "MOCK TRANSCRIPT: prompt was ${#prompt} bytes"
-printf '%s\n' "$prompt" | head -n 2
+# Real codex echoes the whole prompt into its transcript. The default
+# two-line excerpt keeps the other tests small; MOCK_CODEX_ECHO_FULL=1
+# reproduces the full echo, which is what made the error-marker scan over
+# this channel a live false positive (#313 round 1).
+if [[ -n "${MOCK_CODEX_ECHO_FULL:-}" ]]; then
+    printf '%s\n' "$prompt"
+else
+    printf '%s\n' "$prompt" | head -n 2
+fi
 [[ -n "${MOCK_CODEX_STDERR:-}" ]] && echo "${MOCK_CODEX_STDERR}" >&2
 if [[ -z "$out" ]]; then
     echo "mock codex: no -o file given; the helper must ask for the final message" >&2
@@ -1354,7 +1381,7 @@ CODEX_EOF
                 echo "$MOCK_PREAMBLE"
                 cat << 'CLAUDE_EOF'
 # claude -p --output-format json: exactly one result object on stdout.
-[[ -n "${MOCK_CLAUDE_SLEEP:-}" ]] && sleep "${MOCK_CLAUDE_SLEEP}"
+[[ -n "${MOCK_CLAUDE_SLEEP:-}" ]] && mock_sleep "${MOCK_CLAUDE_SLEEP}"
 [[ -n "${MOCK_CLAUDE_STDERR:-}" ]] && echo "${MOCK_CLAUDE_STDERR}" >&2
 if [[ -n "${MOCK_CLAUDE_RAW:-}" ]]; then
     printf '%s\n' "${MOCK_CLAUDE_RAW}"
@@ -1376,10 +1403,10 @@ CLAUDE_EOF
                 echo '#!/usr/bin/env bash'
                 echo "$MOCK_PREAMBLE"
                 cat << 'COPILOT_EOF'
-# copilot -p "" --allow-all-tools -s: prompt on stdin (#212), response
+# copilot -p "" -s --available-tools='' ...: prompt on stdin (#212), response
 # only (no stats footer) on stdout. A prompt smuggled onto argv would
 # show up in <name>.argv and fail the stdin-contract test.
-[[ -n "${MOCK_COPILOT_SLEEP:-}" ]] && sleep "${MOCK_COPILOT_SLEEP}"
+[[ -n "${MOCK_COPILOT_SLEEP:-}" ]] && mock_sleep "${MOCK_COPILOT_SLEEP}"
 [[ -n "${MOCK_COPILOT_STDERR:-}" ]] && echo "${MOCK_COPILOT_STDERR}" >&2
 if [[ -n "${MOCK_COPILOT_EMPTY:-}" ]]; then
     :
@@ -1443,15 +1470,18 @@ test_agents_all_succeed() {
     assert_exit_code "all-succeed exits 0" "0" "$exit_code"
     # Per-agent invocation contract, now owned by _cli_review.sh (#313):
     # codex takes `exec` plus a final-message file, copilot takes an empty
-    # -p with --allow-all-tools -s. Both read the prompt from stdin, so
+    # -p with -s and the least-privilege tool flags. Both read the
+    # prompt from stdin, so
     # neither may carry the prompt in argv (#212, #274).
     local codex_argv copilot_argv
     codex_argv=$(cat "$argv/codex.argv")
     copilot_argv=$(cat "$argv/copilot.argv")
     assert_eq "codex invoked as 'codex exec'" "exec" "$(head -n 1 "$argv/codex.argv")"
     assert_contains "codex asked for a final-message file" "^-o$" "$codex_argv"
-    assert_eq "copilot argv is -p '' --allow-all-tools -s" \
-        "$(printf -- '-p\n\n--allow-all-tools\n-s')" "$copilot_argv"
+    assert_eq "copilot argv is the least-privilege print form" \
+        "$(printf -- '-p\n\n-s\n--available-tools=\n--disable-builtin-mcps\n--no-ask-user')" \
+        "$copilot_argv"
+    assert_not_contains "copilot is never given --allow-all-tools" "allow-all-tools" "$copilot_argv"
     assert_not_contains "codex prompt is not on argv" "Adversarial Code Review" "$codex_argv"
     assert_not_contains "copilot prompt is not on argv" "Adversarial Code Review" "$copilot_argv"
     local stdout; stdout=$(cat "$out")
@@ -1931,6 +1961,166 @@ test_cli_error_marker_is_failure() {
     teardown
 }
 
+test_cli_codex_transcript_marker_does_not_fail_the_review() {
+    echo "TEST: a marker word inside the reviewed diff does not fail codex (#313 round 1, live false positive)"
+    setup
+    make_mock_agent codex
+    # A diff whose body contains the very words the marker scan looks
+    # for. Real codex echoes the whole prompt into its stdout transcript,
+    # so scanning that channel failed this branch's own review.
+    local diff="${TMPDIR_BASE}/marker.diff"
+    {
+        echo "diff --git a/auth.py b/auth.py"
+        echo "--- a/auth.py"
+        echo "+++ b/auth.py"
+        echo "@@ -1,3 +1,4 @@"
+        echo "+# retry when the server is overloaded or the request is unauthorized"
+        echo "+RATE_LIMIT_MESSAGE = 'you have exceeded your usage limit'"
+    } > "$diff"
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    exit_code=$(MOCK_GH_DIFF_FILE="$diff" MOCK_CODEX_ECHO_FULL=1 run_agents "$out" "codex")
+    assert_exit_code "codex review of a marker-bearing diff exits 0" "0" "$exit_code"
+    local content; content=$(findings_of codex)
+    assert_contains "the review is kept" "reviewed by codex" "$content"
+    assert_contains "findings complete" "Review complete" "$content"
+    assert_not_contains "not failed as a quota error" "Review failed" "$content"
+    # The real channel still works: a marker on codex's own stderr fails.
+    exit_code=$(MOCK_GH_DIFF_FILE="$diff" MOCK_CODEX_ECHO_FULL=1 \
+        MOCK_CODEX_STDERR="error: you have exceeded your usage limit" run_agents "$out" "codex")
+    assert_exit_code "a marker on codex stderr still fails the review" "3" "$exit_code"
+    assert_contains "reason names the quota error" "quota / rate-limit / authentication error" "$(findings_of codex)"
+    teardown
+}
+
+test_cli_result_error_detection_both_directions() {
+    echo "TEST: an error-only result fails; review prose that mentions markers does not (#313)"
+    setup
+    make_mock_agent copilot
+    local out="${TMPDIR_BASE}/out.txt" ec
+
+    # Direction 1 — must FAIL: an error block with a markdown heading and
+    # more than 400 characters. The old length/heading heuristic let both
+    # of these through.
+    local headed_error="# Error
+
+You have exceeded your usage limit for this account. Please wait for the
+quota to reset, or upgrade the plan; this request was not processed and
+no review was produced. Contact support if you believe the usage limit
+was reported in error, quoting the request id shown in the client log."
+    ec=$(MOCK_COPILOT_ERRMARK="$headed_error" run_agents "$out" "copilot")
+    assert_exit_code "a long, heading-carrying error still fails" "3" "$ec"
+    assert_contains "reason says an error arrived in place of a review" \
+        "returned an error in place of a review" "$(findings_of copilot)"
+
+    # Direction 2 — must PASS: concise, list-formatted findings whose
+    # every line mentions a marker word. The old heuristic failed these.
+    local concise_review="- The retry path ignores the rate limit header.
+- Unauthorized responses are retried forever."
+    ec=$(MOCK_COPILOT_ERRMARK="$concise_review" run_agents "$out" "copilot")
+    assert_exit_code "concise list findings are accepted" "0" "$ec"
+    assert_contains "the findings are kept verbatim" "retry path ignores the rate limit" "$(findings_of copilot)"
+
+    # Direction 2b — a one-line review that happens to name a marker.
+    ec=$(MOCK_COPILOT_ERRMARK="No blocking issues; the rate limit handling is correct." \
+        run_agents "$out" "copilot")
+    assert_exit_code "a one-line clean review is accepted" "0" "$ec"
+    teardown
+}
+
+test_cli_claude_error_payload_in_reason() {
+    echo "TEST: claude's .error payload reaches the failure reason (#313)"
+    setup
+    make_mock_agent claude
+    local out="${TMPDIR_BASE}/out.txt" ec
+
+    # is_error with an EMPTY .result: the payload is the only cause there is.
+    ec=$(MOCK_CLAUDE_RAW='{"type":"result","subtype":"error_during_execution","is_error":true,"result":"","error":{"message":"upstream connect error: 503"}}' \
+        run_agents "$out" "claude")
+    assert_exit_code "is_error with an object payload exits 3" "3" "$ec"
+    assert_contains "reason carries .error.message" "upstream connect error: 503" "$(findings_of claude)"
+
+    # A string-valued .error on a bad subtype.
+    ec=$(MOCK_CLAUDE_RAW='{"type":"result","subtype":"error_max_turns","is_error":false,"result":"","error":"max turns exceeded"}' \
+        run_agents "$out" "claude")
+    assert_exit_code "bad subtype with a string payload exits 3" "3" "$ec"
+    assert_contains "reason names the subtype" "error_max_turns" "$(findings_of claude)"
+    assert_contains "reason carries the string .error" "max turns exceeded" "$(findings_of claude)"
+    teardown
+}
+
+test_cli_codex_empty_response_excerpts_transcript() {
+    echo "TEST: a codex empty result reports its transcript, not the unwritten stderr file (#313)"
+    setup
+    make_mock_agent codex
+    local out="${TMPDIR_BASE}/out.txt" ec
+    ec=$(MOCK_CODEX_EMPTY=1 run_agents "$out" "codex")
+    assert_exit_code "empty codex result exits 3" "3" "$ec"
+    local content; content=$(findings_of codex)
+    assert_contains "reason names the empty response" "empty response" "$content"
+    assert_contains "reason carries the transcript" "codex transcript \(last 20 lines\)" "$content"
+    assert_contains "the transcript excerpt has content" "mock banner" "$content"
+    teardown
+}
+
+# A CLI that ignores SIGTERM must still be ended by the helper, which
+# escalates to SIGKILL rather than exiting and leaving it running — that
+# would both defeat the caller's `timeout -k` backstop and pull TMP_DIR
+# out from under a live CLI.
+# Args: <label> <pid-file the mock writes> <command to run the helper...>
+assert_term_escalation() {
+    local label="$1" times="$2"
+    shift 2
+    local ec=0 i
+    "$@" >/dev/null 2>&1 &
+    local helper_pid=$!
+    for ((i = 0; i < 60; i++)); do
+        [[ -f "$times" ]] && break
+        sleep 0.1
+    done
+    kill -TERM "$helper_pid" 2>/dev/null || true
+    wait "$helper_pid" || ec=$?
+    assert_exit_code "${label}: helper exits 143 after escalating" "143" "$ec"
+    sleep 0.3
+    local pid; pid=$(cat "$times" 2>/dev/null || echo "")
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+        echo "  FAIL: ${label}: the TERM-ignoring CLI survived the helper"; FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: ${label}: the TERM-ignoring CLI was killed before the helper exited"; PASS=$((PASS + 1))
+    fi
+}
+
+test_cli_helper_escalates_to_sigkill() {
+    echo "TEST: _cli_review.sh waits for a TERM-ignoring CLI and escalates to SIGKILL (#313)"
+    setup
+    make_mock_agent codex
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times" "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md"
+    echo "review this" > "$prompt"
+    assert_term_escalation "_cli_review.sh" "$times/codex.pid" \
+        env MOCK_CODEX_IGNORE_TERM=1 MOCK_CODEX_SLEEP=30 MOCK_TIMES_DIR="$times" \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800
+    assert_eq "no helper temp dir survives the escalation" "0" \
+        "$(ls -A "${TMPDIR_BASE}/helper-tmp" | wc -l)"
+    teardown
+}
+
+test_agy_helper_escalates_to_sigkill() {
+    echo "TEST: _agy_review.sh waits for a TERM-ignoring agy and escalates to SIGKILL (#313)"
+    setup
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times" "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md"
+    echo "review this" > "$prompt"
+    assert_term_escalation "_agy_review.sh" "$times/agy.pid" \
+        env MOCK_AGY_IGNORE_TERM=1 MOCK_AGY_STALL=1 MOCK_TIMES_DIR="$times" \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m
+    assert_eq "no agy helper temp dir survives the escalation" "0" \
+        "$(ls -A "${TMPDIR_BASE}/helper-tmp" | wc -l)"
+    teardown
+}
+
 test_cli_timeout_kills_the_cli() {
     echo "TEST: AGENT_TIMEOUT cuts off each CLI through the helper (#313)"
     setup
@@ -2006,33 +2196,33 @@ test_copilot_stdin_contract() {
     stdin_text=$(cat "$stdin/copilot.stdin")
     assert_not_contains "prompt content is NOT on argv" "Adversarial Code Review" "$argv_text"
     assert_contains "argv is the empty-prompt print form" "^-p$" "$argv_text"
-    assert_contains "argv carries --allow-all-tools" "^--allow-all-tools$" "$argv_text"
     assert_contains "argv carries -s (response only)" "^-s$" "$argv_text"
+    assert_contains "argv carries the empty tool set" "^--available-tools=$" "$argv_text"
+    assert_contains "argv disables the built-in MCPs" "^--disable-builtin-mcps$" "$argv_text"
+    assert_contains "argv disables the ask_user tool" "^--no-ask-user$" "$argv_text"
+    assert_not_contains "argv never carries --allow-all-tools" "allow-all-tools" "$argv_text"
     assert_contains "the prompt arrived on stdin" "Adversarial Code Review" "$stdin_text"
     teardown
 }
 
-test_cli_copilot_prompt_size_guard() {
-    echo "TEST: the copilot prompt-size guard fires at 128 KiB and only for copilot (#313)"
+test_cli_no_prompt_size_ceiling() {
+    echo "TEST: a >128 KiB prompt is reviewed, not rejected — stdin has no argv limit (#313, #212)"
     setup
-    make_mock_agent copilot; make_mock_agent codex
+    make_mock_agent copilot; make_mock_agent codex; make_mock_agent claude
     mkdir -p "${TMPDIR_BASE}/helper-tmp"
-    # 128 KiB + 1: exactly the point where an argv form would exec-fail
-    # with E2BIG (Linux MAX_ARG_STRLEN).
-    local big="${TMPDIR_BASE}/big-prompt.md"
+    # 128 KiB + 1: past MAX_ARG_STRLEN, where an argv form would
+    # exec-fail. On the stdin path it must simply work — a size guard
+    # here could only reject large reviews that would otherwise succeed.
+    local big="${TMPDIR_BASE}/big-prompt.md" findings="${TMPDIR_BASE}/big-findings.md"
     head -c 131073 /dev/zero | tr '\0' 'x' > "$big"
-    local findings="${TMPDIR_BASE}/big-findings.md" ec
-    ec=$(run_cli_helper copilot "$big" "$findings" 1800)
-    assert_exit_code "oversized copilot prompt exits 1" "1" "$ec"
-    assert_contains "reason names the guard and the limit" "131072-byte guard" "$(cat "$findings")"
-    assert_contains "reason says the prompt is passed on stdin" "passed on stdin" "$(cat "$findings")"
-    # A prompt just under the bound is fine, and the guard is copilot-only.
-    local ok="${TMPDIR_BASE}/ok-prompt.md"
-    head -c 131072 /dev/zero | tr '\0' 'x' > "$ok"
-    ec=$(run_cli_helper copilot "$ok" "$findings" 1800)
-    assert_exit_code "a prompt at exactly the bound is accepted" "0" "$ec"
-    ec=$(run_cli_helper codex "$big" "$findings" 1800)
-    assert_exit_code "codex is not subject to the copilot guard" "0" "$ec"
+    local agent ec stdin_dir="${TMPDIR_BASE}/bigstdin"
+    mkdir -p "$stdin_dir"
+    for agent in "${CLI_AGENTS[@]}"; do
+        ec=$(MOCK_STDIN_DIR="$stdin_dir" run_cli_helper "$agent" "$big" "$findings" 1800)
+        assert_exit_code "${agent} accepts a 128 KiB + 1 prompt" "0" "$ec"
+        assert_eq "${agent} received every byte on stdin" "131073" \
+            "$(wc -c < "${stdin_dir}/${agent}.stdin" | tr -d ' ')"
+    done
     teardown
 }
 
@@ -2189,10 +2379,16 @@ test_cli_prompt_reaches_every_cli_on_stdin
 test_cli_empty_response_is_failure
 test_cli_nonzero_exit_is_failure
 test_cli_error_marker_is_failure
+test_cli_codex_transcript_marker_does_not_fail_the_review
+test_cli_result_error_detection_both_directions
+test_cli_claude_error_payload_in_reason
+test_cli_codex_empty_response_excerpts_transcript
+test_cli_helper_escalates_to_sigkill
+test_agy_helper_escalates_to_sigkill
 test_cli_timeout_kills_the_cli
 test_cli_claude_json_contract
 test_copilot_stdin_contract
-test_cli_copilot_prompt_size_guard
+test_cli_no_prompt_size_ceiling
 test_cli_helper_forwards_term
 test_cli_findings_truncated_and_usage_errors
 test_cli_no_temp_leak

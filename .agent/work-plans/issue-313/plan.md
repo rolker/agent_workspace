@@ -58,13 +58,14 @@ eight round-1 action items.
      `overloaded`, `not logged in` in the failure reason.
    - **copilot** (fixes #212): `"$bin" -p "" --allow-all-tools -s <
      "$prompt"` — stdin, the form #212 verified on 1.0.48. Re-confirm on the
-     installed 1.0.61 once Copilot quota returns (open question below);
-     until then, a belt-and-braces guard: prompt > 128 KiB (Linux
-     MAX_ARG_STRLEN, per the owner Checkpoint and round-2 finding 2) →
-     `fail` before invoking copilot. At exactly that bound the guard can
-     only fire where an argv regression would have exec-failed anyway, so
-     it never turns a working stdin review into a failure; the real
-     enforcement of the channel is the stdin-contract test. `-s` output
+     installed 1.0.61 once Copilot quota returns (open question below).
+     **No prompt-size guard** (pre-push review round 1): stdin has no
+     argv limit, so any bound could only reject large reviews that would
+     otherwise work — the stdin-contract test is the enforcement.
+     **Least privilege** (pre-push review round 1): `-p "" -s
+     --available-tools='' --disable-builtin-mcps --no-ask-user` instead
+     of `--allow-all-tools`, which would escalate privilege on the
+     strength of an untrusted diff. `-s` output
      used as-is — no second
      footer strip (drops round 1's `sed '/^Changes$/q'`, which risked
      truncating a review body containing a bare `Changes` line). `fail` on
@@ -186,6 +187,51 @@ settle, or a deviation from it.
    subject to it), TERM forwarding to the CLI child, truncate-first plus
    usage errors, a temp-leak sweep, and a missing-`_cli_review.sh`
    precheck case that leaves gemini usable.
+
+### Round 1 of address-findings (pre-push review at 45c4b0e)
+
+8. **The copilot prompt-size guard is gone.** It was the owner's
+   belt-and-braces choice at plan time, but on the stdin path it can only
+   fire where the prompt *would have worked*, re-imposing the very #212
+   ceiling this issue removes — and it bites hardest on the Deep-tier PRs
+   where an extra reviewer matters most. The stdin-contract test (prompt
+   absent from argv, present on stdin) is the enforcement; a new test
+   pins that a 128 KiB + 1 prompt is reviewed by all three CLIs.
+
+9. **Copilot runs with no tools at all.** `--allow-all-tools` grants an
+   untrusted diff the right to run shell commands; a reviewer needs no
+   tools, since the diff is in the prompt. Now `-p "" -s
+   --available-tools='' --disable-builtin-mcps --no-ask-user`, all read
+   from `copilot --help` on 1.0.61. The empty tool set still needs one
+   live confirmation when quota returns; the documented fallback, in a
+   comment at the call site, is to drop `--available-tools` and use
+   `--deny-tool='shell' --deny-tool='write'` instead.
+
+10. **codex's transcript is never scanned for error markers.** It
+    replays the prompt, diff included, so the scan failed this branch's
+    own review when the diff mentioned a rate limit. codex now gets its
+    own stderr file; only that is scanned, with the `-o` file's emptiness
+    and the exit code as the primary signals, and failure reasons excerpt
+    the transcript (the only channel that carries codex's diagnostics).
+
+11. **Error detection in a result is an opener match, not a heuristic.**
+    Length and "has a heading" both produced false positives on concise
+    list findings and false negatives on long, `#`-headed errors. The
+    rule is now: the first non-empty line must announce an error or be a
+    known error sentence, and a marker must appear somewhere. Tested in
+    both directions.
+
+12. **Both helpers wait for their CLI after a TERM.** Killing and exiting
+    let the EXIT trap remove TMP_DIR under a running CLI and defeated the
+    caller's `timeout -k` backstop, whose SIGKILL targets the helper.
+    `_cli_review.sh` and `_agy_review.sh` now kill, wait, and escalate to
+    SIGKILL after `REVIEW_KILL_ESCALATION` seconds (default 5, below the
+    caller's 10s kill-after grace). Tested with a mock that ignores TERM.
+
+13. **Mocks reproduce the channel that caused the live failure.** The
+    codex mock gained a full-prompt-echo knob (the two-line excerpt is
+    why the false positive was not caught in round 1) and a TERM-ignoring
+    mode; all mocks sleep in slices so a SIGKILL leaves no orphan.
 
 ## Estimated Scope
 
