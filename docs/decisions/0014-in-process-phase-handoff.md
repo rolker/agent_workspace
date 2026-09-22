@@ -69,7 +69,14 @@ not exist when the phase runs with the host's own tools.
 - the **exit contract**: append exactly one entry of the expected
   ADR-0013 type; if the phase cannot finish, still append it with
   `**Status**: partial` or `failed` and say why; never push (the host owns
-  every push — see the `run-issue` skill).
+  every push — see the `run-issue` skill);
+- the **conventions** every phase follows regardless of its own `SKILL.md`
+  (`**When**` fields in local time with offset; scratch files in the
+  session scratchpad, never `/tmp` directly, cleaned up after).
+
+This list is a point-in-time record of the printed fields, not a
+specification of them: `dispatch_phase.sh`'s header comment is the current
+enumeration, and it wins on any divergence (see the #307 reference below).
 
 The phase promises back exactly that one typed entry and nothing else: no
 chaining to another phase, no push, no second entry of a different type
