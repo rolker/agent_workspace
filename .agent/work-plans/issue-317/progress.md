@@ -323,3 +323,109 @@ Revise the plan with all thirteen plan-review findings: add and thread `--projec
 **Plan**: `.agent/work-plans/issue-317/plan.md` at `45f3a16`
 
 Revision 2, addressing the plan review at 421d8ac (needs-work, 13 findings) per the owner's revise checkpoint, plus two owner overrides issued after that checkpoint. Fixes both acceptance-blocking issues: dispatch_phase.sh gets a real --project flag threaded through resolve_worktree (it previously only resolved a project base with exactly one registered project; this machine has three), and the workspace-root idiom for skills is now a file (~/.claude/agent-workspace-root) rather than hook-output environment, since SessionStart stdout is context text, not environment reaching the Bash tool's shell. Also: ADR number corrected to 0016 (0015 taken by merged PR #318), ADR-0011 gets a pointer only, in-flight-work attribution corrected (#319 merged; the real dispatch_phase.sh overlap is the local unpushed feature/issue-314), and scope trimmed (register-project stub and dashboard.sh guard dropped; frontmatter only on the 13 project/both skills). Owner overrides (2026-09-22, after the revise checkpoint): tool-mapping/log-tool-use hook promotion stays in PR 3 with the registry guard, reversing the review's trim; the pinned workspace registry entry is deferred to PR 4 (to land with the --type special-case collapse) rather than dropped, revising the 2026-09-18 #295 fold's first half.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 13:01 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Dispatch**: resumed (plan reviewer, resume 1 of 3)
+**Verdict**: ready
+
+**Issue**: #317 — #265 PR 3: minimal session layer — user-tier hook + install, root-resolved skills, cwd-derived type/project (gz4d acceptance)
+**Plan**: `.agent/work-plans/issue-317/plan.md` at `45f3a16`
+**Branch**: `feature/issue-317`
+
+Round 2. Reviews revision 2 against the round-1 entry at `421d8ac`
+(needs-work, 13 findings) and the owner's `revise` checkpoint plus the two
+later overrides (hooks stay in PR 3 with the guard; the pinned workspace
+registry entry is deferred to PR 4). The overrides are not re-opened here.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Minimal for the gz4d acceptance with the owner's two keeps: register-project stub and `dashboard.sh`'s guard dropped, frontmatter on 13 skills, manifest trimmed to what the loop invokes |
+| Issue alignment | Good | Both acceptance-blocking mechanisms fixed at the mechanism level; live step scoped to what only a live session proves |
+| File targeting | Good | Files-to-Change matches the steps; `dispatch_phase.sh` and the two hooks are the only pre-existing files with behaviour change |
+| Consequences | Good | Two new rows for the idiom change and the deferred entry; `#314` overlap carried as an explicit timing call |
+| Principle alignment | Good | Guard + trimmed manifest + guard test now cover the hooks too; heading-drift test hardened |
+| ADR compliance | Good | 0016 confirmed free on `main`; ADR-0011 pointer only, substance in the new ADR — matches ADR-0008's test and the parent plan |
+| ROS conventions | N/A | Workspace plan |
+
+### Round-1 findings — disposition
+
+All thirteen resolved or decided: 1 → step 9 (`--project` added and threaded,
+`$PWD` derivation, legacy fallback kept); 2 → step 6 (file idiom, hook
+informational only); 3 → step 13 (ADR-0016; verified `0015` is on `main` from
+the merged #318); 4 → step 13 (References pointer only); 5 → branch-currency
+rewritten (see finding 2 below for one residual slip); 6 → step 11
+(`test_skill_paths.sh` scoped to `SKILL.md`, tracked `settings.json`
+untouched); 7 → step 11 (re-grep, 15-of-22 list carried); 8 → step 2 ("call
+it", correct signature and line reference); 9 → trims taken except the two
+owner overrides; 10 → step 7 (`--check` exits 0 when not installed,
+`--require` opt-in) and step 15 (`HOME` redirected, no network/`gh`);
+11 → step 4 (non-empty + bounded extraction); 12 → step 10 (deferred per
+owner, with the PR-3 substitute stated); 13 → step 15 names the hermetic
+hook driver, step 16 keeps only what it can't prove.
+
+New-design checks: the step-6 snippet is concrete, works with a fresh shell
+per tool call (it is a file read, not state), degrades to `.` in a workspace
+session where cwd is the worktree — and I verified the exact snippet is
+**not** blocked by `block-bash-tool-mapping.sh` (the `2>/dev/null` redirect
+exempts it), which matters because this PR promotes that hook into project
+sessions. Step 9's derivation uses `ROOT_DIR` (resolved from `BASH_SOURCE`
+via `git worktree list`), so the registry file resolves correctly when the
+script is invoked by absolute path from `gz4d`. Step 8's guard test covers
+both hooks' stand-down hermetically. #318 and #319 are both merged (16:42 and
+16:37 UTC today); `feature/issue-314` is still local and unpushed.
+
+### Findings
+
+1. **[Approach — medium]** The injected workspace layer will carry relative
+   script paths into project sessions. The renderer keys on `AGENTS.md`
+   sections including **Worktree Workflow** and **GitHub CLI Patterns**,
+   whose code blocks read `.agent/scripts/worktree_create.sh …`,
+   `source .agent/scripts/worktree_enter.sh …`,
+   `.agent/scripts/gh_create_pr.sh …`. Rendered verbatim into a `gz4d`
+   session those resolve against the project checkout and fail — the same
+   class of problem step 6 fixes for skills, but `test_skill_paths.sh` is
+   scoped to `SKILL.md` and does not see `AGENTS.md`. Cheap fix, decide it at
+   implementation: have the renderer prefix the workspace layer with one line
+   stating the step-6 idiom and that the snippets below are workspace-root
+   relative, or have it rewrite bare `.agent/scripts/` occurrences to
+   `"$WS_ROOT"/.agent/scripts/` on the way out. Not a blocker — the acceptance
+   run would surface it — but it is exactly the kind of thing the run should
+   not be spending its budget on.
+
+2. **[File targeting — low]** One residual factual slip in the corrected
+   branch-currency paragraph: it says `feature/issue-314` "claims the ADR
+   number `0015` (freed by #318's merge, which used that number for its own
+   ADR)". Both halves are wrong and mutually contradictory — #318's merge
+   *took* `0015` (it is on `main` now), and `feature/issue-314` adds no new
+   ADR at all; it appends 12 lines to the existing
+   `0014-in-process-phase-handoff.md`. The `0016` conclusion is unaffected;
+   delete the parenthetical so the plan doesn't carry a false claim into
+   implementation.
+
+3. **[Consequences — low]** Step 10 makes `--type` optional on the worktree
+   scripts (derived from `$PWD`), but `AGENTS.md`'s Worktree Workflow section
+   states "`--type` is **required** on all worktree scripts" — and that is one
+   of the sections the hook renders into every project session. The wording
+   fix is correctly deferred to PR 4 (Ask-First), so this is doc lag by
+   design; record it as a known lag in the PR description and in PR 4's list,
+   rather than leaving it silent. Behaviour stays additive (explicit flags
+   still win), so nothing breaks.
+
+### Summary
+
+Revision 2 is implementable as written. Both acceptance blockers are fixed at
+the mechanism level, the workspace-root idiom is concrete and survives the
+fresh-shell constraint, the ADR number and shape are right, and the scope is
+minimal for the gz4d acceptance given the owner's two keeps. The three
+findings above are implementation-time refinements, not gates.
+
+### Recommended Actions
+
+- [ ] Step 3/4: decide how the rendered `AGENTS.md` sections present their relative script paths to a project session (preamble line or rewrite on render)
+- [ ] Branch-currency paragraph: drop the false "#314 claims ADR 0015" parenthetical (#314 only amends ADR-0014; `0015` is on `main` from the merged #318)
+- [ ] Record the `--type`-required wording lag in the PR description and PR 4's list
