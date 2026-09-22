@@ -9,7 +9,7 @@ session_scope: both
 ## Workspace root
 
 This skill can run in a **project** session — a session started in a project
-checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
 those paths belong to the workspace, and the cwd is somewhere else entirely.
 
 Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
@@ -17,15 +17,21 @@ Resolve `$WS_ROOT` at the head of each command chain, because shell state does
 not persist between tool calls:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/<script>" ...
 ```
 
 `~/.claude/agent-workspace-root` is written by
 `.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
 variable and not `SessionStart` hook output — hook stdout is context text and
-never reaches a tool call's shell (ADR-0016). In a workspace session the file
-still holds the right path, so the same chain works in both.
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 ## Usage
 
@@ -37,7 +43,7 @@ still holds the right path, so the same chain works in both.
 
 - `<pr-number>` — read the plan from a draft PR (existing behavior)
 - `<path-to-plan.md>` — read the plan directly from a local file
-- `--issue <N>` — resolve to `.agent/work-plans/issue-<N>/plan.md`
+- `--issue <N>` — resolve to `$WS_ROOT/.agent/work-plans/issue-<N>/plan.md`
 
 The file path and `--issue` forms enable offline plan review without a PR.
 
@@ -70,16 +76,16 @@ gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*' | head -1
 ```
 
 Find the plan file in the PR's changed files — it will be at
-`.agent/work-plans/issue-*/plan.md`. Read it in full.
+`$WS_ROOT/.agent/work-plans/issue-*/plan.md`. Read it in full.
 
-**File path** (e.g., `/review-plan .agent/work-plans/issue-45/plan.md`):
+**File path** (e.g., `/review-plan $WS_ROOT/.agent/work-plans/issue-45/plan.md`):
 
 Read the plan file directly. Extract the issue number from the path
 (the `issue-<N>` directory name).
 
 **Issue number** (e.g., `/review-plan --issue 45`):
 
-Resolve to `.agent/work-plans/issue-<N>/plan.md`. If the file doesn't exist,
+Resolve to `$WS_ROOT/.agent/work-plans/issue-<N>/plan.md`. If the file doesn't exist,
 check the workspace worktree (`worktrees/workspace/issue-workspace-<N>/`)
 first, then every project worktree location — not just the legacy
 `worktrees/project/*/issue-*-<N>/` glob, since a registered project's
@@ -88,7 +94,7 @@ worktree dir with the shared helper, the same way the worktree scripts do,
 rather than re-deriving the glob:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # shellcheck source=../../../.agent/scripts/_worktree_helpers.sh
 source $WS_ROOT/.agent/scripts/_worktree_helpers.sh
 WS_ROOT="$(git rev-parse --show-toplevel)"
@@ -162,7 +168,7 @@ is the issue body).
 
 ### 3. Load governance context
 
-- `.agent/knowledge/principles_review_guide.md` — evaluation criteria
+- `$WS_ROOT/.agent/knowledge/principles_review_guide.md` — evaluation criteria
 - `docs/PRINCIPLES.md` — workspace principles
 - `docs/decisions/*.md` — ADR titles (read triggered ADRs in full)
 
@@ -233,7 +239,7 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 
 **PR**: <url> — <title>
 **Issue**: #<issue> — <issue-title>
-**Plan**: `.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
+**Plan**: `$WS_ROOT/.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
 
 ### Evaluation
 
@@ -269,17 +275,17 @@ the `## Plan Authored` entry it reviews. Get the SHA from the helper, not
 by hand:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # Plan checked out locally (worktree / --issue / file path):
 $WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan <path>
 # PR-number form, reviewing from any tree: fetch the head, then ask by ref —
 # no local checkout of the file is needed.
 git fetch -q origin "<headRefName>"
-$WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan .agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
+$WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan $WS_ROOT/.agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
 ```
 
 (In the PR-number form, read the plan text the same way: `git show
-<headRefOid>:.agent/work-plans/issue-<issue>/plan.md`.)
+<headRefOid>:$WS_ROOT/.agent/work-plans/issue-<issue>/plan.md`.)
 
 **PR-less format** — when reviewing via `--issue` or file path (no PR exists),
 replace the PR line:
@@ -292,7 +298,7 @@ replace the PR line:
 **Verdict**: <ready | needs-work>
 
 **Issue**: #<issue> — <issue-title>
-**Plan**: `.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
+**Plan**: `$WS_ROOT/.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
 **Branch**: `<branch-name>` (if in a worktree, otherwise omit)
 ```
 
@@ -306,7 +312,7 @@ If no findings, output:
 **Verdict**: ready
 
 **PR**: <url> — <title>
-**Plan**: `.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
+**Plan**: `$WS_ROOT/.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
 Plan looks solid. Ready for implementation.
 ```
 
@@ -317,7 +323,7 @@ never turn a finished review into a failed invocation. Append the report
 as the entry, through the shared persistence call with `--soft`:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<issue>" \
     --branch "<plan's branch>" --title "<issue title>" --strict --soft <<'ENTRY'
 ## Plan Review

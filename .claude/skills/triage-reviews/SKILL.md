@@ -9,7 +9,7 @@ session_scope: both
 ## Workspace root
 
 This skill can run in a **project** session — a session started in a project
-checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
 those paths belong to the workspace, and the cwd is somewhere else entirely.
 
 Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
@@ -17,15 +17,21 @@ Resolve `$WS_ROOT` at the head of each command chain, because shell state does
 not persist between tool calls:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/<script>" ...
 ```
 
 `~/.claude/agent-workspace-root` is written by
 `.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
 variable and not `SessionStart` hook output — hook stdout is context text and
-never reaches a tool call's shell (ADR-0016). In a workspace session the file
-still holds the right path, so the same chain works in both.
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 ## Usage
 
@@ -73,7 +79,7 @@ If they don't match:
    `feature/issue-<N>` or `feature/ISSUE-<N>-<description>`).
 2. Auto-enter the worktree:
    ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
    source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type workspace
    # or: source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type project
    ```
@@ -100,7 +106,7 @@ comments align with local files.
 Run the helper script to get all reviews and CI check status:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/fetch_pr_reviews.sh --pr <N>
 ```
 
@@ -123,10 +129,10 @@ the issue number resolved from the PR head branch (`feature/issue-<N>`),
 not the PR number. One call correlates both sides by head SHA:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/review_progress.sh sources --head <head_sha> \
     --reviews <saved fetch_pr_reviews.json> \
-    --progress .agent/work-plans/issue-<issue>/progress.md
+    --progress $WS_ROOT/.agent/work-plans/issue-<issue>/progress.md
 ```
 
 It prints JSON with `local_findings` (unchecked findings, never the
@@ -147,7 +153,7 @@ pretending the timeline is empty.
 
 Read the evaluation criteria (only if comments exist):
 
-- `.agent/knowledge/principles_review_guide.md` — principle quick reference,
+- `$WS_ROOT/.agent/knowledge/principles_review_guide.md` — principle quick reference,
   ADR applicability, and consequences map
 - `docs/PRINCIPLES.md` — workspace principles
 - `docs/decisions/*.md` — ADRs (scan titles, read those relevant to the flagged issues)
@@ -183,7 +189,7 @@ d. **Assess the comment** against the actual code:
    - Is it a false positive? (e.g., comparing against stale `main`, or
      misunderstanding the intent)
    - **Plan files** (`issue-*/plan.md`): If the comment targets a file in
-     `.agent/work-plans/`, it is a planning artifact. Check whether the
+     `$WS_ROOT/.agent/work-plans/`, it is a planning artifact. Check whether the
      concern is addressed in the implementation files changed in the same PR.
      If so, classify as "Addressed" and note that the concern is satisfied
      by the implementation. Plan wording does not need to be updated to
@@ -292,7 +298,7 @@ helper and switch `review-code` step 8 uses; behaviour is tested in
 `test_triage_reviews_integration.sh`):
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N or empty>" \
     --branch "<head branch>" --title "<issue title>" \
     [--strict] [--no-progress] <<'ENTRY'
@@ -401,7 +407,7 @@ if none is there yet. Never chain the next skill yourself.
   evidence, or carry it forward; never silently drop it.
 - **Plan-first workflow PRs** — In the plan-first workflow, a PR starts with a
   plan commit and later receives implementation commits. When triaging these PRs:
-  - Comments on `.agent/work-plans/issue-*/plan.md` files are low priority —
+  - Comments on `$WS_ROOT/.agent/work-plans/issue-*/plan.md` files are low priority —
     the plan is a pre-implementation artifact and the implementation is the
     source of truth.
   - Reviews submitted against the plan-only commit (`commit_id` differs from

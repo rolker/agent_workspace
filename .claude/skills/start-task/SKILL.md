@@ -10,7 +10,7 @@ session_scope: both
 ## Workspace root
 
 This skill can run in a **project** session — a session started in a project
-checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
 those paths belong to the workspace, and the cwd is somewhere else entirely.
 
 Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
@@ -18,15 +18,21 @@ Resolve `$WS_ROOT` at the head of each command chain, because shell state does
 not persist between tool calls:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/<script>" ...
 ```
 
 `~/.claude/agent-workspace-root` is written by
 `.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
 variable and not `SessionStart` hook output — hook stdout is context text and
-never reaches a tool call's shell (ADR-0016). In a workspace session the file
-still holds the right path, so the same chain works in both.
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 Replace the two-step `worktree_create.sh && source worktree_enter.sh` ceremony with a single command that ends with the session inside the new worktree.
 
@@ -88,7 +94,7 @@ moving out of the project checkout would throw away the one signal that says
 which project this is.
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 ```
 
 An explicit `--type` / `--project` in `$ARGUMENTS` always wins over the
@@ -100,7 +106,7 @@ when the session is already inside the checkout you mean.
 Exit-code-checked idiom — error text from `worktree_enter.sh`'s failure paths goes to stderr, so `2>/dev/null` suppresses it and `$WT` never captures error or usage text (enforced by `$WS_ROOT/.agent/scripts/tests/test_worktree_enter_stderr.sh`).
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # Disable glob expansion for the unquoted $ARGUMENTS expansion below.
 # Word-splitting still happens (so `--issue 188 --type workspace` becomes
 # 4 args), but glob characters in values (e.g. `--branch main*`,
@@ -184,7 +190,7 @@ Plain `cd <some-path>` would work — but only after `worktree_create.sh` has ru
 - Branch naming conventions (`feature/issue-N`, `skill/<name>-<ts>`) that pre-commit hooks and `merge_pr.sh` depend on
 - Parent-issue branching for sub-issues
 - Skill worktree allowlist (`research`, `inspiration-tracker`)
-- `--workflow` progress.md scaffolding under `.agent/work-plans/issue-N/`
+- `--workflow` progress.md scaffolding under `$WS_ROOT/.agent/work-plans/issue-N/`
 - `--plan-file` draft-PR creation with AI signature
 - Cross-repo PR targeting for project-type worktrees
 

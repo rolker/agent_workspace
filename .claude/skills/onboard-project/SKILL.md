@@ -9,7 +9,7 @@ session_scope: project
 ## Workspace root
 
 This skill can run in a **project** session — a session started in a project
-checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
 those paths belong to the workspace, and the cwd is somewhere else entirely.
 
 Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
@@ -17,15 +17,21 @@ Resolve `$WS_ROOT` at the head of each command chain, because shell state does
 not persist between tool calls:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/<script>" ...
 ```
 
 `~/.claude/agent-workspace-root` is written by
 `.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
 variable and not `SessionStart` hook output — hook stdout is context text and
-never reaches a tool call's shell (ADR-0016). In a workspace session the file
-still holds the right path, so the same chain works in both.
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 ## Usage
 
@@ -86,9 +92,9 @@ whether it's already done, missing, or partially done.
 
 | Item | Check | Fix approach |
 |------|-------|-------------|
-| **Pre-commit config** | `.pre-commit-config.yaml` exists at repo root | Copy from `.agent/templates/pre-commit-config.yaml`, adjust protected branches to match repo's default branch |
-| **CI workflow** | `.github/workflows/*.yml` exists with build/test steps | Copy from `.agent/templates/ci_workflow.yml`, fill in default branch and build/test commands |
-| **Agent guide** | `.agents/README.md` exists at repo root | Generate from `.agent/templates/project_agents_guide.md` by reading repo code (components, interfaces, modules) |
+| **Pre-commit config** | `.pre-commit-config.yaml` exists at repo root | Copy from `$WS_ROOT/.agent/templates/pre-commit-config.yaml`, adjust protected branches to match repo's default branch |
+| **CI workflow** | `.github/workflows/*.yml` exists with build/test steps | Copy from `$WS_ROOT/.agent/templates/ci_workflow.yml`, fill in default branch and build/test commands |
+| **Agent guide** | `.agents/README.md` exists at repo root | Generate from `$WS_ROOT/.agent/templates/project_agents_guide.md` by reading repo code (components, interfaces, modules) |
 | **Branch protection** | GitHub branch ruleset requires PRs on default branch | Configure via `gh api` — requires admin access |
 | **Copilot auto-review** | Copilot is configured to review PRs | Check via `gh api` — requires admin access |
 | **Component labels** | `pkg:` or `component:` labels exist (multi-component repos only) | Create via `gh label create` for each component |
@@ -179,7 +185,7 @@ ISSUE_NUM=$(echo "$ISSUE_URL" | grep -o '[0-9]*$')
 
 **Create a project worktree** on the project repo using the new issue number:
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/worktree_create.sh --issue "$ISSUE_NUM" --type project
 source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue "$ISSUE_NUM" --type project
 ```
@@ -200,7 +206,7 @@ source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue "$ISSUE_NUM" --type pro
   - `repo` in the symlink step → the repo directory name
 
 - **Agent guide** (`.agents/README.md`): Use the template from
-  `.agent/templates/project_agents_guide.md`. Read the repo's actual code to
+  `$WS_ROOT/.agent/templates/project_agents_guide.md`. Read the repo's actual code to
   fill in sections: component inventory (from manifests), layout (from
   directory structure), key files, dependencies. Follow the documentation
   verification workflow — every claim must be verified against source.
@@ -309,4 +315,4 @@ them up — never guess URLs).
 - **Verify documentation against source** — when generating `.agents/README.md`,
   every claim about components, APIs, parameters, and dependencies must be
   verified by reading the actual source code. Use the documentation
-  verification workflow from `.agent/knowledge/documentation_verification.md`.
+  verification workflow from `$WS_ROOT/.agent/knowledge/documentation_verification.md`.

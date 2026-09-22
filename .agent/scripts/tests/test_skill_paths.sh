@@ -48,7 +48,11 @@ scope_of() {  # <SKILL.md> -- prints the declared session_scope, or "workspace"
 # A workspace-relative reference: `.agent/scripts/` or `.claude/hooks/` NOT
 # already prefixed by $WS_ROOT (or by another path component, which would
 # make it part of a longer path rather than a bare relative one).
-BAD_RE='(^|[^/A-Za-z0-9_.$-])\.(agent/scripts|claude/hooks)/'
+# Extended past .agent/scripts: a project-capable skill citing any workspace
+# directory relatively has the same problem (round 1 review -- audit-project,
+# document-project and test-engineering cited .agent/templates/ and
+# .agent/knowledge/ and were missed by the narrower pattern).
+BAD_RE='(^|[^/A-Za-z0-9_.$-])\.(agent/(scripts|templates|knowledge|project_types|work-plans)|claude/(hooks|skills))/'
 
 scoped=0
 for d in "$SKILLS"/*/; do
@@ -71,11 +75,18 @@ for d in "$SKILLS"/*/; do
     #    is what the skill picker reads, never a command to run);
     #  - the "Workspace root" section, which states the idiom and so has to
     #    quote the bare paths it is explaining.
+    #  - a table explicitly marked `<!-- skill-paths: patterns-not-commands -->`,
+    #    whose cells are path PATTERNS matched against a diff, not commands to
+    #    run (the marker covers the table rows that follow it).
     body="$(awk '
         NR == 1 && $0 == "---" { fm = 1; next }
         fm { if ($0 == "---") fm = 0; next }
         /^## Workspace root[[:space:]]*$/ { skip = 1; next }
         skip && /^## / { skip = 0 }
+        /skill-paths: patterns-not-commands/ { tbl = 1; next }
+        tbl && /^[[:space:]]*\|/ { next }
+        tbl && /^[[:space:]]*$/ { next }
+        tbl { tbl = 0 }
         !skip { print }
     ' "$f")"
 
@@ -88,12 +99,27 @@ for d in "$SKILLS"/*/; do
         head -n3 <<< "$hits" | sed 's/^/        /'
     fi
 
-    # A skill that uses $WS_ROOT must also say where it comes from.
+    # A skill that uses $WS_ROOT must also say where it comes from...
     if grep -q '\$WS_ROOT' "$f"; then
         if grep -q 'agent-workspace-root' "$f"; then
             pass "$name ($scope): \$WS_ROOT is resolved from ~/.claude/agent-workspace-root"
         else
             fail "$name ($scope): uses \$WS_ROOT but never says it comes from ~/.claude/agent-workspace-root"
+        fi
+
+        # ...and EVERY resolution must carry the `|| echo .` fallback. The
+        # user tier is optional (ADR-0016, and --check says so), so without
+        # the fallback $WS_ROOT is empty on a machine that never installed
+        # it and every command becomes `/.agent/scripts/...` -- a regression
+        # on the relative path this idiom replaced.
+        bare=$(grep -nF 'cat ~/.claude/agent-workspace-root' "$f" \
+               | grep -v '2>/dev/null || echo \.' || true)
+        if [[ -z "$bare" ]]; then
+            pass "$name ($scope): every \$WS_ROOT resolution carries the || echo . fallback"
+        else
+            n=$(grep -c . <<< "$bare")
+            fail "$name ($scope): $n bare \`cat\` of agent-workspace-root (no || echo . fallback):"
+            head -n3 <<< "$bare" | sed 's/^/        /'
         fi
     fi
 done

@@ -6,6 +6,33 @@ session_scope: project
 
 # Document Project
 
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
+
 ## Usage
 
 ```
@@ -26,7 +53,7 @@ reference) by reading the actual source code.
 
 **Cardinal rule**: No fact without reading the source. Every parameter name,
 interface name, type, and default value must come from the code, not
-assumptions. See `.agent/knowledge/documentation_verification.md`.
+assumptions. See `$WS_ROOT/.agent/knowledge/documentation_verification.md`.
 
 ## Steps
 
@@ -53,7 +80,7 @@ from the project manifest (`package.json`, `pyproject.toml`, `Cargo.toml`,
 
 ### 2. Extract facts from source
 
-Follow the command cookbook in `.agent/knowledge/documentation_verification.md`
+Follow the command cookbook in `$WS_ROOT/.agent/knowledge/documentation_verification.md`
 to grep for every:
 
 - **Configuration parameter**: environment variables, config file keys,
@@ -98,8 +125,8 @@ For Rust crates:
 
 ### 5. Generate component README
 
-Use the template at `.agent/templates/component_documentation.md` (or
-`.agent/templates/package_documentation.md` if available):
+Use the template at `$WS_ROOT/.agent/templates/component_documentation.md` (or
+`$WS_ROOT/.agent/templates/package_documentation.md` if available):
 
 - Fill in each section from the facts gathered in steps 1–3.
 - **Omit** sections that don't apply (no empty tables).
@@ -141,9 +168,9 @@ Run through the verification checklist:
 
 ## References
 
-- `.agent/knowledge/documentation_verification.md` — Verification workflow
+- `$WS_ROOT/.agent/knowledge/documentation_verification.md` — Verification workflow
   and command cookbook
-- `.agent/templates/component_documentation.md` — README template with
+- `$WS_ROOT/.agent/templates/component_documentation.md` — README template with
   verification checklist
 
 ## Guidelines

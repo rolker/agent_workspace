@@ -10,7 +10,7 @@ session_scope: both
 ## Workspace root
 
 This skill can run in a **project** session — a session started in a project
-checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
 those paths belong to the workspace, and the cwd is somewhere else entirely.
 
 Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
@@ -18,15 +18,21 @@ Resolve `$WS_ROOT` at the head of each command chain, because shell state does
 not persist between tool calls:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/<script>" ...
 ```
 
 `~/.claude/agent-workspace-root` is written by
 `.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
 variable and not `SessionStart` hook output — hook stdout is context text and
-never reaches a tool call's shell (ADR-0016). In a workspace session the file
-still holds the right path, so the same chain works in both.
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 Host orchestrator for one issue's review loop. `run-issue` itself never
 implements, reviews, or writes code — it enters the worktree, asks
@@ -100,7 +106,7 @@ create issue `<N>`'s worktree with `/start-task` semantics: `cd` into it, not
 a framework-native worktree-entry tool (same reasoning as `/start-task`:
 `dispatch_phase.sh`'s own worktree lookup and every persistence step below
 resolve relative to the worktree, and `_resolve_work_plans_dir.sh` refuses
-outside it — issue #147). Follow `.claude/skills/start-task/SKILL.md` steps
+outside it — issue #147). Follow `$WS_ROOT/.claude/skills/start-task/SKILL.md` steps
 1–4 with `--issue <N> --type <type>`. If step 1 there refuses (already in a
 worktree), stop and tell the user to exit first.
 
@@ -112,7 +118,7 @@ tool calls, so source the identity in the *same* chain as every
 not once at the start of the run:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 source $WS_ROOT/.agent/scripts/set_git_identity_env.sh "<agent name>" "<agent email>" "<model-id>" \
   && $WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [...]
 ```
@@ -134,7 +140,7 @@ user. Keep the PR number `<M>` for every `--pr <M>` call below.
 ### 3. Ask `next` what happens next
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--type <type>]
 ```
 
@@ -165,7 +171,7 @@ exits 1 on a file that doesn't exist yet, e.g. before `review-issue`'s
 first run, so guard it rather than calling the script unconditionally):
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
 BEFORE=0
 [[ -f "$PF" ]] && BEFORE=$(python3 $WS_ROOT/.agent/scripts/progress_read.py "$PF" --type "<entry-type>" \
@@ -182,7 +188,7 @@ false `OK`.
 then:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>] [--type <type>]
 ```
 
@@ -197,7 +203,7 @@ fetches its own inputs (issue/PR body via `gh`) — nothing is injected.
 After the sub-agent returns, check the exit contract:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/dispatch_phase.sh --check-exit --issue <N> --skill <phase> [--pr <M>] [--type <type>] --before "$BEFORE"
 ```
 
@@ -211,7 +217,7 @@ again.
 **The dispatched implement pass.** `action=implement` has no `SKILL.md` of
 its own — no `/implement` slash command exists, so `skill_task_line()`
 prints a literal instruction ("implement the plan at
-`.agent/work-plans/issue-<N>/plan.md` on this branch") and the handoff's
+`$WS_ROOT/.agent/work-plans/issue-<N>/plan.md` on this branch") and the handoff's
 `exit_contract=` names the entry shape outright. Paste that contract
 verbatim; the dispatched agent commits its own work (the host still owns
 every push, step 10) and appends:
@@ -369,7 +375,7 @@ the host surfaces the script's own error text at the merge checkpoint
 instead. For each such box, run:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
 $WS_ROOT/.agent/scripts/review_progress.sh findings --progress "$PF"   # <i> comes from here
 $WS_ROOT/.agent/scripts/review_progress.sh check --progress "$PF" --index <i> \
@@ -409,7 +415,7 @@ embedding the finding text verbatim — never "the four findings above" or
 the PR:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 git push -u origin "$(git branch --show-current)"
 $WS_ROOT/.agent/scripts/gh_create_pr.sh --title "<title>" --body-stdin <<'EOF'
 ## Decision summary
@@ -448,7 +454,7 @@ Before every `review-code --branch` dispatch (row 12, `--pr none`), check
 whether the branch is behind:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/check_branch_updates.sh
 ```
 
@@ -463,7 +469,7 @@ fix, row 22a/22b), wait for the **review sources** to be in before
 dispatching `triage-reviews`:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/fetch_pr_reviews.sh --pr <M>
 ```
 
