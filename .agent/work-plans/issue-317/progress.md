@@ -429,3 +429,13 @@ findings above are implementation-time refinements, not gates.
 - [ ] Step 3/4: decide how the rendered `AGENTS.md` sections present their relative script paths to a project session (preamble line or rewrite on render)
 - [ ] Branch-currency paragraph: drop the false "#314 claims ADR 0015" parenthetical (#314 only amends ADR-0014; `0015` is on `main` from the merged #318)
 - [ ] Record the `--type`-required wording lag in the PR description and PR 4's list
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 13:03 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed to implementation of plan revision 2 (45f3a16) with the three round-2 notes folded in: the hook's rendered workspace layer carries the workspace-root idiom (prefix line, or rewrite bare `.agent/scripts/` occurrences to the root-qualified form) so the AGENTS.md snippets work from a project checkout; delete the false ADR-number parenthetical in the branch-currency paragraph; record the AGENTS.md "`--type` is required" doc lag in the PR description and PR 4's list. Per the owner's orchestrator rule the implement pass is dispatched to a background agent.
