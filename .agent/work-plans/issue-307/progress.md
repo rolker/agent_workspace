@@ -194,3 +194,21 @@ suite ran green on all four commits. One deviation from a draft claim, caught
 before commit: the plan-task bullet initially also said `run_script_tests.sh`
 only picks up executable suites — false, it invokes `bash "$s"` (line 220) — so
 the bullet now cites only the pre-commit hook.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 08:22 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: `feature/issue-307` at `bfe8d35`
+**Base**: main
+**Depth**: Standard (reason: governance-touching — two skill docs, an ADR, and `dispatch_phase.sh`'s printed handoff contract)
+**Must-fix**: 2 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) Deferred-box section's stated consequence is wrong: `**After**: findings` + `**Decision**: merge` routes to `merge` unconditionally (`dispatch_phase.sh:503-505`, fixture "row 21"), so the following `next` never re-routes to `checkpoint:findings`; the real re-route is only reachable after a refused merge -> retriage writes a fresh `## Integrated Review` — `.claude/skills/run-issue/SKILL.md:255-261`
+- [ ] (must-fix) The `check --index <i>` snippet never says where `<i>` comes from (`review_progress.sh findings --progress <f>`; 0-based across ALL of the entry's checkboxes, not section-filtered), so a hand-counted index silently defers the wrong finding — `check` only verifies the line is an unchecked box — `.claude/skills/run-issue/SKILL.md:263`
+- [ ] (suggestion) `$PF` is reused from step 4's snippet even though this same skill states shell state does not persist between tool calls; inline the path or re-assign `PF=` in the same chain — `.claude/skills/run-issue/SKILL.md:263`
+- [ ] (suggestion) The ADR's handoff-contract list gains no `conventions=` bullet and no in-place pointer; the "this list is point-in-time" disclaimer sits ~110 lines below in References — `docs/decisions/0014-in-process-phase-handoff.md:55-72`
