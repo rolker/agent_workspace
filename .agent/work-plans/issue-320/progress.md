@@ -145,3 +145,22 @@ The plan is sound and correctly sequenced, and the bloat risk that motivated #31
 **Decision**: revise
 
 Revise with all six round-1 items folded in: the Cross-Model Reviews report section moves to Standard+Deep with the dispatch (not Deep-only); absent or empty ## Approach omits the plan-context section and a 200-line truncation is marked in the prompt (and the existing noprefix test's bookkeeping plan.md must still stay out); Gemini Tool Use footer reworded to "excluded from the diff"; ADR-0015 addendum as a navigational pointer; named test functions with the fixture plan.md in the resolved WORK_PLANS_DIR; the AGENTS.md cross_model_review.sh row update is approved as part of this PR. Implementation still gated on #313 merging.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 13:17 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-320/plan.md` at `b248f3c`
+
+Revision folding in all six round-1 `## Plan Review` findings (owner
+checkpoint: revise): Cross-Model Reviews report section now moves to
+Standard+Deep together with dispatch, not left Deep-only; plan-context
+section is omitted (not emptied) when plan.md or its `## Approach` is
+absent/empty, with `test_branch_mode_filter_survives_noprefix`'s existing
+no-Approach fixture confirmed to still pass; truncation past 200 lines
+now carries a visible in-prompt marker; gemini's Tool Use footer reworded
+to "excluded from the diff"; ADR-0015 addendum reworded as a navigational
+pointer rather than "scoped exception"; five named test functions with
+fixtures in the resolved WORK_PLANS_DIR, added to the suite's run list;
+AGENTS.md's cross_model_review.sh row update added (owner-approved).
+#313-merge-first gate unchanged.
