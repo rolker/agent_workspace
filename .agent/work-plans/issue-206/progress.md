@@ -252,3 +252,28 @@ Proceed to implementation with the round-2 suggestions folded in: overlap-based 
 - ADR-0015 (docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md); review-code SKILL.md dispatch step rewritten to one --agents call keyed on EXIT=; agent_wait_patterns.md, AGENTS.md script row, principles_review_guide.md ADR table updated.
 - Tests: tmux test retired, --sync sweep, parallel suite (all succeed, partial failure, timeout, overlap concurrency, missing CLI, none usable, hygiene, shared-diff failure, SIGTERM cleanup, single-agent output unchanged): 163 assertions, 23 runner suites green.
 - Three live Gemini+Codex parallel runs of this branch; their findings fixed in commits 5d45484 and 959dc79. Commits: 5e3d919, 5d45484, 959dc79, plus the plan sync.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 11:46 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-206 at `c00b2c7`
+**Base**: main
+**Depth**: Deep (reason: enforcement + governance files — review dispatch script, its skill, a new ADR; cross-model: run by host during implementation, findings incorporated)
+**Must-fix**: 2 | **Suggestions**: 9
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) Stale Gemini-only naming for the cross-model specialist: Deep-tier list, 5e heading, graceful-degradation guideline contradict the new `--agents` single-call model — `.claude/skills/review-code/SKILL.md:54,212,705`
+- [ ] (must-fix) gemini has no outer bound (`--print-timeout` only covers a turn already running); round-2 plan-review finding 5 unchecked and its recorded rebuttal does not apply to a backstop set *above* `AGY_PRINT_TIMEOUT`; `AGY_PRINT_TIMEOUT` is also hardcoded, so no test can exercise it — `.agent/scripts/cross_model_review.sh:107,133`
+- [ ] (suggestion) Header overclaims that findings files "always end with" a complete/failed marker — the abort and interrupt paths do not — `.agent/scripts/cross_model_review.sh:63`
+- [ ] (suggestion) Comment says pipefail reports "the first failing stage's" status; bash reports the last non-zero — `.agent/scripts/cross_model_review.sh:654`
+- [ ] (suggestion) INT traps in background children are dead code (SIGINT ignored on entry, cannot be trapped); comments imply coverage that only TERM provides — `.agent/scripts/cross_model_review.sh:767`, `.agent/scripts/_agy_review.sh:97`
+- [ ] (suggestion) Generic mock ignores argv, so the per-agent invocation contract (`codex exec` vs `-p`) is untested — `.agent/scripts/tests/test_cross_model_review.sh:1265`
+- [ ] (suggestion) No regression guard that gemini is exempt from `AGENT_TIMEOUT` (ADR-0015 §3) — `.agent/scripts/tests/test_cross_model_review.sh:1368`
+- [ ] (suggestion) `AGENT_TIMEOUT`/`AGENT_KILL_AFTER` unvalidated (bad value = opaque exit 125); `--pr` never shape-checked while `--issue`/`--repo` are — `.agent/scripts/cross_model_review.sh:115`
+- [ ] (suggestion) Wall-clock 5.5s assertion is the one load-sensitive check; interval overlap already proves concurrency — `.agent/scripts/tests/test_cross_model_review.sh:1414`
+- [ ] (suggestion) Plan still names the ADR `0015-parallel-sync-is-the-default-...`; it landed as `...-is-the-only-...` — `.agent/work-plans/issue-206/plan.md:29`
+- [ ] (suggestion) Exit-1 description says each unavailable agent is named on stderr; not true for the missing-`gh` branch — `.claude/skills/review-code/SKILL.md:377`
