@@ -200,3 +200,20 @@ plus item 4 added to the issue by owner decision mid-pass.
 Tests: `test_dispatch_phase.sh` 90 passed / 0 failed;
 `run_script_tests.sh` all 23 suites passed in 54s. Not pushed — the host
 owns every push.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 12:28 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-314 at `6fd4249`
+**Base**: main
+**Depth**: Deep (reason: 483 changed lines outside work-plans across 6 files, incl. the enforcement script `dispatch_phase.sh`)
+**Must-fix**: 2 | **Suggestions**: 1
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) `BOOKKEEPING_RE` is broader than the merge-gate rule it cites — every path under `.agent/work-plans/` vs merge_pr.sh's exact `issue-<N>/progress.md`, `ROADMAP.md`, `docs/ROADMAP.md` — so `next` can skip the PR-side re-review on a head the merge gate then calls stale — `.agent/scripts/dispatch_phase.sh:220`
+- [ ] (must-fix) the pre-merge CI re-check dispatches `address-findings` off the decision table and names no entry recording the CI failure, so a resume re-derives `checkpoint:merge` and walks back into the failing merge — `.claude/skills/run-issue/SKILL.md:462-472`
+- [ ] (suggestion) the dispatched implement pass's exit contract requires the `**PR**`/`**Branch**` correlation line, but `--check-exit` only counts entries and reads `**Status**`, so a missing correlation line still reports `status=OK` — `.agent/scripts/dispatch_phase.sh:306` vs `:365-385`
