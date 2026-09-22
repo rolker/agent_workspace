@@ -204,6 +204,29 @@ validate_duration_knob GEMINI_BACKSTOP_MARGIN "$GEMINI_BACKSTOP_MARGIN" false fa
 # validator above refuses it.
 GEMINI_BACKSTOP=$(( $(duration_to_seconds "$AGY_PRINT_TIMEOUT") + $(duration_to_seconds "$GEMINI_BACKSTOP_MARGIN") ))
 
+# How long an interrupted run waits for its agent jobs before dropping
+# the shared temp root (cleanup_jobs). It has to outlast the escalation a
+# helper legitimately spends killing a CLI that ignored SIGTERM
+# (REVIEW_KILL_ESCALATION, read here only to size this budget — the
+# helpers own the knob), plus a margin for that helper to exit. A
+# hard-coded value (it was 8s) silently breaks as soon as the escalation
+# is raised above it (#313 round 3), so the default is derived; an
+# explicit CLEANUP_REAP_TIMEOUT is honoured but must clear the same bar.
+REVIEW_KILL_ESCALATION="${REVIEW_KILL_ESCALATION:-5}"
+validate_duration_knob REVIEW_KILL_ESCALATION "$REVIEW_KILL_ESCALATION" true false ""
+CLEANUP_REAP_MARGIN="${CLEANUP_REAP_MARGIN:-3}"
+validate_duration_knob CLEANUP_REAP_MARGIN "$CLEANUP_REAP_MARGIN" false false \
+    "the parent needs a moment after a helper's own SIGKILL escalation to see that helper exit."
+ESCALATION_SECONDS=$(duration_to_seconds "$REVIEW_KILL_ESCALATION")
+CLEANUP_REAP_TIMEOUT="${CLEANUP_REAP_TIMEOUT:-$(( ESCALATION_SECONDS + $(duration_to_seconds "$CLEANUP_REAP_MARGIN") ))}"
+validate_duration_knob CLEANUP_REAP_TIMEOUT "$CLEANUP_REAP_TIMEOUT" false false \
+    "a zero reap budget would drop the shared temp root while the helpers are still writing into it."
+CLEANUP_REAP_SECONDS=$(duration_to_seconds "$CLEANUP_REAP_TIMEOUT")
+if [[ "$CLEANUP_REAP_SECONDS" -le "$ESCALATION_SECONDS" ]]; then
+    echo "ERROR: CLEANUP_REAP_TIMEOUT (${CLEANUP_REAP_TIMEOUT}) must exceed REVIEW_KILL_ESCALATION (${REVIEW_KILL_ESCALATION}): the shared temp root would be removed while a helper is still escalating to SIGKILL on a CLI that is writing into it." >&2
+    exit 2
+fi
+
 # Helpers that own the agent invocations. A missing helper makes the
 # agents it serves unavailable (those agents fail; others still run).
 SCRIPT_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -714,12 +737,30 @@ AGENT_TMP_ROOT=$(mktemp -d -t "cross-model-review-tmp.XXXXXX")
 # — otherwise an interrupted run would leave the CLIs running for up to
 # AGENT_TIMEOUT, burning quota on an abandoned review.
 declare -A AGENT_PID=()
-# Seconds to wait for the signalled jobs before dropping the shared temp
-# root anyway. Must exceed a helper's own SIGKILL escalation
-# (REVIEW_KILL_ESCALATION, default 5) plus a moment to exit.
-CLEANUP_REAP_TIMEOUT="${CLEANUP_REAP_TIMEOUT:-8}"
+
+# Is this job over? A dead-but-unreaped child still answers `kill -0`,
+# so that alone would report every finished job as alive and burn the
+# whole reap budget. Two liveness reads, in order of availability:
+#   * bash's own job table — `jobs -pr` lists only jobs still RUNNING, so
+#     a job absent from it has exited whether or not it was reaped. No
+#     /proc, works on macOS/BSD and in stripped containers.
+#   * /proc's process state (Z = exited, not yet reaped) as a
+#     cross-check where /proc exists.
+job_finished() {
+    local jpid="$1" state running
+    kill -0 "$jpid" 2>/dev/null || return 0
+    running=$(jobs -pr 2>/dev/null || true)
+    if [[ -n "$running" ]]; then
+        grep -qx -- "$jpid" <<< "$running" || return 0
+    elif [[ -r "/proc/${jpid}/stat" ]]; then
+        state=$(awk '{print $3}' "/proc/${jpid}/stat" 2>/dev/null || echo "")
+        [[ "$state" == "Z" ]] && return 0
+    fi
+    return 1
+}
+
 cleanup_jobs() {
-    local pid waited=0
+    local pid waited=0 finished
     for pid in "${AGENT_PID[@]}"; do
         kill "$pid" 2>/dev/null || true
     done
@@ -727,24 +768,31 @@ cleanup_jobs() {
     # legitimately still be waiting out its own escalation window for a
     # CLI that ignored SIGTERM, and that CLI is still writing into a temp
     # dir under this root: removing it here would pull the ground out
-    # from under a live process. Bounded, so a wedged job cannot hang the
-    # exit path — after the bound the root goes anyway, which is the
-    # pre-#313 behaviour and still better than never cleaning up.
-    # A dead-but-unreaped child still answers `kill -0`, so liveness is
-    # read from /proc's process state (Z = already exited) with `kill -0`
-    # as the fallback where /proc is unavailable.
-    job_finished() {
-        local jpid="$1" state
-        kill -0 "$jpid" 2>/dev/null || return 0
-        state=$(awk '{print $3}' "/proc/${jpid}/stat" 2>/dev/null || echo "")
-        [[ "$state" == "Z" ]]
-    }
+    # from under a live process.
     for pid in "${AGENT_PID[@]}"; do
-        while ! job_finished "$pid" && (( waited < CLEANUP_REAP_TIMEOUT * 10 )); do
+        finished=false
+        while (( waited < CLEANUP_REAP_SECONDS * 10 )); do
+            if job_finished "$pid"; then
+                finished=true
+                break
+            fi
             sleep 0.1
             waited=$((waited + 1))
         done
-        wait "$pid" 2>/dev/null || true
+        if job_finished "$pid"; then
+            finished=true
+        fi
+        if [[ "$finished" == true ]]; then
+            # Only now: `wait` on a job that is still running would block
+            # past the bound and hang the exit path forever (#313 round 3).
+            wait "$pid" 2>/dev/null || true
+        else
+            # Budget spent and the job is still alive. SIGKILL it and do
+            # NOT wait: cleaning up beats blocking, and the job's CLI was
+            # already signalled twice over by this point.
+            echo "WARNING: agent job ${pid} did not finish within CLEANUP_REAP_TIMEOUT=${CLEANUP_REAP_TIMEOUT}s; killing it and removing the shared temp root anyway" >&2
+            kill -9 "$pid" 2>/dev/null || true
+        fi
     done
     rm -f "$SHARED_PROMPT"
     rm -rf "$AGENT_TMP_ROOT"

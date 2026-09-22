@@ -293,6 +293,30 @@ is stated in the helper's header.
     names BOTH `-p ""` and `--available-tools=''` as pending one live
     confirmation, with the fallback for each.
 
+### Round 3 (third live run: both reviewers COMPLETED, codex EXIT=0)
+
+The validation rule holds — the remaining must-fix is the round-2
+cleanup code itself, converged on by both reviewers:
+
+23. **The bounded reap no longer becomes an unbounded wait.** After the
+    poll expired, `cleanup_jobs` still called `wait "$pid"`, so a wedged
+    job blocked the exit path forever and `AGENT_TMP_ROOT` was never
+    removed — a worse failure than the one round 2 fixed. Now `wait` runs
+    only when the job is confirmed finished; otherwise the job is
+    SIGKILLed, a warning names it, and cleanup proceeds.
+24. **The reap budget is derived, not hard-coded.** `CLEANUP_REAP_TIMEOUT`
+    defaults to `REVIEW_KILL_ESCALATION + CLEANUP_REAP_MARGIN` (3s) and
+    an explicit value is refused at startup (exit 2) unless it exceeds
+    the escalation. The old fixed 8s silently broke for any escalation
+    above it.
+25. **Liveness no longer depends on `/proc`.** `job_finished` reads
+    bash's own job table (`jobs -pr` lists only RUNNING jobs, so an
+    exited-but-unreaped child is correctly reported finished), with the
+    `/proc` state check as a cross-check where it exists. Without this,
+    every cleanup on macOS/BSD or in a stripped container burned the
+    whole budget. Tested with `awk` stubbed out to force the non-`/proc`
+    path.
+
 ## Estimated Scope
 
 Single PR. Closes #313 and #212. Does not touch #320 (sequenced after).

@@ -2224,6 +2224,132 @@ test_cleanup_reaps_jobs_before_dropping_tmp_root() {
     teardown
 }
 
+test_cleanup_survives_a_wedged_job() {
+    echo "TEST: a wedged job cannot hang the exit path; the temp root is still removed (#313 round 3)"
+    setup
+    make_mock_agent codex
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
+    local scratch="${TMPDIR_BASE}/scratch"; mkdir -p "$scratch"
+    # A WEDGED HELPER: a copy of the scripts dir whose _cli_review.sh
+    # ignores every signal. Its job shell therefore never returns, which
+    # is the only way a correctly-configured budget can expire — and the
+    # case where cleanup used to `wait` unconditionally and hang forever.
+    local fake_dir="${TMPDIR_BASE}/wedged"; mkdir -p "$fake_dir"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'WEDGED_EOF'
+#!/usr/bin/env bash
+# Stub helper that cannot be signalled. Self-limits so the suite never
+# leaves it behind.
+trap '' INT TERM HUP
+echo "$$" > "${WEDGE_PID_FILE}"
+: > "$4"
+for ((i = 0; i < 200; i++)); do sleep 0.1; done
+WEDGED_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    cd "${MOCK_REPO}"
+    local t0; t0=$(date +%s)
+    WEDGE_PID_FILE="${times}/wedge.pid" \
+        AGENT_KILL_AFTER=90 REVIEW_KILL_ESCALATION=1 CLEANUP_REAP_TIMEOUT=2 \
+        TMPDIR="$scratch" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex < /dev/null > /dev/null 2>&1 &
+    local script_pid=$! i
+    for ((i = 0; i < 80; i++)); do
+        [[ -f "${times}/wedge.pid" ]] && break
+        sleep 0.1
+    done
+    kill -TERM "$script_pid" 2>/dev/null || true
+    local ec=0; wait "$script_pid" || ec=$?
+    local elapsed=$(( $(date +%s) - t0 ))
+    assert_exit_code "interrupted run still exits 143" "143" "$ec"
+    if [[ "$elapsed" -lt 20 ]]; then
+        echo "  PASS: exit path returned in ${elapsed}s, not blocked on the wedged job"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: exit path took ${elapsed}s — the wedged job blocked it"; FAIL=$((FAIL + 1))
+    fi
+    assert_eq "the shared temp root was removed anyway" "0" "$(ls -A "$scratch" | wc -l)"
+    # Tidy up the deliberately unkillable stub (SIGKILL is not trappable).
+    local pid; pid=$(cat "${times}/wedge.pid" 2>/dev/null || echo "")
+    [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
+    teardown
+}
+
+test_cleanup_budget_follows_the_escalation() {
+    echo "TEST: the reap budget is derived from REVIEW_KILL_ESCALATION, not hard-coded (#313 round 3)"
+    setup
+    make_mock_agent codex
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
+    local scratch="${TMPDIR_BASE}/scratch"; mkdir -p "$scratch"
+    cd "${MOCK_REPO}"
+    # An escalation of 10s is past the old hard-coded 8s budget: with
+    # that bug the parent gave up and dropped the temp root while the
+    # helper was still escalating. Here the CLI ignores TERM for 4s of
+    # real work, so the helper's SIGKILL (at 10s) is never reached —
+    # what matters is that the parent waits for the helper rather than
+    # timing out at 8s.
+    local t0; t0=$(date +%s)
+    MOCK_CODEX_SLEEP=4 MOCK_TIMES_DIR="$times" \
+        AGENT_KILL_AFTER=20 REVIEW_KILL_ESCALATION=10 \
+        TMPDIR="$scratch" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex < /dev/null > /dev/null 2>&1 &
+    local script_pid=$! i
+    for ((i = 0; i < 80; i++)); do
+        [[ -f "$times/codex.pid" ]] && break
+        sleep 0.1
+    done
+    kill -TERM "$script_pid" 2>/dev/null || true
+    local ec=0; wait "$script_pid" || ec=$?
+    local elapsed=$(( $(date +%s) - t0 ))
+    assert_exit_code "interrupted run exits 143" "143" "$ec"
+    assert_eq "temp root removed after the helper finished" "0" "$(ls -A "$scratch" | wc -l)"
+    if [[ "$elapsed" -lt 20 ]]; then
+        echo "  PASS: cleanup completed in ${elapsed}s with a 10s escalation"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: cleanup took ${elapsed}s"; FAIL=$((FAIL + 1))
+    fi
+    # A budget that does not clear the escalation is refused up front.
+    local stderr ec2=0
+    stderr=$(CLEANUP_REAP_TIMEOUT=3 REVIEW_KILL_ESCALATION=10 PATH="${MOCK_BIN}:${PATH}" \
+        WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex 2>&1 >/dev/null) || ec2=$?
+    assert_exit_code "a budget below the escalation exits 2" "2" "$ec2"
+    assert_contains "message names both knobs" \
+        "CLEANUP_REAP_TIMEOUT \(3\) must exceed REVIEW_KILL_ESCALATION \(10\)" "$stderr"
+    teardown
+}
+
+test_job_finished_without_proc() {
+    echo "TEST: job liveness does not depend on /proc (#313 round 3)"
+    setup
+    # job_finished is read straight out of the script and exercised with
+    # /proc reads forced to fail, the way it behaves on macOS/BSD or in a
+    # container without /proc. Bash's own job table must carry it: a
+    # finished-but-unreaped child (still answering `kill -0`) has to be
+    # reported as finished, or every cleanup burns the whole budget.
+    local probe="${TMPDIR_BASE}/probe.sh"
+    {
+        echo '#!/usr/bin/env bash'
+        echo 'set -uo pipefail'
+        # Force the /proc branch to be unavailable.
+        echo 'awk() { return 1; }'
+        sed -n '/^job_finished() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
+        cat << 'PROBE_EOF'
+sleep 30 &
+live=$!
+job_finished "$live" && echo "RUNNING-REPORTED-FINISHED" || echo "running: alive"
+sleep 0.2 &
+dead=$!
+sleep 1   # the child has exited but has NOT been waited on yet
+if job_finished "$dead"; then echo "dead: finished"; else echo "DEAD-REPORTED-ALIVE"; fi
+kill "$live" 2>/dev/null; wait 2>/dev/null
+PROBE_EOF
+    } > "$probe"
+    local output; output=$(bash "$probe" 2>&1)
+    assert_contains "a running job is reported as running" "running: alive" "$output"
+    assert_contains "an exited-but-unreaped job is reported as finished" "dead: finished" "$output"
+    assert_not_contains "no misreport of a running job" "RUNNING-REPORTED-FINISHED" "$output"
+    assert_not_contains "no misreport of a dead job" "DEAD-REPORTED-ALIVE" "$output"
+    teardown
+}
+
 test_cli_helper_escalates_to_sigkill() {
     echo "TEST: _cli_review.sh waits for a TERM-ignoring CLI and escalates to SIGKILL (#313)"
     setup
@@ -2520,6 +2646,9 @@ test_cli_claude_non_object_json_is_a_reported_failure
 test_cli_helper_returns_promptly_on_term
 test_claude_unavailable_without_jq
 test_cleanup_reaps_jobs_before_dropping_tmp_root
+test_cleanup_survives_a_wedged_job
+test_cleanup_budget_follows_the_escalation
+test_job_finished_without_proc
 test_cli_codex_empty_response_excerpts_transcript
 test_cli_helper_escalates_to_sigkill
 test_agy_helper_escalates_to_sigkill
