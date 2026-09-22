@@ -49,6 +49,9 @@ setup() {
     #   MOCK_AGY_EXIT=<n>   exit <n> after printing "boom" on stderr
     #   MOCK_AGY_ERROR=<m>  status ERROR with an object-valued `error`
     #                       whose message is <m>, exit 0 (API failure)
+    #   MOCK_AGY_DENY_PARTIAL=1  normal response PLUS one denied action
+    # Every run also prints a non-JSON banner line on stdout first, as a
+    # real CLI may (update notice), so the parser must skip it.
     cat > "${MOCK_BIN}/agy" << 'MOCK_EOF'
 #!/usr/bin/env bash
 if [[ -n "${MOCK_AGY_LOG:-}" ]]; then
@@ -66,6 +69,7 @@ if [[ "$(printf '%s\n' "$input" | wc -l)" -ne 1 ]]; then
     echo "mock agy: stdin is not a single NDJSON line" >&2
     exit 9
 fi
+echo 'agy: a newer version is available (mock banner, not JSON)'
 echo '{"event":"init","init":{"tools":[]}}'
 if [[ -n "${MOCK_AGY_DENY:-}" ]]; then
     echo 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.' >&2
@@ -84,6 +88,11 @@ fi
 # Echo the prompt back as the response. Streamed, never a shell variable
 # or argv: the whole point of the stdin contract is prompts larger than
 # the kernel's per-argument limit, and the mock must not reintroduce it.
+if [[ -n "${MOCK_AGY_DENY_PARTIAL:-}" ]]; then
+    printf '%s\n' "$input" | jq -r 'select(.event == "user") | .message.content' \
+        | jq -c -Rs '{event:"result",result:{status:"SUCCESS",response:.,denied_actions:[{"action":"command","display_name":"RunCommand"}]}}'
+    exit 0
+fi
 printf '%s\n' "$input" | jq -r 'select(.event == "user") | .message.content' \
     | jq -c -Rs '{event:"result",result:{status:"SUCCESS",response:.}}'
 MOCK_EOF
@@ -972,6 +981,64 @@ test_agy_timeout_is_failure() {
     teardown
 }
 
+test_agy_partial_denial_is_noted() {
+    echo "TEST: a response with a denied action completes but carries a note"
+    setup
+
+    export MOCK_AGY_DENY_PARTIAL=1
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    unset MOCK_AGY_DENY_PARTIAL
+
+    assert_exit_code "partial-denial review completes (exit 0)" "0" "$exit_code"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "response is kept" "Adversarial Code Review" "$content"
+    assert_contains "denial note appended" "1 tool action\(s\) were denied in headless mode \(RunCommand\)" "$content"
+    assert_contains "findings file has completion marker" "Review complete" "$content"
+
+    teardown
+}
+
+test_diff_fetch_failure_is_marked() {
+    echo "TEST: a failing diff fetch writes the error marker and exits 3 (not a bare set -e abort)"
+    setup
+
+    # gh: PR metadata fine, `gh pr diff` fails after emitting one line.
+    cat > "${MOCK_BIN}/gh" << 'GH_EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "pr" && "$2" == "view" ]]; then
+    shift 2; shift
+    [[ "${1:-}" == "-R" ]] && shift 2
+    case "$2" in
+        body) echo "Closes #42" ;;
+        title) echo "Test PR" ;;
+        url) echo "https://github.com/test/repo/pull/99" ;;
+    esac
+    exit 0
+elif [[ "$1" == "pr" && "$2" == "diff" ]]; then
+    echo "diff --git a/file.txt b/file.txt"
+    echo "gh: connection reset" >&2
+    exit 1
+fi
+exit 0
+GH_EOF
+    chmod +x "${MOCK_BIN}/gh"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0 stderr
+    stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --sync < /dev/null 2>&1 >/dev/null) || exit_code=$?
+
+    assert_exit_code "failed diff fetch exits 3" "3" "$exit_code"
+    assert_contains "error message names the diff retrieval" "Could not retrieve diff" "$stderr"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}" 2>/dev/null || echo "MISSING")
+    assert_contains "findings file carries the error marker" "Review error: failed to retrieve diff" "$content"
+
+    teardown
+}
+
 test_agy_api_error_message_kept() {
     echo "TEST: a non-SUCCESS result keeps agy's error message, even as an object (#288)"
     setup
@@ -1259,6 +1326,8 @@ test_agy_stdin_invocation
 test_agy_large_prompt
 test_agy_denial_is_failure
 test_agy_timeout_is_failure
+test_agy_partial_denial_is_noted
+test_diff_fetch_failure_is_marked
 test_agy_api_error_message_kept
 test_agy_findings_truncated
 test_agy_no_temp_leak

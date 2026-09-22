@@ -125,10 +125,17 @@ stderr_excerpt() {
 }
 
 # The last result event wins (stream-json emits exactly one per turn).
-RESULT_JSON=$(jq -c 'select(.event == "result") | .result' "$STREAM_FILE" 2>/dev/null | tail -n 1 || true)
+# Read line-wise with fromjson? so a stray non-JSON stdout line (update
+# banner, notice) is skipped instead of aborting the whole parse.
+RESULT_JSON=$(jq -R -c 'fromjson? | select(.event == "result") | .result' "$STREAM_FILE" 2>/dev/null | tail -n 1 || true)
 
 if [[ "$AGY_EXIT" -ne 0 ]]; then
     fail "agy exited ${AGY_EXIT}$(stderr_excerpt)"
+fi
+# Timeout before the result-event check: an expiry can truncate the
+# stream, and "print timeout" is the right reason then, not "no result".
+if grep -q 'print timeout after' "$STDERR_FILE" 2>/dev/null; then
+    fail "print timeout (${PRINT_TIMEOUT}) expired with the turn in progress; partial output discarded$(stderr_excerpt)"
 fi
 if [[ -z "$RESULT_JSON" ]]; then
     fail "agy emitted no result event$(stderr_excerpt)"
@@ -144,9 +151,6 @@ ERROR_MSG=$(jq -r '(.error // "") | tostring' <<< "$RESULT_JSON")
 DENIED=$(jq -r '(.denied_actions // []) | map(.display_name // .action) | join(", ")' <<< "$RESULT_JSON")
 DENIED_COUNT=$(jq -r '(.denied_actions // []) | length' <<< "$RESULT_JSON")
 
-if grep -q 'print timeout after' "$STDERR_FILE" 2>/dev/null; then
-    fail "print timeout (${PRINT_TIMEOUT}) expired with the turn in progress; partial output discarded$(stderr_excerpt)"
-fi
 if [[ "$STATUS" != "SUCCESS" ]]; then
     fail "result status ${STATUS}${ERROR_MSG:+: ${ERROR_MSG}}$(stderr_excerpt)"
 fi

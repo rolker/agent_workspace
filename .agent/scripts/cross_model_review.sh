@@ -73,6 +73,10 @@ AGY_PRINT_TIMEOUT="30m"
 # Helper that owns the gemini invocation (both modes). Resolved once so
 # the tmux command string carries an absolute path.
 AGY_REVIEW_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_agy_review.sh"
+# Checked here rather than at invocation so a missing helper is a
+# dependency error (exit 1) up front, not a failed review later.
+AGY_REVIEW_HELPER_MISSING=false
+[[ -x "$AGY_REVIEW_HELPER" ]] || AGY_REVIEW_HELPER_MISSING=true
 
 # Build the shell command string to invoke an agent.
 # Args: agent_key, bin_path, prompt_file, findings_file
@@ -278,6 +282,12 @@ if [[ "$FORCE_SYNC" == true ]]; then
 elif ! command -v tmux &>/dev/null; then
     echo "INFO: tmux not available — falling back to sync mode" >&2
     USE_SYNC=true
+fi
+
+# The gemini agent needs its helper alongside this script.
+if [[ "$TARGET_AGENT" == "gemini" && "$AGY_REVIEW_HELPER_MISSING" == true ]]; then
+    echo "ERROR: ${AGY_REVIEW_HELPER} is missing or not executable — gemini review unavailable" >&2
+    exit 1
 fi
 
 # Find target agent CLI — check PATH first, then common install locations
@@ -541,23 +551,23 @@ filter_work_plans_diff() {
 
 # Stream diff into the prompt file through the work-plans filter. Branch
 # mode uses local `git diff <base>...HEAD`; PR mode uses `gh pr diff <N>`.
-# Both PIPESTATUS entries are checked: a failed gh/git call must not be
-# masked by the filter succeeding on empty input, and a filter that dies
-# mid-stream must not leave a truncated diff looking complete.
+# The pipeline sits inside `if !` so `set -e` does not abort the script
+# before the error branch runs; with `pipefail` the tested status is the
+# first failing stage's, so a failed gh/git call is not masked by the
+# filter succeeding on empty input, and a filter dying mid-stream cannot
+# leave a truncated diff looking complete.
 printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
 DIFF_START_LINE=$(wc -l < "$PROMPT_FILE")
 if [[ "$BRANCH_MODE" == true ]]; then
     # Explicit a/ b/ prefixes so a diff.noprefix / diff.mnemonicPrefix
     # config cannot defeat the work-plans filter.
-    git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"
-    if [[ "${PIPESTATUS[0]}" -ne 0 || "${PIPESTATUS[1]}" -ne 0 ]]; then
+    if ! git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"; then
         echo "ERROR: Could not produce diff for ${BRANCH_NAME} against ${BASE_REF}" >&2
         echo '--- Review error: failed to produce branch diff ---' > "$FINDINGS_FILE"
         exit 3
     fi
 else
-    gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"
-    if [[ "${PIPESTATUS[0]}" -ne 0 || "${PIPESTATUS[1]}" -ne 0 ]]; then
+    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"; then
         echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
         echo '--- Review error: failed to retrieve diff ---' > "$FINDINGS_FILE"
         exit 3
@@ -617,8 +627,10 @@ if [[ "$TARGET_AGENT" == "gemini" ]]; then
 
 ## Tool Use
 
-The diff above is complete. You may read files in the repository for
-surrounding context. Do NOT run shell commands: this is a headless session,
+The diff above is the complete set of code changes under review; files
+under `.agent/work-plans/` (plan and progress bookkeeping) are deliberately
+excluded. You may read files in the repository for surrounding context.
+Do NOT run shell commands: this is a headless session,
 command execution is denied without a prompt, and a denied command can end
 the review with no output.
 PROMPT_TOOL_USE
