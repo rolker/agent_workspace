@@ -102,3 +102,11 @@ each root) are already merged, so PR 3 builds on a landed foundation.
 **Decision**: proceed
 
 Proceed to plan-task with the issue-review actions folded in: run-issue, review-issue and address-findings classified for project sessions (session_scope both) and covered by the curated-skill symlink step; the provisional ADR "session roots and the user tier" drafted in this PR; the acceptance scope (full /run-issue loop from ~/src/gz4d through the merge checkpoint) recorded against the parent plan's PR-sequence table.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 13:05 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-317/plan.md` at `beea1cb`
+
+Minimal PR-3 user-tier session layer: registry-gated SessionStart hook rendering both layers, registry_require_root guard on promoted scripts, session_scope frontmatter (with run-issue/review-issue/address-findings folded in as "both"), cwd-derived --type/--project, and the new provisional ADR-0015 "session roots and the user tier" drafted in this PR. Acceptance test is the full /run-issue loop from ~/src/gz4d through the merge checkpoint, per the owner's issue-review checkpoint. Notes the branch is 13 commits behind main with two in-flight PRs (#319, #316/#318) touching dispatch_phase.sh/run-issue — merge required before implementation and again before final review.
