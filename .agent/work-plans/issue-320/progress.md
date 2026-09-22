@@ -338,3 +338,30 @@ No real agy/codex/claude/copilot prompt was run.
 plan.md's `## Implementation Notes` now records both new rules — fence
 balancing after the cut, and no `printf | head` under `pipefail` — so a
 later reader sees them as decisions rather than incidental code.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 14:31 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-320 at `ef59ceb`
+**Base**: feature/issue-313 (reviewing #320's own commits only; #313 is in its own loop)
+**Depth**: Standard (reason: governance + enforcement files plus the shared-prompt builder)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — no must-fix findings; round-1 items all verified fixed at df3723b
+
+### Findings
+- [ ] No issues found. LGTM.
+
+### Round-1 items verified (df3723b)
+- [x] (must-fix) Pipe replaced by here-strings at `cross_model_review.sh:855-861` — `wc -l <<<` and `head -n <<<`; `test_plan_context_large_approach` drives a ~400 KB Approach and asserts exit 0, which the old `printf | head` could not survive under `pipefail`
+- [x] (must-fix) Fence toggles counted over the already-cut body (`cross_model_review.sh:869-884`), matching closer emitted before the truncation marker; `test_plan_context_fence_balanced` covers a complete fence and one straddling the 200-line cut, asserting an even fence count and an unswallowed `## Output Format`
+- [x] (suggestion) Extractor now stops at `^# `, `^## ` or `^---`; the comment states the one-sided guarantee it keeps (possibly shorter, never longer, never a later section) — `cross_model_review.sh:838-848`
+- [x] (suggestion) Three new registered tests, including the H1 and thematic-break cases
+- [x] (suggestion) plan.md assertion count corrected to 379 and marked a snapshot; both rules recorded in Implementation Notes
+
+### Verified
+- `test_cross_model_review.sh`: 379 passed, 0 failed
+- `run_script_tests.sh`: all 23 suites passed in 90s
+- Diff since round 1 touches only the script, its tests, plan.md and progress.md — no #313 files
