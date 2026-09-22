@@ -3,7 +3,8 @@
 ## Issue
 
 https://github.com/rolker/agent_workspace/issues/288 (also closes
-https://github.com/rolker/agent_workspace/issues/274 — same code path, one fix)
+https://github.com/rolker/agent_workspace/issues/274 — same code path, one fix — and
+https://github.com/rolker/agent_workspace/issues/312, the prompt-trimming half of #274, folded in by owner decision)
 
 ## Context
 
@@ -139,18 +140,22 @@ Verified against agy 1.2.8 (2026-09-22):
 5. **Docs**: `AGENTS.md` script table row for `_agy_review.sh`;
    `review-code` SKILL.md "Collecting findings": a `--- Review failed ---`
    file now carries the reason on the lines above the marker.
-6. **Deferred to #312**: #274 also suggested trimming
-   `.agent/work-plans/**` out of the embedded diff. Stdin removes the size
-   limit, and the plan/progress files are part of the PR under review, so
-   whether to hide them from reviewers is a separate scope decision, now
-   tracked in #312 so closing #274 here does not lose it.
+6. **#312 folded in (owner decision 2026-09-22)**: strip `.agent/work-plans/**`
+   file sections from the embedded diff in both PR and branch mode. A small
+   awk filter over the unified diff (`diff --git a/<path> b/<path>` headers)
+   drops those sections; `git diff` pathspecs alone would only cover branch
+   mode. If nothing remains after filtering, the existing empty-diff guard
+   fires with a message that names the exclusion. Test: a mock diff with a
+   code file and a `.agent/work-plans/issue-42/plan.md` section; assert the
+   prompt keeps the former and lacks the latter, and that an all-bookkeeping
+   diff aborts with exit 3. PR also closes #312.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
 | `.agent/scripts/_agy_review.sh` | New: stdin stream-json invocation, result-event + timeout validation, owns the findings file |
-| `.agent/scripts/cross_model_review.sh` | gemini arms call the helper with no stdout redirect; gemini-only tool-use footer; header comments |
+| `.agent/scripts/cross_model_review.sh` | gemini arms call the helper with no stdout redirect; gemini-only tool-use footer; work-plans sections filtered out of the diff (#312); header comments |
 | `.agent/scripts/tests/test_cross_model_review.sh` | New agy mock; seven tests above incl. a mock-tmux test and a stale-findings test; retire the `-p`-value assertions |
 | `AGENTS.md` | Script reference row |
 | `.claude/skills/review-code/SKILL.md` | One line: failed marker carries a reason |
@@ -195,4 +200,4 @@ Verified against agy 1.2.8 (2026-09-22):
 
 ## Estimated Scope
 
-Single PR.
+Single PR (closes #288, #274, #312).
