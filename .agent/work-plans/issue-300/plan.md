@@ -183,3 +183,27 @@ review is still in progress. Merging in that scenario should be opt in."
    (running then completed across polls: waits, merges, one note per
    state). `AGENTS.md`'s `merge_pr.sh` row now omits a real flag; editing
    it is Ask-First and is surfaced to the owner separately.
+
+## Addendum 2 (owner's standing merge rules, 2026-09-22, at the rounds checkpoint)
+
+Owner: "If a review comes back with issues, then don't merge, ask me
+first. [...] By default, a merge should only happen when everything is
+clean unless I say we can skip a review or CI. The exception is for
+merging after adding an updated progress or related doc."
+
+7. **Gate enforced by default** on workspace PRs (`ENFORCE_MERGE_GATE=true`);
+   `--report-only` restores record-and-proceed; `--enforce` stays as an
+   explicit alias; project/package PRs stay report-only until #265. Tests
+   def-1/2/3; gate-gap tests that exercise other machinery pass
+   `--report-only`.
+8. **Bookkeeping walk-back for the CI target**: on the first poll, when the
+   target has no verdict, walk back over single-parent commits touching
+   only `.agent/work-plans/**`, `ROADMAP.md`, `docs/ROADMAP.md` (bounded:
+   main, a merge, 25 steps) and take the newest ancestor whose checks
+   already reached success or failure. Tests ci-30 (walks), ci-31 (a code
+   commit stops it).
+9. Round-3 must-fix: match `*status=*` (comma-joined list). Test ci-29.
+10. Docs (owner-approved Ask-First): `AGENTS.md` `merge_pr.sh` row; also
+    Makefile help, run-issue steps 10/11, `review_loop_lifecycle.md`.
+Not in this PR: run-issue step 9 "triage may start before CI" — a
+skill-text change tracked separately.
