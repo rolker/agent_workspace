@@ -357,3 +357,20 @@ Address: apply the one-clause `--enforce` wording fix in run-issue step 10 here,
 ### Verification
 - pre-commit hooks passed on both commits (no `--no-verify`)
 - `.agent/scripts/tests/run_script_tests.sh`: 23 suites, all passed
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-22 09:16 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**PR**: #308 at 688d1e9
+**Depth**: Standard (reason: `.claude/skills/` governance file; re-review scoped to the fix range `8e9c0c8..688d1e9`)
+**Must-fix**: 0 | **Suggestions**: 3
+
+### Findings
+- [ ] (suggestion) "One path is the exception" overstates singularity — a passing gate followed by a later merge failure (CI, mergeability, `gh pr merge`) also writes no merge entry — `.claude/skills/run-issue/SKILL.md:271`
+- [ ] (suggestion) Step 11's sibling caveat is less precise than the new step-10 text: it omits the `workspace` qualifier and still asserts the `checkpoint:merge-refused` re-route on the `--enforce` path — `.claude/skills/run-issue/SKILL.md:403-407`
+- [ ] (suggestion) The "who writes what" gate row carries the same unqualified claim the step-10 fix corrects — `.agent/knowledge/review_loop_lifecycle.md:34`
+
+Re-review of the post-triage fix commits (5a8b71e, f556943) plus the `## Implementation` append at 688d1e9. The new step-10 caveat was verified against `merge_pr.sh:889-910` (the `--enforce` + `WORKTREE_TYPE == workspace` branch exits 1 before any `_gate_record`) and `dispatch_phase.sh:559-566` (only a `Merge (report-only)` / `Merge (unreviewed)` base emits `checkpoint:merge-refused`) — both claims hold, including the `workspace` qualifier. Both Integrated Review boxes verified commit by commit: 5a8b71e ticks finding 1 (the actual SKILL.md edit), f556943 ticks finding 2 with the `(deferred: ...)` annotation and opened follow-up #309 (`bug`, body matches the claim). `review_progress.sh findings` reports `open: []`. Pre-commit clean on both changed files (script-test suite passed inside it); all three CI checks green at 688d1e9. The only PR reviews are two quota-exhausted Copilot comments carrying no finding. An independent adversarial pass on the same diff found no must-fix. All three suggestions concern prose adjacent to or predating the edited lines; none is a defect introduced by this diff.
