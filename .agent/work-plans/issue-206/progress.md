@@ -239,3 +239,16 @@ The revision folds in all ten round-1 items — the two it answers by deviating 
 **Decision**: proceed
 
 Proceed to implementation with the round-2 suggestions folded in: overlap-based concurrency assertion (wall clock only as a loose secondary), one defined exit code for the all-agents-unavailable case, sweep the existing --sync test invocations, and name --sync explicitly in the rejection message.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 11:40 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Branch**: feature/issue-206 at `8f5f53f`
+**Mode**: inline
+
+- tmux removed from cross_model_review.sh (build_invoke_cmd, session launch, auto-detect, TMUX_SESSION=); --sync rejected as removed (exit 2, message names it).
+- --agents a,b,c with hygiene (trim/lowercase/empty-entry reject incl. leading/trailing comma/dedupe/unknown exit 2), mutually exclusive with --agent; shared prompt built once; per-agent timeout -k AGENT_KILL_AFTER AGENT_TIMEOUT (gemini keeps its helper's print-timeout); per-agent binary resolution; one background job per agent writing its own marker; parent wait "$pid" || rc=$?; MODE=parallel-sync + upfront findings paths + AGENT=/FINDINGS_FILE=/EXIT= triplets; exit 0/3 with the no-triplets disambiguator; exit 1 = no usable CLI, nothing written; interrupt/exit cleanup kills every job (traps armed before spawn, in the job and in _agy_review.sh).
+- ADR-0015 (docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md); review-code SKILL.md dispatch step rewritten to one --agents call keyed on EXIT=; agent_wait_patterns.md, AGENTS.md script row, principles_review_guide.md ADR table updated.
+- Tests: tmux test retired, --sync sweep, parallel suite (all succeed, partial failure, timeout, overlap concurrency, missing CLI, none usable, hygiene, shared-diff failure, SIGTERM cleanup, single-agent output unchanged): 163 assertions, 23 runner suites green.
+- Three live Gemini+Codex parallel runs of this branch; their findings fixed in commits 5d45484 and 959dc79. Commits: 5e3d919, 5d45484, 959dc79, plus the plan sync.
