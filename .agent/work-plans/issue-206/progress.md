@@ -99,3 +99,61 @@ exit codes via `wait PID`), rewrites `review-code` skill step 5e to the new
 shape, adds a new ADR-0015 for the tmux-default reversal, moves tmux behind an
 explicit `--tmux` opt-in (recommended: keep, not remove), and adds partial-
 failure/timeout tests for the new parallel path.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 10:54 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #206 — cross_model_review.sh: reconsider tmux-default; sync should be parallel (and gstack has a non-tmux pattern worth borrowing)
+**Plan**: `.agent/work-plans/issue-206/plan.md` at `b4e5a78`
+**Branch**: `feature/issue-206`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Single PR: ADR + script + skill + tests. Copilot `-p` fix correctly left in #212; gstack pattern correctly reference-only. |
+| Issue alignment | Good | Covers the issue's ask (parallel default, tmux behind a flag) and all four owner-checkpoint requirements. |
+| File targeting | Needs work | Misses `.agent/knowledge/agent_wait_patterns.md` and the `AGENTS.md` script table (finding 7). |
+| Consequences | Needs work | Shared-diff/prompt error paths are single-findings-file today and undefined for N agents (finding 4); the two docs above (finding 7). |
+| Principle alignment | Needs work | "A change includes its consequences" — the two missed living docs. "Test what breaks" — the timeout test as written is not implementable against the current code (finding 1). |
+| ADR compliance | Good | ADR-0001 satisfied; 0015 is the next free number (0014 is the highest in `docs/decisions/`). ADR-0008 correctly assessed N/A. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Approach / Test what breaks — must-fix]** *No per-agent timeout exists for codex/claude/copilot.* Only gemini is bounded, by `AGY_PRINT_TIMEOUT` inside `_agy_review.sh`; `run_agent_sync` runs the other three with no cap. Today tmux hides that (the hang is detached); making blocking sync the unconditional default promotes an unbounded hang to the default failure mode, and a single hung agent hangs the whole multi-agent call. This is also why `test_agents_flag_one_times_out` is not implementable as written — there is no injectable timeout for a non-gemini mock. Resolution: wrap non-gemini agents in `timeout "$AGENT_TIMEOUT"` (default matching `AGY_PRINT_TIMEOUT`, env-overridable so the test can inject seconds), and treat the timeout exit as that agent's failure.
+2. **[Approach — must-fix]** *Agent-binary resolution and the gemini-helper check are single-agent and hard-exit 1* (script lines 287–320). Under `--agents gemini,codex,copilot`, one missing CLI would abort the whole run before any agent starts — directly contradicting `review-code` SKILL.md ("One agent's unavailability does not block the others"), which is the behaviour the current three-call shape provides for free. Resolution: resolve binaries per agent; a missing CLI/helper becomes that agent's `EXIT=1` + `--- Review failed ---` (with the reason in its findings file); exit 1 only when no selected agent is available. Needs a test.
+3. **[Approach — must-fix]** *Marker placement contradicts the plan's own timeout-test assertion.* Step 3 writes `--- Review complete/failed ---` in the parent after an in-order `wait "$pid"` loop, but `test_agents_flag_one_times_out` asserts the fast agent's findings/marker are "not delayed by the slow one." With in-order waiting they are delayed whenever the slow agent sorts first. Resolution: each background subshell appends its own marker based on its own exit status; the parent's `wait` loop only collects exit codes for the `EXIT=` lines. This also makes `tail -f` (the plan's advertised tmux substitute) truthful.
+4. **[Consequences]** *Shared-diff failure paths are undefined for N agents.* Lines 566/572/586/592 write `--- Review error: ... ---` into a single `$FINDINGS_FILE`. With a shared diff fetch there is no single findings file. Specify: write the error marker into every selected agent's findings file (truncating, not appending), keep exit 3, and emit no `AGENT=` triplets. Add a test for empty-diff under `--agents`.
+5. **[Approach]** *`--agents` input hygiene unspecified.* `--agents gemini,gemini` would launch two jobs writing the same prompt/findings file and the same tmux session name; empty entries (`gemini,,codex`), a trailing comma, surrounding whitespace and case are likewise unspecified (`--agent` lowercases via `${2,,}`). Specify: trim, lowercase, reject empty entries and duplicates with exit 2 (or dedupe), and test at least the duplicate and empty-entry cases.
+6. **[Approach]** *`--tmux` interactions unspecified.* (a) `--tmux --sync` together — error or `--tmux` wins? (b) `--tmux --agents a,b` stdout shape is undefined: is it `MODE=tmux` with repeated `AGENT=`/`TMUX_SESSION=`/`FINDINGS_FILE=` triplets, and is there an `EXIT=` line (there is no exit status for a launched session)? Define both, or restrict `--tmux` to `--agent` for this PR and say so.
+7. **[Consequences — missing files]** Two living docs are not in "Files to Change": (a) `.agent/knowledge/agent_wait_patterns.md` — its "Decision quick-reference" row (line 63) and See-also entry (lines 72–74) present tmux-session polling as *the* cross-model-review wait pattern; after this change the default wait is a bounded parallel `wait` in-process. This is current-state guidance, not a historical digest, so the plan's blanket "`.agent/knowledge/` mentions are historical" does not cover it. (b) `AGENTS.md` script-table row for `cross_model_review.sh` (it enumerates flags) needs `--agents` and the parallel-sync default. `.agent/knowledge/review_depth_classification.md:75` is generic and needs no change — worth saying so explicitly in the consequences table.
+8. **[Approach — clarity]** State that the *flag*, not the agent count, selects the output shape: `--agent X` → `MODE=sync` (no `EXIT=`), `--agents X` (single entry) → `MODE=parallel-sync` with an `EXIT=` line. Otherwise implementer and skill can disagree on the N=1 case.
+9. **[Test]** *Harness gaps.* The suite mocks `agy`, `gh`, `git` and `tmux`; the new tests need mock `codex`/`copilot` binaries with injectable exit codes. Add a real concurrency assertion (slow mock + fast mock: wall clock well under the serial sum, and the fast agent's findings file complete before the slow one finishes) — without it, "parallel" is untested and a sequential implementation passes. Also pin the per-agent independence of markers (already planned) and the setup-failure case from finding 4.
+10. **[Approach — low]** Require that background jobs write nothing to stdout, so the machine-parseable `MODE=`/`AGENT=`/`FINDINGS_FILE=`/`EXIT=` block stays contiguous and unmangled by interleaving.
+
+### Open Questions — answers
+
+**Q1: keep tmux behind `--tmux`, or remove it?** Keep behind `--tmux`, agreeing with the plan, but on a narrower rationale than the plan gives: `tail -f` covers live observation, so the only capability tmux uniquely provides is **non-blocking dispatch** — with sync as the default, an interactive caller now blocks for up to the timeout. The ADR should say that, record tmux as retained-but-deprecated with an explicit removal criterion ("no in-repo caller passes `--tmux`; remove when the timeout cap makes blocking dispatch acceptable"), and the plan must define its multi-agent semantics (finding 6). Full removal is a defensible second choice — it deletes `build_invoke_cmd` and with it exactly the quoted-command-string risk the ADR cites as a reason to prefer sync — but it is a scope change the owner should choose, not the implementer.
+
+**Q2: aggregate exit-code contract.** Endorse the plan's "0 if all succeed, 3 if any agent failed, all findings files still fully written." Do not swallow failures to 0 (a caller that never parses stdout would then see success), and do not add a new code. One condition: exit 3 is already used for pre-dispatch setup failures (prompt/diff), so the script header and the skill must state the disambiguator — **exit 3 with no `AGENT=` triplet on stdout = setup failure; exit 3 with triplets = per-agent failures, read `EXIT=`** — and a test must pin it (finding 4).
+
+### Summary
+
+The plan is structurally sound, correctly scoped, and satisfies all four owner-checkpoint requirements; it also flags the `set -e`/`wait` pitfall accurately. It is not yet ready to implement: three must-fixes (no timeout for non-gemini agents, single-agent binary resolution that would abort a whole multi-agent run, marker placement that contradicts its own test) plus two missing consequence docs.
+
+### Recommended Actions
+
+- [ ] Add a per-agent timeout for codex/claude/copilot (env-overridable) and make it the mechanism the timeout test exercises (finding 1)
+- [ ] Make agent-binary and `_agy_review.sh` availability per-agent soft failures; exit 1 only when no selected agent is available; add a test (finding 2)
+- [ ] Move the `--- Review complete/failed ---` marker write into each background subshell; parent collects exit codes only (finding 3)
+- [ ] Define shared-diff/prompt failure behaviour for N agents (error marker into every selected findings file, exit 3, no triplets) + test (finding 4)
+- [ ] Specify `--agents` parsing hygiene: trim, lowercase, reject/dedupe duplicates and empty entries (finding 5)
+- [ ] Define `--tmux` + `--sync` and `--tmux` + `--agents` semantics, or restrict `--tmux` to `--agent` for this PR (finding 6)
+- [ ] Add `.agent/knowledge/agent_wait_patterns.md` and the `AGENTS.md` script-table row to Files to Change; note `review_depth_classification.md` as no-change (finding 7)
+- [ ] State that the flag, not the agent count, picks the output shape (finding 8)
+- [ ] Add mock `codex`/`copilot` binaries and a wall-clock concurrency assertion to the test plan (finding 9)
+- [ ] ADR-0015: record the blocking-by-default consequence, tmux as retained-but-deprecated with a removal criterion, and the exit-3 disambiguation (Q1, Q2)
