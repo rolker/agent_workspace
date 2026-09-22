@@ -304,3 +304,33 @@ Proceed to implementation with the round-2 suggestions folded in: overlap-based 
 - `bash .agent/scripts/tests/test_cross_model_review.sh` — 185 passed, 0 failed
 - `bash .agent/scripts/tests/run_script_tests.sh` — all 23 suites passed (62s)
 - pre-commit (incl. shellcheck) clean on every commit; nothing pushed
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 12:02 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-206 at `48d0ca9`
+**Base**: main
+**Depth**: Deep (reason: enforcement + governance files; round-2 re-review of the round-1 fixes only — cross-model: run by host during implementation, findings incorporated)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+### Findings
+- [ ] (must-fix) Duration knobs are shape-validated but not range-validated, so `0` passes: `AGENT_TIMEOUT=0` makes coreutils `timeout` impose no limit at all, silently voiding the "every agent is bounded" guarantee of ADR-0015 §3, and `GEMINI_BACKSTOP_MARGIN=0` collapses the backstop onto `AGY_PRINT_TIMEOUT` — the exact race the comment two lines below names ("Passing a margin of 0 would reintroduce that race") but does not prevent. Require > 0 for `AGENT_TIMEOUT` and `GEMINI_BACKSTOP_MARGIN` (`AGENT_KILL_AFTER=0` stays legitimate) — `.agent/scripts/cross_model_review.sh:130-166`
+- [ ] (suggestion) `duration_to_seconds` accepts a unit-less number and a `d` suffix, which coreutils `timeout` understands but Go's `ParseDuration` does not; `AGY_PRINT_TIMEOUT` is passed straight to agy's `--print-timeout`, so `AGY_PRINT_TIMEOUT=90` or `=1d` passes validation and then fails inside agy at runtime. Validate that knob against the Go-duration subset the header already claims for it — `.agent/scripts/cross_model_review.sh:133-146`
+- [ ] (suggestion) On backstop expiry `timeout -k` SIGKILLs the helper after `AGENT_KILL_AFTER`, which skips `_agy_review.sh`'s EXIT trap and leaves its `agy-review.XXXXXX` tmpdir behind. Inherent to SIGKILL and only reachable from a wedged helper, but worth a line in the helper's "no temp files survive any exit path" contract — `.agent/scripts/_agy_review.sh:33,98`
+
+### Round-1 items verified resolved
+- [x] Gemini-only naming retired at SKILL.md:54, 212 and in the Graceful-degradation guideline, now describing per-agent `EXIT=` failure; AGENTS.md row and ADR-0015 §3 updated to match
+- [x] Gemini now bounded by an outer `timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP"` derived as `AGY_PRINT_TIMEOUT + GEMINI_BACKSTOP_MARGIN`; rationale corrected in header, ADR and plan; distinct 124 message names which bound fired; `AGY_PRINT_TIMEOUT` made env-overridable and exercised by `test_gemini_backstop_cuts_off_wedged_agy`
+- [x] Marker "always ends with" overclaim replaced with the abort/interrupt carve-out and a reader instruction
+- [x] pipefail comment corrected to bash's last-non-zero rule
+- [x] Dead INT trap removed from `run_agent_job`; `_agy_review.sh` keeps its INT trap with the direct-interactive-invocation justification stated
+- [x] Mock records argv; `codex exec` vs `-p` asserted
+- [x] `test_gemini_not_bound_by_agent_timeout` guards the ADR-0015 §3 exemption
+- [x] Duration knobs validated up front (exit 2, named message) instead of an opaque `timeout` exit 125; `--pr` gets the positive-integer check
+- [x] Load-sensitive wall-clock assertion dropped; interval overlap is the sole concurrency proof, with the reasoning recorded in the test and the plan
+- [x] Plan's ADR filename corrected to `...-is-the-only-...`
+- [x] SKILL.md exit-1 paragraph now separates the no-usable-CLI case from the missing-`gh` case
