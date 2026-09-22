@@ -160,3 +160,26 @@ no check-run fixtures at all). Fixtures go there.
 
 Single PR — one script change (`merge_pr.sh`) plus fixtures/tests in the
 one test file that already owns this coverage (`test_merge_pr_gate.sh`).
+
+## Addendum (owner direction, 2026-09-22, after round 2)
+
+Owner: "Make it so that a merge doesn't go through automatically if a
+review is still in progress. Merging in that scenario should be opt in."
+
+6. **Pending-review hold.** The wait loop already receives the excluded
+   Copilot run's state on every poll (`<state>|<excluded>`). When it is
+   `status=<queued|in_progress>` and `--allow-pending-review` is not set,
+   a `success` (or `none` on a no-CI repo) result does not break the loop;
+   it keeps polling until the review completes or
+   `MERGE_PR_CI_TIMEOUT_SECONDS`, then exits 1 with a distinct
+   `review check-run ... still in progress` message naming the flag. A real
+   CI failure still fails fast; a completed review, whatever its
+   conclusion, is still ignored by the CI wait. `--no-wait` skips the whole
+   wait and so also opts in. New flag `--allow-pending-review` (parser,
+   `USAGE`, header comment). The excluded-run note becomes once per
+   distinct state (running, then completed).
+   Tests: ci-25 (running + green CI holds, error names the flag), ci-26
+   (same + flag merges), ci-27 (running on a no-CI repo holds), ci-28
+   (running then completed across polls: waits, merges, one note per
+   state). `AGENTS.md`'s `merge_pr.sh` row now omits a real flag; editing
+   it is Ask-First and is surfaced to the owner separately.
