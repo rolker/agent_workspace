@@ -53,6 +53,14 @@ out=$("$RP" round --branch feature/issue-7 --progress "$FIX/one.md")
 out=$("$RP" round --branch feature/issue-7 --progress "$FIX/two.md")
 [[ "$out" == $'round=3\nprev_must_fix=1' ]] && pass "round: two prior entries for this branch -> round 3; PR-mode and other-branch entries ignored; prev is the newest" || fail "round: two prior (out=$out)"
 
+# a prior entry writing the branch WITH backticks must count the same as a
+# bare one -> round 3, not a silent restart at 1 (issue #307)
+{ printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n'
+  prepush_entry feature/issue-7 3; printf '\n'
+  prepush_entry '`feature/issue-7`' 2; } > "$FIX/ticked.md"
+out=$("$RP" round --branch feature/issue-7 --progress "$FIX/ticked.md")
+[[ "$out" == $'round=3\nprev_must_fix=2' ]] && pass "round: a backticked **Branch** entry correlates with a bare one -> round 3, no silent restart" || fail "round: backticked branch (out=$out)"
+
 # malformed file (unterminated fence) -> non-zero, not a silent round 1
 printf '## Implementation\n```\nopen\n' > "$FIX/bad.md"
 "$RP" round --branch feature/issue-7 --progress "$FIX/bad.md" >/dev/null 2>&1; rc=$?
