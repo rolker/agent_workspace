@@ -460,3 +460,27 @@ Address then merge: apply the one open suggestion (ADR-0015 line 101 says the fo
 - [x] The rewritten env-knob consequence matches `validate_duration_knob` in `cross_model_review.sh` clause for clause: shape validation, a non-zero requirement wherever zero would remove a bound, the explicit `AGENT_KILL_AFTER=0` exception with its "SIGKILL immediately after the SIGTERM" meaning, and `AGY_PRINT_TIMEOUT` held to the Go-duration subset (explicit `s`/`m`/`h`, no bare number, no `d`)
 - [x] The closing clause now names both failure modes the validation prevents — an opaque `timeout` exit 125 and a later failure inside agy — which is what the two validator branches actually guard
 - [x] PR #318 head (`7506ffa`) matches local HEAD, so this entry correlates to the reviewed commit
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-22 12:38 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #318 at `1fd6ff4`
+**Sources**: 1 (Local Review (PR mode) @ `7506ffa` — the reviewed code head; `1fd6ff4` is that review's own progress.md commit) + CI rollup. Still no GitHub review source: all three Copilot reviews (at `3b762b4`, `7506ffa`, `1fd6ff4`) are the same quota-limit notice with zero findings. No human reviews, no inline comments, no conversation comments.
+**Cross-source confirmations**: 0 (one findings-bearing source; confirmation not possible)
+**CI**: all-pass — Lint (pre-commit), Validate Documentation, Validate Adapter Contract and ros-manifest tests (#267 prototype) all green on the head. The `copilot-pull-request-reviewer` check-run failure is the quota exhaustion, not a code or test failure.
+
+### Findings
+- [ ] No open findings. This closes the loop opened by the `## Integrated Review` at `3b762b4`.
+
+### Carried forward and closed
+- [x] (was: suggestion, Local Review round 3 @ `c1e84de`; carried in the Integrated Review @ `3b762b4`) ADR-0015's env-knob consequence under-described its own enforcement rule. Fixed in `c6461b8` and verified here against the code at this head: the ADR now says the four knobs are shape- **and** range-validated up front (exit 2), names the non-zero requirement wherever zero would remove a bound, states the `AGENT_KILL_AFTER=0` exception with its meaning (SIGKILL immediately after the SIGTERM), and records that `AGY_PRINT_TIMEOUT` is additionally held to agy's Go-duration subset (explicit `s`/`m`/`h`, no bare number, no `d`). That matches `validate_duration_knob` and its four call sites clause for clause — `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md:100-107`, `.agent/scripts/cross_model_review.sh:156-181`.
+- Diff since the last Integrated Review is `docs/decisions/0015-...md` plus progress.md only — documentation, no script, test or skill file touched, so the round-2/3 suite results (`test_cross_model_review.sh` 196 passed, `run_script_tests.sh` 23 suites) still describe the shipped code.
+- Convergence across the whole loop: 2 must-fix / 9 suggestions (round 1) → 1 / 2 (round 2) → 0 / 1 (round 3) → 0 / 0 (this PR-mode round). Monotonic, no reopened items, no regressions found.
+
+### False positives
+- (Copilot) Not findings: three identical quota-exhaustion notices, no code claims in any of them. Recorded so the absence of bot findings is not read as a clean bot review — this PR is reviewed by the local timeline plus CI, and nothing is pending on Copilot.
+
+### Merge recommendation
+Merge. Zero open must-fix, zero open suggestions, four green CI checks on the head, and an approving PR-mode local review of the final diff. `merge_pr.sh`'s review gate has what it looks for: this entry at the PR head with no open must-fix, and a `## Decision summary` already present in the PR body (none posted by this phase — no GitHub writes and no push were made, per the phase contract).
