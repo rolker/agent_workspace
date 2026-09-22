@@ -297,8 +297,44 @@ the suite's mocks.
 **Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
 
 ### Findings
-- [ ] (must-fix) `printf | head` under `set -euo pipefail` aborts the whole script (exit 141) when the Approach section exceeds the pipe buffer (~64KB) — use a here-string or `awk 'NR<=n'` — `.agent/scripts/cross_model_review.sh:857`
-- [ ] (must-fix) Plan context is emitted raw: truncation at 200 lines (or the awk stop inside a fence) can leave a ``` fence open, swallowing the `## Output Format` footer into a code block — close an odd fence count before appending — `.agent/scripts/cross_model_review.sh:850-864`
-- [ ] (suggestion) Extractor stops only at `^## `; an H1 or `---` after Approach leaks later sections, and the comment's "never content from another section" guarantee is then inaccurate — `.agent/scripts/cross_model_review.sh:843`
-- [ ] (suggestion) No test fixture has a fenced code block in Approach, nor an H1/`---` after it — the two failure modes above are untested — `.agent/scripts/tests/test_cross_model_review.sh:1279`
-- [ ] (suggestion) Plan says the suite runs 327 assertions; it now runs 358 — `.agent/work-plans/issue-320/plan.md:59`
+- [x] (must-fix) `printf | head` under `set -euo pipefail` aborts the whole script (exit 141) when the Approach section exceeds the pipe buffer (~64KB) — use a here-string or `awk 'NR<=n'` — `.agent/scripts/cross_model_review.sh:857`
+- [x] (must-fix) Plan context is emitted raw: truncation at 200 lines (or the awk stop inside a fence) can leave a ``` fence open, swallowing the `## Output Format` footer into a code block — close an odd fence count before appending — `.agent/scripts/cross_model_review.sh:850-864`
+- [x] (suggestion) Extractor stops only at `^## `; an H1 or `---` after Approach leaks later sections, and the comment's "never content from another section" guarantee is then inaccurate — `.agent/scripts/cross_model_review.sh:843`
+- [x] (suggestion) No test fixture has a fenced code block in Approach, nor an H1/`---` after it — the two failure modes above are untested — `.agent/scripts/tests/test_cross_model_review.sh:1279`
+- [x] (suggestion) Plan says the suite runs 327 assertions; it now runs 358 — `.agent/work-plans/issue-320/plan.md:59`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 14:40 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-320 at df3723b
+**Plan**: `.agent/work-plans/issue-320/plan.md` at `b248f3c`
+**Round**: 1 (address-findings on the `## Local Review (Pre-Push)` at `f26ca59`)
+
+All five findings from the round-1 pre-push review resolved in `df3723b`;
+every box in that entry is now checked. Only `cross_model_review.sh`'s
+plan-context block, the test suite and plan.md were touched — #313's
+`_cli_review.sh`, `_agy_review.sh` and `run_agent_sync` were not.
+
+### Findings resolved
+
+| # | Finding | Resolution |
+|---|---|---|
+| 1 | must-fix — `printf \| head` under `pipefail` aborts with 141 on an Approach past the pipe buffer | Both the line count and the 200-line cap now use here-strings (`wc -l <<<`, `head -n N <<<`); no pipe, no SIGPIPE. Reproduced the old failure standalone (exit 141 on a 400 KB value) before fixing, so the regression is real and the new test covers it. |
+| 2 | must-fix — an unclosed fence can swallow the `## Output Format` footer | The emitted body's fence toggles are counted (a closer must match the marker that opened it, so ``` inside a `~~~` block is content) and the matching closer is emitted before the truncation marker. Covers both causes: the cap landing mid-fence and the extractor stopping inside one. |
+| 3 | suggestion — extractor stopped only at `^## `, leaking past an H1 or `---` | Stops at any H1/H2 heading or a thematic break. The comment now states the guarantee it actually keeps — possibly shorter, never longer, never content from a later section — and names fence balancing as what keeps the prompt well-formed after an early stop. |
+| 4 | suggestion — no fence / H1 / `---` fixtures | Three new test functions, all registered: `test_plan_context_large_approach` (>400 KB Approach, asserts exit 0 — the SIGPIPE guard), `test_plan_context_fence_balanced` (a complete fence, and a fence straddling the cut: block fence count even, footer still a heading), `test_plan_context_stops_at_h1_or_rule` (H1 and `---` after Approach). |
+| 5 | suggestion — plan.md's stale assertion count | Corrected to 379 at the time of writing, with a note that the figure moves with every #313 merge and is a snapshot, not a contract. |
+
+### Tests
+
+- `bash .agent/scripts/tests/test_cross_model_review.sh` — 379 passed, 0 failed.
+- `bash .agent/scripts/tests/run_script_tests.sh` — all 23 suites passed in 97s, no temp leaks.
+
+No real agy/codex/claude/copilot prompt was run.
+
+### Notes
+
+plan.md's `## Implementation Notes` now records both new rules — fence
+balancing after the cut, and no `printf | head` under `pipefail` — so a
+later reader sees them as decisions rather than incidental code.
