@@ -414,3 +414,13 @@ Publish. Pre-push review approved at round 3 (7f2edf7), zero must-fixes; push th
 
 ### Merge recommendation
 Merge-ready. Zero open must-fix findings, four green CI checks on the head, three converging local review rounds (2 → 1 → 0 must-fix). The single open suggestion is a one-line ADR wording correction with no code impact — the permanent fix is a minute's work, so the preferred path is to apply it via `/address-findings` and merge; merging first and correcting the ADR in a follow-up is acceptable but leaves an inaccurate governance record in `main`. No GitHub review is pending: Copilot is out of quota, so nothing is gained by waiting.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 12:27 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Address then merge: apply the one open suggestion (ADR-0015 line 101 says the four env knobs are "shape-validated"; they are shape + non-zero range + a Go-duration subset for AGY_PRINT_TIMEOUT), then merge.
