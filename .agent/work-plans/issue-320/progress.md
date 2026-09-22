@@ -55,3 +55,13 @@ issue: 320
 - [ ] Add a one-line ADR-0008 addendum to ADR-0015 (status-line or References) noting cross-model dispatch now triggers at Standard+Deep rather than Deep only, so the ADR stays accurate without a supersession.
 - [ ] Confirm in the work plan that implementation does not start until #313 merges, given both issues edit `cross_model_review.sh`'s prompt/dispatch path and #313 is being planned in parallel right now — rebase risk is real, not hypothetical.
 - [ ] Consider noting in the PR description the expected added latency/quota cost of running cross-model review on every Standard-tier PR, so the tradeoff is visible to reviewers rather than only argued in the issue.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 12:55 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to planning with the four review actions folded in: ADR-0015 addendum for the tier change (ADR-0008 style), implementation blocked on #313 merging (same script; merge main into this branch first), the added Standard-tier latency/quota cost stated in the PR description with Light staying static-only, and one PR unless review gets unwieldy.
