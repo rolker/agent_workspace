@@ -133,3 +133,24 @@ Proceed, folding the four plan-review findings into the implementation (fourth C
 **Mode**: inline
 
 Two commits. c62d8e2 (`merge_pr.sh` + `test_merge_pr_gate.sh`): a `readonly MERGE_PR_CI_EXCLUDE_CHECK_RUN="copilot-pull-request-reviewer"` constant beside the `MERGE_PR_CI_*` block; `_ci_poll_state` filters that run out of `runs_json` by name, for any conclusion, before the `registered`/`failed`/`pending` classifications (one `jq select(.name != $x)` over data already fetched, no extra request); stderr diagnostics: the excluded run is named once per run (`_ci_excluded_noted` guard) as "not used to block the merge", and a failed verdict prints `CI failed: <name (conclusion)>, ...` from the non-excluded runs and statuses. Four inline tests appended after ci-12b: ci-19 (Copilot failure + Lint success → merges, excluded run reported), ci-20 (Copilot failure + Lint in_progress, `MERGE_PR_CI_TIMEOUT_SECONDS=0` → "CI checks did not complete", never "CI checks failed"), ci-21 (Copilot failure + Lint failure → fails, culprit line names only Lint), ci-22 (Copilot-only head, workflows=1, grace=0 → "no checks registered", not success). Gate suite 62/62; full script suites green via the commit hook. 6aaacdb amends the plan to match the four plan-review findings (all four addressed in the implementation). No AGENTS.md change (row wording unaffected).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 10:41 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-300 at `a0ee7ad`
+**Base**: main
+**Depth**: Standard (reason: 89 changed code lines across merge_pr.sh + its test suite; the other 297 diff lines are this loop's own plan.md/progress.md artifacts)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) `_ci_excluded_noted` guard is dead: `_ci_poll_state` runs in a command substitution, so the flag never persists and the excluded-run note prints on every poll (~180x over a 30-min wait), contradicting the code comment and the Implementation entry — `.agent/scripts/merge_pr.sh:984,1016-1020`
+- [ ] (suggestion) No test drives a second poll iteration, which is why the once-per-run bug shipped; add a multi-poll case asserting the note appears exactly once — `.agent/scripts/tests/test_merge_pr_gate.sh:703`
+- [ ] (suggestion) Note reads `conclusion=pending` for an in-progress excluded run (API returned null), and freezes the first-seen value once the guard works — `.agent/scripts/merge_pr.sh:1013`
+- [ ] (suggestion) No fixture for a Copilot-only head with `conclusion: null` (in-progress), which must also classify as `none` — `.agent/scripts/tests/test_merge_pr_gate.sh:219`
+
+### Notes
+Verified: gate suite 62/62; `bash -n` clean; jq exclusion/culprit expressions exercised by hand on in-progress, unnamed and empty inputs; every conclusion in the old `failed` set plus commit-status `error`/`failure` still counted; the filter applied uniformly to `registered`/`failed`/`pending`; `readonly` re-declaration impossible (merge_pr.sh is executed, never sourced); `failed=false; [[ ]] && failed=true` does not trip `set -e`. shellcheck/pre-commit unavailable here — the Lint job on push is the first real shellcheck pass. The must-fix was found independently by the governance read and a fresh adversarial subagent.
