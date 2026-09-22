@@ -367,6 +367,49 @@ deliberately not merged; not pushed.
 **Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 4), not rising — fix and ship rather than another full round
 
 ### Findings
-- [ ] (must-fix) the `## Decision summary` gate citation is stale after the merge from main: the grep is at `merge_pr.sh:785-786` now, and line 760 is inside the gate's ancestry check — `.claude/skills/run-issue/SKILL.md:396`
-- [ ] (must-fix) the "a gate that passed records no entry" citation is stale after the same merge: that branch is at `merge_pr.sh:914`, and 889-890 is now a jq block in a different helper — `.claude/skills/run-issue/SKILL.md:480`
-- [ ] (suggestion) step 11's cross-reference still says a CI failure "routes to `address-findings` (or a fresh `triage-reviews`)", which step 9's corrected text explicitly rules out (the `merge` checkpoint vocabulary has no `retriage`; a re-triage need is answered `address`) — `.claude/skills/run-issue/SKILL.md:544`
+- [x] (must-fix) the `## Decision summary` gate citation is stale after the merge from main: the grep is at `merge_pr.sh:785-786` now, and line 760 is inside the gate's ancestry check — `.claude/skills/run-issue/SKILL.md:396`
+- [x] (must-fix) the "a gate that passed records no entry" citation is stale after the same merge: that branch is at `merge_pr.sh:914`, and 889-890 is now a jq block in a different helper — `.claude/skills/run-issue/SKILL.md:480`
+- [x] (suggestion) step 11's cross-reference still says a CI failure "routes to `address-findings` (or a fresh `triage-reviews`)", which step 9's corrected text explicitly rules out (the `merge` checkpoint vocabulary has no `retriage`; a re-triage need is answered `address`) — `.claude/skills/run-issue/SKILL.md:544`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 13:08 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-314 at 96c884d
+**Addressed**: Local Review (Pre-Push) at `39b772a`
+**Dispatch**: resumed (implementer, resume 3 of 3)
+**Commits**: 96c884d
+
+Round 2. Three boxes, all in `.claude/skills/run-issue/SKILL.md`, all
+consequences of the host's merge from main moving `merge_pr.sh` under the
+skill's citations. No open boxes remain.
+
+Both stale citations are now anchored to text rather than to line numbers,
+so the next merge cannot break them the same way. Verified against the
+merged `merge_pr.sh` before editing.
+
+### Actions
+- [x] (must-fix) the `## Decision summary` gate citation — `merge_pr.sh:760-761`
+  was stale (:760 is now inside the gate's ancestry check; the grep is at
+  :785-786). Replaced with "the `# (b) decision summary on the PR` block
+  under `--- Step 1.5: Review-loop merge gate ---`" — step 7
+- [x] (must-fix) the "a gate that passed records no entry" citation —
+  `merge_pr.sh:889-890` was stale (that is now a jq block in the idempotent-record
+  helper; the branch is at :914). Replaced with "`merge_pr.sh`'s
+  `if [[ \"${#_gate_reasons[@]}\" -eq 0 ]]` branch at the end of Step 1.5 — it
+  prints its approval and records nothing" — step 9
+- [x] (suggestion) step 11's cross-reference still offered "or a fresh
+  `triage-reviews`", which step 9's corrected text rules out. It now says the
+  CI failure is put to the owner at the checkpoint and recorded as
+  `**Decision**: address`, never dispatched directly and never as a fresh
+  triage — the `merge` checkpoint's vocabulary is merge | address | stop, so a
+  re-triage need is answered `address` too — step 11
+
+Also checked, nothing to fix: no other `merge_pr.sh:<line>` citation remains
+anywhere in `.claude/skills/` or `.agent/knowledge/` — the #300 merge rewrote
+step 6's and step 11's own paragraphs and those no longer carry line numbers.
+
+Tests: `test_dispatch_phase.sh` 88 passed / 0 failed; `run_script_tests.sh`
+all 23 suites passed in 71s. Skill text only — no script changed, so no
+fixture changed. Not pushed.
