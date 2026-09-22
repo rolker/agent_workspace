@@ -147,10 +147,10 @@ Two commits. c62d8e2 (`merge_pr.sh` + `test_merge_pr_gate.sh`): a `readonly MERG
 **Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
 
 ### Findings
-- [ ] (must-fix) `_ci_excluded_noted` guard is dead: `_ci_poll_state` runs in a command substitution, so the flag never persists and the excluded-run note prints on every poll (~180x over a 30-min wait), contradicting the code comment and the Implementation entry — `.agent/scripts/merge_pr.sh:984,1016-1020`
-- [ ] (suggestion) No test drives a second poll iteration, which is why the once-per-run bug shipped; add a multi-poll case asserting the note appears exactly once — `.agent/scripts/tests/test_merge_pr_gate.sh:703`
-- [ ] (suggestion) Note reads `conclusion=pending` for an in-progress excluded run (API returned null), and freezes the first-seen value once the guard works — `.agent/scripts/merge_pr.sh:1013`
-- [ ] (suggestion) No fixture for a Copilot-only head with `conclusion: null` (in-progress), which must also classify as `none` — `.agent/scripts/tests/test_merge_pr_gate.sh:219`
+- [x] (must-fix) `_ci_excluded_noted` guard is dead: `_ci_poll_state` runs in a command substitution, so the flag never persists and the excluded-run note prints on every poll (~180x over a 30-min wait), contradicting the code comment and the Implementation entry — `.agent/scripts/merge_pr.sh:984,1016-1020`
+- [x] (suggestion) No test drives a second poll iteration, which is why the once-per-run bug shipped; add a multi-poll case asserting the note appears exactly once — `.agent/scripts/tests/test_merge_pr_gate.sh:703`
+- [x] (suggestion) Note reads `conclusion=pending` for an in-progress excluded run (API returned null), and freezes the first-seen value once the guard works — `.agent/scripts/merge_pr.sh:1013`
+- [x] (suggestion) No fixture for a Copilot-only head with `conclusion: null` (in-progress), which must also classify as `none` — `.agent/scripts/tests/test_merge_pr_gate.sh:219`
 
 ### Notes
 Verified: gate suite 62/62; `bash -n` clean; jq exclusion/culprit expressions exercised by hand on in-progress, unnamed and empty inputs; every conclusion in the old `failed` set plus commit-status `error`/`failure` still counted; the filter applied uniformly to `registered`/`failed`/`pending`; `readonly` re-declaration impossible (merge_pr.sh is executed, never sourced); `failed=false; [[ ]] && failed=true` does not trip `set -e`. shellcheck/pre-commit unavailable here — the Lint job on push is the first real shellcheck pass. The must-fix was found independently by the governance read and a fresh adversarial subagent.
