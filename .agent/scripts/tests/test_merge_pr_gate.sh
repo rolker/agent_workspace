@@ -731,9 +731,12 @@ sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_PLUS_LINT_FAILED"
 out="$(run_merge_wait "$sb" 2>&1)" || true
+# The copilot assertion is line-scoped (grep), not a whole-output glob: the
+# excluded-run note is printed by the poll loop after the "CI failed:" line,
+# so `*"CI failed:"*"copilot"*` would match across two unrelated lines.
 if ! merged_called "$sb" && [[ "$out" == *"CI checks failed on"*"${reviewed:0:7}"* ]] \
     && [[ "$out" == *"CI failed: Lint (pre-commit) (failure)"* ]] \
-    && [[ "$out" != *"CI failed:"*"copilot-pull-request-reviewer"* ]]; then
+    && ! grep -q "CI failed:.*copilot-pull-request-reviewer" <<<"$out"; then
     pass "(ci-21) Copilot failure + Lint failure: error, no merge; only the real failure is named"
 else
     fail "(ci-21) (out=${out:0:400})"

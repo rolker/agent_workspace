@@ -983,46 +983,50 @@ MERGE_PR_CI_TIMEOUT_SECONDS="${MERGE_PR_CI_TIMEOUT_SECONDS:-1800}"
 readonly MERGE_PR_CI_EXCLUDE_CHECK_RUN="copilot-pull-request-reviewer"
 _ci_excluded_noted=false
 
-_ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
+_ci_poll_state() {  # <sha> -- prints "<state>|<excluded>": state is one of none pending failed success error; excluded is a comma-joined list of the excluded run's verdicts (conclusion=<c>, or status=<s> while it is still running), empty when the excluded run is absent
     # "error" (issue #284 review) is distinct from "none": a nonzero `gh
     # api` exit (rate limit, network, 5xx, auth) or unparseable JSON is a
     # failure to LEARN the CI state, not evidence the repo has no CI — the
     # caller must keep retrying it (bounded by the grace deadline) rather
     # than falling through to the no-CI pass.
-    local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed excluded culprits
+    # The excluded-run note is NOT printed here: the caller invokes this
+    # function inside `$(...)`, so any flag set in this body mutates a
+    # subshell copy and cannot suppress a repeat on the next poll. The
+    # once-per-run decision therefore lives in the caller, which reads the
+    # second field of the printed "<state>|<excluded>" pair.
+    local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed excluded="" culprits
     # -X GET is load-bearing (#289): `-f` alone turns the request into a
     # POST, which GitHub answers with 404 on every poll.
     runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" -X GET --paginate -f per_page=100 2>/dev/null \
         | jq -c -s '{check_runs: [.[].check_runs[]?]}') || runs_rc=$?
     status_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/status" 2>/dev/null) || status_rc=$?
     if [[ $runs_rc -ne 0 ]] || [[ $status_rc -ne 0 ]]; then
-        echo "error"
+        echo "error|"
         return
     fi
     [[ -z "$runs_json" ]] && runs_json='{"check_runs":[]}'
     [[ -z "$status_json" ]] && status_json='{"statuses":[]}'
     if ! jq -e . >/dev/null 2>&1 <<<"$runs_json" || ! jq -e . >/dev/null 2>&1 <<<"$status_json"; then
-        echo "error"
+        echo "error|"
         return
     fi
     # Drop the excluded review check-run BEFORE every classification below
     # (registered / failed / pending alike), so a head whose only run is
     # Copilot's counts as "no checks registered", never as success (#300).
     # Pure filter over data already fetched — no extra request.
+    # A null conclusion means the run hasn't finished, so report its
+    # `status` (queued / in_progress) rather than inventing a
+    # `conclusion=pending` the API never returned (#300 review).
     excluded=$(jq -r --arg x "$MERGE_PR_CI_EXCLUDE_CHECK_RUN" \
-        '[(.check_runs // [])[] | select(.name == $x) | (.conclusion // "pending")] | join(",")' <<<"$runs_json" 2>/dev/null || echo "")
+        '[(.check_runs // [])[] | select(.name == $x)
+          | if .conclusion == null then "status=" + (.status // "in_progress") else "conclusion=" + .conclusion end]
+         | join(",")' <<<"$runs_json" 2>/dev/null || echo "")
     runs_json=$(jq -c --arg x "$MERGE_PR_CI_EXCLUDE_CHECK_RUN" \
         '{check_runs: [(.check_runs // [])[] | select(.name != $x)]}' <<<"$runs_json" 2>/dev/null || echo '{"check_runs":[]}')
-    if [[ -n "$excluded" ]] && [[ "$_ci_excluded_noted" == false ]]; then
-        # Once per run, not once per poll: the loop below re-enters every
-        # MERGE_PR_CI_POLL_SECONDS. Stderr keeps stdout the bare state word.
-        echo "  (check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' conclusion=${excluded} is a review signal, excluded from CI — not used to block the merge)" >&2
-        _ci_excluded_noted=true
-    fi
     registered=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" \
         '(($r.check_runs // []) | length) + (($s.statuses // []) | length) > 0' 2>/dev/null || echo false)
     if [[ "$registered" != "true" ]]; then
-        echo "none"
+        echo "none|${excluded}"
         return
     fi
     culprits=$(jq -n -r --argjson r "$runs_json" --argjson s "$status_json" '
@@ -1034,16 +1038,16 @@ _ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
         # Name what actually failed so the next false positive is
         # diagnosable from the script's own output (#300).
         echo "  CI failed: ${culprits}" >&2
-        echo "failed"
+        echo "failed|${excluded}"
         return
     fi
     pending=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" '
         (([($r.check_runs // [])[] | select(.conclusion == null)] | length) > 0)
         or (([($s.statuses // [])[] | select(.state == "pending")] | length) > 0)' 2>/dev/null || echo false)
     if [[ "$pending" == "true" ]]; then
-        echo "pending"
+        echo "pending|${excluded}"
     else
-        echo "success"
+        echo "success|${excluded}"
     fi
 }
 
@@ -1099,7 +1103,16 @@ if [[ "$NO_WAIT" == false ]]; then
     _ci_grace_deadline=$((_ci_start + MERGE_PR_CI_GRACE_SECONDS))
     _ci_result=""
     while :; do
-        _ci_state=$(_ci_poll_state "$CI_TARGET_SHA")
+        _ci_poll_out=$(_ci_poll_state "$CI_TARGET_SHA")
+        _ci_state="${_ci_poll_out%%|*}"
+        _ci_excluded="${_ci_poll_out#*|}"
+        if [[ -n "$_ci_excluded" ]] && [[ "$_ci_excluded_noted" == false ]]; then
+            # Once per run, not once per poll — and the flag lives HERE, in
+            # the loop's own shell, because `_ci_poll_state` is read through
+            # a command substitution and cannot carry state back out of it.
+            echo "  (check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' ${_ci_excluded} is a review signal, excluded from CI — not used to block the merge)"
+            _ci_excluded_noted=true
+        fi
         _ci_now=$(date +%s)
         case "$_ci_state" in
             success) _ci_result="success"; break ;;
