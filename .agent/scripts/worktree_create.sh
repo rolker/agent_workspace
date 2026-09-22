@@ -28,6 +28,14 @@ source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_issue_helpers.sh"
 source "$SCRIPT_DIR/_project_registry.sh"
 
+# ---------------------------------------------------- user-tier guard (#265) ---
+# This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
+# it can be invoked from any cwd on the machine. Refuse outside the workspace
+# checkout and outside every registered project root, BEFORE any git/gh call,
+# so a stray invocation in an unrelated repo touches nothing. See
+# docs/decisions/0016-session-roots-and-the-user-tier.md.
+registry_require_root "$ROOT_DIR" || exit 1
+
 # ADR-0012: a package worktree names its layer and package repos
 # explicitly; --issue must then be the qualified owner/repo#N form so
 # worktree_repos can tell the issue's own repo from its siblings.

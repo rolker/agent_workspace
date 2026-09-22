@@ -55,6 +55,28 @@ fi
 TOOL=$(echo "$INPUT" | jq -r '.tool_name // ""')
 [[ "$TOOL" != "Bash" ]] && exit 0
 
+# ---------------------------------------------------- user-tier guard (#265) ---
+# This hook is promoted to the user tier: user_tier_install.sh writes an
+# absolute-path PreToolUse entry for it into ~/.claude/settings.json, so it
+# fires in EVERY session on this machine, including sessions in repos that
+# have nothing to do with the workspace. Stay inert there: unless the
+# session's cwd is inside the workspace checkout or under a registered
+# project root, exit 0 immediately -- before any pattern check, so an
+# unrelated repo sees no block and no log line.
+#
+# BASH_SOURCE is resolved through symlinks because the user tier installs
+# this file as a symlink under ~/.claude/hooks/.
+# See docs/decisions/0016-session-roots-and-the-user-tier.md.
+_UT_HOOK_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+_UT_WS_ROOT="$(cd "$(dirname "$_UT_HOOK_PATH")/../.." 2>/dev/null && pwd)"
+_UT_CWD="$(echo "$INPUT" | jq -r '.cwd // ""')"
+[[ -z "$_UT_CWD" ]] && _UT_CWD="$PWD"
+if [[ -n "$_UT_WS_ROOT" && -f "$_UT_WS_ROOT/.agent/scripts/_project_registry.sh" ]]; then
+    # shellcheck source=../../.agent/scripts/_project_registry.sh
+    source "$_UT_WS_ROOT/.agent/scripts/_project_registry.sh"
+    registry_require_root "$_UT_WS_ROOT" "$_UT_CWD" >/dev/null 2>&1 || exit 0
+fi
+
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""')
 [[ -z "$COMMAND" ]] && exit 0
 

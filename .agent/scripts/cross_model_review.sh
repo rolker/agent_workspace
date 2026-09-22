@@ -425,6 +425,18 @@ if [[ -n "$CLI_ISSUE_NUMBER" && ! "$CLI_ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
+# ---------------------------------------------------- user-tier guard (#265) ---
+# This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
+# it can be invoked from any cwd on the machine. Refuse outside the workspace
+# checkout and outside every registered project root. Placed immediately
+# after argument parsing and BEFORE the dependency checks and issue
+# resolution below, because those already reach `gh`. See
+# docs/decisions/0016-session-roots-and-the-user-tier.md.
+_UT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_project_registry.sh
+source "$_UT_SCRIPT_DIR/_project_registry.sh"
+registry_require_root "$(cd "$_UT_SCRIPT_DIR/../.." && pwd)" || exit 1
+
 # --- Dependency checks ---
 # gh is required for PR mode (PR body/diff retrieval) but optional for
 # branch mode (offline pre-push review uses local git only).
@@ -568,6 +580,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_resolve_work_plans_dir.sh"
 # shellcheck source=_resolve_default_branch.sh
 source "${SCRIPT_DIR}/_resolve_default_branch.sh"
+
 
 if [[ -n "$CLI_WORK_PLANS_DIR" ]]; then
     export WORK_PLANS_DIR_OVERRIDE="$CLI_WORK_PLANS_DIR"

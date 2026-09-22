@@ -21,6 +21,9 @@
 # IMPORTANT: Must be sourced (not executed) to export variables to current shell:
 #   source .agent/scripts/set_git_identity_env.sh "..." "..." ["..."]   ✓ Correct
 #   ./.agent/scripts/set_git_identity_env.sh "..." "..."                ✗ Wrong (variables won't persist)
+# user-tier: inert -- this file only defines functions and environment
+# variables; it performs no repo-affecting action, so it needs no
+# registry_require_root guard (#265 PR 3, ADR-0016).
 
 # Load framework identity lookup table from shared configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
