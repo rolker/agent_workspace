@@ -154,3 +154,34 @@ Two commits. c62d8e2 (`merge_pr.sh` + `test_merge_pr_gate.sh`): a `readonly MERG
 
 ### Notes
 Verified: gate suite 62/62; `bash -n` clean; jq exclusion/culprit expressions exercised by hand on in-progress, unnamed and empty inputs; every conclusion in the old `failed` set plus commit-status `error`/`failure` still counted; the filter applied uniformly to `registered`/`failed`/`pending`; `readonly` re-declaration impossible (merge_pr.sh is executed, never sourced); `failed=false; [[ ]] && failed=true` does not trip `set -e`. shellcheck/pre-commit unavailable here — the Lint job on push is the first real shellcheck pass. The must-fix was found independently by the governance read and a fresh adversarial subagent.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 10:42 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-300 at 3b51678
+**Addressed**: Local Review (Pre-Push) at `a0ee7ad` (2026-09-22 10:41 -04:00)
+**Commits**: cf1cfda, 75387ee, 3b51678
+
+**Mechanism** (correcting the earlier `## Implementation` claim): the
+excluded-run note is printed **by the CI wait loop**, not by
+`_ci_poll_state`. The loop reads the poller through `$(...)`, so no flag
+set inside the poller survives. `_ci_poll_state` now prints
+`<state>|<excluded>`; the loop splits on the first `|`, classifies on
+field 1, and prints the note under `_ci_excluded_noted` in its own shell —
+that is what makes it once per run rather than once per poll.
+
+### Actions
+- [x] (must-fix) `_ci_excluded_noted` guard was dead — the flag was set inside `_ci_poll_state`, which runs in a command substitution, so the note printed on every poll (~180x over a 30-minute wait). Moved the once-only state to the wait loop via the `<state>|<excluded>` stdout contract; updated the misleading code comment — `.agent/scripts/merge_pr.sh:986-1050,1102-1115`
+- [x] (suggestion) Added `ci-24`: sequenced check-runs fixtures (Lint pending, then green) drive at least two poll iterations and assert the note appears exactly once (`grep -c`), plus a poll-count guard so "exactly once" cannot pass vacuously on a single poll — `.agent/scripts/tests/test_merge_pr_gate.sh:770-792`
+- [x] (suggestion) The note now reports `status=in_progress` (from the run's `status`) for an excluded run with a null conclusion, instead of the `conclusion=pending` the API never returned — `.agent/scripts/merge_pr.sh:1012-1017`
+- [x] (suggestion) Added `ci-23` with a Copilot-only head at `conclusion: null`: asserts it classifies as never-registered (`no checks registered for`), never pending-to-timeout, and that the note reads `status=in_progress` — `.agent/scripts/tests/test_merge_pr_gate.sh:756-768`
+
+### Collateral
+- `ci-21`'s "no CI-failure line names Copilot" assertion is now line-scoped (`grep`) instead of a whole-output glob: the note is printed after the `CI failed:` line, so `*"CI failed:"*"copilot"*` matched across two unrelated lines.
+
+### Verification
+- `bash .agent/scripts/tests/test_merge_pr_gate.sh` — 64 passed, 0 failed (was 61+1 fail mid-fix, then 62, then 64 with the two new cases)
+- `.agent/scripts/tests/run_script_tests.sh` — all 23 suites passed
+- pre-commit ran on every commit; no `--no-verify`. Not pushed.
