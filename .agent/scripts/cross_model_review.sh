@@ -524,12 +524,16 @@ fi
 
 # Drop .agent/work-plans/** file sections from a unified diff (#312).
 # Reads the diff on stdin. A section starts at `diff --git a/<p> b/<p>`
-# and runs to the next such header; the b/ path decides. Everything
-# else passes through byte-for-byte.
+# and runs to the next such header. Only the b/ (post-image) path
+# decides: a deleted file still carries its b/ path on that line, and a
+# file renamed OUT of work-plans into the codebase is new code that
+# must stay in review. Git quotes paths with unusual characters
+# (`"b/..."`), hence the optional quote. Everything else passes through
+# byte-for-byte.
 filter_work_plans_diff() {
     awk '
         /^diff --git / {
-            skip = ($0 ~ /^diff --git a\/.agent\/work-plans\//) || ($0 ~ / b\/.agent\/work-plans\//)
+            skip = ($0 ~ / "?b\/\.agent\/work-plans\//)
         }
         !skip { print }
     '
@@ -542,7 +546,9 @@ filter_work_plans_diff() {
 printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
 DIFF_START_LINE=$(wc -l < "$PROMPT_FILE")
 if [[ "$BRANCH_MODE" == true ]]; then
-    git diff "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"
+    # Explicit a/ b/ prefixes so a diff.noprefix / diff.mnemonicPrefix
+    # config cannot defeat the work-plans filter.
+    git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"
     if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
         echo "ERROR: Could not produce diff for ${BRANCH_NAME} against ${BASE_REF}" >&2
         echo '--- Review error: failed to produce branch diff ---' > "$FINDINGS_FILE"

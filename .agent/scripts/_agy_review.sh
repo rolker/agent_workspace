@@ -77,27 +77,37 @@ fi
 if [[ ! -r "$PROMPT_FILE" ]]; then
     fail "prompt file not readable: ${PROMPT_FILE}"
 fi
-if [[ ! -x "$AGY_BIN" ]]; then
-    fail "agy binary not executable: ${AGY_BIN}"
+# Accept a bare name (resolved on PATH) or a path; `test -x` alone only
+# looks at the current directory for a bare name.
+AGY_BIN_RESOLVED=$(command -v "$AGY_BIN" 2>/dev/null || true)
+if [[ -z "$AGY_BIN_RESOLVED" || ! -x "$AGY_BIN_RESOLVED" ]]; then
+    fail "agy binary not found or not executable: ${AGY_BIN}"
 fi
 
 # Temp files: the NDJSON input line, agy's stdout (event stream), and agy's
-# stderr. Removed on every exit path; on failure the useful parts are
-# copied into the findings file first.
+# stderr. Removed on every exit path — the EXIT trap covers normal exits
+# and the signal traps turn a kill into an exit so it still fires; on
+# failure the useful parts are copied into the findings file first.
 TMP_DIR=$(mktemp -d -t agy-review.XXXXXX) || fail "mktemp failed"
 trap 'rm -rf "$TMP_DIR"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 INPUT_FILE="${TMP_DIR}/input.ndjson"
 STREAM_FILE="${TMP_DIR}/stream.ndjson"
 STDERR_FILE="${TMP_DIR}/stderr.txt"
 
-# One NDJSON message. jq -Rs slurps the whole prompt as a single string
-# and escapes it, so the prompt size is bounded only by memory.
-if ! jq -Rs '{event: "user", message: {role: "user", content: .}}' "$PROMPT_FILE" > "$INPUT_FILE"; then
+# Exactly one NDJSON line: jq -Rs slurps the whole prompt as a single
+# string and escapes it (size bounded only by memory); -c keeps the
+# message on one line, which is the stream-json contract.
+if ! jq -c -Rs '{event: "user", message: {role: "user", content: .}}' "$PROMPT_FILE" > "$INPUT_FILE"; then
     fail "could not encode the prompt as a stream-json message"
 fi
 
-# No pipeline here: the exit status is agy's own, not jq's.
-"$AGY_BIN" \
+# No pipeline here: the exit status is agy's own, not jq's. `-p=` is the
+# verified spelling for "print mode, prompt comes from stdin" on agy 1.2.8:
+# a bare -p swallows the next flag as its prompt and `-p ""` is rejected
+# as an empty prompt.
+"$AGY_BIN_RESOLVED" \
     --input-format=stream-json \
     --output-format=stream-json \
     --print-timeout "$PRINT_TIMEOUT" \
@@ -123,11 +133,17 @@ if [[ -z "$RESULT_JSON" ]]; then
     fail "agy emitted no result event$(stderr_excerpt)"
 fi
 
-STATUS=$(jq -r '.status // "MISSING"' <<< "$RESULT_JSON")
+# Scalar fields in one jq pass (tab-separated, none of them can contain a
+# tab or newline); the response separately since it is multi-line.
+IFS=$'\t' read -r STATUS DENIED_COUNT DENIED ERROR_MSG < <(
+    jq -r '[
+        (.status // "MISSING"),
+        ((.denied_actions // []) | length),
+        ((.denied_actions // []) | map(.display_name // .action) | join(", ")),
+        ((.error // "") | gsub("[\t\n]"; " "))
+    ] | @tsv' <<< "$RESULT_JSON"
+)
 RESPONSE=$(jq -r '.response // ""' <<< "$RESULT_JSON")
-ERROR_MSG=$(jq -r '.error // ""' <<< "$RESULT_JSON")
-DENIED=$(jq -r '(.denied_actions // []) | map(.display_name // .action) | join(", ")' <<< "$RESULT_JSON")
-DENIED_COUNT=$(jq -r '(.denied_actions // []) | length' <<< "$RESULT_JSON")
 
 if grep -q 'print timeout after' "$STDERR_FILE" 2>/dev/null; then
     fail "print timeout (${PRINT_TIMEOUT}) expired with the turn in progress; partial output discarded$(stderr_excerpt)"
@@ -144,9 +160,13 @@ fi
 
 # Success. Plain > is safe: the file was truncated above and readers key
 # off the caller's completion marker, appended only after we exit.
-printf '%s\n' "$RESPONSE" > "$FINDINGS_FILE"
+if ! printf '%s\n' "$RESPONSE" > "$FINDINGS_FILE"; then
+    fail "could not write the findings file: ${FINDINGS_FILE}"
+fi
 if [[ "$DENIED_COUNT" -gt 0 ]]; then
-    printf '\n> Note: %s tool action(s) were denied in headless mode (%s); the review ran with less context than the model asked for.\n' \
-        "$DENIED_COUNT" "$DENIED" >> "$FINDINGS_FILE"
+    if ! printf '\n> Note: %s tool action(s) were denied in headless mode (%s); the review ran with less context than the model asked for.\n' \
+        "$DENIED_COUNT" "$DENIED" >> "$FINDINGS_FILE"; then
+        fail "could not write the findings file: ${FINDINGS_FILE}"
+    fi
 fi
 exit 0

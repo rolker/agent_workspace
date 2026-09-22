@@ -56,6 +56,14 @@ if [[ -n "${MOCK_AGY_EXIT:-}" ]]; then
     echo "boom" >&2
     exit "${MOCK_AGY_EXIT}"
 fi
+# Stream-json contract: exactly one NDJSON message per line. A
+# pretty-printed (multi-line) message is a contract violation even if a
+# lenient JSON reader would accept it, so the mock refuses it.
+input=$(cat)
+if [[ "$(printf '%s\n' "$input" | wc -l)" -ne 1 ]]; then
+    echo "mock agy: stdin is not a single NDJSON line" >&2
+    exit 9
+fi
 echo '{"event":"init","init":{"tools":[]}}'
 if [[ -n "${MOCK_AGY_DENY:-}" ]]; then
     echo 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.' >&2
@@ -70,8 +78,8 @@ fi
 # Echo the prompt back as the response. Streamed, never a shell variable
 # or argv: the whole point of the stdin contract is prompts larger than
 # the kernel's per-argument limit, and the mock must not reintroduce it.
-jq -r 'select(.event == "user") | .message.content' \
-    | jq -Rs '{event:"result",result:{status:"SUCCESS",response:.}}'
+printf '%s\n' "$input" | jq -r 'select(.event == "user") | .message.content' \
+    | jq -c -Rs '{event:"result",result:{status:"SUCCESS",response:.}}'
 MOCK_EOF
     chmod +x "${MOCK_BIN}/agy"
 
@@ -1115,6 +1123,21 @@ diff --git a/src/after.py b/src/after.py
 @@ -1 +1 @@
 -x
 +y
+diff --git a/.agent/work-plans/issue-42/tool.sh b/src/tool.sh
+similarity index 90%
+rename from .agent/work-plans/issue-42/tool.sh
+rename to src/tool.sh
+--- a/.agent/work-plans/issue-42/tool.sh
++++ b/src/tool.sh
+@@ -1 +1 @@
+-RENAMED OUT old
++RENAMED OUT new
+diff --git "a/.agent/work-plans/issue-42/odd name.md" "b/.agent/work-plans/issue-42/odd name.md"
+--- "a/.agent/work-plans/issue-42/odd name.md"
++++ "b/.agent/work-plans/issue-42/odd name.md"
+@@ -1 +1 @@
+-q
++QUOTED BOOKKEEPING
 DIFF_EOF
 
     export MOCK_GH_DIFF_FILE="$mixed"
@@ -1129,7 +1152,11 @@ DIFF_EOF
     assert_contains "code file after the bookkeeping is kept" "diff --git a/src/after.py" "$prompt"
     assert_not_contains "plan.md section is dropped" "PLAN BOOKKEEPING" "$prompt"
     assert_not_contains "progress.md section is dropped" "PROGRESS NEW" "$prompt"
-    assert_not_contains "no work-plans header survives" "work-plans" "$prompt"
+    assert_contains "file renamed OUT of work-plans stays in review (b/ path decides)" \
+        "RENAMED OUT new" "$prompt"
+    assert_not_contains "quoted work-plans path is dropped" "QUOTED BOOKKEEPING" "$prompt"
+    assert_not_contains "no work-plans post-image header survives" \
+        " \"?b/.agent/work-plans" "$prompt"
 
     # All-bookkeeping diff: nothing to review.
     local only="${TMPDIR_BASE}/only.diff"
@@ -1149,6 +1176,37 @@ DIFF_EOF
     unset MOCK_GH_DIFF_FILE
     assert_exit_code "all-bookkeeping diff exits 3" "3" "$exit2"
     assert_contains "error names the work-plans exclusion" "work-plans" "$stderr"
+
+    teardown
+}
+
+test_branch_mode_filter_survives_noprefix() {
+    echo "TEST: branch mode filters work-plans even with diff.noprefix=true (#312)"
+    setup
+
+    # Feature branch off the mock repo's default branch with one code
+    # file and one work-plans file; diff.noprefix set to defeat a naive
+    # a/ b/ match.
+    local base
+    base=$(git -C "${MOCK_REPO}" branch --show-current)
+    git -C "${MOCK_REPO}" checkout -q -b feature/issue-42
+    mkdir -p "${MOCK_REPO}/src" "${MOCK_REPO}/.agent/work-plans/issue-42"
+    echo "BRANCH CODE" > "${MOCK_REPO}/src/code.py"
+    echo "BRANCH BOOKKEEPING" > "${MOCK_REPO}/.agent/work-plans/issue-42/plan.md"
+    git -C "${MOCK_REPO}" add -A
+    git -C "${MOCK_REPO}" -c user.name="Test" -c user.email="test@test" commit -q -m "feature"
+    git -C "${MOCK_REPO}" config diff.noprefix true
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --branch "$base" --sync < /dev/null >/dev/null 2>&1 || exit_code=$?
+
+    assert_exit_code "branch review completes" "0" "$exit_code"
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "code file kept" "BRANCH CODE" "$prompt"
+    assert_not_contains "work-plans file dropped despite diff.noprefix" "BRANCH BOOKKEEPING" "$prompt"
 
     teardown
 }
@@ -1181,6 +1239,7 @@ test_agy_no_temp_leak
 test_agy_tmux_invocation
 test_prompt_tool_use_guidance
 test_work_plans_excluded_from_diff
+test_branch_mode_filter_survives_noprefix
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
