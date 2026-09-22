@@ -164,3 +164,56 @@ pointer rather than "scoped exception"; five named test functions with
 fixtures in the resolved WORK_PLANS_DIR, added to the suite's run list;
 AGENTS.md's cross_model_review.sh row update added (owner-approved).
 #313-merge-first gate unchanged.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 13:20 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**Issue**: #320 — cross_model_review: run Gemini/Codex at the Standard tier and pass the plan's Approach as context
+**Plan**: `.agent/work-plans/issue-320/plan.md` at `b248f3c`
+**Branch**: `feature/issue-320`
+**Round**: 2 (round 1 reviewed `535ee62`; owner checkpoint decision: revise)
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Six steps, six files, one PR; split line still pre-recorded. |
+| Issue alignment | Good | Both issue items covered; Light untouched; "context, not the subject" carried in the heading text; plan/issue review by Gemini/Codex still out of scope. |
+| File targeting | Good | All six files named, each mapped to a numbered step. `AGENTS.md` now present with the owner's approval recorded inline. |
+| Consequences | Good | Report-format row travels with the dispatch change; the noprefix test's fixture is reasoned about explicitly rather than asserted away; AGENTS.md row no longer left stale. |
+| Principle alignment | Good | Only what's needed; consequences in the same PR; ADR addendum keeps the record accurate. |
+| ADR compliance | Good | ADR-0008: navigational Status-line pointer + References entry, no Decision/Consequences edit — permitted, no supersession. |
+| ROS conventions | N/A | Workspace-only plan. |
+
+### Round-1 items
+
+| # | Round-1 finding | Status in `b248f3c` |
+|---|---|---|
+| 1 | Report section left Deep-only while dispatch moved to Standard | Resolved — step 1 moves Standard's Report-format row with the dispatch and states plainly that nothing but the classification thresholds distinguishes Deep afterwards. |
+| 2 | Absent/empty `## Approach` unspecified; truncation unmarked; noprefix test fixture | Resolved — omit entirely (never a fallback to the whole plan, never an empty heading); truncation carries `_[truncated: N more lines]_`; the line-1237 test's no-`## Approach` fixture is named and the pass reasoning stated. |
+| 3 | Gemini `## Tool Use` footer contradicts the new section | Resolved — reworded to "excluded **from the diff**" in step 2, and the file is in Files to Change for it. |
+| 4 | "Scoped exception" wording on the ADR-0015 addendum | Resolved — replaced with the navigational pointer sentence. |
+| 5 | Tests unnamed; fixture placement; run-list omission risk | Resolved — five named functions, fixtures in the resolved `WORK_PLANS_DIR`, explicit instruction to add each to the run list; the `--no-progress` case correctly identifies `--no-progress` + `--work-plans-dir` as the only combination that can exercise it. |
+| 6 | `AGENTS.md` script-reference row goes stale | Resolved — step 6, owner-approved, in Files to Change. |
+
+### Findings
+
+No blocking findings. Three notes for the implementer, none of which need another planning round:
+
+1. **[File targeting — suggestion]** Step 1 says "step 5e's activation" and "the tier summaries"; in `review-code/SKILL.md` that is three separate strings, not two: the specialist-list parenthetical at line 61 (`… run in parallel by cross_model_review.sh (Deep only)`), the Deep-tier dispatch bullet at line 212, and `**Activates at**: Deep only` at line 309. Line 554's Light condensed-format note (skip Cross-Model) stays as-is and is correct. Grep `Deep only` before opening the PR.
+2. **[Approach — suggestion]** The `awk` extraction to "the next `## ` heading" is not fence-aware, so a fenced block inside a plan's Approach containing a line that begins `## ` would end the section early. The failure mode is benign (a shorter context block, never a longer one) and `progress_read.py` is the only fence-aware parser in the workspace; not worth solving here, but worth a one-line comment at the awk so a future reader does not treat it as a bug.
+3. **[Scope — follow-up, not this PR]** Once this lands, Deep and Standard dispatch the same specialists and produce the same report sections; the tiers differ only in the thresholds that select them. Recording that in the doc (as step 1 does) is the right move for this PR, but it leaves an open governance question — does Deep still earn a separate tier, or should it gain something? Worth a follow-up issue after the PR merges, not a change here.
+
+### Summary
+
+All six round-1 findings are addressed substantively, not cosmetically — item 2 in particular now specifies the omit-don't-empty rule and reasons about the existing test fixture rather than asserting the suite is unaffected. The plan is ready for implementation once the #313 gate opens (#313 was still OPEN at the time of this review; the precondition is correctly retained in Open Questions).
+
+### Recommended Actions
+
+- [ ] Grep `Deep only` in `review-code/SKILL.md` — three strings to update (lines 61, 212, 309), not two (finding 1)
+- [ ] Add a one-line comment at the `## Approach` awk noting it is not fence-aware (finding 2)
+- [ ] Procedural gate unchanged: confirm #313 has merged to `main`, then `git merge origin/main` on this branch before the first implementation commit
+- [ ] After merge, consider a follow-up issue on what (if anything) should still distinguish the Deep tier (finding 3)
