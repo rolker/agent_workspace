@@ -86,3 +86,16 @@ is watching this decision for its Copilot-only port but isn't blocking.
 **Decision**: proceed
 
 Proceed. The plan must address the four review actions: a new ADR recording the tmux-default reversal (gstack pattern under considered alternatives, out of scope); rewrite the review-code skill's dispatch step to the single-invocation shape in the same PR; explicit parallel-dispatch failure-mode tests (one agent fails, one times out while others succeed); the Copilot -p / --allow-all-tools fix stays in #212 and out of this PR.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 10:51 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-206/plan.md` at `b4e5a78`
+
+Refactors `cross_model_review.sh` to a single `--agents a,b,c` invocation that
+dispatches agents in parallel background jobs by default (`&`+`wait`, per-agent
+exit codes via `wait PID`), rewrites `review-code` skill step 5e to the new
+shape, adds a new ADR-0015 for the tmux-default reversal, moves tmux behind an
+explicit `--tmux` opt-in (recommended: keep, not remove), and adds partial-
+failure/timeout tests for the new parallel path.
