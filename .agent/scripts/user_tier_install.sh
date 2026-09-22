@@ -61,30 +61,59 @@ SESSION_HOOK_TARGET="$WS_ROOT/.claude/hooks/session_start_project_layer.sh"
 
 TAG="$WS_ROOT"
 
-MODE="install"
+# Modes are mutually exclusive. Previously they were last-one-wins, so
+# `--uninstall --check` silently ran check only -- the caller believed they
+# had uninstalled.
+MODE=""
 REQUIRE=false
+FORCE=false
+set_mode() {
+    if [[ -n "$MODE" && "$MODE" != "$1" ]]; then
+        echo "ERROR: --$1 and --$MODE are mutually exclusive; pick one" >&2
+        exit 2
+    fi
+    MODE="$1"
+}
 for arg in "$@"; do
     case "$arg" in
-        --check)       MODE="check" ;;
+        --check)       set_mode check ;;
         --require)     REQUIRE=true ;;
-        --uninstall)   MODE="uninstall" ;;
-        --list-skills) MODE="list-skills" ;;
-        --sync-skills) MODE="sync-skills" ;;
+        --force)       FORCE=true ;;
+        --uninstall)   set_mode uninstall ;;
+        --list-skills) set_mode list-skills ;;
+        --sync-skills) set_mode sync-skills ;;
         -h|--help)
             sed -n '2,45p' "${BASH_SOURCE[0]}"
             exit 0
             ;;
         *)
-            echo "usage: user_tier_install.sh [--check [--require]] [--uninstall] [--list-skills] [--sync-skills]" >&2
+            echo "usage: user_tier_install.sh [--force] | --check [--require] | --uninstall | --list-skills | --sync-skills" >&2
             exit 2
             ;;
     esac
 done
 
-if ! command -v jq >/dev/null 2>&1; then
-    echo "ERROR: jq is required to merge ~/.claude/settings.json" >&2
-    exit 3
+[[ -n "$MODE" ]] || MODE="install"
+if [[ "$REQUIRE" == true && "$MODE" != "check" ]]; then
+    echo "ERROR: --require is only meaningful with --check" >&2
+    exit 2
 fi
+
+# jq is needed only by the modes that read or merge settings.json. Checking
+# it up front made `make validate` exit 3 on a jq-less machine -- the exact
+# case this script's --check is supposed to keep green.
+case "$MODE" in
+    install|check|uninstall)
+        if ! command -v jq >/dev/null 2>&1; then
+            if [[ "$MODE" == "check" ]]; then
+                echo "agent_workspace user tier: jq not installed -- cannot check (install jq to enable this check)"
+                exit 0
+            fi
+            echo "ERROR: jq is required to merge ~/.claude/settings.json" >&2
+            exit 3
+        fi
+        ;;
+esac
 
 # ---------------------------------------------------------------- inputs ---
 # The promoted scripts (not the hooks -- those get hook entries, not
@@ -141,12 +170,56 @@ installed() {
     [[ -f "$ROOT_FILE" ]] && [[ "$(cat "$ROOT_FILE" 2>/dev/null)" == "$WS_ROOT" ]]
 }
 
+# The user tier is singular: ~/.claude/agent-workspace-root names exactly one
+# checkout, and every skill's $WS_ROOT follows it. Prints the OTHER checkout's
+# path when the file exists and points somewhere else; empty otherwise.
+installed_elsewhere() {
+    local other
+    [[ -f "$ROOT_FILE" ]] || return 1
+    other="$(cat "$ROOT_FILE" 2>/dev/null)"
+    [[ -n "$other" && "$other" != "$WS_ROOT" ]] || return 1
+    printf '%s\n' "$other"
+}
+
+# Is settings.json present but unparseable? That is a state of its own, not
+# an empty file: treating it as {} would silently drop every key the user
+# has (model, their own allow-rules, their own hooks) on the next write.
+settings_unparseable() {
+    [[ -f "$SETTINGS" ]] && ! jq -e . "$SETTINGS" >/dev/null 2>&1
+}
+
+# Refuse rather than guess. Callers that may WRITE must call this first.
+require_parseable_settings() {
+    settings_unparseable || return 0
+    cat >&2 <<EOF
+ERROR: $SETTINGS exists but is not valid JSON.
+
+Refusing to touch it: rewriting it would discard every setting in it. Fix
+the file (jq . "$SETTINGS" will point at the syntax error), or move it
+aside, then re-run this script.
+EOF
+    return 1
+}
+
 read_settings() {
     if [[ -f "$SETTINGS" ]]; then
+        # Parse errors are the caller's to handle via require_parseable_settings
+        # / settings_unparseable -- never silently downgraded to {} here.
         jq '.' "$SETTINGS" 2>/dev/null || echo '{}'
     else
         echo '{}'
     fi
+}
+
+# A timestamped copy beside the original, before any rewrite. Cheap, and the
+# difference between a bad merge being an annoyance and being a data loss.
+backup_settings() {
+    local stamp dest
+    [[ -f "$SETTINGS" ]] || return 0
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    dest="$SETTINGS.agent-workspace-backup.$stamp"
+    cp -p "$SETTINGS" "$dest" || return 1
+    echo "  backed up $SETTINGS -> $dest"
 }
 
 write_settings() {  # <json on stdin>
@@ -158,6 +231,15 @@ write_settings() {  # <json on stdin>
         echo "ERROR: refusing to write malformed settings.json" >&2
         rm -f "$tmp"
         return 1
+    fi
+    if [[ -L "$SETTINGS" ]]; then
+        # settings.json is a symlink -- commonly into a dotfiles repo. `mv`
+        # would replace the link with a regular file and silently detach the
+        # user's dotfiles. Write THROUGH the link instead, so their repo sees
+        # the edit.
+        cat "$tmp" > "$SETTINGS" || { rm -f "$tmp"; return 1; }
+        rm -f "$tmp"
+        return 0
     fi
     mv "$tmp" "$SETTINGS"
 }
@@ -240,6 +322,8 @@ if [[ "$MODE" == "uninstall" ]]; then
         echo "  removed skill symlink: $(basename "$link")"
     done
     if [[ -f "$SETTINGS" ]]; then
+        require_parseable_settings || exit 1
+        backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
         read_settings | jq --arg tag "$TAG" --argjson rules "$(allow_rules_json)" '
             .hooks //= {} |
             .hooks |= with_entries(
@@ -257,6 +341,24 @@ fi
 
 # ----------------------------------------------------------------- check ---
 if [[ "$MODE" == "check" ]]; then
+    # An unparseable settings.json is reported as itself, not as drift. The
+    # old behaviour read it as {}, reported every entry missing, and told the
+    # user to re-run the installer -- which would then have overwritten it.
+    if settings_unparseable; then
+        echo "agent_workspace user tier: $SETTINGS is not valid JSON -- cannot check. Fix it (jq . \"$SETTINGS\") or move it aside." >&2
+        exit 1
+    fi
+
+    # Installed, but for a DIFFERENT checkout. Previously this fell through
+    # installed() to "not installed (optional)" and exited 0, so the one state
+    # that actually breaks every skill's $WS_ROOT was the quietest one.
+    if other_root="$(installed_elsewhere)"; then
+        echo "agent_workspace user tier: installed for a different checkout: $other_root" >&2
+        echo "  (this checkout is $WS_ROOT; every skill's \$WS_ROOT currently resolves to the other one)" >&2
+        echo "  Re-run the installer with --force from whichever checkout should own the user tier." >&2
+        exit 1
+    fi
+
     if ! installed; then
         if [[ "$REQUIRE" == true ]]; then
             echo "agent_workspace user tier: NOT INSTALLED (--require) -- run .agent/scripts/user_tier_install.sh" >&2
@@ -278,7 +380,9 @@ if [[ "$MODE" == "check" ]]; then
     settings="$(read_settings)"
 
     # Our hook entries, present and pointing at this checkout.
-    for cmd in $(hook_commands) "$SESSION_HOOK_LINK"; do
+    # while-read, not `for cmd in $(...)`: a checkout path containing a space
+    # or a glob character would otherwise word-split into permanent drift.
+    while IFS= read -r cmd; do
         if ! jq -e --arg c "$cmd" --arg tag "$TAG" '
             [.hooks // {} | to_entries[] | .value[]
              | select((._agent_workspace // "") == $tag)
@@ -286,7 +390,7 @@ if [[ "$MODE" == "check" ]]; then
         ' <<< "$settings" >/dev/null; then
             note "missing hook entry for $cmd"
         fi
-    done
+    done < <(hook_commands; printf '%s\n' "$SESSION_HOOK_LINK")
 
     # Entries tagged as ours but naming a path outside this checkout, or
     # tagged for a DIFFERENT checkout (a second clone installed over us).
@@ -362,7 +466,33 @@ if [[ "$MODE" == "check" ]]; then
 fi
 
 # --------------------------------------------------------------- install ---
+# Never rewrite a settings.json we cannot parse -- that is how every user key
+# in it would be lost.
+require_parseable_settings || exit 1
+
+# The user tier is singular. If another checkout owns it, say so and stop:
+# taking it over silently repoints every skill's $WS_ROOT, and the losing
+# checkout's --check used to report a cheerful "not installed (optional)".
+if other_root="$(installed_elsewhere)" && [[ "$FORCE" != true ]]; then
+    cat >&2 <<EOF
+ERROR: the user tier is already installed for a different workspace checkout.
+
+  currently installed: $other_root
+  this checkout:       $WS_ROOT
+
+Only one checkout can own ~/.claude at a time -- every skill's \$WS_ROOT
+follows $ROOT_FILE. Re-run with --force to take it over, or run the
+installer from $other_root instead.
+EOF
+    exit 1
+fi
+if [[ -n "${other_root:-}" && "$FORCE" == true ]]; then
+    echo "  --force: taking the user tier over from $other_root"
+fi
+
 mkdir -p "$CLAUDE_DIR" "$HOOKS_DIR" "$SKILLS_DIR"
+
+backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
 
 # 1. the workspace-root file (no trailing newline -- callers do a bare `cat`)
 printf '%s' "$WS_ROOT" > "$ROOT_FILE"

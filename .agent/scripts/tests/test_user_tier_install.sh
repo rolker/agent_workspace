@@ -239,6 +239,107 @@ out="$(run --check)"; rc=$?
     && pass "--check after uninstall: back to the not-installed note" \
     || fail "--check after uninstall (rc=$rc out=$out)"
 
+# ------------------------------------------- malformed settings.json ---
+# Round 1 must-fix: read_settings used `jq . || echo {}`, so an unparseable
+# settings.json was treated as empty and REPLACED -- every user key gone,
+# exit 0, no backup. It must now refuse, untouched, in every writing mode,
+# and --check must report it as its own state rather than as drift.
+run >/dev/null   # start from a clean install
+printf '{ "model": "opus", "permissions": { "allow": ["Bash(mine *)"] }' > "$SETTINGS"   # truncated: invalid
+malformed_before="$(cat "$SETTINGS")"
+
+out="$(run)"; rc=$?
+[[ "$rc" -ne 0 && "$out" == *"not valid JSON"* ]] \
+    && pass "install refuses an unparseable settings.json" \
+    || fail "install did not refuse unparseable settings (rc=$rc out=${out:0:160})"
+[[ "$(cat "$SETTINGS")" == "$malformed_before" ]] \
+    && pass "the unparseable settings.json is left byte-for-byte untouched by install" \
+    || fail "install rewrote the unparseable settings.json"
+
+out="$(run --uninstall)"; rc=$?
+[[ "$rc" -ne 0 && "$out" == *"not valid JSON"* ]] \
+    && pass "uninstall refuses an unparseable settings.json" \
+    || fail "uninstall did not refuse (rc=$rc out=${out:0:160})"
+[[ "$(cat "$SETTINGS")" == "$malformed_before" ]] \
+    && pass "the unparseable settings.json is left untouched by uninstall" \
+    || fail "uninstall rewrote the unparseable settings.json"
+
+out="$(run --check)"; rc=$?
+[[ "$rc" -ne 0 && "$out" == *"not valid JSON"* && "$out" != *"DRIFT"* ]] \
+    && pass "--check reports unparseable settings as its own state, not drift" \
+    || fail "--check on unparseable settings (rc=$rc out=${out:0:200})"
+
+rm -f "$SETTINGS"
+run >/dev/null
+
+# ------------------------------------------------- backup before rewrite ---
+rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+out="$(run)"
+ls "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* >/dev/null 2>&1 \
+    && pass "a timestamped backup is written before the rewrite" \
+    || fail "no backup written (out=${out:0:160})"
+rm -f "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.*
+
+# --------------------------------------------- a second workspace checkout ---
+# Round 1 must-fix: the root file was overwritten unconditionally, and the
+# losing checkout's --check then said "not installed (optional)" and exited 0.
+WSC2="$SANDBOX/ws2"
+mkdir -p "$WSC2"
+cp -r "$WS_ROOT/.agent" "$WSC2/.agent"
+cp -r "$WS_ROOT/.claude" "$WSC2/.claude"
+run2() { HOME="$HOMEDIR" bash "$WSC2/.agent/scripts/user_tier_install.sh" "$@" 2>&1; }
+
+out="$(run2)"; rc=$?
+[[ "$rc" -ne 0 && "$out" == *"already installed for a different workspace checkout"* && "$out" == *"$WSC"* ]] \
+    && pass "a second checkout refuses to take the user tier over, naming both paths" \
+    || fail "second checkout did not refuse (rc=$rc out=${out:0:200})"
+[[ "$(cat "$ROOT_FILE")" == "$WSC" ]] \
+    && pass "the root file still points at the first checkout" \
+    || fail "the root file was repointed despite the refusal"
+
+out="$(run2 --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"installed for a different checkout"* && "$out" == *"$WSC"* ]] \
+    && pass "--check from the second checkout reports the foreign owner and exits 1" \
+    || fail "--check from a second checkout (rc=$rc out=${out:0:200})"
+
+out="$(run2 --check --require)"; rc=$?
+[[ "$rc" -eq 1 ]] \
+    && pass "--check --require from the second checkout also exits 1" \
+    || fail "--check --require from a second checkout (rc=$rc)"
+
+out="$(run2 --force)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"taking the user tier over"* && "$(cat "$ROOT_FILE")" == "$WSC2" ]] \
+    && pass "--force takes the user tier over and says so" \
+    || fail "--force did not take over (rc=$rc out=${out:0:200})"
+
+# hand it back so the remaining cases run against the original checkout
+run --force >/dev/null
+
+# ------------------------------------------------------ flag validation ---
+out="$(run --uninstall --check)"; rc=$?
+[[ "$rc" -eq 2 && "$out" == *"mutually exclusive"* ]] \
+    && pass "--uninstall --check is rejected rather than silently running one" \
+    || fail "mode combination not validated (rc=$rc out=${out:0:160})"
+
+out="$(run --require)"; rc=$?
+[[ "$rc" -eq 2 && "$out" == *"only meaningful with --check"* ]] \
+    && pass "--require without --check is rejected rather than ignored" \
+    || fail "--require alone not validated (rc=$rc out=${out:0:160})"
+
+# ------------------------------------------ settings.json as a symlink ---
+# A dotfiles-managed settings.json must be written THROUGH, not replaced.
+real="$SANDBOX/dotfiles-settings.json"
+mv "$SETTINGS" "$real"
+ln -s "$real" "$SETTINGS"
+run >/dev/null
+[[ -L "$SETTINGS" ]] \
+    && pass "a symlinked settings.json is still a symlink after install" \
+    || fail "install replaced the symlinked settings.json with a regular file"
+jq -e '.hooks.SessionStart | length > 0' "$real" >/dev/null \
+    && pass "the install was written through the symlink into the real file" \
+    || fail "the symlink target did not receive the install"
+rm -f "$SETTINGS"; mv "$real" "$SETTINGS"
+
 echo ""
 echo "test_user_tier_install: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
