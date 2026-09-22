@@ -813,6 +813,58 @@ if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
 fi
 printf '```\n\n' >> "$SHARED_PROMPT"
 
+# --- Plan context (#320) ---
+# The diff still excludes `.agent/work-plans/**` (#312), but a reviewer
+# that never sees the plan cannot flag divergence from it. The plan's
+# `## Approach` section — and only that section — is re-admitted here as
+# labelled context outside the diff fence, capped so it cannot reintroduce
+# the prompt bloat #312 removed. Built once, into the shared prompt, so
+# every agent copy carries it.
+#
+# The section is omitted entirely — never a fallback to the whole plan,
+# never an empty heading — when the plan file is absent, carries no
+# `## Approach`, or that section is blank. Also omitted under
+# --no-progress: that mode has no issue bookkeeping to draw on (its
+# artifact dir is a fresh mktemp -d, so a plan.md can only exist in the
+# --no-progress + --work-plans-dir combination, where this guard is what
+# keeps the mode's promise).
+PLAN_CONTEXT_MAX_LINES=200
+PLAN_CONTEXT_FILE="${WORK_PLANS_DIR}/plan.md"
+if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
+    # NOTE: this extractor is NOT fence-aware. A line beginning `## `
+    # inside a fenced code block within the Approach section ends the
+    # extraction early. The failure mode is benign — a shorter context
+    # block, never a longer one and never content from another section —
+    # so this stays a plain awk range rather than growing a fence
+    # tracker (progress_read.py is the workspace's only fence-aware
+    # markdown parser).
+    PLAN_APPROACH=$(awk '
+        /^## Approach[[:space:]]*$/ { in_section = 1; next }
+        in_section && /^## / { exit }
+        in_section { print }
+    ' "$PLAN_CONTEXT_FILE")
+
+    # Whitespace-only counts as empty.
+    if [[ -n "${PLAN_APPROACH//[[:space:]]/}" ]]; then
+        PLAN_APPROACH_LINES=$(printf '%s\n' "$PLAN_APPROACH" | wc -l)
+        {
+            printf '## Plan Context\n\n'
+            printf 'Below is the `## Approach` section of the plan this change is meant\n'
+            printf 'to implement. It is context, not the subject of the review: flag\n'
+            printf 'divergences between the diff and this plan, but do not review the\n'
+            printf 'plan itself.\n\n'
+            if (( PLAN_APPROACH_LINES > PLAN_CONTEXT_MAX_LINES )); then
+                printf '%s\n' "$PLAN_APPROACH" | head -n "$PLAN_CONTEXT_MAX_LINES"
+                printf '\n_[truncated: %d more lines]_\n' \
+                    "$(( PLAN_APPROACH_LINES - PLAN_CONTEXT_MAX_LINES ))"
+            else
+                printf '%s\n' "$PLAN_APPROACH"
+            fi
+            printf '\n'
+        } >> "$SHARED_PROMPT"
+    fi
+fi
+
 # Append output format instructions (quoted heredoc, no expansion)
 cat >> "$SHARED_PROMPT" << 'PROMPT_FOOTER'
 ## Output Format
@@ -851,7 +903,9 @@ for agent in "${AGENTS_TO_RUN[@]}"; do
 
 The diff above is the complete set of code changes under review; files
 under `.agent/work-plans/` (plan and progress bookkeeping) are deliberately
-excluded. You may read files in the repository for surrounding context.
+excluded **from the diff**. Where a `## Plan Context` section appears above,
+it is the plan's Approach quoted as context only — not part of the change
+under review. You may read files in the repository for surrounding context.
 Do NOT run shell commands: this is a headless session,
 command execution is denied without a prompt, and a denied command can end
 the review with no output.

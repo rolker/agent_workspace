@@ -1265,6 +1265,194 @@ test_branch_mode_filter_survives_noprefix() {
     teardown
 }
 
+# ---- Plan-context tests (#320) ----
+#
+# The plan's `## Approach` section is re-admitted to the prompt as
+# labelled context outside the diff fence (the diff itself still excludes
+# `.agent/work-plans/**`, #312). Every fixture plan.md is written into the
+# *resolved* WORK_PLANS_DIR — the same directory the review-<agent>-prompt.md
+# files land in — because a plan written anywhere else would make the
+# "present" case fail and the "absent" cases pass vacuously.
+PLAN_REL=".agent/work-plans/issue-42/plan.md"
+
+# Write $2 as the fixture plan.md at the resolved work-plans dir ($1).
+write_plan_fixture() {
+    mkdir -p "$(dirname "$1")"
+    printf '%s\n' "$2" > "$1"
+}
+
+test_plan_context_present() {
+    echo "TEST: the plan's ## Approach is appended as labelled plan context (#320)"
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "# Plan: something
+
+## Context
+
+CONTEXT SECTION BODY
+
+## Approach
+
+1. APPROACH STEP ONE
+2. APPROACH STEP TWO
+
+## Files to Change
+
+FILES SECTION BODY"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a plan present" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "plan context heading is present" "^## Plan Context$" "$prompt"
+    assert_contains "Approach body is included" "APPROACH STEP ONE" "$prompt"
+    assert_contains "Approach body runs to the section end" "APPROACH STEP TWO" "$prompt"
+    assert_contains "framed as context, not as the subject of review" \
+        "do not review the" "$prompt"
+    assert_contains "reviewer is told to flag divergences" "divergences" "$prompt"
+    assert_not_contains "sections before Approach are not included" \
+        "CONTEXT SECTION BODY" "$prompt"
+    assert_not_contains "sections after Approach are not included" \
+        "FILES SECTION BODY" "$prompt"
+    assert_not_contains "no truncation marker on a short Approach" \
+        "truncated: " "$prompt"
+    assert_contains "gemini tool-use footer says excluded from the diff" \
+        "excluded \*\*from the diff\*\*" "$prompt"
+
+    teardown
+}
+
+test_plan_context_absent_no_plan() {
+    echo "TEST: no plan.md => no ## Plan Context section at all (#320)"
+    setup
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes without a plan" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_not_contains "no plan context heading" "^## Plan Context$" "$prompt"
+    assert_contains "output format footer still present" "^## Output Format$" "$prompt"
+
+    teardown
+}
+
+test_plan_context_absent_no_approach_section() {
+    echo "TEST: plan.md with no (or empty) ## Approach => section omitted, not emptied (#320)"
+    setup
+
+    # (a) No `## Approach` heading at all.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "# Plan: something
+
+## Context
+
+NO APPROACH HERE
+
+## Files to Change
+
+FILES ONLY"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with an Approach-less plan" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_not_contains "no plan context heading without ## Approach" \
+        "^## Plan Context$" "$prompt"
+    assert_not_contains "never falls back to the rest of the plan" \
+        "NO APPROACH HERE" "$prompt"
+
+    # (b) `## Approach` present but empty (whitespace only).
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "# Plan: something
+
+## Approach
+
+
+
+## Files to Change
+
+EMPTY APPROACH PLAN"
+
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with an empty Approach" "0" "$exit_code"
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_not_contains "empty Approach emits no heading" "^## Plan Context$" "$prompt"
+    assert_not_contains "empty Approach pulls in no later section" \
+        "EMPTY APPROACH PLAN" "$prompt"
+
+    teardown
+}
+
+test_plan_context_truncated() {
+    echo "TEST: an over-long ## Approach is capped at 200 lines with a visible marker (#320)"
+    setup
+
+    local body="" i
+    for ((i = 1; i <= 250; i++)); do
+        body+="APPROACH LINE ${i}"$'\n'
+    done
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "# Plan: long
+
+## Approach
+
+${body}
+## Files to Change
+
+TAIL SECTION"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a long plan" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "plan context heading is present" "^## Plan Context$" "$prompt"
+    assert_contains "an early Approach line survives" "^APPROACH LINE 1$" "$prompt"
+    # The section body starts with the blank line after the heading, so
+    # line 200 of the extraction is APPROACH LINE 199.
+    assert_contains "the line at the cap survives" "^APPROACH LINE 199$" "$prompt"
+    assert_not_contains "the line past the cap is cut" "^APPROACH LINE 201$" "$prompt"
+    assert_contains "truncation is marked in the prompt" "truncated: [0-9]+ more lines" "$prompt"
+    assert_not_contains "the following section is still excluded" "TAIL SECTION" "$prompt"
+
+    teardown
+}
+
+test_plan_context_no_progress() {
+    echo "TEST: --no-progress omits plan context even when a plan.md exists (#320)"
+    setup
+
+    # --no-progress alone gets a fresh mktemp -d where no plan.md can
+    # exist; the only combination that can exercise the guard is
+    # --no-progress with an explicit --work-plans-dir holding a plan.
+    local wp_dir="${TMPDIR_BASE}/explicit-work-plans"
+    write_plan_fixture "${wp_dir}/plan.md" "# Plan: skipped
+
+## Approach
+
+NO PROGRESS APPROACH BODY"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --no-progress --work-plans-dir "$wp_dir" \
+        < /dev/null >/dev/null 2>&1 || exit_code=$?
+
+    assert_exit_code "review completes under --no-progress" "0" "$exit_code"
+    local prompt
+    prompt=$(cat "${wp_dir}/review-gemini-prompt.md")
+    assert_not_contains "no plan context heading under --no-progress" \
+        "^## Plan Context$" "$prompt"
+    assert_not_contains "plan body never reaches the prompt" \
+        "NO PROGRESS APPROACH BODY" "$prompt"
+
+    teardown
+}
+
 # ---- Parallel dispatch tests (#206, ADR-0015) ----
 #
 # tmux is gone: every agent runs in its own background job, all in
@@ -2170,6 +2358,11 @@ test_agy_no_temp_leak
 test_prompt_tool_use_guidance
 test_work_plans_excluded_from_diff
 test_branch_mode_filter_survives_noprefix
+test_plan_context_present
+test_plan_context_absent_no_plan
+test_plan_context_absent_no_approach_section
+test_plan_context_truncated
+test_plan_context_no_progress
 test_sync_flag_rejected
 test_agents_all_succeed
 test_agents_partial_failure
