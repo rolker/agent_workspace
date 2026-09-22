@@ -47,7 +47,7 @@ script, not here — see "Action tokens" below for where to read it.
 ## Overview
 
 ```
-review-issue → plan-task → review-plan → implement (inline)
+review-issue → plan-task → review-plan → implement
    → review-code --branch  (pre-push; loop with address-findings up to MAX_ROUNDS)
    → publish (push + gh pr create, or gh pr edit + gh pr ready for a pre-existing draft)
    → review-code <PR>  (post-push re-review; loop with address-findings)
@@ -123,16 +123,18 @@ Route on `action=` per "Action tokens" below.
 ### 4. Dispatching a phase
 
 **Check `mode=inline` first.** If the `next` output from step 3 included a
-`mode=inline` line, do not dispatch — go to step 5 instead. This covers
-`action=implement` (rows 10, 26 when `**Phase**: implement`) and, just as
-much, a `checkpoint:phase-failed` / `takeover` answer (row 27): row 27
-always emits `mode=inline` for the named phase, whatever that phase is —
-`test_dispatch_phase.sh`'s `"row 27: takeover always carries mode=inline"`
-fixture pins this. Only an `action=<skill>` with no `mode=inline` line is
-actually dispatched below.
+`mode=inline` line, do not dispatch — go to step 5 instead. Since issue
+#314 exactly one row still emits it: a `checkpoint:phase-failed` /
+`takeover` answer (row 27), which emits it for the named phase whatever
+that phase is — `test_dispatch_phase.sh`'s `"row 27: takeover always
+carries mode=inline"` fixture pins this. `action=implement` (rows 10, 26
+when `**Phase**: implement`) is *not* one of them any more: the post-plan
+implementation pass is dispatched like every other phase. Only an
+`action=<skill>` with no `mode=inline` line is actually dispatched below.
 
 For any such `action=` naming a skill (`review-issue`, `plan-task`,
-`review-plan`, `review-code`, `address-findings`, `triage-reviews`), record
+`review-plan`, `implement`, `review-code`, `address-findings`,
+`triage-reviews`), record
 the current entry count for the expected type as `$BEFORE` — the same
 missing-file-is-zero rule `--check-exit` itself applies (`progress_read.py`
 exits 1 on a file that doesn't exist yet, e.g. before `review-issue`'s
@@ -179,30 +181,75 @@ silent retry: surface the phase, the outcome, and the last entry's text (or
 or stop, then write the `## Checkpoint` entry (below) before calling `next`
 again.
 
+**The dispatched implement pass.** `action=implement` has no `SKILL.md` of
+its own — no `/implement` slash command exists, so `skill_task_line()`
+prints a literal instruction ("implement the plan at
+`.agent/work-plans/issue-<N>/plan.md` on this branch") and the handoff's
+`exit_contract=` names the entry shape outright. Paste that contract
+verbatim; the dispatched agent commits its own work (the host still owns
+every push, step 10) and appends:
+
+```markdown
+## Implementation
+**Status**: complete | partial | failed
+**When**: <YYYY-MM-DD HH:MM ±HH:MM>
+**By**: <agent name> (<model>)
+**PR**: #<M> at `<sha>`   <!-- or **Branch**: <name> at `<sha>` before a PR exists -->
+
+<short list of what changed>
+```
+
+The `**PR**` / `**Branch**` correlation line is required, not decorative:
+`## Implementation` is a PR/branch-correlated type in ADR-0013, and without
+it the entry's correlation parses null — which breaks the pre-push round
+counter's branch correlation and `merge_pr.sh`'s head-vs-review
+correlation. The entry carries **no** `**Mode**` field (that marker belongs
+to a takeover, step 5) and no `**Addressed**` field (that one is
+`address-findings`' and is what `next`'s `skill_for()` routes a failed
+`## Implementation` on).
+
+### 4a. Reusing a running sub-agent for a repeat phase
+
+Every phase above is dispatched to a *fresh* sub-agent by default. One
+narrow exception buys back the 5–8 minutes a fresh agent spends
+re-orienting on the same branch it just reviewed: for a **repeat** of a
+phase already run on this issue in this drive, resume the agent that ran it
+instead of dispatching a new one.
+
+Keep a per-issue map of phase → agent id for the current drive. Before
+dispatching `review-code` round ≥ 2, `address-findings` round ≥ 2, or a
+repeat `triage-reviews` on the same PR, check the map: if that phase's
+agent is still live, resume it with `SendMessage` carrying the *normal*
+handoff block plus one extra line — "you already hold this branch; read
+only `progress.md` entries newer than your last one". If the agent is gone
+(or the map is empty), dispatch fresh exactly as today.
+
+**Never reuse**: round 1 of any phase; an agent from a different issue; an
+agent already resumed 3 times; or any agent from before a merge-from-main
+landed on the branch (its view of the diff is stale). A resumed agent is
+held to the *same* exit contract and the same `--check-exit` check as a
+fresh one — nothing about the contract relaxes.
+
+**A reuse is recorded, so the never-list is checkable.** A resumed phase's
+own entry adds one field:
+
+```markdown
+**Dispatch**: resumed (agent <id>, resume <n> of 3)
+```
+
+Its absence means a fresh dispatch. Nothing reads this field — it is a
+record, not a lock — but it is what makes the resume count survive a
+`/run-issue <N> --resume` (or any host restart), which loses the in-session
+phase → agent map entirely. Without it the policy would silently stop
+applying and no later reviewer could tell. Tell the resumed agent to
+include the line; say the resume number in the `SendMessage` itself, since
+the agent cannot count its own resumes.
+
 ### 5. Running a phase inline (`mode=inline`)
 
 Any `action=<token>` carrying `mode=inline` (from step 4's check) means the
 host runs that phase itself, in the worktree, instead of dispatching a
-sub-agent. Two cases produce this, and they write differently:
-
-- **`action=implement`** (rows 10, 26 when `**Phase**: implement`) — the
-  post-plan implementation pass. The host implements the plan, then
-  appends:
-
-  ```markdown
-  ## Implementation
-  **Status**: complete | partial | failed
-  **When**: <YYYY-MM-DD HH:MM ±HH:MM>
-  **By**: <agent name> (<model>)
-  **PR**: #<M> at `<sha>`   <!-- or **Branch**: <name> at `<sha>` before a PR exists -->
-  **Mode**: inline
-
-  <short list of what changed>
-  ```
-
-  `**Mode**: inline` is what makes `next`'s row-3/26/27 mapping name
-  `implement` rather than `address-findings` when this entry is later
-  partial or failed.
+sub-agent. Since issue #314 exactly one case produces it:
 
 - **A `checkpoint:phase-failed` / `takeover` answer** (row 27) — the phase
   named in `**Phase**` failed or produced only a partial entry, and the
@@ -218,7 +265,14 @@ sub-agent. Two cases produce this, and they write differently:
   phase's entry carries no `**Mode**` field at all, identical in shape to
   what a normal dispatch of that phase would have written.
 
-Both cases use `.agent/scripts/progress_append.sh <N> --title "<issue
+  `**Mode**: inline` is now purely informational — **no dispatcher reads
+  it**. Until issue #314 it was how `next`'s `skill_for()` told the
+  implement pass from `address-findings`; that classifier keys on
+  `**Addressed**` instead, and nothing else ever consumed `**Mode**`. It
+  stays because it is the only durable record that the host, not a
+  sub-agent, produced the entry.
+
+This case uses `.agent/scripts/progress_append.sh <N> --title "<issue
 title>" <<'ENTRY'` (the script header documents the exact stdin/flag
 contract).
 
@@ -319,9 +373,20 @@ the PR:
 ```bash
 git push -u origin "$(git branch --show-current)"
 .agent/scripts/gh_create_pr.sh --title "<title>" --body-stdin <<'EOF'
+## Decision summary
+
 <the pinned Decision summary from the last review-code / implementation>
 EOF
 ```
+
+**The heading must be exactly `## Decision summary`** — level 2, at the
+top level of the PR body, never re-nested under a sub-agent's own heading
+(`### Decision summary` inside a `## Review` section does not count).
+`merge_pr.sh` greps that literal string when it checks gate condition (b)
+(`merge_pr.sh:760-761`); a re-nested or reworded heading makes the gate
+report the summary missing and the merge is refused. When the text comes
+from a dispatched phase's report, copy the body and re-head it at level 2
+yourself.
 
 **Pre-existing draft PR** (a `[PLAN]` draft opened by hand before
 `run-issue` took over — step 2 reports `isDraft: true` as `--pr none`): in
@@ -353,21 +418,41 @@ would leave the review stale at the merge checkpoint.
 ### 9. Waiting for reviews
 
 After publish, and after every PR-mode `## Local Review` (a re-review of a
-fix, row 22a/22b), wait for CI and bot reviews to settle before dispatching
-`triage-reviews`:
+fix, row 22a/22b), wait for the **review sources** to be in before
+dispatching `triage-reviews`:
 
 ```bash
 .agent/scripts/fetch_pr_reviews.sh --pr <M>
 ```
 
-until no checks are pending. "No checks pending" includes the
-`copilot-pull-request-reviewer` check-run — wait for it to complete (or
-confirm it is absent from the check list entirely), not just for CI, or
-`triage-reviews` runs before Copilot's review exists and triages a source
-that lands minutes later. One case looks like a completed review but is
-not: when Copilot's quota is exhausted it posts a plain issue comment
+The wait condition is the reviews, not CI. Wait until the
+`copilot-pull-request-reviewer` check-run has completed (or is confirmed
+absent from the check list entirely) and any requested human reviews are
+in — otherwise `triage-reviews` runs before Copilot's review exists and
+triages a source that lands minutes later. **CI may still be running**:
+that is the wall-clock saving, since a triage of the review sources does
+not depend on the CI verdict. One case looks like a completed review but
+is not: when Copilot's quota is exhausted it posts a plain issue comment
 saying so instead of a review — that comment is not a review source for
 `triage-reviews`, so note it and move on rather than waiting further.
+
+When CI has not settled, say so in the dispatch: the `## Integrated
+Review` records `**CI**: pending` (a value in `triage-reviews`' own `**CI**`
+vocabulary) instead of `all-pass` / `failures-noted`. `merge_pr.sh` still
+gates the merge on CI regardless — triaging early never merges anything
+early.
+
+**Re-check CI before the merge checkpoint.** After an `## Integrated
+Review` that recorded `**CI**: pending`, run `fetch_pr_reviews.sh --pr
+<M>` again before presenting the `merge` checkpoint, and do not present it
+while CI is still running. If CI has since *failed*, route the failure
+through the loop rather than into the merge: dispatch `address-findings`
+with the failing checks as the findings, or a fresh `triage-reviews` if
+the failure needs triaging against the review sources first. Discovering it
+inside `merge_pr.sh` instead is a dead end — a gate that passed records no
+entry at all (`merge_pr.sh:889-890`, the caveat step 11 repeats), so a
+merge that then fails on CI leaves `next` with no newest entry to route on
+and no `checkpoint:merge-refused` re-route.
 
 `triage-reviews` with only the local review as
 a source still writes `## Integrated Review` — the only entry type that
@@ -418,6 +503,13 @@ later CI, mergeability, or `gh pr merge` failure leaves no entry either.
 `next` to `action=done` before any worktree or progress resolution is
 attempted (row 1) — the worktree may already be gone.
 
+One precondition belongs to step 9, not here: if the latest `## Integrated
+Review` recorded `**CI**: pending`, CI is re-checked *before* the merge
+checkpoint is presented, and a CI failure routes to `address-findings` (or
+a fresh `triage-reviews`). Do not let a pending-CI triage reach
+`merge_pr.sh` — the entry-less failure paths above are exactly what that
+re-check avoids.
+
 ### 12. Resume
 
 Every `dispatch_phase.sh next` call re-derives the next action from the
@@ -437,7 +529,8 @@ normally on the following `next` call.
 checkpoint names) and the 28-row decision table that produces them live in
 `.agent/scripts/dispatch_phase.sh`'s header comment and inline comments —
 read there, not here. This skill's job is routing on the printed token
-(dispatch per step 4, inline per step 5 (implement or a takeover), publish
+(dispatch per step 4 — `implement` included — inline per step 5 (a
+takeover), publish
 per step 7, merge per step 11, checkpoint per step 6, `done` ends the run
 cleanly) — it does not re-derive or restate the table.
 
