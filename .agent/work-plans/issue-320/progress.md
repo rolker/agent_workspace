@@ -283,3 +283,22 @@ the suite's mocks.
       latency ~2.5-3.5 min bounded by `AGENT_TIMEOUT`/`AGY_PRINT_TIMEOUT`,
       plus Gemini/Codex/Copilot quota; Light unaffected) and raise the
       post-merge follow-up on what should still distinguish the Deep tier.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 14:15 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-320 at `f26ca59`
+**Base**: feature/issue-313 (reviewing #320's own commits only; #313 is in its own loop)
+**Depth**: Standard (reason: governance + enforcement files — skill, knowledge tier doc, ADR, AGENTS.md — plus a prompt-builder change)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) `printf | head` under `set -euo pipefail` aborts the whole script (exit 141) when the Approach section exceeds the pipe buffer (~64KB) — use a here-string or `awk 'NR<=n'` — `.agent/scripts/cross_model_review.sh:857`
+- [ ] (must-fix) Plan context is emitted raw: truncation at 200 lines (or the awk stop inside a fence) can leave a ``` fence open, swallowing the `## Output Format` footer into a code block — close an odd fence count before appending — `.agent/scripts/cross_model_review.sh:850-864`
+- [ ] (suggestion) Extractor stops only at `^## `; an H1 or `---` after Approach leaks later sections, and the comment's "never content from another section" guarantee is then inaccurate — `.agent/scripts/cross_model_review.sh:843`
+- [ ] (suggestion) No test fixture has a fenced code block in Approach, nor an H1/`---` after it — the two failure modes above are untested — `.agent/scripts/tests/test_cross_model_review.sh:1279`
+- [ ] (suggestion) Plan says the suite runs 327 assertions; it now runs 358 — `.agent/work-plans/issue-320/plan.md:59`
