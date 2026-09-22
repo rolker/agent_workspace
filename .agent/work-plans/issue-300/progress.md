@@ -337,3 +337,22 @@ All six round-4 findings verified fixed against source, not taken on report. (1)
 **Decision**: address
 
 Address the two round-5 suggestions first (seed `_ci_head_excluded_last` from the pre-switch state before the walk-back `continue`, so a transient API error on the first head re-read cannot drop the running-review hold; fix the comment on `_ci_review_sha` to say which head it captures), re-review (round 6, resumed reviewer), then publish.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 12:16 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-300 at 9ed257c
+**Dispatch**: resumed (round-4 fixer, resume 1 of 3)
+**Addressed**: Local Review (Pre-Push) at `8cb07c6` (2026-09-22 12:06 -04:00)
+**Commits**: ff65d50, 9ed257c
+
+### Actions
+- [x] (suggestion) The walk-back's `continue` no longer drops the poll that triggered it: that poll read the review SHA itself, so `_ci_head_excluded_last` is now seeded with its `_ci_excluded` before the `continue`. A failed first head re-read after the switch therefore falls back to the state actually seen, not `""` — `.agent/scripts/merge_pr.sh:1204-1222`. New fixture **ci-34**: walk-back shape with the head's check-runs sequenced running → `write_checkruns_exit` (call 2, the first post-switch read) → running; the merge still holds. Verified as a real regression guard by disabling the seed: ci-34 fails (77/1), restored 78/0
+- [x] (suggestion) The `_ci_review_sha` comment now states which head it captures — `CI_TARGET_SHA` as Step 2 decided it, i.e. the current PR head except where Step 2's own-paths exemption applied, where it is the reviewed head — and why that is correct in both cases (reading the literal head under the exemption would wait on a review re-triggered by this script's own bookkeeping push, deadlocking every merge). The one thing it must not follow is the bookkeeping walk-back. Comment only; no behaviour change — `.agent/scripts/merge_pr.sh:1177-1181`
+
+### Verification
+- `bash .agent/scripts/tests/test_merge_pr_gate.sh` — 78 passed, 0 failed (77 before, +1 for ci-34)
+- `.agent/scripts/tests/run_script_tests.sh` — all 23 suites passed in 59s
+- Pre-commit (incl. shellcheck) ran on both commits; nothing pushed.
