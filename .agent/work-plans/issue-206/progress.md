@@ -389,3 +389,28 @@ Proceed to implementation with the round-2 suggestions folded in: overlap-based 
 **Decision**: publish
 
 Publish. Pre-push review approved at round 3 (7f2edf7), zero must-fixes; push the branch as reviewed and open the PR.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-22 12:24 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #318 at `3b762b4`
+**Sources**: 1 (Local Review (Pre-Push) round 3 @ `c1e84de` — the reviewed code head; `3b762b4` adds progress.md bookkeeping only) + CI rollup. No GitHub review source: the sole PR review is Copilot's quota-limit notice ("unable to review this pull request because the user who requested the review has reached their quota limit"), which carries no findings and is not waited on. No human reviews, no inline comments, no conversation comments.
+**Cross-source confirmations**: 0 (only one findings-bearing source exists, so confirmation is not possible this round)
+**CI**: all-pass — the four real checks on the head are green (Lint (pre-commit), Validate Documentation, Validate Adapter Contract, ros-manifest tests (#267 prototype)). The `copilot-pull-request-reviewer` check-run reports failure; that is the same quota exhaustion, not a code or test failure.
+
+### Findings
+- [ ] (suggestion, Local Review round 3 @ `c1e84de`) ADR-0015's env-knob consequence still reads "all four are shape-validated up front", but `validate_duration_knob` now enforces shape **plus** a non-zero range check (`AGENT_TIMEOUT`, `AGY_PRINT_TIMEOUT`, `GEMINI_BACKSTOP_MARGIN`; `AGENT_KILL_AFTER=0` stays legal via `allow_zero`) **plus** a Go-duration subset for `AGY_PRINT_TIMEOUT`. Verified against the code at this head: `.agent/scripts/cross_model_review.sh:156-181` vs the ADR text. Valid — the ADR under-describes an enforcement rule it is the record for, which is a documentation-accuracy defect, not a style nit. Fix: one line at `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md:100` — say the four knobs are shape- and range-validated up front (zero rejected where it would remove a bound; `AGENT_KILL_AFTER=0` excepted), with `AGY_PRINT_TIMEOUT` additionally held to agy's Go-duration subset. Non-blocking for merge; no code change, no test change.
+
+### Rounds carried forward
+- Round 1 @ `c00b2c7`: 2 must-fix, 9 suggestions — all resolved and verified by round 2.
+- Round 2 @ `48d0ca9`: 1 must-fix, 2 suggestions — all resolved and verified by round 3.
+- Round 3 @ `c1e84de`: approved, 0 must-fix, 1 suggestion — the item above, still open.
+- Nothing from an earlier round is re-listed; no round-3 conclusion is contradicted by the code read at this head. The only commits after `c1e84de` are progress.md bookkeeping (`7f2edf7`, `3b762b4`), so the round-3 review covers the shipped code in full.
+
+### False positives
+- (Copilot) Not a finding at all: the review body is a quota-exhaustion notice with no code claims. Recorded here so the absence of bot findings is not mistaken for a clean bot review; treat this PR as reviewed by the local timeline plus CI only.
+
+### Merge recommendation
+Merge-ready. Zero open must-fix findings, four green CI checks on the head, three converging local review rounds (2 → 1 → 0 must-fix). The single open suggestion is a one-line ADR wording correction with no code impact — the permanent fix is a minute's work, so the preferred path is to apply it via `/address-findings` and merge; merging first and correcting the ADR in a follow-up is acceptable but leaves an inaccurate governance record in `main`. No GitHub review is pending: Copilot is out of quota, so nothing is gained by waiting.
