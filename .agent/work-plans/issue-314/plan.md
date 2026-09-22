@@ -182,3 +182,78 @@ will immediately go stale.
 Single PR, four commits (one per approach step) on `feature/issue-314`.
 Step 4 (agent reuse) splits into a follow-up issue/PR if it proves slower to
 land than steps 1-3, per the owner's stated preference.
+
+## Addendum — plan review findings folded in (2026-09-22)
+
+The `## Plan Review` at `1906dd0` returned **needs-work** with seven
+findings. The owner's plan checkpoint answered `proceed`, folding all seven
+in and amending this plan on the branch to match. Where this addendum and
+the Approach above disagree, the addendum wins.
+
+1. **Keep the `## Implementation` entry template (finding 1).** Step 1 no
+   longer *deletes* `SKILL.md` step 5's `action=implement` bullet. The
+   entry template — including the `**PR**: #<M> at <sha>` /
+   `**Branch**: <name> at <sha>` correlation line ADR-0013 requires — stays
+   in `SKILL.md`, re-headed as **the dispatched implement pass** and moved
+   to step 4's neighbourhood, and step 4's dispatch text tells the
+   dispatched agent to write that entry shape. The dispatched agent commits
+   its own work; the host still owns every push (step 10, unchanged).
+
+2. **`skill_for()` classifies by `**Addressed**`, not ordinal position
+   (finding 2).** An `## Implementation` entry carrying `**Addressed**`
+   (a required field of `address-findings`' template,
+   `.claude/skills/address-findings/SKILL.md:146`) is `address-findings`.
+   Fallback when the field is absent: `implement` when no prior
+   `## Implementation` entry has `**Status**: complete`, otherwise
+   `address-findings`. Fixtures: first-vs-later, plus a double-failure
+   retry (failed `implement` → retry → failed again must still route
+   `**Phase**: implement`).
+
+3. **`**Mode**: inline` keeps its meaning on takeover only (finding 3).**
+   The field is not retired: a takeover of the implement pass still writes
+   it as an informational marker, and `SKILL.md` says explicitly that no
+   dispatcher reads it any more. Step 5 keeps its "row 27 fires for *any*
+   phase, not only `implement`" wording verbatim.
+
+4. **CI re-check before the merge checkpoint (finding 4).** After a triage
+   that recorded `**CI**: pending`, the host re-checks CI before the merge
+   checkpoint; a failure routes to `address-findings` (or a fresh
+   `triage-reviews`) rather than being discovered inside `merge_pr.sh`'s
+   entry-less failure path. Recorded in `SKILL.md` step 9, cross-referenced
+   from step 11.
+
+5. **Three more locations in the file list (finding 5).**
+   `dispatch_phase.sh:215` (the unknown-skill error string gains
+   `implement`), `dispatch_phase.sh:401` (the comment describing
+   `**Mode**`-aware `Implementation` mapping), and
+   `review_loop_lifecycle.md:90` ("dispatches or implements the…").
+
+6. **ADR-0014 addendum is References-only (finding 6).** No Status-line
+   note: a References entry naming issue #314 and the `SKILL.md` subsection
+   that carries the never-list, following the #307 precedent for "a later
+   change moved the authoritative text elsewhere".
+
+7. **A resumed dispatch is recorded (finding 7).** The resumed phase's own
+   entry records `**Dispatch**: resumed (agent <id>, resume <n> of 3)`;
+   absence of the field means a fresh dispatch. This makes the never-list
+   checkable from `progress.md` alone, across a `--resume` that loses the
+   host's in-session phase→agent map. Recording only — no mechanical
+   enforcement, per the owner's settled decision.
+
+### Files to Change (superseding table)
+
+| File | Change |
+|------|--------|
+| `.agent/scripts/dispatch_phase.sh` | Rows 10/26 drop `mode=inline`; `implement` case in `skill_task_line()`; `skill_for()` keys on `**Addressed**` with the no-prior-complete fallback; `:215` error string; `:401` comment |
+| `.agent/scripts/tests/test_dispatch_phase.sh` | Rows 10/26/end-to-end fixtures; `skill_for()` `**Addressed**` / first-vs-later / double-failure fixtures; `implement` handoff fixture |
+| `.claude/skills/run-issue/SKILL.md` | Step 4 (dispatchable list + the dispatched implement pass's entry template), step 5 (takeover only; `**Mode**` has no reader), step 7 (`## Decision summary`), step 9 (triage before CI + the CI re-check), step 11 (cross-reference), the agent-reuse subsection with `**Dispatch**:` |
+| `.agent/knowledge/review_loop_lifecycle.md` | Diagram (line 12), "who writes what" row (line 29), and line 90's "dispatches or implements" |
+| `.claude/skills/triage-reviews/SKILL.md` | `pending` added to the `**CI**` vocabulary |
+| `docs/decisions/0014-in-process-phase-handoff.md` | References entry only (issue #314 + the `SKILL.md` subsection) |
+
+### Sequencing note
+
+A sibling branch for #300 (open) edits `SKILL.md`'s step 6 merge-refused
+paragraph and step 11. Those paragraphs are touched here only to the
+minimum the CI re-check cross-reference needs, so the later merge from main
+stays clean.
