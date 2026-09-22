@@ -224,6 +224,52 @@ $(local_review_prepush complete changes-requested feature/issue-9 bbb2222)"
 assert_next "round_count: a partial Pre-Push review on the branch does not count as a round -- 2 complete rounds, round=2, address-findings (not checkpoint:rounds at MAX_ROUNDS=3)" none \
     "$PARTIAL_PLUS_TWO" address-findings "round=2"
 
+echo "TEST: next -- rows 13a/13b (--head: skip the PR-side re-review of an unchanged diff, issue #314)"
+CLEAN_PREPUSH="$(local_review_prepush complete approved feature/issue-9 abc1234)"
+run_next_head() {  # <pr-state> <fixture> <head>
+    local f="$TMPD/fixture_head_$$_$RANDOM.md"
+    printf '%s\n' "$2" > "$f"
+    bash "$DP" next --pr "$1" --progress "$f" --head "$3" 2>&1
+}
+out=$(run_next_head open "$CLEAN_PREPUSH" abc1234)
+[[ "$out" == "action=triage-reviews"* && "$out" == *"round=1"* ]] \
+    && pass "row 13a: approved pre-push whose SHA IS the PR head -> triage-reviews (the PR-mode re-review would re-read an unchanged diff)" \
+    || fail "row 13a (out=$out)"
+out=$(run_next_head open "$CLEAN_PREPUSH" fed9876)
+[[ "$out" == "action=review-code"* ]] \
+    && pass "row 13b: approved pre-push whose SHA no longer covers the PR head -> review-code (PR mode)" || fail "row 13b (out=$out)"
+out=$(run_next_head open "$(local_review_prepush complete changes-requested feature/issue-9 abc1234)" abc1234)
+[[ "$out" == "action=address-findings"* ]] \
+    && pass "--head: a needs-work pre-push review is unaffected -> address-findings" || fail "needs-work with --head (out=$out)"
+out=$(run_next_head none "$CLEAN_PREPUSH" abc1234)
+[[ "$out" == "action=checkpoint:publish"* ]] \
+    && pass "--head: with --pr none (no PR yet) an approved pre-push still routes to checkpoint:publish" || fail "--head with --pr none (out=$out)"
+out=$(run_next open "$CLEAN_PREPUSH")
+[[ "$out" == "action=checkpoint:publish"* ]] \
+    && pass "--head absent: the pre-#314 routing is unchanged (checkpoint:publish)" || fail "no --head fallback (out=$out)"
+
+echo "TEST: next -- --head over a real repo (the bookkeeping-ancestor rule, #286)"
+SBH="$(mk_sandbox 9)"
+WTH="$SBH/worktrees/workspace/issue-workspace-9"
+mkdir -p "$WTH/.agent/work-plans/issue-9"
+gitw() { git -C "$WTH" -c user.name=t -c user.email=t@t "$@"; }
+printf 'code\n' > "$WTH/code.txt"
+gitw add -A >/dev/null && gitw commit -q -m "code"
+REVIEWED=$(git -C "$WTH" rev-parse HEAD)
+printf '%s\n' "$(local_review_prepush complete approved feature/issue-9 "$REVIEWED")" \
+    > "$WTH/.agent/work-plans/issue-9/progress.md"
+gitw add -A >/dev/null && gitw commit -q -m "progress"
+BOOKKEEPING_HEAD=$(git -C "$WTH" rev-parse HEAD)
+out=$(cd "$SBH" && bash .agent/scripts/dispatch_phase.sh next --issue 9 --pr open --head "$BOOKKEEPING_HEAD" 2>&1)
+[[ "$out" == "action=triage-reviews"* ]] \
+    && pass "--head: only progress.md changed between the reviewed SHA and the head -> triage-reviews (merge_pr.sh's #286 equivalence rule)" || fail "--head bookkeeping ancestor (out=$out)"
+printf 'more code\n' >> "$WTH/code.txt"
+gitw add -A >/dev/null && gitw commit -q -m "more code"
+CODE_HEAD=$(git -C "$WTH" rev-parse HEAD)
+out=$(cd "$SBH" && bash .agent/scripts/dispatch_phase.sh next --issue 9 --pr open --head "$CODE_HEAD" 2>&1)
+[[ "$out" == "action=review-code"* ]] \
+    && pass "--head: a non-bookkeeping commit after the reviewed SHA -> review-code (PR mode)" || fail "--head code commit (out=$out)"
+
 echo "TEST: next -- rows 16-18 (checkpoint publish/rounds)"
 assert_next "row 16: checkpoint publish answered publish, --pr none -> publish" none \
     "$(checkpoint publish publish)" publish

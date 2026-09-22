@@ -257,3 +257,50 @@ A sibling branch for #300 (open) edits `SKILL.md`'s step 6 merge-refused
 paragraph and step 11. Those paragraphs are touched here only to the
 minimum the CI re-check cross-reference needs, so the later merge from main
 stays clean.
+
+## Addendum 2 — item 4: skip the PR-side re-review of an unchanged diff
+
+Owner decision on the issue (2026-09-22 16:02Z) added a fourth item after
+the plan review. After a clean pre-push `## Local Review (Pre-Push)`,
+`publish` pushes exactly the commits that review named and the loop then
+runs a full PR-mode `review-code <M>` on them — 5–8 minutes re-reading an
+unchanged diff (measured on the #206 drive).
+
+**Rule.** With `--pr draft|open`, when the newest entry is an approving
+`## Local Review (Pre-Push)` whose SHA is the PR head — or an ancestor of
+it with only bookkeeping files changed between (`merge_pr.sh`'s
+`_only_bookkeeping_between` rule, #286: the issue's work-plans dir,
+`ROADMAP.md`, `docs/ROADMAP.md`) — route to `triage-reviews` instead of
+`review-code <M>`. Any code change since that review keeps the PR-mode
+review. The `## Integrated Review` cites the pre-push entry as its local
+source; `review_progress.sh sources` already correlates by head SHA.
+
+**Design decision — `--head <sha>`, not a `gh` call inside `next`.** The
+rule needs the PR head SHA and a git ancestry/diff check, and `next` today
+takes only `--pr <state>` plus the timeline. Settled in favour of an
+optional `--head <sha>` flag that the host passes from its step-2 PR probe
+(extended with `headRefOid`), for three reasons:
+
+- `next` keeps its "no `gh` call inside `next`, ever" contract (the script
+  header states it), which is what makes the decision table testable from
+  `--progress` fixtures with no network and no repo.
+- The host already has the head: step 2 runs `gh pr list` every loop, so
+  `headRefOid` costs nothing extra.
+- Absent `--head`, the state routes exactly as it did before, so the change
+  is additive and a host that forgets the flag loses the saving without
+  breaking the loop.
+
+The ancestry/bookkeeping test runs in bash against the issue's worktree
+(`head_covers_review()`), so the Python decision table sees only
+`HEAD_COVERED=1|0|unknown`. Every answer it cannot establish — no
+worktree, unresolvable SHA, a non-bookkeeping path in the diff — is `0`,
+which keeps the re-review; the saving is never taken on a guess.
+
+**Files**: `.agent/scripts/dispatch_phase.sh` (`--head`,
+`newest_correlation_sha()`, `head_covers_review()`, rows 13a/13b, header
+comment), `.agent/scripts/tests/test_dispatch_phase.sh` (fixtures: clean
+pre-push at head → `triage-reviews`; clean pre-push + later code commit →
+`review-code`; needs-work pre-push unchanged; no-`--head` fallback; plus
+two over a real sandbox repo for the bookkeeping-ancestor rule),
+`.claude/skills/run-issue/SKILL.md` (steps 2 and 3, Overview diagram),
+`.agent/knowledge/review_loop_lifecycle.md` (routing-rules list).
