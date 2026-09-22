@@ -212,3 +212,24 @@ the bullet now cites only the pre-commit hook.
 - [x] (must-fix) The `check --index <i>` snippet never says where `<i>` comes from (`review_progress.sh findings --progress <f>`; 0-based across ALL of the entry's checkboxes, not section-filtered), so a hand-counted index silently defers the wrong finding — `check` only verifies the line is an unchecked box — `.claude/skills/run-issue/SKILL.md:263`
 - [x] (suggestion) `$PF` is reused from step 4's snippet even though this same skill states shell state does not persist between tool calls; inline the path or re-assign `PF=` in the same chain — `.claude/skills/run-issue/SKILL.md:263`
 - [x] (suggestion) The ADR's handoff-contract list gains no `conventions=` bullet and no in-place pointer; the "this list is point-in-time" disclaimer sits ~110 lines below in References — `docs/decisions/0014-in-process-phase-handoff.md:55-72`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 08:28 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-307 at `6e36658`
+**Addressed**: Local Review (Pre-Push) at `bfe8d35` (2026-09-22 08:22 -04:00)
+**Commits**: 0442a63, 473182a, 6e36658
+
+### Actions
+- [x] (must-fix) Deferred-box section's stated consequence corrected — `.claude/skills/run-issue/SKILL.md:255`. Verified against `dispatch_phase.sh` (the `if after in ("findings", "merge")` block emits `merge` unconditionally) and fixture `"row 21: checkpoint findings answered merge -> merge"`. The section now says the deferral does not gate the merge, and names the reachable re-route: a merge that does not land records `## Merge (report-only)`/`## Merge (unreviewed)` -> `checkpoint:merge-refused` (row 23) -> `retriage` -> a fresh `## Integrated Review` -> row 19 `checkpoint:findings`. Kept the write as the durable record of the owner's deferral.
+- [x] (must-fix) `<i>` provenance pinned — `.claude/skills/run-issue/SKILL.md:263`. The snippet now runs `review_progress.sh findings --progress "$PF"` first and states that `<i>` is that output's `index` field, 0-based over every checkbox line in the entry (verified: `cmd_findings` enumerates `src["findings"]` with no section filter), never a hand-count, because `check` only verifies the line is an unchecked box.
+- [x] (suggestion) `$PF` re-assigned in the snippet's own chain — `.claude/skills/run-issue/SKILL.md:263` — with the reason stated inline (shell state does not persist between tool calls, so step 4's assignment is gone).
+- [x] (suggestion) ADR-0014 handoff-contract list gained a `conventions=` bullet and an in-place currency pointer to `dispatch_phase.sh`'s header comment — `docs/decisions/0014-in-process-phase-handoff.md:69`; the disclaimer no longer lives only in References.
+
+### Verification
+- pre-commit hooks ran on all three commits (no `--no-verify`); all passed.
+- `.agent/scripts/tests/run_script_tests.sh`: 23 suites, all passed (43s). No script files changed in this round — the changes are skill and ADR prose only.
+
+Next: `/review-code --branch` to re-review the fixes cold.
