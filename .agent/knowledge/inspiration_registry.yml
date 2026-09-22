@@ -170,6 +170,28 @@ projects:
       - harness bootstrap / starter-kit UX
       - prompt-engineering-as-configuration patterns
 
+  claude-code:
+    type: inspiration
+    repo: anthropics/claude-code
+    description: >-
+      Anthropic's agentic coding CLI — the primary framework this workspace
+      runs on; tracked so native capabilities that overtake workspace
+      tooling are noticed at each check
+    # Added 2026-09-22 at the owner's request after a review of which
+    # workspace tools today's Claude Code makes redundant. For this
+    # project the survey question is "what can we retire", not "what can
+    # we borrow".
+    interest_areas:
+      - sub-agent dispatch and resume (Agent tool, SendMessage resume, isolation)
+      - Workflow tool orchestration (parallel/pipeline/resume)
+      - worktree isolation (EnterWorktree, Agent worktree isolation)
+      - cross-session discovery and messaging (ListAgents/SendMessage)
+      - hooks and permission modes
+      - persistent memory
+      - built-in code review (/code-review, ultra)
+      - scheduling (/schedule, cron)
+      - skills/plugins packaging
+
   # --- Watched, not tracked (2026-07-14 sweep) ---
   #
   # hqhq1025/skill-optimizer (132★) — skill lifecycle mining/audit/
