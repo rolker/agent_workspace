@@ -299,3 +299,13 @@ Plan drift: `progress_read.py` is outside the plan's "Files to Change" — expec
 **Verified**: 23/23 script suites and 39 progress_read tests pass; the new fixtures were confirmed to fail under the old regex; the round counter now reports round 3 on this timeline; the corrected wording was checked line by line against `merge_pr.sh` and `dispatch_phase.sh`.
 
 **Recommendation**: merge.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 08:50 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish now. The one open suggestion (the `--enforce` wording caveat in run-issue step 10) gets applied in the PR review round or tracked. Earlier in the session the owner also decided the round-counter regex fix stays on this branch.
