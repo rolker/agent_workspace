@@ -439,3 +439,135 @@ findings above are implementation-time refinements, not gates.
 **Decision**: proceed
 
 Proceed to implementation of plan revision 2 (45f3a16) with the three round-2 notes folded in: the hook's rendered workspace layer carries the workspace-root idiom (prefix line, or rewrite bare `.agent/scripts/` occurrences to the root-qualified form) so the AGENTS.md snippets work from a project checkout; delete the false ADR-number parenthetical in the branch-currency paragraph; record the AGENTS.md "`--type` is required" doc lag in the PR description and PR 4's list. Per the owner's orchestrator rule the implement pass is dispatched to a background agent.
+
+## Implementation
+
+**Status**: complete
+**When**: 2026-09-22 13:45 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Plan**: `.agent/work-plans/issue-317/plan.md` at `08424ef`
+**Branch**: feature/issue-317 at 9765ecb
+
+Plan revision 2's steps 1–15 are done. Step 16 (the live gz4d acceptance
+run) is the host's, not this pass's.
+
+### Per plan step
+
+- **1. Merge `main`** — `876bb69` at the start, then **again at the end**
+  (`9765ecb`): `feature/issue-314` landed as PR #322 *during* this pass, so
+  the plan's open question resolved itself and its `dispatch_phase.sh`
+  rewrite is taken rather than re-derived. `dispatch_phase.sh` auto-merged
+  — #322's `implement` case, `**Addressed**`-keyed `skill_for()` and
+  `--check-exit` correlation check live in different functions from
+  #317's `derive_project_name()`, which is what keeping the new work in its
+  own functions was for. Two additive conflicts resolved (both test
+  sections kept; #322's prose kept with #317's `$WS_ROOT` prefixes).
+- **2. Call `registry_require_root`** — `01e8e88`. Existing function, now
+  called; no new guard written.
+- **3. SessionStart hook** — `8332695`, `.claude/hooks/session_start_project_layer.sh`.
+  Silent outside; header + workspace-root idiom + `AGENTS.md`-rendered
+  workspace layer + project layer under a registered root. No `KEY=value`
+  lines, asserted by test.
+- **4. Heading-drift test** — `8332695`. The pinned heading list is read
+  back out of the hook, so adding a heading adds a case; per heading:
+  verbatim existence, non-empty body, extraction bounded at the next `##`,
+  plus a negative control proving the emptiness check can fail.
+- **5. Both hooks promoted with the guard** — `01e8e88`. They guard on the
+  payload's own `.cwd` and resolve `BASH_SOURCE` through symlinks (the user
+  tier installs them as symlinks).
+- **6. Workspace-root idiom** — `1a9fb0b` (the file) and `3e7147a` (the
+  skills). Option (b) as decided: a file, not hook-spliced environment.
+- **7. `user_tier_install.sh`** — `1a9fb0b`. Idempotent; `--check`
+  (+`--require`), `--uninstall`, `--list-skills`, `--sync-skills`. Writes
+  only inside `$HOME/.claude`.
+- **8. Manifest + guard test** — `01e8e88`, `.agent/user_tier_scripts.txt`
+  and `test_user_tier_guard.sh`. **One scope change, see below.**
+- **9. `dispatch_phase.sh --project` + `$PWD` derivation** — `a6d57f0`.
+  Additive: with neither a name nor a resolvable cwd, behaviour is
+  identical to before.
+- **10. Worktree scripts + `/start-task`** — `3e7147a`. New
+  `registry_derive_type_from_dir` makes `--type` optional on create / enter
+  / remove. `/start-task`'s "Move to the workspace root" step is *replaced*,
+  not rewritten: its `cd "$(git rev-parse --show-toplevel)"` would, from a
+  project session, cd to the **project** root and discard the cwd the
+  derivation depends on.
+- **11. Skills** — `3e7147a`. 13 `session_scope` declarations; re-grepped at
+  implementation time (not from the plan's count) and rewrote 61
+  workspace-relative references across nine skills. `test_skill_paths.sh`
+  scopes to `SKILL.md` only; the tracked `.claude/settings.json` is
+  untouched.
+- **12. `make generate-user-tier-skills`** — `1a9fb0b`, plus
+  `user-tier-install` and `validate` running `--check` (no `--require`).
+- **13. ADR-0016** — `7ced4f8`, status Provisional. `0016` reconfirmed free
+  against `docs/decisions/` immediately before writing. ADR-0011 gets a
+  References pointer only.
+- **14. Parent-plan reconciliation** — `7d1609c`, its own commit.
+- **15. Hermetic tests** — across the above plus `f99e2fe`. Every new suite
+  redirects `HOME` to a sandbox, needs no network and no `gh` auth.
+- **16. Live acceptance** — not run here; the host's.
+
+### Owner's three plan-checkpoint notes
+
+- **(1) Workspace-root idiom in the rendered layer** — took the *prefix*
+  option, not the rewrite: the layer opens with a "Workspace root" section
+  stating that the `.agent/scripts/...` paths below are workspace-root
+  relative, where the root is recorded, and how to read it.
+  `test_session_start_layer.sh` asserts the section is present **and
+  precedes** the rules it qualifies.
+- **(2) False ADR-0015 parenthetical** — deleted in `08424ef`, its own
+  commit. (`0015` on `main` is the parallel-sync ADR; the claim that #318
+  had taken it was wrong. Only "0015 is taken" was load-bearing.)
+- **(3) `AGENTS.md` doc lag** — recorded, not fixed. Its "Worktree
+  Workflow" section still says "`--type` is **required** on all worktree
+  scripts (create, enter, remove)", which step 10 makes false. `AGENTS.md`
+  is Ask-First and its wording is PR 4 scope, so it is on the plan's PR-4
+  list (`08424ef`) and repeated here for the PR description.
+
+### Test results
+
+| Suite | Result |
+|---|---|
+| `run_script_tests.sh` (all 27 suites) | **pass**, 78s |
+| `test_dispatch_phase.sh` | 99 passed (was 76; +12 `--project`, +11 from #322) |
+| `test_user_tier_guard.sh` (new) | 43 passed |
+| `test_session_start_layer.sh` (new) | 37 passed |
+| `test_user_tier_install.sh` (new) | 33 passed |
+| `test_skill_paths.sh` (new) | 36 passed |
+| `test_project_registry.sh` | 214 passed (+6 derivation cases) |
+| `test_block_bash_tool_mapping.sh` | 113 passed |
+| `test_adapter.sh` / `test_ros2_colcon.sh` | 86 / 191 passed |
+| `user_tier_install.sh --check` on this machine | exits 0, "not installed" |
+| shellcheck (pre-commit) on every touched script | pass |
+
+### Three things the reviewer should look at
+
+- [ ] **`cross_model_review.sh` was de-promoted** (`f99e2fe`) — it is no
+  longer in the user-tier manifest and has no guard. It **cannot** satisfy
+  the user-tier rule: reviewing a repo that is neither the workspace nor
+  registered is a documented feature of it (`--repo`, `--work-dir`,
+  `--no-progress` exist for exactly that), so a cwd guard would refuse its
+  own interface. Rather than carve an exception into the rule, the rule was
+  applied as written. Cost: it gets no generated allow-rule, so invoking it
+  from a project session goes through the normal permission prompt. The
+  alternative — guarding it anyway and skipping the guard when an explicit
+  target flag is passed — was written and then backed out as a rule-shaped
+  hole. **This is a deviation from the plan's step-8 list and wants a
+  yes/no.**
+- [ ] **`--type is required` is now unreachable** on the worktree scripts.
+  The guard passes only when the cwd is the workspace or a registered root,
+  and the derivation succeeds in exactly those cases, so the error survives
+  only as a defensive fallback.
+  `test_worktree_enter_stderr.sh`'s case was rewritten to assert the
+  derivation instead of the dead error.
+- [ ] **Two silent-failure bugs were found by the new tests**, both in code
+  written this pass: `sync_skills` deleted the first selected skill right
+  after linking it (pipefail + `grep -q`'s early exit SIGPIPEing the
+  producer, so the pipeline reported 141), and `--check`'s missing-rule
+  comparison reported every rule present (`$have | index(.)` rebinds `.` to
+  `$have` inside the pipe). Both are fixed and covered; flagging them
+  because the same two shapes could plausibly exist elsewhere.
+
+### Ask-First
+
+None taken. `AGENTS.md` and the tracked `.claude/settings.json` are
+unmodified — confirmed by `git diff main --stat` on both paths.
