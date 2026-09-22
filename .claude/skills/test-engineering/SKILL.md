@@ -1,6 +1,7 @@
 ---
 name: test-engineering
 description: Scaffold, debug, and analyze test coverage for project components. Supports multiple test frameworks (GTest, PyTest, Jest, cargo test, go test, etc.).
+session_scope: both
 ---
 
 # Test Engineering

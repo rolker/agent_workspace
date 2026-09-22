@@ -1,9 +1,31 @@
 ---
 name: triage-reviews
 description: Integrator — evaluate PR review comments (human and bot) together with the prior progress.md review timeline, against local code, principles, and ADRs. Includes CI check status. Classifies each finding as valid or false positive, flags cross-source confirmations, presents a fix plan, and persists a unified Integrated Review entry to progress.md.
+session_scope: both
 ---
 
 # Triage Reviews
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016). In a workspace session the file
+still holds the right path, so the same chain works in both.
 
 ## Usage
 
@@ -51,16 +73,17 @@ If they don't match:
    `feature/issue-<N>` or `feature/ISSUE-<N>-<description>`).
 2. Auto-enter the worktree:
    ```bash
-   source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
-   # or: source .agent/scripts/worktree_enter.sh --issue <N> --type project
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+   source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type workspace
+   # or: source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type project
    ```
 3. After entering, verify the branch now matches. If it still doesn't (worktree
    doesn't exist or branch mismatch), stop and inform the user with instructions
    to create the worktree:
    ```
    Worktree for issue #<N> not found. Create it with:
-     .agent/scripts/worktree_create.sh --issue <N> --type project
-     source .agent/scripts/worktree_enter.sh --issue <N> --type project
+     $WS_ROOT/.agent/scripts/worktree_create.sh --issue <N> --type project
+     source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type project
    ```
 
 ### 2. Sync local branch
@@ -77,7 +100,8 @@ comments align with local files.
 Run the helper script to get all reviews and CI check status:
 
 ```bash
-.agent/scripts/fetch_pr_reviews.sh --pr <N>
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/fetch_pr_reviews.sh --pr <N>
 ```
 
 The script:
@@ -99,7 +123,8 @@ the issue number resolved from the PR head branch (`feature/issue-<N>`),
 not the PR number. One call correlates both sides by head SHA:
 
 ```bash
-.agent/scripts/review_progress.sh sources --head <head_sha> \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/review_progress.sh sources --head <head_sha> \
     --reviews <saved fetch_pr_reviews.json> \
     --progress .agent/work-plans/issue-<issue>/progress.md
 ```
@@ -267,7 +292,8 @@ helper and switch `review-code` step 8 uses; behaviour is tested in
 `test_triage_reviews_integration.sh`):
 
 ```bash
-.agent/scripts/review_progress.sh persist --issue "<N or empty>" \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N or empty>" \
     --branch "<head branch>" --title "<issue title>" \
     [--strict] [--no-progress] <<'ENTRY'
 ## Integrated Review

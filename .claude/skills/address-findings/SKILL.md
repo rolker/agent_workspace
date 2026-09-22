@@ -1,9 +1,31 @@
 ---
 name: address-findings
 description: Work through the open action items from the latest review entry in progress.md — a ## Integrated Review (post-PR) or a ## Local Review (Pre-Push) (pre-push) — make each fix, commit atomically with pre-commit hooks, check the box, and record a ## Implementation entry. The close-the-loop phase between a review and its re-review.
+session_scope: both
 ---
 
 # Address Findings
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016). In a workspace session the file
+still holds the right path, so the same chain works in both.
 
 ## Usage
 
@@ -58,7 +80,8 @@ canonical type (a legacy `## External Review` never qualifies; the post-PR
 findings across entries, never falls back to an older one:
 
 ```bash
-.agent/scripts/review_progress.sh findings \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/review_progress.sh findings \
     --progress .agent/work-plans/issue-<N>/progress.md
 ```
 
@@ -92,7 +115,8 @@ For each open finding, in listed order (cross-confirmed first):
    it: check its box with a reason, so it reads as handled-not-changed:
 
    ```bash
-   .agent/scripts/review_progress.sh check --progress <file> --index <i> \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+   $WS_ROOT/.agent/scripts/review_progress.sh check --progress <file> --index <i> \
        --deferred "<one-line reason>"
    ```
 
@@ -115,7 +139,8 @@ For each open finding, in listed order (cross-confirmed first):
    the same commit as the fix, or a trailing progress commit:
 
    ```bash
-   .agent/scripts/review_progress.sh check --progress <file> --index <i>
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+   $WS_ROOT/.agent/scripts/review_progress.sh check --progress <file> --index <i>
    ```
 
    The index is the one `findings` printed; `check` refuses an already
@@ -135,7 +160,8 @@ and `triage-reviews` step 7 use (strict / compatibility switch,
 outcomes; echo the printed line):
 
 ```bash
-.agent/scripts/review_progress.sh persist --issue "<N>" --branch "<branch>" \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" --branch "<branch>" \
     --title "<issue title>" [--strict] [--no-progress] <<'ENTRY'
 ## Implementation
 **Status**: complete

@@ -1,9 +1,31 @@
 ---
 name: review-issue
 description: Evaluate a GitHub issue against workspace principles and ADRs before work begins. Posts findings as a comment on the issue and records them as an ADR-0013 Issue Review entry on the issue's progress timeline.
+session_scope: both
 ---
 
 # Review Issue
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016). In a workspace session the file
+still holds the right path, so the same chain works in both.
 
 ## Usage
 
@@ -187,7 +209,8 @@ the shared persistence call with `--soft`, so a review run by hand outside
 the issue's worktree still succeeds and just prints the notice:
 
 ```bash
-.agent/scripts/review_progress.sh persist --issue "<N>" \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" \
     --branch "$(git branch --show-current)" --title "<issue title>" \
     --strict --soft <<'ENTRY'
 ## Issue Review

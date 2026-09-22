@@ -2,13 +2,35 @@
 name: run-issue
 description: "Claude Code only — drives one GitHub issue through the full review loop (review-issue → plan-task → review-plan → implement → review-code → publish → triage-reviews → merge), dispatching each phase to a fresh sub-agent via the Agent tool and pausing at AskUserQuestion checkpoints. Depends on `.agent/scripts/dispatch_phase.sh` and the Agent tool, neither of which Codex/Gemini sessions can drive the same way."
 argument-hint: "<issue-number> [--type workspace|project] [--resume]"
+session_scope: both
 ---
 
 # /run-issue
 
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016). In a workspace session the file
+still holds the right path, so the same chain works in both.
+
 Host orchestrator for one issue's review loop. `run-issue` itself never
 implements, reviews, or writes code — it enters the worktree, asks
-`.agent/scripts/dispatch_phase.sh next` what happens next, dispatches that
+`$WS_ROOT/.agent/scripts/dispatch_phase.sh next` what happens next, dispatches that
 phase to a fresh sub-agent, checks whether the phase kept its exit contract,
 and pauses at `AskUserQuestion` checkpoints. The decision table lives in the
 script, not here — see "Action tokens" below for where to read it.
@@ -90,8 +112,9 @@ tool calls, so source the identity in the *same* chain as every
 not once at the start of the run:
 
 ```bash
-source .agent/scripts/set_git_identity_env.sh "<agent name>" "<agent email>" "<model-id>" \
-  && .agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [...]
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+source $WS_ROOT/.agent/scripts/set_git_identity_env.sh "<agent name>" "<agent email>" "<model-id>" \
+  && $WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [...]
 ```
 
 ### 2. Probe PR state
@@ -111,13 +134,14 @@ user. Keep the PR number `<M>` for every `--pr <M>` call below.
 ### 3. Ask `next` what happens next
 
 ```bash
-.agent/scripts/dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--type <type>]
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--type <type>]
 ```
 
 Prints `action=<token>`, `reason=<one line>`, and, depending on the row:
 `round=<n>`, `phase=<skill>`, `mode=inline`. Read the full contract and the
 28-row decision table in the script's header comment and inline comments
-(`.agent/scripts/dispatch_phase.sh`) — this skill does not restate them.
+(`$WS_ROOT/.agent/scripts/dispatch_phase.sh`) — this skill does not restate them.
 Route on `action=` per "Action tokens" below.
 
 ### 4. Dispatching a phase
@@ -139,9 +163,10 @@ exits 1 on a file that doesn't exist yet, e.g. before `review-issue`'s
 first run, so guard it rather than calling the script unconditionally):
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
 PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
 BEFORE=0
-[[ -f "$PF" ]] && BEFORE=$(python3 .agent/scripts/progress_read.py "$PF" --type "<entry-type>" \
+[[ -f "$PF" ]] && BEFORE=$(python3 $WS_ROOT/.agent/scripts/progress_read.py "$PF" --type "<entry-type>" \
     | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["entries"]))')
 ```
 
@@ -155,7 +180,8 @@ false `OK`.
 then:
 
 ```bash
-.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>] [--type <type>]
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>] [--type <type>]
 ```
 
 prints the handoff block: `worktree=`, `task=`, `agent_name=`,
@@ -169,7 +195,8 @@ fetches its own inputs (issue/PR body via `gh`) — nothing is injected.
 After the sub-agent returns, check the exit contract:
 
 ```bash
-.agent/scripts/dispatch_phase.sh --check-exit --issue <N> --skill <phase> [--pr <M>] [--type <type>] --before "$BEFORE"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/dispatch_phase.sh --check-exit --issue <N> --skill <phase> [--pr <M>] [--type <type>] --before "$BEFORE"
 ```
 
 `status=OK` (with `sha=`) → continue to the next `next` call. `status=
@@ -218,7 +245,7 @@ sub-agent. Two cases produce this, and they write differently:
   phase's entry carries no `**Mode**` field at all, identical in shape to
   what a normal dispatch of that phase would have written.
 
-Both cases use `.agent/scripts/progress_append.sh <N> --title "<issue
+Both cases use `$WS_ROOT/.agent/scripts/progress_append.sh <N> --title "<issue
 title>" <<'ENTRY'` (the script header documents the exact stdin/flag
 contract).
 
@@ -280,9 +307,10 @@ the host surfaces the script's own error text at the merge checkpoint
 instead. For each such box, run:
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
 PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
-.agent/scripts/review_progress.sh findings --progress "$PF"   # <i> comes from here
-.agent/scripts/review_progress.sh check --progress "$PF" --index <i> \
+$WS_ROOT/.agent/scripts/review_progress.sh findings --progress "$PF"   # <i> comes from here
+$WS_ROOT/.agent/scripts/review_progress.sh check --progress "$PF" --index <i> \
   --deferred "<the owner's reason, from the checkpoint entry's own text>"
 ```
 
@@ -319,8 +347,9 @@ embedding the finding text verbatim — never "the four findings above" or
 the PR:
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
 git push -u origin "$(git branch --show-current)"
-.agent/scripts/gh_create_pr.sh --title "<title>" --body-stdin <<'EOF'
+$WS_ROOT/.agent/scripts/gh_create_pr.sh --title "<title>" --body-stdin <<'EOF'
 <the pinned Decision summary from the last review-code / implementation>
 EOF
 ```
@@ -345,7 +374,8 @@ Before every `review-code --branch` dispatch (row 12, `--pr none`), check
 whether the branch is behind:
 
 ```bash
-.agent/scripts/check_branch_updates.sh
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/check_branch_updates.sh
 ```
 
 If behind, merge main into the branch first, so the SHA `review-code`
@@ -359,7 +389,8 @@ fix, row 22a/22b), wait for CI and bot reviews to settle before dispatching
 `triage-reviews`:
 
 ```bash
-.agent/scripts/fetch_pr_reviews.sh --pr <M>
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/fetch_pr_reviews.sh --pr <M>
 ```
 
 until no checks are pending. "No checks pending" includes the
@@ -405,7 +436,7 @@ rule.
 cd "$(git rev-parse --show-toplevel)"
 ```
 
-then run `.agent/scripts/merge_pr.sh --pr <M> --type <type>`. The gate
+then run `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <M> --type <type>`. The gate
 enforces by default on workspace PRs (#300): a gap refuses with exit 1 and
 no entry. Only the owner says skip — `--report-only` (record and proceed),
 `--no-wait` (skip the CI wait) and `--allow-pending-review` (merge under a
@@ -446,7 +477,7 @@ normally on the following `next` call.
 `implement`, `review-code`, `address-findings`, `publish`,
 `triage-reviews`, `merge`, `done`, and `checkpoint:<name>` for the nine
 checkpoint names) and the 28-row decision table that produces them live in
-`.agent/scripts/dispatch_phase.sh`'s header comment and inline comments —
+`$WS_ROOT/.agent/scripts/dispatch_phase.sh`'s header comment and inline comments —
 read there, not here. This skill's job is routing on the printed token
 (dispatch per step 4, inline per step 5 (implement or a takeover), publish
 per step 7, merge per step 11, checkpoint per step 6, `done` ends the run

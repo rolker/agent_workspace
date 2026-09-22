@@ -1,6 +1,7 @@
 ---
 name: document-project
 description: Generate or update project component documentation (README and API docs) by reading source code. Enforces the documentation verification workflow.
+session_scope: project
 ---
 
 # Document Project

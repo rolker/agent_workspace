@@ -126,6 +126,24 @@ if [ -z "$ISSUE_NUM" ] && [ -z "$SKILL_NAME" ]; then
     show_usage
     exit 1
 fi
+# --type is optional when the cwd already says which checkout this is
+# (#317): a cwd under a registered project root derives `--type project
+# --project <name>`, a cwd inside the workspace checkout derives `--type
+# workspace`. An explicit flag always wins -- this only fills a blank.
+if [ -z "$WORKTREE_TYPE" ]; then
+    _WT_DERIVED="$(registry_derive_type_from_dir "$ROOT_DIR" "$PWD" 2>/dev/null)" || _WT_DERIVED=""
+    if [ -n "$_WT_DERIVED" ]; then
+        WORKTREE_TYPE="$(cut -f1 <<< "$_WT_DERIVED")"
+        _WT_DERIVED_PROJECT="$(cut -f2 <<< "$_WT_DERIVED")"
+        if [ -z "$PROJECT_REPO" ] && [ -n "$_WT_DERIVED_PROJECT" ]; then
+            PROJECT_REPO="$_WT_DERIVED_PROJECT"
+        fi
+        echo "Note: --type omitted; derived --type $WORKTREE_TYPE${PROJECT_REPO:+ --project $PROJECT_REPO} from $PWD" >&2
+        unset _WT_DERIVED_PROJECT
+    fi
+    unset _WT_DERIVED
+fi
+
 if [ -z "$WORKTREE_TYPE" ]; then
     echo "Error: --type is required (workspace or project)"
     show_usage

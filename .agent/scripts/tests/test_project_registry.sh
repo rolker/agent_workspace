@@ -1236,7 +1236,57 @@ test_transition_worktrees_survive_registration
 test_wt_ensure_exclusion_noop_for_unregistered
 test_registry_worktree_enumeration_for_dashboard
 test_merge_pr_finds_worktree_under_registered_root
+
+# --------------------------------------------------------------------------
+# registry_derive_type_from_dir (#317): the cwd-derived --type/--project that
+# makes --type optional on the worktree scripts.
+# --------------------------------------------------------------------------
+test_derive_type_from_dir() {
+    echo ""
+    echo "--- registry_derive_type_from_dir ---"
+    local sb alpha beta
+    sb="$(make_sandbox)"
+    alpha="$(make_registered_project "$sb" alpha "$sb/roots/alpha")"
+    beta="$(make_registered_project "$sb" beta "$sb/roots/beta")"
+
+    assert_eq "a registered root derives project + its name" \
+        "project	alpha" "$(reg "$sb" registry_derive_type_from_dir "$sb" "$alpha")"
+
+    mkdir -p "$beta/src/deep"
+    assert_eq "a directory inside a registered root derives that project" \
+        "project	beta" "$(reg "$sb" registry_derive_type_from_dir "$sb" "$beta/src/deep")"
+
+    assert_eq "the workspace checkout derives workspace, with no project" \
+        "workspace	" "$(reg "$sb" registry_derive_type_from_dir "$sb" "$sb")"
+
+    mkdir -p "$sb/worktrees/workspace/issue-workspace-1"
+    assert_eq "a workspace worktree derives workspace" \
+        "workspace	" "$(reg "$sb" registry_derive_type_from_dir "$sb" "$sb/worktrees/workspace/issue-workspace-1")"
+
+    # Neither: an unrelated directory outside the workspace and every root.
+    local outside
+    outside="$(mktemp -d -p "$SANDBOX")"
+    local out rc=0
+    out="$(reg "$sb" registry_derive_type_from_dir "$sb" "$outside" 2>/dev/null)" || rc=$?
+    if [[ "$rc" -eq 1 && -z "$out" ]]; then
+        echo "  PASS: an unrelated directory derives nothing (return 1)"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: an unrelated directory derived '$out' (rc=$rc)"
+        FAIL=$((FAIL + 1))
+    fi
+
+    # A project registered INSIDE the workspace tree is still a project:
+    # registered roots are checked before the workspace-checkout branch.
+    local inner
+    inner="$(make_registered_project "$sb" inner "$sb/inner")"
+    assert_eq "a project registered inside the workspace tree still derives project" \
+        "project	inner" "$(reg "$sb" registry_derive_type_from_dir "$sb" "$inner")"
+}
+
+
 test_review_plan_issue_fallback_finds_plan_under_registered_root
+test_derive_type_from_dir
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

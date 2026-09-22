@@ -1,9 +1,31 @@
 ---
 name: onboard-project
 description: Interactive audit and onboarding for project repos. Checks for CI, pre-commit, agent guide, GitHub settings, and labels. Offers to fix gaps or open issues.
+session_scope: project
 ---
 
 # Onboard Project
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016). In a workspace session the file
+still holds the right path, so the same chain works in both.
 
 ## Usage
 
@@ -157,8 +179,9 @@ ISSUE_NUM=$(echo "$ISSUE_URL" | grep -o '[0-9]*$')
 
 **Create a project worktree** on the project repo using the new issue number:
 ```bash
-.agent/scripts/worktree_create.sh --issue "$ISSUE_NUM" --type project
-source .agent/scripts/worktree_enter.sh --issue "$ISSUE_NUM" --type project
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/worktree_create.sh --issue "$ISSUE_NUM" --type project
+source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue "$ISSUE_NUM" --type project
 ```
 
 **Apply fixes** (in the worktree, on the project repo):

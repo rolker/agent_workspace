@@ -1,9 +1,31 @@
 ---
 name: plan-task
 description: Generate a principles-aware work plan for an issue. Saves to `.agent/work-plans/` in the repo that owns the issue and commits as the first step on the feature branch.
+session_scope: both
 ---
 
 # Plan Task
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016). In a workspace session the file
+still holds the right path, so the same chain works in both.
 
 ## Usage
 
@@ -99,8 +121,9 @@ the matching worktree — this is deliberate (issue #147): silent writes
 into the main tree were stranding per-issue artifacts on no branch.
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
 # shellcheck source=../../../.agent/scripts/_resolve_work_plans_dir.sh
-source .agent/scripts/_resolve_work_plans_dir.sh
+source $WS_ROOT/.agent/scripts/_resolve_work_plans_dir.sh
 WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || {
     # Resolver printed remediation guidance to stderr — surface it to the
     # user and stop. Do not write plan.md / progress.md anywhere else.
@@ -114,15 +137,17 @@ matching worktree. Typical remediation:
 **Workspace issues** (changes to `.agent/`, `docs/`, configs, skills):
 
 ```bash
-.agent/scripts/worktree_create.sh --issue <N> --type workspace
-source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/worktree_create.sh --issue <N> --type workspace
+source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type workspace
 ```
 
 **Project repo issues** (changes to the managed project repo):
 
 ```bash
-.agent/scripts/worktree_create.sh --issue <N> --type project
-source .agent/scripts/worktree_enter.sh --issue <N> --type project
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/worktree_create.sh --issue <N> --type project
+source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type project
 ```
 
 To determine the type, run `gh issue view <N> --json url` and compare
@@ -197,12 +222,13 @@ commit that contains the plan text (ADR-0013's plan-commit SHA), so the
 plan has to be committed before the entry can name it:
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
 mkdir -p "$WORK_PLANS_DIR"
 git add "$WORK_PLANS_DIR/plan.md"
 git commit -m "Add work plan for #<N>
 
 <one-line summary of the approach>"
-PLAN_SHA=$(.agent/scripts/review_progress.sh plan-sha --plan "$WORK_PLANS_DIR/plan.md")
+PLAN_SHA=$($WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan "$WORK_PLANS_DIR/plan.md")
 ```
 
 `plan-sha` prints the last commit that touched `plan.md` (never the branch
@@ -224,7 +250,8 @@ strict (`--strict`, or the env var set to `1`) goes through
 in step 9's report.
 
 ```bash
-.agent/scripts/review_progress.sh persist --issue "<N>" --branch "$(git branch --show-current)" \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" --branch "$(git branch --show-current)" \
     --title "<issue title>" [--strict] <<ENTRY
 ## Plan Authored
 **Status**: complete

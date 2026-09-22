@@ -1,9 +1,31 @@
 ---
 name: review-plan
 description: Independent evaluation of a committed work plan before implementation begins. Checks scope, approach, principle alignment, consequences, and ROS conventions.
+session_scope: both
 ---
 
 # Review Plan
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016). In a workspace session the file
+still holds the right path, so the same chain works in both.
 
 ## Usage
 
@@ -66,8 +88,9 @@ worktree dir with the shared helper, the same way the worktree scripts do,
 rather than re-deriving the glob:
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
 # shellcheck source=../../../.agent/scripts/_worktree_helpers.sh
-source .agent/scripts/_worktree_helpers.sh
+source $WS_ROOT/.agent/scripts/_worktree_helpers.sh
 WS_ROOT="$(git rev-parse --show-toplevel)"
 # Workspace worktree first (a workspace-repo issue's plan lives here) …
 plan="$(wt_workspace_base "$WS_ROOT")/issue-workspace-<N>/.agent/work-plans/issue-<N>/plan.md"
@@ -246,12 +269,13 @@ the `## Plan Authored` entry it reviews. Get the SHA from the helper, not
 by hand:
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
 # Plan checked out locally (worktree / --issue / file path):
-.agent/scripts/review_progress.sh plan-sha --plan <path>
+$WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan <path>
 # PR-number form, reviewing from any tree: fetch the head, then ask by ref —
 # no local checkout of the file is needed.
 git fetch -q origin "<headRefName>"
-.agent/scripts/review_progress.sh plan-sha --plan .agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
+$WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan .agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
 ```
 
 (In the PR-number form, read the plan text the same way: `git show
@@ -293,7 +317,8 @@ never turn a finished review into a failed invocation. Append the report
 as the entry, through the shared persistence call with `--soft`:
 
 ```bash
-.agent/scripts/review_progress.sh persist --issue "<issue>" \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root)"
+$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<issue>" \
     --branch "<plan's branch>" --title "<issue title>" --strict --soft <<'ENTRY'
 ## Plan Review
 ...the report exactly as produced in step 5 (it already carries

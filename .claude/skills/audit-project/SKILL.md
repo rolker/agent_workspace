@@ -1,6 +1,7 @@
 ---
 name: audit-project
 description: Check a project repo against workspace and project-level conventions. Reports governance coverage, documentation gaps, and test status.
+session_scope: project
 ---
 
 # Audit Project

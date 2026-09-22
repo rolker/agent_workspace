@@ -1,6 +1,7 @@
 ---
 name: what-next
 description: Read ROADMAP.md files, cross-reference with GitHub issues, detect staleness, and suggest prioritized next work.
+session_scope: both
 ---
 
 # What Next
