@@ -631,7 +631,9 @@ test_legacy_workspace_pr_regression() {
     git -C "$sb" worktree add --quiet "$wt" feature/issue-999
     write_pr_view_fixture "$sb" "$ws_remote" 999 "feature/issue-999"
 
-    out="$(run_merge_pr "$sb" --pr 999 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    # --report-only: this sandbox has no review timeline and the gate
+    # enforces by default on workspace PRs (#300); the test is about cleanup.
+    out="$(run_merge_pr "$sb" --pr 999 --no-wait --no-roadmap-update --report-only 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "workspace type auto-detected" "Merging PR #999 (issue #999)" "$out"
     assert_eq "workspace worktree removed" "false" "$([ -e "$wt" ] && echo true || echo false)"

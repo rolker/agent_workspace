@@ -223,6 +223,8 @@ CHECKRUNS_COPILOT_ONLY="{\"check_runs\":[${COPILOT_RUN}]}"
 CHECKRUNS_COPILOT_ONLY_RUNNING="{\"check_runs\":[${COPILOT_RUN_RUNNING}]}"
 CHECKRUNS_COPILOT_PLUS_LINT_SUCCESS="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"success\",\"status\":\"completed\"}]}"
 CHECKRUNS_COPILOT_PLUS_LINT_PENDING="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":null,\"status\":\"in_progress\"}]}"
+# A re-triggered review: one completed run and one still running, same name.
+CHECKRUNS_COPILOT_TWICE_PLUS_LINT_SUCCESS="{\"check_runs\":[${COPILOT_RUN},${COPILOT_RUN_RUNNING},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"success\",\"status\":\"completed\"}]}"
 CHECKRUNS_COPILOT_RUNNING_PLUS_LINT_SUCCESS="{\"check_runs\":[${COPILOT_RUN_RUNNING},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"success\",\"status\":\"completed\"}]}"
 CHECKRUNS_COPILOT_PLUS_LINT_FAILED="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"failure\",\"status\":\"completed\"}]}"
 write_mergeable_fixture() {  # <sb> <state> [seq_n]
@@ -262,7 +264,7 @@ run_merge_wait() {  # <sb> [args...] -- no --no-wait; zero-sleep CI/mergeability
         MERGE_PR_CI_POLL_SECONDS=0 \
         MERGE_PR_CI_GRACE_SECONDS="${MERGE_PR_CI_GRACE_SECONDS:-5}" \
         MERGE_PR_CI_TIMEOUT_SECONDS="${MERGE_PR_CI_TIMEOUT_SECONDS:-5}" \
-        "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace --no-roadmap-update "$@")
+        "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace --no-roadmap-update --report-only "$@")
 }
 
 APPROVED_AT_HEAD="## Local Review
@@ -306,12 +308,12 @@ IR_CLEAN="## Integrated Review
 - [x] (must-fix) fixed — \`x.sh\`
 - [ ] (suggestion) later — \`y.sh\`"
 
-# ================================================= report-only (default) =====
-echo "TEST: report-only mode — every gap proceeds to the merge call, names why, records an entry"
+# ================================================= --report-only (the pre-#300 default) =====
+echo "TEST: --report-only mode — every gap proceeds to the merge call, names why, records an entry"
 run_case() {  # <label> <progress body> <with_summary|""> <expected reason fragment>
     local sb out rc=0
     sb="$(make_sandbox "$2" "$3")"
-    out="$(run_merge "$sb" 2>&1)" || rc=$?
+    out="$(run_merge "$sb" --report-only 2>&1)" || rc=$?
     if merged_called "$sb" && [[ "$out" == *"would have refused"*"$4"* ]] \
         && progress_of "$sb" | grep -q '^## Merge (report-only)$' \
         && progress_of "$sb" | grep -q "^\*\*PR\*\*: #70 at \`abc1234\`" \
@@ -332,12 +334,12 @@ run_case "(c) changes-requested at the head"             "$CHANGES_REQUESTED" wi
 run_case "(d) approved at head, no decision summary"     "$APPROVED_AT_HEAD"  ""            "no \"## Decision summary\" heading in the PR body or a PR comment"
 run_case "(d2) Integrated Review with an open cross-confirmed finding" "$IR_OPEN" with_summary "open must-fix/cross-confirmed"
 # record is pushed to origin (survives the worktree's later removal)
-sb="$(make_sandbox "$STALE" with_summary)"; run_merge "$sb" >/dev/null 2>&1 || true
+sb="$(make_sandbox "$STALE" with_summary)"; run_merge "$sb" --report-only >/dev/null 2>&1 || true
 [[ "$(git -C "${sb}.remote.git" log -1 --format=%s feature/issue-7)" == "progress: merge (report-only) for #7" ]] \
     && pass "report-only record is committed by progress_append.sh and pushed to origin before the merge" || fail "record pushed (subj=$(git -C "${sb}.remote.git" log -1 --format=%s feature/issue-7))"
 # all good: no line, no entry, merge reached
 sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 if merged_called "$sb" && [[ "$out" != *"would have refused"* ]] && [[ "$out" == *"Review gate: approved review at head"* ]] \
     && ! progress_of "$sb" | grep -q '^## Merge'; then
     pass "(e) approved at head + decision summary: passes, records nothing"
@@ -345,26 +347,26 @@ else
     fail "(e) all-good (out=${out:0:300})"
 fi
 sb="$(make_sandbox "$IR_CLEAN" with_summary)"
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 [[ "$out" == *"Review gate: approved review at head"* ]] && pass "(e2) Integrated Review at head with only a suggestion open passes" || fail "(e2) IR clean (out=${out:0:300})"
 # the decision summary in the PR BODY (where the template puts it) satisfies (b)
 sb="$(make_sandbox "$APPROVED_AT_HEAD" body_summary)"
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 [[ "$out" == *"Review gate: approved review at head"* ]] && pass "(e3) decision summary in the PR body (no comment) satisfies condition (b)" || fail "(e3) body summary (out=${out:0:300})"
 # a legacy External Review at the head is honoured as Integrated Review's predecessor
 EXT_CLEAN="${IR_CLEAN/Integrated Review/External Review}"
 sb="$(make_sandbox "$EXT_CLEAN" with_summary)"
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 [[ "$out" == *"Review gate: approved review at head"* ]] && pass "(e4) a legacy External Review at head with no open must-fix passes (ADR-0013 predecessor)" || fail "(e4) External Review (out=${out:0:300})"
 # a malformed progress.md is named as such, not as "no review entry"
 sb="$(make_sandbox $'## Implementation\n```\nunterminated' with_summary)"
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 [[ "$out" == *"could not be parsed"* && "$out" != *"no ## Local Review"* ]] && pass "(f) a malformed progress.md is reported as malformed, not as missing" || fail "(f) malformed (out=${out:0:300})"
 # push refused after the record commit: the commit is undone and ONE PR comment posted
 sb="$(make_sandbox "$STALE" with_summary)"
 rm -rf "${sb}.remote.git"; mkdir -p "${sb}.remote.git"   # origin gone -> push fails
 before=$(git -C "$sb/worktrees/workspace/issue-workspace-7" rev-parse HEAD)
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 if [[ "$(git -C "$sb/worktrees/workspace/issue-workspace-7" rev-parse HEAD)" == "$before" ]] \
     && [[ -z "$(git -C "$sb/worktrees/workspace/issue-workspace-7" status --porcelain)" ]] \
     && [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md" 2>/dev/null)" -eq 1 ]] \
@@ -376,6 +378,28 @@ fi
 # the PR comment carries the workspace signature (Authored-By + Model)
 grep -q '^\*\*Model\*\*: `' "$sb/gh_fixtures/comments_posted.md" && grep -q '^\*\*Authored-By\*\*: `Test Agent`' "$sb/gh_fixtures/comments_posted.md" \
     && pass "(h) PR comment record carries the AI signature (Authored-By + Model)" || fail "(h) signature"
+
+# ================================================= enforce is the default (#300) =====
+echo "TEST: default mode (no flag) enforces on a workspace PR — a gap refuses, all-good merges, --report-only opts out"
+sb="$(make_sandbox "$STALE" with_summary)"
+rc=0; out="$(run_merge "$sb" 2>&1)" || rc=$?
+if [[ "$rc" -ne 0 ]] && ! merged_called "$sb" && [[ "$out" == *"review gate refused"*"not the PR head"* ]] \
+    && [[ "$out" == *"--report-only"* ]] && ! progress_of "$sb" | grep -q '^## Merge'; then
+    pass "(def-1) no flag + a gate gap: refused (exit 1), no merge, no entry, --report-only named as the opt-out"
+else
+    fail "(def-1) (rc=$rc merged=$(merged_called "$sb" && echo y || echo n) out=${out:0:300})"
+fi
+sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
+rc=0; out="$(GH_MERGE_EXIT=0 run_merge "$sb" 2>&1)" || rc=$?
+[[ "$rc" -eq 0 ]] && merged_called "$sb" && [[ "$out" == *"Review gate: approved review at head"* ]] \
+    && pass "(def-2) no flag + all-good: merges (exit 0)" || fail "(def-2) (rc=$rc out=${out:0:300})"
+sb="$(make_sandbox "$STALE" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"would have refused"* ]] && progress_of "$sb" | grep -q '^## Merge (report-only)$'; then
+    pass "(def-3) --report-only on the same gap: proceeds with the would-have-refused line and a record"
+else
+    fail "(def-3) (out=${out:0:300})"
+fi
 
 # ================================================= --enforce, workspace =====
 echo "TEST: --enforce on a workspace PR refuses every gap; passes the all-good fixture"
@@ -425,7 +449,7 @@ fi
 echo "TEST: no open worktree for the PR's repo — the record is posted as a PR comment"
 sb="$(make_sandbox "" "")"
 git -C "$sb" worktree remove --force "$sb/worktrees/workspace/issue-workspace-7" >/dev/null 2>&1
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 if [[ "$out" == *"would have refused"* ]] && [[ "$out" == *"posted as a comment"* ]] \
     && grep -q '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md" 2>/dev/null \
     && grep -q '^\*\*Conditions\*\*: ' "$sb/gh_fixtures/comments_posted.md"; then
@@ -469,7 +493,7 @@ sb="$(make_sandbox "$STALE" with_summary)"
 git -C "$sb" worktree remove --force "$sb/worktrees/workspace/issue-workspace-7" >/dev/null 2>&1
 git -C "$sb" checkout -q feature/issue-7      # the forbidden shape: feature branch in the main tree
 root_before=$(git -C "$sb" rev-parse HEAD)
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 if [[ "$(git -C "$sb" rev-parse HEAD)" == "$root_before" ]] \
     && ! git -C "$sb" log -1 --format=%s | grep -q '^progress: merge' \
     && [[ "$out" == *"checked out in the main tree"*"posted as a comment"* ]] \
@@ -503,9 +527,9 @@ fi
 # ================================================= idempotent record (issue #284) =====
 echo "TEST: idempotent record — identical conditions across runs append no second entry; differing conditions do"
 sb="$(make_sandbox "$CHANGES_REQUESTED" with_summary)"
-run_merge "$sb" >/dev/null 2>&1 || true
+run_merge "$sb" --report-only >/dev/null 2>&1 || true
 before_sha=$(git -C "${sb}.remote.git" rev-parse feature/issue-7)
-out2="$(run_merge "$sb" 2>&1)" || true
+out2="$(run_merge "$sb" --report-only 2>&1)" || true
 after_sha=$(git -C "${sb}.remote.git" rev-parse feature/issue-7)
 count=$(progress_of "$sb" | grep -c '^## Merge (report-only)$')
 if [[ "$count" -eq 1 ]] && [[ "$before_sha" == "$after_sha" ]] && [[ "$out2" == *"already recorded"*"same conditions"* ]]; then
@@ -515,7 +539,7 @@ else
 fi
 
 sb="$(make_sandbox "$STALE" with_summary)"
-run_merge "$sb" >/dev/null 2>&1 || true
+run_merge "$sb" --report-only >/dev/null 2>&1 || true
 # Simulate the underlying situation genuinely changing between runs (e.g. a
 # fresh Local Review landed): append a SECOND Local Review entry with a
 # different verdict directly to the worktree's progress.md (uncommitted is
@@ -523,7 +547,7 @@ run_merge "$sb" >/dev/null 2>&1 || true
 # takes the LATEST Local Review entry, so this changes what the next run
 # computes, independent of the fake constant $HEAD_SHA used by make_sandbox.
 printf '\n%s\n' "$CHANGES_REQUESTED" >> "$sb/worktrees/workspace/issue-workspace-7/.agent/work-plans/issue-7/progress.md"
-out2="$(run_merge "$sb" 2>&1)" || true
+out2="$(run_merge "$sb" --report-only 2>&1)" || true
 count=$(progress_of "$sb" | grep -c '^## Merge (report-only)$')
 if [[ "$count" -eq 2 ]] && [[ "$out2" != *"already recorded"* ]]; then
     pass "(idem-2) differing conditions (a newer review entry changed the reason): a fresh entry is appended"
@@ -540,7 +564,7 @@ echo "TEST: idempotent record — the PR-comment fallback follows the same rule"
 # read back from what the first run actually computed.
 sb="$(make_sandbox "" "")"
 git -C "$sb" worktree remove --force "$sb/worktrees/workspace/issue-workspace-7" >/dev/null 2>&1
-out1="$(run_merge "$sb" 2>&1)" || true
+out1="$(run_merge "$sb" --report-only 2>&1)" || true
 why1="${out1#*would have refused — }"; why1="${why1%%$'\n'*}"
 count=$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md" 2>/dev/null || echo 0)
 remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
@@ -557,7 +581,7 @@ comments_json=$(jq -n --arg a "$old_comment_body" '[{body:$a}]')
 plain_body='"plain"'
 printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":%s,"body":%s}\n' "$HEAD_SHA" "$comments_json" "$plain_body" \
     > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
-out2="$(run_merge "$sb" 2>&1)" || true
+out2="$(run_merge "$sb" --report-only 2>&1)" || true
 count2=$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md" 2>/dev/null || echo 0)
 if [[ "$count" -eq 1 ]] && [[ "$count2" -eq 1 ]] && [[ "$out2" == *"already recorded"* ]]; then
     pass "(idem-3) PR-comment fallback: an existing comment with identical conditions is not re-posted"
@@ -575,7 +599,7 @@ decision_comment_body='## Decision summary
 comments_json2=$(jq -n --arg a "$old_comment_body" --arg b "$decision_comment_body" '[{body:$a},{body:$b}]')
 printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":%s,"body":%s}\n' "$HEAD_SHA" "$comments_json2" "$plain_body" \
     > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
-out3="$(run_merge "$sb" 2>&1)" || true
+out3="$(run_merge "$sb" --report-only 2>&1)" || true
 count3=$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md" 2>/dev/null || echo 0)
 if [[ "$count3" -eq 2 ]] && [[ "$out3" != *"already recorded"* ]]; then
     pass "(idem-4) PR-comment fallback: differing conditions (a decision summary now exists) post a second comment"
@@ -618,7 +642,7 @@ write_mergeable_fixture "$sb" "MERGEABLE"
 out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=0 \
     MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 MERGE_PR_CI_TIMEOUT_SECONDS=5 \
     GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
-    "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace 2>&1)" || true
+    "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace --report-only 2>&1)" || true
 if merged_called "$sb" && [[ "$out" == *"Roadmap updated"* ]] && [[ "$out" == *"CI target: reviewed head \`${reviewed:0:7}\`"* ]] \
     && grep -qF "api repos//commits/${reviewed}/check-runs" "$sb/gh_calls.log"; then
     pass "(ci-2) roadmap + progress.md commits both exempt: check-runs still targets the reviewed head"
@@ -851,6 +875,63 @@ else
     fail "(ci-28) (note_count=${note_count}) (out=${out:0:400})"
 fi
 
+echo "TEST: CI wait — a re-triggered review (completed + running runs of the same name) still holds (#300 round 3)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_TWICE_PLUS_LINT_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"* ]] \
+    && [[ "$out" != *"CI checks passed"* ]]; then
+    pass "(ci-29) completed + running Copilot runs on one head: the running one still holds the merge"
+else
+    fail "(ci-29) (out=${out:0:400})"
+fi
+
+echo "TEST: CI target — a host-pushed progress-only commit after a green head reuses that head's verdict (#300 owner rule)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; green=$(git -C "$wt" rev-parse HEAD)
+printf '\n## Checkpoint\n**Status**: complete\n**When**: 2026-09-22 12:00 -04:00\n**By**: t (m)\n**Decided-by**: owner\n**After**: merge\n**Decision**: merge\n\nok\n' >> "$wt/.agent/work-plans/issue-7/progress.md"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "progress: checkpoint"
+git -C "$wt" push --quiet origin feature/issue-7
+head_now=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"      # CI never registered on the bookkeeping tip
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"      # ...but the code head is green
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI target: \`${green:0:7}\`"*"bookkeeping commits"* ]] \
+    && [[ "$out" == *"CI checks passed on \`${green:0:7}\`"* ]] \
+    && grep -qF "api repos//commits/${green}/check-runs" "$sb/gh_calls.log"; then
+    pass "(ci-30) progress-only commit after a green head: CI target walks back to the green head, merges"
+else
+    fail "(ci-30) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
+echo "TEST: CI target — a code commit after the green head is NOT walked over (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; green=$(git -C "$wt" rev-parse HEAD)
+echo "real change" > "$wt/some_file.sh"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "code change"
+git -C "$wt" push --quiet origin feature/issue-7
+head_now=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${head_now:0:7}"* ]] \
+    && [[ "$out" != *"bookkeeping commits"* ]]; then
+    pass "(ci-31) code commit after the green head: no walk-back, waits on the new head (never-registered)"
+else
+    fail "(ci-31) (out=${out:0:500})"
+fi
+
 echo "TEST: mergeability — UNKNOWN for the first pr-view calls then MERGEABLE: merge proceeds"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
@@ -881,7 +962,7 @@ echo "TEST: --no-wait still polls mergeability before merging (#290)"
 sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
 write_mergeable_fixture "$sb" "UNKNOWN" 1
 write_mergeable_fixture "$sb" "MERGEABLE"
-out="$(GH_MERGE_EXIT=0 run_merge "$sb" 2>&1)" || true
+out="$(GH_MERGE_EXIT=0 run_merge "$sb" --report-only 2>&1)" || true
 mg_line=$(grep -n "mergeable,mergeStateStatus" "$sb/gh_calls.log" 2>/dev/null | head -1 | cut -d: -f1)
 mr_line=$(grep -n "^pr merge" "$sb/gh_calls.log" 2>/dev/null | head -1 | cut -d: -f1)
 # Two polls: the UNKNOWN answer was read and waited through, not skipped.
@@ -894,7 +975,7 @@ fi
 
 echo "TEST: --no-wait with mergeability UNKNOWN for the whole grace window: error, no merge (#290)"
 sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
-out="$(GH_MERGE_EXIT=0 GH_MERGEABLE_DEFAULT=UNKNOWN MERGE_PR_CI_GRACE_SECONDS=0 run_merge "$sb" 2>&1)" || true
+out="$(GH_MERGE_EXIT=0 GH_MERGEABLE_DEFAULT=UNKNOWN MERGE_PR_CI_GRACE_SECONDS=0 run_merge "$sb" --report-only 2>&1)" || true
 if ! merged_called "$sb" && [[ "$out" == *"mergeability for PR #${PR} never settled"* ]]; then
     pass "(nw-2) --no-wait: mergeability never settles -> error, no gh pr merge"
 else
@@ -903,7 +984,7 @@ fi
 
 echo "TEST: --no-wait with every mergeability poll failing to reach GitHub: lookup-failure error, no merge (#290)"
 sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
-out="$(GH_MERGE_EXIT=0 GH_MERGEABLE_DEFAULT=FAIL MERGE_PR_CI_GRACE_SECONDS=0 run_merge "$sb" 2>&1)" || true
+out="$(GH_MERGE_EXIT=0 GH_MERGEABLE_DEFAULT=FAIL MERGE_PR_CI_GRACE_SECONDS=0 run_merge "$sb" --report-only 2>&1)" || true
 if ! merged_called "$sb" && [[ "$out" == *"could not reach GitHub"* ]] && [[ "$out" != *"still UNKNOWN"* ]]; then
     pass "(nw-2b) --no-wait: failed mergeability lookups -> error names the lookup failure, not UNKNOWN; no gh pr merge"
 else
@@ -914,7 +995,7 @@ echo "TEST: --no-wait still retries once after a 'not mergeable' refusal (#290)"
 sb="$(make_sandbox "$APPROVED_AT_HEAD" with_summary)"
 write_merge_fixture "$sb" 1 "GraphQL: Pull Request is not mergeable (mergePullRequest)" 1
 write_merge_fixture "$sb" 0 "" 2
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 if [[ "$(merge_count "$sb")" == "2" ]] && [[ "$out" == *"re-polling mergeability once and retrying"* ]] && [[ "$out" == *"PR merged"* ]]; then
     pass "(nw-3) --no-wait: first merge refused 'not mergeable', re-polled and retried once, merged"
 else
@@ -1100,7 +1181,7 @@ make_gate_sandbox() {  # <mode>
 
 echo "TEST: gate (a) — a review followed only by its own progress.md commit is current (#286)"
 sb="$(make_gate_sandbox progress-only)"
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 if [[ "$out" == *"covers head"* ]] && [[ "$out" == *"✅ Review gate"* ]] && [[ "$out" != *"would have refused"* ]] \
     && ! progress_of "$sb" | grep -q '^## Merge'; then
     pass "(g1) review + its own progress.md commit: gate passes, nothing recorded"
@@ -1110,7 +1191,7 @@ fi
 
 echo "TEST: gate (a) — a code commit after the review is still stale"
 sb="$(make_gate_sandbox code-after)"
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 if [[ "$out" == *"would have refused"*"stale review"*"touches \`some_file.sh\`"* ]] \
     && progress_of "$sb" | grep -q '^## Merge (report-only)$'; then
     pass "(g2) code commit after the review: stale, names the path"
@@ -1120,7 +1201,7 @@ fi
 
 echo "TEST: gate (a) — a review SHA that is not an ancestor of the head is stale"
 sb="$(make_gate_sandbox unrelated)"
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 if [[ "$out" == *"would have refused"*"stale review"*"not an ancestor"* ]]; then
     pass "(g3) review SHA outside the head's history: stale, says not an ancestor"
 else
@@ -1138,7 +1219,7 @@ fi
 
 echo "TEST: gate (a) — a leftover roadmap commit between review and head is also current"
 sb="$(make_gate_sandbox roadmap-after)"
-out="$(run_merge "$sb" 2>&1)" || true
+out="$(run_merge "$sb" --report-only 2>&1)" || true
 if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]]; then
     pass "(g5) roadmap + progress.md after the review: gate passes"
 else

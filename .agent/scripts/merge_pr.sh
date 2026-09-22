@@ -81,11 +81,14 @@ PROJECT_ARG="" # registered project name; selects among package worktrees that
                # host the same repo+branch under different instances
 NO_ROADMAP_UPDATE=false
 NO_WAIT=false
-# Review-loop merge gate (issue #269 PR F). Report-only by default: the gate
-# prints what it would have refused and records it, but never blocks. The
-# flip to enforce-by-default is a separate one-line PR, once the report-only
-# output has been watched on real merges.
-ENFORCE_MERGE_GATE=false
+# Review-loop merge gate (issue #269 PR F). Enforced by default on
+# workspace PRs since #300 (owner rule: a merge only happens when everything
+# is clean unless he says skip): a gate gap refuses with exit 1 and no
+# merge. --report-only restores the earlier behaviour — print what would
+# have been refused, record it, proceed. --enforce is kept as an explicit
+# alias of the default. Project/package PRs stay report-only in every mode
+# until #265 settles where their timelines live.
+ENFORCE_MERGE_GATE=true
 FORCE_UNREVIEWED=false
 # A code-review check-run that is still running (Copilot's, #300) holds the
 # merge by default even when CI is green or absent: merging past an
@@ -93,7 +96,7 @@ FORCE_UNREVIEWED=false
 # whole wait and so also opts in.
 ALLOW_PENDING_REVIEW=false
 
-USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait] [--allow-pending-review] [--enforce] [--force-unreviewed]"
+USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait] [--allow-pending-review] [--report-only|--enforce] [--force-unreviewed]"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -117,6 +120,8 @@ while [[ $# -gt 0 ]]; do
             ALLOW_PENDING_REVIEW=true; shift ;;
         --enforce)
             ENFORCE_MERGE_GATE=true; shift ;;
+        --report-only)
+            ENFORCE_MERGE_GATE=false; shift ;;
         --force-unreviewed)
             FORCE_UNREVIEWED=true; shift ;;
         *)
@@ -605,11 +610,13 @@ fi
 #       must-fix / cross-confirmed finding);
 #   (b) a PR comment carrying the pinned "## Decision summary" heading.
 # Modes:
-#   default        report-only — names what it would have refused, proceeds,
-#                  and records a `## Merge (report-only)` entry
-#   --enforce      refuses (exit 1, no merge) — workspace PRs only (owner's
-#                  containment measure 2; project/package PRs stay
-#                  report-only until #265 settles where their timelines live)
+#   default        enforce (#300) — refuses (exit 1, no merge, no entry) —
+#                  workspace PRs only (owner's containment measure 2;
+#                  project/package PRs stay report-only until #265 settles
+#                  where their timelines live). --enforce is an explicit
+#                  alias of this default.
+#   --report-only  names what it would have refused, proceeds, and records
+#                  a `## Merge (report-only)` entry (the pre-#300 default)
 #   --force-unreviewed
 #                  bypasses both conditions with a banner and records a
 #                  `## Merge (unreviewed)` entry (all modes, all scopes)
@@ -908,12 +915,13 @@ else
             echo "ERROR: review gate refused to merge PR #${PR_NUMBER}:"
             for _r in "${_gate_reasons[@]}"; do echo "  - $_r"; done
             echo "  Run the review loop (review-code / triage-reviews, then post the decision summary),"
-            echo "  or pass --force-unreviewed to bypass with an audit record."
+            echo "  pass --report-only to proceed with a ## Merge (report-only) record,"
+            echo "  or pass --force-unreviewed to bypass with a ## Merge (unreviewed) record."
         } >&2
         exit 1
     else
         _gate_mode_note="report-only"
-        [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: --enforce applies to workspace PRs only until #265 settles project timelines"
+        [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: --enforce applies to workspace PRs only until #265 settles project timelines (it is the default there)"
         echo "  ⚠️  Review gate (${_gate_mode_note}): would have refused — ${_gate_why}"
         _gate_already_recorded "Merge (report-only)" "$_gate_why" || _gate_record "Merge (report-only)" "$_gate_why"
     fi
@@ -1061,6 +1069,40 @@ _ci_poll_state() {  # <sha> -- prints "<state>|<excluded>": state is one of none
     fi
 }
 
+# --- Bookkeeping-only commits and the CI target (#300, owner rule) ---
+# "The exception is for merging after adding an updated progress or related
+# doc": a progress.md / work-plan / roadmap commit pushed after a CI-verified
+# head needs no new CI round. The Step 2 exemption above covers only paths
+# THIS run committed; this walk covers the same shape when the host pushed
+# them. A batch push runs CI only on its tip, so the walk takes the newest
+# bookkeeping-only ancestor whose checks actually reached a verdict.
+MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "ROADMAP.md" "docs/ROADMAP.md")
+_is_bookkeeping_path() {  # <path> -- rc 0 when the path is a merge-time document file
+    local p="$1" pat
+    for pat in "${MERGE_PR_CI_BOOKKEEPING_PATTERNS[@]}"; do
+        # shellcheck disable=SC2053  # unquoted RHS on purpose: pattern match
+        [[ "$p" == $pat ]] && return 0
+    done
+    return 1
+}
+_ci_walk_bookkeeping() {  # <wt> <start-sha> -- prints ancestors of <start>, newest first, reachable through bookkeeping-only single-parent commits; stops at the first other commit, a merge, main, or 25 steps
+    local wt="$1" cur="$2" base parents paths p n=0
+    base=$(git -C "$wt" merge-base "$cur" origin/main 2>/dev/null || echo "")
+    while [[ $n -lt 25 ]]; do
+        [[ -n "$base" && "$cur" == "$base" ]] && return 0
+        parents=$(git -C "$wt" rev-list --parents -n 1 "$cur" 2>/dev/null | cut -d' ' -f2-)
+        [[ $(wc -w <<<"$parents") -eq 1 ]] || return 0
+        paths=$(git -C "$wt" diff --name-only "$parents" "$cur" 2>/dev/null) || return 0
+        while IFS= read -r p; do
+            [[ -z "$p" ]] && continue
+            _is_bookkeeping_path "$p" || return 0
+        done <<<"$paths"
+        cur="$parents"
+        echo "$cur"
+        n=$((n + 1))
+    done
+}
+
 _wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout (prints UNKNOWN, or LOOKUP_FAILED when the last poll could not reach GitHub), rc 2 on CONFLICTING
     local start deadline now state json lookup_failed
     start=$(date +%s)
@@ -1112,16 +1154,39 @@ if [[ "$NO_WAIT" == false ]]; then
     _ci_deadline=$((_ci_start + MERGE_PR_CI_TIMEOUT_SECONDS))
     _ci_grace_deadline=$((_ci_start + MERGE_PR_CI_GRACE_SECONDS))
     _ci_result=""
+    _ci_walked=false
     while :; do
         _ci_poll_out=$(_ci_poll_state "$CI_TARGET_SHA")
         _ci_state="${_ci_poll_out%%|*}"
         _ci_excluded="${_ci_poll_out#*|}"
+        # Bookkeeping walk-back (#300, owner rule), once, on the first poll:
+        # when the target has no verdict yet (nothing registered, or still
+        # running), a bookkeeping-only ancestor that already reached success
+        # or failure IS the verdict for this code — switch to it and re-poll.
+        if [[ "$_ci_walked" == false ]]; then
+            _ci_walked=true
+            if [[ "$_ci_state" == none || "$_ci_state" == pending ]] && [[ -n "$_ci_wt" ]]; then
+                _ci_switched=false
+                for _ci_cand in $(_ci_walk_bookkeeping "$_ci_wt" "$CI_TARGET_SHA"); do
+                    _ci_probe=$(_ci_poll_state "$_ci_cand" 2>/dev/null); _ci_probe="${_ci_probe%%|*}"
+                    if [[ "$_ci_probe" == success || "$_ci_probe" == failed ]]; then
+                        echo "  CI target: \`${_ci_cand:0:7}\` — \`${CI_TARGET_SHA:0:7}\` differs from it only by bookkeeping commits (progress.md / work plans / roadmap); its checks already reached a verdict (#300)"
+                        CI_TARGET_SHA="$_ci_cand"
+                        _ci_switched=true
+                        break
+                    fi
+                done
+                [[ "$_ci_switched" == true ]] && continue
+            fi
+        fi
         # A review check-run that has not finished (`status=...`, no
         # conclusion) holds the merge unless the caller opted in: its
         # verdict is not CI, but merging under an unfinished review is
         # not the default (#300, owner rule).
+        # `_ci_excluded` is a comma-joined list — a re-triggered review adds a
+        # second run of the same name — so match anywhere, not anchored.
         _ci_review_pending=false
-        if [[ "$_ci_excluded" == status=* ]] && [[ "$ALLOW_PENDING_REVIEW" == false ]]; then
+        if [[ "$_ci_excluded" == *status=* ]] && [[ "$ALLOW_PENDING_REVIEW" == false ]]; then
             _ci_review_pending=true
         fi
         if [[ -n "$_ci_excluded" ]] && [[ "$_ci_excluded_noted" != "$_ci_excluded" ]]; then
