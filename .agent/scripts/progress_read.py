@@ -189,7 +189,10 @@ def _corr_pr_or_branch(header_lines):
             return {"kind": "pr", "pr": int(match.group(1)), "sha": match.group(2)}
     raw = _field(header_lines, "Branch")
     if raw:
-        match = re.match(r"(\S+)\s+at\s+`?([0-9a-fA-F]+)`?", raw)
+        # Backticks are optional around the branch name as well as the sha —
+        # an entry writing ``**Branch**: `feature/issue-7` at `abc1234``` must
+        # correlate with one writing it bare, or round-counting restarts at 1.
+        match = re.match(r"`?([^`\s]+)`?\s+at\s+`?([0-9a-fA-F]+)`?", raw)
         if match:
             return {
                 "kind": "branch",

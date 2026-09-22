@@ -175,6 +175,21 @@ class TestParseProgress(unittest.TestCase):
             {"kind": "branch", "branch": "feature/issue-470", "sha": "2ef0d71"},
         )
 
+    def test_backticked_branch_correlates_with_bare_branch(self):
+        # Backticks around the branch name are optional, exactly as they are
+        # around the sha. A backticked entry must yield the same correlation
+        # as a bare one, or `review_progress.sh round` (which matches on the
+        # branch string) silently restarts the round count at 1.
+        ticked_text = "## Local Review (Pre-Push)\n**Branch**: `feature/issue-307` at `3527104`\n"
+        bare_text = "## Local Review (Pre-Push)\n**Branch**: feature/issue-307 at `3527104`\n"
+        backticked = parse_progress(ticked_text)["entries"][0]
+        bare = parse_progress(bare_text)["entries"][0]
+        self.assertEqual(
+            backticked["correlation"],
+            {"kind": "branch", "branch": "feature/issue-307", "sha": "3527104"},
+        )
+        self.assertEqual(backticked["correlation"], bare["correlation"])
+
     def test_pr_correlation_with_field_before_canonical(self):
         # **Verdict** precedes **PR**; must still resolve by field name.
         self.assertEqual(

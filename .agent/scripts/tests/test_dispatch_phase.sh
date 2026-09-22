@@ -362,7 +362,9 @@ out=$(run_handoff --issue 9 --skill review-issue)
 [[ "$out" == *"task=/review-issue 9"* && "$out" == *"model=sonnet"* && "$out" == *"entry_type=Issue Review"* \
     && "$out" == *"agent_name=Claude Code Agent"* && "$out" == *"agent_email=roland+claude-code@rolker.net"* \
     && "$out" == *"worktree=$SB/worktrees/workspace/issue-workspace-9"* \
-    && "$out" == *"Never push"* ]] && pass "handoff: review-issue -- task line, sonnet, Issue Review, identity, worktree, exit contract" || fail "handoff review-issue (out=$out)"
+    && "$out" == *"Never push"* \
+    && "$out" == *"conventions="*"local time with offset"*"scratchpad"* ]] \
+    && pass "handoff: review-issue -- task line, sonnet, Issue Review, identity, worktree, exit contract, conventions" || fail "handoff review-issue (out=$out)"
 out=$(run_handoff --issue 9 --skill plan-task)
 [[ "$out" == *"task=/plan-task 9 --no-pr"* && "$out" == *"model=sonnet"* && "$out" == *"entry_type=Plan Authored"* ]] \
     && pass "handoff: plan-task -- --no-pr is pinned, sonnet, Plan Authored" || fail "handoff plan-task (out=$out)"
