@@ -691,3 +691,29 @@ precheck scoped to codex/claude/copilot).
 Not done, by instruction: no real agy/codex/claude/copilot run (quota),
 so copilot's stdin form is still only verified against #212's 1.0.48
 check plus the mock contract; nothing pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 13:45 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-313 at `7effe51`
+**Base**: main
+**Depth**: Deep (reason: enforcement-path script + cross-model dispatch wiring; cross-model input supplied by the host)
+**Must-fix**: 6 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 6 must-fix; first round always re-reviews after fixes
+
+Tests: `test_cross_model_review.sh` 298/298 pass; `run_script_tests.sh` 23/23 suites pass (86s). Cross-model input read from disk (gemini complete, codex marked FAILED by the helper's own false positive — a confirmed must-fix, findings recovered from its log excerpt). Copilot flag options read from `copilot --help` (1.0.61); no Copilot review was run (quota exhausted), so the least-privilege recommendation is from help text plus #212's earlier run.
+
+### Findings
+- [ ] (must-fix) codex's merged stdout transcript echoes the prompt+diff, so the error-marker scan fails valid reviews — confirmed live on this very branch; scan a channel that cannot echo the prompt (separate stderr file) or drop the scan for codex — `.agent/scripts/_cli_review.sh:223`
+- [ ] (must-fix) remove the 128 KiB copilot prompt guard: the prompt goes over stdin, so the bound can only reject large reviews that would otherwise work — it re-imposes exactly the #212 ceiling the stdin path removed; delete its pinning test too — `.agent/scripts/_cli_review.sh:270-274` (test `:2015-2037`)
+- [ ] (must-fix) `--allow-all-tools` is a privilege escalation on an untrusted diff; recommended replacement: `-p "" -s --available-tools='' --disable-builtin-mcps --no-ask-user --disallow-temp-dir` (no tools are needed — the diff is in the prompt); if the empty set is rejected, a single read-only tool plus `--deny-tool='shell'` / `--deny-tool='write'`; update the argv assertion — `.agent/scripts/_cli_review.sh:280` (test `:2009`)
+- [ ] (must-fix) the TERM/HUP trap kills the CLI child and exits without waiting, so the outer `timeout -k` never escalates to SIGKILL and the EXIT trap removes TMP_DIR under a still-running CLI; wait for the child (with the helper's own bounded escalation to `kill -9`) before exiting — `.agent/scripts/_cli_review.sh:167-168`
+- [ ] (must-fix) the same TERM-trap gap exists in the gemini helper and must be fixed with it — `.agent/scripts/_agy_review.sh:112-113`
+- [ ] (must-fix) the codex mock echoes only `head -n 2` of the prompt, so no test transcript ever contains diff body — this is why the live false positive was not caught; add a full-prompt-echo knob and a case with a marker word (`unauthorized`, `overloaded`) in the diff — `.agent/scripts/tests/test_cross_model_review.sh:1333`
+- [ ] (suggestion) `marker_in_result`'s length/heading heuristic gives false positives on concise list-formatted findings and false negatives on `#`-headed CLI errors; prefer structured status or an exact known-error match — `.agent/scripts/_cli_review.sh:148-153`
+- [ ] (suggestion) claude's error payload (`.error` / `.error.message`) is never read, so an `is_error=true` or bad-subtype failure reports no underlying cause when `.result` is empty — `.agent/scripts/_cli_review.sh:253-258`
+- [ ] (suggestion) the shared empty-response reason excerpts `$STDERR_FILE`, which codex never writes (its stderr is merged into stdout), so a codex whitespace-only result carries no transcript at all — `.agent/scripts/_cli_review.sh:292`
+- [ ] (suggestion) a copilot quota/auth error printed to stdout that exceeds 400 chars or carries a markdown heading passes every gate; `marker_in_log` covers only stderr — `.agent/scripts/_cli_review.sh:284-288`
