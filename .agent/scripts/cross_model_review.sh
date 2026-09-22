@@ -831,34 +831,71 @@ printf '```\n\n' >> "$SHARED_PROMPT"
 PLAN_CONTEXT_MAX_LINES=200
 PLAN_CONTEXT_FILE="${WORK_PLANS_DIR}/plan.md"
 if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
-    # NOTE: this extractor is NOT fence-aware. A line beginning `## `
-    # inside a fenced code block within the Approach section ends the
-    # extraction early. The failure mode is benign — a shorter context
-    # block, never a longer one and never content from another section —
-    # so this stays a plain awk range rather than growing a fence
-    # tracker (progress_read.py is the workspace's only fence-aware
-    # markdown parser).
+    # The section ends at the next H1/H2 heading or at a thematic break
+    # (`---`), whichever comes first — a plan that uses `# ` or a rule
+    # between sections must not leak the next section in here.
+    #
+    # NOTE: this extractor is NOT fence-aware. A heading-shaped or `---`
+    # line inside a fenced code block within the Approach section ends
+    # the extraction early. The guarantee it does keep is one-sided: the
+    # block may be shorter than the real Approach, never longer, and
+    # never content from a later section. An early stop like that can cut
+    # a code fence in half, which the fence balancing below repairs — the
+    # prompt stays well-formed either way, so this stays a plain awk
+    # range rather than growing a fence tracker (progress_read.py is the
+    # workspace's only fence-aware markdown parser).
     PLAN_APPROACH=$(awk '
         /^## Approach[[:space:]]*$/ { in_section = 1; next }
-        in_section && /^## / { exit }
+        in_section && (/^# / || /^## / || /^---[[:space:]]*$/) { exit }
         in_section { print }
     ' "$PLAN_CONTEXT_FILE")
 
     # Whitespace-only counts as empty.
     if [[ -n "${PLAN_APPROACH//[[:space:]]/}" ]]; then
-        PLAN_APPROACH_LINES=$(printf '%s\n' "$PLAN_APPROACH" | wc -l)
+        # Here-strings, never `printf ... | head`: under `set -o pipefail`
+        # head exits as soon as it has its lines, printf takes SIGPIPE on
+        # an Approach larger than the pipe buffer, and the whole script
+        # dies with 141 before a single agent is dispatched.
+        PLAN_APPROACH_LINES=$(wc -l <<< "$PLAN_APPROACH")
+        if (( PLAN_APPROACH_LINES > PLAN_CONTEXT_MAX_LINES )); then
+            PLAN_CONTEXT_BODY=$(head -n "$PLAN_CONTEXT_MAX_LINES" <<< "$PLAN_APPROACH")
+            PLAN_CONTEXT_TRUNCATED=$(( PLAN_APPROACH_LINES - PLAN_CONTEXT_MAX_LINES ))
+        else
+            PLAN_CONTEXT_BODY="$PLAN_APPROACH"
+            PLAN_CONTEXT_TRUNCATED=0
+        fi
+
+        # Close a code fence left open by the 200-line cut or by an early
+        # extractor stop. An unclosed fence would swallow everything after
+        # it — including the `## Output Format` footer — into one code
+        # block, and the reviewer would never see its instructions. A
+        # closing fence must match the marker that opened it, so a ``` line
+        # inside a ~~~ block counts as content, not as a toggle.
+        PLAN_CONTEXT_OPEN_FENCE=$(awk '
+            {
+                line = $0
+                sub(/^[ \t]+/, "", line)
+                if (line ~ /^```/ || line ~ /^~~~/) {
+                    marker = substr(line, 1, 3)
+                    if (open == "") open = marker
+                    else if (marker == open) open = ""
+                }
+            }
+            END { print open }
+        ' <<< "$PLAN_CONTEXT_BODY")
+
         {
             printf '## Plan Context\n\n'
             printf 'Below is the `## Approach` section of the plan this change is meant\n'
             printf 'to implement. It is context, not the subject of the review: flag\n'
             printf 'divergences between the diff and this plan, but do not review the\n'
             printf 'plan itself.\n\n'
-            if (( PLAN_APPROACH_LINES > PLAN_CONTEXT_MAX_LINES )); then
-                printf '%s\n' "$PLAN_APPROACH" | head -n "$PLAN_CONTEXT_MAX_LINES"
-                printf '\n_[truncated: %d more lines]_\n' \
-                    "$(( PLAN_APPROACH_LINES - PLAN_CONTEXT_MAX_LINES ))"
-            else
-                printf '%s\n' "$PLAN_APPROACH"
+            printf '%s\n' "$PLAN_CONTEXT_BODY"
+            if [[ -n "$PLAN_CONTEXT_OPEN_FENCE" ]]; then
+                printf '%s\n' "$PLAN_CONTEXT_OPEN_FENCE"
+            fi
+            if (( PLAN_CONTEXT_TRUNCATED > 0 )); then
+                printf '\n_[truncated: %d more lines]_\n' "$PLAN_CONTEXT_TRUNCATED"
             fi
             printf '\n'
         } >> "$SHARED_PROMPT"

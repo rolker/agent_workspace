@@ -56,8 +56,9 @@ unwieldy.
    `_truncated`, `_no_progress` (`--no-progress` + `--work-plans-dir`,
    the one combination where a plan.md could exist under
    `--no-progress`). Full suite green. (As implemented on top of #313 the
-   suite runs 327 assertions, 24 of them added here; the pre-#313 count of
-   179 quoted at planning time no longer applies.)
+   suite runs 379 assertions at the time of writing; the pre-#313 count of
+   179 quoted at planning time no longer applies, and the figure moves with
+   every #313 merge, so treat it as a snapshot rather than a contract.)
 
 4. **ADR-0015 addendum (ADR-0008 style)** — Plain navigational Status-line
    note, not "scoped exception" wording: "Trigger tier for cross-model
@@ -114,6 +115,25 @@ unwieldy.
   `cross_model_review.sh` untouched. #320's edits to that script are
   confined to the shared-prompt builder and the gemini Tool Use footer, and
   its tests are added alongside #313's rather than reworking its mocks.
+
+- **Fence balancing in the plan-context block (round-1 review fix)** — The
+  plan specified the 200-line cap but not what a cut does to markdown. Two
+  things can leave a code fence open inside the emitted block: the cap
+  itself landing mid-fence, and the (deliberately not fence-aware)
+  extractor stopping at a heading-shaped or `---` line inside a fence. An
+  unclosed fence swallows everything after it — including the `## Output
+  Format` footer — into one code block, so the reviewer never sees its
+  instructions. Rule adopted: after the body is cut, count fence toggles
+  (a closing fence must match the marker that opened it, so ``` inside a
+  `~~~` block is content) and emit the matching closer before the
+  truncation marker. The extractor also now stops at any H1/H2 heading or
+  a thematic break, so its one-sided guarantee — possibly shorter, never
+  longer, never content from a later section — actually holds.
+
+- **No `printf | head` (round-1 review fix)** — The cap is applied with
+  here-strings. Under `set -o pipefail`, `printf | head -n 200` makes
+  printf take SIGPIPE once the Approach exceeds the pipe buffer (~64 KiB)
+  and the whole script dies with exit 141 before any agent is dispatched.
 
 ## Estimated Scope
 

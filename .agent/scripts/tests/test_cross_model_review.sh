@@ -1292,6 +1292,19 @@ write_plan_fixture() {
     printf '%s\n' "$2" > "$1"
 }
 
+# Echo the `## Plan Context` block of prompt file $1, up to (excluding)
+# the `## Output Format` footer.
+plan_context_block() {
+    awk '/^## Plan Context$/ { in_block = 1 }
+         in_block && /^## Output Format$/ { exit }
+         in_block { print }' "$1"
+}
+
+# Count code-fence lines in the text on stdin (0 is not an error).
+count_fence_lines() {
+    grep -cE '^[[:space:]]{0,3}(```|~~~)' || true
+}
+
 test_plan_context_present() {
     echo "TEST: the plan's ## Approach is appended as labelled plan context (#320)"
     setup
@@ -1460,6 +1473,144 @@ NO PROGRESS APPROACH BODY"
         "^## Plan Context$" "$prompt"
     assert_not_contains "plan body never reaches the prompt" \
         "NO PROGRESS APPROACH BODY" "$prompt"
+
+    teardown
+}
+
+test_plan_context_large_approach() {
+    echo "TEST: an Approach far larger than the pipe buffer does not kill the script (#320)"
+    setup
+
+    # ~400 KB of Approach: well past the 64 KiB pipe buffer. A
+    # `printf | head` implementation under `set -o pipefail` takes
+    # SIGPIPE here and aborts the whole run with exit 141 before any
+    # agent is dispatched.
+    local big="${TMPDIR_BASE}/big-approach.md"
+    {
+        printf '# Plan: huge\n\n## Approach\n\n'
+        local i
+        for ((i = 1; i <= 5000; i++)); do
+            printf 'APPROACH LINE %d %s\n' "$i" \
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        done
+        printf '\n## Files to Change\n\nTAIL SECTION\n'
+    } > "$big"
+    mkdir -p "$(dirname "${MOCK_REPO}/${PLAN_REL}")"
+    cp "$big" "${MOCK_REPO}/${PLAN_REL}"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review survives a >64 KiB Approach (no SIGPIPE, no 141)" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "plan context heading is present" "^## Plan Context$" "$prompt"
+    assert_contains "truncation is marked" "truncated: [0-9]+ more lines" "$prompt"
+    assert_contains "the output-format footer still follows it" "^## Output Format$" "$prompt"
+    assert_not_contains "the cap still holds" "^APPROACH LINE 1000 " "$prompt"
+
+    teardown
+}
+
+test_plan_context_fence_balanced() {
+    echo "TEST: a code fence in the Approach never leaks past the plan context (#320)"
+    setup
+
+    # (a) A complete fence inside a short Approach: copied through as-is,
+    #     nothing added, footer still a heading.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '# Plan: fenced
+
+## Approach
+
+Run it like this:
+
+```bash
+echo FENCED COMMAND
+```
+
+Then stop.
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a fenced Approach" "0" "$exit_code"
+
+    local block fences
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    fences=$(count_fence_lines <<< "$block")
+    assert_eq "a complete fence stays balanced (2 fence lines)" "2" "$fences"
+    assert_contains "fenced content is carried through" "FENCED COMMAND" "$block"
+    assert_contains "the output-format footer is still a heading" \
+        "^## Output Format$" "$(cat "${MOCK_REPO}/${PROMPT_REL}")"
+
+    # (b) A fence opened before the 200-line cut and closed after it: the
+    #     cut must not leave it open, or everything below — including the
+    #     footer — becomes one code block.
+    local straddle="${TMPDIR_BASE}/straddle.md"
+    {
+        printf '# Plan: straddle\n\n## Approach\n\n'
+        local i
+        for ((i = 1; i <= 195; i++)); do printf 'FILLER %d\n' "$i"; done
+        printf '```bash\n'
+        for ((i = 1; i <= 100; i++)); do printf 'echo CODE %d\n' "$i"; done
+        printf '```\n\nTrailing prose.\n\n## Files to Change\n\nTAIL SECTION\n'
+    } > "$straddle"
+    cp "$straddle" "${MOCK_REPO}/${PLAN_REL}"
+
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a straddling fence" "0" "$exit_code"
+
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    fences=$(count_fence_lines <<< "$block")
+    assert_contains "the cut happened" "truncated: [0-9]+ more lines" "$block"
+    assert_contains "the fence was opened inside the block" '^```bash$' "$block"
+    assert_eq "the cut fence is closed again (even fence count)" "2" "$fences"
+    assert_contains "the output-format footer is not swallowed" \
+        "^## Output Format$" "$(cat "${MOCK_REPO}/${PROMPT_REL}")"
+    assert_not_contains "the following section is still excluded" "TAIL SECTION" "$block"
+
+    teardown
+}
+
+test_plan_context_stops_at_h1_or_rule() {
+    echo "TEST: the Approach extractor stops at an H1 or a thematic break (#320)"
+    setup
+
+    # (a) H1 after Approach.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BODY ONE
+
+# Appendix
+
+H1 SECTION BODY'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with an H1 after Approach" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body is included" "APPROACH BODY ONE" "$block"
+    assert_not_contains "content after an H1 does not leak in" "H1 SECTION BODY" "$block"
+
+    # (b) Thematic break after Approach.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BODY TWO
+
+---
+
+RULE SECTION BODY'
+
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a rule after Approach" "0" "$exit_code"
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body is included" "APPROACH BODY TWO" "$block"
+    assert_not_contains "content after a thematic break does not leak in" \
+        "RULE SECTION BODY" "$block"
 
     teardown
 }
@@ -2553,6 +2704,9 @@ test_plan_context_absent_no_plan
 test_plan_context_absent_no_approach_section
 test_plan_context_truncated
 test_plan_context_no_progress
+test_plan_context_large_approach
+test_plan_context_fence_balanced
+test_plan_context_stops_at_h1_or_rule
 test_sync_flag_rejected
 test_agents_all_succeed
 test_agents_partial_failure
