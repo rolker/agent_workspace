@@ -135,3 +135,13 @@ The plan is sound and correctly sequenced, and the bloat risk that motivated #31
 - [ ] Name the new test functions, put the fixture `plan.md` in the resolved `WORK_PLANS_DIR`, and add every new function to the suite's run list (finding 5)
 - [ ] Decide on the `AGENTS.md` script-reference row — amend with owner approval or note the deferral (finding 6)
 - [ ] Procedural gate unchanged: confirm #313 has merged to `main` (still OPEN as of this review) and run `git merge origin/main` on this branch before the first implementation commit
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 13:13 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise with all six round-1 items folded in: the Cross-Model Reviews report section moves to Standard+Deep with the dispatch (not Deep-only); absent or empty ## Approach omits the plan-context section and a 200-line truncation is marked in the prompt (and the existing noprefix test's bookkeeping plan.md must still stay out); Gemini Tool Use footer reworded to "excluded from the diff"; ADR-0015 addendum as a navigational pointer; named test functions with the fixture plan.md in the resolved WORK_PLANS_DIR; the AGENTS.md cross_model_review.sh row update is approved as part of this PR. Implementation still gated on #313 merging.
