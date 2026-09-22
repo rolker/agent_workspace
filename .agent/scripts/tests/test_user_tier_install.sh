@@ -340,6 +340,43 @@ jq -e '.hooks.SessionStart | length > 0' "$real" >/dev/null \
     || fail "the symlink target did not receive the install"
 rm -f "$SETTINGS"; mv "$real" "$SETTINGS"
 
+# ------------------------------------ rules from an earlier generation ---
+# Round 1 suggestion: uninstall matched the CURRENT manifest only, so a rule
+# written by an earlier generation -- a script since dropped or renamed --
+# stayed in settings.json with nothing able to name it.
+run >/dev/null
+RULES_FILE="$HOMEDIR/.claude/agent-workspace-rules.json"
+[[ -f "$RULES_FILE" ]] && jq -e 'length > 0' "$RULES_FILE" >/dev/null \
+    && pass "install records the generated allow-rules it wrote" \
+    || fail "no recorded rules sidecar at $RULES_FILE"
+
+# Simulate a manifest that has since lost an entry: the rule is in
+# settings.json and in the recorded generation, but not in the manifest.
+GONE_RULE="Bash($WSC/.agent/scripts/since_removed.sh:*)"
+# A user-owned rule alongside it: the earlier fixture was dropped when the
+# malformed-settings case rebuilt settings.json from scratch, and the point
+# of this case is that orphan cleanup stays surgical.
+jq --arg r "$GONE_RULE" '.permissions.allow += [$r, "Bash(mine *)"]' "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+jq --arg r "$GONE_RULE" '. + [$r]' "$RULES_FILE" > "$tmp" && mv "$tmp" "$RULES_FILE"
+
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"no longer in the manifest"* ]] \
+    && pass "--check reports allow-rules left over from an earlier generation" \
+    || fail "orphan rule not reported (rc=$rc out=${out:0:200})"
+
+out="$(run --uninstall)"
+if jq -e --arg r "$GONE_RULE" '[.permissions.allow[]] | index($r) == null' "$SETTINGS" >/dev/null; then
+    pass "uninstall clears a rule from an earlier generation, not just the current manifest"
+else
+    fail "uninstall left the earlier generation's rule behind"
+fi
+jq -e '[.permissions.allow[]] | index("Bash(mine *)") != null' "$SETTINGS" >/dev/null \
+    && pass "...while still leaving the user's own rule alone" \
+    || fail "uninstall removed the user's own rule while clearing orphans"
+[[ ! -f "$RULES_FILE" ]] \
+    && pass "uninstall removes the recorded-rules sidecar" \
+    || fail "the rules sidecar survived uninstall"
+
 echo ""
 echo "test_user_tier_install: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

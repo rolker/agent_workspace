@@ -125,10 +125,39 @@ derive_project_name() {
         printf '%s\n' "$explicit"
         return 0
     fi
-    entry=$(registry_resolve_from_dir "$ROOT_DIR" "$PWD" 2>/dev/null) || return 1
-    name="${entry%%$'\t'*}"
-    [[ -n "$name" ]] || return 1
-    printf '%s\n' "$name"
+    entry=$(registry_resolve_from_dir "$ROOT_DIR" "$PWD" 2>/dev/null) || entry=""
+    if [[ -n "$entry" ]]; then
+        name="${entry%%$'\t'*}"
+        if [[ -n "$name" ]]; then
+            printf '%s\n' "$name"
+            return 0
+        fi
+    fi
+
+    # registry_resolve_from_dir matches a cwd against each project's HOSTING
+    # dir. A project whose registry line carries a `worktrees=` override puts
+    # its worktrees somewhere else -- commonly back under the workspace root --
+    # and a cwd inside one of those is under no hosting dir at all. Without
+    # this second pass a session sitting in its own project worktree derives
+    # nothing, falls through to the "exactly one registered" branch, and on a
+    # multi-project machine reports "no project worktree found" while standing
+    # in the worktree.
+    local wt_name wt_dir abs rp best="" best_len=0
+    abs="$(cd "$PWD" 2>/dev/null && pwd -P)" || return 1
+    while IFS=$'\t' read -r wt_name wt_dir; do
+        [[ -z "$wt_dir" ]] && continue
+        rp="$(cd "$wt_dir" 2>/dev/null && pwd -P)" || continue
+        if [[ "$abs" == "$rp" || "$abs" == "$rp/"* ]]; then
+            # Longest match wins, as in registry_resolve_from_dir.
+            if [[ "${#rp}" -gt "$best_len" ]]; then
+                best="$wt_name"
+                best_len=${#rp}
+            fi
+        fi
+    done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null)
+
+    [[ -n "$best" ]] || return 1
+    printf '%s\n' "$best"
     return 0
 }
 

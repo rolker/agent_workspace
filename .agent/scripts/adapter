@@ -95,14 +95,6 @@ fi
 # shellcheck source=_project_registry.sh
 source "$_ADAPTER_SCRIPT_DIR/_project_registry.sh"
 
-# ---------------------------------------------------- user-tier guard (#265) ---
-# This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
-# it can be invoked from any cwd on the machine. Refuse outside the workspace
-# checkout and outside every registered project root, BEFORE any git/gh call,
-# so a stray invocation in an unrelated repo touches nothing. See
-# docs/decisions/0016-session-roots-and-the-user-tier.md.
-registry_require_root "$WORKSPACE_ROOT" || exit 1
-
 usage() {
     echo "Usage: adapter [--from <dir>] [--project <name>] <verb> [args...]" >&2
     echo "Verbs: ${REQUIRED_VERBS[*]}" >&2
@@ -131,6 +123,26 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+
+# ---------------------------------------------------- user-tier guard (#265) ---
+# This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
+# it can be invoked from any cwd on the machine. Refuse outside the workspace
+# checkout and outside every registered project root, BEFORE any repo action.
+#
+# The guard runs AFTER argument parsing, on the EFFECTIVE directory
+# (--from <dir>, else $PWD), because that is the directory this invocation
+# will actually resolve a project from. Guarding $PWD instead got it wrong
+# in both directions: `adapter --from /unrelated build` run from the
+# workspace passed the guard and then operated on an unrelated directory,
+# while a legitimate `adapter --from <workspace-or-root> build` run from
+# somewhere else was refused for a cwd it was never going to use. See
+# docs/decisions/0016-session-roots-and-the-user-tier.md.
+# A --from that does not exist is not a root to guard on: the discovery
+# below already falls back to the workspace root for it, so the guard does
+# the same rather than refusing on a directory nobody will read.
+_GUARD_DIR="$PWD"
+[ -n "$FROM_DIR" ] && [ -d "$FROM_DIR" ] && _GUARD_DIR="$FROM_DIR"
+registry_require_root "$WORKSPACE_ROOT" "$_GUARD_DIR" || exit 1
 set -- ${ARGS[@]+"${ARGS[@]}"}
 
 if [ $# -lt 1 ]; then

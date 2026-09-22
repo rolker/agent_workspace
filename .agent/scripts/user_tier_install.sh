@@ -54,6 +54,9 @@ MANIFEST="$WS_ROOT/.agent/user_tier_scripts.txt"
 CLAUDE_DIR="${HOME}/.claude"
 SETTINGS="$CLAUDE_DIR/settings.json"
 ROOT_FILE="$CLAUDE_DIR/agent-workspace-root"
+# The allow-rules the installed generation wrote, so uninstall and --check can
+# recognise rules this checkout owns even after the manifest changes.
+RULES_FILE="$CLAUDE_DIR/agent-workspace-rules.json"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 SESSION_HOOK_LINK="$HOOKS_DIR/agent-workspace-session-start.sh"
@@ -158,6 +161,18 @@ allow_rules_json() {
         printf '%s\n' "Bash($s)"
       done < <(promoted_scripts)
     } | jq -R . | jq -s .
+}
+
+# Every allow-rule this checkout may have written: the generation recorded at
+# install time, unioned with what the current manifest would generate. The
+# union matters because the manifest can change between install and uninstall,
+# and a rule named by neither side would be orphaned in settings.json.
+installed_rules_json() {
+    local recorded='[]'
+    if [[ -f "$RULES_FILE" ]] && jq -e . "$RULES_FILE" >/dev/null 2>&1; then
+        recorded="$(cat "$RULES_FILE")"
+    fi
+    jq -n --argjson a "$recorded" --argjson b "$(allow_rules_json)" '($a + $b) | unique'
 }
 
 hook_commands() {
@@ -324,7 +339,7 @@ if [[ "$MODE" == "uninstall" ]]; then
     if [[ -f "$SETTINGS" ]]; then
         require_parseable_settings || exit 1
         backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
-        read_settings | jq --arg tag "$TAG" --argjson rules "$(allow_rules_json)" '
+        read_settings | jq --arg tag "$TAG" --argjson rules "$(installed_rules_json)" '
             .hooks //= {} |
             .hooks |= with_entries(
                 .value |= map(select((._agent_workspace // "") != $tag))
@@ -335,6 +350,9 @@ if [[ "$MODE" == "uninstall" ]]; then
             else . end
         ' | write_settings && echo "  removed settings entries tagged $TAG"
     fi
+    # Only now: the rewrite above reads this file to find rules written by an
+    # earlier manifest generation, so removing it first would orphan them.
+    [[ -f "$RULES_FILE" ]] && rm -f "$RULES_FILE" && echo "  removed $RULES_FILE"
     echo "agent_workspace user tier removed."
     exit 0
 fi
@@ -378,6 +396,7 @@ if [[ "$MODE" == "check" ]]; then
     [[ -e "$SESSION_HOOK_TARGET" ]] || note "SessionStart hook target does not exist: $SESSION_HOOK_TARGET"
 
     settings="$(read_settings)"
+    export WS_ROOT_PREFIX="$WS_ROOT/"
 
     # Our hook entries, present and pointing at this checkout.
     # while-read, not `for cmd in $(...)`: a checkout path containing a space
@@ -433,6 +452,19 @@ if [[ "$MODE" == "check" ]]; then
     if [[ -n "$missing_rules" ]]; then
         n=$(grep -c . <<< "$missing_rules")
         note "$n permission allow-rule(s) missing (manifest changed? re-run the installer)"
+    fi
+
+    # Rules recorded by an earlier generation that the current manifest no
+    # longer names: still in settings.json, no longer wanted.
+    orphan_rules="$(jq -r --argjson want "$(allow_rules_json)" '
+        (.permissions.allow // []) as $have
+        | [$want[]] as $w
+        | [$have[] | . as $r | select(($w | index($r)) == null)
+           | select(startswith("Bash(" + $ENV.WS_ROOT_PREFIX))] | .[]
+    ' <<< "$settings" 2>/dev/null)"
+    if [[ -n "$orphan_rules" ]]; then
+        n=$(grep -c . <<< "$orphan_rules")
+        note "$n allow-rule(s) for this checkout are no longer in the manifest (re-run the installer, or --uninstall to clear them)"
     fi
 
     # Skills.
@@ -497,6 +529,13 @@ backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding"
 # 1. the workspace-root file (no trailing newline -- callers do a bare `cat`)
 printf '%s' "$WS_ROOT" > "$ROOT_FILE"
 echo "  wrote $ROOT_FILE"
+
+# 1b. and a record of exactly which allow-rules this generation wrote.
+# Without it, uninstall could only match the CURRENT manifest, so rules from
+# an earlier generation -- a script since renamed or dropped from the
+# manifest -- stayed in settings.json forever with nothing able to name them.
+allow_rules_json > "$RULES_FILE"
+echo "  recorded $(jq 'length' < "$RULES_FILE") generated allow-rule(s) in $RULES_FILE"
 
 # 2. the SessionStart hook symlink
 if [[ ! -e "$SESSION_HOOK_TARGET" ]]; then

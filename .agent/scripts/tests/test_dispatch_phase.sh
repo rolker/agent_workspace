@@ -637,6 +637,51 @@ out=$(cd "$PSB" && HOME="$PSB/home" bash "$PSB/.agent/scripts/dispatch_phase.sh"
 [[ "$rc" -eq 0 && "$out" == "action="* ]] \
     && pass "next accepts --project" || fail "next --project (rc=$rc out=$out)"
 
+# --- a `worktrees=` override: the cwd is under no hosting dir ---------------
+# Round 1 suggestion: registry_resolve_from_dir matches hosting dirs, so a
+# session inside a worktree that a `worktrees=` override placed elsewhere
+# (commonly back under the workspace root) derived nothing and, with several
+# projects registered, reported "no project worktree found" while standing in
+# the worktree.
+PSBW="$(mktemp -d -p "$SANDBOX")"
+git -C "$PSBW" init -q -b main
+git -C "$PSBW" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+mkdir -p "$PSBW/.agent/scripts" "$PSBW/.agent/project_types" "$PSBW/home"
+cp -r "$SCRIPT_DIR/../../project_types/single_project" "$PSBW/.agent/project_types/"
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+    cp "$SCRIPT_DIR/../$f" "$PSBW/.agent/scripts/"
+done
+: > "$PSBW/.agent/projects.local"
+for n in one two; do
+    mkdir -p "$PSBW/roots/$n"
+    git -C "$PSBW/roots/$n" init -q -b main
+    git -C "$PSBW/roots/$n" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+    # worktrees live under the WORKSPACE root, not under the project root
+    mkdir -p "$PSBW/wt/$n"
+    echo "$n single_project $PSBW/roots/$n worktrees=$PSBW/wt/$n" >> "$PSBW/.agent/projects.local"
+done
+git -C "$PSBW/roots/two" worktree add -q "$PSBW/wt/two/issue-two-55" -b "feature/issue-55" >/dev/null 2>&1
+
+out=$(cd "$PSBW/wt/two/issue-two-55" && HOME="$PSBW/home" AGENT_NAME=t AGENT_EMAIL=t@t \
+    bash "$PSBW/.agent/scripts/dispatch_phase.sh" --issue 55 --skill plan-task --type project 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == *"worktree=$PSBW/wt/two/issue-two-55"* ]] \
+    && pass "a cwd inside a worktrees=-override worktree derives its project" \
+    || fail "worktrees= override not derived (rc=$rc out=${out:0:200})"
+
+# The hosting dir still wins when the cwd is there instead.
+out=$(cd "$PSBW/roots/two" && HOME="$PSBW/home" AGENT_NAME=t AGENT_EMAIL=t@t \
+    bash "$PSBW/.agent/scripts/dispatch_phase.sh" --issue 55 --skill plan-task --type project 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == *"worktree=$PSBW/wt/two/issue-two-55"* ]] \
+    && pass "the hosting dir still resolves with a worktrees= override in play" \
+    || fail "hosting dir with override (rc=$rc out=${out:0:200})"
+
+# An explicit --project still wins over the derivation.
+out=$(cd "$PSBW/wt/two/issue-two-55" && HOME="$PSBW/home" AGENT_NAME=t AGENT_EMAIL=t@t \
+    bash "$PSBW/.agent/scripts/dispatch_phase.sh" --issue 55 --skill plan-task --type project --project one 2>&1); rc=$?
+[[ "$rc" -eq 2 ]] \
+    && pass "an explicit --project still overrides the worktree-derived name" \
+    || fail "explicit --project did not override the derivation (rc=$rc out=${out:0:160})"
+
 echo ""
 echo "test_dispatch_phase: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
