@@ -9,6 +9,14 @@ mechanisms here are built and hermetically tested but not proven against a
 live Claude Code session. Promote to Accepted when it does; revise here if
 it does not.
 
+Flipping this line from Provisional to Accepted is a **status-line edit, not
+a substantive one**, and so is permitted by ADR-0008 without a superseding
+ADR: the Decision, Consequences and Alternatives below are unchanged by it,
+and "Provisional until the acceptance test passes" is a claim this document
+makes about itself, resolved by that test. If the acceptance run instead
+forces a change to any Decision below, that is a substantive revision and
+takes a superseding ADR, not an edit here.
+
 ## Context
 
 Until now, every session started in the workspace checkout. `projects/<name>`

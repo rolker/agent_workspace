@@ -6,7 +6,13 @@ separate from the main workspace.
 
 ## Quick Start
 
-`--type` is **required** on all worktree scripts (create, enter, remove).
+`--type` is **optional** on the worktree scripts (create, enter, remove)
+when the current directory already says which checkout you are in: a cwd
+under a registered project root derives `--type project --project <name>`,
+and a cwd inside the workspace checkout derives `--type workspace` (#317).
+An explicit `--type` always wins, and the scripts print what they derived.
+Pass it explicitly whenever the session is not already in the checkout you
+mean.
 
 ```bash
 # Infrastructure work (docs, scripts, skills)
@@ -132,7 +138,11 @@ Use `--repo-slug` to override.
 
 ## Disambiguation
 
-Since `--type` is mandatory, workspace vs. project is never ambiguous.
+An explicit `--type` is never ambiguous. When it is omitted, the scripts
+derive it from `$PWD` through the registry (longest-prefix ancestor match,
+registered roots checked before the workspace checkout), so the answer is
+still deterministic — it just depends on where you are. If the cwd is
+neither, the scripts refuse rather than guess.
 
 For multiple registered projects, use `--project`:
 

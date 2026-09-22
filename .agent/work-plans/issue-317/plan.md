@@ -168,8 +168,13 @@ re-deriving the `--type`/`--project` change independently.
    decision: `worktree_create.sh`, `worktree_enter.sh`,
    `worktree_remove.sh`, `worktree_list.sh`, `merge_pr.sh`,
    `gh_create_pr.sh`, `gh_create_issue.sh`, `fetch_pr_reviews.sh`,
-   `cross_model_review.sh`, `build.sh`, `test.sh`, `adapter`,
-   `block-bash-tool-mapping.sh`, `log-tool-use.sh`. `dashboard.sh` stays
+   `build.sh`, `test.sh`, `adapter`,
+   `block-bash-tool-mapping.sh`, `log-tool-use.sh`. **`cross_model_review.sh`
+   was removed from this list at implementation time** (owner accepted,
+   round 1 review): it cannot satisfy the user-tier rule, because reviewing
+   a repo that is neither the workspace nor registered is a documented
+   feature of it (`--repo`, `--work-dir`, `--no-progress`), so a cwd guard
+   would refuse its own interface. `dashboard.sh` stays
    dropped from the manifest — not in the acceptance loop, and each
    manifest row costs a guard call plus a test row; deferred to PR 4.
    `set_git_identity_env.sh`, `_issue_helpers.sh`,
