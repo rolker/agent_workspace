@@ -828,7 +828,7 @@ Publish: the owner's answer at the previous publish checkpoint was "address the 
 **CI**: pending
 
 ### Findings
-- [ ] No open findings. Round-4 local review (approved, 0 must-fix, 0 suggestions) is the only substantive source; its two round-3 suggestions are closed and verified in the round-4 entry. The commits between the reviewed SHA `d6cdb35` and the head `ea513d5` are the bookkeeping progress.md commits (local review + checkpoint), which touch no reviewed code — helper bug #309 is why `review_progress.sh sources` returns an empty timeline at this head.
+- [x] No open findings. Round-4 local review (approved, 0 must-fix, 0 suggestions) is the only substantive source; its two round-3 suggestions are closed and verified in the round-4 entry. The commits between the reviewed SHA `d6cdb35` and the head `ea513d5` are the bookkeeping progress.md commits (local review + checkpoint), which touch no reviewed code — helper bug #309 is why `review_progress.sh sources` returns an empty timeline at this head.
 
 ### False positives
 - (Copilot @ `ea513d5`) "Copilot was unable to review this pull request because the user who requested the review has reached their quota limit." — not a finding at all; the bot produced no inline comments and its failing check-run is the quota placeholder, not a code defect. Its failure carries no signal about the change.
