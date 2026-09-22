@@ -507,3 +507,13 @@ corrections to make while editing rather than reasons to re-plan.
 - [ ] Pin claude's headless permission flag (`--permission-prompts none` or equivalent) and surface denials in the failure reason
 - [ ] State the four-file split vs a single `_cli_review.sh <agent>` dispatcher in one sentence, or take the dispatcher
 - [ ] Add to Files to Change: `cross_model_review.sh` header (~31-36) and line 882 message; existing `AGENTS.md` `cross_model_review.sh` row; list the existing dispatch tests being reworked
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 13:05 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise with all eight round-1 plan-review action items folded in, and take the single-dispatcher shape: one exec'd `_cli_review.sh <agent> <bin> <prompt> <findings> [<timeout>]` with a per-agent case (codex/claude/copilot; gemini stays on _agy_review.sh), so truncate-first runs before anything can fail, one availability precheck, one AGENTS.md row. Copilot must read the prompt from stdin (`-p "" --allow-all-tools < prompt`, the #212-verified form) or carry an explicit size guard; the helper runs its CLI as a waited-on child and forwards INT/TERM/HUP like _agy_review.sh; no double footer strip; pin claude's headless permission flag; name the mock/test rework and the missing doc targets.
