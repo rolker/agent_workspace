@@ -707,3 +707,23 @@ All four round-2 findings actioned — 1 must-fix, 3 suggestions. None deferred.
 ### Note for the re-review
 
 Two test fixtures had to be re-established inside their own blocks rather than inherited: the round-1 malformed-settings case deletes and rebuilds `settings.json`, so the user's untagged `/opt/mine.sh` entry and the user allow-rule no longer survive into later blocks. That is a property of the suite's ordering, not of the code — but it means an assertion about "the user's own entry survives" is only meaningful if the block sets it up itself.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 14:27 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+**Dispatch**: resumed (round-1 reviewer, resume 2 of 3)
+
+**Branch**: feature/issue-317 at `134ea2f`
+**Base**: main
+**Depth**: Standard, scoped to the fix range 6f3a628..134ea2f (one code commit)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+### Findings
+- [ ] (suggestion) No test covers `foreign_skill_link()`'s negative case: a user's own skill symlink pointing somewhere that is not an agent_workspace checkout, under `--force`. Verified correct by reading — the manifest probe three levels up is what gates it — but the existing "a skill directory the user owns is never replaced" case uses a real directory, not a symlink elsewhere, so the one branch that could newly clobber a user's link is unasserted — `.agent/scripts/tests/test_user_tier_install.sh:213`
+- [ ] (suggestion) The symlinked-`settings.json` write path (`readlink -f`, stage beside the real file, atomic `mv`) has no test; a dotfiles-managed settings.json is exactly the case where a regression would be silent and expensive — `.agent/scripts/user_tier_install.sh:269`
+
+### Round-2 resolution
+The round-2 must-fix is closed. The install jq now drops every `_agent_workspace`-marked entry under `--force` regardless of which checkout tagged it, and the no-`--force` path is byte-identical in behaviour to round 2 (`$force` false makes the added `select` a tautology, so only entries tagged with this checkout are pruned) — confirmed by reading the filter, not by report. Unmarked user entries survive in both modes. `foreign_skill_link()` gates on `$FORCE`, resolves the link, walks up three levels and requires `.agent/user_tier_scripts.txt` there plus a root different from this one, so it cannot repoint a symlink that is not into an agent_workspace checkout; the stale-link sweep uses the same predicate. The two-checkout test asserts exactly one SessionStart entry, no entry tagged with the old checkout, no hook command into it, every symlink repointed, `--check` clean immediately after, and the user's untagged entry still present — and it re-creates that untagged fixture immediately before the takeover, with a comment naming the malformed-settings rebuild that had dropped the earlier one, so the assertion is real rather than vacuous. Backup rotation is asserted end-to-end (seven back-to-back installs leave exactly five backups, which also proves the same-second collision is gone). The symlink write is now atomic. 27/27 suites pass (78s), shellcheck clean.
