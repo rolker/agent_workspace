@@ -30,6 +30,11 @@
 #     status SUCCESS and a non-empty response, and did not time out.
 #     Exit 1 otherwise (findings file holds the reason). Exit 2 on usage
 #     errors (also recorded in the findings file when it is writable).
+#   * The caller wraps this helper in an outer `timeout` backstop set
+#     ABOVE <print-timeout> (cross_model_review.sh: GEMINI_BACKSTOP). The
+#     print-timeout handling here stays the primary path — the backstop
+#     only fires if this helper never returns at all, so it cannot race
+#     the timeout-then-partial-response contract above.
 #   * No temp files survive any exit path (the test runner sweeps TMPDIR).
 #   * All diagnostics go to stderr; stdout is unused.
 #
@@ -93,6 +98,10 @@ TMP_DIR=$(mktemp -d -t agy-review.XXXXXX) || fail "mktemp failed"
 trap 'rm -rf "$TMP_DIR"' EXIT
 # Armed before agy is launched (AGY_PID empty until then) so a signal in
 # the launch window cannot leave agy running behind an exited helper.
+# TERM is the live path under cross_model_review.sh: this helper runs as a
+# background child of a non-interactive shell, where bash makes SIGINT
+# ignored (and an ignored signal cannot be trapped). The INT trap is for a
+# direct interactive invocation of this script, where Ctrl-C does arrive.
 AGY_PID=""
 trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 130' INT
 trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 143' TERM HUP

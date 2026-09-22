@@ -21,12 +21,13 @@ headless, parallel sync gives the observability tmux provided, dropping
 folds in all ten round-1 findings and removes tmux per that decision.
 
 `_agy_review.sh` (PR #311) still owns the gemini findings file and its own
-`--print-timeout` (`AGY_PRINT_TIMEOUT="30m"`), unaffected here; gemini stays
-exempt from the new outer per-agent timeout (item 3).
+`--print-timeout` (`AGY_PRINT_TIMEOUT`, default `30m`), which stays gemini's
+primary bound; it gains an outer backstop derived above that value so no
+agent is entirely unbounded (item 3).
 
 ## Approach
 
-1. **ADR** `docs/decisions/0015-parallel-sync-is-the-default-review-dispatch-mode.md`:
+1. **ADR** `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md`:
    tmux was for interactivity (#2/#65/#66) but reviews run headless now,
    sessions leaked, `build_invoke_cmd` risked quoting bugs. Decision: remove
    tmux outright — no flag, no fallback. Considered alternatives: keep tmux
@@ -54,10 +55,20 @@ exempt from the new outer per-agent timeout (item 3).
    matching `AGY_PRINT_TIMEOUT`; kill-after 10s so a CLI ignoring SIGTERM
    cannot outlive the bound; both env-overridable so tests inject small
    values).
-   Timeout exit (124) counts as that agent's failure. Gemini is exempt —
-   `_agy_review.sh`'s own `--print-timeout` already bounds it and an
-   external SIGTERM would race its timeout-then-partial-response contract
-   (#288).
+   Timeout exit (124) counts as that agent's failure. Gemini keeps
+   `_agy_review.sh`'s `--print-timeout` as its *primary* bound (it reports
+   the expiry with a reason and handles agy's partial response, #288) and
+   adds an outer `timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP"`,
+   where `GEMINI_BACKSTOP = AGY_PRINT_TIMEOUT + GEMINI_BACKSTOP_MARGIN`
+   (default 300s). Deriving it *above* the print-timeout is what stops the
+   outer SIGTERM racing that contract: the helper always returns first in
+   normal operation, so the backstop only catches a helper/agy wedged past
+   its own timeout. `AGY_PRINT_TIMEOUT` becomes env-overridable so a test
+   can exercise the backstop with a stalled mock. All four duration knobs
+   (`AGENT_TIMEOUT`, `AGENT_KILL_AFTER`, `AGY_PRINT_TIMEOUT`,
+   `GEMINI_BACKSTOP_MARGIN`) are shape-validated at startup (exit 2)
+   instead of surfacing as `timeout`'s opaque exit 125, and `--pr` gets
+   the positive-integer check `--issue` already has.
 
 4. **Per-agent binary resolution.** Move binary lookup into a per-agent
    function called before dispatch. A missing CLI (or missing
@@ -185,7 +196,20 @@ Single PR.
 - Codex's findings file echoes the whole prompt and its tool transcript
   before the answer (93 KB for a 79 KB prompt). `codex exec` has
   `--output-last-message <file>`; noted on #313, out of scope here.
-- Concurrency test asserts interval overlap first and wall clock only as
-  a loose secondary (round-2 plan review); the interrupt test sends
-  SIGTERM because bash ignores SIGINT in background children of a
-  non-interactive shell, so a test-sent INT never arrives.
+- Concurrency test asserts interval overlap only (round-2 plan review
+  asked for overlap first with wall clock as a loose secondary; the
+  round-1 code review had the wall-clock bound dropped as the suite's one
+  load-sensitive assertion — overlap already proves the agents ran
+  concurrently, and a loaded machine could fail the clock without any
+  regression). The interrupt test sends SIGTERM because bash ignores
+  SIGINT in background children of a non-interactive shell, so a
+  test-sent INT never arrives — for the same reason the job shells trap
+  TERM only, and `_agy_review.sh`'s INT trap covers direct interactive
+  invocation rather than the dispatched path.
+- Gemini's backstop is tested with `AGY_PRINT_TIMEOUT=1s`
+  `GEMINI_BACKSTOP_MARGIN=2` against a mock agy that sleeps and never
+  answers; a companion test with a small `AGENT_TIMEOUT` and a slower
+  mock guards the inverse — gemini must not be wrapped by the plain
+  `AGENT_TIMEOUT` path.
+- The generic agent mock records its argv so the per-agent invocation
+  contract is asserted (`codex exec` vs `-p` for claude/copilot).

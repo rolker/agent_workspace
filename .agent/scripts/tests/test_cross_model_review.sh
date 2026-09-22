@@ -50,6 +50,11 @@ setup() {
     #   MOCK_AGY_ERROR=<m>  status ERROR with an object-valued `error`
     #                       whose message is <m>, exit 0 (API failure)
     #   MOCK_AGY_DENY_PARTIAL=1  normal response PLUS one denied action
+    #   MOCK_AGY_SLEEP=<s>  sleep <s> before answering normally
+    #   MOCK_AGY_STALL=1    read the prompt, then never answer (sleep 60):
+    #                       agy wedged past its own --print-timeout, which
+    #                       only the caller's outer backstop can cut off
+    #   MOCK_TIMES_DIR=<d>  write agy.pid at start, agy.end on completion
     # Every run also prints a non-JSON banner line on stdout first, as a
     # real CLI may (update notice), so the parser must skip it.
     cat > "${MOCK_BIN}/agy" << 'MOCK_EOF'
@@ -57,6 +62,7 @@ setup() {
 if [[ -n "${MOCK_AGY_LOG:-}" ]]; then
     printf '%s\n' "$@" >> "${MOCK_AGY_LOG}"
 fi
+[[ -n "${MOCK_TIMES_DIR:-}" ]] && echo $$ > "${MOCK_TIMES_DIR}/agy.pid"
 if [[ -n "${MOCK_AGY_EXIT:-}" ]]; then
     echo "boom" >&2
     exit "${MOCK_AGY_EXIT}"
@@ -69,6 +75,14 @@ if [[ "$(printf '%s\n' "$input" | wc -l)" -ne 1 ]]; then
     echo "mock agy: stdin is not a single NDJSON line" >&2
     exit 9
 fi
+if [[ -n "${MOCK_AGY_STALL:-}" ]]; then
+    # Wedged: the prompt was consumed, but no result event and no
+    # --print-timeout handling ever happens. Only an outer bound ends it.
+    # `exec` so the recorded pid IS the sleep: killing it leaves no
+    # orphaned child behind.
+    exec sleep 60
+fi
+[[ -n "${MOCK_AGY_SLEEP:-}" ]] && sleep "${MOCK_AGY_SLEEP}"
 echo 'agy: a newer version is available (mock banner, not JSON)'
 echo '{"event":"init","init":{"tools":[]}}'
 if [[ -n "${MOCK_AGY_DENY:-}" ]]; then
@@ -1261,6 +1275,9 @@ test_branch_mode_filter_survives_noprefix() {
 #   MOCK_<NAME>_SLEEP=<s>   sleep before answering
 #   MOCK_<NAME>_EXIT=<n>    exit status (default 0)
 #   MOCK_TIMES_DIR=<dir>    where <name>.start / <name>.end are written
+#   MOCK_ARGV_DIR=<dir>     where <name>.argv is written (one arg per
+#                           line) so the per-agent invocation contract
+#                           (`codex exec` vs `-p`) can be asserted
 
 make_mock_agent() {
     local name="$1"
@@ -1268,6 +1285,7 @@ make_mock_agent() {
 #!/usr/bin/env bash
 name=$(basename "$0")
 upper=${name^^}
+[[ -n "${MOCK_ARGV_DIR:-}" ]] && printf '%s\n' "$@" > "${MOCK_ARGV_DIR}/${name}.argv"
 [[ -n "${MOCK_TIMES_DIR:-}" ]] && date +%s.%N > "${MOCK_TIMES_DIR}/${name}.start"
 [[ -n "${MOCK_TIMES_DIR:-}" ]] && echo $$ > "${MOCK_TIMES_DIR}/${name}.pid"
 cat > /dev/null
@@ -1317,9 +1335,15 @@ test_agents_all_succeed() {
     echo "TEST: --agents runs every agent, prints one triplet each, exits 0 (#206)"
     setup
     make_mock_agent codex; make_mock_agent copilot
+    local argv="${TMPDIR_BASE}/argv"; mkdir -p "$argv"
     local out="${TMPDIR_BASE}/out.txt" exit_code
-    exit_code=$(run_agents "$out" "gemini,codex,copilot")
+    exit_code=$(MOCK_ARGV_DIR="$argv" run_agents "$out" "gemini,codex,copilot")
     assert_exit_code "all-succeed exits 0" "0" "$exit_code"
+    # Per-agent invocation contract: codex takes the `exec` subcommand,
+    # copilot (like claude) takes -p; both read the prompt from stdin, so
+    # neither may carry the prompt in argv.
+    assert_eq "codex invoked as 'codex exec'" "exec" "$(cat "$argv/codex.argv")"
+    assert_eq "copilot invoked with -p" "-p" "$(cat "$argv/copilot.argv")"
     local stdout; stdout=$(cat "$out")
     assert_contains "MODE=parallel-sync printed once" "^MODE=parallel-sync$" "$stdout"
     assert_eq "exactly one MODE line" "1" "$(grep -c '^MODE=' "$out")"
@@ -1393,13 +1417,14 @@ test_agents_concurrency() {
     make_mock_agent codex; make_mock_agent copilot; make_mock_agent claude
     local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
     local out="${TMPDIR_BASE}/out.txt" exit_code
-    local t0 t1
-    t0=$(date +%s.%N)
     exit_code=$(MOCK_CODEX_SLEEP=2 MOCK_COPILOT_SLEEP=2 MOCK_CLAUDE_SLEEP=2 MOCK_TIMES_DIR="$times" \
         run_agents "$out" "codex,copilot,claude")
-    t1=$(date +%s.%N)
     assert_exit_code "concurrent run exits 0" "0" "$exit_code"
-    # Primary: intervals overlap — every agent started before the first one ended.
+    # Interval overlap is the whole assertion: every agent started before
+    # the first one ended, which sequential dispatch cannot produce. A
+    # wall-clock bound was tried and dropped — it was the suite's one
+    # load-sensitive check and could fail on a busy machine with nothing
+    # actually regressed.
     local first_end; first_end=$(sort -n "$times"/*.end | head -n 1)
     local overlap=true a
     for a in codex copilot claude; do
@@ -1410,12 +1435,70 @@ test_agents_concurrency() {
     else
         echo "  FAIL: agent intervals did not overlap"; FAIL=$((FAIL + 1))
     fi
-    # Secondary, loose: three 2s sleeps must not take 6s.
-    if awk -v a="$t0" -v b="$t1" 'BEGIN{exit !((b - a) < 5.5)}'; then
-        echo "  PASS: wall clock under 5.5s for three 2s agents"; PASS=$((PASS + 1))
+    teardown
+}
+
+test_gemini_backstop_cuts_off_wedged_agy() {
+    echo "TEST: a wedged agy is cut off by the outer gemini backstop (#206)"
+    setup
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    # agy consumes the prompt and never answers, so _agy_review.sh's own
+    # --print-timeout handling never runs. Backstop = print-timeout (1s) +
+    # margin (2s) = 3s; only that bound can end the run.
+    exit_code=$(AGY_PRINT_TIMEOUT=1s GEMINI_BACKSTOP_MARGIN=2 AGENT_KILL_AFTER=1 \
+        MOCK_AGY_STALL=1 MOCK_TIMES_DIR="$times" run_agents "$out" "gemini")
+    assert_exit_code "backstopped run exits 3" "3" "$exit_code"
+    assert_contains "gemini EXIT=124 (timeout)" "^EXIT=124$" "$(cat "$out")"
+    assert_contains "findings name the backstop and the print-timeout" \
+        "GEMINI_BACKSTOP=3s, above AGY_PRINT_TIMEOUT=1s" "$(findings_of gemini)"
+    assert_contains "gemini findings marked failed" "Review failed" "$(findings_of gemini)"
+    # The wedged agy must be dead, not merely abandoned.
+    sleep 0.3
+    local agy_pid; agy_pid=$(cat "$times/agy.pid" 2>/dev/null || echo "")
+    if [[ -n "$agy_pid" ]] && kill -0 "$agy_pid" 2>/dev/null; then
+        kill "$agy_pid" 2>/dev/null || true
+        echo "  FAIL: the wedged agy process survived the backstop"; FAIL=$((FAIL + 1))
     else
-        echo "  FAIL: wall clock $(awk -v a="$t0" -v b="$t1" 'BEGIN{print b-a}')s — looks sequential"; FAIL=$((FAIL + 1))
+        echo "  PASS: the wedged agy process was killed"; PASS=$((PASS + 1))
     fi
+    teardown
+}
+
+test_gemini_not_bound_by_agent_timeout() {
+    echo "TEST: gemini is not wrapped by the plain AGENT_TIMEOUT path (ADR-0015 §3) (#206)"
+    setup
+    make_mock_agent codex
+    local out="${TMPDIR_BASE}/out.txt" exit_code
+    # AGENT_TIMEOUT=1 kills codex (3s) but must not touch gemini, whose
+    # bound is AGY_PRINT_TIMEOUT plus the backstop derived above it. If a
+    # future change routed gemini through AGENT_TIMEOUT, its 3s turn would
+    # be cut off and this test would fail.
+    exit_code=$(AGENT_TIMEOUT=1 MOCK_AGY_SLEEP=3 MOCK_CODEX_SLEEP=3 run_agents "$out" "gemini,codex")
+    assert_exit_code "mixed run exits 3 (codex timed out)" "3" "$exit_code"
+    assert_contains "codex EXIT=124 under AGENT_TIMEOUT=1" "^EXIT=124$" "$(cat "$out")"
+    assert_contains "codex findings name AGENT_TIMEOUT" "timed out \(AGENT_TIMEOUT=1\)" "$(findings_of codex)"
+    assert_contains "gemini completed anyway" "Review complete" "$(findings_of gemini)"
+    assert_not_contains "gemini not marked failed" "Review failed" "$(findings_of gemini)"
+    assert_not_contains "gemini findings carry no AGENT_TIMEOUT note" "AGENT_TIMEOUT" "$(findings_of gemini)"
+    teardown
+}
+
+test_duration_knobs_validated() {
+    echo "TEST: bad duration knobs and a bad --pr exit 2 with a clear message (#206)"
+    setup
+    cd "${MOCK_REPO}"
+    local ec stderr knob
+    for knob in AGENT_TIMEOUT AGENT_KILL_AFTER AGY_PRINT_TIMEOUT GEMINI_BACKSTOP_MARGIN; do
+        ec=0; stderr=$(env "${knob}=abc" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+            bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex 2>&1 >/dev/null) || ec=$?
+        assert_exit_code "bad ${knob} exits 2" "2" "$ec"
+        assert_contains "message names ${knob} and the shape" "${knob} value 'abc' is not a valid duration" "$stderr"
+    done
+    ec=0; stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 9x --agents codex 2>&1 >/dev/null) || ec=$?
+    assert_exit_code "non-integer --pr exits 2" "2" "$ec"
+    assert_contains "--pr message names the value" "\-\-pr value '9x' is not a positive integer" "$stderr"
     teardown
 }
 
@@ -1598,6 +1681,9 @@ test_agents_all_succeed
 test_agents_partial_failure
 test_agents_timeout
 test_agents_concurrency
+test_gemini_backstop_cuts_off_wedged_agy
+test_gemini_not_bound_by_agent_timeout
+test_duration_knobs_validated
 test_agents_missing_binary
 test_agents_none_usable
 test_agents_argument_hygiene

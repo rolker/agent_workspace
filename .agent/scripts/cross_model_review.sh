@@ -27,10 +27,17 @@
 # sequential runs get parallelism back. `--sync` (the old opt-out) is
 # rejected as removed. Live observation: `tail -f <findings-file>`.
 #
-# Each non-gemini agent is bounded by `timeout "$AGENT_TIMEOUT"` (seconds,
-# env-overridable, default 1800) so one hung CLI cannot hang the call;
-# gemini is bounded by _agy_review.sh's own --print-timeout (an outer
-# SIGTERM would race its timeout-then-partial-response contract, #288).
+# Every agent is bounded so one hung CLI cannot hang the call. Codex,
+# claude and copilot run under `timeout "$AGENT_TIMEOUT"` (coreutils
+# duration, env-overridable, default 1800). Gemini's primary bound stays
+# _agy_review.sh's own --print-timeout (`AGY_PRINT_TIMEOUT`), because that
+# path reports the expiry with a reason; it also gets an outer
+# `timeout "$GEMINI_BACKSTOP"` derived to sit ABOVE the print-timeout
+# (print-timeout + GEMINI_BACKSTOP_MARGIN, default 300s) so a helper or
+# agy that wedges without ever honouring its own timeout is still cut off.
+# The margin is what keeps the backstop from racing agy's
+# timeout-then-partial-response contract (#288): under normal operation
+# the print-timeout always fires first and the backstop never triggers.
 #
 # Usage:
 #   .agent/scripts/cross_model_review.sh --pr <N>                              # gemini (default)
@@ -60,10 +67,14 @@
 #   EXIT=<n>                          agent's own exit status, 0 = success)
 #   followed by informational lines for human consumption
 #
-# Per-agent findings files always end with `--- Review complete ---` or
-# `--- Review failed ---` (reason on the lines above), written by the
-# agent's own job the moment it finishes — a slow agent never delays a
-# fast agent's marker.
+# Whenever the agents actually run, each findings file ends with
+# `--- Review complete ---` or `--- Review failed ---` (reason on the lines
+# above), written by the agent's own job the moment it finishes — a slow
+# agent never delays a fast agent's marker. Two paths end without such a
+# marker: the shared-prompt abort (exit 3, no triplets) truncates every
+# selected findings file to a `--- Review error: ... ---` marker instead,
+# and an interrupted run (SIGINT/SIGTERM) can leave a file with no marker
+# at all. Readers must handle a marker-less file rather than block on one.
 #
 # Informational lines naming each agent's findings file are printed
 # BEFORE the agents launch (so `tail -f` works while they run); the
@@ -104,7 +115,8 @@ declare -A AGENT_BINS=(
 # 0s = wait until the turn completes; the explicit cap keeps a hung
 # review from blocking the caller forever. On expiry agy exits 0 with a
 # partial response — _agy_review.sh treats that as a failed review (#288).
-AGY_PRINT_TIMEOUT="30m"
+# Env-overridable so tests can inject a small value.
+AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-30m}"
 
 # Outer per-agent bound for codex/claude/copilot (coreutils `timeout`
 # duration: a number of seconds, or with an s/m/h suffix). Env-overridable
@@ -114,6 +126,43 @@ AGY_PRINT_TIMEOUT="30m"
 # outlive the bound.
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-1800}"
 AGENT_KILL_AFTER="${AGENT_KILL_AFTER:-10}"
+
+# Seconds added to AGY_PRINT_TIMEOUT to derive gemini's outer backstop.
+GEMINI_BACKSTOP_MARGIN="${GEMINI_BACKSTOP_MARGIN:-300}"
+
+# Convert a coreutils/Go-style duration (`90`, `90s`, `30m`, `1.5h`, `1d`)
+# to whole seconds on stdout. Returns 1 on a malformed value.
+duration_to_seconds() {
+    [[ "$1" =~ ^([0-9]+(\.[0-9]+)?)([smhd]?)$ ]] || return 1
+    local number="${BASH_REMATCH[1]}" unit="${BASH_REMATCH[3]}" mult=1
+    case "$unit" in
+        m) mult=60 ;;
+        h) mult=3600 ;;
+        d) mult=86400 ;;
+        *) mult=1 ;;
+    esac
+    awk -v n="$number" -v m="$mult" 'BEGIN { printf "%.0f", n * m }'
+}
+
+# Validate the duration-shaped knobs up front: a value coreutils `timeout`
+# rejects surfaces as a bare exit 125 from every agent job, which reads as
+# "the CLI failed" and sends the reader down the wrong path.
+for _knob in AGENT_TIMEOUT AGENT_KILL_AFTER AGY_PRINT_TIMEOUT GEMINI_BACKSTOP_MARGIN; do
+    if ! duration_to_seconds "${!_knob}" >/dev/null; then
+        echo "ERROR: ${_knob} value '${!_knob}' is not a valid duration (a positive number with an optional s/m/h/d suffix, e.g. 1800, 30m, 1.5h)" >&2
+        exit 2
+    fi
+done
+unset _knob
+
+# Gemini's outer backstop, deliberately ABOVE AGY_PRINT_TIMEOUT: the
+# helper's own print-timeout must always be the path that fires first, so
+# a real expiry is reported with its reason and any partial response is
+# handled by _agy_review.sh (#288). The backstop only catches the case
+# that contract cannot cover — a helper or agy wedged so hard it never
+# honours its own timeout — so an outer SIGTERM never races the normal
+# path. Passing a margin of 0 would reintroduce that race.
+GEMINI_BACKSTOP=$(( $(duration_to_seconds "$AGY_PRINT_TIMEOUT") + $(duration_to_seconds "$GEMINI_BACKSTOP_MARGIN") ))
 
 # Helper that owns the gemini invocation. A missing helper makes the
 # gemini agent unavailable (that agent fails; others still run).
@@ -130,7 +179,9 @@ run_agent_sync() {
 
     case "$agent" in
         # Helper owns the findings file; no stdout redirect (#274, #288).
-        gemini)  exec "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
+        # The outer timeout is the backstop above the helper's own
+        # print-timeout, not a replacement for it.
+        gemini)  exec timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
         codex)   exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
         claude)  exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
         copilot) exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
@@ -327,6 +378,14 @@ fi
 # Validate --repo slug (before dependency checks so bad input always exits 2)
 if [[ -n "$EXPLICIT_REPO" && ! "$EXPLICIT_REPO" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
     echo "ERROR: --repo value '${EXPLICIT_REPO}' is not a valid owner/repo slug" >&2
+    exit 2
+fi
+
+# Validate --pr is a bare positive integer. Without this, a typo'd value
+# reaches `gh pr view` and comes back as a generic retrieval failure that
+# blames auth or the network instead of the argument.
+if [[ -n "$PR_NUMBER" && ! "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --pr value '${PR_NUMBER}' is not a positive integer" >&2
     exit 2
 fi
 
@@ -650,10 +709,11 @@ filter_work_plans_diff() {
 # Stream diff into the shared prompt through the work-plans filter.
 # Branch mode uses local `git diff <base>...HEAD`; PR mode uses `gh pr
 # diff <N>`. The pipeline sits inside `if !` so `set -e` does not abort
-# the script before the error branch runs; with `pipefail` the tested
-# status is the first failing stage's, so a failed gh/git call is not
-# masked by the filter succeeding on empty input, and a filter dying
-# mid-stream cannot leave a truncated diff looking complete.
+# the script before the error branch runs; with `pipefail` the pipeline's
+# status is the last non-zero stage's (bash's rule), so any failing stage
+# still makes the whole pipeline fail — a failed gh/git call is not masked
+# by the filter succeeding on empty input, and a filter dying mid-stream
+# cannot leave a truncated diff looking complete.
 printf '## Diff\n\n```diff\n' >> "$SHARED_PROMPT"
 DIFF_START_LINE=$(wc -l < "$SHARED_PROMPT")
 if [[ "$BRANCH_MODE" == true ]]; then
@@ -763,15 +823,28 @@ run_agent_job() {
     # command would defer it until the CLI finished on its own.
     # Trap armed BEFORE the spawn so a TERM landing in the launch window
     # cannot leave the CLI running behind a dead job shell.
+    # TERM only: bash makes background children of a non-interactive shell
+    # ignore SIGINT, and an ignored signal cannot be trapped, so an INT
+    # trap here would never run. The parent's INT trap turns Ctrl-C into
+    # an exit, and its EXIT cleanup TERMs these jobs — that is the live
+    # path for an interrupt.
     child=""
-    trap '[[ -n "$child" ]] && kill "$child" 2>/dev/null; exit 143' TERM INT
+    trap '[[ -n "$child" ]] && kill "$child" 2>/dev/null; exit 143' TERM
     run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file" &
     child=$!
     rc=0
     wait "$child" || rc=$?
     if [[ "$rc" -eq 124 ]]; then
-        printf '\n%s review timed out (AGENT_TIMEOUT=%s); partial output above, if any.\n' \
-            "$agent" "$AGENT_TIMEOUT" >> "$findings_file"
+        if [[ "$agent" == "gemini" ]]; then
+            # The backstop firing means the helper never reported its own
+            # print-timeout — say which bound cut the run so the reader
+            # doesn't look for a reason the helper never wrote.
+            printf '\n%s review hit the outer backstop (GEMINI_BACKSTOP=%ss, above AGY_PRINT_TIMEOUT=%s): the helper never returned, so its own timeout handling did not run.\n' \
+                "$agent" "$GEMINI_BACKSTOP" "$AGY_PRINT_TIMEOUT" >> "$findings_file"
+        else
+            printf '\n%s review timed out (AGENT_TIMEOUT=%s); partial output above, if any.\n' \
+                "$agent" "$AGENT_TIMEOUT" >> "$findings_file"
+        fi
     fi
     if [[ "$rc" -eq 0 ]]; then
         echo '--- Review complete ---' >> "$findings_file"

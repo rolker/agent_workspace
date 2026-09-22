@@ -45,10 +45,17 @@ returns typed per-provider results.
    finishes. `--agents a,b,c` selects several agents in one invocation;
    `--agent X` (single-agent) keeps its previous stdout contract exactly.
 3. **Each agent is bounded.** Codex, Claude and Copilot run under
-   `timeout "$AGENT_TIMEOUT"` (seconds, env-overridable, default 1800);
-   Gemini keeps `_agy_review.sh`'s own `--print-timeout`, because an outer
-   SIGTERM would race that helper's timeout-then-partial-response
-   handling (#288). A hung reviewer can no longer hang the call.
+   `timeout "$AGENT_TIMEOUT"` (seconds, env-overridable, default 1800).
+   Gemini's primary bound stays `_agy_review.sh`'s own `--print-timeout`
+   (`AGY_PRINT_TIMEOUT`, default 30m), which reports an expiry with its
+   reason and handles agy's partial response (#288); on top of it Gemini
+   gets an outer `timeout "$GEMINI_BACKSTOP"` derived as
+   `AGY_PRINT_TIMEOUT + GEMINI_BACKSTOP_MARGIN` (default 300s). Deriving
+   the backstop *above* the print-timeout is what keeps it from racing
+   that contract: in normal operation the helper always returns first and
+   the backstop never fires — it exists only for a helper or agy wedged
+   so hard it never honours its own timeout. A hung reviewer can no
+   longer hang the call, whichever agent it is.
 4. **Failure is per agent.** Each job appends its own
    `--- Review complete ---` / `--- Review failed ---` marker the moment it
    finishes, so a slow agent never delays a fast agent's marker. A missing
@@ -90,6 +97,10 @@ returns typed per-provider results.
   overlap, argument hygiene).
 - Sessions or scripts that still pass `--sync` fail loudly with a message
   naming the removal; the fix is to drop the flag.
+- `AGY_PRINT_TIMEOUT` and `GEMINI_BACKSTOP_MARGIN` join `AGENT_TIMEOUT` /
+  `AGENT_KILL_AFTER` as env knobs; all four are shape-validated up front
+  (exit 2) so a bad value cannot surface as an opaque `timeout` exit 125.
+  Anyone raising `AGY_PRINT_TIMEOUT` gets the backstop raised with it.
 - The per-agent result validation that Gemini has (#288) is still
   missing for Codex, Claude and Copilot; that is #313, unchanged by this
   decision.
