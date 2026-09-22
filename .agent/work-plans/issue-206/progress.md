@@ -157,3 +157,13 @@ The plan is structurally sound, correctly scoped, and satisfies all four owner-c
 - [ ] State that the flag, not the agent count, picks the output shape (finding 8)
 - [ ] Add mock `codex`/`copilot` binaries and a wall-clock concurrency assertion to the test plan (finding 9)
 - [ ] ADR-0015: record the blocking-by-default consequence, tmux as retained-but-deprecated with a removal criterion, and the exit-3 disambiguation (Q1, Q2)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 11:02 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise. Fold in the round-1 plan review's action items (per-agent timeout with env override for every agent, per-agent binary resolution so one missing CLI does not abort the others, completion markers written inside each background job, per-agent findings files on the shared-diff error path, --agents hygiene, doc consequences in agent_wait_patterns.md and the AGENTS.md script row, mock codex/copilot binaries and a wall-clock concurrency assertion, exit-code disambiguator). Owner decision on the tmux open question: REMOVE the tmux path entirely, no --tmux flag; the ADR records the removal and why (headless reviews, parallel sync replaces the overlap, no quoted command strings). The existing mock-tmux test is retired with the path.
