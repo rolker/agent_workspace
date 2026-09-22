@@ -602,3 +602,56 @@ unmodified — confirmed by `git diff main --stat` on both paths.
 - [x] (suggestion) Mode flags are last-one-wins with no validation: `--uninstall --check` silently runs check only, `--require` without `--check` is accepted and ignored — `.agent/scripts/user_tier_install.sh:66`
 - [x] (suggestion) `for cmd in $(hook_commands)` word-splits and globs; a checkout path with a space or glob char makes `--check` report permanent spurious drift — `.agent/scripts/user_tier_install.sh:281`
 - [x] (suggestion) `.agent/WORKTREE_GUIDE.md:9` and `:135` still say `--type` is required and that workspace-vs-project "is never ambiguous"; unlike AGENTS.md this file is not Ask-First, so the correction could land here
+
+## Implementation
+
+**Status**: complete
+**When**: 2026-09-22 14:09 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-317 at 05fe7e4
+**Addressed**: Local Review (Pre-Push) at `5f07025` (2026-09-22 13:55 -04:00)
+**Dispatch**: resumed (implementer, resume 1 of 3)
+**Commits**: 1c31060, f372295, 7054283, 9e770bd, 05fe7e4
+
+All 17 findings actioned — 4 must-fix and 13 suggestions. None deferred.
+
+### Actions
+
+- [x] (must-fix) Unparseable `~/.claude/settings.json` silently replaced — `.agent/scripts/user_tier_install.sh:146` → `settings_unparseable()` is its own state; `require_parseable_settings()` refuses before any write naming the file and how to inspect it; `--check` reports it and exits 1 rather than calling it drift and advising the re-run that would have overwritten it; `backup_settings()` writes a timestamped copy before every rewrite regardless. Test feeds a truncated file and asserts it is byte-for-byte untouched by install, uninstall and check (`1c31060`)
+- [x] (must-fix) Second checkout silently steals `~/.claude/agent-workspace-root` — `:368`/`:141` → `installed_elsewhere()` separates "installed for another checkout" from "not installed"; install refuses with both paths unless `--force`; `--check` reports it and exits 1 (also under `--require`); `--force` announces the takeover. Tested with a real second workspace copy (`1c31060`)
+- [x] (must-fix) `$WS_ROOT` idiom lost the `2>/dev/null || echo .` fallback in all 13 skills → restored everywhere, and each skill's Workspace root section now states *why* it is required, so it does not read as decoration to be tidied away. The reviewer's extra catch is folded in: the rewrite was too narrow, so `.agent/templates/`, `.agent/knowledge/`, `.agent/project_types/`, `.agent/work-plans/` and `.claude/skills/` are now in scope too, which gives `audit-project`, `document-project` and `test-engineering` the section they previously did not need (`f372295`)
+- [x] (must-fix) ADR-0016 missing from the ADR Applicability table — `.agent/knowledge/principles_review_guide.md:41` → row added with real trigger conditions and the rule in one line, fallback included (`7054283`)
+- [x] (suggestion) `$WS_ROOT` substituted into `review-code`'s file-location *pattern* table — `review-code/SKILL.md:203` → reverted, with a line saying what the column is and a `<!-- skill-paths: patterns-not-commands -->` marker so the test skips those rows instead of a future round re-introducing the same "fix" (`f372295`)
+- [x] (suggestion) jq check before mode dispatch made `make validate` exit 3 on a jq-less machine — `:84` → per-mode now; `--check` degrades to a note and exit 0 (`1c31060`)
+- [x] (suggestion) Uninstall matched the current manifest only, orphaning earlier generations' rules — `:243` → install records the generation it wrote to `~/.claude/agent-workspace-rules.json`; uninstall removes the union of record and manifest, and only then deletes the record; `--check` reports rules the manifest no longer names (`05fe7e4`)
+- [x] (suggestion) Both hooks failed **open** when the root or registry could not be resolved — `log-tool-use.sh:40`, `block-bash-tool-mapping.sh:74` → both now exit 0 without acting. The safe direction is the same for each: a hook that cannot prove it governs this cwd must not log it and must not block it (`9e770bd`)
+- [x] (suggestion) `test_user_tier_guard.sh` never exercised the `guarded-by:` shims — `:109`/`:172` → own loop; `build.sh`/`test.sh` must refuse through their guarded target (`9e770bd`)
+- [x] (suggestion) Adapter guard ran before `--from` was parsed — `adapter:104` → guard moved after parsing, onto the effective dir; a non-existent `--from` falls back to `$PWD` to match the discovery below it (`05fe7e4`)
+- [x] (suggestion) Mode flags last-one-wins — `:66` → mutually exclusive; `--require` without `--check` rejected (`1c31060`)
+- [x] (suggestion) `for cmd in $(hook_commands)` word-split — `:281` → while-read (`1c31060`)
+- [x] (suggestion) `mv` over a symlinked settings.json detached dotfiles — `:162` → written through the symlink; tested (`1c31060`)
+- [x] (suggestion) Project guide `cat`ed uncapped into every session — `session_start_project_layer.sh:176` → capped at 16 KB with a truncation note naming the file (`9e770bd`)
+- [x] (suggestion) False "cwd is NOT the workspace checkout" claim — `:100` → contrasts the two concrete paths instead of asserting something it cannot know; its quoted idiom carries the fallback (`9e770bd`)
+- [x] (suggestion) `derive_project_name` missed `worktrees=`-override worktrees — `dispatch_phase.sh:128` → second pass over registered worktree dirs, longest match wins, explicit `--project` still overrides (`05fe7e4`)
+- [x] (suggestion) `.agent/WORKTREE_GUIDE.md:9`/`:135` stale on `--type` → corrected (not Ask-First): optional when the cwd resolves, explicit always wins, refusal rather than a guess when neither (`7054283`)
+
+Also, from the review's closing notes: ADR-0016 gains an explicit clause that the Provisional→Accepted flip is a status-line edit under ADR-0008 and that a forced Decision change takes a superseding ADR instead; and the plan's step-8 manifest list, which still named `cross_model_review.sh`, is corrected in place with the reason (`7054283`).
+
+### Tests
+
+| Suite | Before | After |
+|---|---|---|
+| `run_script_tests.sh` (27 suites) | pass | **pass**, 82s |
+| `test_user_tier_install.sh` | 33 | **53** |
+| `test_user_tier_guard.sh` | 43 | **48** |
+| `test_session_start_layer.sh` | 37 | **42** |
+| `test_skill_paths.sh` | 36 | **51** |
+| `test_dispatch_phase.sh` | 99 | **102** |
+| `test_adapter.sh` | 86 | 86 |
+
+shellcheck clean on every touched script. Nothing pushed.
+
+### For the re-review
+
+Two of the round-1 fixes changed behaviour rather than just hardening it, and are the places to look first: the adapter now guards `--from` rather than `$PWD` (so an invocation that used to pass can now refuse, and vice versa), and `derive_project_name` resolves from worktree dirs as well as hosting dirs (a cwd that used to derive nothing now derives a project). Both are covered, but both widen what the code says yes to.
