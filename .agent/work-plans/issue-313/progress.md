@@ -907,3 +907,23 @@ code itself, which both reviewers converged on. All three items fixed in
 `run_script_tests.sh` 23/23 suites, no temp leaks. Pre-commit green
 including shellcheck. Commit `bb815ea`. No real CLI prompt; nothing
 pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 14:39 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-313 at `24eddc0`
+**Base**: main
+**Depth**: Deep (reason: enforcement-path script + cross-model dispatch wiring; live gemini + codex runs both COMPLETED through the helper this round)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+All ten round-1 items verified resolved in code, each with a pinning test: the codex transcript scan is gone (the rule is now "only non-zero exit, empty/missing result, or claude's structured `.is_error`/`.error` may fail a run; error text only picks the reason line"), the 128 KiB copilot guard is gone, `--allow-all-tools` is replaced by `-p "" -s --available-tools='' --disable-builtin-mcps --no-ask-user`, both helpers' TERM path now waits with a bounded SIGKILL escalation validated to fit inside `AGENT_KILL_AFTER` (default 10 > 5), `cleanup_jobs` reaps on a derived, bounded budget before dropping the shared temp root, claude requires a JSON *object* before indexing and reads `.error`/`.error.message`, and jq is a preflight for claude rather than a per-run failure. The live false positive has a direct regression test (`MOCK_CODEX_ECHO_FULL=1` with `overloaded`/`unauthorized` inside the reviewed diff, plus a `jq: error ... usage limit` line on codex's stderr). The residual gap — a CLI exiting 0 with a quota message as its whole answer is reported as a completed review — is deliberate, documented in the helper header and called out in the skill's result-reading note.
+
+Tests: `test_cross_model_review.sh` 381/381 pass; `run_script_tests.sh` 23/23 suites pass (84s). Copilot's `--available-tools=''` and `-p ""` still await one live 1.0.61 confirmation (quota); the fallback is written into the helper.
+
+### Findings
+- [ ] (suggestion) `job_finished`'s /proc fallback reads process state with `awk '{print $3}'`, which lands on the wrong field when a process's comm contains a space; prefer the text after the last `)`. The `jobs -pr` path is primary, so this only bites where bash's job table is empty — `.agent/scripts/cross_model_review.sh:752-757`
+- [ ] (suggestion) two comments justify the guarded jq extraction by what would happen "under `set -e`", but the helper runs `set -uo pipefail` with no `-e`; the guard is right, the stated mechanism is not (a bare jq failure would leave an empty value, not kill the helper) — `.agent/scripts/_cli_review.sh:335-354`
