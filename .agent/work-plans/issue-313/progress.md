@@ -628,3 +628,66 @@ should be recorded in the PR description rather than re-planned.
 **Decision**: proceed
 
 Proceed to implementation with the round-2 suggestions folded in: no --permission-mode plan for claude (--output-format json + --permission-prompts none only); Copilot prompt-size guard at 128 KiB (the kernel MAX_ARG_STRLEN bound) with the stdin contract test as the real enforcement; the CLI_REVIEW_HELPER availability precheck scoped to codex/claude/copilot. Main merged into the branch first so implementation runs under the post-#314 dispatched-implement rules.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 13:36 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-313 at 0aad5bd
+**Plan**: `.agent/work-plans/issue-313/plan.md` at `2c24f22`
+
+Implemented the approved plan with the owner Checkpoint's three
+adjustments (no `--permission-mode plan`; 128 KiB copilot guard with the
+stdin-contract test as the real enforcement; `CLI_REVIEW_HELPER`
+precheck scoped to codex/claude/copilot).
+
+**What landed**
+
+- `.agent/scripts/_cli_review.sh` (new, exec'd): truncates the findings
+  file as its first statement, then guards; per-agent case for
+  codex (`exec -o <file>`, transcript to a log kept only in failure
+  reasons), claude (`-p --output-format json --permission-prompts none`
+  with `.is_error` / `.subtype` / non-empty `.result` validated) and
+  copilot (`-p "" --allow-all-tools -s`, prompt on stdin, 128 KiB
+  guard). Empty response, non-zero exit and quota / rate-limit / auth
+  markers are failures with the reason in the file. The CLI runs as a
+  waited-on background child with INT/TERM/HUP armed before the spawn;
+  temp files live under the caller's TMPDIR and are removed on every
+  trappable exit.
+- `.agent/scripts/cross_model_review.sh`: the codex/claude/copilot arms
+  exec the helper under the existing `exec env TMPDIR=... timeout -k`
+  discipline (no stdout redirect); availability precheck extended and
+  scoped; header, `EXIT=` documentation and the exit-124 message updated.
+- `.agent/scripts/tests/test_cross_model_review.sh`: `make_mock_agent`
+  reworked into per-CLI mocks reproducing each CLI's real output shape;
+  12 new test functions; 196 -> 298 assertions, all green, and
+  `run_script_tests.sh` passes all 23 suites with no temp leaks.
+- Docs: `AGENTS.md` (new `_cli_review.sh` row + updated
+  `cross_model_review.sh` row), ADR-0015 (closing consequence bullet and
+  the bound clause), `.claude/skills/review-code/SKILL.md`
+  (result-reading and findings-collection notes),
+  `.agent/knowledge/agent_wait_patterns.md` (inner half of the wait).
+- `plan.md` synced inline, with an `## Implementation Notes` section for
+  the rationale-bearing pivots.
+
+**Deviations / decisions made while writing**
+
+- A bug the tests caught: a background child's stdin is `/dev/null`
+  unless the redirect is on the backgrounded command itself. The first
+  draft put `< "$prompt"` on the call to the spawn helper, which would
+  have handed every CLI an empty prompt — silently. Fixed and pinned by
+  `test_cli_prompt_reaches_every_cli_on_stdin`.
+- `EXIT=` for these three agents is now the helper's `1` on failure, not
+  the CLI's own status (gemini's shape since #288). One existing
+  assertion changed; the script header, ADR-0015 and the review-code
+  skill say so.
+- Error-marker scanning is asymmetric: the full marker set against the
+  CLI's stderr/transcript, but against the *result* only when it is
+  short and unstructured, so a review that legitimately discusses rate
+  limits is not failed. Both halves asserted.
+- `run_agent_sync`'s `*)` arm routes through the helper (which rejects an
+  unknown agent with a reason) instead of keeping a bare `-p` fallback.
+
+Not done, by instruction: no real agy/codex/claude/copilot run (quota),
+so copilot's stdin form is still only verified against #212's 1.0.48
+check plus the mock contract; nothing pushed.
