@@ -385,3 +385,22 @@ Both round-5 suggestions are fixed and nothing new surfaced. The seed sits insid
 **Decision**: publish
 
 Publish. The owner's answer at the previous publish checkpoint was "Address, then publish"; round 6 (resumed reviewer, resume 2 of 3) approved with no findings, so this records the second half of that answer.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-22 12:31 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #319 at `e3b463a`
+**Sources**: 2 (Local Review (Pre-Push) round 6 @ `eddcf91`, CI rollup @ `e3b463a`)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- (none) No open findings. Round 6 approved with `No issues found. LGTM.` and no GitHub review raised anything.
+
+### False positives
+- (Copilot) `copilot-pull-request-reviewer` check-run reports `failure` at the head — Copilot's COMMENTED review body states it "was unable to review this pull request because the user who requested the review has reached their quota limit". No finding was produced; the check-run is a quota placeholder, not a code signal, and it is exactly the failure mode this PR teaches `merge_pr.sh` to ignore as CI. The four real CI checks (Lint (pre-commit), Validate Documentation, Validate Adapter Contract, ros-manifest tests) are all `success`.
+
+### Notes
+Round 6 reviewed `eddcf91`; the PR head `e3b463a` adds one bookkeeping-only commit (`progress: checkpoint for #300`, `.agent/work-plans/issue-300/progress.md` only, verified with `git diff --stat eddcf91..e3b463a`), so the approval carries to the head with no code delta. `review_progress.sh sources` returned empty `local_findings` at `e3b463a` — the known helper bug #309 (exact head-SHA correlation vs. a bookkeeping commit after the review); the round-6 entry was read from the timeline directly and cited as the local source. That entry's single `- [ ] No issues found. LGTM.` box is the review-code placeholder for "nothing found", not an action item: it carries no `must-fix`/`cross-confirmed` source hint, so the merge gate's `open_mustfix` count is 0. A `## Decision summary` is already present in the PR body. Ready for the merge decision.
