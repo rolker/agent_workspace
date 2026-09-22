@@ -263,6 +263,13 @@ BOOKKEEPING_HEAD=$(git -C "$WTH" rev-parse HEAD)
 out=$(cd "$SBH" && bash .agent/scripts/dispatch_phase.sh next --issue 9 --pr open --head "$BOOKKEEPING_HEAD" 2>&1)
 [[ "$out" == "action=triage-reviews"* ]] \
     && pass "--head: only progress.md changed between the reviewed SHA and the head -> triage-reviews (merge_pr.sh's #286 equivalence rule)" || fail "--head bookkeeping ancestor (out=$out)"
+mkdir -p "$WTH/.agent/work-plans/issue-777"
+printf 'another issue\n' > "$WTH/.agent/work-plans/issue-777/progress.md"
+gitw add -A >/dev/null && gitw commit -q -m "another issue's work plan"
+OTHER_ISSUE_HEAD=$(git -C "$WTH" rev-parse HEAD)
+out=$(cd "$SBH" && bash .agent/scripts/dispatch_phase.sh next --issue 9 --pr open --head "$OTHER_ISSUE_HEAD" 2>&1)
+[[ "$out" == "action=review-code"* ]] \
+    && pass "--head: a commit under ANOTHER issue's work-plans dir is not bookkeeping for this issue -> review-code (the allow-list is merge_pr.sh gate (a)'s \`issue-<N>/*\`, not \`work-plans/*\`)" || fail "--head other issue work-plans (out=$out)"
 printf 'more code\n' >> "$WTH/code.txt"
 gitw add -A >/dev/null && gitw commit -q -m "more code"
 CODE_HEAD=$(git -C "$WTH" rev-parse HEAD)
@@ -537,6 +544,29 @@ out=$(cd "$SBX" && bash .agent/scripts/dispatch_phase.sh --check-exit --issue 9 
 [[ "$rc" -eq 0 && "$out" == "status=MISSING" ]] && pass "check-exit: review-code without --pr expects Local Review (Pre-Push), which isn't present -- MISSING" || fail "check-exit review-code branch mode (rc=$rc out=$out)"
 out=$(cd "$SBX" && bash .agent/scripts/dispatch_phase.sh --check-exit --issue 9 --skill triage-reviews --before 0 2>&1); rc=$?
 [[ "$rc" -eq 2 && "$out" == *"requires --pr"* ]] && pass "check-exit: triage-reviews without --pr is a usage error" || fail "check-exit triage-reviews no pr (rc=$rc out=$out)"
+
+# The **PR**/**Branch** correlation line is required of `## Implementation`
+# (both handoffs' exit contracts; merge_pr.sh's head-vs-review gate). A
+# complete entry without it is PARTIAL, not OK.
+implementation_nocorr() {  # <status>
+    printf '## Implementation\n**Status**: %s\n**When**: %s\n**By**: t (m)\n\nwhat changed\n' "$1" "$NOW"
+}
+write_progress_commit "$(implementation_nocorr complete)"
+for sk in implement address-findings; do
+    out=$(cd "$SBX" && bash .agent/scripts/dispatch_phase.sh --check-exit --issue 9 --skill "$sk" --before 0 2>&1); rc=$?
+    [[ "$rc" -eq 0 && "$out" == "status=PARTIAL"* && "$out" == *"correlation line"* ]] \
+        && pass "check-exit: --skill $sk -- a complete ## Implementation with no **PR**/**Branch** correlation line is PARTIAL with a reason=" \
+        || fail "check-exit $sk missing correlation (rc=$rc out=$out)"
+done
+write_progress_commit "$(implementation complete "")"
+out=$(cd "$SBX" && bash .agent/scripts/dispatch_phase.sh --check-exit --issue 9 --skill implement --before 0 2>&1); rc=$?
+sha=$(git -C "$WT" rev-parse --short HEAD)
+[[ "$rc" -eq 0 && "$out" == "status=OK"$'\n'"sha=$sha" ]] \
+    && pass "check-exit: --skill implement -- a complete ## Implementation WITH the **Branch** correlation line is OK" || fail "check-exit implement with correlation (rc=$rc out=$out)"
+write_progress_commit "$(plan_authored complete)"
+out=$(cd "$SBX" && bash .agent/scripts/dispatch_phase.sh --check-exit --issue 9 --skill plan-task --before 0 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == "status=OK"* ]] \
+    && pass "check-exit: the correlation check is scoped to the ## Implementation writers -- other skills are untouched" || fail "check-exit correlation scope (rc=$rc out=$out)"
 
 echo ""
 echo "test_dispatch_phase: $PASS passed, $FAIL failed"

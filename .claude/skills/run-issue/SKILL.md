@@ -462,14 +462,31 @@ early.
 **Re-check CI before the merge checkpoint.** After an `## Integrated
 Review` that recorded `**CI**: pending`, run `fetch_pr_reviews.sh --pr
 <M>` again before presenting the `merge` checkpoint, and do not present it
-while CI is still running. If CI has since *failed*, route the failure
-through the loop rather than into the merge: dispatch `address-findings`
-with the failing checks as the findings, or a fresh `triage-reviews` if
-the failure needs triaging against the review sources first. Discovering it
-inside `merge_pr.sh` instead is a dead end — a gate that passed records no
-entry at all (`merge_pr.sh:889-890`, the caveat step 11 repeats), so a
-merge that then fails on CI leaves `next` with no newest entry to route on
-and no `checkpoint:merge-refused` re-route.
+while CI is still running.
+
+If CI has since *failed*, **do not dispatch anything off the table.** The
+loop was about to raise a checkpoint here anyway (`checkpoint:merge`, or
+`checkpoint:findings` when the `## Integrated Review` still has open
+boxes) — raise that same checkpoint, with the failing checks quoted
+verbatim in the dialog, so the question the owner answers is "merge, or
+address the CI failure first?" rather than "merge?". Record the answer as
+the ordinary `## Checkpoint` entry (step 6): `**After**: merge` (or
+`findings`, whichever the loop raised) with `**Decision**: address`, which
+`next` routes to `address-findings` on the following call — row 22, the
+`if after in ("findings", "merge")` block. `**Decision**: stop` and
+`**Decision**: merge` are the other two answers; `merge`'s vocabulary has
+no `retriage`, so a failure that needs re-triaging against the review
+sources is answered `address` and picked up by the fix round's own
+`review-code` → `triage-reviews` cycle.
+
+This is the whole point of routing it through an entry: a bare dispatch
+would leave the newest entry the `## Integrated Review` with no open
+findings, so a `/run-issue <N>` resume would re-derive `checkpoint:merge`
+and walk straight back into the failing merge. Discovering the failure
+inside `merge_pr.sh` instead is a dead end for the same reason — a gate
+that passed records no entry at all (`merge_pr.sh:889-890`, the caveat
+step 11 repeats), so a merge that then fails on CI leaves `next` with no
+newest entry to route on and no `checkpoint:merge-refused` re-route.
 
 `triage-reviews` with only the local review as
 a source still writes `## Integrated Review` — the only entry type that

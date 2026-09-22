@@ -22,7 +22,11 @@
 #     Compares the entry count of the expected type (same table as above)
 #     before and after a dispatch. Prints `status=<OK|PARTIAL|FAILED|MISSING>`
 #     and, only for OK, a second line `sha=<short git sha>` (the worktree's
-#     HEAD after the phase's own commit).
+#     HEAD after the phase's own commit). For `--skill implement` and
+#     `--skill address-findings`, a complete `## Implementation` entry with no
+#     `**PR**` / `**Branch**` correlation line is PARTIAL, not OK, with a
+#     `reason=` line saying so — that line is required by both handoffs' exit
+#     contracts and by merge_pr.sh's head-vs-review gate.
 #
 #   dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged>
 #                      [--type workspace|project] [--progress <file>]
@@ -33,7 +37,9 @@
 #     exactly one state: an approving `## Local Review (Pre-Push)` newest
 #     entry with `--pr draft|open`. When the reviewed SHA still covers that
 #     head — same commit, or an ancestor with only bookkeeping files changed
-#     between (the gate rule of #286) — the action is `triage-reviews`,
+#     between (merge_pr.sh gate condition (a)'s own allow-list: this issue's
+#     `.agent/work-plans/issue-<N>/` dir plus the two roadmaps) — the action
+#     is `triage-reviews`,
 #     because a PR-mode `review-code` would re-read an unchanged diff; when
 #     code has changed since, it is `review-code`. Without `--head`, that
 #     state routes as it did before issue #314 (`checkpoint:publish`).
@@ -209,15 +215,29 @@ skill_requires_pr() {
 # cover the PR head?" here, in bash, because it needs git — the decision
 # table below sees only 1 / 0 / unknown.
 #
-# The equivalence rule is merge_pr.sh's gate rule (#286,
-# _only_bookkeeping_between): the reviewed SHA is an ancestor of the head and
-# every path that differs is a document file this workflow writes on the
-# branch after a review (the issue's work-plans dir, the roadmaps).
+# The equivalence rule mirrors ONE specific merge_pr.sh rule: gate condition
+# (a)'s staleness test, `_only_bookkeeping_between "$_ci_wt" <review> <head>
+# ".agent/work-plans/issue-${ISSUE_NUM}/*" "ROADMAP.md" "docs/ROADMAP.md"` —
+# the check that decides a review still covers the head (#286, allow-list
+# widened to the issue's whole work-plans dir by #300). The reviewed SHA is
+# an ancestor of the head and every path that differs is one of those
+# document files. The two must not diverge: if `next` skipped the PR-side
+# re-review on a head the gate then called stale, the loop would arrive at
+# the merge checkpoint with a review the gate refuses.
+#
+# Deliberately NOT mirrored: merge_pr.sh's *CI-target* walk-back list
+# (MERGE_PR_CI_BOOKKEEPING_PATTERNS, `.agent/work-plans/*` — any issue's
+# dir), which answers a different question (which head's CI run to reuse).
+# Scoping to this issue's own dir is the narrower of the two, so another
+# issue's work-plans commit keeps the re-review.
 #
 # unknown (no --head given, or nothing to compare) leaves the pre-#314
 # behaviour in place; 0 is also the conservative answer whenever the check
-# cannot be made (no worktree, unresolvable SHA) — it keeps the re-review.
-BOOKKEEPING_RE='^(\.agent/work-plans/|ROADMAP\.md$|docs/ROADMAP\.md$)'
+# cannot be made (no worktree, no issue number, unresolvable SHA) — it keeps
+# the re-review.
+bookkeeping_re_for_issue() {  # <issue-number>
+    printf '^(\\.agent/work-plans/issue-%s/|ROADMAP\\.md$|docs/ROADMAP\\.md$)' "$1"
+}
 
 newest_correlation_sha() {  # <timeline-json>
     printf '%s' "$1" | "$PYTHON" -c '
@@ -228,20 +248,21 @@ corr = (entries[-1].get("correlation") or {}) if entries else {}
 print(corr.get("sha") or "")'
 }
 
-head_covers_review() {  # <review-sha> <head-sha> <worktree-or-empty> -> 1|0
-    local review="$1" head="$2" wt="$3" p
+head_covers_review() {  # <review-sha> <head-sha> <worktree-or-empty> <issue> -> 1|0
+    local review="$1" head="$2" wt="$3" issue="$4" p bk_re
     if [[ -z "$review" || -z "$head" ]]; then echo 0; return; fi
     # Same commit, compared as SHA prefixes (entries carry short SHAs).
     if [[ "$head" == "$review"* || "$review" == "$head"* ]]; then echo 1; return; fi
-    if [[ -z "$wt" ]] || ! git -C "$wt" rev-parse --git-dir >/dev/null 2>&1; then
+    if [[ -z "$wt" || -z "$issue" ]] || ! git -C "$wt" rev-parse --git-dir >/dev/null 2>&1; then
         echo 0; return
     fi
+    bk_re=$(bookkeeping_re_for_issue "$issue")
     git -C "$wt" merge-base --is-ancestor "$review" "$head" >/dev/null 2>&1 || { echo 0; return; }
     local diff_paths
     diff_paths=$(git -C "$wt" diff --name-only "$review" "$head" 2>/dev/null) || { echo 0; return; }
     while IFS= read -r p; do
         [[ -z "$p" ]] && continue
-        [[ "$p" =~ $BOOKKEEPING_RE ]] || { echo 0; return; }
+        [[ "$p" =~ $bk_re ]] || { echo 0; return; }
     done <<<"$diff_paths"
     echo 1
 }
@@ -367,10 +388,28 @@ cmd_check_exit() {
         return 0
     fi
 
-    local entry_status
-    entry_status=$(printf '%s' "$json" | "$PYTHON" -c "import json, sys
-d = json.load(sys.stdin)
-print((d[\"entries\"][-1].get(\"status\") or \"\").strip().lower())")
+    local entry_status entry_corr
+    {
+        IFS= read -r entry_status
+        IFS= read -r entry_corr
+    } < <(printf '%s' "$json" | "$PYTHON" -c "import json, sys
+e = json.load(sys.stdin)[\"entries\"][-1]
+print((e.get(\"status\") or \"\").strip().lower())
+print(\"1\" if ((e.get(\"correlation\") or {}).get(\"sha\")) else \"0\")")
+
+    # A `## Implementation` entry is a PR/branch-correlated ADR-0013 type: its
+    # `**PR**: #<M> at <sha>` / `**Branch**: <name> at <sha>` line is what the
+    # pre-push round counter and merge_pr.sh's head-vs-review gate correlate
+    # on, and both handoffs' exit contracts require it. Counting entries and
+    # reading **Status** alone would call a correlation-less entry OK and the
+    # omission would only surface at the merge gate, so check it here
+    # (issue #314 pre-push review, round 1).
+    if [[ "$entry_status" == "complete" && "$entry_corr" != "1" ]] \
+        && [[ "$skill" == "implement" || "$skill" == "address-findings" ]]; then
+        echo "status=PARTIAL"
+        echo "reason=the newest ## $entry_type entry has no **PR**/**Branch** correlation line"
+        return 0
+    fi
 
     case "$entry_status" in
         complete)
@@ -437,7 +476,7 @@ cmd_next() {
 
     local head_covered="unknown"
     if [[ -n "$head" ]]; then
-        head_covered=$(head_covers_review "$(newest_correlation_sha "$json")" "$head" "$wt")
+        head_covered=$(head_covers_review "$(newest_correlation_sha "$json")" "$head" "$wt" "$issue")
     fi
 
     printf '%s' "$json" | PR_STATE="$pr" HEAD_COVERED="$head_covered" "$PYTHON" -c '
