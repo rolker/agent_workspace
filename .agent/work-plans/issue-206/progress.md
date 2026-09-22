@@ -379,3 +379,13 @@ Proceed to implementation with the round-2 suggestions folded in: overlap-based 
 - [x] `exec env TMPDIR=... timeout -k ...` keeps the signal chain intact: `env` execs rather than forks, so the PID the job shell holds is still `timeout`'s, and the parent's TERM still reaches agy through the helper
 - [x] `test_agy_no_temp_leak` is not weakened — it points `TMPDIR` at a private dir, and both the scratch root and the helper's dir are created under it, so the `ls -A` assertion still covers the whole chain
 - [x] `AGENT_TMP_ROOT` is referenced in `run_agent_sync` but only ever called after the assignment, so `set -u` is satisfied; `_agy_review.sh`'s contract now names SIGKILL as the one untrappable path and points at the parent-owned root
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 12:18 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish. Pre-push review approved at round 3 (7f2edf7), zero must-fixes; push the branch as reviewed and open the PR.
