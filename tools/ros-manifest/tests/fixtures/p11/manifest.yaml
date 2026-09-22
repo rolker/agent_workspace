@@ -1,0 +1,166 @@
+# Acceptance-test fixture authored from the real project11 jazzy manifest at
+# projects/p11-jazzy/configs/manifest/ (workspace repo, read-only source — not copied
+# verbatim, re-expressed in the ros-manifest schema; repo names/urls/refs match exactly).
+layers:
+  - underlay
+  - core
+  - platforms
+  - site
+  - sensors
+  - simulation
+  - ui
+
+repos:
+  underlay:
+    ros2launch_gui:
+      url: https://github.com/rolker/ros2launch_gui.git
+      ref: jazzy
+    ros2launch_session:
+      url: https://github.com/rolker/ros2launch_session.git
+      ref: jazzy
+    geographic_info:
+      url: https://github.com/ros-geographic-info/geographic_info.git
+      ref: ros2
+    audio_common:
+      url: https://github.com/rolker/audio_common.git
+      ref: port_sound_play_h_to_ros2
+    detection_visualizer:
+      url: https://github.com/rolker/detection_visualizer.git
+      ref: support_rotation
+    nmea_navsat_driver:
+      url: https://github.com/rolker/nmea_navsat_driver.git
+      ref: add_pashr
+    norbit:
+      url: https://github.com/rolker/norbit.git
+      ref: jazzy
+    ros2sonic:
+      url: https://github.com/rolker/ros2sonic.git
+      ref: jazzy
+    vrx:
+      url: https://github.com/rolker/vrx.git
+      ref: add-santorini-seafloor
+
+  core:
+    manda_coverage:
+      url: https://github.com/rolker/manda_coverage.git
+      ref: jazzy
+    marine_ais:
+      url: https://github.com/rolker/marine_ais.git
+      ref: jazzy
+    marine_control:
+      url: https://github.com/rolker/marine_control.git
+      ref: jazzy
+    udp_bridge:
+      url: https://github.com/rolker/udp_bridge.git
+      ref: jazzy
+    unh_marine_navigation:
+      url: https://github.com/rolker/unh_marine_navigation.git
+      ref: jazzy
+    s57_tools:
+      url: https://github.com/rolker/s57_tools.git
+      ref: jazzy
+    unh_marine_autonomy:
+      url: https://github.com/rolker/unh_marine_autonomy.git
+      ref: jazzy
+      distros:
+        rolling:
+          ref: rolling
+
+  platforms:
+    ben_project11:
+      url: https://github.com/rolker/ben_project11.git
+      ref: jazzy
+    ben_description:
+      url: https://github.com/rolker/ben_description.git
+      ref: jazzy
+    mru_transform:
+      url: https://github.com/rolker/mru_transform.git
+      ref: jazzy
+    seafloor_echoboat_project11:
+      url: https://github.com/rolker/seafloor_echoboat_project11.git
+      ref: jazzy
+    unh_echoboats_project11:
+      url: https://github.com/rolker/unh_echoboats_project11.git
+      ref: jazzy
+    lr30_project11:
+      url: https://github.com/rolker/lr30_project11.git
+      ref: jazzy
+    drix_description:
+      url: https://github.com/rolker/drix_description.git
+      ref: jazzy
+    mobile_lab:
+      url: https://github.com/rolker/mobile_lab.git
+      ref: jazzy
+
+  site:
+    ccomjhc_project11:
+      url: git@github.com:CCOMJHC/ccomjhc_project11.git
+      ref: jazzy
+
+  sensors:
+    unh_marine_radar:
+      url: https://github.com/rolker/unh_marine_radar.git
+      ref: jazzy
+    cube_bathymetry:
+      url: https://github.com/rolker/cube_bathymetry.git
+      ref: jazzy
+    unh_marine_perception:
+      url: https://github.com/rolker/unh_marine_perception.git
+      ref: jazzy
+    marine_tools:
+      url: https://github.com/rolker/marine_tools.git
+      ref: jazzy
+    imagenex_deltat:
+      url: https://github.com/rolker/imagenex_deltat.git
+      ref: jazzy
+    edgetech_sonar:
+      url: https://github.com/rolker/edgetech_sonar.git
+      ref: jazzy
+    starlink_stats_ros:
+      url: https://github.com/rolker/starlink_stats_ros.git
+      ref: jazzy
+    ros2_network_monitor:
+      url: https://github.com/rolker/ros2_network_monitor.git
+      ref: jazzy
+
+  simulation:
+    ben_gazebo:
+      url: https://github.com/rolker/ben_gazebo.git
+      ref: jazzy
+    drix_gazebo:
+      url: https://github.com/rolker/drix_gazebo.git
+      ref: jazzy
+    unh_marine_simulation:
+      url: https://github.com/rolker/unh_marine_simulation.git
+      ref: jazzy
+
+  ui:
+    camp:
+      url: https://github.com/rolker/camp.git
+      ref: jazzy
+    rqt_operator_tools:
+      url: https://github.com/rolker/rqt_operator_tools.git
+      ref: jazzy
+    rqt_marine_radar:
+      url: https://github.com/rolker/rqt_marine_radar.git
+      ref: jazzy
+    rqt_udp_bridge:
+      url: https://github.com/rolker/rqt_udp_bridge.git
+      ref: jazzy
+    rviz_sonar_image:
+      url: https://github.com/rolker/rviz_sonar_image.git
+      ref: jazzy
+    marine_perception_tools:
+      url: https://github.com/rolker/marine_perception_tools.git
+      ref: jazzy
+    marine_colormap:
+      url: https://github.com/rolker/marine_colormap.git
+      ref: jazzy
+    marine_sonar_widgets:
+      url: https://github.com/rolker/marine_sonar_widgets.git
+      ref: jazzy
+
+roles:
+  dev:
+    subtract: []
+    add: []
