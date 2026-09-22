@@ -440,3 +440,23 @@ Address then merge: apply the one open suggestion (ADR-0015 line 101 says the fo
 ### Verification
 - Documentation-only change (no code, no test change), as the finding specified; pre-commit clean, nothing pushed
 - Test suites unchanged from the round-2 run: `test_cross_model_review.sh` 196 passed / 0 failed, `run_script_tests.sh` all 23 suites passed
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-22 12:31 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**PR**: #318 at `7506ffa`
+**Base**: main
+**Depth**: Light (reason: one documentation paragraph changed since the round-3 branch approval; no script, test or skill file touched)
+**Must-fix**: 0 | **Suggestions**: 0
+
+### Findings
+- [ ] No issues found. LGTM.
+
+### Verified
+- [x] `git diff 7f2edf7..HEAD --stat` is progress.md + `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md` only — nothing else changed since the round-3 approval, so the suites were not re-run
+- [x] The rewritten env-knob consequence matches `validate_duration_knob` in `cross_model_review.sh` clause for clause: shape validation, a non-zero requirement wherever zero would remove a bound, the explicit `AGENT_KILL_AFTER=0` exception with its "SIGKILL immediately after the SIGTERM" meaning, and `AGY_PRINT_TIMEOUT` held to the Go-duration subset (explicit `s`/`m`/`h`, no bare number, no `d`)
+- [x] The closing clause now names both failure modes the validation prevents — an opaque `timeout` exit 125 and a later failure inside agy — which is what the two validator branches actually guard
+- [x] PR #318 head (`7506ffa`) matches local HEAD, so this entry correlates to the reviewed commit
