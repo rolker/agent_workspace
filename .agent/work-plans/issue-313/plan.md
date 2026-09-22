@@ -6,155 +6,115 @@ https://github.com/rolker/agent_workspace/issues/313 (folds in #212)
 
 ## Context
 
-`_agy_review.sh` gives the gemini arm a forced validation gate: it owns the
-findings file, truncates it first, treats exit!=0, timeout, empty response,
-and non-SUCCESS status as failure via `fail()`, and only a real response
-reaches the file. The codex/claude/copilot arms in `run_agent_sync`
-(`.agent/scripts/cross_model_review.sh:213-217`) are still bare
-`timeout ... "$bin" ... < "$prompt" > "$findings" 2>&1`, gated on exit code
-alone. Two concrete bugs ride on this gap:
-- codex (#313 comment): `codex exec < prompt` echoes the whole prompt and
-  tool transcript to stdout before the final answer; `-o/--output-last-message
-  <FILE>` (confirmed in `codex exec --help`) writes only the final message.
-- copilot (#212): `-p < prompt` is wrong — `-p, --prompt <text>` takes the
-  prompt as an **argument**, not stdin; `--allow-all-tools` is required or
-  the CLI blocks on an interactive permission prompt with stdin closed.
-
-Confirmed from `--help` (no live prompts run, per quota constraints):
-- **codex**: `codex exec [OPTIONS] [PROMPT]` — reads stdin as prompt only
-  when no `[PROMPT]` arg is given ("If not provided as an argument (or if
-  `-` is used), instructions are read from stdin"); `-o <FILE>` for the
-  final message; no native JSON result object, so "empty" means an empty/
-  absent `-o` file. No documented error-marker vocabulary — detect via
-  empty file + stderr excerpt.
-- **claude**: `-p/--print` with `--output-format json` returns a single
-  JSON result object (mirrors agy's `result` event) — parseable via `jq`,
-  same shape of validation as `_agy_review.sh`.
-- **copilot**: `-p, --prompt <text>` is an argument, not stdin; `--allow-all-tools`
-  required for non-interactive; `-s/--silent` "output only the agent response
-  (no stats)"; `--output-format json` (JSONL) available but `text` + `-s` is
-  simplest to validate (non-empty stdout after silencing stats).
+`_agy_review.sh` gives gemini a forced gate: truncate findings first, own
+the file, `fail()` on exit!=0/timeout/empty/denied, success writes only the
+review text. The codex/claude/copilot arms in `run_agent_sync`
+(`cross_model_review.sh:213-217`) are still bare `timeout ... "$bin" ... <
+"$prompt" > "$findings" 2>&1`, gated on exit code alone. Round-1 plan review
+(49e5b16, needs-work) found the first draft's copilot form put the whole
+prompt on argv (an #274 regression against `cross_model_review.sh:203`'s
+no-argv-bound invariant), its sourced shared skeleton could fail before
+truncating, and it dropped INT/TERM/HUP forwarding. The owner's Checkpoint
+(Decision: revise) chose one exec'd dispatcher over four files; this
+revision replaces the sourced-skeleton/three-helper design and folds in all
+eight round-1 action items.
 
 ## Approach
 
-1. **Add `.agent/scripts/_review_helper_common.sh`** (sourced, not
-   executed) — the shared skeleton: `rh_truncate_findings`, `rh_fail`
-   (writes reason to findings file + stderr, `exit 1`), `rh_mktemp_dir`
-   (under `$TMPDIR`, EXIT/INT/TERM/HUP traps matching `_agy_review.sh`),
-   `rh_stderr_excerpt` (last 20 lines). Keep `_agy_review.sh`'s own shape
-   as-is — it already implements this contract correctly and is
-   agy-specific (stream-json parsing has no analog in the other three);
-   refactoring it onto the shared skeleton is out of scope (churn without
-   benefit) but the new helpers mirror its function names/behavior 1:1 so
-   a future refactor is mechanical.
-2. **Add three thin per-CLI helpers** using the shared skeleton, one
-   invocation + one result-extraction function each:
-   - `.agent/scripts/_codex_review.sh <codex-bin> <prompt-file> <findings-file> [<timeout>]`
-     — runs `"$bin" exec -o "$out_file" < "$prompt"` with stdout/stderr to a
-     temp log (kept only on failure, appended via `rh_stderr_excerpt`);
-     `fail` on exit!=0, on `$out_file` missing/empty after trim. No known
-     text markers documented for codex; report exit code + stderr excerpt.
-   - `.agent/scripts/_claude_review.sh <claude-bin> <prompt-file> <findings-file> [<timeout>]`
-     — runs `"$bin" -p --output-format json < "$prompt"`, parses the single
-     JSON object with `jq`; `fail` on exit!=0, invalid JSON, `.is_error ==
-     true`, `.subtype != "success"`, or empty/missing `.result`. Detect
-     `.result`/error text containing `usage limit`, `rate limit`, `overloaded`,
-     `not logged in` as known markers (surfaced in the failure reason, not a
-     separate gate — the JSON status fields are authoritative).
-   - `.agent/scripts/_copilot_review.sh <copilot-bin> <prompt-file> <findings-file> [<timeout>]`
-     — fixes #212: `"$bin" -p "$(cat "$prompt")" --allow-all-tools -s`
-     (argument, not stdin — `$()` strips no meaningful content since the
-     prompt is text, and the CLI takes `-p <text>` only as an argument per
-     `--help`); `fail` on exit!=0 or empty stdout after trim. Known markers:
-     `quota`, `rate limit`, `not authenticated`/`login required`.
-   Each helper: truncates findings first, `fail()` writes reason + exits 1,
-   success writes only the review text (strip copilot's
-   `Changes / Requests / Tokens` footer per #212's note, via
-   `sed -n '/^Changes$/q;p'` or equivalent before writing).
-3. **Wire `run_agent_sync`** (`cross_model_review.sh:213-217`) to call the
-   three new helpers exactly the way gemini already calls `_agy_review.sh`:
-   `exec env TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER"
-   "$AGENT_TIMEOUT" "$CODEX_REVIEW_HELPER" "$bin" "$prompt" "$findings"`
-   (same for claude/copilot). Resolve `CODEX_REVIEW_HELPER` /
-   `CLAUDE_REVIEW_HELPER` / `COPILOT_REVIEW_HELPER` next to
-   `AGY_REVIEW_HELPER`'s existing resolution. `EXIT=` semantics in the
-   `--agents` output loop (lines ~920-936) are unchanged — the helper's own
-   exit code already flows through `wait`.
-4. **Tests** in `.agent/scripts/tests/test_cross_model_review.sh`: extend
-   `make_mock_agent` (or add per-CLI mock functions) so each mock
-   reproduces its CLI's real output shape:
-   - codex mock: writes banner + prompt echo to stdout, writes only the
-     final message to the file named by its `-o` arg.
-   - claude mock: reads `--output-format json`, emits a single JSON object
-     (`{"type":"result","subtype":"success","is_error":false,"result":"..."}`)
-     on stdout.
-   - copilot mock: asserts it was invoked with `-p <text>` as an argument
-     (not via stdin) and `--allow-all-tools`/`-s` present — fails loudly if
-     invoked the old (#212) way; prints only the response.
-   Cover per CLI: success, empty response, non-zero exit, timeout (reuse
-   existing timeout harness), and one known-error-marker case. Add an
-   explicit copilot-invocation-contract assertion (#212 regression test).
-   Keep the existing 196 assertions green; run
-   `.agent/scripts/tests/run_script_tests.sh`.
-5. **Exec bit**: `chmod +x` the three new helper scripts (and
-   `_review_helper_common.sh` if made executable — it's sourced, so leave
-   it non-executable to signal that).
-6. **Docs**:
-   - `AGENTS.md` Script Reference — add rows for `_codex_review.sh`,
-     `_claude_review.sh`, `_copilot_review.sh`, `_review_helper_common.sh`,
-     following the `_agy_review.sh` row's pattern.
-   - `.claude/skills/review-code/SKILL.md` — update the "reading the
-     result" note if it currently assumes exit-code-only validation for
-     codex/claude/copilot.
-   - `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md`
-     — update the Consequences bullet "The per-agent result validation that
-     Gemini has (#288) is still missing for Codex, Claude and Copilot; that
-     is #313, unchanged by this decision" to reflect closure.
+1. **One script, `_cli_review.sh <agent> <bin> <prompt-file> <findings-file>
+   [<timeout>]`**, exec'd by `run_agent_sync` exactly as `_agy_review.sh` is
+   today (gemini stays on `_agy_review.sh` — its stream-json parsing has no
+   shared shape with the other three). First statement, before any guard:
+   `: > "$FINDINGS_FILE"` or `fail`, matching `_agy_review.sh:69-72` so a bad
+   arg never leaves stale findings under a fresh failure marker. `case
+   "$agent" in codex|claude|copilot)` selects the invocation +
+   result-extraction block; anything else is a usage error (exit 2).
+2. **Spawn/wait/trap copied from `_agy_review.sh:105-141`**: `mktemp -d`
+   under the inherited `$TMPDIR`, EXIT trap set right after; INT/TERM/HUP
+   traps armed *before* the CLI is spawned, killing the recorded child PID;
+   the CLI runs as a background job, `wait`ed on, so the parent's `exec env
+   TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT"
+   "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings"` reaches the
+   CLI instead of leaving it running. codex's `-o` file and per-CLI
+   stdout/stderr logs live inside this temp dir, so `AGENT_TMP_ROOT` and
+   `run_script_tests.sh`'s leak sweep cover them.
+3. **Per-agent invocation + validation**:
+   - **codex**: `"$bin" exec -o "$out_file" < "$prompt"` (no `[PROMPT]` arg,
+     so stdin is read; `-o` writes only the final message). stdout/stderr go
+     to a log, discarded on success, tailed into the failure reason on
+     failure. `fail` on exit!=0 or `$out_file` missing/empty. No documented
+     codex error markers; report exit code + log excerpt.
+   - **claude**: `"$bin" -p --output-format json --permission-mode plan
+     --permission-prompts none < "$prompt"`. `--permission-mode plan` is the
+     read-only pick (`claude --help`) — `--dangerously-skip-permissions` is
+     rejected as unsafe for a reviewer; `--permission-prompts none`
+     auto-denies the rest instead of hanging, mirroring agy. Parse the
+     single JSON object with `jq`; `fail` on exit!=0, invalid JSON,
+     `.is_error == true`, `.subtype != "success"`, or empty `.result`.
+     Surface `.result`/error text containing `usage limit`, `rate limit`,
+     `overloaded`, `not logged in` in the failure reason.
+   - **copilot** (fixes #212): `"$bin" -p "" --allow-all-tools -s <
+     "$prompt"` — stdin, the form #212 verified on 1.0.48. Re-confirm on the
+     installed 1.0.61 once Copilot quota returns (open question below);
+     until then, a belt-and-braces guard: prompt > 100 KiB → `fail` before
+     invoking copilot, so a channel regression to argv can't happen even if
+     a future edit reintroduces it. `-s` output used as-is — no second
+     footer strip (drops round 1's `sed '/^Changes$/q'`, which risked
+     truncating a review body containing a bare `Changes` line). `fail` on
+     exit!=0 or empty stdout.
+4. **`cross_model_review.sh` wiring**: extend the availability precheck
+   (currently `AGY_REVIEW_HELPER`-only, ~line 467) to also require
+   `CLI_REVIEW_HELPER` present + executable; `run_agent_sync`'s
+   codex/claude/copilot arms (213-217) call it per point 2, `EXIT=`
+   semantics unchanged; update the header comment (~31-36, documents the
+   bare `<cli> -p < prompt` invocation) and `run_agent_job`'s non-gemini
+   timeout message (~882, "partial output above, if any" — false once
+   `_cli_review.sh` truncates first).
+5. **Exec bit**: `chmod +x .agent/scripts/_cli_review.sh`.
+6. **Docs**: `AGENTS.md` row for `_cli_review.sh` + update the existing
+   `cross_model_review.sh` row; review-code SKILL.md's result-reading note
+   if exit-code-only; ADR-0015's "still missing for Codex, Claude and
+   Copilot; that is #313" bullet closed out; `agent_wait_patterns.md` gets a
+   line if gemini-only today (confirm during implementation).
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/_review_helper_common.sh` | New: shared truncate/fail/tempdir/stderr-excerpt skeleton |
-| `.agent/scripts/_codex_review.sh` | New: codex headless turn + validation (`-o` file, no stdout echo) |
-| `.agent/scripts/_claude_review.sh` | New: claude headless turn + validation (`--output-format json`) |
-| `.agent/scripts/_copilot_review.sh` | New: copilot headless turn + validation, fixes #212's `-p`/`--allow-all-tools` bug |
-| `.agent/scripts/cross_model_review.sh` | `run_agent_sync`: codex/claude/copilot arms call the new helpers, same `exec`/`timeout -k` discipline as gemini |
-| `.agent/scripts/tests/test_cross_model_review.sh` | Per-CLI mocks matching real output shapes; success/empty/nonzero-exit/timeout/error-marker cases; #212 copilot invocation regression test |
-| `AGENTS.md` | Script Reference rows for the four new/shared scripts |
+| `.agent/scripts/_cli_review.sh` | New: single exec'd helper, per-agent case, truncate-first + spawn/wait/trap from `_agy_review.sh` |
+| `.agent/scripts/cross_model_review.sh` | Precheck extended to `CLI_REVIEW_HELPER`; arms call it; header comment (~31-36) and timeout message (~882) updated |
+| `.agent/scripts/tests/test_cross_model_review.sh` | `make_mock_agent` reworked (arms no longer redirect the CLI's own stdout); per-CLI mocks (codex `-o` file + transcript; claude JSON; copilot stdin + `-s`); argv-contract assertion (~1366) updated; success/empty/nonzero-exit/timeout/error-marker per CLI; copilot stdin-contract (#212) + size-guard tests; TERM-forwarding/kill assertion per CLI |
+| `AGENTS.md` | New `_cli_review.sh` row; `cross_model_review.sh` row updated |
 | `.claude/skills/review-code/SKILL.md` | Update result-reading note if exit-code-only assumption exists |
-| `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md` | Close out the "still missing for Codex, Claude and Copilot" consequence bullet |
+| `docs/decisions/0015-...md` | Close the "still missing" consequence bullet |
+| `.agent/knowledge/agent_wait_patterns.md` | Add a line if gemini-only today |
 
 ## Principles Self-Check
 
 | Principle | Consideration |
 |---|---|
-| Enforcement over documentation | Each CLI gets a forced gate matching gemini's, not just better logging — codex/claude/copilot cannot report success on an empty or auto-denied response. |
-| Test what breaks | Mocks reproduce each CLI's real failure shapes; timeout, empty response, non-zero exit, and error markers are all covered, plus the #212 invocation regression. |
-| Only what's needed | Shared skeleton avoids three duplicated truncate/fail/tempdir blocks; `_agy_review.sh` is left alone since its stream-json parsing isn't shared logic. |
+| Enforcement over documentation | Forced gate per CLI, truncate-first before any guard, matching gemini exactly. |
+| Test what breaks | Mocks reproduce each CLI's real shape; timeout/kill, empty, non-zero exit, error markers, #212 stdin regression all asserted. |
+| Only what's needed | Single dispatcher (owner's decision) replaces the four-file design. |
 
 ## ADR Compliance
 
 | ADR | Triggered | How addressed |
 |---|---|---|
-| 0015 — Parallel sync is the only review dispatch mode | Yes | `run_agent_sync`'s `exec`/`timeout -k`/background-job structure is unchanged; only the per-agent command each arm execs into changes. The ADR's closing consequence bullet is updated to reflect this issue landing. |
+| 0015 | Yes | `exec`/`timeout -k`/background-job/`EXIT=` structure untouched; only each arm's exec'd command changes. Closing bullet updated. |
 
 ## Consequences
 
-| If we change... | Also update... | Included in plan? |
-|---|---|---|
-| codex/claude/copilot findings-file content on failure | `review-code`'s reading of `EXIT=` per agent | Yes — `EXIT=` contract itself is unchanged (helper's own exit code), no `review-code` change needed beyond confirming this |
-| Copilot invocation flags | `AGENTS.md` script table, ADR-0015 consequence bullet | Yes |
+Covered inline above: failure-file content change → `run_agent_job` timeout
+message (~882); availability precheck → AGENTS.md + ADR-0015 bullet;
+copilot invocation channel → #212 regression test + size guard.
 
 ## Open Questions
 
-- None blocking. Codex/claude error-marker vocabulary (quota/auth/rate-limit
-  text) is inferred from general CLI conventions, not confirmed against a
-  live failing run (quota-constrained); the helper's stderr-excerpt fallback
-  covers unrecognized failure text, so this doesn't block implementation.
+- Copilot's stdin form is confirmed on 1.0.48 (#212), not re-verified on the
+  installed 1.0.61 (quota exhausted). The 100 KiB guard mitigates until a
+  live check is possible; note in the PR description.
 
 ## Estimated Scope
 
-Single PR. Closes #313 and #212. Does not touch #320 (Standard tier +
-plan-as-context for gemini/codex), which is explicitly sequenced after this
-issue per its own "Related" note.
+Single PR. Closes #313 and #212. Does not touch #320 (sequenced after).
