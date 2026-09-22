@@ -455,3 +455,13 @@ Merge recommendation: **merge**. Zero open findings at the head, CI green, the m
 
 ### False positives
 - (Copilot @ `8e9c0c8`, `688d1e9`, `2a2a724`) All three GitHub reviews state Copilot "was unable to review this pull request because the user who requested the review has reached their quota limit" — COMMENTED reviews with zero inline comments and no claim about the code. Recorded so the absence of bot findings is not mistaken for bot approval.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 09:42 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge. Zero open findings at 2a2a724, CI green except Copilot's quota-exhaustion check-run; PR-body decision summary refreshed before the merge script runs.
