@@ -10,7 +10,13 @@
 # recursive-bloat failure mode that motivated this.
 #
 # Supported agents: gemini, codex, claude, copilot
-# (the gemini agent runs via the `agy` binary — see AGENT_BINS)
+# (the gemini agent runs via the `agy` binary — see AGENT_BINS — through
+# the _agy_review.sh helper, which feeds the prompt over stdin and
+# validates agy's result event; issues #274, #288)
+#
+# The embedded diff excludes .agent/work-plans/** (plan.md, progress.md,
+# review artifacts): review bookkeeping, not code under review, and the
+# main source of oversized prompts (#312).
 #
 # Two execution modes:
 #   tmux (default) — runs the agent in a background tmux session
@@ -57,29 +63,35 @@ declare -A AGENT_BINS=(
     ["copilot"]="copilot"
 )
 
-# Timeout for agy print mode. The agy default (5m) is too tight for
-# adversarial reviews of large diffs; Go duration format.
+# Timeout for agy print mode (Go duration format). agy's own default is
+# 0s = wait until the turn completes; the explicit cap keeps a hung
+# review from blocking a tmux session or a sync caller forever. On
+# expiry agy exits 0 with a partial response — _agy_review.sh treats
+# that as a failed review (#288).
 AGY_PRINT_TIMEOUT="30m"
+
+# Helper that owns the gemini invocation (both modes). Resolved once so
+# the tmux command string carries an absolute path.
+AGY_REVIEW_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_agy_review.sh"
+# Checked here rather than at invocation so a missing helper is a
+# dependency error (exit 1) up front, not a failed review later.
+AGY_REVIEW_HELPER_MISSING=false
+[[ -x "$AGY_REVIEW_HELPER" ]] || AGY_REVIEW_HELPER_MISSING=true
 
 # Build the shell command string to invoke an agent.
 # Args: agent_key, bin_path, prompt_file, findings_file
 # Stdout: a shell command string safe for tmux new-session.
-# Agents use stdin-based invocation where the CLI supports it, to avoid
-# argv limits on large diffs. agy is the exception — see below.
+# Agents use stdin-based invocation to avoid argv limits on large diffs.
 build_invoke_cmd() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
         gemini)
-            # agy print mode takes the prompt as the argument value of
-            # -p/--print — it does not read the prompt from stdin (the
-            # old `gemini -p "" < prompt` stdin-append convention from
-            # #181 no longer applies). Issue #223. The $(cat ...) is
-            # escaped so it expands inside the tmux session's shell.
-            # Caveat: argv passing is subject to the kernel's per-argument
-            # size limit (~128KiB on Linux); verified working for typical
-            # review prompts during the PR #211 review.
-            echo "\"${bin}\" --print-timeout ${AGY_PRINT_TIMEOUT} -p \"\$(cat \"${prompt}\")\" > \"${findings}\" 2>&1"
+            # _agy_review.sh feeds the prompt to agy over stdin
+            # (stream-json) and writes the findings file itself — no
+            # stdout redirect here, it would truncate the helper's
+            # output. Issues #274, #288.
+            printf '%q %q %q %q %q\n' "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT"
             ;;
         codex)
             # Codex exec reads prompt via stdin
@@ -105,9 +117,8 @@ run_agent_sync() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
-        # agy print mode takes the prompt as the -p argument value; it
-        # does not read the prompt from stdin (#223).
-        gemini)  "$bin" --print-timeout "$AGY_PRINT_TIMEOUT" -p "$(cat "$prompt")" > "$findings" 2>&1 ;;
+        # Helper owns the findings file; no stdout redirect (#274, #288).
+        gemini)  "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
         codex)   "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
         claude)  "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
         copilot) "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
@@ -271,6 +282,12 @@ if [[ "$FORCE_SYNC" == true ]]; then
 elif ! command -v tmux &>/dev/null; then
     echo "INFO: tmux not available — falling back to sync mode" >&2
     USE_SYNC=true
+fi
+
+# The gemini agent needs its helper alongside this script.
+if [[ "$TARGET_AGENT" == "gemini" && "$AGY_REVIEW_HELPER_MISSING" == true ]]; then
+    echo "ERROR: ${AGY_REVIEW_HELPER} is missing or not executable — gemini review unavailable" >&2
+    exit 1
 fi
 
 # Find target agent CLI — check PATH first, then common install locations
@@ -515,18 +532,42 @@ else
         "$PR_TITLE" "$PR_URL" "$PR_NUMBER" >> "$PROMPT_FILE"
 fi
 
-# Stream diff directly into the prompt file. Branch mode uses local
-# `git diff <base>...HEAD`; PR mode uses `gh pr diff <N>`.
+# Drop .agent/work-plans/** file sections from a unified diff (#312).
+# Reads the diff on stdin. A section starts at `diff --git a/<p> b/<p>`
+# and runs to the next such header. Only the b/ (post-image) path
+# decides: a deleted file still carries its b/ path on that line, and a
+# file renamed OUT of work-plans into the codebase is new code that
+# must stay in review. Git quotes paths with unusual characters
+# (`"b/..."`), hence the optional quote. Everything else passes through
+# byte-for-byte.
+filter_work_plans_diff() {
+    awk '
+        /^diff --git / {
+            skip = ($0 ~ / "?b\/\.agent\/work-plans\//)
+        }
+        !skip { print }
+    '
+}
+
+# Stream diff into the prompt file through the work-plans filter. Branch
+# mode uses local `git diff <base>...HEAD`; PR mode uses `gh pr diff <N>`.
+# The pipeline sits inside `if !` so `set -e` does not abort the script
+# before the error branch runs; with `pipefail` the tested status is the
+# first failing stage's, so a failed gh/git call is not masked by the
+# filter succeeding on empty input, and a filter dying mid-stream cannot
+# leave a truncated diff looking complete.
 printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
 DIFF_START_LINE=$(wc -l < "$PROMPT_FILE")
 if [[ "$BRANCH_MODE" == true ]]; then
-    if ! git diff "${BASE_REF}...HEAD" >> "$PROMPT_FILE" 2>/dev/null; then
+    # Explicit a/ b/ prefixes so a diff.noprefix / diff.mnemonicPrefix
+    # config cannot defeat the work-plans filter.
+    if ! git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"; then
         echo "ERROR: Could not produce diff for ${BRANCH_NAME} against ${BASE_REF}" >&2
         echo '--- Review error: failed to produce branch diff ---' > "$FINDINGS_FILE"
         exit 3
     fi
 else
-    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" >> "$PROMPT_FILE" 2>/dev/null; then
+    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"; then
         echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
         echo '--- Review error: failed to retrieve diff ---' > "$FINDINGS_FILE"
         exit 3
@@ -534,18 +575,21 @@ else
 fi
 DIFF_END_LINE=$(wc -l < "$PROMPT_FILE")
 
-# Guard: if diff is empty, abort with a clear error instead of launching an
-# agent with no content to review.
+# Guard: if diff is empty (before or after the work-plans filter), abort
+# with a clear error instead of launching an agent with no content to
+# review.
 if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
     if [[ "$BRANCH_MODE" == true ]]; then
-        echo "ERROR: branch '${BRANCH_NAME}' has no changes against '${BASE_REF}' — nothing to review" >&2
-        echo "  Either the branch is up-to-date with the base, or the base ref is wrong." >&2
-        echo '--- Review error: diff was empty (branch matches base) ---' > "$FINDINGS_FILE"
+        echo "ERROR: branch '${BRANCH_NAME}' has no reviewable changes against '${BASE_REF}' — nothing to review" >&2
+        echo "  Either the branch is up-to-date with the base, the base ref is wrong," >&2
+        echo "  or every changed file is under .agent/work-plans/ (excluded from review, #312)." >&2
+        echo '--- Review error: diff was empty (branch matches base, or only .agent/work-plans/ changed) ---' > "$FINDINGS_FILE"
     else
         echo "ERROR: PR #${PR_NUMBER} diff is empty — nothing to review" >&2
-        echo "  This usually means the PR was not found in the target repo." >&2
+        echo "  This usually means the PR was not found in the target repo, or every" >&2
+        echo "  changed file is under .agent/work-plans/ (excluded from review, #312)." >&2
         echo "  Try passing --repo <owner/repo> explicitly." >&2
-        echo '--- Review error: diff was empty (PR not found or no changes) ---' > "$FINDINGS_FILE"
+        echo '--- Review error: diff was empty (PR not found, no changes, or only .agent/work-plans/ changed) ---' > "$FINDINGS_FILE"
     fi
     exit 3
 fi
@@ -573,6 +617,24 @@ No issues found.
 
 Write a 1-3 sentence overall assessment after the findings table.
 PROMPT_FOOTER
+
+# Gemini only: headless agy auto-denies shell commands and then returns
+# an empty response (#288). Reading files is permitted, so the
+# reviewer keeps that. Not added for codex/claude/copilot — codex reads
+# files through the shell, so the line would cost it context.
+if [[ "$TARGET_AGENT" == "gemini" ]]; then
+    cat >> "$PROMPT_FILE" << 'PROMPT_TOOL_USE'
+
+## Tool Use
+
+The diff above is the complete set of code changes under review; files
+under `.agent/work-plans/` (plan and progress bookkeeping) are deliberately
+excluded. You may read files in the repository for surrounding context.
+Do NOT run shell commands: this is a headless session,
+command execution is denied without a prompt, and a denied command can end
+the review with no output.
+PROMPT_TOOL_USE
+fi
 
 # --- Run review ---
 if [[ "$USE_SYNC" == true ]]; then
