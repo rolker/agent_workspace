@@ -782,3 +782,78 @@ address-findings" block in Implementation Notes covering the guard
 removal, the least-privilege pivot and the other seven items.
 
 No real agy/codex/claude/copilot prompt was run (quota); nothing pushed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 14:35 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-313 at fb8b6d9
+**Plan**: `.agent/work-plans/issue-313/plan.md` at `2c24f22`
+**Round**: implementation round 2 (live gemini + codex re-run of `ca7f87c`)
+
+Codex was failed again by the helper's own text scan. Root cause: codex
+prints its entire transcript on stderr as well as stdout — prompt, tool
+calls and each tool's output (this run, a `jq: error` line from a
+command codex itself ran). Neither channel is a diagnostics channel, so
+text cannot be a failure cause on any of them.
+
+**The rule now implemented and documented** (helper header + plan
+Implementation Notes): only a non-zero exit status, a missing or empty
+result, or a structured error field (claude `.is_error` / `.error`) may
+FAIL a run. Error text only EXPLAINS a failure those signals already
+established, by choosing the reason line. `ERROR_OPENER_RE`,
+`result_is_error_only` and `marker_in_log`-as-cause are deleted;
+`marker_note` replaces them. The residual gap — a CLI that exits 0 with
+a quota message as its whole answer is passed through as a review — is
+stated in the header and in the review-code skill's result-reading note,
+because every attempt to close it discarded real reviews (three designs,
+three live false positives; the table is in the plan).
+
+Per arm: codex fails on a non-zero exit or an empty/missing `-o` file
+only; claude on structured fields only; copilot on a non-zero exit or
+empty `-s` output only.
+
+**Also fixed from the same run**
+
+- claude non-object JSON (codex must-fix 1): `jq -e .` accepts `"oops"`,
+  `[]`, `1`; `.is_error` then aborted jq and the helper died under
+  `set -e` leaving an EMPTY findings file. Now `type == "object"` is
+  required before indexing, every field read is guarded, and assignment
+  uses `printf -v` so a failure reaches `fail()` instead of exiting a
+  subshell.
+- `cleanup_jobs` (codex must-fix 2): reaps the job shells before
+  removing `AGENT_TMP_ROOT`, bounded by `CLEANUP_REAP_TIMEOUT` (8s).
+  Found while testing: each job's own TERM trap exited immediately,
+  which is what told the parent the job was finished — it now waits for
+  its helper too.
+- Escalation vs the caller's grace (codex must-fix 3 / gemini 4): both
+  helpers refuse to start unless `AGENT_KILL_AFTER` >
+  `REVIEW_KILL_ESCALATION` (exit 2, reason in the findings file);
+  `AGENT_KILL_AFTER` is exported to them. Both zero is the one legal
+  equal case, so the documented `AGENT_KILL_AFTER=0` stays usable when
+  paired with `REVIEW_KILL_ESCALATION=0`.
+- Watchdog (gemini 4): no longer waited on — a subshell sleeping in
+  `sleep` defers the TERM we send it, so waiting cost the full window on
+  every clean exit. It re-checks liveness before `kill -9`, so it cannot
+  hit a recycled PID.
+- Re-entrancy (gemini 6): `terminate_child` disarms INT/TERM/HUP on
+  entry in both helpers and clears the child PID. `_agy_review.sh`
+  already cleared `AGY_PID` after the normal reap (gemini 5).
+- jq preflight (gemini 8): missing jq marks claude unavailable with a
+  reason instead of failing every claude run.
+- Copilot (gemini 7): no code change; the call-site comment now names
+  BOTH `-p ""` and `--available-tools=''` as pending one live
+  confirmation when quota returns, with the fallback for each.
+
+**Tests**: 329 -> 369 assertions, all green. New: error-text-explains-
+never-causes per CLI (exit 0 with a quota answer passes; the same marker
+with a non-zero exit fails and picks the reason line; a transient
+`[WARN] overloaded` does not fail a completed review), review text never
+reclassified ("# Error Handling in auth.py" and concise list findings
+both accepted), non-object JSON reported rather than crashing, TERM
+returns in under 3s with a 5s window, jq preflight, cleanup reap
+ordering under a TERM-ignoring CLI, and the kill-grace refusal.
+`run_script_tests.sh` 23/23 suites, no temp leaks. Pre-commit green
+including shellcheck.
+
+Commit: `fb8b6d9`. No real CLI prompt was run; nothing pushed.
