@@ -216,6 +216,12 @@ CHECKRUNS_FAILED='{"check_runs":[{"conclusion":"failure","status":"completed"}]}
 CHECKRUNS_STARTUP_FAILURE='{"check_runs":[{"conclusion":"startup_failure","status":"completed"}]}'
 CHECKRUNS_STALE='{"check_runs":[{"conclusion":"stale","status":"completed"}]}'
 CHECKRUNS_NONE='{"check_runs":[]}'
+# Copilot's review check-run (#300): excluded from CI classification by name.
+COPILOT_RUN='{"name":"copilot-pull-request-reviewer","conclusion":"failure","status":"completed"}'
+CHECKRUNS_COPILOT_ONLY="{\"check_runs\":[${COPILOT_RUN}]}"
+CHECKRUNS_COPILOT_PLUS_LINT_SUCCESS="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"success\",\"status\":\"completed\"}]}"
+CHECKRUNS_COPILOT_PLUS_LINT_PENDING="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":null,\"status\":\"in_progress\"}]}"
+CHECKRUNS_COPILOT_PLUS_LINT_FAILED="{\"check_runs\":[${COPILOT_RUN},{\"name\":\"Lint (pre-commit)\",\"conclusion\":\"failure\",\"status\":\"completed\"}]}"
 write_mergeable_fixture() {  # <sb> <state> [seq_n]
     local sb="$1" state="$2" n="${3:-}" remote base f
     remote="${sb}.remote.git"
@@ -692,6 +698,58 @@ if ! merged_called "$sb" && [[ "$out" == *"CI checks failed on"*"${reviewed:0:7}
     pass "(ci-12b) a stale check-run: error, no merge call"
 else
     fail "(ci-12b) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — Copilot review check-run failed but real CI green: merges, excluded run named as not blocking (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_PLUS_LINT_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI checks passed"* ]] \
+    && [[ "$out" == *"check-run 'copilot-pull-request-reviewer' conclusion=failure"*"not used to block the merge"* ]] \
+    && [[ "$out" != *"CI checks failed"* ]]; then
+    pass "(ci-19) Copilot failure + Lint success: merges; excluded run reported as not blocking"
+else
+    fail "(ci-19) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — Copilot review check-run failed, real CI still running: waits (times out), no false failure (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_PLUS_LINT_PENDING"
+out="$(MERGE_PR_CI_TIMEOUT_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"CI checks did not complete on"*"${reviewed:0:7}"* ]] \
+    && [[ "$out" != *"CI checks failed"* ]]; then
+    pass "(ci-20) Copilot failure + Lint in_progress: pending until timeout, never a CI failure"
+else
+    fail "(ci-20) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — Copilot failure alongside a genuine CI failure: still fails, culprit named (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_PLUS_LINT_FAILED"
+out="$(run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"CI checks failed on"*"${reviewed:0:7}"* ]] \
+    && [[ "$out" == *"CI failed: Lint (pre-commit) (failure)"* ]] \
+    && [[ "$out" != *"CI failed:"*"copilot-pull-request-reviewer"* ]]; then
+    pass "(ci-21) Copilot failure + Lint failure: error, no merge; only the real failure is named"
+else
+    fail "(ci-21) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — Copilot review check-run is the ONLY run: treated as no checks registered, no merge (#300)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_ONLY"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] \
+    && [[ "$out" != *"CI checks passed"* ]]; then
+    pass "(ci-22) Copilot-only head: never-registered error, not a false success"
+else
+    fail "(ci-22) (out=${out:0:400})"
 fi
 
 echo "TEST: mergeability — UNKNOWN for the first pr-view calls then MERGEABLE: merge proceeds"

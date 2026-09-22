@@ -974,6 +974,14 @@ fi
 MERGE_PR_CI_POLL_SECONDS="${MERGE_PR_CI_POLL_SECONDS:-10}"
 MERGE_PR_CI_GRACE_SECONDS="${MERGE_PR_CI_GRACE_SECONDS:-120}"
 MERGE_PR_CI_TIMEOUT_SECONDS="${MERGE_PR_CI_TIMEOUT_SECONDS:-1800}"
+# Copilot's code-review check-run is a review signal, not CI (#300). It
+# reports `conclusion: failure` for a "Changes recommended" verdict (already
+# consumed by triage-reviews -> ## Integrated Review) and for quota
+# exhaustion (PR #308), so it is excluded from CI classification by name,
+# for ANY conclusion. One named run, not a list — widen only for a second
+# confirmed offender.
+readonly MERGE_PR_CI_EXCLUDE_CHECK_RUN="copilot-pull-request-reviewer"
+_ci_excluded_noted=false
 
 _ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
     # "error" (issue #284 review) is distinct from "none": a nonzero `gh
@@ -981,7 +989,7 @@ _ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
     # failure to LEARN the CI state, not evidence the repo has no CI — the
     # caller must keep retrying it (bounded by the grace deadline) rather
     # than falling through to the no-CI pass.
-    local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed
+    local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed excluded culprits
     # -X GET is load-bearing (#289): `-f` alone turns the request into a
     # POST, which GitHub answers with 404 on every poll.
     runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" -X GET --paginate -f per_page=100 2>/dev/null \
@@ -997,16 +1005,35 @@ _ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
         echo "error"
         return
     fi
+    # Drop the excluded review check-run BEFORE every classification below
+    # (registered / failed / pending alike), so a head whose only run is
+    # Copilot's counts as "no checks registered", never as success (#300).
+    # Pure filter over data already fetched — no extra request.
+    excluded=$(jq -r --arg x "$MERGE_PR_CI_EXCLUDE_CHECK_RUN" \
+        '[(.check_runs // [])[] | select(.name == $x) | (.conclusion // "pending")] | join(",")' <<<"$runs_json" 2>/dev/null || echo "")
+    runs_json=$(jq -c --arg x "$MERGE_PR_CI_EXCLUDE_CHECK_RUN" \
+        '{check_runs: [(.check_runs // [])[] | select(.name != $x)]}' <<<"$runs_json" 2>/dev/null || echo '{"check_runs":[]}')
+    if [[ -n "$excluded" ]] && [[ "$_ci_excluded_noted" == false ]]; then
+        # Once per run, not once per poll: the loop below re-enters every
+        # MERGE_PR_CI_POLL_SECONDS. Stderr keeps stdout the bare state word.
+        echo "  (check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' conclusion=${excluded} is a review signal, excluded from CI — not used to block the merge)" >&2
+        _ci_excluded_noted=true
+    fi
     registered=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" \
         '(($r.check_runs // []) | length) + (($s.statuses // []) | length) > 0' 2>/dev/null || echo false)
     if [[ "$registered" != "true" ]]; then
         echo "none"
         return
     fi
-    failed=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" '
-        (([($r.check_runs // [])[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale")] | length) > 0)
-        or (([($s.statuses // [])[] | select(.state == "failure" or .state == "error")] | length) > 0)' 2>/dev/null || echo false)
+    culprits=$(jq -n -r --argjson r "$runs_json" --argjson s "$status_json" '
+        ([($r.check_runs // [])[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale") | "\(.name // "<unnamed check-run>") (\(.conclusion))"]
+         + [($s.statuses // [])[] | select(.state == "failure" or .state == "error") | "\(.context // "<unnamed status>") (\(.state))"])
+        | join(", ")' 2>/dev/null || echo "")
+    failed=false; [[ -n "$culprits" ]] && failed=true
     if [[ "$failed" == "true" ]]; then
+        # Name what actually failed so the next false positive is
+        # diagnosable from the script's own output (#300).
+        echo "  CI failed: ${culprits}" >&2
         echo "failed"
         return
     fi
