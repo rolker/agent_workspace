@@ -83,3 +83,55 @@ no Decision/Consequences rewrite), and a PR description stating the added
 Standard-tier latency/quota cost. Implementation is explicitly blocked on
 issue #313 merging to main and this branch running `git merge origin/main`
 first, per the owner's checkpoint decision.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 13:08 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**Issue**: #320 — cross_model_review: run Gemini/Codex at the Standard tier and pass the plan's Approach as context
+**Plan**: `.agent/work-plans/issue-320/plan.md` at `535ee62`
+**Branch**: `feature/issue-320`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Five files, two coupled behaviours, one PR — matches the owner's checkpoint decision; the split line is pre-recorded if review gets unwieldy. |
+| Issue alignment | Good | Both issue items covered; Light stays static-only; "context, not the subject" framing carried into the prompt heading; out-of-scope (Gemini/Codex reviewing plans) respected. |
+| File targeting | Needs work | Files listed are right, but two in-file surfaces are unnamed: the tier **Report format** rows in `review_depth_classification.md` (finding 1) and the gemini `## Tool Use` paragraph in `cross_model_review.sh` (finding 3). |
+| Consequences | Needs work | The "179 existing assertions, unaffected" claim is not safe — an existing test writes the exact `plan.md` the new code reads (finding 2). AGENTS.md's script-reference row for `cross_model_review.sh` also becomes incomplete (finding 6). |
+| Principle alignment | Good | Only what's needed (Light untouched, cost stated in the PR); consequences travel in the same PR; ADR addendum keeps the decision record accurate. |
+| ADR compliance | Good | The ADR-0008 addendum shape fits — see finding 4 for the wording. |
+| ROS conventions | N/A | Workspace-only plan. |
+
+### Findings
+
+1. **[File targeting / Consequences]** — Moving 5e to Standard without moving the report section leaves the findings nowhere to land. `review_depth_classification.md` gives Standard "**Report format**: Full report with all sections" and Deep "plus a Cross-Model Reviews section with per-agent findings"; `review-code/SKILL.md` carries the same split (Cross-Model Reviews is a body section, omitted only in the Light condensed format). The plan's step 1 says the opposite — "Deep differs only in the report's Cross-Model Reviews section" — which would dispatch Gemini/Codex at Standard and then drop their output. Fix: Standard's Report-format row gains the Cross-Model Reviews section too, and the plan states plainly what still distinguishes Deep (currently: nothing but the classification thresholds — worth saying so explicitly rather than inventing a difference).
+
+2. **[Consequences / Tests]** — Behaviour when `plan.md` exists but has no `## Approach` (or an empty one) is unspecified, and it is not hypothetical: `test_branch_mode_filter_survives_noprefix` (test_cross_model_review.sh:1249) writes `BRANCH BOOKKEEPING` to `${MOCK_REPO}/.agent/work-plans/issue-42/plan.md` — exactly the path the new code reads — and then asserts that string is absent from the whole prompt file. Any implementation that falls back to the whole plan, or emits the heading with empty content, breaks that #312 test. Specify: no `## Approach`, or an empty extraction → omit the `## Plan Context` section entirely; add that as a fifth test case. Same rule answers "first 200 lines when the section is shorter": shorter → emit what there is; longer → truncate and **mark the truncation in the prompt** (e.g. `_(Approach truncated at 200 lines.)_`) so a reviewer does not read a cut-off Approach as the complete one and file a false divergence.
+
+3. **[File targeting]** — The gemini-only `## Tool Use` footer currently tells the agent "files under `.agent/work-plans/` (plan and progress bookkeeping) are deliberately excluded". After this change a work-plans file's content *is* in the prompt, so that paragraph contradicts the new section. Reword in the same commit: excluded *from the diff*; the plan's Approach appears above as context only, not for review.
+
+4. **[ADR compliance]** — The addendum *shape* is correct: ADR-0015's Decision is about dispatch mechanics and its Consequences never qualify the trigger by tier, so a status-line note plus a References entry adds no Consequence and rewords no Decision — squarely inside ADR-0008's permitted set, no supersession needed. The proposed *wording* is off: "Scoped exception in issue #320" borrows ADR-0008's exception phrasing for something that is not an exception to this ADR (and ADR-0008's example points at ADRs, not issues). Prefer a navigational note, e.g. "Trigger tier for cross-model dispatch is recorded in issue #320 (Standard + Deep); dispatch mechanics unchanged."
+
+5. **[Approach / Tests]** — Two details in step 2 to pin down before implementing:
+   - The `$NO_PROGRESS` guard is redundant in the normal case (under `--no-progress` `WORK_PLANS_DIR` is a fresh `mktemp -d`, so `plan.md` cannot exist) and only bites in the `--no-progress` + `--work-plans-dir` combination, where `CLI_WORK_PLANS_DIR` wins the precedence chain. Keeping it is defensible, but the planned test "`--no-progress` → absent even if a plan exists" can only be written by constructing that combination — say so in the plan, or drop the guard and let the existence check carry it.
+   - The new tests must place `plan.md` in the *resolved* `WORK_PLANS_DIR` (the same directory the `review-<agent>-prompt.md` files land in), not merely in the mock repo's working tree; a plan written where the script never looks makes the "present" case fail and the "absent" case pass vacuously. Name the four/five functions (`test_plan_context_present`, `_absent`, `_truncated`, `_no_progress`, `_no_approach_section`) and remember to add each to the `# ---- Run all tests ----` list at the end of the suite — a function not listed there silently never runs.
+
+6. **[Consequences]** — `AGENTS.md`'s script-reference row for `cross_model_review.sh` ends "the embedded diff excludes `.agent/work-plans/**`", which after this change tells only half the story. AGENTS.md is an Ask-First file, so either get the one-line amendment approved with the PR or note the deferral explicitly rather than leaving the row quietly stale.
+
+### Summary
+
+The plan is sound and correctly sequenced, and the bloat risk that motivated #312 is adequately bounded — only the `## Approach` section, capped at 200 lines, is re-admitted, and it is re-admitted as labelled context outside the diff fence rather than as diff content. Two specification gaps would produce broken output if implemented literally (Standard's report format, and the absent-`## Approach` case that an existing test walks straight into); both are small and resolvable inline. Ready for implementation with the actions below.
+
+### Recommended Actions
+
+- [ ] Add the Cross-Model Reviews section to Standard's report format in `review_depth_classification.md` and `review-code/SKILL.md`, and state what still distinguishes Deep (finding 1)
+- [ ] Specify: no/empty `## Approach` → omit `## Plan Context` entirely; truncation at 200 lines is marked in the prompt; add both as test cases (finding 2)
+- [ ] Reword the gemini `## Tool Use` paragraph so "work-plans excluded" reads as "excluded from the diff" (finding 3)
+- [ ] Reword the ADR-0015 status-line note as a navigational pointer, not a "scoped exception" (finding 4)
+- [ ] Name the new test functions, put the fixture `plan.md` in the resolved `WORK_PLANS_DIR`, and add every new function to the suite's run list (finding 5)
+- [ ] Decide on the `AGENTS.md` script-reference row — amend with owner approval or note the deferral (finding 6)
+- [ ] Procedural gate unchanged: confirm #313 has merged to `main` (still OPEN as of this review) and run `git merge origin/main` on this branch before the first implementation commit
