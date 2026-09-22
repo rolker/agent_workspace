@@ -727,3 +727,13 @@ Two test fixtures had to be re-established inside their own blocks rather than i
 
 ### Round-2 resolution
 The round-2 must-fix is closed. The install jq now drops every `_agent_workspace`-marked entry under `--force` regardless of which checkout tagged it, and the no-`--force` path is byte-identical in behaviour to round 2 (`$force` false makes the added `select` a tautology, so only entries tagged with this checkout are pruned) — confirmed by reading the filter, not by report. Unmarked user entries survive in both modes. `foreign_skill_link()` gates on `$FORCE`, resolves the link, walks up three levels and requires `.agent/user_tier_scripts.txt` there plus a root different from this one, so it cannot repoint a symlink that is not into an agent_workspace checkout; the stale-link sweep uses the same predicate. The two-checkout test asserts exactly one SessionStart entry, no entry tagged with the old checkout, no hook command into it, every symlink repointed, `--check` clean immediately after, and the user's untagged entry still present — and it re-creates that untagged fixture immediately before the takeover, with a comment naming the malformed-settings rebuild that had dropped the earlier one, so the assertion is real rather than vacuous. Backup rotation is asserted end-to-end (seven back-to-back installs leave exactly five backups, which also proves the same-second collision is gone). The symlink write is now atomic. 27/27 suites pass (78s), shellcheck clean.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 14:32 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Address the two round-3 test-coverage suggestions (negative case for `foreign_skill_link()` on a user's own non-workspace symlink under `--force`; a test for the symlinked-settings.json atomic write path) before publishing. Not started today: the owner's stop is 15:00 and a fix pass plus re-review would not finish. Next session starts here: address-findings (implementer has 1 resume left; round-1 reviewer has 1 resume left), then merge origin/main (behind by PR #316's three registry commits, no overlap), re-review, publish.
