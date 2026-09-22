@@ -465,3 +465,13 @@ Merge recommendation: **merge**. Zero open findings at the head, CI green, the m
 **Decision**: merge
 
 Merge. Zero open findings at 2a2a724, CI green except Copilot's quota-exhaustion check-run; PR-body decision summary refreshed before the merge script runs.
+
+## Merge (report-only)
+**Status**: complete
+**When**: 2026-09-22 09:43 -04:00
+**By**: merge_pr.sh (Claude Code Agent)
+
+**PR**: #308 at `8d571b4`
+**Mode**: report-only
+**Scope**: workspace
+**Conditions**: no "## Decision summary" heading in the PR body or a PR comment
