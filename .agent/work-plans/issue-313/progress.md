@@ -525,3 +525,96 @@ Revise with all eight round-1 plan-review action items folded in, and take the s
 **Plan**: `.agent/work-plans/issue-313/plan.md` at `2c24f22`
 
 Revision folding in round-1 plan review (49e5b16, needs-work) and the owner's Checkpoint decision (single-dispatcher shape). Replaced the sourced-skeleton/three-helper design with one exec'd `_cli_review.sh <agent> <bin> <prompt> <findings> [<timeout>]` (per-agent case for codex/claude/copilot; gemini unchanged on `_agy_review.sh`). Truncates findings before any guard; copies `_agy_review.sh`'s spawn/wait/INT-TERM-HUP-forward pattern. Copilot reverts to the #212-verified stdin form (`-p "" --allow-all-tools -s < prompt`) with a 100 KiB size guard as belt-and-braces pending re-confirmation on 1.0.61 (quota exhausted). Claude pins `--permission-mode plan --permission-prompts none`. Dropped the double footer-strip idea. Extended `cross_model_review.sh`'s availability precheck and named the test-mock rework explicitly. PR still closes #313 and #212; #320 out of scope.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 13:20 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**Issue**: #313 — cross_model_review.sh: codex/claude/copilot arms have no result validation (#288 failure class still undetected)
+**Plan**: `.agent/work-plans/issue-313/plan.md` at `2c24f22`
+**Branch**: `feature/issue-313`
+**Round**: 2 (round 1 at 49e5b16, needs-work)
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Single dispatcher, one wiring point, one test suite, six doc targets. Smaller than the round-1 four-file design. |
+| Issue alignment | Good | Owner's second Checkpoint (revise; single `_cli_review.sh <agent>`) is followed literally, and all eight round-1 action items are folded in. |
+| File targeting | Good | Round-1 gaps closed: precheck (~467), header comment (~31-36), timeout message (~882), existing `AGENTS.md` row, and the named test rework. `agent_wait_patterns.md` added conditionally. |
+| Consequences | Good | Now stated inline and each one traced to a file in the table. |
+| Principle alignment | Good | Forced gate before any guard (Enforcement over documentation); kill/timeout/empty/marker cases all asserted (Test what breaks); one file instead of four (Only what's needed). |
+| ADR compliance | Good | ADR-0015's `exec` / `timeout -k` / background-job / `EXIT=` structure untouched; closing bullet still listed for update. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Round-1 items — status
+
+| # | Round-1 item | Status in 2c24f22 |
+|---|---|---|
+| 1 | Copilot argv regression (#274) | Resolved — approach 3 uses `-p "" --allow-all-tools -s < "$prompt"`, the #212-verified stdin form, never argv; the open question records that 1.0.61 re-confirmation waits on quota. |
+| 2 | Truncate-before-source ordering | Resolved and made moot — nothing is sourced; approach 1 makes `: > "$FINDINGS_FILE"` or `fail` the first statement, matching `_agy_review.sh:69-72`. |
+| 3 | TERM forwarding to the CLI child | Resolved — approach 2 copies `_agy_review.sh:105-141`: EXIT trap after `mktemp -d`, INT/TERM/HUP armed *before* the spawn, CLI as a background job that is `wait`ed on. |
+| 4 | Four files vs one dispatcher | Resolved — owner took the dispatcher; gemini correctly stays on `_agy_review.sh`. |
+| 5 | Double footer strip | Resolved — `-s` output used as-is; the `sed '/^Changes$/q'` idea is dropped with the reason recorded. |
+| 6 | Pin claude's headless permission flag | Addressed; see suggestion 1 on the choice of `--permission-mode plan`. |
+| 7 | Mock/test rework named | Resolved — the table names `make_mock_agent`'s rework, per-CLI mocks (codex `-o` + transcript, claude JSON, copilot stdin + `-s`), the ~1366 argv assertion, the #212 stdin-contract and size-guard tests, and a per-CLI kill assertion. |
+| 8 | Missing doc targets | Resolved — header (~31-36), message (~882), existing `AGENTS.md` row, plus `agent_wait_patterns.md` as a conditional. |
+
+Verified against this host: `claude --help` has both `--permission-mode`
+(choices include `plan`) and `--permission-prompts none` ("anything that
+would prompt is denied automatically; the permission mode still decides
+everything else"); codex-cli 0.155.1 has `-o/--output-last-message` and
+reads stdin when no `[PROMPT]` arg is passed; copilot 1.0.61 has `-p`,
+`-s`, `--allow-all-tools`.
+
+### Findings
+
+1. **[Approach — claude flags, suggestion]** `--permission-prompts none`
+   is the right pin and is sufficient on its own: it auto-denies anything
+   that would prompt, which is the exact `_agy_review.sh` behavior being
+   mirrored. Adding `--permission-mode plan` is a different lever —
+   plan mode is a *workflow* mode whose intended terminal move is
+   presenting a plan for approval, not answering the prompt. In `-p`
+   mode that risks a turn that exits 0 with `subtype: success` and a
+   `.result` that is a plan rather than a review, which every validation
+   gate in this plan would pass. Recommend dropping `--permission-mode
+   plan` (default mode + `--permission-prompts none`), or, if it is kept,
+   asserting in the claude mock test that the review text — not a plan
+   wrapper — is what lands in the findings file. Not blocking: this is
+   one flag, decidable during implementation against a real (non-quota)
+   claude run.
+
+2. **[Approach — copilot size guard, suggestion]** The 100 KiB guard is
+   described as failing the copilot review before invoking the CLI. On
+   the stdin path there is no size limit, so this converts a prompt that
+   *would work* into a hard failure — and it bites precisely on the large
+   Deep-tier PRs where an extra reviewer is most valuable. The regression
+   it defends against (a future edit moving the prompt back to argv) is
+   better caught by the test that already asserts the stdin invocation
+   contract. Recommend one of: make the test the enforcement and drop the
+   runtime fail; or keep the check but emit a warning note into the
+   findings file and proceed; or raise the bound to just under
+   MAX_ARG_STRLEN (128 KiB) so it only ever fires where argv would have
+   failed anyway. Decide during implementation and say which in the PR.
+
+3. **[Approach — precheck scope, nit]** Approach 4 says the availability
+   precheck also requires `CLI_REVIEW_HELPER` present + executable. Keep
+   that conditional on the agent being codex/claude/copilot, the way the
+   existing check is conditional on `gemini` — a missing `_cli_review.sh`
+   must not mark a gemini-only run unavailable.
+
+### Summary
+
+The revision answers all eight round-1 items, and the single-dispatcher
+shape removes the ordering hazard that made item 2 blocking. No design
+flaw remains. Ready for implementation; the two suggestions above are
+one-flag / one-threshold decisions to make while writing the code, and
+should be recorded in the PR description rather than re-planned.
+
+### Recommended Actions
+
+- [ ] Drop `--permission-mode plan` in favour of `--permission-prompts none` alone, or add a claude-mock assertion that the findings file holds a review rather than a plan
+- [ ] Decide the copilot size guard's form (test-enforced invariant, warn-and-proceed, or a 128 KiB bound) and record the choice in the PR description
+- [ ] Scope the `CLI_REVIEW_HELPER` availability check to codex/claude/copilot, matching the existing gemini-only `AGY_REVIEW_HELPER` check
