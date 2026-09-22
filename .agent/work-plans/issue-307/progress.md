@@ -340,3 +340,20 @@ Round 1 (2 must-fix) and round 2 (1 must-fix, 1 suggestion) are all recorded res
 **Decision**: address
 
 Address: apply the one-clause `--enforce` wording fix in run-issue step 10 here, and open a follow-up issue for the sources-helper bug (a progress-only commit ages out prior open findings). Then re-review and back to triage.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 09:10 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #308 at `f556943`
+**Addressed**: Integrated Review at `8e9c0c8` (2026-09-22 09:02 -04:00)
+**Commits**: 5a8b71e, f556943
+
+### Actions
+- [x] Added the `--enforce` caveat to the step-10 "Deferred suggestion-only boxes" paragraph: an `--enforce` refusal on a workspace PR writes no entry and exits 1 (`merge_pr.sh:896-903`), so there is no newest merge entry for `dispatch_phase.sh` to route on (`dispatch_phase.sh:559-566`) and no `checkpoint:merge-refused` re-route on that path — wording matches the caveat the same file already carries at step 11 — `.claude/skills/run-issue/SKILL.md:265` (commit 5a8b71e)
+- [x] Opened follow-up workspace issue #309 (`bug`) for the stale-correlation bug in `review_progress.sh sources` (exact-SHA match at line 366 ages out open findings after a bookkeeping-only commit); proposed fix mirrors `merge_pr.sh`'s `_only_bookkeeping_between` (#286) and the issue carries a five-case fixture proposal for `test_review_code_convergence.sh` — `.agent/scripts/review_progress.sh` (deferred: out of scope for this PR's diff; addressed by follow-up #309) (commit f556943)
+
+### Verification
+- pre-commit hooks passed on both commits (no `--no-verify`)
+- `.agent/scripts/tests/run_script_tests.sh`: 23 suites, all passed
