@@ -6,211 +6,153 @@ https://github.com/rolker/agent_workspace/issues/206
 
 ## Context
 
-`cross_model_review.sh` currently dispatches **one agent per invocation**,
-defaulting to a background tmux session (auto-falls back to sync only when
-tmux is unavailable). `review-code` step 5e calls the script three times in
-sequence to cover gemini/codex/copilot, so sandboxed callers (Claude Code,
-CI — where tmux is unavailable) lose parallelism, not just the tmux session.
-Owner checkpoint (2026-09-22) approved proceeding with four hard
-requirements: a new ADR recording the reversal, rewriting the skill's
-dispatch step in the same PR, explicit parallel-failure-mode tests, and
-keeping the Copilot `-p`/`--allow-all-tools` fix out of scope (tracked as
-#212).
+`cross_model_review.sh` dispatches one agent per invocation, defaulting to a
+tmux session (auto-falls back to *sequential* sync when tmux is unavailable).
+`review-code` step 5e calls it three times in sequence, so sandboxed callers
+(Claude Code, CI) lose parallelism.
 
-PR #311 (merged today) added `.agent/scripts/_agy_review.sh`, which owns the
-gemini findings file end-to-end (truncates it, writes result-or-failure-reason,
-the caller only appends the `--- Review complete/failed ---` marker) — this
-contract is unaffected by the change below and must stay intact.
+Round-1 plan review (needs-work) found the first draft's parallel-sync path
+unsafe: no timeout for non-gemini agents, single-agent binary resolution that
+would abort a multi-agent run over one missing CLI, and a marker-placement
+bug contradicting its own timeout test. The owner's checkpoint decided the
+open tmux question: **remove tmux entirely**, no `--tmux` flag — reviews run
+headless, parallel sync gives the observability tmux provided, dropping
+`build_invoke_cmd` removes the quoted-command-string risk. This revision
+folds in all ten round-1 findings and removes tmux per that decision.
+
+`_agy_review.sh` (PR #311) still owns the gemini findings file and its own
+`--print-timeout` (`AGY_PRINT_TIMEOUT="30m"`), unaffected here; gemini stays
+exempt from the new outer per-agent timeout (item 3).
 
 ## Approach
 
-1. **New ADR** `docs/decisions/0015-parallel-sync-is-the-default-review-dispatch-mode.md`
-   recording: tmux was chosen for interactivity (#2, #65, #66) but reviews
-   run headless now; tmux sessions leak past the review; the tmux path
-   requires building one quoted shell-command string (`build_invoke_cmd`),
-   adding quoting-correctness risk that a plain array-based sync dispatch
-   avoids; and sandboxed callers (no tmux) were silently downgraded to
-   *sequential* sync, losing parallelism entirely. Decision: parallel `&`+
-   `wait` sync dispatch becomes the default; tmux moves behind an explicit
-   `--tmux` opt-in (see recommendation below) instead of being
-   auto-detected. Considered-alternatives section covers gstack's
-   `benchmark-models` `Promise.allSettled`/typed-adapter pattern — rejected
-   because it requires a bun/node runtime the workspace doesn't otherwise
-   depend on, and stays a reference, not scope.
+1. **ADR** `docs/decisions/0015-parallel-sync-is-the-default-review-dispatch-mode.md`:
+   tmux was for interactivity (#2/#65/#66) but reviews run headless now,
+   sessions leaked, `build_invoke_cmd` risked quoting bugs. Decision: remove
+   tmux outright — no flag, no fallback. Considered alternatives: keep tmux
+   behind a flag (rejected — timeout + `tail -f` cover the remaining need);
+   gstack's `Promise.allSettled` adapter pattern (rejected — needs a
+   bun/node runtime, reference only).
 
-2. **`cross_model_review.sh`: add multi-agent dispatch.**
-   - Add `--agents a,b,c` (comma-separated, validated against
-     `AGENT_BINS` keys same as `--agent`). Mutually exclusive with
-     `--agent` (both given → exit 2, matching the existing `--pr`/`--branch`
-     mutual-exclusion pattern).
-   - Internally normalize both flags to one `AGENTS_TO_RUN` array — `--agent`
-     produces a 1-element array, `--agents` splits on comma. The rest of the
-     script (prompt building, dispatch, output) is one loop over this array
-     instead of a single `$TARGET_AGENT`.
-   - **Shared diff fetch.** Fetch the PR/branch diff once (existing
-     `gh pr diff`/`git diff` + `filter_work_plans_diff` code), not once per
-     agent — avoids N redundant `gh`/`git` calls and N copies of a
-     potentially large diff. Each agent's prompt file gets the shared
-     header + shared diff + its own agent-specific footer (only gemini gets
-     the "do not run shell commands" paragraph, per existing logic).
-   - `--sync` stays accepted for backward compatibility (many existing
-     tests and the branch-mode skill examples pass it) but becomes a
-     documented no-op: sync is now the unconditional default. Emit no
-     warning — treating it as a no-op is simpler than deprecation
-     machinery for a flag that still describes real (now default)
-     behavior accurately.
-   - Remove the `command -v tmux` auto-detect fallback. tmux only runs when
-     `--tmux` is passed explicitly; `--tmux` is compatible with both
-     `--agent` and `--agents` (loops the existing per-agent tmux
-     new-session code once per agent, one session per agent named
-     `review-<agent>-<issue>` as today).
+2. **Remove tmux, add `--agents`.** Delete `build_invoke_cmd`, the
+   `tmux new-session`/`has-session` block, `command -v tmux` auto-detect,
+   `TMUX_SESSION=` output, and the `USE_SYNC`/`FORCE_SYNC` branch — sync is
+   the only path. **Remove `--sync`** (not a no-op — with no tmux mode to
+   disambiguate from, it documents a choice that no longer exists);
+   `--sync` now exits 2 as an unknown argument. Add `--agents a,b,c`,
+   mutually exclusive with `--agent` (both → exit 2). Normalize both flags
+   to one `AGENTS_TO_RUN` array; the rest of the script loops over it.
+   **Shared diff fetch** once, not per agent; each prompt gets the shared
+   header/diff + its own agent-specific footer. **Hygiene** (before any
+   dependency check or dispatch): trim, lowercase, reject empty
+   entries/stray commas (exit 2), collapse exact duplicates (dedupe
+   silently — avoids two jobs colliding on one filename), reject unknown
+   agents (exit 2, reusing existing validation).
 
-3. **Parallel sync dispatch (the default path).** For each agent in
-   `AGENTS_TO_RUN`: launch `run_agent_sync` in a background subshell,
-   collecting `$!` into a `pids` array keyed by agent name. After launching
-   all agents, loop over `pids` and call `wait "$pid"` per agent (not
-   `wait -n`) — `wait PID` returns that job's own exit status directly, so
-   no separate `.exit`-file bookkeeping is needed; the PID→agent array
-   already gives the caller everything a poll of on-disk exit files would.
-   **Pitfall to flag for the implementer:** the script runs under
-   `set -euo pipefail`; `wait "$pid"` on a failed job will trigger `set -e`
-   and abort the loop before later agents are waited on unless captured as
-   `wait "$pid" || rc=$?`. This is exactly the failure mode requirement 3
-   below tests for.
-   - Per agent, after `wait` returns: append `--- Review complete ---` or
-     `--- Review failed ---` to that agent's own findings file based on its
-     own exit code — independent per agent, not derived from any other
-     agent's outcome or from an aggregate status.
-   - Single-agent invocations (`--agent`, no `--agents`) are the N=1 case of
-     the same loop and keep today's exact stdout shape (`MODE=sync`,
-     `AGENT=`, `FINDINGS_FILE=`) — no output-format change for existing
-     single-agent callers.
+3. **Per-agent timeout.** Wrap codex/claude/copilot's `run_agent_sync` in
+   `timeout "$AGENT_TIMEOUT"` (default `1800` = 30m, matching
+   `AGY_PRINT_TIMEOUT`; env-overridable so tests inject small values).
+   Timeout exit (124) counts as that agent's failure. Gemini is exempt —
+   `_agy_review.sh`'s own `--print-timeout` already bounds it and an
+   external SIGTERM would race its timeout-then-partial-response contract
+   (#288).
 
-4. **New output shape for `--agents` runs.** Print `MODE=parallel-sync` once,
-   then repeat one `AGENT=`/`FINDINGS_FILE=`/`EXIT=` triplet per agent (exit
-   code as the literal agent exit status, `0` success). Example:
-   ```
-   MODE=parallel-sync
-   AGENT=gemini
-   FINDINGS_FILE=.../review-gemini-findings.md
-   EXIT=0
-   AGENT=codex
-   FINDINGS_FILE=.../review-codex-findings.md
-   EXIT=1
-   AGENT=copilot
-   FINDINGS_FILE=.../review-copilot-findings.md
-   EXIT=0
-   ```
-   Script's own exit code: `0` if every agent succeeded, `3` if at least one
-   agent's sync run failed (mirrors the existing single-agent "sync failure
-   → exit 3" contract) — the per-agent `EXIT=` lines are what let a caller
-   tell *which* agent(s) failed instead of just "something failed."
+4. **Per-agent binary resolution.** Move binary lookup into a per-agent
+   function called before dispatch. A missing CLI (or missing
+   `_agy_review.sh` for gemini) does not abort the run: write `---
+   Review failed ---` plus the reason into that agent's findings file,
+   skip launching it, continue with the others. Exit 1 only when *no*
+   selected agent has a resolvable binary.
 
-5. **Rewrite `.claude/skills/review-code/SKILL.md` step 5e** in the same PR:
-   replace the three sequential `--agent gemini`/`--agent codex`/
-   `--agent copilot` invocations with one `--agents gemini,codex,copilot`
-   call (PR mode and branch mode variants). Update the "collecting findings"
-   guidance: today's text says "if the script exits non-zero for one agent,
-   note it and continue" — that assumed one script call per agent. Rewrite
-   it to say the skill parses every `AGENT=`/`FINDINGS_FILE=`/`EXIT=`
-   triplet from stdout regardless of the script's own overall exit code,
-   since one call now covers several agents and the top-level exit code
-   alone can't distinguish "all failed" from "one failed." Update the
-   auto-detect paragraph ("script auto-detects tmux vs sync") to describe
-   the new default (always parallel sync) and `--tmux` as explicit opt-in
-   for live-observe via `tmux attach` (mention `tail -f` on the findings
-   file as the non-tmux equivalent).
+5. **Parallel dispatch.** Each agent runs in a background subshell that
+   itself appends `--- Review complete/failed ---` to its own findings
+   file based on its own exit status immediately after the run — markers
+   live inside the job, not written by the parent after `wait`, so a slow
+   agent never delays a fast agent's marker. Parent collects `$!` per
+   agent into a `pids` array, then loops `wait "$pid" || rc=$?` per agent
+   (script runs under `set -euo pipefail`; an uncaptured `wait` on a
+   failed job would abort the loop before later agents are collected).
+   Background jobs write nothing to stdout, so the `MODE=`/`AGENT=`/
+   `FINDINGS_FILE=`/`EXIT=` block stays contiguous.
 
-6. **Update the script's own header comment** (usage block, lines ~21-46) to
-   document `--agents`, the parallel-sync default, `--tmux` opt-in, and the
-   new multi-agent stdout shape.
+6. **Shared-diff failure path.** If the diff fetch fails or is empty,
+   write the existing `--- Review error: ... ---` marker into *every*
+   selected agent's findings file (truncating), print no `AGENT=`
+   triplets, exit 3.
+
+7. **Output/exit contract.** `--agent X` keeps today's exact `MODE=sync`
+   block (no `EXIT=`). `--agents X[,...]` (including one entry) →
+   `MODE=parallel-sync` once, then one `AGENT=`/`FINDINGS_FILE=`/`EXIT=`
+   triplet per agent. Script exit: `0` all succeeded, `3` if any agent
+   failed (missing binary, timeout, or nonzero exit). Disambiguator: exit
+   3 with no `AGENT=` triplets = setup/shared-diff failure (item 6); exit
+   3 with triplets = per-agent failures, read `EXIT=`. State this in the
+   header and the skill.
+
+8. **Rewrite `.claude/skills/review-code/SKILL.md` step 5d/5e**: one
+   `--agents gemini,codex,copilot` call instead of three sequential
+   `--agent` calls (PR and branch mode). Findings-parsing keyed on
+   `EXIT=` per triplet, not the script's top-level exit code; state the
+   exit-3 disambiguator; remove tmux-attach guidance, note `tail -f
+   <findings-file>` for live observation.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `docs/decisions/0015-parallel-sync-is-the-default-review-dispatch-mode.md` | New ADR recording the tmux-default reversal |
-| `.agent/scripts/cross_model_review.sh` | Add `--agents`, loop dispatch over an agent array, parallel `&`+`wait` sync as default, remove tmux auto-detect, add `--tmux` opt-in, shared diff fetch, new multi-agent stdout shape, rewritten header comment |
-| `.claude/skills/review-code/SKILL.md` | Step 5e: single `--agents` invocation, updated findings-parsing guidance, updated mode description |
-| `.agent/scripts/tests/test_cross_model_review.sh` | New tests (below) + adjust `test_agy_tmux_invocation` to pass `--tmux` explicitly (auto-detect fallback is gone) |
+| `docs/decisions/0015-...md` | New ADR: tmux removal + rationale; gstack under considered alternatives |
+| `.agent/scripts/cross_model_review.sh` | `--agents`, per-agent timeout + binary resolution, parallel dispatch with in-job markers, remove `build_invoke_cmd`/tmux/`--sync`, N-agent shared-diff error path, new stdout shape, rewritten header |
+| `.agent/scripts/tests/test_cross_model_review.sh` | Retire `test_agy_tmux_invocation`; add tests below |
+| `.claude/skills/review-code/SKILL.md` | Step 5d/5e per item 8 |
+| `.agent/knowledge/agent_wait_patterns.md` | Line 63 row + "See also" (72-74) name tmux polling as the wait pattern — replace with bounded parallel `wait` + per-agent timeout; `tail -f` for live observation |
+| `AGENTS.md` | `cross_model_review.sh` script-table row: add `--agents`; verify no stale tmux phrasing |
 
-### New/changed tests in `test_cross_model_review.sh`
+`.agent/knowledge/review_depth_classification.md` checked — no tmux mention, no change needed.
 
-- `test_agents_flag_all_succeed` — baseline: `--agents gemini,codex` with
-  both mocks exiting 0; asserts `MODE=parallel-sync`, both `AGENT=`/
-  `FINDINGS_FILE=`/`EXIT=0` triplets present, both findings files carry
-  `--- Review complete ---`, script exits 0.
-- `test_agents_flag_partial_failure` — one mock agent CLI exits 1, the
-  other exits 0; asserts the failing agent's findings file gets
-  `--- Review failed ---` and the succeeding agent's gets
-  `--- Review complete ---` (markers stay independent), both `EXIT=` lines
-  are correct, and the script's own exit code is 3 (per requirement 4)
-  while both findings files are still fully written (not short-circuited
-  by the first failure — this is what catches the `set -e`/`wait` pitfall
-  from step 3 if the implementation gets it wrong).
-- `test_agents_flag_one_times_out` — one mock agent sleeps past a short
-  injected timeout (or simulates the agy-timeout contract non-zero exit)
-  while the other completes normally; asserts the timed-out agent's
-  findings/marker reflect failure, the other agent's findings/marker are
-  unaffected and not delayed by the slow one, and the script doesn't hang
-  (test has its own timeout guard).
-- `test_agents_and_agent_mutually_exclusive` — `--agent gemini --agents
-  gemini,codex` exits 2 with a clear error.
-- `test_agents_flag_rejects_unknown_agent` — `--agents gemini,bogus` exits
-  2 (reuses the existing unknown-agent validation, applied per list entry).
-- `test_tmux_requires_explicit_flag` — adjust/rename
-  `test_agy_tmux_invocation`: with a working mock `tmux` on `PATH` and
-  **no** `--tmux` passed, the script still runs sync (auto-detect fallback
-  removed); a second assertion (or a sibling test) confirms `--tmux`
-  explicitly still launches the tmux session with the existing quoted
-  command-string behavior intact.
+### Tests (`test_cross_model_review.sh`)
+
+Add mock `codex`/`copilot`/`claude` binaries (suite currently only mocks
+`agy`/`gh`/`git`; drop the `tmux` mock). New/changed cases: all-succeed
+baseline; partial failure (both findings files fully written, exit 3); one
+agent times out (`AGENT_TIMEOUT=1`, mock sleeps 5s) while the fast agent's
+marker isn't delayed; wall-clock concurrency (three mocks sleeping `N`s
+finish in well under `3N`); missing binary for one agent doesn't abort the
+others; `--agent`/`--agents` mutual exclusion; unknown/empty/stray-comma
+entries rejected; duplicate agent dedupes to one run; shared-diff failure
+writes the error marker into every selected findings file with no triplets
+(exit 3); `--sync` now rejected as unknown argument; retire
+`test_agy_tmux_invocation`.
 
 ## Principles Self-Check
 
 | Principle | Consideration |
 |---|---|
-| A change includes its consequences | Skill step 5e rewritten in the same PR (requirement 2); script's own usage header updated so it doesn't go stale. |
-| Capture decisions, not just implementations | New ADR-0015 records the reversal and rationale before implementation lands, per ADR-0001. |
-| Only what's needed | gstack's bun/node adapter pattern stays out of scope, referenced only in the ADR's considered-alternatives; `--sync` kept as a no-op instead of adding deprecation machinery. |
-| Test what breaks | Explicit partial-failure and timeout tests for the new background-job path (requirement 3), plus mutual-exclusion/validation tests for the new flags. |
-| Improve incrementally | Single-agent `--agent` callers keep today's exact output contract — no forced migration for existing scripts/tests beyond the tmux auto-detect removal. |
-| Workspace improvements cascade to projects | Downstream `rolker/ros2_agent_workspace#461` (Copilot-only port) can adopt the same `--agents` shape once this lands; not blocking this PR. |
+| Consequences / cascades | Skill 5d/5e, `agent_wait_patterns.md`, `AGENTS.md` row updated here; `ros2_agent_workspace#461` can adopt `--agents` once landed, not blocking. |
+| Capture decisions | ADR-0015 records the removal before implementation, per ADR-0001. |
+| Only what's needed | gstack pattern stays reference-only in the ADR. |
+| Test what breaks | Timeout, binary-failure, marker-independence, N-agent shared-diff failure, hygiene, true concurrency all tested. |
+| Improve incrementally | `--agent` callers keep today's exact output; `--sync` removal is the only breaking change and has no meaning post-tmux. |
 
 ## ADR Compliance
 
-| ADR | Triggered | How addressed |
-|---|---|---|
-| 0001 — Adopt ADRs | Yes | New ADR-0015 for this reversal. |
-| 0008 — Cross-reference addendums | No (new decision, not an edit to an existing accepted ADR) | N/A |
-| 0013 — progress.md entry-type vocabulary | Yes (process) | Standard `review_progress.sh persist` calls through the review loop; no content changes needed. |
+0001 (Adopt ADRs) — Yes, new ADR-0015. 0008 (cross-reference addendums) —
+No, this is a new decision, not an edit to an accepted ADR. 0013
+(progress.md vocabulary) — Yes/process, standard `review_progress.sh
+persist` calls.
 
 ## Consequences
 
-| If we change... | Also update... | Included in plan? |
-|---|---|---|
-| `cross_model_review.sh` dispatch shape | `.claude/skills/review-code/SKILL.md` step 5e | Yes |
-| Script's stdout contract | Any other consumer parsing `MODE=`/`AGENT=`/`FINDINGS_FILE=` | Checked — `review-code` is the only in-repo consumer found; downstream `ros2_agent_workspace#461` is out of scope/not blocking |
-| tmux auto-detect removed | Existing `test_agy_tmux_invocation` | Yes — adjusted to pass `--tmux` explicitly |
-| `.agent/knowledge/` digests mentioning tmux dispatch | — | No — historical notes, not living docs (per issue review) |
+Dispatch-shape change → `review-code` SKILL.md 5d/5e (included). Stdout
+contract → checked for other consumers; only `review-code` parses it,
+`ros2_agent_workspace#461` out of scope/not blocking. tmux removal →
+`test_agy_tmux_invocation` retired, `agent_wait_patterns.md` and the script
+header updated (included). `--sync` removal → tests/skill examples updated
+here (included).
 
 ## Open Questions
 
-- **tmux: keep behind `--tmux` or remove entirely?** Recommendation: **keep
-  behind an explicit `--tmux` flag**, not remove. The issue's own proposal
-  frames it this way, live-observe via `tmux attach` has a real (if now
-  secondary) use case for a stuck long-running agent, and gating behind an
-  explicit flag already satisfies the actual complaint (silent
-  auto-detect downgrading sandboxed/parallel callers to sequential sync).
-  Full removal would also force reworking `test_agy_tmux_invocation`'s
-  quoted-command-string coverage rather than just adjusting its
-  invocation, for no behavior-correctness gain. If the owner would rather
-  delete tmux support outright, that's a small follow-up scope change to
-  flag at `review-plan`.
-- Exact multi-agent aggregate exit-code contract (script exits 3 if any
-  agent fails) is a judgment call, not dictated by the issue — confirm at
-  `review-plan` that "any failure → exit 3, but all findings files/markers
-  still fully written" is the right contract versus, say, always exiting 0
-  and pushing all failure signaling into the per-agent `EXIT=` lines.
+None — the owner's checkpoint resolved the round-1 open question (remove
+tmux entirely); this revision folds in all ten round-1 findings.
 
 ## Estimated Scope
 
