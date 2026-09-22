@@ -72,6 +72,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_issue_helpers.sh"
 # shellcheck source=_worktree_helpers.sh
 source "$SCRIPT_DIR/_worktree_helpers.sh"
+# shellcheck source=_resolve_default_branch.sh
+source "$SCRIPT_DIR/_resolve_default_branch.sh"
 
 PR_NUMBER=""
 WORKTREE_TYPE=""
@@ -1091,13 +1093,22 @@ _is_bookkeeping_path() {  # <path> -- rc 0 when the path is a merge-time documen
     done
     return 1
 }
-_ci_walk_bookkeeping() {  # <wt> <start-sha> -- prints ancestors of <start>, newest first, reachable through bookkeeping-only single-parent commits; stops at the first other commit, a merge, main, or 25 steps
-    local wt="$1" cur="$2" base parents paths p n=0
-    base=$(git -C "$wt" merge-base "$cur" origin/main 2>/dev/null || echo "")
+_ci_walk_bookkeeping() {  # <wt> <start-sha> -- prints ancestors of <start>, newest first, reachable through bookkeeping-only single-parent commits; stops at the first other commit, a merge, a root commit, the default branch, or 25 steps
+    local wt="$1" cur="$2" base default_branch line parents paths p n=0
+    # The stop bound is the repo's own default branch, not a hardcoded
+    # `origin/main`: where they differ (or origin/main is absent) the
+    # merge-base would fail silently and drop this bound entirely.
+    default_branch=$(resolve_default_branch "$wt" 2>/dev/null || echo "")
+    [[ -n "$default_branch" ]] && base=$(git -C "$wt" merge-base "$cur" "$default_branch" 2>/dev/null || echo "")
     while [[ $n -lt 25 ]]; do
         [[ -n "$base" && "$cur" == "$base" ]] && return 0
-        parents=$(git -C "$wt" rev-list --parents -n 1 "$cur" 2>/dev/null | cut -d' ' -f2-)
-        [[ $(wc -w <<<"$parents") -eq 1 ]] || return 0
+        # `rev-list --parents -n 1` prints "<commit> <parent>...", so a root
+        # commit yields a single field. Count fields on the WHOLE line: a
+        # `cut -d' ' -f2-` on a one-field line returns the line itself, which
+        # would make a root look like its own parent and self-diff to empty.
+        line=$(git -C "$wt" rev-list --parents -n 1 "$cur" 2>/dev/null)
+        [[ $(wc -w <<<"$line") -eq 2 ]] || return 0
+        parents="${line#* }"
         paths=$(git -C "$wt" diff --name-only "$parents" "$cur" 2>/dev/null) || return 0
         while IFS= read -r p; do
             [[ -z "$p" ]] && continue
