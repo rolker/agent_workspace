@@ -66,7 +66,12 @@ no check-run fixtures at all). Fixtures go there.
    Both lines are additive to the existing `echo "failed"` /
    `echo "success"` return-value lines — they must go to `>&2`, not
    stdout, since `_ci_state=$(_ci_poll_state "$CI_TARGET_SHA")` (line 1075)
-   only wants the bare state word on stdout.
+   only wants the bare state word on stdout. The excluded-run note is
+   emitted **once per run** (a `_ci_excluded_noted` guard), not once per
+   poll iteration — the caller re-enters `_ci_poll_state` every
+   `MERGE_PR_CI_POLL_SECONDS` for up to `MERGE_PR_CI_TIMEOUT_SECONDS`
+   (plan review finding 3). The `CI failed:` line needs no guard: `failed`
+   breaks the loop on first occurrence.
 
 4. **Fixtures in `test_merge_pr_gate.sh`** — add a `CHECKRUNS_COPILOT_FAILURE`
    fixture constant alongside the existing `CHECKRUNS_*` block (lines
@@ -82,18 +87,25 @@ no check-run fixtures at all). Fixtures go there.
      named `Lint` success run) → merge proceeds (`merged_called` true,
      output contains `CI checks passed`).
    - **ci-20**: check-runs = `{copilot: failure, Lint: in_progress}` →
-     with a short grace/timeout window, state stays `pending`/times out
-     without a real CI failure being reported — assert `merged_called`
-     is false and the output does **not** contain `CI checks failed`
-     (it should time out or report `never-registered`/timeout wording
-     instead, since the only non-excluded run is still in progress).
-   - Also add a regression test that a genuine CI failure still fails:
-     check-runs = `{copilot: failure, Lint: failure}` → `merged_called`
-     false and output contains `CI checks failed`, confirming the
-     exclusion doesn't mask a real failure that happens to co-occur with
-     a Copilot failure.
-   Wire all three into the "Run all tests" list at the bottom of the file
-   (mirroring lines 729-749).
+     run with `MERGE_PR_CI_TIMEOUT_SECONDS=0` (as ci-11 does): with `Lint`
+     registered and in progress the only reachable outcome is `timeout`,
+     so assert `merged_called` false **and** output contains `CI checks
+     did not complete`, and does **not** contain `CI checks failed` (plan
+     review finding 4).
+   - **ci-21**: a genuine CI failure still fails: check-runs = `{copilot:
+     failure, Lint: failure}` → `merged_called` false, output contains
+     `CI checks failed` and `CI failed: Lint (pre-commit) (failure)`, and
+     the culprit line does not name the Copilot run.
+   - **ci-22** (plan review finding 1): Copilot's run as the **only**
+     check-run, workflows `total_count` ≥ 1, `MERGE_PR_CI_GRACE_SECONDS=0`
+     → `merged_called` false and output contains `no checks registered
+     for` — identical to an empty `check_runs` array. This is the one case
+     where the filter changes the `registered` computation; it pins the
+     uniform application of the filter to all three classifications.
+   The suite has no test registry (plan review finding 2): tests are
+   inline blocks, so the four are appended after `ci-12b` in the CI-wait
+   section. Fixture constants (`COPILOT_RUN`, `CHECKRUNS_COPILOT_*`) sit
+   with the existing `CHECKRUNS_*` block.
 
 5. **One-line script comment only — no doc/table changes.** The exclusion
    rationale lives in the code comment from step 1. Per the owner's
