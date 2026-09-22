@@ -227,3 +227,59 @@ All six round-1 findings are addressed substantively, not cosmetically — item 
 **Decision**: proceed
 
 Plan approved at plan-review round 2 (75e7005, Plan b248f3c) with the three non-blocking notes folded into implementation (all three "Deep only" strings in review-code SKILL.md; a not-fence-aware comment on the Approach extractor; a post-merge follow-up on what still distinguishes Deep). HOLD: implementation does not start until #313 merges to main and origin/main is merged into this branch; the host dispatches it then.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 14:05 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-320 at 9a69727
+**Plan**: `.agent/work-plans/issue-320/plan.md` at `b248f3c`
+
+Implemented on top of `feature/issue-313`, merged into this branch at
+`6ed80f6` by owner decision in place of the plan's "wait for #313 to reach
+`main`" gate. `_cli_review.sh`, `_agy_review.sh`, and `run_agent_sync` /
+the availability precheck were left untouched; #320's script edits are
+confined to the shared-prompt builder and the gemini Tool Use footer, and
+its tests were added alongside #313's mocks rather than reworking them.
+
+### What landed
+
+| Commit | Change |
+|---|---|
+| `a50953c` | Tier change: `.claude/skills/review-code/SKILL.md` (tier list, step-5 dispatch list, 5e **Activates at**, specialist parenthetical, Cross-Model report-section note) and `.agent/knowledge/review_depth_classification.md` (Standard gains the cross-model specialist and the Cross-Model Reviews report row; a paragraph states plainly that nothing but the classification thresholds now distinguishes Deep). Light unchanged. No `Deep only` string survives in either file. |
+| `ece0af3` | `cross_model_review.sh`: a `## Plan Context` section built once into the shared prompt, after the diff fence and before the output-format footer, from `${WORK_PLANS_DIR}/plan.md`'s `## Approach`; capped at 200 lines with a visible truncation marker; framed as context ("flag divergences between the diff and this plan, but do not review the plan itself"); omitted entirely when the file is absent, the section is absent or blank, or `--no-progress` is set. A comment records that the awk extractor is not fence-aware and that its failure mode is a shorter block, never a longer one. Gemini's `## Tool Use` footer now says work-plans files are excluded **from the diff** and points at the context block. Five new tests plus the `AGENTS.md` script-reference row (owner-approved). |
+| `9a69727` | ADR-0015 addendum in ADR-0008 style — Status-line navigational pointer plus a References entry for #320, no Decision/Consequences edit — and plan.md synced inline (`## Implementation Notes` recording the branch-on-#313 decision; the superseded precondition and the stale pre-#313 assertion count corrected). |
+
+### Tests
+
+`test_plan_context_present`, `_absent_no_plan`,
+`_absent_no_approach_section` (covers both no-heading and empty-section),
+`_truncated`, `_no_progress` (the `--no-progress` + `--work-plans-dir`
+combination, the only one where a plan.md can exist), each writing its
+fixture into the resolved `WORK_PLANS_DIR` and each registered in the
+suite's run list.
+
+- `bash .agent/scripts/tests/test_cross_model_review.sh` — 327 passed, 0
+  failed (24 of them new here; `test_branch_mode_filter_survives_noprefix`
+  and `test_prompt_tool_use_guidance` still pass unchanged).
+- `bash .agent/scripts/tests/run_script_tests.sh` — all 23 suites passed
+  in 87s, no temp leaks.
+
+No real agy/codex/claude/copilot prompt was run; all dispatch went through
+the suite's mocks.
+
+### Deviations
+
+- The plan's #313 precondition was replaced by the owner's merge decision
+  (recorded in plan.md and above).
+- The plan quoted 179 existing assertions; on top of #313 the suite is at
+  327. Corrected in plan.md.
+- The plan-review follow-up note ("what still distinguishes Deep") is left
+  for the PR body, per the plan review's instruction that it is a
+  post-merge follow-up and not a code change.
+
+### Actions
+- [ ] PR body must state the added Standard-tier cost (cross-model dispatch
+      latency ~2.5-3.5 min bounded by `AGENT_TIMEOUT`/`AGY_PRINT_TIMEOUT`,
+      plus Gemini/Codex/Copilot quota; Light unaffected) and raise the
+      post-merge follow-up on what should still distinguish the Deep tier.
