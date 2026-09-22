@@ -484,3 +484,13 @@ Address then merge: apply the one open suggestion (ADR-0015 line 101 says the fo
 
 ### Merge recommendation
 Merge. Zero open must-fix, zero open suggestions, four green CI checks on the head, and an approving PR-mode local review of the final diff. `merge_pr.sh`'s review gate has what it looks for: this entry at the PR head with no open must-fix, and a `## Decision summary` already present in the PR body (none posted by this phase — no GitHub writes and no push were made, per the phase contract).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 12:40 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Merge. Closing Integrated Review (3f9b79d) has no open findings (its unchecked "No open findings" line was a placeholder, closed as such); four CI checks green on the head; Copilot is a quota notice only.
