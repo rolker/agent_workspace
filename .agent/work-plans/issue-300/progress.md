@@ -185,3 +185,21 @@ that is what makes it once per run rather than once per poll.
 - `bash .agent/scripts/tests/test_merge_pr_gate.sh` — 64 passed, 0 failed (was 61+1 fail mid-fix, then 62, then 64 with the two new cases)
 - `.agent/scripts/tests/run_script_tests.sh` — all 23 suites passed
 - pre-commit ran on every commit; no `--no-verify`. Not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 10:47 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-300 at `4231b9b`
+**Base**: main
+**Depth**: Standard (reason: enforcement script merge_pr.sh; 86 changed code lines in the fix range a0ee7ad..4231b9b, re-review scoped to the fix)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+### Findings
+- [ ] (suggestion) ci-24's `poll_count=$(grep -c ... || echo 0)` yields "0\n0" when the call log is missing (grep -c prints 0 and exits 1), so the `-ge 2` test dies with a bash arithmetic error instead of the intended fail message; use `|| true` as the line above does — `.agent/scripts/tests/test_merge_pr_gate.sh:786`
+
+### Notes
+All four round-1 findings verified resolved against source: the once-only flag now lives in the wait loop's own shell (merge_pr.sh:1109-1115) and `_ci_poll_state` prints `<state>|<excluded>` on all five return paths (error/none/failed/pending/success), with `excluded` initialised to "" and captured before the copilot run is filtered out; the caller splits on the first `|` so the `case` still matches bare state words. The note now reports `status=<status>` for a null conclusion instead of an invented `conclusion=pending`. ci-23 (Copilot-only in-progress head -> never-registered) and ci-24 (two polls, note exactly once, with a poll-count guard against a vacuous pass) are both present and passing. ci-21's line-scoped `grep -q` is not weaker than the old glob — bash `==` globs match across newlines, so the old form could match `CI failed:` and `copilot-...` on unrelated lines; the grep enforces the actual intent. Verified: test_merge_pr_gate.sh 64/64; run_script_tests.sh all 23 suites green; `bash -n` clean on both files; no other caller of `_ci_poll_state` and no script parses merge_pr.sh stdout (Makefile `merge-pr` only), so the note's move from stderr to stdout is inert. Independent adversarial subagent found nothing. shellcheck/pre-commit still unavailable in this environment — the Lint job on push is the first real shellcheck pass.
