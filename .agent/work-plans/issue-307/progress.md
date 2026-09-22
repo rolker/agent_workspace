@@ -420,3 +420,16 @@ Address: one more address-findings pass for the three wording suggestions (run-i
 - [x] Step 10's "One path is the exception" now states the re-route depends on a merge entry existing and names both entry-less paths (`--enforce` refusal on a *workspace* PR at `merge_pr.sh:896-903`; a passing gate at `:889-890` whose merge then fails on CI, mergeability, or `gh pr merge`) — `.claude/skills/run-issue/SKILL.md:271`
 - [x] Step 11's caveat scoped to runs that recorded a merge entry, with the `workspace` qualifier and the project-PR fall-through to report-only (`merge_pr.sh:896,904-908`) spelled out; the `checkpoint:merge-refused` re-route claim no longer covers the entry-less paths — `.claude/skills/run-issue/SKILL.md:403-407`
 - [x] "Who writes what" gate row qualified: "except `--enforce` on a workspace PR, which refuses with no entry" — `.agent/knowledge/review_loop_lifecycle.md:34`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-22 09:31 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**PR**: #308 at 2a2a724
+**Depth**: Standard (reason: skill + governance knowledge doc; scoped to the prose fix range 688d1e9..2a2a724)
+**Must-fix**: 0 | **Suggestions**: 0
+
+### Findings
+- [ ] No issues found. LGTM.
