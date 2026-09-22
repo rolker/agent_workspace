@@ -183,3 +183,49 @@ mock codex/copilot/claude binaries plus a wall-clock concurrency test, and
 the exit-3 disambiguator) and implements the owner's checkpoint decision to
 remove tmux entirely (no `--tmux` flag; `--sync` also removed as it has no
 remaining meaning once tmux is gone).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 11:14 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**Issue**: #206 — cross_model_review.sh: reconsider tmux-default; sync should be parallel (and gstack has a non-tmux pattern worth borrowing)
+**Plan**: `.agent/work-plans/issue-206/plan.md` at `340e4e4`
+**Branch**: `feature/issue-206`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Single PR: ADR + script + tests + three docs. Copilot `-p` fix still out (#212); gstack still reference-only. 159 lines is over the 60-120 guideline but every extra line is a folded round-1 finding — not padding. |
+| Issue alignment | Good | Implements the owner checkpoint exactly: tmux removed outright, no `--tmux` flag, ADR records the removal. All ten round-1 action items are addressed (see Findings for the two answered by deviating with a stated rationale). |
+| File targeting | Good | `agent_wait_patterns.md` (line 63 row + See-also 72-74) and the `AGENTS.md` script row are now listed; `review_depth_classification.md` explicitly checked and declared no-change. Verified: neither knowledge doc mentions `--sync`, so nothing else goes stale. |
+| Consequences | Good | Shared-diff error path defined for N agents; `--sync` removal traced to its one non-test caller (`review-code` SKILL.md:347, rewritten here) and to ~20 `--sync` invocations in the test suite (finding 4). |
+| Principle alignment | Good | "Consequences" — the two missed living docs are in. "Test what breaks" — timeout, per-agent binary failure, marker independence, hygiene, shared-diff failure and concurrency all have cases. "Only what's needed" — gstack stays in the ADR. |
+| ADR compliance | Good | ADR-0001 satisfied by 0015 (still the next free number); ADR-0008 correctly N/A; ADR-0013 process-only. `AGENTS.md` is an Ask-First instruction file, but the owner's round-1 checkpoint named that script row explicitly — approval exists, don't re-ask. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+All suggestions — none blocks implementation.
+
+1. **[Approach — `--sync`, low]** Removing `--sync` to exit 2 is the right call, not a no-op shim. The blast radius is one non-test caller (rewritten in this PR) and the test suite; no knowledge doc names the flag. The only exposure is a live agent session that memorised it, and there the failure is loud, immediate and trivially retried — whereas a silent no-op would need its own test, its own removal follow-up, and would keep documenting a choice that no longer exists. One cheap improvement: special-case `--sync` in the argument parser with a named message ("`--sync` was removed in #206 — parallel sync is the only dispatch mode") while still exiting 2, so a stale caller reads the answer instead of a bare unknown-argument usage dump. Assert that string in the rejection test.
+2. **[Approach — exit contract, low]** Item 4 (exit 1 when *no* selected agent resolves) and item 7 (exit 3 when any agent failed) leave the all-unavailable `--agents` case undefined on stdout. State it: exit 1, no `MODE=`/`AGENT=` lines, reasons in each findings file — and put it in the skill's disambiguator next to the exit-3 split, so `review-code` has all three cases (1 = nothing runnable, 3 + no triplets = setup, 3 + triplets = per-agent).
+3. **[Test — concurrency, medium]** A pure wall-clock bound ("three `N`s mocks finish well under `3N`") is the one new test that can flake on a loaded runner. Make the primary assertion structural: each mock writes a start and an end timestamp (or start/end marker files), and the test asserts *overlap* — agent B started before agent A finished. Keep the wall-clock check as a loose secondary (`< 2N`, with `N` >= 2) rather than the sole signal. Overlap is what "parallel" means and it holds under arbitrary scheduler delay; a tight wall-clock bound does not.
+4. **[Test — sweep, low]** The tests row says "retire `test_agy_tmux_invocation`; add tests below" but not that roughly twenty existing invocations pass `--sync` (to avoid tmux) and must all drop it once the flag exits 2. Loud failures, so no risk of silent drift — but naming the sweep in the plan keeps the diff's size unsurprising at code review.
+5. **[Approach — timeout, low]** `AGENT_TIMEOUT=1800` matching `AGY_PRINT_TIMEOUT` is a sound default: it is the longest any agent has ever been allowed, and with parallel dispatch it bounds the whole call rather than 3x. Gemini's exemption is justified (an outer SIGTERM would race `_agy_review.sh`'s timeout-then-partial-response contract from #288), but it leaves gemini unbounded if `agy` ignores its own `--print-timeout`. Optional backstop: wrap gemini in `timeout` at a value comfortably above its internal one (e.g. `AGY_PRINT_TIMEOUT` + 300s), which cannot race the normal path because the inner timeout always fires first.
+6. **[Approach — shared-diff failure, low]** Writing the error marker into every selected findings file while printing no triplets means the caller is told nothing about files that were just written. That is coherent only because the skill learns the disambiguator in the same PR — so make sure the rewritten 5d/5e says, in words, that on exit 3 with no triplets there is nothing to read and the error is on stderr. Keep the truncating (`>`) write the plan specifies, so a stale findings file from a previous run can't be misread as this run's output.
+
+### Summary
+
+The revision folds in all ten round-1 items — the two it answers by deviating (dedupe silently instead of exit 2; gemini exempt from the outer timeout) both state a rationale I accept. The owner's tmux decision is implemented cleanly and simplifies the design rather than complicating it: no `build_invoke_cmd`, no quoted command strings, one dispatch path. The remaining items are implementation-level and code review will catch them. Ready to implement.
+
+### Recommended Actions
+
+- [ ] Reject `--sync` with a named message ("removed in #206 — parallel sync is the only mode") rather than the generic unknown-argument dump; assert the message in the test (finding 1)
+- [ ] Define the all-agents-unavailable stdout/exit case (exit 1, no triplets) and put all three exit cases in the skill's disambiguator (finding 2)
+- [ ] Make the concurrency test assert interval overlap between agents, with wall clock as a loose secondary bound (finding 3)
+- [ ] Note in the plan/PR that every existing `--sync` invocation in `test_cross_model_review.sh` is swept out (finding 4)
+- [ ] Optional: outer `timeout` backstop for gemini set above `AGY_PRINT_TIMEOUT` so it cannot race the #288 contract (finding 5)
+- [ ] In the rewritten 5d/5e, state that exit 3 with no triplets means nothing to read; keep the truncating write on the error path (finding 6)
