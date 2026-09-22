@@ -47,10 +47,9 @@ via `.agent/scripts/progress_append.sh` and read back via
 
 ## What `run-issue` reads to move on
 
-`.agent/scripts/dispatch_phase.sh next --issue <N> --pr <state> [--head
-<sha>]` reads only the newest `progress.md` entry (plus `--pr` and the
-optional `--head`, its two non-timeline inputs) and prints an `action=`
-token. The routing key is the entry's `base_type`
+`.agent/scripts/dispatch_phase.sh next --issue <N> --pr <state>` reads only
+the newest `progress.md` entry (plus `--pr`, the one non-timeline input)
+and prints an `action=` token. The routing key is the entry's `base_type`
 and its fields — never adjacency to the entry before it. Two routing rules
 worth remembering because they read as exceptions:
 
@@ -63,13 +62,6 @@ worth remembering because they read as exceptions:
   loop pauses at a checkpoint (`issue-actions` / `findings`) before moving
   on; none open means proceed straight to the next phase or the `merge`
   checkpoint.
-- **An approved `## Local Review (Pre-Push)` skips the PR-side re-review
-  when nothing changed.** With a PR open and the host passing `--head
-  <sha>`, a pre-push review whose SHA is still the PR head — or an ancestor
-  with only bookkeeping files changed since, `merge_pr.sh`'s #286
-  equivalence rule — routes to `triage-reviews` rather than a
-  `review-code <PR>` that would re-read an unchanged diff (issue #314).
-  Any code commit after that review brings the re-review back.
 
 `round` — the pre-push review-loop counter compared against `MAX_ROUNDS`
 (3) — counts only `## Local Review (Pre-Push)` entries with

@@ -30,27 +30,14 @@
 #
 #   dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged>
 #                      [--type workspace|project] [--progress <file>]
-#                      [--head <sha>]
 #     The run-issue decision table (28 rows; see the plan for #276 PR 2).
-#     `--head <sha>` is the PR's current head (the host's step-2 probe reads
-#     it from `gh pr list --json headRefOid`). It is optional and affects
-#     exactly one state: an approving `## Local Review (Pre-Push)` newest
-#     entry with `--pr draft|open`. When the reviewed SHA still covers that
-#     head — same commit, or an ancestor with only bookkeeping files changed
-#     between (merge_pr.sh gate condition (a)'s own allow-list: this issue's
-#     `.agent/work-plans/issue-<N>/` dir plus the two roadmaps) — the action
-#     is `triage-reviews`,
-#     because a PR-mode `review-code` would re-read an unchanged diff; when
-#     code has changed since, it is `review-code`. Without `--head`, that
-#     state routes as it did before issue #314 (`checkpoint:publish`).
 #     Prints `action=<token>`, `reason=<one line>`, then `round=<n>` when
 #     the action concerns the pre-push review loop, `phase=<skill>` when a
 #     checkpoint:phase-failed / retry / takeover names a failed phase, and
 #     `mode=inline` when the action is to be run by the host itself (row 27,
 #     a takeover, is the only row that still prints it — `implement` is
 #     dispatched like every other phase since issue #314). No
-#     `gh` call inside `next`, ever — `--pr` and the optional `--head` are
-#     its only non-timeline inputs, and both are supplied by the caller.
+#     `gh` call inside `next`, ever — `--pr` is the only non-timeline input.
 #
 # Exit codes:
 #   next:        0 action decided; 2 usage (including no worktree for
@@ -100,7 +87,6 @@ Usage:
                      [--type workspace|project] [--pr <M>] --before <count>
   dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged>
                      [--type workspace|project] [--progress <file>]
-                     [--head <sha>]
 See the header comment of this script for what each mode prints.
 Exit codes: 0 ok; 2 usage; 3 the timeline could not be parsed.
 EOF
@@ -207,65 +193,6 @@ skill_model() {
 # entry type are well-defined without one.
 skill_requires_pr() {
     [[ "$1" == "triage-reviews" ]]
-}
-
-# ------------------------------------------------- reviewed-head coverage ---
-# Issue #314 item 4: after a clean pre-push review, `publish` pushes exactly
-# the commits that review named, and a PR-mode `review-code <M>` on them
-# re-reads an unchanged diff. `next` answers "does the reviewed SHA still
-# cover the PR head?" here, in bash, because it needs git — the decision
-# table below sees only 1 / 0 / unknown.
-#
-# The equivalence rule mirrors ONE specific merge_pr.sh rule: gate condition
-# (a)'s staleness test, `_only_bookkeeping_between "$_ci_wt" <review> <head>
-# ".agent/work-plans/issue-${ISSUE_NUM}/*" "ROADMAP.md" "docs/ROADMAP.md"` —
-# the check that decides a review still covers the head (#286, allow-list
-# widened to the issue's whole work-plans dir by #300). The reviewed SHA is
-# an ancestor of the head and every path that differs is one of those
-# document files. The two must not diverge: if `next` skipped the PR-side
-# re-review on a head the gate then called stale, the loop would arrive at
-# the merge checkpoint with a review the gate refuses.
-#
-# Deliberately NOT mirrored: merge_pr.sh's *CI-target* walk-back list
-# (MERGE_PR_CI_BOOKKEEPING_PATTERNS, `.agent/work-plans/*` — any issue's
-# dir), which answers a different question (which head's CI run to reuse).
-# Scoping to this issue's own dir is the narrower of the two, so another
-# issue's work-plans commit keeps the re-review.
-#
-# unknown (no --head given, or nothing to compare) leaves the pre-#314
-# behaviour in place; 0 is also the conservative answer whenever the check
-# cannot be made (no worktree, no issue number, unresolvable SHA) — it keeps
-# the re-review.
-bookkeeping_re_for_issue() {  # <issue-number>
-    printf '^(\\.agent/work-plans/issue-%s/|ROADMAP\\.md$|docs/ROADMAP\\.md$)' "$1"
-}
-
-newest_correlation_sha() {  # <timeline-json>
-    printf '%s' "$1" | "$PYTHON" -c '
-import json, sys
-d = json.load(sys.stdin)
-entries = d.get("entries") or []
-corr = (entries[-1].get("correlation") or {}) if entries else {}
-print(corr.get("sha") or "")'
-}
-
-head_covers_review() {  # <review-sha> <head-sha> <worktree-or-empty> <issue> -> 1|0
-    local review="$1" head="$2" wt="$3" issue="$4" p bk_re
-    if [[ -z "$review" || -z "$head" ]]; then echo 0; return; fi
-    # Same commit, compared as SHA prefixes (entries carry short SHAs).
-    if [[ "$head" == "$review"* || "$review" == "$head"* ]]; then echo 1; return; fi
-    if [[ -z "$wt" || -z "$issue" ]] || ! git -C "$wt" rev-parse --git-dir >/dev/null 2>&1; then
-        echo 0; return
-    fi
-    bk_re=$(bookkeeping_re_for_issue "$issue")
-    git -C "$wt" merge-base --is-ancestor "$review" "$head" >/dev/null 2>&1 || { echo 0; return; }
-    local diff_paths
-    diff_paths=$(git -C "$wt" diff --name-only "$review" "$head" 2>/dev/null) || { echo 0; return; }
-    while IFS= read -r p; do
-        [[ -z "$p" ]] && continue
-        [[ "$p" =~ $bk_re ]] || { echo 0; return; }
-    done <<<"$diff_paths"
-    echo 1
 }
 
 # --------------------------------------------------------------- handoff ---
@@ -427,14 +354,13 @@ print(\"1\" if ((e.get(\"correlation\") or {}).get(\"sha\")) else \"0\")")
 
 # ------------------------------------------------------------------ next ---
 cmd_next() {
-    local issue="" pr="" type="workspace" progress="" head="" wt=""
+    local issue="" pr="" type="workspace" progress=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue)    [[ $# -ge 2 ]] || usage; issue="$2"; shift 2 ;;
             --pr)       [[ $# -ge 2 ]] || usage; pr="$2"; shift 2 ;;
             --type)     [[ $# -ge 2 ]] || usage; type="$2"; shift 2 ;;
             --progress) [[ $# -ge 2 ]] || usage; progress="$2"; shift 2 ;;
-            --head)     [[ $# -ge 2 ]] || usage; head="$2"; shift 2 ;;
             *) usage ;;
         esac
     done
@@ -456,6 +382,7 @@ cmd_next() {
         [[ -f "$progress" ]] || { echo "error: next: --progress file not found: $progress" >&2; exit 2; }
     else
         [[ "$issue" =~ ^[0-9]+$ ]] || { echo "error: next: --issue <N> is required (or pass --progress <file>)" >&2; exit 2; }
+        local wt
         wt=$(resolve_worktree "$issue" "$type") || {
             echo "error: next: no $type worktree found for issue #$issue" >&2
             exit 2
@@ -475,19 +402,11 @@ cmd_next() {
         json='{"entries": []}'
     fi
 
-    local head_covered="unknown"
-    if [[ -n "$head" ]]; then
-        head_covered=$(head_covers_review "$(newest_correlation_sha "$json")" "$head" "$wt" "$issue")
-    fi
-
-    printf '%s' "$json" | PR_STATE="$pr" HEAD_COVERED="$head_covered" "$PYTHON" -c '
+    printf '%s' "$json" | PR_STATE="$pr" "$PYTHON" -c '
 import json, os, sys
 
 MAX_ROUNDS = 3
 PR = os.environ["PR_STATE"]
-# "1" the reviewed SHA still covers the PR head, "0" it does not, "unknown"
-# no --head was given (pre-#314 behaviour). See head_covers_review() above.
-HEAD_COVERED = os.environ.get("HEAD_COVERED", "unknown")
 data = json.load(sys.stdin)
 entries = data["entries"]
 
@@ -676,18 +595,6 @@ if base == "Local Review (Pre-Push)":
     verdict = (fields.get("Verdict") or "").strip().lower()
     r = round_count()
     if verdict == "approved":
-        # Rows 13a/13b (issue #314 item 4) -- only once the PR exists and the
-        # host passed --head. The publish checkpoint is already behind us
-        # here; the open question is whether the PR-side re-review has
-        # anything new to read.
-        if PR in ("draft", "open") and HEAD_COVERED in ("0", "1"):
-            if HEAD_COVERED == "1":
-                emit("triage-reviews",
-                     "pre-push review approved at the PR head -- nothing but bookkeeping since, so a PR-mode re-review would re-read an unchanged diff",
-                     round_=r)
-            emit("review-code",
-                 "pre-push review approved but the PR head has moved past it (code changed since) -- PR mode",
-                 round_=r)
         emit("checkpoint:publish", "pre-push review approved", round_=r)
     if r >= MAX_ROUNDS:
         emit("checkpoint:rounds",

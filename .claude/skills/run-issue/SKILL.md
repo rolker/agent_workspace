@@ -50,9 +50,7 @@ script, not here — see "Action tokens" below for where to read it.
 review-issue → plan-task → review-plan → implement
    → review-code --branch  (pre-push; loop with address-findings up to MAX_ROUNDS)
    → publish (push + gh pr create, or gh pr edit + gh pr ready for a pre-existing draft)
-   → review-code <PR>  (post-push re-review; SKIPPED when the pushed head is
-                        the head the pre-push review approved — loop with
-                        address-findings otherwise)
+   → review-code <PR>  (post-push re-review; loop with address-findings)
    → triage-reviews → merge
 ```
 
@@ -100,7 +98,7 @@ source .agent/scripts/set_git_identity_env.sh "<agent name>" "<agent email>" "<m
 
 ```bash
 gh pr list --head "$(git branch --show-current)" --state all \
-  --json number,state,isDraft,title,headRefOid
+  --json number,state,isDraft,title
 ```
 
 No result → `--pr none`. A result with `isDraft == true` → still `--pr
@@ -108,28 +106,13 @@ none` (a pre-existing `[PLAN]` draft the publish step below will take over
 by `isDraft`, not by title — see step 8). Otherwise map GitHub `state`
 (`OPEN`/`MERGED`/`CLOSED`) to `open`/`merged`/... — a closed-not-merged PR
 is outside this loop's action-token vocabulary; stop and hand it to the
-user. Keep the PR number `<M>` for every `--pr <M>` call below, and the
-`headRefOid` as `<H>` for step 3's `--head`.
+user. Keep the PR number `<M>` for every `--pr <M>` call below.
 
 ### 3. Ask `next` what happens next
 
 ```bash
-.agent/scripts/dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--type <type>] [--head <H>]
+.agent/scripts/dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged> [--type <type>]
 ```
-
-**Pass `--head <H>`** (step 2's `headRefOid`) whenever a PR exists
-(`--pr draft|open`). It answers one question for the table: after a clean
-pre-push review, `publish` pushed exactly the commits that review named, so
-a PR-mode `review-code <M>` on them would re-read an unchanged diff.
-Given `--head`, an approving `## Local Review (Pre-Push)` whose SHA still
-covers the head — the same commit, or an ancestor with only bookkeeping
-files changed since (`merge_pr.sh`'s own #286 equivalence rule) — routes
-straight to `triage-reviews`; if code changed after that review, it routes
-to `review-code` as before. Omitting `--head` is safe but wasteful: the
-state falls back to `checkpoint:publish` and the redundant re-review
-returns. The `## Integrated Review` then cites the pre-push entry as its
-local source — `review_progress.sh sources` already correlates the two by
-head SHA, so nothing extra is needed to keep the source count honest.
 
 Prints `action=<token>`, `reason=<one line>`, and, depending on the row:
 `round=<n>`, `phase=<skill>`, `mode=inline`. Read the full contract and the
