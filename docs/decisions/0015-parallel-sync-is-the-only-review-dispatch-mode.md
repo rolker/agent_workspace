@@ -98,8 +98,13 @@ returns typed per-provider results.
 - Sessions or scripts that still pass `--sync` fail loudly with a message
   naming the removal; the fix is to drop the flag.
 - `AGY_PRINT_TIMEOUT` and `GEMINI_BACKSTOP_MARGIN` join `AGENT_TIMEOUT` /
-  `AGENT_KILL_AFTER` as env knobs; all four are shape-validated up front
-  (exit 2) so a bad value cannot surface as an opaque `timeout` exit 125.
+  `AGENT_KILL_AFTER` as env knobs; all four are shape- and range-validated
+  up front (exit 2) — a duration shape, and a non-zero value wherever zero
+  would remove a bound rather than shorten one (`AGENT_KILL_AFTER=0` is
+  excepted: it means SIGKILL immediately after the SIGTERM), with
+  `AGY_PRINT_TIMEOUT` additionally held to agy's Go-duration subset (an
+  explicit `s`/`m`/`h` unit, no bare number, no `d`) — so a bad value
+  cannot surface as an opaque `timeout` exit 125 or fail later inside agy.
   Anyone raising `AGY_PRINT_TIMEOUT` gets the backstop raised with it.
 - The per-agent result validation that Gemini has (#288) is still
   missing for Codex, Claude and Copilot; that is #313, unchanged by this
