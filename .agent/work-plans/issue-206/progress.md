@@ -424,3 +424,19 @@ Merge-ready. Zero open must-fix findings, four green CI checks on the head, thre
 **Decision**: address
 
 Address then merge: apply the one open suggestion (ADR-0015 line 101 says the four env knobs are "shape-validated"; they are shape + non-zero range + a Go-duration subset for AGY_PRINT_TIMEOUT), then merge.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 12:29 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #318 at `c6461b8`
+**Addressed**: Integrated Review at `3b762b4` (2026-09-22 12:24 -04:00)
+**Commits**: c6461b8
+
+### Actions
+- [x] (suggestion) ADR-0015's env-knob consequence now describes the validation the code enforces: shape **and** range (a non-zero value wherever zero would remove a bound rather than shorten one, with `AGENT_KILL_AFTER=0` excepted as "SIGKILL immediately after the SIGTERM"), plus the Go-duration subset `AGY_PRINT_TIMEOUT` is held to (explicit `s`/`m`/`h`, no bare number, no `d`) because it is passed through to agy. Verified against `validate_duration_knob` at this head — `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md:100`
+
+### Verification
+- Documentation-only change (no code, no test change), as the finding specified; pre-commit clean, nothing pushed
+- Test suites unchanged from the round-2 run: `test_cross_model_review.sh` 196 passed / 0 failed, `run_script_tests.sh` all 23 suites passed
