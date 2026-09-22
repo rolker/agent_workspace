@@ -251,3 +251,16 @@ Next: `/review-code --branch` to re-review the fixes cold.
 - [x] (suggestion) "a refused or non-merging attempt records `## Merge (report-only)` / `## Merge (unreviewed)`" — those entries record a gate-precondition failure or bypass and are written even when the merge succeeds; step 11 (line 398) states it precisely — `.claude/skills/run-issue/SKILL.md:265`
 
 Round-1's four findings all verified resolved against source: routing prose matches `dispatch_phase.sh:503-505/559-566` and the row 19/21/23 fixtures; index provenance matches `review_progress.sh:430` + `progress_read.py:213-245`; `PF` re-assigned in-chain; ADR bullet matches `dispatch_phase.sh:241` verbatim. Pre-commit (incl. the script test suite) green on all changed files.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 08:39 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-307 at `bf067c5`
+**Addressed**: Local Review (Pre-Push) at `3527104` (2026-09-22 08:32 -04:00)
+**Commits**: b3a5949, bf067c5
+
+### Actions
+- [x] (must-fix) `_corr_pr_or_branch` now matches `` `?([^`\s]+)`? `` for the branch, so a backticked `**Branch**` correlates with a bare one and `round` / `dispatch_phase.sh next` no longer restart at 1 — `.agent/scripts/progress_read.py:192`; fixtures added in `test_progress_read.py` (backticked == bare correlation) and `test_review_code_convergence.sh` (a backticked prior entry counts: round=3)
+- [x] (suggestion) Step 10's note now says the gate records `## Merge (report-only)` (or `## Merge (unreviewed)` under `--force-unreviewed`) on a gate-precondition failure or bypass, written whether or not the merge then succeeds, matching step 11 — `.claude/skills/run-issue/SKILL.md:265`
