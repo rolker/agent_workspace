@@ -26,6 +26,28 @@
 #       stored as the review body because `2>&1` merged everything.
 #   Each arm now gets the same forced gate gemini has had since #288.
 #
+# What may FAIL a run (the rule, #313 round 2):
+#   Only a signal the CLI itself reports as machine state may fail a
+#   review: a non-zero exit status, a missing or empty result, or a
+#   structured error field (claude's `.is_error` / `.error`). Error TEXT
+#   never fails a run — it only explains a failure one of those signals
+#   has already established, by choosing the reason line.
+#
+#   This is not caution, it is the only thing that works. Two live runs
+#   of this very branch were failed by text scanning: codex echoes the
+#   whole prompt — diff included — into BOTH its stdout transcript and
+#   its stderr, along with every tool call it makes and that tool's
+#   output, so a review of a diff mentioning a rate limit reads exactly
+#   like a rate-limited CLI. No channel codex writes is clean, and no
+#   heading/length/opener heuristic separates "# Error Handling in
+#   auth.py" from "API Error: Quota exceeded" (both were tried and both
+#   failed; see the plan's Implementation Notes). A transient
+#   "[WARN] overloaded, retrying" on stderr is not a failed review
+#   either. The cost of the rule is that a CLI which exits 0 with a
+#   polite quota message as its whole answer is reported as a review;
+#   the cost of the alternative is discarding real reviews, which is
+#   worse and was observed twice.
+#
 # Contract (identical to _agy_review.sh, deliberately):
 #   * This script OWNS the findings file: it is truncated as the very
 #     first statement, before any guard can fail, and afterwards holds
@@ -34,9 +56,9 @@
 #     redirect stdout onto it, and appends the "--- Review complete ---" /
 #     "--- Review failed ---" marker itself.
 #   * Exit 0 only when the CLI exited 0 and produced a non-empty result
-#     that carries no known error marker. Exit 1 otherwise (findings file
-#     holds the reason). Exit 2 on usage errors (also recorded in the
-#     findings file when it is writable).
+#     (and, for claude, a structurally successful one). Exit 1 otherwise
+#     (findings file holds the reason). Exit 2 on usage or configuration
+#     errors (also recorded in the findings file when it is writable).
 #   * The CLI runs as a background child that is `wait`ed on, with
 #     INT/TERM/HUP traps armed BEFORE the spawn, so a TERM from the
 #     caller's `timeout -k` or its cleanup reaches the CLI itself instead
@@ -132,43 +154,48 @@ if [[ "$AGENT" == "claude" ]] && ! command -v jq >/dev/null 2>&1; then
     fail "jq is required to parse claude's --output-format json result (see bootstrap.sh)"
 fi
 
-# Known error markers. A CLI that is out of quota, rate-limited or
-# logged out usually prints one of these and exits 0, so the exit code
-# alone cannot see it.
-ERROR_MARKER_RE='quota|rate limit|usage limit|overloaded|not logged in|unauthorized|authentication (failed|error|required)|please (log ?in|sign in)'
-# How a CLI opens a message that IS an error rather than an answer:
-# either an announcement ("Error:", "## Failure") or one of the known
-# error sentences itself.
-ERROR_OPENER_RE='^#{0,6}[[:space:]]*(error|fatal|failure|failed|warning)\b|^you( have|.ve)? exceeded|^(rate limit|usage limit|quota exceeded|quota exhausted|not logged in|unauthorized|authentication (failed|error|required)|please (log ?in|sign in))'
-
-# Scan a channel that carries only the CLI's own diagnostics — its
-# stderr. Never the prompt-echoing transcript: codex's stdout replays the
-# prompt (diff included), so scanning it fails any review of a diff that
-# merely mentions a rate limit. That false positive was observed live on
-# this branch's own review (#313 round 1).
-marker_in_log() {
-    local file="$1"
-    [[ -s "$file" ]] || return 1
-    grep -qiE "$ERROR_MARKER_RE" "$file"
+# The helper's own escalation window must fit inside the caller's
+# `timeout -k` grace, or the caller SIGKILLs this helper before it can
+# SIGKILL a CLI that ignored SIGTERM — and that CLI is then orphaned,
+# burning quota with nothing left to stop it. The caller passes its
+# AGENT_KILL_AFTER in the environment; when it is absent (direct
+# invocation) there is no outer grace to fit inside and nothing to check.
+REVIEW_KILL_ESCALATION="${REVIEW_KILL_ESCALATION:-5}"
+to_seconds() {
+    [[ "$1" =~ ^([0-9]+(\.[0-9]+)?)([smhd]?)$ ]] || return 1
+    local number="${BASH_REMATCH[1]}" unit="${BASH_REMATCH[3]}" mult=1
+    case "$unit" in m) mult=60 ;; h) mult=3600 ;; d) mult=86400 ;; *) mult=1 ;; esac
+    awk -v n="$number" -v m="$mult" 'BEGIN { printf "%.0f", n * m }'
 }
+if ! ESCALATION_SECONDS=$(to_seconds "$REVIEW_KILL_ESCALATION"); then
+    usage_fail "REVIEW_KILL_ESCALATION value '${REVIEW_KILL_ESCALATION}' is not a duration (a number of seconds, optionally with an s/m/h suffix)"
+fi
+if [[ -n "${AGENT_KILL_AFTER:-}" ]]; then
+    if ! KILL_AFTER_SECONDS=$(to_seconds "$AGENT_KILL_AFTER"); then
+        usage_fail "AGENT_KILL_AFTER value '${AGENT_KILL_AFTER}' is not a duration"
+    fi
+    # Both zero is the one legal equal case: the caller wants no grace at
+    # all, and this helper escalates immediately to match.
+    if [[ "$KILL_AFTER_SECONDS" -le "$ESCALATION_SECONDS" ]] \
+        && ! [[ "$KILL_AFTER_SECONDS" -eq 0 && "$ESCALATION_SECONDS" -eq 0 ]]; then
+        usage_fail "AGENT_KILL_AFTER (${AGENT_KILL_AFTER}) must be greater than REVIEW_KILL_ESCALATION (${REVIEW_KILL_ESCALATION}): the caller's SIGKILL would land on this helper before it could SIGKILL a CLI that ignored SIGTERM, orphaning that CLI. Raise AGENT_KILL_AFTER or lower REVIEW_KILL_ESCALATION (set both to 0 for no grace at all)."
+    fi
+fi
 
-# Decide whether a *result* is an error the CLI printed in place of a
-# review. Neither length nor markdown structure can tell the two apart:
-# an adversarial review may be two concise bullets that both mention a
-# rate limit, and a real quota error may be six wrapped lines under a
-# "# Error" heading. Both heuristics were tried and produced exactly
-# those false positives and negatives (#313 round 1).
-#
-# What does separate them is how the text OPENS. A review never begins
-# by announcing an error or by stating a known error sentence; an error
-# response always does. So: the first non-empty line must match
-# ERROR_OPENER_RE, and a known marker must appear somewhere in the text.
-result_is_error_only() {
-    local text="$1" first
-    first=$(grep -m1 -v '^[[:space:]]*$' <<< "$text")
-    first="${first#"${first%%[![:space:]]*}"}"
-    grep -qiE "$ERROR_OPENER_RE" <<< "$first" || return 1
-    grep -qiE "$ERROR_MARKER_RE" <<< "$text"
+# Known error markers. These NEVER fail a run (see the header rule) —
+# they only pick a more useful reason line for a failure that the exit
+# status, an empty result or a structured error field has already
+# established.
+ERROR_MARKER_RE='quota|rate limit|usage limit|overloaded|not logged in|unauthorized|authentication (failed|error|required)|please (log ?in|sign in)'
+
+# If the already-failing run's diagnostics name a known condition, say so
+# in the reason. Returns the note (possibly empty) on stdout.
+marker_note() {
+    local file="$1" hit
+    [[ -s "$file" ]] || return 0
+    hit=$(grep -m1 -iE "$ERROR_MARKER_RE" "$file" 2>/dev/null || true)
+    [[ -n "$hit" ]] && printf ' This looks like a quota / rate-limit / authentication problem: %s' "$hit"
+    return 0
 }
 
 # Temp files (codex's final-message file, each CLI's stdout/stderr logs)
@@ -190,23 +217,31 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # defeat the caller's `timeout -k` backstop, whose SIGKILL is aimed at
 # this helper — once we are gone it has nothing left to kill and a CLI
 # that ignored SIGTERM would keep running, burning quota on an abandoned
-# review. The default sits below the caller's own kill-after grace
-# (AGENT_KILL_AFTER, default 10s) so this escalation always completes
-# first.
-REVIEW_KILL_ESCALATION="${REVIEW_KILL_ESCALATION:-5}"
+# review. The escalation is validated above to fit inside the caller's
+# grace (AGENT_KILL_AFTER).
 CLI_PID=""
 terminate_child() {
     local code="$1" watchdog
+    # Re-entrancy: a second signal (repeated Ctrl-C, TERM then HUP) would
+    # otherwise start a second watchdog and clobber $watchdog, leaking
+    # the first one.
+    trap '' INT TERM HUP
     if [[ -n "$CLI_PID" ]]; then
         kill "$CLI_PID" 2>/dev/null
-        # A watchdog rather than a poll loop: an exited-but-unreaped
-        # child still answers `kill -0`, so polling that would always
-        # run the full escalation window.
-        ( sleep "$REVIEW_KILL_ESCALATION"; kill -9 "$CLI_PID" 2>/dev/null ) &
+        # `wait` returns the moment the CLI dies, so a clean shutdown
+        # costs milliseconds, not the escalation window. The watchdog
+        # only matters for a CLI that ignores SIGTERM. It is NOT waited
+        # on: a subshell sleeping in `sleep` defers the TERM we send it
+        # until that sleep ends, so waiting would reintroduce the full
+        # window on every clean exit. Unwaited, it exits on its own
+        # (and re-checks liveness before any kill, so it cannot hit a
+        # recycled PID).
+        ( sleep "$REVIEW_KILL_ESCALATION"
+          kill -0 "$CLI_PID" 2>/dev/null && kill -9 "$CLI_PID" 2>/dev/null ) &
         watchdog=$!
         wait "$CLI_PID" 2>/dev/null
         kill "$watchdog" 2>/dev/null
-        wait "$watchdog" 2>/dev/null
+        CLI_PID=""
     fi
     exit "$code"
 }
@@ -263,23 +298,22 @@ case "$AGENT" in
         # to a log that is discarded on success and excerpted into the
         # reason on failure, never into the findings file.
         #
-        # stderr is kept SEPARATE from that transcript on purpose. The
-        # transcript replays the prompt, diff included, so an error-marker
-        # scan over it fails any review of a diff that mentions a rate
-        # limit — observed live on this branch (#313 round 1). Only
-        # stderr is scanned; the `-o` file's emptiness and the exit code
-        # remain the primary signals.
+        # NOTHING codex prints can fail this run. It replays the prompt,
+        # every tool call and every tool's output on BOTH stdout and
+        # stderr, so neither channel is a diagnostics channel: a review
+        # of a diff that mentions a rate limit, or a `jq: error` line
+        # from a command codex itself ran, reads exactly like a failing
+        # CLI. Two live runs of this branch were failed that way (#313
+        # rounds 1 and 2). Only the exit status and an empty/missing `-o`
+        # file fail codex; the text is kept for the reason line.
         DIAG_LABEL='codex transcript'
         DIAG_FILE="$STDOUT_FILE"
         run_cli "$STDOUT_FILE" "$STDERR_FILE" "$CLI_BIN_RESOLVED" exec -o "$CODEX_OUT_FILE"
         if [[ "$CLI_EXIT" -ne 0 ]]; then
-            fail "codex exited ${CLI_EXIT}$(bound_note)$(log_excerpt 'codex transcript' "$STDOUT_FILE")$(log_excerpt 'codex stderr' "$STDERR_FILE")"
-        fi
-        if marker_in_log "$STDERR_FILE"; then
-            fail "codex reported a quota / rate-limit / authentication error$(log_excerpt 'codex stderr' "$STDERR_FILE")"
+            fail "codex exited ${CLI_EXIT}$(bound_note)$(marker_note "$STDERR_FILE")$(log_excerpt 'codex transcript' "$STDOUT_FILE")$(log_excerpt 'codex stderr' "$STDERR_FILE")"
         fi
         if [[ ! -s "$CODEX_OUT_FILE" ]]; then
-            fail "empty response: codex wrote no final message (its --output-last-message file is missing or empty). In headless mode this is what an aborted turn looks like — the exit code stays 0.$(log_excerpt 'codex transcript' "$STDOUT_FILE")$(log_excerpt 'codex stderr' "$STDERR_FILE")"
+            fail "empty response: codex wrote no final message (its --output-last-message file is missing or empty). In headless mode this is what an aborted turn looks like — the exit code stays 0.$(marker_note "$STDERR_FILE")$(log_excerpt 'codex transcript' "$STDOUT_FILE")$(log_excerpt 'codex stderr' "$STDERR_FILE")"
         fi
         RESULT=$(cat "$CODEX_OUT_FILE")
         ;;
@@ -296,23 +330,47 @@ case "$AGENT" in
         run_cli "$STDOUT_FILE" "$STDERR_FILE" \
             "$CLI_BIN_RESOLVED" -p --output-format json --permission-prompts none
         if [[ "$CLI_EXIT" -ne 0 ]]; then
-            fail "claude exited ${CLI_EXIT}$(bound_note)$(log_excerpt 'claude stderr' "$STDERR_FILE")"
+            fail "claude exited ${CLI_EXIT}$(bound_note)$(marker_note "$STDERR_FILE")$(log_excerpt 'claude stderr' "$STDERR_FILE")"
         fi
-        if marker_in_log "$STDERR_FILE"; then
-            fail "claude reported a quota / rate-limit / authentication error$(log_excerpt 'claude stderr' "$STDERR_FILE")"
-        fi
-        if ! jq -e . "$STDOUT_FILE" >/dev/null 2>&1; then
+        # `jq -e .` alone accepts ANY truthy JSON value — a bare string,
+        # a number, an array — and the field reads below then abort jq
+        # with "Cannot index string with string", which under `set -e`
+        # would end the helper with no reason written at all (#313 round
+        # 2, codex must-fix 1). Require an object before indexing it, and
+        # keep every extraction inside a guarded block so a jq failure
+        # still lands in fail().
+        if ! jq -e 'type == "object"' "$STDOUT_FILE" >/dev/null 2>&1; then
             fail "claude did not emit a JSON result object$(log_excerpt 'claude stdout' "$STDOUT_FILE")$(log_excerpt 'claude stderr' "$STDERR_FILE")"
         fi
-        IS_ERROR=$(jq -r '(.is_error // false) | tostring' "$STDOUT_FILE")
-        SUBTYPE=$(jq -r '.subtype // "missing"' "$STDOUT_FILE")
-        RESULT=$(jq -r '.result // ""' "$STDOUT_FILE")
         # `.error` may be a string or an object; take .message when it is
         # an object. Without this, an is_error / bad-subtype failure whose
         # `.result` is empty reports no cause at all.
-        ERROR_MSG=$(jq -r '((.error // "") | if type == "object" then (.message // (. | tostring)) else tostring end)' "$STDOUT_FILE")
+        # One jq call per field (no @tsv: `.result` is multi-line review
+        # text, which @tsv would escape into a single line), each one
+        # guarded so a jq failure lands in fail() instead of killing the
+        # helper silently under `set -e`.
+        # `printf -v` rather than a command substitution: fail() exits,
+        # and an exit inside $( ) would only end the subshell, leaving
+        # the helper running with an empty value and no reason recorded.
+        read_claude_field() {
+            local name="$1" expr="$2" value
+            value=$(jq -r "$expr" "$STDOUT_FILE" 2>>"${TMP_DIR}/jq-error.txt") || return 1
+            printf -v "$name" '%s' "$value"
+        }
+        IS_ERROR="false"; SUBTYPE="missing"; RESULT=""; ERROR_MSG=""
+        CLAUDE_READ_FAILED=""
+        read_claude_field IS_ERROR '(.is_error // false) | tostring' || CLAUDE_READ_FAILED=".is_error"
+        read_claude_field SUBTYPE '.subtype // "missing"' || CLAUDE_READ_FAILED=".subtype"
+        read_claude_field RESULT '.result // "" | tostring' || CLAUDE_READ_FAILED=".result"
+        read_claude_field ERROR_MSG '(.error // "") | if type == "object" then (.message // tostring) else tostring end' || CLAUDE_READ_FAILED=".error"
+        if [[ -n "$CLAUDE_READ_FAILED" ]]; then
+            fail "claude's JSON result could not be read (${CLAUDE_READ_FAILED})$(log_excerpt 'jq error' "${TMP_DIR}/jq-error.txt")$(log_excerpt 'claude stdout' "$STDOUT_FILE")"
+        fi
         CLAUDE_DETAIL="${RESULT:-}"
         [[ -n "$ERROR_MSG" ]] && CLAUDE_DETAIL="${ERROR_MSG}${RESULT:+ | result: ${RESULT}}"
+        # Structured fields are the ONLY thing that fails claude here
+        # (the header rule): `.is_error`, a non-success `.subtype`, or an
+        # empty `.result` — never the text of a successful result.
         if [[ "$IS_ERROR" == "true" ]]; then
             fail "claude returned is_error=true (subtype ${SUBTYPE})${CLAUDE_DETAIL:+: ${CLAUDE_DETAIL}}$(log_excerpt 'claude stderr' "$STDERR_FILE")"
         fi
@@ -342,21 +400,27 @@ case "$AGENT" in
         # footer), so the output is used as-is — no second strip, which
         # could truncate a review body containing a footer-looking line.
         #
-        # The empty tool set is read from `copilot --help` on 1.0.61 and
-        # still needs ONE live confirmation when Copilot quota returns
-        # (#313): if copilot rejects an empty --available-tools, the
-        # documented fallback is to drop it and deny the dangerous tools
-        # instead — `--deny-tool='shell' --deny-tool='write'` — keeping
-        # --disable-builtin-mcps and --no-ask-user.
+        # PENDING ONE LIVE CONFIRMATION when Copilot quota returns
+        # (#313). Two parts of this invocation rest on `copilot --help`
+        # for 1.0.61 plus #212's run on 1.0.48, not on a live 1.0.61 run:
+        #   * `--available-tools=''` — if the argument validator rejects
+        #     an empty list, drop it and deny the dangerous tools instead
+        #     (`--deny-tool='shell' --deny-tool='write'`), keeping
+        #     --disable-builtin-mcps and --no-ask-user;
+        #   * `-p ""` — the empty print-mode prompt that keeps the real
+        #     prompt on stdin. #212 verified this form on 1.0.48; if a
+        #     later version rejects an empty prompt string, the fix is a
+        #     placeholder like `-p "Review the input on stdin."`, NEVER
+        #     the prompt itself on argv (#274: MAX_ARG_STRLEN).
         DIAG_LABEL='copilot stderr'
         DIAG_FILE="$STDERR_FILE"
         run_cli "$STDOUT_FILE" "$STDERR_FILE" \
             "$CLI_BIN_RESOLVED" -p "" -s --available-tools='' --disable-builtin-mcps --no-ask-user
+        # Exit status and an empty `-s` output are the only failures
+        # (the header rule); a transient "[WARN] overloaded, retrying" on
+        # stderr is not one, and the text of a real review never is.
         if [[ "$CLI_EXIT" -ne 0 ]]; then
-            fail "copilot exited ${CLI_EXIT}$(bound_note)$(log_excerpt 'copilot stderr' "$STDERR_FILE")"
-        fi
-        if marker_in_log "$STDERR_FILE"; then
-            fail "copilot reported a quota / rate-limit / authentication error$(log_excerpt 'copilot stderr' "$STDERR_FILE")"
+            fail "copilot exited ${CLI_EXIT}$(bound_note)$(marker_note "$STDERR_FILE")$(log_excerpt 'copilot stderr' "$STDERR_FILE")"
         fi
         RESULT=$(cat "$STDOUT_FILE")
         ;;
@@ -366,14 +430,12 @@ if [[ -z "${RESULT//[[:space:]]/}" ]]; then
     # DIAG_FILE is the channel that actually carries this CLI's
     # diagnostics: codex merges nothing into stderr, so for it the
     # transcript is the only place a reason can be found.
-    fail "empty response$(bound_note). In headless mode this is what a permission denial or an aborted turn looks like — the exit code stays 0.$(log_excerpt "$DIAG_LABEL" "$DIAG_FILE")"
+    fail "empty response$(bound_note). In headless mode this is what a permission denial or an aborted turn looks like — the exit code stays 0.$(marker_note "$STDERR_FILE")$(log_excerpt "$DIAG_LABEL" "$DIAG_FILE")"
 fi
-# The result itself is the last channel an error can arrive on: a CLI
-# that prints "You have exceeded your usage limit" as its answer exits 0
-# with that text as the whole response.
-if result_is_error_only "$RESULT"; then
-    fail "${AGENT} returned an error in place of a review: ${RESULT}$(log_excerpt "$DIAG_LABEL" "$DIAG_FILE")"
-fi
+# No text scan on the result. A CLI that exits 0 with a polite quota
+# message as its whole answer is passed through as a review — see the
+# header rule for why that is the lesser evil: every attempt to catch it
+# by text also discarded real reviews (#313 rounds 1 and 2).
 
 # Success. Plain > is safe: the file was truncated above and readers key
 # off the caller's completion marker, appended only after we exit.

@@ -229,13 +229,15 @@ run_agent_sync() {
     case "$agent" in
         # Gemini's outer timeout is the backstop ABOVE the helper's own
         # print-timeout, not a replacement for it.
-        gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
+        # AGENT_KILL_AFTER is exported so the helper can check that its
+        # own SIGKILL escalation fits inside this grace (#313 round 2).
+        gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
         # codex, claude and copilot (and anything that somehow reaches
         # here — _cli_review.sh rejects an unknown agent with a readable
         # reason in the findings file rather than running a CLI blind).
         # AGENT_TIMEOUT is passed through as an informational label so
         # the helper's failure reasons can name the bound they ran under.
-        *)       exec env TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
+        *)       exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
     esac
 }
 
@@ -487,6 +489,11 @@ for agent in "${AGENTS_TO_RUN[@]}"; do
         AGENT_UNAVAILABLE_REASON["$agent"]="${AGENT_BINS[$agent]} CLI not found (PATH searched: ${PATH}; also ~/.nvm/versions/node/*/bin/, ~/.local/bin/, ~/.npm-global/bin/, /usr/local/bin/)"
     elif [[ "$agent" == "gemini" && ! -x "$AGY_REVIEW_HELPER" ]]; then
         AGENT_UNAVAILABLE_REASON["$agent"]="${AGY_REVIEW_HELPER} is missing or not executable"
+    elif [[ "$agent" == "claude" ]] && ! command -v jq >/dev/null 2>&1; then
+        # claude's result is JSON and the helper parses it with jq, so
+        # without jq this agent cannot produce a validated review at all
+        # — name that here rather than letting every claude run fail.
+        AGENT_UNAVAILABLE_REASON["$agent"]="jq is required to parse claude's JSON result and is not installed (see bootstrap.sh)"
     elif [[ "$agent" == "codex" || "$agent" == "claude" || "$agent" == "copilot" ]] && [[ ! -x "$CLI_REVIEW_HELPER" ]]; then
         # Scoped to the three agents that helper serves, the way the
         # gemini check above is scoped: a missing _cli_review.sh must not
@@ -707,10 +714,37 @@ AGENT_TMP_ROOT=$(mktemp -d -t "cross-model-review-tmp.XXXXXX")
 # — otherwise an interrupted run would leave the CLIs running for up to
 # AGENT_TIMEOUT, burning quota on an abandoned review.
 declare -A AGENT_PID=()
+# Seconds to wait for the signalled jobs before dropping the shared temp
+# root anyway. Must exceed a helper's own SIGKILL escalation
+# (REVIEW_KILL_ESCALATION, default 5) plus a moment to exit.
+CLEANUP_REAP_TIMEOUT="${CLEANUP_REAP_TIMEOUT:-8}"
 cleanup_jobs() {
-    local pid
+    local pid waited=0
     for pid in "${AGENT_PID[@]}"; do
         kill "$pid" 2>/dev/null || true
+    done
+    # Reap BEFORE removing AGENT_TMP_ROOT (#313 round 2). Each helper may
+    # legitimately still be waiting out its own escalation window for a
+    # CLI that ignored SIGTERM, and that CLI is still writing into a temp
+    # dir under this root: removing it here would pull the ground out
+    # from under a live process. Bounded, so a wedged job cannot hang the
+    # exit path — after the bound the root goes anyway, which is the
+    # pre-#313 behaviour and still better than never cleaning up.
+    # A dead-but-unreaped child still answers `kill -0`, so liveness is
+    # read from /proc's process state (Z = already exited) with `kill -0`
+    # as the fallback where /proc is unavailable.
+    job_finished() {
+        local jpid="$1" state
+        kill -0 "$jpid" 2>/dev/null || return 0
+        state=$(awk '{print $3}' "/proc/${jpid}/stat" 2>/dev/null || echo "")
+        [[ "$state" == "Z" ]]
+    }
+    for pid in "${AGENT_PID[@]}"; do
+        while ! job_finished "$pid" && (( waited < CLEANUP_REAP_TIMEOUT * 10 )); do
+            sleep 0.1
+            waited=$((waited + 1))
+        done
+        wait "$pid" 2>/dev/null || true
     done
     rm -f "$SHARED_PROMPT"
     rm -rf "$AGENT_TMP_ROOT"
@@ -891,8 +925,15 @@ run_agent_job() {
     # trap here would never run. The parent's INT trap turns Ctrl-C into
     # an exit, and its EXIT cleanup TERMs these jobs — that is the live
     # path for an interrupt.
+    # The trap waits for the child before exiting (#313 round 2): the
+    # helper under `timeout` legitimately spends its own escalation
+    # window killing a CLI that ignored SIGTERM, and it is still writing
+    # into AGENT_TMP_ROOT while it does. Exiting here at once would tell
+    # the parent's cleanup that this job is finished, and the temp root
+    # would be removed under a live CLI. The parent's reap is bounded, so
+    # a helper that never returns still cannot hang the exit path.
     child=""
-    trap '[[ -n "$child" ]] && kill "$child" 2>/dev/null; exit 143' TERM
+    trap 'if [[ -n "$child" ]]; then kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; fi; exit 143' TERM
     run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file" &
     child=$!
     rc=0

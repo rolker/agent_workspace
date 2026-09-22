@@ -366,9 +366,12 @@ The prompt and findings files are not committed (see #193) — gitignored when w
 and then one `AGENT=` / `FINDINGS_FILE=` / `EXIT=` triplet per agent. Key
 on each agent's `EXIT=` line, not on the script's overall exit status:
 the script exits 3 whenever *any* agent failed, and a failed agent
-(CLI not installed, timeout, non-zero exit, empty response, quota or
-auth error) is noted in the report while the others' findings are used
-as normal. `EXIT=` is the agent *job's* status: every agent runs through
+(CLI not installed, timeout, non-zero exit, empty response, or a
+structured error from the CLI) is noted in the report while the others'
+findings are used as normal. Note the deliberate gap: a CLI that exits 0
+and answers with a quota or auth message is reported as a *completed*
+review holding that message — text is never used to fail a run (#313),
+so read a suspiciously short "review" before trusting it. `EXIT=` is the agent *job's* status: every agent runs through
 a helper that validates its result (`_agy_review.sh` for gemini,
 `_cli_review.sh` for codex/claude/copilot), so a failed review is
 `EXIT=1` with the CLI's own status and the reason written into the

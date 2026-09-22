@@ -233,6 +233,66 @@ settle, or a deviation from it.
     why the false positive was not caught in round 1) and a TERM-ignoring
     mode; all mocks sleep in slices so a SIGKILL leaves no orphan.
 
+### Round 2 (live gemini + codex re-run of `ca7f87c`)
+
+**The rule this issue ends on: markers explain, they never cause.** Only
+machine state may FAIL a review — a non-zero exit status, a missing or
+empty result, or a structured error field (claude's `.is_error` /
+`.error`). Error *text* only chooses the reason line for a failure one
+of those has already established.
+
+That rule is not caution, it is the only thing that survived contact.
+Three text-based designs were tried and each one discarded a real
+review of this branch:
+
+| Attempt | Failed on |
+|---|---|
+| Scan the merged stdout transcript (round 0) | codex echoes the prompt, diff included — a diff mentioning a rate limit reads as a rate-limited CLI |
+| Scan stderr only (round 1) | codex prints the WHOLE transcript on stderr too, including tool calls and their output: a `jq: error` line from a command codex itself ran failed the run |
+| Opener + marker on the result (round 1) | false positive on "# Error Handling in auth.py"; false negative on "API Error: Quota exceeded" |
+
+The residual cost — a CLI that exits 0 with a polite quota message as
+its whole answer is passed through as a review — is the lesser evil, and
+is stated in the helper's header.
+
+14. **codex**: `-o` file empty/missing or non-zero exit only.
+15. **claude**: structured fields only, and `type == "object"` is
+    required before indexing. `jq -e .` accepts `"oops"` / `[]` / `1`,
+    after which `.is_error` aborted jq and the helper died under
+    `set -e` with an EMPTY findings file (codex must-fix 1). Every field
+    read is guarded, via `printf -v` rather than `$( )` so a failure
+    reaches `fail()` instead of exiting a subshell.
+16. **copilot**: non-zero exit or empty `-s` output only. A transient
+    `[WARN] overloaded, retrying` no longer fails a completed review.
+17. **`cleanup_jobs` reaps before removing `AGENT_TMP_ROOT`** (codex
+    must-fix 2), and each job's TERM trap now waits for its helper — the
+    job shell exiting at once was what told the parent it was safe to
+    drop the temp root under a live CLI. Both bounded
+    (`CLEANUP_REAP_TIMEOUT`, default 8s) so nothing can hang the exit.
+18. **Escalation vs the caller's grace** (codex must-fix 3, gemini 4):
+    both helpers refuse to start when `AGENT_KILL_AFTER` is not greater
+    than `REVIEW_KILL_ESCALATION` (exit 2, reason in the findings file);
+    `AGENT_KILL_AFTER` is exported to them for the check. Both zero is
+    the one legal equal case. Otherwise the caller's SIGKILL lands on the
+    helper before it can SIGKILL a CLI that ignored SIGTERM.
+19. **Watchdog no longer waited on** (gemini 4): a subshell sleeping in
+    `sleep` defers the TERM we send it, so `wait "$watchdog"` cost the
+    full window on every clean exit. `wait` on the CLI returns in
+    milliseconds; the watchdog is killed and left to exit on its own,
+    and re-checks liveness before any `kill -9` so it cannot hit a
+    recycled PID. Tested: TERM to a fast-exiting mock returns in under 3s
+    with a 5s window.
+20. **`terminate_child` disarms its traps on entry** (gemini 6) so a
+    second signal cannot start a second watchdog. `_agy_review.sh`
+    already cleared `AGY_PID` after the normal reap (gemini 5) and now
+    clears it in the handler too.
+21. **`jq` is a claude preflight** (gemini 8): missing jq marks claude
+    unavailable with a reason instead of failing every claude run.
+22. **Copilot invocation is unchanged but annotated** (gemini 7): `-p ""`
+    plus stdin stays (the #212-verified form); the call-site comment now
+    names BOTH `-p ""` and `--available-tools=''` as pending one live
+    confirmation, with the fallback for each.
+
 ## Estimated Scope
 
 Single PR. Closes #313 and #212. Does not touch #320 (sequenced after).

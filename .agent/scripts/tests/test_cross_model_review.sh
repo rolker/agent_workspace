@@ -1591,7 +1591,10 @@ test_gemini_backstop_cuts_off_wedged_agy() {
     # --print-timeout handling never runs. Backstop = print-timeout (1s) +
     # margin (2s) = 3s; only that bound can end the run.
     local scratch="${TMPDIR_BASE}/scratch"; mkdir -p "$scratch"
+    # REVIEW_KILL_ESCALATION must stay under AGENT_KILL_AFTER (#313
+    # round 2), so a 1s outer grace needs a 0s helper escalation.
     exit_code=$(TMPDIR="$scratch" AGY_PRINT_TIMEOUT=1s GEMINI_BACKSTOP_MARGIN=2 AGENT_KILL_AFTER=1 \
+        REVIEW_KILL_ESCALATION=0 \
         MOCK_AGY_STALL=1 MOCK_TIMES_DIR="$times" run_agents "$out" "gemini")
     assert_exit_code "backstopped run exits 3" "3" "$exit_code"
     assert_contains "gemini EXIT=124 (timeout)" "^EXIT=124$" "$(cat "$out")"
@@ -1664,11 +1667,21 @@ test_duration_knobs_validated() {
     assert_exit_code "AGY_PRINT_TIMEOUT=0s exits 2" "2" "${result%%|*}"
     assert_contains "AGY_PRINT_TIMEOUT=0s message demands a positive value" \
         "AGY_PRINT_TIMEOUT value '0s' must be greater than zero" "${result#*|}"
-    # AGENT_KILL_AFTER=0 is legitimate: SIGKILL immediately after SIGTERM.
+    # AGENT_KILL_AFTER=0 is legitimate: SIGKILL immediately after
+    # SIGTERM. Since #313 round 2 it must be paired with
+    # REVIEW_KILL_ESCALATION=0 — the helpers refuse a grace they cannot
+    # fit their own escalation inside (both zero = no grace anywhere).
     local out="${TMPDIR_BASE}/out.txt"
     make_mock_agent codex
-    ec=$(AGENT_KILL_AFTER=0 run_agents "$out" "codex")
-    assert_exit_code "AGENT_KILL_AFTER=0 is accepted" "0" "$ec"
+    ec=$(AGENT_KILL_AFTER=0 REVIEW_KILL_ESCALATION=0 run_agents "$out" "codex")
+    assert_exit_code "AGENT_KILL_AFTER=0 with a matching escalation is accepted" "0" "$ec"
+    # A grace the helper cannot fit its escalation inside is refused by
+    # the helper (exit 2) rather than silently orphaning the CLI.
+    ec=$(AGENT_KILL_AFTER=1 REVIEW_KILL_ESCALATION=5 run_agents "$out" "codex")
+    assert_exit_code "AGENT_KILL_AFTER below the escalation fails the agent" "3" "$ec"
+    assert_contains "reason names both knobs" \
+        "AGENT_KILL_AFTER \(1\) must be greater than REVIEW_KILL_ESCALATION \(5\)" "$(findings_of codex)"
+    assert_contains "the refused run is marked failed" "Review failed" "$(findings_of codex)"
 
     # Go-duration subset: AGY_PRINT_TIMEOUT reaches agy's --print-timeout,
     # which needs an explicit s/m/h unit and has no `d`. Both shapes below
@@ -1927,37 +1940,43 @@ test_cli_nonzero_exit_is_failure() {
     teardown
 }
 
-test_cli_error_marker_is_failure() {
-    echo "TEST: a quota / rate-limit error printed as the answer is a failed review (#313)"
+test_cli_error_text_explains_never_causes() {
+    echo "TEST: error TEXT never fails a run; it explains a failure the exit status already caused (#313 round 2)"
     setup
     local agent out exit_code content
     for agent in "${CLI_AGENTS[@]}"; do
         make_mock_agent "$agent"
         out="${TMPDIR_BASE}/out-${agent}.txt"
-        # Exit 0 throughout: the marker is the only signal there is.
+
+        # Exit 0 with a quota-looking answer: PASSES. Every attempt to
+        # catch this by text also discarded real reviews (rounds 1 and
+        # 2), so the text is handed through as the review.
         export "MOCK_${agent^^}_ERRMARK=Error: you have exceeded your usage limit."
         exit_code=$(run_agents "$out" "$agent")
         unset "MOCK_${agent^^}_ERRMARK"
-        assert_exit_code "${agent} quota error exits 3" "3" "$exit_code"
-        content=$(findings_of "$agent")
-        assert_contains "${agent} findings name the error" "usage limit" "$content"
-        assert_contains "${agent} findings marked failed" "Review failed" "$content"
-        assert_not_contains "${agent} findings not marked complete" "Review complete" "$content"
-    done
-    # The same markers in a real review body must NOT fail it: an
-    # adversarial review may legitimately discuss rate limits.
-    make_mock_agent copilot
-    local long_review="### Findings
+        assert_exit_code "${agent}: error text at exit 0 does not fail the run" "0" "$exit_code"
+        assert_contains "${agent}: the text is kept as the review" "usage limit" "$(findings_of "$agent")"
 
-1. The retry path ignores the rate limit header, so an unauthorized
-   response is retried forever. This is a long review body that happens
-   to mention quota handling and authentication failed states, and it
-   must still be accepted as a review rather than read as an error.
-"
-    local out2="${TMPDIR_BASE}/out-long.txt" ec2
-    ec2=$(MOCK_COPILOT_ERRMARK="$long_review" run_agents "$out2" "copilot")
-    assert_exit_code "a long review mentioning rate limits still passes" "0" "$ec2"
-    assert_contains "the review body is kept" "retry path ignores the rate limit" "$(findings_of copilot)"
+        # Same marker, this time on stderr with a non-zero exit: FAILS,
+        # and the marker picks the reason line.
+        export "MOCK_${agent^^}_EXIT=4" "MOCK_${agent^^}_STDERR=fatal: you have exceeded your usage limit"
+        exit_code=$(run_agents "$out" "$agent")
+        unset "MOCK_${agent^^}_EXIT" "MOCK_${agent^^}_STDERR"
+        assert_exit_code "${agent}: non-zero exit fails the run" "3" "$exit_code"
+        content=$(findings_of "$agent")
+        assert_contains "${agent}: reason names the exit status" "${agent} exited 4" "$content"
+        assert_contains "${agent}: marker explains the failure" \
+            "looks like a quota / rate-limit / authentication problem" "$content"
+        assert_contains "${agent} findings marked failed" "Review failed" "$content"
+
+        # A transient stderr warning with exit 0 is NOT a failure
+        # (gemini must-fix 3: "[WARN] overloaded, retrying in 1s").
+        export "MOCK_${agent^^}_STDERR=[WARN] Server overloaded, retrying in 1s..."
+        exit_code=$(run_agents "$out" "$agent")
+        unset "MOCK_${agent^^}_STDERR"
+        assert_exit_code "${agent}: a transient stderr warning does not fail the run" "0" "$exit_code"
+        assert_contains "${agent}: the review survives the warning" "reviewed by ${agent}" "$(findings_of "$agent")"
+    done
     teardown
 }
 
@@ -1984,46 +2003,53 @@ test_cli_codex_transcript_marker_does_not_fail_the_review() {
     assert_contains "the review is kept" "reviewed by codex" "$content"
     assert_contains "findings complete" "Review complete" "$content"
     assert_not_contains "not failed as a quota error" "Review failed" "$content"
-    # The real channel still works: a marker on codex's own stderr fails.
+    # codex prints its transcript on BOTH channels — prompt, tool calls
+    # and the tools' own output — so stderr is no cleaner than stdout
+    # (#313 round 2: a `jq: error` line from a command codex ran failed
+    # the run). Neither channel may fail a codex review.
     exit_code=$(MOCK_GH_DIFF_FILE="$diff" MOCK_CODEX_ECHO_FULL=1 \
-        MOCK_CODEX_STDERR="error: you have exceeded your usage limit" run_agents "$out" "codex")
-    assert_exit_code "a marker on codex stderr still fails the review" "3" "$exit_code"
-    assert_contains "reason names the quota error" "quota / rate-limit / authentication error" "$(findings_of codex)"
+        MOCK_CODEX_STDERR="jq: error (at <stdin>:1): Cannot index string with string; you have exceeded your usage limit" \
+        run_agents "$out" "codex")
+    assert_exit_code "codex error text on stderr does not fail the review" "0" "$exit_code"
+    assert_contains "the review is still kept" "reviewed by codex" "$(findings_of codex)"
+    assert_not_contains "no failure marker" "Review failed" "$(findings_of codex)"
     teardown
 }
 
-test_cli_result_error_detection_both_directions() {
-    echo "TEST: an error-only result fails; review prose that mentions markers does not (#313)"
+test_cli_review_text_is_never_reclassified() {
+    echo "TEST: no review is discarded for how its text reads (#313 round 2, gemini must-fix 1-2)"
     setup
     make_mock_agent copilot
     local out="${TMPDIR_BASE}/out.txt" ec
 
-    # Direction 1 — must FAIL: an error block with a markdown heading and
-    # more than 400 characters. The old length/heading heuristic let both
-    # of these through.
-    local headed_error="# Error
+    # A review that OPENS like an error: an adversarial review of auth
+    # code legitimately starts "# Error Handling in auth.py" and then
+    # discusses rate limits. The round-1 opener rule failed exactly this.
+    local error_headed_review="# Error Handling in auth.py
 
-You have exceeded your usage limit for this account. Please wait for the
-quota to reset, or upgrade the plan; this request was not processed and
-no review was produced. Contact support if you believe the usage limit
-was reported in error, quoting the request id shown in the client log."
-    ec=$(MOCK_COPILOT_ERRMARK="$headed_error" run_agents "$out" "copilot")
-    assert_exit_code "a long, heading-carrying error still fails" "3" "$ec"
-    assert_contains "reason says an error arrived in place of a review" \
-        "returned an error in place of a review" "$(findings_of copilot)"
+The retry path ignores the rate limit header, so an unauthorized
+response is retried forever; an overloaded backend then sees the same
+request repeatedly. Recommend honouring Retry-After."
+    ec=$(MOCK_COPILOT_ERRMARK="$error_headed_review" run_agents "$out" "copilot")
+    assert_exit_code "a review headed 'Error Handling' is accepted" "0" "$ec"
+    assert_contains "the review body is kept" "ignores the rate limit header" "$(findings_of copilot)"
 
-    # Direction 2 — must PASS: concise, list-formatted findings whose
-    # every line mentions a marker word. The old heuristic failed these.
+    # Concise, list-formatted findings whose every line names a marker.
     local concise_review="- The retry path ignores the rate limit header.
 - Unauthorized responses are retried forever."
     ec=$(MOCK_COPILOT_ERRMARK="$concise_review" run_agents "$out" "copilot")
     assert_exit_code "concise list findings are accepted" "0" "$ec"
     assert_contains "the findings are kept verbatim" "retry path ignores the rate limit" "$(findings_of copilot)"
 
-    # Direction 2b — a one-line review that happens to name a marker.
+    # A one-line review that happens to name a marker.
     ec=$(MOCK_COPILOT_ERRMARK="No blocking issues; the rate limit handling is correct." \
         run_agents "$out" "copilot")
     assert_exit_code "a one-line clean review is accepted" "0" "$ec"
+
+    # An EMPTY result still fails — that is machine state, not text.
+    ec=$(MOCK_COPILOT_EMPTY=1 run_agents "$out" "copilot")
+    assert_exit_code "an empty result still fails" "3" "$ec"
+    assert_contains "reason names the empty response" "empty response" "$(findings_of copilot)"
     teardown
 }
 
@@ -2090,6 +2116,114 @@ assert_term_escalation() {
     fi
 }
 
+test_cli_claude_non_object_json_is_a_reported_failure() {
+    echo "TEST: truthy non-object JSON from claude fails with a reason, not a silent jq crash (#313 round 2)"
+    setup
+    make_mock_agent claude
+    local out="${TMPDIR_BASE}/out.txt" ec raw content
+    # Each of these passes `jq -e .` but cannot be indexed: before the
+    # type check, `.is_error` aborted jq and the helper died under set -e
+    # leaving an EMPTY findings file under the caller's failure marker.
+    for raw in '"oops"' '[]' '1' 'true' '"Error: quota exceeded"'; do
+        ec=$(MOCK_CLAUDE_RAW="$raw" run_agents "$out" "claude")
+        assert_exit_code "claude JSON ${raw} exits 3" "3" "$ec"
+        content=$(findings_of claude)
+        assert_contains "claude JSON ${raw}: reason recorded" "did not emit a JSON result object" "$content"
+        assert_contains "claude JSON ${raw}: marked failed" "Review failed" "$content"
+    done
+    teardown
+}
+
+test_cli_helper_returns_promptly_on_term() {
+    echo "TEST: TERM to the helper returns at once when the CLI exits cleanly (#313 round 2, gemini 4)"
+    setup
+    make_mock_agent codex
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times" "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md"
+    echo "review this" > "$prompt"
+    # A fast-exiting mock (no TERM trap): the escalation window is 5s, so
+    # anything close to that means the handler waited on its watchdog.
+    MOCK_CODEX_SLEEP=30 MOCK_TIMES_DIR="$times" REVIEW_KILL_ESCALATION=5 \
+        TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800 \
+        >/dev/null 2>&1 &
+    local helper_pid=$! i
+    for ((i = 0; i < 60; i++)); do
+        [[ -f "$times/codex.pid" ]] && break
+        sleep 0.1
+    done
+    local t0 t1 ec=0
+    t0=$(date +%s.%N)
+    kill -TERM "$helper_pid" 2>/dev/null || true
+    wait "$helper_pid" || ec=$?
+    t1=$(date +%s.%N)
+    assert_exit_code "helper exits 143" "143" "$ec"
+    if awk -v a="$t0" -v b="$t1" 'BEGIN{exit !((b - a) < 3)}'; then
+        echo "  PASS: helper returned well inside the 5s escalation window"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: helper waited out the escalation window after a clean CLI exit"; FAIL=$((FAIL + 1))
+    fi
+    teardown
+}
+
+test_claude_unavailable_without_jq() {
+    echo "TEST: claude is marked unavailable when jq is missing (#313 round 2, gemini 8)"
+    setup
+    make_mock_agent claude; make_mock_agent codex
+    # A PATH with the mocks and the system tools but no jq: a wrapper dir
+    # shadows jq with a non-executable stub so `command -v` misses it.
+    local nojq="${TMPDIR_BASE}/nojq"; mkdir -p "$nojq"
+    local realbin; realbin=$(mktemp -d -p "$TMPDIR_BASE")
+    local tool
+    for tool in bash env timeout mktemp cat tail head grep sed awk tr wc date sleep kill git dirname basename cut rm mkdir ls cp printf; do
+        [[ -x "/usr/bin/${tool}" ]] && ln -sf "/usr/bin/${tool}" "${realbin}/${tool}"
+        [[ -x "/bin/${tool}" && ! -e "${realbin}/${tool}" ]] && ln -sf "/bin/${tool}" "${realbin}/${tool}"
+    done
+    cd "${MOCK_REPO}"
+    local out="${TMPDIR_BASE}/out.txt" ec=0
+    PATH="${MOCK_BIN}:${realbin}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents claude,codex < /dev/null > "$out" 2>/dev/null || ec=$?
+    assert_exit_code "run without jq exits 3 (claude unavailable, codex fine)" "3" "$ec"
+    assert_contains "claude findings name the missing jq" "jq is required" "$(findings_of claude)"
+    assert_contains "claude marked failed" "Review failed" "$(findings_of claude)"
+    assert_contains "codex still completed" "Review complete" "$(findings_of codex)"
+    teardown
+}
+
+test_cleanup_reaps_jobs_before_dropping_tmp_root() {
+    echo "TEST: an interrupted run reaps its jobs before removing the shared temp root (#313 round 2, codex 2)"
+    setup
+    make_mock_agent codex
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
+    local scratch="${TMPDIR_BASE}/scratch"; mkdir -p "$scratch"
+    cd "${MOCK_REPO}"
+    # A CLI that ignores TERM: its helper legitimately spends its
+    # escalation window before exiting, and the parent must not drop
+    # AGENT_TMP_ROOT (where that CLI's temp dir lives) until it has.
+    MOCK_CODEX_IGNORE_TERM=1 MOCK_CODEX_SLEEP=30 MOCK_TIMES_DIR="$times" \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="$scratch" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex < /dev/null > /dev/null 2>&1 &
+    local script_pid=$! i
+    for ((i = 0; i < 60; i++)); do
+        [[ -f "$times/codex.pid" ]] && break
+        sleep 0.1
+    done
+    kill -TERM "$script_pid" 2>/dev/null || true
+    local ec=0; wait "$script_pid" || ec=$?
+    assert_exit_code "interrupted run exits 143" "143" "$ec"
+    # The CLI is gone and nothing is left in the scratch root.
+    sleep 0.3
+    local pid; pid=$(cat "$times/codex.pid" 2>/dev/null || echo "")
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+        echo "  FAIL: the TERM-ignoring CLI outlived the interrupted run"; FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: the TERM-ignoring CLI was killed before the parent exited"; PASS=$((PASS + 1))
+    fi
+    assert_eq "no temp files survive the interrupted run" "0" "$(ls -A "$scratch" | wc -l)"
+    teardown
+}
+
 test_cli_helper_escalates_to_sigkill() {
     echo "TEST: _cli_review.sh waits for a TERM-ignoring CLI and escalates to SIGKILL (#313)"
     setup
@@ -2130,7 +2264,7 @@ test_cli_timeout_kills_the_cli() {
         times="${TMPDIR_BASE}/times-${agent}"; mkdir -p "$times"
         out="${TMPDIR_BASE}/out-${agent}.txt"
         export "MOCK_${agent^^}_SLEEP=6"
-        exit_code=$(AGENT_TIMEOUT=1 AGENT_KILL_AFTER=1 MOCK_TIMES_DIR="$times" \
+        exit_code=$(AGENT_TIMEOUT=1 AGENT_KILL_AFTER=1 REVIEW_KILL_ESCALATION=0 MOCK_TIMES_DIR="$times" \
             run_agents "$out" "$agent")
         unset "MOCK_${agent^^}_SLEEP"
         assert_exit_code "${agent} timeout exits 3" "3" "$exit_code"
@@ -2378,10 +2512,14 @@ test_cli_codex_transcript_not_in_findings
 test_cli_prompt_reaches_every_cli_on_stdin
 test_cli_empty_response_is_failure
 test_cli_nonzero_exit_is_failure
-test_cli_error_marker_is_failure
+test_cli_error_text_explains_never_causes
 test_cli_codex_transcript_marker_does_not_fail_the_review
-test_cli_result_error_detection_both_directions
+test_cli_review_text_is_never_reclassified
 test_cli_claude_error_payload_in_reason
+test_cli_claude_non_object_json_is_a_reported_failure
+test_cli_helper_returns_promptly_on_term
+test_claude_unavailable_without_jq
+test_cleanup_reaps_jobs_before_dropping_tmp_root
 test_cli_codex_empty_response_excerpts_transcript
 test_cli_helper_escalates_to_sigkill
 test_agy_helper_escalates_to_sigkill
