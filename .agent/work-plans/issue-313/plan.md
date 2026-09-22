@@ -44,11 +44,14 @@ eight round-1 action items.
      to a log, discarded on success, tailed into the failure reason on
      failure. `fail` on exit!=0 or `$out_file` missing/empty. No documented
      codex error markers; report exit code + log excerpt.
-   - **claude**: `"$bin" -p --output-format json --permission-mode plan
-     --permission-prompts none < "$prompt"`. `--permission-mode plan` is the
-     read-only pick (`claude --help`) — `--dangerously-skip-permissions` is
-     rejected as unsafe for a reviewer; `--permission-prompts none`
-     auto-denies the rest instead of hanging, mirroring agy. Parse the
+   - **claude**: `"$bin" -p --output-format json --permission-prompts none
+     < "$prompt"`. `--permission-prompts none` auto-denies anything that
+     would prompt instead of hanging, mirroring agy;
+     `--dangerously-skip-permissions` is rejected as unsafe for a
+     reviewer. No `--permission-mode plan` (owner Checkpoint, round-2
+     plan-review finding 1): plan mode's terminal move is presenting a
+     plan for approval, which would pass every gate below while putting a
+     plan rather than a review in the findings file. Parse the
      single JSON object with `jq`; `fail` on exit!=0, invalid JSON,
      `.is_error == true`, `.subtype != "success"`, or empty `.result`.
      Surface `.result`/error text containing `usage limit`, `rate limit`,
@@ -56,15 +59,21 @@ eight round-1 action items.
    - **copilot** (fixes #212): `"$bin" -p "" --allow-all-tools -s <
      "$prompt"` — stdin, the form #212 verified on 1.0.48. Re-confirm on the
      installed 1.0.61 once Copilot quota returns (open question below);
-     until then, a belt-and-braces guard: prompt > 100 KiB → `fail` before
-     invoking copilot, so a channel regression to argv can't happen even if
-     a future edit reintroduces it. `-s` output used as-is — no second
+     until then, a belt-and-braces guard: prompt > 128 KiB (Linux
+     MAX_ARG_STRLEN, per the owner Checkpoint and round-2 finding 2) →
+     `fail` before invoking copilot. At exactly that bound the guard can
+     only fire where an argv regression would have exec-failed anyway, so
+     it never turns a working stdin review into a failure; the real
+     enforcement of the channel is the stdin-contract test. `-s` output
+     used as-is — no second
      footer strip (drops round 1's `sed '/^Changes$/q'`, which risked
      truncating a review body containing a bare `Changes` line). `fail` on
      exit!=0 or empty stdout.
 4. **`cross_model_review.sh` wiring**: extend the availability precheck
    (currently `AGY_REVIEW_HELPER`-only, ~line 467) to also require
-   `CLI_REVIEW_HELPER` present + executable; `run_agent_sync`'s
+   `CLI_REVIEW_HELPER` present + executable **for codex/claude/copilot
+   only** (round-2 finding 3: a missing `_cli_review.sh` must not mark a
+   gemini-only run unavailable); `run_agent_sync`'s
    codex/claude/copilot arms (213-217) call it per point 2, `EXIT=`
    semantics unchanged; update the header comment (~31-36, documents the
    bare `<cli> -p < prompt` invocation) and `run_agent_job`'s non-gemini
@@ -114,6 +123,69 @@ copilot invocation channel → #212 regression test + size guard.
 - Copilot's stdin form is confirmed on 1.0.48 (#212), not re-verified on the
   installed 1.0.61 (quota exhausted). The 100 KiB guard mitigates until a
   live check is possible; note in the PR description.
+
+## Implementation Notes
+
+Written during implementation; each item is a decision the plan did not
+settle, or a deviation from it.
+
+1. **A background child's stdin is `/dev/null`.** The first draft of
+   `run_cli` put the `< "$prompt"` redirect on the *call* to the helper
+   function rather than on the backgrounded command inside it. Bash
+   points an asynchronous command's stdin at `/dev/null` unless that
+   command carries its own redirect, so every CLI would have been handed
+   an empty prompt — the exact failure this issue exists to catch, and a
+   silent one (copilot's mock still answered). Caught by the new
+   stdin-contract test, not by inspection; the redirect now lives on the
+   backgrounded command, as it does in `_agy_review.sh`. A
+   `test_cli_prompt_reaches_every_cli_on_stdin` case pins it for all
+   three CLIs.
+
+2. **`EXIT=` for codex/claude/copilot is now the helper's status.** A
+   failed review reports `EXIT=1` (the helper's "no usable result"), not
+   the CLI's own exit code, exactly as gemini has since #288; the CLI's
+   status is named in the findings file's reason. This changed an
+   existing assertion (`test_agents_partial_failure` expected `EXIT=7`)
+   and is documented in the script header, ADR-0015's consequence bullet
+   and the review-code skill's result-reading note.
+
+3. **Error-marker scanning is asymmetric on purpose.** The full marker
+   set (quota / rate limit / usage limit / overloaded / not logged in /
+   unauthorized / authentication failed) is matched against the CLI's own
+   stderr or transcript, where any hit is an error. Against the *result*
+   it is matched only when the text is short (<= 400 chars) and carries
+   no markdown heading — an adversarial review may legitimately discuss
+   rate limits or authentication, and failing a real review would be
+   worse than missing an error. `test_cli_error_marker_is_failure`
+   asserts both halves.
+
+4. **`run_agent_sync`'s default arm routes through the helper.** Rather
+   than keep a bare `"$bin" -p` fallback for an agent key that cannot
+   occur (the list is validated at parse time), `*)` now execs
+   `_cli_review.sh`, which rejects an unknown agent with exit 2 and a
+   readable reason in the findings file instead of running a CLI blind.
+
+5. **codex's empty-result reason says "empty response".** The distinct
+   condition (`--output-last-message` file missing or empty) is still
+   named, but the shared vocabulary keeps one assertion working across
+   all three CLIs and matches how the failure reads to a human.
+
+6. **`agent_wait_patterns.md` did not name the helpers** (the conditional
+   in step 6): it now carries a quick-reference row and a See-also entry
+   for the inner half of the wait — CLI as a waited-on background child
+   with signals forwarded.
+
+7. **Test suite: 196 -> 298 assertions.** `make_mock_agent` now emits a
+   per-CLI mock reproducing that CLI's real output shape (codex:
+   transcript on stdout, final message to the `-o` file; claude: one JSON
+   object; copilot: stdin + `-s`). New cases: transcript-never-becomes-
+   the-review, prompt-on-stdin for all three, empty / non-zero exit /
+   error marker / timeout-with-kill per CLI, claude's JSON contract
+   (non-JSON, `is_error`, bad subtype, envelope not leaked), the copilot
+   stdin contract (#212), the 128 KiB guard (and that codex is not
+   subject to it), TERM forwarding to the CLI child, truncate-first plus
+   usage errors, a temp-leak sweep, and a missing-`_cli_review.sh`
+   precheck case that leaves gemini usable.
 
 ## Estimated Scope
 
