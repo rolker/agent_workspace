@@ -86,3 +86,11 @@ stale against #300's landed wording.
 **Decision**: proceed
 
 Proceed to plan-task with the review notes carried in: update review_loop_lifecycle.md's "implement (inline)" references in the same PR; sequence the final review/merge after #300 (merge from main first; overlap is step 6's merge-refused paragraph); a short ADR-0014 addendum for the agent-reuse policy incl. the never-list; keep agent reuse as its own plan step so it can be split off if it drags.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 11:53 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-314/plan.md` at `6716c8f`
+
+Four steps: (1) dispatch `implement` instead of running it inline (dispatch_phase.sh rows 10/26 drop mode=inline, row 27 keeps it; skill_for() reclassifies by first-Implementation-entry instead of Mode; fixtures, SKILL.md steps 4/5, review_loop_lifecycle.md); (2) triage-reviews may start once review sources are in even while CI runs (SKILL.md step 9; triage-reviews' CI vocab gains "pending"); (3) PR body's decision summary heading must be exactly `## Decision summary` (SKILL.md step 7); (4) agent reuse for repeat phases as its own step, with a short ADR-0014 addendum (ADR-0008 mechanism) for the reuse policy and never-list.
