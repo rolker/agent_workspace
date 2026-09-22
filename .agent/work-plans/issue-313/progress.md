@@ -352,3 +352,11 @@ Examples:
 Learn More:
   Use `copilot <command> --help` for more information about a command.
   Read the documentation at https://docs.github.com/copilot/how-tos/copilot-cli (-p <text>, --allow-all-tools, -s/--silent, --output-format).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 12:53 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-313/plan.md` at `8c75011`
+
+One shared skeleton (`_review_helper_common.sh`, sourced) plus three thin per-CLI helpers (`_codex_review.sh`, `_claude_review.sh`, `_copilot_review.sh`) give codex/claude/copilot the same forced validation gate `_agy_review.sh` already gives gemini; `_agy_review.sh` itself is left as-is (stream-json parsing has no shared analog). Codex uses `-o <file>` to avoid the stdout prompt-echo; claude uses `--output-format json` for a parseable result object; copilot fixes #212 by passing `-p <text>` as an argument with `--allow-all-tools`/`-s` instead of stdin. PR closes #313 and #212; #320 is explicitly out of scope.
