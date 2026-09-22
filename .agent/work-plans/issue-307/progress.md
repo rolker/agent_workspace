@@ -475,3 +475,13 @@ Merge. Zero open findings at 2a2a724, CI green except Copilot's quota-exhaustion
 **Mode**: report-only
 **Scope**: workspace
 **Conditions**: no "## Decision summary" heading in the PR body or a PR comment
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 09:48 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge-refused
+**Decision**: merge
+
+Re-run the merge script directly with `--no-wait`. The refusal was the Copilot quota check-run counted as a CI failure (#300); the code's own checks are green at 2a2a724 and every later commit is progress-only. The PR body's decision-summary heading was also promoted to `## Decision summary` (the gate's expected level). Decision is outside the merge-refused vocabulary (retriage/address/stop) by the owner's choice; `--pr merged` short-circuits `next` to done.
