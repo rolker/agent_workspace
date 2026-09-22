@@ -110,3 +110,197 @@ Proceed to plan-task with the issue-review actions folded in: run-issue, review-
 **Plan**: `.agent/work-plans/issue-317/plan.md` at `beea1cb`
 
 Minimal PR-3 user-tier session layer: registry-gated SessionStart hook rendering both layers, registry_require_root guard on promoted scripts, session_scope frontmatter (with run-issue/review-issue/address-findings folded in as "both"), cwd-derived --type/--project, and the new provisional ADR-0015 "session roots and the user tier" drafted in this PR. Acceptance test is the full /run-issue loop from ~/src/gz4d through the merge checkpoint, per the owner's issue-review checkpoint. Notes the branch is 13 commits behind main with two in-flight PRs (#319, #316/#318) touching dispatch_phase.sh/run-issue — merge required before implementation and again before final review.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 12:33 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #317 — #265 PR 3: minimal session layer — user-tier hook + install, root-resolved skills, cwd-derived type/project (gz4d acceptance)
+**Plan**: `.agent/work-plans/issue-317/plan.md` at `beea1cb`
+**Branch**: `feature/issue-317`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | Defensible overall, but three blocks can move to PR 4 without touching the gz4d acceptance (register-project stub, promoting the two hooks, part of the script manifest), and step 2 is already implemented on main |
+| Issue alignment | Good | Covers all six issue scope items plus the three issue-review actions the owner's checkpoint folded in (session_scope for run-issue/review-issue/address-findings, the provisional ADR, the parent-plan reconciliation) |
+| File targeting | Needs work | Branch-currency section misattributes the in-flight work; spike 7's "11 skills" list is stale (15 of 22 today); `registry_require_root` already exists |
+| Consequences | Needs work | `test_skill_paths.sh` as specified fails on day one against the tracked `settings.json`; `make validate` gains a check that fails on any machine without the user tier |
+| Principle alignment | Good | Enforcement-over-documentation is real here (guard + manifest + behaviour test + heading-drift test); "only what's needed" is where the trims below apply |
+| ADR compliance | Concern | ADR-0015 is already taken by an open PR; the ADR-0011 addendum shape contradicts the parent plan and ADR-0008's test |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[Approach — high]** `dispatch_phase.sh` cannot resolve a project worktree
+   on this machine. `resolve_worktree()` only builds a project base when
+   **exactly one** project is registered (`.agent/scripts/dispatch_phase.sh`
+   lines 98–121; the header comment says "No `--project` disambiguation flag
+   here"). The live registry has three entries (`gz4d`, `p11-jazzy`,
+   `p11-rolling`), so `--type project` falls through to the legacy
+   `project/` base and the acceptance test's
+   `/run-issue <N> --type project` fails at the first dispatch. Step 8 is
+   worded as *defaulting* `--project`; it must **add** the flag and thread it
+   through `resolve_worktree` (and the usage/header text). This is the one
+   finding that blocks acceptance outright.
+
+2. **[Approach — high]** "Default `--type`/`--project` from the hook's
+   `WORKTREE_TYPE=`/`PROJECT=` session lines" is not a mechanism scripts
+   have. SessionStart stdout is context text for the model, not environment;
+   scripts must derive from `$PWD` via `registry_resolve_from_dir` (which
+   already does longest-prefix ancestor matching). The same gap hits
+   `${AGENT_WORKSPACE_ROOT:-.}` in step 9: nothing sets that variable in the
+   Bash tool's shell (a fresh shell per call), so in a project session the
+   `:-.` fallback silently resolves against the project cwd and the script is
+   simply not found — and the workspace session masks it, because `.` is
+   correct there. Decide the idiom before rewriting skill files: either the
+   hook prints the absolute root and the skills instruct the agent to
+   substitute it literally, or every skill command chain begins by exporting
+   it. As written, the 11 (really 15 — finding 7) rewrites are a no-op in the
+   session they exist for.
+
+3. **[ADR compliance — high]** ADR-0015 is already claimed:
+   `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md`
+   on open PR #318 (issue #206, branch `feature/issue-206`). Use 0016, and
+   re-check the highest number at the pre-review merge.
+
+4. **[ADR compliance — medium]** The ADR-0011 addendum shape contradicts the
+   parent plan and ADR-0008's own test. The parent plan (`issue-265/plan.md`,
+   ADR Compliance row for ADR-0011) says the discovery-order change is
+   *substantive* by ADR-0008's test and is therefore recorded in the new ADR
+   (superseding that part), **not** as an addendum. ADR-0008 permits only
+   navigational edits (Status note, References entry). Also, this PR does not
+   change the discovery order at all — PR 4 removes the `project/` fallback —
+   so an addendum here would document a change that has not happened. Keep
+   any ADR-0011 edit to a pointer; put the supersession in the new ADR.
+
+5. **[File targeting — medium]** The branch-currency section has the in-flight
+   work inverted. PR #319 is issue #300 and touches `merge_pr.sh`,
+   `run-issue/SKILL.md`, `review-code/SKILL.md`, `AGENTS.md`, `Makefile` —
+   **not** `dispatch_phase.sh`. The branch that touches `dispatch_phase.sh`
+   (plus `test_dispatch_phase.sh` and ADR-0014) is `feature/issue-314`, which
+   is **local and unpushed with no PR**, so step 1's `git merge origin/main`
+   will not surface it — the stated mitigation does not cover the actual
+   conflict. The real overlaps to plan around are: `run-issue/SKILL.md` and
+   `AGENTS.md` (#319 and #318) against step 9's 22-file frontmatter sweep and
+   step 3's heading list, and `Makefile` (#319) against step 10.
+
+6. **[Consequences — medium]** `test_skill_paths.sh` as specified fails the
+   moment it is written: it is to fail on any relative `.agent/scripts` /
+   `.claude/hooks` reference "in `SKILL.md` **or `settings.json`**", and the
+   tracked `.claude/settings.json` carries two relative hook commands today
+   (spike 7) which this PR deliberately does not edit. It runs in CI, via
+   `make lint` → the `validate-script-tests` pre-commit hook. Either allowlist
+   those two existing entries explicitly or scope the test to `SKILL.md` for
+   this PR — otherwise the plan's own Ask-First promise gets forced open by a
+   red test.
+
+7. **[File targeting — medium]** Spike 7's "11 of 20 skills" is stale (measured
+   2026-09-16). Today **15 of 22** `SKILL.md` files carry relative
+   `.agent/scripts` / `.claude/hooks` references, including exactly the ones
+   the acceptance loop needs from the gz4d session: `run-issue` (17
+   references), `address-findings` (4), `review-plan` (4), `review-issue` (1).
+   Re-grep at implementation rather than working from the list of 11.
+
+8. **[Scope — medium]** Step 2 is already done. `registry_require_root` exists
+   at `.agent/scripts/_project_registry.sh:479` (landed with PR 1), with the
+   workspace-checkout special case and the one-line refusal message. Its
+   signature is `registry_require_root <ws_root> [dir]`, not `[dir]` — every
+   promoted script must therefore resolve the workspace root itself
+   (`BASH_SOURCE`, as several already do) before calling it. Step 2 becomes
+   "call it", not "add it".
+
+9. **[Scope — medium]** What can move to PR 4 without breaking the gz4d
+   acceptance:
+   - **Step 6's register-project stub** and its install/uninstall/`--check`
+     paths: `gz4d` is already registered, and `register_project.sh` is PR 4.
+   - **Step 5 entirely** — but as promote-or-defer, not guard-or-not. Nothing
+     in the acceptance needs `block-bash-tool-mapping.sh` / `log-tool-use.sh`
+     in a project session; leave them project-scoped and both the guards and
+     their tests disappear. If they *are* promoted, the guard is mandatory
+     (spike 3b) and must ship with them.
+   - **Step 7's manifest**, trimmed to what the loop actually invokes from
+     `gz4d` (`worktree_create/enter/remove/list`, `gh_create_pr`,
+     `gh_create_issue`, `fetch_pr_reviews`, `cross_model_review`, `merge_pr`,
+     `adapter`, `build`, `test`). `dashboard.sh` is not in the loop; each
+     manifest row costs a guard call plus a test row.
+   - **Step 9's frontmatter sweep**: only the 13 `project`/`both` skills need
+     the field; `workspace` is the documented default for the other 9.
+   Keep step 12 (parent-plan PR-sequence row) — it is the owner's checkpoint
+   decision and it is one table row.
+
+10. **[Consequences — medium]** Wiring `user_tier_install.sh --check` into
+    `make validate` makes that command fail on any machine or clone where the
+    user tier is not installed (the ROS machine, a fresh checkout, a
+    contributor). `--check` should exit 0 with a "not installed" note unless
+    explicitly asked to require it. Related: the new suites run in CI through
+    `make lint` → `run_script_tests.sh`, so `test_user_tier_guard.sh` and the
+    `--check` drift cases must redirect `HOME`, never read or write the real
+    `~/.claude`, and need no network or `gh` auth — which also means the guard
+    call has to precede any `gh`/`git` call for the "refuses and touches
+    nothing" assertion to hold.
+
+11. **[Approach — low]** Rendering `AGENTS.md` by heading list is the right
+    call (ADR-0006, render-not-fork), but the drift test as specified only
+    asserts the headings exist. Add two assertions: each rendered section is
+    non-empty, and extraction stops at the next same-level heading. Two open
+    PRs already modify `AGENTS.md` and #259 will rewrite it, so this test is
+    the only thing between a rename and a silently empty workspace layer.
+
+12. **[Approach — low]** The pinned workspace registry entry (step 8) has no
+    specified shape, and its blast radius is wide: a registry line whose path
+    is the workspace root makes every workspace cwd resolve as a project
+    through `registry_resolve_from_dir`, which feeds `adapter --from`
+    discovery, `dashboard.sh` classification and `registry_worktree_dir`
+    (default `<root>/worktrees/`, while workspace worktrees live at
+    `<ws>/worktrees/workspace/`). Specify the entry's type, its `worktrees=`
+    override and which consumers skip it — or drop it from PR 3 and branch on
+    "cwd under the workspace checkout", which `registry_require_root` already
+    does.
+
+13. **[Testing — low]** There is a hermetic proxy for two of step 14's four
+    cases, and step 13 already names it: drive
+    `session_start_project_layer.sh` with a synthetic registry and a
+    `{"cwd": …}` payload — exactly spike 2's method — for both the silent
+    branch ("unrelated repo sees nothing") and the inject branch ("both layers
+    printed under a registered root"). Say so in step 14, so the live run
+    carries only what a test cannot: that Claude Code splices the stdout into
+    context, that the symlinked skills are listed by name, and that the full
+    loop runs. Allow-rule non-firing stays non-hermetic; the closest proxy is
+    asserting every generated settings entry is absolute-path and
+    marker-tagged.
+
+**Ask-First check (clean)**: the Files-to-Change list contains neither
+`AGENTS.md` nor the tracked `.claude/settings.json`, and the Open Questions
+section states the reasoning correctly. The only way an Ask-First edit gets
+forced is finding 6.
+
+### Summary
+
+The design is right and the scope discipline is mostly honest, but the plan
+cannot be implemented as written: `dispatch_phase.sh` has no `--project`
+disambiguation and will not find the `gz4d` worktree with three projects
+registered (finding 1), and the `AGENT_WORKSPACE_ROOT` / session-line
+mechanism the plan leans on does not reach scripts or the Bash tool's shell
+(finding 2). Both sit directly under the acceptance test. Fix those two, take
+the ADR number and shape corrections (3, 4), correct the in-flight-work
+attribution (5), and the remaining items are trims and test hardening.
+
+### Recommended Actions
+
+- [ ] Step 8: add a real `--project` flag to `dispatch_phase.sh` and thread it through `resolve_worktree`; derive `--type`/`--project` from `$PWD` via `registry_resolve_from_dir`, not from hook output
+- [ ] Step 9: settle how skills reach the workspace root in a project session before rewriting any file — `${AGENT_WORKSPACE_ROOT:-.}` silently resolves to the project cwd there
+- [ ] Step 11: number the new ADR 0016 (0015 is claimed by open PR #318) and re-check at the pre-review merge
+- [ ] Step 11: keep the ADR-0011 edit navigational only (ADR-0008); record the discovery-order supersession in the new ADR, as the parent plan requires
+- [ ] Rewrite the branch-currency paragraph: #319 is issue #300 (merge_pr.sh, run-issue/SKILL.md, AGENTS.md, Makefile); `dispatch_phase.sh` is touched by the unpushed local `feature/issue-314`, which merging main will not reveal
+- [ ] Step 9: scope `test_skill_paths.sh` to `SKILL.md`, or allowlist the two existing relative hook commands in the tracked `settings.json`
+- [ ] Step 9: re-grep the skills (15 of 22 today, not 11) instead of reusing spike 7's list
+- [ ] Step 2: call the existing `registry_require_root` (`_project_registry.sh:479`, signature `<ws_root> [dir]`) rather than adding it
+- [ ] Trim to acceptance: drop the register-project stub and the two-hook promotion to PR 4; trim the script manifest to what the loop invokes; put `session_scope` only on the 13 project/both skills
+- [ ] Make `user_tier_install.sh --check` a no-op when the user tier is not installed; redirect `HOME` in every new test suite (they run in CI via `make lint`)
+- [ ] Step 4: assert rendered sections are non-empty and bounded at the next same-level heading, not just that headings exist
+- [ ] Step 8: specify the pinned workspace registry entry's shape and its consumers, or defer it
+- [ ] Step 14: name the hermetic hook-driver test as the proxy for the silent/inject cases; keep the live run for context splicing, skill listing and the full loop
