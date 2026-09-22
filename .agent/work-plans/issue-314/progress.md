@@ -439,3 +439,22 @@ fixture changed. Not pushed.
 **Decision**: publish
 
 Publish now: round 3 approved with no findings, main merged in (39b772a), item 4 dropped and reverted by owner decision.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-22 13:42 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #322 at `90460d4`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `8e1ffd1`, CI rollup @ `90460d4`; Copilot's COMMENTED placeholder at `90460d4` carries no review content — quota exhausted — and is not counted as a source)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- (none) No open findings. Round 3's local review approved with "No issues found. LGTM."; rounds 1 and 2 closed all 10 boxes (four of them dropped by the owner's decision to revert item 4). The only commit after the reviewed head `8e1ffd1` is the publish `## Checkpoint`, a progress.md-only bookkeeping commit (`git diff --stat 8e1ffd1..90460d4` = 1 file, +26 lines), so the round-3 approval still covers the code at the PR head.
+
+### False positives
+- (CI rollup) the `copilot-pull-request-reviewer` check-run reports conclusion `failure` at `90460d4` — this is the quota-exhausted placeholder ("Copilot was unable to review this pull request because the user who requested the review has reached their quota limit"), not a test or lint failure. All eight substantive checks (Lint (pre-commit), Validate Documentation, Validate Adapter Contract, ros-manifest tests, across both workflow runs) are `success`.
+- (tooling note, not a review claim) `review_progress.sh sources` returned empty `local_findings` here: it correlates by exact head SHA and the round-3 entry is recorded at `8e1ffd1`, one bookkeeping commit behind the PR head. Known helper gap #309; the timeline was read directly instead.
+
+**Merge recommendation**: merge. No open must-fix at the PR head, CI green on every substantive check, and the PR body already carries a `## Decision summary`, so `merge_pr.sh`'s review gate has both artefacts it looks for.
