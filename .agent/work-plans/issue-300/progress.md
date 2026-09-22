@@ -113,3 +113,13 @@ The approach is correct, minimal, and faithful to the owner's settled constraint
 - [ ] Drop the "Run all tests list" step (finding 2); append inline test blocks after ci-12b instead, using ids ci-19 / ci-20 / ci-21.
 - [ ] Emit the excluded-check-run stderr note once per run, not once per poll (finding 3).
 - [ ] Tighten ci-20 to `MERGE_PR_CI_TIMEOUT_SECONDS=0` and assert the `CI checks did not complete` wording (finding 4).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 10:22 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed, folding the four plan-review findings into the implementation (fourth Copilot-only fixture expecting the never-registered branch; inline test blocks ci-19/ci-20 appended after ci-12b, no registry to wire; emit the excluded-run diagnostic once; pin the in-progress test with MERGE_PR_CI_TIMEOUT_SECONDS=0 and the timeout wording). The plan file is amended in the same branch to match.
