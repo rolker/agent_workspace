@@ -51,7 +51,7 @@ modify the PR unless the user asks.
 **Depth tiers** (see `.agent/knowledge/review_depth_classification.md`):
 - **Light** — static analysis only (small, low-risk changes)
 - **Standard** — Static Analysis, Governance, Plan Drift + Claude adversarial (medium or governance-touching)
-- **Deep** — Standard tier + Gemini adversarial (large, security, or cross-layer)
+- **Deep** — Standard tier + cross-model adversarial (every available non-caller CLI agent, in one `--agents` call) (large, security, or cross-layer)
 
 **Specialists**:
 - **Static Analysis** — runs linters on changed files using project or workspace configs
@@ -209,7 +209,7 @@ Run all of:
 #### Deep tier
 
 Run all of Standard, plus:
-- **5e. Gemini Adversarial Specialist** (via cross-model review script)
+- **5e. Cross-Model Adversarial Specialist(s)** — one `cross_model_review.sh --agents <non-caller agents>` call
 
 ---
 
@@ -348,8 +348,10 @@ trigger an "Unknown argument" error.
 
 There is one execution mode: every agent runs synchronously in its own
 background job, all in parallel, each bounded by a per-agent timeout
-(`AGENT_TIMEOUT`, default 30 minutes; Gemini by its helper's own
-print-timeout). There is no tmux mode and no `--sync` flag any more
+(`AGENT_TIMEOUT`, default 30 minutes; Gemini primarily by its helper's own
+`AGY_PRINT_TIMEOUT`, which reports the expiry with a reason, plus an outer
+backstop derived above it so a wedged helper is still cut off). There is
+no tmux mode and no `--sync` flag any more
 (#206, ADR-0015; `--sync` is rejected with exit 2). For each listed
 agent, the script:
 1. Writes a review prompt to `.agent/work-plans/issue-<issue>/review-<agent>-prompt.md`
@@ -370,9 +372,12 @@ block the others and does not fail the review. Exit 3 with **no**
 `AGENT=` triplets means the shared prompt could not be built (diff fetch
 failed or empty): nothing ran, every listed findings file holds a
 `--- Review error: ... ---` marker, and there is nothing to read. Exit 1
-means no listed agent had a usable CLI at all (or `gh` is missing in PR
-mode): nothing was written, each unavailable agent is named on stderr,
-and the cross-model specialist is reported as unavailable. Informational
+means a dependency was missing and nothing was written: either no listed
+agent had a usable CLI (each unavailable agent is named on stderr with its
+reason), or — in PR mode only — `gh` itself is missing, which aborts
+before agent resolution and prints a single `gh not installed` warning
+with no per-agent lines. Either way the cross-model specialist is
+reported as unavailable. Informational
 lines naming each findings file are printed before the agents launch
 (for `tail -f`); parse by line prefix, not by position.
 
@@ -701,6 +706,10 @@ not count. The gate is report-only by default and local-only (a GitHub
 - **Depth is transparent** — always show the tier and reason in the report
   header. If the user disagrees with the classification, they can re-run with
   an explicit depth keyword.
-- **Graceful degradation** — if Gemini is unavailable at Deep tier, proceed
-  with Claude-only adversarial. Never fail a review because an optional
-  tool is missing.
+- **Graceful degradation** — cross-model failure is per agent. An agent
+  whose CLI is missing, that times out, or that exits non-zero carries a
+  non-zero `EXIT=` and fails only itself; the review proceeds with
+  whichever agents completed, noting the failed one and its reason. If no
+  listed agent is usable at all (script exit 1), report the cross-model
+  specialist as unavailable and proceed with the Claude adversarial
+  specialist. Never fail a review because an optional tool is missing.
