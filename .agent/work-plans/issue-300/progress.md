@@ -404,3 +404,13 @@ Publish. The owner's answer at the previous publish checkpoint was "Address, the
 
 ### Notes
 Round 6 reviewed `eddcf91`; the PR head `e3b463a` adds one bookkeeping-only commit (`progress: checkpoint for #300`, `.agent/work-plans/issue-300/progress.md` only, verified with `git diff --stat eddcf91..e3b463a`), so the approval carries to the head with no code delta. `review_progress.sh sources` returned empty `local_findings` at `e3b463a` — the known helper bug #309 (exact head-SHA correlation vs. a bookkeeping commit after the review); the round-6 entry was read from the timeline directly and cited as the local source. That entry's single `- [ ] No issues found. LGTM.` box is the review-code placeholder for "nothing found", not an action item: it carries no `must-fix`/`cross-confirmed` source hint, so the merge gate's `open_mustfix` count is 0. A `## Decision summary` is already present in the PR body. Ready for the merge decision.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 12:36 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge with the CI wait skipped (`--no-wait`), the owner's explicit skip for this one merge: CI is green on every workspace check (verified by hand); the only red check-run is Copilot's quota placeholder, which the merge script on main still counts as a CI failure (#300 — the very bug this PR fixes).
