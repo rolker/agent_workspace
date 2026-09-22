@@ -433,3 +433,25 @@ Address: one more address-findings pass for the three wording suggestions (run-i
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-22 09:34 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #308 at `2a2a724`
+**Sources**: 2 (Local Review round 5, PR mode @ `2a2a724`, approved — 0 must-fix, 0 suggestions; CI rollup @ `2a2a724`). The three Copilot reviews @ `8e9c0c8`, `688d1e9` and `2a2a724` are quota-exhausted comment-only placeholders carrying no finding — not sources.
+**Cross-source confirmations**: 0
+**CI**: all-pass — Lint (pre-commit), Validate Adapter Contract, Validate Documentation all green at `2a2a724` (each ran twice, push and PR trigger). The one `failure` check-run, `copilot-pull-request-reviewer`, is the quota exhaustion itself, not a repo gate.
+
+### Findings
+- (none) No open findings. `review_progress.sh sources` returned `github_comments: []` and `candidates: []` at this head; the single `local_findings` row is the Local Review's `No issues found. LGTM.` placeholder, not a finding.
+
+All three findings from the prior `## Integrated Review` at `f0ba971` (head `688d1e9`) are verified resolved against source at this head, not taken on the local reviewer's word. `.claude/skills/run-issue/SKILL.md:271-278` now leads with the general rule — the `checkpoint:merge-refused` re-route happens only when a merge entry was actually written — and then names the two entry-less gate branches, both cites checked: `merge_pr.sh:889-890` (a passing gate prints the approval and calls no `_gate_record`) and `:896-903` (`--enforce` with `WORKTREE_TYPE == workspace` exits 1 before any record). `SKILL.md:404-420` carries the `workspace` qualifier and the project-PR fall-through to report-only (`merge_pr.sh:896,904-908`), and scopes the re-route claim to runs that recorded an entry. `.agent/knowledge/review_loop_lifecycle.md:34` is qualified with "except `--enforce` on a workspace PR, which refuses with no entry". `review_progress.sh findings` reports `open: []`.
+
+Noted, deliberately not a finding: `_gate_record` (`merge_pr.sh:764-809`) has a third way a merge run ends with no timeline entry — the PR-comment fallback, taken for a package worktree, when no worktree for the PR's repo is open, when the branch is checked out only in the main tree, or when no agent identity is set. The step-10 text's load-bearing sentence ("the re-route only happens when a merge entry was actually written") is general and covers it, so an operator who hits the fallback still reads the right answer; only the "two paths write none" enumeration is narrower than reality, and that enumeration is about gate-decision branches rather than record placement. Follow-up material for whoever next touches this prose or the package-worktree path — not a defect in this PR's diff.
+
+Merge recommendation: **merge**. Zero open findings at the head, CI green, the merge gate's two preconditions are satisfiable (this entry at the PR head with no open must-fix; a `### Decision summary` is present in the PR body). One optional pre-merge tidy, not blocking and outside this skill's side-effects: that decision summary stops at review round 3 and still lists the step-10 wording caveat under "Open human calls", which two rounds have since closed.
+
+### False positives
+- (Copilot @ `8e9c0c8`, `688d1e9`, `2a2a724`) All three GitHub reviews state Copilot "was unable to review this pull request because the user who requested the review has reached their quota limit" — COMMENTED reviews with zero inline comments and no claim about the code. Recorded so the absence of bot findings is not mistaken for bot approval.
