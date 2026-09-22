@@ -927,3 +927,13 @@ Tests: `test_cross_model_review.sh` 381/381 pass; `run_script_tests.sh` 23/23 su
 ### Findings
 - [ ] (suggestion) `job_finished`'s /proc fallback reads process state with `awk '{print $3}'`, which lands on the wrong field when a process's comm contains a space; prefer the text after the last `)`. The `jobs -pr` path is primary, so this only bites where bash's job table is empty — `.agent/scripts/cross_model_review.sh:752-757`
 - [ ] (suggestion) two comments justify the guarded jq extraction by what would happen "under `set -e`", but the helper runs `set -uo pipefail` with no `-e`; the guard is right, the stated mechanism is not (a bare jq failure would leave an empty value, not kill the helper) — `.agent/scripts/_cli_review.sh:335-354`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 14:45 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish. Pre-push review approved at round 2 (12b263f), 0 must-fix; three live Gemini+Codex runs through the helper, the last completing for both agents. Main merged in before the push.
