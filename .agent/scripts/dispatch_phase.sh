@@ -49,7 +49,8 @@
 #     `mode=inline` when the action is to be run by the host itself (row 27,
 #     a takeover, is the only row that still prints it — `implement` is
 #     dispatched like every other phase since issue #314). No
-#     `gh` call inside `next`, ever — `--pr` is the only non-timeline input.
+#     `gh` call inside `next`, ever — `--pr` and the optional `--head` are
+#     its only non-timeline inputs, and both are supplied by the caller.
 #
 # Exit codes:
 #   next:        0 action decided; 2 usage (including no worktree for
@@ -533,10 +534,15 @@ def skill_for(entry):
     b = entry.get("base_type")
     if b == "Implementation":
         f = entry.get("fields") or {}
-        # Positive signal first: **Addressed** is a required field of
-        # address-findings own entry template (its SKILL.md step 5) and the
-        # post-plan implement pass never writes it.
-        if f.get("Addressed"):
+        # Positive signal first: **Addressed** is part of address-findings
+        # own entry template (its SKILL.md step 5, where only the
+        # **Branch**/**PR** line is called required) and the post-plan
+        # implement pass never writes it. Nothing validates the field, so a
+        # present-but-empty value must NOT count as the signal -- it would
+        # route a failed implement pass to address-findings. An empty value
+        # falls through to the prior-complete-Implementation test below,
+        # which is the same answer an omitted field gets.
+        if (f.get("Addressed") or "").strip():
             return "address-findings"
         # Fallback for an entry that never got as far as writing it. A
         # review -- and so an address-findings pass -- can only follow a

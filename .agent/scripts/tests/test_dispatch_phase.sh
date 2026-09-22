@@ -91,6 +91,7 @@ implementation() {  # <status> <kind: ""|addressed|takeover>
     local extra=""
     case "${2:-}" in
         addressed) extra=$'**Addressed**: Local Review (Pre-Push) at `3333333` (2026-09-17 09:00 -04:00)\n' ;;
+        empty-addressed) extra=$'**Addressed**:\n' ;;
         takeover)  extra=$'**Mode**: inline\n' ;;
     esac
     printf '## Implementation\n**Status**: %s\n**When**: %s\n**By**: t (m)\n%s**Branch**: feature/issue-9 at `2222222`\n' "$1" "$NOW" "$extra"
@@ -168,6 +169,8 @@ assert_next "skill_for: a SECOND consecutive failed implement still maps to impl
     "$DOUBLE_FAIL" checkpoint:phase-failed "phase=implement"
 assert_next "skill_for: a taken-over implement pass (**Mode**: inline, no **Addressed**) still maps to implement" none \
     "$(implementation failed takeover)" checkpoint:phase-failed "phase=implement"
+assert_next "skill_for: a present-but-EMPTY **Addressed** is not the signal -- it falls through to the prior-complete-Implementation test, same as an omitted field" none \
+    "$(implementation failed empty-addressed)" checkpoint:phase-failed "phase=implement"
 out=$(run_next none "$(external_review partial)")
 if [[ "$out" == "action=checkpoint:phase-failed"* ]] && [[ "$out" != *"phase="* ]]; then
     pass "row 3: a partial External Review has no skill mapping -- checkpoint:phase-failed with no phase= line"

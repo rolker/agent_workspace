@@ -241,6 +241,14 @@ handoff block plus one extra line — "you already hold this branch; read
 only `progress.md` entries newer than your last one". If the agent is gone
 (or the map is empty), dispatch fresh exactly as today.
 
+**The trade-off, stated.** Resuming the *reviewer* for `review-code` round
+≥ 2 gives up one thing on purpose: that round's lead reviewer already knows
+the code it is re-reading, so it no longer comes to the diff cold. The
+independence the pre-push loop depends on is kept where it does the work —
+`review-code` spawns its adversarial specialist fresh on every round, and
+that sub-review never resumes. Round 1 is never reused (see below), so the
+first read of any branch is always cold.
+
 **Never reuse**: round 1 of any phase; an agent from a different issue; an
 agent already resumed 3 times; or any agent from before a merge-from-main
 landed on the branch (its view of the diff is stale). A resumed agent is
