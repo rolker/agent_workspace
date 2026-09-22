@@ -146,3 +146,11 @@ Every round-1 must-fix is genuinely addressed, and relocating the raw stream out
 - [ ] Open the #274 prompt-trimming follow-up issue and cite it in Approach 6, or stop closing #274 in this PR
 - [ ] Correct the `AGY_PRINT_TIMEOUT` header comment (agy's documented default is `0s`, not `5m`) while editing that block
 - [ ] Verify headless agy's file-read permission, or narrow the prompt paragraph to "work from the embedded diff"
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 09:47 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-288/plan.md` at `292bfd9`
+
+Revision after plan review round 2: the helper truncates the findings file before any guard, agy temp files are removed on every exit path with diagnostics inlined into the findings file (nothing for the test runner's leftover sweep), no staging mv, the AGY_PRINT_TIMEOUT comment is corrected, headless file reads were verified as permitted, and #312 tracks the prompt-trimming half of #274.
