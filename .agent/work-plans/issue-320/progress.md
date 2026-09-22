@@ -217,3 +217,13 @@ All six round-1 findings are addressed substantively, not cosmetically — item 
 - [ ] Add a one-line comment at the `## Approach` awk noting it is not fence-aware (finding 2)
 - [ ] Procedural gate unchanged: confirm #313 has merged to `main`, then `git merge origin/main` on this branch before the first implementation commit
 - [ ] After merge, consider a follow-up issue on what (if anything) should still distinguish the Deep tier (finding 3)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 13:23 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Plan approved at plan-review round 2 (75e7005, Plan b248f3c) with the three non-blocking notes folded into implementation (all three "Deep only" strings in review-code SKILL.md; a not-fence-aware comment on the Approach extractor; a post-merge follow-up on what still distinguishes Deep). HOLD: implementation does not start until #313 merges to main and origin/main is merged into this branch; the host dispatches it then.
