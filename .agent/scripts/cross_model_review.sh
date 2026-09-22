@@ -130,7 +130,7 @@ AGENT_KILL_AFTER="${AGENT_KILL_AFTER:-10}"
 # Seconds added to AGY_PRINT_TIMEOUT to derive gemini's outer backstop.
 GEMINI_BACKSTOP_MARGIN="${GEMINI_BACKSTOP_MARGIN:-300}"
 
-# Convert a coreutils/Go-style duration (`90`, `90s`, `30m`, `1.5h`, `1d`)
+# Convert a coreutils `timeout` duration (`90`, `90s`, `30m`, `1.5h`, `1d`)
 # to whole seconds on stdout. Returns 1 on a malformed value.
 duration_to_seconds() {
     [[ "$1" =~ ^([0-9]+(\.[0-9]+)?)([smhd]?)$ ]] || return 1
@@ -144,16 +144,42 @@ duration_to_seconds() {
     awk -v n="$number" -v m="$mult" 'BEGIN { printf "%.0f", n * m }'
 }
 
-# Validate the duration-shaped knobs up front: a value coreutils `timeout`
-# rejects surfaces as a bare exit 125 from every agent job, which reads as
-# "the CLI failed" and sends the reader down the wrong path.
-for _knob in AGENT_TIMEOUT AGENT_KILL_AFTER AGY_PRINT_TIMEOUT GEMINI_BACKSTOP_MARGIN; do
-    if ! duration_to_seconds "${!_knob}" >/dev/null; then
-        echo "ERROR: ${_knob} value '${!_knob}' is not a valid duration (a positive number with an optional s/m/h/d suffix, e.g. 1800, 30m, 1.5h)" >&2
+# Validate one duration knob up front, because every way a bad value can
+# fail later is worse than exiting 2 here: a shape coreutils `timeout`
+# rejects surfaces as a bare exit 125 from every agent job (reads as "the
+# CLI failed"), and a zero silently removes a bound rather than setting a
+# short one.
+#   $3 allow_zero  — true only for AGENT_KILL_AFTER, where 0 legitimately
+#                    means "send SIGKILL immediately after the SIGTERM"
+#   $4 go_shape    — true for a value handed to agy's --print-timeout
+#   $5 zero_reason — why zero is wrong for this particular knob
+validate_duration_knob() {
+    local name="$1" value="$2" allow_zero="$3" go_shape="$4" zero_reason="$5" seconds
+    # Go's time.ParseDuration (agy's --print-timeout parser) requires an
+    # explicit unit and has no `d`, so the coreutils shapes `90` and `1d`
+    # would pass a `timeout`-only check and then fail inside agy at
+    # runtime — after the prompt is built and the job has launched.
+    if [[ "$go_shape" == true && ! "$value" =~ ^[0-9]+(\.[0-9]+)?[smh]$ ]]; then
+        echo "ERROR: ${name} value '${value}' is not a valid Go duration. It is passed straight to agy's --print-timeout, which needs an explicit s/m/h unit (e.g. 90s, 30m, 1.5h): a bare number and a 'd' suffix are both rejected there." >&2
         exit 2
     fi
-done
-unset _knob
+    if ! seconds=$(duration_to_seconds "$value"); then
+        echo "ERROR: ${name} value '${value}' is not a valid duration (a positive number with an optional s/m/h/d suffix, e.g. 1800, 30m, 1.5h)" >&2
+        exit 2
+    fi
+    if [[ "$allow_zero" != true && "$seconds" -le 0 ]]; then
+        echo "ERROR: ${name} value '${value}' must be greater than zero (whole seconds after rounding). ${zero_reason}" >&2
+        exit 2
+    fi
+}
+
+validate_duration_knob AGENT_TIMEOUT "$AGENT_TIMEOUT" false false \
+    "coreutils 'timeout 0' imposes no limit at all, which would leave the agent unbounded — the opposite of what ADR-0015 §3 guarantees."
+validate_duration_knob AGENT_KILL_AFTER "$AGENT_KILL_AFTER" true false ""
+validate_duration_knob AGY_PRINT_TIMEOUT "$AGY_PRINT_TIMEOUT" false true \
+    "agy reads 0 as 'wait until the turn completes', which is the unbounded review this cap exists to prevent."
+validate_duration_knob GEMINI_BACKSTOP_MARGIN "$GEMINI_BACKSTOP_MARGIN" false false \
+    "a zero margin collapses the backstop onto AGY_PRINT_TIMEOUT, reintroducing the race with the helper's timeout-then-partial-response handling (#288)."
 
 # Gemini's outer backstop, deliberately ABOVE AGY_PRINT_TIMEOUT: the
 # helper's own print-timeout must always be the path that fires first, so
@@ -161,7 +187,8 @@ unset _knob
 # handled by _agy_review.sh (#288). The backstop only catches the case
 # that contract cannot cover — a helper or agy wedged so hard it never
 # honours its own timeout — so an outer SIGTERM never races the normal
-# path. Passing a margin of 0 would reintroduce that race.
+# path. A margin of 0 would reintroduce that race, which is why the
+# validator above refuses it.
 GEMINI_BACKSTOP=$(( $(duration_to_seconds "$AGY_PRINT_TIMEOUT") + $(duration_to_seconds "$GEMINI_BACKSTOP_MARGIN") ))
 
 # Helper that owns the gemini invocation. A missing helper makes the
@@ -181,7 +208,9 @@ run_agent_sync() {
         # Helper owns the findings file; no stdout redirect (#274, #288).
         # The outer timeout is the backstop above the helper's own
         # print-timeout, not a replacement for it.
-        gemini)  exec timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
+        # TMPDIR points at the parent-owned scratch root so a SIGKILLed
+        # helper's temp dir is still swept by this script's EXIT trap.
+        gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
         codex)   exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
         claude)  exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
         copilot) exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
@@ -639,6 +668,13 @@ fi
 # variable (which could hit shell limits for large Deep-tier PRs).
 SHARED_PROMPT=$(mktemp -t "cross-model-review-prompt.XXXXXX")
 
+# Scratch root handed to the agent jobs as their TMPDIR. _agy_review.sh
+# makes its own `mktemp -d` under it and removes it on every exit path it
+# can trap — but `timeout -k` finishes a wedged helper with SIGKILL, which
+# no trap survives. Owning the parent directory here means that one
+# untrappable path still gets cleaned up, by this script's EXIT trap.
+AGENT_TMP_ROOT=$(mktemp -d -t "cross-model-review-tmp.XXXXXX")
+
 # Cleanup on every exit path: stop any agent job still running (each
 # job's own TERM trap forwards to its CLI), then drop the temp prompt.
 # The INT/TERM traps turn a signal into an exit so the EXIT trap fires
@@ -651,6 +687,7 @@ cleanup_jobs() {
         kill "$pid" 2>/dev/null || true
     done
     rm -f "$SHARED_PROMPT"
+    rm -rf "$AGENT_TMP_ROOT"
 }
 trap cleanup_jobs EXIT
 trap 'exit 130' INT

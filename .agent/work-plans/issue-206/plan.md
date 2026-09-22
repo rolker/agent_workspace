@@ -213,3 +213,23 @@ Single PR.
   `AGENT_TIMEOUT` path.
 - The generic agent mock records its argv so the per-agent invocation
   contract is asserted (`codex exec` vs `-p` for claude/copilot).
+- Duration knobs are range-validated as well as shape-validated (round-2
+  code review): `0` is a shape-valid value that *removes* a bound —
+  coreutils `timeout 0` means no limit, agy's `--print-timeout 0s` means
+  wait forever, and a zero margin collapses the backstop onto the
+  print-timeout — so `AGENT_TIMEOUT`, `AGY_PRINT_TIMEOUT` and
+  `GEMINI_BACKSTOP_MARGIN` require > 0. `AGENT_KILL_AFTER=0` stays valid:
+  it means SIGKILL immediately after the SIGTERM, which is a real choice.
+  `AGY_PRINT_TIMEOUT` is additionally held to the Go-duration subset
+  (explicit `s`/`m`/`h`, no bare number, no `d`), because it is passed
+  through to agy and `time.ParseDuration` rejects what coreutils accepts —
+  otherwise the value validates here and fails inside agy at runtime.
+- SIGKILL temp-dir leak (round-2 code review): `timeout -k` finishes a
+  wedged helper with SIGKILL, which skips `_agy_review.sh`'s EXIT trap and
+  would leave its `agy-review.XXXXXX` dir behind. Fixed rather than only
+  documented — the fix is three lines: `cross_model_review.sh` creates one
+  scratch root, hands it to the gemini job as `TMPDIR`, and removes it in
+  the cleanup it already runs on every exit path. Documenting the leak
+  would have been cheaper to write and left a real one behind; the helper's
+  contract now names SIGKILL as the untrappable path and points at the
+  parent-owned root that covers it.

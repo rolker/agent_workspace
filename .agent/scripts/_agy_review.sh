@@ -35,7 +35,13 @@
 #     print-timeout handling here stays the primary path — the backstop
 #     only fires if this helper never returns at all, so it cannot race
 #     the timeout-then-partial-response contract above.
-#   * No temp files survive any exit path (the test runner sweeps TMPDIR).
+#   * No temp files survive any exit path this script can observe: the
+#     EXIT trap covers normal exits and the signal traps turn a kill into
+#     an exit so it still fires. SIGKILL is the exception — no trap runs,
+#     so the `agy-review.XXXXXX` dir would be left behind. The only sender
+#     is `timeout -k` on the caller's backstop (a wedged helper), and
+#     cross_model_review.sh closes that gap by pointing TMPDIR at a
+#     scratch root it owns and removes itself.
 #   * All diagnostics go to stderr; stdout is unused.
 #
 # Verified against agy 1.2.8 (2026-09-22): see the plan for issue #288.

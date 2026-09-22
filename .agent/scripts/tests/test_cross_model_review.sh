@@ -1446,7 +1446,8 @@ test_gemini_backstop_cuts_off_wedged_agy() {
     # agy consumes the prompt and never answers, so _agy_review.sh's own
     # --print-timeout handling never runs. Backstop = print-timeout (1s) +
     # margin (2s) = 3s; only that bound can end the run.
-    exit_code=$(AGY_PRINT_TIMEOUT=1s GEMINI_BACKSTOP_MARGIN=2 AGENT_KILL_AFTER=1 \
+    local scratch="${TMPDIR_BASE}/scratch"; mkdir -p "$scratch"
+    exit_code=$(TMPDIR="$scratch" AGY_PRINT_TIMEOUT=1s GEMINI_BACKSTOP_MARGIN=2 AGENT_KILL_AFTER=1 \
         MOCK_AGY_STALL=1 MOCK_TIMES_DIR="$times" run_agents "$out" "gemini")
     assert_exit_code "backstopped run exits 3" "3" "$exit_code"
     assert_contains "gemini EXIT=124 (timeout)" "^EXIT=124$" "$(cat "$out")"
@@ -1462,6 +1463,9 @@ test_gemini_backstop_cuts_off_wedged_agy() {
     else
         echo "  PASS: the wedged agy process was killed"; PASS=$((PASS + 1))
     fi
+    # Nothing is left in the scratch root: the parent owns the helper's
+    # TMPDIR precisely because a SIGKILLed helper skips its own EXIT trap.
+    assert_eq "no temp files survive the backstopped run" "0" "$(ls -A "$scratch" | wc -l)"
     teardown
 }
 
@@ -1484,17 +1488,57 @@ test_gemini_not_bound_by_agent_timeout() {
     teardown
 }
 
+# Run the script with one knob overridden; echoes "<exit>|<stderr>".
+run_with_knob() {
+    local assignment="$1" ec=0 stderr
+    stderr=$(env "$assignment" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex 2>&1 >/dev/null) || ec=$?
+    printf '%s|%s' "$ec" "$stderr"
+}
+
 test_duration_knobs_validated() {
     echo "TEST: bad duration knobs and a bad --pr exit 2 with a clear message (#206)"
     setup
     cd "${MOCK_REPO}"
-    local ec stderr knob
-    for knob in AGENT_TIMEOUT AGENT_KILL_AFTER AGY_PRINT_TIMEOUT GEMINI_BACKSTOP_MARGIN; do
-        ec=0; stderr=$(env "${knob}=abc" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
-            bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex 2>&1 >/dev/null) || ec=$?
-        assert_exit_code "bad ${knob} exits 2" "2" "$ec"
-        assert_contains "message names ${knob} and the shape" "${knob} value 'abc' is not a valid duration" "$stderr"
+    local ec stderr knob result
+    # Shape: a non-duration is rejected for every knob.
+    for knob in AGENT_TIMEOUT AGENT_KILL_AFTER GEMINI_BACKSTOP_MARGIN; do
+        result=$(run_with_knob "${knob}=abc")
+        assert_exit_code "bad ${knob} exits 2" "2" "${result%%|*}"
+        assert_contains "message names ${knob} and the shape" "${knob} value 'abc' is not a valid duration" "${result#*|}"
     done
+
+    # Range: 0 is a shape-valid value that silently removes a bound, so
+    # the knobs whose whole purpose is a bound must refuse it.
+    for knob in AGENT_TIMEOUT GEMINI_BACKSTOP_MARGIN; do
+        result=$(run_with_knob "${knob}=0")
+        assert_exit_code "${knob}=0 exits 2" "2" "${result%%|*}"
+        assert_contains "${knob}=0 message demands a positive value" \
+            "${knob} value '0' must be greater than zero" "${result#*|}"
+    done
+    result=$(run_with_knob "AGY_PRINT_TIMEOUT=0s")
+    assert_exit_code "AGY_PRINT_TIMEOUT=0s exits 2" "2" "${result%%|*}"
+    assert_contains "AGY_PRINT_TIMEOUT=0s message demands a positive value" \
+        "AGY_PRINT_TIMEOUT value '0s' must be greater than zero" "${result#*|}"
+    # AGENT_KILL_AFTER=0 is legitimate: SIGKILL immediately after SIGTERM.
+    local out="${TMPDIR_BASE}/out.txt"
+    make_mock_agent codex
+    ec=$(AGENT_KILL_AFTER=0 run_agents "$out" "codex")
+    assert_exit_code "AGENT_KILL_AFTER=0 is accepted" "0" "$ec"
+
+    # Go-duration subset: AGY_PRINT_TIMEOUT reaches agy's --print-timeout,
+    # which needs an explicit s/m/h unit and has no `d`. Both shapes below
+    # are valid for coreutils `timeout` and would otherwise pass.
+    for knob in "AGY_PRINT_TIMEOUT=90" "AGY_PRINT_TIMEOUT=1d"; do
+        result=$(run_with_knob "$knob")
+        assert_exit_code "${knob} exits 2" "2" "${result%%|*}"
+        assert_contains "${knob} message names the Go-duration requirement" \
+            "is not a valid Go duration" "${result#*|}"
+    done
+    # The same unit-less value stays valid for the coreutils-only knob.
+    ec=$(AGENT_TIMEOUT=90 run_agents "$out" "codex")
+    assert_exit_code "AGENT_TIMEOUT=90 (unit-less) is accepted" "0" "$ec"
+
     ec=0; stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
         bash "${SCRIPT_UNDER_TEST}" --pr 9x --agents codex 2>&1 >/dev/null) || ec=$?
     assert_exit_code "non-integer --pr exits 2" "2" "$ec"
