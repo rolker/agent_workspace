@@ -440,6 +440,110 @@ n_backups=$(ls -1 "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* 2>/d
     && pass "seven back-to-back installs leave exactly 5 backups (rotation, no same-second collision)" \
     || fail "expected 5 backups after 7 installs, found $n_backups"
 
+# --------------------------------- foreign_skill_link(): negative case ---
+# Round 3: --force repoints a skill symlink that points into ANOTHER
+# agent_workspace checkout, recognised by the .agent/user_tier_scripts.txt
+# three levels up. Nothing tested the other side of that probe: a link the
+# USER made, into a directory that is not a checkout, must survive --force
+# untouched. Without this, loosening the probe would go unnoticed.
+mk_skill zz-fixture-userlink project
+run >/dev/null   # make sure the skill set is current for this checkout
+
+USERDIR="$SANDBOX/my-own-skills/zz-fixture-userlink"
+mkdir -p "$USERDIR"
+printf -- '---\nname: zz-fixture-userlink\ndescription: the user own copy\n---\n' \
+    > "$USERDIR/SKILL.md"
+# Three levels up from the link target is $SANDBOX, which has no
+# .agent/user_tier_scripts.txt -- so this is not a checkout.
+[[ ! -f "$SANDBOX/.agent/user_tier_scripts.txt" ]] \
+    && pass "the fixture's grandparent is deliberately not a workspace checkout" \
+    || fail "fixture setup wrong: $SANDBOX looks like a checkout"
+
+rm -rf "$SKILLS_DIR/zz-fixture-userlink"
+ln -s "$USERDIR" "$SKILLS_DIR/zz-fixture-userlink"
+
+out="$(run --force)"; rc=$?
+[[ "$rc" -eq 0 ]] || fail "install --force exited $rc (out=${out:0:160})"
+[[ -L "$SKILLS_DIR/zz-fixture-userlink" \
+   && "$(readlink "$SKILLS_DIR/zz-fixture-userlink")" == "$USERDIR" ]] \
+    && pass "--force leaves a user symlink into a non-checkout directory untouched" \
+    || fail "--force repointed a user symlink (now: $(readlink "$SKILLS_DIR/zz-fixture-userlink" 2>/dev/null))"
+[[ "$out" == *"not ours to replace"* ]] \
+    && pass "--force reports the user's symlink as not ours to replace" \
+    || fail "--force did not report the user's symlink (out=${out:0:300})"
+
+rm -f "$SKILLS_DIR/zz-fixture-userlink"
+rm -rf "$WSC/.claude/skills/zz-fixture-userlink"
+run >/dev/null
+
+# ------------------------- settings.json symlinked into a dotfiles repo ---
+# Round 3: the symlinked-settings write path (readlink -f, stage beside the
+# real file, atomic mv) had no test of its own. A regression here silently
+# detaches someone's dotfiles or leaves a truncated settings.json.
+DOTFILES="$SANDBOX/dotfiles"
+mkdir -p "$DOTFILES"
+mv "$SETTINGS" "$DOTFILES/claude-settings.json"
+ln -s "$DOTFILES/claude-settings.json" "$SETTINGS"
+link_target_before="$(readlink "$SETTINGS")"
+# The inode of the REAL file. A rename onto it (atomic) allocates a new
+# inode; a `cat > "$SETTINGS"` truncates the existing one in place and keeps
+# it. This is the assertion that actually distinguishes the two, and the
+# reason the write path was changed: truncate-in-place leaves a half-written
+# settings.json if the write is interrupted.
+inode_before="$(stat -c %i "$DOTFILES/claude-settings.json")"
+
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 ]] || fail "install over a symlinked settings.json exited $rc (out=${out:0:200})"
+
+[[ -L "$SETTINGS" ]] \
+    && pass "settings.json is still a symlink after install" \
+    || fail "install replaced the settings.json symlink with a regular file"
+[[ "$(readlink "$SETTINGS")" == "$link_target_before" ]] \
+    && pass "the symlink still points at the same dotfiles path" \
+    || fail "the symlink was repointed ($(readlink "$SETTINGS") != $link_target_before)"
+
+jq -e --arg t "$WSC" '
+    [.hooks // {} | to_entries[] | .value[] | select((._agent_workspace // "") == $t)] | length > 0
+' "$DOTFILES/claude-settings.json" >/dev/null \
+    && pass "the dotfiles file itself received the marker entries" \
+    || fail "the install did not reach the symlink's target file"
+
+inode_after="$(stat -c %i "$DOTFILES/claude-settings.json")"
+[[ "$inode_before" != "$inode_after" ]] \
+    && pass "the real file was replaced by a rename, not truncated in place" \
+    || fail "the dotfiles file kept inode $inode_before -- it was truncated in place, not renamed onto"
+
+# The staging file is named beside the real file; nothing may be left behind
+# there or in ~/.claude.
+strays=()
+for f in "$DOTFILES"/* "$DOTFILES"/.*; do
+    [[ -e "$f" ]] || continue
+    case "$(basename "$f")" in
+        claude-settings.json|.|..) continue ;;
+        *) strays+=("$(basename "$f")") ;;
+    esac
+done
+[[ "${#strays[@]}" -eq 0 ]] \
+    && pass "no stray staging file left beside the dotfiles settings" \
+    || fail "${#strays[@]} stray file(s) left in $DOTFILES: ${strays[*]}"
+
+tmp_strays=()
+for f in "$HOMEDIR/.claude"/.settings.json.*; do
+    [[ -e "$f" ]] && tmp_strays+=("$(basename "$f")")
+done
+[[ "${#tmp_strays[@]}" -eq 0 ]] \
+    && pass "no stray mktemp settings file left in ~/.claude" \
+    || fail "${#tmp_strays[@]} stray temp file(s) left in $HOMEDIR/.claude: ${tmp_strays[*]}"
+
+# And it is still valid JSON that --check accepts.
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean with settings.json symlinked into dotfiles" \
+    || fail "--check over a symlinked settings.json (rc=$rc out=${out:0:200})"
+
+rm -f "$SETTINGS"
+mv "$DOTFILES/claude-settings.json" "$SETTINGS"
+
 echo ""
 echo "test_user_tier_install: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
