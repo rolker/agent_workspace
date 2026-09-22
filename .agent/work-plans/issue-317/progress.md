@@ -304,3 +304,13 @@ attribution (5), and the remaining items are trims and test hardening.
 - [ ] Step 4: assert rendered sections are non-empty and bounded at the next same-level heading, not just that headings exist
 - [ ] Step 8: specify the pinned workspace registry entry's shape and its consumers, or defer it
 - [ ] Step 14: name the hermetic hook-driver test as the proxy for the silent/inject cases; keep the live run for context splicing, skill listing and the full loop
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 12:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise the plan with all thirteen plan-review findings: add and thread `--project` through dispatch_phase.sh's worktree resolution (three projects are registered); decide the workspace-root idiom for project sessions before rewriting skills (hook stdout is context, not environment; `${AGENT_WORKSPACE_ROOT:-.}` is never set in tool shells); derive type/project from $PWD via registry_resolve_from_dir; ADR number 0016 (0015 is claimed by PR #318); the ADR-0011 change is a pointer only, supersession lives in the new ADR; correct the in-flight overlap analysis (#319 merged; the dispatch_phase.sh overlap is the local #314 branch); scope the skill-paths test to SKILL.md or allowlist the two tracked settings.json hook commands; re-grep the 15-of-22 cwd-relative skills; step 2 becomes "call registry_require_root <ws_root> [dir]"; trims: drop the register-project stub, drop the two hook guards unless the hooks are promoted, shrink the promoted-script manifest to what the loop invokes from gz4d, frontmatter only on the 13 project/both skills; `user_tier_install.sh --check` exits 0 with a "not installed" note under `make validate` unless required explicitly, and the new suites redirect HOME and need no network; drift test asserts non-empty sections and stop-at-next-heading; specify the pinned workspace entry's shape and consumers or drop it in favour of "cwd under the workspace checkout"; hermetic proxy for the silent/inject hook cases via spike 2's method.
