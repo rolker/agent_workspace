@@ -360,3 +360,150 @@ Learn More:
 **Plan**: `.agent/work-plans/issue-313/plan.md` at `8c75011`
 
 One shared skeleton (`_review_helper_common.sh`, sourced) plus three thin per-CLI helpers (`_codex_review.sh`, `_claude_review.sh`, `_copilot_review.sh`) give codex/claude/copilot the same forced validation gate `_agy_review.sh` already gives gemini; `_agy_review.sh` itself is left as-is (stream-json parsing has no shared analog). Codex uses `-o <file>` to avoid the stdout prompt-echo; claude uses `--output-format json` for a parseable result object; copilot fixes #212 by passing `-p <text>` as an argument with `--allow-all-tools`/`-s` instead of stdin. PR closes #313 and #212; #320 is explicitly out of scope.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 13:00 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #313 — cross_model_review.sh: codex/claude/copilot arms have no result validation (#288 failure class still undetected)
+**Plan**: `.agent/work-plans/issue-313/plan.md` at `8c75011`
+**Branch**: `feature/issue-313`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, four new scripts, one wiring point, one test suite. Folding #212 into the copilot helper is right — the copilot arm cannot be validated against a broken invocation. |
+| Issue alignment | Good | Covers the ask (per-CLI failure shapes + forced gate + a mocked test per CLI) and the owner's Checkpoint (one shared skeleton, gate matching `_agy_review.sh`, tests not optional). |
+| File targeting | Needs work | Misses `cross_model_review.sh`'s own availability precheck (line 467, gemini-only) and its header/timeout prose (lines ~31-36, 882). The existing `AGENTS.md` `cross_model_review.sh` row also describes the per-agent invocation and changes here. |
+| Consequences | Needs work | Truncate-first helpers make `run_agent_job`'s "partial output above, if any" message false for these three agents; not listed. |
+| Principle alignment | Concern | "Only what's needed": the copilot argv form breaks the documented invariant at `cross_model_review.sh:203` and reintroduces #274. "Test what breaks": the child-kill/TERM-forwarding property is not in the plan. |
+| ADR compliance | Good | ADR-0015's per-agent background-job / `exec` / `EXIT=` structure is untouched; the closing consequence bullet (ADR lines 109-110) is correctly listed for update. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Approach — copilot, blocking]** `-p "$(cat "$prompt")"` puts the whole
+   prompt (diff included) into one argv string. Linux caps a *single*
+   argument at MAX_ARG_STRLEN (128 KiB) regardless of `ARG_MAX` (2 MiB on
+   this host), and #313's own comment records a 79 KB prompt for a modest
+   PR; there is no diff-size cap in the script. `cross_model_review.sh:203`
+   states the invariant explicitly — "Agents read the prompt from stdin, so
+   prompt size is not bounded by argv" — and the plan silently breaks it.
+   The failure mode is a hard `Argument list too long` exec failure, i.e.
+   exactly #274 back again, on the largest (Deep-tier) reviews where it
+   matters most. The plan's parenthetical only considers `$()` whitespace
+   stripping, not the size limit. Resolve before implementation: `copilot
+   --help` on the installed 1.0.61 still documents only `-p, --prompt
+   <text>`, but #212 verified `copilot -p "" --allow-all-tools < prompt`
+   (stdin) on 1.0.48 — the plan must either keep that stdin form (and say
+   how it is confirmed on 1.0.61 given copilot quota is exhausted), or, if
+   argv is truly the only route, add an explicit prompt-size guard that
+   fails with a readable reason instead of exec-failing.
+
+2. **[Approach — shared skeleton, blocking]** `_review_helper_common.sh` is
+   sourced, so a missing or broken common file fails the helper *before*
+   `rh_truncate_findings` can run, leaving the previous run's review in the
+   findings file under a fresh `--- Review failed ---` marker. That is the
+   stale-findings hazard `_agy_review.sh:65-72` truncates first to prevent —
+   the #288 class in a different coat. Each helper must truncate the
+   findings file inline before sourcing, or the `source` must be guarded by
+   a failure path that truncates and writes a reason. Related: the
+   per-agent availability precheck at `cross_model_review.sh:467` covers
+   only `AGY_REVIEW_HELPER`; step 5 chmods the new helpers but never
+   extends that check, so a lost exec bit or a missing common file surfaces
+   as an opaque exec error rather than "helper missing or not executable".
+
+3. **[Approach — signals, blocking]** The plan mentions traps only for
+   temp-dir cleanup (`rh_mktemp_dir`). `_agy_review.sh` additionally runs
+   the CLI as a background child with `wait` and INT/TERM/HUP traps that
+   kill it (lines 111-141), so a TERM from `timeout -k` or from the
+   parent's `cleanup_jobs` actually reaches the CLI. Insert a helper layer
+   without that and an interrupted or timed-out run leaves codex / claude /
+   copilot running for up to `AGENT_TIMEOUT`, burning quota — the exact
+   regression `run_agent_job`'s comment (lines 857-868) and the existing
+   "codex was killed" assertion in `test_agents_timeout` guard against. Put
+   the spawn+wait+trap pattern in the shared skeleton as a function, and
+   keep an explicit kill assertion per CLI.
+
+4. **[Approach — structure, non-blocking]** On the split: three thin
+   helpers is defensible — each is still `exec`'d, so the "the job's PID is
+   the CLI's" discipline holds exactly as it does for gemini, and a sourced
+   common file never needs to be exec'd. But the plan should state the
+   trade it made against one `_cli_review.sh <agent> ...` dispatcher, which
+   is also exec'able and gives one file instead of four, one AGENTS.md row
+   instead of four, one resolution variable and one availability precheck
+   instead of three, and eliminates finding 2's source-before-truncate
+   ordering problem outright. Extra test surface is roughly neutral (the
+   per-CLI cases are the same either way). Either justify the four-file
+   shape in one sentence or take the dispatcher.
+
+5. **[Approach — copilot output, medium]** The helper passes both `-s`
+   ("output only the agent response (no stats)") and a `sed -n
+   '/^Changes$/q;p'` footer strip. If `-s` works the sed is dead code; if
+   it ever fires it silently truncates any review whose body contains a
+   bare `Changes` line — entirely plausible in an adversarial review, and a
+   silent content loss with no marker. Pick `-s`; if the strip is kept,
+   anchor it to the real footer block (`Changes`/`Requests`/`Tokens`
+   together, at end of output), not a bare word.
+
+6. **[Approach — claude, medium]** The plan validates claude's JSON result
+   fields but never pins headless permission behavior, which is the very
+   mechanism #288 was about (agy auto-denying a tool and returning an empty
+   response at exit 0). `claude --help` offers `--permission-prompts none`
+   ("anything that would prompt is denied automatically") and
+   `--permission-mode`; unpinned, the claude arm's denial behavior varies
+   by version and default, and a denial shows up only as "empty response"
+   with no reason, whereas `_agy_review.sh` reports `denied_actions` by
+   name. Pin the flag and surface any denial information the JSON carries.
+
+7. **[Testing, medium]** "Keep the existing 196 assertions green" understates
+   the work: the generic `make_mock_agent`
+   (`test_cross_model_review.sh:1282-1300`) consumes stdin and writes the
+   review to stdout, relying on the arm's `> "$findings"` redirect that this
+   change removes. Every parallel-dispatch test that uses it for
+   codex/claude/copilot must be reworked, including the argv-contract
+   assertion near line 1366 (which asserts today's `codex exec` / `-p`
+   shapes) and the timeout / interrupt kill assertions. List these as
+   changed tests, not just "extend `make_mock_agent`". The `MOCK_ARGV_DIR`
+   hook is the right place for the #212 invocation regression test.
+
+8. **[Consequences, low]** Add to Files to Change:
+   `cross_model_review.sh`'s header block (lines ~31-36, which documents
+   the bare `<cli> -p < prompt` invocation for the three agents) and
+   `run_agent_job`'s non-gemini timeout message (line 882, "partial output
+   above, if any" — never true once the helper truncates first), plus the
+   existing `AGENTS.md` `cross_model_review.sh` row.
+
+9. **[Verification, low — confirmatory]** Re-checked the plan's `--help`
+   claims on this host: codex-cli 0.155.1 has `-o, --output-last-message
+   <FILE>` and `codex exec [PROMPT]` reads stdin when no prompt argument is
+   given (help also notes stdin is appended as a `<stdin>` block if a prompt
+   arg *is* given — so keep passing none). claude has `--output-format json`
+   ("single result"). copilot 1.0.61 has `-p, --prompt <text>`, `-s`,
+   `--allow-all-tools`, `--output-format text|json`. All as the plan states.
+   One addition: say explicitly that codex's `-o` file and each helper's
+   logs live under the helper's `mktemp -d` inside `$TMPDIR`, so the parent
+   scratch root (`AGENT_TMP_ROOT`) and `run_script_tests.sh`'s leak sweep
+   both cover them.
+
+### Summary
+
+The shape is right and the CLI contracts check out against the installed
+binaries, but three items must be resolved before implementation: the
+copilot argv regression (#274), truncate-before-source ordering in the
+shared skeleton, and TERM forwarding to the CLI child. Findings 5-8 are
+corrections to make while editing rather than reasons to re-plan.
+
+### Recommended Actions
+
+- [ ] Resolve the copilot prompt channel: keep `-p "" --allow-all-tools < prompt` (stdin, per #212) or add an explicit argv-size guard; do not silently break `cross_model_review.sh:203`'s no-argv-bound invariant
+- [ ] Truncate the findings file before sourcing `_review_helper_common.sh` (or guard the source with a truncating failure path)
+- [ ] Extend `cross_model_review.sh:467`'s availability precheck to the three new helpers (and the common file)
+- [ ] Put the CLI-as-background-child + `wait` + INT/TERM/HUP kill pattern in the shared skeleton; assert per CLI that a timeout/interrupt kills the mock
+- [ ] Drop the `^Changes$` sed in favour of `-s`, or anchor the strip to the full footer block
+- [ ] Pin claude's headless permission flag (`--permission-prompts none` or equivalent) and surface denials in the failure reason
+- [ ] State the four-file split vs a single `_cli_review.sh <agent>` dispatcher in one sentence, or take the dispatcher
+- [ ] Add to Files to Change: `cross_model_review.sh` header (~31-36) and line 882 message; existing `AGENTS.md` `cross_model_review.sh` row; list the existing dispatch tests being reworked
