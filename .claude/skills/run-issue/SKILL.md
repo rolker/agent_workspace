@@ -262,8 +262,10 @@ merge — row 21 routes `**After**: findings` + `**Decision**: merge` to
 `test_dispatch_phase.sh` fixture `"row 21: checkpoint findings answered
 merge -> merge"`). Close them because they are the durable record that the
 owner deferred them, and because the re-route *is* reachable when the merge
-doesn't land: a refused or non-merging attempt records `## Merge
-(report-only)` / `## Merge (unreviewed)`, which routes to
+doesn't land: a merge attempt whose gate preconditions failed records
+`## Merge (report-only)` (or `## Merge (unreviewed)` under
+`--force-unreviewed`) — written whether or not the merge itself then
+succeeds — and while `--pr` is not `merged` that newest entry routes to
 `checkpoint:merge-refused` (row 23); answering that `retriage` writes a
 fresh `## Integrated Review`, and row 19 re-raises `checkpoint:findings` on
 those same still-open boxes. For each such box, run:
