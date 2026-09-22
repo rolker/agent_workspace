@@ -406,3 +406,17 @@ The prior `## Integrated Review` at `8e9c0c8` is an earlier round: both of its f
 **Decision**: address
 
 Address: one more address-findings pass for the three wording suggestions (run-issue step 10 "one path" overstatement, step 11's less precise sibling caveat, and the review_loop_lifecycle.md gate row), then re-review, triage, and merge.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 09:26 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #308 at `7f50d07`
+**Addressed**: Integrated Review at `688d1e9` (2026-09-22 09:19 -04:00)
+**Commits**: a414325, 7f50d07
+
+### Actions
+- [x] Step 10's "One path is the exception" now states the re-route depends on a merge entry existing and names both entry-less paths (`--enforce` refusal on a *workspace* PR at `merge_pr.sh:896-903`; a passing gate at `:889-890` whose merge then fails on CI, mergeability, or `gh pr merge`) — `.claude/skills/run-issue/SKILL.md:271`
+- [x] Step 11's caveat scoped to runs that recorded a merge entry, with the `workspace` qualifier and the project-PR fall-through to report-only (`merge_pr.sh:896,904-908`) spelled out; the `checkpoint:merge-refused` re-route claim no longer covers the entry-less paths — `.claude/skills/run-issue/SKILL.md:403-407`
+- [x] "Who writes what" gate row qualified: "except `--enforce` on a workspace PR, which refuses with no entry" — `.agent/knowledge/review_loop_lifecycle.md:34`
