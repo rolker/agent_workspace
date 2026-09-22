@@ -252,17 +252,36 @@ full table; anything outside it routes `next` to row 28,
 `**Decided-by**: owner` records that this entry captures the human's answer
 to an `AskUserQuestion`, not a phase's own output.
 
-**Deferred suggestion-only boxes.** One reachable case needs a second write
-before the next `next` call: an `**After**: findings` checkpoint answered
+**Deferred suggestion-only boxes.** One case needs a second write alongside
+the `## Checkpoint` entry: an `**After**: findings` checkpoint answered
 `merge` while suggestion-only boxes in the latest `## Integrated Review`'s
-`### Findings` section are still open. `next` reads open boxes, not the owner's intent, so those
-boxes must be closed as deferred or the following call routes back to
-`checkpoint:findings`. For each such box, run:
+`### Findings` section are still open. This is **not** what unblocks the
+merge — row 21 routes `**After**: findings` + `**Decision**: merge` to
+`merge` unconditionally, without looking at open boxes
+(`dispatch_phase.sh`'s `if after in ("findings", "merge")` block;
+`test_dispatch_phase.sh` fixture `"row 21: checkpoint findings answered
+merge -> merge"`). Close them because they are the durable record that the
+owner deferred them, and because the re-route *is* reachable when the merge
+doesn't land: a refused or non-merging attempt records `## Merge
+(report-only)` / `## Merge (unreviewed)`, which routes to
+`checkpoint:merge-refused` (row 23); answering that `retriage` writes a
+fresh `## Integrated Review`, and row 19 re-raises `checkpoint:findings` on
+those same still-open boxes. For each such box, run:
 
 ```bash
+PF="<worktree>/.agent/work-plans/issue-<N>/progress.md"
+.agent/scripts/review_progress.sh findings --progress "$PF"   # <i> comes from here
 .agent/scripts/review_progress.sh check --progress "$PF" --index <i> \
   --deferred "<the owner's reason, from the checkpoint entry's own text>"
 ```
+
+`<i>` is the `index` field `findings` printed for that box — never a
+hand-count. It is 0-based over **every** checkbox line in the latest review
+entry, not just the ones under `### Findings`, so a section-relative count
+defers the wrong line: `check` only verifies that the indexed line is an
+unchecked box, not that it is the box you meant. Re-assign `PF` in the same
+chain as the `check` call — shell state does not persist between tool
+calls, so step 4's `PF` is gone by the time this runs.
 
 This flips `- [ ]` to `- [x] … (deferred: <reason>)`; a checked box is
 excluded from `open_findings()` whatever its annotation, so no new marker
