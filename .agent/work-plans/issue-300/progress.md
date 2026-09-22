@@ -356,3 +356,22 @@ Address the two round-5 suggestions first (seed `_ci_head_excluded_last` from th
 - `bash .agent/scripts/tests/test_merge_pr_gate.sh` — 78 passed, 0 failed (77 before, +1 for ci-34)
 - `.agent/scripts/tests/run_script_tests.sh` — all 23 suites passed in 59s
 - Pre-commit (incl. shellcheck) ran on both commits; nothing pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 12:21 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-300 at `eddcf91`
+**Base**: main
+**Depth**: Light (reason: two-line behaviour change plus one comment and one test fixture, in the range 8cb07c6..eddcf91 already reviewed at depth in rounds 4-5)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 6 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+**Dispatch**: resumed (round-4 reviewer, resume 2 of 3)
+
+### Findings
+- [ ] No issues found. LGTM.
+
+### Notes
+Both round-5 suggestions are fixed and nothing new surfaced. The seed sits inside the `_ci_switched` branch, where `_ci_excluded` is still the value read from `_ci_review_sha` itself (the walk only runs while `CI_TARGET_SHA == _ci_review_sha`, and only for a `none`/`pending` state, so the seeded value is a genuine reading and never the empty string an `error` poll would print). The `_ci_review_sha` comment now matches Step 2's actual behaviour: it is the current PR head except under the own-paths exemption, where it is the reviewed head, and it never follows the walk-back. I verified ci-34 is a real regression guard rather than a passing-by-construction fixture: with the seed line removed the gate suite reports 77 passed, 1 failed on ci-34; with it restored, 78/0 — and the worktree is byte-identical to `eddcf91` afterwards (`git status` clean). The fixture's sequencing is sound because the gh stub keys its per-call sequence on the API path, so `write_checkruns_exit ... 1 2` fails exactly the second check-runs call on the head, which is the first post-switch re-read. Verified: `test_merge_pr_gate.sh` 78/78, `run_script_tests.sh` all 23 suites in 59s, shellcheck clean on both changed files via `.venv/bin/pre-commit`. Ship.
