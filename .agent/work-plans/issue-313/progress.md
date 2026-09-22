@@ -857,3 +857,53 @@ ordering under a TERM-ignoring CLI, and the kill-grace refusal.
 including shellcheck.
 
 Commit: `fb8b6d9`. No real CLI prompt was run; nothing pushed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 14:35 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-313 at bb815ea
+**Plan**: `.agent/work-plans/issue-313/plan.md` at `2c24f22`
+**Round**: implementation round 3 (third live gemini + codex run of `fb8b6d9`; both completed, codex EXIT=0)
+
+The validation rule holds — the third live run is the first where both
+reviewers completed, so the remaining must-fix was the round-2 cleanup
+code itself, which both reviewers converged on. All three items fixed in
+`cross_model_review.sh`:
+
+1. **Bounded reap became an unbounded wait.** The poll expired and then
+   `wait "$pid"` ran anyway, so a wedged job blocked the exit path
+   forever and `AGENT_TMP_ROOT` was never removed — worse than the race
+   round 2 fixed. `wait` now runs only for a job confirmed finished;
+   otherwise the job is SIGKILLed, a warning on stderr names it, and
+   cleanup proceeds to remove the root.
+2. **Reap budget derived, not hard-coded.** `CLEANUP_REAP_TIMEOUT`
+   defaults to `REVIEW_KILL_ESCALATION + CLEANUP_REAP_MARGIN` (3s), and
+   an explicit value is refused at startup (exit 2, message naming both
+   knobs) unless it exceeds the escalation. The old fixed 8s silently
+   broke for any escalation above it — the parent would drop the temp
+   root while a helper was still legitimately escalating.
+3. **Liveness no longer depends on `/proc`.** `job_finished` now reads
+   bash's own job table first (`jobs -pr` lists only RUNNING jobs, so an
+   exited-but-unreaped child — which still answers `kill -0` — is
+   correctly reported finished), keeping the `/proc` state read as a
+   cross-check where `/proc` exists. On macOS/BSD or in a stripped
+   container every cleanup previously burned the whole budget.
+
+**Tests**: 369 -> 381 assertions, all green.
+- `test_cleanup_survives_a_wedged_job`: a stub `_cli_review.sh` that
+  ignores INT/TERM/HUP (in a copied scripts dir) makes its job shell
+  genuinely unreturnable — the only way a correctly-configured budget
+  can expire. The interrupted run still exits 143 in ~2s and still
+  removes the temp root.
+- `test_cleanup_budget_follows_the_escalation`: a 10s escalation (past
+  the old 8s constant) completes cleanly, and `CLEANUP_REAP_TIMEOUT=3`
+  with `REVIEW_KILL_ESCALATION=10` exits 2 with both knobs named.
+- `test_job_finished_without_proc`: `job_finished` is extracted from the
+  script and run with `awk` stubbed out to force the non-`/proc` path,
+  asserting both directions (a running job reported running, an
+  exited-but-unreaped job reported finished).
+
+`run_script_tests.sh` 23/23 suites, no temp leaks. Pre-commit green
+including shellcheck. Commit `bb815ea`. No real CLI prompt; nothing
+pushed.
