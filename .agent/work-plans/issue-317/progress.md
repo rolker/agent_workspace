@@ -737,3 +737,53 @@ The round-2 must-fix is closed. The install jq now drops every `_agent_workspace
 **Decision**: address
 
 Address the two round-3 test-coverage suggestions (negative case for `foreign_skill_link()` on a user's own non-workspace symlink under `--force`; a test for the symlinked-settings.json atomic write path) before publishing. Not started today: the owner's stop is 15:00 and a fix pass plus re-review would not finish. Next session starts here: address-findings (implementer has 1 resume left; round-1 reviewer has 1 resume left), then merge origin/main (behind by PR #316's three registry commits, no overlap), re-review, publish.
+
+## Implementation
+
+**Status**: complete
+**When**: 2026-09-22 14:40 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-317 at 76468c8
+**Addressed**: Local Review (Pre-Push) at `134ea2f` (round 3)
+**Dispatch**: resumed (implementer, resume 3 of 3)
+**Commits**: 76468c8
+
+Both round-3 test-coverage findings actioned. Tests only — no production
+code changed in this round (`git diff` touches one file).
+
+### Actions
+
+- [x] (suggestion) No coverage of `foreign_skill_link()`'s negative case — `test_user_tier_install.sh:213` → new case builds a skill symlink the *user* made, pointing into a plain directory with no `.agent/user_tier_scripts.txt` three levels up, runs install `--force`, and asserts the link still points where it did and that the run reports it as "not ours to replace". It also asserts the fixture genuinely is not a checkout, so the case cannot pass for the wrong reason.
+- [x] (suggestion) No coverage of the symlinked-`settings.json` write path — `user_tier_install.sh:269` → new case symlinks `settings.json` into a dotfiles directory and asserts it is still a symlink to the same path, that the dotfiles file itself received the marker entries, that no stray staging file is left beside it or in `~/.claude`, and that `--check` is clean afterwards.
+
+### The second test needed one more assertion than the brief listed
+
+The set above did **not** discriminate the fix from the bug it replaced. A
+truncating `cat > "$SETTINGS"` also leaves a symlink pointing at the same
+target with the right content and no stray files — it passed every one of
+those assertions. What separates the two is the real file's **inode**: a
+rename allocates a new one, truncate-in-place keeps it. The case now
+records the inode before the install and requires it to change, which is
+the property the round-2 fix was actually about (an interrupted write must
+not leave a half-written settings.json).
+
+Both cases were mutation-checked against the code they guard:
+
+| Mutation | Result |
+|---|---|
+| Drop the `.agent/user_tier_scripts.txt` probe from `foreign_skill_link()` | case 1 fails (link repointed, no "not ours" message) |
+| Revert the symlink write to `cat > "$SETTINGS"` | case 2 fails on the inode assertion |
+
+Without the mutation check the second case would have been coverage that
+could never fail — worth stating, because that is the failure mode
+test-coverage findings are meant to close.
+
+### Tests
+
+`test_user_tier_install.sh` **60 → 70**. `run_script_tests.sh`: **27/27
+suites green, 77s.** shellcheck clean (two `ls | grep` counts replaced with
+globs after SC2010). Committed with the full pre-commit suite, including
+`validate-script-tests`. Nothing pushed.
+
+Elapsed: ~15 minutes.
