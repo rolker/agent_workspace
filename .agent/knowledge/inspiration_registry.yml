@@ -99,6 +99,64 @@ projects:
       - inline commenting and finding-tracking UX
       - staying local-first / terminal-adjacent
 
+  harness:
+    type: inspiration
+    repo: majiayu000/harness
+    description: >-
+      Rust control plane for fleets of Claude Code / Codex agents —
+      Starlark policy engine, cross-agent review, Postgres-backed durable
+      state, per-run git worktree isolation, GitHub webhook automation,
+      OTel observability
+    # Added 2026-09-22 (owner-approved survey of emerging agent-orchestration
+    # work). Closest architectural analog to this workspace's review loop
+    # (durable state + cross-model review + worktrees), built as
+    # infrastructure rather than a CLI convenience.
+    interest_areas:
+      - Starlark-sandboxed policy engine for execution rules
+      - independent cross-agent code review (architectural self-review prevention)
+      - Postgres-backed durable workflow/task state
+      - per-run git worktree isolation model
+      - GitHub webhook automation (@harness mentions triggering tasks)
+      - OpenTelemetry observability for agent runs
+
+  worktrunk:
+    type: inspiration
+    repo: max-sixty/worktrunk
+    description: >-
+      CLI making git worktrees as easy as branches for parallel AI agent
+      workflows — switch/list/merge by branch name, pre/post-merge hooks,
+      LLM commit messages, copy-on-write build-cache sharing, PR checkout
+    # Added 2026-09-22 (owner-approved survey of emerging agent-orchestration
+    # work). Directly targets the multi-repo / package-worktree pain point
+    # (ADR-0012, #265); hook model and cache sharing may simplify
+    # worktree_create.sh / worktree_enter.sh.
+    interest_areas:
+      - worktree lifecycle UX (switch/list/merge addressed by branch name)
+      - pre/post-merge and post-create hooks for workflow automation
+      - copy-on-write build-cache sharing across worktrees
+      - LLM-generated commit messages
+      - PR/MR checkout directly into a worktree
+
+  ccswarm:
+    type: inspiration
+    repo: nwiizo/ccswarm
+    description: >-
+      Multi-agent Rust orchestrator running a plan -> Sangha quorum ->
+      implement -> review -> fix pipeline; multi-provider (Claude Code /
+      Codex), worktree-isolated
+    # Added 2026-09-22 (owner-approved survey of emerging agent-orchestration
+    # work). Consensus-based review-gate model ("Sangha": shared acceptance
+    # criteria, per-agent assessments, evidence-backed objections, recorded
+    # decision) contrasts with this workspace's sequential
+    # review-code -> triage-reviews. README states checkpoint recovery is not
+    # shipped yet — inspiration only, not a candidate for adoption today.
+    interest_areas:
+      - Sangha quorum model (shared acceptance criteria, per-agent assessment, recorded decision)
+      - evidence-backed objection / dissent handling in review gates
+      - multi-provider agent abstraction (Claude Code / Codex / copilot probing)
+      - flow authoring (YAML-defined stage pipelines, faceted prompting)
+      - run recording and replay (NDJSON event log, run diff/replay/undo)
+
   harness-starter-kit:
     type: inspiration
     repo: harnessworks/harness-starter-kit
