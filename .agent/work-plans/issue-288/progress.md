@@ -228,3 +228,11 @@ Both round-2 must-fixes are resolved in plan text, and the round-3 reading found
 - [ ] (suggestion) prompt says "the diff above is complete" but never mentions the `.agent/work-plans/**` exclusion — `.agent/scripts/cross_model_review.sh:547`
 - [ ] (suggestion) `AGY_REVIEW_HELPER` never checked for existence/executability; a missing helper reopens the stale-findings hazard — `.agent/scripts/cross_model_review.sh:75`
 - [ ] (suggestion) codex/claude/copilot arms still have no result validation (#288 class undetected there); no follow-up issue open — `.agent/scripts/cross_model_review.sh:92`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 10:26 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**PR**: #311 at `f88f0b4`
+
+Addressed the round-1 Local Review (Pre-Push): the diff pipelines are back inside `if !` so a failing fetch writes the error marker instead of aborting under set -e (must-fix, regression test added); helper existence checked up front; line-wise fromjson? parse tolerates non-JSON stdout lines (mock now emits one); timeout checked before the no-result check; gemini prompt names the work-plans exclusion; success-with-denials note tested. Follow-up #313 opened for the codex/claude/copilot arms' missing result validation. Commits a84f324, 21bfe2d, 54d8c09, f88f0b4; 110 suite assertions, 23 runner suites green.
