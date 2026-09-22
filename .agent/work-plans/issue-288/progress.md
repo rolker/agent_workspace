@@ -207,3 +207,24 @@ Both round-2 must-fixes are resolved in plan text, and the round-3 reading found
 
 - [ ] Confirm `agy 1.2.8` accepts `--disable-slash-commands` before the first commit (finding 1)
 - [ ] Note in the PR body that result-event validation is gemini-only and the other agent arms keep the old redirect (finding 2)
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 10:20 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-288 at `54d8c09`
+**Base**: main
+**Depth**: Deep (new enforcement script + governance files; cross-model tier run by host during implementation, findings incorporated — not re-dispatched)
+**Must-fix**: 1 | **Suggestions**: 6
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) PIPESTATUS guard unreachable under `set -euo pipefail`: a failing `git diff` / `gh pr diff` aborts before the error message, the `--- Review error ---` marker and exit 3 — regression vs the pre-PR `if ! cmd` form; wrap the pipelines in `if ! ...; then` and add a failing-fetch test — `.agent/scripts/cross_model_review.sh:552,559`
+- [ ] (suggestion) jq aborts on the first non-JSON stdout line, losing a valid later result event; use `fromjson?` — `.agent/scripts/_agy_review.sh:128`
+- [ ] (suggestion) success-with-denials `> Note:` append is untested; mock has no non-empty-response + denied_actions knob — `.agent/scripts/_agy_review.sh:165`
+- [ ] (suggestion) print-timeout grep runs after the no-result-event check, so a truncated timeout reports the wrong reason — `.agent/scripts/_agy_review.sh:147`
+- [ ] (suggestion) prompt says "the diff above is complete" but never mentions the `.agent/work-plans/**` exclusion — `.agent/scripts/cross_model_review.sh:547`
+- [ ] (suggestion) `AGY_REVIEW_HELPER` never checked for existence/executability; a missing helper reopens the stale-findings hazard — `.agent/scripts/cross_model_review.sh:75`
+- [ ] (suggestion) codex/claude/copilot arms still have no result validation (#288 class undetected there); no follow-up issue open — `.agent/scripts/cross_model_review.sh:92`
