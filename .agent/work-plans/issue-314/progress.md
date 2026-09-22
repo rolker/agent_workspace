@@ -429,3 +429,13 @@ fixture changed. Not pushed.
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 13:16 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish now: round 3 approved with no findings, main merged in (39b772a), item 4 dropped and reverted by owner decision.
