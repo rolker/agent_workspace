@@ -334,3 +334,22 @@ Proceed to implementation with the round-2 suggestions folded in: overlap-based 
 - [x] Load-sensitive wall-clock assertion dropped; interval overlap is the sole concurrency proof, with the reasoning recorded in the test and the plan
 - [x] Plan's ADR filename corrected to `...-is-the-only-...`
 - [x] SKILL.md exit-1 paragraph now separates the no-usable-CLI case from the missing-`gh` case
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 12:10 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-206 at `2512600`
+**Addressed**: Local Review (Pre-Push) at `48d0ca9` (2026-09-22 12:02 -04:00)
+**Commits**: 0e31f90, 2512600
+
+### Actions
+- [x] (must-fix) Duration knobs are now range-validated as well as shape-validated. `AGENT_TIMEOUT`, `AGY_PRINT_TIMEOUT` and `GEMINI_BACKSTOP_MARGIN` require > 0, each with a message saying what zero would remove (coreutils `timeout 0` = no limit, voiding ADR-0015 §3; agy's `--print-timeout 0s` = wait forever; a zero margin collapses the backstop onto the print-timeout and reintroduces the #288 race). `AGENT_KILL_AFTER=0` stays valid — SIGKILL immediately after the SIGTERM is a real choice. Validation moved into a `validate_duration_knob` helper carrying per-knob allow-zero / reason — `.agent/scripts/cross_model_review.sh:147-193`
+- [x] (suggestion) `AGY_PRINT_TIMEOUT` is additionally held to the Go-duration subset, since it is passed straight to agy's `--print-timeout` and `time.ParseDuration` rejects both the bare number and the `d` suffix coreutils accepts. An explicit `s`/`m`/`h` unit is required and the message says why; `AGENT_TIMEOUT` keeps the full coreutils shape — `.agent/scripts/cross_model_review.sh:162-168`
+- [x] (suggestion) SIGKILL tmpdir leak fixed rather than documented (three lines): `cross_model_review.sh` creates one `cross-model-review-tmp.XXXXXX` scratch root, hands it to the gemini job as `TMPDIR`, and removes it in `cleanup_jobs`, which already runs on every exit path. `_agy_review.sh`'s contract now names SIGKILL as the one path its traps cannot cover and points at the parent-owned root. Rationale recorded in plan.md's Implementation Notes — `.agent/scripts/cross_model_review.sh:625,644,182`, `.agent/scripts/_agy_review.sh:33`
+
+### Verification
+- `bash .agent/scripts/tests/test_cross_model_review.sh` — 196 passed, 0 failed (was 185; the validation case now covers shape, range, the Go subset, `AGENT_KILL_AFTER=0` and a unit-less `AGENT_TIMEOUT`, and the backstop case asserts its scratch root is empty afterwards)
+- `bash .agent/scripts/tests/run_script_tests.sh` — all 23 suites passed (61s)
+- pre-commit (incl. shellcheck) clean on both commits; nothing pushed
