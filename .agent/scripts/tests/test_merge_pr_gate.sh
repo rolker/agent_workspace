@@ -1190,6 +1190,7 @@ fi
 #   progress-only  R -> progress.md (the live failure shape)
 #   code-after     R -> some_file.sh -> progress.md
 #   roadmap-after  R -> docs/ROADMAP.md -> progress.md
+#   plan-after     R -> work-plans/issue-7/plan.md -> progress.md
 #   unrelated      review cites a commit on main that is not in H's history
 make_gate_sandbox() {  # <mode>
     local mode="$1" sb wt r head remote comments body review
@@ -1205,6 +1206,10 @@ make_gate_sandbox() {  # <mode>
         roadmap-after)
             mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/docs/ROADMAP.md"
             git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "roadmap" ;;
+        plan-after)
+            mkdir -p "$wt/.agent/work-plans/issue-7"
+            printf -- '# Plan\n\n## Addendum 1\n\nowner rule\n' > "$wt/.agent/work-plans/issue-7/plan.md"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "plan(#7): addendum" ;;
         unrelated)
             git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "elsewhere"
             r=$(git -C "$sb" rev-parse HEAD) ;;
@@ -1268,6 +1273,16 @@ if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]]; th
     pass "(g5) roadmap + progress.md after the review: gate passes"
 else
     fail "(g5) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a plan addendum committed after the review keeps it current (#300 owner rule)"
+sb="$(make_gate_sandbox plan-after)"
+out="$(GH_MERGE_EXIT=0 run_merge "$sb" 2>&1)" || true
+if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]] \
+    && [[ "$out" != *"review gate refused"* ]] && merged_called "$sb"; then
+    pass "(g6) plan.md addendum after the review: gate passes under the default (enforce)"
+else
+    fail "(g6) (out=${out:0:400})"
 fi
 
 echo ""

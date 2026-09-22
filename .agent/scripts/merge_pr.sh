@@ -640,7 +640,8 @@ fi
 # Step 2 CI target (#284): <to> is "the same reviewed state" as <from> when
 # <from> is an ancestor of <to> and every path that differs is one of the
 # document files this workflow writes on the reviewed branch after review
-# (progress.md records, roadmap updates). Returns 0 on equivalence; on
+# (progress.md records, work-plan addenda, roadmap updates). An allowed
+# entry may be a glob. Returns 0 on equivalence; on
 # failure returns 1 and prints the reason (one line, for the caller to
 # quote). Both SHAs must be full and resolvable in <wt>; callers resolve
 # short SHAs first (see the gate) so an ambiguous prefix is a failure
@@ -661,7 +662,12 @@ _only_bookkeeping_between() {
         [[ -z "$p" ]] && continue
         ok=false
         for a in ${allowed[@]+"${allowed[@]}"}; do
-            [[ "$p" == "$a" ]] && { ok=true; break; }
+            # Unquoted RHS on purpose: an allowed entry may be a glob (the
+            # gate passes the issue's whole work-plans dir). Callers that
+            # pass literal paths are unaffected — those carry no glob
+            # metacharacters.
+            # shellcheck disable=SC2053
+            [[ "$p" == $a ]] && { ok=true; break; }
         done
         if [[ "$ok" == false ]]; then
             echo "touches \`${p}\`, which is not a merge-time document file"
@@ -757,9 +763,9 @@ else
                 elif [[ -z "$_gate_h_full" ]]; then
                     _gate_stale_why="head \`${_gate_head_short}\` is not present locally"
                 elif _gate_stale_why=$(_only_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" \
-                        ".agent/work-plans/issue-${ISSUE_NUM}/progress.md" "ROADMAP.md" "docs/ROADMAP.md"); then
+                        ".agent/work-plans/issue-${ISSUE_NUM}/*" "ROADMAP.md" "docs/ROADMAP.md"); then
                     _gate_covered=true
-                    echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only progress.md / roadmap changed since"
+                    echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only work-plan / progress.md / roadmap changed since"
                 fi
             fi
         fi
