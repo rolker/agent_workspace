@@ -156,3 +156,47 @@ The plan is correctly scoped and its three mechanical items are verified against
 **Decision**: proceed
 
 Proceed, folding the seven plan-review findings into the implementation (keep the `## Implementation` template incl. the correlation line, re-headed as the dispatched pass; classify address-findings by the `**Addressed**` field with "no prior complete Implementation" fallback plus a double-failure fixture; say what happens to `**Mode**: inline` and keep "row 27 fires for any phase"; host re-checks CI before the merge checkpoint after a pending-CI triage; a resumed dispatch is recorded in the phase's entry; add dispatch_phase.sh:215/:401 and review_loop_lifecycle.md:90 to the file list; References-only ADR-0014 addendum). The plan is amended on the branch to match. Per the owner's orchestrator rule the implement pass is dispatched to a background agent, not run inline by the host.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 12:18 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Plan**: `.agent/work-plans/issue-314/plan.md` at `8c4c92a`
+**Branch**: feature/issue-314 at 8c4c92a
+**Commits**: 1e2c647, 4ee80c6, 101df72, e13fcdc, 8c4c92a
+
+The post-plan implement pass, dispatched (host stays orchestrator). All
+seven `## Plan Review` findings folded in per the owner's plan checkpoint,
+plus item 4 added to the issue by owner decision mid-pass.
+
+- `1e2c647` — plan addendum: the seven findings, superseding the Approach
+  where they disagree.
+- `4ee80c6` — `dispatch_phase.sh`: rows 10/26 drop `mode=inline` (row 27
+  keeps it); `skill_task_line()` gains an `implement` case and the
+  unknown-skill error string lists it; the `implement` exit contract names
+  `progress_append.sh`, the `**PR**`/`**Branch**` correlation line, and
+  that the agent commits while the host pushes; `skill_for()` keys on
+  `**Addressed**` with a "no prior COMPLETE `## Implementation`" fallback.
+  Fixtures: first-vs-later, double-failure retry, takeover marker,
+  `implement` handoff.
+- `101df72` — `run-issue` SKILL.md: step 4 dispatchable list + the
+  dispatched implement pass's entry template; step 5 takeover-only and
+  "no dispatcher reads `**Mode**`"; step 7 pins `## Decision summary` at
+  level 2; step 9 waits for review sources not CI, records `**CI**:
+  pending`, and re-checks CI before the merge checkpoint (step 11 points
+  back at it); new step 4a for agent reuse, its never-list, and the
+  `**Dispatch**: resumed (agent <id>, resume <n> of 3)` record.
+  `triage-reviews` SKILL.md gains `pending` in its `**CI**` vocabulary.
+- `e13fcdc` — `review_loop_lifecycle.md` diagram, "who writes what" table
+  (one row per `## Implementation` writer) and the `/run-issue` paragraph;
+  ADR-0014 References-only addendum pointing at step 4a.
+- `8c4c92a` — item 4: `next --head <sha>`; an approving pre-push review
+  whose SHA still covers the PR head routes to `triage-reviews` instead of
+  a `review-code <M>` on an unchanged diff (merge_pr.sh's #286 bookkeeping
+  rule, run in bash so the table sees only 1/0/unknown). Host side in
+  SKILL.md steps 2/3; plan Addendum 2 records the `--head`-vs-`gh` design
+  decision.
+
+Tests: `test_dispatch_phase.sh` 90 passed / 0 failed;
+`run_script_tests.sh` all 23 suites passed in 54s. Not pushed — the host
+owns every push.
