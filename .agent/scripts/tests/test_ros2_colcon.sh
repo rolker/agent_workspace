@@ -58,20 +58,17 @@ assert_not_contains() {
 
 # ---- Sandbox helpers ----
 
-SANDBOXES=()
-cleanup() {
-    local sb
-    for sb in ${SANDBOXES[@]+"${SANDBOXES[@]}"}; do
-        rm -rf "$sb"
-    done
-}
-trap cleanup EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. Helpers carve per-test
+# directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
+# shared state and so survives being called as `sb="$(make_sandbox)"`.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
 
 # Base sandbox: dispatcher + registry lib + both adapter types.
 make_sandbox() {
     local sb
-    sb="$(mktemp -d)"
-    SANDBOXES+=("$sb")
+    sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts" "$sb/.agent/project_types" "$sb/.agent/projects.d"
     cp "$REAL_ROOT/.agent/scripts/adapter" "$sb/.agent/scripts/adapter"
     cp "$REAL_ROOT/.agent/scripts/_project_registry.sh" "$sb/.agent/scripts/_project_registry.sh"
@@ -257,7 +254,7 @@ test_worktree_create_package_success() {
     out="$(run_worktree_create "$sb" --issue owner/pkg_a#111 --type project --project p11 \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-111"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-111"
     assert_eq "aggregate dir created" "true" "$([ -d "$wt" ] && echo true || echo false)"
     assert_eq "named package is a real worktree (not a symlink)" \
         "false" "$([ -L "$wt/l1_ws/src/pkg_a" ] && echo true || echo false)"
@@ -300,6 +297,44 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
         "--issue 111 --type project" "$out"
 }
 
+test_worktree_create_package_hook_preflight_checks_package_repos() {
+    echo "TEST: package worktree hook preflight checks the package repos that commit, not the enclosing project tree"
+    local sb out rc=0 proj
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    make_committed_pkg_repo "$proj" l1 pkg_b
+    mkdir -p "$proj/layers/main/l1_ws/install"
+    touch "$proj/layers/main/l1_ws/install/local_setup.bash"
+    # The enclosing workspace repo's hook is broken; the package repo's is
+    # healthy. Only the package repo runs hooks for commits in this worktree.
+    mkdir -p "$sb/.git/hooks" "$sb/.venv/bin"
+    printf '#!/bin/sh\n' > "$sb/.venv/bin/python3"; chmod +x "$sb/.venv/bin/python3"
+    printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' \
+        "$sb/gone/.venv/bin/python3" > "$sb/.git/hooks/pre-commit"
+    chmod +x "$sb/.git/hooks/pre-commit"
+    printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' \
+        "$sb/.venv/bin/python3" > "$proj/layers/main/l1_ws/src/pkg_a/.git/hooks/pre-commit"
+    chmod +x "$proj/layers/main/l1_ws/src/pkg_a/.git/hooks/pre-commit"
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#112 --type project --project p11 \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_not_contains "healthy package hook: no warning about the enclosing repo's broken hook" \
+        "no longer exists" "$out"
+    # Now break the package repo's hook: the warning names that repo.
+    printf '#!/usr/bin/env bash\n# start templated\nINSTALL_PYTHON=%s\n# end templated\nexit 0\n' \
+        "$sb/gone/.venv/bin/python3" > "$proj/layers/main/l1_ws/src/pkg_a/.git/hooks/pre-commit"
+    rc=0
+    out="$(run_worktree_create "$sb" --issue owner/pkg_a#113 --type project --project p11 \
+        --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "exit 0 (warning is advisory)" "0" "$rc"
+    assert_contains "broken package hook: warning names the package repo" \
+        "no longer exists ($proj/layers/main/l1_ws/src/pkg_a)" "$out"
+    assert_contains "broken package hook: repair root is the package repo" \
+        "make -C \"$proj/layers/main/l1_ws/src/pkg_a\" repair" "$out"
+}
+
 test_worktree_create_rolls_back_on_second_repo_failure() {
     echo "TEST: a failure on the second repo rolls back the first and leaves no aggregate dir"
     local sb out rc=0 proj wt
@@ -315,7 +350,7 @@ test_worktree_create_rolls_back_on_second_repo_failure() {
     out="$(run_worktree_create "$sb" --issue owner/pkg_a#222 --type project --project p11 \
         --layer l1 --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-222"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-222"
     assert_eq "no aggregate dir left behind" "false" "$([ -e "$wt" ] && echo true || echo false)"
     assert_eq "pkg_a's worktree removed from the origin repo" \
         "" "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain \
@@ -338,7 +373,7 @@ test_worktree_create_rollback_on_worktree_env_failure() {
     out="$(run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project p11 \
         --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-333"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-333"
     assert_eq "no aggregate dir left behind" "false" "$([ -e "$wt" ] && echo true || echo false)"
     assert_eq "package repo's worktree list shows only the main checkout" \
         "1" "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain | grep -c '^worktree ')"
@@ -359,7 +394,7 @@ test_worktree_remove_multi_package_dirty_refuses_all() {
     make_committed_pkg_repo "$proj" l1 pkg_b
     run_worktree_create "$sb" --issue owner/pkg_a#333 --type project --project p11 \
         --layer l1 --package-repos pkg_a,pkg_b >/dev/null 2>&1
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-333"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-333"
     echo dirty >> "$wt/l1_ws/src/pkg_b/README.md"
     out="$(run_worktree_remove "$sb" --issue owner/pkg_a#333 --type project --project p11 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
@@ -384,7 +419,7 @@ test_worktree_list_json_reports_package_worktree() {
     make_committed_pkg_repo "$proj" l1 pkg_b
     run_worktree_create "$sb" --issue owner/pkg_a#444 --type project --project p11 \
         --layer l1 --package-repos pkg_a,pkg_b >/dev/null 2>&1
-    wt="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-444"
+    wt="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-444"
     echo dirty >> "$wt/l1_ws/src/pkg_b/README.md"
     out="$(cd "$sb" && "$sb/.agent/scripts/worktree_list.sh" --json)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
@@ -413,8 +448,8 @@ test_worktree_enter_disambiguates_by_qualified_issue() {
         --layer l1 --package-repos pkg_a >/dev/null 2>&1
     run_worktree_create "$sb" --issue owner/pkg_c#555 --type project --project p11 \
         --layer l2 --package-repos pkg_c >/dev/null 2>&1
-    wt_a="$sb/worktrees/project/p11/issue-p11-owner-pkg_a-555"
-    wt_c="$sb/worktrees/project/p11/issue-p11-owner-pkg_c-555"
+    wt_a="$sb/projects/p11/worktrees/issue-p11-owner-pkg_a-555"
+    wt_c="$sb/projects/p11/worktrees/issue-p11-owner-pkg_c-555"
     assert_eq "pkg_a worktree exists" "true" "$([ -d "$wt_a" ] && echo true || echo false)"
     assert_eq "pkg_c worktree exists" "true" "$([ -d "$wt_c" ] && echo true || echo false)"
 
@@ -1161,6 +1196,12 @@ if [ -f $proj/layers/main/l1_ws/install/local_setup.bash ]; then source $proj/la
 if [ -f $proj/layers/main/l2_ws/install/local_setup.bash ]; then source $proj/layers/main/l2_ws/install/local_setup.bash; fi
 if [ -f $wt/l2_ws/install/local_setup.bash ]; then source $wt/l2_ws/install/local_setup.bash; fi"
     assert_eq "below-layer, same-layer (hosted, not built), worktree's own — all runtime-guarded" "$expected" "$out"
+    # ADR-0012: the colcon-specific COLCON_IGNORE marker for the worktrees dir
+    # is written here by the adapter, not by the generic worktree helpers.
+    assert_eq "worktree_env writes an empty COLCON_IGNORE in the worktree's parent dir" \
+        "yes" "$([ -f "$sb/COLCON_IGNORE" ] && [ ! -s "$sb/COLCON_IGNORE" ] && echo yes || echo no)"
+    out="$(run_adapter "$sb" worktree_env --worktree "$wt")" || true
+    assert_eq "second worktree_env call is idempotent (marker still present, output unchanged)" "$expected" "$out"
 
     local wt_env="$sb/wt_env.sh"
     printf '%s\n' "$out" > "$wt_env"
@@ -1340,6 +1381,7 @@ echo ""
 
 test_validator_accepts_ros2_colcon
 test_worktree_create_package_success
+test_worktree_create_package_hook_preflight_checks_package_repos
 test_worktree_create_rolls_back_on_second_repo_failure
 test_worktree_create_rollback_on_worktree_env_failure
 test_worktree_remove_multi_package_dirty_refuses_all

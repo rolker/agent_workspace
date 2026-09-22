@@ -54,6 +54,13 @@ repos:
         pass_filenames: false
         files: ^\.agent/(scripts/adapter|scripts/validate_adapter\.sh|project_types/)
 
+      - id: validate-script-tests
+        name: Run .agent/scripts/tests/ suite (progress.md vocabulary + issue #269 checkpoint gate)
+        entry: bash .agent/scripts/tests/run_script_tests.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.9.0.6
     hooks:

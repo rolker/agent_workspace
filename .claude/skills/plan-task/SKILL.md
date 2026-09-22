@@ -190,45 +190,54 @@ prompts/findings) alongside the plan:
 <single PR / multiple PRs / needs breakdown>
 ```
 
-### 6. Update progress.md
+### 6. Commit the plan
 
-Before committing, append a "Plan" step entry to
-`${WORK_PLANS_DIR}/progress.md`. If progress.md does not exist, create it
-with frontmatter (use the issue title from step 1):
-
-```yaml
----
-issue: <N>
----
-
-# Issue #<N> — <issue title>
-```
-
-Then append the step entry:
-
-```markdown
-
-## Plan
-**Status**: complete
-**When**: <YYYY-MM-DD HH:MM>
-**By**: <agent name> (<model>)
-
-Plan file: `${WORK_PLANS_DIR}/plan.md`.
-
-<1-2 sentence summary of the approach>
-```
-
-### 7. Commit the plan
-
-Stage both files and commit together:
+Commit `plan.md` on its own first. The progress entry in step 7 cites the
+commit that contains the plan text (ADR-0013's plan-commit SHA), so the
+plan has to be committed before the entry can name it:
 
 ```bash
 mkdir -p "$WORK_PLANS_DIR"
-git add "$WORK_PLANS_DIR/plan.md" "$WORK_PLANS_DIR/progress.md"
+git add "$WORK_PLANS_DIR/plan.md"
 git commit -m "Add work plan for #<N>
 
 <one-line summary of the approach>"
+PLAN_SHA=$(.agent/scripts/review_progress.sh plan-sha --plan "$WORK_PLANS_DIR/plan.md")
 ```
+
+`plan-sha` prints the last commit that touched `plan.md` (never the branch
+head, never a blob SHA) and refuses an uncommitted plan. Re-run it after
+every later plan revision; the new `## Plan Authored` entry for that
+revision cites the new SHA.
+
+### 7. Record the plan in progress.md
+
+Append a `## Plan Authored` entry (ADR-0013's name for what this step used
+to write as `## Plan`) through the same persistence call `review-code`,
+`triage-reviews`, and `address-findings` use. It creates the file with
+frontmatter and the `--title` heading when absent, and applies the
+`PROGRESS_PERSISTENCE_STRICT` switch: compatibility (default) keeps this
+skill's previous inline commit in the current worktree, printing the
+"would have aborted" notice if the strict resolver would have refused;
+strict (`--strict`, or the env var set to `1`) goes through
+`resolve_work_plans_dir()` and `progress_append.sh`. Echo the printed line
+in step 9's report.
+
+```bash
+.agent/scripts/review_progress.sh persist --issue "<N>" --branch "$(git branch --show-current)" \
+    --title "<issue title>" [--strict] <<ENTRY
+## Plan Authored
+**Status**: complete
+**When**: <YYYY-MM-DD HH:MM ±HH:MM>
+**By**: <agent name> (<model>)
+**Plan**: \`${WORK_PLANS_DIR#"$(git rev-parse --show-toplevel)/"}/plan.md\` at \`${PLAN_SHA}\`
+
+<1-2 sentence summary of the approach>
+ENTRY
+```
+
+`**Plan**` is the entry's correlation key: `review-plan` and the round
+counter match on that SHA, so it must be the value `plan-sha` printed.
 
 ### 8. Create or update a draft PR
 
@@ -334,6 +343,11 @@ visible to plan review without further wiring.
   draft PR.
 - **Concrete, not generic** — "Update tests" is not a plan step. "Add test
   for edge case X in `test_foo.py`" is.
+- **A new `test_*.sh` needs its exec bit** — when a plan step creates a new
+  shell script, say `chmod +x` in the step. The
+  `check-shebang-scripts-are-executable` pre-commit hook fails the commit
+  otherwise, so the exec bit belongs in the plan as an explicit step rather
+  than as an implicit assumption.
 - **Flag conflicts early** — if the plan would violate a principle or ADR,
   say so and propose an alternative.
 - **Include open questions** — if the approach depends on a choice the user

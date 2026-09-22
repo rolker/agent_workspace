@@ -67,7 +67,7 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 
 ### 3. Resolve the worktree path (existing → create-new fallback)
 
-Exit-code-checked idiom — error text from the "not found" path goes to stderr, so `2>/dev/null` suppresses it. The `worktree_enter.sh` "Unknown option" path still writes to stdout (caught harmlessly by the elif chain when it overwrites `$WT`); see #194 for routing that to stderr too.
+Exit-code-checked idiom — error text from `worktree_enter.sh`'s failure paths goes to stderr, so `2>/dev/null` suppresses it and `$WT` never captures error or usage text (enforced by `.agent/scripts/tests/test_worktree_enter_stderr.sh`).
 
 ```bash
 # Disable glob expansion for the unquoted $ARGUMENTS expansion below.
@@ -133,7 +133,7 @@ After changes to this skill, run these checks from a fresh main-tree session to 
 
 2. **Skill case** — `/start-task --skill research --type workspace`. Same flow with a skill-worktree path (`worktrees/workspace/skill-research-<TS>/`).
 
-3. **Project case** — `/start-task --issue <test-N> --type project` against a configured project repo. Expected: step 3's `elif` fires; new worktree created at `worktrees/project/<repo>/issue-<repo>-<test-N>/`; `cd` succeeds. This is the case the previous `EnterWorktree`-based flow failed (the project worktree belongs to a separate git repo from the workspace, which `git worktree list` doesn't see); confirms uniform `cd` covers it.
+3. **Project case** — `/start-task --issue <test-N> --type project` against a configured project repo. Expected: step 3's `elif` fires; new worktree created at `worktrees/project/<repo>/issue-<repo>-<test-N>/` for an unregistered project, or under the project's own root (`registry_worktree_dir`) when it's registered in `.agent/projects.local` (issue #265); `cd` succeeds. This is the case the previous `EnterWorktree`-based flow failed (the project worktree belongs to a separate git repo from the workspace, which `git worktree list` doesn't see); confirms uniform `cd` covers it.
 
 4. **Re-entry case** — exit the worktree from check 1 (`cd -` back to the workspace root), then re-run the same `/start-task --issue <test-N> --type workspace`. Expected: step 3's `if` branch fires (existing worktree found); no new creation; `cd` puts the session back in the existing worktree.
 

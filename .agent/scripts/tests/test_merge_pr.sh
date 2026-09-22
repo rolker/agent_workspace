@@ -11,6 +11,13 @@
 # pointing each sandbox repo's `origin` at a local bare clone instead of a
 # real GitHub URL.
 #
+# The CI-target decision, the SHA-targeted `gh api` check-runs/mergeability
+# poll, and the idempotent Merge record (issue #284) have their own
+# hermetic coverage in test_merge_pr_gate.sh; every case here uses
+# --no-wait, so none of that machinery (or `gh pr checks`, which the
+# script no longer calls at all — see the stub comment below) is exercised
+# by this suite.
+#
 # Run: bash .agent/scripts/tests/test_merge_pr.sh
 
 set -uo pipefail
@@ -49,22 +56,22 @@ assert_contains() {
 
 # ---- Sandbox helpers ----
 
-SANDBOXES=()
-cleanup() {
-    local sb
-    for sb in ${SANDBOXES[@]+"${SANDBOXES[@]}"}; do
-        rm -rf "$sb"
-    done
-}
-trap cleanup EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. Helpers carve per-test
+# directories out of it with `mktemp -d -p "$SANDBOX"`, which needs no
+# shared state and so survives being called as `sb="$(make_merge_sandbox)"`.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
 
 # A fixture-driven `gh` stub: `pr view` and `pr list` answer from files
 # under $GH_FIXTURES_DIR (written by the tests), keyed by repo+number or
-# repo+branch. `pr merge` and `pr checks` always succeed (tests use
-# --no-wait, so `pr checks` is never actually invoked, but a stub is
-# provided for completeness). Every invocation is appended to
-# $GH_CALL_LOG (one line per call) so tests can assert which repo/branch
-# a lookup targeted.
+# repo+branch. `pr merge` always succeeds per GH_MERGE_EXIT; `pr checks`
+# is stubbed for completeness but merge_pr.sh does not call it any more
+# (issue #284 replaced `gh pr checks --watch` with a SHA-targeted `gh api`
+# poll — see test_merge_pr_gate.sh). Every case in this suite uses
+# --no-wait, so neither `pr checks` nor the new `gh api` poll is ever
+# invoked here. Every gh invocation is appended to $GH_CALL_LOG (one line
+# per call) so tests can assert which repo/branch a lookup targeted.
 write_gh_stub() {
     local sb="$1"
     cat > "$sb/stubbin/gh" <<'EOF'
@@ -77,13 +84,19 @@ sanitize() { printf '%s' "$1" | tr '/' '_'; }
 if [ "$1" = "pr" ] && [ "$2" = "view" ]; then
     num="$3"
     shift 3
-    repo=""
+    repo=""; jf=""
     while [ $# -gt 0 ]; do
         case "$1" in
             -R) repo="$2"; shift 2 ;;
+            --json) jf="$2"; shift 2 ;;
             *) shift ;;
         esac
     done
+    # merge_pr.sh's mergeability settle runs even under --no-wait (#290);
+    # answer it as settled so these resolution/cleanup cases never poll.
+    if [ "$jf" = "mergeable,mergeStateStatus" ]; then
+        echo '{"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN"}'; exit 0
+    fi
     f="$GH_FIXTURES_DIR/pr_view_$(sanitize "$repo")_${num}.json"
     if [ -f "$f" ]; then
         cat "$f"
@@ -142,8 +155,7 @@ write_pr_list_fixture() {
 # URL) so the legacy Step 6 `git pull --ff-only` succeeds offline.
 make_merge_sandbox() {
     local sb bare curbr
-    sb="$(mktemp -d)"
-    SANDBOXES+=("$sb")
+    sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts" "$sb/stubbin" "$sb/gh_fixtures"
     cp "$REAL_ROOT/.agent/scripts/merge_pr.sh" "$sb/.agent/scripts/"
     cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
@@ -158,9 +170,10 @@ make_merge_sandbox() {
     git -C "$sb" init --quiet
     git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
 
+    # String-derived sibling of $sb (so it lands under $SANDBOX too); the
+    # gh fixture filenames are keyed on this exact path string.
     bare="${sb}.remote.git"
     git init --bare --quiet "$bare"
-    SANDBOXES+=("$bare")
     git -C "$sb" remote add origin "$bare"
     curbr="$(git -C "$sb" symbolic-ref --short HEAD)"
     git -C "$sb" push --quiet -u origin "$curbr"
@@ -181,7 +194,13 @@ make_origin_repo() {
     local dir="$sb/origins/$name"
     local remote_dir="$sb/fake_remotes/github.com/${owner}/${name}.git"
     mkdir -p "$dir" "$(dirname "$remote_dir")"
+    # HEAD must point at main explicitly: on a host with no init.defaultBranch
+    # (GitHub's runners) a bare init points HEAD at `master`, and a later
+    # `git clone` of it lands on an unborn branch, so `push origin main` fails
+    # with "src refspec main does not match any" (seen once run_script_tests
+    # wired this suite into CI).
     git init --bare --quiet "$remote_dir"
+    git -C "$remote_dir" symbolic-ref HEAD refs/heads/main
     git -C "$dir" init --quiet
     echo "$name" > "$dir/README.md"
     git -C "$dir" add README.md
@@ -217,6 +236,7 @@ run_merge_pr() {
     local sb="$1"
     shift
     (cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" \
+        MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 \
         "$sb/.agent/scripts/merge_pr.sh" "$@")
 }
 
@@ -458,6 +478,28 @@ test_same_repo_under_two_instances_requires_project() {
     assert_eq "inst1 worktree untouched" "true" "$([ -d "$wt1" ] && echo true || echo false)"
 }
 
+test_project_parent_alias_selects_instance_manifest() {
+    echo "TEST: --project <parent> matches a manifest whose header names the resolved instance (#273 round-2 review)"
+    local sb out rc=0 origin_a wt
+    sb="$(make_merge_sandbox)"
+    # Registry: parent p11 with default instance p11-rolling. worktree_create
+    # resolves the parent before writing the manifest header, so the header
+    # says p11-rolling; the user still types --project p11.
+    mkdir -p "$sb/p11root/rolling"
+    git -C "$sb/p11root/rolling" init --quiet
+    printf 'p11 project %s default_instance=p11-rolling\np11-rolling ros2_colcon %s parent=p11\n' \
+        "$sb/p11root" "$sb/p11root/rolling" >> "$sb/.agent/projects.local"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    wt="$(make_package_worktree "$sb" "worktrees/project/p11-rolling/issue-p11-rolling-owner-pkg_a-562" \
+        p11-rolling "owner/pkg_a#562" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-562")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 562 "feature/issue-562"
+
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#562 --project p11 --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0 with --project p11 (parent alias)" "0" "$rc"
+    assert_eq "instance's package worktree removed" "false" "$([ -d "$wt" ] && echo true || echo false)"
+    assert_eq "merged" "true" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
+}
+
 test_remote_branch_already_gone_is_not_a_failure() {
     echo "TEST: a head branch GitHub already auto-deleted counts as cleaned up, not incomplete"
     local sb out rc=0 origin_a wt
@@ -605,7 +647,6 @@ test_legacy_single_repo_project_pr_regression() {
     git -C "$sb/project" init --quiet
     git -C "$sb/project" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
     bare="${sb}.project.remote.git"
-    SANDBOXES+=("$bare")
     git init --bare --quiet "$bare"
     # Same offline-pull trick as make_merge_sandbox: origin is a local bare
     # clone, and the gh fixture is keyed on that same string, whatever it is.
@@ -630,6 +671,57 @@ test_legacy_single_repo_project_pr_regression() {
         "$(git -C "$sb/project" show-ref --verify --quiet refs/heads/feature/issue-77 && echo true || echo false)"
 }
 
+test_registered_project_root_pr_regression() {
+    echo "TEST: a registered (out-of-tree) single-repo project PR is resolved and its worktree, under the project's OWN root, is cleaned up (#265 PR 2)"
+    local sb out rc=0 wt bare curbr pj_remote outside
+    sb="$(make_merge_sandbox)"
+    # Sibling of $sb under $SANDBOX, never a child of it: the test needs a
+    # repo that sits outside the sandbox workspace root.
+    outside="$(mktemp -d -p "$SANDBOX")"
+    mkdir -p "$outside/farrepo"
+    git -C "$outside/farrepo" init --quiet
+    git -C "$outside/farrepo" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+    bare="${sb}.farrepo.remote.git"
+    git init --bare --quiet "$bare"
+    git -C "$outside/farrepo" remote add origin "$bare"
+    curbr="$(git -C "$outside/farrepo" symbolic-ref --short HEAD)"
+    git -C "$outside/farrepo" push --quiet -u origin "$curbr"
+    pj_remote="$(git -C "$outside/farrepo" remote get-url origin)"
+    echo "farrepo single_project $outside/farrepo" >> "$sb/.agent/projects.local"
+
+    # No new commit on the feature branch (see the legacy-project test
+    # above for why: `gh pr merge` is stubbed, so a real new commit would
+    # leave the branch "not fully merged" and defeat the safe `branch -d`).
+    git -C "$outside/farrepo" branch feature/issue-78
+    wt="$outside/farrepo/worktrees/issue-farrepo-78"
+    mkdir -p "$(dirname "$wt")"
+    git -C "$outside/farrepo" worktree add --quiet "$wt" feature/issue-78
+    write_pr_view_fixture "$sb" "$pj_remote" 78 "feature/issue-78"
+
+    out="$(run_merge_pr "$sb" --pr 78 --project farrepo --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "project type auto-detected" "Merging PR #78 (issue #78)" "$out"
+    assert_eq "worktree removed from under the registered (out-of-tree) root" \
+        "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "feature branch deleted in the registered project's own repo" "false" \
+        "$(git -C "$outside/farrepo" show-ref --verify --quiet refs/heads/feature/issue-78 && echo true || echo false)"
+}
+
+test_ambiguous_project_root_type_project_fails_fast() {
+    echo "TEST: --type project with >1 non-parent project registered and no --project fails fast instead of falling through with an empty project root (#273 round-1 review)"
+    local sb out rc=0
+    sb="$(make_merge_sandbox)"
+    echo "alpha single_project $sb/alpha" >> "$sb/.agent/projects.local"
+    echo "beta single_project $sb/beta" >> "$sb/.agent/projects.local"
+
+    out="$(run_merge_pr "$sb" --pr 88 --type project --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exits nonzero" "1" "$rc"
+    assert_contains "surfaces wt_resolve_project_repo_root's ambiguity error" \
+        "multiple projects registered; pass --project" "$out"
+    assert_eq "no gh calls made (fails before any PR lookup)" \
+        "false" "$([ -f "$sb/gh_calls.log" ] && echo true || echo false)"
+}
+
 # ---- Run all tests ----
 echo "=== merge_pr.sh package-worktree tests (#252 PR 2) ==="
 echo ""
@@ -645,6 +737,7 @@ test_own_repo_sync_failure_is_reported
 test_package_repo_without_worktree_never_uses_legacy_cleanup
 test_repo_conflicting_type_rejected
 test_same_repo_under_two_instances_requires_project
+test_project_parent_alias_selects_instance_manifest
 test_remote_branch_already_gone_is_not_a_failure
 test_sweep_reports_unmerged_local_branch
 test_failed_worktree_removal_marks_cleanup_incomplete
@@ -652,6 +745,8 @@ test_kept_worktree_banner
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
 test_legacy_single_repo_project_pr_regression
+test_registered_project_root_pr_regression
+test_ambiguous_project_root_type_project_fails_fast
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

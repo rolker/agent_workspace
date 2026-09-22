@@ -18,9 +18,20 @@ if [[ ! -x "$HOOK" ]]; then
     exit 1
 fi
 
-# Tests need a writable HOME so the sidecar log doesn't pollute the real one
-TMP_HOME=$(mktemp -d /tmp/tool-mapping-test-XXXXXX)
-trap 'rm -rf "$TMP_HOME"' EXIT
+# One sandbox for the whole run, created at top level (not inside $()) so
+# the trap actually fires — see issue #297. No hardcoded /tmp template:
+# `mktemp -d` honors TMPDIR, so the run stays inside whatever temp root the
+# caller set.
+SANDBOX="$(mktemp -d)"
+trap 'rm -rf "$SANDBOX"' EXIT
+
+# Tests need a writable HOME so the sidecar log doesn't pollute the real one.
+# Deliberately a fixed name under $SANDBOX rather than `mktemp -d -p
+# "$SANDBOX"` (#297 PR 1 review, resolved in #304): this is a single,
+# purpose-named fixture — one fake $HOME per run — not a per-iteration
+# sandbox needing per-call uniqueness, and it inherits $SANDBOX's EXIT-trap
+# cleanup either way.
+TMP_HOME="$SANDBOX/home"
 mkdir -p "$TMP_HOME/.claude"
 
 PASS=0

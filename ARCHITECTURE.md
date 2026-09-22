@@ -23,7 +23,9 @@ agent_workspace/
 │   ├── project_config.sh  # PROJECT_TYPE / BUILD_CMD / TEST_CMD / INSTALL_CMD (gitignored, per-developer)
 │   ├── projects.local     # Per-machine project registry (gitignored; see projects.local.example)
 │   ├── projects.d/        # Per-project command configs, <name>.sh (gitignored)
-│   ├── work-plans/        # issue-<N>/plan.md and review artifacts
+│   ├── work-plans/        # issue-<N>/plan.md and progress.md (per-issue lifecycle timeline;
+│   │                       # entry-type vocabulary is ADR-0013, docs/decisions/0013-progress-md-entry-type-vocabulary.md;
+│   │                       # written via .agent/scripts/progress_append.sh, read via .agent/scripts/progress_read.py)
 │   ├── work-artifacts/    # Generated outputs
 │   ├── scratchpad/        # Temp workspace (gitignored)
 │   ├── templates/         # Issue/PR/ADR templates
@@ -126,12 +128,22 @@ Git worktrees of the **workspace repo**. Used for:
 
 ### Project Worktrees
 
-Location: `worktrees/project/<repo>/issue-<slug>-<N>/`
+Location: a registered project's own `worktrees/` (or its `worktrees=`
+override in `.agent/projects.local`), resolved by `registry_worktree_dir`
+(issue #265) — e.g. `~/src/gz4d/worktrees/issue-gz4d-<N>/`. An unregistered
+project (legacy `project/` checkout only) falls back to the pre-#265
+transition location `worktrees/project/<repo>/issue-<slug>-<N>/`, dropped
+together with `project/` in a later PR.
 
 Git worktrees of the **project repo**. Used for all changes to the managed project.
 Draft PRs target the project repo using `gh pr create -R <project-remote>`.
 
-`worktrees/` is gitignored at the workspace root.
+`worktrees/` is gitignored at the workspace root. A registered project's own
+`worktrees/` dir is excluded via that root's `.git/info/exclude` on first use
+(never a tracked file); the `ros2_colcon` adapter's `worktree_env` verb
+additionally writes an untracked `worktrees/COLCON_IGNORE` marker (ADR-0012:
+type-specific behaviour stays in the adapter). Worktrees created before
+registration remain discoverable at `worktrees/project/<name>/`.
 
 ## Stamp-Based Setup (ADR-0007)
 
@@ -174,6 +186,25 @@ INSTALL_CMD=""         # optional deploy/install; empty = make install no-ops
 `make build`, `make test`, and `make install` dispatch through the project-type
 adapter, which runs the configured command in the project tree
 (`adapter project_root` — `project/` for `single_project`).
+
+## Review Loop Lifecycle
+
+An issue moves through a fixed phase order — `review-issue` → `plan-task`
+→ `review-plan` → implement → `review-code` (pre-push, then post-push) →
+`triage-reviews` → merge — each phase appending one canonical entry
+(ADR-0013) to `.agent/work-plans/issue-<N>/progress.md`, the timeline that
+is the only record of where an issue stands. `.claude/skills/run-issue/
+SKILL.md` (Claude Code only) is the one script-driven path through this
+table: `.agent/scripts/dispatch_phase.sh next` reads the timeline and
+returns the next action, `dispatch_phase.sh --issue <N> --skill <phase>`
+hands that phase to a fresh sub-agent via the Agent tool (ADR-0014), and
+`--check-exit` verifies the phase kept its exit contract before the loop
+advances. Nine `AskUserQuestion` checkpoints pause the loop for a human
+decision, each recorded as its own `## Checkpoint` entry before the next
+step is asked for — no loop state lives outside `progress.md`. Codex/
+Gemini sessions, which cannot drive the Agent tool or `AskUserQuestion`
+the same way, walk the same phase order by hand, one `SKILL.md` at a time.
+See `.agent/knowledge/review_loop_lifecycle.md` for the one-page summary.
 
 ## Governance
 

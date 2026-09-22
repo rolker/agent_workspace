@@ -24,7 +24,7 @@ source .agent/scripts/worktree_enter.sh --issue 42 --type project
 ```
 
 ### Worktree Types
-- **Project worktree** (`--type project`): For project repo work. Created in `worktrees/project/<repo>/issue-<slug>-N/`
+- **Project worktree** (`--type project`): For project repo work. A registered project's worktrees live under its own root (`registry_worktree_dir`, e.g. `<project_root>/worktrees/issue-<slug>-N/`, issue #265); `worktrees/project/<repo>/issue-<slug>-N/` is the legacy/unregistered fallback.
 - **Workspace worktree** (`--type workspace`): For infrastructure work (.agent/, configs/, docs). Created in `worktrees/workspace/issue-<slug>-N/`
 
 ### Benefits

@@ -135,3 +135,14 @@ User overrides take precedence over automatic classification. This allows
 forcing a thorough review on a small change, or a quick review on a large
 but low-risk change (e.g., bulk formatting). The `--skip-static` flag
 (both modes) suppresses the static-analysis specialist regardless of tier.
+
+## Report header fields independent of tier
+
+Every tier's report opens with a **Decision summary** section and, in
+branch mode, carries a `**Round**` / `**Ship**` line in the header. These
+come from the review-code skill's convergence assessment (issue #269
+PR B): the round is the count of prior `## Local Review (Pre-Push)`
+entries for the branch plus one, and the ship verdict is recommended /
+continue per the rule in the skill's step 6, both computed by
+`.agent/scripts/review_progress.sh`. Depth tier controls which specialists
+run; it does not change these fields.

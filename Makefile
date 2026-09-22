@@ -27,11 +27,31 @@ else
   MAIN_ROOT := $(CURDIR)
 endif
 
-# --- Stamp directory ---
-STAMP    := $(MAIN_ROOT)/.make
-VENV_DIR := $(MAIN_ROOT)/.venv
+# --- Dev-tools root: the checkout that owns .git (issue #272) ---
+# The venv, the stamps, and the pre-commit hook belong to the main checkout,
+# never to a worktree: every worktree shares the main .git/hooks, and a hook
+# installed from a worktree's own venv breaks for everyone once that
+# worktree is removed ("`pre-commit` not found"). git's common dir names the
+# main checkout from anywhere; fall back to MAIN_ROOT outside a repo.
+# The shared venv is fed by the shared requirements.txt for the same reason
+# (a branch that edits requirements.txt must not change dev-tool versions
+# for every other worktree via `make setup` there), and `make clean` clears
+# the shared stamps. (MAIN_ROOT itself still governs which script copies
+# run — issue #239.)
+WS_ROOT := $(patsubst %/.git,%,$(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))
+ifeq ($(WS_ROOT),)
+  WS_ROOT := $(MAIN_ROOT)
+endif
+STAMP    := $(WS_ROOT)/.make
+VENV_DIR := $(WS_ROOT)/.venv
 VENV_BIN := $(VENV_DIR)/bin
 PRE_COMMIT := $(VENV_BIN)/pre-commit
+# The venv, stamps, and hook are shared by every worktree, so the recipes
+# that mutate them (setup-dev, repair, clean) run under one lock: two agents
+# running `make setup` on a fresh machine must not race pip or the hook
+# install. flock is util-linux; without it (macOS) the recipe runs unlocked.
+FLOCK := $(shell command -v flock 2>/dev/null)
+LOCKED = $(if $(FLOCK),$(FLOCK) $(STAMP)/.lock sh -c,sh -c)
 
 # --- Phony targets ---
 .PHONY: help setup build test install lint clean dashboard validate sync lock unlock revert-feature pr-triage generate-skills skip-git-bug repair merge-pr
@@ -67,7 +87,7 @@ help:
 	@echo "Utilities:"
 	@echo "  make lock             Lock workspace (prevent concurrent agent work)"
 	@echo "  make unlock           Unlock workspace"
-	@echo "  make merge-pr PR=<N|owner/repo#N> [REPO=owner/repo]  Merge PR, remove worktree, delete branch, sync"
+	@echo "  make merge-pr PR=<N|owner/repo#N> [REPO=owner/repo] [MERGE_PR_ARGS=--enforce|--force-unreviewed]  Merge PR (review gate: report-only by default), remove worktree, delete branch, sync"
 	@echo "  make pr-triage        Show PR status across workspace + project"
 	@echo "  make revert-feature ISSUE=<N>   Revert commits for issue <N>"
 	@echo "  make generate-skills  Regenerate /make_* slash commands"
@@ -95,9 +115,9 @@ install: $(STAMP)/setup-dev.done
 lint: $(STAMP)/setup-dev.done
 	$(PRE_COMMIT) run --all-files
 
-clean:
-	rm -rf $(STAMP)
-	@echo "Stamp files removed. Run 'make setup' to re-initialize."
+clean: | $(STAMP)
+	@$(LOCKED) 'rm -f $(STAMP)/*.done'
+	@echo "Stamp files removed (shared by every worktree). Run 'make setup' to re-initialize."
 
 dashboard:
 	@$(MAIN_ROOT)/.agent/scripts/dashboard.sh
@@ -105,11 +125,9 @@ dashboard:
 validate:
 	python3 $(MAIN_ROOT)/.agent/scripts/validate_workspace.py --verbose
 
-repair:
+repair: | $(STAMP)
 	@echo "--- Repairing venv and pre-commit hook ---"
-	$(VENV_BIN)/python3 -m pip install --quiet --force-reinstall -r $(MAIN_ROOT)/requirements.txt
-	cd $(MAIN_ROOT) && $(PRE_COMMIT) install
-	@rm -f $(STAMP)/setup-dev.done
+	@$(LOCKED) '$(VENV_BIN)/python3 -m pip install --quiet --force-reinstall -r $(WS_ROOT)/requirements.txt && cd $(WS_ROOT) && $(PRE_COMMIT) install && rm -f $(STAMP)/setup-dev.done'
 	@$(MAKE) --no-print-directory $(STAMP)/setup-dev.done
 	@echo "✅ Repair complete. Run 'make validate' to verify."
 
@@ -149,13 +167,9 @@ $(STAMP):
 	mkdir -p $(STAMP)
 
 # setup-dev: install venv + pre-commit
-$(STAMP)/setup-dev.done: requirements.txt | $(STAMP)
+$(STAMP)/setup-dev.done: $(WS_ROOT)/requirements.txt | $(STAMP)
 	@echo "--- Setting up dev tools ---"
-	python3 -m venv $(VENV_DIR)
-	$(VENV_BIN)/python3 -m pip install --quiet --upgrade pip
-	$(VENV_BIN)/python3 -m pip install --quiet -r $(MAIN_ROOT)/requirements.txt
-	$(PRE_COMMIT) install
-	touch $@
+	@$(LOCKED) 'python3 -m venv $(VENV_DIR) && $(VENV_BIN)/python3 -m pip install --quiet --upgrade pip && $(VENV_BIN)/python3 -m pip install --quiet -r $(WS_ROOT)/requirements.txt && cd $(WS_ROOT) && $(PRE_COMMIT) install && touch $@'
 
 # git-bug: configure identity + GitHub bridge
 $(STAMP)/git-bug.done: $(STAMP)/setup-dev.done

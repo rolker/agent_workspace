@@ -11,9 +11,12 @@
 #               Created in: worktrees/workspace/issue-<slug>-<N>/
 #               Git worktree of the workspace repo
 #
-#   project   - For changes to the managed project repo
-#               Created in: worktrees/project/<repo>/issue-<slug>-<N>/
-#               Git worktree of the project/ repo
+#   project   - For changes to a project repo
+#               Created in: <registered root>/worktrees/issue-<slug>-<N>/
+#               (or, for an unregistered project — legacy project/ symlink
+#               only — the transition fallback
+#               worktrees/project/<repo>/issue-<slug>-<N>/, #265)
+#               Git worktree of the project repo
 #               Draft PRs target the project repo (-R <project-remote>)
 
 set -e
@@ -542,7 +545,17 @@ else
 fi
 
 if [ "$WORKTREE_TYPE" == "project" ]; then
-    WORKTREE_DIR="$(wt_project_base "$ROOT_DIR" "$REPO_SLUG")/${DIR_PREFIX}"
+    if [ -n "$PROJECT_NAME" ]; then
+        # Registry-selected project: its own root's worktree dir.
+        WORKTREE_DIR="$(wt_project_base "$ROOT_DIR" "$PROJECT_NAME")/${DIR_PREFIX}"
+    else
+        # Legacy project/ checkout: always the transition location. Going
+        # through the registry here would let a registered project that
+        # happens to share this checkout's repo-slug name capture the
+        # worktree under ITS root while git operations target project/
+        # (#273 round-2 review).
+        WORKTREE_DIR="$(wt_project_base_glob "$ROOT_DIR")/${REPO_SLUG}/${DIR_PREFIX}"
+    fi
 else
     WORKTREE_DIR="$(wt_workspace_base "$ROOT_DIR")/${DIR_PREFIX}"
 fi
@@ -577,6 +590,14 @@ echo "  Branch:     $BRANCH_NAME"
 [ -n "$PARENT_BRANCH" ] && echo "  Parent:     #$PARENT_ISSUE_NUM ($PARENT_BRANCH)"
 echo "  Path:       $WORKTREE_DIR"
 echo ""
+
+# For a registered project, ensure its root excludes worktrees/ from its
+# own git status (and, for ros2_colcon roots, from colcon) before the
+# first worktree lands there. Idempotent; a no-op for legacy/unregistered
+# projects (#265).
+if [ "$WORKTREE_TYPE" == "project" ] && [ -n "$PROJECT_NAME" ]; then
+    wt_ensure_exclusion "$ROOT_DIR" "$PROJECT_NAME"
+fi
 
 mkdir -p "$(dirname "$WORKTREE_DIR")"
 
@@ -1003,6 +1024,38 @@ _NEXT_STEPS_ISSUE="$ISSUE_NUM"
 [ -n "$ISSUE_OWNER_REPO" ] && _NEXT_STEPS_ISSUE="$ISSUE_REF"
 _NEXT_STEPS_PROJECT_FLAG=""
 [ -n "$PROJECT_NAME" ] && _NEXT_STEPS_PROJECT_FLAG=" --project $PROJECT_NAME"
+
+# Shared pre-commit hook preflight (issue #272): a worktree runs the hook of
+# the repository that OWNS it — the workspace's .git/hooks for a workspace
+# worktree, the project checkout's for a project worktree — and that hook
+# pins the interpreter that installed it. If that path is gone (a hook
+# installed from a since-removed worktree's venv), every commit here fails
+# with "`pre-commit` not found" unless a venv happens to be on PATH. Ask each
+# checkout that commits will actually run in which common dir it belongs
+# to: the worktree itself for workspace and single-repo project worktrees,
+# every manifest entry for a package worktree (its container is a plain
+# directory inside the project tree — asking it would walk up to the
+# enclosing repo and report a hook that never runs for these commits).
+_HOOK_CHECKOUTS=()
+for _hook_entry in ${WT_ADDED_ENTRIES[@]+"${WT_ADDED_ENTRIES[@]}"}; do
+    _HOOK_CHECKOUTS+=("${_hook_entry%%|*}")
+done
+[ "${#_HOOK_CHECKOUTS[@]}" -gt 0 ] || _HOOK_CHECKOUTS=("$WORKTREE_DIR")
+_HOOK_SEEN=" "
+for _hook_checkout in "${_HOOK_CHECKOUTS[@]}"; do
+    _HOOK_COMMON="$(git -C "$_hook_checkout" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    [ -n "$_HOOK_COMMON" ] && [ -f "$_HOOK_COMMON/hooks/pre-commit" ] || continue
+    case "$_HOOK_SEEN" in *" $_HOOK_COMMON "*) continue ;; esac
+    _HOOK_SEEN="$_HOOK_SEEN$_HOOK_COMMON "
+    _HOOK_PY="$(sed -n 's/^INSTALL_PYTHON=//p' "$_HOOK_COMMON/hooks/pre-commit" | head -1 | tr -d "'\"")"
+    if [ -n "$_HOOK_PY" ] && [ ! -x "$_HOOK_PY" ]; then
+        echo "⚠️  The shared pre-commit hook points to a Python that no longer exists ($(dirname "$_HOOK_COMMON")):" >&2
+        echo "     $_HOOK_PY" >&2
+        echo "   Commits in this (and every) worktree of that repo will fail with '\`pre-commit\` not found'." >&2
+        echo "   Fix once, from that checkout:  make -C \"$(dirname "$_HOOK_COMMON")\" repair" >&2
+        echo "" >&2
+    fi
+done
 
 if [ -n "$SKILL_NAME" ]; then
     echo "To enter this worktree:"
