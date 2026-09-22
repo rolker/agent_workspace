@@ -50,3 +50,13 @@ issue: 300
 - [ ] The fix must exclude the check-run by name/app-slug, for any conclusion (`failure`, `cancelled`, `timed_out`, `action_required`, `startup_failure`, `stale` — all currently checked at line 1007), not by matching the "Changes recommended" / "Findings: None" message text. The bug recurred on PR #308 (issue #307) today with `copilot-pull-request-reviewer` reporting conclusion `failure` for a different reason (Copilot quota exhaustion, not a review verdict) — a message-text-based exclusion would have missed that case. The issue's own proposed fix (exclude by check-run name near the top of the script) already gets this right; flagging so implementation doesn't regress toward a message-based heuristic.
 - [ ] The fix must not add any new wait, poll, or extra `gh api` round trip — it's a pure classification/filter change over data `_ci_poll_state` already fetches. Confirm the implementation only adds a name-based `jq select(... | not)` filter, not a second lookup.
 - [ ] Since Copilot's review is already consumed by `triage-reviews` → `## Integrated Review`, the diagnostic print (recommendation 3 in the issue) should make clear in its output that the excluded check-run was not used to block the merge, to avoid an operator assuming it was silently ignored entirely.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 10:12 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to plan-task with the four review notes carried into the plan (test suite location, exclude by check-run name for any conclusion, no new waits or API calls, diagnostic says "not used to block"). Exclusion scoped to the Copilot check-run only.
