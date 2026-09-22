@@ -4,8 +4,9 @@
 # Usage:
 #   _agy_review.sh <agy-bin> <prompt-file> <findings-file> [<print-timeout>]
 #
-# Called by cross_model_review.sh for the "gemini" agent in both tmux and
-# sync mode, so the two paths share one invocation and one success test.
+# Called by cross_model_review.sh for the "gemini" agent (in its own
+# background job alongside the other agents, ADR-0015), so there is one
+# invocation and one success test.
 #
 # Why this exists (issues #274, #288):
 #   * agy print mode takes the prompt as the -p argument value; large PR
@@ -29,7 +30,18 @@
 #     status SUCCESS and a non-empty response, and did not time out.
 #     Exit 1 otherwise (findings file holds the reason). Exit 2 on usage
 #     errors (also recorded in the findings file when it is writable).
-#   * No temp files survive any exit path (the test runner sweeps TMPDIR).
+#   * The caller wraps this helper in an outer `timeout` backstop set
+#     ABOVE <print-timeout> (cross_model_review.sh: GEMINI_BACKSTOP). The
+#     print-timeout handling here stays the primary path — the backstop
+#     only fires if this helper never returns at all, so it cannot race
+#     the timeout-then-partial-response contract above.
+#   * No temp files survive any exit path this script can observe: the
+#     EXIT trap covers normal exits and the signal traps turn a kill into
+#     an exit so it still fires. SIGKILL is the exception — no trap runs,
+#     so the `agy-review.XXXXXX` dir would be left behind. The only sender
+#     is `timeout -k` on the caller's backstop (a wedged helper), and
+#     cross_model_review.sh closes that gap by pointing TMPDIR at a
+#     scratch root it owns and removes itself.
 #   * All diagnostics go to stderr; stdout is unused.
 #
 # Verified against agy 1.2.8 (2026-09-22): see the plan for issue #288.
@@ -90,8 +102,15 @@ fi
 # failure the useful parts are copied into the findings file first.
 TMP_DIR=$(mktemp -d -t agy-review.XXXXXX) || fail "mktemp failed"
 trap 'rm -rf "$TMP_DIR"' EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM HUP
+# Armed before agy is launched (AGY_PID empty until then) so a signal in
+# the launch window cannot leave agy running behind an exited helper.
+# TERM is the live path under cross_model_review.sh: this helper runs as a
+# background child of a non-interactive shell, where bash makes SIGINT
+# ignored (and an ignored signal cannot be trapped). The INT trap is for a
+# direct interactive invocation of this script, where Ctrl-C does arrive.
+AGY_PID=""
+trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 130' INT
+trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 143' TERM HUP
 INPUT_FILE="${TMP_DIR}/input.ndjson"
 STREAM_FILE="${TMP_DIR}/stream.ndjson"
 STDERR_FILE="${TMP_DIR}/stderr.txt"
@@ -107,13 +126,19 @@ fi
 # verified spelling for "print mode, prompt comes from stdin" on agy 1.2.8:
 # a bare -p swallows the next flag as its prompt and `-p ""` is rejected
 # as an empty prompt.
+# agy runs as a background child and is waited on, so a TERM/INT sent
+# to this helper (cross_model_review.sh's cleanup on interrupt) reaches
+# agy at once instead of being deferred until the turn ends on its own.
 "$AGY_BIN_RESOLVED" \
     --input-format=stream-json \
     --output-format=stream-json \
     --print-timeout "$PRINT_TIMEOUT" \
     --disable-slash-commands \
-    -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE"
-AGY_EXIT=$?
+    -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE" &
+AGY_PID=$!
+AGY_EXIT=0
+wait "$AGY_PID" || AGY_EXIT=$?
+AGY_PID=""
 
 # Last 20 lines of stderr, for failure reports: a fatal error lands at
 # the end, after any startup chatter.

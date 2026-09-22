@@ -51,14 +51,14 @@ modify the PR unless the user asks.
 **Depth tiers** (see `.agent/knowledge/review_depth_classification.md`):
 - **Light** — static analysis only (small, low-risk changes)
 - **Standard** — Static Analysis, Governance, Plan Drift + Claude adversarial (medium or governance-touching)
-- **Deep** — Standard tier + Gemini adversarial (large, security, or cross-layer)
+- **Deep** — Standard tier + cross-model adversarial (every available non-caller CLI agent, in one `--agents` call) (large, security, or cross-layer)
 
 **Specialists**:
 - **Static Analysis** — runs linters on changed files using project or workspace configs
 - **Governance** — evaluates against principles, ADRs, and consequences
 - **Plan Drift** — compares implementation against the work plan (if one exists)
 - **Claude Adversarial** — fresh subagent, independent review for missed issues (Standard + Deep)
-- **Gemini Adversarial** — cross-model review via Gemini CLI in tmux (Deep only)
+- **Cross-model Adversarial** — independent reviews by the non-caller CLI agents (Gemini via agy, Codex, Copilot), run in parallel by `cross_model_review.sh` (Deep only)
 
 **Not ported from ros2_agent_workspace** (issue #269 PR B, documented so
 nobody looks for them): the Ollama `local_review.sh` / `--local`
@@ -209,7 +209,7 @@ Run all of:
 #### Deep tier
 
 Run all of Standard, plus:
-- **5e. Gemini Adversarial Specialist** (via cross-model review script)
+- **5e. Cross-Model Adversarial Specialist(s)** — one `cross_model_review.sh --agents <non-caller agents>` call
 
 ---
 
@@ -316,21 +316,25 @@ keys used by the script: `claude-code` → `claude`, `gemini-cli` → `gemini`,
 `codex-cli` → `codex`, `copilot-cli` → `copilot`. The canonical keys are:
 `gemini`, `codex`, `claude`, `copilot`.
 
-For each non-caller agent, launch the cross-model review script. Use
-`--pr <N>` in PR mode and `--branch [<ref>]` in branch mode (mutually
-exclusive — passing both is a hard error).
+Launch the cross-model review script **once**, passing every non-caller
+agent in `--agents`; the script runs them in parallel and blocks until
+the last one finishes (ADR-0015). Use `--pr <N>` in PR mode and
+`--branch [<ref>]` in branch mode (mutually exclusive — passing both is a
+hard error).
 
 ```bash
 # PR mode — example: Claude is the caller, dispatch gemini, codex, copilot
-.agent/scripts/cross_model_review.sh --pr <N> --agent gemini --repo owner/repo
-.agent/scripts/cross_model_review.sh --pr <N> --agent codex --repo owner/repo
-.agent/scripts/cross_model_review.sh --pr <N> --agent copilot --repo owner/repo
+.agent/scripts/cross_model_review.sh --pr <N> --agents gemini,codex,copilot --repo owner/repo
 
 # Branch mode — runs locally, no --repo needed in most cases
-.agent/scripts/cross_model_review.sh --branch --agent gemini
-.agent/scripts/cross_model_review.sh --branch <base> --agent codex
-.agent/scripts/cross_model_review.sh --branch --agent copilot --no-progress  # skill worktrees
+.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,copilot
+.agent/scripts/cross_model_review.sh --branch <base> --agents gemini,codex
+.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,copilot --no-progress  # skill worktrees
 ```
+
+Omit an agent from the list when its CLI is known to be unavailable
+(e.g. Copilot while its quota is exhausted); a listed agent whose CLI is
+missing fails only itself, not the run.
 
 Pass `--repo <owner/repo>` (PR mode) when the PR lives in a different repo
 than the current working directory (e.g., reviewing a project PR from the
@@ -342,26 +346,49 @@ does not parse `light`/`standard`/`deep` — those control which
 specialists this skill dispatches. Passing them to the script will
 trigger an "Unknown argument" error.
 
-The script auto-detects the execution mode: tmux (background) when available,
-sync (blocking) when tmux is unavailable or in sandboxed environments. Use
-`--sync` to force synchronous execution. For each target agent, the script:
+There is one execution mode: every agent runs synchronously in its own
+background job, all in parallel, each bounded by a per-agent timeout
+(`AGENT_TIMEOUT`, default 30 minutes; Gemini primarily by its helper's own
+`AGY_PRINT_TIMEOUT`, which reports the expiry with a reason, plus an outer
+backstop derived above it so a wedged helper is still cut off). There is
+no tmux mode and no `--sync` flag any more
+(#206, ADR-0015; `--sync` is rejected with exit 2). For each listed
+agent, the script:
 1. Writes a review prompt to `.agent/work-plans/issue-<issue>/review-<agent>-prompt.md`
-2. Runs the agent (in tmux session `review-<agent>-<issue>` or synchronously)
-3. Agent writes findings to `.agent/work-plans/issue-<issue>/review-<agent>-findings.md`
+2. Runs the agent
+3. Agent writes findings to `.agent/work-plans/issue-<issue>/review-<agent>-findings.md`,
+   and the script appends `--- Review complete ---` or `--- Review failed ---`
+   the moment that agent finishes
 
 The prompt and findings files are not committed (see #193) — gitignored when written under `.agent/work-plans/`, or outside the repo when `--no-progress` puts them in a `/tmp` dir. Regenerated each run, not part of the audit trail. Durable findings belong in `progress.md`.
 
-**If the script exits non-zero** for a given agent (CLI not installed or
-unavailable), note it in the report and continue with other agents. One
-agent's unavailability does not block the others. Do not fail the review.
+**Reading the result**: with `--agents`, stdout carries `MODE=parallel-sync`
+and then one `AGENT=` / `FINDINGS_FILE=` / `EXIT=` triplet per agent. Key
+on each agent's `EXIT=` line, not on the script's overall exit status:
+the script exits 3 whenever *any* agent failed, and a failed agent
+(CLI not installed, timeout, non-zero exit) is noted in the report while
+the others' findings are used as normal. One agent's failure does not
+block the others and does not fail the review. Exit 3 with **no**
+`AGENT=` triplets means the shared prompt could not be built (diff fetch
+failed or empty): nothing ran, every listed findings file holds a
+`--- Review error: ... ---` marker, and there is nothing to read. Exit 1
+means a dependency was missing and nothing was written: either no listed
+agent had a usable CLI (each unavailable agent is named on stderr with its
+reason), or — in PR mode only — `gh` itself is missing, which aborts
+before agent resolution and prints a single `gh not installed` warning
+with no per-agent lines. Either way the cross-model specialist is
+reported as unavailable. Informational
+lines naming each findings file are printed before the agents launch
+(for `tail -f`); parse by line prefix, not by position.
 
-**Collecting findings**: After other specialists complete, check each
-dispatched agent's findings file (look for `--- Review complete ---` or
+**Collecting findings**: After other specialists complete, read each
+agent's findings file (look for `--- Review complete ---` or
 `--- Review failed ---` markers; a failed file carries the reason on the
-lines above the marker — e.g. a headless permission denial or a
-print-timeout — so report that reason, not an empty review). If a review is still running, note this
-and tell the user which tmux session to check. Incorporate completed
-findings into the unified report.
+lines above the marker — e.g. a headless permission denial, a timeout, or
+a missing CLI — so report that reason, not an empty review). The script
+blocks until all agents are done, so no review is "still running" when
+it returns; for live observation while it runs, `tail -f` the findings
+file. Incorporate completed findings into the unified report.
 
 ### 6. Apply silence filter
 
@@ -680,6 +707,10 @@ and proceeding) and is local-only (a GitHub "Merge" click bypasses it).
 - **Depth is transparent** — always show the tier and reason in the report
   header. If the user disagrees with the classification, they can re-run with
   an explicit depth keyword.
-- **Graceful degradation** — if Gemini is unavailable at Deep tier, proceed
-  with Claude-only adversarial. Never fail a review because an optional
-  tool is missing.
+- **Graceful degradation** — cross-model failure is per agent. An agent
+  whose CLI is missing, that times out, or that exits non-zero carries a
+  non-zero `EXIT=` and fails only itself; the review proceeds with
+  whichever agents completed, noting the failed one and its reason. If no
+  listed agent is usable at all (script exit 1), report the cross-model
+  specialist as unavailable and proceed with the Claude adversarial
+  specialist. Never fail a review because an optional tool is missing.
