@@ -47,6 +47,8 @@ setup() {
     #   MOCK_AGY_DENY=1     empty response + denied_actions, exit 0 (#288)
     #   MOCK_AGY_TIMEOUT=1  SUCCESS result + the print-timeout stderr marker
     #   MOCK_AGY_EXIT=<n>   exit <n> after printing "boom" on stderr
+    #   MOCK_AGY_ERROR=<m>  status ERROR with an object-valued `error`
+    #                       whose message is <m>, exit 0 (API failure)
     cat > "${MOCK_BIN}/agy" << 'MOCK_EOF'
 #!/usr/bin/env bash
 if [[ -n "${MOCK_AGY_LOG:-}" ]]; then
@@ -68,6 +70,10 @@ echo '{"event":"init","init":{"tools":[]}}'
 if [[ -n "${MOCK_AGY_DENY:-}" ]]; then
     echo 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.' >&2
     echo '{"event":"result","result":{"status":"SUCCESS","response":"","denied_actions":[{"action":"command","display_name":"RunCommand"}]}}'
+    exit 0
+fi
+if [[ -n "${MOCK_AGY_ERROR:-}" ]]; then
+    jq -cn --arg m "$MOCK_AGY_ERROR" '{event:"result",result:{status:"ERROR",response:"",error:{code:429,message:$m}}}'
     exit 0
 fi
 if [[ -n "${MOCK_AGY_TIMEOUT:-}" ]]; then
@@ -966,6 +972,25 @@ test_agy_timeout_is_failure() {
     teardown
 }
 
+test_agy_api_error_message_kept() {
+    echo "TEST: a non-SUCCESS result keeps agy's error message, even as an object (#288)"
+    setup
+
+    export MOCK_AGY_ERROR="quota exceeded for model"
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    unset MOCK_AGY_ERROR
+
+    assert_exit_code "API error exits 3" "3" "$exit_code"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "reason names the status" "result status ERROR" "$content"
+    assert_contains "reason carries the error message" "quota exceeded for model" "$content"
+    assert_contains "findings file has failed marker" "Review failed" "$content"
+
+    teardown
+}
+
 test_agy_findings_truncated() {
     echo "TEST: a failed run never leaves the previous run's findings in place (#288)"
     setup
@@ -1234,6 +1259,7 @@ test_agy_stdin_invocation
 test_agy_large_prompt
 test_agy_denial_is_failure
 test_agy_timeout_is_failure
+test_agy_api_error_message_kept
 test_agy_findings_truncated
 test_agy_no_temp_leak
 test_agy_tmux_invocation

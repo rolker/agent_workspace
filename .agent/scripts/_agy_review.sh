@@ -115,11 +115,12 @@ fi
     -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE"
 AGY_EXIT=$?
 
-# First 20 lines of stderr, for failure reports.
+# Last 20 lines of stderr, for failure reports: a fatal error lands at
+# the end, after any startup chatter.
 stderr_excerpt() {
     if [[ -s "$STDERR_FILE" ]]; then
-        printf '\nagy stderr (first 20 lines):\n'
-        head -n 20 "$STDERR_FILE"
+        printf '\nagy stderr (last 20 lines):\n'
+        tail -n 20 "$STDERR_FILE"
     fi
 }
 
@@ -133,17 +134,15 @@ if [[ -z "$RESULT_JSON" ]]; then
     fail "agy emitted no result event$(stderr_excerpt)"
 fi
 
-# Scalar fields in one jq pass (tab-separated, none of them can contain a
-# tab or newline); the response separately since it is multi-line.
-IFS=$'\t' read -r STATUS DENIED_COUNT DENIED ERROR_MSG < <(
-    jq -r '[
-        (.status // "MISSING"),
-        ((.denied_actions // []) | length),
-        ((.denied_actions // []) | map(.display_name // .action) | join(", ")),
-        ((.error // "") | gsub("[\t\n]"; " "))
-    ] | @tsv' <<< "$RESULT_JSON"
-)
+# One jq call per field. (A single @tsv pass was tried and rejected: tab
+# is IFS whitespace, so `read` collapses an empty field and shifts the
+# error message into the wrong variable.) `.error` may be a string or an
+# object, hence tostring.
+STATUS=$(jq -r '.status // "MISSING"' <<< "$RESULT_JSON")
 RESPONSE=$(jq -r '.response // ""' <<< "$RESULT_JSON")
+ERROR_MSG=$(jq -r '(.error // "") | tostring' <<< "$RESULT_JSON")
+DENIED=$(jq -r '(.denied_actions // []) | map(.display_name // .action) | join(", ")' <<< "$RESULT_JSON")
+DENIED_COUNT=$(jq -r '(.denied_actions // []) | length' <<< "$RESULT_JSON")
 
 if grep -q 'print timeout after' "$STDERR_FILE" 2>/dev/null; then
     fail "print timeout (${PRINT_TIMEOUT}) expired with the turn in progress; partial output discarded$(stderr_excerpt)"

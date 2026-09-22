@@ -541,22 +541,23 @@ filter_work_plans_diff() {
 
 # Stream diff into the prompt file through the work-plans filter. Branch
 # mode uses local `git diff <base>...HEAD`; PR mode uses `gh pr diff <N>`.
-# The producer's status is read from PIPESTATUS so a failed gh/git call
-# is not masked by the filter succeeding on empty input.
+# Both PIPESTATUS entries are checked: a failed gh/git call must not be
+# masked by the filter succeeding on empty input, and a filter that dies
+# mid-stream must not leave a truncated diff looking complete.
 printf '## Diff\n\n```diff\n' >> "$PROMPT_FILE"
 DIFF_START_LINE=$(wc -l < "$PROMPT_FILE")
 if [[ "$BRANCH_MODE" == true ]]; then
     # Explicit a/ b/ prefixes so a diff.noprefix / diff.mnemonicPrefix
     # config cannot defeat the work-plans filter.
     git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"
-    if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
+    if [[ "${PIPESTATUS[0]}" -ne 0 || "${PIPESTATUS[1]}" -ne 0 ]]; then
         echo "ERROR: Could not produce diff for ${BRANCH_NAME} against ${BASE_REF}" >&2
         echo '--- Review error: failed to produce branch diff ---' > "$FINDINGS_FILE"
         exit 3
     fi
 else
     gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff >> "$PROMPT_FILE"
-    if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
+    if [[ "${PIPESTATUS[0]}" -ne 0 || "${PIPESTATUS[1]}" -ne 0 ]]; then
         echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
         echo '--- Review error: failed to retrieve diff ---' > "$FINDINGS_FILE"
         exit 3

@@ -59,8 +59,9 @@ Verified against agy 1.2.8 (2026-09-22):
      would read as current.
    - Guards: `jq` present (exit 1 with a message otherwise); prompt file
      readable.
-   - `jq -Rs '{event:"user",message:{role:"user",content:.}}' "$prompt"` is
-     written to a temp file first, then fed as agy's stdin:
+   - `jq -c -Rs '{event:"user",message:{role:"user",content:.}}' "$prompt"`
+     (compact: one NDJSON line) is written to a temp file first, then fed
+     as agy's stdin:
      `agy --input-format=stream-json --output-format=stream-json
      --print-timeout <T> --disable-slash-commands -p=`. agy's stdout goes to
      a `mktemp` stream file and its stderr to a `mktemp` stderr file, so the
@@ -143,8 +144,10 @@ Verified against agy 1.2.8 (2026-09-22):
 6. **#312 folded in (owner decision 2026-09-22)**: strip `.agent/work-plans/**`
    file sections from the embedded diff in both PR and branch mode. A small
    awk filter over the unified diff (`diff --git a/<path> b/<path>` headers)
-   drops those sections; `git diff` pathspecs alone would only cover branch
-   mode. If nothing remains after filtering, the existing empty-diff guard
+   drops those sections, keyed on the b/ path only so a file renamed out of
+   work-plans stays in review, tolerant of git-quoted paths; branch mode
+   passes explicit `--src-prefix=a/ --dst-prefix=b/` so `diff.noprefix`
+   cannot defeat it. Both pipeline stages' exit statuses are checked. If nothing remains after filtering, the existing empty-diff guard
    fires with a message that names the exclusion. Test: a mock diff with a
    code file and a `.agent/work-plans/issue-42/plan.md` section; assert the
    prompt keeps the former and lacks the latter, and that an all-bookkeeping
@@ -201,3 +204,18 @@ Verified against agy 1.2.8 (2026-09-22):
 ## Estimated Scope
 
 Single PR (closes #288, #274, #312).
+
+## Implementation Notes
+
+- Two live Gemini reviews of this branch through the new path were run
+  during implementation (2026-09-22). Both completed over stdin with no
+  denial and no temp leaks, and both found real defects that were fixed:
+  non-compact NDJSON, bare-binary resolution, the filter dropping files
+  renamed out of work-plans, `diff.noprefix`, and a tab-separated field
+  parse that lost the error message. The mock agy now refuses multi-line
+  input so the first of those cannot regress silently.
+- jq 1.7 replaces invalid UTF-8 in the prompt with U+FFFD rather than
+  failing, so no sanitising step was added.
+- Out of scope, noted for the PR: the codex/claude/copilot arms keep the
+  old `> findings 2>&1` invocation with no result validation, so the #288
+  failure class is still undetected for them.
