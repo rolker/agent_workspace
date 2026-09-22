@@ -1,8 +1,8 @@
 # Agent Wait Patterns
 
-How agent flows should wait for external events (CI completion, tmux
-session exit, background subagent finish, file appearance, network
-service ready). Different mechanisms suit different contexts; pick the
+How agent flows should wait for external events (CI completion, a
+parallel cross-model review finishing, background subagent finish, file
+appearance, network service ready). Different mechanisms suit different contexts; pick the
 one that matches the caller's framework.
 
 ## When to use `Monitor`
@@ -60,7 +60,7 @@ loop of your own — is the right choice in:
 |--------|------------------|
 | Claude Code agent (interactive) | `Monitor` over a background `gh pr checks --watch` (or similar) |
 | `merge_pr.sh` (bash) | a bounded, SHA-targeted `gh api .../check-runs` + `.../status` poll (issue #284; replaced `gh pr checks --watch --fail-fast`, which watched the wrong SHA once the script's own commits had moved the head, and treated "no checks reported yet" as a hard failure — #271) |
-| `cross_model_review.sh` polling tmux session output | tmux session-status check (existing busy-poll, OK as-is) |
+| `cross_model_review.sh` waiting for its reviewers | one background job per agent, bounded by a per-agent `timeout`, collected with `wait "$pid"` per agent; the script blocks until the last agent finishes and the caller reads the per-agent `EXIT=` lines (ADR-0015, issue #206). Live observation: `tail -f <findings-file>` |
 | Codex / Gemini agents calling workspace scripts | The script's bash busy-poll fires for them automatically |
 | CI / sandboxed pipeline | The script's bash busy-poll fires for them automatically |
 
@@ -69,9 +69,9 @@ loop of your own — is the right choice in:
 - `.agent/scripts/merge_pr.sh` — bounded, SHA-targeted `gh api` poll for
   CI plus a `mergeable`/`mergeStateStatus` settle poll before merging
   (issue #284, fixes #271); works for every caller (issue #186)
-- `.agent/scripts/cross_model_review.sh` — the tmux session approach
-  for cross-model adversarial dispatch; busy-poll on session status is
-  fine since it's tmux-internal
+- `.agent/scripts/cross_model_review.sh` — parallel synchronous dispatch
+  for cross-model adversarial review: the wait is a bounded `wait` on
+  each agent's own job, no session and no poll (ADR-0015)
 - Workspace ROADMAP "Reduce Agent Coordination Overhead" — broader
   context for the wait/event-driven theme
 - Issue #187 — Routines + GitHub triggers spike; if Routines lands, some

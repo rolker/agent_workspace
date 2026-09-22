@@ -3,9 +3,9 @@
 # Merge a PR, remove its worktree, delete the branch, and sync main.
 #
 # Usage:
-#   .agent/scripts/merge_pr.sh --pr <N> [--type workspace|project] [--no-roadmap-update] [--no-wait]
-#   .agent/scripts/merge_pr.sh --pr <N> --repo <owner/repo> [--no-roadmap-update] [--no-wait]
-#   .agent/scripts/merge_pr.sh --pr <owner/repo#N> [--no-roadmap-update] [--no-wait]
+#   .agent/scripts/merge_pr.sh --pr <N> [--type workspace|project] [--no-roadmap-update] [--no-wait] [--allow-pending-review]
+#   .agent/scripts/merge_pr.sh --pr <N> --repo <owner/repo> [--no-roadmap-update] [--no-wait] [--allow-pending-review]
+#   .agent/scripts/merge_pr.sh --pr <owner/repo#N> [--no-roadmap-update] [--no-wait] [--allow-pending-review]
 #
 # --repo <owner/repo> (or an equivalent qualified --pr owner/repo#N) resolves
 # the PR against exactly that repo — no workspace/project auto-detection —
@@ -33,7 +33,10 @@
 #      for CI on that target SHA — --no-wait skips only this CI poll — and
 #      let mergeability settle, which always runs (#290): this script's own
 #      Step 1 / 1.5 pushes make GitHub recompute mergeability whether or
-#      not CI is waited on
+#      not CI is waited on. Copilot's review check-run is never CI (#300):
+#      its conclusion is ignored, but while it is still running the wait
+#      holds the merge until it completes (or the CI timeout) unless
+#      --allow-pending-review (or --no-wait) opts in.
 #   3. Merge the PR (--merge strategy; one retry on a "not mergeable"
 #      refusal, after re-polling mergeability once)
 #   4. Remove the worktree:
@@ -69,6 +72,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/_issue_helpers.sh"
 # shellcheck source=_worktree_helpers.sh
 source "$SCRIPT_DIR/_worktree_helpers.sh"
+# shellcheck source=_resolve_default_branch.sh
+source "$SCRIPT_DIR/_resolve_default_branch.sh"
 
 PR_NUMBER=""
 WORKTREE_TYPE=""
@@ -78,14 +83,22 @@ PROJECT_ARG="" # registered project name; selects among package worktrees that
                # host the same repo+branch under different instances
 NO_ROADMAP_UPDATE=false
 NO_WAIT=false
-# Review-loop merge gate (issue #269 PR F). Report-only by default: the gate
-# prints what it would have refused and records it, but never blocks. The
-# flip to enforce-by-default is a separate one-line PR, once the report-only
-# output has been watched on real merges.
-ENFORCE_MERGE_GATE=false
+# Review-loop merge gate (issue #269 PR F). Enforced by default on
+# workspace PRs since #300 (owner rule: a merge only happens when everything
+# is clean unless he says skip): a gate gap refuses with exit 1 and no
+# merge. --report-only restores the earlier behaviour — print what would
+# have been refused, record it, proceed. --enforce is kept as an explicit
+# alias of the default. Project/package PRs stay report-only in every mode
+# until #265 settles where their timelines live.
+ENFORCE_MERGE_GATE=true
 FORCE_UNREVIEWED=false
+# A code-review check-run that is still running (Copilot's, #300) holds the
+# merge by default even when CI is green or absent: merging past an
+# unfinished review is opt-in (--allow-pending-review). --no-wait skips the
+# whole wait and so also opts in.
+ALLOW_PENDING_REVIEW=false
 
-USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait] [--enforce] [--force-unreviewed]"
+USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait] [--allow-pending-review] [--report-only|--enforce] [--force-unreviewed]"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -105,8 +118,12 @@ while [[ $# -gt 0 ]]; do
             NO_ROADMAP_UPDATE=true; shift ;;
         --no-wait)
             NO_WAIT=true; shift ;;
+        --allow-pending-review)
+            ALLOW_PENDING_REVIEW=true; shift ;;
         --enforce)
             ENFORCE_MERGE_GATE=true; shift ;;
+        --report-only)
+            ENFORCE_MERGE_GATE=false; shift ;;
         --force-unreviewed)
             FORCE_UNREVIEWED=true; shift ;;
         *)
@@ -595,11 +612,13 @@ fi
 #       must-fix / cross-confirmed finding);
 #   (b) a PR comment carrying the pinned "## Decision summary" heading.
 # Modes:
-#   default        report-only — names what it would have refused, proceeds,
-#                  and records a `## Merge (report-only)` entry
-#   --enforce      refuses (exit 1, no merge) — workspace PRs only (owner's
-#                  containment measure 2; project/package PRs stay
-#                  report-only until #265 settles where their timelines live)
+#   default        enforce (#300) — refuses (exit 1, no merge, no entry) —
+#                  workspace PRs only (owner's containment measure 2;
+#                  project/package PRs stay report-only until #265 settles
+#                  where their timelines live). --enforce is an explicit
+#                  alias of this default.
+#   --report-only  names what it would have refused, proceeds, and records
+#                  a `## Merge (report-only)` entry (the pre-#300 default)
 #   --force-unreviewed
 #                  bypasses both conditions with a banner and records a
 #                  `## Merge (unreviewed)` entry (all modes, all scopes)
@@ -623,7 +642,8 @@ fi
 # Step 2 CI target (#284): <to> is "the same reviewed state" as <from> when
 # <from> is an ancestor of <to> and every path that differs is one of the
 # document files this workflow writes on the reviewed branch after review
-# (progress.md records, roadmap updates). Returns 0 on equivalence; on
+# (progress.md records, work-plan addenda, roadmap updates). An allowed
+# entry may be a glob. Returns 0 on equivalence; on
 # failure returns 1 and prints the reason (one line, for the caller to
 # quote). Both SHAs must be full and resolvable in <wt>; callers resolve
 # short SHAs first (see the gate) so an ambiguous prefix is a failure
@@ -644,7 +664,12 @@ _only_bookkeeping_between() {
         [[ -z "$p" ]] && continue
         ok=false
         for a in ${allowed[@]+"${allowed[@]}"}; do
-            [[ "$p" == "$a" ]] && { ok=true; break; }
+            # Unquoted RHS on purpose: an allowed entry may be a glob (the
+            # gate passes the issue's whole work-plans dir). Callers that
+            # pass literal paths are unaffected — those carry no glob
+            # metacharacters.
+            # shellcheck disable=SC2053
+            [[ "$p" == $a ]] && { ok=true; break; }
         done
         if [[ "$ok" == false ]]; then
             echo "touches \`${p}\`, which is not a merge-time document file"
@@ -740,9 +765,9 @@ else
                 elif [[ -z "$_gate_h_full" ]]; then
                     _gate_stale_why="head \`${_gate_head_short}\` is not present locally"
                 elif _gate_stale_why=$(_only_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" \
-                        ".agent/work-plans/issue-${ISSUE_NUM}/progress.md" "ROADMAP.md" "docs/ROADMAP.md"); then
+                        ".agent/work-plans/issue-${ISSUE_NUM}/*" "ROADMAP.md" "docs/ROADMAP.md"); then
                     _gate_covered=true
-                    echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only progress.md / roadmap changed since"
+                    echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only work-plan / progress.md / roadmap changed since"
                 fi
             fi
         fi
@@ -898,12 +923,15 @@ else
             echo "ERROR: review gate refused to merge PR #${PR_NUMBER}:"
             for _r in "${_gate_reasons[@]}"; do echo "  - $_r"; done
             echo "  Run the review loop (review-code / triage-reviews, then post the decision summary),"
-            echo "  or pass --force-unreviewed to bypass with an audit record."
+            echo "  pass --report-only to proceed with a ## Merge (report-only) record,"
+            echo "  or pass --force-unreviewed to bypass with a ## Merge (unreviewed) record."
         } >&2
         exit 1
     else
         _gate_mode_note="report-only"
-        [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: --enforce applies to workspace PRs only until #265 settles project timelines"
+        # Don't name --enforce here: enforcement is the default, so the
+        # caller usually passed no flag at all (#300 round 4).
+        [[ "$ENFORCE_MERGE_GATE" == true ]] && _gate_mode_note="report-only: gate enforcement applies to workspace PRs only until #265 settles project timelines"
         echo "  ⚠️  Review gate (${_gate_mode_note}): would have refused — ${_gate_why}"
         _gate_already_recorded "Merge (report-only)" "$_gate_why" || _gate_record "Merge (report-only)" "$_gate_why"
     fi
@@ -974,50 +1002,124 @@ fi
 MERGE_PR_CI_POLL_SECONDS="${MERGE_PR_CI_POLL_SECONDS:-10}"
 MERGE_PR_CI_GRACE_SECONDS="${MERGE_PR_CI_GRACE_SECONDS:-120}"
 MERGE_PR_CI_TIMEOUT_SECONDS="${MERGE_PR_CI_TIMEOUT_SECONDS:-1800}"
+# Copilot's code-review check-run is a review signal, not CI (#300). It
+# reports `conclusion: failure` for a "Changes recommended" verdict (already
+# consumed by triage-reviews -> ## Integrated Review) and for quota
+# exhaustion (PR #308), so it is excluded from CI classification by name,
+# for ANY conclusion. One named run, not a list — widen only for a second
+# confirmed offender.
+readonly MERGE_PR_CI_EXCLUDE_CHECK_RUN="copilot-pull-request-reviewer"
+_ci_excluded_noted=false
 
-_ci_poll_state() {  # <sha> -- prints one of: none pending failed success error
+_ci_poll_state() {  # <sha> -- prints "<state>|<excluded>": state is one of none pending failed success error; excluded is a comma-joined list of the excluded run's verdicts (conclusion=<c>, or status=<s> while it is still running), empty when the excluded run is absent
     # "error" (issue #284 review) is distinct from "none": a nonzero `gh
     # api` exit (rate limit, network, 5xx, auth) or unparseable JSON is a
     # failure to LEARN the CI state, not evidence the repo has no CI — the
     # caller must keep retrying it (bounded by the grace deadline) rather
     # than falling through to the no-CI pass.
-    local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed
+    # The excluded-run note is NOT printed here: the caller invokes this
+    # function inside `$(...)`, so any flag set in this body mutates a
+    # subshell copy and cannot suppress a repeat on the next poll. The
+    # once-per-run decision therefore lives in the caller, which reads the
+    # second field of the printed "<state>|<excluded>" pair.
+    local sha="$1" runs_json status_json runs_rc=0 status_rc=0 registered pending failed excluded="" culprits
     # -X GET is load-bearing (#289): `-f` alone turns the request into a
     # POST, which GitHub answers with 404 on every poll.
     runs_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/check-runs" -X GET --paginate -f per_page=100 2>/dev/null \
         | jq -c -s '{check_runs: [.[].check_runs[]?]}') || runs_rc=$?
     status_json=$(gh api "repos/${PR_REPO_SLUG}/commits/${sha}/status" 2>/dev/null) || status_rc=$?
     if [[ $runs_rc -ne 0 ]] || [[ $status_rc -ne 0 ]]; then
-        echo "error"
+        echo "error|"
         return
     fi
     [[ -z "$runs_json" ]] && runs_json='{"check_runs":[]}'
     [[ -z "$status_json" ]] && status_json='{"statuses":[]}'
     if ! jq -e . >/dev/null 2>&1 <<<"$runs_json" || ! jq -e . >/dev/null 2>&1 <<<"$status_json"; then
-        echo "error"
+        echo "error|"
         return
     fi
+    # Drop the excluded review check-run BEFORE every classification below
+    # (registered / failed / pending alike), so a head whose only run is
+    # Copilot's counts as "no checks registered", never as success (#300).
+    # Pure filter over data already fetched — no extra request.
+    # A null conclusion means the run hasn't finished, so report its
+    # `status` (queued / in_progress) rather than inventing a
+    # `conclusion=pending` the API never returned (#300 review).
+    excluded=$(jq -r --arg x "$MERGE_PR_CI_EXCLUDE_CHECK_RUN" \
+        '[(.check_runs // [])[] | select(.name == $x)
+          | if .conclusion == null then "status=" + (.status // "in_progress") else "conclusion=" + .conclusion end]
+         | join(",")' <<<"$runs_json" 2>/dev/null || echo "")
+    runs_json=$(jq -c --arg x "$MERGE_PR_CI_EXCLUDE_CHECK_RUN" \
+        '{check_runs: [(.check_runs // [])[] | select(.name != $x)]}' <<<"$runs_json" 2>/dev/null || echo '{"check_runs":[]}')
     registered=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" \
         '(($r.check_runs // []) | length) + (($s.statuses // []) | length) > 0' 2>/dev/null || echo false)
     if [[ "$registered" != "true" ]]; then
-        echo "none"
+        echo "none|${excluded}"
         return
     fi
-    failed=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" '
-        (([($r.check_runs // [])[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale")] | length) > 0)
-        or (([($s.statuses // [])[] | select(.state == "failure" or .state == "error")] | length) > 0)' 2>/dev/null || echo false)
+    culprits=$(jq -n -r --argjson r "$runs_json" --argjson s "$status_json" '
+        ([($r.check_runs // [])[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "action_required" or .conclusion == "startup_failure" or .conclusion == "stale") | "\(.name // "<unnamed check-run>") (\(.conclusion))"]
+         + [($s.statuses // [])[] | select(.state == "failure" or .state == "error") | "\(.context // "<unnamed status>") (\(.state))"])
+        | join(", ")' 2>/dev/null || echo "")
+    failed=false; [[ -n "$culprits" ]] && failed=true
     if [[ "$failed" == "true" ]]; then
-        echo "failed"
+        # Name what actually failed so the next false positive is
+        # diagnosable from the script's own output (#300).
+        echo "  CI failed: ${culprits}" >&2
+        echo "failed|${excluded}"
         return
     fi
     pending=$(jq -n --argjson r "$runs_json" --argjson s "$status_json" '
         (([($r.check_runs // [])[] | select(.conclusion == null)] | length) > 0)
         or (([($s.statuses // [])[] | select(.state == "pending")] | length) > 0)' 2>/dev/null || echo false)
     if [[ "$pending" == "true" ]]; then
-        echo "pending"
+        echo "pending|${excluded}"
     else
-        echo "success"
+        echo "success|${excluded}"
     fi
+}
+
+# --- Bookkeeping-only commits and the CI target (#300, owner rule) ---
+# "The exception is for merging after adding an updated progress or related
+# doc": a progress.md / work-plan / roadmap commit pushed after a CI-verified
+# head needs no new CI round. The Step 2 exemption above covers only paths
+# THIS run committed; this walk covers the same shape when the host pushed
+# them. A batch push runs CI only on its tip, so the walk takes the newest
+# bookkeeping-only ancestor whose checks actually reached a verdict.
+MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "ROADMAP.md" "docs/ROADMAP.md")
+_is_bookkeeping_path() {  # <path> -- rc 0 when the path is a merge-time document file
+    local p="$1" pat
+    for pat in "${MERGE_PR_CI_BOOKKEEPING_PATTERNS[@]}"; do
+        # shellcheck disable=SC2053  # unquoted RHS on purpose: pattern match
+        [[ "$p" == $pat ]] && return 0
+    done
+    return 1
+}
+_ci_walk_bookkeeping() {  # <wt> <start-sha> -- prints ancestors of <start>, newest first, reachable through bookkeeping-only single-parent commits; stops at the first other commit, a merge, a root commit, the default branch, or 25 steps
+    local wt="$1" cur="$2" base default_branch line parents paths p n=0
+    # The stop bound is the repo's own default branch, not a hardcoded
+    # `origin/main`: where they differ (or origin/main is absent) the
+    # merge-base would fail silently and drop this bound entirely.
+    default_branch=$(resolve_default_branch "$wt" 2>/dev/null || echo "")
+    [[ -n "$default_branch" ]] && base=$(git -C "$wt" merge-base "$cur" "$default_branch" 2>/dev/null || echo "")
+    while [[ $n -lt 25 ]]; do
+        [[ -n "$base" && "$cur" == "$base" ]] && return 0
+        # `rev-list --parents -n 1` prints "<commit> <parent>...", so a root
+        # commit yields a single field. Count fields on the WHOLE line: a
+        # `cut -d' ' -f2-` on a one-field line returns the line itself, which
+        # would make a root look like its own parent and self-diff to empty.
+        line=$(git -C "$wt" rev-list --parents -n 1 "$cur" 2>/dev/null)
+        [[ $(wc -w <<<"$line") -eq 2 ]] || return 0
+        parents="${line#* }"
+        paths=$(git -C "$wt" diff --name-only "$parents" "$cur" 2>/dev/null) || return 0
+        while IFS= read -r p; do
+            [[ -z "$p" ]] && continue
+            _is_bookkeeping_path "$p" || return 0
+        done <<<"$paths"
+        cur="$parents"
+        echo "$cur"
+        n=$((n + 1))
+    done
 }
 
 _wait_for_mergeable() {  # prints the settled `mergeable` value; rc 1 on timeout (prints UNKNOWN, or LOOKUP_FAILED when the last poll could not reach GitHub), rc 2 on CONFLICTING
@@ -1071,11 +1173,101 @@ if [[ "$NO_WAIT" == false ]]; then
     _ci_deadline=$((_ci_start + MERGE_PR_CI_TIMEOUT_SECONDS))
     _ci_grace_deadline=$((_ci_start + MERGE_PR_CI_GRACE_SECONDS))
     _ci_result=""
+    _ci_walked=false
+    # Which SHA the pending-review hold is read from. This captures
+    # CI_TARGET_SHA as Step 2 decided it — i.e. the current PR head, EXCEPT
+    # where Step 2's own-paths exemption applied, in which case it is the
+    # reviewed head this script's own bookkeeping push moved past. That is
+    # the right SHA in both cases: reading the literal head there would wait
+    # on a review re-triggered by our own push, deadlocking every merge the
+    # script makes. What it must never follow is the bookkeeping WALK-BACK
+    # below, which moves CI_TARGET_SHA to an ancestor whose check-runs say
+    # nothing about this head's review (#300 rounds 4-5).
+    _ci_review_sha="$CI_TARGET_SHA"
+    _ci_head_excluded_last=""
     while :; do
-        _ci_state=$(_ci_poll_state "$CI_TARGET_SHA")
+        _ci_poll_out=$(_ci_poll_state "$CI_TARGET_SHA")
+        _ci_state="${_ci_poll_out%%|*}"
+        _ci_excluded="${_ci_poll_out#*|}"
+        # Bookkeeping walk-back (#300, owner rule), once, on the first poll:
+        # when the target has no verdict yet (nothing registered, or still
+        # running), a bookkeeping-only ancestor that already reached success
+        # or failure IS the verdict for this code — switch to it and re-poll.
+        if [[ "$_ci_walked" == false ]]; then
+            _ci_walked=true
+            if [[ "$_ci_state" == none || "$_ci_state" == pending ]] && [[ -n "$_ci_wt" ]]; then
+                _ci_switched=false
+                for _ci_cand in $(_ci_walk_bookkeeping "$_ci_wt" "$CI_TARGET_SHA"); do
+                    _ci_probe=$(_ci_poll_state "$_ci_cand" 2>/dev/null); _ci_probe="${_ci_probe%%|*}"
+                    if [[ "$_ci_probe" == success || "$_ci_probe" == failed ]]; then
+                        echo "  CI target: \`${_ci_cand:0:7}\` — \`${CI_TARGET_SHA:0:7}\` differs from it only by bookkeeping commits (progress.md / work plans / roadmap); its checks already reached a verdict (#300)"
+                        CI_TARGET_SHA="$_ci_cand"
+                        _ci_switched=true
+                        break
+                    fi
+                done
+                if [[ "$_ci_switched" == true ]]; then
+                    # This poll read the review SHA itself, so its excluded
+                    # state is the last one actually seen. Seed the carry-over
+                    # before the `continue` drops it: otherwise a failed first
+                    # head re-read after the switch falls back to "" and a
+                    # green target merges past a running review (#300 round 5).
+                    _ci_head_excluded_last="$_ci_excluded"
+                    continue
+                fi
+            fi
+        fi
+        # Review state always comes from the real PR head, even after the
+        # walk-back switched CI_TARGET_SHA to a bookkeeping ancestor: the
+        # ancestor carries the CI verdict for this code, the head carries
+        # the review. Re-read it every poll (not once, before the switch) so
+        # a review that finishes mid-wait releases the hold. `2>/dev/null`
+        # keeps a head-only CI failure out of the log — the head's CI state
+        # is deliberately not this loop's verdict once it has walked back.
+        if [[ "$_ci_review_sha" != "$CI_TARGET_SHA" ]]; then
+            _ci_head_out=$(_ci_poll_state "$_ci_review_sha" 2>/dev/null)
+            if [[ "${_ci_head_out%%|*}" == error ]]; then
+                # A failed read must not silently drop a hold an earlier
+                # poll established; keep the last state we actually saw.
+                _ci_excluded="$_ci_head_excluded_last"
+            else
+                _ci_excluded="${_ci_head_out#*|}"
+                _ci_head_excluded_last="$_ci_excluded"
+            fi
+        fi
+        # A review check-run that has not finished (`status=...`, no
+        # conclusion) holds the merge unless the caller opted in: its
+        # verdict is not CI, but merging under an unfinished review is
+        # not the default (#300, owner rule).
+        # `_ci_excluded` is a comma-joined list — a re-triggered review adds a
+        # second run of the same name — so match anywhere, not anchored.
+        _ci_review_pending=false
+        if [[ "$_ci_excluded" == *status=* ]] && [[ "$ALLOW_PENDING_REVIEW" == false ]]; then
+            _ci_review_pending=true
+        fi
+        if [[ -n "$_ci_excluded" ]] && [[ "$_ci_excluded_noted" != "$_ci_excluded" ]]; then
+            # Once per distinct state (running -> completed), not once per
+            # poll — and the flag lives HERE, in the loop's own shell,
+            # because `_ci_poll_state` is read through a command
+            # substitution and cannot carry state back out of it.
+            if [[ "$_ci_review_pending" == true ]]; then
+                echo "  (check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' ${_ci_excluded}: review still in progress — waiting for it before merging; --allow-pending-review merges without it)"
+            else
+                echo "  (check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' ${_ci_excluded} is a review signal, excluded from CI — not used to block the merge)"
+            fi
+            _ci_excluded_noted="$_ci_excluded"
+        fi
         _ci_now=$(date +%s)
         case "$_ci_state" in
-            success) _ci_result="success"; break ;;
+            success)
+                if [[ "$_ci_review_pending" == true ]]; then
+                    if [[ "$_ci_now" -ge "$_ci_deadline" ]]; then
+                        _ci_result="review-pending"; break
+                    fi
+                else
+                    _ci_result="success"; break
+                fi
+                ;;
             failed)  _ci_result="failed"; break ;;
             error)
                 if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
@@ -1084,9 +1276,15 @@ if [[ "$NO_WAIT" == false ]]; then
                 ;;
             none)
                 if [[ "$_ci_wf_count" != "unknown" ]] && [[ "${_ci_wf_count:-0}" -eq 0 ]]; then
-                    _ci_result="no-ci"; break
-                fi
-                if [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
+                    # No CI at all — the pending-review rule still holds.
+                    if [[ "$_ci_review_pending" == true ]]; then
+                        if [[ "$_ci_now" -ge "$_ci_deadline" ]]; then
+                            _ci_result="review-pending"; break
+                        fi
+                    else
+                        _ci_result="no-ci"; break
+                    fi
+                elif [[ "$_ci_now" -ge "$_ci_grace_deadline" ]]; then
                     _ci_result="never-registered"; break
                 fi
                 ;;
@@ -1128,6 +1326,14 @@ if [[ "$NO_WAIT" == false ]]; then
             {
                 echo "ERROR: CI checks did not complete on \`${CI_TARGET_SHA:0:7}\` within ${MERGE_PR_CI_TIMEOUT_SECONDS}s"
                 [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+            } >&2
+            exit 1 ;;
+        review-pending)
+            _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
+            {
+                echo "ERROR: review check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' still in progress on \`${_ci_review_sha:0:7}\` after ${MERGE_PR_CI_TIMEOUT_SECONDS}s (CI itself is green or absent)"
+                [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
+                echo "  Re-run once the review completes, or pass --allow-pending-review to merge without waiting for it."
             } >&2
             exit 1 ;;
     esac
