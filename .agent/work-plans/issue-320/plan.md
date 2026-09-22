@@ -55,8 +55,9 @@ unwieldy.
    present`, `_absent_no_plan`, `_absent_no_approach_section`,
    `_truncated`, `_no_progress` (`--no-progress` + `--work-plans-dir`,
    the one combination where a plan.md could exist under
-   `--no-progress`). Full suite green (179 `assert` calls today, per
-   `grep -c assert`, unaffected).
+   `--no-progress`). Full suite green. (As implemented on top of #313 the
+   suite runs 327 assertions, 24 of them added here; the pre-#313 count of
+   179 quoted at planning time no longer applies.)
 
 4. **ADR-0015 addendum (ADR-0008 style)** — Plain navigational Status-line
    note, not "scoped exception" wording: "Trigger tier for cross-model
@@ -97,9 +98,22 @@ unwieldy.
 
 ## Open Questions
 
-- None blocking. Precondition: confirm #313 has merged to `main` and this
-  branch has run `git merge origin/main` before the first implementation
-  commit.
+- None blocking. Precondition: superseded by the owner decision recorded
+  under Implementation Notes — `feature/issue-313` was merged into this
+  branch directly instead of waiting for it to reach `main`.
+
+## Implementation Notes
+
+- **Branch-on-#313 (owner decision, 2026-09-22)** — The plan's "wait for
+  #313 to merge to `main`, then `git merge origin/main`" gate was replaced:
+  `feature/issue-313` (the `_cli_review.sh` helper and its rewired
+  `run_agent_sync` arms) was merged into `feature/issue-320` at `6ed80f6`,
+  and #320 is implemented on top of it. #313 is still being fixed and will
+  be merged again; this branch therefore leaves `_cli_review.sh`,
+  `_agy_review.sh`, and `run_agent_sync` / the availability precheck in
+  `cross_model_review.sh` untouched. #320's edits to that script are
+  confined to the shared-prompt builder and the gemini Tool Use footer, and
+  its tests are added alongside #313's rather than reworking its mocks.
 
 ## Estimated Scope
 
