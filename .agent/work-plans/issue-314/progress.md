@@ -352,3 +352,21 @@ passed in 48s. `grep -rn -- '--head|HEAD_COVERED|head_covers_review'` over
 pre-existing unrelated matches (`gh pr create --head`,
 `review_progress.sh sources --head`, `gh pr list --head`). `main`
 deliberately not merged; not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 13:00 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (round-1 reviewer, resume 1 of 3)
+
+**Branch**: feature/issue-314 at `39b772a`
+**Base**: main
+**Depth**: Standard (reason: 6 files outside work-plans; the round-1 delta is a revert plus targeted fixes, all covered by the suite)
+**Must-fix**: 2 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 4), not rising — fix and ship rather than another full round
+
+### Findings
+- [ ] (must-fix) the `## Decision summary` gate citation is stale after the merge from main: the grep is at `merge_pr.sh:785-786` now, and line 760 is inside the gate's ancestry check — `.claude/skills/run-issue/SKILL.md:396`
+- [ ] (must-fix) the "a gate that passed records no entry" citation is stale after the same merge: that branch is at `merge_pr.sh:914`, and 889-890 is now a jq block in a different helper — `.claude/skills/run-issue/SKILL.md:480`
+- [ ] (suggestion) step 11's cross-reference still says a CI failure "routes to `address-findings` (or a fresh `triage-reviews`)", which step 9's corrected text explicitly rules out (the `merge` checkpoint vocabulary has no `retriage`; a re-triage need is answered `address`) — `.claude/skills/run-issue/SKILL.md:544`
