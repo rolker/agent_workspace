@@ -285,3 +285,25 @@ Checked as asked. (a) `_is_bookkeeping_path`'s unquoted RHS is deliberate and sa
 **Decision**: address
 
 Address all six round-4 findings (three must-fix: the CI walk-back bypasses the running-review hold — evaluate the hold on the real head; two docs still say report-only by default; work plans missing from the gate's exempt list; three suggestions: root-commit walk, origin/main bound, project-scope wording) in a background address-findings agent, then re-review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 11:59 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-300 at eca522e
+**Addressed**: Local Review (Pre-Push) at `5710fd2` (2026-09-22 11:38 -04:00)
+**Commits**: 04ea5f1, f248d02, dd3032a, 4b86ead, eca522e
+
+### Actions
+- [x] (must-fix) Pending-review hold now reads the REAL PR head after the bookkeeping walk-back: `_ci_review_sha` holds the head, and each poll re-reads its excluded-run state (last known state retained across a failed read) so a running Copilot review still holds the merge; the review-pending error names the head, not the walked-back target — `.agent/scripts/merge_pr.sh:1162-1215`. New fixtures ci-32 (holds, "review still in progress") and ci-33 (`--allow-pending-review` merges on the green head's verdict) built on a shared `make_walkback_sandbox`; ci-30 still passes — `.agent/scripts/tests/test_merge_pr_gate.sh`
+- [x] (must-fix) Three stale "report-only by default" statements corrected to "enforced by default on workspace PRs, `--report-only` opts out" — `.claude/skills/review-code/SKILL.md:659`, `.github/PULL_REQUEST_TEMPLATE.md:10`, `.agent/scripts/tests/test_merge_pr_gate.sh:4`
+- [x] (must-fix) Gate allow-list widened to the issue's work-plans dir (`.agent/work-plans/issue-<N>/*`), so a plan addendum after the review keeps the review current, matching run-issue SKILL.md:425-427 and the owner's "related doc" rule; `_only_bookkeeping_between` now accepts glob entries (unquoted RHS, literal callers unaffected) — `.agent/scripts/merge_pr.sh:759-760`. New gate fixture g6 (`make_gate_sandbox plan-after`: review, then a plan.md-only commit → gate passes under the enforce default)
+- [x] (suggestion) The walk now counts fields on the full `rev-list --parents` line (a root has one) and stops there, instead of `cut -d' ' -f2-` returning the line itself and making a root its own parent — `.agent/scripts/merge_pr.sh:1093`
+- [x] (suggestion) The walk's stop bound comes from `resolve_default_branch "$wt"` (helper now sourced by merge_pr.sh) instead of a hardcoded `origin/main`; the helper was added to the sandbox copy lists in `test_merge_pr_gate.sh` and `test_merge_pr.sh` — `.agent/scripts/merge_pr.sh:1090`
+- [x] (suggestion) Project-scope note reworded to "report-only: gate enforcement applies to workspace PRs only until #265 settles project timelines" — no flag named that the caller may not have passed; the scoping test drops its redundant `--enforce` and asserts the flag is absent — `.agent/scripts/merge_pr.sh:924`
+
+### Verification
+- `bash .agent/scripts/tests/test_merge_pr_gate.sh` — 77 passed, 0 failed (74 before, +2 CI walk-back fixtures, +1 gate plan-addendum fixture)
+- `.agent/scripts/tests/run_script_tests.sh` — all 23 suites passed in 60s (`test_merge_pr.sh` 91/91)
+- Pre-commit (incl. shellcheck) ran on every commit; nothing pushed.
