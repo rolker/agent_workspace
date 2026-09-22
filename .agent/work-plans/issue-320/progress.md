@@ -65,3 +65,21 @@ issue: 320
 **Decision**: proceed
 
 Proceed to planning with the four review actions folded in: ADR-0015 addendum for the tier change (ADR-0008 style), implementation blocked on #313 merging (same script; merge main into this branch first), the added Standard-tier latency/quota cost stated in the PR description with Light staying static-only, and one PR unless review gets unwieldy.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 13:00 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-320/plan.md` at `80ebb46`
+
+Plan covers two changes to cross_model_review.sh's dispatch: (1) moving
+cross-model adversarial dispatch from Deep-only to Standard+Deep in the
+review-code skill and the depth-classification doc, Light unchanged; (2)
+appending the work plan's `## Approach` section (capped at 200 lines) as
+context in the shared prompt, after the diff and before the output-format
+footer, absent when no plan exists or under `--no-progress`; plus tests,
+an ADR-0015 addendum (ADR-0008 style: Status-line note + References entry,
+no Decision/Consequences rewrite), and a PR description stating the added
+Standard-tier latency/quota cost. Implementation is explicitly blocked on
+issue #313 merging to main and this branch running `git merge origin/main`
+first, per the owner's checkpoint decision.
