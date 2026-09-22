@@ -60,3 +60,11 @@ issue: 300
 **Decision**: proceed
 
 Proceed to plan-task with the four review notes carried into the plan (test suite location, exclude by check-run name for any conclusion, no new waits or API calls, diagnostic says "not used to block"). Exclusion scoped to the Copilot check-run only.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-22 10:15 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-300/plan.md` at `cd009f8`
+
+Excludes the `copilot-pull-request-reviewer` check-run by name (any conclusion) from `_ci_poll_state`'s CI classification in `merge_pr.sh`, with stderr diagnostics naming the excluded run and any real failing run, plus three new fixtures/tests in `test_merge_pr_gate.sh` (the file confirmed to own this coverage).
