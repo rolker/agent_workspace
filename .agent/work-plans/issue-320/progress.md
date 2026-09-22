@@ -70,7 +70,7 @@ Proceed to planning with the four review actions folded in: ADR-0015 addendum fo
 **Status**: complete
 **When**: 2026-09-22 13:00 -04:00
 **By**: Claude Code Agent (claude-sonnet-5)
-**Plan**: `.agent/work-plans/issue-320/plan.md` at `80ebb46`
+**Plan**: `.agent/work-plans/issue-320/plan.md` at `535ee62`
 
 Plan covers two changes to cross_model_review.sh's dispatch: (1) moving
 cross-model adversarial dispatch from Deep-only to Standard+Deep in the
