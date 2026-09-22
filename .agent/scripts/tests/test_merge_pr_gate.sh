@@ -932,6 +932,50 @@ else
     fail "(ci-31) (out=${out:0:500})"
 fi
 
+# make_walkback_sandbox: the ci-30 shape — a progress-only commit pushed on
+# top of a green code head — with the caller free to set each head's
+# check-runs. Prints "<sb> <green> <head_now>".
+make_walkback_sandbox() {
+    local sb wt green head_now remote_key
+    sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+    wt="$(ci_wt "$sb")"; green=$(git -C "$wt" rev-parse HEAD)
+    printf '\n## Checkpoint\n**Status**: complete\n**When**: 2026-09-22 12:00 -04:00\n**By**: t (m)\n**Decided-by**: owner\n**After**: merge\n**Decision**: merge\n\nok\n' >> "$wt/.agent/work-plans/issue-7/progress.md"
+    git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "progress: checkpoint"
+    git -C "$wt" push --quiet origin feature/issue-7
+    head_now=$(git -C "$wt" rev-parse HEAD)
+    remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+    printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+        > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+    write_workflows "$sb" '{"total_count":1}'
+    write_mergeable_fixture "$sb" "MERGEABLE"
+    echo "$sb $green $head_now"
+}
+
+echo "TEST: CI target — the walk-back must not drop a review still running on the real head (#300 round 4)"
+read -r sb green head_now <<<"$(make_walkback_sandbox)"
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_COPILOT_ONLY_RUNNING"  # review still running on the head
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"                  # code head green, no review run
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"CI target: \`${green:0:7}\`"*"bookkeeping commits"* ]] \
+    && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"*"${head_now:0:7}"* ]] \
+    && [[ "$out" == *"review still in progress — waiting"* ]]; then
+    pass "(ci-32) walked-back CI target, review running on the head: holds the merge on the head's review"
+else
+    fail "(ci-32) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
+echo "TEST: CI target — the same shape with --allow-pending-review merges on the walked-back verdict (#300 round 4)"
+read -r sb green head_now <<<"$(make_walkback_sandbox)"
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_COPILOT_ONLY_RUNNING"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_TIMEOUT_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" --allow-pending-review 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI checks passed on \`${green:0:7}\`"* ]] \
+    && [[ "$out" != *"still in progress"* ]]; then
+    pass "(ci-33) walked-back CI target + --allow-pending-review: merges on the green head's verdict"
+else
+    fail "(ci-33) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
 echo "TEST: mergeability — UNKNOWN for the first pr-view calls then MERGEABLE: merge proceeds"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)

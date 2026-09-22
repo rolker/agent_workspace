@@ -1155,6 +1155,12 @@ if [[ "$NO_WAIT" == false ]]; then
     _ci_grace_deadline=$((_ci_start + MERGE_PR_CI_GRACE_SECONDS))
     _ci_result=""
     _ci_walked=false
+    # The review check-run (Copilot) is posted against the REAL PR head; the
+    # bookkeeping walk-back below may move CI_TARGET_SHA to an ancestor, whose
+    # check-runs say nothing about the head's review. Keep the head's SHA so
+    # the pending-review hold is always evaluated on it (#300 round 4).
+    _ci_review_sha="$CI_TARGET_SHA"
+    _ci_head_excluded_last=""
     while :; do
         _ci_poll_out=$(_ci_poll_state "$CI_TARGET_SHA")
         _ci_state="${_ci_poll_out%%|*}"
@@ -1177,6 +1183,24 @@ if [[ "$NO_WAIT" == false ]]; then
                     fi
                 done
                 [[ "$_ci_switched" == true ]] && continue
+            fi
+        fi
+        # Review state always comes from the real PR head, even after the
+        # walk-back switched CI_TARGET_SHA to a bookkeeping ancestor: the
+        # ancestor carries the CI verdict for this code, the head carries
+        # the review. Re-read it every poll (not once, before the switch) so
+        # a review that finishes mid-wait releases the hold. `2>/dev/null`
+        # keeps a head-only CI failure out of the log — the head's CI state
+        # is deliberately not this loop's verdict once it has walked back.
+        if [[ "$_ci_review_sha" != "$CI_TARGET_SHA" ]]; then
+            _ci_head_out=$(_ci_poll_state "$_ci_review_sha" 2>/dev/null)
+            if [[ "${_ci_head_out%%|*}" == error ]]; then
+                # A failed read must not silently drop a hold an earlier
+                # poll established; keep the last state we actually saw.
+                _ci_excluded="$_ci_head_excluded_last"
+            else
+                _ci_excluded="${_ci_head_out#*|}"
+                _ci_head_excluded_last="$_ci_excluded"
             fi
         fi
         # A review check-run that has not finished (`status=...`, no
@@ -1275,7 +1299,7 @@ if [[ "$NO_WAIT" == false ]]; then
         review-pending)
             _pr_url=$(gh pr view "$PR_NUMBER" "${GH_REPO_ARGS[@]}" --json url --jq '.url' 2>/dev/null || echo "")
             {
-                echo "ERROR: review check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' still in progress on \`${CI_TARGET_SHA:0:7}\` after ${MERGE_PR_CI_TIMEOUT_SECONDS}s (CI itself is green or absent)"
+                echo "ERROR: review check-run '${MERGE_PR_CI_EXCLUDE_CHECK_RUN}' still in progress on \`${_ci_review_sha:0:7}\` after ${MERGE_PR_CI_TIMEOUT_SECONDS}s (CI itself is green or absent)"
                 [[ -n "$_pr_url" ]] && echo "  See: $_pr_url"
                 echo "  Re-run once the review completes, or pass --allow-pending-review to merge without waiting for it."
             } >&2
