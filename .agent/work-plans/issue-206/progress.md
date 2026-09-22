@@ -76,3 +76,13 @@ is watching this decision for its Copilot-only port but isn't blocking.
 - [ ] File or extend an ADR capturing the tmux-default reversal before or alongside the implementation PR, per ADR-0001.
 - [ ] Keep the gstack adapter-pattern out of this issue's scope; reference it in the ADR's "considered alternatives" instead of implementing it.
 - [ ] Add explicit background-job/error-handling test cases (partial failure, one agent times out while others succeed) to `test_cross_model_review.sh` as part of the same PR.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 10:46 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed. The plan must address the four review actions: a new ADR recording the tmux-default reversal (gstack pattern under considered alternatives, out of scope); rewrite the review-code skill's dispatch step to the single-invocation shape in the same PR; explicit parallel-dispatch failure-mode tests (one agent fails, one times out while others succeed); the Copilot -p / --allow-all-tools fix stays in #212 and out of this PR.
