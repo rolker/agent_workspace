@@ -393,7 +393,8 @@ EOF
 top level of the PR body, never re-nested under a sub-agent's own heading
 (`### Decision summary` inside a `## Review` section does not count).
 `merge_pr.sh` greps that literal string when it checks gate condition (b)
-(`merge_pr.sh:760-761`); a re-nested or reworded heading makes the gate
+(the `# (b) decision summary on the PR` block under `--- Step 1.5:
+Review-loop merge gate ---`); a re-nested or reworded heading makes the gate
 report the summary missing and the merge is refused. When the text comes
 from a dispatched phase's report, copy the body and re-head it at level 2
 yourself.
@@ -477,8 +478,10 @@ would leave the newest entry the `## Integrated Review` with no open
 findings, so a `/run-issue <N>` resume would re-derive `checkpoint:merge`
 and walk straight back into the failing merge. Discovering the failure
 inside `merge_pr.sh` instead is a dead end for the same reason — a gate
-that passed records no entry at all (`merge_pr.sh:889-890`, the caveat
-step 11 repeats), so a merge that then fails on CI leaves `next` with no
+that passed records no entry at all (`merge_pr.sh`'s
+`if [[ "${#_gate_reasons[@]}" -eq 0 ]]` branch at the end of Step 1.5 —
+it prints its approval and records nothing; the caveat step 11 repeats),
+so a merge that then fails on CI leaves `next` with no
 newest entry to route on and no `checkpoint:merge-refused` re-route.
 
 `triage-reviews` with only the local review as
@@ -541,8 +544,11 @@ attempted (row 1) — the worktree may already be gone.
 
 One precondition belongs to step 9, not here: if the latest `## Integrated
 Review` recorded `**CI**: pending`, CI is re-checked *before* the merge
-checkpoint is presented, and a CI failure routes to `address-findings` (or
-a fresh `triage-reviews`). Do not let a pending-CI triage reach
+checkpoint is presented, and a CI failure is put to the owner at that
+checkpoint and recorded as `**Decision**: address`, which routes to
+`address-findings` — not dispatched directly, and never as a fresh
+`triage-reviews` (the `merge` checkpoint's vocabulary has no `retriage`; a
+re-triage need is answered `address` too). Do not let a pending-CI triage reach
 `merge_pr.sh` — the entry-less failure paths above are exactly what that
 re-check avoids.
 
