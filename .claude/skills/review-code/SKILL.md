@@ -366,8 +366,13 @@ The prompt and findings files are not committed (see #193) — gitignored when w
 and then one `AGENT=` / `FINDINGS_FILE=` / `EXIT=` triplet per agent. Key
 on each agent's `EXIT=` line, not on the script's overall exit status:
 the script exits 3 whenever *any* agent failed, and a failed agent
-(CLI not installed, timeout, non-zero exit) is noted in the report while
-the others' findings are used as normal. One agent's failure does not
+(CLI not installed, timeout, non-zero exit, empty response, quota or
+auth error) is noted in the report while the others' findings are used
+as normal. `EXIT=` is the agent *job's* status: every agent runs through
+a helper that validates its result (`_agy_review.sh` for gemini,
+`_cli_review.sh` for codex/claude/copilot), so a failed review is
+`EXIT=1` with the CLI's own status and the reason written into the
+findings file, and `EXIT=124` means the outer timeout cut it off. One agent's failure does not
 block the others and does not fail the review. Exit 3 with **no**
 `AGENT=` triplets means the shared prompt could not be built (diff fetch
 failed or empty): nothing ran, every listed findings file holds a
@@ -384,8 +389,11 @@ lines naming each findings file are printed before the agents launch
 **Collecting findings**: After other specialists complete, read each
 agent's findings file (look for `--- Review complete ---` or
 `--- Review failed ---` markers; a failed file carries the reason on the
-lines above the marker — e.g. a headless permission denial, a timeout, or
-a missing CLI — so report that reason, not an empty review). The script
+lines above the marker — e.g. a headless permission denial, an empty
+response, a quota / rate-limit / auth error, a timeout, or a missing CLI
+— so report that reason, not an empty review. A findings file never
+holds a half-review: each agent's helper truncates it first and then
+writes either the review text or the failure reason). The script
 blocks until all agents are done, so no review is "still running" when
 it returns; for live observation while it runs, `tail -f` the findings
 file. Incorporate completed findings into the unified report.

@@ -22,7 +22,11 @@
 #     Compares the entry count of the expected type (same table as above)
 #     before and after a dispatch. Prints `status=<OK|PARTIAL|FAILED|MISSING>`
 #     and, only for OK, a second line `sha=<short git sha>` (the worktree's
-#     HEAD after the phase's own commit).
+#     HEAD after the phase's own commit). For `--skill implement` and
+#     `--skill address-findings`, a complete `## Implementation` entry with no
+#     `**PR**` / `**Branch**` correlation line is PARTIAL, not OK, with a
+#     `reason=` line saying so — that line is required by both handoffs' exit
+#     contracts and by merge_pr.sh's head-vs-review gate.
 #
 #   dispatch_phase.sh next --issue <N> --pr <none|draft|open|merged>
 #                      [--type workspace|project] [--progress <file>]
@@ -30,7 +34,9 @@
 #     Prints `action=<token>`, `reason=<one line>`, then `round=<n>` when
 #     the action concerns the pre-push review loop, `phase=<skill>` when a
 #     checkpoint:phase-failed / retry / takeover names a failed phase, and
-#     `mode=inline` when the action is to be run by the host itself. No
+#     `mode=inline` when the action is to be run by the host itself (row 27,
+#     a takeover, is the only row that still prints it — `implement` is
+#     dispatched like every other phase since issue #314). No
 #     `gh` call inside `next`, ever — `--pr` is the only non-timeline input.
 #
 # Exit codes:
@@ -150,6 +156,9 @@ skill_task_line() {
             ;;
         triage-reviews)   echo "/triage-reviews $pr" ;;
         address-findings) echo "/address-findings --issue $issue" ;;
+        # No `/implement` slash command exists — the post-plan implementation
+        # pass is dispatched with a literal instruction instead (issue #314).
+        implement)        echo "implement the plan at .agent/work-plans/issue-$issue/plan.md on this branch" ;;
         *) return 1 ;;
     esac
 }
@@ -212,7 +221,7 @@ cmd_handoff() {
 
     local task entry_type model
     task=$(skill_task_line "$skill" "$issue" "$pr") || {
-        echo "error: dispatch: unknown --skill '$skill' (expected one of review-issue, plan-task, review-plan, review-code, triage-reviews, address-findings)" >&2
+        echo "error: dispatch: unknown --skill '$skill' (expected one of review-issue, plan-task, review-plan, implement, review-code, triage-reviews, address-findings)" >&2
         exit 2
     }
     entry_type=$(skill_entry_type "$skill" "$pr")
@@ -237,7 +246,16 @@ cmd_handoff() {
     echo "agent_email=$AGENT_EMAIL"
     echo "model=$model"
     echo "entry_type=$entry_type"
-    echo "exit_contract=Append exactly one \`## $entry_type\` entry to $wt/.agent/work-plans/issue-$issue/progress.md via the phase's own persistence step. If you cannot finish, still append it with **Status**: partial or **Status**: failed and say why. Never push — the host owns every push."
+    # `implement` has no SKILL.md of its own (no `/implement` slash command),
+    # so its exit contract names the writer and the entry shape outright —
+    # otherwise nothing tells the dispatched agent to write the **PR** /
+    # **Branch** correlation line ADR-0013 requires of `## Implementation`
+    # (issue #314 plan review, finding 1).
+    if [[ "$skill" == "implement" ]]; then
+        echo "exit_contract=Append exactly one \`## $entry_type\` entry to $wt/.agent/work-plans/issue-$issue/progress.md via \`.agent/scripts/progress_append.sh $issue --title \"<issue title>\"\` (entry on stdin), in the shape \`.claude/skills/run-issue/SKILL.md\` step 4 documents for the dispatched implement pass — the \`**PR**: #<M> at <sha>\` / \`**Branch**: <name> at <sha>\` correlation line included. Commit your work. If you cannot finish, still append it with **Status**: partial or **Status**: failed and say why. Never push — the host owns every push."
+    else
+        echo "exit_contract=Append exactly one \`## $entry_type\` entry to $wt/.agent/work-plans/issue-$issue/progress.md via the phase's own persistence step. If you cannot finish, still append it with **Status**: partial or **Status**: failed and say why. Never push — the host owns every push."
+    fi
     echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create."
     if [[ -n "$prompt_file" ]]; then
         echo "prompt_file=$prompt_file"
@@ -298,10 +316,28 @@ cmd_check_exit() {
         return 0
     fi
 
-    local entry_status
-    entry_status=$(printf '%s' "$json" | "$PYTHON" -c "import json, sys
-d = json.load(sys.stdin)
-print((d[\"entries\"][-1].get(\"status\") or \"\").strip().lower())")
+    local entry_status entry_corr
+    {
+        IFS= read -r entry_status
+        IFS= read -r entry_corr
+    } < <(printf '%s' "$json" | "$PYTHON" -c "import json, sys
+e = json.load(sys.stdin)[\"entries\"][-1]
+print((e.get(\"status\") or \"\").strip().lower())
+print(\"1\" if ((e.get(\"correlation\") or {}).get(\"sha\")) else \"0\")")
+
+    # A `## Implementation` entry is a PR/branch-correlated ADR-0013 type: its
+    # `**PR**: #<M> at <sha>` / `**Branch**: <name> at <sha>` line is what the
+    # pre-push round counter and merge_pr.sh's head-vs-review gate correlate
+    # on, and both handoffs' exit contracts require it. Counting entries and
+    # reading **Status** alone would call a correlation-less entry OK and the
+    # omission would only surface at the merge gate, so check it here
+    # (issue #314 pre-push review, round 1).
+    if [[ "$entry_status" == "complete" && "$entry_corr" != "1" ]] \
+        && [[ "$skill" == "implement" || "$skill" == "address-findings" ]]; then
+        echo "status=PARTIAL"
+        echo "reason=the newest ## $entry_type entry has no **PR**/**Branch** correlation line"
+        return 0
+    fi
 
     case "$entry_status" in
         complete)
@@ -398,8 +434,9 @@ status = (E.get("status") or "").strip().lower()
 etype = E.get("type")
 
 # The failed-entry type -> skill mapping used by row 3 and rows 26/27
-# ("Implementation" is mode-aware: **Mode**: inline names the inline
-# implementation pass, everything else names address-findings). Checkpoint,
+# ("Implementation" is written by two phases, so skill_for() below
+# discriminates them by **Addressed**, the field only address-findings
+# writes -- issue #314; **Mode** is no longer read by anything). Checkpoint,
 # External Review, and the Merge records have no skill mapping (ADR-0013:
 # they are not phases a run-issue table row dispatches).
 TYPE_TO_SKILL = {
@@ -416,7 +453,30 @@ def skill_for(entry):
     b = entry.get("base_type")
     if b == "Implementation":
         f = entry.get("fields") or {}
-        return "implement" if f.get("Mode") == "inline" else "address-findings"
+        # Positive signal first: **Addressed** is part of address-findings
+        # own entry template (its SKILL.md step 5, where only the
+        # **Branch**/**PR** line is called required) and the post-plan
+        # implement pass never writes it. Nothing validates the field, so a
+        # present-but-empty value must NOT count as the signal -- it would
+        # route a failed implement pass to address-findings. An empty value
+        # falls through to the prior-complete-Implementation test below,
+        # which is the same answer an omitted field gets.
+        if (f.get("Addressed") or "").strip():
+            return "address-findings"
+        # Fallback for an entry that never got as far as writing it. A
+        # review -- and so an address-findings pass -- can only follow a
+        # COMPLETE implementation, so with no prior complete
+        # "## Implementation" on the timeline this is still the implement
+        # pass. Ordinal position alone ("is this the first one?") would
+        # misroute a second consecutive failed implement: retry -> failed
+        # again must still name **Phase**: implement (issue #314).
+        for e in entries:
+            if e is entry:
+                break
+            if e.get("base_type") == "Implementation" \
+                    and (e.get("status") or "").strip().lower() == "complete":
+                return "address-findings"
+        return "implement"
     return TYPE_TO_SKILL.get(b)
 
 
@@ -489,7 +549,7 @@ if base == "Checkpoint":
         emit("plan-task", "checkpoint issue-actions answered proceed")
     if after == "plan":
         if decision == "proceed":
-            emit("implement", "checkpoint plan answered proceed", mode="inline")
+            emit("implement", "checkpoint plan answered proceed")
         if decision == "revise":
             emit("plan-task", "checkpoint plan answered revise")
     if after in ("publish", "rounds"):
@@ -512,8 +572,6 @@ if base == "Checkpoint":
             emit("address-findings", "checkpoint merge-refused answered address")
     if after == "phase-failed" and phase:
         if decision == "retry":
-            if phase == "implement":
-                emit(phase, "checkpoint phase-failed answered retry", mode="inline")
             emit(phase, "checkpoint phase-failed answered retry")
         if decision == "takeover":
             emit(phase, "checkpoint phase-failed answered takeover", mode="inline")

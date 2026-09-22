@@ -15,6 +15,14 @@
 # the _agy_review.sh helper, which feeds the prompt over stdin and
 # validates agy's result event; issues #274, #288)
 #
+# No agent CLI is invoked from this script directly. Gemini goes through
+# _agy_review.sh; codex, claude and copilot go through _cli_review.sh
+# (issue #313, folding in #212). Each helper owns its findings file:
+# it truncates the file first, runs its CLI with the prompt on stdin,
+# and writes either the review text or a failure reason — so an empty
+# response, a quota / rate-limit / auth error or a missing result is a
+# failed review here, not review-looking text in the findings file.
+#
 # The embedded diff excludes .agent/work-plans/** (plan.md, progress.md,
 # review artifacts): review bookkeeping, not code under review, and the
 # main source of oversized prompts (#312).
@@ -29,7 +37,8 @@
 #
 # Every agent is bounded so one hung CLI cannot hang the call. Codex,
 # claude and copilot run under `timeout "$AGENT_TIMEOUT"` (coreutils
-# duration, env-overridable, default 1800). Gemini's primary bound stays
+# duration, env-overridable, default 1800), applied to _cli_review.sh,
+# which forwards the signal to its CLI child. Gemini's primary bound stays
 # _agy_review.sh's own --print-timeout (`AGY_PRINT_TIMEOUT`), because that
 # path reports the expiry with a reason; it also gets an outer
 # `timeout "$GEMINI_BACKSTOP"` derived to sit ABOVE the print-timeout
@@ -64,7 +73,11 @@
 #   MODE=parallel-sync               (once)
 #   AGENT=<agent-key>                (one triplet per agent, after all
 #   FINDINGS_FILE=<path-to-findings>  agents have finished; EXIT= is that
-#   EXIT=<n>                          agent's own exit status, 0 = success)
+#   EXIT=<n>                          agent job's exit status, 0 = success.
+#                                     A failed review is 1 from its helper
+#                                     — the CLI's own status is named in
+#                                     the findings file's reason — or 124
+#                                     when the outer timeout cut it off.)
 #   followed by informational lines for human consumption
 #
 # Whenever the agents actually run, each findings file ends with
@@ -191,30 +204,38 @@ validate_duration_knob GEMINI_BACKSTOP_MARGIN "$GEMINI_BACKSTOP_MARGIN" false fa
 # validator above refuses it.
 GEMINI_BACKSTOP=$(( $(duration_to_seconds "$AGY_PRINT_TIMEOUT") + $(duration_to_seconds "$GEMINI_BACKSTOP_MARGIN") ))
 
-# Helper that owns the gemini invocation. A missing helper makes the
-# gemini agent unavailable (that agent fails; others still run).
-AGY_REVIEW_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_agy_review.sh"
+# Helpers that own the agent invocations. A missing helper makes the
+# agents it serves unavailable (those agents fail; others still run).
+SCRIPT_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AGY_REVIEW_HELPER="${SCRIPT_SELF_DIR}/_agy_review.sh"
+CLI_REVIEW_HELPER="${SCRIPT_SELF_DIR}/_cli_review.sh"
 
 # Run one agent to completion. Args: agent_key, bin_path, prompt_file,
-# findings_file. Exits with the agent CLI's status (124 on timeout).
+# findings_file. Exits with the helper's status (124 on timeout).
 # Always called in a background subshell; `exec` makes that subshell's
-# PID the CLI's own (or timeout's, which forwards signals to the CLI),
-# so killing the PID the parent holds really stops the agent. Agents
-# read the prompt from stdin, so prompt size is not bounded by argv.
+# PID the helper's own (via timeout, which forwards signals to it, and
+# the helper in turn forwards them to its CLI child), so killing the PID
+# the parent holds really stops the agent. Agents read the prompt from
+# stdin, so prompt size is not bounded by argv.
+#
+# Both helpers own their findings file, so there is no stdout redirect
+# here (#274, #288, #313): a helper truncates the file first and writes
+# either the review or a failure reason into it.
+# TMPDIR points at the parent-owned scratch root so a SIGKILLed helper's
+# temp dir is still swept by this script's EXIT trap.
 run_agent_sync() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
-        # Helper owns the findings file; no stdout redirect (#274, #288).
-        # The outer timeout is the backstop above the helper's own
+        # Gemini's outer timeout is the backstop ABOVE the helper's own
         # print-timeout, not a replacement for it.
-        # TMPDIR points at the parent-owned scratch root so a SIGKILLed
-        # helper's temp dir is still swept by this script's EXIT trap.
         gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
-        codex)   exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
-        claude)  exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
-        copilot) exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
-        *)       exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        # codex, claude and copilot (and anything that somehow reaches
+        # here — _cli_review.sh rejects an unknown agent with a readable
+        # reason in the findings file rather than running a CLI blind).
+        # AGENT_TIMEOUT is passed through as an informational label so
+        # the helper's failure reasons can name the bound they ran under.
+        *)       exec env TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
     esac
 }
 
@@ -466,6 +487,11 @@ for agent in "${AGENTS_TO_RUN[@]}"; do
         AGENT_UNAVAILABLE_REASON["$agent"]="${AGENT_BINS[$agent]} CLI not found (PATH searched: ${PATH}; also ~/.nvm/versions/node/*/bin/, ~/.local/bin/, ~/.npm-global/bin/, /usr/local/bin/)"
     elif [[ "$agent" == "gemini" && ! -x "$AGY_REVIEW_HELPER" ]]; then
         AGENT_UNAVAILABLE_REASON["$agent"]="${AGY_REVIEW_HELPER} is missing or not executable"
+    elif [[ "$agent" == "codex" || "$agent" == "claude" || "$agent" == "copilot" ]] && [[ ! -x "$CLI_REVIEW_HELPER" ]]; then
+        # Scoped to the three agents that helper serves, the way the
+        # gemini check above is scoped: a missing _cli_review.sh must not
+        # mark a gemini-only run unavailable.
+        AGENT_UNAVAILABLE_REASON["$agent"]="${CLI_REVIEW_HELPER} is missing or not executable"
     else
         AGENT_BIN_FOR["$agent"]="$bin"
         USABLE_AGENTS=$((USABLE_AGENTS + 1))
@@ -879,7 +905,10 @@ run_agent_job() {
             printf '\n%s review hit the outer backstop (GEMINI_BACKSTOP=%ss, above AGY_PRINT_TIMEOUT=%s): the helper never returned, so its own timeout handling did not run.\n' \
                 "$agent" "$GEMINI_BACKSTOP" "$AGY_PRINT_TIMEOUT" >> "$findings_file"
         else
-            printf '\n%s review timed out (AGENT_TIMEOUT=%s); partial output above, if any.\n' \
+            # No partial output to point at: _cli_review.sh truncates the
+            # findings file first and only writes once the turn has
+            # produced a result, so a killed run leaves it empty.
+            printf '\n%s review timed out (AGENT_TIMEOUT=%s) and the CLI was killed; no result was produced.\n' \
                 "$agent" "$AGENT_TIMEOUT" >> "$findings_file"
         fi
     fi

@@ -9,7 +9,7 @@ by script rather than by hand.
 ## Phase order
 
 ```
-review-issue → plan-task → review-plan → implement (inline)
+review-issue → plan-task → review-plan → implement
    → review-code --branch      (pre-push; loop with address-findings)
    → publish (push + PR)
    → review-code <PR>          (post-push; loop with address-findings)
@@ -26,12 +26,19 @@ in the loop advances a phase on its own judgment (no auto-chaining).
 | `review-issue` | `## Issue Review` | `review-issue` step 8 |
 | `plan-task` | `## Plan Authored` | `plan-task` |
 | `review-plan` | `## Plan Review` | `review-plan` |
-| implement (inline, or a dispatched `address-findings`) | `## Implementation` | the host (`**Mode**: inline`) or `address-findings` (no `**Mode**`) |
+| `implement` (the post-plan pass) | `## Implementation` | the dispatched implement pass (no `**Addressed**` field) |
+| `address-findings` (every later fix round) | `## Implementation` | `address-findings` (`**Addressed**` names the review it answers) |
 | `review-code --branch` | `## Local Review (Pre-Push)` | `review-code`, branch mode |
 | `review-code <PR>` | `## Local Review` | `review-code`, PR mode |
 | `triage-reviews` | `## Integrated Review` | `triage-reviews` |
 | a human's answer to an `AskUserQuestion` checkpoint | `## Checkpoint` | `/run-issue`, on the owner's behalf (`**Decided-by**: owner`) |
 | `merge_pr.sh`'s gate under `--report-only` (or `--force-unreviewed`), when a precondition is unmet — the default (enforce, #300) on a workspace PR refuses with no entry | `## Merge (report-only)` / `## Merge (unreviewed)` | `merge_pr.sh` |
+
+Both `## Implementation` writers are dispatched sub-agents (issue #314);
+one case still runs inline, and only one — a `checkpoint:phase-failed`
+answered `takeover`, where the host finishes *any* failed phase itself and
+writes that phase's own entry. A taken-over implement pass adds
+`**Mode**: inline` as a record of who wrote it; nothing reads the field.
 
 Every entry lives on `.agent/work-plans/issue-<N>/progress.md`, appended
 via `.agent/scripts/progress_append.sh` and read back via
@@ -87,8 +94,9 @@ than being silently accepted.
 
 `/run-issue <N> [--type workspace|project] [--resume]` is the one script
 that walks this whole table without a human re-deriving it by hand each
-turn: it enters the worktree, calls `next`, dispatches or implements the
-named phase, checks the exit contract, and pauses at every checkpoint.
+turn: it enters the worktree, calls `next`, dispatches the named phase
+(taking it over inline only after a `phase-failed` checkpoint answered
+`takeover`), checks the exit contract, and pauses at every checkpoint.
 Codex/Gemini sessions still drive `review-issue` → ... → `triage-reviews`
 one skill at a time; the table above is exactly what they're following by
 reading `SKILL.md` files instead of a script's output.

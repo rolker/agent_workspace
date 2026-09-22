@@ -45,7 +45,9 @@ returns typed per-provider results.
    finishes. `--agents a,b,c` selects several agents in one invocation;
    `--agent X` (single-agent) keeps its previous stdout contract exactly.
 3. **Each agent is bounded.** Codex, Claude and Copilot run under
-   `timeout "$AGENT_TIMEOUT"` (seconds, env-overridable, default 1800).
+   `timeout "$AGENT_TIMEOUT"` (seconds, env-overridable, default 1800),
+   applied to `_cli_review.sh`, which forwards the signal to its CLI
+   child so the bound reaches the CLI itself (#313).
    Gemini's primary bound stays `_agy_review.sh`'s own `--print-timeout`
    (`AGY_PRINT_TIMEOUT`, default 30m), which reports an expiry with its
    reason and handles agy's partial response (#288); on top of it Gemini
@@ -106,13 +108,19 @@ returns typed per-provider results.
   explicit `s`/`m`/`h` unit, no bare number, no `d`) — so a bad value
   cannot surface as an opaque `timeout` exit 125 or fail later inside agy.
   Anyone raising `AGY_PRINT_TIMEOUT` gets the backstop raised with it.
-- The per-agent result validation that Gemini has (#288) is still
-  missing for Codex, Claude and Copilot; that is #313, unchanged by this
-  decision.
+- The per-agent result validation that Gemini has (#288) now covers
+  Codex, Claude and Copilot too (#313): they run through
+  `_cli_review.sh`, which owns the findings file the way `_agy_review.sh`
+  does, so an empty response, a quota / rate-limit / auth error or a
+  missing result is a failed review rather than review-looking text.
+  A failed agent's `EXIT=` line is therefore its helper's `1`, not the
+  CLI's own status — that appears in the findings file's reason. The
+  dispatch structure this decision fixes (one `exec`'d background job per
+  agent under `timeout -k`) is unchanged; only what each job execs is.
 
 ## References
 
 - Issue #206 (this decision), #106 (`--sync` origin), #2/#65/#66 (tmux
   origin), #311/#288 (Gemini helper and its timeout contract), #313.
 - `.agent/scripts/cross_model_review.sh`, `.agent/scripts/_agy_review.sh`,
-  `.claude/skills/review-code/SKILL.md`.
+  `.agent/scripts/_cli_review.sh`, `.claude/skills/review-code/SKILL.md`.
