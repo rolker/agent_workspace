@@ -154,3 +154,56 @@ Every round-1 must-fix is genuinely addressed, and relocating the raw stream out
 **Plan**: `.agent/work-plans/issue-288/plan.md` at `292bfd9`
 
 Revision after plan review round 2: the helper truncates the findings file before any guard, agy temp files are removed on every exit path with diagnostics inlined into the findings file (nothing for the test runner's leftover sweep), no staging mv, the AGY_PRINT_TIMEOUT comment is corrected, headless file reads were verified as permitted, and #312 tracks the prompt-trimming half of #274.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-22 09:49 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**PR**: https://github.com/rolker/agent_workspace/pull/311 — [PLAN] cross_model_review.sh: headless gemini permission denial reported as a completed review
+**Issue**: #288 — cross_model_review.sh: headless gemini permission denial reported as a completed review (plan also closes #274)
+**Plan**: `.agent/work-plans/issue-288/plan.md` at `292bfd9`
+**Branch**: `feature/issue-288`
+
+Round 3. Round-1 verdict was needs-work (8 actions); round-2 verdict was needs-work (2 must-fix, 4 suggestions).
+
+### Round-2 action items
+
+| # | Action | State |
+|---|---|---|
+| 1 | Failure-path temp files vs `run_script_tests.sh` TMPDIR leak sweep | Resolved — Approach 1 now removes both agy temps on every exit path (`trap ... EXIT`) and inlines the diagnostics (agy `error`, `denied_actions`, first 20 stderr lines) into the findings file instead of keeping files. `test_agy_findings_truncated` also asserts an empty suite TMPDIR on failure paths. Nothing survives for the sweep. |
+| 2 | Truncate the findings file on every exit path incl. guards; sentinel assertion | Resolved — Approach 1's *first statement, before any guard* is `: > "$findings"`, with the stale-review rationale stated; `test_agy_findings_truncated` pre-seeds stale text, forces a guard failure, and asserts only the reason + `--- Review failed ---` remain. |
+| 3 | Name the findings staging temp's location | Resolved differently, and better — the staging temp is gone. A plain `>` is now justified on the record: the file is truncated at helper start and readers key off the wrapper's `--- Review complete ---` marker, which is appended only after the helper exits (`cross_model_review.sh:589`, `:610`). No cross-filesystem `mv`, no `.gitignore` interaction. |
+| 4 | Open the #274 trimming follow-up or stop closing #274 | Resolved — #312 ("exclude `.agent/work-plans/**` from the embedded review diff") is open and cited in Approach 6 and the Open Questions block. Verified via `gh issue view 312`. |
+| 5 | Correct the `AGY_PRINT_TIMEOUT` header comment | Resolved — Approach 2 names the correction explicitly (`cross_model_review.sh:60-61` still says "The agy default (5m) is too tight"; the plan now states the default is `0s` and the forced `30m` is a deliberate ceiling). |
+| 6 | Verify headless file-read permission, or narrow the paragraph | Resolved — Context now records a probe in which `view_file` on a workspace file succeeded with no `denied_actions`; only `run_command` is auto-denied. The prompt paragraph's "reading repository files is fine" is now backed. |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged across three rounds: one invocation arm, one PR, two issues that genuinely share it, with the third (#312) split out. |
+| Issue alignment | Good | #288's mechanical detection, #274's argv ceiling, and a tracked deferral for #274's trimming half. |
+| File targeting | Good | Five files, each traced to a consequence. The round-2 gaps (temp-file cleanup, findings truncation) are now plan text. |
+| Consequences | Good | Script table, review-code skill note, replaced test mock, and the test-runner leak guard are all accounted for. |
+| Principle alignment | Good | Enforcement over documentation: detection is the result event + stderr marker; the prompt paragraph is explicitly labelled a mitigation, not the guard. Test what breaks: seven tests including the previously untested tmux default path and a >200 KiB prompt that would fail with E2BIG under an argv regression. |
+| ADR compliance | Good | ADR-0003 (paths as arguments), ADR-0004/0005 (mechanical detection, `validate-script-tests` hook), ADR-0013 (no progress.md shape change). |
+| ROS conventions | N/A | Workspace-only plan. |
+
+### Findings
+
+1. **[Approach — suggestion, low]** `--disable-slash-commands` is in the invocation (Approach 1) but not in the verified-facts list, unlike every other flag there. The mock agy ignores argv, so no test catches an unsupported flag; a wrong flag name would make *every* gemini review fail at launch. Loud, not silent, and one `agy --help` grep away — confirm it during implementation before the first commit.
+
+2. **[Scope — note, no action]** The codex/claude/copilot arms keep `> "$findings" 2>&1` with no result-event validation, so the #288 failure class (tool denial reported as a completed review) remains undetected for them. Out of scope here — those CLIs have different contracts and the issue is gemini-specific — but worth a line in the PR body so the asymmetry is a known state rather than an oversight.
+
+3. **[Documentation — suggestion, low]** The Files-to-Change row for the test suite says "seven tests above"; the Approach 4 list has seven bullets but one of them (`test_agy_findings_truncated`) also carries the TMPDIR assertion for the other failure tests. Purely cosmetic — the implementer should not treat the count as a contract.
+
+### Summary
+
+Both round-2 must-fixes are resolved in plan text, and the round-3 reading found no new design flaw. The findings-file lifecycle is now fully specified (truncate first, plain `>`, diagnostics inlined, nothing left on disk), the deferral of #274's second half is tracked in #312, and the two previously untested paths — tmux invocation and large prompts — have named tests. The three remaining items are implementation-pass checks, not plan defects.
+
+### Recommended Actions
+
+- [ ] Confirm `agy 1.2.8` accepts `--disable-slash-commands` before the first commit (finding 1)
+- [ ] Note in the PR body that result-event validation is gemini-only and the other agent arms keep the old redirect (finding 2)
