@@ -216,11 +216,78 @@ owns every push.
 ### Findings
 - [ ] (must-fix) rows 13a/13b require an approved `## Local Review (Pre-Push)` as the *newest* entry while `--pr` is draft/open, a state the documented host flow never presents: the publish `## Checkpoint` is written before `publish` runs, so the post-publish `next` sees that Checkpoint and row 17 already routes to `triage-reviews` (pinned by timeline A, `test_dispatch_phase.sh:364-367`) — the redundant re-review item 4 removes was already skipped, and SKILL.md's "omitting `--head` ... the redundant re-review returns" describes a path the table does not take — `.agent/scripts/dispatch_phase.sh:634-646`, `.claude/skills/run-issue/SKILL.md:128-130`
 - [ ] (must-fix) the claim that "`review_progress.sh sources` already correlates the two by head SHA, so nothing extra is needed" is false in exactly the bookkeeping-ancestor case row 13a newly admits: `review_progress.sh:364-366` drops any local entry whose short correlation SHA differs from the head, so `triage-reviews` would run with zero local sources after the PR-side review was skipped — `.claude/skills/run-issue/SKILL.md:130-133`
-- [ ] (must-fix) `BOOKKEEPING_RE` is broader than the merge-gate rule it cites — every path under `.agent/work-plans/` vs merge_pr.sh's exact `issue-<N>/progress.md`, `ROADMAP.md`, `docs/ROADMAP.md` — so `next` can skip the PR-side re-review on a head the merge gate then calls stale — `.agent/scripts/dispatch_phase.sh:220`
-- [ ] (must-fix) the pre-merge CI re-check dispatches `address-findings` off the decision table and names no entry recording the CI failure, so a resume re-derives `checkpoint:merge` and walks back into the failing merge — `.claude/skills/run-issue/SKILL.md:462-472`
+- [x] (must-fix) `BOOKKEEPING_RE` is broader than the merge-gate rule it cites — every path under `.agent/work-plans/` vs merge_pr.sh's exact `issue-<N>/progress.md`, `ROADMAP.md`, `docs/ROADMAP.md` — so `next` can skip the PR-side re-review on a head the merge gate then calls stale — `.agent/scripts/dispatch_phase.sh:220`
+- [x] (must-fix) the pre-merge CI re-check dispatches `address-findings` off the decision table and names no entry recording the CI failure, so a resume re-derives `checkpoint:merge` and walks back into the failing merge — `.claude/skills/run-issue/SKILL.md:462-472`
 - [ ] (suggestion) `HEAD_COVERED=0` conflates "code changed since" with "could not check" (no worktree, unresolvable SHA), but row 13b's reason line asserts the first unconditionally — `.agent/scripts/dispatch_phase.sh:643-645`
-- [ ] (suggestion) the header still says "`--pr` is the only non-timeline input", contradicted by its own new `--head` paragraph and by the lifecycle doc's "its two non-timeline inputs" — `.agent/scripts/dispatch_phase.sh:46`
+- [x] (suggestion) the header still says "`--pr` is the only non-timeline input", contradicted by its own new `--head` paragraph and by the lifecycle doc's "its two non-timeline inputs" — `.agent/scripts/dispatch_phase.sh:46`
 - [ ] (suggestion) the SHA prefix-equality test runs before any git validation, so a short reviewed SHA that prefixes an unrelated head reports "covered" unverified; merge_pr.sh deliberately resolves short SHAs first and treats an ambiguous prefix as failure — `.agent/scripts/dispatch_phase.sh:235`
-- [ ] (suggestion) the comment calls `**Addressed**` "a required field of address-findings own entry template", but that SKILL.md marks only the `**Branch**`/`**PR**` line required, nothing validates it, and a present-but-empty value silently takes the fallback path — `.agent/scripts/dispatch_phase.sh:497-499`
-- [ ] (suggestion) the dispatched implement pass's exit contract requires the `**PR**`/`**Branch**` correlation line, but `--check-exit` only counts entries and reads `**Status**`, so a missing correlation line still reports `status=OK` — `.agent/scripts/dispatch_phase.sh:306` vs `:365-385`
-- [ ] (suggestion) step 4a permits resuming the *reviewer* for `review-code` round >= 2, which trades away the cold independent read the pre-push loop is built on (not a re-opening of the settled prose-vs-enforcement question) — `.claude/skills/run-issue/SKILL.md:228-247`
+- [x] (suggestion) the comment calls `**Addressed**` "a required field of address-findings own entry template", but that SKILL.md marks only the `**Branch**`/`**PR**` line required, nothing validates it, and a present-but-empty value silently takes the fallback path — `.agent/scripts/dispatch_phase.sh:497-499`
+- [x] (suggestion) the dispatched implement pass's exit contract requires the `**PR**`/`**Branch**` correlation line, but `--check-exit` only counts entries and reads `**Status**`, so a missing correlation line still reports `status=OK` — `.agent/scripts/dispatch_phase.sh:306` vs `:365-385`
+- [x] (suggestion) step 4a permits resuming the *reviewer* for `review-code` round >= 2, which trades away the cold independent read the pre-push loop is built on (not a re-opening of the settled prose-vs-enforcement question) — `.claude/skills/run-issue/SKILL.md:228-247`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 12:44 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-314 at fc42fc3
+**Addressed**: Local Review (Pre-Push) at `6fd4249`
+**Dispatch**: resumed (implementer, resume 1 of 3)
+**Commits**: 672866c, 7b986d9, fc42fc3
+
+Round 1 of the pre-push review. Six of the ten boxes are addressed; the
+four item-4 findings are held pending the owner's decision on whether
+item 4 stays (see Deferred below) and are left unticked.
+
+`672866c` commits the reviewer's own corrected entry unchanged — the
+adversarial specialist returned late, the reviewer rewrote and staged the
+entry, and this pass's in-flight edits had blocked its commit hook.
+
+### Actions
+- [x] (must-fix) `BOOKKEEPING_RE` wider than the gate rule it cites — now
+  built per issue (`bookkeeping_re_for_issue`) as
+  `.agent/work-plans/issue-<N>/` plus the two roadmaps, which is
+  merge_pr.sh gate condition (a)'s own allow-list after #300 (`issue-<N>/*`,
+  verified against the now-merged PR #319). The comment names that one rule
+  and says why the CI-target walk-back list (`.agent/work-plans/*`, any
+  issue) is deliberately not mirrored. Fixture: a commit under another
+  issue's work-plans dir keeps the re-review — `.agent/scripts/dispatch_phase.sh`
+- [x] (must-fix) the pre-merge CI re-check dispatched off the table — the
+  host now raises the checkpoint the loop was about to raise anyway
+  (`merge`, or `findings`) with the failing checks quoted, and records
+  `**Decision**: address`, which row 22 routes to `address-findings`
+  durably; a resume re-derives the same state instead of walking back into
+  the failing merge — `.claude/skills/run-issue/SKILL.md` step 9
+- [x] (suggestion) header claimed `--pr` was `next`'s only non-timeline
+  input — now names `--pr` and the optional `--head` —
+  `.agent/scripts/dispatch_phase.sh`
+- [x] (suggestion) `**Addressed**` called "required" — comment corrected to
+  what `address-findings`' SKILL.md actually guarantees, and the test
+  tightened to a non-empty value so a present-but-empty field falls through
+  to the prior-complete-Implementation test instead of misrouting a failed
+  implement pass. Fixture added — `.agent/scripts/dispatch_phase.sh`
+- [x] (suggestion) `--check-exit` reported OK for an `## Implementation`
+  entry with no `**PR**`/`**Branch**` correlation line — now PARTIAL with a
+  `reason=` line for `--skill implement` and `--skill address-findings`;
+  fixtures cover both skills, the correlated case, and that other skills are
+  unaffected — `.agent/scripts/dispatch_phase.sh`
+- [x] (suggestion) step 4a's reviewer reuse — the trade-off is now stated
+  (that round's lead no longer reads the diff cold) together with where
+  independence is kept: `review-code` launches its adversarial specialist as
+  a fresh subagent with no context on every round (its SKILL.md 5d), and
+  round 1 is never reused — `.claude/skills/run-issue/SKILL.md`
+
+### Deferred
+- [ ] (must-fix) rows 13a/13b's routing state is unreachable in the
+  documented flow — held: the owner is deciding whether item 4 stays
+- [ ] (must-fix) `review_progress.sh sources` drops a local entry whose SHA
+  differs from the head — held with item 4
+- [ ] (suggestion) `HEAD_COVERED=0` conflates "code changed" with "could not
+  check" — held with item 4
+- [ ] (suggestion) SHA prefix-equality runs before any git validation —
+  held with item 4
+
+Tests: `test_dispatch_phase.sh` 96 passed / 0 failed; `run_script_tests.sh`
+all 23 suites passed in 48s. `main` deliberately not merged (PR #319 landed
+minutes ago and touches SKILL.md steps 10/11 — the host merges before the
+next review); those paragraphs were left untouched. Not pushed.
