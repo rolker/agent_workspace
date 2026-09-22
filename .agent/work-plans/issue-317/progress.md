@@ -806,3 +806,13 @@ Elapsed: ~15 minutes.
 
 ### Round-3 resolution
 Both suggestions are closed, and both tests discriminate rather than decorate. The `foreign_skill_link()` negative case first asserts its own fixture is *not* a checkout (no manifest three levels up), then asserts both that the user's symlink is unmoved and that the installer said "not ours to replace" — the second assertion is what proves the code reached the skip branch instead of never looking, and `--force` is genuinely live in that run since the flag sets `FORCE` whether or not another checkout owns the tier. The symlinked-settings case asserts the real file's **inode changed**, which is the only assertion that separates a rename from `cat >` truncation; the fixer added it after finding the brief's own assertions could all pass under the old code, which is the right instinct. Stray-file checks are correctly scoped — the `~/.claude` sweep matches the leading-dot `mktemp` pattern only, so rotated backups cannot mask a leak. 70/70 in this suite, 27/27 overall, shellcheck clean. Nothing in this range touches source: the diff is the test file plus this timeline.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 14:44 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish: the owner's answer at the previous publish checkpoint was "address the two suggestions first"; both are closed and round 4 (resumed reviewer, resume 3 of 3) approved with no findings at d6cdb35. Pushed without merging origin/main (behind by PR #316's three registry-digest commits, no overlap) so the reviewed SHA is the pushed SHA.
