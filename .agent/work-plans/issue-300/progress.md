@@ -123,3 +123,13 @@ The approach is correct, minimal, and faithful to the owner's settled constraint
 **Decision**: proceed
 
 Proceed, folding the four plan-review findings into the implementation (fourth Copilot-only fixture expecting the never-registered branch; inline test blocks ci-19/ci-20 appended after ci-12b, no registry to wire; emit the excluded-run diagnostic once; pin the in-progress test with MERGE_PR_CI_TIMEOUT_SECONDS=0 and the timeout wording). The plan file is amended in the same branch to match.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 10:27 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-300/plan.md` at `6aaacdb`
+**Branch**: feature/issue-300 at 6aaacdb
+**Mode**: inline
+
+Two commits. c62d8e2 (`merge_pr.sh` + `test_merge_pr_gate.sh`): a `readonly MERGE_PR_CI_EXCLUDE_CHECK_RUN="copilot-pull-request-reviewer"` constant beside the `MERGE_PR_CI_*` block; `_ci_poll_state` filters that run out of `runs_json` by name, for any conclusion, before the `registered`/`failed`/`pending` classifications (one `jq select(.name != $x)` over data already fetched, no extra request); stderr diagnostics: the excluded run is named once per run (`_ci_excluded_noted` guard) as "not used to block the merge", and a failed verdict prints `CI failed: <name (conclusion)>, ...` from the non-excluded runs and statuses. Four inline tests appended after ci-12b: ci-19 (Copilot failure + Lint success → merges, excluded run reported), ci-20 (Copilot failure + Lint in_progress, `MERGE_PR_CI_TIMEOUT_SECONDS=0` → "CI checks did not complete", never "CI checks failed"), ci-21 (Copilot failure + Lint failure → fails, culprit line names only Lint), ci-22 (Copilot-only head, workflows=1, grace=0 → "no checks registered", not success). Gate suite 62/62; full script suites green via the commit hook. 6aaacdb amends the plan to match the four plan-review findings (all four addressed in the implementation). No AGENTS.md change (row wording unaffected).
