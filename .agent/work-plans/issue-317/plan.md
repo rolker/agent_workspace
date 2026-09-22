@@ -63,8 +63,8 @@ overlap is **`feature/issue-314`, local and unpushed with no PR** — it is
 not visible to a `git merge origin/main`, and it substantially rewrites
 `dispatch_phase.sh` (+187 lines, including `--type` plumbing this plan also
 touches), `run-issue/SKILL.md` (+260 lines), `AGENTS.md`, `Makefile`, and
-claims the ADR number `0015` (freed by #318's merge, which used that number
-for its own ADR — see step 13). Step 1 below merges `main` and separately
+claims the ADR number `0015`, which is already taken on `main` (see step
+13). Step 1 below merges `main` and separately
 diffs against `feature/issue-314` to scope the real conflict; if #314 lands
 (gets pushed and merged) before this PR does, rebase onto it rather than
 re-deriving the `--type`/`--project` change independently.
@@ -374,8 +374,14 @@ re-deriving the `--type`/`--project` change independently.
 command/stub, `dashboard.sh`'s guard, the pinned workspace registry entry
 (moved here from PR 3 per step 10 — lands with the `--type` special-case
 collapse), `project/`/`projects/` retirement, p11 migration, `AGENTS.md`
-wording. (Tool-mapping/log-tool-use promotion is **no longer** on this
-list — it moved back into PR 3 per step 5's owner decision.)
+wording — including the **doc lag found during implementation**: the
+"Worktree Workflow" section still states "`--type` is **required** on all
+worktree scripts (create, enter, remove)", which stops being true once
+step 10's `$PWD`-derivation lands (`--type` becomes optional when the cwd
+resolves). `AGENTS.md` is Ask-First and its wording is PR 4 scope, so the
+correction is recorded here rather than made in PR 3. (Tool-mapping/
+log-tool-use promotion is **no longer** on this list — it moved back into
+PR 3 per step 5's owner decision.)
 
 ## Principles Self-Check
 
