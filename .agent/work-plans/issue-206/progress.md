@@ -277,3 +277,30 @@ Proceed to implementation with the round-2 suggestions folded in: overlap-based 
 - [x] (suggestion) Wall-clock 5.5s assertion is the one load-sensitive check; interval overlap already proves concurrency — `.agent/scripts/tests/test_cross_model_review.sh:1414`
 - [x] (suggestion) Plan still names the ADR `0015-parallel-sync-is-the-default-...`; it landed as `...-is-the-only-...` — `.agent/work-plans/issue-206/plan.md:29`
 - [x] (suggestion) Exit-1 description says each unavailable agent is named on stderr; not true for the missing-`gh` branch — `.claude/skills/review-code/SKILL.md:377`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 11:59 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-206 at `c1d5516`
+**Addressed**: Local Review (Pre-Push) at `c00b2c7` (2026-09-22 11:46 -04:00)
+**Commits**: 238d272, 5db8c11, c1d5516
+
+### Actions
+- [x] (must-fix) Cross-model specialist renamed throughout review-code: Deep-tier bullet, the 5e heading, and the graceful-degradation guideline now describe the `--agents` single-call model and per-agent `EXIT=` semantics (an unavailable agent fails only itself; the review proceeds with whichever agents completed; exit 1 is the only case that drops the specialist) — `.claude/skills/review-code/SKILL.md:54,212,704`
+- [x] (must-fix) Gemini now has an outer bound: `AGY_PRINT_TIMEOUT` is env-overridable and the gemini job runs under `timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP"`, derived as print-timeout + `GEMINI_BACKSTOP_MARGIN` (default 300s). The margin is what keeps the backstop from racing `_agy_review.sh`'s timeout-then-partial-response contract (#288) — the helper's own print-timeout stays the primary path and always fires first in normal operation. Header comment, ADR-0015 §3, plan item 3 and the review-code timeout sentence all updated; new test `test_gemini_backstop_cuts_off_wedged_agy` drives a stalled mock agy with `AGY_PRINT_TIMEOUT=1s GEMINI_BACKSTOP_MARGIN=2` and asserts EXIT=124, the `--- Review failed ---` marker, and that the wedged process is dead — `.agent/scripts/cross_model_review.sh:107-160,180`
+- [x] (suggestion) Header no longer claims every findings file ends with a complete/failed marker; it names the two marker-less paths (shared-prompt abort, interrupt) and tells readers to handle them — `.agent/scripts/cross_model_review.sh:63`
+- [x] (suggestion) pipefail comment corrected to bash's rule (the pipeline's status is the last non-zero stage's) — `.agent/scripts/cross_model_review.sh:700`
+- [x] (suggestion) Job shells now trap TERM only, with a comment explaining that bash makes background children of a non-interactive shell ignore SIGINT so an INT trap could never run; `_agy_review.sh` keeps its INT trap (live for a direct interactive invocation) and says so — `.agent/scripts/cross_model_review.sh:812`, `.agent/scripts/_agy_review.sh:101`
+- [x] (suggestion) Generic agent mock records argv to `MOCK_ARGV_DIR`; `test_agents_all_succeed` asserts the per-agent invocation contract (`codex exec`, `copilot -p`) — `.agent/scripts/tests/test_cross_model_review.sh:1275,1330`
+- [x] (suggestion) Added `test_gemini_not_bound_by_agent_timeout`: `AGENT_TIMEOUT=1` kills a 3s codex while a 3s gemini completes, guarding ADR-0015 §3 against a future change routing gemini through the plain timeout path — `.agent/scripts/tests/test_cross_model_review.sh`
+- [x] (suggestion) All four duration knobs (`AGENT_TIMEOUT`, `AGENT_KILL_AFTER`, `AGY_PRINT_TIMEOUT`, `GEMINI_BACKSTOP_MARGIN`) are shape-validated at startup and `--pr` is checked as a positive integer, each exit 2 with a message naming the value; `test_duration_knobs_validated` covers all five — `.agent/scripts/cross_model_review.sh:130,345`
+- [x] (suggestion) Wall-clock 5.5s assertion dropped from the concurrency test; interval overlap is the whole assertion, with a comment recording why the clock bound was removed — `.agent/scripts/tests/test_cross_model_review.sh:1440`
+- [x] (suggestion) Plan's ADR filename corrected to `0015-parallel-sync-is-the-only-review-dispatch-mode.md` — `.agent/work-plans/issue-206/plan.md:29`
+- [x] (suggestion) Exit-1 paragraph now distinguishes the two dependency failures: no usable agent CLI (each named on stderr) vs. a missing `gh` in PR mode, which aborts before agent resolution with a single warning — `.claude/skills/review-code/SKILL.md:377`
+
+### Verification
+- `bash .agent/scripts/tests/test_cross_model_review.sh` — 185 passed, 0 failed
+- `bash .agent/scripts/tests/run_script_tests.sh` — all 23 suites passed (62s)
+- pre-commit (incl. shellcheck) clean on every commit; nothing pushed
