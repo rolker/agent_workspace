@@ -146,3 +146,13 @@ The plan is correctly scoped and its three mechanical items are verified against
 - [ ] Add `dispatch_phase.sh:215` (error string), `dispatch_phase.sh:401` (comment) and `review_loop_lifecycle.md:90` to the file list
 - [ ] Step 4: name one recorded marker for a resumed dispatch so the never-list is auditable across a `--resume`
 - [ ] Step 4: prefer a References-only ADR-0014 addendum (per the #307 precedent) over a Status-line note pointing at a skill file
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 12:01 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed, folding the seven plan-review findings into the implementation (keep the `## Implementation` template incl. the correlation line, re-headed as the dispatched pass; classify address-findings by the `**Addressed**` field with "no prior complete Implementation" fallback plus a double-failure fixture; say what happens to `**Mode**: inline` and keep "row 27 fires for any phase"; host re-checks CI before the merge checkpoint after a pending-CI triage; a resumed dispatch is recorded in the phase's entry; add dispatch_phase.sh:215/:401 and review_loop_lifecycle.md:90 to the file list; References-only ADR-0014 addendum). The plan is amended on the branch to match. Per the owner's orchestrator rule the implement pass is dispatched to a background agent, not run inline by the host.
