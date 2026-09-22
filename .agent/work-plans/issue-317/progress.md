@@ -816,3 +816,25 @@ Both suggestions are closed, and both tests discriminate rather than decorate. T
 **Decision**: publish
 
 Publish: the owner's answer at the previous publish checkpoint was "address the two suggestions first"; both are closed and round 4 (resumed reviewer, resume 3 of 3) approved with no findings at d6cdb35. Pushed without merging origin/main (behind by PR #316's three registry-digest commits, no overlap) so the reviewed SHA is the pushed SHA.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-22 14:48 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #326 at `ea513d5`
+**Sources**: 2 (Local Review (Pre-Push) round 4 @ `d6cdb35`, CI rollup @ `ea513d5`) — Copilot's COMMENTED review at `ea513d5` is a quota-exhausted placeholder with no findings, not a review source
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [ ] No open findings. Round-4 local review (approved, 0 must-fix, 0 suggestions) is the only substantive source; its two round-3 suggestions are closed and verified in the round-4 entry. The commits between the reviewed SHA `d6cdb35` and the head `ea513d5` are the bookkeeping progress.md commits (local review + checkpoint), which touch no reviewed code — helper bug #309 is why `review_progress.sh sources` returns an empty timeline at this head.
+
+### False positives
+- (Copilot @ `ea513d5`) "Copilot was unable to review this pull request because the user who requested the review has reached their quota limit." — not a finding at all; the bot produced no inline comments and its failing check-run is the quota placeholder, not a code defect. Its failure carries no signal about the change.
+
+### CI at triage time
+Three of four checks green on the head SHA (Validate Adapter Contract, Validate Documentation, ros-manifest tests). `Lint (pre-commit)` is still pending on both workflow runs; per run-issue step 9 (#314) triage does not wait. `merge_pr.sh` gates the merge on CI regardless.
+
+### Merge recommendation
+Ready to merge once `Lint (pre-commit)` finishes green. No fix round is needed; `/address-findings` has nothing to work. A `## Decision summary` is already present in the PR body, so the review gate's second precondition is satisfied.
