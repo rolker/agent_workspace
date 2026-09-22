@@ -50,8 +50,10 @@ exempt from the new outer per-agent timeout (item 3).
    agents (exit 2, reusing existing validation).
 
 3. **Per-agent timeout.** Wrap codex/claude/copilot's `run_agent_sync` in
-   `timeout "$AGENT_TIMEOUT"` (default `1800` = 30m, matching
-   `AGY_PRINT_TIMEOUT`; env-overridable so tests inject small values).
+   `timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT"` (default `1800` = 30m,
+   matching `AGY_PRINT_TIMEOUT`; kill-after 10s so a CLI ignoring SIGTERM
+   cannot outlive the bound; both env-overridable so tests inject small
+   values).
    Timeout exit (124) counts as that agent's failure. Gemini is exempt —
    `_agy_review.sh`'s own `--print-timeout` already bounds it and an
    external SIGTERM would race its timeout-then-partial-response contract
@@ -62,7 +64,9 @@ exempt from the new outer per-agent timeout (item 3).
    `_agy_review.sh` for gemini) does not abort the run: write `---
    Review failed ---` plus the reason into that agent's findings file,
    skip launching it, continue with the others. Exit 1 only when *no*
-   selected agent has a resolvable binary.
+   selected agent has a resolvable binary — a dependency error like a
+   missing `gh`: nothing written, no triplets, each agent named on
+   stderr (distinct from exit 3 by the exit code itself).
 
 5. **Parallel dispatch.** Each agent runs in a background subshell that
    itself appends `--- Review complete/failed ---` to its own findings
@@ -71,9 +75,16 @@ exempt from the new outer per-agent timeout (item 3).
    agent never delays a fast agent's marker. Parent collects `$!` per
    agent into a `pids` array, then loops `wait "$pid" || rc=$?` per agent
    (script runs under `set -euo pipefail`; an uncaptured `wait` on a
-   failed job would abort the loop before later agents are collected).
-   Background jobs write nothing to stdout, so the `MODE=`/`AGENT=`/
-   `FINDINGS_FILE=`/`EXIT=` block stays contiguous.
+   failed job would abort the loop before later agents are collected),
+   unsetting each PID once reaped. Background jobs write nothing to
+   stdout. **Interrupt safety**: the parent traps INT/TERM/HUP and its
+   EXIT cleanup kills every job still running; each job arms its own
+   TERM trap *before* spawning its CLI as a waited-on child (`exec` in
+   `run_agent_sync` makes the child PID the CLI's), and `_agy_review.sh`
+   does the same for agy — so an abandoned run leaves no CLI burning
+   quota. **Live observation**: multi-agent mode prints each findings
+   path before launching (for `tail -f`); the triplets follow after
+   collection, and callers parse by prefix, not position.
 
 6. **Shared-diff failure path.** If the diff fetch fails or is empty,
    write the existing `--- Review error: ... ---` marker into *every*
@@ -157,3 +168,24 @@ tmux entirely); this revision folds in all ten round-1 findings.
 ## Estimated Scope
 
 Single PR.
+
+## Implementation Notes
+
+- Three live parallel runs (Gemini + Codex) of this branch through the
+  new path drove the last two commits: Gemini found the orphaned-jobs
+  interrupt gap, the withheld findings paths and the missing kill-after;
+  Codex found the trap-after-spawn launch-window race (in the job and in
+  `_agy_review.sh`) and the stale-PID cleanup. Both flagged the exit-1
+  contract mismatch independently; resolved by documenting exit 1 as a
+  no-artifact dependency error (Approach item 4) rather than writing
+  markers before the artifact dir exists.
+- On the third run Gemini itself failed (agy: output token limit
+  exceeded) and the helper reported it as a failed review with the
+  reason — the #288 validation working as intended, not a defect here.
+- Codex's findings file echoes the whole prompt and its tool transcript
+  before the answer (93 KB for a 79 KB prompt). `codex exec` has
+  `--output-last-message <file>`; noted on #313, out of scope here.
+- Concurrency test asserts interval overlap first and wall clock only as
+  a loose secondary (round-2 plan review); the interrupt test sends
+  SIGTERM because bash ignores SIGINT in background children of a
+  non-interactive shell, so a test-sent INT never arrives.
