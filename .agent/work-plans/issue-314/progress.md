@@ -76,3 +76,13 @@ stale against #300's landed wording.
 - [ ] Sequence #314's final review/merge after #300 lands (or rebase early) since both edit the same `SKILL.md` neighborhood (step 6/11).
 - [ ] Consider a short ADR-0014 addendum (ADR-0008 mechanism) recording the sub-agent-reuse policy, including the "never" list, so it isn't only recoverable from `SKILL.md` prose.
 - [ ] If item 3 (agent reuse) proves harder to land than items 1-2, split it into a follow-up issue/PR rather than holding the two mechanical fixes hostage to it.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 11:47 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to plan-task with the review notes carried in: update review_loop_lifecycle.md's "implement (inline)" references in the same PR; sequence the final review/merge after #300 (merge from main first; overlap is step 6's merge-refused paragraph); a short ADR-0014 addendum for the agent-reuse policy incl. the never-list; keep agent reuse as its own plan step so it can be split off if it drags.
