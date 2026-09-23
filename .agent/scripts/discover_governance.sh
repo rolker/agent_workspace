@@ -16,7 +16,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=_real_case_path.sh
-source "$SCRIPT_DIR/_real_case_path.sh"
+if ! source "$SCRIPT_DIR/_real_case_path.sh" 2>/dev/null; then
+    # A read-only report: without the helper, still report, using the
+    # candidate spelling that found each file (exact on case-sensitive
+    # filesystems; on a case-insensitive one a file may be reported under
+    # the probe's spelling rather than its stored name) — and say so.
+    echo "WARNING: _real_case_path.sh not found next to discover_governance.sh; reporting candidate spellings as-is" >&2
+    real_case_relpath() { printf '%s\n' "$2"; }
+fi
 
 OUTPUT_JSON=false
 if [[ "${1:-}" == "--json" ]]; then

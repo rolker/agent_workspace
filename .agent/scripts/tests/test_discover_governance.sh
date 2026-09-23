@@ -141,6 +141,31 @@ else
     fail "(E1) --json output: $out"
 fi
 
+echo "TEST: without _real_case_path.sh the report still runs, with a warning"
+# The helper is sourced at startup; a copy without it must not abort
+# (set -euo pipefail) — it warns on stderr naming the helper and reports
+# using the candidate spellings.
+sb="$(make_sandbox)"
+rm "$sb/.agent/scripts/_real_case_path.sh"
+mkdir -p "$sb/docs" "$sb/project"
+echo "# Design" > "$sb/docs/design.md"
+echo "# Architecture" > "$sb/project/ARCHITECTURE.md"
+rc=0
+out="$(run_discover "$sb" 2>"$TMP_ROOT/nohelper.err")" || rc=$?
+err="$(cat "$TMP_ROOT/nohelper.err")"
+if [[ $rc -eq 0 ]]; then
+    pass "(F1) helper missing: exits 0"
+else
+    fail "(F1) helper missing: exit $rc, stderr: $err"
+fi
+if [[ "$err" == *"WARNING"*"_real_case_path.sh not found"* ]]; then
+    pass "(F2) helper missing: stderr warning names _real_case_path.sh"
+else
+    fail "(F2) helper missing: stderr was: $err"
+fi
+assert_row "(F3) helper missing: docs/design.md still reported" "$out" docs/design.md architecture workspace
+assert_row "(F4) helper missing: project/ARCHITECTURE.md still reported" "$out" project/ARCHITECTURE.md architecture project
+
 echo ""
-echo "test_discover_governance: ${PASS} passed, ${FAIL} failed"
+echo "test_discover_governance:${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]
