@@ -126,13 +126,16 @@ reviews, comments, or prior entries" and stop only if both sides are empty.
 **Also read the prior local timeline** (integrator step). The GitHub side
 is one source; the issue's own `progress.md` is the other. `<issue>` is
 the issue number resolved from the PR head branch (`feature/issue-<N>`),
-not the PR number. One call correlates both sides by head SHA:
+not the PR number. One call, run from the PR's worktree, correlates both
+sides by head SHA. The timeline is the one step 7 persists to,
+`<worktree>/.agent/work-plans/issue-<issue>/progress.md` (not the
+main checkout's, which does not carry an in-flight branch's timeline):
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/review_progress.sh sources --head <head_sha> \
     --reviews <saved fetch_pr_reviews.json> \
-    --progress $WS_ROOT/.agent/work-plans/issue-<issue>/progress.md
+    --progress "$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<issue>/progress.md"
 ```
 
 It prints JSON with `local_findings` (unchecked findings, never the
@@ -149,19 +152,31 @@ the same defect. A missing `progress.md` is treated as an empty timeline; a
 malformed one (unterminated code fence) fails loudly rather than
 pretending the timeline is empty.
 
-Run `sources` from the PR's target worktree. For a nonmatching review SHA it
-uses the current repository's history: the review must be an ancestor of the
-head, and their tree diff may touch only this issue's work-plan directory,
-`ROADMAP.md`, or `docs/ROADMAP.md`, using the merge gate's shared rule.
-The issue number comes from the canonical `--progress` path; the timeline may
-be stored outside the target repository. Without that path, a Git repository,
-or resolvable commits, only the existing exact-short-SHA matching applies.
-No history is fetched automatically.
+**Coverage** (#309). For a review SHA other than the head, `sources` checks
+the history of the repository it runs in (hence: run it from the PR's
+worktree): the review must be an ancestor of the head, and their tree diff
+may touch only this issue's work-plan directory, `ROADMAP.md`,
+`docs/ROADMAP.md`, or `docs/roadmap.md` — the merge gate's shared rule
+(`_bookkeeping.sh`). So the loop's own `## Checkpoint` / review commits no
+longer age a review out. The issue number comes from the canonical
+`--progress` path (one ending `/.agent/work-plans/issue-<N>/progress.md`); the file may
+be stored outside the target repository. Nothing is fetched.
 
 Each retained local finding includes its original `sha`, `covers_head: true`,
 and `coverage` (`exact` or `bookkeeping`). For bookkeeping coverage, report
 `Local Review @ R (covers H via bookkeeping)` in the source attribution;
-never imply the review was performed at H. Genuinely stale entries are dropped.
+never imply the review was performed at H.
+
+Entries with open findings that do not cover the head are listed in
+`dropped_entries` (`entry_type`, `sha`, `open_findings`, `reason`, `why`):
+- `reason: "stale"` — verified: code (or another non-bookkeeping path)
+  changed since, or the review is not an ancestor. A prior round; build on
+  it, do not re-list what it closed.
+- `reason: "unverifiable"` — the helper could not check (no repository at
+  the cwd, a SHA that does not resolve there, a non-canonical `--progress`
+  path); a warning is also printed on stderr. **Do not treat these as
+  resolved**: read that entry in `progress.md` and check its open findings
+  against the code yourself.
 
 ### 4. Load governance context
 
