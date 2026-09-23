@@ -979,20 +979,50 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
         # Close a code fence left open by the 200-line cut or by an early
         # extractor stop. An unclosed fence would swallow everything after
         # it — including the `## Output Format` footer — into one code
-        # block, and the reviewer would never see its instructions. A
-        # closing fence must match the marker that opened it, so a ``` line
-        # inside a ~~~ block counts as content, not as a toggle.
+        # block, and the reviewer would never see its instructions.
+        #
+        # Fence rules follow CommonMark, because that is how the footer
+        # gets read:
+        #   - an opener is a run of 3+ backticks or 3+ tildes; a backtick
+        #     opener's info string may not itself contain a backtick;
+        #   - a closer is a run of the SAME character, at least as long as
+        #     the opener's, followed by whitespace only. So inside a fence
+        #     ```js is content (it has an info string), a ``` line inside a
+        #     ```` fence is content (too short), and ``` inside ~~~ is
+        #     content (wrong character);
+        #   - the closer emitted for a fence still open at the end repeats
+        #     the opener's character and run length exactly.
+        # Leading whitespace is stripped before matching (CommonMark allows
+        # at most 3 spaces) so a fence nested in a list item still counts;
+        # the cost is that a 4-space-indented ``` line counts as a fence
+        # too, which errs toward emitting a closer.
         PLAN_CONTEXT_OPEN_FENCE=$(awk '
+            function run_len(s, c,    n) {
+                n = 0
+                while (substr(s, n + 1, 1) == c) n++
+                return n
+            }
             {
                 line = $0
                 sub(/^[ \t]+/, "", line)
-                if (line ~ /^```/ || line ~ /^~~~/) {
-                    marker = substr(line, 1, 3)
-                    if (open == "") open = marker
-                    else if (marker == open) open = ""
+                c = substr(line, 1, 1)
+                if (c != "`" && c != "~") next
+                n = run_len(line, c)
+                if (n < 3) next
+                rest = substr(line, n + 1)
+                if (open_n == 0) {
+                    if (c == "`" && index(rest, "`") > 0) next
+                    open_c = c
+                    open_n = n
+                } else if (c == open_c && n >= open_n && rest ~ /^[ \t]*$/) {
+                    open_n = 0
                 }
             }
-            END { print open }
+            END {
+                s = ""
+                for (i = 0; i < open_n; i++) s = s open_c
+                print s
+            }
         ' <<< "$PLAN_CONTEXT_BODY")
 
         {

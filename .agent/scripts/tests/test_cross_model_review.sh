@@ -1305,6 +1305,53 @@ count_fence_lines() {
     grep -cE '^[[:space:]]{0,3}(```|~~~)' || true
 }
 
+# Walk prompt file $1 from `## Plan Context` with CommonMark fence rules
+# (opener: 0-3 spaces, 3+ backticks or tildes, a backtick opener's info
+# string holds no backtick; closer: same char, run >= opener's, whitespace
+# only after) and print "inside" or "outside" for the `## Output Format`
+# line — "missing" if it never appears. Written independently of the
+# script's own fence tracker, so it is an oracle, not a copy.
+footer_fence_state() {
+    awk '
+        /^## Plan Context$/ { go = 1 }
+        !go { next }
+        /^## Output Format$/ && !open_n { print "outside"; found = 1; exit }
+        /^## Output Format$/ && open_n  { print "inside";  found = 1; exit }
+        {
+            if (!match($0, /^ ? ? ?(`+|~+)/)) next
+            ind = 0
+            while (substr($0, ind + 1, 1) == " ") ind++
+            if (ind > 3) next
+            c = substr($0, ind + 1, 1)
+            n = 0
+            while (substr($0, ind + n + 1, 1) == c) n++
+            if (n < 3) next
+            rest = substr($0, ind + n + 1)
+            if (!open_n) {
+                if (c == "`" && rest ~ /`/) next
+                open_c = c; open_n = n
+            } else if (c == open_c && n >= open_n && rest ~ /^[ \t]*$/) {
+                open_n = 0
+            }
+        }
+        END { if (!found) print "missing" }
+    ' "$1"
+}
+
+# Write an Approach of $2 filler lines followed by the text in $3 (which
+# should straddle the 200-line cap) to plan.md, then a Files section.
+write_straddling_plan() {
+    local path="$1" filler="$2" tail="$3" i
+    mkdir -p "$(dirname "$path")"
+    {
+        printf '# Plan: straddle\n\n## Approach\n\n'
+        for ((i = 1; i <= filler; i++)); do printf 'FILLER %d\n' "$i"; done
+        printf '%s\n' "$tail"
+        for ((i = 1; i <= 100; i++)); do printf 'PAST CAP %d\n' "$i"; done
+        printf '\n## Files to Change\n\nTAIL SECTION\n'
+    } > "$path"
+}
+
 test_plan_context_present() {
     echo "TEST: the plan's ## Approach is appended as labelled plan context (#320)"
     setup
@@ -1571,6 +1618,135 @@ TAIL SECTION'
     assert_contains "the output-format footer is not swallowed" \
         "^## Output Format$" "$(cat "${MOCK_REPO}/${PROMPT_REL}")"
     assert_not_contains "the following section is still excluded" "TAIL SECTION" "$block"
+
+    teardown
+}
+
+test_plan_context_fence_info_string_is_content() {
+    echo "TEST: a \`\`\`js line inside a fence is content, not a closer (#320)"
+    setup
+
+    # CommonMark: a closer carries no info string, so ```js inside the
+    # bash fence is content and the bare ``` after it closes the fence.
+    # Treating ```js as a closer turns that bare ``` into an opener and
+    # the emitted "closer" opens a fence that swallows the footer.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '# Plan: info string
+
+## Approach
+
+```bash
+echo BEFORE
+```js
+echo AFTER
+```
+
+Prose after the fence.
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_eq "no closer is added to an already-closed fence (3 fence lines)" \
+        "3" "$(count_fence_lines <<< "$block")"
+    assert_eq "the output-format footer is outside every fence" \
+        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
+
+    teardown
+}
+
+test_plan_context_fence_longer_opener() {
+    echo "TEST: a 4-backtick fence is closed by 4, and a \`\`\` line inside it is content (#320)"
+    setup
+
+    # Extraction line 1 is the blank after the heading, so fillers take
+    # lines 2-196 and the tail lines 197-200: the cap lands with the
+    # 4-backtick fence still open and a 3-backtick line just inside it.
+    write_straddling_plan "${MOCK_REPO}/${PLAN_REL}" 195 '````markdown
+```bash
+echo INNER
+```'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "the cut happened" "truncated: [0-9]+ more lines" "$block"
+    assert_contains "the emitted closer repeats the 4-backtick opener" '^````$' "$block"
+    assert_eq "the output-format footer is outside every fence" \
+        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
+
+    teardown
+}
+
+test_plan_context_fence_tilde() {
+    echo "TEST: tilde fences are tracked by their own character and length (#320)"
+    setup
+
+    # (a) A closed ~~~ fence holding a ``` line: balanced, nothing added.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '# Plan: tilde
+
+## Approach
+
+~~~text
+```
+~~~
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code block
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a closed tilde fence" "0" "$exit_code"
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_eq "a closed tilde fence gets no extra closer (3 fence lines)" \
+        "3" "$(count_fence_lines <<< "$block")"
+    assert_eq "footer outside every fence (closed tilde fence)" \
+        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
+
+    # (b) A ~~~~ fence cut at the cap with a shorter ~~~ line and a ```
+    #     line inside it (lines 198-200): both are content, and the closer
+    #     emitted is ~~~~.
+    write_straddling_plan "${MOCK_REPO}/${PLAN_REL}" 196 '~~~~text
+~~~
+```'
+
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a cut tilde fence" "0" "$exit_code"
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "the emitted closer repeats the ~~~~ opener" '^~~~~$' "$block"
+    assert_eq "footer outside every fence (cut tilde fence)" \
+        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
+
+    teardown
+}
+
+test_plan_context_fence_unclosed_at_cap() {
+    echo "TEST: a long-marker fence left open by the 200-line cap is closed to its own length (#320)"
+    setup
+
+    # The fence opens on extraction line 200 — the last line kept.
+    write_straddling_plan "${MOCK_REPO}/${PLAN_REL}" 198 '`````python'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "the fence opener is the last kept line" '^`````python$' "$block"
+    assert_contains "the emitted closer repeats the 5-backtick opener" '^`````$' "$block"
+    assert_not_contains "content past the cap is cut" "PAST CAP 1$" "$block"
+    assert_eq "the output-format footer is outside every fence" \
+        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
 
     teardown
 }
@@ -3021,6 +3197,10 @@ test_plan_context_truncated
 test_plan_context_no_progress
 test_plan_context_large_approach
 test_plan_context_fence_balanced
+test_plan_context_fence_info_string_is_content
+test_plan_context_fence_longer_opener
+test_plan_context_fence_tilde
+test_plan_context_fence_unclosed_at_cap
 test_plan_context_stops_at_h1_or_rule
 test_sync_flag_rejected
 test_agents_all_succeed
