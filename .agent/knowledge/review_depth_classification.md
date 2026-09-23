@@ -95,7 +95,7 @@ file count.
 - `AGENTS.md`, `CLAUDE.md`
 - `.github/copilot-instructions.md`
 - `.agent/instructions/*.md`
-- `docs/PRINCIPLES.md`, `PRINCIPLES.md`
+- `docs/principles.md`, `docs/PRINCIPLES.md`, `PRINCIPLES.md`
 - `docs/decisions/*.md` (ADRs)
 - `.claude/skills/*/SKILL.md` (skill definitions)
 - `.agent/knowledge/*.md` (knowledge docs)

@@ -248,7 +248,7 @@ Research checkpoint — findings gathered, decisions pending."
 Then, for each **new or changed** item not already decided in the digest,
 ask the user to choose:
 
-- **Add to roadmap** — append to the "To Consider" section of `docs/ROADMAP.md`
+- **Add to roadmap** — append to the "To Consider" section of `docs/roadmap.md`
 - **Skip** (with reason) — record in digest, won't be re-prompted
 - **Defer** — record in digest, will be re-prompted on next run
 
@@ -256,7 +256,7 @@ Items with existing decisions are shown as a summary at the end.
 
 ### 8. Act on decisions
 
-**Add to roadmap**: Append items to the "To Consider" section of `docs/ROADMAP.md`,
+**Add to roadmap**: Append items to the "To Consider" section of `docs/roadmap.md`,
 grouped under a heading for this project and date. Do NOT create GitHub issues —
 issues are created later when work is ready to begin, typically during a
 `/brainstorm` session that reviews the roadmap.

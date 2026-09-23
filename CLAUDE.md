@@ -62,7 +62,7 @@ often the hook fires.
 
 - [`AGENTS.md`](AGENTS.md) — Shared workspace rules (all agents)
 - [`README.md`](README.md) — Workspace purpose and goals
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design
+- [`docs/design.md`](docs/design.md) — System design
 - [`docs/decisions/`](docs/decisions/) — Architecture Decision Records
 - [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) — Detailed worktree patterns
 - [`.agent/AI_IDENTITY_STRATEGY.md`](.agent/AI_IDENTITY_STRATEGY.md) — Multi-framework identity

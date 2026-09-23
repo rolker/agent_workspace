@@ -88,5 +88,5 @@ self-review against a base ref.
 - [`AI_IDENTITY_STRATEGY.md`](AI_IDENTITY_STRATEGY.md) — Identity configuration
 - [`WORKFORCE_PROTOCOL.md`](WORKFORCE_PROTOCOL.md) — Multi-agent coordination
 - [`WORKTREE_GUIDE.md`](WORKTREE_GUIDE.md) — Worktree patterns
-- [`../ARCHITECTURE.md`](../ARCHITECTURE.md) — System design
+- [`../docs/design.md`](../docs/design.md) — System design
 - Project repo `.agents/README.md` — Per-repo agent guide (if present)

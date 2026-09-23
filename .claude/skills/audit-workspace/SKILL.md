@@ -28,7 +28,7 @@ still accurate?
 
 ### 1. Principles enforcement
 
-For each principle in `docs/PRINCIPLES.md`, check whether an enforcement
+For each principle in `docs/principles.md`, check whether an enforcement
 mechanism exists:
 
 | Principle | Enforcement | Status |
