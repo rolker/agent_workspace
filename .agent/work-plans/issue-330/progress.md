@@ -117,3 +117,13 @@ The approach is right and follows ADR-0011, but the delegation interacts badly w
 - [ ] Add ARCHITECTURE.md L98-100 to Files to Change and correct the consequences row that says it does not describe `validate_workspace.py`
 - [ ] Update `validate_workspace.py`'s module docstring (item 2) to match the delegated check
 - [ ] Target `test_project_registry.sh` (reuse `make_validate_sandbox`; copy `ros2_colcon` into the sandbox) for the registry-loop tests, and confirm the existing `test_validate_*` cases still pass
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:16 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise, all 7 (Recommended): fix the five must-fix items from the Plan Review (registry parse errors must not be blamed on healthy entries; single_project root check requires .git at the root or show-toplevel equality, tested with a plain dir nested in a repo; ARCHITECTURE.md L98-100 in Files to Change; validate_workspace.py docstring item 2; tests in test_project_registry.sh reusing make_validate_sandbox, existing test_validate_* cases still pass) and adopt both suggestions (prefix every ❌ line with `project '<name>':` rather than the first stderr line; note the no-`--project` adapter validate behaviour change in the PR description).
