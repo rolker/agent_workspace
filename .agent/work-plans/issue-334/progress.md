@@ -147,3 +147,60 @@ dual-spelling additions; plus inspiration-tracker's roadmap writes,
 what-next's three-candidate project probe + AGENT_ONBOARDING.md link fix,
 a post-merge `git ls-files` re-introduction check with a macOS note, and
 #328 added to the merge-main watch list.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-23 13:30 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: needs-work
+
+**Issue**: #334 — Docs reorganisation: move planning docs into docs/ with lowercase names; ARCHITECTURE.md becomes docs/design.md; discovery accepts both spellings
+**Plan**: `.agent/work-plans/issue-334/plan.md` at `c77cd67`
+**Branch**: `feature/issue-334`
+
+Round 2 — re-review of the revision addressing the round-1 Plan Review (79e5555), checked against source at `db012b3` (main already merged; `git merge-base --is-ancestor main HEAD` true).
+
+### Prior findings (round 1)
+
+| # | Item | Status |
+|---|---|---|
+| 1 | `merge_pr.sh` bookkeeping lists additive + gate tests per spelling | Resolved — steps 4–5; lines 776/1097 confirmed; existing `docs/ROADMAP.md` fixtures (629, 1227) kept |
+| 2 | `.github/workflows/validate.yml:73` `required_files` | Resolved — step 6, owner-approved Ask-First; line 73 confirmed; no other `.github/` hit |
+| 3 | Workspace-own renames vs project-scope dual spelling | Partially — the split is right, but step 7 omits four workspace-own `docs/PRINCIPLES.md` lines (finding 1 below) |
+| 4 | `inspiration-tracker` 251/259 | Resolved — 161 left alone, correctly |
+| 5 | `docs/design.md` self-refs in a post-rename commit; `docs/roadmap.md:340` recorded | Resolved — step 9 line numbers are swapped (finding 3) |
+| 6 | `what-next` three candidates; `AGENT_ONBOARDING.md:91` link | Resolved |
+| 7 | `git ls-files` re-introduction check + macOS note | Resolved — step 13 |
+| 8 | #328 on the merge-main watch list | Resolved in name; the description of #328's footprint is wrong and misses its `docs/ROADMAP.md` edit (finding 2) |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Single PR; three-commit split (pure rename / sweep+scripts+CI / design.md self-refs) keeps "content unchanged" literally true. |
+| Issue alignment | Good | Both Issue Review actions, the three checkpoint corrections, and the CLAUDE.md-stays decision are in. |
+| File targeting | Needs work | Step 7 misses four workspace-own `docs/PRINCIPLES.md` references (finding 1). |
+| Consequences | Good | Additive merge-gate/roadmap handling, CI fix, discovery for both scopes, re-introduction check all present. |
+| Principle alignment | Good | Workspace/project split now honours "don't force a convention on projects". |
+| ADR compliance | Good | ADR-0008 not triggered (no ADR mentions the paths; re-verified by grep). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[File targeting — must-fix]** — Step 7 lists four workspace-scope skills, but four more skills name the workspace's *own* principles file and are listed in step 8 only for their project-scope lines: `.claude/skills/review-code/SKILL.md:276`, `.claude/skills/review-issue/SKILL.md:116`, `.claude/skills/review-plan/SKILL.md:172` (each "`docs/PRINCIPLES.md` — workspace principles"), and `.claude/skills/gather-project-knowledge/SKILL.md:110` ("Workspace principles (from `docs/PRINCIPLES.md`)"). After the `git mv` these point at a file that no longer exists in the three review skills that load principles on every run. Resolution: add all four lines to step 7 (rename to `docs/principles.md`) and to the Files-to-Change table (so the "4 skills" / "6 skills" rows become 8 workspace-scope rename sites across 8 skills plus the 6 project-scope ones), keeping step 8's dual-spelling edits on lines 200/176/120/112.
+2. **[Concurrency — suggestion]** — The #328 description in Context and step 12 is out of date against the #328 plan (`feature/issue-328`, `15281bc`): #328 deletes CLAUDE.md's whole `## Tool Mapping` section (lines 15–43, not just the paragraph and table), rewords AGENTS.md's "Tool Usage" bullet (~line 118, not a script-table row), and **edits `docs/ROADMAP.md:373`** (drops `block-bash-tool-mapping` from the "Fail-closed hook audit" example list) — the one file this plan case-renames. Hunks are still disjoint from this plan's (CLAUDE.md:65, AGENTS.md:420), and merge-ort's rename detection carries a content edit across a 100%-similar rename in either order, so no plan change is needed beyond: (a) correct the #328 footprint in Context/step 12 and add `docs/ROADMAP.md:373` to the watch list; (b) if #334 lands first, #328's merge of `main` is the risky direction — note in this PR body (or as a comment on #328) that #328 should run the same `git ls-files docs/ROADMAP.md docs/PRINCIPLES.md ARCHITECTURE.md` check after merging `main` and confirm its roadmap edit landed in `docs/roadmap.md`.
+3. **[Accuracy — suggestion]** — Step 9's line numbers are swapped: in the current `ARCHITECTURE.md`, line 47 is `│   ├── PRINCIPLES.md` (already under `docs/`, rename to `principles.md`) and line 52 is `├── ARCHITECTURE.md        # This file` (move under `docs/` as `design.md`). Line 222 is correct. Intent is clear; fix the numbers so the reviewer of commit 3 can audit against them.
+4. **[Test design — suggestion]** — Step 3 says to run `discover_governance.sh` "with `ROOT_DIR` pointed at a sandbox", but `ROOT_DIR` is derived from `SCRIPT_DIR` (`$(cd "$SCRIPT_DIR/../.." && pwd)`, line 17), not overridable from the environment, and the project scan only looks at `$ROOT_DIR/project`. Resolution: have the test copy the script into `<sandbox>/.agent/scripts/` and build fixtures under `<sandbox>/` (workspace scope) and `<sandbox>/project/` (project scope) — no script change needed; do not add an env override just for the test.
+5. **[File targeting — suggestion]** — `.agent/knowledge/principles_review_guide.md:60` also names "`ARCHITECTURE.md` directory tree" (workspace's own file), not only the principles file line 48; step 7 describes the file as referencing only the principles file. Rename both.
+
+### Summary
+
+The revision resolves round 1's merge-gate, CI, and scope-split problems and adopts every suggestion. One must-fix remains: four workspace-own `docs/PRINCIPLES.md` references (review-code, review-issue, review-plan, gather-project-knowledge) are missing from the rename list and would dangle after the move. The rest is watch-list accuracy (#328 also edits the roadmap file being renamed) and small corrections. All are mechanical; they can be folded into the plan or applied at implement time.
+
+### Recommended Actions
+
+- [ ] Add `review-code/SKILL.md:276`, `review-issue/SKILL.md:116`, `review-plan/SKILL.md:172`, `gather-project-knowledge/SKILL.md:110` to step 7 (rename to `docs/principles.md`) and the Files-to-Change table.
+- [ ] Correct #328's footprint in Context/step 12 (whole `## Tool Mapping` section; AGENTS.md "Tool Usage" bullet; `docs/ROADMAP.md:373`) and flag that whichever branch merges `main` second runs the `git ls-files` re-introduction check.
+- [ ] Fix step 9's swapped line numbers (47 = `PRINCIPLES.md` under docs/, 52 = `ARCHITECTURE.md # This file`).
+- [ ] Step 3: build the discovery fixtures by copying the script into `<sandbox>/.agent/scripts/` (ROOT_DIR is not env-overridable).
+- [ ] Include `principles_review_guide.md:60` (`ARCHITECTURE.md` directory tree) in the rename.
