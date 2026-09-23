@@ -484,6 +484,38 @@ test_validate_parse_error_verbose_says_shape_not_checked() {
         "project 'alpha' (single_project): $sb/projects/alpha OK" "$out"
 }
 
+# Register <name> under a stub project type whose adapter_validate body is
+# <validate_body>; every other verb is a no-op. Creates the hosting dir.
+# Usage: make_stub_type_entry <sb> <name> <validate_body>
+make_stub_type_entry() {
+    local sb="$1" name="$2" body="$3"
+    mkdir -p "$sb/.agent/project_types/stub_type" "$sb/projects/$name"
+    {
+        local verb
+        for verb in setup sync build test install env project_root repos \
+            scope_for_pr worktree_repos worktree_env; do
+            echo "adapter_${verb}() { :; }"
+        done
+        echo "adapter_validate() { $body; }"
+    } > "$sb/.agent/project_types/stub_type/adapter.sh"
+    echo "$name stub_type" >> "$sb/.agent/projects.local"
+}
+
+test_validate_adapter_timeout() {
+    echo "TEST: a hung adapter validate is killed and reported as timed out"
+    local sb out rc=0 start elapsed
+    sb="$(make_validate_sandbox)"
+    # A child process (sleep) holding the output pipes: killing only the
+    # dispatcher would still leave the output read blocked.
+    make_stub_type_entry "$sb" hang 'sleep 30'
+    start="$(date +%s)"
+    out="$(WS_ADAPTER_VALIDATE_TIMEOUT=1 run_validate "$sb")" || rc=$?
+    elapsed=$(( $(date +%s) - start ))
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "reports the timeout" "project 'hang': adapter validate timed out after 1s" "$out"
+    assert_eq "returns promptly (not after the 30 s sleep)" "yes" "$([ "$elapsed" -lt 10 ] && echo yes || echo "no (${elapsed}s)")"
+}
+
 test_validate_nested_non_git_entry_fails() {
     echo "TEST: validate fails a registered non-git dir nested inside another repo"
     local sb out rc=0
@@ -1375,6 +1407,7 @@ test_validate_ros2_colcon_entry_without_git_passes
 test_validate_ros2_colcon_failure_prefixes_every_line
 test_validate_parse_error_does_not_blame_healthy_entry
 test_validate_parse_error_verbose_says_shape_not_checked
+test_validate_adapter_timeout
 test_validate_nested_non_git_entry_fails
 test_single_project_scoped_validate_ignores_broken_sibling
 test_single_project_scoped_validate_nested_dir_fails

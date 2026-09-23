@@ -227,7 +227,7 @@ Dropped: CDPATH stdout on `cd` in single_project adapter_validate (root is alway
 
 ### Findings
 - [x] (suggestion) Under registry parse errors, the verbose line still says `OK` though only hosting-dir presence was checked; say so (e.g. "hosting dir present; shape not checked — registry has parse errors") — `.agent/scripts/validate_workspace.py:173`
-- [ ] (suggestion) `delegate_shape_check` has no `timeout=`; bound it and report "adapter validate timed out" on `TimeoutExpired` so a future adapter cannot hang `make validate` — `.agent/scripts/validate_workspace.py:67`
+- [x] (suggestion) `delegate_shape_check` has no `timeout=`; bound it and report "adapter validate timed out" on `TimeoutExpired` so a future adapter cannot hang `make validate` — `.agent/scripts/validate_workspace.py:67`
 - [ ] (suggestion) On non-zero exit with empty stderr, fall back to the adapter's stdout lines (prefixed) before the generic "exited N" message — `.agent/scripts/validate_workspace.py:78`
 
 ## Checkpoint

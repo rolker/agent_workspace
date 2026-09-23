@@ -22,6 +22,7 @@ Usage:
 """
 
 import os
+import signal
 import sys
 import subprocess
 import argparse
@@ -55,24 +56,61 @@ def get_git_branch(repo_path):
         return None
 
 
+# Bound on one project's `adapter validate`. The verb is local filesystem
+# checks (single_project: one `git rev-parse`; ros2_colcon: a manifest walk
+# with a stat per pinned repo) that finish in well under a second, so 60 s
+# leaves ample room for a cold or network filesystem while still stopping a
+# hung adapter from hanging `make validate`. Overridable for tests.
+ADAPTER_VALIDATE_TIMEOUT_ENV = "WS_ADAPTER_VALIDATE_TIMEOUT"
+ADAPTER_VALIDATE_TIMEOUT_DEFAULT = 60.0
+
+
+def adapter_validate_timeout():
+    """Seconds allowed for one `adapter validate` run (env override, else 60)."""
+    raw = os.environ.get(ADAPTER_VALIDATE_TIMEOUT_ENV, "")
+    try:
+        value = float(raw)
+    except ValueError:
+        return ADAPTER_VALIDATE_TIMEOUT_DEFAULT
+    return value if value > 0 else ADAPTER_VALIDATE_TIMEOUT_DEFAULT
+
+
 def delegate_shape_check(workspace_root, name):
     """Run `adapter --project <name> validate`; return issue lines (empty = OK).
 
     Both output streams are captured: the adapter's pass line must not print
     inline in the one-line-per-project report, and every failure line is
     reported prefixed with the project's name (not raw adapter stderr).
+
+    The run is bounded by adapter_validate_timeout(). The adapter runs in its
+    own session so a timeout kills the whole process group: killing only the
+    dispatcher would leave any child it spawned holding the output pipes open,
+    and collecting the output would then hang anyway.
     """
     adapter = workspace_root / ".agent" / "scripts" / "adapter"
+    timeout = adapter_validate_timeout()
     try:
-        result = subprocess.run(
+        # pylint: disable-next=consider-using-with  # killpg needs the Popen
+        proc = subprocess.Popen(
             [str(adapter), "--project", name, "validate"],
             cwd=str(workspace_root),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            check=False,
+            start_new_session=True,
         )
     except OSError as exc:
         return [f"project '{name}': cannot run the adapter's validate verb: {exc}"]
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.communicate()
+        return [f"project '{name}': adapter validate timed out after {timeout:g}s"]
+    result = subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
     if result.returncode == 0:
         return []
     lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
