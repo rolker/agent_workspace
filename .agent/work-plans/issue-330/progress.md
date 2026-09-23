@@ -206,3 +206,26 @@ Implemented the plan at `60caff4` plus the owner's two round-2 instructions.
 - `ARCHITECTURE.md`, `AGENTS.md` — describe per-type delegation and the `make validate` (whole workspace) vs `adapter --project <name> validate` (one project) split.
 
 Tests: `run_script_tests.sh` — all 27 suites passed (registry suite 240/240). Against this machine's registry (worktree code in a scratch copy): whole-workspace validation passes with gz4d, p11-jazzy and p11-rolling OK; `adapter --project gz4d validate` passes. Pre-change main code fails both on p11-jazzy/p11-rolling "is not a git repository".
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 10:45 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-330 at `d58c7da`
+**Base**: main
+**Depth**: Deep (reason: 662 changed lines, ~240 outside work-plans; AGENTS.md governance file)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Specialists: static (pre-commit shellcheck/black/flake8/pylint clean), governance, plan drift, Claude adversarial, cross-model (gemini: 5 findings, 2 kept as suggestions, 1 downgraded, 2 dropped; codex: no issues). All 27 script suites pass (registry 240/240). Real registry: gz4d and p11-rolling pass; `adapter --project gz4d validate` passes; p11-jazzy fails in the worktree only because the gitignored `.agent/projects.d/p11-jazzy.sh` (its ROS_DISTRO) is absent there — it passes from the main checkout.
+
+Beyond-plan calls: (a) unknown-type entries no longer print the verbose OK line — accepted; the old line printed OK next to an "unknown project type" error, which was wrong. (b) unknown-type entries get no `.git` check — accepted; an unknown type has no known shape to check, the entry already fails, and the code comment says so. Hosting-dir-missing is still reported for them.
+
+Dropped: CDPATH stdout on `cd` in single_project adapter_validate (root is always absolute, so CDPATH never applies); empty `.git` directory passes (deliberate parity with the validator's existing presence test, per plan step 1).
+
+### Findings
+- [ ] (suggestion) Under registry parse errors, the verbose line still says `OK` though only hosting-dir presence was checked; say so (e.g. "hosting dir present; shape not checked — registry has parse errors") — `.agent/scripts/validate_workspace.py:173`
+- [ ] (suggestion) `delegate_shape_check` has no `timeout=`; bound it and report "adapter validate timed out" on `TimeoutExpired` so a future adapter cannot hang `make validate` — `.agent/scripts/validate_workspace.py:67`
+- [ ] (suggestion) On non-zero exit with empty stderr, fall back to the adapter's stdout lines (prefixed) before the generic "exited N" message — `.agent/scripts/validate_workspace.py:78`
