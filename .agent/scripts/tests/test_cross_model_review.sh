@@ -1956,6 +1956,52 @@ LONG RULE SECTION BODY'
     teardown
 }
 
+test_plan_context_extractor_star_underscore_rules() {
+    echo "TEST: ***, * * *, ___ and indented rules end the Approach (#320)"
+    setup
+
+    local rule exit_code block
+    for rule in '***' '* * *' '___' '_ _ _' '   ***' '  - - -' '*****'; do
+        write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "## Approach
+
+**APPROACH BOLD LINE** is not a rule
+__ALSO NOT A RULE__
+
+${rule}
+
+AFTER RULE BODY"
+
+        exit_code=$(run_gemini_sync)
+        assert_exit_code "review completes with rule '${rule}'" "0" "$exit_code"
+        block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+        assert_contains "bold text before '${rule}' is kept" "APPROACH BOLD LINE" "$block"
+        assert_contains "underscore text before '${rule}' is kept" "ALSO NOT A RULE" "$block"
+        assert_not_contains "content after '${rule}' does not leak in" \
+            "AFTER RULE BODY" "$block"
+    done
+
+    # Four leading spaces is indented code, not a rule: the Approach goes on.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "## Approach
+
+APPROACH START
+
+    ***
+
+STILL APPROACH
+
+## Files to Change
+
+TAIL SECTION"
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with an indented-code ***" "0" "$exit_code"
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "a 4-space-indented *** does not end the Approach" \
+        "STILL APPROACH" "$block"
+    assert_not_contains "the next heading still ends it" "TAIL SECTION" "$block"
+
+    teardown
+}
+
 test_plan_context_extractor_unclosed_fence() {
     echo "TEST: an unclosed plan fence cuts at the first boundary seen inside it (#320)"
     setup
@@ -3453,6 +3499,7 @@ test_plan_context_outer_fence_longer_than_inner_run
 test_plan_context_extractor_ignores_boundaries_in_fences
 test_plan_context_extractor_long_rule
 test_plan_context_extractor_unclosed_fence
+test_plan_context_extractor_star_underscore_rules
 test_plan_context_stops_at_h1_or_rule
 test_sync_flag_rejected
 test_agents_all_succeed

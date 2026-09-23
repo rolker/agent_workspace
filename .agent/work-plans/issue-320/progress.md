@@ -560,7 +560,7 @@ Owner scope addition, not addressing a review box. The owner answered the "found
 
 ### Findings
 - [x] (suggestion) A plan fence that never closes runs the Approach to EOF, pulling later sections in (capped at 200 lines); cheap fix: if the fence is still open at EOF, cut at the first boundary line seen while it was open (the old one-sided "shorter, never longer" result) — `.agent/scripts/cross_model_review.sh:997-1025`
-- [ ] (suggestion) The section stop recognises only `-` thematic breaks; `***` / `___` (with optional inner spaces) are CommonMark rules too and currently let a later section leak in (reproduced with markdown_it by the Claude adversarial reviewer) — `.agent/scripts/cross_model_review.sh:1025`
+- [x] (suggestion) The section stop recognises only `-` thematic breaks; `***` / `___` (with optional inner spaces) are CommonMark rules too and currently let a later section leak in (reproduced with markdown_it by the Claude adversarial reviewer) — `.agent/scripts/cross_model_review.sh:1025`
 - [ ] (suggestion) `trap cleanup_jobs EXIT` is registered 90 lines after the `mktemp` calls, so a failure or signal in between leaks `SHARED_PROMPT` and now `SHARED_DIFF` too (window predates #320) — register the trap before the first `mktemp` — `.agent/scripts/cross_model_review.sh:743-833`
 
 ## Checkpoint

@@ -983,9 +983,10 @@ PLAN_CONTEXT_MAX_LINES=200
 PLAN_CONTEXT_FILE="${WORK_PLANS_DIR}/plan.md"
 if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
     # The section ends at the next H1/H2 heading or at a thematic break
-    # (a line of three or more `-`), whichever comes first — a plan that
-    # uses `# ` or a rule between sections must not leak the next section
-    # in here.
+    # (CommonMark: up to 3 leading spaces, then three or more of one of
+    # `-`, `*` or `_`, optionally separated by spaces or tabs), whichever
+    # comes first — a plan that uses `# ` or a rule between sections must
+    # not leak the next section in here.
     #
     # Boundaries are ignored while a fenced code block of the plan is open,
     # so a `# comment` or a `---` line inside a shell or YAML example does
@@ -1006,11 +1007,19 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
             while (substr(s, n + 1, 1) == c) n++
             return n
         }
+        # A CommonMark thematic break. Spelled without {n,} intervals so
+        # it holds on awks that lack them.
+        function is_rule(s) {
+            return s ~ /^ ? ? ?-[ \t]*-[ \t]*-[- \t]*$/ ||
+                   s ~ /^ ? ? ?\*[ \t]*\*[ \t]*\*[* \t]*$/ ||
+                   s ~ /^ ? ? ?_[ \t]*_[ \t]*_[_ \t]*$/
+        }
         /^## Approach[[:space:]]*\r?$/ && !in_section { in_section = 1; next }
         !in_section { next }
         {
             line = $0
             sub(/\r$/, "", line)
+            raw = line
             # At most 3 leading spaces, as in CommonMark: 4+ spaces or a tab
             # is indented code, never a fence. A fence nested deeper in a
             # list is then not seen, which can only end the Approach early
@@ -1025,7 +1034,7 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
             if (n >= 3) {
                 if (!fence_n) { fence_c = c; fence_n = n }
                 else if (c == fence_c && n >= fence_n && rest ~ /^[ \t]*$/) fence_n = 0
-            } else if ($0 ~ /^# / || $0 ~ /^## / || $0 ~ /^---+[[:space:]]*$/) {
+            } else if ($0 ~ /^# / || $0 ~ /^## / || is_rule(raw)) {
                 if (!fence_n) { stopped = 1; exit }
                 # Inside a fence: not a boundary, unless the fence never
                 # closes (see END).
