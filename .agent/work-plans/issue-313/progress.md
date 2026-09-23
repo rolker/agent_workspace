@@ -983,3 +983,18 @@ Fix both, then merge (Recommended)
 - [x] Two comments justified the guarded jq extraction by `set -e`, which the helper does not use; restated as "an unguarded jq failure would leave an empty value" (comment-only) — `.agent/scripts/_cli_review.sh:337,351`
 
 Tests: `test_cross_model_review.sh` 385 passed / 0 failed; `run_script_tests.sh` all 23 suites passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-23 10:18 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #327 at `debb083`
+**Depth**: Standard (reason: fix-round re-review of enforcement scripts, scoped to 4d7bb94..debb083; adversarial pass inline with a mutation check)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Verified: `test_cross_model_review.sh` 385 passed / 0 failed; shellcheck --severity=warning clean on the three changed scripts; `_cli_review.sh:86` confirms `set -uo pipefail` (no `-e`), so the corrected comments are accurate. Mutation check (new test's probe against the 4d7bb94 awk `$3` code): the running "a Z b" half fails the old code (RUNNING-REPORTED-FINISHED), so the test does guard the regression; the zombie "x y" half passes against both old and new code because bash has already reaped the child before `job_finished` runs (see finding).
+
+### Findings
+- [ ] (suggestion) the zombie half of `test_job_finished_proc_comm_with_space` is vacuous: the probe's own bash reaps "x y" during the foreground `sleep 1`, so `job_finished` returns via `kill -0` and never reads /proc; spawn it under a parent that does not reap (e.g. `sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 5'`), which a scratch mutation run confirmed makes the old code fail with DEAD-REPORTED-ALIVE and the new code pass — `.agent/scripts/tests/test_cross_model_review.sh:2375-2378`
