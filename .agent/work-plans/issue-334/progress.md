@@ -251,3 +251,18 @@ Deviations: (a) `-ef` same-file guard — accepted (cheap, correct, tested on Li
 ### Findings
 - [x] (must-fix) New same-file tests break on the case-insensitive filesystems they target: `ln -s` onto an existing name aborts under `set -e`, and lowercase-path assertions (A2, C2, the docs/roadmap.md loop case) see the uppercase spelling checked first; detect case-insensitivity and adapt fixtures/assertions (also decide which spelling discovery reports there) — `.agent/scripts/tests/test_discover_governance.sh:104`, `.agent/scripts/tests/test_update_roadmap.sh:45`
 - [x] (suggestion) Generic "ROADMAP.md" mentions that now describe the workspace's docs/roadmap.md missed the sweep (the verify grep only matched `docs/ROADMAP.md`) — `.claude/skills/what-next/SKILL.md:3,21`, `.claude/skills/inspiration-tracker/SKILL.md:228,341`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 14:22 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-334 at `4038a8b`
+**Addressed**: Local Review (Pre-Push) at `247682a` (2026-09-23 14:12 -04:00)
+**Commits**: 97644a2, 4038a8b
+
+### Actions
+- [x] (must-fix) Case-insensitive filesystems: discovery now reports the file's stored name (host decision), resolved by a new sourced helper `.agent/scripts/_real_case_path.sh` (lists each directory; exact spelling first, else the case-variant entry). `discover_governance.sh` reports it; `update_roadmap.sh` reads, writes back and prints it (stdout feeds merge_pr.sh's git add), falling back with a warning if the helper is missing (it never blocks a merge). Tests probe TMPDIR case sensitivity: the one-file/two-spellings fixture skips `ln -s` on a case-insensitive FS and keeps the symlink (the `-ef` guard) on Linux; new D2/D3/D4 and stored-name roadmap cases assert the stored spelling; new `test_real_case_path.sh` exercises the case-insensitive lookup on Linux by requesting a spelling the directory does not hold; `test_merge_pr_gate.sh` copies the helper into its sandbox — `.agent/scripts/tests/test_discover_governance.sh`, `.agent/scripts/tests/test_update_roadmap.sh`
+- [x] (suggestion) Generic ROADMAP.md mentions now say docs/roadmap.md / "the roadmap"; other repos' roadmaps untouched — `.claude/skills/what-next/SKILL.md:3,21`, `.claude/skills/inspiration-tracker/SKILL.md:228,341`
+
+Verified: `run_script_tests.sh` 30/30 suites green; pre-commit (shellcheck, shebang/executable, script-test suite) clean on both commits. Not run on a real case-insensitive filesystem (none available on this Linux host); that path is covered by the resolver unit test and the adaptive fixtures.
