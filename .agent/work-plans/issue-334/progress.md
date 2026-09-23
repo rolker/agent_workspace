@@ -130,3 +130,20 @@ Sound, mechanical plan with the review-issue feedback folded in, but it misses a
 **Decision**: revise
 
 Revise, all 8 (Recommended): fix the three must-fix items from the Plan Review — (1) keep docs/ROADMAP.md permanently in both merge_pr.sh bookkeeping lists and add docs/roadmap.md, with gate tests for each spelling; (2) .github/workflows/validate.yml required_files: ARCHITECTURE.md -> docs/design.md (owner APPROVED this CI edit, Ask-First, 2026-09-23); (3) rename only references to the workspace's own files; references to project files list both spellings — and adopt suggestions 4-8 (inspiration-tracker writes; fix docs/design.md's own links in a commit after the pure rename; what-next probes the same three roadmap locations as update_roadmap.sh and fix AGENT_ONBOARDING.md's relative link; a git ls-files check after each main merge plus a macOS case-only-rename note in the PR body; add #328 to the branches to watch).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-23 14:20 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-334/plan.md` at `c77cd67`
+
+Revision addressing all 8 items from the Plan Review (79e5555): merge_pr.sh
+bookkeeping lists now add `docs/roadmap.md` alongside `docs/ROADMAP.md`
+instead of replacing it; `.github/workflows/validate.yml`'s required_files
+gets the owner-approved Ask-First edit (`ARCHITECTURE.md` -> `docs/design.md`);
+the reference sweep is split into workspace-own renames vs project-scope
+dual-spelling additions; plus inspiration-tracker's roadmap writes,
+`docs/design.md`'s own self-references (separate follow-up commit),
+what-next's three-candidate project probe + AGENT_ONBOARDING.md link fix,
+a post-merge `git ls-files` re-introduction check with a macOS note, and
+#328 added to the merge-main watch list.
