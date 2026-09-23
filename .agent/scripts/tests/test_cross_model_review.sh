@@ -1444,9 +1444,12 @@ PLAN_REL=".agent/work-plans/issue-42/plan.md"
 # The extractor (_plan_approach.py) needs markdown-it-py. The script tries
 # the workspace .venv's python3 (the main checkout's, found through git's
 # common dir) and then python3 on PATH; the tests that check what it
-# extracts need one of them to have the library. Without it they are
-# skipped with a reason rather than failed: the script then omits the
+# extracts need one of them to have the library. Locally, without it they
+# are skipped with a reason rather than failed: the script then omits the
 # Plan Context block by design (test_plan_context_parser_unavailable).
+# Under CI (GitHub sets CI=true) a missing parser is a failure instead:
+# pre-commit hides a passing hook's output, so a skip there would silently
+# drop every extractor test.
 PLAN_PARSER_PYTHON=""
 plan_parser_common=$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
 for plan_parser_py in "${plan_parser_common%/.git}/.venv/bin/python3" "$(command -v python3 || true)"; do
@@ -1460,7 +1463,15 @@ unset plan_parser_common plan_parser_py
 
 require_plan_parser() {
     [[ -n "$PLAN_PARSER_PYTHON" ]] && return 0
-    echo "  SKIP: markdown-it-py is importable by neither the workspace .venv python3 nor python3 (run 'make setup')"
+    case "${CI:-}" in
+        "" | false | 0)
+            echo "  SKIP: markdown-it-py is importable by neither the workspace .venv python3 nor python3 (run 'make setup')"
+            ;;
+        *)
+            echo "  FAIL: markdown-it-py is importable by neither the workspace .venv python3 nor python3, and CI is set, so the extractor tests must run (install requirements.txt)"
+            FAIL=$((FAIL + 1))
+            ;;
+    esac
     return 1
 }
 
@@ -2408,6 +2419,33 @@ TAIL SECTION'
     rm -f "$err_file"
 
     teardown
+}
+
+test_require_plan_parser_fails_under_ci() {
+    echo "TEST: with no markdown-it-py, the extractor-test guard fails under CI and skips locally (#320 round 7)"
+    # Subshells, so neither the emptied PLAN_PARSER_PYTHON nor the guard's
+    # own FAIL increment leaks into this run's totals.
+    local out rc
+    rc=0
+    out=$(PLAN_PARSER_PYTHON="" CI=true FAIL=0
+        require_plan_parser || rc=$?
+        echo "rc=${rc} fail=${FAIL}")
+    assert_contains "CI=true: the guard reports a failure" "^  FAIL: markdown-it-py" "$out"
+    assert_contains "CI=true: the guard returns 1 and counts one failure" "^rc=1 fail=1$" "$out"
+
+    rc=0
+    out=$(PLAN_PARSER_PYTHON="" FAIL=0
+        unset CI
+        require_plan_parser || rc=$?
+        echo "rc=${rc} fail=${FAIL}")
+    assert_contains "CI unset: the guard skips with a reason" "^  SKIP: markdown-it-py" "$out"
+    assert_contains "CI unset: the guard returns 1 and counts no failure" "^rc=1 fail=0$" "$out"
+
+    rc=0
+    out=$(PLAN_PARSER_PYTHON="" CI=false FAIL=0
+        require_plan_parser || rc=$?
+        echo "rc=${rc} fail=${FAIL}")
+    assert_contains "CI=false: the guard skips" "^rc=1 fail=0$" "$out"
 }
 
 test_plan_context_missing_extractor_is_an_error() {
@@ -3876,6 +3914,7 @@ test_plan_context_extractor_indented_heading
 test_plan_context_extractor_setext_headings
 test_plan_context_parser_unavailable
 test_plan_context_missing_extractor_is_an_error
+test_require_plan_parser_fails_under_ci
 test_sync_flag_rejected
 test_agents_all_succeed
 test_agents_partial_failure
