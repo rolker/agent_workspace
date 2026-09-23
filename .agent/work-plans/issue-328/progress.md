@@ -274,3 +274,13 @@ None open.
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 14:21 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge (Recommended): merge PR #343 with the normal gate and no skips — no open findings, CI all green. Owner also approved the post-merge step: re-run user_tier_install.sh then --check on this machine right after merge.
