@@ -285,7 +285,7 @@ Verified: shellcheck --severity=warning clean on all changed scripts/tests; yaml
 
 ### Findings
 - [x] (suggestion) discover_governance.sh sources `_real_case_path.sh` unguarded under `set -euo pipefail`, so a missing helper aborts with no output while update_roadmap.sh falls back with a warning — make the two consistent (soft fallback or a clear error) — `.agent/scripts/discover_governance.sh:19`
-- [ ] (suggestion) update_roadmap.sh's helper-missing fallback (warning + candidate spelling) has no test; add a case that runs a copy without the helper and asserts the warning and the update — `.agent/scripts/update_roadmap.sh:28`
+- [x] (suggestion) update_roadmap.sh's helper-missing fallback (warning + candidate spelling) has no test; add a case that runs a copy without the helper and asserts the warning and the update — `.agent/scripts/update_roadmap.sh:28`
 
 ## Checkpoint
 **Status**: complete
