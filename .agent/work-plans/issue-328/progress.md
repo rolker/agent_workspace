@@ -256,3 +256,21 @@ Cross-model: codex — no issues found; gemini — failed (headless mode auto-de
 **Decision**: publish
 
 Publish (Recommended): push feature/issue-328 and open the PR with the decision summary, including the post-merge re-install step. Merge remains a separate decision.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-23 14:17 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**PR**: #343 at `96f51b9`
+**Sources**: 2 (Local Review (Pre-Push) round 1 @ `ea61148`, CI rollup @ `96f51b9`)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub side: 0 reviews, 0 inline comments, 0 conversation comments. Copilot's review quota is exhausted this month; its check-run is not a review source and was not waited on. The local pre-push review ran at `ea61148` (approved, 0 must-fix, 0 suggestions); `git diff ea61148 96f51b9` touches only `.agent/work-plans/issue-328/progress.md` (review and checkpoint entries), so that verdict carries to the current head unchanged. Its lone `[ ] No issues found. LGTM.` box is a no-findings marker, not an action item. CI at triage time: Validate Documentation, ros-manifest tests, and one Validate Adapter Contract passed; both Lint (pre-commit) runs and one Validate Adapter Contract still pending, no failures. Re-check CI before the merge checkpoint.
+
+### Findings
+None open.
+
+### False positives
+None.
