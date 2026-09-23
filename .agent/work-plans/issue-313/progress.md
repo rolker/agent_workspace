@@ -1017,3 +1017,13 @@ Fix-round re-triage. Only progress bookkeeping separates `debb083` (the reviewed
 
 ### False positives
 - (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (reviews at `4d7bb94` and `debb083`) — says nothing about the code: Copilot's quota is exhausted (known, Sept 2026); excluded from both sources and CI.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Fix it, then merge (Recommended)
