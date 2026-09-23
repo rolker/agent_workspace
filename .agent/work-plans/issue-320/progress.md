@@ -408,3 +408,24 @@ non-caller agent) exactly as a first review does.
 ### Tests
 - Pre-commit on bc16a62 passed, including the full `run_script_tests.sh` (all suites). A first attempt failed `test_skill_paths.sh` on a literal `.agent/work-plans/**` in review-code SKILL.md (read as a workspace-relative path); reworded, suite then 51 passed / 0 failed.
 - No other text found saying the reviewer decides re-review depth (grepped review-code, run-issue, address-findings, triage-reviews, knowledge docs, ADRs, dispatch_phase.sh).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 11:05 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-320 at `21c49e0`
+**Base**: origin/main
+**Depth**: Standard (reason: fix-round delta ef59ceb..21c49e0: 118 lines, 4 files — override triggers: review-code + address-findings SKILL.md, knowledge doc, ADR-0015; same result from the rule's own last-reviewed SHA cc26455; merge 8b55f02 excluded as first-parent/no-merges, remerge-diff empty)
+**Must-fix**: 4 | **Suggestions**: 3
+**Round**: 3 | **Ship**: continue — round 3: 4 must-fix is high, one is a design question for the owner
+
+### Findings
+- [ ] (must-fix) "Last reviewed SHA" is ambiguous and can pick a non-reviewed SHA: `**Addressed**` may name a Checkpoint (this branch's newest Implementation names `cc26455`), implement-phase Implementation entries have no `**Addressed**`, and the newest review can postdate the newest Implementation — use the correlation SHA of the newest `## Local Review` / `## Local Review (Pre-Push)` / `## Integrated Review` for this branch/PR — `.agent/knowledge/review_depth_classification.md:143-148`, `.claude/skills/address-findings/SKILL.md:207-210`
+- [ ] (must-fix, design — owner call) Classifying a fix round only on its delta lowers re-reviews that the previous whole-diff rule kept at Standard/Deep: a small fix to a large PR becomes Light (static only), so no governance or Claude adversarial pass checks the prior findings were resolved. Option: specialists 5a–5d keep the whole-diff tier; the delta tier gates only cross-model dispatch (raised independently by Gemini, the Claude adversarial reviewer and the lead reviewer) — `.agent/knowledge/review_depth_classification.md:130-141,178-179`, `.claude/skills/review-code/SKILL.md:181-190`
+- [ ] (must-fix) `--no-merges` hides conflict resolutions (evil merges) made during a fix round; add the numstat of `git show --remerge-diff` for each first-parent merge in the range (empty for clean merges like 8b55f02) — `.agent/knowledge/review_depth_classification.md:150-165`
+- [ ] (must-fix) Fence balancing treats any line starting with the opener's 3 chars as a closer: an in-fence ```` ```js ```` line (info string, so content) closes it, and 4-backtick fences are closed with 3 — footer can be swallowed. Track marker char + run length, closer = same char, length ≥ opener, whitespace only after; emit a closer of the opener's length; add tests (Codex + Gemini agree) — `.agent/scripts/cross_model_review.sh:985-996`
+- [ ] (suggestion) Pathspec `-- .` is cwd-relative; run from a subdirectory it undercounts silently — use `-- ':/' ':(top,exclude).agent/work-plans/**'` — `.agent/knowledge/review_depth_classification.md:154`
+- [ ] (suggestion) No guidance when the last reviewed SHA is not an ancestor of the head (rebase/force-push; PR mode fetching only `headRefOid` gives `bad object`): check `git merge-base --is-ancestor`, fetch via `pull/<N>/head`, fall back to whole-diff classification — `.agent/knowledge/review_depth_classification.md:158-159`
+- [ ] (suggestion) Numstat edge cases undefined: binary files report `-` (sum as 0 lines, still count the file) and renames depend on `diff.renames` — state both, or pass `--no-renames` — `.agent/knowledge/review_depth_classification.md:156-157`
