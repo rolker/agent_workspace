@@ -210,3 +210,18 @@ All seven round-1 items are resolved against source. The new `--check` case is c
 **Decision**: proceed
 
 Proceed + suggestion (Recommended): implement the plan at 9ad124f, plus the round-2 Plan Review suggestion — singularise "`PreToolUse` hooks" in ADR-0016 §3 (docs/decisions/0016-session-roots-and-the-user-tier.md:67) alongside the §6 revision.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 14:07 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-328 at `b9f6ded`
+
+- Block-log summary posted on #328 (https://github.com/rolker/agent_workspace/issues/328#issuecomment-5800035609). Re-read today: 163 log lines, not 155 — the 8 added since the issue review are all `sed -n` reads (sed -n 115, cat 31, find 9, tail 7, head 1; zero `sed -i`). 24 events are logged twice by the user-tier double-fire (#329), so 139 distinct blocked calls.
+- `1381ac6`: `user_tier_install.sh --check` reports a hook entry tagged with this checkout, pointing inside it, that the current generation no longer produces ("hook entry tagged as ours is no longer generated: <cmd> (re-run the installer)"). Drift case (f) added to `test_user_tier_install.sh`: inject, then `--check` exits 1, re-install clears it, `--check` is clean. Mutation proof on a scratch copy: with the new check removed, case (f) fails (72 pass, 1 fail; `--check` said "installed and current").
+- `1d3cf19`: hook retired from the user tier (`.agent/user_tier_scripts.txt`, installer `hook_commands()`/`PRE_HOOKS_JSON`/header). The guard test loses the four block-hook assertions and the fixture copy. The install test checks only log-tool-use.sh.
+- `599a10f`: deleted the hook, its unit test, and its `.claude/settings.json` PreToolUse entry. The install test's retired-hook check is an exact-set assertion: the tagged PreToolUse entry must be `[log-tool-use.sh]`. That way the deleted file is not named in the repo.
+- `c5ba1b9`: CLAUDE.md "Tool Mapping" section deleted, and AGENTS.md "Tool Usage" bullet replaced, both with the owner-approved wording, verbatim.
+- `b9f6ded`: ADR-0016 §6 revised in place (only the tool-use-logging hook is promoted; the tool-mapping hook was retired by #328), "two hooks" became "the hook", and §3 "`PreToolUse` hooks" became "a `PreToolUse` hook". The ROADMAP fail-closed-audit item drops the deleted hook from its example list.
+- Verified: `run_script_tests.sh` passed all 26 suites. `git grep -n block-bash-tool-mapping` outside work plans returns only the gstack and project-codeguard inspiration digests (the harness digest says "tool-mapping" without the file name). All three are left as history.
+- Not done (host, post-merge): re-run `user_tier_install.sh` and then `--check` from the main checkout. The installer was never run against the real ~/.claude.
