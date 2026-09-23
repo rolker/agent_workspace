@@ -137,13 +137,25 @@ unwieldy.
   markdown. The diff is now staged in a temp file so its fence length can
   be computed before it is written.
 
-- **Extractor boundaries (round-4 review fix)** — The Approach ends at the
-  next H1/H2 heading or a thematic break of three or more dashes, but not
-  while a fenced block of the plan is open (0-3 space indent, closer = same
-  character, run at least as long, whitespace only after; CR stripped), so
-  a `# comment` or `---` in an example no longer cuts the Approach short.
-  That fence tracking decides boundaries only. A plan fence that never
-  closes runs the Approach to end of file, bounded by the 200-line cap.
+- **Extractor: a real CommonMark parser (owner decision, round 6)** — The
+  plan's step 3 named `awk`. Rounds 4-6 each found markdown the line
+  scanner misclassified (a `# comment` in a fence, a fence that never
+  closes, a cut point not reset when a fence closed, `## Approach` inside
+  an earlier fenced example, indented ATX and setext headings). Owner:
+  "Real parser (Recommended)". The awk extractor is replaced by
+  `.agent/scripts/_plan_approach.py`, built on markdown-it-py's CommonMark
+  preset: the section starts after the first top-level H2 whose inline
+  text is exactly `Approach` and ends at the next top-level H1/H2 heading
+  (ATX, indented ATX, or setext) or thematic break, found from the token
+  stream's `.map` line ranges and printed as the original source lines.
+  An unclosed fence (which CommonMark runs to EOF) is instead cut at the
+  first boundary after its opener. The 200-line cap and `outer_fence_for`
+  stay in the shell script. markdown-it-py joins `requirements.txt`
+  (ADR-0009 `.venv`); the script tries the main checkout's `.venv` python3
+  (via git's common dir, as the Makefile does), then python3 on PATH. If
+  neither can import it (exit 2) or the extractor fails (exit 3), one
+  warning goes to stderr and the Plan Context block is omitted — the
+  review still runs.
 
 - **No `printf | head` (round-1 review fix)** — The cap is applied with
   here-strings. Under `set -o pipefail`, `printf | head -n 200` makes
