@@ -225,3 +225,24 @@ Proceed + suggestion (Recommended): implement the plan at 9ad124f, plus the roun
 - `b9f6ded`: ADR-0016 §6 revised in place (only the tool-use-logging hook is promoted; the tool-mapping hook was retired by #328), "two hooks" became "the hook", and §3 "`PreToolUse` hooks" became "a `PreToolUse` hook". The ROADMAP fail-closed-audit item drops the deleted hook from its example list.
 - Verified: `run_script_tests.sh` passed all 26 suites. `git grep -n block-bash-tool-mapping` outside work plans returns only the gstack and project-codeguard inspiration digests (the harness digest says "tool-mapping" without the file name). All three are left as history.
 - Not done (host, post-merge): re-run `user_tier_install.sh` and then `--check` from the main checkout. The installer was never run against the real ~/.claude.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 14:12 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-328 at `ea61148`
+**Base**: main
+**Depth**: Deep (reason: 200+ changed lines (+592 -773); AGENTS.md/CLAUDE.md governance files)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 1 | **Ship**: recommended — no must-fix findings
+
+Verified: test_user_tier_install (73/0), test_user_tier_guard (42/0), test_session_start_layer (42/0); shellcheck --severity=warning clean on the three changed scripts; .claude/settings.json valid JSON. AGENTS.md Tool Usage bullet matches the owner-approved checkpoint text word for word; CLAUDE.md deletes the whole `## Tool Mapping` section and nothing else. New --check case filters by `_agent_workspace == $TAG` and `startswith("$WS_ROOT/")`, so untagged user hooks, other checkouts' entries, and the SessionStart symlink entry cannot false-positive; case (f) fails without it (confirmed independently). No remaining dependents of the deleted hook or its test (run_script_tests.sh globs test_*.sh; Makefile, CI, pre-commit, skills clean); only the three inspiration digests mention it, left as history per plan. ADR-0016 is Provisional, so the in-place §3/§6 revision is consistent with ADR-0008 (which narrows immutability for Accepted ADRs).
+
+Deviation (exact-set "retired hook not written" check in 599a10f instead of naming the hook): accepted — strictly stronger than a by-name negative (catches any extra tagged PreToolUse command) and keeps the deleted filename out of the repo; a future promotion must update it deliberately, which is the desired friction.
+
+Cross-model: codex — no issues found; gemini — failed (headless mode auto-denied a ViewFile tool call, empty response).
+
+### Findings
+- [ ] No issues found. LGTM.
