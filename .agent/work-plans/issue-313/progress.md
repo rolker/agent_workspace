@@ -1042,3 +1042,19 @@ Fix it, then merge (Recommended)
 - [x] The zombie half of `test_job_finished_proc_comm_with_space` never reached /proc because the probe's own bash reaped "x y". It now spawns "x y" under `sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 10'`, whose sleep never reaps. A precondition assertion checks that the zombie still answers `kill -0` before `job_finished` runs. The test kills the parent at the end so init reaps the zombie, and its pidfile stays under TMPDIR_BASE. — `.agent/scripts/tests/test_cross_model_review.sh`
 
 Tests: `test_cross_model_review.sh` 386 passed / 0 failed; `run_script_tests.sh` all 23 suites passed (the check for files left behind is clean); no "x y" / "a Z b" processes remain afterwards. Not verified: whether the zombie half fails against the old awk `$3` code. That check was not permitted (Bash permission denied).
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-23 10:35 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8d5e50365869fa6b, resume 1 of 3)
+**Verdict**: approved
+
+**PR**: #327 at `5240b7d`
+**Depth**: Standard (reason: fix-round re-review of an enforcement-script test, scoped to c46b4ed; adversarial pass inline with a mutation check and a stress run)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Verified: mutation check in a scratch copy, running the new `test_job_finished_proc_comm_with_space` against the 4d7bb94 awk `$3` `job_finished` — old code 1 passed / 4 failed (the precondition "zombie still unreaped" passes; the running "a Z b" half fails with RUNNING-REPORTED-FINISHED and the zombie "x y" half now fails with DEAD-REPORTED-ALIVE), new code 5 passed / 0 failed; so both halves guard the regression. Timing: 24 runs (8 in parallel, 3 waves) with 16 CPU burners on a 16-core host, 24/24 passed; the 1 s wait against the 0.2 s zombie delay leaves ample margin, and a missed pidfile after the 5 s poll fails loudly through the precondition assertion rather than passing vacuously. Leaks: no "a Z b", "x y" or burner processes left after the runs; `run_script_tests.sh` (per-suite private TMPDIR, fails on leftover files) all 23 suites passed, `test_cross_model_review.sh` 386 passed / 0 failed; shellcheck --severity=warning clean on the test file. Prior suggestion (vacuous zombie half) is resolved by c46b4ed.
+
+### Findings
+- [ ] No issues found. LGTM.
