@@ -48,3 +48,13 @@ issue: 334
 ### Actions
 - [ ] Add `.agent/knowledge/inspiration_*_digest.md` to the acceptance criterion's exemption list alongside ADR bodies and historical work plans.
 - [ ] Extend the "discovery accepts both spellings" acceptance test to also cover the workspace's own scan (root scope), not only a project fixture — otherwise `discover_governance.sh` output for the workspace itself loses its architecture-doc line after the move.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 12:56 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed (Recommended): plan with both Issue Review actions — (1) the "accepts both spellings" test also covers the workspace's own scan (discover_governance.sh scan_scope runs on the workspace root too; after the move it must still find docs/design.md), (2) exempt .agent/knowledge/inspiration_*_digest.md from the old-path sweep — and the three corrections: discover_governance.sh / project_governance.md do not look for ROADMAP.md (only PRINCIPLES.md and ARCHITECTURE.md); nine skills read the principles, not eight; no ADR mentions these paths, so there is no ADR References work.
