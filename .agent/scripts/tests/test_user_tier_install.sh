@@ -2,8 +2,8 @@
 # .agent/scripts/tests/test_user_tier_install.sh
 # Tests for .agent/scripts/user_tier_install.sh (#317, #265 PR 3):
 # idempotent install, the not-installed / --require split, drift detection
-# (foreign entry, missing entry, stale symlink), skill selection from
-# session_scope frontmatter, and uninstall.
+# (foreign entry, missing entry, stale symlink, retired hook entry), skill
+# selection from session_scope frontmatter, and uninstall.
 #
 # Hermetic: HOME is redirected to a sandbox for every invocation, so the
 # real ~/.claude is never read or written. The installer is run against a
@@ -202,6 +202,29 @@ out="$(run --check)"; rc=$?
 [[ "$rc" -eq 1 && "$out" == *"skill not linked"* ]] \
     && pass "--check detects an unlinked skill" || fail "unlinked-skill drift not detected (rc=$rc out=$out)"
 run >/dev/null
+
+# (f) a tagged, in-checkout hook entry the current generation no longer
+# produces -- a hook retired from the user tier (#328). Tagged with this
+# checkout and pointing inside it, so (a)-(c) do not fire for it.
+RETIRED_HOOK="$WSC/.claude/hooks/zz-retired-hook.sh"
+jq --arg t "$WSC" --arg c "$RETIRED_HOOK" '
+    .hooks.PreToolUse |= map(if (._agent_workspace // "") == $t
+                             then .hooks += [{type: "command", command: $c, timeout: 5}]
+                             else . end)' \
+    "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"no longer generated: $RETIRED_HOOK"* ]] \
+    && pass "--check detects a tagged hook entry the current generation no longer produces" \
+    || fail "retired-hook drift not detected (rc=$rc out=$out)"
+run >/dev/null
+jq -e --arg c "$RETIRED_HOOK" '[.hooks.PreToolUse[].hooks[]?.command] | index($c) == null' \
+    "$SETTINGS" >/dev/null \
+    && pass "re-install drops the retired hook entry" \
+    || fail "re-install left the retired hook entry in settings.json"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean after the re-install clears the retired entry" \
+    || fail "--check after clearing the retired entry (rc=$rc out=$out)"
 
 # A skill that loses its session_scope is unlinked on the next run.
 mk_skill zz-fixture-proj
