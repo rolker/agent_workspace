@@ -958,3 +958,13 @@ The pre-push review was at `24eddc0`; `24eddc0..4d7bb94` touches neither `.agent
 
 ### False positives
 - (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (review and failed check-run at `4d7bb94`) — not a review: it asserts nothing about the code, and the quota exhaustion is known (Sept 2026); excluded from sources and from the CI verdict.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:04 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Fix both, then merge (Recommended)
