@@ -72,3 +72,11 @@ The removal mechanism already exists and doesn't need new machinery: `user_tier_
 **Decision**: proceed
 
 Proceed (Recommended): full retirement, workspace and user tier — plan covers the user-tier removal (.agent/user_tier_scripts.txt, user_tier_install.sh PRE_HOOKS_JSON, test_user_tier_guard.sh / test_user_tier_install.sh; re-running the installer clears an installed machine, --check shows the drift meanwhile), the block-log summary as an explicit first task (this machine: 155 blocks, all routine reads — sed -n 107, cat 31, find 9, tail 7, head 1; zero sed -i, so no rule is kept), and a note to re-scope #329 to log-tool-use.sh after merge.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-23 13:25 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-328/plan.md` at `f4f42de`
+
+Full retirement of the tool-mapping hook at both the workspace and user tier (hook file, its dedicated test, both settings.json/manifest registrations, and the two user-tier test files), a minimal CLAUDE.md diff deleting the whole "Tool Mapping" section, an AGENTS.md "Tool Usage" reword to drop the enforcement claim (ADR-0004), a ROADMAP.md example-list trim, the block-log summary as an explicit first task, and a deferred note to re-scope #329 after merge.
