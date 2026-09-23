@@ -838,3 +838,13 @@ Three of four checks green on the head SHA (Validate Adapter Contract, Validate 
 
 ### Merge recommendation
 Ready to merge once `Lint (pre-commit)` finishes green. No fix round is needed; `/address-findings` has nothing to work. A `## Decision summary` is already present in the PR body, so the review gate's second precondition is satisfied.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 09:21 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge (Recommended): merge with the normal gate and no skips — zero open findings, CI green on every check, decision summary in the PR body. (Replaces an uncommitted 2026-09-22 15:06 entry from the previous session, re-asked because it was never committed.)
