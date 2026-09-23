@@ -6,6 +6,11 @@
 # and lays governance files out under <sandbox>/ (workspace scope) and
 # <sandbox>/project/ (project scope). No environment override is used.
 #
+# The fixtures run on case-sensitive (Linux) and case-insensitive (macOS
+# default) filesystems alike: the suite probes which one TMPDIR is and
+# builds the "one file, two spellings" fixture accordingly. On either,
+# a file is expected under the name it is stored as.
+#
 # Run: bash .agent/scripts/tests/test_discover_governance.sh
 
 set -euo pipefail
@@ -18,6 +23,13 @@ FAIL=0
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
+
+# Case-insensitive filesystem? (a stored lowercase name opens as uppercase)
+CASE_INSENSITIVE=false
+touch "$TMP_ROOT/case_probe"
+[[ -e "$TMP_ROOT/CASE_PROBE" ]] && CASE_INSENSITIVE=true
+rm -f "$TMP_ROOT/case_probe"
+echo "filesystem under TMPDIR: $($CASE_INSENSITIVE && echo case-insensitive || echo case-sensitive)"
 
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
@@ -50,6 +62,7 @@ make_sandbox() {
     sb="$(mktemp -d "$TMP_ROOT/sb.XXXXXX")"
     mkdir -p "$sb/.agent/scripts"
     cp "$DISCOVER" "$sb/.agent/scripts/discover_governance.sh"
+    cp "$(dirname "$DISCOVER")/_real_case_path.sh" "$sb/.agent/scripts/_real_case_path.sh"
     echo "$sb"
 }
 
@@ -95,15 +108,27 @@ out="$(run_discover "$sb")"
 assert_row "(C1) project/docs/design.md found, project scope" "$out" project/docs/design.md architecture project
 assert_row "(C2) project/docs/principles.md found, project scope" "$out" project/docs/principles.md principles project
 
-echo "TEST: one file reachable under both docs/ spellings is reported once"
-# Stands in for a case-insensitive filesystem (macOS default), where
-# docs/PRINCIPLES.md and docs/principles.md name the same file.
+echo "TEST: one file reachable under both docs/ spellings is reported once, under its stored name"
+# On a case-insensitive filesystem the one stored docs/PRINCIPLES.md already
+# answers both probes. On a case-sensitive one a symlink stands in for the
+# second spelling (it exercises the -ef same-file guard).
 sb="$(make_sandbox)"
 mkdir -p "$sb/docs"
 echo "# Principles" > "$sb/docs/PRINCIPLES.md"
-ln -s PRINCIPLES.md "$sb/docs/principles.md"
+$CASE_INSENSITIVE || ln -s PRINCIPLES.md "$sb/docs/principles.md"
 out="$(run_discover "$sb")"
 assert_row_count "(D1) same file under both spellings: one principles row" "$out" principles workspace 1
+assert_row "(D2) the row names the stored spelling docs/PRINCIPLES.md" "$out" docs/PRINCIPLES.md principles workspace
+
+echo "TEST: a stored lowercase docs/principles.md is reported as docs/principles.md"
+# On a case-insensitive filesystem the docs/PRINCIPLES.md probe (checked
+# first) also opens this file; the report must still use the stored name.
+sb="$(make_sandbox)"
+mkdir -p "$sb/project/docs"
+echo "# Principles" > "$sb/project/docs/principles.md"
+out="$(run_discover "$sb")"
+assert_row_count "(D3) one principles row" "$out" principles project 1
+assert_row "(D4) the row names the stored spelling project/docs/principles.md" "$out" project/docs/principles.md principles project
 
 echo "TEST: --json emits the new-spelling rows too"
 sb="$(make_sandbox)"

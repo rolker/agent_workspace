@@ -139,7 +139,7 @@ make_sandbox() {  # <progress-body|""> [with_summary]
     local sb bare
     sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts" "$sb/stubbin" "$sb/gh_fixtures"
-    for f in merge_pr.sh worktree_remove.sh worktree_list.sh _worktree_helpers.sh _issue_helpers.sh _project_registry.sh _resolve_default_branch.sh progress_read.py progress_append.sh _progress_entry.sh update_roadmap.sh; do
+    for f in merge_pr.sh worktree_remove.sh worktree_list.sh _worktree_helpers.sh _issue_helpers.sh _project_registry.sh _resolve_default_branch.sh progress_read.py progress_append.sh _progress_entry.sh update_roadmap.sh _real_case_path.sh; do
         cp "$REAL_ROOT/.agent/scripts/$f" "$sb/.agent/scripts/"
     done
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/git-bug"; chmod +x "$sb/stubbin/git-bug"

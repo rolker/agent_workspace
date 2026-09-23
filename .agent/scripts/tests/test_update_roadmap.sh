@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Tests for .agent/scripts/update_roadmap.sh roadmap discovery (issue #334):
 # ROADMAP.md, docs/ROADMAP.md and docs/roadmap.md are all discovered, and a
-# file reachable under two candidate spellings is processed once.
+# file reachable under two candidate spellings is processed once, under the
+# name it is stored as. Runs on case-sensitive (Linux) and case-insensitive
+# (macOS default) filesystems: the suite probes TMPDIR and adapts the
+# "one file, two spellings" fixture.
 #
 # Run: bash .agent/scripts/tests/test_update_roadmap.sh
 
@@ -15,6 +18,12 @@ FAIL=0
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
+
+CASE_INSENSITIVE=false
+touch "$TMP_ROOT/case_probe"
+[[ -e "$TMP_ROOT/CASE_PROBE" ]] && CASE_INSENSITIVE=true
+rm -f "$TMP_ROOT/case_probe"
+echo "filesystem under TMPDIR: $($CASE_INSENSITIVE && echo case-insensitive || echo case-sensitive)"
 
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
@@ -38,11 +47,13 @@ for rel in ROADMAP.md docs/ROADMAP.md docs/roadmap.md; do
 done
 
 echo "TEST: a file reachable as both docs/ROADMAP.md and docs/roadmap.md is processed once"
-# Stands in for a case-insensitive filesystem (macOS default).
+# On a case-insensitive filesystem the stored docs/ROADMAP.md answers both
+# probes; on a case-sensitive one a symlink stands in for the second
+# spelling (it exercises the -ef same-file guard).
 root="$(mktemp -d "$TMP_ROOT/root.XXXXXX")"
 mkdir -p "$root/docs"
 printf '%s' "$roadmap_body" > "$root/docs/ROADMAP.md"
-ln -s ROADMAP.md "$root/docs/roadmap.md"
+$CASE_INSENSITIVE || ln -s ROADMAP.md "$root/docs/roadmap.md"
 stdout="$("$UPDATE" --issue 7 --root "$root" 2>"$TMP_ROOT/alias.err")"
 stderr="$(cat "$TMP_ROOT/alias.err")"
 # Without the same-file guard the second spelling is visited again and
@@ -51,6 +62,21 @@ if [[ "$stdout" == "$root/docs/ROADMAP.md" ]] && [[ "$stderr" != *"docs/roadmap.
     pass "(alias) same file under both spellings: processed and reported once"
 else
     fail "(alias) stdout='$stdout' stderr='$stderr'"
+fi
+
+echo "TEST: a stored docs/roadmap.md keeps its name through the update"
+# On a case-insensitive filesystem the docs/ROADMAP.md probe (checked
+# first) opens this file; it must be reported, and written back, as
+# docs/roadmap.md.
+root="$(mktemp -d "$TMP_ROOT/root.XXXXXX")"
+mkdir -p "$root/docs"
+printf '%s' "$roadmap_body" > "$root/docs/roadmap.md"
+stdout="$("$UPDATE" --issue 7 --root "$root" 2>/dev/null)"
+stored="$(cd "$root/docs" && printf '%s\n' *)"
+if [[ "$stdout" == "$root/docs/roadmap.md" ]] && [[ "$stored" == "roadmap.md" ]]; then
+    pass "(stored-name) reported as docs/roadmap.md; directory still holds roadmap.md"
+else
+    fail "(stored-name) stdout='$stdout' docs/ holds: $stored"
 fi
 
 echo "TEST: distinct root and docs/ roadmaps are both still processed"

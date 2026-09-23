@@ -15,6 +15,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=_real_case_path.sh
+source "$SCRIPT_DIR/_real_case_path.sh"
 
 OUTPUT_JSON=false
 if [[ "${1:-}" == "--json" ]]; then
@@ -36,6 +38,10 @@ check_file() {
     local path="$1" type="$2" scope="$3"
     if [[ -f "$path" ]]; then
         local size
+        # Report the name the file is stored under, not the candidate
+        # spelling that found it: on a case-insensitive filesystem the
+        # docs/PRINCIPLES.md probe also opens a stored docs/principles.md.
+        path="$ROOT_DIR/$(real_case_relpath "$ROOT_DIR" "${path#"$ROOT_DIR"/}")"
         size=$(stat -c%s "$path" 2>/dev/null || stat -f%z "$path" 2>/dev/null || echo 0)
         emit "$path" "$type" "$size" "$scope"
     fi
@@ -45,7 +51,7 @@ check_file() {
 # Like check_file, but skips <path> when it is the same file as one of the
 # earlier spellings already checked — on a case-insensitive filesystem
 # (macOS default) docs/principles.md and docs/PRINCIPLES.md resolve to one
-# file and must be reported once.
+# file and must be reported once (under its stored name, via check_file).
 check_file_alt() {
     local path="$1" type="$2" scope="$3"
     shift 3

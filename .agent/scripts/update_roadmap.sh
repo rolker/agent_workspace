@@ -11,7 +11,9 @@
 #
 # Discovers roadmap files at: ROADMAP.md, docs/ROADMAP.md, docs/roadmap.md
 # (every one that exists; a path that is the same file as one already
-# processed — case-insensitive filesystems — is skipped).
+# processed — case-insensitive filesystems — is skipped). A file is read,
+# written and reported under its stored name, whichever candidate spelling
+# found it.
 # Both formats are tried against each file found.
 #
 # Only matches explicit #<N> references (no fuzzy matching).
@@ -22,6 +24,13 @@ set -o pipefail
 trap 'exit 0' EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_real_case_path.sh
+if ! source "$SCRIPT_DIR/_real_case_path.sh" 2>/dev/null; then
+    # This script never blocks a merge: without the helper, fall back to the
+    # candidate spelling (exact on case-sensitive filesystems) and say so.
+    echo "  ⚠️  _real_case_path.sh not found next to update_roadmap.sh; using candidate spellings as-is" >&2
+    real_case_relpath() { printf '%s\n' "$2"; }
+fi
 
 ISSUE_NUM=""
 ROOT_DIR=""
@@ -152,6 +161,12 @@ PROCESSED_ROADMAPS=()
 for rel_path in "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md"; do
     roadmap="$ROOT_DIR/$rel_path"
     [[ -f "$roadmap" ]] || continue
+    # Use the stored name: on a case-insensitive filesystem the
+    # docs/ROADMAP.md probe also opens a stored docs/roadmap.md; reporting
+    # (stdout feeds merge_pr.sh's git add) and the write-back (mv of a temp
+    # file onto the path) must use the name the file really has.
+    rel_path="$(real_case_relpath "$ROOT_DIR" "$rel_path")"
+    roadmap="$ROOT_DIR/$rel_path"
     # On a case-insensitive filesystem docs/ROADMAP.md and docs/roadmap.md
     # are one file — process it once.
     already=false
