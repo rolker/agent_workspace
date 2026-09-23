@@ -204,7 +204,10 @@ Print the next command for the calling session:
 ```
 
 The re-review reads the diff cold and confirms the findings are genuinely
-resolved. This skill never invokes it itself.
+resolved. This skill never invokes it itself. The re-review's depth tier
+is classified on this round's delta (changes since the `**Addressed**`
+SHA), not chosen by the reviewer — so a sizeable fix round gets the
+cross-model reviewers again (`review-code` step 2).
 
 ## Guidelines
 

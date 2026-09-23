@@ -83,7 +83,8 @@ modify the PR unless the user asks.
 
 Since #320 the Deep tier dispatches exactly what Standard does; the tiers
 differ only in the classification thresholds that select them. Light is
-unchanged: static analysis only, no cross-model dispatch.
+unchanged: static analysis only, no cross-model dispatch. A fix-round
+re-review is classified on its own delta with the same table (step 2).
 
 **Specialists**:
 - **Static Analysis** — runs linters on changed files using project or workspace configs
@@ -177,11 +178,25 @@ signals from step 1:
 4. Check for Deep promotion triggers (security-relevant, cross-layer)
 5. Apply tier promotion logic — highest tier wins
 
+**Fix-round re-review** (PR mode after `address-findings`; branch mode at
+round ≥ 2): classify the **fix round's own delta** — the changes since the
+last reviewed SHA — with the same tier table, not the whole diff and not
+by judgment of whether the change "is small". The classification doc's
+*Fix-Round Re-Reviews* section gives where the last reviewed SHA comes from
+and the one command that measures the delta (first-parent, no merges,
+work-plans bookkeeping excluded). A Standard or Deep delta dispatches
+everything a first review at that tier does, cross-model included; a
+Light delta stays Light. You may raise the tier, never lower it below the
+delta's classification.
+
 **User override**: If the `/review-code` invocation includes a depth keyword
 (`light`, `standard`, or `deep`), use that tier instead of the automatic
-classification.
+classification — for a fix round too.
 
-Record the tier and the primary signal that determined it for the report header.
+Record the tier and the primary signal that determined it for the report
+header. For a fix round, the signal names the delta:
+`fix-round delta <last-sha>..<head-sha>: <lines> lines, <files> files`
+(plus any override trigger, or "raised by reviewer: <why>").
 
 ### 3. Load project context
 
@@ -373,6 +388,13 @@ $WS_ROOT/.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,cop
 $WS_ROOT/.agent/scripts/cross_model_review.sh --branch <base> --agents gemini,codex
 $WS_ROOT/.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,copilot --no-progress  # skill worktrees
 ```
+
+**Fix-round re-reviews use the same call.** When step 2 classified a fix
+round's delta at Standard or Deep, run exactly the command above — `--pr
+<N>` or `--branch [<base>]`, not the last reviewed SHA as the base — so the
+agents read the whole PR/branch diff with the fixes in context. The delta
+decides *whether* cross-model runs, not what it reads
+(`cross_model_review.sh` has no delta mode, and `gh pr diff` has no range).
 
 Omit an agent from the list when its CLI is known to be unavailable
 (e.g. Copilot while its quota is exhausted); a listed agent whose CLI is
@@ -709,7 +731,7 @@ UTC offset (ADR-0013):
 **PR**: #<N> at `<short-sha>`        <!-- PR mode -->
 **Branch**: <name> at `<short-sha>`  <!-- branch mode -->
 **Base**: <base-ref>                 <!-- branch mode -->
-**Depth**: <tier> (reason: <signal>)
+**Depth**: <tier> (reason: <signal>)  <!-- fix round: reason names the delta, see step 2 -->
 **Must-fix**: <count> | **Suggestions**: <count>
 **Round**: <R> | **Ship**: <recommended | continue> — <one-line reason>  <!-- branch mode only -->
 
@@ -764,7 +786,8 @@ and proceeding) and is local-only (a GitHub "Merge" click bypasses it).
   pre-commit configs for workspace infrastructure code. Never mix them.
 - **Depth is transparent** — always show the tier and reason in the report
   header. If the user disagrees with the classification, they can re-run with
-  an explicit depth keyword.
+  an explicit depth keyword. A fix-round re-review's reason names the delta
+  it was classified on, so a skipped cross-model pass can be checked.
 - **Graceful degradation** — cross-model failure is per agent. An agent
   whose CLI is missing, that times out, or that exits non-zero carries a
   non-zero `EXIT=` and fails only itself; the review proceeds with
