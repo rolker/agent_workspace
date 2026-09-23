@@ -1276,6 +1276,111 @@ test_branch_mode_filter_survives_noprefix() {
     teardown
 }
 
+# ---- Diff fence tests (#320) ----
+#
+# The diff is wrapped in the same longest-backtick-run-plus-one outer
+# fence as the plan context. A fixed ``` fence is closed early by a diff
+# context line of one space plus three backticks (valid CommonMark: up to
+# 3 spaces of indent), after which the rest of the diff — and the
+# footer — is read as markdown instead of code.
+
+# Assert the diff block of prompt file $1 is well-formed: the footer and
+# a marker line inside the diff sit where they should.
+assert_diff_fence_well_formed() {
+    local prompt_file="$1" label="$2" inside_marker="$3"
+    assert_eq "${label}: a line after the fence-shaped context line is still inside the diff fence" \
+        "inside" "$(fence_state_at "$prompt_file" "$inside_marker" '^## Diff$')"
+    assert_eq "${label}: the output-format footer is outside every fence" \
+        "outside" "$(fence_state_at "$prompt_file" '^## Output Format$' '^## Diff$')"
+}
+
+test_diff_fence_context_line_pr_mode() {
+    echo "TEST: a diff context line of space + \`\`\` cannot close the diff fence (PR mode, #320)"
+    setup
+
+    local diff="${TMPDIR_BASE}/fence-context.diff"
+    printf '%s\n' \
+        'diff --git a/README.md b/README.md' \
+        '--- a/README.md' \
+        '+++ b/README.md' \
+        '@@ -1,4 +1,4 @@' \
+        ' ```bash' \
+        '-echo old' \
+        '+echo new' \
+        ' ```' \
+        '+AFTER CONTEXT FENCE' > "$diff"
+
+    local exit_code
+    exit_code=$(MOCK_GH_DIFF_FILE="$diff" run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local prompt_file="${MOCK_REPO}/${PROMPT_REL}"
+    assert_contains "diff fence is 4 backticks (longest run 3, plus 1)" \
+        '^````diff$' "$(cat "$prompt_file")"
+    assert_diff_fence_well_formed "$prompt_file" "context line" '^[+]AFTER CONTEXT FENCE$'
+
+    teardown
+}
+
+test_diff_fence_four_backtick_run_pr_mode() {
+    echo "TEST: a 4-backtick run in the diff gets a 5-backtick diff fence (PR mode, #320)"
+    setup
+
+    # Also ends without a trailing newline: the closer must still land on
+    # its own line.
+    local diff="${TMPDIR_BASE}/fence-four.diff"
+    printf '%s\n' \
+        'diff --git a/doc.md b/doc.md' \
+        '--- a/doc.md' \
+        '+++ b/doc.md' \
+        '@@ -1,3 +1,5 @@' \
+        ' ````markdown' \
+        ' ```' \
+        '+INSIDE FOUR' \
+        ' ```' > "$diff"
+    printf '%s' ' ````' >> "$diff"
+
+    local exit_code
+    exit_code=$(MOCK_GH_DIFF_FILE="$diff" run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local prompt_file="${MOCK_REPO}/${PROMPT_REL}"
+    assert_contains "diff fence is 5 backticks" '^`````diff$' "$(cat "$prompt_file")"
+    assert_contains "the closer is on its own line after an unterminated last line" \
+        '^`````$' "$(cat "$prompt_file")"
+    assert_diff_fence_well_formed "$prompt_file" "4-backtick run" '^[+]INSIDE FOUR$'
+
+    teardown
+}
+
+test_diff_fence_branch_mode() {
+    echo "TEST: branch mode fences a diff with fence-shaped context lines safely (#320)"
+    setup
+
+    local base
+    base=$(git -C "${MOCK_REPO}" branch --show-current)
+    printf '%s\n' 'Intro' '' '```bash' 'echo old' '```' '' 'Outro' > "${MOCK_REPO}/guide.md"
+    git -C "${MOCK_REPO}" add guide.md
+    git -C "${MOCK_REPO}" -c user.name="Test" -c user.email="test@test" commit -q -m "base doc"
+    git -C "${MOCK_REPO}" checkout -q -b feature/issue-42
+    printf '%s\n' 'Intro' '' '```bash' 'echo new' '```' '' '````' 'BRANCH FOUR RUN' '````' 'Outro' \
+        > "${MOCK_REPO}/guide.md"
+    git -C "${MOCK_REPO}" -c user.name="Test" -c user.email="test@test" commit -q -am "feature"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --branch "$base" < /dev/null >/dev/null 2>&1 || exit_code=$?
+    assert_exit_code "branch review completes" "0" "$exit_code"
+
+    local prompt_file="${MOCK_REPO}/${PROMPT_REL}"
+    assert_contains "the diff carries the space + backtick context line" '^ ```$' "$(cat "$prompt_file")"
+    assert_contains "diff fence is 5 backticks" '^`````diff$' "$(cat "$prompt_file")"
+    assert_diff_fence_well_formed "$prompt_file" "branch mode" '^[+]BRANCH FOUR RUN$'
+
+    teardown
+}
+
 # ---- Plan-context tests (#320) ----
 #
 # The plan's `## Approach` section is re-admitted to the prompt as
@@ -1300,17 +1405,17 @@ plan_context_block() {
          in_block { print }' "$1"
 }
 
-# Walk prompt file $1 from `## Plan Context` with CommonMark fence rules
-# (opener: 0-3 spaces, 3+ backticks or tildes, a backtick opener's info
-# string holds no backtick; closer: same char, run >= opener's, whitespace
-# only after; a trailing CR is a line ending, not content) and print
-# "inside" or "outside" for the first line matching regex $2 at or after
-# that heading — "missing" if none does. Written independently of the
-# script, so it is an oracle, not a copy.
+# Walk prompt file $1 from the first line matching regex $3 (default
+# `## Plan Context`) with CommonMark fence rules (opener: 0-3 spaces, 3+
+# backticks or tildes, a backtick opener's info string holds no backtick;
+# closer: same char, run >= opener's, whitespace only after; a trailing CR
+# is a line ending, not content) and print "inside" or "outside" for the
+# first line matching regex $2 after that point — "missing" if none does.
+# Written independently of the script, so it is an oracle, not a copy.
 fence_state_at() {
-    awk -v target="$2" '
+    awk -v target="$2" -v start="${3:-^## Plan Context$}" '
         { sub(/\r$/, "") }
-        /^## Plan Context$/ { go = 1 }
+        !go && $0 ~ start { go = 1; next }
         !go { next }
         $0 ~ target { print (open_n ? "inside" : "outside"); found = 1; exit }
         {
@@ -1567,7 +1672,7 @@ assert_plan_context_well_formed() {
     assert_eq "${label}: the output-format footer is outside every fence" \
         "outside" "$(footer_fence_state "$prompt_file")"
     assert_eq "${label}: the framing text is outside the outer fence" \
-        "outside" "$(fence_state_at "$prompt_file" '^plan itself\.$')"
+        "outside" "$(fence_state_at "$prompt_file" '^plan itself[.]$')"
     if grep -q 'truncated: ' "$prompt_file"; then
         assert_eq "${label}: the truncation marker is outside every fence" \
             "outside" "$(fence_state_at "$prompt_file" 'truncated: [0-9]+ more lines')"
@@ -3290,6 +3395,9 @@ test_agy_no_temp_leak
 test_prompt_tool_use_guidance
 test_work_plans_excluded_from_diff
 test_branch_mode_filter_survives_noprefix
+test_diff_fence_context_line_pr_mode
+test_diff_fence_four_backtick_run_pr_mode
+test_diff_fence_branch_mode
 test_plan_context_present
 test_plan_context_absent_no_plan
 test_plan_context_absent_no_approach_section

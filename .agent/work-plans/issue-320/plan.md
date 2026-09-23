@@ -130,6 +130,12 @@ unwieldy.
   CommonMark nothing inside can close it and its closer always does, so
   the prompt's well-formedness no longer depends on parsing the plan. The
   heading and the "context, not the subject" framing stay outside it.
+  Folded in by the owner afterwards ("Fold in now"): the `## Diff` block
+  gets the same fence from the same helper (`outer_fence_for`), in PR and
+  branch mode. Its old fixed ``` fence was closed early by any diff context
+  line of one space plus three backticks — i.e. any diff touching fenced
+  markdown. The diff is now staged in a temp file so its fence length can
+  be computed before it is written.
 
 - **Extractor boundaries (round-4 review fix)** — The Approach ends at the
   next H1/H2 heading or a thematic break of three or more dashes, but not

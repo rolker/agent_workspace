@@ -737,9 +737,13 @@ fi
 # every agent, so they are built once into a temp file and copied into
 # each agent's prompt file; only the per-agent tool-use footer differs.
 # Use a quoted heredoc for the static header to prevent shell expansion,
-# then stream the diff directly from gh/git to avoid storing it in a
-# variable (which could hit shell limits for large Deep-tier PRs).
+# then stream the diff from gh/git into a staging file (never a variable,
+# which could hit shell limits for large Deep-tier PRs) before fencing it
+# into the prompt.
 SHARED_PROMPT=$(mktemp -t "cross-model-review-prompt.XXXXXX")
+# The diff is staged here before it is fenced into the prompt: its outer
+# fence length depends on the longest backtick run in it (outer_fence_for).
+SHARED_DIFF=$(mktemp -t "cross-model-review-diff.XXXXXX")
 
 # Scratch root handed to the agent jobs as their TMPDIR. _agy_review.sh
 # makes its own `mktemp -d` under it and removes it on every exit path it
@@ -823,7 +827,7 @@ cleanup_jobs() {
             kill -9 "$pid" 2>/dev/null || true
         fi
     done
-    rm -f "$SHARED_PROMPT"
+    rm -f "$SHARED_PROMPT" "$SHARED_DIFF"
     rm -rf "$AGENT_TMP_ROOT"
 }
 trap cleanup_jobs EXIT
@@ -880,35 +884,61 @@ filter_work_plans_diff() {
     '
 }
 
-# Stream diff into the shared prompt through the work-plans filter.
-# Branch mode uses local `git diff <base>...HEAD`; PR mode uses `gh pr
-# diff <N>`. The pipeline sits inside `if !` so `set -e` does not abort
-# the script before the error branch runs; with `pipefail` the pipeline's
-# status is the last non-zero stage's (bash's rule), so any failing stage
-# still makes the whole pipeline fail — a failed gh/git call is not masked
-# by the filter succeeding on empty input, and a filter dying mid-stream
-# cannot leave a truncated diff looking complete.
-printf '## Diff\n\n```diff\n' >> "$SHARED_PROMPT"
-DIFF_START_LINE=$(wc -l < "$SHARED_PROMPT")
+# Print the backtick fence that safely wraps the text on stdin: one
+# backtick longer than the longest backtick run anywhere in it, minimum 3
+# (#320). Under CommonMark nothing inside a fence that long can close it,
+# and its own closer — printed at column 0, with no trailing CR — always
+# does, whatever the content holds: fences with info strings or longer
+# markers, fences in list items, indented code, tildes, CRLF line endings,
+# or a fence cut in half. Used for every block of embedded content in the
+# prompt (the diff, the plan context); never write a fixed ``` around
+# content this script does not control.
+outer_fence_for() {
+    awk '
+        {
+            line = $0
+            while (match(line, /`+/)) {
+                if (RLENGTH > max) max = RLENGTH
+                line = substr(line, RSTART + RLENGTH)
+            }
+        }
+        END {
+            n = (max >= 3) ? max + 1 : 3
+            s = ""
+            for (i = 0; i < n; i++) s = s "`"
+            print s
+        }
+    '
+}
+
+# Stage the diff through the work-plans filter, then fence it into the
+# shared prompt. Branch mode uses local `git diff <base>...HEAD`; PR mode
+# uses `gh pr diff <N>`. The pipeline sits inside `if !` so `set -e` does
+# not abort the script before the error branch runs; with `pipefail` the
+# pipeline's status is the last non-zero stage's (bash's rule), so any
+# failing stage still makes the whole pipeline fail — a failed gh/git call
+# is not masked by the filter succeeding on empty input, and a filter
+# dying mid-stream cannot leave a truncated diff looking complete. The
+# diff goes to a file rather than a variable (shell limits on large
+# Deep-tier PRs) and is read once more for its fence length.
 if [[ "$BRANCH_MODE" == true ]]; then
     # Explicit a/ b/ prefixes so a diff.noprefix / diff.mnemonicPrefix
     # config cannot defeat the work-plans filter.
-    if ! git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$SHARED_PROMPT"; then
+    if ! git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff > "$SHARED_DIFF"; then
         echo "ERROR: Could not produce diff for ${BRANCH_NAME} against ${BASE_REF}" >&2
         abort_all_agents '--- Review error: failed to produce branch diff ---'
     fi
 else
-    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff >> "$SHARED_PROMPT"; then
+    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff > "$SHARED_DIFF"; then
         echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
         abort_all_agents '--- Review error: failed to retrieve diff ---'
     fi
 fi
-DIFF_END_LINE=$(wc -l < "$SHARED_PROMPT")
 
 # Guard: if diff is empty (before or after the work-plans filter), abort
 # with a clear error instead of launching agents with no content to
 # review.
-if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
+if [[ "$(wc -l < "$SHARED_DIFF")" -eq 0 ]]; then
     if [[ "$BRANCH_MODE" == true ]]; then
         echo "ERROR: branch '${BRANCH_NAME}' has no reviewable changes against '${BASE_REF}' — nothing to review" >&2
         echo "  Either the branch is up-to-date with the base, the base ref is wrong," >&2
@@ -922,7 +952,17 @@ if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
         abort_all_agents '--- Review error: diff was empty (PR not found, no changes, or only .agent/work-plans/ changed) ---'
     fi
 fi
-printf '```\n\n' >> "$SHARED_PROMPT"
+DIFF_FENCE=$(outer_fence_for < "$SHARED_DIFF")
+{
+    printf '## Diff\n\n%sdiff\n' "$DIFF_FENCE"
+    cat "$SHARED_DIFF"
+    # A diff whose last line lacks a newline ("\ No newline at end of
+    # file" covers the file contents, not the stream) must not glue the
+    # closer onto it.
+    [[ -z "$(tail -c 1 "$SHARED_DIFF")" ]] || printf '\n'
+    printf '%s\n\n' "$DIFF_FENCE"
+} >> "$SHARED_PROMPT"
+rm -f "$SHARED_DIFF"
 
 # --- Plan context (#320) ---
 # The diff still excludes `.agent/work-plans/**` (#312), but a reviewer
@@ -1004,29 +1044,12 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
             PLAN_CONTEXT_TRUNCATED=0
         fi
 
-        # Wrap the excerpt in ONE outer backtick fence, longer than the
-        # longest backtick run anywhere in it (minimum 3). Under CommonMark
-        # nothing inside can close a fence that long, and its own closer —
-        # emitted at column 0, with no trailing CR — always does, whatever
-        # the excerpt holds: fences in list items, indented code, tildes,
-        # CRLF line endings, or a fence cut in half by the 200-line cap or
-        # an early extractor stop. The heading and the framing text stay
-        # outside the fence; the truncation marker follows the closer.
-        PLAN_CONTEXT_FENCE=$(awk '
-            {
-                line = $0
-                while (match(line, /`+/)) {
-                    if (RLENGTH > max) max = RLENGTH
-                    line = substr(line, RSTART + RLENGTH)
-                }
-            }
-            END {
-                n = (max >= 3) ? max + 1 : 3
-                s = ""
-                for (i = 0; i < n; i++) s = s "`"
-                print s
-            }
-        ' <<< "$PLAN_CONTEXT_BODY")
+        # Wrap the excerpt in ONE outer fence (outer_fence_for): nothing in
+        # the plan can close it early and its closer always ends it, so the
+        # footer below can never be swallowed. The heading and the framing
+        # text stay outside the fence; the truncation marker follows the
+        # closer.
+        PLAN_CONTEXT_FENCE=$(outer_fence_for <<< "$PLAN_CONTEXT_BODY")
 
         {
             printf '## Plan Context\n\n'
