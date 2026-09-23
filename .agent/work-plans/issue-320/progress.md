@@ -465,3 +465,23 @@ Owner chose "Same as whole PR (Recommended)": a fix-round re-review gets the sam
 - `test_cross_model_review.sh`: 454 passed, 0 failed.
 - Against the previous tracker (old `cross_model_review.sh` swapped in temporarily, then restored): 446 passed, 8 failed — every one of the four new tests fails (2 assertions each); the already-closed `~~~` sub-case passes on both, as expected.
 - Pre-commit on both commits passed, including shellcheck and the full `run_script_tests.sh` suite; `test_skill_paths.sh` 51/51.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 11:36 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a190c0f8e5798f8b4, resume 1 of 3)
+
+**Branch**: feature/issue-320 at `a86702c`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff against merge-base bfb6803, work-plans excluded: 730 lines, 7 files — 200+ lines; override triggers: review-code + address-findings SKILL.md, knowledge doc, ADR-0015, AGENTS.md)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 4 | **Ship**: recommended — round 4: 2 mechanical must-fix (prev 4), not rising — fix and ship rather than another full round
+
+### Findings
+- [ ] (must-fix) Emitted closer is always column 0: for a fence opened inside a list item (e.g. `  ```bash`) and cut by the 200-line cap, CommonMark ends the list item at the column-0 line and reads the closer as a new top-level opener, swallowing `## Output Format` (reproduced with markdown_it) — record the opener's leading whitespace and prefix the emitted closer with it; add a list-item test — `.agent/scripts/cross_model_review.sh:1000-1025`
+- [ ] (must-fix) All leading whitespace is stripped before fence matching, so a 4+-space- or tab-indented backtick run outside any fence (an indented code block) opens a phantom fence and the emitted closer then opens a real one that swallows the footer (reproduced with markdown_it; Gemini + Claude adversarial agree). The comment's "errs toward emitting a closer" is the unsafe direction — accept an opener only with indent ≤3 beyond its container (at minimum ≤3 spaces for unindented text) and correct the comment; add a test — `.agent/scripts/cross_model_review.sh:995-1003`
+- [ ] (suggestion) CRLF plan files: the closer check `rest ~ /^[ \t]*$/` fails on a trailing `\r`, so a closed fence reads as open and a spurious closer swallows the footer; the mixed-line-ending hook does not reject an all-CRLF file — strip `\r` first — `.agent/scripts/cross_model_review.sh:1014`
+- [ ] (suggestion) The Approach extractor still stops at a `# ` comment inside a fenced block with no truncation marker, so reviewers get a shorter Approach silently; now that a fence tracker exists, make the extractor skip boundaries while a fence is open, or mark an early stop — `.agent/scripts/cross_model_review.sh:958-962`
+- [ ] (suggestion) Thematic-break stop matches exactly `---`; `----` or longer rules do not end the section, so a later section can leak in — use `/^-{3,}[[:space:]]*$/` — `.agent/scripts/cross_model_review.sh:960`
