@@ -229,3 +229,13 @@ Dropped: CDPATH stdout on `cd` in single_project adapter_validate (root is alway
 - [ ] (suggestion) Under registry parse errors, the verbose line still says `OK` though only hosting-dir presence was checked; say so (e.g. "hosting dir present; shape not checked — registry has parse errors") — `.agent/scripts/validate_workspace.py:173`
 - [ ] (suggestion) `delegate_shape_check` has no `timeout=`; bound it and report "adapter validate timed out" on `TimeoutExpired` so a future adapter cannot hang `make validate` — `.agent/scripts/validate_workspace.py:67`
 - [ ] (suggestion) On non-zero exit with empty stderr, fall back to the adapter's stdout lines (prefixed) before the generic "exited N" message — `.agent/scripts/validate_workspace.py:78`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:49 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Fix all 3 first (Recommended): address the three round-1 suggestions before publishing — (1) under registry parse errors the verbose line must say only hosting-dir presence was checked, not a bare OK (validate_workspace.py:173); (2) bound delegate_shape_check with a timeout and report "adapter validate timed out" on TimeoutExpired (validate_workspace.py:67); (3) on non-zero exit with empty stderr, fall back to the adapter's stdout lines (prefixed) before the generic "exited N" message (validate_workspace.py:78). Main (#327 merged) is merged into the branch first so the next review covers what ships.
