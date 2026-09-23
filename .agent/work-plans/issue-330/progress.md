@@ -65,3 +65,11 @@ I verified both claimed defects against current source:
 **Decision**: proceed
 
 Proceed (Recommended): plan with `make validate` (no project named) staying a whole-workspace check; keep the failing project's name in error output when delegating shape checks to the adapter; update the AGENTS.md `validate_workspace.py` row and the `make validate` description.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-23 10:06 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-330/plan.md` at `ede84e1`
+
+Scope `single_project`'s `adapter_validate` to the active project (git-repo check on `ACTIVE_PROJECT_ROOT` / legacy `project/`, no more recursion into the whole-workspace validator), and have `validate_workspace.py`'s registry loop delegate each entry's checkout-shape check to `adapter --project <name> validate` instead of hard-coding `.git`, wrapping any failure as `project '<name>': <summary>`. Adds tests for both fixes and updates `AGENTS.md`'s `validate_workspace.py` row.
