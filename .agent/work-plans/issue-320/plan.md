@@ -116,19 +116,28 @@ unwieldy.
   confined to the shared-prompt builder and the gemini Tool Use footer, and
   its tests are added alongside #313's rather than reworking its mocks.
 
-- **Fence balancing in the plan-context block (round-1 review fix)** — The
-  plan specified the 200-line cap but not what a cut does to markdown. Two
-  things can leave a code fence open inside the emitted block: the cap
-  itself landing mid-fence, and the (deliberately not fence-aware)
-  extractor stopping at a heading-shaped or `---` line inside a fence. An
-  unclosed fence swallows everything after it — including the `## Output
-  Format` footer — into one code block, so the reviewer never sees its
-  instructions. Rule adopted: after the body is cut, count fence toggles
-  (a closing fence must match the marker that opened it, so ``` inside a
-  `~~~` block is content) and emit the matching closer before the
-  truncation marker. The extractor also now stops at any H1/H2 heading or
-  a thematic break, so its one-sided guarantee — possibly shorter, never
-  longer, never content from a later section — actually holds.
+- **One outer fence around the plan excerpt (owner decision, round 4)** —
+  The plan specified the 200-line cap but not what a cut does to markdown:
+  a fence left open by the cap or by an early extractor stop swallows
+  everything after it — including the `## Output Format` footer — so the
+  reviewer never sees its instructions. Rounds 1 and 3 answered that with
+  a fence-balancing tracker that emitted a closer for a fence left open;
+  each round's review found another markdown case it got wrong (info
+  strings, longer openers, list-item indentation, indented code, CRLF).
+  Rule adopted instead: wrap the capped excerpt in ONE outer backtick
+  fence, longer than the longest backtick run anywhere in it (minimum 3),
+  at column 0, with its closer before the truncation marker. Under
+  CommonMark nothing inside can close it and its closer always does, so
+  the prompt's well-formedness no longer depends on parsing the plan. The
+  heading and the "context, not the subject" framing stay outside it.
+
+- **Extractor boundaries (round-4 review fix)** — The Approach ends at the
+  next H1/H2 heading or a thematic break of three or more dashes, but not
+  while a fenced block of the plan is open (0-3 space indent, closer = same
+  character, run at least as long, whitespace only after; CR stripped), so
+  a `# comment` or `---` in an example no longer cuts the Approach short.
+  That fence tracking decides boundaries only. A plan fence that never
+  closes runs the Approach to end of file, bounded by the 200-line cap.
 
 - **No `printf | head` (round-1 review fix)** — The cap is applied with
   here-strings. Under `set -o pipefail`, `printf | head -n 200` makes

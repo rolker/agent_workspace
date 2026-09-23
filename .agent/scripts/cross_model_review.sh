@@ -943,22 +943,50 @@ PLAN_CONTEXT_MAX_LINES=200
 PLAN_CONTEXT_FILE="${WORK_PLANS_DIR}/plan.md"
 if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
     # The section ends at the next H1/H2 heading or at a thematic break
-    # (`---`), whichever comes first — a plan that uses `# ` or a rule
-    # between sections must not leak the next section in here.
+    # (a line of three or more `-`), whichever comes first — a plan that
+    # uses `# ` or a rule between sections must not leak the next section
+    # in here.
     #
-    # NOTE: this extractor is NOT fence-aware. A heading-shaped or `---`
-    # line inside a fenced code block within the Approach section ends
-    # the extraction early. The guarantee it does keep is one-sided: the
-    # block may be shorter than the real Approach, never longer, and
-    # never content from a later section. An early stop like that can cut
-    # a code fence in half, which the fence balancing below repairs — the
-    # prompt stays well-formed either way, so this stays a plain awk
-    # range rather than growing a fence tracker (progress_read.py is the
-    # workspace's only fence-aware markdown parser).
+    # Boundaries are ignored while a fenced code block of the plan is open,
+    # so a `# comment` or a `---` line inside a shell or YAML example does
+    # not end the Approach early. The fence tracking here decides section
+    # boundaries only; it has no bearing on the prompt's well-formedness,
+    # which the outer fence below guarantees on its own. A closer is the
+    # opener's character repeated at least as many times with nothing but
+    # whitespace after it (CR stripped first, for CRLF plans). A plan whose
+    # fence never closes runs the Approach to the end of the file — the one
+    # case where the block can hold later sections — which the 200-line cap
+    # still bounds.
     PLAN_APPROACH=$(awk '
-        /^## Approach[[:space:]]*$/ { in_section = 1; next }
-        in_section && (/^# / || /^## / || /^---[[:space:]]*$/) { exit }
-        in_section { print }
+        function run_len(s, c,    n) {
+            n = 0
+            while (substr(s, n + 1, 1) == c) n++
+            return n
+        }
+        /^## Approach[[:space:]]*\r?$/ && !in_section { in_section = 1; next }
+        !in_section { next }
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            # At most 3 leading spaces, as in CommonMark: 4+ spaces or a tab
+            # is indented code, never a fence. A fence nested deeper in a
+            # list is then not seen, which can only end the Approach early
+            # at a boundary-shaped line inside it — shorter, never longer.
+            if (line ~ /^ ? ? ?[`~]/) sub(/^ +/, "", line)
+            c = substr(line, 1, 1)
+            n = (c == "`" || c == "~") ? run_len(line, c) : 0
+            rest = substr(line, n + 1)
+            # A backtick run followed by another backtick on the line is
+            # inline code, not a fence opener.
+            if (n >= 3 && !fence_n && c == "`" && index(rest, "`")) n = 0
+            if (n >= 3) {
+                if (!fence_n) { fence_c = c; fence_n = n }
+                else if (c == fence_c && n >= fence_n && rest ~ /^[ \t]*$/) fence_n = 0
+            } else if (!fence_n && ($0 ~ /^# / || $0 ~ /^## / || $0 ~ /^---+[[:space:]]*$/)) {
+                exit
+            }
+            print
+        }
     ' "$PLAN_CONTEXT_FILE")
 
     # Whitespace-only counts as empty.
@@ -976,51 +1004,26 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
             PLAN_CONTEXT_TRUNCATED=0
         fi
 
-        # Close a code fence left open by the 200-line cut or by an early
-        # extractor stop. An unclosed fence would swallow everything after
-        # it — including the `## Output Format` footer — into one code
-        # block, and the reviewer would never see its instructions.
-        #
-        # Fence rules follow CommonMark, because that is how the footer
-        # gets read:
-        #   - an opener is a run of 3+ backticks or 3+ tildes; a backtick
-        #     opener's info string may not itself contain a backtick;
-        #   - a closer is a run of the SAME character, at least as long as
-        #     the opener's, followed by whitespace only. So inside a fence
-        #     ```js is content (it has an info string), a ``` line inside a
-        #     ```` fence is content (too short), and ``` inside ~~~ is
-        #     content (wrong character);
-        #   - the closer emitted for a fence still open at the end repeats
-        #     the opener's character and run length exactly.
-        # Leading whitespace is stripped before matching (CommonMark allows
-        # at most 3 spaces) so a fence nested in a list item still counts;
-        # the cost is that a 4-space-indented ``` line counts as a fence
-        # too, which errs toward emitting a closer.
-        PLAN_CONTEXT_OPEN_FENCE=$(awk '
-            function run_len(s, c,    n) {
-                n = 0
-                while (substr(s, n + 1, 1) == c) n++
-                return n
-            }
+        # Wrap the excerpt in ONE outer backtick fence, longer than the
+        # longest backtick run anywhere in it (minimum 3). Under CommonMark
+        # nothing inside can close a fence that long, and its own closer —
+        # emitted at column 0, with no trailing CR — always does, whatever
+        # the excerpt holds: fences in list items, indented code, tildes,
+        # CRLF line endings, or a fence cut in half by the 200-line cap or
+        # an early extractor stop. The heading and the framing text stay
+        # outside the fence; the truncation marker follows the closer.
+        PLAN_CONTEXT_FENCE=$(awk '
             {
                 line = $0
-                sub(/^[ \t]+/, "", line)
-                c = substr(line, 1, 1)
-                if (c != "`" && c != "~") next
-                n = run_len(line, c)
-                if (n < 3) next
-                rest = substr(line, n + 1)
-                if (open_n == 0) {
-                    if (c == "`" && index(rest, "`") > 0) next
-                    open_c = c
-                    open_n = n
-                } else if (c == open_c && n >= open_n && rest ~ /^[ \t]*$/) {
-                    open_n = 0
+                while (match(line, /`+/)) {
+                    if (RLENGTH > max) max = RLENGTH
+                    line = substr(line, RSTART + RLENGTH)
                 }
             }
             END {
+                n = (max >= 3) ? max + 1 : 3
                 s = ""
-                for (i = 0; i < open_n; i++) s = s open_c
+                for (i = 0; i < n; i++) s = s "`"
                 print s
             }
         ' <<< "$PLAN_CONTEXT_BODY")
@@ -1031,10 +1034,9 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
             printf 'to implement. It is context, not the subject of the review: flag\n'
             printf 'divergences between the diff and this plan, but do not review the\n'
             printf 'plan itself.\n\n'
+            printf '%smarkdown\n' "$PLAN_CONTEXT_FENCE"
             printf '%s\n' "$PLAN_CONTEXT_BODY"
-            if [[ -n "$PLAN_CONTEXT_OPEN_FENCE" ]]; then
-                printf '%s\n' "$PLAN_CONTEXT_OPEN_FENCE"
-            fi
+            printf '%s\n' "$PLAN_CONTEXT_FENCE"
             if (( PLAN_CONTEXT_TRUNCATED > 0 )); then
                 printf '\n_[truncated: %d more lines]_\n' "$PLAN_CONTEXT_TRUNCATED"
             fi

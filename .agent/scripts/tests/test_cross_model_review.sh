@@ -1300,29 +1300,25 @@ plan_context_block() {
          in_block { print }' "$1"
 }
 
-# Count code-fence lines in the text on stdin (0 is not an error).
-count_fence_lines() {
-    grep -cE '^[[:space:]]{0,3}(```|~~~)' || true
-}
-
 # Walk prompt file $1 from `## Plan Context` with CommonMark fence rules
 # (opener: 0-3 spaces, 3+ backticks or tildes, a backtick opener's info
 # string holds no backtick; closer: same char, run >= opener's, whitespace
-# only after) and print "inside" or "outside" for the `## Output Format`
-# line — "missing" if it never appears. Written independently of the
-# script's own fence tracker, so it is an oracle, not a copy.
-footer_fence_state() {
-    awk '
+# only after; a trailing CR is a line ending, not content) and print
+# "inside" or "outside" for the first line matching regex $2 at or after
+# that heading — "missing" if none does. Written independently of the
+# script, so it is an oracle, not a copy.
+fence_state_at() {
+    awk -v target="$2" '
+        { sub(/\r$/, "") }
         /^## Plan Context$/ { go = 1 }
         !go { next }
-        /^## Output Format$/ && !open_n { print "outside"; found = 1; exit }
-        /^## Output Format$/ && open_n  { print "inside";  found = 1; exit }
+        $0 ~ target { print (open_n ? "inside" : "outside"); found = 1; exit }
         {
-            if (!match($0, /^ ? ? ?(`+|~+)/)) next
             ind = 0
             while (substr($0, ind + 1, 1) == " ") ind++
             if (ind > 3) next
             c = substr($0, ind + 1, 1)
+            if (c != "`" && c != "~") next
             n = 0
             while (substr($0, ind + n + 1, 1) == c) n++
             if (n < 3) next
@@ -1336,6 +1332,10 @@ footer_fence_state() {
         }
         END { if (!found) print "missing" }
     ' "$1"
+}
+
+footer_fence_state() {
+    fence_state_at "$1" '^## Output Format$'
 }
 
 # Write an Approach of $2 filler lines followed by the text in $3 (which
@@ -1559,12 +1559,25 @@ test_plan_context_large_approach() {
     teardown
 }
 
-test_plan_context_fence_balanced() {
-    echo "TEST: a code fence in the Approach never leaks past the plan context (#320)"
+# Every outer-fence test ends with the same three checks: the footer and
+# (when present) the truncation marker are outside every fence, and the
+# framing text sits outside the outer fence.
+assert_plan_context_well_formed() {
+    local prompt_file="$1" label="$2"
+    assert_eq "${label}: the output-format footer is outside every fence" \
+        "outside" "$(footer_fence_state "$prompt_file")"
+    assert_eq "${label}: the framing text is outside the outer fence" \
+        "outside" "$(fence_state_at "$prompt_file" '^plan itself\.$')"
+    if grep -q 'truncated: ' "$prompt_file"; then
+        assert_eq "${label}: the truncation marker is outside every fence" \
+            "outside" "$(fence_state_at "$prompt_file" 'truncated: [0-9]+ more lines')"
+    fi
+}
+
+test_plan_context_outer_fence_basic() {
+    echo "TEST: the plan excerpt is wrapped in one outer fence longer than any run inside (#320)"
     setup
 
-    # (a) A complete fence inside a short Approach: copied through as-is,
-    #     nothing added, footer still a heading.
     write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '# Plan: fenced
 
 ## Approach
@@ -1585,51 +1598,42 @@ TAIL SECTION'
     exit_code=$(run_gemini_sync)
     assert_exit_code "review completes with a fenced Approach" "0" "$exit_code"
 
-    local block fences
-    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
-    fences=$(count_fence_lines <<< "$block")
-    assert_eq "a complete fence stays balanced (2 fence lines)" "2" "$fences"
-    assert_contains "fenced content is carried through" "FENCED COMMAND" "$block"
-    assert_contains "the output-format footer is still a heading" \
-        "^## Output Format$" "$(cat "${MOCK_REPO}/${PROMPT_REL}")"
-
-    # (b) A fence opened before the 200-line cut and closed after it: the
-    #     cut must not leave it open, or everything below — including the
-    #     footer — becomes one code block.
-    local straddle="${TMPDIR_BASE}/straddle.md"
-    {
-        printf '# Plan: straddle\n\n## Approach\n\n'
-        local i
-        for ((i = 1; i <= 195; i++)); do printf 'FILLER %d\n' "$i"; done
-        printf '```bash\n'
-        for ((i = 1; i <= 100; i++)); do printf 'echo CODE %d\n' "$i"; done
-        printf '```\n\nTrailing prose.\n\n## Files to Change\n\nTAIL SECTION\n'
-    } > "$straddle"
-    cp "$straddle" "${MOCK_REPO}/${PLAN_REL}"
-
-    exit_code=$(run_gemini_sync)
-    assert_exit_code "review completes with a straddling fence" "0" "$exit_code"
-
-    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
-    fences=$(count_fence_lines <<< "$block")
-    assert_contains "the cut happened" "truncated: [0-9]+ more lines" "$block"
-    assert_contains "the fence was opened inside the block" '^```bash$' "$block"
-    assert_eq "the cut fence is closed again (even fence count)" "2" "$fences"
-    assert_contains "the output-format footer is not swallowed" \
-        "^## Output Format$" "$(cat "${MOCK_REPO}/${PROMPT_REL}")"
-    assert_not_contains "the following section is still excluded" "TAIL SECTION" "$block"
+    local prompt_file="${MOCK_REPO}/${PROMPT_REL}" block
+    block=$(plan_context_block "$prompt_file")
+    assert_contains "outer opener is 4 backticks (longest inner run 3, plus 1)" \
+        '^````markdown$' "$block"
+    assert_contains "outer closer matches the opener" '^````$' "$block"
+    assert_contains "fenced content is carried through unchanged" '^```bash$' "$block"
+    assert_eq "the content sits inside the outer fence" \
+        "inside" "$(fence_state_at "$prompt_file" '^Then stop\.$')"
+    assert_plan_context_well_formed "$prompt_file" "basic"
 
     teardown
 }
 
-test_plan_context_fence_info_string_is_content() {
-    echo "TEST: a \`\`\`js line inside a fence is content, not a closer (#320)"
+test_plan_context_outer_fence_no_backticks() {
+    echo "TEST: an excerpt with no backticks still gets a 3-backtick outer fence (#320)"
     setup
 
-    # CommonMark: a closer carries no info string, so ```js inside the
-    # bash fence is content and the bare ``` after it closes the fence.
-    # Treating ```js as a closer turns that bare ``` into an opener and
-    # the emitted "closer" opens a fence that swallows the footer.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+PLAIN APPROACH'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "outer opener is the 3-backtick minimum" '^```markdown$' "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "no backticks"
+
+    teardown
+}
+
+test_plan_context_outer_fence_info_string_inside() {
+    echo "TEST: a \`\`\`js line inside a plan fence cannot break the outer fence (#320)"
+    setup
+
     write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '# Plan: info string
 
 ## Approach
@@ -1649,24 +1653,20 @@ TAIL SECTION'
     local exit_code
     exit_code=$(run_gemini_sync)
     assert_exit_code "review completes" "0" "$exit_code"
-
-    local block
-    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
-    assert_eq "no closer is added to an already-closed fence (3 fence lines)" \
-        "3" "$(count_fence_lines <<< "$block")"
-    assert_eq "the output-format footer is outside every fence" \
-        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
+    assert_contains "prose after the inner fence is kept" "Prose after the fence" \
+        "$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "info string"
 
     teardown
 }
 
-test_plan_context_fence_longer_opener() {
-    echo "TEST: a 4-backtick fence is closed by 4, and a \`\`\` line inside it is content (#320)"
+test_plan_context_outer_fence_four_backticks() {
+    echo "TEST: a 4-backtick plan fence holding a 3-backtick line gets a 5-backtick outer fence (#320)"
     setup
 
     # Extraction line 1 is the blank after the heading, so fillers take
-    # lines 2-196 and the tail lines 197-200: the cap lands with the
-    # 4-backtick fence still open and a 3-backtick line just inside it.
+    # lines 2-196 and the tail 197-200: the cap cuts the 4-backtick fence
+    # open, just after a 3-backtick line inside it.
     write_straddling_plan "${MOCK_REPO}/${PLAN_REL}" 195 '````markdown
 ```bash
 echo INNER
@@ -1679,62 +1679,20 @@ echo INNER
     local block
     block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
     assert_contains "the cut happened" "truncated: [0-9]+ more lines" "$block"
-    assert_contains "the emitted closer repeats the 4-backtick opener" '^````$' "$block"
-    assert_eq "the output-format footer is outside every fence" \
-        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
+    assert_contains "outer fence is 5 backticks" '^`````markdown$' "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "4-backtick"
 
     teardown
 }
 
-test_plan_context_fence_tilde() {
-    echo "TEST: tilde fences are tracked by their own character and length (#320)"
+test_plan_context_outer_fence_list_item_cut() {
+    echo "TEST: a list-item fence cut by the 200-line cap cannot swallow the footer (#320)"
     setup
 
-    # (a) A closed ~~~ fence holding a ``` line: balanced, nothing added.
-    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '# Plan: tilde
-
-## Approach
-
-~~~text
-```
-~~~
-
-## Files to Change
-
-TAIL SECTION'
-
-    local exit_code block
-    exit_code=$(run_gemini_sync)
-    assert_exit_code "review completes with a closed tilde fence" "0" "$exit_code"
-    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
-    assert_eq "a closed tilde fence gets no extra closer (3 fence lines)" \
-        "3" "$(count_fence_lines <<< "$block")"
-    assert_eq "footer outside every fence (closed tilde fence)" \
-        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
-
-    # (b) A ~~~~ fence cut at the cap with a shorter ~~~ line and a ```
-    #     line inside it (lines 198-200): both are content, and the closer
-    #     emitted is ~~~~.
-    write_straddling_plan "${MOCK_REPO}/${PLAN_REL}" 196 '~~~~text
-~~~
-```'
-
-    exit_code=$(run_gemini_sync)
-    assert_exit_code "review completes with a cut tilde fence" "0" "$exit_code"
-    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
-    assert_contains "the emitted closer repeats the ~~~~ opener" '^~~~~$' "$block"
-    assert_eq "footer outside every fence (cut tilde fence)" \
-        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
-
-    teardown
-}
-
-test_plan_context_fence_unclosed_at_cap() {
-    echo "TEST: a long-marker fence left open by the 200-line cap is closed to its own length (#320)"
-    setup
-
-    # The fence opens on extraction line 200 — the last line kept.
-    write_straddling_plan "${MOCK_REPO}/${PLAN_REL}" 198 '`````python'
+    # An indented fence inside a list item, opened on line 199 and cut.
+    write_straddling_plan "${MOCK_REPO}/${PLAN_REL}" 196 '1. Run the migration:
+   ```bash
+   echo LIST ITEM CODE'
 
     local exit_code
     exit_code=$(run_gemini_sync)
@@ -1742,11 +1700,153 @@ test_plan_context_fence_unclosed_at_cap() {
 
     local block
     block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
-    assert_contains "the fence opener is the last kept line" '^`````python$' "$block"
-    assert_contains "the emitted closer repeats the 5-backtick opener" '^`````$' "$block"
-    assert_not_contains "content past the cap is cut" "PAST CAP 1$" "$block"
-    assert_eq "the output-format footer is outside every fence" \
-        "outside" "$(footer_fence_state "${MOCK_REPO}/${PROMPT_REL}")"
+    assert_contains "the cut happened" "truncated: [0-9]+ more lines" "$block"
+    assert_contains "the list-item fence line is kept" '^   ```bash$' "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "list item"
+
+    teardown
+}
+
+test_plan_context_outer_fence_indented_code() {
+    echo "TEST: a 4-space-indented backtick run (indented code, not a fence) is harmless (#320)"
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+Indented code that shows a fence marker:
+
+    ```
+    not a fence
+
+After the indented block.
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "text after the indented block is kept" "After the indented block" "$block"
+    assert_not_contains "the next section is still excluded" "TAIL SECTION" "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "indented code"
+
+    teardown
+}
+
+test_plan_context_outer_fence_crlf() {
+    echo "TEST: a CRLF plan keeps the prompt well-formed and ends at the next section (#320)"
+    setup
+
+    mkdir -p "$(dirname "${MOCK_REPO}/${PLAN_REL}")"
+    printf '# Plan: crlf\r\n\r\n## Approach\r\n\r\n```bash\r\necho CRLF CODE\r\n```\r\n\r\nCRLF PROSE\r\n\r\n## Files to Change\r\n\r\nTAIL SECTION\r\n' \
+        > "${MOCK_REPO}/${PLAN_REL}"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "CRLF prose is kept" "CRLF PROSE" "$block"
+    assert_not_contains "the next section is still excluded" "TAIL SECTION" "$block"
+    assert_eq "the outer closer carries no CR" "1" \
+        "$(grep -c $'^````$' <<< "$block" || true)"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "CRLF"
+
+    teardown
+}
+
+test_plan_context_outer_fence_longer_than_inner_run() {
+    echo "TEST: a 5-backtick run inside the excerpt gets a 6-backtick outer fence (#320)"
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+`````text
+five-backtick fence
+`````
+
+Inline run ````` mid-line too.
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "outer opener is 6 backticks" '^``````markdown$' "$block"
+    assert_contains "outer closer is 6 backticks" '^``````$' "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "5-backtick run"
+
+    teardown
+}
+
+test_plan_context_extractor_ignores_boundaries_in_fences() {
+    echo "TEST: a # comment or --- inside a plan fence does not end the Approach (#320)"
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+```bash
+# a shell comment, not a heading
+echo AFTER COMMENT
+```
+
+~~~yaml
+---
+key: AFTER RULE
+~~~
+
+```js
+## not a heading either
+```
+
+PROSE AFTER FENCES
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "content after a # line in a fence is kept" "AFTER COMMENT" "$block"
+    assert_contains "content after a --- line in a fence is kept" "AFTER RULE" "$block"
+    assert_contains "prose after the fences is kept" "PROSE AFTER FENCES" "$block"
+    assert_not_contains "the next real section still ends it" "TAIL SECTION" "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "boundaries in fences"
+
+    teardown
+}
+
+test_plan_context_extractor_long_rule() {
+    echo "TEST: a thematic break of four or more dashes ends the Approach (#320)"
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BEFORE LONG RULE
+
+-----
+
+LONG RULE SECTION BODY'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body is included" "APPROACH BEFORE LONG RULE" "$block"
+    assert_not_contains "content after a ----- rule does not leak in" \
+        "LONG RULE SECTION BODY" "$block"
 
     teardown
 }
@@ -3196,11 +3296,16 @@ test_plan_context_absent_no_approach_section
 test_plan_context_truncated
 test_plan_context_no_progress
 test_plan_context_large_approach
-test_plan_context_fence_balanced
-test_plan_context_fence_info_string_is_content
-test_plan_context_fence_longer_opener
-test_plan_context_fence_tilde
-test_plan_context_fence_unclosed_at_cap
+test_plan_context_outer_fence_basic
+test_plan_context_outer_fence_no_backticks
+test_plan_context_outer_fence_info_string_inside
+test_plan_context_outer_fence_four_backticks
+test_plan_context_outer_fence_list_item_cut
+test_plan_context_outer_fence_indented_code
+test_plan_context_outer_fence_crlf
+test_plan_context_outer_fence_longer_than_inner_run
+test_plan_context_extractor_ignores_boundaries_in_fences
+test_plan_context_extractor_long_rule
 test_plan_context_stops_at_h1_or_rule
 test_sync_flag_rejected
 test_agents_all_succeed
