@@ -200,3 +200,13 @@ All seven round-1 items are resolved against source. The new `--check` case is c
 ### Recommended Actions
 
 - [ ] (suggestion) Singularise "`PreToolUse` hooks" in ADR-0016 §3 alongside the §6 revision, or consciously leave it generic — `docs/decisions/0016-session-roots-and-the-user-tier.md:67`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 13:50 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed + suggestion (Recommended): implement the plan at 9ad124f, plus the round-2 Plan Review suggestion — singularise "`PreToolUse` hooks" in ADR-0016 §3 (docs/decisions/0016-session-roots-and-the-user-tier.md:67) alongside the §6 revision.
