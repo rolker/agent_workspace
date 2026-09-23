@@ -84,3 +84,29 @@ skill, including classification and report templates, as planned.
 **Decision**: proceed
 
 Approve, as described (Recommended): Codex's plan (bed79ef; Codex plan review: ready) is approved. Driver handed over from Codex (quota exhausted) to a Claude drive. Implementer: commit Codex's staged, uncommitted implementation first as a labelled WIP snapshot (authored as found), merge main, then finish and verify the plan; coordinate with #334 (docs reorganisation), which adds docs/roadmap.md to merge_pr.sh's bookkeeping lists — whichever lands second carries docs/roadmap.md into the new shared helper; keep codex-workflow-notes.md in the work-plan folder.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 14:54 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-309 at `40f4e7d`
+
+Handover from Codex CLI (quota exhausted mid-implementation), per the checkpoint at `5ae7c73`.
+
+**Handover commits.** Codex's staged, uncommitted work committed as found under its own identity: `544bde2` (8 files, +241/-59; full pre-commit suite passed, no SKIP needed) and its workflow notes `bc6979d`. Merged origin/main (`92c57ce`): no conflicts.
+
+**Codex's snapshot contained:** `_bookkeeping.sh` (the gate's `_only_bookkeeping_between` moved out of `merge_pr.sh` verbatim, a `_review_bookkeeping_between` review policy, a bash bridge for Python); gate switched to it; `sources` coverage (exact / bookkeeping, per-SHA cache, cwd repository, issue from the canonical progress path, original `sha` kept, `covers_head` + `coverage` fields); real-history tests; fixture copies of the helper in both merge suites; triage-reviews contract text.
+
+**Kept:** the extraction and gate wiring, the coverage model (endpoint tree diff, ancestor required, issue-scoped work-plan dir, cwd repository, exact-match fast path), the provenance fields, the fixture updates, most test cases, most of the skill text. The core logic held up against its own cases.
+
+**Changed, and why:**
+- Silent fallback (Quality Standard, and the issue's own complaint that "the helper gave no signal"): Codex's bridge collapsed every failure (no repo, missing object, missing helper) to "not covered" with stderr discarded. Now the helper returns 1 stale / 3 unverifiable with a reason, and `sources` emits `dropped_entries` (entry, sha, open count, reason, why) plus a stderr warning for unverifiable ones.
+- Roadmap set: one `BOOKKEEPING_ROADMAP_PATHS` in `_bookkeeping.sh`, including `docs/roadmap.md` (#334), used by the review policy and by the CI walk-back list in `merge_pr.sh`. #334 edits both lines, so whichever lands second resolves a trivial conflict by keeping the shared array.
+- Hex-only SHA resolution in the review policy: Codex's resolved any revision, so a ref name such as `HEAD` counted as a recorded review.
+- `set -e` safety: resolution rewritten as if-blocks (merge_pr.sh runs `set -eo pipefail`).
+- Tests: added the lowercase roadmap, nested work-plan files, issue-70 prefix boundary, `dropped_entries` reasons, bridge usage and non-hex checks (h1-h15). The no-repository case is now pinned with `GIT_CEILING_DIRECTORIES` so it holds even if TMPDIR sits inside a checkout. Gate g7 (docs/roadmap.md), g8 (another issue's dir, pinning existing behaviour), CI walk-back ci-30b.
+- triage-reviews skill: documented `dropped_entries` (unverifiable means read the entry by hand, never treat it as resolved). Also fixed the `sources` call's `--progress` path. #317 prefixed it with `$WS_ROOT` (the main checkout), which does not hold an in-flight branch's timeline. It now uses the worktree toplevel, which is where step 7 persists. Codex's comment in cmd_sources ("comment ... cover the current head") was corrected: a candidate needs the GitHub comment *at* the head.
+
+**Verification:** run_script_tests.sh: all 26 suites green. test_triage_reviews_integration 36/36, test_merge_pr_gate 81/81. Fail-without-fix proof on scratch copies: pre-fix `review_progress.sh` (`5ae7c73`) fails 19 of the new cases, including h1, the #309 checkpoint regression. Codex's snapshot fails 13, from the lowercase roadmap onward plus the dropped-entry reporting. main's `merge_pr.sh` fails g7 and ci-30b.
+
+**Not done (Ask First):** AGENTS.md's script table still describes `sources` as "correlated by head SHA" and does not list `_bookkeeping.sh`. That is an instruction file, so it is left for the owner.
