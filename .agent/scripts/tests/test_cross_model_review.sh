@@ -1130,6 +1130,56 @@ test_agy_no_temp_leak() {
     teardown
 }
 
+test_shared_temp_no_leak_on_early_abort() {
+    echo "TEST: an abort among the shared mktemp calls leaves no temp files (#320)"
+    setup
+
+    local leak_dir="${TMPDIR_BASE}/leakcheck" fail_bin="${TMPDIR_BASE}/failbin"
+    local real_mktemp
+    real_mktemp=$(command -v mktemp)
+    mkdir -p "$leak_dir" "$fail_bin"
+    # A mktemp that fails for the template named in MOCK_MKTEMP_FAIL and
+    # defers to the real one otherwise, so the script dies part-way through
+    # creating its shared temp files.
+    cat > "${fail_bin}/mktemp" << MKTEMP_EOF
+#!/usr/bin/env bash
+if [[ -n "\${MOCK_MKTEMP_FAIL:-}" && "\$*" == *"\${MOCK_MKTEMP_FAIL}"* ]]; then
+    echo "mock mktemp: refusing \$*" >&2
+    exit 1
+fi
+exec "${real_mktemp}" "\$@"
+MKTEMP_EOF
+    chmod +x "${fail_bin}/mktemp"
+
+    cd "${MOCK_REPO}"
+    local template exit_code stderr leftovers
+    # The last shared mktemp fails after the prompt and diff files exist;
+    # the first fails before any exists (cleanup must cope with empty paths).
+    for template in cross-model-review-tmp. cross-model-review-prompt.; do
+        rm -rf "$leak_dir"
+        mkdir -p "$leak_dir"
+        exit_code=0
+        stderr=$(MOCK_MKTEMP_FAIL="$template" TMPDIR="$leak_dir" \
+            PATH="${fail_bin}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+            bash "${SCRIPT_UNDER_TEST}" --pr 99 < /dev/null 2>&1 >/dev/null) || exit_code=$?
+        if [[ "$exit_code" -ne 0 ]]; then
+            echo "  PASS: run aborts when mktemp '${template}' fails"
+            PASS=$((PASS + 1))
+        else
+            echo "  FAIL: run should abort when mktemp '${template}' fails"
+            FAIL=$((FAIL + 1))
+        fi
+        assert_contains "the abort is the mocked mktemp (${template})" \
+            "mock mktemp: refusing" "$stderr"
+        assert_not_contains "cleanup does not trip on an unset path (${template})" \
+            "unbound variable|cannot remove" "$stderr"
+        leftovers=$(ls -A "$leak_dir")
+        assert_eq "no shared temp files left after '${template}' fails" "" "$leftovers"
+    done
+
+    teardown
+}
+
 test_prompt_tool_use_guidance() {
     echo "TEST: tool-use paragraph is present for gemini and absent for codex (#288)"
     setup
@@ -1272,6 +1322,1165 @@ test_branch_mode_filter_survives_noprefix() {
     prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
     assert_contains "code file kept" "BRANCH CODE" "$prompt"
     assert_not_contains "work-plans file dropped despite diff.noprefix" "BRANCH BOOKKEEPING" "$prompt"
+
+    teardown
+}
+
+# ---- Diff fence tests (#320) ----
+#
+# The diff is wrapped in the same longest-backtick-run-plus-one outer
+# fence as the plan context. A fixed ``` fence is closed early by a diff
+# context line of one space plus three backticks (valid CommonMark: up to
+# 3 spaces of indent), after which the rest of the diff — and the
+# footer — is read as markdown instead of code.
+
+# Assert the diff block of prompt file $1 is well-formed: the footer and
+# a marker line inside the diff sit where they should.
+assert_diff_fence_well_formed() {
+    local prompt_file="$1" label="$2" inside_marker="$3"
+    assert_eq "${label}: a line after the fence-shaped context line is still inside the diff fence" \
+        "inside" "$(fence_state_at "$prompt_file" "$inside_marker" '^## Diff$')"
+    assert_eq "${label}: the output-format footer is outside every fence" \
+        "outside" "$(fence_state_at "$prompt_file" '^## Output Format$' '^## Diff$')"
+}
+
+test_diff_fence_context_line_pr_mode() {
+    echo "TEST: a diff context line of space + \`\`\` cannot close the diff fence (PR mode, #320)"
+    setup
+
+    local diff="${TMPDIR_BASE}/fence-context.diff"
+    printf '%s\n' \
+        'diff --git a/README.md b/README.md' \
+        '--- a/README.md' \
+        '+++ b/README.md' \
+        '@@ -1,4 +1,4 @@' \
+        ' ```bash' \
+        '-echo old' \
+        '+echo new' \
+        ' ```' \
+        '+AFTER CONTEXT FENCE' > "$diff"
+
+    local exit_code
+    exit_code=$(MOCK_GH_DIFF_FILE="$diff" run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local prompt_file="${MOCK_REPO}/${PROMPT_REL}"
+    assert_contains "diff fence is 4 backticks (longest run 3, plus 1)" \
+        '^````diff$' "$(cat "$prompt_file")"
+    assert_diff_fence_well_formed "$prompt_file" "context line" '^[+]AFTER CONTEXT FENCE$'
+
+    teardown
+}
+
+test_diff_fence_four_backtick_run_pr_mode() {
+    echo "TEST: a 4-backtick run in the diff gets a 5-backtick diff fence (PR mode, #320)"
+    setup
+
+    # Also ends without a trailing newline: the closer must still land on
+    # its own line.
+    local diff="${TMPDIR_BASE}/fence-four.diff"
+    printf '%s\n' \
+        'diff --git a/doc.md b/doc.md' \
+        '--- a/doc.md' \
+        '+++ b/doc.md' \
+        '@@ -1,3 +1,5 @@' \
+        ' ````markdown' \
+        ' ```' \
+        '+INSIDE FOUR' \
+        ' ```' > "$diff"
+    printf '%s' ' ````' >> "$diff"
+
+    local exit_code
+    exit_code=$(MOCK_GH_DIFF_FILE="$diff" run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local prompt_file="${MOCK_REPO}/${PROMPT_REL}"
+    assert_contains "diff fence is 5 backticks" '^`````diff$' "$(cat "$prompt_file")"
+    assert_contains "the closer is on its own line after an unterminated last line" \
+        '^`````$' "$(cat "$prompt_file")"
+    assert_diff_fence_well_formed "$prompt_file" "4-backtick run" '^[+]INSIDE FOUR$'
+
+    teardown
+}
+
+test_diff_fence_branch_mode() {
+    echo "TEST: branch mode fences a diff with fence-shaped context lines safely (#320)"
+    setup
+
+    local base
+    base=$(git -C "${MOCK_REPO}" branch --show-current)
+    printf '%s\n' 'Intro' '' '```bash' 'echo old' '```' '' 'Outro' > "${MOCK_REPO}/guide.md"
+    git -C "${MOCK_REPO}" add guide.md
+    git -C "${MOCK_REPO}" -c user.name="Test" -c user.email="test@test" commit -q -m "base doc"
+    git -C "${MOCK_REPO}" checkout -q -b feature/issue-42
+    printf '%s\n' 'Intro' '' '```bash' 'echo new' '```' '' '````' 'BRANCH FOUR RUN' '````' 'Outro' \
+        > "${MOCK_REPO}/guide.md"
+    git -C "${MOCK_REPO}" -c user.name="Test" -c user.email="test@test" commit -q -am "feature"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --branch "$base" < /dev/null >/dev/null 2>&1 || exit_code=$?
+    assert_exit_code "branch review completes" "0" "$exit_code"
+
+    local prompt_file="${MOCK_REPO}/${PROMPT_REL}"
+    assert_contains "the diff carries the space + backtick context line" '^ ```$' "$(cat "$prompt_file")"
+    assert_contains "diff fence is 5 backticks" '^`````diff$' "$(cat "$prompt_file")"
+    assert_diff_fence_well_formed "$prompt_file" "branch mode" '^[+]BRANCH FOUR RUN$'
+
+    teardown
+}
+
+# ---- Plan-context tests (#320) ----
+#
+# The plan's `## Approach` section is re-admitted to the prompt as
+# labelled context outside the diff fence (the diff itself still excludes
+# `.agent/work-plans/**`, #312). Every fixture plan.md is written into the
+# *resolved* WORK_PLANS_DIR — the same directory the review-<agent>-prompt.md
+# files land in — because a plan written anywhere else would make the
+# "present" case fail and the "absent" cases pass vacuously.
+PLAN_REL=".agent/work-plans/issue-42/plan.md"
+
+# The extractor (_plan_approach.py) needs markdown-it-py. The script tries
+# the workspace .venv's python3 (the main checkout's, found through git's
+# common dir) and then python3 on PATH; the tests that check what it
+# extracts need one of them to have the library. Locally, without it they
+# are skipped with a reason rather than failed: the script then omits the
+# Plan Context block by design (test_plan_context_parser_unavailable).
+# Under CI (GitHub sets CI=true) a missing parser is a failure instead:
+# pre-commit hides a passing hook's output, so a skip there would silently
+# drop every extractor test.
+PLAN_PARSER_PYTHON=""
+plan_parser_common=$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+for plan_parser_py in "${plan_parser_common%/.git}/.venv/bin/python3" "$(command -v python3 || true)"; do
+    if [[ -n "$plan_parser_common" || "$plan_parser_py" != "/.venv/bin/python3" ]] \
+        && [[ -x "$plan_parser_py" ]] && "$plan_parser_py" -c 'import markdown_it' 2>/dev/null; then
+        PLAN_PARSER_PYTHON="$plan_parser_py"
+        break
+    fi
+done
+unset plan_parser_common plan_parser_py
+
+require_plan_parser() {
+    [[ -n "$PLAN_PARSER_PYTHON" ]] && return 0
+    case "${CI:-}" in
+        "" | false | 0)
+            echo "  SKIP: markdown-it-py is importable by neither the workspace .venv python3 nor python3 (run 'make setup')"
+            ;;
+        *)
+            echo "  FAIL: markdown-it-py is importable by neither the workspace .venv python3 nor python3, and CI is set, so the extractor tests must run (install requirements.txt)"
+            FAIL=$((FAIL + 1))
+            ;;
+    esac
+    return 1
+}
+
+# Write $2 as the fixture plan.md at the resolved work-plans dir ($1).
+write_plan_fixture() {
+    mkdir -p "$(dirname "$1")"
+    printf '%s\n' "$2" > "$1"
+}
+
+# Echo the `## Plan Context` block of prompt file $1, up to (excluding)
+# the `## Output Format` footer.
+plan_context_block() {
+    awk '/^## Plan Context$/ { in_block = 1 }
+         in_block && /^## Output Format$/ { exit }
+         in_block { print }' "$1"
+}
+
+# Walk prompt file $1 from the first line matching regex $3 (default
+# `## Plan Context`) with CommonMark fence rules (opener: 0-3 spaces, 3+
+# backticks or tildes, a backtick opener's info string holds no backtick;
+# closer: same char, run >= opener's, whitespace only after; a trailing CR
+# is a line ending, not content) and print "inside" or "outside" for the
+# first line matching regex $2 after that point — "missing" if none does.
+# Written independently of the script, so it is an oracle, not a copy.
+fence_state_at() {
+    awk -v target="$2" -v start="${3:-^## Plan Context$}" '
+        { sub(/\r$/, "") }
+        !go && $0 ~ start { go = 1; next }
+        !go { next }
+        $0 ~ target { print (open_n ? "inside" : "outside"); found = 1; exit }
+        {
+            ind = 0
+            while (substr($0, ind + 1, 1) == " ") ind++
+            if (ind > 3) next
+            c = substr($0, ind + 1, 1)
+            if (c != "`" && c != "~") next
+            n = 0
+            while (substr($0, ind + n + 1, 1) == c) n++
+            if (n < 3) next
+            rest = substr($0, ind + n + 1)
+            if (!open_n) {
+                if (c == "`" && rest ~ /`/) next
+                open_c = c; open_n = n
+            } else if (c == open_c && n >= open_n && rest ~ /^[ \t]*$/) {
+                open_n = 0
+            }
+        }
+        END { if (!found) print "missing" }
+    ' "$1"
+}
+
+footer_fence_state() {
+    fence_state_at "$1" '^## Output Format$'
+}
+
+# Write an Approach of $2 filler lines followed by the text in $3 (which
+# should straddle the 200-line cap) to plan.md, then a Files section.
+write_straddling_plan() {
+    local path="$1" filler="$2" tail="$3" i
+    mkdir -p "$(dirname "$path")"
+    {
+        printf '# Plan: straddle\n\n## Approach\n\n'
+        for ((i = 1; i <= filler; i++)); do printf 'FILLER %d\n' "$i"; done
+        printf '%s\n' "$tail"
+        for ((i = 1; i <= 100; i++)); do printf 'PAST CAP %d\n' "$i"; done
+        printf '\n## Files to Change\n\nTAIL SECTION\n'
+    } > "$path"
+}
+
+test_plan_context_present() {
+    echo "TEST: the plan's ## Approach is appended as labelled plan context (#320)"
+    require_plan_parser || return 0
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "# Plan: something
+
+## Context
+
+CONTEXT SECTION BODY
+
+## Approach
+
+1. APPROACH STEP ONE
+2. APPROACH STEP TWO
+
+## Files to Change
+
+FILES SECTION BODY"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a plan present" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "plan context heading is present" "^## Plan Context$" "$prompt"
+    assert_contains "Approach body is included" "APPROACH STEP ONE" "$prompt"
+    assert_contains "Approach body runs to the section end" "APPROACH STEP TWO" "$prompt"
+    assert_contains "framed as context, not as the subject of review" \
+        "do not review the" "$prompt"
+    assert_contains "reviewer is told to flag divergences" "divergences" "$prompt"
+    assert_not_contains "sections before Approach are not included" \
+        "CONTEXT SECTION BODY" "$prompt"
+    assert_not_contains "sections after Approach are not included" \
+        "FILES SECTION BODY" "$prompt"
+    assert_not_contains "no truncation marker on a short Approach" \
+        "truncated: " "$prompt"
+    assert_contains "gemini tool-use footer says excluded from the diff" \
+        "excluded \*\*from the diff\*\*" "$prompt"
+
+    teardown
+}
+
+test_plan_context_absent_no_plan() {
+    echo "TEST: no plan.md => no ## Plan Context section at all (#320)"
+    setup
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes without a plan" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_not_contains "no plan context heading" "^## Plan Context$" "$prompt"
+    assert_contains "output format footer still present" "^## Output Format$" "$prompt"
+
+    teardown
+}
+
+test_plan_context_absent_no_approach_section() {
+    echo "TEST: plan.md with no (or empty) ## Approach => section omitted, not emptied (#320)"
+    setup
+
+    # (a) No `## Approach` heading at all.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "# Plan: something
+
+## Context
+
+NO APPROACH HERE
+
+## Files to Change
+
+FILES ONLY"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with an Approach-less plan" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_not_contains "no plan context heading without ## Approach" \
+        "^## Plan Context$" "$prompt"
+    assert_not_contains "never falls back to the rest of the plan" \
+        "NO APPROACH HERE" "$prompt"
+
+    # (b) `## Approach` present but empty (whitespace only).
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "# Plan: something
+
+## Approach
+
+
+
+## Files to Change
+
+EMPTY APPROACH PLAN"
+
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with an empty Approach" "0" "$exit_code"
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_not_contains "empty Approach emits no heading" "^## Plan Context$" "$prompt"
+    assert_not_contains "empty Approach pulls in no later section" \
+        "EMPTY APPROACH PLAN" "$prompt"
+
+    teardown
+}
+
+test_plan_context_truncated() {
+    echo "TEST: an over-long ## Approach is capped at 200 lines with a visible marker (#320)"
+    require_plan_parser || return 0
+    setup
+
+    local body="" i
+    for ((i = 1; i <= 250; i++)); do
+        body+="APPROACH LINE ${i}"$'\n'
+    done
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "# Plan: long
+
+## Approach
+
+${body}
+## Files to Change
+
+TAIL SECTION"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a long plan" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "plan context heading is present" "^## Plan Context$" "$prompt"
+    assert_contains "an early Approach line survives" "^APPROACH LINE 1$" "$prompt"
+    # The section body starts with the blank line after the heading, so
+    # line 200 of the extraction is APPROACH LINE 199.
+    assert_contains "the line at the cap survives" "^APPROACH LINE 199$" "$prompt"
+    assert_not_contains "the line past the cap is cut" "^APPROACH LINE 201$" "$prompt"
+    assert_contains "truncation is marked in the prompt" "truncated: [0-9]+ more lines" "$prompt"
+    assert_not_contains "the following section is still excluded" "TAIL SECTION" "$prompt"
+
+    teardown
+}
+
+test_plan_context_no_progress() {
+    echo "TEST: --no-progress omits plan context even when a plan.md exists (#320)"
+    setup
+
+    # --no-progress alone gets a fresh mktemp -d where no plan.md can
+    # exist; the only combination that can exercise the guard is
+    # --no-progress with an explicit --work-plans-dir holding a plan.
+    local wp_dir="${TMPDIR_BASE}/explicit-work-plans"
+    write_plan_fixture "${wp_dir}/plan.md" "# Plan: skipped
+
+## Approach
+
+NO PROGRESS APPROACH BODY"
+
+    cd "${MOCK_REPO}"
+    local exit_code=0
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --no-progress --work-plans-dir "$wp_dir" \
+        < /dev/null >/dev/null 2>&1 || exit_code=$?
+
+    assert_exit_code "review completes under --no-progress" "0" "$exit_code"
+    local prompt
+    prompt=$(cat "${wp_dir}/review-gemini-prompt.md")
+    assert_not_contains "no plan context heading under --no-progress" \
+        "^## Plan Context$" "$prompt"
+    assert_not_contains "plan body never reaches the prompt" \
+        "NO PROGRESS APPROACH BODY" "$prompt"
+
+    teardown
+}
+
+test_plan_context_large_approach() {
+    echo "TEST: an Approach far larger than the pipe buffer does not kill the script (#320)"
+    require_plan_parser || return 0
+    setup
+
+    # ~400 KB of Approach: well past the 64 KiB pipe buffer. A
+    # `printf | head` implementation under `set -o pipefail` takes
+    # SIGPIPE here and aborts the whole run with exit 141 before any
+    # agent is dispatched.
+    local big="${TMPDIR_BASE}/big-approach.md"
+    {
+        printf '# Plan: huge\n\n## Approach\n\n'
+        local i
+        for ((i = 1; i <= 5000; i++)); do
+            printf 'APPROACH LINE %d %s\n' "$i" \
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        done
+        printf '\n## Files to Change\n\nTAIL SECTION\n'
+    } > "$big"
+    mkdir -p "$(dirname "${MOCK_REPO}/${PLAN_REL}")"
+    cp "$big" "${MOCK_REPO}/${PLAN_REL}"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review survives a >64 KiB Approach (no SIGPIPE, no 141)" "0" "$exit_code"
+
+    local prompt
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "plan context heading is present" "^## Plan Context$" "$prompt"
+    assert_contains "truncation is marked" "truncated: [0-9]+ more lines" "$prompt"
+    assert_contains "the output-format footer still follows it" "^## Output Format$" "$prompt"
+    assert_not_contains "the cap still holds" "^APPROACH LINE 1000 " "$prompt"
+
+    teardown
+}
+
+# Every outer-fence test ends with the same three checks: the footer and
+# (when present) the truncation marker are outside every fence, and the
+# framing text sits outside the outer fence.
+assert_plan_context_well_formed() {
+    local prompt_file="$1" label="$2"
+    assert_eq "${label}: the output-format footer is outside every fence" \
+        "outside" "$(footer_fence_state "$prompt_file")"
+    assert_eq "${label}: the framing text is outside the outer fence" \
+        "outside" "$(fence_state_at "$prompt_file" '^plan itself[.]$')"
+    if grep -q 'truncated: ' "$prompt_file"; then
+        assert_eq "${label}: the truncation marker is outside every fence" \
+            "outside" "$(fence_state_at "$prompt_file" 'truncated: [0-9]+ more lines')"
+    fi
+}
+
+test_plan_context_outer_fence_basic() {
+    echo "TEST: the plan excerpt is wrapped in one outer fence longer than any run inside (#320)"
+    require_plan_parser || return 0
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '# Plan: fenced
+
+## Approach
+
+Run it like this:
+
+```bash
+echo FENCED COMMAND
+```
+
+Then stop.
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a fenced Approach" "0" "$exit_code"
+
+    local prompt_file="${MOCK_REPO}/${PROMPT_REL}" block
+    block=$(plan_context_block "$prompt_file")
+    assert_contains "outer opener is 4 backticks (longest inner run 3, plus 1)" \
+        '^````markdown$' "$block"
+    assert_contains "outer closer matches the opener" '^````$' "$block"
+    assert_contains "fenced content is carried through unchanged" '^```bash$' "$block"
+    assert_eq "the content sits inside the outer fence" \
+        "inside" "$(fence_state_at "$prompt_file" '^Then stop\.$')"
+    assert_plan_context_well_formed "$prompt_file" "basic"
+
+    teardown
+}
+
+test_plan_context_outer_fence_no_backticks() {
+    echo "TEST: an excerpt with no backticks still gets a 3-backtick outer fence (#320)"
+    require_plan_parser || return 0
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+PLAIN APPROACH'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "outer opener is the 3-backtick minimum" '^```markdown$' "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "no backticks"
+
+    teardown
+}
+
+test_plan_context_outer_fence_info_string_inside() {
+    echo "TEST: a \`\`\`js line inside a plan fence cannot break the outer fence (#320)"
+    require_plan_parser || return 0
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '# Plan: info string
+
+## Approach
+
+```bash
+echo BEFORE
+```js
+echo AFTER
+```
+
+Prose after the fence.
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    assert_contains "prose after the inner fence is kept" "Prose after the fence" \
+        "$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "info string"
+
+    teardown
+}
+
+test_plan_context_outer_fence_four_backticks() {
+    echo "TEST: a 4-backtick plan fence holding a 3-backtick line gets a 5-backtick outer fence (#320)"
+    require_plan_parser || return 0
+    setup
+
+    # Extraction line 1 is the blank after the heading, so fillers take
+    # lines 2-196 and the tail 197-200: the cap cuts the 4-backtick fence
+    # open, just after a 3-backtick line inside it.
+    write_straddling_plan "${MOCK_REPO}/${PLAN_REL}" 195 '````markdown
+```bash
+echo INNER
+```'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "the cut happened" "truncated: [0-9]+ more lines" "$block"
+    assert_contains "outer fence is 5 backticks" '^`````markdown$' "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "4-backtick"
+
+    teardown
+}
+
+test_plan_context_outer_fence_list_item_cut() {
+    echo "TEST: a list-item fence cut by the 200-line cap cannot swallow the footer (#320)"
+    require_plan_parser || return 0
+    setup
+
+    # An indented fence inside a list item, opened on line 199 and cut.
+    write_straddling_plan "${MOCK_REPO}/${PLAN_REL}" 196 '1. Run the migration:
+   ```bash
+   echo LIST ITEM CODE'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "the cut happened" "truncated: [0-9]+ more lines" "$block"
+    assert_contains "the list-item fence line is kept" '^   ```bash$' "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "list item"
+
+    teardown
+}
+
+test_plan_context_outer_fence_indented_code() {
+    echo "TEST: a 4-space-indented backtick run (indented code, not a fence) is harmless (#320)"
+    require_plan_parser || return 0
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+Indented code that shows a fence marker:
+
+    ```
+    not a fence
+
+After the indented block.
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "text after the indented block is kept" "After the indented block" "$block"
+    assert_not_contains "the next section is still excluded" "TAIL SECTION" "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "indented code"
+
+    teardown
+}
+
+test_plan_context_outer_fence_crlf() {
+    echo "TEST: a CRLF plan keeps the prompt well-formed and ends at the next section (#320)"
+    require_plan_parser || return 0
+    setup
+
+    mkdir -p "$(dirname "${MOCK_REPO}/${PLAN_REL}")"
+    printf '# Plan: crlf\r\n\r\n## Approach\r\n\r\n```bash\r\necho CRLF CODE\r\n```\r\n\r\nCRLF PROSE\r\n\r\n## Files to Change\r\n\r\nTAIL SECTION\r\n' \
+        > "${MOCK_REPO}/${PLAN_REL}"
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "CRLF prose is kept" "CRLF PROSE" "$block"
+    assert_not_contains "the next section is still excluded" "TAIL SECTION" "$block"
+    assert_eq "the outer closer carries no CR" "1" \
+        "$(grep -c $'^````$' <<< "$block" || true)"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "CRLF"
+
+    teardown
+}
+
+test_plan_context_outer_fence_longer_than_inner_run() {
+    echo "TEST: a 5-backtick run inside the excerpt gets a 6-backtick outer fence (#320)"
+    require_plan_parser || return 0
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+`````text
+five-backtick fence
+`````
+
+Inline run ````` mid-line too.
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "outer opener is 6 backticks" '^``````markdown$' "$block"
+    assert_contains "outer closer is 6 backticks" '^``````$' "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "5-backtick run"
+
+    teardown
+}
+
+test_plan_context_extractor_ignores_boundaries_in_fences() {
+    echo "TEST: a # comment or --- inside a plan fence does not end the Approach (#320)"
+    require_plan_parser || return 0
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+```bash
+# a shell comment, not a heading
+echo AFTER COMMENT
+```
+
+~~~yaml
+---
+key: AFTER RULE
+~~~
+
+```js
+## not a heading either
+```
+
+PROSE AFTER FENCES
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "content after a # line in a fence is kept" "AFTER COMMENT" "$block"
+    assert_contains "content after a --- line in a fence is kept" "AFTER RULE" "$block"
+    assert_contains "prose after the fences is kept" "PROSE AFTER FENCES" "$block"
+    assert_not_contains "the next real section still ends it" "TAIL SECTION" "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "boundaries in fences"
+
+    teardown
+}
+
+test_plan_context_extractor_long_rule() {
+    echo "TEST: a thematic break of four or more dashes ends the Approach (#320)"
+    require_plan_parser || return 0
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BEFORE LONG RULE
+
+-----
+
+LONG RULE SECTION BODY'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body is included" "APPROACH BEFORE LONG RULE" "$block"
+    assert_not_contains "content after a ----- rule does not leak in" \
+        "LONG RULE SECTION BODY" "$block"
+
+    teardown
+}
+
+test_plan_context_extractor_star_underscore_rules() {
+    echo "TEST: ***, * * *, ___ and indented rules end the Approach (#320)"
+    require_plan_parser || return 0
+    setup
+
+    local rule exit_code block
+    for rule in '***' '* * *' '___' '_ _ _' '   ***' '  - - -' '*****'; do
+        write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "## Approach
+
+**APPROACH BOLD LINE** is not a rule
+__ALSO NOT A RULE__
+
+${rule}
+
+AFTER RULE BODY"
+
+        exit_code=$(run_gemini_sync)
+        assert_exit_code "review completes with rule '${rule}'" "0" "$exit_code"
+        block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+        assert_contains "bold text before '${rule}' is kept" "APPROACH BOLD LINE" "$block"
+        assert_contains "underscore text before '${rule}' is kept" "ALSO NOT A RULE" "$block"
+        assert_not_contains "content after '${rule}' does not leak in" \
+            "AFTER RULE BODY" "$block"
+    done
+
+    # Four leading spaces is indented code, not a rule: the Approach goes on.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "## Approach
+
+APPROACH START
+
+    ***
+
+STILL APPROACH
+
+## Files to Change
+
+TAIL SECTION"
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with an indented-code ***" "0" "$exit_code"
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "a 4-space-indented *** does not end the Approach" \
+        "STILL APPROACH" "$block"
+    assert_not_contains "the next heading still ends it" "TAIL SECTION" "$block"
+
+    teardown
+}
+
+test_plan_context_extractor_unclosed_fence() {
+    echo "TEST: an unclosed plan fence cuts at the first boundary seen inside it (#320)"
+    require_plan_parser || return 0
+    setup
+
+    # The fence opened in the Approach never closes, so every later line is
+    # "inside" it. The Approach must still stop at the first boundary-shaped
+    # line rather than running to EOF and pulling the later sections in.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BEFORE FENCE
+
+```bash
+echo INSIDE UNCLOSED FENCE
+
+## Files to Change
+
+LATER SECTION BODY
+
+## Verification
+
+LAST SECTION BODY'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body before the fence is kept" "APPROACH BEFORE FENCE" "$block"
+    assert_contains "fence body before the boundary is kept" "INSIDE UNCLOSED FENCE" "$block"
+    assert_not_contains "the later section does not leak in" "LATER SECTION BODY" "$block"
+    assert_not_contains "the last section does not leak in" "LAST SECTION BODY" "$block"
+    assert_not_contains "the boundary heading itself is not included" \
+        "^## Files to Change$" "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "unclosed fence"
+
+    teardown
+}
+
+test_plan_context_stops_at_h1_or_rule() {
+    echo "TEST: the Approach extractor stops at an H1 or a thematic break (#320)"
+    require_plan_parser || return 0
+    setup
+
+    # (a) H1 after Approach.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BODY ONE
+
+# Appendix
+
+H1 SECTION BODY'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with an H1 after Approach" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body is included" "APPROACH BODY ONE" "$block"
+    assert_not_contains "content after an H1 does not leak in" "H1 SECTION BODY" "$block"
+
+    # (b) Thematic break after Approach.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BODY TWO
+
+---
+
+RULE SECTION BODY'
+
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a rule after Approach" "0" "$exit_code"
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body is included" "APPROACH BODY TWO" "$block"
+    assert_not_contains "content after a thematic break does not leak in" \
+        "RULE SECTION BODY" "$block"
+
+    teardown
+}
+
+test_plan_context_extractor_fence_after_closed_fence() {
+    echo "TEST: an unclosed fence after a closed one keeps the text between them (#320 round 6)"
+    require_plan_parser || return 0
+    setup
+
+    # The awk extractor remembered the `# comment` inside the CLOSED fence
+    # as the cut point and never reset it when that fence closed, so the
+    # later unclosed fence truncated the Approach back to STEP A.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+STEP A
+
+```sh
+# comment
+```
+
+STEP B
+
+```bash
+echo UNCLOSED
+
+## Files to Change
+
+LATER SECTION BODY'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "text before the closed fence is kept" "STEP A" "$block"
+    assert_contains "text between the closed and the unclosed fence is kept" "STEP B" "$block"
+    assert_contains "the unclosed fence body before the boundary is kept" "echo UNCLOSED" "$block"
+    assert_not_contains "the later section does not leak in" "LATER SECTION BODY" "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "fence after closed fence"
+
+    teardown
+}
+
+test_plan_context_extractor_approach_in_earlier_fence() {
+    echo "TEST: a ## Approach line inside an earlier fenced example is not the section (#320 round 6)"
+    require_plan_parser || return 0
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '# Plan: example
+
+## Context
+
+```md
+## Approach
+EXAMPLE ONLY
+```
+
+## Approach
+
+REAL APPROACH BODY
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "the real Approach is extracted" "REAL APPROACH BODY" "$block"
+    assert_not_contains "the fenced example is not taken as the Approach" "EXAMPLE ONLY" "$block"
+    assert_not_contains "the next section is still excluded" "TAIL SECTION" "$block"
+
+    teardown
+}
+
+test_plan_context_extractor_unclosed_fence_before_approach() {
+    echo "TEST: an unclosed fence in an earlier section does not hide the ## Approach heading (#320 round 7)"
+    require_plan_parser || return 0
+    setup
+
+    # Per CommonMark the unclosed fence in Context swallows the rest of the
+    # plan, heading included; the extractor would then report "no section"
+    # and the Plan Context block would vanish without a warning.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Context
+
+```sh
+open
+
+## Approach
+
+REAL
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "the Approach after the unclosed fence is extracted" "^REAL$" "$block"
+    assert_not_contains "the unclosed fence body is not taken as the Approach" "^open$" "$block"
+    assert_not_contains "the next section is still excluded" "TAIL SECTION" "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "unclosed fence before approach"
+
+    teardown
+}
+
+test_plan_context_extractor_indented_heading() {
+    echo "TEST: an ATX heading indented 1-3 spaces ends the Approach (#320 round 6)"
+    require_plan_parser || return 0
+    setup
+
+    local indent exit_code block
+    for indent in ' ' '  ' '   '; do
+        write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" "## Approach
+
+APPROACH BODY
+
+${indent}## Files to Change
+
+INDENTED NEXT SECTION"
+
+        exit_code=$(run_gemini_sync)
+        assert_exit_code "review completes (${#indent}-space heading)" "0" "$exit_code"
+        block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+        assert_contains "Approach body is kept (${#indent}-space heading)" "APPROACH BODY" "$block"
+        assert_not_contains "the section after a ${#indent}-space-indented heading does not leak in" \
+            "INDENTED NEXT SECTION" "$block"
+    done
+
+    teardown
+}
+
+test_plan_context_extractor_setext_headings() {
+    echo "TEST: setext H1 (===) and H2 (---) headings end the Approach, title line included (#320 round 6)"
+    require_plan_parser || return 0
+    setup
+
+    # (a) `===` underline: an H1, which the awk extractor did not see at all.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BODY ONE
+
+SETEXT TITLE ONE
+===
+
+AFTER SETEXT ONE'
+
+    local exit_code block
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a === heading" "0" "$exit_code"
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body is kept before a === heading" "APPROACH BODY ONE" "$block"
+    assert_not_contains "the === heading title does not leak in" "SETEXT TITLE ONE" "$block"
+    assert_not_contains "the section after a === heading does not leak in" \
+        "AFTER SETEXT ONE" "$block"
+
+    # (b) `---` underline: an H2. The awk extractor cut at the underline
+    # (as a thematic break) but had already kept the title line above it.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BODY TWO
+
+SETEXT TITLE TWO
+---
+
+AFTER SETEXT TWO'
+
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes with a --- heading" "0" "$exit_code"
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body is kept before a --- heading" "APPROACH BODY TWO" "$block"
+    assert_not_contains "the --- heading title does not leak in" "SETEXT TITLE TWO" "$block"
+    assert_not_contains "the section after a --- heading does not leak in" \
+        "AFTER SETEXT TWO" "$block"
+
+    teardown
+}
+
+test_plan_context_parser_unavailable() {
+    echo "TEST: without markdown-it-py (or on an extractor error) the review runs with one warning and no plan context (#320)"
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+HIDDEN APPROACH BODY
+
+## Files to Change
+
+TAIL SECTION'
+
+    # (a) Library missing. A package of the same name that fails to import,
+    # first on PYTHONPATH, shadows the real one for every interpreter the
+    # script tries (the .venv python3 and python3 on PATH alike).
+    local shadow="${TMPDIR_BASE}/shadow-markdown-it"
+    mkdir -p "${shadow}/markdown_it"
+    printf 'raise ImportError("hidden by test_plan_context_parser_unavailable")\n' \
+        > "${shadow}/markdown_it/__init__.py"
+
+    local err_file="${TMPDIR_BASE}/parser-unavailable.err" exit_code=0
+    cd "${MOCK_REPO}"
+    PYTHONPATH="$shadow" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 < /dev/null > /dev/null 2> "$err_file" || exit_code=$?
+
+    assert_exit_code "review still completes without the library" "0" "$exit_code"
+    local stderr prompt
+    stderr=$(cat "$err_file")
+    assert_contains "a warning names the missing library" \
+        "WARNING: plan context omitted: markdown-it-py is not importable" "$stderr"
+    assert_eq "exactly one plan-context warning" "1" \
+        "$(grep -c 'plan context omitted' "$err_file" || true)"
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_not_contains "no plan context heading without the library" "^## Plan Context$" "$prompt"
+    assert_not_contains "the plan body never reaches the prompt" "HIDDEN APPROACH BODY" "$prompt"
+    assert_contains "the output-format footer is still there" "^## Output Format$" "$prompt"
+    # The mock agy answers with the prompt it was sent, so a findings file
+    # carrying the footer is a review that ran end to end.
+    assert_contains "the review itself was still produced" "^## Output Format$" \
+        "$(cat "${MOCK_REPO}/${FINDINGS_REL}")"
+
+    # (b) Any other extractor failure: an unreadable plan. Same outcome,
+    # with the extractor's own reason in the warning.
+    if [[ "$(id -u)" -ne 0 ]] && require_plan_parser; then
+        chmod 000 "${MOCK_REPO}/${PLAN_REL}"
+        exit_code=0
+        PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+            --pr 99 < /dev/null > /dev/null 2> "$err_file" || exit_code=$?
+        chmod 644 "${MOCK_REPO}/${PLAN_REL}"
+        assert_exit_code "review still completes on an extractor error" "0" "$exit_code"
+        stderr=$(cat "$err_file")
+        assert_contains "a warning carries the extractor's reason" \
+            "WARNING: plan context omitted: _plan_approach.py failed \(exit 3\): .*PermissionError" "$stderr"
+        prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+        assert_not_contains "no plan context heading on an extractor error" \
+            "^## Plan Context$" "$prompt"
+    fi
+    rm -f "$err_file"
+
+    teardown
+}
+
+test_require_plan_parser_fails_under_ci() {
+    echo "TEST: with no markdown-it-py, the extractor-test guard fails under CI and skips locally (#320 round 7)"
+    # Subshells, so neither the emptied PLAN_PARSER_PYTHON nor the guard's
+    # own FAIL increment leaks into this run's totals.
+    local out rc
+    rc=0
+    out=$(PLAN_PARSER_PYTHON="" CI=true FAIL=0
+        require_plan_parser || rc=$?
+        echo "rc=${rc} fail=${FAIL}")
+    assert_contains "CI=true: the guard reports a failure" "^  FAIL: markdown-it-py" "$out"
+    assert_contains "CI=true: the guard returns 1 and counts one failure" "^rc=1 fail=1$" "$out"
+
+    rc=0
+    out=$(PLAN_PARSER_PYTHON="" FAIL=0
+        unset CI
+        require_plan_parser || rc=$?
+        echo "rc=${rc} fail=${FAIL}")
+    assert_contains "CI unset: the guard skips with a reason" "^  SKIP: markdown-it-py" "$out"
+    assert_contains "CI unset: the guard returns 1 and counts no failure" "^rc=1 fail=0$" "$out"
+
+    rc=0
+    out=$(PLAN_PARSER_PYTHON="" CI=false FAIL=0
+        require_plan_parser || rc=$?
+        echo "rc=${rc} fail=${FAIL}")
+    assert_contains "CI=false: the guard skips" "^rc=1 fail=0$" "$out"
+}
+
+test_plan_context_missing_extractor_is_an_error() {
+    echo "TEST: a missing _plan_approach.py is reported as an extractor error, not a missing library (#320 round 7)"
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+HIDDEN APPROACH BODY'
+
+    # A copy of the scripts directory without the extractor. python exits 2
+    # when it cannot open a script, which must not read as the extractor's
+    # own "markdown-it-py missing" code and send the loop to the next
+    # interpreter.
+    local scripts_copy="${TMPDIR_BASE}/scripts-copy"
+    mkdir -p "$scripts_copy"
+    cp -p "${SCRIPT_DIR}/.."/*.sh "$scripts_copy/"
+    [[ ! -e "${scripts_copy}/_plan_approach.py" ]] || rm "${scripts_copy}/_plan_approach.py"
+
+    local err_file="${TMPDIR_BASE}/missing-extractor.err" exit_code=0
+    cd "${MOCK_REPO}"
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${scripts_copy}/cross_model_review.sh" \
+        --pr 99 < /dev/null > /dev/null 2> "$err_file" || exit_code=$?
+
+    assert_exit_code "review still completes without the extractor" "0" "$exit_code"
+    local stderr prompt
+    stderr=$(cat "$err_file")
+    assert_contains "the warning reports an extractor failure" \
+        "WARNING: plan context omitted: _plan_approach.py failed \(exit 2\): .*_plan_approach.py" "$stderr"
+    assert_not_contains "the warning does not blame the library" "markdown-it-py is not importable" "$stderr"
+    assert_eq "exactly one plan-context warning" "1" \
+        "$(grep -c 'plan context omitted' "$err_file" || true)"
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_not_contains "no plan context heading without the extractor" "^## Plan Context$" "$prompt"
+    rm -f "$err_file"
 
     teardown
 }
@@ -2672,9 +3881,40 @@ test_diff_fetch_failure_is_marked
 test_agy_api_error_message_kept
 test_agy_findings_truncated
 test_agy_no_temp_leak
+test_shared_temp_no_leak_on_early_abort
 test_prompt_tool_use_guidance
 test_work_plans_excluded_from_diff
 test_branch_mode_filter_survives_noprefix
+test_diff_fence_context_line_pr_mode
+test_diff_fence_four_backtick_run_pr_mode
+test_diff_fence_branch_mode
+test_plan_context_present
+test_plan_context_absent_no_plan
+test_plan_context_absent_no_approach_section
+test_plan_context_truncated
+test_plan_context_no_progress
+test_plan_context_large_approach
+test_plan_context_outer_fence_basic
+test_plan_context_outer_fence_no_backticks
+test_plan_context_outer_fence_info_string_inside
+test_plan_context_outer_fence_four_backticks
+test_plan_context_outer_fence_list_item_cut
+test_plan_context_outer_fence_indented_code
+test_plan_context_outer_fence_crlf
+test_plan_context_outer_fence_longer_than_inner_run
+test_plan_context_extractor_ignores_boundaries_in_fences
+test_plan_context_extractor_long_rule
+test_plan_context_extractor_unclosed_fence
+test_plan_context_extractor_star_underscore_rules
+test_plan_context_stops_at_h1_or_rule
+test_plan_context_extractor_fence_after_closed_fence
+test_plan_context_extractor_approach_in_earlier_fence
+test_plan_context_extractor_unclosed_fence_before_approach
+test_plan_context_extractor_indented_heading
+test_plan_context_extractor_setext_headings
+test_plan_context_parser_unavailable
+test_plan_context_missing_extractor_is_an_error
+test_require_plan_parser_fails_under_ci
 test_sync_flag_rejected
 test_agents_all_succeed
 test_agents_partial_failure

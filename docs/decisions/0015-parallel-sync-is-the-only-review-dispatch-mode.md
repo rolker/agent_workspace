@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Accepted. Trigger tier for cross-model dispatch is recorded in issue #320
+(Standard + Deep, fix-round re-reviews included at the whole diff's tier);
+dispatch mechanics unchanged.
 
 ## Context
 
@@ -121,6 +123,7 @@ returns typed per-provider results.
 ## References
 
 - Issue #206 (this decision), #106 (`--sync` origin), #2/#65/#66 (tmux
-  origin), #311/#288 (Gemini helper and its timeout contract), #313.
+  origin), #311/#288 (Gemini helper and its timeout contract), #313,
+  #320 (trigger tier and the plan-context section of the prompt).
 - `.agent/scripts/cross_model_review.sh`, `.agent/scripts/_agy_review.sh`,
   `.agent/scripts/_cli_review.sh`, `.claude/skills/review-code/SKILL.md`.

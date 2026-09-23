@@ -56,8 +56,10 @@ governance note ("No governance concerns for a change of this scope").
 - Governance
 - Plan drift
 - Claude adversarial (fresh — no context from other specialists)
+- Cross-model adversarial (all available non-caller agents, via `cross_model_review.sh`)
 
-**Report format**: Full report with all sections.
+**Report format**: Full report with all sections, including a Cross-Model
+Reviews section with per-agent findings.
 
 ### Deep
 
@@ -74,8 +76,14 @@ governance note ("No governance concerns for a change of this scope").
 - Claude adversarial (fresh — no context from other specialists)
 - Cross-model adversarial (all available non-caller agents, via `cross_model_review.sh`)
 
-**Report format**: Full report with all sections plus a Cross-Model Reviews
-section with per-agent findings.
+**Report format**: Full report with all sections, including a Cross-Model
+Reviews section with per-agent findings.
+
+**What still distinguishes Deep from Standard**: nothing in what is
+dispatched or reported. Since issue #320 the two tiers run the same
+specialists and produce the same report sections; they differ only in the
+criteria above, which decide what lands in each. Light remains genuinely
+different — static analysis only, no cross-model dispatch.
 
 ## Override-Trigger Files
 
@@ -118,6 +126,30 @@ These signals always bump the review to **Deep**, regardless of other signals:
 
 The highest tier triggered wins. There is no mechanism to downgrade a tier
 based on other signals.
+
+## Fix-Round Re-Reviews
+
+A **fix-round re-review** — a `review-code` pass after `address-findings`
+in PR mode, or a pre-push round ≥ 2 (`review_progress.sh round` prints
+`round>=2`) — is classified **exactly as a first review is**: on the whole
+PR/branch diff, with the tier table above. A Standard or Deep result
+dispatches everything that tier dispatches, including the cross-model
+specialist (every available non-caller agent in one
+`cross_model_review.sh --agents` call).
+
+The reviewer may **raise** the tier, never lower it below the whole-diff
+classification — in particular, not because the fix round itself "is
+small". An explicit depth keyword from the user (see User Override) still
+wins. The `**Depth**` line records the tier and the signal that decided
+it, as for any review.
+
+This is the owner's decision on issue #320 (2026-09-23). It followed PR
+#327, where a ~60-line fix round was re-reviewed without Gemini/Codex at
+the reviewer's discretion. A variant that classified only the fix round's
+own delta was tried and dropped: a small fix to a large PR would drop to
+Light (static analysis only), so no governance, Claude adversarial or
+cross-model pass would check that the earlier findings were actually
+resolved — it could lower a re-review below the whole-PR tier.
 
 ## User Override
 
