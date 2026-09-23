@@ -495,3 +495,32 @@ Owner chose "Same as whole PR (Recommended)": a fix-round re-review gets the sam
 **Decision**: address
 
 Owner chose "One outer fence (Recommended)": wrap the plan excerpt in a single outer fence longer than any backtick run inside it and delete the fence-balancing tracker (resolves round-4 must-fix 1-2 and the CRLF suggestion by removal); fix the two extractor suggestions (a '# ' line inside a fenced block ending the Approach early; '----' and longer rules not ending the section). One more review round.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 11:50 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a25eabc1b068839e2, resume 2 of 3)
+
+**Branch**: feature/issue-320 at `902026d`
+**Addressed**: Local Review (Pre-Push) at `a86702c` (2026-09-23 11:36 -04:00), with the owner's Checkpoint at `0022942` (After: rounds, Decision: address — "One outer fence")
+**Commits**: 902026d
+
+### Actions
+- [x] (must-fix 1) Column-0 closer for list-item fences — `.agent/scripts/cross_model_review.sh` (deferred: resolved by removal — tracker deleted; the outer fence's own column-0 closer is correct by construction)
+- [x] (must-fix 2) Indented code read as a fence — (deferred: resolved by removal; the outer fence is longer than any backtick run, indented or not)
+- [x] (suggestion) CRLF closer check — (deferred: resolved by removal; our closer carries no CR, and the extractor strips CR before its boundary fence check)
+- [x] (suggestion) Extractor stops at `# ` inside a fence — boundaries ignored while a plan fence is open (0-3 space indent, same-char closer at least as long, whitespace only after, CR stripped; backtick run followed by a backtick is inline code) — `.agent/scripts/cross_model_review.sh:945-990`
+- [x] (suggestion) `----` rules — stop now matches `^---+[[:space:]]*$` — `.agent/scripts/cross_model_review.sh`
+
+### What changed (902026d)
+- `cross_model_review.sh`: fence-balancing tracker deleted. The capped excerpt is wrapped in one backtick fence of max(3, longest inner run + 1), opener `<fence>markdown` at column 0, closer before the truncation marker; heading and framing text stay outside. Extractor gained boundary-only fence tracking and the 3+-dash rule.
+- `test_cross_model_review.sh`: the six fence tests (round-1 balanced + four round-3 tracker tests) replaced by eight outer-fence tests (basic, no backticks, ```js inside, 4-backtick cut, list-item fence cut at the cap, 4-space-indented backtick run, CRLF, 5-backtick run → 6-backtick outer) and two extractor tests (`#`/`---`/`##` inside fences; `-----` rule). The independent oracle is now `fence_state_at` (any target line; trailing CR treated as a line ending), with a shared `assert_plan_context_well_formed` checking footer, framing text and truncation marker are outside every fence. Unused `count_fence_lines` removed.
+- `plan.md` Implementation Notes: the fence-balancing note replaced by the outer-fence decision and the extractor-boundary rule. AGENTS.md's script row does not describe the tracker, so it is unchanged.
+
+### Tests
+- `test_cross_model_review.sh`: 479 passed, 0 failed. Pre-commit (shellcheck, full `run_script_tests.sh`) passed.
+- Against the previous tracker code (swapped in temporarily, then restored): 465 passed, 14 failed — 8 of the 10 new tests fail. The ```js-inside and list-item-cut tests pass on the old code: the old tracker already handled info strings, and the list-item failure depends on CommonMark list containers, which the test oracle (fence rules only) does not model. A markdown_it cross-check of that case was not run (the ad hoc harness command was denied).
+
+### Notes
+- Pre-existing, outside this round's scope: the `## Diff` block uses a fixed 3-backtick fence (`cross_model_review.sh` ~891/925); a diff context line ` ````…` (1 space + 3 backticks) is a valid CommonMark closer, so a diff touching fenced markdown can end the diff fence early. The same longest-run technique would fix it.
