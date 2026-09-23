@@ -141,3 +141,13 @@ The owner's option is followed correctly. The Gemini change stays Gemini-only, a
 - [ ] Extend the existing gemini-vs-codex prompt test: the gemini prompt has the new instructions and no "You may read files"; the codex and claude prompts have neither.
 - [ ] Replace the live acceptance step with a concrete run of this branch's script against #320's range (`--branch 48b0d82^1` from a detached scratch worktree at `48b0d82^2`, `--agents gemini --no-progress`). Record the prompt size, `agy --version`, `EXIT=` and the head of the findings file, then remove the scratch worktree.
 - [ ] (Optional) Add a live claude check through `_cli_review.sh` with a bad-model wrapper bin, confirming the 404 reason reaches the findings file.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 14:55 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise the plan (Recommended): fold in all 12 items from the plan review at ce728e4, including the optional live claude bad-model check; then one more plan review.
