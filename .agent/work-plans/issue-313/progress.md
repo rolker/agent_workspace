@@ -937,3 +937,24 @@ Tests: `test_cross_model_review.sh` 381/381 pass; `run_script_tests.sh` 23/23 su
 **Decision**: publish
 
 Publish. Pre-push review approved at round 2 (12b263f), 0 must-fix; three live Gemini+Codex runs through the helper, the last completing for both agents. Main merged in before the push.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-23 09:54 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #327 at `4d7bb94`
+**Sources**: 2 (Local Review (Pre-Push) round 2 @ `24eddc0`, CI rollup @ `4d7bb94`)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+Copilot's only review at `4d7bb94` is the quota notice ("unable to review ... quota limit") with 0 inline comments, and its `copilot-pull-request-reviewer` check-run shows `failure` for the same reason; neither is a review source and neither is counted. All real CI checks (Lint, Validate Adapter Contract, Validate Documentation, ros-manifest tests) pass at `4d7bb94`. 0 GitHub inline or conversation comments.
+
+The pre-push review was at `24eddc0`; `24eddc0..4d7bb94` touches neither `.agent/scripts/cross_model_review.sh` nor `.agent/scripts/_cli_review.sh` (only the main merge and progress bookkeeping), so its round-2 approval and both open suggestions carry forward unchanged to the PR head. Both re-verified in the current code. Neither is must-fix: finding 1's worst case is a bounded wait then SIGKILL (not a hang or leak), finding 2 is comment accuracy only.
+
+### Findings
+- [ ] (suggestion, Local Review R2) `job_finished`'s /proc fallback reads process state with `awk '{print $3}'`, which lands on the wrong field when a process's comm contains a space; prefer the text after the last `)`. Still present at lines 755-757. Failure mode is bounded: a misread state reports the job running, so cleanup waits out `CLEANUP_REAP_TIMEOUT` and SIGKILLs — `.agent/scripts/cross_model_review.sh`
+- [ ] (suggestion, Local Review R2) two comments (lines 337 and 351) justify the guarded jq extraction by what would happen "under `set -e`", but the helper runs `set -uo pipefail` (line 86) with no `-e`; the guard is right, the stated mechanism is not (an unguarded jq failure would leave an empty value, not kill the helper) — `.agent/scripts/_cli_review.sh`
+
+### False positives
+- (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (review and failed check-run at `4d7bb94`) — not a review: it asserts nothing about the code, and the quota exhaustion is known (Sept 2026); excluded from sources and from the CI verdict.
