@@ -114,12 +114,13 @@ else
     fail "no absolute-path PreToolUse entry for log-tool-use.sh"
 fi
 
-# The tool-mapping hook was retired from the user tier (#328): a fresh
-# install must not write it.
-jq -e --arg c "$WSC/.claude/hooks/block-bash-tool-mapping.sh" \
-    '[.hooks.PreToolUse[].hooks[]?.command] | index($c) == null' "$SETTINGS" >/dev/null \
-    && pass "no PreToolUse entry for the retired tool-mapping hook" \
-    || fail "install still writes the retired tool-mapping hook"
+# Exactly that one: a hook retired from the user tier (the tool-mapping
+# hook, #328) must not be written by a fresh install.
+jq -e --arg t "$WSC" --arg c "$WSC/.claude/hooks/log-tool-use.sh" '
+    [.hooks.PreToolUse[] | select((._agent_workspace // "") == $t) | .hooks[]?.command] == [$c]
+' "$SETTINGS" >/dev/null \
+    && pass "the tagged PreToolUse entry carries log-tool-use.sh and nothing else" \
+    || fail "the tagged PreToolUse entry carries more than log-tool-use.sh ($(jq -c '[.hooks.PreToolUse[].hooks[]?.command]' "$SETTINGS"))"
 
 jq -e --arg t "$WSC" '[.hooks | to_entries[] | .value[] | ._agent_workspace] | all(. == $t)' \
     "$SETTINGS" >/dev/null \
