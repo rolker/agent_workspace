@@ -1130,6 +1130,56 @@ test_agy_no_temp_leak() {
     teardown
 }
 
+test_shared_temp_no_leak_on_early_abort() {
+    echo "TEST: an abort among the shared mktemp calls leaves no temp files (#320)"
+    setup
+
+    local leak_dir="${TMPDIR_BASE}/leakcheck" fail_bin="${TMPDIR_BASE}/failbin"
+    local real_mktemp
+    real_mktemp=$(command -v mktemp)
+    mkdir -p "$leak_dir" "$fail_bin"
+    # A mktemp that fails for the template named in MOCK_MKTEMP_FAIL and
+    # defers to the real one otherwise, so the script dies part-way through
+    # creating its shared temp files.
+    cat > "${fail_bin}/mktemp" << MKTEMP_EOF
+#!/usr/bin/env bash
+if [[ -n "\${MOCK_MKTEMP_FAIL:-}" && "\$*" == *"\${MOCK_MKTEMP_FAIL}"* ]]; then
+    echo "mock mktemp: refusing \$*" >&2
+    exit 1
+fi
+exec "${real_mktemp}" "\$@"
+MKTEMP_EOF
+    chmod +x "${fail_bin}/mktemp"
+
+    cd "${MOCK_REPO}"
+    local template exit_code stderr leftovers
+    # The last shared mktemp fails after the prompt and diff files exist;
+    # the first fails before any exists (cleanup must cope with empty paths).
+    for template in cross-model-review-tmp. cross-model-review-prompt.; do
+        rm -rf "$leak_dir"
+        mkdir -p "$leak_dir"
+        exit_code=0
+        stderr=$(MOCK_MKTEMP_FAIL="$template" TMPDIR="$leak_dir" \
+            PATH="${fail_bin}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+            bash "${SCRIPT_UNDER_TEST}" --pr 99 < /dev/null 2>&1 >/dev/null) || exit_code=$?
+        if [[ "$exit_code" -ne 0 ]]; then
+            echo "  PASS: run aborts when mktemp '${template}' fails"
+            PASS=$((PASS + 1))
+        else
+            echo "  FAIL: run should abort when mktemp '${template}' fails"
+            FAIL=$((FAIL + 1))
+        fi
+        assert_contains "the abort is the mocked mktemp (${template})" \
+            "mock mktemp: refusing" "$stderr"
+        assert_not_contains "cleanup does not trip on an unset path (${template})" \
+            "unbound variable|cannot remove" "$stderr"
+        leftovers=$(ls -A "$leak_dir")
+        assert_eq "no shared temp files left after '${template}' fails" "" "$leftovers"
+    done
+
+    teardown
+}
+
 test_prompt_tool_use_guidance() {
     echo "TEST: tool-use paragraph is present for gemini and absent for codex (#288)"
     setup
@@ -3476,6 +3526,7 @@ test_diff_fetch_failure_is_marked
 test_agy_api_error_message_kept
 test_agy_findings_truncated
 test_agy_no_temp_leak
+test_shared_temp_no_leak_on_early_abort
 test_prompt_tool_use_guidance
 test_work_plans_excluded_from_diff
 test_branch_mode_filter_survives_noprefix

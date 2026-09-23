@@ -732,25 +732,13 @@ else
     TARGET_LABEL="PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
 fi
 
-# --- Write the shared prompt ---
-# The header, metadata, diff and output-format footer are identical for
-# every agent, so they are built once into a temp file and copied into
-# each agent's prompt file; only the per-agent tool-use footer differs.
-# Use a quoted heredoc for the static header to prevent shell expansion,
-# then stream the diff from gh/git into a staging file (never a variable,
-# which could hit shell limits for large Deep-tier PRs) before fencing it
-# into the prompt.
-SHARED_PROMPT=$(mktemp -t "cross-model-review-prompt.XXXXXX")
-# The diff is staged here before it is fenced into the prompt: its outer
-# fence length depends on the longest backtick run in it (outer_fence_for).
-SHARED_DIFF=$(mktemp -t "cross-model-review-diff.XXXXXX")
-
-# Scratch root handed to the agent jobs as their TMPDIR. _agy_review.sh
-# makes its own `mktemp -d` under it and removes it on every exit path it
-# can trap — but `timeout -k` finishes a wedged helper with SIGKILL, which
-# no trap survives. Owning the parent directory here means that one
-# untrappable path still gets cleaned up, by this script's EXIT trap.
-AGENT_TMP_ROOT=$(mktemp -d -t "cross-model-review-tmp.XXXXXX")
+# Temp paths owned by cleanup_jobs. Declared empty here, and only filled
+# in AFTER the EXIT/INT/TERM/HUP traps below are registered: a failure or
+# signal between a `mktemp` and the trap would otherwise leak the file.
+# cleanup_jobs skips whichever of them is still empty.
+SHARED_PROMPT=""
+SHARED_DIFF=""
+AGENT_TMP_ROOT=""
 
 # Cleanup on every exit path: stop any agent job still running (each
 # job's own TERM trap forwards to its CLI), then drop the temp prompt.
@@ -827,12 +815,35 @@ cleanup_jobs() {
             kill -9 "$pid" 2>/dev/null || true
         fi
     done
-    rm -f "$SHARED_PROMPT" "$SHARED_DIFF"
-    rm -rf "$AGENT_TMP_ROOT"
+    # Any of these may still be empty: an early exit or signal can land
+    # before (or between) the mktemp calls below, and `rm ""` is an error.
+    [[ -z "$SHARED_PROMPT" ]] || rm -f "$SHARED_PROMPT"
+    [[ -z "$SHARED_DIFF" ]] || rm -f "$SHARED_DIFF"
+    [[ -z "$AGENT_TMP_ROOT" ]] || rm -rf "$AGENT_TMP_ROOT"
 }
 trap cleanup_jobs EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
+
+# --- Write the shared prompt ---
+# The header, metadata, diff and output-format footer are identical for
+# every agent, so they are built once into a temp file and copied into
+# each agent's prompt file; only the per-agent tool-use footer differs.
+# Use a quoted heredoc for the static header to prevent shell expansion,
+# then stream the diff from gh/git into a staging file (never a variable,
+# which could hit shell limits for large Deep-tier PRs) before fencing it
+# into the prompt.
+SHARED_PROMPT=$(mktemp -t "cross-model-review-prompt.XXXXXX")
+# The diff is staged here before it is fenced into the prompt: its outer
+# fence length depends on the longest backtick run in it (outer_fence_for).
+SHARED_DIFF=$(mktemp -t "cross-model-review-diff.XXXXXX")
+
+# Scratch root handed to the agent jobs as their TMPDIR. _agy_review.sh
+# makes its own `mktemp -d` under it and removes it on every exit path it
+# can trap — but `timeout -k` finishes a wedged helper with SIGKILL, which
+# no trap survives. Owning the parent directory here means that one
+# untrappable path still gets cleaned up, by this script's EXIT trap.
+AGENT_TMP_ROOT=$(mktemp -d -t "cross-model-review-tmp.XXXXXX")
 
 cat > "$SHARED_PROMPT" << 'PROMPT_HEADER'
 # Adversarial Code Review
