@@ -321,3 +321,13 @@ Fresh Claude adversarial specialist: no issues (checked the signal scope, the gr
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 11:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish (Recommended): push feature/issue-330 and open the PR with the decision summary. Merge remains a separate decision.
