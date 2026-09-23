@@ -324,7 +324,7 @@ _persist_impl() {
 # Integrator input for triage-reviews (PR C): the local review findings at
 # the PR head plus the GitHub-side inline comments, and the CANDIDATE
 # cross-source confirmations — a local finding and a GitHub comment that
-# name the same file at the same head SHA. The skill confirms each
+# name the same file and cover the current head. The skill confirms each
 # candidate semantically; this only does the mechanical correlation
 # (ADR-0013: review entries correlate by head SHA).
 cmd_sources() {
@@ -350,20 +350,46 @@ cmd_sources() {
     if ! "$PYTHON" -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$reviews" 2>/dev/null; then
         echo "error: sources: reviews file is not valid JSON: $reviews (truncated fetch_pr_reviews.sh output?)" >&2; exit 2
     fi
-    printf '%s' "$json" | HEAD="$head" REVIEWS="$reviews" "$PYTHON" -c '
-import json, os, re, sys
+    printf '%s' "$json" | HEAD="$head" REVIEWS="$reviews" PROGRESS="$progress" \
+        BOOKKEEPING="$SCRIPT_DIR/_bookkeeping.sh" "$PYTHON" -c '
+import json, os, re, subprocess, sys
 head = os.environ["HEAD"]
 data = json.load(sys.stdin)
 reviews = json.load(open(os.environ["REVIEWS"], encoding="utf-8"))
 short = lambda s: (s or "")[:7]
-# OPEN local findings at this head (entries correlate by head SHA, short or
-# full). Checked boxes are resolved; False-positives bullets are dismissals.
+# The timeline may live in the workspace while cwd is a project worktree.
+# Its canonical path supplies only the issue number, never the Git repository.
+issue = re.search(r"(?:^|/)\.agent/work-plans/issue-([0-9]+)/progress\.md$",
+                  os.path.abspath(os.environ["PROGRESS"]))
+coverage_cache = {}
+def coverage(sha):
+    if short(sha) == short(head):
+        return "exact"
+    if sha not in coverage_cache:
+        covered = False
+        if issue:
+            try:
+                covered = subprocess.run(
+                    ["bash", os.environ["BOOKKEEPING"], "--review", os.getcwd(),
+                     sha or "", head, issue.group(1)],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, check=False).returncode == 0
+            except OSError:
+                pass  # No local Git access: retain exact-SHA compatibility.
+        coverage_cache[sha] = "bookkeeping" if covered else None
+    return coverage_cache[sha]
+
+# OPEN local findings covering this head. Checked boxes are resolved;
+# False-positives bullets are dismissals.
 # Every repo-relative path cited in backticks counts, not only the last.
 local = []
 loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
 for e in data.get("entries", []):
     c = e.get("correlation") or {}
-    if c.get("kind") not in ("pr", "branch") or short(c.get("sha")) != short(head):
+    if c.get("kind") not in ("pr", "branch"):
+        continue
+    covered_by = coverage(c.get("sha"))
+    if not covered_by:
         continue
     for f in e.get("findings", []):
         if f.get("section") == "False positives" or f.get("checked"):
@@ -371,6 +397,7 @@ for e in data.get("entries", []):
         cited = [(m.group(1), int(m.group(2)) if m.group(2) else None)
                  for m in loc_re.finditer(f.get("text", "")) if "/" in m.group(1) or "." in m.group(1)]
         local.append({"entry_type": e["type"], "sha": short(c.get("sha")), "text": f.get("text"),
+                      "covers_head": True, "coverage": covered_by,
                       "source_hint": f.get("source_hint"),
                       "files": [p for p, _ in cited],
                       "lines": {p: ln for p, ln in cited if ln is not None}})

@@ -41,7 +41,7 @@ recognizes ancestor reviews when the tree diff only changes bookkeeping files.
 | `.agent/scripts/merge_pr.sh` | Source helpers; preserve gate/CI behavior |
 | `.agent/scripts/review_progress.sh` | Coverage-aware local sources |
 | `.agent/scripts/tests/test_triage_reviews_integration.sh` | Real-history regression and boundaries |
-| `.agent/scripts/tests/test_merge_pr_gate.sh` | Verify shared-helper integration as needed |
+| `.agent/scripts/tests/test_merge_pr_gate.sh`, `test_merge_pr.sh` | Include shared helper in merge fixtures |
 | `.claude/skills/triage-reviews/SKILL.md` | Document coverage and provenance |
 | `.agent/work-plans/issue-309/` | Plan, timeline, Codex observations |
 

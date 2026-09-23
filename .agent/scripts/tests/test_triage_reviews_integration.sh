@@ -154,6 +154,122 @@ else
     fail "sources: matching rules (first=$c_first suffix=$c_suffix checked=$c_checked open=$n_open)"
 fi
 
+# Real histories: scripts live in the workspace, Git operations must use the
+# target repository's cwd. Fixtures stay under this suite's TMPDIR allocation.
+HIST="$TMPD/history"
+mkdir -p "$HIST/.agent/work-plans/issue-7" "$HIST/docs" "$HIST/scripts"
+git -C "$HIST" init -q -b feature/issue-7
+hist_commit() {
+    git -C "$HIST" add . &&
+        git -C "$HIST" -c user.name=t -c user.email=t@t commit -q -m "$1"
+}
+printf 'original\n' > "$HIST/scripts/code.sh"
+hist_commit reviewed
+REVIEWED=$(git -C "$HIST" rev-parse HEAD)
+HP="$HIST/.agent/work-plans/issue-7/progress.md"
+cat > "$HP" <<EOF
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 11:00 -04:00
+**By**: t (m)
+**Branch**: feature/issue-7 at \`${REVIEWED:0:7}\`
+
+### Findings
+- [ ] (must-fix) still open — \`scripts/code.sh:1\`
+- [x] (must-fix) already fixed — \`scripts/code.sh:2\`
+
+### False positives
+- [ ] dismissed — \`scripts/code.sh:3\`
+EOF
+hist_commit checkpoint
+BOOK_HEAD=$(git -C "$HIST" rev-parse HEAD)
+hist_sources() {  # head [progress]
+    (cd "$HIST" && "$RP" sources --progress "${2:-$HP}" --head "$1" --reviews "$REVIEWS")
+}
+out=$(hist_sources "$BOOK_HEAD"); rc=$?
+if [[ "$rc" -eq 0 ]] && jq -e --arg sha "${REVIEWED:0:7}" '
+    (.local_findings | length) == 1 and
+    .local_findings[0].sha == $sha and .local_findings[0].covers_head == true and
+    .local_findings[0].coverage == "bookkeeping" and
+    (.local_findings[0].text | contains("still open"))' <<<"$out" >/dev/null; then
+    pass "sources: checkpoint retains open finding and original SHA; checked/false positives excluded"
+else
+    fail "sources: checkpoint coverage (rc=$rc out=$out)"
+fi
+out=$(hist_sources "$REVIEWED")
+jq -e '.local_findings[0].covers_head == true and .local_findings[0].coverage == "exact"' <<<"$out" >/dev/null \
+    && pass "sources: short/full exact match retains provenance" || fail "sources: exact coverage metadata"
+
+# Every allowed document class, including the whole issue-specific plan dir.
+for doc in .agent/work-plans/issue-7/plan.md ROADMAP.md docs/ROADMAP.md; do
+    printf 'bookkeeping\n' >> "$HIST/$doc"
+    hist_commit "$doc"
+    out=$(hist_sources "$(git -C "$HIST" rev-parse HEAD)")
+    [[ "$(jq '.local_findings | length' <<<"$out")" == 1 ]] \
+        && pass "sources: retains finding after $doc" || fail "sources: lost finding after $doc"
+done
+DOC_HEAD=$(git -C "$HIST" rev-parse HEAD)
+OLD_REVIEWS="$REVIEWS"
+REVIEWS="$TMPD/history-reviews.json"
+jq -n --arg head "$DOC_HEAD" --arg old "$REVIEWED" '{reviews: [
+    {commit_id: $head, comments: [{path: "scripts/code.sh", line: 1, body: "current"}]},
+    {commit_id: $old, comments: [{path: "scripts/code.sh", line: 1, body: "stale"}]}
+]}' > "$REVIEWS"
+out=$(hist_sources "$DOC_HEAD")
+jq -e '(.candidates | length) == 1 and .candidates[0].github == "current"' <<<"$out" >/dev/null \
+    && pass "sources: covered finding matches current GitHub comment only" || fail "sources: covered cross-source candidate"
+REVIEWS="$OLD_REVIEWS"
+
+printf 'changed\n' >> "$HIST/scripts/code.sh"
+hist_commit code
+CODE_HEAD=$(git -C "$HIST" rev-parse HEAD)
+out=$(hist_sources "$CODE_HEAD")
+[[ "$(jq '.local_findings | length' <<<"$out")" == 0 ]] \
+    && pass "sources: code plus bookkeeping is stale" || fail "sources: code change accepted"
+printf 'later checkpoint\n' >> "$HP"
+hist_commit later-checkpoint
+out=$(hist_sources "$(git -C "$HIST" rev-parse HEAD)")
+[[ "$(jq '.local_findings | length' <<<"$out")" == 0 ]] \
+    && pass "sources: later checkpoint cannot hide earlier code change" || fail "sources: code hidden by checkpoint"
+
+git -C "$HIST" checkout -q -b other-issue "$DOC_HEAD"
+mkdir -p "$HIST/.agent/work-plans/issue-8"
+printf 'other issue\n' > "$HIST/.agent/work-plans/issue-8/progress.md"
+hist_commit other-issue
+out=$(hist_sources "$(git -C "$HIST" rev-parse HEAD)")
+[[ "$(jq '.local_findings | length' <<<"$out")" == 0 ]] \
+    && pass "sources: another issue's timeline is not exempt" || fail "sources: other issue accepted"
+
+# An identical tree is insufficient when the review is not an ancestor.
+DIVERGED=$(printf 'unrelated root\n' | git -C "$HIST" -c user.name=t -c user.email=t@t commit-tree "${DOC_HEAD}^{tree}")
+out=$(hist_sources "$DIVERGED")
+[[ "$(jq '.local_findings | length' <<<"$out")" == 0 ]] \
+    && pass "sources: non-ancestor with identical tree is stale" || fail "sources: divergent history accepted"
+out=$(hist_sources 0000000000000000000000000000000000000000); rc=$?
+[[ "$rc" == 0 && "$(jq '.local_findings | length' <<<"$out")" == 0 ]] \
+    && pass "sources: unresolved head falls back without error" || fail "sources: unresolved head"
+sed "s/${REVIEWED:0:7}/0000000/" "$HP" > "$TMPD/missing-review.md"
+mkdir -p "$TMPD/external/.agent/work-plans/issue-7"
+cp "$TMPD/missing-review.md" "$TMPD/external/.agent/work-plans/issue-7/progress.md"
+out=$(hist_sources "$DOC_HEAD" "$TMPD/external/.agent/work-plans/issue-7/progress.md"); rc=$?
+[[ "$rc" == 0 && "$(jq '.local_findings | length' <<<"$out")" == 0 ]] \
+    && pass "sources: unresolved review falls back without error" || fail "sources: unresolved review"
+cp "$HP" "$TMPD/noncanonical.md"
+out=$(hist_sources "$DOC_HEAD" "$TMPD/noncanonical.md")
+[[ "$(jq '.local_findings | length' <<<"$out")" == 0 ]] \
+    && pass "sources: unknown issue path uses exact matching only" || fail "sources: noncanonical path grants coverage"
+# Timeline storage can be in the workspace while cwd is a different project.
+cp "$HP" "$TMPD/external/.agent/work-plans/issue-7/progress.md"
+out=$(hist_sources "$DOC_HEAD" "$TMPD/external/.agent/work-plans/issue-7/progress.md")
+[[ "$(jq '.local_findings | length' <<<"$out")" == 1 ]] \
+    && pass "sources: uses target cwd even with externally stored timeline" || fail "sources: wrong repository resolution"
+for head in "$REVIEWED" "$DOC_HEAD"; do
+    out=$(cd "$TMPD" && "$RP" sources --progress "$HP" --head "$head" --reviews "$REVIEWS"); rc=$?
+    expected=0; [[ "$head" == "$REVIEWED" ]] && expected=1
+    [[ "$rc" == 0 && "$(jq '.local_findings | length' <<<"$out")" == "$expected" ]] \
+        && pass "sources: no-repository fallback ($expected findings)" || fail "sources: no-repository fallback"
+done
+
 # ========================================================== persist =====
 mk_repo() { mkdir -p "$1"; git -C "$1" init -q -b "$2"; git -C "$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init; }
 ENTRY=$'## Integrated Review\n**Status**: complete\n**When**: 2026-09-17 12:00 -04:00\n**By**: t (m)\n\n**PR**: #70 at `abc1234`\n**Sources**: 2 (Copilot @ `abc1234`, Local Review @ `abc1234`)\n**Cross-source confirmations**: 1\n**CI**: all-pass\n\n### Findings\n- [ ] (cross-confirmed) unchecked append redirect — `.agent/scripts/progress_append.sh`\n\n### False positives\n- (Copilot) jq missing — bootstrap installs jq'

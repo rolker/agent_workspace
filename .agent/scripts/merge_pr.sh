@@ -74,6 +74,8 @@ source "$SCRIPT_DIR/_issue_helpers.sh"
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 # shellcheck source=_resolve_default_branch.sh
 source "$SCRIPT_DIR/_resolve_default_branch.sh"
+# shellcheck source=_bookkeeping.sh
+source "$SCRIPT_DIR/_bookkeeping.sh"
 
 PR_NUMBER=""
 WORKTREE_TYPE=""
@@ -645,47 +647,6 @@ fi
 # issue's progress.md at the head commit and the PR body/comments — and a
 # branch-protection rule requiring it. Enabling that changes CI and branch
 # protection, so it waits on the owner's explicit decision.
-# _only_bookkeeping_between <wt> <from-sha> <to-sha> <allowed-path>...
-# The one equivalence rule shared by gate condition (a) (#286) and the
-# Step 2 CI target (#284): <to> is "the same reviewed state" as <from> when
-# <from> is an ancestor of <to> and every path that differs is one of the
-# document files this workflow writes on the reviewed branch after review
-# (progress.md records, work-plan addenda, roadmap updates). An allowed
-# entry may be a glob. Returns 0 on equivalence; on
-# failure returns 1 and prints the reason (one line, for the caller to
-# quote). Both SHAs must be full and resolvable in <wt>; callers resolve
-# short SHAs first (see the gate) so an ambiguous prefix is a failure
-# there, not a silent match here.
-_only_bookkeeping_between() {
-    local wt="$1" from="$2" to="$3"; shift 3
-    local -a allowed=("$@")
-    local diff_paths p a ok
-    if ! git -C "$wt" merge-base --is-ancestor "$from" "$to" 2>/dev/null; then
-        echo "\`${from:0:7}\` is not an ancestor of \`${to:0:7}\` (force-push or a concurrent history change)"
-        return 1
-    fi
-    diff_paths=$(git -C "$wt" diff --name-only "$from" "$to" 2>/dev/null) || {
-        echo "could not diff \`${from:0:7}\`..\`${to:0:7}\` in $wt"
-        return 1
-    }
-    while IFS= read -r p; do
-        [[ -z "$p" ]] && continue
-        ok=false
-        for a in ${allowed[@]+"${allowed[@]}"}; do
-            # Unquoted RHS on purpose: an allowed entry may be a glob (the
-            # gate passes the issue's whole work-plans dir). Callers that
-            # pass literal paths are unaffected — those carry no glob
-            # metacharacters.
-            # shellcheck disable=SC2053
-            [[ "$p" == $a ]] && { ok=true; break; }
-        done
-        if [[ "$ok" == false ]]; then
-            echo "touches \`${p}\`, which is not a merge-time document file"
-            return 1
-        fi
-    done <<<"$diff_paths"
-    return 0
-}
 
 _gate_reasons=()
 # Reuse the pre-Step-1 read (#284) instead of a second `gh pr view` call.
@@ -772,8 +733,7 @@ else
                     _gate_stale_why="\`${_gate_r_sha:-?}\` does not resolve to one commit in ${_ci_wt}"
                 elif [[ -z "$_gate_h_full" ]]; then
                     _gate_stale_why="head \`${_gate_head_short}\` is not present locally"
-                elif _gate_stale_why=$(_only_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" \
-                        ".agent/work-plans/issue-${ISSUE_NUM}/*" "ROADMAP.md" "docs/ROADMAP.md"); then
+                elif _gate_stale_why=$(_review_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" "$ISSUE_NUM"); then
                     _gate_covered=true
                     echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only work-plan / progress.md / roadmap changed since"
                 fi
