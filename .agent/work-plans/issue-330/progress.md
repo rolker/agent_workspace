@@ -255,3 +255,22 @@ Fix all 3 first (Recommended): address the three round-1 suggestions before publ
 - [x] Non-zero exit with empty stderr falls back to the adapter's stdout lines (name-prefixed) before the generic "exited N" line; test `test_validate_adapter_failure_stdout_fallback` covers both the stdout and the no-output cases — `.agent/scripts/validate_workspace.py:78`
 
 Full script suite (`run_script_tests.sh`): all 27 suites passed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 11:05 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-330 at `8868174`
+**Base**: main
+**Depth**: Deep (reason: AGENTS.md governance file; ~350 changed lines outside work-plans)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round-1 suggestions all resolved (e0db53d, 34781c3, c8b7696). Tests are real: mutation-checked on a scratch copy — replacing `os.killpg` with `proc.kill()` makes `test_validate_adapter_timeout` fail (37 s, the sleeping child held the pipes); removing the stdout fallback makes `test_validate_adapter_failure_stdout_fallback` fail. Registry suite 252/252 passes. Cross-model: codex found no issues; gemini failed (agy headless auto-denied a ViewFile tool call, empty response). Static: shellcheck/flake8 not on PATH in this session; the commits passed the pre-commit hooks. Main merge (1810c6b) touches none of this branch's files.
+
+Process-group kill otherwise sound: the leader is unreaped when `killpg` runs, so no PID-reuse race; a grandchild that calls `setsid` itself would escape the kill and could still block the final `communicate()` — accepted as out of scope for a local-filesystem verb.
+
+### Findings
+- [ ] (suggestion) Ctrl-C/SIGTERM during `delegate_shape_check` orphans the adapter: `start_new_session=True` takes it out of the terminal's foreground group, and `communicate()` re-raises KeyboardInterrupt without killing it (reproduced: the child `sleep` survived the harness). Wrap the wait so any exception killpg's the group before re-raising, and catch `OSError` rather than only `ProcessLookupError` (macOS `killpg` returns EPERM for an all-zombie group) — `.agent/scripts/validate_workspace.py:105`
