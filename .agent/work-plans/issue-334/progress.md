@@ -58,3 +58,17 @@ issue: 334
 **Decision**: proceed
 
 Proceed (Recommended): plan with both Issue Review actions — (1) the "accepts both spellings" test also covers the workspace's own scan (discover_governance.sh scan_scope runs on the workspace root too; after the move it must still find docs/design.md), (2) exempt .agent/knowledge/inspiration_*_digest.md from the old-path sweep — and the three corrections: discover_governance.sh / project_governance.md do not look for ROADMAP.md (only PRINCIPLES.md and ARCHITECTURE.md); nine skills read the principles, not eight; no ADR mentions these paths, so there is no ADR References work.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-23 13:40 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-334/plan.md` at `26e871f`
+
+Mechanical `git mv` of `ARCHITECTURE.md`→`docs/design.md`,
+`docs/ROADMAP.md`→`docs/roadmap.md`, `docs/PRINCIPLES.md`→`docs/principles.md`;
+`discover_governance.sh` gains new-spelling checks (accepts both) plus a new
+test suite; `merge_pr.sh`/`update_roadmap.sh`/their tests get path fixes; a
+~20-file reference sweep excludes ADR bodies, inspiration digests, and
+historical work-plans. Owner decided CLAUDE.md stays at the root (retirement
+is a separate later issue) — folded into the plan, no open questions remain.
