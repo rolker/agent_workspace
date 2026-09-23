@@ -30,9 +30,15 @@ Exit status:
     0  an Approach section was found and printed (it may be blank; the
        caller decides what an all-whitespace section means)
     1  the plan has no Approach section
-    2  markdown-it-py is not importable by this interpreter
     3  any other error (unreadable file, bad usage, parser failure); the
        reason is printed to stderr
+    4  markdown-it-py is not importable by this interpreter
+
+Codes 1 and 2 are also what python itself exits with (1 for an uncaught
+exception, 2 for "can't open file" or a usage error), so the "try the
+next interpreter" code is 4, which python never emits on its own: a
+missing or unreadable copy of this script reads as an error (exit 2 falls
+into the caller's error branch), never as a missing library.
 """
 
 import re
@@ -40,8 +46,8 @@ import sys
 
 EXIT_FOUND = 0
 EXIT_NO_SECTION = 1
-EXIT_NO_LIBRARY = 2
 EXIT_ERROR = 3
+EXIT_NO_LIBRARY = 4
 
 # markdown-it's own line normalisation (rules_core/normalize): CRLF and a
 # lone CR are both line breaks. Splitting the source the same way keeps

@@ -2410,6 +2410,43 @@ TAIL SECTION'
     teardown
 }
 
+test_plan_context_missing_extractor_is_an_error() {
+    echo "TEST: a missing _plan_approach.py is reported as an extractor error, not a missing library (#320 round 7)"
+    setup
+
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+HIDDEN APPROACH BODY'
+
+    # A copy of the scripts directory without the extractor. python exits 2
+    # when it cannot open a script, which must not read as the extractor's
+    # own "markdown-it-py missing" code and send the loop to the next
+    # interpreter.
+    local scripts_copy="${TMPDIR_BASE}/scripts-copy"
+    mkdir -p "$scripts_copy"
+    cp -p "${SCRIPT_DIR}/.."/*.sh "$scripts_copy/"
+    [[ ! -e "${scripts_copy}/_plan_approach.py" ]] || rm "${scripts_copy}/_plan_approach.py"
+
+    local err_file="${TMPDIR_BASE}/missing-extractor.err" exit_code=0
+    cd "${MOCK_REPO}"
+    PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${scripts_copy}/cross_model_review.sh" \
+        --pr 99 < /dev/null > /dev/null 2> "$err_file" || exit_code=$?
+
+    assert_exit_code "review still completes without the extractor" "0" "$exit_code"
+    local stderr prompt
+    stderr=$(cat "$err_file")
+    assert_contains "the warning reports an extractor failure" \
+        "WARNING: plan context omitted: _plan_approach.py failed \(exit 2\): .*_plan_approach.py" "$stderr"
+    assert_not_contains "the warning does not blame the library" "markdown-it-py is not importable" "$stderr"
+    assert_eq "exactly one plan-context warning" "1" \
+        "$(grep -c 'plan context omitted' "$err_file" || true)"
+    prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
+    assert_not_contains "no plan context heading without the extractor" "^## Plan Context$" "$prompt"
+    rm -f "$err_file"
+
+    teardown
+}
+
 # ---- Parallel dispatch tests (#206, ADR-0015) ----
 #
 # tmux is gone: every agent runs in its own background job, all in
@@ -3838,6 +3875,7 @@ test_plan_context_extractor_unclosed_fence_before_approach
 test_plan_context_extractor_indented_heading
 test_plan_context_extractor_setext_headings
 test_plan_context_parser_unavailable
+test_plan_context_missing_extractor_is_an_error
 test_sync_flag_rejected
 test_agents_all_succeed
 test_agents_partial_failure

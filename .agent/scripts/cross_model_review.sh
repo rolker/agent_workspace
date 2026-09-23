@@ -1005,12 +1005,14 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
     # requirements.txt installs markdown-it-py, ADR-0009), then python3 on
     # PATH. The venv belongs to the main checkout, never a worktree (#272),
     # so it is found through git's common dir, as the Makefile does. An
-    # interpreter that lacks the library (exit 2) passes to the next one.
+    # interpreter that lacks the library (exit 4) passes to the next one.
+    # Any other code, including python's own 2 for a missing or unreadable
+    # _plan_approach.py, is an extractor error.
     # If none can import it, or the extractor fails, the review still runs:
     # one warning, and the Plan Context block is omitted as if there were
     # no plan.
     PLAN_APPROACH=""
-    PLAN_APPROACH_RC=2
+    PLAN_APPROACH_RC=4
     PLAN_APPROACH_ERR="${AGENT_TMP_ROOT}/plan-approach.err"
     PLAN_APPROACH_PYTHONS=()
     PLAN_APPROACH_COMMON=$(git -C "$SCRIPT_SELF_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
@@ -1024,12 +1026,12 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
         PLAN_APPROACH_RC=0
         PLAN_APPROACH=$("$plan_python" "${SCRIPT_SELF_DIR}/_plan_approach.py" \
             "$PLAN_CONTEXT_FILE" 2> "$PLAN_APPROACH_ERR") || PLAN_APPROACH_RC=$?
-        (( PLAN_APPROACH_RC == 2 )) || break
+        (( PLAN_APPROACH_RC == 4 )) || break
     done
     case "$PLAN_APPROACH_RC" in
         0) ;;
         1) PLAN_APPROACH="" ;;
-        2)
+        4)
             PLAN_APPROACH=""
             if (( ${#PLAN_APPROACH_PYTHONS[@]} == 0 )); then
                 echo "WARNING: plan context omitted: no python3 found to run _plan_approach.py" >&2
