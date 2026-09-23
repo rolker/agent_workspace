@@ -544,3 +544,21 @@ Owner scope addition, not addressing a review box. The owner answered the "found
 ### Tests
 - `test_cross_model_review.sh`: 493 passed, 0 failed. Pre-commit (shellcheck, full `run_script_tests.sh`, no temp leaks) passed.
 - Against the previous fixed-fence code (swapped in temporarily, then restored): 483 passed, 10 failed — all three new tests fail, including their well-formedness assertions, in both modes.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 12:18 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a190c0f8e5798f8b4, resume 2 of 3)
+
+**Branch**: feature/issue-320 at `a977b06`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff against merge-base bfb6803, work-plans excluded: 1004 lines, 7 files — 200+ lines; override triggers: review-code + address-findings SKILL.md, knowledge doc, ADR-0015, AGENTS.md)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 5 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+### Findings
+- [ ] (suggestion) A plan fence that never closes runs the Approach to EOF, pulling later sections in (capped at 200 lines); cheap fix: if the fence is still open at EOF, cut at the first boundary line seen while it was open (the old one-sided "shorter, never longer" result) — `.agent/scripts/cross_model_review.sh:997-1025`
+- [ ] (suggestion) The section stop recognises only `-` thematic breaks; `***` / `___` (with optional inner spaces) are CommonMark rules too and currently let a later section leak in (reproduced with markdown_it by the Claude adversarial reviewer) — `.agent/scripts/cross_model_review.sh:1025`
+- [ ] (suggestion) `trap cleanup_jobs EXIT` is registered 90 lines after the `mktemp` calls, so a failure or signal in between leaks `SHARED_PROMPT` and now `SHARED_DIFF` too (window predates #320) — register the trap before the first `mktemp` — `.agent/scripts/cross_model_review.sh:743-833`
