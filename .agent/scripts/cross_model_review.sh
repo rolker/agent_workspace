@@ -425,6 +425,22 @@ if [[ -n "$CLI_ISSUE_NUMBER" && ! "$CLI_ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
+# ------------------------------------------- NOT user-tier promoted (#317) ---
+# This script is deliberately absent from .agent/user_tier_scripts.txt.
+#
+# The user-tier rule (ADR-0016) admits an entry only if it is inert outside
+# the workspace checkout and outside every registered project root. This
+# script cannot satisfy that rule, because reviewing a checkout that is
+# neither is a documented feature of it: `--repo` and `--work-dir` exist to
+# run a review against an arbitrary repo, and `--no-progress` to do so with
+# no per-issue directory at all. A cwd guard here would refuse exactly the
+# cross-repo use the flags were added for.
+#
+# So it stays off the promoted list rather than being promoted with a guard
+# that contradicts its own interface. Invoking it from a project session
+# still works -- by absolute path, through the normal permission prompt --
+# it simply does not get a generated allow-rule.
+
 # --- Dependency checks ---
 # gh is required for PR mode (PR body/diff retrieval) but optional for
 # branch mode (offline pre-push review uses local git only).
@@ -568,6 +584,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_resolve_work_plans_dir.sh"
 # shellcheck source=_resolve_default_branch.sh
 source "${SCRIPT_DIR}/_resolve_default_branch.sh"
+
 
 if [[ -n "$CLI_WORK_PLANS_DIR" ]]; then
     export WORK_PLANS_DIR_OVERRIDE="$CLI_WORK_PLANS_DIR"

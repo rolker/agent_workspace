@@ -185,6 +185,14 @@ if [[ -z "$ROOT_DIR" ]]; then
     exit 1
 fi
 
+# ---------------------------------------------------- user-tier guard (#265) ---
+# This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
+# it can be invoked from any cwd on the machine. Refuse outside the workspace
+# checkout and outside every registered project root, BEFORE any git/gh call,
+# so a stray invocation in an unrelated repo touches nothing. See
+# docs/decisions/0016-session-roots-and-the-user-tier.md.
+registry_require_root "$ROOT_DIR" || exit 1
+
 # --- Helper: find a worktree for a given branch ---
 # Issue #173: previous logic globbed `worktrees/project/issue-project-<N>`,
 # which never matched the actual multi-project layout

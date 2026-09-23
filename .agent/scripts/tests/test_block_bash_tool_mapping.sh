@@ -37,14 +37,23 @@ mkdir -p "$TMP_HOME/.claude"
 PASS=0
 FAIL=0
 
+# The hook is user-tier promoted (#317): it exits 0 unless the payload's
+# cwd is inside the workspace checkout or under a registered project root.
+# Every pattern case below therefore reports a cwd inside the workspace
+# checkout, which is what a real workspace session sends. The
+# guard's own inert-outside-a-root behaviour is covered by
+# test_user_tier_guard.sh.
+WS_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+
 run_hook() {
-    # $1 = command-string ; echoes nothing ; returns hook exit code
-    local cmd="$1"
+    # $1 = command-string ; $2 = optional cwd override
+    # echoes nothing ; returns hook exit code
+    local cmd="$1" cwd="${2:-$WS_ROOT}"
     local input
-    input=$(jq -n --arg cmd "$cmd" '{
+    input=$(jq -n --arg cmd "$cmd" --arg cwd "$cwd" '{
         session_id: "test", tool_name: "Bash",
         tool_input: {command: $cmd, description: "test"},
-        cwd: "/tmp", permission_mode: "default"
+        cwd: $cwd, permission_mode: "default"
     }')
     HOME="$TMP_HOME" bash "$HOOK" <<< "$input"
 }

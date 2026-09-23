@@ -518,6 +518,170 @@ out=$(cd "$SBX" && bash .agent/scripts/dispatch_phase.sh --check-exit --issue 9 
 [[ "$rc" -eq 0 && "$out" == "status=OK"* ]] \
     && pass "check-exit: the correlation check is scoped to the ## Implementation writers -- other skills are untouched" || fail "check-exit correlation scope (rc=$rc out=$out)"
 
+# ------------------------------------------- --project / $PWD resolution ---
+# #317 (#265 PR 3): `--type project` used to resolve a worktree only when
+# exactly one project was registered. These cases cover the explicit
+# --project name, the $PWD-derived name (1 and 3 registered projects), and
+# the unresolvable-cwd fallback that preserves the historical behaviour.
+# Hermetic: every registry path is inside $SANDBOX; HOME is redirected so
+# nothing reads or writes the real ~/.claude.
+mk_project_sandbox() {  # <issue-num> <project-name>... -- first name owns the issue worktree
+    local n="$1"; shift
+    local sb first="$1" name
+    sb="$(mktemp -d -p "$SANDBOX")"
+    git -C "$sb" init -q -b main
+    git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+    mkdir -p "$sb/.agent/scripts" "$sb/worktrees/workspace" "$sb/.agent/project_types"
+    cp -r "$SCRIPT_DIR/../../project_types/single_project" "$sb/.agent/project_types/"
+    for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+        cp "$SCRIPT_DIR/../$f" "$sb/.agent/scripts/"
+    done
+    : > "$sb/.agent/projects.local"
+    for name in "$@"; do
+        mkdir -p "$sb/roots/$name"
+        git -C "$sb/roots/$name" init -q -b main
+        git -C "$sb/roots/$name" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+        echo "$name single_project $sb/roots/$name" >> "$sb/.agent/projects.local"
+    done
+    # The issue's worktree for the FIRST named project, at that project's
+    # own registry-resolved worktree dir (<root>/worktrees).
+    mkdir -p "$sb/roots/$first/worktrees"
+    git -C "$sb/roots/$first" worktree add -q "$sb/roots/$first/worktrees/issue-$first-$n" -b "feature/issue-$n" >/dev/null 2>&1
+    echo "$sb"
+}
+
+# dispatch_project <sandbox> <cwd> <issue> [--project <name>] -- prints the
+# handoff's worktree= line (or the error), plus the exit code on the last line.
+dispatch_project() {
+    local sb="$1" cwd="$2" issue="$3"; shift 3
+    local out rc
+    out=$(cd "$cwd" && HOME="$sb/home" AGENT_NAME=t AGENT_EMAIL=t@t \
+        bash "$sb/.agent/scripts/dispatch_phase.sh" --issue "$issue" --skill plan-task \
+        --type project "$@" 2>&1); rc=$?
+    printf '%s\n%s\n' "$out" "rc=$rc"
+}
+
+PSB=$(mk_project_sandbox 41 beta gamma delta)
+mkdir -p "$PSB/home"
+# Give gamma a worktree for the same issue too, so the enumeration the
+# historical branch uses sees TWO candidate projects. That ambiguity is
+# exactly the case that made `/run-issue <N> --type project` fail on a
+# machine with several registered projects (#317, plan review finding 1).
+mkdir -p "$PSB/roots/gamma/worktrees"
+git -C "$PSB/roots/gamma" worktree add -q "$PSB/roots/gamma/worktrees/issue-gamma-41" -b "feature/issue-41" >/dev/null 2>&1
+
+out=$(dispatch_project "$PSB" "$PSB" 41 --project beta)
+[[ "$out" == *"worktree=$PSB/roots/beta/worktrees/issue-beta-41"* && "$out" == *"rc=0"* ]] \
+    && pass "--project names the project with 3 registered" \
+    || fail "--project named (out=$out)"
+
+out=$(dispatch_project "$PSB" "$PSB/roots/beta" 41)
+[[ "$out" == *"worktree=$PSB/roots/beta/worktrees/issue-beta-41"* && "$out" == *"rc=0"* ]] \
+    && pass "\$PWD at a registered root derives the project (3 registered)" \
+    || fail "\$PWD derived, 3 registered (out=$out)"
+
+# A cwd deeper inside the root resolves the same way (ancestor match).
+mkdir -p "$PSB/roots/beta/src/deep"
+out=$(dispatch_project "$PSB" "$PSB/roots/beta/src/deep" 41)
+[[ "$out" == *"worktree=$PSB/roots/beta/worktrees/issue-beta-41"* && "$out" == *"rc=0"* ]] \
+    && pass "\$PWD deep inside a registered root derives the project" \
+    || fail "\$PWD derived from a subdirectory (out=$out)"
+
+# An unresolvable cwd with two candidate projects stays ambiguous -- the
+# historical "exactly one registered" branch cannot pick one, so no
+# worktree. This is the pre-#317 failure mode, preserved for callers that
+# give neither a name nor a resolvable cwd.
+out=$(dispatch_project "$PSB" "$SANDBOX" 41)
+[[ "$out" == *"no project worktree found"* && "$out" == *"rc=2"* ]] \
+    && pass "unresolvable cwd with two candidate projects: no worktree (unchanged)" \
+    || fail "unresolvable cwd, ambiguous (out=$out)"
+
+# ...and both disambiguators fix it, each selecting a different project.
+out=$(dispatch_project "$PSB" "$SANDBOX" 41 --project gamma)
+[[ "$out" == *"worktree=$PSB/roots/gamma/worktrees/issue-gamma-41"* && "$out" == *"rc=0"* ]] \
+    && pass "--project disambiguates two candidate projects" \
+    || fail "--project gamma (out=$out)"
+out=$(dispatch_project "$PSB" "$PSB/roots/gamma" 41)
+[[ "$out" == *"worktree=$PSB/roots/gamma/worktrees/issue-gamma-41"* && "$out" == *"rc=0"* ]] \
+    && pass "\$PWD disambiguates two candidate projects" \
+    || fail "\$PWD gamma (out=$out)"
+
+# An explicit name that is not registered finds nothing -- same miss path.
+out=$(dispatch_project "$PSB" "$PSB" 41 --project nosuch)
+[[ "$out" == *"no project worktree found"* && "$out" == *"rc=2"* ]] \
+    && pass "--project with an unregistered name: no worktree" \
+    || fail "--project unregistered (out=$out)"
+
+PSB1=$(mk_project_sandbox 42 solo)
+mkdir -p "$PSB1/home"
+
+out=$(dispatch_project "$PSB1" "$PSB1/roots/solo" 42)
+[[ "$out" == *"worktree=$PSB1/roots/solo/worktrees/issue-solo-42"* && "$out" == *"rc=0"* ]] \
+    && pass "\$PWD derives the project with 1 registered" \
+    || fail "\$PWD derived, 1 registered (out=$out)"
+
+# The pre-#317 behaviour: no --project, cwd outside every root, exactly one
+# project registered -- still resolves via the "exactly one" branch.
+out=$(dispatch_project "$PSB1" "$SANDBOX" 42)
+[[ "$out" == *"worktree=$PSB1/roots/solo/worktrees/issue-solo-42"* && "$out" == *"rc=0"* ]] \
+    && pass "unresolvable cwd with exactly 1 registered: historical fallback still resolves" \
+    || fail "unresolvable cwd, 1 registered (out=$out)"
+
+# --project is accepted (and inert) on check-exit and next as well.
+out=$(cd "$PSB" && HOME="$PSB/home" bash "$PSB/.agent/scripts/dispatch_phase.sh" \
+    --check-exit --issue 41 --skill plan-task --type project --project beta --before 0 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == "status=MISSING" ]] \
+    && pass "check-exit accepts --project" || fail "check-exit --project (rc=$rc out=$out)"
+out=$(cd "$PSB" && HOME="$PSB/home" bash "$PSB/.agent/scripts/dispatch_phase.sh" \
+    next --issue 41 --pr none --type project --project beta 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == "action="* ]] \
+    && pass "next accepts --project" || fail "next --project (rc=$rc out=$out)"
+
+# --- a `worktrees=` override: the cwd is under no hosting dir ---------------
+# Round 1 suggestion: registry_resolve_from_dir matches hosting dirs, so a
+# session inside a worktree that a `worktrees=` override placed elsewhere
+# (commonly back under the workspace root) derived nothing and, with several
+# projects registered, reported "no project worktree found" while standing in
+# the worktree.
+PSBW="$(mktemp -d -p "$SANDBOX")"
+git -C "$PSBW" init -q -b main
+git -C "$PSBW" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+mkdir -p "$PSBW/.agent/scripts" "$PSBW/.agent/project_types" "$PSBW/home"
+cp -r "$SCRIPT_DIR/../../project_types/single_project" "$PSBW/.agent/project_types/"
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+    cp "$SCRIPT_DIR/../$f" "$PSBW/.agent/scripts/"
+done
+: > "$PSBW/.agent/projects.local"
+for n in one two; do
+    mkdir -p "$PSBW/roots/$n"
+    git -C "$PSBW/roots/$n" init -q -b main
+    git -C "$PSBW/roots/$n" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+    # worktrees live under the WORKSPACE root, not under the project root
+    mkdir -p "$PSBW/wt/$n"
+    echo "$n single_project $PSBW/roots/$n worktrees=$PSBW/wt/$n" >> "$PSBW/.agent/projects.local"
+done
+git -C "$PSBW/roots/two" worktree add -q "$PSBW/wt/two/issue-two-55" -b "feature/issue-55" >/dev/null 2>&1
+
+out=$(cd "$PSBW/wt/two/issue-two-55" && HOME="$PSBW/home" AGENT_NAME=t AGENT_EMAIL=t@t \
+    bash "$PSBW/.agent/scripts/dispatch_phase.sh" --issue 55 --skill plan-task --type project 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == *"worktree=$PSBW/wt/two/issue-two-55"* ]] \
+    && pass "a cwd inside a worktrees=-override worktree derives its project" \
+    || fail "worktrees= override not derived (rc=$rc out=${out:0:200})"
+
+# The hosting dir still wins when the cwd is there instead.
+out=$(cd "$PSBW/roots/two" && HOME="$PSBW/home" AGENT_NAME=t AGENT_EMAIL=t@t \
+    bash "$PSBW/.agent/scripts/dispatch_phase.sh" --issue 55 --skill plan-task --type project 2>&1); rc=$?
+[[ "$rc" -eq 0 && "$out" == *"worktree=$PSBW/wt/two/issue-two-55"* ]] \
+    && pass "the hosting dir still resolves with a worktrees= override in play" \
+    || fail "hosting dir with override (rc=$rc out=${out:0:200})"
+
+# An explicit --project still wins over the derivation.
+out=$(cd "$PSBW/wt/two/issue-two-55" && HOME="$PSBW/home" AGENT_NAME=t AGENT_EMAIL=t@t \
+    bash "$PSBW/.agent/scripts/dispatch_phase.sh" --issue 55 --skill plan-task --type project --project one 2>&1); rc=$?
+[[ "$rc" -eq 2 ]] \
+    && pass "an explicit --project still overrides the worktree-derived name" \
+    || fail "explicit --project did not override the derivation (rc=$rc out=${out:0:160})"
+
 echo ""
 echo "test_dispatch_phase: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

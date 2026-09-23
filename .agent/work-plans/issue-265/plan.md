@@ -391,7 +391,7 @@ Additive, each independently mergeable and tested:
 
 1. **Registry + resolution** (schema, `resolve_path`, `worktree_dir`, tests). No behaviour change for existing three-column lines.
 2. **Worktrees under the root** (generic scripts, exclusions, dashboard/list iteration, tests). `gz4d` worktrees move on first use.
-3. **User tier** (hook, install/check, skill scopes + generator, tool-mapping guard, permissions subset, register command, docs). Acceptance test steps 1–3.
+3. **User tier** (hook, install/check, skill scopes + generator, tool-mapping guard, permissions subset, docs). Acceptance: the **full `/run-issue` loop** run from `~/src/gz4d` through the merge checkpoint — widened from "acceptance test steps 1–3" by the owner's issue-review checkpoint on #317 (2026-09-22), because the loop is what proves `dispatch_phase.sh`'s `--project` resolution from a project cwd. The `register-project` bootstrap command moves to PR 4 (`register_project.sh` is PR 4 scope and `gz4d` is already registered).
 4. **Retire hosting** (drop `project/`/`projects/` fallbacks, `register_project.sh`, migrate p11 instances, `AGENTS.md` wording, roadmap). Acceptance test steps 4–6.
 
 ## Principles Self-Check

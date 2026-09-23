@@ -16,6 +16,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 
 PASS=0
+
+# The adapter (and the build.sh/test.sh shims that exec it) carries the
+# user-tier guard added in #317: it refuses when the cwd is neither inside
+# its own workspace checkout nor under a registered project root. These
+# fixtures drive a SANDBOX workspace, so every invocation runs from inside
+# that sandbox -- which is what a real `make build` does too.
+run_in_ws() {  # <sandbox> <command> [args...]
+    local sb="$1"; shift
+    (cd "$sb" && "$@")
+}
 FAIL=0
 
 assert_eq() {
@@ -108,7 +118,7 @@ test_default_project_type() {
     echo "TEST: PROJECT_TYPE defaults to single_project without config"
     local sb out
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" project_root)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" project_root)" || true
     assert_eq "project_root resolves via default type" "$sb/project" "$out"
 }
 
@@ -130,7 +140,7 @@ adapter_repos() { :; }
 adapter_scope_for_pr() { :; }
 EOF
     echo 'PROJECT_TYPE=fake_type' > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" project_root)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" project_root)" || true
     assert_eq "fake_type adapter dispatched" "FAKE_TYPE_ROOT" "$out"
 }
 
@@ -139,7 +149,7 @@ test_missing_adapter_dir() {
     local sb out rc=0
     sb="$(make_sandbox)"
     echo 'PROJECT_TYPE=no_such_type' > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" project_root 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the missing type" "no adapter for project type 'no_such_type'" "$out"
 }
@@ -151,7 +161,7 @@ test_missing_verb_function() {
     mkdir -p "$sb/.agent/project_types/partial_type"
     echo 'adapter_env() { :; }' > "$sb/.agent/project_types/partial_type/adapter.sh"
     echo 'PROJECT_TYPE=partial_type' > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names type and verb" "'partial_type' does not implement verb 'build'" "$out"
 }
@@ -160,7 +170,7 @@ test_unknown_verb() {
     echo "TEST: unknown verb is rejected with usage"
     local sb out rc=0
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" frobnicate 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" frobnicate 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "unknown verb named" "unknown verb 'frobnicate'" "$out"
     assert_contains "usage lists contract verbs" "scope_for_pr" "$out"
@@ -170,7 +180,7 @@ test_no_args_usage() {
     echo "TEST: no arguments prints usage and fails"
     local sb out rc=0
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "usage line" "Usage: adapter" "$out"
 }
@@ -179,7 +189,7 @@ test_from_flag_accepted() {
     echo "TEST: --from <dir> is accepted (reserved for step 2)"
     local sb out
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" --from /nonexistent project_root)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" --from /nonexistent project_root)" || true
     assert_eq "still resolves from workspace root" "$sb/project" "$out"
 }
 
@@ -269,7 +279,7 @@ test_env_emits_nothing() {
     echo "TEST: single_project env emits nothing and exits 0"
     local sb out rc=0
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" env)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" env)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "empty stdout" "" "$out"
 }
@@ -278,7 +288,7 @@ test_build_requires_config() {
     echo "TEST: build without project_config.sh fails with guidance"
     local sb out rc=0
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "guidance message" "No project_config.sh found" "$out"
 }
@@ -288,7 +298,7 @@ test_build_requires_build_cmd() {
     local sb out rc=0
     sb="$(make_sandbox)"
     echo 'TEST_CMD="true"' > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "names the missing var" "BUILD_CMD is not set" "$out"
 }
@@ -300,7 +310,7 @@ test_build_runs_in_project_root() {
     stub="$(make_stub "$sb" fakebuild)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
     echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" build --flag1)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build --flag1)" || true
     assert_contains "stub ran in project dir" "STUB_fakebuild_RAN_IN:$(cd "$sb/project" && pwd -P)" "$out"
     assert_contains "args forwarded" "args:--flag1" "$out"
 }
@@ -312,7 +322,7 @@ test_test_runs_in_project_root() {
     stub="$(make_stub "$sb" faketest)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
     echo "TEST_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" test)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" test)" || true
     assert_contains "stub ran in project dir" "STUB_faketest_RAN_IN:$(cd "$sb/project" && pwd -P)" "$out"
 }
 
@@ -321,13 +331,13 @@ test_install_noop_when_unset() {
     local sb out rc=0
     sb="$(make_sandbox)"
     echo 'INSTALL_CMD=""' > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" install)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install)" || rc=$?
     assert_eq "exit 0 with empty INSTALL_CMD" "0" "$rc"
     assert_contains "explains the no-op" "nothing to install" "$out"
 
     rc=0
     rm "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" install)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install)" || rc=$?
     assert_eq "exit 0 with no config at all" "0" "$rc"
 }
 
@@ -338,7 +348,7 @@ test_install_runs_when_set() {
     stub="$(make_stub "$sb" fakeinstall)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
     echo "INSTALL_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" install)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" install)" || true
     assert_contains "stub ran in project dir" "STUB_fakeinstall_RAN_IN:$(cd "$sb/project" && pwd -P)" "$out"
 }
 
@@ -349,7 +359,7 @@ test_build_exit_code_propagation() {
     stub="$(make_stub "$sb" failbuild 7)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
     echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
-    "$sb/.agent/scripts/adapter" build >/dev/null 2>&1 || rc=$?
+    run_in_ws "$sb" "$sb/.agent/scripts/adapter" build >/dev/null 2>&1 || rc=$?
     assert_eq "exit code 7 propagated" "7" "$rc"
 }
 
@@ -360,7 +370,7 @@ test_build_aborts_on_failing_config() {
     stub="$(make_stub "$sb" neverbuild)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
     printf 'BUILD_CMD="%s"\nfalse\n' "$stub" > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_not_contains "BUILD_CMD was never run" "STUB_neverbuild_RAN_IN" "$out"
 }
@@ -369,7 +379,7 @@ test_project_type_env_not_inherited() {
     echo "TEST: exported PROJECT_TYPE in the environment is ignored"
     local sb out
     sb="$(make_sandbox)"
-    out="$(PROJECT_TYPE=ghost_type "$sb/.agent/scripts/adapter" project_root)" || true
+    out="$(PROJECT_TYPE=ghost_type run_in_ws "$sb" "$sb/.agent/scripts/adapter" project_root)" || true
     assert_eq "config-less default wins over env" "$sb/project" "$out"
 }
 
@@ -379,7 +389,7 @@ test_no_new_env_vars_leaked() {
     sb="$(make_sandbox)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
     echo 'BUILD_CMD="env"' > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/adapter" build)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" build)" || true
     assert_not_contains "WORKSPACE_ROOT absent" "WORKSPACE_ROOT=" "$out"
     assert_not_contains "ADAPTER_TYPE_DIR absent" "ADAPTER_TYPE_DIR=" "$out"
 }
@@ -389,7 +399,7 @@ test_repos_format() {
     local sb out
     sb="$(make_sandbox)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    out="$("$sb/.agent/scripts/adapter" repos)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repos)" || true
     assert_eq "one name:path line" "project:$sb/project" "$out"
 }
 
@@ -399,7 +409,7 @@ test_repos_resolves_symlink_name() {
     sb="$(make_sandbox)"
     make_git_repo "$sb/real_project_checkout" "git@github.com:owner/repo.git"
     ln -s "$sb/real_project_checkout" "$sb/project"
-    out="$("$sb/.agent/scripts/adapter" repos)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repos)" || true
     assert_eq "resolved name, unresolved path" \
         "real_project_checkout:$sb/project" "$out"
 }
@@ -408,7 +418,7 @@ test_repos_unconfigured() {
     echo "TEST: repos fails when project/ is not configured"
     local sb out rc=0
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" repos 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" repos 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "points at make setup" "run: make setup" "$out"
 }
@@ -418,7 +428,7 @@ test_scope_for_pr_ssh() {
     local sb out
     sb="$(make_sandbox)"
     make_git_repo "$sb/repo_ssh" "git@github.com:owner1/repo1.git"
-    out="$("$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_ssh")" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_ssh")" || true
     assert_eq "owner/repo from SSH form" "owner1/repo1" "$out"
 }
 
@@ -427,7 +437,7 @@ test_scope_for_pr_https() {
     local sb out
     sb="$(make_sandbox)"
     make_git_repo "$sb/repo_https" "https://github.com/owner2/repo2.git"
-    out="$("$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_https")" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_https")" || true
     assert_eq "owner/repo from HTTPS form" "owner2/repo2" "$out"
 }
 
@@ -437,10 +447,10 @@ test_scope_for_pr_walks_up() {
     sb="$(make_sandbox)"
     make_git_repo "$sb/repo_walk" "git@github.com:owner3/repo3.git"
     mkdir -p "$sb/repo_walk/deep/sub/dir"
-    out="$("$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_walk/deep/sub/dir")" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_walk/deep/sub/dir")" || true
     assert_eq "walked up to repo root" "owner3/repo3" "$out"
     touch "$sb/repo_walk/deep/sub/dir/file.txt"
-    out="$("$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_walk/deep/sub/dir/file.txt")" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_walk/deep/sub/dir/file.txt")" || true
     assert_eq "file path resolves via its parent dir" "owner3/repo3" "$out"
 }
 
@@ -449,7 +459,7 @@ test_scope_for_pr_ssh_url_with_port() {
     local sb out
     sb="$(make_sandbox)"
     make_git_repo "$sb/repo_port" "ssh://git@github.com:22/owner4/repo4.git"
-    out="$("$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_port")" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" scope_for_pr "$sb/repo_port")" || true
     assert_eq "port not captured into owner/repo" "owner4/repo4" "$out"
 }
 
@@ -457,7 +467,7 @@ test_scope_for_pr_requires_path() {
     echo "TEST: scope_for_pr without a path argument fails"
     local sb out rc=0
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" scope_for_pr 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" scope_for_pr 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "explains the requirement" "requires a path argument" "$out"
 }
@@ -469,7 +479,7 @@ test_worktree_repos_single_entry() {
     local sb out
     sb="$(make_sandbox)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    out="$("$sb/.agent/scripts/adapter" worktree_repos --issue 42)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" worktree_repos --issue 42)" || true
     assert_eq "project dir, ., default branch" \
         "$sb/project	.	feature/issue-42" "$out"
 }
@@ -479,7 +489,7 @@ test_worktree_repos_accepts_qualified_issue() {
     local sb out
     sb="$(make_sandbox)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    out="$("$sb/.agent/scripts/adapter" worktree_repos --issue owner/repo#42)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" worktree_repos --issue owner/repo#42)" || true
     assert_eq "trailing number extracted for the branch" \
         "$sb/project	.	feature/issue-42" "$out"
 }
@@ -489,7 +499,7 @@ test_worktree_repos_rejects_layer_flags() {
     local sb out rc=0
     sb="$(make_sandbox)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
-    out="$("$sb/.agent/scripts/adapter" worktree_repos --issue 42 --layer platforms 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" worktree_repos --issue 42 --layer platforms 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "explains no layers to worktree" "does not support --layer" "$out"
 }
@@ -498,7 +508,7 @@ test_worktree_repos_requires_issue() {
     echo "TEST: worktree_repos without --issue fails"
     local sb out rc=0
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" worktree_repos 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" worktree_repos 2>&1)" || rc=$?
     assert_eq "exits nonzero" "1" "$rc"
     assert_contains "explains the requirement" "requires --issue" "$out"
 }
@@ -507,7 +517,7 @@ test_worktree_env_emits_nothing() {
     echo "TEST: single_project worktree_env emits nothing and exits 0"
     local sb out rc=0
     sb="$(make_sandbox)"
-    out="$("$sb/.agent/scripts/adapter" worktree_env --worktree "$sb/anything")" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" worktree_env --worktree "$sb/anything")" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "empty stdout" "" "$out"
 }
@@ -551,7 +561,7 @@ test_setup_aborts_failed_rebase() {
     local sb out rc=0
     sb="$(make_sandbox)"
     make_conflicted_clone "$sb" "$sb/project"
-    out="$("$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
     assert_eq "setup still exits 0" "0" "$rc"
     assert_contains "reports the pull failure" "Pull failed" "$out"
     assert_eq "repo left clean, not mid-rebase" "clean" "$(rebase_state "$sb/project")"
@@ -563,7 +573,7 @@ test_setup_replaces_broken_symlink() {
     sb="$(make_sandbox)"
     make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
     ln -s "$sb/nonexistent_target" "$sb/project"
-    out="$(echo "$sb/real_checkout" | "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    out="$(echo "$sb/real_checkout" | run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_contains "symlink created" "Symlinked: project" "$out"
     assert_eq "project/ now points at the checkout" \
@@ -577,7 +587,7 @@ test_setup_replaces_valid_symlink_to_nonrepo() {
     mkdir "$sb/not_a_repo"
     ln -s "$sb/not_a_repo" "$sb/project"
     make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
-    out="$(echo "$sb/real_checkout" | "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    out="$(echo "$sb/real_checkout" | run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "project/ now points at the checkout" \
         "$(cd "$sb/real_checkout" && pwd -P)" "$(readlink "$sb/project")"
@@ -589,7 +599,7 @@ test_setup_removes_empty_placeholder_dir() {
     sb="$(make_sandbox)"
     mkdir "$sb/project"
     make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
-    out="$(echo "$sb/real_checkout" | "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    out="$(echo "$sb/real_checkout" | run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
     assert_eq "project/ now points at the checkout" \
         "$(cd "$sb/real_checkout" && pwd -P)" "$(readlink "$sb/project")"
@@ -602,7 +612,7 @@ test_setup_preserves_nonempty_dir() {
     mkdir "$sb/project"
     echo "precious" > "$sb/project/data.txt"
     make_git_repo "$sb/real_checkout" "git@github.com:owner/repo.git"
-    out="$(echo "$sb/real_checkout" | "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
+    out="$(echo "$sb/real_checkout" | run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup 2>&1)" || rc=$?
     assert_eq "setup fails" "1" "$rc"
     assert_eq "existing file untouched" "precious" "$(< "$sb/project/data.txt")"
 }
@@ -631,7 +641,7 @@ test_setup_delegates() {
 echo "SETUP_IMPL_CALLED args:$*"
 EOF
     chmod +x "$sb/.agent/project_types/single_project/setup.sh"
-    out="$("$sb/.agent/scripts/adapter" setup --answer 42)" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/adapter" setup --answer 42)" || true
     assert_contains "implementation invoked with args" "SETUP_IMPL_CALLED args:--answer 42" "$out"
 }
 
@@ -645,7 +655,7 @@ test_sync_shim_chain() {
 import sys
 print("SYNC_IMPL_CALLED args:" + " ".join(sys.argv[1:]))
 EOF
-    out="$(python3 "$sb/.agent/scripts/sync_project.py" --dry-run)" || true
+    out="$(run_in_ws "$sb" python3 "$sb/.agent/scripts/sync_project.py" --dry-run)" || true
     assert_contains "full chain reached the implementation" "SYNC_IMPL_CALLED args:--dry-run" "$out"
 }
 
@@ -658,7 +668,7 @@ test_build_shim_chain() {
     stub="$(make_stub "$sb" shimbuild)"
     make_git_repo "$sb/project" "git@github.com:owner/repo.git"
     echo "BUILD_CMD=\"$stub\"" > "$sb/.agent/project_config.sh"
-    out="$("$sb/.agent/scripts/build.sh")" || true
+    out="$(run_in_ws "$sb" "$sb/.agent/scripts/build.sh")" || true
     assert_contains "stub reached via shim in project dir" \
         "STUB_shimbuild_RAN_IN:$(cd "$sb/project" && pwd -P)" "$out"
 }

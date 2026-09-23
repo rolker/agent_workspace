@@ -103,4 +103,7 @@ steps add `multi_repo` and `ros2_colcon` types.
   [ADR-0005](0005-layered-enforcement-strategy.md) — validator wiring
 - [ADR-0008](0008-permit-cross-reference-addendums-in-adrs.md) — why this
   is a supersession, not an addendum
+- [ADR-0016](0016-session-roots-and-the-user-tier.md) — session roots and
+  the user tier; records the registry-only discovery order that supersedes
+  this ADR's legacy `project/` step once that fallback is removed
 - Issue #172 (workspace redesign umbrella), #210 (this step)

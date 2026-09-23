@@ -1,9 +1,37 @@
 ---
 name: review-issue
 description: Evaluate a GitHub issue against workspace principles and ADRs before work begins. Posts findings as a comment on the issue and records them as an ADR-0013 Issue Review entry on the issue's progress timeline.
+session_scope: both
 ---
 
 # Review Issue
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 ## Usage
 
@@ -80,7 +108,7 @@ Identify:
 
 Read the evaluation criteria:
 
-- `.agent/knowledge/principles_review_guide.md` — principle quick reference,
+- `$WS_ROOT/.agent/knowledge/principles_review_guide.md` — principle quick reference,
   ADR applicability, and consequences map
 
 Read the governance docs:
@@ -187,7 +215,8 @@ the shared persistence call with `--soft`, so a review run by hand outside
 the issue's worktree still succeeds and just prints the notice:
 
 ```bash
-.agent/scripts/review_progress.sh persist --issue "<N>" \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" \
     --branch "$(git branch --show-current)" --title "<issue title>" \
     --strict --soft <<'ENTRY'
 ## Issue Review

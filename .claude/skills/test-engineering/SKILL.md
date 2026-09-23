@@ -1,9 +1,37 @@
 ---
 name: test-engineering
 description: Scaffold, debug, and analyze test coverage for project components. Supports multiple test frameworks (GTest, PyTest, Jest, cargo test, go test, etc.).
+session_scope: both
 ---
 
 # Test Engineering
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 ## Usage
 
@@ -27,12 +55,12 @@ failures. References existing templates rather than embedding them.
 
 | Type | Framework | When to Use | Template |
 |------|-----------|-------------|----------|
-| C++ unit tests | GTest | Testing functions, classes, algorithms in isolation | `.agent/templates/testing/gtest_template.cpp` |
-| Python unit tests | PyTest | Testing Python logic, utilities, data processing | `.agent/templates/testing/pytest_template.py` |
-| JavaScript/TypeScript | Jest / Vitest | Testing JS/TS modules and classes | `.agent/templates/testing/jest_template.ts` |
-| Rust unit tests | cargo test | Testing Rust functions and modules | `.agent/templates/testing/rust_test_template.rs` |
-| Go unit tests | go test | Testing Go functions and packages | `.agent/templates/testing/go_test_template.go` |
-| Integration tests | language-appropriate | Testing multi-component interactions | `.agent/templates/testing/integration_template.*` |
+| C++ unit tests | GTest | Testing functions, classes, algorithms in isolation | `$WS_ROOT/.agent/templates/testing/gtest_template.cpp` |
+| Python unit tests | PyTest | Testing Python logic, utilities, data processing | `$WS_ROOT/.agent/templates/testing/pytest_template.py` |
+| JavaScript/TypeScript | Jest / Vitest | Testing JS/TS modules and classes | `$WS_ROOT/.agent/templates/testing/jest_template.ts` |
+| Rust unit tests | cargo test | Testing Rust functions and modules | `$WS_ROOT/.agent/templates/testing/rust_test_template.rs` |
+| Go unit tests | go test | Testing Go functions and packages | `$WS_ROOT/.agent/templates/testing/go_test_template.go` |
+| Integration tests | language-appropriate | Testing multi-component interactions | `$WS_ROOT/.agent/templates/testing/integration_template.*` |
 
 ## Procedures
 
@@ -78,7 +106,7 @@ Recommendation:
 
 **Trigger**: "Create tests for X" or "Scaffold test file"
 
-Read the appropriate template from `.agent/templates/testing/` and adapt it:
+Read the appropriate template from `$WS_ROOT/.agent/templates/testing/` and adapt it:
 
 #### C++ GTest
 
@@ -210,10 +238,10 @@ language-native mocking libraries:
 
 ## References
 
-- `.agent/templates/testing/gtest_template.cpp` — C++ unit test skeleton
-- `.agent/templates/testing/pytest_template.py` — Python unit test skeleton
-- `.agent/templates/testing/jest_template.ts` — JavaScript/TypeScript test skeleton
-- `.agent/knowledge/documentation_verification.md` — Command cookbook for
+- `$WS_ROOT/.agent/templates/testing/gtest_template.cpp` — C++ unit test skeleton
+- `$WS_ROOT/.agent/templates/testing/pytest_template.py` — Python unit test skeleton
+- `$WS_ROOT/.agent/templates/testing/jest_template.ts` — JavaScript/TypeScript test skeleton
+- `$WS_ROOT/.agent/knowledge/documentation_verification.md` — Command cookbook for
   finding public APIs and interfaces (useful for test planning)
 
 ## Guidelines

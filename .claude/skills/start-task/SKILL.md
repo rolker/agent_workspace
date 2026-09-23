@@ -2,9 +2,37 @@
 name: start-task
 description: "Claude Code only — create or enter the worktree for an issue/skill and cd the session into it. Wraps worktree_create.sh / worktree_enter.sh so all project policy (issue checks, branch naming, skill allowlist, --plan-file draft PR, --workflow scaffolding) still applies."
 argument-hint: "--issue <N> --type <workspace|project> | --skill <name> --type workspace [--branch <name>] [--parent-issue <N>] [--plan-file <path>] [--workflow <name>]"
+session_scope: both
 ---
 
 # /start-task
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 Replace the two-step `worktree_create.sh && source worktree_enter.sh` ceremony with a single command that ends with the session inside the new worktree.
 
@@ -57,30 +85,39 @@ fi
 
 If the test passes, the session is in the main tree — proceed.
 
-### 2. Move to the workspace root
+### 2. Resolve the workspace root — do NOT `cd`
 
-The script invocations below use repo-relative paths. Ensure `pwd` is the workspace root so `.agent/scripts/...` resolves regardless of the user's invocation directory:
+Locate the scripts through `$WS_ROOT` (see **Workspace root** above). Do **not**
+`cd` to the workspace first: `worktree_create.sh` / `worktree_enter.sh` derive
+`--type` and `--project` from the *current* directory when you omit them, so
+moving out of the project checkout would throw away the one signal that says
+which project this is.
 
 ```bash
-cd "$(git rev-parse --show-toplevel)" || exit 1
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 ```
+
+An explicit `--type` / `--project` in `$ARGUMENTS` always wins over the
+derivation, so passing them is still correct and unambiguous — omit them only
+when the session is already inside the checkout you mean.
 
 ### 3. Resolve the worktree path (existing → create-new fallback)
 
-Exit-code-checked idiom — error text from `worktree_enter.sh`'s failure paths goes to stderr, so `2>/dev/null` suppresses it and `$WT` never captures error or usage text (enforced by `.agent/scripts/tests/test_worktree_enter_stderr.sh`).
+Exit-code-checked idiom — error text from `worktree_enter.sh`'s failure paths goes to stderr, so `2>/dev/null` suppresses it and `$WT` never captures error or usage text (enforced by `$WS_ROOT/.agent/scripts/tests/test_worktree_enter_stderr.sh`).
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # Disable glob expansion for the unquoted $ARGUMENTS expansion below.
 # Word-splitting still happens (so `--issue 188 --type workspace` becomes
 # 4 args), but glob characters in values (e.g. `--branch main*`,
 # `--plan-file *.md`) won't expand against the cwd. Restored in every
 # branch exit.
 set -f
-if WT=$(.agent/scripts/worktree_enter.sh $ARGUMENTS --print-path 2>/dev/null); then
+if WT=$($WS_ROOT/.agent/scripts/worktree_enter.sh $ARGUMENTS --print-path 2>/dev/null); then
     set +f
     # Worktree already exists for this issue/skill.
     :
-elif WT=$(.agent/scripts/worktree_create.sh $ARGUMENTS --print-path-only); then
+elif WT=$($WS_ROOT/.agent/scripts/worktree_create.sh $ARGUMENTS --print-path-only); then
     set +f
     # New worktree created; $WT is the path.
     :
@@ -93,7 +130,7 @@ else
     # non-zero exit (e.g., set -e fires after `git worktree add` succeeds but
     # before bookkeeping finishes). Run `git worktree list` and, if anything
     # under worktrees/<type>/ matches, offer the user
-    # `.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or
+    # `$WS_ROOT/.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or
     # `--skill <name>`) to clean up before retrying.
     exit 1
 fi
@@ -115,7 +152,7 @@ cd "$WT"
 
 `cd` is used uniformly across `--type workspace`, `--type project`, and `--skill` modes. Project worktrees live in a separate git repo from the workspace; the native `EnterWorktree` tool would reject them because `git worktree list` from the workspace tree doesn't include them. `cd` doesn't care which repo owns the directory, so one mechanism covers every mode.
 
-**If `cd` fails:** the worktree path was just printed by a successful `worktree_create.sh` (or returned by `worktree_enter.sh` for an existing one), so failure here is anomalous — a filesystem race, a permissions problem, or the directory was removed externally between steps 3 and 4. Report the error and run `.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or `--skill <name>`) to clean up before retrying.
+**If `cd` fails:** the worktree path was just printed by a successful `worktree_create.sh` (or returned by `worktree_enter.sh` for an existing one), so failure here is anomalous — a filesystem race, a permissions problem, or the directory was removed externally between steps 3 and 4. Report the error and run `$WS_ROOT/.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or `--skill <name>`) to clean up before retrying.
 
 ### 5. Confirm to the user
 
@@ -142,7 +179,7 @@ After changes to this skill, run these checks from a fresh main-tree session to 
 ## Exit semantics
 
 - To return the session to the previous directory: `cd -` (Bash returns to whatever directory `cd` was invoked from). Any other `cd` works too. The worktree stays on disk.
-- To delete the worktree: `.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or `--skill <name>`). `make merge-pr PR=<N>` also removes the worktree as part of the merge flow.
+- To delete the worktree: `$WS_ROOT/.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or `--skill <name>`). `make merge-pr PR=<N>` also removes the worktree as part of the merge flow.
 
 ## Why a wrapper around `cd <path>`?
 
@@ -153,7 +190,7 @@ Plain `cd <some-path>` would work — but only after `worktree_create.sh` has ru
 - Branch naming conventions (`feature/issue-N`, `skill/<name>-<ts>`) that pre-commit hooks and `merge_pr.sh` depend on
 - Parent-issue branching for sub-issues
 - Skill worktree allowlist (`research`, `inspiration-tracker`)
-- `--workflow` progress.md scaffolding under `.agent/work-plans/issue-N/`
+- `--workflow` progress.md scaffolding under `$WS_ROOT/.agent/work-plans/issue-N/`
 - `--plan-file` draft-PR creation with AI signature
 - Cross-repo PR targeting for project-type worktrees
 
