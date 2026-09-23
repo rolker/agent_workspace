@@ -621,3 +621,34 @@ Outside reviewers: gemini ran (5 findings, complete); codex ran (3 findings, com
 **Decision**: address
 
 Owner chose "Real parser (Recommended)": replace the awk Approach extractor with a small Python extractor built on markdown-it (markdown-it-py); when the library is missing, print a warning and omit the Plan Context block (the context is optional); add the library to the venv/bootstrap requirements; delete the awk extractor. This resolves round-6 must-fix 1-2 and the two heading suggestions by replacement. One more review round, then publish.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 13:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-320 at `692d9c5`
+**Addressed**: Local Review (Pre-Push) at `5b0de9b` (2026-09-23 12:51 -04:00)
+**Commits**: `ec7af2c`, `692d9c5`
+
+Owner decision at the round-6 checkpoint: "Real parser (Recommended)". All
+four findings are resolved by replacement: the awk extractor is gone and
+`.agent/scripts/_plan_approach.py` (markdown-it-py, CommonMark preset)
+locates the section from the token stream and prints its source lines via
+`.map` ranges; an unclosed fence is cut at the first boundary after its
+opener. The 200-line cap and `outer_fence_for` stay in the shell script.
+Interpreter: the main checkout's `.venv/bin/python3` (git common dir, as
+the Makefile resolves it), then `python3` on PATH; exit 2 (no library)
+falls through to the next. No library anywhere, or exit 3 (error): one
+stderr warning, no Plan Context block, review still runs.
+`markdown-it-py>=3.0,<5` added to `requirements.txt` (installed into
+`.venv` by `make setup`; ADR-0009). The four new repro tests fail against
+the awk extractor (10 assertions) and pass now; suite 578/578.
+
+### Actions
+- [x] (must-fix) fence cut point not reset when a fence closes — replaced by the parser; regression `test_plan_context_extractor_fence_after_closed_fence` — `.agent/scripts/_plan_approach.py`
+- [x] (must-fix) `## Approach` inside an earlier fenced example matched — only top-level heading tokens match; regression `test_plan_context_extractor_approach_in_earlier_fence` — `.agent/scripts/_plan_approach.py`
+- [x] (suggestion) indented ATX headings not boundaries — top-level heading tokens at any 0-3 indent end the section; regression `test_plan_context_extractor_indented_heading` — `.agent/scripts/_plan_approach.py`
+- [x] (suggestion) setext headings leak the title / `===` not a boundary — heading token `.map` starts at the title line; regression `test_plan_context_extractor_setext_headings` — `.agent/scripts/_plan_approach.py`
+- [x] Missing-library / extractor-error fallback (owner direction) — `test_plan_context_parser_unavailable` — `.agent/scripts/cross_model_review.sh`
+- [x] Docs: AGENTS.md script-table row for `_plan_approach.py`; plan.md Implementation Notes — `AGENTS.md`, `.agent/work-plans/issue-320/plan.md`
