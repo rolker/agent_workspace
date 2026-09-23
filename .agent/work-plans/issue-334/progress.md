@@ -296,3 +296,18 @@ Verified: shellcheck --severity=warning clean on all changed scripts/tests; yaml
 **Decision**: address
 
 Fix both first (Recommended): address the round-2 suggestions before publishing — (1) discover_governance.sh sources _real_case_path.sh unguarded under set -euo pipefail, so a missing helper aborts with no output while update_roadmap.sh warns and falls back: make them consistent (.agent/scripts/discover_governance.sh:19); (2) add a test for update_roadmap.sh's helper-missing fallback asserting the warning and the update (.agent/scripts/update_roadmap.sh:28).
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 14:50 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-334 at `f0e5c0f`
+**Addressed**: Local Review (Pre-Push) at `059c3a9` (2026-09-23 14:29 -04:00)
+**Commits**: 9f8b7b5, f0e5c0f
+
+### Actions
+- [x] discover_governance.sh now sources `_real_case_path.sh` guarded, like update_roadmap.sh: a missing helper prints a stderr WARNING naming it and the report continues with candidate spellings (no silent abort); new sandbox test (F1–F4) asserts exit 0, the warning, and the reported rows — `.agent/scripts/discover_governance.sh:19`, `.agent/scripts/tests/test_discover_governance.sh`
+- [x] update_roadmap.sh helper-missing fallback covered: a sandbox copy without the helper asserts the warning and that the roadmap is still checked off — `.agent/scripts/tests/test_update_roadmap.sh`
+
+Both new tests verified to fail with the fallback removed (discover: 4 failures, exit 1 with only a bash "No such file" error; roadmap: 2 failures, "real_case_relpath: command not found", roadmap untouched). Full script suite: 29/29 suites passed.
