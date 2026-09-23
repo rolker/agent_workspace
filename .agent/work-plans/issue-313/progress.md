@@ -1027,3 +1027,18 @@ Fix-round re-triage. Only progress bookkeeping separates `debb083` (the reviewed
 **Decision**: address
 
 Fix it, then merge (Recommended)
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 10:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aa6bb4ed9af2cd85d, resume 1 of 3)
+
+**PR**: #327 at `c46b4ed`
+**Addressed**: Integrated Review at `8b51699` (2026-09-23 10:20 -04:00)
+**Commits**: c46b4ed
+
+### Actions
+- [x] The zombie half of `test_job_finished_proc_comm_with_space` never reached /proc because the probe's own bash reaped "x y". It now spawns "x y" under `sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 10'`, whose sleep never reaps. A precondition assertion checks that the zombie still answers `kill -0` before `job_finished` runs. The test kills the parent at the end so init reaps the zombie, and its pidfile stays under TMPDIR_BASE. — `.agent/scripts/tests/test_cross_model_review.sh`
+
+Tests: `test_cross_model_review.sh` 386 passed / 0 failed; `run_script_tests.sh` all 23 suites passed (the check for files left behind is clean); no "x y" / "a Z b" processes remain afterwards. Not verified: whether the zombie half fails against the old awk `$3` code. That check was not permitted (Bash permission denied).
