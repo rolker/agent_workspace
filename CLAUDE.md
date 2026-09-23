@@ -12,35 +12,6 @@ Replace `<your-model-id>` with your actual model ID from your system prompt
 (e.g., `claude-opus-4-6`, `claude-sonnet-4-6`). The 3-arg form skips all
 detection and uses exactly what you provide — do NOT edit `framework_config.sh`.
 
-## Tool Mapping
-
-The AGENTS.md "Tool Usage" section applies to all frameworks. In Claude Code,
-the dedicated tools are:
-
-| Instead of | Use |
-|------------|-----|
-| `ls`, `find` | Glob |
-| `grep`, `rg` | Grep |
-| `cat`, `head`, `tail` | Read |
-| `sed -i ...` | Edit |
-| `sed -n 'SCRIPT' <file>` | Read (offset/limit) or Grep |
-| `awk` (any) | Edit |
-| `echo >`, heredoc redirection | Write |
-
-These are auto-approved and don't consume permission prompts.
-
-**Enforced by hook**: `.claude/hooks/block-bash-tool-mapping.sh` blocks
-Bash calls that match the simple cases — `cat <file>`, `head [-N] <file>`,
-`tail [-N] <file>`, `find [path] ...` (any filesystem enumeration without
-an operational flag, including bare `find` which defaults to `.`),
-`sed -n 'SCRIPT' <file>` (inline scripts, including `-e SCRIPT`; external
-`-f script.sed` passes through), and `sed -i ...` (including combined
-short-flag clusters like `-ni`). Pipes, redirects, heredocs, and
-operational flags (`head -c`, `tail -f`, `find -exec/-delete/-mtime/...`,
-plain `sed 's/x/y/'` without `-i` or `-n`) pass through unchanged. Blocks
-are logged to `~/.claude/tool-mapping-blocks.jsonl` so we can measure how
-often the hook fires.
-
 ## Claude-Specific Notes
 
 - Makefile `.PHONY` targets (excluding `help`) are available as `/make_*` slash commands

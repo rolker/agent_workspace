@@ -39,7 +39,6 @@
 .agent/scripts/build.sh
 .agent/scripts/test.sh
 .agent/scripts/adapter
-.claude/hooks/block-bash-tool-mapping.sh
 .claude/hooks/log-tool-use.sh
 
 # Inert helpers: sourced by the above, never invoked for effect.

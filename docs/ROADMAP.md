@@ -370,7 +370,7 @@ Seven sources refreshed in one pass (one digest PR each; the ros2_agent_workspac
 - **AUQ fallback + AUTO_DECIDE contract** — Extension to the existing AskUserQuestion-cadence item: prose fallbacks to question gates get abused unless scoped to verified runtime tool failure, and agent self-decide needs an explicit declared carve-out (AUTO_DECIDE class), not ad-hoc judgment. Source: garrytan/gstack v1.31.0.0 → v1.48.0.0 → v1.57.2.0 arc
 - **Consult memory before asking** — Ask-side rule for skills: read memory, progress.md, and ROADMAP context before AskUserQuestion; only ask what can't be looked up. Knowledge-doc entry + audit pass on question-heavy skills. Source: garrytan/gstack v1.52.1.0 (brain-aware planning)
 - **Unresolved-decisions declaration in review reports** — Review/triage report formats must explicitly list decisions raised but not resolved, so nothing silently drops between rounds. Convergent with ros2 #527 (surface deferred findings across rounds). Source: garrytan/gstack v1.57.7.0
-- **Fail-closed hook audit** — Verify enforcement hooks (block-bash-tool-mapping, pre-commit) fail closed when their own machinery breaks; gstack's community bug wave found 4 security guards failing open. Add explicit fail-closed cases to hook tests. Source: garrytan/gstack v1.57.6.0
+- **Fail-closed hook audit** — Verify enforcement hooks (e.g. pre-commit) fail closed when their own machinery breaks; gstack's community bug wave found 4 security guards failing open. Add explicit fail-closed cases to hook tests. Source: garrytan/gstack v1.57.6.0
 
 ### From superpowers (2026-07-14)
 

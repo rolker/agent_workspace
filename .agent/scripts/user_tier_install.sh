@@ -13,10 +13,11 @@
 #   2. ~/.claude/hooks/agent-workspace-session-start.sh -- a symlink to this
 #      checkout's .claude/hooks/session_start_project_layer.sh, registered
 #      as a SessionStart hook by absolute path.
-#   3. Two PreToolUse entries, by absolute path, for
-#      .claude/hooks/block-bash-tool-mapping.sh and log-tool-use.sh. Both
-#      carry the registry_require_root guard, so they are inert outside the
-#      workspace checkout and outside every registered root.
+#   3. One PreToolUse entry, by absolute path, for
+#      .claude/hooks/log-tool-use.sh. It carries the registry_require_root
+#      guard, so it is inert outside the workspace checkout and outside every
+#      registered root. (The tool-mapping hook was promoted alongside it and
+#      retired by #328; --check reports a leftover entry for it as drift.)
 #   4. Permission allow-rules for the promoted scripts in
 #      .agent/user_tier_scripts.txt, by absolute path.
 #   5. Symlinks in ~/.claude/skills/ for every skill whose SKILL.md declares
@@ -177,7 +178,6 @@ installed_rules_json() {
 
 hook_commands() {
     echo "$WS_ROOT/.claude/hooks/log-tool-use.sh"
-    echo "$WS_ROOT/.claude/hooks/block-bash-tool-mapping.sh"
 }
 
 # --------------------------------------------------------------- helpers ---
@@ -498,6 +498,28 @@ if [[ "$MODE" == "check" ]]; then
         done <<< "$stale"
     fi
 
+    # Entries tagged as ours, inside this checkout, that the current
+    # generation no longer produces -- a hook retired from the user tier
+    # (#328). None of the checks above fire for it: it is tagged with this
+    # checkout and names a path inside it, so without this case --check says
+    # "installed and current" while settings.json still runs a hook the
+    # checkout no longer ships (or no longer has on disk). Re-running the
+    # installer clears it: install replaces our whole tagged generation.
+    wanted_json="$( { hook_commands; printf '%s\n' "$SESSION_HOOK_LINK"; } \
+        | jq -R . | jq -s . )"
+    retired="$(jq -r --arg tag "$TAG" --arg ws "$WS_ROOT/" --argjson want "$wanted_json" '
+        [.hooks // {} | to_entries[] | .value[]
+         | select((._agent_workspace // "") == $tag)
+         | .hooks[]? | .command
+         | select(startswith($ws))
+         | . as $c | select(($want | index($c)) == null)] | unique | .[]
+    ' <<< "$settings")"
+    if [[ -n "$retired" ]]; then
+        while IFS= read -r rt; do
+            note "hook entry tagged as ours is no longer generated: $rt (re-run the installer)"
+        done <<< "$retired"
+    fi
+
     # Permission rules.
     # `. as $w` matters: inside `$have | index(...)` a bare `.` would refer
     # to $have, not to the rule being tested, and every rule would look
@@ -610,13 +632,11 @@ echo "  linked $SESSION_HOOK_LINK -> $SESSION_HOOK_TARGET"
 # previous generation of ours (that is what makes this idempotent) and
 # leaving everything else in the file untouched.
 PRE_HOOKS_JSON="$(jq -n --arg tag "$TAG" \
-    --arg log "$WS_ROOT/.claude/hooks/log-tool-use.sh" \
-    --arg block "$WS_ROOT/.claude/hooks/block-bash-tool-mapping.sh" '
+    --arg log "$WS_ROOT/.claude/hooks/log-tool-use.sh" '
     {
       _agent_workspace: $tag,
       hooks: [
-        {type: "command", command: $log,   timeout: 5},
-        {type: "command", command: $block, timeout: 5}
+        {type: "command", command: $log, timeout: 5}
       ]
     }')"
 

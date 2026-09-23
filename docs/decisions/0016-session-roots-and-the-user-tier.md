@@ -64,7 +64,7 @@ a project checkout (beyond `.git/info/exclude` and an untracked
 
 ### 3. The user tier injects the layers
 
-`~/.claude` carries a `SessionStart` hook, `PreToolUse` hooks, permission
+`~/.claude` carries a `SessionStart` hook, a `PreToolUse` hook, permission
 allow-rules and skill symlinks, installed from a workspace checkout by
 `.agent/scripts/user_tier_install.sh`. The hook renders the workspace layer
 from `AGENTS.md` sections and the project layer from registry data plus the
@@ -100,12 +100,13 @@ what keeps that from being an imposition. It is enforced, not documented:
 - `.agent/scripts/tests/test_user_tier_guard.sh` fails on an ungoverned
   entry, on a guard that does not precede the first repo-affecting `gh`/
   `git` call, and on any entry that does not actually refuse — or, for the
-  two hooks, stay silent — when run from a sandbox repo registered nowhere.
+  hook, stay silent — when run from a sandbox repo registered nowhere.
 
-The tool-mapping and tool-use-logging hooks are promoted under this rule
-(owner decision, 2026-09-22), so project sessions keep the
-Bash-to-dedicated-tools steering and the tool-use log, and an unregistered
-repo gets neither.
+The tool-use-logging hook is promoted under this rule, so project sessions
+keep the tool-use log and an unregistered repo does not get it. The
+tool-mapping hook was promoted alongside it (owner decision, 2026-09-22)
+and retired by #328 on 2026-09-23, at both the workspace and the user
+tier, because it contradicted Claude Code's auto-mode guidance.
 
 ### 7. The workspace root is a file, not an environment variable
 
