@@ -429,3 +429,13 @@ non-caller agent) exactly as a first review does.
 - [ ] (suggestion) Pathspec `-- .` is cwd-relative; run from a subdirectory it undercounts silently — use `-- ':/' ':(top,exclude).agent/work-plans/**'` — `.agent/knowledge/review_depth_classification.md:154`
 - [ ] (suggestion) No guidance when the last reviewed SHA is not an ancestor of the head (rebase/force-push; PR mode fetching only `headRefOid` gives `bad object`): check `git merge-base --is-ancestor`, fetch via `pull/<N>/head`, fall back to whole-diff classification — `.agent/knowledge/review_depth_classification.md:158-159`
 - [ ] (suggestion) Numstat edge cases undefined: binary files report `-` (sum as 0 lines, still count the file) and renames depend on `diff.renames` — state both, or pass `--no-renames` — `.agent/knowledge/review_depth_classification.md:156-157`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 11:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Owner chose "Same as whole PR (Recommended)": a fix-round re-review gets the same tier as a first review of the whole PR/branch; the reviewer may raise it, never lower it. Drop the fix-round delta counting entirely (resolves round-3 must-fix 1, 2, 3 and suggestions 1-3 by removal). Fix the plan-context fence-balancing bug (must-fix 4) with tests. One more review round follows.
