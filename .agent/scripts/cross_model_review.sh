@@ -746,14 +746,26 @@ declare -A AGENT_PID=()
 #     /proc, works on macOS/BSD and in stripped containers.
 #   * /proc's process state (Z = exited, not yet reaped) as a
 #     cross-check where /proc exists.
+#
+# proc_state prints the state letter from /proc/<pid>/stat. Field 2 is
+# the parenthesised comm, which may itself contain spaces (or a `)`), so
+# a fixed whitespace field such as awk's $3 lands on the wrong word for
+# a comm like "a Z b". The state is the first word after the LAST `)`.
+proc_state() {
+    local stat
+    [[ -r "/proc/$1/stat" ]] || return 1
+    IFS= read -r stat < "/proc/$1/stat" 2>/dev/null || return 1
+    stat=${stat##*) }
+    printf '%s' "${stat%% *}"
+}
+
 job_finished() {
     local jpid="$1" state running
     kill -0 "$jpid" 2>/dev/null || return 0
     running=$(jobs -pr 2>/dev/null || true)
     if [[ -n "$running" ]]; then
         grep -qx -- "$jpid" <<< "$running" || return 0
-    elif [[ -r "/proc/${jpid}/stat" ]]; then
-        state=$(awk '{print $3}' "/proc/${jpid}/stat" 2>/dev/null || echo "")
+    elif state=$(proc_state "$jpid"); then
         [[ "$state" == "Z" ]] && return 0
     fi
     return 1

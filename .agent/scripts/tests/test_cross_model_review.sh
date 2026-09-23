@@ -2329,7 +2329,7 @@ test_job_finished_without_proc() {
         echo '#!/usr/bin/env bash'
         echo 'set -uo pipefail'
         # Force the /proc branch to be unavailable.
-        echo 'awk() { return 1; }'
+        echo 'proc_state() { return 1; }'
         sed -n '/^job_finished() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
         cat << 'PROBE_EOF'
 sleep 30 &
@@ -2345,6 +2345,48 @@ PROBE_EOF
     local output; output=$(bash "$probe" 2>&1)
     assert_contains "a running job is reported as running" "running: alive" "$output"
     assert_contains "an exited-but-unreaped job is reported as finished" "dead: finished" "$output"
+    assert_not_contains "no misreport of a running job" "RUNNING-REPORTED-FINISHED" "$output"
+    assert_not_contains "no misreport of a dead job" "DEAD-REPORTED-ALIVE" "$output"
+    teardown
+}
+
+test_job_finished_proc_comm_with_space() {
+    echo "TEST: job liveness via /proc survives a comm containing spaces (#313 round 4)"
+    if [[ ! -r /proc/self/stat ]]; then
+        echo "  SKIP: no /proc on this host"
+        return 0
+    fi
+    setup
+    # With bash's job table forced empty, job_finished falls back to
+    # /proc/<pid>/stat. The comm field is parenthesised and may contain
+    # spaces, so the state must be read after the last `)` — a fixed
+    # field misreads both processes below: "a Z b" (running) would read
+    # as Z, and "x y" (a zombie) would read as "y)".
+    local bindir="${TMPDIR_BASE}/comm-bin"; mkdir -p "$bindir"
+    cp "$(command -v sleep)" "${bindir}/a Z b"
+    cp "$(command -v sleep)" "${bindir}/x y"
+    local probe="${TMPDIR_BASE}/probe-proc.sh"
+    {
+        echo '#!/usr/bin/env bash'
+        echo 'set -uo pipefail'
+        echo 'jobs() { :; }'
+        sed -n '/^proc_state() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
+        sed -n '/^job_finished() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
+        echo "bindir='${bindir}'"
+        cat << 'PROBE_EOF'
+"${bindir}/a Z b" 30 &
+live=$!
+"${bindir}/x y" 0.2 &
+dead=$!
+sleep 1   # "x y" has exited but has NOT been waited on yet
+job_finished "$live" && echo "RUNNING-REPORTED-FINISHED" || echo "running: alive"
+if job_finished "$dead"; then echo "dead: finished"; else echo "DEAD-REPORTED-ALIVE"; fi
+kill "$live" 2>/dev/null; wait 2>/dev/null
+PROBE_EOF
+    } > "$probe"
+    local output; output=$(bash "$probe" 2>&1)
+    assert_contains "a running job named 'a Z b' is reported as running" "running: alive" "$output"
+    assert_contains "a zombie named 'x y' is reported as finished" "dead: finished" "$output"
     assert_not_contains "no misreport of a running job" "RUNNING-REPORTED-FINISHED" "$output"
     assert_not_contains "no misreport of a dead job" "DEAD-REPORTED-ALIVE" "$output"
     teardown
@@ -2649,6 +2691,7 @@ test_cleanup_reaps_jobs_before_dropping_tmp_root
 test_cleanup_survives_a_wedged_job
 test_cleanup_budget_follows_the_escalation
 test_job_finished_without_proc
+test_job_finished_proc_comm_with_space
 test_cli_codex_empty_response_excerpts_transcript
 test_cli_helper_escalates_to_sigkill
 test_agy_helper_escalates_to_sigkill

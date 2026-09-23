@@ -953,7 +953,7 @@ Copilot's only review at `4d7bb94` is the quota notice ("unable to review ... qu
 The pre-push review was at `24eddc0`; `24eddc0..4d7bb94` touches neither `.agent/scripts/cross_model_review.sh` nor `.agent/scripts/_cli_review.sh` (only the main merge and progress bookkeeping), so its round-2 approval and both open suggestions carry forward unchanged to the PR head. Both re-verified in the current code. Neither is must-fix: finding 1's worst case is a bounded wait then SIGKILL (not a hang or leak), finding 2 is comment accuracy only.
 
 ### Findings
-- [ ] (suggestion, Local Review R2) `job_finished`'s /proc fallback reads process state with `awk '{print $3}'`, which lands on the wrong field when a process's comm contains a space; prefer the text after the last `)`. Still present at lines 755-757. Failure mode is bounded: a misread state reports the job running, so cleanup waits out `CLEANUP_REAP_TIMEOUT` and SIGKILLs — `.agent/scripts/cross_model_review.sh`
+- [x] (suggestion, Local Review R2) `job_finished`'s /proc fallback reads process state with `awk '{print $3}'`, which lands on the wrong field when a process's comm contains a space; prefer the text after the last `)`. Still present at lines 755-757. Failure mode is bounded: a misread state reports the job running, so cleanup waits out `CLEANUP_REAP_TIMEOUT` and SIGKILLs — `.agent/scripts/cross_model_review.sh`
 - [ ] (suggestion, Local Review R2) two comments (lines 337 and 351) justify the guarded jq extraction by what would happen "under `set -e`", but the helper runs `set -uo pipefail` (line 86) with no `-e`; the guard is right, the stated mechanism is not (an unguarded jq failure would leave an empty value, not kill the helper) — `.agent/scripts/_cli_review.sh`
 
 ### False positives
