@@ -135,3 +135,49 @@ Revise, all 7 (Recommended): fix the five must-fix items from the Plan Review (r
 **Plan**: `.agent/work-plans/issue-330/plan.md` at `60caff4`
 
 Revision addressing all 7 items from the Plan Review (five must-fix, two suggestions), per the owner's "revise, all 7" Checkpoint decision: guard delegated shape checks against registry parse errors so a malformed line no longer blames healthy projects; specify the single_project git check as `.git`-at-root (symlink-resolved), not bare `rev-parse --git-dir`, with a test for a non-git dir nested inside another repo; add ARCHITECTURE.md L98-100 and validate_workspace.py's own docstring to Files to Change; target test_project_registry.sh (reusing make_validate_sandbox, copying ros2_colcon into the sandbox) for the new tests and re-verify existing test_validate_* cases; emit every adapter failure line prefixed `project '<name>':` instead of just the first; and note the no-`--project` adapter-validate behavior change in the PR description.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-23 10:24 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**Issue**: #330 — validate: the global validator requires .git at every project root (fails ros2_colcon), and single_project validate checks the whole workspace
+**Plan**: `.agent/work-plans/issue-330/plan.md` at `60caff4`
+**Branch**: `feature/issue-330`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Two defects + tests + three doc touch-points; ~5 files, one PR |
+| Issue alignment | Good | Both defects addressed; Issue Review actions and both owner Checkpoints carried in |
+| File targeting | Good | Tests now in `test_project_registry.sh` reusing `make_validate_sandbox` (verified L302-312; `make_sandbox` L58-68 copies `adapter` + `_project_registry.sh`, so the subprocess path works in-sandbox); ARCHITECTURE.md and the validator docstring added |
+| Consequences | Good | ARCHITECTURE.md L98-100, docstring item 2, AGENTS.md L404 row, no-`--project` behavior change all captured; only other caller of `adapter ... validate` is `session_start_project_layer.sh` L168 (uses `--project`), `dashboard.sh` L188 calls the validator directly |
+| Principle alignment | Good | Code + tests, minimal, no adapter audit |
+| ADR compliance | Good | ADR-0011: shape check moves behind the `validate` verb; no verb-signature change, `validate_adapter.sh` unaffected |
+| ROS conventions | N/A | Workspace plan |
+
+### Prior findings (round 1) — verified against source
+
+1. Registry parse errors blamed on healthy entries — **resolved**. Step 2 skips delegation when `registry_errors` is non-empty. Premise confirmed: `registry_lookup` returns 2 on any `registry_entries` failure (`_project_registry.sh` L310-312) and the dispatcher exits 1 for rc≠0 (`adapter` L179-191). Python/shell parser parity is already tested (`test_validate_python_parser_matches_shell`), so `registry_errors` non-empty tracks the shell rc=2 case. New test: malformed line + healthy entry.
+2. Imprecise single_project git check — **resolved**. Step 1 specifies `.git` present at `adapter_project_root()`, symlink-resolved, explicitly not bare `rev-parse --git-dir`; test for a non-git dir nested in a repo.
+3. ARCHITECTURE.md wrongly called unaffected — **resolved**. L98-100 quoted correctly and in Files to Change; consequences row corrected.
+4. Validator docstring item 2 — **resolved**. Docstring (L5-12) in step 4 and Files to Change.
+5. Test location — **resolved**. `test_project_registry.sh`, `make_validate_sandbox`, copy `ros2_colcon` into the sandbox, real fixture after `test_ros2_colcon.sh` L1325; all seven existing `test_validate_*` cases listed for re-run (checked: none use a stub type that would change meaning under delegation; `test_validate_parent_root` instances are `single_project` git repos and still pass).
+6. Only the first stderr line reported (suggestion) — **resolved**. One `project '<name>': <line>` issue per non-empty stderr line, fixed fallback on empty stderr.
+7. No-`--project` behavior change (suggestion) — **resolved**. Consequences row commits to noting it in the PR description.
+
+### Findings
+
+1. **[Approach — suggestion]** — Step 2 says what to do with the adapter's stderr but not its stdout. Capture it (`capture_output=True`) rather than letting `✅ ros2_colcon checkout matches the manifest.` / the single_project pass line print inline, since `make validate` runs `--verbose` (Makefile L126) and its output is the one-line-per-project report; on success keep printing the existing `project '<name>' (<ptype>): <path> OK` verbose line.
+2. **[Tests — suggestion]** — The ros2_colcon fixture helpers (`make_colcon_project`, `populate_layer`, `write_repos_file`) live only in `test_ros2_colcon.sh`, not a shared lib, so the new registry test needs its own minimal inline fixture. It must declare a distro (e.g. `distro:` in `configs/manifest/bootstrap.yaml`), because `adapter_validate` counts an unresolvable distro as an issue (`ros2_colcon/adapter.sh` L575-577); a manifest with only layers would fail for the wrong reason.
+
+### Summary
+
+All seven round-1 items are resolved in the plan and hold up against source. The two new points are suggestions, not blockers. The plan is ready for implementation.
+
+### Recommended Actions
+
+- [ ] (suggestion) Capture the delegated adapter's stdout in `validate_workspace.py`; keep the existing verbose `OK` line as the success report
+- [ ] (suggestion) Give the inline ros2_colcon registry-test fixture a resolvable distro so the passing case fails only for the reason under test
