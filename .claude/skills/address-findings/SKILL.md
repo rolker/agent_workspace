@@ -204,7 +204,9 @@ Print the next command for the calling session:
 ```
 
 The re-review reads the diff cold and confirms the findings are genuinely
-resolved. This skill never invokes it itself.
+resolved. This skill never invokes it itself. The re-review's depth tier
+is the whole diff's, exactly as a first review's — never lowered because
+the fix round is small (`review-code` step 2).
 
 ## Guidelines
 
