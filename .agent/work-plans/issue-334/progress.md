@@ -266,3 +266,23 @@ Deviations: (a) `-ef` same-file guard — accepted (cheap, correct, tested on Li
 - [x] (suggestion) Generic ROADMAP.md mentions now say docs/roadmap.md / "the roadmap"; other repos' roadmaps untouched — `.claude/skills/what-next/SKILL.md:3,21`, `.claude/skills/inspiration-tracker/SKILL.md:228,341`
 
 Verified: `run_script_tests.sh` 30/30 suites green; pre-commit (shellcheck, shebang/executable, script-test suite) clean on both commits. Not run on a real case-insensitive filesystem (none available on this Linux host); that path is covered by the resolver unit test and the adaptive fixtures.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 14:29 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-334 at `059c3a9`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff, 31 files outside work-plans; CI workflow + AGENTS.md/CLAUDE.md + skills are override triggers; fix round re-classified on the whole diff per #320)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round-1 findings resolved: the case-insensitive test must-fix (adaptive fixtures + stored-name reporting via `_real_case_path.sh`, D2–D4 / stored-name / R1–R10 cases) and the generic ROADMAP.md suggestion (what-next, inspiration-tracker).
+
+Verified: shellcheck --severity=warning clean on all changed scripts/tests; yamllint clean on validate.yml; test_real_case_path 10/10, test_update_roadmap 6/6, test_discover_governance 15/15, test_merge_pr_gate 82/82. Merge from main (059c3a9): CLAUDE.md has no `## Tool Mapping` section and keeps the References edit; AGENTS.md carries #328's "Prefer dedicated tools where they fit" wording; `docs/roadmap.md` is byte-identical to main's `docs/ROADMAP.md` (includes #328's "Fail-closed hook audit" edit), `docs/principles.md` identical to main's `docs/PRINCIPLES.md`; `git ls-files docs/ROADMAP.md docs/PRINCIPLES.md ARCHITECTURE.md` empty; origin/main 0 ahead. update_roadmap.sh prints `$ROOT_DIR/<stored name>`, which merge_pr.sh strips to a toplevel-relative path for `git add` — correct for both spellings. Helper is bash-3.2 safe (array-guarded expansions, nocasematch not `${x,,}`, subshell-scoped shopt); Claude adversarial ran edge cases (empty rel, slashes, `./`, spaces, glob metacharacters) — all correct. Fallback-with-warning in update_roadmap.sh judged the right failure mode (the script never blocks a merge; on case-sensitive filesystems the fallback is exact). Cross-model: gemini failed (agy output-token limit), codex failed (usage limit) — no cross-model review this round.
+
+### Findings
+- [ ] (suggestion) discover_governance.sh sources `_real_case_path.sh` unguarded under `set -euo pipefail`, so a missing helper aborts with no output while update_roadmap.sh falls back with a warning — make the two consistent (soft fallback or a clear error) — `.agent/scripts/discover_governance.sh:19`
+- [ ] (suggestion) update_roadmap.sh's helper-missing fallback (warning + candidate spelling) has no test; add a case that runs a copy without the helper and asserts the warning and the update — `.agent/scripts/update_roadmap.sh:28`
