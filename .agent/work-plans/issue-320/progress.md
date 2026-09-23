@@ -611,3 +611,13 @@ Outside reviewers: gemini ran (5 findings, complete); codex ran (3 findings, com
 - [ ] (must-fix) Section start is matched before fence tracking begins, so a `## Approach` line inside a fenced example in an earlier section is taken as the real Approach and the real one is dropped (repro: `## Context` / ```md / `## Approach` / `example only` / ``` / `## Approach` / `REAL` → outputs `example only`). Track fence state from line 1 and only match `## Approach` outside a fence; codex — `.agent/scripts/cross_model_review.sh:1029`
 - [ ] (suggestion) ATX headings indented 1–3 spaces (`  ## Files to Change`) are not boundaries, so the whole next section runs on into Plan Context (bounded only by the 200-line cap); plan-task's template is flush-left, so hand-edited plans only. Accept `^ {0,3}#{1,2}[ \t]` like the fence/rule handling; codex + gemini + Claude adversarial — `.agent/scripts/cross_model_review.sh:1048`
 - [ ] (suggestion) Setext headings: the title line above a `---`/`===` underline is appended before the cut (one-line leak), and `===` underlines are not boundaries at all; gemini + Claude adversarial — `.agent/scripts/cross_model_review.sh:1048`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 13:04 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Owner chose "Real parser (Recommended)": replace the awk Approach extractor with a small Python extractor built on markdown-it (markdown-it-py); when the library is missing, print a warning and omit the Plan Context block (the context is optional); add the library to the venv/bootstrap requirements; delete the awk extractor. This resolves round-6 must-fix 1-2 and the two heading suggestions by replacement. One more review round, then publish.
