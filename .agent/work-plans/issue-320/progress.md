@@ -718,3 +718,13 @@ Reviewers: fresh Claude adversarial sub-agent ran (no issues found; probed re-pa
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 14:03 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Owner's answer at the round-7 publish checkpoint, conditional on a clean review: "Fix 3, then publish (Recommended)". Round 8 (7e8e95e) approved with no findings (fresh Claude adversarial, Codex and Gemini all ran; Copilot skipped, quota).
