@@ -683,3 +683,19 @@ Outside reviewers: codex ran (complete, "No issues found", brief, did not execut
 **Decision**: address
 
 Owner chose "Fix 3, then publish (Recommended)" at round 7: address the three round-7 suggestions (silent omission when an unclosed fence before the Approach hides the heading; exit-code 2 collision with python's own exit 2; extractor tests skip instead of fail under CI), then one review round with a fresh Claude adversarial subagent, then publish.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 13:52 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-320 at `390b20a`
+**Addressed**: Local Review (Pre-Push) at `8723b44` (2026-09-23 13:31 -04:00)
+**Commits**: 2933161, fb4f448, 390b20a
+
+### Actions
+- [x] An unclosed fence before the Approach no longer hides the `## Approach` heading: the heading search and the section-end search now walk one token stream (`_top_level`) with the same unclosed-fence re-parse; new test `test_plan_context_extractor_unclosed_fence_before_approach` (the repro yields REAL; failed against the previous extractor) — `.agent/scripts/_plan_approach.py:118`
+- [x] No-library exit code moved from 2 to 4 (python never emits 4); `cross_model_review.sh` loop, case arm, initial RC and comments updated, AGENTS.md script-table row updated; a missing `_plan_approach.py` (python exit 2) now reports "_plan_approach.py failed (exit 2)"; new test `test_plan_context_missing_extractor_is_an_error` (failed against the previous code) — `.agent/scripts/_plan_approach.py:36`
+- [x] `require_plan_parser` records a FAIL instead of a SKIP when `CI` is set (not empty/false/0); new test `test_require_plan_parser_fails_under_ci` covers CI=true, unset and false (the confirm-against-old-code run was not permitted in this session) — `.agent/scripts/tests/test_cross_model_review.sh:1461`
+
+Suite: `test_cross_model_review.sh` 594 passed, 0 failed (also 594/0 with CI=true); pre-commit hooks passed on all three commits.
