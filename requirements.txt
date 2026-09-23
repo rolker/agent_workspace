@@ -1,8 +1,12 @@
 # Workspace dev-tool dependencies — installed into .venv by `make lint`.
-# Keep minimal: only tools wired into Makefile targets or CI.
+# Keep minimal: only tools wired into Makefile targets or CI, and libraries
+# the workspace scripts import (resolved through .venv/bin/python3).
 # Linter versions should match .pre-commit-config.yaml to avoid divergence.
 pre-commit
 flake8==7.0.0
 pylint==3.0.3
 yamllint==1.33.0
 shellcheck-py==0.9.0.6
+# CommonMark parser for cross_model_review.sh's plan-context extractor
+# (_plan_approach.py, #320). 3.x is what Ubuntu 24.04 ships as python3-markdown-it.
+markdown-it-py>=3.0,<5

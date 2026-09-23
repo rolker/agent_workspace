@@ -993,72 +993,56 @@ rm -f "$SHARED_DIFF"
 PLAN_CONTEXT_MAX_LINES=200
 PLAN_CONTEXT_FILE="${WORK_PLANS_DIR}/plan.md"
 if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
-    # The section ends at the next H1/H2 heading or at a thematic break
-    # (CommonMark: up to 3 leading spaces, then three or more of one of
-    # `-`, `*` or `_`, optionally separated by spaces or tabs), whichever
-    # comes first — a plan that uses `# ` or a rule between sections must
-    # not leak the next section in here.
+    # The section is located by _plan_approach.py, a CommonMark parser
+    # (markdown-it-py) rather than a line scanner: it starts after the first
+    # top-level `## Approach` heading (never one inside a fenced example)
+    # and ends at the next H1/H2 heading — ATX, indented ATX or setext — or
+    # thematic break; a fence that never closes is cut at the first
+    # boundary after its opener instead of running to EOF. The script's
+    # docstring has the rules and the exit codes.
     #
-    # Boundaries are ignored while a fenced code block of the plan is open,
-    # so a `# comment` or a `---` line inside a shell or YAML example does
-    # not end the Approach early. The fence tracking here decides section
-    # boundaries only; it has no bearing on the prompt's well-formedness,
-    # which the outer fence below guarantees on its own. A closer is the
-    # opener's character repeated at least as many times with nothing but
-    # whitespace after it (CR stripped first, for CRLF plans).
-    #
-    # A plan whose fence never closes would otherwise run the Approach to
-    # the end of the file and pull every later section in. Lines are
-    # therefore buffered, and the first boundary seen while a fence was open
-    # is remembered: if the fence is still open at EOF, the Approach is cut
-    # there instead — shorter, never longer than a fence-blind cut.
-    PLAN_APPROACH=$(awk '
-        function run_len(s, c,    n) {
-            n = 0
-            while (substr(s, n + 1, 1) == c) n++
-            return n
-        }
-        # A CommonMark thematic break. Spelled without {n,} intervals so
-        # it holds on awks that lack them.
-        function is_rule(s) {
-            return s ~ /^ ? ? ?-[ \t]*-[ \t]*-[- \t]*$/ ||
-                   s ~ /^ ? ? ?\*[ \t]*\*[ \t]*\*[* \t]*$/ ||
-                   s ~ /^ ? ? ?_[ \t]*_[ \t]*_[_ \t]*$/
-        }
-        /^## Approach[[:space:]]*\r?$/ && !in_section { in_section = 1; next }
-        !in_section { next }
-        {
-            line = $0
-            sub(/\r$/, "", line)
-            raw = line
-            # At most 3 leading spaces, as in CommonMark: 4+ spaces or a tab
-            # is indented code, never a fence. A fence nested deeper in a
-            # list is then not seen, which can only end the Approach early
-            # at a boundary-shaped line inside it — shorter, never longer.
-            if (line ~ /^ ? ? ?[`~]/) sub(/^ +/, "", line)
-            c = substr(line, 1, 1)
-            n = (c == "`" || c == "~") ? run_len(line, c) : 0
-            rest = substr(line, n + 1)
-            # A backtick run followed by another backtick on the line is
-            # inline code, not a fence opener.
-            if (n >= 3 && !fence_n && c == "`" && index(rest, "`")) n = 0
-            if (n >= 3) {
-                if (!fence_n) { fence_c = c; fence_n = n }
-                else if (c == fence_c && n >= fence_n && rest ~ /^[ \t]*$/) fence_n = 0
-            } else if ($0 ~ /^# / || $0 ~ /^## / || is_rule(raw)) {
-                if (!fence_n) { stopped = 1; exit }
-                # Inside a fence: not a boundary, unless the fence never
-                # closes (see END).
-                if (!cut) cut = nb
-            }
-            buf[++nb] = $0
-        }
-        END {
-            last = nb
-            if (!stopped && fence_n && cut) last = cut
-            for (i = 1; i <= last; i++) print buf[i]
-        }
-    ' "$PLAN_CONTEXT_FILE")
+    # Interpreter: the workspace .venv's python3 first (that is where
+    # requirements.txt installs markdown-it-py, ADR-0009), then python3 on
+    # PATH. The venv belongs to the main checkout, never a worktree (#272),
+    # so it is found through git's common dir, as the Makefile does. An
+    # interpreter that lacks the library (exit 2) passes to the next one.
+    # If none can import it, or the extractor fails, the review still runs:
+    # one warning, and the Plan Context block is omitted as if there were
+    # no plan.
+    PLAN_APPROACH=""
+    PLAN_APPROACH_RC=2
+    PLAN_APPROACH_ERR="${AGENT_TMP_ROOT}/plan-approach.err"
+    PLAN_APPROACH_PYTHONS=()
+    PLAN_APPROACH_COMMON=$(git -C "$SCRIPT_SELF_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+    if [[ -n "$PLAN_APPROACH_COMMON" && -x "${PLAN_APPROACH_COMMON%/.git}/.venv/bin/python3" ]]; then
+        PLAN_APPROACH_PYTHONS+=("${PLAN_APPROACH_COMMON%/.git}/.venv/bin/python3")
+    fi
+    if command -v python3 > /dev/null 2>&1; then
+        PLAN_APPROACH_PYTHONS+=("$(command -v python3)")
+    fi
+    for plan_python in "${PLAN_APPROACH_PYTHONS[@]}"; do
+        PLAN_APPROACH_RC=0
+        PLAN_APPROACH=$("$plan_python" "${SCRIPT_SELF_DIR}/_plan_approach.py" \
+            "$PLAN_CONTEXT_FILE" 2> "$PLAN_APPROACH_ERR") || PLAN_APPROACH_RC=$?
+        (( PLAN_APPROACH_RC == 2 )) || break
+    done
+    case "$PLAN_APPROACH_RC" in
+        0) ;;
+        1) PLAN_APPROACH="" ;;
+        2)
+            PLAN_APPROACH=""
+            if (( ${#PLAN_APPROACH_PYTHONS[@]} == 0 )); then
+                echo "WARNING: plan context omitted: no python3 found to run _plan_approach.py" >&2
+            else
+                echo "WARNING: plan context omitted: markdown-it-py is not importable by ${PLAN_APPROACH_PYTHONS[*]} (run 'make setup' to install requirements.txt into the workspace .venv)" >&2
+            fi
+            ;;
+        *)
+            PLAN_APPROACH=""
+            echo "WARNING: plan context omitted: _plan_approach.py failed (exit ${PLAN_APPROACH_RC}): $(head -n 1 "$PLAN_APPROACH_ERR" 2>/dev/null)" >&2
+            ;;
+    esac
+    rm -f "$PLAN_APPROACH_ERR"
 
     # Whitespace-only counts as empty.
     if [[ -n "${PLAN_APPROACH//[[:space:]]/}" ]]; then
