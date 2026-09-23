@@ -968,3 +968,18 @@ The pre-push review was at `24eddc0`; `24eddc0..4d7bb94` touches neither `.agent
 **Decision**: address
 
 Fix both, then merge (Recommended)
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 10:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #327 at `b1d2748`
+**Addressed**: Integrated Review at `4d7bb94` (2026-09-23 09:54 -04:00)
+**Commits**: 939e370, b1d2748
+
+### Actions
+- [x] `job_finished`'s /proc fallback misread the state for a comm containing a space — new `proc_state` reads the word after the last `)`; new test `test_job_finished_proc_comm_with_space` covers a running "a Z b" and a zombie "x y" — `.agent/scripts/cross_model_review.sh` (`job_finished`), `.agent/scripts/tests/test_cross_model_review.sh`
+- [x] Two comments justified the guarded jq extraction by `set -e`, which the helper does not use; restated as "an unguarded jq failure would leave an empty value" (comment-only) — `.agent/scripts/_cli_review.sh:337,351`
+
+Tests: `test_cross_model_review.sh` 385 passed / 0 failed; `run_script_tests.sh` all 23 suites passed.
