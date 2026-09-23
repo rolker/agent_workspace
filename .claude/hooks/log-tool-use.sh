@@ -22,6 +22,33 @@ fi
 # Read hook input from stdin
 INPUT=$(cat)
 
+
+# ---------------------------------------------------- user-tier guard (#265) ---
+# Promoted to the user tier: an absolute-path PreToolUse entry in
+# ~/.claude/settings.json makes this hook fire in EVERY session on this
+# machine. Stay inert outside the workspace checkout and outside every
+# registered project root -- exit 0 before writing any log line, so an
+# unrelated repo's tool use is never recorded.
+#
+# BASH_SOURCE is resolved through symlinks because the user tier installs
+# this file as a symlink under ~/.claude/hooks/.
+# See docs/decisions/0016-session-roots-and-the-user-tier.md.
+_UT_HOOK_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+_UT_WS_ROOT="$(cd "$(dirname "$_UT_HOOK_PATH")/../.." 2>/dev/null && pwd)"
+_UT_CWD="$(echo "$INPUT" | jq -r '.cwd // ""')"
+[[ -z "$_UT_CWD" ]] && _UT_CWD="$PWD"
+# Fail CLOSED, not open. If the workspace root or the registry helper cannot
+# be resolved -- a moved clone, a deleted checkout, a broken symlink -- we
+# cannot tell whether this cwd is a root we govern. Acting anyway would mean
+# logging a stranger's tool use in a repo that may have nothing to do with the workspace, which is
+# exactly what the user-tier rule forbids. So: do nothing and exit 0.
+if [[ -z "$_UT_WS_ROOT" || ! -f "$_UT_WS_ROOT/.agent/scripts/_project_registry.sh" ]]; then
+    exit 0
+fi
+# shellcheck source=../../.agent/scripts/_project_registry.sh
+source "$_UT_WS_ROOT/.agent/scripts/_project_registry.sh" 2>/dev/null || exit 0
+registry_require_root "$_UT_WS_ROOT" "$_UT_CWD" >/dev/null 2>&1 || exit 0
+
 # Extract fields and write log entry; any failure is silently ignored
 {
     SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "unknown"')

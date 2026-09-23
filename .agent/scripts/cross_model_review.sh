@@ -204,6 +204,29 @@ validate_duration_knob GEMINI_BACKSTOP_MARGIN "$GEMINI_BACKSTOP_MARGIN" false fa
 # validator above refuses it.
 GEMINI_BACKSTOP=$(( $(duration_to_seconds "$AGY_PRINT_TIMEOUT") + $(duration_to_seconds "$GEMINI_BACKSTOP_MARGIN") ))
 
+# How long an interrupted run waits for its agent jobs before dropping
+# the shared temp root (cleanup_jobs). It has to outlast the escalation a
+# helper legitimately spends killing a CLI that ignored SIGTERM
+# (REVIEW_KILL_ESCALATION, read here only to size this budget — the
+# helpers own the knob), plus a margin for that helper to exit. A
+# hard-coded value (it was 8s) silently breaks as soon as the escalation
+# is raised above it (#313 round 3), so the default is derived; an
+# explicit CLEANUP_REAP_TIMEOUT is honoured but must clear the same bar.
+REVIEW_KILL_ESCALATION="${REVIEW_KILL_ESCALATION:-5}"
+validate_duration_knob REVIEW_KILL_ESCALATION "$REVIEW_KILL_ESCALATION" true false ""
+CLEANUP_REAP_MARGIN="${CLEANUP_REAP_MARGIN:-3}"
+validate_duration_knob CLEANUP_REAP_MARGIN "$CLEANUP_REAP_MARGIN" false false \
+    "the parent needs a moment after a helper's own SIGKILL escalation to see that helper exit."
+ESCALATION_SECONDS=$(duration_to_seconds "$REVIEW_KILL_ESCALATION")
+CLEANUP_REAP_TIMEOUT="${CLEANUP_REAP_TIMEOUT:-$(( ESCALATION_SECONDS + $(duration_to_seconds "$CLEANUP_REAP_MARGIN") ))}"
+validate_duration_knob CLEANUP_REAP_TIMEOUT "$CLEANUP_REAP_TIMEOUT" false false \
+    "a zero reap budget would drop the shared temp root while the helpers are still writing into it."
+CLEANUP_REAP_SECONDS=$(duration_to_seconds "$CLEANUP_REAP_TIMEOUT")
+if [[ "$CLEANUP_REAP_SECONDS" -le "$ESCALATION_SECONDS" ]]; then
+    echo "ERROR: CLEANUP_REAP_TIMEOUT (${CLEANUP_REAP_TIMEOUT}) must exceed REVIEW_KILL_ESCALATION (${REVIEW_KILL_ESCALATION}): the shared temp root would be removed while a helper is still escalating to SIGKILL on a CLI that is writing into it." >&2
+    exit 2
+fi
+
 # Helpers that own the agent invocations. A missing helper makes the
 # agents it serves unavailable (those agents fail; others still run).
 SCRIPT_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -229,13 +252,15 @@ run_agent_sync() {
     case "$agent" in
         # Gemini's outer timeout is the backstop ABOVE the helper's own
         # print-timeout, not a replacement for it.
-        gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
+        # AGENT_KILL_AFTER is exported so the helper can check that its
+        # own SIGKILL escalation fits inside this grace (#313 round 2).
+        gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
         # codex, claude and copilot (and anything that somehow reaches
         # here — _cli_review.sh rejects an unknown agent with a readable
         # reason in the findings file rather than running a CLI blind).
         # AGENT_TIMEOUT is passed through as an informational label so
         # the helper's failure reasons can name the bound they ran under.
-        *)       exec env TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
+        *)       exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
     esac
 }
 
@@ -446,6 +471,22 @@ if [[ -n "$CLI_ISSUE_NUMBER" && ! "$CLI_ISSUE_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
     exit 2
 fi
 
+# ------------------------------------------- NOT user-tier promoted (#317) ---
+# This script is deliberately absent from .agent/user_tier_scripts.txt.
+#
+# The user-tier rule (ADR-0016) admits an entry only if it is inert outside
+# the workspace checkout and outside every registered project root. This
+# script cannot satisfy that rule, because reviewing a checkout that is
+# neither is a documented feature of it: `--repo` and `--work-dir` exist to
+# run a review against an arbitrary repo, and `--no-progress` to do so with
+# no per-issue directory at all. A cwd guard here would refuse exactly the
+# cross-repo use the flags were added for.
+#
+# So it stays off the promoted list rather than being promoted with a guard
+# that contradicts its own interface. Invoking it from a project session
+# still works -- by absolute path, through the normal permission prompt --
+# it simply does not get a generated allow-rule.
+
 # --- Dependency checks ---
 # gh is required for PR mode (PR body/diff retrieval) but optional for
 # branch mode (offline pre-push review uses local git only).
@@ -487,6 +528,11 @@ for agent in "${AGENTS_TO_RUN[@]}"; do
         AGENT_UNAVAILABLE_REASON["$agent"]="${AGENT_BINS[$agent]} CLI not found (PATH searched: ${PATH}; also ~/.nvm/versions/node/*/bin/, ~/.local/bin/, ~/.npm-global/bin/, /usr/local/bin/)"
     elif [[ "$agent" == "gemini" && ! -x "$AGY_REVIEW_HELPER" ]]; then
         AGENT_UNAVAILABLE_REASON["$agent"]="${AGY_REVIEW_HELPER} is missing or not executable"
+    elif [[ "$agent" == "claude" ]] && ! command -v jq >/dev/null 2>&1; then
+        # claude's result is JSON and the helper parses it with jq, so
+        # without jq this agent cannot produce a validated review at all
+        # — name that here rather than letting every claude run fail.
+        AGENT_UNAVAILABLE_REASON["$agent"]="jq is required to parse claude's JSON result and is not installed (see bootstrap.sh)"
     elif [[ "$agent" == "codex" || "$agent" == "claude" || "$agent" == "copilot" ]] && [[ ! -x "$CLI_REVIEW_HELPER" ]]; then
         # Scoped to the three agents that helper serves, the way the
         # gemini check above is scoped: a missing _cli_review.sh must not
@@ -594,6 +640,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_resolve_work_plans_dir.sh"
 # shellcheck source=_resolve_default_branch.sh
 source "${SCRIPT_DIR}/_resolve_default_branch.sh"
+
 
 if [[ -n "$CLI_WORK_PLANS_DIR" ]]; then
     export WORK_PLANS_DIR_OVERRIDE="$CLI_WORK_PLANS_DIR"
@@ -707,10 +754,74 @@ AGENT_TMP_ROOT=$(mktemp -d -t "cross-model-review-tmp.XXXXXX")
 # — otherwise an interrupted run would leave the CLIs running for up to
 # AGENT_TIMEOUT, burning quota on an abandoned review.
 declare -A AGENT_PID=()
+
+# Is this job over? A dead-but-unreaped child still answers `kill -0`,
+# so that alone would report every finished job as alive and burn the
+# whole reap budget. Two liveness reads, in order of availability:
+#   * bash's own job table — `jobs -pr` lists only jobs still RUNNING, so
+#     a job absent from it has exited whether or not it was reaped. No
+#     /proc, works on macOS/BSD and in stripped containers.
+#   * /proc's process state (Z = exited, not yet reaped) as a
+#     cross-check where /proc exists.
+#
+# proc_state prints the state letter from /proc/<pid>/stat. Field 2 is
+# the parenthesised comm, which may itself contain spaces (or a `)`), so
+# a fixed whitespace field such as awk's $3 lands on the wrong word for
+# a comm like "a Z b". The state is the first word after the LAST `)`.
+proc_state() {
+    local stat
+    [[ -r "/proc/$1/stat" ]] || return 1
+    IFS= read -r stat < "/proc/$1/stat" 2>/dev/null || return 1
+    stat=${stat##*) }
+    printf '%s' "${stat%% *}"
+}
+
+job_finished() {
+    local jpid="$1" state running
+    kill -0 "$jpid" 2>/dev/null || return 0
+    running=$(jobs -pr 2>/dev/null || true)
+    if [[ -n "$running" ]]; then
+        grep -qx -- "$jpid" <<< "$running" || return 0
+    elif state=$(proc_state "$jpid"); then
+        [[ "$state" == "Z" ]] && return 0
+    fi
+    return 1
+}
+
 cleanup_jobs() {
-    local pid
+    local pid waited=0 finished
     for pid in "${AGENT_PID[@]}"; do
         kill "$pid" 2>/dev/null || true
+    done
+    # Reap BEFORE removing AGENT_TMP_ROOT (#313 round 2). Each helper may
+    # legitimately still be waiting out its own escalation window for a
+    # CLI that ignored SIGTERM, and that CLI is still writing into a temp
+    # dir under this root: removing it here would pull the ground out
+    # from under a live process.
+    for pid in "${AGENT_PID[@]}"; do
+        finished=false
+        while (( waited < CLEANUP_REAP_SECONDS * 10 )); do
+            if job_finished "$pid"; then
+                finished=true
+                break
+            fi
+            sleep 0.1
+            waited=$((waited + 1))
+        done
+        if job_finished "$pid"; then
+            finished=true
+        fi
+        if [[ "$finished" == true ]]; then
+            # Only now: `wait` on a job that is still running would block
+            # past the bound and hang the exit path forever (#313 round 3).
+            wait "$pid" 2>/dev/null || true
+        else
+            # Budget spent and the job is still alive. SIGKILL it and do
+            # NOT wait: cleaning up beats blocking, and the job's CLI was
+            # already signalled twice over by this point.
+            echo "WARNING: agent job ${pid} did not finish within CLEANUP_REAP_TIMEOUT=${CLEANUP_REAP_TIMEOUT}s; killing it and removing the shared temp root anyway" >&2
+            kill -9 "$pid" 2>/dev/null || true
+        fi
     done
     rm -f "$SHARED_PROMPT"
     rm -rf "$AGENT_TMP_ROOT"
@@ -982,8 +1093,15 @@ run_agent_job() {
     # trap here would never run. The parent's INT trap turns Ctrl-C into
     # an exit, and its EXIT cleanup TERMs these jobs — that is the live
     # path for an interrupt.
+    # The trap waits for the child before exiting (#313 round 2): the
+    # helper under `timeout` legitimately spends its own escalation
+    # window killing a CLI that ignored SIGTERM, and it is still writing
+    # into AGENT_TMP_ROOT while it does. Exiting here at once would tell
+    # the parent's cleanup that this job is finished, and the temp root
+    # would be removed under a live CLI. The parent's reap is bounded, so
+    # a helper that never returns still cannot hang the exit path.
     child=""
-    trap '[[ -n "$child" ]] && kill "$child" 2>/dev/null; exit 143' TERM
+    trap 'if [[ -n "$child" ]]; then kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; fi; exit 143' TERM
     run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file" &
     child=$!
     rc=0

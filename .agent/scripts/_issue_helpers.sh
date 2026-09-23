@@ -13,6 +13,9 @@
 #
 # Pattern: try git-bug first (offline-capable), pull on cache miss,
 # fall back to gh CLI. See ADR-0010 and AGENTS.md "git-bug-first Pattern".
+# user-tier: inert -- this file only defines functions and environment
+# variables; it performs no repo-affecting action, so it needs no
+# registry_require_root guard (#265 PR 3, ADR-0016).
 
 # --- Utility: extract validated GitHub slug from remote URL ---
 # Returns the slug on stdout, empty if not a valid GitHub URL.

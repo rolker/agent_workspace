@@ -35,6 +35,9 @@
 # worktree check lets scripts silently write per-issue artifacts into `main`
 # when invoked from the wrong tree. Callers source this helper to fail loudly
 # instead.
+# user-tier: inert -- this file only defines functions and environment
+# variables; it performs no repo-affecting action, so it needs no
+# registry_require_root guard (#265 PR 3, ADR-0016).
 
 resolve_work_plans_dir() {
     # Use "${1:-}" so callers running under `set -u` (e.g.

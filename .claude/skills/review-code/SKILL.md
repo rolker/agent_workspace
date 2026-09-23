@@ -1,9 +1,37 @@
 ---
 name: review-code
 description: Lead reviewer that orchestrates specialist sub-reviews (static analysis, governance, plan drift, adversarial) to evaluate a PR. Scales review depth to change risk. Produces a unified structured report.
+session_scope: both
 ---
 
 # Review Code
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 ## Usage
 
@@ -48,7 +76,7 @@ sub-reviews in parallel, collects findings, deduplicates, applies a
 silence filter, and produces a unified report. Does not post comments or
 modify the PR unless the user asks.
 
-**Depth tiers** (see `.agent/knowledge/review_depth_classification.md`):
+**Depth tiers** (see `$WS_ROOT/.agent/knowledge/review_depth_classification.md`):
 - **Light** — static analysis only (small, low-risk changes)
 - **Standard** — Static Analysis, Governance, Plan Drift, Claude adversarial + cross-model adversarial (every available non-caller CLI agent, in one `--agents` call) (medium or governance-touching)
 - **Deep** — same specialists and same report sections as Standard (large, security, or cross-layer)
@@ -100,10 +128,11 @@ placeholder for whatever value the user passed to `--branch <base>`
 (empty string when `--branch` was passed bare).
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # Resolve base ref. Explicit `--branch <base>` arg wins; otherwise
 # the helper consults the per-project manifest (when wired — see #172),
 # falls back to `git symbolic-ref refs/remotes/origin/HEAD`, then `main`.
-source .agent/scripts/_resolve_default_branch.sh
+source $WS_ROOT/.agent/scripts/_resolve_default_branch.sh
 BASE_REF_FROM_USER=""  # set to `--branch` arg value if user passed one
 if [[ -n "$BASE_REF_FROM_USER" ]]; then
     BASE="$BASE_REF_FROM_USER"
@@ -132,14 +161,14 @@ Identify (both modes):
 - What repo this affects (workspace or project)
 - What files changed and in which directories
 - The linked issue and its requirements (or `--no-progress` if no issue applies)
-- Whether a work plan exists (`.agent/work-plans/issue-*/plan.md`)
+- Whether a work plan exists (`$WS_ROOT/.agent/work-plans/issue-*/plan.md`)
 
 Read the **full content** of each changed file (not just the diff hunks) to
 understand surrounding context.
 
 ### 2. Classify review depth
 
-Load `.agent/knowledge/review_depth_classification.md` and apply the risk
+Load `$WS_ROOT/.agent/knowledge/review_depth_classification.md` and apply the risk
 signals from step 1:
 
 1. Count total lines changed (additions + deletions)
@@ -179,6 +208,12 @@ For project repo PRs:
 
 Determine the review profile for each changed file:
 
+(The **File location** column holds repo-relative path *patterns* to match
+changed files against — as a diff reports them. They are not commands, so
+they carry no `$WS_ROOT` prefix.)
+
+<!-- skill-paths: patterns-not-commands -->
+
 | File location | Language detection | Linter config profile |
 |---|---|---|
 | `.agent/scripts/*.py`, `.agent/hooks/*.py` | Python | workspace (max-line-length=100, Black compat) |
@@ -189,7 +224,7 @@ Determine the review profile for each changed file:
 | `*.xml` | XML | xmllint |
 | `*.js`, `*.ts`, `*.jsx`, `*.tsx` | JS/TS | project ESLint config if available |
 
-See `.agent/knowledge/review_static_analysis.md` for full tool configs.
+See `$WS_ROOT/.agent/knowledge/review_static_analysis.md` for full tool configs.
 
 ### 5. Dispatch specialists
 
@@ -221,7 +256,7 @@ difference is only in which changes get classified into it.
 #### 5a. Static Analysis Specialist
 
 Run linters on **changed files only**, using the config profile from step 4.
-See `.agent/knowledge/review_static_analysis.md` for exact commands and flags.
+See `$WS_ROOT/.agent/knowledge/review_static_analysis.md` for exact commands and flags.
 
 If **no linter profile matches any changed file**, report this explicitly:
 "No static analysis profile configured for these file types (`.ext1`, `.ext2`)."
@@ -242,7 +277,7 @@ behavior.
 #### 5b. Governance Specialist
 
 Load governance context:
-- `.agent/knowledge/principles_review_guide.md` — evaluation criteria
+- `$WS_ROOT/.agent/knowledge/principles_review_guide.md` — evaluation criteria
 - `docs/PRINCIPLES.md` — workspace principles
 - `docs/decisions/*.md` — ADRs (scan titles, read those triggered by this change)
 - Project-level governance (if applicable)
@@ -269,7 +304,8 @@ items addressed? Mark each as Done or Missing.
 and bot comments:
 
 ```bash
-.agent/scripts/fetch_pr_reviews.sh --pr <N>
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+$WS_ROOT/.agent/scripts/fetch_pr_reviews.sh --pr <N>
 ```
 
 Note unresolved human comments (high priority), valid bot findings, and false
@@ -277,7 +313,7 @@ positives. Skip this sub-step in branch mode — there's no PR yet.
 
 #### 5c. Plan Drift Specialist
 
-If a work plan exists (`.agent/work-plans/issue-*/plan.md`):
+If a work plan exists (`$WS_ROOT/.agent/work-plans/issue-*/plan.md`):
 - Read the plan's "Approach" and "Files to Change" sections
 - Compare against the actual diff:
   - Files listed in plan but not changed? (incomplete)
@@ -315,7 +351,7 @@ look for.
 
 Determine the calling agent's framework and dispatch all available non-caller
 agents. Use `$AGENT_FRAMEWORK` if set; fall back to
-`source .agent/scripts/detect_cli_env.sh || true` if unset or "unknown". Normalize
+`source $WS_ROOT/.agent/scripts/detect_cli_env.sh || true` if unset or "unknown". Normalize
 the framework key (lowercase) and apply explicit aliases to match the agent
 keys used by the script: `claude-code` → `claude`, `gemini-cli` → `gemini`,
 `codex-cli` → `codex`, `copilot-cli` → `copilot`. The canonical keys are:
@@ -328,13 +364,14 @@ the last one finishes (ADR-0015). Use `--pr <N>` in PR mode and
 hard error).
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # PR mode — example: Claude is the caller, dispatch gemini, codex, copilot
-.agent/scripts/cross_model_review.sh --pr <N> --agents gemini,codex,copilot --repo owner/repo
+$WS_ROOT/.agent/scripts/cross_model_review.sh --pr <N> --agents gemini,codex,copilot --repo owner/repo
 
 # Branch mode — runs locally, no --repo needed in most cases
-.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,copilot
-.agent/scripts/cross_model_review.sh --branch <base> --agents gemini,codex
-.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,copilot --no-progress  # skill worktrees
+$WS_ROOT/.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,copilot
+$WS_ROOT/.agent/scripts/cross_model_review.sh --branch <base> --agents gemini,codex
+$WS_ROOT/.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,copilot --no-progress  # skill worktrees
 ```
 
 Omit an agent from the list when its CLI is known to be unavailable
@@ -359,21 +396,24 @@ backstop derived above it so a wedged helper is still cut off). There is
 no tmux mode and no `--sync` flag any more
 (#206, ADR-0015; `--sync` is rejected with exit 2). For each listed
 agent, the script:
-1. Writes a review prompt to `.agent/work-plans/issue-<issue>/review-<agent>-prompt.md`
+1. Writes a review prompt to `$WS_ROOT/.agent/work-plans/issue-<issue>/review-<agent>-prompt.md`
 2. Runs the agent
-3. Agent writes findings to `.agent/work-plans/issue-<issue>/review-<agent>-findings.md`,
+3. Agent writes findings to `$WS_ROOT/.agent/work-plans/issue-<issue>/review-<agent>-findings.md`,
    and the script appends `--- Review complete ---` or `--- Review failed ---`
    the moment that agent finishes
 
-The prompt and findings files are not committed (see #193) — gitignored when written under `.agent/work-plans/`, or outside the repo when `--no-progress` puts them in a `/tmp` dir. Regenerated each run, not part of the audit trail. Durable findings belong in `progress.md`.
+The prompt and findings files are not committed (see #193) — gitignored when written under `$WS_ROOT/.agent/work-plans/`, or outside the repo when `--no-progress` puts them in a `/tmp` dir. Regenerated each run, not part of the audit trail. Durable findings belong in `progress.md`.
 
 **Reading the result**: with `--agents`, stdout carries `MODE=parallel-sync`
 and then one `AGENT=` / `FINDINGS_FILE=` / `EXIT=` triplet per agent. Key
 on each agent's `EXIT=` line, not on the script's overall exit status:
 the script exits 3 whenever *any* agent failed, and a failed agent
-(CLI not installed, timeout, non-zero exit, empty response, quota or
-auth error) is noted in the report while the others' findings are used
-as normal. `EXIT=` is the agent *job's* status: every agent runs through
+(CLI not installed, timeout, non-zero exit, empty response, or a
+structured error from the CLI) is noted in the report while the others'
+findings are used as normal. Note the deliberate gap: a CLI that exits 0
+and answers with a quota or auth message is reported as a *completed*
+review holding that message — text is never used to fail a run (#313),
+so read a suspiciously short "review" before trusting it. `EXIT=` is the agent *job's* status: every agent runs through
 a helper that validates its result (`_agy_review.sh` for gemini,
 `_cli_review.sh` for codex/claude/copilot), so a failed review is
 `EXIT=1` with the CLI's own status and the reason written into the
@@ -424,17 +464,18 @@ Collect all findings from all dispatched specialists and filter:
 **Convergence assessment (branch mode only).** Before writing the report,
 assess whether the review loop is converging, so the operator gets a
 ship-vs-continue signal instead of looping indefinitely. Both numbers come
-from `.agent/scripts/review_progress.sh` (tested in
+from `$WS_ROOT/.agent/scripts/review_progress.sh` (tested in
 `test_review_code_convergence.sh`), not from memory:
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # Round = prior `## Local Review (Pre-Push)` entries for THIS branch + 1;
 # prev_must_fix = must-fix count of the newest such entry ("-" if none).
-.agent/scripts/review_progress.sh round --issue <N> --branch "$BRANCH"
+$WS_ROOT/.agent/scripts/review_progress.sh round --issue <N> --branch "$BRANCH"
 
 # Ship verdict from the counts. Pass --mechanical only when EVERY must-fix
 # is a precise file:line fix with an obvious correction (no design question).
-.agent/scripts/review_progress.sh verdict --must-fix <count> --round <R> \
+$WS_ROOT/.agent/scripts/review_progress.sh verdict --must-fix <count> --round <R> \
     --prev-must-fix <P> [--mechanical]
 ```
 
@@ -610,7 +651,8 @@ entry to `progress.md` so findings persist across sessions. The append,
 the commit, and the skip/notice logic all go through one tested call:
 
 ```bash
-.agent/scripts/review_progress.sh persist --issue "<N or empty>" \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N or empty>" \
     --branch "$BRANCH" --title "<issue title>" \
     [--strict] [--no-progress] <<'ENTRY'
 ## Local Review (Pre-Push)
@@ -631,14 +673,14 @@ script decides which of these happens, in this order:
 - **Strict path** (`--strict-progress` was passed, so pass `--strict`; or
   the ambient `PROGRESS_PERSISTENCE_STRICT=1`) — the target directory is
   resolved with `resolve_work_plans_dir()` from
-  `.agent/scripts/_resolve_work_plans_dir.sh`, which refuses (exit 4, with
+  `$WS_ROOT/.agent/scripts/_resolve_work_plans_dir.sh`, which refuses (exit 4, with
   remediation) when the current worktree is not issue `<N>`'s; the entry is
   then appended and committed by `progress_append.sh`, which creates the
   file with frontmatter and the `--title` heading, commits only that file,
   and fails loud if agent identity is unset.
 - **Compatibility path** (the default: `PROGRESS_PERSISTENCE_STRICT` unset
   or `0`) — what this step did before issue #269 PR B: the current
-  worktree's `.agent/work-plans/issue-<N>/progress.md` is created if
+  worktree's `$WS_ROOT/.agent/work-plans/issue-<N>/progress.md` is created if
   absent, the entry is appended inline, and `git add` + `git commit` run
   there. The strict path's refusal condition is still *evaluated*, and if
   it would have refused, the script prints "Progress persistence notice:

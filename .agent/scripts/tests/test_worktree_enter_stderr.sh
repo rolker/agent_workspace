@@ -127,10 +127,25 @@ test_neither_issue_nor_skill() {
         --type workspace --print-path
 }
 
-test_missing_type() {
-    check_error_path "--type missing" \
-        "Error: --type is required (workspace or project)" \
-        --issue 1 --print-path
+# --type became OPTIONAL in #317: when the cwd is inside the workspace
+# checkout (as it is here) or under a registered project root, the script
+# derives it. The "--type is required" branch survives as a defensive
+# fallback for a cwd that derives nothing -- which the user-tier guard
+# already refuses, so it is no longer reachable in normal use and is not
+# asserted here.
+test_missing_type_is_derived() {
+    echo "TEST: --type omitted inside the workspace checkout is derived"
+    local stderr rc=0
+    stderr=$(bash "$SCRIPT" --issue 1 --print-path 2>&1 >/dev/null) || rc=$?
+    assert_contains "stderr announces the derivation" \
+        "derived --type workspace" "$stderr"
+    if [[ "$stderr" != *"--type is required"* ]]; then
+        echo "  PASS: no '--type is required' error"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: still reports --type as required despite deriving it"
+        FAIL=$((FAIL + 1))
+    fi
 }
 
 test_invalid_type() {
@@ -191,13 +206,27 @@ test_must_be_sourced() {
 
     : > "$STUB_LOG"
 
+    # worktree_enter.sh is user-tier promoted (#317): it refuses when the
+    # cwd is neither inside ITS OWN workspace checkout nor under a
+    # registered root. This case deliberately runs from a sandbox worktree,
+    # so drive a copy of the script whose workspace root IS that sandbox --
+    # otherwise the guard (correctly) refuses before the must-be-sourced
+    # message this test is about.
+    mkdir -p "$SANDBOX/.agent/scripts"
+    local f
+    for f in worktree_enter.sh _worktree_helpers.sh _project_registry.sh \
+             _issue_helpers.sh _resolve_default_branch.sh; do
+        [ -f "${SCRIPT_DIR}/../$f" ] && cp "${SCRIPT_DIR}/../$f" "$SANDBOX/.agent/scripts/"
+    done
+    local sandbox_script="$SANDBOX/.agent/scripts/worktree_enter.sh"
+
     local stdout stderr rc=0
-    stdout=$(cd "$wt" && bash "$SCRIPT" \
+    stdout=$(cd "$wt" && bash "$sandbox_script" \
         --issue "$issue" --type workspace 2>/dev/null) || rc=$?
     assert_eq "stdout is empty" "" "$stdout"
     assert_eq "exit status is 1" "1" "$rc"
 
-    stderr=$(cd "$wt" && bash "$SCRIPT" \
+    stderr=$(cd "$wt" && bash "$sandbox_script" \
         --issue "$issue" --type workspace 2>&1 >/dev/null) || true
     assert_contains "stderr says it must be sourced" "must be sourced" "$stderr"
     assert_contains "stderr carries the follow-up hint" "Use --print-path or --shell-snippet" "$stderr"
@@ -252,7 +281,7 @@ test_unknown_option
 test_missing_skill_name
 test_issue_and_skill_exclusive
 test_neither_issue_nor_skill
-test_missing_type
+test_missing_type_is_derived
 test_invalid_type
 test_print_path_and_shell_snippet_exclusive
 test_project_requires_project_type

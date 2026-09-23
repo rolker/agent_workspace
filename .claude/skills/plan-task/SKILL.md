@@ -1,9 +1,37 @@
 ---
 name: plan-task
 description: Generate a principles-aware work plan for an issue. Saves to `.agent/work-plans/` in the repo that owns the issue and commits as the first step on the feature branch.
+session_scope: both
 ---
 
 # Plan Task
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 ## Usage
 
@@ -78,7 +106,7 @@ is the issue body).
 
 ### 2. Load governance context
 
-- `.agent/knowledge/principles_review_guide.md` — evaluation criteria
+- `$WS_ROOT/.agent/knowledge/principles_review_guide.md` — evaluation criteria
 - `docs/PRINCIPLES.md` — workspace principles
 - `docs/decisions/*.md` — ADR titles (read triggered ADRs in full)
 - Project-level governance if the issue targets a project repo
@@ -99,8 +127,9 @@ the matching worktree — this is deliberate (issue #147): silent writes
 into the main tree were stranding per-issue artifacts on no branch.
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # shellcheck source=../../../.agent/scripts/_resolve_work_plans_dir.sh
-source .agent/scripts/_resolve_work_plans_dir.sh
+source $WS_ROOT/.agent/scripts/_resolve_work_plans_dir.sh
 WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || {
     # Resolver printed remediation guidance to stderr — surface it to the
     # user and stop. Do not write plan.md / progress.md anywhere else.
@@ -114,15 +143,17 @@ matching worktree. Typical remediation:
 **Workspace issues** (changes to `.agent/`, `docs/`, configs, skills):
 
 ```bash
-.agent/scripts/worktree_create.sh --issue <N> --type workspace
-source .agent/scripts/worktree_enter.sh --issue <N> --type workspace
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+$WS_ROOT/.agent/scripts/worktree_create.sh --issue <N> --type workspace
+source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type workspace
 ```
 
 **Project repo issues** (changes to the managed project repo):
 
 ```bash
-.agent/scripts/worktree_create.sh --issue <N> --type project
-source .agent/scripts/worktree_enter.sh --issue <N> --type project
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+$WS_ROOT/.agent/scripts/worktree_create.sh --issue <N> --type project
+source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type project
 ```
 
 To determine the type, run `gh issue view <N> --json url` and compare
@@ -131,7 +162,7 @@ in a project repo. If a worktree for the issue already exists, just enter
 it.
 
 Use `$WORK_PLANS_DIR` (from the resolver) as the base path in step 5 and
-step 7 — do not construct `.agent/work-plans/issue-<N>/` by hand.
+step 7 — do not construct `$WS_ROOT/.agent/work-plans/issue-<N>/` by hand.
 
 ### 5. Generate the plan
 
@@ -197,12 +228,13 @@ commit that contains the plan text (ADR-0013's plan-commit SHA), so the
 plan has to be committed before the entry can name it:
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 mkdir -p "$WORK_PLANS_DIR"
 git add "$WORK_PLANS_DIR/plan.md"
 git commit -m "Add work plan for #<N>
 
 <one-line summary of the approach>"
-PLAN_SHA=$(.agent/scripts/review_progress.sh plan-sha --plan "$WORK_PLANS_DIR/plan.md")
+PLAN_SHA=$($WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan "$WORK_PLANS_DIR/plan.md")
 ```
 
 `plan-sha` prints the last commit that touched `plan.md` (never the branch
@@ -224,7 +256,8 @@ strict (`--strict`, or the env var set to `1`) goes through
 in step 9's report.
 
 ```bash
-.agent/scripts/review_progress.sh persist --issue "<N>" --branch "$(git branch --show-current)" \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" --branch "$(git branch --show-current)" \
     --title "<issue title>" [--strict] <<ENTRY
 ## Plan Authored
 **Status**: complete
@@ -330,7 +363,7 @@ misalignment between the plan and the PR. If drift becomes a recurring
 finding across multiple PRs, that's a signal the rule needs more teeth,
 not that the rule is wrong.
 
-The plan path under this rule is `.agent/work-plans/issue-<N>/plan.md`
+The plan path under this rule is `$WS_ROOT/.agent/work-plans/issue-<N>/plan.md`
 (the local convention; upstream uses `PLAN_ISSUE-<N>.md`). `review-plan`
 already supports `--issue` / file-path forms, so it reads the live plan
 file rather than the snapshotted PR body — inline plan edits stay

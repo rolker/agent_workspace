@@ -28,6 +28,14 @@ source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_issue_helpers.sh"
 source "$SCRIPT_DIR/_project_registry.sh"
 
+# ---------------------------------------------------- user-tier guard (#265) ---
+# This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
+# it can be invoked from any cwd on the machine. Refuse outside the workspace
+# checkout and outside every registered project root, BEFORE any git/gh call,
+# so a stray invocation in an unrelated repo touches nothing. See
+# docs/decisions/0016-session-roots-and-the-user-tier.md.
+registry_require_root "$ROOT_DIR" || exit 1
+
 # ADR-0012: a package worktree names its layer and package repos
 # explicitly; --issue must then be the qualified owner/repo#N form so
 # worktree_repos can tell the issue's own repo from its siblings.
@@ -235,6 +243,24 @@ if [ -n "$SKILL_NAME" ]; then
     fi
     SYNTHETIC_ID="${SKILL_NAME}-${_SKILL_TS}-${_SKILL_NANO}"
     unset _SKILL_TS _SKILL_NANO
+fi
+
+# --type is optional when the cwd already says which checkout this is
+# (#317): a cwd under a registered project root derives `--type project
+# --project <name>`, a cwd inside the workspace checkout derives `--type
+# workspace`. An explicit flag always wins -- this only fills a blank.
+if [ -z "$WORKTREE_TYPE" ]; then
+    _WT_DERIVED="$(registry_derive_type_from_dir "$ROOT_DIR" "$PWD" 2>/dev/null)" || _WT_DERIVED=""
+    if [ -n "$_WT_DERIVED" ]; then
+        WORKTREE_TYPE="$(cut -f1 <<< "$_WT_DERIVED")"
+        _WT_DERIVED_PROJECT="$(cut -f2 <<< "$_WT_DERIVED")"
+        if [ -z "$PROJECT_REPO" ] && [ -n "$_WT_DERIVED_PROJECT" ]; then
+            PROJECT_REPO="$_WT_DERIVED_PROJECT"
+        fi
+        echo "Note: --type omitted; derived --type $WORKTREE_TYPE${PROJECT_REPO:+ --project $PROJECT_REPO} from $PWD" >&2
+        unset _WT_DERIVED_PROJECT
+    fi
+    unset _WT_DERIVED
 fi
 
 # Validate worktree type (required)

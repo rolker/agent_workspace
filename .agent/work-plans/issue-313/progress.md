@@ -782,3 +782,310 @@ address-findings" block in Implementation Notes covering the guard
 removal, the least-privilege pivot and the other seven items.
 
 No real agy/codex/claude/copilot prompt was run (quota); nothing pushed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 14:21 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-313 at fb8b6d9
+**Plan**: `.agent/work-plans/issue-313/plan.md` at `2c24f22`
+**Round**: implementation round 2 (live gemini + codex re-run of `ca7f87c`)
+
+Codex was failed again by the helper's own text scan. Root cause: codex
+prints its entire transcript on stderr as well as stdout — prompt, tool
+calls and each tool's output (this run, a `jq: error` line from a
+command codex itself ran). Neither channel is a diagnostics channel, so
+text cannot be a failure cause on any of them.
+
+**The rule now implemented and documented** (helper header + plan
+Implementation Notes): only a non-zero exit status, a missing or empty
+result, or a structured error field (claude `.is_error` / `.error`) may
+FAIL a run. Error text only EXPLAINS a failure those signals already
+established, by choosing the reason line. `ERROR_OPENER_RE`,
+`result_is_error_only` and `marker_in_log`-as-cause are deleted;
+`marker_note` replaces them. The residual gap — a CLI that exits 0 with
+a quota message as its whole answer is passed through as a review — is
+stated in the header and in the review-code skill's result-reading note,
+because every attempt to close it discarded real reviews (three designs,
+three live false positives; the table is in the plan).
+
+Per arm: codex fails on a non-zero exit or an empty/missing `-o` file
+only; claude on structured fields only; copilot on a non-zero exit or
+empty `-s` output only.
+
+**Also fixed from the same run**
+
+- claude non-object JSON (codex must-fix 1): `jq -e .` accepts `"oops"`,
+  `[]`, `1`; `.is_error` then aborted jq and the helper died under
+  `set -e` leaving an EMPTY findings file. Now `type == "object"` is
+  required before indexing, every field read is guarded, and assignment
+  uses `printf -v` so a failure reaches `fail()` instead of exiting a
+  subshell.
+- `cleanup_jobs` (codex must-fix 2): reaps the job shells before
+  removing `AGENT_TMP_ROOT`, bounded by `CLEANUP_REAP_TIMEOUT` (8s).
+  Found while testing: each job's own TERM trap exited immediately,
+  which is what told the parent the job was finished — it now waits for
+  its helper too.
+- Escalation vs the caller's grace (codex must-fix 3 / gemini 4): both
+  helpers refuse to start unless `AGENT_KILL_AFTER` >
+  `REVIEW_KILL_ESCALATION` (exit 2, reason in the findings file);
+  `AGENT_KILL_AFTER` is exported to them. Both zero is the one legal
+  equal case, so the documented `AGENT_KILL_AFTER=0` stays usable when
+  paired with `REVIEW_KILL_ESCALATION=0`.
+- Watchdog (gemini 4): no longer waited on — a subshell sleeping in
+  `sleep` defers the TERM we send it, so waiting cost the full window on
+  every clean exit. It re-checks liveness before `kill -9`, so it cannot
+  hit a recycled PID.
+- Re-entrancy (gemini 6): `terminate_child` disarms INT/TERM/HUP on
+  entry in both helpers and clears the child PID. `_agy_review.sh`
+  already cleared `AGY_PID` after the normal reap (gemini 5).
+- jq preflight (gemini 8): missing jq marks claude unavailable with a
+  reason instead of failing every claude run.
+- Copilot (gemini 7): no code change; the call-site comment now names
+  BOTH `-p ""` and `--available-tools=''` as pending one live
+  confirmation when quota returns, with the fallback for each.
+
+**Tests**: 329 -> 369 assertions, all green. New: error-text-explains-
+never-causes per CLI (exit 0 with a quota answer passes; the same marker
+with a non-zero exit fails and picks the reason line; a transient
+`[WARN] overloaded` does not fail a completed review), review text never
+reclassified ("# Error Handling in auth.py" and concise list findings
+both accepted), non-object JSON reported rather than crashing, TERM
+returns in under 3s with a 5s window, jq preflight, cleanup reap
+ordering under a TERM-ignoring CLI, and the kill-grace refusal.
+`run_script_tests.sh` 23/23 suites, no temp leaks. Pre-commit green
+including shellcheck.
+
+Commit: `fb8b6d9`. No real CLI prompt was run; nothing pushed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-22 14:35 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-313 at bb815ea
+**Plan**: `.agent/work-plans/issue-313/plan.md` at `2c24f22`
+**Round**: implementation round 3 (third live gemini + codex run of `fb8b6d9`; both completed, codex EXIT=0)
+
+The validation rule holds — the third live run is the first where both
+reviewers completed, so the remaining must-fix was the round-2 cleanup
+code itself, which both reviewers converged on. All three items fixed in
+`cross_model_review.sh`:
+
+1. **Bounded reap became an unbounded wait.** The poll expired and then
+   `wait "$pid"` ran anyway, so a wedged job blocked the exit path
+   forever and `AGENT_TMP_ROOT` was never removed — worse than the race
+   round 2 fixed. `wait` now runs only for a job confirmed finished;
+   otherwise the job is SIGKILLed, a warning on stderr names it, and
+   cleanup proceeds to remove the root.
+2. **Reap budget derived, not hard-coded.** `CLEANUP_REAP_TIMEOUT`
+   defaults to `REVIEW_KILL_ESCALATION + CLEANUP_REAP_MARGIN` (3s), and
+   an explicit value is refused at startup (exit 2, message naming both
+   knobs) unless it exceeds the escalation. The old fixed 8s silently
+   broke for any escalation above it — the parent would drop the temp
+   root while a helper was still legitimately escalating.
+3. **Liveness no longer depends on `/proc`.** `job_finished` now reads
+   bash's own job table first (`jobs -pr` lists only RUNNING jobs, so an
+   exited-but-unreaped child — which still answers `kill -0` — is
+   correctly reported finished), keeping the `/proc` state read as a
+   cross-check where `/proc` exists. On macOS/BSD or in a stripped
+   container every cleanup previously burned the whole budget.
+
+**Tests**: 369 -> 381 assertions, all green.
+- `test_cleanup_survives_a_wedged_job`: a stub `_cli_review.sh` that
+  ignores INT/TERM/HUP (in a copied scripts dir) makes its job shell
+  genuinely unreturnable — the only way a correctly-configured budget
+  can expire. The interrupted run still exits 143 in ~2s and still
+  removes the temp root.
+- `test_cleanup_budget_follows_the_escalation`: a 10s escalation (past
+  the old 8s constant) completes cleanly, and `CLEANUP_REAP_TIMEOUT=3`
+  with `REVIEW_KILL_ESCALATION=10` exits 2 with both knobs named.
+- `test_job_finished_without_proc`: `job_finished` is extracted from the
+  script and run with `awk` stubbed out to force the non-`/proc` path,
+  asserting both directions (a running job reported running, an
+  exited-but-unreaped job reported finished).
+
+`run_script_tests.sh` 23/23 suites, no temp leaks. Pre-commit green
+including shellcheck. Commit `bb815ea`. No real CLI prompt; nothing
+pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-22 14:39 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-313 at `24eddc0`
+**Base**: main
+**Depth**: Deep (reason: enforcement-path script + cross-model dispatch wiring; live gemini + codex runs both COMPLETED through the helper this round)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+All ten round-1 items verified resolved in code, each with a pinning test: the codex transcript scan is gone (the rule is now "only non-zero exit, empty/missing result, or claude's structured `.is_error`/`.error` may fail a run; error text only picks the reason line"), the 128 KiB copilot guard is gone, `--allow-all-tools` is replaced by `-p "" -s --available-tools='' --disable-builtin-mcps --no-ask-user`, both helpers' TERM path now waits with a bounded SIGKILL escalation validated to fit inside `AGENT_KILL_AFTER` (default 10 > 5), `cleanup_jobs` reaps on a derived, bounded budget before dropping the shared temp root, claude requires a JSON *object* before indexing and reads `.error`/`.error.message`, and jq is a preflight for claude rather than a per-run failure. The live false positive has a direct regression test (`MOCK_CODEX_ECHO_FULL=1` with `overloaded`/`unauthorized` inside the reviewed diff, plus a `jq: error ... usage limit` line on codex's stderr). The residual gap — a CLI exiting 0 with a quota message as its whole answer is reported as a completed review — is deliberate, documented in the helper header and called out in the skill's result-reading note.
+
+Tests: `test_cross_model_review.sh` 381/381 pass; `run_script_tests.sh` 23/23 suites pass (84s). Copilot's `--available-tools=''` and `-p ""` still await one live 1.0.61 confirmation (quota); the fallback is written into the helper.
+
+### Findings
+- [ ] (suggestion) `job_finished`'s /proc fallback reads process state with `awk '{print $3}'`, which lands on the wrong field when a process's comm contains a space; prefer the text after the last `)`. The `jobs -pr` path is primary, so this only bites where bash's job table is empty — `.agent/scripts/cross_model_review.sh:752-757`
+- [ ] (suggestion) two comments justify the guarded jq extraction by what would happen "under `set -e`", but the helper runs `set -uo pipefail` with no `-e`; the guard is right, the stated mechanism is not (a bare jq failure would leave an empty value, not kill the helper) — `.agent/scripts/_cli_review.sh:335-354`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-22 14:45 -0400
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish. Pre-push review approved at round 2 (12b263f), 0 must-fix; three live Gemini+Codex runs through the helper, the last completing for both agents. Main merged in before the push.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-23 09:54 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #327 at `4d7bb94`
+**Sources**: 2 (Local Review (Pre-Push) round 2 @ `24eddc0`, CI rollup @ `4d7bb94`)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+Copilot's only review at `4d7bb94` is the quota notice ("unable to review ... quota limit") with 0 inline comments, and its `copilot-pull-request-reviewer` check-run shows `failure` for the same reason; neither is a review source and neither is counted. All real CI checks (Lint, Validate Adapter Contract, Validate Documentation, ros-manifest tests) pass at `4d7bb94`. 0 GitHub inline or conversation comments.
+
+The pre-push review was at `24eddc0`; `24eddc0..4d7bb94` touches neither `.agent/scripts/cross_model_review.sh` nor `.agent/scripts/_cli_review.sh` (only the main merge and progress bookkeeping), so its round-2 approval and both open suggestions carry forward unchanged to the PR head. Both re-verified in the current code. Neither is must-fix: finding 1's worst case is a bounded wait then SIGKILL (not a hang or leak), finding 2 is comment accuracy only.
+
+### Findings
+- [x] (suggestion, Local Review R2) `job_finished`'s /proc fallback reads process state with `awk '{print $3}'`, which lands on the wrong field when a process's comm contains a space; prefer the text after the last `)`. Still present at lines 755-757. Failure mode is bounded: a misread state reports the job running, so cleanup waits out `CLEANUP_REAP_TIMEOUT` and SIGKILLs — `.agent/scripts/cross_model_review.sh`
+- [x] (suggestion, Local Review R2) two comments (lines 337 and 351) justify the guarded jq extraction by what would happen "under `set -e`", but the helper runs `set -uo pipefail` (line 86) with no `-e`; the guard is right, the stated mechanism is not (an unguarded jq failure would leave an empty value, not kill the helper) — `.agent/scripts/_cli_review.sh`
+
+### False positives
+- (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (review and failed check-run at `4d7bb94`) — not a review: it asserts nothing about the code, and the quota exhaustion is known (Sept 2026); excluded from sources and from the CI verdict.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:04 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Fix both, then merge (Recommended)
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 10:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #327 at `b1d2748`
+**Addressed**: Integrated Review at `4d7bb94` (2026-09-23 09:54 -04:00)
+**Commits**: 939e370, b1d2748
+
+### Actions
+- [x] `job_finished`'s /proc fallback misread the state for a comm containing a space — new `proc_state` reads the word after the last `)`; new test `test_job_finished_proc_comm_with_space` covers a running "a Z b" and a zombie "x y" — `.agent/scripts/cross_model_review.sh` (`job_finished`), `.agent/scripts/tests/test_cross_model_review.sh`
+- [x] Two comments justified the guarded jq extraction by `set -e`, which the helper does not use; restated as "an unguarded jq failure would leave an empty value" (comment-only) — `.agent/scripts/_cli_review.sh:337,351`
+
+Tests: `test_cross_model_review.sh` 385 passed / 0 failed; `run_script_tests.sh` all 23 suites passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-23 10:18 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #327 at `debb083`
+**Depth**: Standard (reason: fix-round re-review of enforcement scripts, scoped to 4d7bb94..debb083; adversarial pass inline with a mutation check)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Verified: `test_cross_model_review.sh` 385 passed / 0 failed; shellcheck --severity=warning clean on the three changed scripts; `_cli_review.sh:86` confirms `set -uo pipefail` (no `-e`), so the corrected comments are accurate. Mutation check (new test's probe against the 4d7bb94 awk `$3` code): the running "a Z b" half fails the old code (RUNNING-REPORTED-FINISHED), so the test does guard the regression; the zombie "x y" half passes against both old and new code because bash has already reaped the child before `job_finished` runs (see finding).
+
+### Findings
+- [ ] (suggestion) the zombie half of `test_job_finished_proc_comm_with_space` is vacuous: the probe's own bash reaps "x y" during the foreground `sleep 1`, so `job_finished` returns via `kill -0` and never reads /proc; spawn it under a parent that does not reap (e.g. `sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 5'`), which a scratch mutation run confirmed makes the old code fail with DEAD-REPORTED-ALIVE and the new code pass — `.agent/scripts/tests/test_cross_model_review.sh:2375-2378`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-23 10:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a71d4c0e6954f823b, resume 1 of 3)
+
+**PR**: #327 at `8b51699`
+**Sources**: 2 (Local Review (PR mode) @ `debb083`, CI rollup @ `8b51699`)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Fix-round re-triage. Only progress bookkeeping separates `debb083` (the reviewed commit) from the head `8b51699`, so the PR-mode review applies at head. Both findings from the previous Integrated Review (at `4d7bb94`) are resolved in code and verified here: `proc_state` in `.agent/scripts/cross_model_review.sh` now takes the word after the last `) ` of `/proc/<pid>/stat` (939e370), and the two comments in `.agent/scripts/_cli_review.sh` no longer claim `set -e` (b1d2748). CI at `8b51699` has not settled: Validate Documentation and the ros-manifest tests pass; Lint (pre-commit) and Validate Adapter Contract have no conclusion yet. Copilot posted two more quota notices (at `4d7bb94` and `debb083`, 0 inline comments); neither is a review source. There are 0 GitHub inline or conversation comments.
+
+### Findings
+- [x] (suggestion, Local Review @ debb083) the zombie half of `test_job_finished_proc_comm_with_space` is vacuous: the probe's own bash reaps "x y" during the foreground `sleep 1`, so `job_finished` returns via `kill -0` and never reads /proc; spawn it under a parent that does not reap (e.g. `sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 5'`). Confirmed independently: in `bash -c 'sleep 0.2 & d=$!; sleep 1; kill -0 $d'`, `kill -0` fails because the child has already been reaped. The production fix is correct, and the running "a Z b" half does catch the regression, so this is a gap in the tests, not a defect — `.agent/scripts/tests/test_cross_model_review.sh`
+
+### False positives
+- (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (reviews at `4d7bb94` and `debb083`) — says nothing about the code: Copilot's quota is exhausted (known, Sept 2026); excluded from both sources and CI.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Fix it, then merge (Recommended)
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 10:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aa6bb4ed9af2cd85d, resume 1 of 3)
+
+**PR**: #327 at `c46b4ed`
+**Addressed**: Integrated Review at `8b51699` (2026-09-23 10:20 -04:00)
+**Commits**: c46b4ed
+
+### Actions
+- [x] The zombie half of `test_job_finished_proc_comm_with_space` never reached /proc because the probe's own bash reaped "x y". It now spawns "x y" under `sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 10'`, whose sleep never reaps. A precondition assertion checks that the zombie still answers `kill -0` before `job_finished` runs. The test kills the parent at the end so init reaps the zombie, and its pidfile stays under TMPDIR_BASE. — `.agent/scripts/tests/test_cross_model_review.sh`
+
+Tests: `test_cross_model_review.sh` 386 passed / 0 failed; `run_script_tests.sh` all 23 suites passed (the check for files left behind is clean); no "x y" / "a Z b" processes remain afterwards. Not verified: whether the zombie half fails against the old awk `$3` code. That check was not permitted (Bash permission denied).
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-23 10:35 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8d5e50365869fa6b, resume 1 of 3)
+**Verdict**: approved
+
+**PR**: #327 at `5240b7d`
+**Depth**: Standard (reason: fix-round re-review of an enforcement-script test, scoped to c46b4ed; adversarial pass inline with a mutation check and a stress run)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Verified: mutation check in a scratch copy, running the new `test_job_finished_proc_comm_with_space` against the 4d7bb94 awk `$3` `job_finished` — old code 1 passed / 4 failed (the precondition "zombie still unreaped" passes; the running "a Z b" half fails with RUNNING-REPORTED-FINISHED and the zombie "x y" half now fails with DEAD-REPORTED-ALIVE), new code 5 passed / 0 failed; so both halves guard the regression. Timing: 24 runs (8 in parallel, 3 waves) with 16 CPU burners on a 16-core host, 24/24 passed; the 1 s wait against the 0.2 s zombie delay leaves ample margin, and a missed pidfile after the 5 s poll fails loudly through the precondition assertion rather than passing vacuously. Leaks: no "a Z b", "x y" or burner processes left after the runs; `run_script_tests.sh` (per-suite private TMPDIR, fails on leftover files) all 23 suites passed, `test_cross_model_review.sh` 386 passed / 0 failed; shellcheck --severity=warning clean on the test file. Prior suggestion (vacuous zombie half) is resolved by c46b4ed.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-23 10:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a71d4c0e6954f823b, resume 2 of 3)
+
+**PR**: #327 at `5ca1138`
+**Sources**: 2 (Local Review (PR mode) @ `5240b7d`, CI rollup @ `5ca1138`)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+This is the final triage after the fix round. The only substantive source is the PR-mode local review at `5240b7d`: approved, 0 must-fix, 0 suggestions, backed by a mutation check (the old awk `$3` code fails both halves, the new code passes 5/5), 24/24 stress runs and no leaks. Its "No issues found. LGTM." box is a no-findings marker, not an action item. `5240b7d..5ca1138` is progress bookkeeping only. The one open suggestion from the previous Integrated Review (at `8b51699`, the vacuous zombie half of `test_job_finished_proc_comm_with_space`) is resolved by c46b4ed, which I checked in the diff. "x y" now runs under `sh -c '... & exec sleep 10'`, which never reaps it. A precondition assertion (`zombie: present`) makes the test fail loudly if the zombie has already been reaped, so the verdict can only come from the /proc read. Killing the parent at the end lets init reap it.
+
+CI at `5ca1138` had not settled when I checked: Validate Documentation passed once and the other runs of it had no conclusion yet; Lint (pre-commit), Validate Adapter Contract and the ros-manifest tests had no conclusion. Copilot posted three more quota notices (at `8b51699`, `6c13cd8` and `5240b7d`, 0 inline comments); none is a source. There are 0 GitHub inline or conversation comments.
+
+### Findings
+- [x] No open findings. The approved PR-mode local review at `5240b7d` (0 must-fix, 0 suggestions) is the only substantive source, and every finding from earlier rounds is closed and verified in code. Merge waits only on CI settling green at `5ca1138`.
+
+### False positives
+- (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (five notices, latest at `5240b7d`) — says nothing about the code: Copilot's quota is exhausted (known, Sept 2026); excluded from both sources and CI.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:41 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer at the preceding findings checkpoint, conditional on a clean result: "Fix it, then merge (Recommended)". Final triage clean (no open findings) and CI all green at the reviewed head 5ca1138.

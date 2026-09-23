@@ -36,6 +36,17 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
     exit 3
 }
 
+# ---------------------------------------------------- user-tier guard (#265) ---
+# This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
+# it can be invoked from any cwd on the machine. Refuse outside the workspace
+# checkout and outside every registered project root, BEFORE any git/gh call,
+# so a stray invocation in an unrelated repo touches nothing. See
+# docs/decisions/0016-session-roots-and-the-user-tier.md.
+_UT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_project_registry.sh
+source "$_UT_SCRIPT_DIR/_project_registry.sh"
+registry_require_root "$(cd "$_UT_SCRIPT_DIR/../.." && pwd)" || exit 1
+
 METADATA_FILE="$REPO_ROOT/.agent/github_metadata.json"
 
 # Check for required dependencies

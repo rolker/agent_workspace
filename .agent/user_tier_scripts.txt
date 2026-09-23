@@ -1,0 +1,48 @@
+# .agent/user_tier_scripts.txt
+#
+# The workspace scripts and hooks promoted to the Claude Code user tier
+# (~/.claude), so a session started anywhere on this machine can invoke
+# them. Consumed by:
+#   - .agent/scripts/user_tier_install.sh  (generates the absolute-path
+#     permission allow-rules and the PreToolUse hook entries)
+#   - .agent/scripts/tests/test_user_tier_guard.sh  (asserts every entry is
+#     inert outside a registered root)
+#
+# The user-tier rule (ADR-0016): an entry may be promoted only if it is
+# inert outside the workspace checkout and outside every registered project
+# root. In practice each entry either calls `registry_require_root` before
+# any repo-affecting action, or carries a `# user-tier: inert` marker
+# because it only sets variables and defines functions, or carries a
+# `# user-tier: guarded-by:<script>` marker because it is a shim that
+# execs an entry that is itself guarded.
+#
+# Format: one path per line, relative to the workspace root. Blank lines
+# and `#` comments are ignored.
+#
+# Trimmed to what the #317 acceptance loop actually invokes from a project
+# cwd. dashboard.sh and register_project.sh are deliberately absent —
+# deferred to PR 4 (each row costs a guard call plus a test row).
+#
+# cross_model_review.sh is absent for a different reason: it CANNOT satisfy
+# the rule. Reviewing a repo that is neither the workspace nor registered is
+# a documented feature of it (`--repo`, `--work-dir`, `--no-progress`), so a
+# cwd guard would refuse its own interface. See the note in that script.
+
+.agent/scripts/worktree_create.sh
+.agent/scripts/worktree_enter.sh
+.agent/scripts/worktree_remove.sh
+.agent/scripts/worktree_list.sh
+.agent/scripts/merge_pr.sh
+.agent/scripts/gh_create_pr.sh
+.agent/scripts/gh_create_issue.sh
+.agent/scripts/fetch_pr_reviews.sh
+.agent/scripts/build.sh
+.agent/scripts/test.sh
+.agent/scripts/adapter
+.claude/hooks/block-bash-tool-mapping.sh
+.claude/hooks/log-tool-use.sh
+
+# Inert helpers: sourced by the above, never invoked for effect.
+.agent/scripts/set_git_identity_env.sh
+.agent/scripts/_issue_helpers.sh
+.agent/scripts/_resolve_work_plans_dir.sh

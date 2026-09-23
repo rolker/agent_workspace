@@ -1,9 +1,37 @@
 ---
 name: address-findings
 description: Work through the open action items from the latest review entry in progress.md — a ## Integrated Review (post-PR) or a ## Local Review (Pre-Push) (pre-push) — make each fix, commit atomically with pre-commit hooks, check the box, and record a ## Implementation entry. The close-the-loop phase between a review and its re-review.
+session_scope: both
 ---
 
 # Address Findings
+
+## Workspace root
+
+This skill can run in a **project** session — a session started in a project
+checkout, not in the workspace. There, `$WS_ROOT/.agent/scripts/...` does not resolve:
+those paths belong to the workspace, and the cwd is somewhere else entirely.
+
+Every workspace path below is therefore written `$WS_ROOT/.agent/scripts/...`.
+Resolve `$WS_ROOT` at the head of each command chain, because shell state does
+not persist between tool calls:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/<script>" ...
+```
+
+`~/.claude/agent-workspace-root` is written by
+`.agent/scripts/user_tier_install.sh`. It is a plain file, not an environment
+variable and not `SessionStart` hook output — hook stdout is context text and
+never reaches a tool call's shell (ADR-0016).
+
+**The `|| echo .` fallback is required, not decoration.** The user tier is
+optional — `--check` and ADR-0016 both say so — and on a machine without it
+the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
+every command below into `/.agent/scripts/...`, which is worse than the
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
+workspace session behaves exactly as it did before this idiom existed.
 
 ## Usage
 
@@ -14,7 +42,7 @@ description: Work through the open action items from the latest review entry in 
 Run from the issue's worktree (or pass `--issue <N>`). Operates on the
 **latest review entry** — a `## Integrated Review` (post-PR triage) or a
 `## Local Review (Pre-Push)` (pre-push `review-code`) — in that issue's
-`.agent/work-plans/issue-<N>/progress.md`. `--strict-progress` and
+`$WS_ROOT/.agent/work-plans/issue-<N>/progress.md`. `--strict-progress` and
 `--no-progress` control step 5's persistence exactly as in `review-code`.
 
 ## Overview
@@ -46,7 +74,7 @@ dropped — this workspace hands off by printing the next command.
 
 Resolve `<N>` from `--issue` or the worktree (`$WORKTREE_ISSUE`, else the
 `feature/issue-<N>` branch). The file is
-`.agent/work-plans/issue-<N>/progress.md` in the issue's worktree. If it
+`$WS_ROOT/.agent/work-plans/issue-<N>/progress.md` in the issue's worktree. If it
 doesn't exist, stop with an error — there's no review to address.
 
 ### 2. Read the latest review entry
@@ -58,8 +86,9 @@ canonical type (a legacy `## External Review` never qualifies; the post-PR
 findings across entries, never falls back to an older one:
 
 ```bash
-.agent/scripts/review_progress.sh findings \
-    --progress .agent/work-plans/issue-<N>/progress.md
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+$WS_ROOT/.agent/scripts/review_progress.sh findings \
+    --progress $WS_ROOT/.agent/work-plans/issue-<N>/progress.md
 ```
 
 The JSON has `source` (`type`, `when`, `correlation` — the SHA the review
@@ -92,7 +121,8 @@ For each open finding, in listed order (cross-confirmed first):
    it: check its box with a reason, so it reads as handled-not-changed:
 
    ```bash
-   .agent/scripts/review_progress.sh check --progress <file> --index <i> \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+   $WS_ROOT/.agent/scripts/review_progress.sh check --progress <file> --index <i> \
        --deferred "<one-line reason>"
    ```
 
@@ -115,7 +145,8 @@ For each open finding, in listed order (cross-confirmed first):
    the same commit as the fix, or a trailing progress commit:
 
    ```bash
-   .agent/scripts/review_progress.sh check --progress <file> --index <i>
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+   $WS_ROOT/.agent/scripts/review_progress.sh check --progress <file> --index <i>
    ```
 
    The index is the one `findings` printed; `check` refuses an already
@@ -135,7 +166,8 @@ and `triage-reviews` step 7 use (strict / compatibility switch,
 outcomes; echo the printed line):
 
 ```bash
-.agent/scripts/review_progress.sh persist --issue "<N>" --branch "<branch>" \
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" --branch "<branch>" \
     --title "<issue title>" [--strict] [--no-progress] <<'ENTRY'
 ## Implementation
 **Status**: complete

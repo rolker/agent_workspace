@@ -20,6 +20,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export REPO_ROOT
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# ---------------------------------------------------- user-tier guard (#265) ---
+# This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
+# it can be invoked from any cwd on the machine. Refuse outside the workspace
+# checkout and outside every registered project root, BEFORE any git/gh call,
+# so a stray invocation in an unrelated repo touches nothing. See
+# docs/decisions/0016-session-roots-and-the-user-tier.md.
+# shellcheck source=_project_registry.sh
+source "$SCRIPT_DIR/_project_registry.sh"
+registry_require_root "$REPO_ROOT" || exit 1
+
 # --- Argument parsing ---
 
 PR_NUMBER=""
