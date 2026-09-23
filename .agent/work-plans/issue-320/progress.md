@@ -485,3 +485,13 @@ Owner chose "Same as whole PR (Recommended)": a fix-round re-review gets the sam
 - [ ] (suggestion) CRLF plan files: the closer check `rest ~ /^[ \t]*$/` fails on a trailing `\r`, so a closed fence reads as open and a spurious closer swallows the footer; the mixed-line-ending hook does not reject an all-CRLF file — strip `\r` first — `.agent/scripts/cross_model_review.sh:1014`
 - [ ] (suggestion) The Approach extractor still stops at a `# ` comment inside a fenced block with no truncation marker, so reviewers get a shorter Approach silently; now that a fence tracker exists, make the extractor skip boundaries while a fence is open, or mark an early stop — `.agent/scripts/cross_model_review.sh:958-962`
 - [ ] (suggestion) Thematic-break stop matches exactly `---`; `----` or longer rules do not end the section, so a later section can leak in — use `/^-{3,}[[:space:]]*$/` — `.agent/scripts/cross_model_review.sh:960`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 11:40 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Owner chose "One outer fence (Recommended)": wrap the plan excerpt in a single outer fence longer than any backtick run inside it and delete the fence-balancing tracker (resolves round-4 must-fix 1-2 and the CRLF suggestion by removal); fix the two extractor suggestions (a '# ' line inside a fenced block ending the Approach early; '----' and longer rules not ending the section). One more review round.
