@@ -572,3 +572,21 @@ Owner scope addition, not addressing a review box. The owner answered the "found
 **Decision**: address
 
 Owner chose "Fix 3, then publish (Recommended)": address the three round-5 suggestions (unclosed plan fence over-extends the Approach; `***`/`___` thematic breaks not recognised as section stops; cleanup trap registered after the mktemp calls), one more review round, then publish. Gemini's two round-5 failures (headless read_file denial; output-token limit) go to a separate issue, not this branch.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 12:39 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-320 at `b7f8ae6`
+**Addressed**: Local Review (Pre-Push) at `a977b06` (2026-09-23 12:18 -04:00)
+**Commits**: 6fea669, 64c7fee, b7f8ae6
+
+### Actions
+- [x] An unclosed plan fence no longer runs the Approach to EOF: lines are buffered and, if the fence is still open at EOF, the section is cut at the first boundary seen while it was open — `.agent/scripts/cross_model_review.sh` (test: test_plan_context_extractor_unclosed_fence) — 6fea669
+- [x] The section stop recognises every CommonMark thematic break (`-`, `*`, `_`, inner spaces/tabs, up to 3 leading spaces; 4+ spaces stays indented code) — `.agent/scripts/cross_model_review.sh` (test: test_plan_context_extractor_star_underscore_rules) — 64c7fee
+- [x] EXIT/INT/TERM/HUP traps are registered before the shared mktemp calls; the temp paths start empty and cleanup_jobs skips empty ones — `.agent/scripts/cross_model_review.sh` (test: test_shared_temp_no_leak_on_early_abort, mocked mktemp failing mid-sequence and on the first call) — b7f8ae6
+
+### Verification
+- New tests fail against the pre-fix script (3, 7 and 1 failures respectively) and pass after each fix.
+- Full `test_cross_model_review.sh`: 540 passed, 0 failed; pre-commit (shellcheck + script test suite) passed on all three commits.
