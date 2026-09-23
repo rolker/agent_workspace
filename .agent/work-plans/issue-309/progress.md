@@ -74,3 +74,13 @@ skill, including classification and report templates, as planned.
 ### Recommended Actions
 
 - [x] No pre-implementation blockers.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 14:29 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Approve, as described (Recommended): Codex's plan (bed79ef; Codex plan review: ready) is approved. Driver handed over from Codex (quota exhausted) to a Claude drive. Implementer: commit Codex's staged, uncommitted implementation first as a labelled WIP snapshot (authored as found), merge main, then finish and verify the plan; coordinate with #334 (docs reorganisation), which adds docs/roadmap.md to merge_pr.sh's bookkeeping lists — whichever lands second carries docs/roadmap.md into the new shared helper; keep codex-workflow-notes.md in the work-plan folder.
