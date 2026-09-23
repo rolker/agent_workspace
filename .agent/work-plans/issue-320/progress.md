@@ -590,3 +590,24 @@ Owner chose "Fix 3, then publish (Recommended)": address the three round-5 sugge
 ### Verification
 - New tests fail against the pre-fix script (3, 7 and 1 failures respectively) and pass after each fix.
 - Full `test_cross_model_review.sh`: 540 passed, 0 failed; pre-commit (shellcheck + script test suite) passed on all three commits.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 12:51 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-320 at `5b0de9b`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff against merge-base d149cc7, work-plans excluded: ~1150 lines, 7 files — 200+ lines; override triggers: review-code + address-findings SKILL.md, knowledge doc, ADR-0015, AGENTS.md)
+**Must-fix**: 2 | **Suggestions**: 2
+**Round**: 6 | **Ship**: continue — round 6: must-fix rising (0 -> 2); both are mechanical awk fixes with a reproduction each
+
+Merge 5b0de9b checked: `git show --remerge-diff` is empty (no conflict resolutions); main's 29 commits touch none of cross_model_review.sh, its tests or the review helpers, and the AGENTS.md hunks are on different rows. Full suite on the merged head: 27/27 suites pass; pre-commit (shellcheck etc.) clean on the changed files.
+Outside reviewers: gemini ran (5 findings, complete); codex ran (3 findings, complete).
+
+### Findings
+- [ ] (must-fix) Approach extractor never resets `cut` when a fence closes: a `# comment` in an earlier *closed* fence plus a later unclosed fence truncates the Approach back to the earlier fence, dropping the steps in between (repro: `step A` / closed ```sh with `# comment` / `step B` / unclosed fence → output stops after `step A`). Reset `cut` on fence close and add a consecutive-fences regression; gemini + codex both flagged — `.agent/scripts/cross_model_review.sh:1046`
+- [ ] (must-fix) Section start is matched before fence tracking begins, so a `## Approach` line inside a fenced example in an earlier section is taken as the real Approach and the real one is dropped (repro: `## Context` / ```md / `## Approach` / `example only` / ``` / `## Approach` / `REAL` → outputs `example only`). Track fence state from line 1 and only match `## Approach` outside a fence; codex — `.agent/scripts/cross_model_review.sh:1029`
+- [ ] (suggestion) ATX headings indented 1–3 spaces (`  ## Files to Change`) are not boundaries, so the whole next section runs on into Plan Context (bounded only by the 200-line cap); plan-task's template is flush-left, so hand-edited plans only. Accept `^ {0,3}#{1,2}[ \t]` like the fence/rule handling; codex + gemini + Claude adversarial — `.agent/scripts/cross_model_review.sh:1048`
+- [ ] (suggestion) Setext headings: the title line above a `---`/`===` underline is appended before the cut (one-line leak), and `===` underlines are not boundaries at all; gemini + Claude adversarial — `.agent/scripts/cross_model_review.sh:1048`
