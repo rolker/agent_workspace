@@ -135,6 +135,29 @@ unwieldy.
   printf take SIGPIPE once the Approach exceeds the pipe buffer (~64 KiB)
   and the whole script dies with exit 141 before any agent is dispatched.
 
+## Addendum: fix-round re-review depth (owner, 2026-09-23)
+
+Scope added at the publish checkpoint ("yes, update 320 with same
+codex/gemini rules"), after PR #327's ~60-line fix round was re-reviewed
+without Gemini/Codex at the reviewer's discretion. A fix-round re-review
+(PR mode after `address-findings`; pre-push round ≥ 2) is classified on
+the fix round's own delta since the last reviewed SHA, with the same tier
+table as a first review. Standard/Deep dispatches the cross-model
+specialist exactly as a first review does; Light stays Light; the reviewer
+may raise, never lower. The delta is measured first-parent, no merges,
+with `.agent/work-plans/**` excluded (bookkeeping, and already excluded
+from the cross-model diff). The cross-model call itself is unchanged — the
+whole PR/branch diff, since `cross_model_review.sh` has no delta mode and
+`gh pr diff` has no range. The `**Depth**` reason records the delta.
+Prose-only: no script computes tiers.
+
+| File | Change |
+|------|--------|
+| `.agent/knowledge/review_depth_classification.md` | New *Fix-Round Re-Reviews* section |
+| `.claude/skills/review-code/SKILL.md` | Step 2 fix-round rule, 5e same-call note, `**Depth**` reason, Guidelines |
+| `.claude/skills/address-findings/SKILL.md` | Next-step note that the re-review tier follows the delta |
+| `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md` | Status-line pointer extended |
+
 ## Estimated Scope
 
 Single PR (checkpoint decision). If review proves unwieldy, split along
