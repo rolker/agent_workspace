@@ -250,4 +250,4 @@ Deviations: (a) `-ef` same-file guard — accepted (cheap, correct, tested on Li
 
 ### Findings
 - [x] (must-fix) New same-file tests break on the case-insensitive filesystems they target: `ln -s` onto an existing name aborts under `set -e`, and lowercase-path assertions (A2, C2, the docs/roadmap.md loop case) see the uppercase spelling checked first; detect case-insensitivity and adapt fixtures/assertions (also decide which spelling discovery reports there) — `.agent/scripts/tests/test_discover_governance.sh:104`, `.agent/scripts/tests/test_update_roadmap.sh:45`
-- [ ] (suggestion) Generic "ROADMAP.md" mentions that now describe the workspace's docs/roadmap.md missed the sweep (the verify grep only matched `docs/ROADMAP.md`) — `.claude/skills/what-next/SKILL.md:3,21`, `.claude/skills/inspiration-tracker/SKILL.md:228,341`
+- [x] (suggestion) Generic "ROADMAP.md" mentions that now describe the workspace's docs/roadmap.md missed the sweep (the verify grep only matched `docs/ROADMAP.md`) — `.claude/skills/what-next/SKILL.md:3,21`, `.claude/skills/inspiration-tracker/SKILL.md:228,341`

@@ -225,7 +225,7 @@ Repo: <owner>/<repo> @ <commit-sha>
 
 ## Roadmapped
 
-- `feature` — added to ROADMAP.md (YYYY-MM-DD)
+- `feature` — added to docs/roadmap.md (YYYY-MM-DD)
 
 ## Skipped
 
@@ -338,7 +338,7 @@ When invoked with `add` or `add <url>`:
 - **Interactive, not autonomous** — always present findings and let the user
   decide. Never add to roadmap without confirmation.
 - **Workspace digests are project-agnostic** (issue #217) — digests in
-  `.agent/knowledge/`, registry comments, and ROADMAP.md entries assess
+  `.agent/knowledge/`, registry comments, and `docs/roadmap.md` entries assess
   **workspace relevance** (agent infrastructure: skills, scripts,
   governance, worktrees) and never name or depend on a specific managed
   project. Use "the project repo" / "this workspace" phrasing. A finding

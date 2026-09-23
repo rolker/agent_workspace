@@ -1,6 +1,6 @@
 ---
 name: what-next
-description: Read ROADMAP.md files, cross-reference with GitHub issues, detect staleness, and suggest prioritized next work.
+description: Read the workspace and project roadmaps (docs/roadmap.md, ROADMAP.md), cross-reference with GitHub issues, detect staleness, and suggest prioritized next work.
 session_scope: both
 ---
 
@@ -18,7 +18,7 @@ Without flags, checks both workspace and project roadmaps.
 
 **Lifecycle position**: Utility — run when choosing what to work on next.
 
-Reads `ROADMAP.md` from the workspace and project repos, cross-references
+Reads the roadmap from the workspace and project repos, cross-references
 checklist items against GitHub issues, and surfaces:
 - Completed items not yet checked off (staleness)
 - Unchecked items without issues (work needing tickets)
