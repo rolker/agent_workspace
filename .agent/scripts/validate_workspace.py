@@ -75,6 +75,18 @@ def adapter_validate_timeout():
     return value if value > 0 else ADAPTER_VALIDATE_TIMEOUT_DEFAULT
 
 
+def kill_process_group(proc):
+    """SIGKILL proc's whole process group (proc leads its own session).
+
+    Any OSError is ignored: the group may already be gone (ESRCH), and macOS
+    returns EPERM for a group whose members are all zombies.
+    """
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
 def delegate_shape_check(workspace_root, name):
     """Run `adapter --project <name> validate`; return issue lines (empty = OK).
 
@@ -85,7 +97,9 @@ def delegate_shape_check(workspace_root, name):
     The run is bounded by adapter_validate_timeout(). The adapter runs in its
     own session so a timeout kills the whole process group: killing only the
     dispatcher would leave any child it spawned holding the output pipes open,
-    and collecting the output would then hang anyway.
+    and collecting the output would then hang anyway. The group is also
+    killed when the wait is interrupted (Ctrl-C, SIGTERM), since its own
+    session never receives the terminal's signal.
     """
     adapter = workspace_root / ".agent" / "scripts" / "adapter"
     timeout = adapter_validate_timeout()
@@ -104,12 +118,17 @@ def delegate_shape_check(workspace_root, name):
     try:
         stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        kill_process_group(proc)
         proc.communicate()
         return [f"project '{name}': adapter validate timed out after {timeout:g}s"]
+    except BaseException:
+        # Ctrl-C (KeyboardInterrupt) or SIGTERM (SystemExit, see main): the
+        # adapter's own session keeps it out of the terminal's foreground
+        # group, so the signal never reached it. Kill it before unwinding or
+        # it outlives validate as an orphan.
+        kill_process_group(proc)
+        proc.wait()
+        raise
     result = subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
     if result.returncode == 0:
         return []
@@ -315,6 +334,11 @@ def main():
     parser = argparse.ArgumentParser(description="Validate workspace configuration")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
+
+    # Turn SIGTERM into SystemExit so cleanup runs: delegate_shape_check kills
+    # the adapter's process group on the way out (the default SIGTERM action
+    # would end this process at once and orphan the adapter).
+    signal.signal(signal.SIGTERM, lambda signum, _frame: sys.exit(128 + signum))
 
     is_valid = validate_workspace(args.verbose)
     sys.exit(0 if is_valid else 1)

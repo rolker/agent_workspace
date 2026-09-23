@@ -273,7 +273,7 @@ Round-1 suggestions all resolved (e0db53d, 34781c3, c8b7696). Tests are real: mu
 Process-group kill otherwise sound: the leader is unreaped when `killpg` runs, so no PID-reuse race; a grandchild that calls `setsid` itself would escape the kill and could still block the final `communicate()` — accepted as out of scope for a local-filesystem verb.
 
 ### Findings
-- [ ] (suggestion) Ctrl-C/SIGTERM during `delegate_shape_check` orphans the adapter: `start_new_session=True` takes it out of the terminal's foreground group, and `communicate()` re-raises KeyboardInterrupt without killing it (reproduced: the child `sleep` survived the harness). Wrap the wait so any exception killpg's the group before re-raising, and catch `OSError` rather than only `ProcessLookupError` (macOS `killpg` returns EPERM for an all-zombie group) — `.agent/scripts/validate_workspace.py:105`
+- [x] (suggestion) Ctrl-C/SIGTERM during `delegate_shape_check` orphans the adapter: `start_new_session=True` takes it out of the terminal's foreground group, and `communicate()` re-raises KeyboardInterrupt without killing it (reproduced: the child `sleep` survived the harness). Wrap the wait so any exception killpg's the group before re-raising, and catch `OSError` rather than only `ProcessLookupError` (macOS `killpg` returns EPERM for an all-zombie group) — `.agent/scripts/validate_workspace.py:105`
 
 ## Checkpoint
 **Status**: complete

@@ -516,6 +516,52 @@ test_validate_adapter_timeout() {
     assert_eq "returns promptly (not after the 30 s sleep)" "yes" "$([ "$elapsed" -lt 10 ] && echo yes || echo "no (${elapsed}s)")"
 }
 
+# Interrupt validate_workspace.py with <signal> while it waits on a stub
+# adapter, then assert the adapter and its child are gone. The adapter runs
+# in its own session, so without the kill-on-exception wrapper both survive
+# as orphans. Python is launched with SIGINT restored to KeyboardInterrupt:
+# a background job of a non-interactive shell starts with SIGINT ignored.
+# Every recorded pid is SIGKILLed at the end so a failure leaves no stray.
+_validate_interrupt_case() {
+    local sig="$1" sb pidfile vpid rc=0 pid alive=""
+    sb="$(make_validate_sandbox)"
+    pidfile="$sb/adapter.pids"
+    make_stub_type_entry "$sb" hang "sleep 30 & echo \"\$\$ \$!\" > '$pidfile'; wait"
+    python3 -c 'import runpy, signal, sys
+signal.signal(signal.SIGINT, signal.default_int_handler)
+sys.argv = [sys.argv[1]]
+runpy.run_path(sys.argv[0], run_name="__main__")' \
+        "$sb/.agent/scripts/validate_workspace.py" >/dev/null 2>&1 &
+    vpid=$!
+    for _ in $(seq 1 100); do
+        [ -s "$pidfile" ] && break
+        sleep 0.1
+    done
+    assert_eq "$sig: adapter started" "yes" "$([ -s "$pidfile" ] && echo yes || echo no)"
+    kill "-$sig" "$vpid" 2>/dev/null || true
+    wait "$vpid" || rc=$?
+    assert_eq "$sig: validate exits non-zero" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo "no (rc=$rc)")"
+    # Give init a moment to reap the killed (reparented) processes.
+    for _ in $(seq 1 30); do
+        alive=""
+        for pid in $(cat "$pidfile" 2>/dev/null); do
+            kill -0 "$pid" 2>/dev/null && alive="$alive $pid"
+        done
+        [ -z "$alive" ] && break
+        sleep 0.1
+    done
+    assert_eq "$sig: adapter and its child killed (no orphans)" "" "$alive"
+    for pid in $(cat "$pidfile" 2>/dev/null); do
+        kill -KILL "$pid" 2>/dev/null || true
+    done
+}
+
+test_validate_interrupt_kills_adapter() {
+    echo "TEST: Ctrl-C / SIGTERM during adapter validate kills the adapter's process group"
+    _validate_interrupt_case INT
+    _validate_interrupt_case TERM
+}
+
 test_validate_adapter_failure_stdout_fallback() {
     echo "TEST: a failing adapter with empty stderr is reported by its stdout lines"
     local sb out rc=0
@@ -1430,6 +1476,7 @@ test_validate_parse_error_does_not_blame_healthy_entry
 test_validate_parse_error_verbose_says_shape_not_checked
 test_validate_adapter_timeout
 test_validate_adapter_failure_stdout_fallback
+test_validate_interrupt_kills_adapter
 test_validate_nested_non_git_entry_fails
 test_single_project_scoped_validate_ignores_broken_sibling
 test_single_project_scoped_validate_nested_dir_fails
