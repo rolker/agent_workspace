@@ -152,3 +152,51 @@ inspiration-digest count to three, added a Consequences row noting the
 AGENTS.md reword is injected into project sessions, expanded the #334
 sequencing note, and confirmed the owner-approved CLAUDE.md/AGENTS.md
 wording is already verbatim in the plan.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-23 13:46 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: ready
+
+**Issue**: #328 — Retire the Bash tool-mapping hook: it now contradicts Claude Code's auto-mode guidance
+**Plan**: `.agent/work-plans/issue-328/plan.md` at `9ad124f`
+**Branch**: `feature/issue-328`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Single PR: deletions, manifest/installer trims, one small `--check` addition plus its test, three short doc rewords. |
+| Issue alignment | Good | Both tiers per the owner's proceed checkpoint; block-log summary is step 1; #329 re-scope deferred (step 12). |
+| File targeting | Good | Repo-wide grep for `block-bash-tool-mapping` / `tool-mapping` outside work-plans matches the Files table exactly: hook, its test, `.claude/settings.json:134`, `user_tier_scripts.txt:42`, `user_tier_install.sh:17,180,614`, both user-tier tests, CLAUDE.md, ADR-0016:26/105, ROADMAP:373, and the three digests (left as history). No hits in Makefile, `.github/`, `.pre-commit-config.yaml`, CODEX.md. |
+| Consequences | Good | The installed-machine window is covered twice: a `--check` drift case (step 5) and a post-merge re-install (step 13). Project-session injection of the AGENTS.md text and the #334 sequencing are both recorded. |
+| Principle alignment | Good | The only new machinery is the drift case, justified as the first hook ever to leave the generation. |
+| ADR compliance | Good | ADR-0004: the enforcement claim goes. ADR-0016 is **Provisional** (Status, line 5), and ADR-0008's rule narrows immutability for *Accepted* ADRs only, so the in-place revision of §6 is correct. One minor wording spot in §3 remains (finding 1). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Prior findings (round 1, 5a43e55) — resolution
+
+1. `--check` drift case (must-fix): **resolved.** Step 5 now states the gap correctly and proposes the check. I read the source (`user_tier_install.sh:458-499`). Checks (a), (b) and (c) do not fire for a `$TAG`-tagged, in-checkout command that `hook_commands()` no longer emits. The proposed case is sound and will not false-positive, for three reasons:
+   - It selects only entries whose `_agent_workspace == $TAG`, and `$TAG` is `$WS_ROOT` (line 65). The user's own hooks carry no marker, so they are excluded.
+   - Another checkout's entries carry a different tag, so they are excluded too; check (b) already reports those.
+   - Restricting it to in-checkout commands avoids double-reporting with check (c), and it also skips `$SESSION_HOOK_LINK`, which is in the wanted set anyway.
+   Drift case (f) fits the existing (a)-(e) sequence in `test_user_tier_install.sh:164-205`. For the re-install half to hold, the injected entry must carry `_agent_workspace: "$WSC"`; the plan's "tagged" wording covers this. Install line 648 then drops it.
+2. Post-merge re-install on this machine (must-fix): **resolved.** Step 13 covers it, as does the Consequences row.
+3. ADR-0016 §6 in-place revision (must-fix): **resolved.** Step 9 rewords lines 103 and 105-108. Its legitimacy is verified: the ADR is Provisional, and ADR-0008 covers Accepted ADRs.
+4. Three inspiration digests (suggestion): **resolved.** Step 10 names harness:152, gstack:433 and project-codeguard:108, and excludes superpowers:372. Verified by grep.
+5. `WORKSPACE_SECTIONS` injection row (suggestion): **resolved.** It is noted in step 8 and in the Consequences table.
+6. Sequencing with #334 (suggestion): **resolved.** Step 7 covers merge-not-rebase, the `git grep` check, and the correction to #334's plan.
+7. Ask-First wording (suggestion): **resolved.** The AGENTS.md replacement text in step 8 matches the owner-approved text in the 13:36 checkpoint word for word. The CLAUDE.md action (delete the whole `## Tool Mapping` section) also matches. Not re-litigated.
+
+### Findings
+
+1. **[ADR compliance]** (suggestion): ADR-0016 §3, line 67, says "`~/.claude` carries a `SessionStart` hook, `PreToolUse` hooks, …". After retirement only one `PreToolUse` hook remains. When revising §6, make this "a `PreToolUse` hook" in the same edit, or leave it deliberately as the generic mechanism. The plan's step 9 revises only §6 and line 26.
+
+### Summary
+
+All seven round-1 items are resolved against source. The new `--check` case is correct and scoped by tag, so it cannot flag the user's own hooks or another checkout's entries. The plan is ready for implementation.
+
+### Recommended Actions
+
+- [ ] (suggestion) Singularise "`PreToolUse` hooks" in ADR-0016 §3 alongside the §6 revision, or consciously leave it generic — `docs/decisions/0016-session-roots-and-the-user-tier.md:67`
