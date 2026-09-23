@@ -1058,3 +1058,24 @@ Verified: mutation check in a scratch copy, running the new `test_job_finished_p
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-23 10:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a71d4c0e6954f823b, resume 2 of 3)
+
+**PR**: #327 at `5ca1138`
+**Sources**: 2 (Local Review (PR mode) @ `5240b7d`, CI rollup @ `5ca1138`)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+This is the final triage after the fix round. The only substantive source is the PR-mode local review at `5240b7d`: approved, 0 must-fix, 0 suggestions, backed by a mutation check (the old awk `$3` code fails both halves, the new code passes 5/5), 24/24 stress runs and no leaks. Its "No issues found. LGTM." box is a no-findings marker, not an action item. `5240b7d..5ca1138` is progress bookkeeping only. The one open suggestion from the previous Integrated Review (at `8b51699`, the vacuous zombie half of `test_job_finished_proc_comm_with_space`) is resolved by c46b4ed, which I checked in the diff. "x y" now runs under `sh -c '... & exec sleep 10'`, which never reaps it. A precondition assertion (`zombie: present`) makes the test fail loudly if the zombie has already been reaped, so the verdict can only come from the /proc read. Killing the parent at the end lets init reap it.
+
+CI at `5ca1138` had not settled when I checked: Validate Documentation passed once and the other runs of it had no conclusion yet; Lint (pre-commit), Validate Adapter Contract and the ros-manifest tests had no conclusion. Copilot posted three more quota notices (at `8b51699`, `6c13cd8` and `5240b7d`, 0 inline comments); none is a source. There are 0 GitHub inline or conversation comments.
+
+### Findings
+- [x] No open findings. The approved PR-mode local review at `5240b7d` (0 must-fix, 0 suggestions) is the only substantive source, and every finding from earlier rounds is closed and verified in code. Merge waits only on CI settling green at `5ca1138`.
+
+### False positives
+- (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (five notices, latest at `5240b7d`) — says nothing about the code: Copilot's quota is exhausted (known, Sept 2026); excluded from both sources and CI.
