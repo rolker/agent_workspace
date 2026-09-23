@@ -214,3 +214,20 @@ The revision resolves round 1's merge-gate, CI, and scope-split problems and ado
 **Decision**: proceed
 
 Proceed + all 5 (Recommended): implement the plan at c77cd67 plus the round-2 Plan Review (815174e) items as instructions — must-fix: rename the workspace-principles references at .claude/skills/review-code/SKILL.md:276, review-issue/SKILL.md:116, review-plan/SKILL.md:172 and gather-project-knowledge/SKILL.md:110 to docs/principles.md (step 7 + Files to Change), keeping step 8's dual-spelling edits on lines 200/176/120/112; S1: #328 deletes CLAUDE.md's whole ## Tool Mapping section, rewords the AGENTS.md Tool Usage bullet and edits docs/ROADMAP.md:373 — whichever branch lands second runs the git ls-files check and confirms the roadmap edit landed in docs/roadmap.md; S2: step 9's line numbers are swapped (47 = PRINCIPLES.md under docs/, 52 = ARCHITECTURE.md # This file); S3: the discover_governance test copies the script into <sandbox>/.agent/scripts/ and builds fixtures under <sandbox>/ and <sandbox>/project/ (no env override); S4: also rename .agent/knowledge/principles_review_guide.md:60's ARCHITECTURE.md reference.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 13:57 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-334 at `e2fa0c1`
+
+Plan at `c77cd67` plus the five round-2 checkpoint instructions, in four commits:
+
+- `c1a32d3` — pure `git mv`, content unchanged: `ARCHITECTURE.md` → `docs/design.md`, `docs/ROADMAP.md` → `docs/roadmap.md`, `docs/PRINCIPLES.md` → `docs/principles.md`.
+- `bc4452e` — discovery accepts both spellings: `discover_governance.sh` adds `docs/design.md` / `docs/principles.md`; `update_roadmap.sh` adds `docs/roadmap.md`; `merge_pr.sh` adds `docs/roadmap.md` to both bookkeeping lists (old entries kept). A path that is the same file as an earlier spelling (case-insensitive filesystems) is reported/processed once. `validate.yml` `required_files` → `docs/design.md` (owner-approved). `project_governance.md` notes the lowercase names. Tests: new `test_discover_governance.sh` (sandbox copy of the script, workspace + project fixtures, both spellings, alias-once) and `test_update_roadmap.sh`; `test_merge_pr_gate.sh` gains ci-2b, ci-30 ×2 spellings, g5b.
+- `50de10c` — reference sweep: workspace-own references renamed (README, AGENTS.md, CLAUDE.md, PR template, AGENT_ONBOARDING.md, principles_review_guide.md:48,60, eight skills' workspace-principles lines incl. review-code/review-issue/review-plan/gather-project-knowledge, inspiration-tracker 251/259, what-next workspace probe); project-scope references list both spellings (audit-project, review-code, review-plan, review-issue, brainstorm, gather-project-knowledge, review_depth_classification.md; what-next project probe = update_roadmap.sh's three candidates). README opening line: "one or more external project repositories".
+- `e2fa0c1` — `docs/design.md` self-references (tree lines 47/52, Governance line 222).
+
+Verified: `run_script_tests.sh` 29/29 suites green; old-path grep sweep leaves only the intended categories (project-scope dual spellings, old-spelling checks/fixtures, template example, inspiration-tracker:161); `git ls-files docs/ROADMAP.md docs/PRINCIPLES.md ARCHITECTURE.md` empty; validate.yml required-files logic passes locally; `discover_governance.sh` reports `docs/design.md` and `docs/principles.md` for the workspace. `docs/roadmap.md:340` checked and left as written. Main has not moved since the last merge.
+
+Deviations: the same-file guard in both discovery scripts and `test_update_roadmap.sh` are additions beyond the plan (the macOS case-only rename would otherwise double-report `docs/PRINCIPLES.md`/`docs/principles.md` and double-visit the roadmap).
