@@ -993,10 +993,13 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
     # boundaries only; it has no bearing on the prompt's well-formedness,
     # which the outer fence below guarantees on its own. A closer is the
     # opener's character repeated at least as many times with nothing but
-    # whitespace after it (CR stripped first, for CRLF plans). A plan whose
-    # fence never closes runs the Approach to the end of the file — the one
-    # case where the block can hold later sections — which the 200-line cap
-    # still bounds.
+    # whitespace after it (CR stripped first, for CRLF plans).
+    #
+    # A plan whose fence never closes would otherwise run the Approach to
+    # the end of the file and pull every later section in. Lines are
+    # therefore buffered, and the first boundary seen while a fence was open
+    # is remembered: if the fence is still open at EOF, the Approach is cut
+    # there instead — shorter, never longer than a fence-blind cut.
     PLAN_APPROACH=$(awk '
         function run_len(s, c,    n) {
             n = 0
@@ -1022,10 +1025,18 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
             if (n >= 3) {
                 if (!fence_n) { fence_c = c; fence_n = n }
                 else if (c == fence_c && n >= fence_n && rest ~ /^[ \t]*$/) fence_n = 0
-            } else if (!fence_n && ($0 ~ /^# / || $0 ~ /^## / || $0 ~ /^---+[[:space:]]*$/)) {
-                exit
+            } else if ($0 ~ /^# / || $0 ~ /^## / || $0 ~ /^---+[[:space:]]*$/) {
+                if (!fence_n) { stopped = 1; exit }
+                # Inside a fence: not a boundary, unless the fence never
+                # closes (see END).
+                if (!cut) cut = nb
             }
-            print
+            buf[++nb] = $0
+        }
+        END {
+            last = nb
+            if (!stopped && fence_n && cut) last = cut
+            for (i = 1; i <= last; i++) print buf[i]
         }
     ' "$PLAN_CONTEXT_FILE")
 

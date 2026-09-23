@@ -1956,6 +1956,44 @@ LONG RULE SECTION BODY'
     teardown
 }
 
+test_plan_context_extractor_unclosed_fence() {
+    echo "TEST: an unclosed plan fence cuts at the first boundary seen inside it (#320)"
+    setup
+
+    # The fence opened in the Approach never closes, so every later line is
+    # "inside" it. The Approach must still stop at the first boundary-shaped
+    # line rather than running to EOF and pulling the later sections in.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Approach
+
+APPROACH BEFORE FENCE
+
+```bash
+echo INSIDE UNCLOSED FENCE
+
+## Files to Change
+
+LATER SECTION BODY
+
+## Verification
+
+LAST SECTION BODY'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "Approach body before the fence is kept" "APPROACH BEFORE FENCE" "$block"
+    assert_contains "fence body before the boundary is kept" "INSIDE UNCLOSED FENCE" "$block"
+    assert_not_contains "the later section does not leak in" "LATER SECTION BODY" "$block"
+    assert_not_contains "the last section does not leak in" "LAST SECTION BODY" "$block"
+    assert_not_contains "the boundary heading itself is not included" \
+        "^## Files to Change$" "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "unclosed fence"
+
+    teardown
+}
+
 test_plan_context_stops_at_h1_or_rule() {
     echo "TEST: the Approach extractor stops at an H1 or a thematic break (#320)"
     setup
@@ -3414,6 +3452,7 @@ test_plan_context_outer_fence_crlf
 test_plan_context_outer_fence_longer_than_inner_run
 test_plan_context_extractor_ignores_boundaries_in_fences
 test_plan_context_extractor_long_rule
+test_plan_context_extractor_unclosed_fence
 test_plan_context_stops_at_h1_or_rule
 test_sync_flag_rejected
 test_agents_all_succeed
