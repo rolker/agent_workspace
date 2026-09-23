@@ -439,3 +439,29 @@ non-caller agent) exactly as a first review does.
 **Decision**: address
 
 Owner chose "Same as whole PR (Recommended)": a fix-round re-review gets the same tier as a first review of the whole PR/branch; the reviewer may raise it, never lower it. Drop the fix-round delta counting entirely (resolves round-3 must-fix 1, 2, 3 and suggestions 1-3 by removal). Fix the plan-context fence-balancing bug (must-fix 4) with tests. One more review round follows.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 11:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a25eabc1b068839e2, resume 1 of 3)
+
+**Branch**: feature/issue-320 at `57994db`
+**Addressed**: Local Review (Pre-Push) at `21c49e0` (2026-09-23 11:05 -04:00), with the owner's Checkpoint at `266981f` (After: rounds, Decision: address — "Same as whole PR")
+**Commits**: 9f6b665, 57994db
+
+### Actions
+- [x] (must-fix 1) "Last reviewed SHA" ambiguity — `.agent/knowledge/review_depth_classification.md` (deferred: resolved by removal — delta counting deleted per owner decision; fixed in 9f6b665)
+- [x] (must-fix 2, owner call) Delta tier could lower a re-review below the whole-PR tier — owner chose "Same as whole PR": re-reviews classify exactly as a first review on the whole diff; reviewer may raise, never lower — `.agent/knowledge/review_depth_classification.md`, `.claude/skills/review-code/SKILL.md` step 2 (9f6b665)
+- [x] (must-fix 3) `--no-merges` hides evil merges — (deferred: resolved by removal; 9f6b665)
+- [x] (must-fix 4) Fence balancing: opener char + run length tracked; closer = same char, run ≥ opener, whitespace only after; backtick info string may not contain a backtick; emitted closer repeats the opener — `.agent/scripts/cross_model_review.sh:979-1027` (57994db)
+- [x] (suggestions 1-3) cwd-relative pathspec, non-ancestor last SHA, numstat edge cases — (deferred: resolved by removal; 9f6b665)
+
+### What changed
+- 9f6b665: the Fix-Round Re-Reviews section now states the simple rule (whole diff, same table, Standard/Deep dispatches cross-model, raise never lower, Depth line records tier and reason) and why the delta variant was dropped; review-code step 2 carries the rule and says the user override applies to fix rounds; review-code's Depth-reason delta wording, 5e same-call note and Guidelines addition removed (file restored from `cc26455` plus the step-2 paragraph); address-findings next-step note now says the re-review keeps the whole diff's tier; ADR-0015 status pointer reworded; plan addendum rewritten to describe this rule and the dropped delta variant.
+- 57994db: CommonMark fence tracker in the plan-context block; 4 new tests plus an independent CommonMark fence-walking oracle (`footer_fence_state`) and a `write_straddling_plan` fixture helper, all registered.
+
+### Tests
+- `test_cross_model_review.sh`: 454 passed, 0 failed.
+- Against the previous tracker (old `cross_model_review.sh` swapped in temporarily, then restored): 446 passed, 8 failed — every one of the four new tests fails (2 assertions each); the already-closed `~~~` sub-case passes on both, as expected.
+- Pre-commit on both commits passed, including shellcheck and the full `run_script_tests.sh` suite; `test_skill_paths.sh` 51/51.
