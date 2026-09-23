@@ -699,3 +699,22 @@ Owner chose "Fix 3, then publish (Recommended)" at round 7: address the three ro
 - [x] `require_plan_parser` records a FAIL instead of a SKIP when `CI` is set (not empty/false/0); new test `test_require_plan_parser_fails_under_ci` covers CI=true, unset and false (the confirm-against-old-code run was not permitted in this session) — `.agent/scripts/tests/test_cross_model_review.sh:1461`
 
 Suite: `test_cross_model_review.sh` 594 passed, 0 failed (also 594/0 with CI=true); pre-commit hooks passed on all three commits.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 14:00 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a71ad0d031dc122c0, resume 2 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-320 at `cd3c027`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff against merge-base d149cc7, work-plans excluded: 1728 lines, 9 files — 200+ lines; override triggers: review-code + address-findings SKILL.md, knowledge doc, ADR-0015, AGENTS.md, requirements.txt)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 8 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+All three round-7 suggestions verified fixed: the heading lookup shares the unclosed-fence token walk (new test covers a fence left open before the Approach); no-library is exit 4, and a missing extractor (python's exit 2) reads as an extractor error with its own test; the CI guard fails under a truthy `CI`. Guard checked against the old one: with `CI=true` and python3 unable to import markdown-it, the round-8 test file reports 22 failures (rc=1) while the 833ecd9 file passes with 21 silent skips (rc=0). Full suite 27/27 locally; pre-commit clean; CI green at cd3c027.
+Reviewers: fresh Claude adversarial sub-agent ran (no issues found; probed re-parse offsets, CRLF/CR, tabs, lists/blockquotes, exit-code collisions, set -euo pipefail loop, CI truthiness; suite 594/594). codex ran (complete, no issues found, reports running the suite 594/0 — brief). gemini ran first time (complete, 2 suggestions — duplicate interpreter path and exact `Approach` heading text — both dropped again as cosmetic / the plan's design, as in round 7).
+
+### Findings
+- [ ] No issues found. LGTM.
