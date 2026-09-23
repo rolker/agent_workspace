@@ -66,3 +66,22 @@ One piece of context this review was given is inaccurate against current code: t
 **Decision**: proceed
 
 Owner chose "Prompt change (Recommended)" for the Gemini fix: give Gemini the diff and plan inline with no file tools (a "do not simulate tools; name missing context" instruction), a concise-output instruction, and treat an output-token cutoff as a clear failure; no change to machine config (no agy read_file allow rule). The three review actions stand: separate commits for the Gemini fix and the claude-arm .errors fix; the plan states this chosen option; keep the old .error mock cases and add live-captured .errors shapes.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-23 14:46 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-336/plan.md` at `a122288`
+
+Two separable fixes on this branch: (1) Gemini prompt change — no file-reading
+instruction, an explicit "no file tools, do not simulate, name missing
+context" instruction plus a concise-output instruction, and a precise
+output-token-cutoff reason in `_agy_review.sh` — matching the owner's
+checkpoint decision; no read_file permission allow-rule. (2) claude arm of
+`_cli_review.sh` parses its JSON result before failing on exit status and
+prefers `.errors` (array) over `.error`, using three live-captured claude
+2.1.281 failure shapes (bad `--model` 404, `--max-turns`, `--max-budget-usd`)
+captured in this session, all of which exit 1 with the real reason only in
+the JSON body. Tests add matching mock cases for both fixes while keeping
+existing `.error`-shape coverage. Acceptance includes one live
+`cross_model_review.sh --branch --agents gemini` run on a Deep-sized diff.
