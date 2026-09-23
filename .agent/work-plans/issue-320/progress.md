@@ -375,3 +375,36 @@ later reader sees them as decisions rather than incidental code.
 **Decision**: address
 
 Owner, 2026-09-23: "yes, update 320 with same codex/gemini rules". Scope addition before publish (recorded on the issue): a fix-round re-review classifies the fix round's own delta (changes since the last reviewed SHA) with the same tier table as a first review, so a Standard-sized delta dispatches the cross-model reviewers (Gemini via agy, Codex) exactly as a first review does; the reviewer may raise the tier, never lower it; a Light delta stays Light. #313 has merged and origin/main is merged into this branch (8b55f02).
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 10:55 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-320 at `31704ec`
+**Addressed**: Checkpoint (After: publish, Decision: address) at `cc26455` (2026-09-23 10:43 -04:00); latest review entry Local Review (Pre-Push) at `ef59ceb` had no open findings (its unchecked LGTM placeholder left as written)
+**Commits**: bc16a62, 31704ec
+
+Owner scope addition: a fix-round re-review is classified on the fix
+round's own delta with the same tier table as a first review, so a
+Standard/Deep delta dispatches Gemini/Codex (and every other available
+non-caller agent) exactly as a first review does.
+
+### Decisions
+- **Last reviewed SHA**: the `**Addressed**` SHA of the newest `## Implementation`; else the correlation SHA of the newest `## Local Review` / `## Local Review (Pre-Push)` / `## Integrated Review`.
+- **Delta measurement**: `git log --first-parent --no-merges --numstat --format= <last>..HEAD -- . ':(exclude).agent/work-plans/**'` — a base merge during the fix round is not counted; per-commit summing can only over-count (errs toward a higher tier); work-plans bookkeeping excluded because every fix round writes its own Implementation entry, and the same path is excluded from the cross-model diff. The exclusion applies to the delta only; first-review classification is unchanged.
+- **Cross-model diff**: unchanged — the same `--pr <N>` / `--branch [<base>]` call as a first review, so agents read the whole PR/branch diff with the fixes in context. `cross_model_review.sh` has no delta mode and `gh pr diff` has no range; `--branch <last-sha>` would pull in base merges and has no PR-mode equivalent. The delta decides whether cross-model runs, not what it reads.
+- **Recording**: the `**Depth**` reason names the delta (`fix-round delta <last>..<head>: N lines, F files`, plus triggers or "raised by reviewer: <why>").
+- **Prose-only**: no script computes tiers (grep of `.agent/scripts` and hooks), so no script change or new test; the rule lives in the knowledge doc and the skill.
+- Sanity check of the command on this branch: round 2's delta (`f26ca59..ef59ceb`) measures 221 lines / 2 files — Deep; `ef59ceb..HEAD` (a merge of main plus progress entries) measures empty, as intended.
+
+### Actions
+- [x] New *Fix-Round Re-Reviews* section — `.agent/knowledge/review_depth_classification.md`
+- [x] Step 2 fix-round rule, 5e same-call note, `**Depth**` reason in the entry template, tier summary and Guidelines — `.claude/skills/review-code/SKILL.md`
+- [x] Next-step note that the re-review tier follows the delta — `.claude/skills/address-findings/SKILL.md`
+- [x] Status-line pointer extended — `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md`
+- [x] Plan addendum naming the scope addition — `.agent/work-plans/issue-320/plan.md`
+
+### Tests
+- Pre-commit on bc16a62 passed, including the full `run_script_tests.sh` (all suites). A first attempt failed `test_skill_paths.sh` on a literal `.agent/work-plans/**` in review-code SKILL.md (read as a workspace-relative path); reworded, suite then 51 passed / 0 failed.
+- No other text found saying the reviewer decides re-review depth (grepped review-code, run-issue, address-findings, triage-reviews, knowledge docs, ADRs, dispatch_phase.sh).
