@@ -954,7 +954,7 @@ The pre-push review was at `24eddc0`; `24eddc0..4d7bb94` touches neither `.agent
 
 ### Findings
 - [x] (suggestion, Local Review R2) `job_finished`'s /proc fallback reads process state with `awk '{print $3}'`, which lands on the wrong field when a process's comm contains a space; prefer the text after the last `)`. Still present at lines 755-757. Failure mode is bounded: a misread state reports the job running, so cleanup waits out `CLEANUP_REAP_TIMEOUT` and SIGKILLs — `.agent/scripts/cross_model_review.sh`
-- [ ] (suggestion, Local Review R2) two comments (lines 337 and 351) justify the guarded jq extraction by what would happen "under `set -e`", but the helper runs `set -uo pipefail` (line 86) with no `-e`; the guard is right, the stated mechanism is not (an unguarded jq failure would leave an empty value, not kill the helper) — `.agent/scripts/_cli_review.sh`
+- [x] (suggestion, Local Review R2) two comments (lines 337 and 351) justify the guarded jq extraction by what would happen "under `set -e`", but the helper runs `set -uo pipefail` (line 86) with no `-e`; the guard is right, the stated mechanism is not (an unguarded jq failure would leave an empty value, not kill the helper) — `.agent/scripts/_cli_review.sh`
 
 ### False positives
 - (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (review and failed check-run at `4d7bb94`) — not a review: it asserts nothing about the code, and the quota exhaustion is known (Sept 2026); excluded from sources and from the CI verdict.

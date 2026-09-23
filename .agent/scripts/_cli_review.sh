@@ -334,9 +334,11 @@ case "$AGENT" in
         fi
         # `jq -e .` alone accepts ANY truthy JSON value — a bare string,
         # a number, an array — and the field reads below then abort jq
-        # with "Cannot index string with string", which under `set -e`
-        # would end the helper with no reason written at all (#313 round
-        # 2, codex must-fix 1). Require an object before indexing it, and
+        # with "Cannot index string with string". This helper runs
+        # `set -uo pipefail` without `-e`, so an unguarded jq failure
+        # would not stop it: it would carry on with an empty value and
+        # misreport the result instead of recording why (#313 round 2,
+        # codex must-fix 1). Require an object before indexing it, and
         # keep every extraction inside a guarded block so a jq failure
         # still lands in fail().
         if ! jq -e 'type == "object"' "$STDOUT_FILE" >/dev/null 2>&1; then
@@ -347,8 +349,8 @@ case "$AGENT" in
         # `.result` is empty reports no cause at all.
         # One jq call per field (no @tsv: `.result` is multi-line review
         # text, which @tsv would escape into a single line), each one
-        # guarded so a jq failure lands in fail() instead of killing the
-        # helper silently under `set -e`.
+        # guarded so a jq failure lands in fail() instead of leaving the
+        # field empty (there is no `set -e` here to stop the helper).
         # `printf -v` rather than a command substitution: fail() exits,
         # and an exit inside $( ) would only end the subshell, leaving
         # the helper running with an empty value and no reason recorded.
