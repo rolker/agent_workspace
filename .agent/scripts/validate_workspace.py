@@ -6,8 +6,12 @@ Checks that:
 1. A project checkout is configured — legacy project/ symlink and/or
    registry entries in .agent/projects.local (issue #227); both shapes
    may coexist during migration
-2. Configured checkouts are valid git repos (legacy project/ additionally
-   needs a remote)
+2. Configured checkouts have the shape their project type expects: the
+   legacy project/ is a git repo with a remote; each registry entry's
+   checkout is checked by its own type's adapter (`adapter --project <name>
+   validate` — a .git at the root for single_project, the manifest's layers
+   and repos for ros2_colcon). When the registry has parse errors, entries
+   are only checked for a present hosting dir.
 3. Registry entries are well-formed and name project types that have
    adapters (ADR-0011)
 4. .venv shebangs match the current workspace path
@@ -49,6 +53,35 @@ def get_git_branch(repo_path):
         return branch if branch else None
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
+
+
+def delegate_shape_check(workspace_root, name):
+    """Run `adapter --project <name> validate`; return issue lines (empty = OK).
+
+    Both output streams are captured: the adapter's pass line must not print
+    inline in the one-line-per-project report, and every failure line is
+    reported prefixed with the project's name (not raw adapter stderr).
+    """
+    adapter = workspace_root / ".agent" / "scripts" / "adapter"
+    try:
+        result = subprocess.run(
+            [str(adapter), "--project", name, "validate"],
+            cwd=str(workspace_root),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return [f"project '{name}': cannot run the adapter's validate verb: {exc}"]
+    if result.returncode == 0:
+        return []
+    lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+    if not lines:
+        return [
+            f"project '{name}': checkout shape check failed "
+            f"(adapter validate exited {result.returncode})"
+        ]
+    return [f"project '{name}': {line}" for line in lines]
 
 
 def validate_workspace(verbose=False):
@@ -123,9 +156,21 @@ def validate_workspace(verbose=False):
         if not path.exists():
             issues.append(f"project '{name}': hosting dir does not exist: {path}")
             issues.append("  Clone the project there or fix .agent/projects.local")
-        elif not (path / ".git").exists() and not (path.resolve() / ".git").exists():
-            issues.append(f"project '{name}': {path} is not a git repository")
-        elif verbose:
+            continue
+        # The checkout's shape is the type's business (ADR-0011, issue #330):
+        # delegate to `adapter --project <name> validate` rather than
+        # hard-coding one type's shape (a .git at the root) for every entry.
+        # Skip delegation when the registry has parse errors: the dispatcher
+        # refuses every lookup then, which would blame healthy projects for
+        # an unrelated line — the parse error is already reported once above.
+        if not adapter_file.is_file():
+            continue  # unknown type, already reported: no adapter to call
+        if not registry_errors:
+            shape_issues = delegate_shape_check(workspace_root, name)
+            if shape_issues:
+                issues.extend(shape_issues)
+                continue
+        if verbose:
             print(f"  project '{name}' ({ptype}): {path} OK")
 
     # Check venv shebangs for stale paths (workspace was renamed/moved)
