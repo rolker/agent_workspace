@@ -470,6 +470,20 @@ test_validate_parse_error_does_not_blame_healthy_entry() {
     assert_not_contains "healthy entry not blamed" "project 'alpha'" "$out"
 }
 
+test_validate_parse_error_verbose_says_shape_not_checked() {
+    echo "TEST: under registry parse errors the verbose line says the shape was not checked"
+    local sb out rc=0
+    sb="$(make_validate_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    echo "broken single_project extra junk" >> "$sb/.agent/projects.local"
+    out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "says only the hosting dir was checked" \
+        "project 'alpha' (single_project): $sb/projects/alpha hosting dir present; shape not checked (registry has parse errors)" "$out"
+    assert_not_contains "no bare OK for an unchecked shape" \
+        "project 'alpha' (single_project): $sb/projects/alpha OK" "$out"
+}
+
 test_validate_nested_non_git_entry_fails() {
     echo "TEST: validate fails a registered non-git dir nested inside another repo"
     local sb out rc=0
@@ -1360,6 +1374,7 @@ test_validate_neither_shape
 test_validate_ros2_colcon_entry_without_git_passes
 test_validate_ros2_colcon_failure_prefixes_every_line
 test_validate_parse_error_does_not_blame_healthy_entry
+test_validate_parse_error_verbose_says_shape_not_checked
 test_validate_nested_non_git_entry_fails
 test_single_project_scoped_validate_ignores_broken_sibling
 test_single_project_scoped_validate_nested_dir_fails

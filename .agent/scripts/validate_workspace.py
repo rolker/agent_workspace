@@ -171,7 +171,15 @@ def validate_workspace(verbose=False):
                 issues.extend(shape_issues)
                 continue
         if verbose:
-            print(f"  project '{name}' ({ptype}): {path} OK")
+            if registry_errors:
+                # Only the hosting dir's presence was checked: say so rather
+                # than a bare OK that reads as "shape verified".
+                print(
+                    f"  project '{name}' ({ptype}): {path} hosting dir present; "
+                    "shape not checked (registry has parse errors)"
+                )
+            else:
+                print(f"  project '{name}' ({ptype}): {path} OK")
 
     # Check venv shebangs for stale paths (workspace was renamed/moved)
     venv_pip = workspace_root / ".venv" / "bin" / "pip"
