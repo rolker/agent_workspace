@@ -231,3 +231,23 @@ Plan at `c77cd67` plus the five round-2 checkpoint instructions, in four commits
 Verified: `run_script_tests.sh` 29/29 suites green; old-path grep sweep leaves only the intended categories (project-scope dual spellings, old-spelling checks/fixtures, template example, inspiration-tracker:161); `git ls-files docs/ROADMAP.md docs/PRINCIPLES.md ARCHITECTURE.md` empty; validate.yml required-files logic passes locally; `discover_governance.sh` reports `docs/design.md` and `docs/principles.md` for the workspace. `docs/roadmap.md:340` checked and left as written. Main has not moved since the last merge.
 
 Deviations: the same-file guard in both discovery scripts and `test_update_roadmap.sh` are additions beyond the plan (the macOS case-only rename would otherwise double-report `docs/PRINCIPLES.md`/`docs/principles.md` and double-visit the roadmap).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 14:12 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-334 at `247682a`
+**Base**: main
+**Depth**: Deep (reason: 29 files / +348 -51 outside work-plans; CI workflow + AGENTS.md/CLAUDE.md + skills are override triggers)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Verified: `git show -M c1a32d3` = three renames at 100% similarity, 0 insertions/0 deletions; old-path grep (excluding ADRs, inspiration digests, other issues' work plans) leaves only project-scope dual spellings, old-spelling checks/fixtures, the template example, inspiration-tracker:161 and roadmap.md:340; no relative links inside docs/design.md; `git ls-files docs/ROADMAP.md docs/PRINCIPLES.md ARCHITECTURE.md` empty; main merged, origin/main 0 ahead; validate.yml required-files loop passes locally; test_discover_governance / test_update_roadmap / test_merge_pr_gate green; pre-commit (shellcheck, yamllint, script-test suite) clean on all changed files. Cross-model: codex complete (1 finding, below); gemini failed (headless ViewFile auto-denied, empty response). Claude adversarial: no findings.
+
+Deviations: (a) `-ef` same-file guard — accepted (cheap, correct, tested on Linux; see must-fix for its tests); (b) extra `test_update_roadmap.sh` — accepted (plan had no coverage for the new roadmap candidate or the guard); (c) middle commit split in two — accepted (scripts/tests/CI vs reference sweep are separate logical changes; atomic-commit rule); (d) brainstorm/SKILL.md:37 at 114 chars — accepted (no markdown line-length lint; the file already has 117- and 139-char lines).
+
+### Findings
+- [ ] (must-fix) New same-file tests break on the case-insensitive filesystems they target: `ln -s` onto an existing name aborts under `set -e`, and lowercase-path assertions (A2, C2, the docs/roadmap.md loop case) see the uppercase spelling checked first; detect case-insensitivity and adapt fixtures/assertions (also decide which spelling discovery reports there) — `.agent/scripts/tests/test_discover_governance.sh:104`, `.agent/scripts/tests/test_update_roadmap.sh:45`
+- [ ] (suggestion) Generic "ROADMAP.md" mentions that now describe the workspace's docs/roadmap.md missed the sweep (the verify grep only matched `docs/ROADMAP.md`) — `.claude/skills/what-next/SKILL.md:3,21`, `.claude/skills/inspiration-tracker/SKILL.md:228,341`
