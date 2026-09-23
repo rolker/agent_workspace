@@ -239,3 +239,19 @@ Dropped: CDPATH stdout on `cd` in single_project adapter_validate (root is alway
 **Decision**: address
 
 Fix all 3 first (Recommended): address the three round-1 suggestions before publishing — (1) under registry parse errors the verbose line must say only hosting-dir presence was checked, not a bare OK (validate_workspace.py:173); (2) bound delegate_shape_check with a timeout and report "adapter validate timed out" on TimeoutExpired (validate_workspace.py:67); (3) on non-zero exit with empty stderr, fall back to the adapter's stdout lines (prefixed) before the generic "exited N" message (validate_workspace.py:78). Main (#327 merged) is merged into the branch first so the next review covers what ships.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 11:00 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+
+**Branch**: feature/issue-330 at `c8b7696`
+**Addressed**: Local Review (Pre-Push) at `d58c7da` (2026-09-23 10:45 -04:00)
+**Commits**: e0db53d, 34781c3, c8b7696
+
+### Actions
+- [x] Under registry parse errors the verbose line now says "hosting dir present; shape not checked (registry has parse errors)" instead of a bare OK; test `test_validate_parse_error_verbose_says_shape_not_checked` — `.agent/scripts/validate_workspace.py:173`
+- [x] `delegate_shape_check` bounded at 60 s (`WS_ADAPTER_VALIDATE_TIMEOUT` overrides); adapter runs in its own session and the whole process group is SIGKILLed on timeout so a child holding the pipes cannot keep the read blocked; reports "adapter validate timed out after Ns"; test `test_validate_adapter_timeout` (stub adapter sleeping 30 s, 1 s timeout, asserts prompt return) — `.agent/scripts/validate_workspace.py:67`
+- [x] Non-zero exit with empty stderr falls back to the adapter's stdout lines (name-prefixed) before the generic "exited N" line; test `test_validate_adapter_failure_stdout_fallback` covers both the stdout and the no-output cases — `.agent/scripts/validate_workspace.py:78`
+
+Full script suite (`run_script_tests.sh`): all 27 suites passed.
