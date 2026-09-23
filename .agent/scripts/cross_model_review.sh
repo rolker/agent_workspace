@@ -732,21 +732,13 @@ else
     TARGET_LABEL="PR #${PR_NUMBER} (issue #${ISSUE_NUMBER})"
 fi
 
-# --- Write the shared prompt ---
-# The header, metadata, diff and output-format footer are identical for
-# every agent, so they are built once into a temp file and copied into
-# each agent's prompt file; only the per-agent tool-use footer differs.
-# Use a quoted heredoc for the static header to prevent shell expansion,
-# then stream the diff directly from gh/git to avoid storing it in a
-# variable (which could hit shell limits for large Deep-tier PRs).
-SHARED_PROMPT=$(mktemp -t "cross-model-review-prompt.XXXXXX")
-
-# Scratch root handed to the agent jobs as their TMPDIR. _agy_review.sh
-# makes its own `mktemp -d` under it and removes it on every exit path it
-# can trap — but `timeout -k` finishes a wedged helper with SIGKILL, which
-# no trap survives. Owning the parent directory here means that one
-# untrappable path still gets cleaned up, by this script's EXIT trap.
-AGENT_TMP_ROOT=$(mktemp -d -t "cross-model-review-tmp.XXXXXX")
+# Temp paths owned by cleanup_jobs. Declared empty here, and only filled
+# in AFTER the EXIT/INT/TERM/HUP traps below are registered: a failure or
+# signal between a `mktemp` and the trap would otherwise leak the file.
+# cleanup_jobs skips whichever of them is still empty.
+SHARED_PROMPT=""
+SHARED_DIFF=""
+AGENT_TMP_ROOT=""
 
 # Cleanup on every exit path: stop any agent job still running (each
 # job's own TERM trap forwards to its CLI), then drop the temp prompt.
@@ -823,12 +815,35 @@ cleanup_jobs() {
             kill -9 "$pid" 2>/dev/null || true
         fi
     done
-    rm -f "$SHARED_PROMPT"
-    rm -rf "$AGENT_TMP_ROOT"
+    # Any of these may still be empty: an early exit or signal can land
+    # before (or between) the mktemp calls below, and `rm ""` is an error.
+    [[ -z "$SHARED_PROMPT" ]] || rm -f "$SHARED_PROMPT"
+    [[ -z "$SHARED_DIFF" ]] || rm -f "$SHARED_DIFF"
+    [[ -z "$AGENT_TMP_ROOT" ]] || rm -rf "$AGENT_TMP_ROOT"
 }
 trap cleanup_jobs EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
+
+# --- Write the shared prompt ---
+# The header, metadata, diff and output-format footer are identical for
+# every agent, so they are built once into a temp file and copied into
+# each agent's prompt file; only the per-agent tool-use footer differs.
+# Use a quoted heredoc for the static header to prevent shell expansion,
+# then stream the diff from gh/git into a staging file (never a variable,
+# which could hit shell limits for large Deep-tier PRs) before fencing it
+# into the prompt.
+SHARED_PROMPT=$(mktemp -t "cross-model-review-prompt.XXXXXX")
+# The diff is staged here before it is fenced into the prompt: its outer
+# fence length depends on the longest backtick run in it (outer_fence_for).
+SHARED_DIFF=$(mktemp -t "cross-model-review-diff.XXXXXX")
+
+# Scratch root handed to the agent jobs as their TMPDIR. _agy_review.sh
+# makes its own `mktemp -d` under it and removes it on every exit path it
+# can trap — but `timeout -k` finishes a wedged helper with SIGKILL, which
+# no trap survives. Owning the parent directory here means that one
+# untrappable path still gets cleaned up, by this script's EXIT trap.
+AGENT_TMP_ROOT=$(mktemp -d -t "cross-model-review-tmp.XXXXXX")
 
 cat > "$SHARED_PROMPT" << 'PROMPT_HEADER'
 # Adversarial Code Review
@@ -880,35 +895,61 @@ filter_work_plans_diff() {
     '
 }
 
-# Stream diff into the shared prompt through the work-plans filter.
-# Branch mode uses local `git diff <base>...HEAD`; PR mode uses `gh pr
-# diff <N>`. The pipeline sits inside `if !` so `set -e` does not abort
-# the script before the error branch runs; with `pipefail` the pipeline's
-# status is the last non-zero stage's (bash's rule), so any failing stage
-# still makes the whole pipeline fail — a failed gh/git call is not masked
-# by the filter succeeding on empty input, and a filter dying mid-stream
-# cannot leave a truncated diff looking complete.
-printf '## Diff\n\n```diff\n' >> "$SHARED_PROMPT"
-DIFF_START_LINE=$(wc -l < "$SHARED_PROMPT")
+# Print the backtick fence that safely wraps the text on stdin: one
+# backtick longer than the longest backtick run anywhere in it, minimum 3
+# (#320). Under CommonMark nothing inside a fence that long can close it,
+# and its own closer — printed at column 0, with no trailing CR — always
+# does, whatever the content holds: fences with info strings or longer
+# markers, fences in list items, indented code, tildes, CRLF line endings,
+# or a fence cut in half. Used for every block of embedded content in the
+# prompt (the diff, the plan context); never write a fixed ``` around
+# content this script does not control.
+outer_fence_for() {
+    awk '
+        {
+            line = $0
+            while (match(line, /`+/)) {
+                if (RLENGTH > max) max = RLENGTH
+                line = substr(line, RSTART + RLENGTH)
+            }
+        }
+        END {
+            n = (max >= 3) ? max + 1 : 3
+            s = ""
+            for (i = 0; i < n; i++) s = s "`"
+            print s
+        }
+    '
+}
+
+# Stage the diff through the work-plans filter, then fence it into the
+# shared prompt. Branch mode uses local `git diff <base>...HEAD`; PR mode
+# uses `gh pr diff <N>`. The pipeline sits inside `if !` so `set -e` does
+# not abort the script before the error branch runs; with `pipefail` the
+# pipeline's status is the last non-zero stage's (bash's rule), so any
+# failing stage still makes the whole pipeline fail — a failed gh/git call
+# is not masked by the filter succeeding on empty input, and a filter
+# dying mid-stream cannot leave a truncated diff looking complete. The
+# diff goes to a file rather than a variable (shell limits on large
+# Deep-tier PRs) and is read once more for its fence length.
 if [[ "$BRANCH_MODE" == true ]]; then
     # Explicit a/ b/ prefixes so a diff.noprefix / diff.mnemonicPrefix
     # config cannot defeat the work-plans filter.
-    if ! git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff >> "$SHARED_PROMPT"; then
+    if ! git diff --src-prefix=a/ --dst-prefix=b/ "${BASE_REF}...HEAD" 2>/dev/null | filter_work_plans_diff > "$SHARED_DIFF"; then
         echo "ERROR: Could not produce diff for ${BRANCH_NAME} against ${BASE_REF}" >&2
         abort_all_agents '--- Review error: failed to produce branch diff ---'
     fi
 else
-    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff >> "$SHARED_PROMPT"; then
+    if ! gh pr diff "$PR_NUMBER" "${GH_REPO_ARGS[@]}" 2>/dev/null | filter_work_plans_diff > "$SHARED_DIFF"; then
         echo "ERROR: Could not retrieve diff for PR #${PR_NUMBER}" >&2
         abort_all_agents '--- Review error: failed to retrieve diff ---'
     fi
 fi
-DIFF_END_LINE=$(wc -l < "$SHARED_PROMPT")
 
 # Guard: if diff is empty (before or after the work-plans filter), abort
 # with a clear error instead of launching agents with no content to
 # review.
-if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
+if [[ "$(wc -l < "$SHARED_DIFF")" -eq 0 ]]; then
     if [[ "$BRANCH_MODE" == true ]]; then
         echo "ERROR: branch '${BRANCH_NAME}' has no reviewable changes against '${BASE_REF}' — nothing to review" >&2
         echo "  Either the branch is up-to-date with the base, the base ref is wrong," >&2
@@ -922,7 +963,127 @@ if [[ "$DIFF_END_LINE" -le "$DIFF_START_LINE" ]]; then
         abort_all_agents '--- Review error: diff was empty (PR not found, no changes, or only .agent/work-plans/ changed) ---'
     fi
 fi
-printf '```\n\n' >> "$SHARED_PROMPT"
+DIFF_FENCE=$(outer_fence_for < "$SHARED_DIFF")
+{
+    printf '## Diff\n\n%sdiff\n' "$DIFF_FENCE"
+    cat "$SHARED_DIFF"
+    # A diff whose last line lacks a newline ("\ No newline at end of
+    # file" covers the file contents, not the stream) must not glue the
+    # closer onto it.
+    [[ -z "$(tail -c 1 "$SHARED_DIFF")" ]] || printf '\n'
+    printf '%s\n\n' "$DIFF_FENCE"
+} >> "$SHARED_PROMPT"
+rm -f "$SHARED_DIFF"
+
+# --- Plan context (#320) ---
+# The diff still excludes `.agent/work-plans/**` (#312), but a reviewer
+# that never sees the plan cannot flag divergence from it. The plan's
+# `## Approach` section — and only that section — is re-admitted here as
+# labelled context outside the diff fence, capped so it cannot reintroduce
+# the prompt bloat #312 removed. Built once, into the shared prompt, so
+# every agent copy carries it.
+#
+# The section is omitted entirely — never a fallback to the whole plan,
+# never an empty heading — when the plan file is absent, carries no
+# `## Approach`, or that section is blank. Also omitted under
+# --no-progress: that mode has no issue bookkeeping to draw on (its
+# artifact dir is a fresh mktemp -d, so a plan.md can only exist in the
+# --no-progress + --work-plans-dir combination, where this guard is what
+# keeps the mode's promise).
+PLAN_CONTEXT_MAX_LINES=200
+PLAN_CONTEXT_FILE="${WORK_PLANS_DIR}/plan.md"
+if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
+    # The section is located by _plan_approach.py, a CommonMark parser
+    # (markdown-it-py) rather than a line scanner: it starts after the first
+    # top-level `## Approach` heading (never one inside a fenced example)
+    # and ends at the next H1/H2 heading — ATX, indented ATX or setext — or
+    # thematic break; a fence that never closes is cut at the first
+    # boundary after its opener instead of running to EOF. The script's
+    # docstring has the rules and the exit codes.
+    #
+    # Interpreter: the workspace .venv's python3 first (that is where
+    # requirements.txt installs markdown-it-py, ADR-0009), then python3 on
+    # PATH. The venv belongs to the main checkout, never a worktree (#272),
+    # so it is found through git's common dir, as the Makefile does. An
+    # interpreter that lacks the library (exit 4) passes to the next one.
+    # Any other code, including python's own 2 for a missing or unreadable
+    # _plan_approach.py, is an extractor error.
+    # If none can import it, or the extractor fails, the review still runs:
+    # one warning, and the Plan Context block is omitted as if there were
+    # no plan.
+    PLAN_APPROACH=""
+    PLAN_APPROACH_RC=4
+    PLAN_APPROACH_ERR="${AGENT_TMP_ROOT}/plan-approach.err"
+    PLAN_APPROACH_PYTHONS=()
+    PLAN_APPROACH_COMMON=$(git -C "$SCRIPT_SELF_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+    if [[ -n "$PLAN_APPROACH_COMMON" && -x "${PLAN_APPROACH_COMMON%/.git}/.venv/bin/python3" ]]; then
+        PLAN_APPROACH_PYTHONS+=("${PLAN_APPROACH_COMMON%/.git}/.venv/bin/python3")
+    fi
+    if command -v python3 > /dev/null 2>&1; then
+        PLAN_APPROACH_PYTHONS+=("$(command -v python3)")
+    fi
+    for plan_python in "${PLAN_APPROACH_PYTHONS[@]}"; do
+        PLAN_APPROACH_RC=0
+        PLAN_APPROACH=$("$plan_python" "${SCRIPT_SELF_DIR}/_plan_approach.py" \
+            "$PLAN_CONTEXT_FILE" 2> "$PLAN_APPROACH_ERR") || PLAN_APPROACH_RC=$?
+        (( PLAN_APPROACH_RC == 4 )) || break
+    done
+    case "$PLAN_APPROACH_RC" in
+        0) ;;
+        1) PLAN_APPROACH="" ;;
+        4)
+            PLAN_APPROACH=""
+            if (( ${#PLAN_APPROACH_PYTHONS[@]} == 0 )); then
+                echo "WARNING: plan context omitted: no python3 found to run _plan_approach.py" >&2
+            else
+                echo "WARNING: plan context omitted: markdown-it-py is not importable by ${PLAN_APPROACH_PYTHONS[*]} (run 'make setup' to install requirements.txt into the workspace .venv)" >&2
+            fi
+            ;;
+        *)
+            PLAN_APPROACH=""
+            echo "WARNING: plan context omitted: _plan_approach.py failed (exit ${PLAN_APPROACH_RC}): $(head -n 1 "$PLAN_APPROACH_ERR" 2>/dev/null)" >&2
+            ;;
+    esac
+    rm -f "$PLAN_APPROACH_ERR"
+
+    # Whitespace-only counts as empty.
+    if [[ -n "${PLAN_APPROACH//[[:space:]]/}" ]]; then
+        # Here-strings, never `printf ... | head`: under `set -o pipefail`
+        # head exits as soon as it has its lines, printf takes SIGPIPE on
+        # an Approach larger than the pipe buffer, and the whole script
+        # dies with 141 before a single agent is dispatched.
+        PLAN_APPROACH_LINES=$(wc -l <<< "$PLAN_APPROACH")
+        if (( PLAN_APPROACH_LINES > PLAN_CONTEXT_MAX_LINES )); then
+            PLAN_CONTEXT_BODY=$(head -n "$PLAN_CONTEXT_MAX_LINES" <<< "$PLAN_APPROACH")
+            PLAN_CONTEXT_TRUNCATED=$(( PLAN_APPROACH_LINES - PLAN_CONTEXT_MAX_LINES ))
+        else
+            PLAN_CONTEXT_BODY="$PLAN_APPROACH"
+            PLAN_CONTEXT_TRUNCATED=0
+        fi
+
+        # Wrap the excerpt in ONE outer fence (outer_fence_for): nothing in
+        # the plan can close it early and its closer always ends it, so the
+        # footer below can never be swallowed. The heading and the framing
+        # text stay outside the fence; the truncation marker follows the
+        # closer.
+        PLAN_CONTEXT_FENCE=$(outer_fence_for <<< "$PLAN_CONTEXT_BODY")
+
+        {
+            printf '## Plan Context\n\n'
+            printf 'Below is the `## Approach` section of the plan this change is meant\n'
+            printf 'to implement. It is context, not the subject of the review: flag\n'
+            printf 'divergences between the diff and this plan, but do not review the\n'
+            printf 'plan itself.\n\n'
+            printf '%smarkdown\n' "$PLAN_CONTEXT_FENCE"
+            printf '%s\n' "$PLAN_CONTEXT_BODY"
+            printf '%s\n' "$PLAN_CONTEXT_FENCE"
+            if (( PLAN_CONTEXT_TRUNCATED > 0 )); then
+                printf '\n_[truncated: %d more lines]_\n' "$PLAN_CONTEXT_TRUNCATED"
+            fi
+            printf '\n'
+        } >> "$SHARED_PROMPT"
+    fi
+fi
 
 # Append output format instructions (quoted heredoc, no expansion)
 cat >> "$SHARED_PROMPT" << 'PROMPT_FOOTER'
@@ -962,7 +1123,9 @@ for agent in "${AGENTS_TO_RUN[@]}"; do
 
 The diff above is the complete set of code changes under review; files
 under `.agent/work-plans/` (plan and progress bookkeeping) are deliberately
-excluded. You may read files in the repository for surrounding context.
+excluded **from the diff**. Where a `## Plan Context` section appears above,
+it is the plan's Approach quoted as context only — not part of the change
+under review. You may read files in the repository for surrounding context.
 Do NOT run shell commands: this is a headless session,
 command execution is denied without a prompt, and a denied command can end
 the review with no output.
