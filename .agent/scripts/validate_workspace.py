@@ -6,8 +6,12 @@ Checks that:
 1. A project checkout is configured — legacy project/ symlink and/or
    registry entries in .agent/projects.local (issue #227); both shapes
    may coexist during migration
-2. Configured checkouts are valid git repos (legacy project/ additionally
-   needs a remote)
+2. Configured checkouts have the shape their project type expects: the
+   legacy project/ is a git repo with a remote; each registry entry's
+   checkout is checked by its own type's adapter (`adapter --project <name>
+   validate` — a .git at the root for single_project, the manifest's layers
+   and repos for ros2_colcon). When the registry has parse errors, entries
+   are only checked for a present hosting dir.
 3. Registry entries are well-formed and name project types that have
    adapters (ADR-0011)
 4. .venv shebangs match the current workspace path
@@ -18,6 +22,7 @@ Usage:
 """
 
 import os
+import signal
 import sys
 import subprocess
 import argparse
@@ -49,6 +54,95 @@ def get_git_branch(repo_path):
         return branch if branch else None
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
+
+
+# Bound on one project's `adapter validate`. The verb is local filesystem
+# checks (single_project: one `git rev-parse`; ros2_colcon: a manifest walk
+# with a stat per pinned repo) that finish in well under a second, so 60 s
+# leaves ample room for a cold or network filesystem while still stopping a
+# hung adapter from hanging `make validate`. Overridable for tests.
+ADAPTER_VALIDATE_TIMEOUT_ENV = "WS_ADAPTER_VALIDATE_TIMEOUT"
+ADAPTER_VALIDATE_TIMEOUT_DEFAULT = 60.0
+
+
+def adapter_validate_timeout():
+    """Seconds allowed for one `adapter validate` run (env override, else 60)."""
+    raw = os.environ.get(ADAPTER_VALIDATE_TIMEOUT_ENV, "")
+    try:
+        value = float(raw)
+    except ValueError:
+        return ADAPTER_VALIDATE_TIMEOUT_DEFAULT
+    return value if value > 0 else ADAPTER_VALIDATE_TIMEOUT_DEFAULT
+
+
+def kill_process_group(proc):
+    """SIGKILL proc's whole process group (proc leads its own session).
+
+    Any OSError is ignored: the group may already be gone (ESRCH), and macOS
+    returns EPERM for a group whose members are all zombies.
+    """
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def delegate_shape_check(workspace_root, name):
+    """Run `adapter --project <name> validate`; return issue lines (empty = OK).
+
+    Both output streams are captured: the adapter's pass line must not print
+    inline in the one-line-per-project report, and every failure line is
+    reported prefixed with the project's name (not raw adapter stderr).
+
+    The run is bounded by adapter_validate_timeout(). The adapter runs in its
+    own session so a timeout kills the whole process group: killing only the
+    dispatcher would leave any child it spawned holding the output pipes open,
+    and collecting the output would then hang anyway. The group is also
+    killed when the wait is interrupted (Ctrl-C, SIGTERM), since its own
+    session never receives the terminal's signal.
+    """
+    adapter = workspace_root / ".agent" / "scripts" / "adapter"
+    timeout = adapter_validate_timeout()
+    try:
+        # pylint: disable-next=consider-using-with  # killpg needs the Popen
+        proc = subprocess.Popen(
+            [str(adapter), "--project", name, "validate"],
+            cwd=str(workspace_root),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return [f"project '{name}': cannot run the adapter's validate verb: {exc}"]
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        kill_process_group(proc)
+        proc.communicate()
+        return [f"project '{name}': adapter validate timed out after {timeout:g}s"]
+    except BaseException:
+        # Ctrl-C (KeyboardInterrupt) or SIGTERM (SystemExit, see main): the
+        # adapter's own session keeps it out of the terminal's foreground
+        # group, so the signal never reached it. Kill it before unwinding or
+        # it outlives validate as an orphan.
+        kill_process_group(proc)
+        proc.wait()
+        raise
+    result = subprocess.CompletedProcess(proc.args, proc.returncode, stdout, stderr)
+    if result.returncode == 0:
+        return []
+    lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+    if not lines:
+        # An adapter that reports its failure on stdout still names the
+        # problem; prefer its words over the generic exit-code line.
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not lines:
+        return [
+            f"project '{name}': checkout shape check failed "
+            f"(adapter validate exited {result.returncode})"
+        ]
+    return [f"project '{name}': {line}" for line in lines]
 
 
 def validate_workspace(verbose=False):
@@ -123,10 +217,30 @@ def validate_workspace(verbose=False):
         if not path.exists():
             issues.append(f"project '{name}': hosting dir does not exist: {path}")
             issues.append("  Clone the project there or fix .agent/projects.local")
-        elif not (path / ".git").exists() and not (path.resolve() / ".git").exists():
-            issues.append(f"project '{name}': {path} is not a git repository")
-        elif verbose:
-            print(f"  project '{name}' ({ptype}): {path} OK")
+            continue
+        # The checkout's shape is the type's business (ADR-0011, issue #330):
+        # delegate to `adapter --project <name> validate` rather than
+        # hard-coding one type's shape (a .git at the root) for every entry.
+        # Skip delegation when the registry has parse errors: the dispatcher
+        # refuses every lookup then, which would blame healthy projects for
+        # an unrelated line — the parse error is already reported once above.
+        if not adapter_file.is_file():
+            continue  # unknown type, already reported: no adapter to call
+        if not registry_errors:
+            shape_issues = delegate_shape_check(workspace_root, name)
+            if shape_issues:
+                issues.extend(shape_issues)
+                continue
+        if verbose:
+            if registry_errors:
+                # Only the hosting dir's presence was checked: say so rather
+                # than a bare OK that reads as "shape verified".
+                print(
+                    f"  project '{name}' ({ptype}): {path} hosting dir present; "
+                    "shape not checked (registry has parse errors)"
+                )
+            else:
+                print(f"  project '{name}' ({ptype}): {path} OK")
 
     # Check venv shebangs for stale paths (workspace was renamed/moved)
     venv_pip = workspace_root / ".venv" / "bin" / "pip"
@@ -220,6 +334,11 @@ def main():
     parser = argparse.ArgumentParser(description="Validate workspace configuration")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     args = parser.parse_args()
+
+    # Turn SIGTERM into SystemExit so cleanup runs: delegate_shape_check kills
+    # the adapter's process group on the way out (the default SIGTERM action
+    # would end this process at once and orphan the adapter).
+    signal.signal(signal.SIGTERM, lambda signum, _frame: sys.exit(128 + signum))
 
     is_valid = validate_workspace(args.verbose)
     sys.exit(0 if is_valid else 1)

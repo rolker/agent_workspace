@@ -97,7 +97,14 @@ project URL — no `configs/` directory is needed.
 
 `validate_workspace.py` understands both shapes: legacy `project/` (valid git
 repo with a remote) and registry entries (well-formed, known project type,
-checkout present).
+checkout present). Each registry entry's checkout shape is checked by its own
+type — the validator delegates to `adapter --project <name> validate` and
+reports every failure line prefixed `project '<name>':` — rather than by one
+hard-coded `.git` test for every type (a `ros2_colcon` hosting dir has no
+`.git` at its root). When `projects.local` has parse errors, delegation is
+skipped (the dispatcher refuses every lookup then) and entries are only checked
+for a present hosting dir. `make validate` runs this whole-workspace check;
+`adapter --project <name> validate` checks that one project only.
 
 Two project types exist: `single_project` (one repo at the hosting dir) and
 `ros2_colcon` (ordered colcon layers under `layers/main/<layer>_ws/`, driven

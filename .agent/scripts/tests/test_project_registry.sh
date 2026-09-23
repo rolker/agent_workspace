@@ -46,6 +46,19 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local label="$1" needle="$2" haystack="$3"
+    if [[ "$haystack" != *"$needle"* ]]; then
+        echo "  PASS: $label"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $label"
+        echo "    unexpected needle: ${needle}"
+        echo "    haystack:          ${haystack}"
+        FAIL=$((FAIL + 1))
+    fi
+}
+
 # ---- Sandbox helpers ----
 
 # One sandbox for the whole run, created at top level (not inside $()) so
@@ -370,6 +383,256 @@ test_validate_neither_shape() {
     out="$(run_validate "$sb")" || rc=$?
     assert_eq "exit 1" "1" "$rc"
     assert_contains "legacy guidance kept" "project/ directory does not exist" "$out"
+}
+
+# ---- Per-type checkout-shape delegation (issue #330) ----
+
+# Minimal real ros2_colcon checkout (no .git at its root): one layer "l1"
+# pinning the given repos, a declared distro so adapter_validate's distro
+# check passes, registered as <name>. Copies the ros2_colcon adapter into
+# the sandbox (make_sandbox copies only single_project). Repos are NOT
+# checked out — pass them to checkout_colcon_repos.
+# Usage: make_colcon_entry <sb> <name> <repo...>; echoes the hosting dir.
+make_colcon_entry() {
+    local sb="$1" name="$2"
+    shift 2
+    cp -r "$REAL_ROOT/.agent/project_types/ros2_colcon" "$sb/.agent/project_types/"
+    local proj="$sb/projects/$name"
+    local mdir="$proj/configs/manifest"
+    mkdir -p "$mdir/repos" "$proj/layers/main/l1_ws/src"
+    printf 'l1\n' > "$mdir/layers.txt"
+    printf 'git_url: file:///nonexistent/manifest.git\nbranch: fakefox\ndistro: fakefox\n' \
+        > "$mdir/bootstrap.yaml"
+    {
+        echo "repositories:"
+        local repo
+        for repo in "$@"; do
+            echo "  $repo:"
+            echo "    type: git"
+            echo "    url: file:///nonexistent/${repo}.git"
+            echo "    version: fakefox"
+        done
+    } > "$mdir/repos/l1.repos"
+    echo "$name ros2_colcon" >> "$sb/.agent/projects.local"
+    echo "$proj"
+}
+
+checkout_colcon_repos() {
+    local proj="$1"
+    shift
+    local repo
+    for repo in "$@"; do
+        mkdir -p "$proj/layers/main/l1_ws/src/$repo"
+    done
+}
+
+test_validate_ros2_colcon_entry_without_git_passes() {
+    echo "TEST: validate passes a healthy ros2_colcon entry with no .git at its root"
+    local sb out rc=0 proj
+    sb="$(make_validate_sandbox)"
+    proj="$(make_colcon_entry "$sb" rc pkg_a pkg_b)"
+    checkout_colcon_repos "$proj" pkg_a pkg_b
+    assert_eq "fixture root has no .git" "absent" "$([ -e "$proj/.git" ] && echo present || echo absent)"
+    out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "passes" "PASSED" "$out"
+    assert_contains "verbose OK line kept" "project 'rc' (ros2_colcon): $proj OK" "$out"
+    assert_not_contains "adapter pass line captured, not printed" "checkout matches the manifest" "$out"
+    assert_not_contains "no .git demanded" "not a git repository" "$out"
+}
+
+test_validate_ros2_colcon_failure_prefixes_every_line() {
+    echo "TEST: a failing ros2_colcon entry reports every adapter line, each prefixed with its name"
+    local sb out rc=0 unprefixed
+    sb="$(make_validate_sandbox)"
+    make_colcon_entry "$sb" rc pkg_a pkg_b >/dev/null
+    out="$(run_validate "$sb")" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "first missing repo" \
+        "project 'rc': ❌ layer 'l1': repo 'pkg_a' pinned in l1.repos but not checked out" "$out"
+    assert_contains "second missing repo (not just the first line)" \
+        "project 'rc': ❌ layer 'l1': repo 'pkg_b' pinned in l1.repos but not checked out" "$out"
+    assert_contains "summary line prefixed" "project 'rc': Validation failed: 2 issue(s)." "$out"
+    # No adapter line may appear without the project prefix.
+    unprefixed="$(grep -E "pinned in|Validation failed" <<< "$out" | grep -v "project 'rc': " || true)"
+    assert_eq "no raw adapter stderr" "" "$unprefixed"
+}
+
+test_validate_parse_error_does_not_blame_healthy_entry() {
+    echo "TEST: a malformed registry line does not get blamed on a healthy entry"
+    local sb out rc=0
+    sb="$(make_validate_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    echo "broken single_project extra junk" >> "$sb/.agent/projects.local"
+    out="$(run_validate "$sb")" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "parse error reported" "expected key=value, got 'junk'" "$out"
+    assert_not_contains "healthy entry not blamed" "project 'alpha'" "$out"
+}
+
+test_validate_parse_error_verbose_says_shape_not_checked() {
+    echo "TEST: under registry parse errors the verbose line says the shape was not checked"
+    local sb out rc=0
+    sb="$(make_validate_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    echo "broken single_project extra junk" >> "$sb/.agent/projects.local"
+    out="$(python3 "$sb/.agent/scripts/validate_workspace.py" --verbose 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "says only the hosting dir was checked" \
+        "project 'alpha' (single_project): $sb/projects/alpha hosting dir present; shape not checked (registry has parse errors)" "$out"
+    assert_not_contains "no bare OK for an unchecked shape" \
+        "project 'alpha' (single_project): $sb/projects/alpha OK" "$out"
+}
+
+# Register <name> under a stub project type whose adapter_validate body is
+# <validate_body>; every other verb is a no-op. Creates the hosting dir.
+# Usage: make_stub_type_entry <sb> <name> <validate_body>
+make_stub_type_entry() {
+    local sb="$1" name="$2" body="$3"
+    mkdir -p "$sb/.agent/project_types/stub_type" "$sb/projects/$name"
+    {
+        local verb
+        for verb in setup sync build test install env project_root repos \
+            scope_for_pr worktree_repos worktree_env; do
+            echo "adapter_${verb}() { :; }"
+        done
+        echo "adapter_validate() { $body; }"
+    } > "$sb/.agent/project_types/stub_type/adapter.sh"
+    echo "$name stub_type" >> "$sb/.agent/projects.local"
+}
+
+test_validate_adapter_timeout() {
+    echo "TEST: a hung adapter validate is killed and reported as timed out"
+    local sb out rc=0 start elapsed
+    sb="$(make_validate_sandbox)"
+    # A child process (sleep) holding the output pipes: killing only the
+    # dispatcher would still leave the output read blocked.
+    make_stub_type_entry "$sb" hang 'sleep 30'
+    start="$(date +%s)"
+    out="$(WS_ADAPTER_VALIDATE_TIMEOUT=1 run_validate "$sb")" || rc=$?
+    elapsed=$(( $(date +%s) - start ))
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "reports the timeout" "project 'hang': adapter validate timed out after 1s" "$out"
+    assert_eq "returns promptly (not after the 30 s sleep)" "yes" "$([ "$elapsed" -lt 10 ] && echo yes || echo "no (${elapsed}s)")"
+}
+
+# Interrupt validate_workspace.py with <signal> while it waits on a stub
+# adapter, then assert the adapter and its child are gone. The adapter runs
+# in its own session, so without the kill-on-exception wrapper both survive
+# as orphans. Python is launched with SIGINT restored to KeyboardInterrupt:
+# a background job of a non-interactive shell starts with SIGINT ignored.
+# Every recorded pid is SIGKILLed at the end so a failure leaves no stray.
+_validate_interrupt_case() {
+    local sig="$1" sb pidfile vpid rc=0 pid alive=""
+    sb="$(make_validate_sandbox)"
+    pidfile="$sb/adapter.pids"
+    make_stub_type_entry "$sb" hang "sleep 30 & echo \"\$\$ \$!\" > '$pidfile'; wait"
+    python3 -c 'import runpy, signal, sys
+signal.signal(signal.SIGINT, signal.default_int_handler)
+sys.argv = [sys.argv[1]]
+runpy.run_path(sys.argv[0], run_name="__main__")' \
+        "$sb/.agent/scripts/validate_workspace.py" >/dev/null 2>&1 &
+    vpid=$!
+    for _ in $(seq 1 100); do
+        [ -s "$pidfile" ] && break
+        sleep 0.1
+    done
+    assert_eq "$sig: adapter started" "yes" "$([ -s "$pidfile" ] && echo yes || echo no)"
+    kill "-$sig" "$vpid" 2>/dev/null || true
+    wait "$vpid" || rc=$?
+    assert_eq "$sig: validate exits non-zero" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo "no (rc=$rc)")"
+    # Give init a moment to reap the killed (reparented) processes.
+    for _ in $(seq 1 30); do
+        alive=""
+        for pid in $(cat "$pidfile" 2>/dev/null); do
+            kill -0 "$pid" 2>/dev/null && alive="$alive $pid"
+        done
+        [ -z "$alive" ] && break
+        sleep 0.1
+    done
+    assert_eq "$sig: adapter and its child killed (no orphans)" "" "$alive"
+    for pid in $(cat "$pidfile" 2>/dev/null); do
+        kill -KILL "$pid" 2>/dev/null || true
+    done
+}
+
+test_validate_interrupt_kills_adapter() {
+    echo "TEST: Ctrl-C / SIGTERM during adapter validate kills the adapter's process group"
+    _validate_interrupt_case INT
+    _validate_interrupt_case TERM
+}
+
+test_validate_adapter_failure_stdout_fallback() {
+    echo "TEST: a failing adapter with empty stderr is reported by its stdout lines"
+    local sb out rc=0
+    sb="$(make_validate_sandbox)"
+    make_stub_type_entry "$sb" quiet 'echo "checkout is missing foo"; echo "and bar"; return 3'
+    out="$(run_validate "$sb")" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "first stdout line prefixed" "project 'quiet': checkout is missing foo" "$out"
+    assert_contains "second stdout line prefixed" "project 'quiet': and bar" "$out"
+    assert_not_contains "no generic exit line when stdout names it" "adapter validate exited 3" "$out"
+
+    echo "TEST: a failing adapter with no output at all falls back to the exit code"
+    sb="$(make_validate_sandbox)"
+    make_stub_type_entry "$sb" silent 'return 4'
+    rc=0
+    out="$(run_validate "$sb")" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "generic exit line" \
+        "project 'silent': checkout shape check failed (adapter validate exited 4)" "$out"
+}
+
+test_validate_nested_non_git_entry_fails() {
+    echo "TEST: validate fails a registered non-git dir nested inside another repo"
+    local sb out rc=0
+    sb="$(make_validate_sandbox)"
+    make_git_repo "$sb/outer" "file:///nonexistent/outer.git"
+    mkdir -p "$sb/outer/inner"
+    echo "inner single_project $sb/outer/inner" >> "$sb/.agent/projects.local"
+    out="$(run_validate "$sb")" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "names the project" "project 'inner': ❌ $sb/outer/inner is not a git repository" "$out"
+}
+
+test_single_project_scoped_validate_ignores_broken_sibling() {
+    echo "TEST: adapter --project <name> validate checks only that project"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_registered_project "$sb" alpha >/dev/null
+    echo "ghost single_project" >> "$sb/.agent/projects.local"   # no checkout
+    make_colcon_entry "$sb" rc pkg_a >/dev/null                   # repo missing
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha validate 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "reports its own checkout" "git repository: $sb/projects/alpha" "$out"
+    assert_not_contains "sibling ghost not checked" "ghost" "$out"
+    assert_not_contains "sibling rc not checked" "projects/rc" "$out"
+    assert_not_contains "no whole-workspace run" "Validating workspace" "$out"
+}
+
+test_single_project_scoped_validate_nested_dir_fails() {
+    echo "TEST: adapter --project <name> validate fails a non-git dir inside another repo"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_git_repo "$sb/outer" "file:///nonexistent/outer.git"
+    mkdir -p "$sb/outer/inner"
+    echo "inner single_project $sb/outer/inner" >> "$sb/.agent/projects.local"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project inner validate 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "not a git repository" "$sb/outer/inner is not a git repository" "$out"
+}
+
+test_single_project_legacy_validate() {
+    echo "TEST: adapter validate (no --project) checks the legacy project/ only"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" validate 2>&1)" || rc=$?
+    assert_eq "missing project/ fails" "1" "$rc"
+    assert_contains "names project/" "checkout does not exist: $sb/project" "$out"
+    make_git_repo "$sb/project" "git@github.com:owner/legacy.git"
+    rc=0
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" validate 2>&1)" || rc=$?
+    assert_eq "git project/ passes" "0" "$rc"
 }
 
 # ---- worktree_create.sh --project wiring ----
@@ -1207,6 +1470,17 @@ test_validate_unknown_type
 test_validate_malformed_registry
 test_validate_legacy_still_works
 test_validate_neither_shape
+test_validate_ros2_colcon_entry_without_git_passes
+test_validate_ros2_colcon_failure_prefixes_every_line
+test_validate_parse_error_does_not_blame_healthy_entry
+test_validate_parse_error_verbose_says_shape_not_checked
+test_validate_adapter_timeout
+test_validate_adapter_failure_stdout_fallback
+test_validate_interrupt_kills_adapter
+test_validate_nested_non_git_entry_fails
+test_single_project_scoped_validate_ignores_broken_sibling
+test_single_project_scoped_validate_nested_dir_fails
+test_single_project_legacy_validate
 test_worktree_create_unknown_repo
 test_worktree_create_registry_repo
 test_worktree_create_single_registry_autoselect

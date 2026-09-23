@@ -83,7 +83,30 @@ adapter_sync() {
 }
 
 adapter_validate() {
-    exec python3 "$WORKSPACE_ROOT/.agent/scripts/validate_workspace.py" "$@"
+    # Checkout shape for this one project only (issue #330): a git repo at
+    # the project root. The whole-workspace check is validate_workspace.py
+    # (`make validate`), which delegates each registry entry back here.
+    #
+    # `.git` must be present AT the root (symlink-resolved, the same test
+    # validate_workspace.py uses) — not `git rev-parse --git-dir`, which
+    # succeeds for any directory nested inside another repo and would pass a
+    # non-git hosting dir under the workspace checkout.
+    #
+    # Messages name the path, not the project: validate_workspace.py
+    # prefixes each line with the project's name when it delegates here.
+    local root
+    root="$(adapter_project_root)"
+    if [ ! -e "$root" ]; then
+        echo "❌ checkout does not exist: $root" >&2
+        return 1
+    fi
+    local resolved
+    resolved="$(cd "$root" 2>/dev/null && pwd -P)" || resolved="$root"
+    if [ ! -e "$root/.git" ] && [ ! -e "$resolved/.git" ]; then
+        echo "❌ $root is not a git repository (no .git at its root)" >&2
+        return 1
+    fi
+    echo "✅ single_project checkout is a git repository: $root"
 }
 
 adapter_build() {
