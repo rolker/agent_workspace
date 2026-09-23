@@ -62,3 +62,13 @@ The removal mechanism already exists and doesn't need new machinery: `user_tier_
 - [ ] Expand step 2 to cover the user-tier registration and its tests (see Consequences), not just the workspace-tier `.claude/settings*.json` entry.
 - [ ] Issue's step 1 (read and summarise the block log, post to the issue) is an implementation action, not something to execute during issue review — make sure the work plan carries it as an explicit first task so it isn't skipped once implementation starts.
 - [ ] After this merges, re-check #329's scope and acceptance criteria against the now-single remaining doubled hook (`log-tool-use.sh`).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 13:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed (Recommended): full retirement, workspace and user tier — plan covers the user-tier removal (.agent/user_tier_scripts.txt, user_tier_install.sh PRE_HOOKS_JSON, test_user_tier_guard.sh / test_user_tier_install.sh; re-running the installer clears an installed machine, --check shows the drift meanwhile), the block-log summary as an explicit first task (this machine: 155 blocks, all routine reads — sed -n 107, cat 31, find 9, tail 7, head 1; zero sed -i, so no rule is kept), and a note to re-scope #329 to log-tool-use.sh after merge.
