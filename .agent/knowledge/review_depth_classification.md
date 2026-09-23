@@ -129,80 +129,27 @@ based on other signals.
 
 ## Fix-Round Re-Reviews
 
-A **fix-round re-review** is a `review-code` pass over changes made in
-answer to an earlier review: PR mode after `address-findings`, and branch
-mode at round 2 or later (`review_progress.sh round` prints `round>=2`).
-It is classified on the **fix round's own delta** — the changes since the
-last reviewed SHA — with exactly the tier table above: the same line and
-file thresholds, the same override-trigger files, the same Deep promotion
-triggers. It is not classified on the whole diff, and it is not left to
-the reviewer's judgment of whether "the change is small" (owner decision
-on issue #320, 2026-09-23, after a ~60-line fix round on PR #327 was
-re-reviewed without Gemini/Codex on exactly that judgment).
+A **fix-round re-review** — a `review-code` pass after `address-findings`
+in PR mode, or a pre-push round ≥ 2 (`review_progress.sh round` prints
+`round>=2`) — is classified **exactly as a first review is**: on the whole
+PR/branch diff, with the tier table above. A Standard or Deep result
+dispatches everything that tier dispatches, including the cross-model
+specialist (every available non-caller agent in one
+`cross_model_review.sh --agents` call).
 
-**Last reviewed SHA.** The `**Addressed**` SHA in the newest
-`## Implementation` entry — the correlation SHA of the review that fix
-round answered. With no such entry, the correlation SHA (`**PR**: #N at
-<sha>` or `**Branch**: <name> at <sha>`) of the newest `## Local Review`,
-`## Local Review (Pre-Push)` or `## Integrated Review` for this branch or
-PR.
+The reviewer may **raise** the tier, never lower it below the whole-diff
+classification — in particular, not because the fix round itself "is
+small". An explicit depth keyword from the user (see User Override) still
+wins. The `**Depth**` line records the tier and the signal that decided
+it, as for any review.
 
-**Measuring the delta.** One command gives both counts and the file list:
-
-```bash
-git log --first-parent --no-merges --numstat --format= <last-sha>..HEAD \
-    -- . ':(exclude).agent/work-plans/**'
-```
-
-Lines are the summed added + deleted columns; files are the distinct paths.
-In PR mode run it after `git fetch` against the PR head (`headRefOid`) in
-place of `HEAD`. Two choices in that command are deliberate:
-
-- **First-parent, no merges** — a merge of the base branch during the fix
-  round (e.g. bringing in a newly landed dependency) is not the fix round's
-  own change; counting it would classify someone else's already-reviewed
-  work. Summing per-commit numstat can count a line twice if two fix
-  commits touch it; that errs toward a higher tier, never a lower one.
-- **`.agent/work-plans/**` excluded** — every fix round writes its own
-  bookkeeping (the `## Implementation` entry, checked boxes), which alone
-  would push almost any delta past 50 lines. The same path is excluded
-  from the diff `cross_model_review.sh` embeds, so the classification and
-  the cross-model reviewers see the same code. This exclusion applies to
-  the delta only; a first review's classification is unchanged.
-
-**What the tier means for a fix round.**
-
-- **Standard or Deep delta** — dispatch everything a first review at that
-  tier dispatches, including the cross-model specialist: every available
-  non-caller agent in one `cross_model_review.sh --agents` call.
-- **Light delta** — stays Light: static analysis only, no cross-model
-  dispatch.
-- The reviewer may **raise** the tier (e.g. a small fix to security-relevant
-  code), never lower it below the delta's classification. An explicit
-  depth keyword from the user (see User Override) still wins over both.
-
-**Cross-model diff for a fix round.** The cross-model call is the same call
-a first review makes — `--pr <N>` or `--branch [<base>]` — so the agents
-review the **whole PR/branch diff**, with the fixes in their context.
-`cross_model_review.sh` has no delta mode: PR mode embeds `gh pr diff`
-(whole PR, no range option) and branch mode embeds `git diff <base>...HEAD`.
-Passing the last reviewed SHA as `--branch <last-sha>` would narrow branch
-mode to the delta but would also pull in any base merge, and has no PR-mode
-equivalent; one rule for both modes is simpler to check. The delta decides
-*whether* cross-model runs, not *what* it reads.
-
-**Recording.** The review entry's `**Depth**` line names the tier and the
-delta it was classified on, so a skipped cross-model pass is checkable by
-re-running the command above:
-
-```markdown
-**Depth**: Light (reason: fix-round delta <last-sha>..<head-sha>: 23 lines, 2 files, no override triggers)
-**Depth**: Standard (reason: fix-round delta <last-sha>..<head-sha>: 61 lines, 3 files)
-**Depth**: Standard (reason: fix-round delta <last-sha>..<head-sha>: 12 lines, 1 file — raised by reviewer: auth path)
-```
-
-The classification is prose applied by the reviewer; no script computes
-the tier.
+This is the owner's decision on issue #320 (2026-09-23). It followed PR
+#327, where a ~60-line fix round was re-reviewed without Gemini/Codex at
+the reviewer's discretion. A variant that classified only the fix round's
+own delta was tried and dropped: a small fix to a large PR would drop to
+Light (static analysis only), so no governance, Claude adversarial or
+cross-model pass would check that the earlier findings were actually
+resolved — it could lower a re-review below the whole-PR tier.
 
 ## User Override
 

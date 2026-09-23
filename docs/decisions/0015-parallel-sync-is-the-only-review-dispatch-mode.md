@@ -3,7 +3,7 @@
 ## Status
 
 Accepted. Trigger tier for cross-model dispatch is recorded in issue #320
-(Standard + Deep, with a fix-round re-review classified on its own delta);
+(Standard + Deep, fix-round re-reviews included at the whole diff's tier);
 dispatch mechanics unchanged.
 
 ## Context

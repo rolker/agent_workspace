@@ -139,23 +139,27 @@ unwieldy.
 
 Scope added at the publish checkpoint ("yes, update 320 with same
 codex/gemini rules"), after PR #327's ~60-line fix round was re-reviewed
-without Gemini/Codex at the reviewer's discretion. A fix-round re-review
-(PR mode after `address-findings`; pre-push round ≥ 2) is classified on
-the fix round's own delta since the last reviewed SHA, with the same tier
-table as a first review. Standard/Deep dispatches the cross-model
-specialist exactly as a first review does; Light stays Light; the reviewer
-may raise, never lower. The delta is measured first-parent, no merges,
-with `.agent/work-plans/**` excluded (bookkeeping, and already excluded
-from the cross-model diff). The cross-model call itself is unchanged — the
-whole PR/branch diff, since `cross_model_review.sh` has no delta mode and
-`gh pr diff` has no range. The `**Depth**` reason records the delta.
-Prose-only: no script computes tiers.
+without Gemini/Codex at the reviewer's discretion. Rule (owner's choice at
+the round-3 checkpoint, "Same as whole PR"): a fix-round re-review (PR mode
+after `address-findings`; pre-push round ≥ 2) is classified exactly as a
+first review, on the whole PR/branch diff with the same tier table.
+Standard/Deep dispatches the cross-model specialist as usual; the reviewer
+may raise the tier, never lower it; the `**Depth**` line records the tier
+and its reason. Prose-only: no script computes tiers.
+
+A first version classified only the fix round's own delta (changes since
+the last reviewed SHA). Round-3 review dropped it: a small fix to a large
+PR would fall to Light — static analysis only, no governance, Claude
+adversarial or cross-model pass checking that the earlier findings were
+resolved — so it could lower a re-review below the whole-PR tier. It also
+needed a "last reviewed SHA" rule, merge and conflict-resolution handling,
+and pathspec/rename/binary edge cases that the whole-diff rule avoids.
 
 | File | Change |
 |------|--------|
 | `.agent/knowledge/review_depth_classification.md` | New *Fix-Round Re-Reviews* section |
-| `.claude/skills/review-code/SKILL.md` | Step 2 fix-round rule, 5e same-call note, `**Depth**` reason, Guidelines |
-| `.claude/skills/address-findings/SKILL.md` | Next-step note that the re-review tier follows the delta |
+| `.claude/skills/review-code/SKILL.md` | Step 2 fix-round rule; user override applies to fix rounds |
+| `.claude/skills/address-findings/SKILL.md` | Next-step note: the re-review keeps the whole diff's tier |
 | `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md` | Status-line pointer extended |
 
 ## Estimated Scope
