@@ -127,3 +127,11 @@ The approach is right and follows ADR-0011, but the delegation interacts badly w
 **Decision**: revise
 
 Revise, all 7 (Recommended): fix the five must-fix items from the Plan Review (registry parse errors must not be blamed on healthy entries; single_project root check requires .git at the root or show-toplevel equality, tested with a plain dir nested in a repo; ARCHITECTURE.md L98-100 in Files to Change; validate_workspace.py docstring item 2; tests in test_project_registry.sh reusing make_validate_sandbox, existing test_validate_* cases still pass) and adopt both suggestions (prefix every ❌ line with `project '<name>':` rather than the first stderr line; note the no-`--project` adapter validate behaviour change in the PR description).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-23 10:21 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-330/plan.md` at `60caff4`
+
+Revision addressing all 7 items from the Plan Review (five must-fix, two suggestions), per the owner's "revise, all 7" Checkpoint decision: guard delegated shape checks against registry parse errors so a malformed line no longer blames healthy projects; specify the single_project git check as `.git`-at-root (symlink-resolved), not bare `rev-parse --git-dir`, with a test for a non-git dir nested inside another repo; add ARCHITECTURE.md L98-100 and validate_workspace.py's own docstring to Files to Change; target test_project_registry.sh (reusing make_validate_sandbox, copying ros2_colcon into the sandbox) for the new tests and re-verify existing test_validate_* cases; emit every adapter failure line prefixed `project '<name>':` instead of just the first; and note the no-`--project` adapter-validate behavior change in the PR description.
