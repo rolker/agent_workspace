@@ -12,9 +12,9 @@
 #      without governing the script cannot pass silently.
 #   2. Behavioural — each non-inert entry is run from a sandbox git repo
 #      that is registered nowhere, with HOME redirected. Scripts must
-#      refuse; the two promoted hooks must produce no block and no log
-#      line. The guard fires before any gh/git/network call, so this needs
-#      no `gh` auth and no network.
+#      refuse; the promoted hook must write no log line. The guard fires
+#      before any gh/git/network call, so this needs no `gh` auth and no
+#      network.
 #
 # Hermetic: HOME, the workspace copy, and the registry all live under one
 # `mktemp -d` sandbox, which honours TMPDIR.
@@ -195,19 +195,7 @@ hook_payload() {  # <cwd> <command>
     }'
 }
 
-BLOCK_HOOK="$WSC/.claude/hooks/block-bash-tool-mapping.sh"
 LOG_HOOK="$WSC/.claude/hooks/log-tool-use.sh"
-
-# `cat <file>` is the canonical blocked pattern; from an unregistered cwd
-# it must pass through (exit 0) and leave no sidecar log entry.
-rm -f "$FAKE_HOME/.claude/tool-mapping-blocks.jsonl"
-out=$(cd "$OUTSIDE" && HOME="$FAKE_HOME" bash "$BLOCK_HOOK" \
-    <<< "$(hook_payload "$OUTSIDE" "cat README.md")" 2>&1); rc=$?
-if [[ "$rc" -eq 0 && ! -s "$FAKE_HOME/.claude/tool-mapping-blocks.jsonl" ]]; then
-    pass "block-bash-tool-mapping.sh: no block and no sidecar log from an unregistered repo"
-else
-    fail "block hook fired outside a registered root (rc=$rc out=${out:0:160})"
-fi
 
 rm -f "$FAKE_HOME/.claude/tool-use-log.jsonl"
 out=$(cd "$OUTSIDE" && HOME="$FAKE_HOME" bash "$LOG_HOOK" \
@@ -218,13 +206,7 @@ else
     fail "log hook wrote a line outside a registered root (rc=$rc)"
 fi
 
-# --- and both still fire inside the workspace checkout ---
-rm -f "$FAKE_HOME/.claude/tool-mapping-blocks.jsonl"
-out=$(cd "$WSC" && HOME="$FAKE_HOME" bash "$BLOCK_HOOK" \
-    <<< "$(hook_payload "$WSC" "cat README.md")" 2>&1); rc=$?
-[[ "$rc" -eq 2 ]] && pass "block hook still blocks inside the workspace checkout" \
-    || fail "block hook did not block inside the workspace checkout (rc=$rc)"
-
+# --- and it still fires inside the workspace checkout ---
 rm -f "$FAKE_HOME/.claude/tool-use-log.jsonl"
 (cd "$WSC" && HOME="$FAKE_HOME" bash "$LOG_HOOK" \
     <<< "$(hook_payload "$WSC" "ls")" >/dev/null 2>&1)
@@ -245,12 +227,6 @@ rm -f "$FAKE_HOME/.claude/tool-use-log.jsonl"
     && pass "log hook logs inside a registered project root" \
     || fail "log hook did not log inside a registered project root"
 
-rm -f "$FAKE_HOME/.claude/tool-mapping-blocks.jsonl"
-out=$(cd "$PROOT" && HOME="$FAKE_HOME" bash "$BLOCK_HOOK" \
-    <<< "$(hook_payload "$PROOT" "cat README.md")" 2>&1); rc=$?
-[[ "$rc" -eq 2 ]] && pass "block hook blocks inside a registered project root" \
-    || fail "block hook did not block inside a registered project root (rc=$rc)"
-
 # ------------------------------------------------- hooks fail CLOSED ---
 # Round 1 suggestion: if the workspace root or the registry helper cannot be
 # resolved (moved clone, deleted checkout), the guard block used to be
@@ -258,16 +234,8 @@ out=$(cd "$PROOT" && HOME="$FAKE_HOME" bash "$BLOCK_HOOK" \
 # it could not prove it governs. It must now do nothing instead.
 BROKEN="$SANDBOX/broken"
 mkdir -p "$BROKEN/.claude/hooks"
-cp "$WSC/.claude/hooks/block-bash-tool-mapping.sh" "$BROKEN/.claude/hooks/"
 cp "$WSC/.claude/hooks/log-tool-use.sh" "$BROKEN/.claude/hooks/"
 # deliberately NO .agent/scripts/_project_registry.sh beside it
-
-rm -f "$FAKE_HOME/.claude/tool-mapping-blocks.jsonl"
-out=$(cd "$WSC" && HOME="$FAKE_HOME" bash "$BROKEN/.claude/hooks/block-bash-tool-mapping.sh" \
-    <<< "$(hook_payload "$WSC" "cat README.md")" 2>&1); rc=$?
-[[ "$rc" -eq 0 ]] \
-    && pass "block hook fails closed (no block) when the registry cannot be resolved" \
-    || fail "block hook acted with an unresolvable registry (rc=$rc out=${out:0:160})"
 
 rm -f "$FAKE_HOME/.claude/tool-use-log.jsonl"
 (cd "$WSC" && HOME="$FAKE_HOME" bash "$BROKEN/.claude/hooks/log-tool-use.sh" \

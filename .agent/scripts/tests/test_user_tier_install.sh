@@ -107,14 +107,19 @@ out="$(run)"; rc=$?
 jq -e '.hooks.SessionStart | length > 0' "$SETTINGS" >/dev/null \
     && pass "settings.json has a SessionStart entry" || fail "no SessionStart entry"
 
-for h in log-tool-use.sh block-bash-tool-mapping.sh; do
-    if jq -e --arg c "$WSC/.claude/hooks/$h" \
-        '[.hooks.PreToolUse[].hooks[]?.command] | index($c) != null' "$SETTINGS" >/dev/null; then
-        pass "PreToolUse entry written by absolute path: $h"
-    else
-        fail "no absolute-path PreToolUse entry for $h"
-    fi
-done
+if jq -e --arg c "$WSC/.claude/hooks/log-tool-use.sh" \
+    '[.hooks.PreToolUse[].hooks[]?.command] | index($c) != null' "$SETTINGS" >/dev/null; then
+    pass "PreToolUse entry written by absolute path: log-tool-use.sh"
+else
+    fail "no absolute-path PreToolUse entry for log-tool-use.sh"
+fi
+
+# The tool-mapping hook was retired from the user tier (#328): a fresh
+# install must not write it.
+jq -e --arg c "$WSC/.claude/hooks/block-bash-tool-mapping.sh" \
+    '[.hooks.PreToolUse[].hooks[]?.command] | index($c) == null' "$SETTINGS" >/dev/null \
+    && pass "no PreToolUse entry for the retired tool-mapping hook" \
+    || fail "install still writes the retired tool-mapping hook"
 
 jq -e --arg t "$WSC" '[.hooks | to_entries[] | .value[] | ._agent_workspace] | all(. == $t)' \
     "$SETTINGS" >/dev/null \
