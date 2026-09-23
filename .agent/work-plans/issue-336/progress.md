@@ -56,3 +56,13 @@ One piece of context this review was given is inaccurate against current code: t
 - [ ] Keep the Gemini fix and the claude-arm `.error`/`.errors` fix as clearly separable diffs/commits inside one branch, since they are unrelated root causes bundled by convenience, not by shared code path.
 - [ ] Have the plan state explicitly which of the two Gemini options (permission allow-rule vs. prompt change) it is taking, and why — the issue defers this decision to the plan, so review-plan should treat an unaddressed choice as a gap.
 - [ ] When replacing the claude test mocks, keep the existing `.error`-shape assertions if they still exercise a real (if rarer) shape, rather than deleting the only coverage for a string-valued `.error`; add the newly-discovered `.errors` array as additional cases.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 14:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Owner chose "Prompt change (Recommended)" for the Gemini fix: give Gemini the diff and plan inline with no file tools (a "do not simulate tools; name missing context" instruction), a concise-output instruction, and treat an output-token cutoff as a clear failure; no change to machine config (no agy read_file allow rule). The three review actions stand: separate commits for the Gemini fix and the claude-arm .errors fix; the plan states this chosen option; keep the old .error mock cases and add live-captured .errors shapes.
