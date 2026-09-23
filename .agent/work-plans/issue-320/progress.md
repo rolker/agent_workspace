@@ -524,3 +524,23 @@ Owner chose "One outer fence (Recommended)": wrap the plan excerpt in a single o
 
 ### Notes
 - Pre-existing, outside this round's scope: the `## Diff` block uses a fixed 3-backtick fence (`cross_model_review.sh` ~891/925); a diff context line ` ````…` (1 space + 3 backticks) is a valid CommonMark closer, so a diff touching fenced markdown can end the diff fence early. The same longest-run technique would fix it.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 12:04 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a25eabc1b068839e2, resume 3 of 3)
+
+**Branch**: feature/issue-320 at `6893b68`
+**Commits**: 6893b68
+
+Owner scope addition, not addressing a review box. The owner answered the "found, not fixed" note in the previous entry with, verbatim: "Fold in now (Recommended)".
+
+### What changed (6893b68)
+- `cross_model_review.sh`: the `## Diff` block no longer uses a fixed ``` fence, which any diff context line of one space plus three backticks closes under CommonMark. The diff is staged in a temp file (`SHARED_DIFF`, removed after use and in the EXIT trap), then wrapped in a fence one backtick longer than its longest backtick run (minimum 3), at column 0, no CR on the closer — PR and branch mode alike. A diff whose last line lacks a newline still gets its closer on its own line. The fence length comes from one shared helper, `outer_fence_for`, now also used by the plan context (the inline awk there is gone). No other fixed fence around embedded content remains in the script. The empty-diff guard now counts the staged file's lines (same semantics as before).
+- `test_cross_model_review.sh`: three new tests — PR mode with a ` ``` ` context line (fence of 4), PR mode with a 4-backtick run and an unterminated last line (fence of 5), branch mode with a real fenced-markdown commit (fence of 5) — each asserting that a diff line after the fence-shaped context line is still inside the diff fence and the footer is outside every fence, via `fence_state_at`, which now takes an optional start heading. An awk escape warning in the round-4 framing-text regex was fixed (`[.]`).
+- `plan.md` Implementation Notes: the outer-fence note now records the fold-in. AGENTS.md's script row does not describe the diff fence, so it is unchanged.
+
+### Tests
+- `test_cross_model_review.sh`: 493 passed, 0 failed. Pre-commit (shellcheck, full `run_script_tests.sh`, no temp leaks) passed.
+- Against the previous fixed-fence code (swapped in temporarily, then restored): 483 passed, 10 failed — all three new tests fail, including their well-formedness assertions, in both modes.
