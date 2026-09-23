@@ -673,3 +673,13 @@ Outside reviewers: codex ran (complete, "No issues found", brief, did not execut
 - [ ] (suggestion) An unclosed fence *before* the Approach swallows the `## Approach` heading, so the extractor exits 1 ("no section") and Plan Context is silently omitted with no warning; the unclosed-fence recovery only runs after the section start (repro: `## Context` / ```sh / `open` / `## Approach` / `REAL` → rc=1). Apply the same re-parse when locating the heading, or warn when exit 1 but the plan has a literal `## Approach` line — `.agent/scripts/_plan_approach.py:118`
 - [ ] (suggestion) Exit 2 ("markdown-it-py missing") collides with python's own exit 2 for "can't open file" / usage errors, so a missing or unreadable `_plan_approach.py` is reported as a missing library and the next interpreter is tried; use a code python never emits (e.g. 4) for no-library — `.agent/scripts/_plan_approach.py:36`
 - [ ] (suggestion) The extractor tests skip rather than fail when no interpreter imports markdown-it, and pre-commit hides a passing hook's output in CI, so a CI skip would be invisible; fail instead of skip when `CI` is set (GitHub sets `CI=true`) — `.agent/scripts/tests/test_cross_model_review.sh:1461`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 13:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Owner chose "Fix 3, then publish (Recommended)" at round 7: address the three round-7 suggestions (silent omission when an unclosed fence before the Approach hides the heading; exit-code 2 collision with python's own exit 2; extractor tests skip instead of fail under CI), then one review round with a fresh Claude adversarial subagent, then publish.
