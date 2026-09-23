@@ -204,3 +204,13 @@ The revision resolves round 1's merge-gate, CI, and scope-split problems and ado
 - [ ] Fix step 9's swapped line numbers (47 = `PRINCIPLES.md` under docs/, 52 = `ARCHITECTURE.md # This file`).
 - [ ] Step 3: build the discovery fixtures by copying the script into `<sandbox>/.agent/scripts/` (ROOT_DIR is not env-overridable).
 - [ ] Include `principles_review_guide.md:60` (`ARCHITECTURE.md` directory tree) in the rename.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 13:39 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed + all 5 (Recommended): implement the plan at c77cd67 plus the round-2 Plan Review (815174e) items as instructions — must-fix: rename the workspace-principles references at .claude/skills/review-code/SKILL.md:276, review-issue/SKILL.md:116, review-plan/SKILL.md:172 and gather-project-knowledge/SKILL.md:110 to docs/principles.md (step 7 + Files to Change), keeping step 8's dual-spelling edits on lines 200/176/120/112; S1: #328 deletes CLAUDE.md's whole ## Tool Mapping section, rewords the AGENTS.md Tool Usage bullet and edits docs/ROADMAP.md:373 — whichever branch lands second runs the git ls-files check and confirms the roadmap edit landed in docs/roadmap.md; S2: step 9's line numbers are swapped (47 = PRINCIPLES.md under docs/, 52 = ARCHITECTURE.md # This file); S3: the discover_governance test copies the script into <sandbox>/.agent/scripts/ and builds fixtures under <sandbox>/ and <sandbox>/project/ (no env override); S4: also rename .agent/knowledge/principles_review_guide.md:60's ARCHITECTURE.md reference.
