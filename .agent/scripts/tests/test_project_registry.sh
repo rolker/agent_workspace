@@ -516,6 +516,27 @@ test_validate_adapter_timeout() {
     assert_eq "returns promptly (not after the 30 s sleep)" "yes" "$([ "$elapsed" -lt 10 ] && echo yes || echo "no (${elapsed}s)")"
 }
 
+test_validate_adapter_failure_stdout_fallback() {
+    echo "TEST: a failing adapter with empty stderr is reported by its stdout lines"
+    local sb out rc=0
+    sb="$(make_validate_sandbox)"
+    make_stub_type_entry "$sb" quiet 'echo "checkout is missing foo"; echo "and bar"; return 3'
+    out="$(run_validate "$sb")" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "first stdout line prefixed" "project 'quiet': checkout is missing foo" "$out"
+    assert_contains "second stdout line prefixed" "project 'quiet': and bar" "$out"
+    assert_not_contains "no generic exit line when stdout names it" "adapter validate exited 3" "$out"
+
+    echo "TEST: a failing adapter with no output at all falls back to the exit code"
+    sb="$(make_validate_sandbox)"
+    make_stub_type_entry "$sb" silent 'return 4'
+    rc=0
+    out="$(run_validate "$sb")" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "generic exit line" \
+        "project 'silent': checkout shape check failed (adapter validate exited 4)" "$out"
+}
+
 test_validate_nested_non_git_entry_fails() {
     echo "TEST: validate fails a registered non-git dir nested inside another repo"
     local sb out rc=0
@@ -1408,6 +1429,7 @@ test_validate_ros2_colcon_failure_prefixes_every_line
 test_validate_parse_error_does_not_blame_healthy_entry
 test_validate_parse_error_verbose_says_shape_not_checked
 test_validate_adapter_timeout
+test_validate_adapter_failure_stdout_fallback
 test_validate_nested_non_git_entry_fails
 test_single_project_scoped_validate_ignores_broken_sibling
 test_single_project_scoped_validate_nested_dir_fails

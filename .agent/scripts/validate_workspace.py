@@ -115,6 +115,10 @@ def delegate_shape_check(workspace_root, name):
         return []
     lines = [line.strip() for line in result.stderr.splitlines() if line.strip()]
     if not lines:
+        # An adapter that reports its failure on stdout still names the
+        # problem; prefer its words over the generic exit-code line.
+        lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not lines:
         return [
             f"project '{name}': checkout shape check failed "
             f"(adapter validate exited {result.returncode})"
