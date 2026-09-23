@@ -138,3 +138,17 @@ The plan covers the removal completely at both tiers, and re-running the install
 Revise, all 7 (Recommended): (1) user_tier_install.sh --check flags tagged hook entries the current generation no longer produces, with drift case (f) in test_user_tier_install.sh (inject retired entry -> --check exits 1 -> re-install clears it -> --check clean); (2) post-merge step on this machine: re-run user_tier_install.sh then --check from the main checkout right after merge; (3) revise ADR-0016 §6 (Provisional) in place: the hook is no longer promoted, "two hooks" -> one; suggestions: three inspiration digests mention the hook (left as history); add a Consequences row that the AGENTS.md Tool Usage text is also injected into project sessions via session_start_project_layer.sh WORKSPACE_SECTIONS; sequencing with #334 per the review (rename detection; second branch checks git grep block-bash-tool-mapping docs/ is empty); put the exact instruction-file text in the plan.
 
 Owner APPROVED the instruction-file wording as proposed (Ask-First): AGENTS.md Tool Usage bullet becomes "**Prefer dedicated tools where they fit** — shell commands (`cat`, `grep`, `sed`, `find`, etc.) are fine for reads and simple edits; reach for a framework's dedicated search/read/edit tool instead when a shell command would be fragile or ambiguous — exact or multi-line replacements, or `sed`/`awk` flags that differ between GNU and BSD/macOS. This is a preference the agent applies by judgment, not an enforced rule." CLAUDE.md: delete the whole `## Tool Mapping` section (heading, table, "Enforced by hook" paragraph).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-23 13:43 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-328/plan.md` at `9ad124f`
+
+Revision addressing all seven plan-review findings: added a `--check` drift
+case (plus test) for retired user-tier hook entries, a post-merge re-install
+step for this machine, an in-place ADR-0016 §6 revision, corrected the
+inspiration-digest count to three, added a Consequences row noting the
+AGENTS.md reword is injected into project sessions, expanded the #334
+sequencing note, and confirmed the owner-approved CLAUDE.md/AGENTS.md
+wording is already verbatim in the plan.
