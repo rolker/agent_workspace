@@ -191,3 +191,18 @@ All seven round-1 items are resolved in the plan and hold up against source. The
 **Decision**: proceed
 
 Proceed + both (Recommended): implement the plan at 60caff4, plus the round-2 Plan Review's two suggestions as instructions — (1) capture the adapter's stdout as well as stderr when validate_workspace.py delegates, so pass lines don't print inline; on success keep the existing `project '<name>' (<ptype>): <path> OK` verbose line; (2) the new ros2_colcon registry test fixture must declare a distro (e.g. `distro:` in configs/manifest/bootstrap.yaml) so it doesn't fail on an unresolvable distro.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 10:39 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Branch**: feature/issue-330 at `ac562ff`
+
+Implemented the plan at `60caff4` plus the owner's two round-2 instructions.
+
+- `.agent/project_types/single_project/adapter.sh` — `adapter_validate` no longer execs the whole-workspace validator; it checks only `adapter_project_root()` for a `.git` at the root (symlink-resolved, not `git rev-parse`), `❌` lines to stderr, `✅` pass line to stdout. Messages name the path, not the project (the validator adds the prefix).
+- `.agent/scripts/validate_workspace.py` — registry loop keeps the hosting-dir presence check, then delegates the shape check to `adapter --project <name> validate` (new `delegate_shape_check`), capturing stdout and stderr; each non-empty stderr line becomes `project '<name>': <line>`, empty stderr gives a fixed fallback with the exit code; success keeps the verbose `project '<name>' (<ptype>): <path> OK` line. Delegation is skipped when `projects.local` has parse errors (hosting-dir presence only) and for unknown types (no OK line printed for them either). Docstring item 2 updated.
+- `.agent/scripts/tests/test_project_registry.sh` — 7 new tests (ros2_colcon entry with no `.git` passes, fixture declares `distro: fakefox`; failing ros2_colcon entry reports every adapter line prefixed; malformed line does not blame a healthy entry; nested non-git dir fails the whole-workspace check; scoped `--project` validate ignores broken siblings; scoped validate fails a non-git dir nested in a repo; legacy no-`--project` validate checks `project/` only) and an `assert_not_contains` helper. Existing `test_validate_*` cases unchanged and passing.
+- `ARCHITECTURE.md`, `AGENTS.md` — describe per-type delegation and the `make validate` (whole workspace) vs `adapter --project <name> validate` (one project) split.
+
+Tests: `run_script_tests.sh` — all 27 suites passed (registry suite 240/240). Against this machine's registry (worktree code in a scratch copy): whole-workspace validation passes with gz4d, p11-jazzy and p11-rolling OK; `adapter --project gz4d validate` passes. Pre-change main code fails both on p11-jazzy/p11-rolling "is not a git repository".
