@@ -120,3 +120,13 @@ Sound, mechanical plan with the review-issue feedback folded in, but it misses a
 - [ ] Update `what-next` project roadmap discovery to the same candidate set as `update_roadmap.sh`; fix `AGENT_ONBOARDING.md:91` relative link.
 - [ ] Extend step 10 verify with `git ls-files` checks that the old paths are not re-introduced after each `main` merge.
 - [ ] Add #328 to step 9's merge-`main` conflict watch list.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 13:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise, all 8 (Recommended): fix the three must-fix items from the Plan Review — (1) keep docs/ROADMAP.md permanently in both merge_pr.sh bookkeeping lists and add docs/roadmap.md, with gate tests for each spelling; (2) .github/workflows/validate.yml required_files: ARCHITECTURE.md -> docs/design.md (owner APPROVED this CI edit, Ask-First, 2026-09-23); (3) rename only references to the workspace's own files; references to project files list both spellings — and adopt suggestions 4-8 (inspiration-tracker writes; fix docs/design.md's own links in a commit after the pure rename; what-next probes the same three roadmap locations as update_roadmap.sh and fix AGENT_ONBOARDING.md's relative link; a git ls-files check after each main merge plus a macOS case-only-rename note in the PR body; add #328 to the branches to watch).
