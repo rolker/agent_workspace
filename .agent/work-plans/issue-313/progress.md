@@ -998,3 +998,22 @@ Verified: `test_cross_model_review.sh` 385 passed / 0 failed; shellcheck --sever
 
 ### Findings
 - [ ] (suggestion) the zombie half of `test_job_finished_proc_comm_with_space` is vacuous: the probe's own bash reaps "x y" during the foreground `sleep 1`, so `job_finished` returns via `kill -0` and never reads /proc; spawn it under a parent that does not reap (e.g. `sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 5'`), which a scratch mutation run confirmed makes the old code fail with DEAD-REPORTED-ALIVE and the new code pass — `.agent/scripts/tests/test_cross_model_review.sh:2375-2378`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-23 10:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a71d4c0e6954f823b, resume 1 of 3)
+
+**PR**: #327 at `8b51699`
+**Sources**: 2 (Local Review (PR mode) @ `debb083`, CI rollup @ `8b51699`)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Fix-round re-triage. Only progress bookkeeping separates `debb083` (the reviewed commit) from the head `8b51699`, so the PR-mode review applies at head. Both findings from the previous Integrated Review (at `4d7bb94`) are resolved in code and verified here: `proc_state` in `.agent/scripts/cross_model_review.sh` now takes the word after the last `) ` of `/proc/<pid>/stat` (939e370), and the two comments in `.agent/scripts/_cli_review.sh` no longer claim `set -e` (b1d2748). CI at `8b51699` has not settled: Validate Documentation and the ros-manifest tests pass; Lint (pre-commit) and Validate Adapter Contract have no conclusion yet. Copilot posted two more quota notices (at `4d7bb94` and `debb083`, 0 inline comments); neither is a review source. There are 0 GitHub inline or conversation comments.
+
+### Findings
+- [ ] (suggestion, Local Review @ debb083) the zombie half of `test_job_finished_proc_comm_with_space` is vacuous: the probe's own bash reaps "x y" during the foreground `sleep 1`, so `job_finished` returns via `kill -0` and never reads /proc; spawn it under a parent that does not reap (e.g. `sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 5'`). Confirmed independently: in `bash -c 'sleep 0.2 & d=$!; sleep 1; kill -0 $d'`, `kill -0` fails because the child has already been reaped. The production fix is correct, and the running "a Z b" half does catch the regression, so this is a gap in the tests, not a defect — `.agent/scripts/tests/test_cross_model_review.sh`
+
+### False positives
+- (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (reviews at `4d7bb94` and `debb083`) — says nothing about the code: Copilot's quota is exhausted (known, Sept 2026); excluded from both sources and CI.
