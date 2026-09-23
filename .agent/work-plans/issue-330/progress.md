@@ -55,3 +55,13 @@ I verified both claimed defects against current source:
 - [ ] If `single_project`'s `validate` verb changes meaning (named-project-only) and a whole-workspace check moves elsewhere, `AGENTS.md`'s script-reference row for `validate_workspace.py` (currently "Validate project/ configuration") and its `make validate` description should be checked against the new split so they still describe what the commands actually do
 - [ ] Confirm whether `make validate` (no `--project`) is meant to remain "check everything" after this fix, or whether it should also route to "current project" when one is registered as active — the issue's wording ("keep the whole-workspace check as its own command") reads as the former; state that explicitly in the plan so it isn't left ambiguous during implementation.
 - [ ] When delegating the per-entry shape check to `adapter --project <name> validate`, make sure `validate_workspace.py` still surfaces the *name* of the failing project in its output (today's `project '{name}': {path} is not a git repository` format) — don't lose that context by just shelling out and passing through the adapter's raw stderr.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:00 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed (Recommended): plan with `make validate` (no project named) staying a whole-workspace check; keep the failing project's name in error output when delegating shape checks to the adapter; update the AGENTS.md `validate_workspace.py` row and the `make validate` description.
