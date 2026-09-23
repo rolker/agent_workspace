@@ -246,3 +246,13 @@ Cross-model: codex — no issues found; gemini — failed (headless mode auto-de
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 14:15 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish (Recommended): push feature/issue-328 and open the PR with the decision summary, including the post-merge re-install step. Merge remains a separate decision.
