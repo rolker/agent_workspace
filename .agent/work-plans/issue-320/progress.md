@@ -746,3 +746,13 @@ No GitHub reviews, inline comments, or conversation comments on the PR (Copilot 
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 14:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge + make setup (Recommended)
