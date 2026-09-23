@@ -16,10 +16,12 @@ breaks are all classified exactly as a Markdown renderer classifies them:
 * It ends at the next top-level heading of level 1 or 2 (ATX, indented
   ATX, or setext) or thematic break, whichever comes first, or at EOF.
 * An unclosed fence would, per CommonMark, run to the end of the document
-  and pull every later section in. Instead the lines after its opener are
-  re-parsed as if the opener were absent, and the section ends at the
-  first boundary found there: shorter, never longer, than a fence-aware
-  cut of a well-formed plan.
+  and pull every later line in. Instead the lines after its opener are
+  re-parsed as if the opener were absent. Inside the Approach, the section
+  then ends at the first boundary found there: shorter, never longer, than
+  a fence-aware cut of a well-formed plan. Before the Approach, the same
+  re-parse keeps an unclosed fence in an earlier section from hiding the
+  ``## Approach`` heading (which would otherwise read as "no section").
 
 The section's source lines (the lines between those two points) are
 printed unchanged, except that line endings are normalised to ``\\n``.
@@ -80,40 +82,55 @@ def _fence_closed(tok, lines, offset):
     return bool(closer.match(lines[offset + end - 1]))
 
 
-def _section_end(md, lines, start):
-    """Line index (exclusive) where the section beginning at `start` ends.
+def _top_level(md, lines, start=0):
+    """Yield (offset, tokens, i) for each block token of lines[start:].
 
-    `start` always sits at a top-level block boundary (just after a heading,
-    or just after an unclosed fence's opener), so parsing lines[start:] on
-    its own classifies them as they are classified in the whole document.
+    `offset` is the line index that token.map is relative to. An unclosed
+    top-level fence would, per CommonMark, swallow everything to EOF; the
+    lines after its opener are instead re-parsed as if the opener were
+    absent, and the walk continues there. Both the heading search and the
+    section-end search walk this one stream, so an unclosed fence before
+    the Approach can no more hide its heading than one inside the Approach
+    can hide its end.
+
+    Every restart point sits at a top-level block boundary (just after a
+    heading, or just after an unclosed fence's opener), so parsing the
+    remaining lines on their own classifies them as they are classified in
+    the whole document.
     """
     while True:
         restart = None
-        for tok in md.parse("\n".join(lines[start:])):
-            if _is_boundary(tok):
-                return start + tok.map[0]
+        tokens = md.parse("\n".join(lines[start:]))
+        for i, tok in enumerate(tokens):
             if tok.type == "fence" and tok.level == 0 and not _fence_closed(tok, lines, start):
-                # Unclosed: it swallowed everything to EOF. Re-parse what
-                # follows its opener without it. `start` strictly increases,
-                # so the loop terminates.
+                # `start` strictly increases, so the walk terminates.
                 restart = start + tok.map[0] + 1
                 break
+            yield start, tokens, i
         if restart is None:
-            return len(lines)
+            return
         start = restart
+
+
+def _section_end(md, lines, start):
+    """Line index (exclusive) where the section beginning at `start` ends."""
+    for offset, tokens, i in _top_level(md, lines, start):
+        if _is_boundary(tokens[i]):
+            return offset + tokens[i].map[0]
+    return len(lines)
 
 
 def extract(md, text):
     """Return the Approach section's lines, or None if there is none."""
     lines = _split_lines(text)
-    tokens = md.parse("\n".join(lines))
-    for i, tok in enumerate(tokens):
+    for offset, tokens, i in _top_level(md, lines):
+        tok = tokens[i]
         if tok.type != "heading_open" or tok.tag != "h2" or tok.level != 0:
             continue
         inline = tokens[i + 1] if i + 1 < len(tokens) else None
         if inline is None or inline.type != "inline" or inline.content.strip() != "Approach":
             continue
-        start = tok.map[1]
+        start = offset + tok.map[1]
         return lines[start : _section_end(md, lines, start)]
     return None
 

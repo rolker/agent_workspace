@@ -2242,6 +2242,40 @@ TAIL SECTION'
     teardown
 }
 
+test_plan_context_extractor_unclosed_fence_before_approach() {
+    echo "TEST: an unclosed fence in an earlier section does not hide the ## Approach heading (#320 round 7)"
+    require_plan_parser || return 0
+    setup
+
+    # Per CommonMark the unclosed fence in Context swallows the rest of the
+    # plan, heading included; the extractor would then report "no section"
+    # and the Plan Context block would vanish without a warning.
+    write_plan_fixture "${MOCK_REPO}/${PLAN_REL}" '## Context
+
+```sh
+open
+
+## Approach
+
+REAL
+
+## Files to Change
+
+TAIL SECTION'
+
+    local exit_code
+    exit_code=$(run_gemini_sync)
+    assert_exit_code "review completes" "0" "$exit_code"
+    local block
+    block=$(plan_context_block "${MOCK_REPO}/${PROMPT_REL}")
+    assert_contains "the Approach after the unclosed fence is extracted" "^REAL$" "$block"
+    assert_not_contains "the unclosed fence body is not taken as the Approach" "^open$" "$block"
+    assert_not_contains "the next section is still excluded" "TAIL SECTION" "$block"
+    assert_plan_context_well_formed "${MOCK_REPO}/${PROMPT_REL}" "unclosed fence before approach"
+
+    teardown
+}
+
 test_plan_context_extractor_indented_heading() {
     echo "TEST: an ATX heading indented 1-3 spaces ends the Approach (#320 round 6)"
     require_plan_parser || return 0
@@ -3800,6 +3834,7 @@ test_plan_context_extractor_star_underscore_rules
 test_plan_context_stops_at_h1_or_rule
 test_plan_context_extractor_fence_after_closed_fence
 test_plan_context_extractor_approach_in_earlier_fence
+test_plan_context_extractor_unclosed_fence_before_approach
 test_plan_context_extractor_indented_heading
 test_plan_context_extractor_setext_headings
 test_plan_context_parser_unavailable
