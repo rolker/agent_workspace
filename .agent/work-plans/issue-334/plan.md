@@ -205,9 +205,12 @@ lands first.
 
 ## Open Questions
 
-- Should `CLAUDE.md` move to `.claude/CLAUDE.md` (which Claude Code also
-  reads)? Flagged by the issue as an owner decision, not made here — this
-  plan keeps `CLAUDE.md` at the root and only updates its path references.
+None. The issue flagged whether `CLAUDE.md` should move to
+`.claude/CLAUDE.md` as an owner decision; the owner has decided (2026-09-23):
+**`CLAUDE.md` stays at the root**, unchanged except for the path-reference
+updates this issue already needs (step 6). Its eventual retirement — Claude
+Code now loads `AGENTS.md` natively — is a separate, later issue that follows
+#328 and this one.
 
 ## Estimated Scope
 
