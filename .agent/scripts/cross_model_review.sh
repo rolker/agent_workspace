@@ -15,6 +15,14 @@
 # the _agy_review.sh helper, which feeds the prompt over stdin and
 # validates agy's result event; issues #274, #288)
 #
+# No agent CLI is invoked from this script directly. Gemini goes through
+# _agy_review.sh; codex, claude and copilot go through _cli_review.sh
+# (issue #313, folding in #212). Each helper owns its findings file:
+# it truncates the file first, runs its CLI with the prompt on stdin,
+# and writes either the review text or a failure reason — so an empty
+# response, a quota / rate-limit / auth error or a missing result is a
+# failed review here, not review-looking text in the findings file.
+#
 # The embedded diff excludes .agent/work-plans/** (plan.md, progress.md,
 # review artifacts): review bookkeeping, not code under review, and the
 # main source of oversized prompts (#312).
@@ -29,7 +37,8 @@
 #
 # Every agent is bounded so one hung CLI cannot hang the call. Codex,
 # claude and copilot run under `timeout "$AGENT_TIMEOUT"` (coreutils
-# duration, env-overridable, default 1800). Gemini's primary bound stays
+# duration, env-overridable, default 1800), applied to _cli_review.sh,
+# which forwards the signal to its CLI child. Gemini's primary bound stays
 # _agy_review.sh's own --print-timeout (`AGY_PRINT_TIMEOUT`), because that
 # path reports the expiry with a reason; it also gets an outer
 # `timeout "$GEMINI_BACKSTOP"` derived to sit ABOVE the print-timeout
@@ -64,7 +73,11 @@
 #   MODE=parallel-sync               (once)
 #   AGENT=<agent-key>                (one triplet per agent, after all
 #   FINDINGS_FILE=<path-to-findings>  agents have finished; EXIT= is that
-#   EXIT=<n>                          agent's own exit status, 0 = success)
+#   EXIT=<n>                          agent job's exit status, 0 = success.
+#                                     A failed review is 1 from its helper
+#                                     — the CLI's own status is named in
+#                                     the findings file's reason — or 124
+#                                     when the outer timeout cut it off.)
 #   followed by informational lines for human consumption
 #
 # Whenever the agents actually run, each findings file ends with
@@ -191,30 +204,63 @@ validate_duration_knob GEMINI_BACKSTOP_MARGIN "$GEMINI_BACKSTOP_MARGIN" false fa
 # validator above refuses it.
 GEMINI_BACKSTOP=$(( $(duration_to_seconds "$AGY_PRINT_TIMEOUT") + $(duration_to_seconds "$GEMINI_BACKSTOP_MARGIN") ))
 
-# Helper that owns the gemini invocation. A missing helper makes the
-# gemini agent unavailable (that agent fails; others still run).
-AGY_REVIEW_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_agy_review.sh"
+# How long an interrupted run waits for its agent jobs before dropping
+# the shared temp root (cleanup_jobs). It has to outlast the escalation a
+# helper legitimately spends killing a CLI that ignored SIGTERM
+# (REVIEW_KILL_ESCALATION, read here only to size this budget — the
+# helpers own the knob), plus a margin for that helper to exit. A
+# hard-coded value (it was 8s) silently breaks as soon as the escalation
+# is raised above it (#313 round 3), so the default is derived; an
+# explicit CLEANUP_REAP_TIMEOUT is honoured but must clear the same bar.
+REVIEW_KILL_ESCALATION="${REVIEW_KILL_ESCALATION:-5}"
+validate_duration_knob REVIEW_KILL_ESCALATION "$REVIEW_KILL_ESCALATION" true false ""
+CLEANUP_REAP_MARGIN="${CLEANUP_REAP_MARGIN:-3}"
+validate_duration_knob CLEANUP_REAP_MARGIN "$CLEANUP_REAP_MARGIN" false false \
+    "the parent needs a moment after a helper's own SIGKILL escalation to see that helper exit."
+ESCALATION_SECONDS=$(duration_to_seconds "$REVIEW_KILL_ESCALATION")
+CLEANUP_REAP_TIMEOUT="${CLEANUP_REAP_TIMEOUT:-$(( ESCALATION_SECONDS + $(duration_to_seconds "$CLEANUP_REAP_MARGIN") ))}"
+validate_duration_knob CLEANUP_REAP_TIMEOUT "$CLEANUP_REAP_TIMEOUT" false false \
+    "a zero reap budget would drop the shared temp root while the helpers are still writing into it."
+CLEANUP_REAP_SECONDS=$(duration_to_seconds "$CLEANUP_REAP_TIMEOUT")
+if [[ "$CLEANUP_REAP_SECONDS" -le "$ESCALATION_SECONDS" ]]; then
+    echo "ERROR: CLEANUP_REAP_TIMEOUT (${CLEANUP_REAP_TIMEOUT}) must exceed REVIEW_KILL_ESCALATION (${REVIEW_KILL_ESCALATION}): the shared temp root would be removed while a helper is still escalating to SIGKILL on a CLI that is writing into it." >&2
+    exit 2
+fi
+
+# Helpers that own the agent invocations. A missing helper makes the
+# agents it serves unavailable (those agents fail; others still run).
+SCRIPT_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AGY_REVIEW_HELPER="${SCRIPT_SELF_DIR}/_agy_review.sh"
+CLI_REVIEW_HELPER="${SCRIPT_SELF_DIR}/_cli_review.sh"
 
 # Run one agent to completion. Args: agent_key, bin_path, prompt_file,
-# findings_file. Exits with the agent CLI's status (124 on timeout).
+# findings_file. Exits with the helper's status (124 on timeout).
 # Always called in a background subshell; `exec` makes that subshell's
-# PID the CLI's own (or timeout's, which forwards signals to the CLI),
-# so killing the PID the parent holds really stops the agent. Agents
-# read the prompt from stdin, so prompt size is not bounded by argv.
+# PID the helper's own (via timeout, which forwards signals to it, and
+# the helper in turn forwards them to its CLI child), so killing the PID
+# the parent holds really stops the agent. Agents read the prompt from
+# stdin, so prompt size is not bounded by argv.
+#
+# Both helpers own their findings file, so there is no stdout redirect
+# here (#274, #288, #313): a helper truncates the file first and writes
+# either the review or a failure reason into it.
+# TMPDIR points at the parent-owned scratch root so a SIGKILLed helper's
+# temp dir is still swept by this script's EXIT trap.
 run_agent_sync() {
     local agent="$1" bin="$2" prompt="$3" findings="$4"
 
     case "$agent" in
-        # Helper owns the findings file; no stdout redirect (#274, #288).
-        # The outer timeout is the backstop above the helper's own
+        # Gemini's outer timeout is the backstop ABOVE the helper's own
         # print-timeout, not a replacement for it.
-        # TMPDIR points at the parent-owned scratch root so a SIGKILLed
-        # helper's temp dir is still swept by this script's EXIT trap.
-        gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
-        codex)   exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" exec < "$prompt" > "$findings" 2>&1 ;;
-        claude)  exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
-        copilot) exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
-        *)       exec timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$bin" -p < "$prompt" > "$findings" 2>&1 ;;
+        # AGENT_KILL_AFTER is exported so the helper can check that its
+        # own SIGKILL escalation fits inside this grace (#313 round 2).
+        gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
+        # codex, claude and copilot (and anything that somehow reaches
+        # here — _cli_review.sh rejects an unknown agent with a readable
+        # reason in the findings file rather than running a CLI blind).
+        # AGENT_TIMEOUT is passed through as an informational label so
+        # the helper's failure reasons can name the bound they ran under.
+        *)       exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
     esac
 }
 
@@ -482,6 +528,16 @@ for agent in "${AGENTS_TO_RUN[@]}"; do
         AGENT_UNAVAILABLE_REASON["$agent"]="${AGENT_BINS[$agent]} CLI not found (PATH searched: ${PATH}; also ~/.nvm/versions/node/*/bin/, ~/.local/bin/, ~/.npm-global/bin/, /usr/local/bin/)"
     elif [[ "$agent" == "gemini" && ! -x "$AGY_REVIEW_HELPER" ]]; then
         AGENT_UNAVAILABLE_REASON["$agent"]="${AGY_REVIEW_HELPER} is missing or not executable"
+    elif [[ "$agent" == "claude" ]] && ! command -v jq >/dev/null 2>&1; then
+        # claude's result is JSON and the helper parses it with jq, so
+        # without jq this agent cannot produce a validated review at all
+        # — name that here rather than letting every claude run fail.
+        AGENT_UNAVAILABLE_REASON["$agent"]="jq is required to parse claude's JSON result and is not installed (see bootstrap.sh)"
+    elif [[ "$agent" == "codex" || "$agent" == "claude" || "$agent" == "copilot" ]] && [[ ! -x "$CLI_REVIEW_HELPER" ]]; then
+        # Scoped to the three agents that helper serves, the way the
+        # gemini check above is scoped: a missing _cli_review.sh must not
+        # mark a gemini-only run unavailable.
+        AGENT_UNAVAILABLE_REASON["$agent"]="${CLI_REVIEW_HELPER} is missing or not executable"
     else
         AGENT_BIN_FOR["$agent"]="$bin"
         USABLE_AGENTS=$((USABLE_AGENTS + 1))
@@ -698,10 +754,74 @@ AGENT_TMP_ROOT=$(mktemp -d -t "cross-model-review-tmp.XXXXXX")
 # — otherwise an interrupted run would leave the CLIs running for up to
 # AGENT_TIMEOUT, burning quota on an abandoned review.
 declare -A AGENT_PID=()
+
+# Is this job over? A dead-but-unreaped child still answers `kill -0`,
+# so that alone would report every finished job as alive and burn the
+# whole reap budget. Two liveness reads, in order of availability:
+#   * bash's own job table — `jobs -pr` lists only jobs still RUNNING, so
+#     a job absent from it has exited whether or not it was reaped. No
+#     /proc, works on macOS/BSD and in stripped containers.
+#   * /proc's process state (Z = exited, not yet reaped) as a
+#     cross-check where /proc exists.
+#
+# proc_state prints the state letter from /proc/<pid>/stat. Field 2 is
+# the parenthesised comm, which may itself contain spaces (or a `)`), so
+# a fixed whitespace field such as awk's $3 lands on the wrong word for
+# a comm like "a Z b". The state is the first word after the LAST `)`.
+proc_state() {
+    local stat
+    [[ -r "/proc/$1/stat" ]] || return 1
+    IFS= read -r stat < "/proc/$1/stat" 2>/dev/null || return 1
+    stat=${stat##*) }
+    printf '%s' "${stat%% *}"
+}
+
+job_finished() {
+    local jpid="$1" state running
+    kill -0 "$jpid" 2>/dev/null || return 0
+    running=$(jobs -pr 2>/dev/null || true)
+    if [[ -n "$running" ]]; then
+        grep -qx -- "$jpid" <<< "$running" || return 0
+    elif state=$(proc_state "$jpid"); then
+        [[ "$state" == "Z" ]] && return 0
+    fi
+    return 1
+}
+
 cleanup_jobs() {
-    local pid
+    local pid waited=0 finished
     for pid in "${AGENT_PID[@]}"; do
         kill "$pid" 2>/dev/null || true
+    done
+    # Reap BEFORE removing AGENT_TMP_ROOT (#313 round 2). Each helper may
+    # legitimately still be waiting out its own escalation window for a
+    # CLI that ignored SIGTERM, and that CLI is still writing into a temp
+    # dir under this root: removing it here would pull the ground out
+    # from under a live process.
+    for pid in "${AGENT_PID[@]}"; do
+        finished=false
+        while (( waited < CLEANUP_REAP_SECONDS * 10 )); do
+            if job_finished "$pid"; then
+                finished=true
+                break
+            fi
+            sleep 0.1
+            waited=$((waited + 1))
+        done
+        if job_finished "$pid"; then
+            finished=true
+        fi
+        if [[ "$finished" == true ]]; then
+            # Only now: `wait` on a job that is still running would block
+            # past the bound and hang the exit path forever (#313 round 3).
+            wait "$pid" 2>/dev/null || true
+        else
+            # Budget spent and the job is still alive. SIGKILL it and do
+            # NOT wait: cleaning up beats blocking, and the job's CLI was
+            # already signalled twice over by this point.
+            echo "WARNING: agent job ${pid} did not finish within CLEANUP_REAP_TIMEOUT=${CLEANUP_REAP_TIMEOUT}s; killing it and removing the shared temp root anyway" >&2
+            kill -9 "$pid" 2>/dev/null || true
+        fi
     done
     rm -f "$SHARED_PROMPT"
     rm -rf "$AGENT_TMP_ROOT"
@@ -882,8 +1002,15 @@ run_agent_job() {
     # trap here would never run. The parent's INT trap turns Ctrl-C into
     # an exit, and its EXIT cleanup TERMs these jobs — that is the live
     # path for an interrupt.
+    # The trap waits for the child before exiting (#313 round 2): the
+    # helper under `timeout` legitimately spends its own escalation
+    # window killing a CLI that ignored SIGTERM, and it is still writing
+    # into AGENT_TMP_ROOT while it does. Exiting here at once would tell
+    # the parent's cleanup that this job is finished, and the temp root
+    # would be removed under a live CLI. The parent's reap is bounded, so
+    # a helper that never returns still cannot hang the exit path.
     child=""
-    trap '[[ -n "$child" ]] && kill "$child" 2>/dev/null; exit 143' TERM
+    trap 'if [[ -n "$child" ]]; then kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; fi; exit 143' TERM
     run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file" &
     child=$!
     rc=0
@@ -896,7 +1023,10 @@ run_agent_job() {
             printf '\n%s review hit the outer backstop (GEMINI_BACKSTOP=%ss, above AGY_PRINT_TIMEOUT=%s): the helper never returned, so its own timeout handling did not run.\n' \
                 "$agent" "$GEMINI_BACKSTOP" "$AGY_PRINT_TIMEOUT" >> "$findings_file"
         else
-            printf '\n%s review timed out (AGENT_TIMEOUT=%s); partial output above, if any.\n' \
+            # No partial output to point at: _cli_review.sh truncates the
+            # findings file first and only writes once the turn has
+            # produced a result, so a killed run leaves it empty.
+            printf '\n%s review timed out (AGENT_TIMEOUT=%s) and the CLI was killed; no result was produced.\n' \
                 "$agent" "$AGENT_TIMEOUT" >> "$findings_file"
         fi
     fi

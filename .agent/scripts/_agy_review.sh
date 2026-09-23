@@ -37,7 +37,9 @@
 #     the timeout-then-partial-response contract above.
 #   * No temp files survive any exit path this script can observe: the
 #     EXIT trap covers normal exits and the signal traps turn a kill into
-#     an exit so it still fires. SIGKILL is the exception — no trap runs,
+#     an exit so it still fires — after waiting for agy to die (with a
+#     bounded escalation to SIGKILL), so the temp dir is never removed
+#     under a running agy. SIGKILL is the exception — no trap runs,
 #     so the `agy-review.XXXXXX` dir would be left behind. The only sender
 #     is `timeout -k` on the caller's backstop (a wedged helper), and
 #     cross_model_review.sh closes that gap by pointing TMPDIR at a
@@ -83,6 +85,19 @@ fail() {
     exit 1
 }
 
+# Configuration error: recorded like a failure, but exit 2 so it reads as
+# "this run was never startable" rather than "agy misbehaved".
+config_fail() {
+    local reason="$1"
+    {
+        echo "agy review could not be started."
+        echo ""
+        echo "Reason: ${reason}"
+    } > "$FINDINGS_FILE"
+    echo "ERROR: ${reason}" >&2
+    exit 2
+}
+
 if ! command -v jq >/dev/null 2>&1; then
     fail "jq is required to build the stream-json prompt and parse agy's result event (see bootstrap.sh)"
 fi
@@ -94,6 +109,32 @@ fi
 AGY_BIN_RESOLVED=$(command -v "$AGY_BIN" 2>/dev/null || true)
 if [[ -z "$AGY_BIN_RESOLVED" || ! -x "$AGY_BIN_RESOLVED" ]]; then
     fail "agy binary not found or not executable: ${AGY_BIN}"
+fi
+
+# This helper's SIGKILL escalation must fit inside the caller's
+# `timeout -k` grace, or the caller kills this helper first and an agy
+# that ignored SIGTERM is orphaned (#313 round 2). The caller passes its
+# AGENT_KILL_AFTER in the environment; absent it, there is no outer
+# grace to fit inside and nothing to check.
+REVIEW_KILL_ESCALATION="${REVIEW_KILL_ESCALATION:-5}"
+to_seconds() {
+    [[ "$1" =~ ^([0-9]+(\.[0-9]+)?)([smhd]?)$ ]] || return 1
+    local number="${BASH_REMATCH[1]}" unit="${BASH_REMATCH[3]}" mult=1
+    case "$unit" in m) mult=60 ;; h) mult=3600 ;; d) mult=86400 ;; *) mult=1 ;; esac
+    awk -v n="$number" -v m="$mult" 'BEGIN { printf "%.0f", n * m }'
+}
+if ! ESCALATION_SECONDS=$(to_seconds "$REVIEW_KILL_ESCALATION"); then
+    config_fail "REVIEW_KILL_ESCALATION value '${REVIEW_KILL_ESCALATION}' is not a duration (a number of seconds, optionally with an s/m/h suffix)"
+fi
+if [[ -n "${AGENT_KILL_AFTER:-}" ]]; then
+    if ! KILL_AFTER_SECONDS=$(to_seconds "$AGENT_KILL_AFTER"); then
+        config_fail "AGENT_KILL_AFTER value '${AGENT_KILL_AFTER}' is not a duration"
+    fi
+    # Both zero is the one legal equal case: no grace anywhere.
+    if [[ "$KILL_AFTER_SECONDS" -le "$ESCALATION_SECONDS" ]] \
+        && ! [[ "$KILL_AFTER_SECONDS" -eq 0 && "$ESCALATION_SECONDS" -eq 0 ]]; then
+        config_fail "AGENT_KILL_AFTER (${AGENT_KILL_AFTER}) must be greater than REVIEW_KILL_ESCALATION (${REVIEW_KILL_ESCALATION}): the caller's SIGKILL would land on this helper before it could SIGKILL an agy that ignored SIGTERM, orphaning it. Raise AGENT_KILL_AFTER or lower REVIEW_KILL_ESCALATION (set both to 0 for no grace at all)."
+    fi
 fi
 
 # Temp files: the NDJSON input line, agy's stdout (event stream), and agy's
@@ -108,9 +149,38 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # background child of a non-interactive shell, where bash makes SIGINT
 # ignored (and an ignored signal cannot be trapped). The INT trap is for a
 # direct interactive invocation of this script, where Ctrl-C does arrive.
+#
+# The handler waits for agy to actually die, escalating to SIGKILL after
+# REVIEW_KILL_ESCALATION seconds (#313): exiting straight after the
+# `kill` would let the EXIT trap remove TMP_DIR under an agy still
+# writing into it, and would defeat the caller's `timeout -k` backstop —
+# that SIGKILL is aimed at this helper, so once we are gone an agy that
+# ignored SIGTERM keeps running. The escalation is validated above to fit
+# inside the caller's grace (AGENT_KILL_AFTER).
 AGY_PID=""
-trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 130' INT
-trap '[[ -n "$AGY_PID" ]] && kill "$AGY_PID" 2>/dev/null; exit 143' TERM HUP
+terminate_child() {
+    local code="$1" watchdog
+    # Re-entrancy: a second signal would otherwise start a second
+    # watchdog and clobber $watchdog, leaking the first one.
+    trap '' INT TERM HUP
+    if [[ -n "$AGY_PID" ]]; then
+        kill "$AGY_PID" 2>/dev/null
+        # `wait` returns the moment agy dies, so a clean shutdown costs
+        # milliseconds. The watchdog only matters for an agy that ignores
+        # SIGTERM, and is NOT waited on: a subshell sleeping in `sleep`
+        # defers the TERM we send it until that sleep ends, so waiting
+        # would reintroduce the full window on every clean exit.
+        ( sleep "$REVIEW_KILL_ESCALATION"
+          kill -0 "$AGY_PID" 2>/dev/null && kill -9 "$AGY_PID" 2>/dev/null ) &
+        watchdog=$!
+        wait "$AGY_PID" 2>/dev/null
+        kill "$watchdog" 2>/dev/null
+        AGY_PID=""
+    fi
+    exit "$code"
+}
+trap 'terminate_child 130' INT
+trap 'terminate_child 143' TERM HUP
 INPUT_FILE="${TMP_DIR}/input.ndjson"
 STREAM_FILE="${TMP_DIR}/stream.ndjson"
 STDERR_FILE="${TMP_DIR}/stderr.txt"

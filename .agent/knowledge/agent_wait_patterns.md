@@ -61,6 +61,7 @@ loop of your own — is the right choice in:
 | Claude Code agent (interactive) | `Monitor` over a background `gh pr checks --watch` (or similar) |
 | `merge_pr.sh` (bash) | a bounded, SHA-targeted `gh api .../check-runs` + `.../status` poll (issue #284; replaced `gh pr checks --watch --fail-fast`, which watched the wrong SHA once the script's own commits had moved the head, and treated "no checks reported yet" as a hard failure — #271) |
 | `cross_model_review.sh` waiting for its reviewers | one background job per agent, bounded by a per-agent `timeout`, collected with `wait "$pid"` per agent; the script blocks until the last agent finishes and the caller reads the per-agent `EXIT=` lines (ADR-0015, issue #206). Live observation: `tail -f <findings-file>` |
+| A review helper waiting for its CLI (`_agy_review.sh`, `_cli_review.sh`) | the same shape one level down: the CLI is a background child, `wait`ed on, with INT/TERM/HUP traps armed *before* the spawn that kill it. A foreground call would defer the signal until the turn ended on its own, leaving an abandoned CLI burning quota (issues #288, #313) |
 | Codex / Gemini agents calling workspace scripts | The script's bash busy-poll fires for them automatically |
 | CI / sandboxed pipeline | The script's bash busy-poll fires for them automatically |
 
@@ -72,6 +73,10 @@ loop of your own — is the right choice in:
 - `.agent/scripts/cross_model_review.sh` — parallel synchronous dispatch
   for cross-model adversarial review: the wait is a bounded `wait` on
   each agent's own job, no session and no poll (ADR-0015)
+- `.agent/scripts/_agy_review.sh`, `.agent/scripts/_cli_review.sh` — the
+  inner half of that wait: each helper runs its CLI as a waited-on
+  background child so a TERM from the outer `timeout -k` reaches the CLI
+  itself (issues #288, #313)
 - Workspace ROADMAP "Reduce Agent Coordination Overhead" — broader
   context for the wait/event-driven theme
 - Issue #187 — Routines + GitHub triggers spike; if Routines lands, some
