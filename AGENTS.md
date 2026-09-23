@@ -97,11 +97,13 @@ with tests.
 
 ## Tool Usage
 
-- **Prefer dedicated tools over shell equivalents** — When your framework
-  provides built-in tools for file search, content search, file reading, or
-  file editing, use those instead of shell commands (`ls`, `find`, `grep`,
-  `cat`, `sed`, etc.). Dedicated tools provide better audit trails and
-  typically require fewer permission prompts.
+- **Prefer dedicated tools where they fit** — shell commands (`cat`,
+  `grep`, `sed`, `find`, etc.) are fine for reads and simple edits; reach
+  for a framework's dedicated search/read/edit tool instead when a shell
+  command would be fragile or ambiguous — exact or multi-line
+  replacements, or `sed`/`awk` flags that differ between GNU and
+  BSD/macOS. This is a preference the agent applies by judgment, not an
+  enforced rule.
 - **Chain shell commands only when state depends on it** — Use `&&` when the
   second command needs shell state from the first (sourced environments, directory
   changes). For independent commands, use separate tool calls so each can be
