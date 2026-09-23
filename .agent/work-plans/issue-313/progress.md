@@ -1079,3 +1079,13 @@ CI at `5ca1138` had not settled when I checked: Validate Documentation passed on
 
 ### False positives
 - (Copilot) "unable to review this pull request because the user who requested the review has reached their quota limit" (five notices, latest at `5240b7d`) — says nothing about the code: Copilot's quota is exhausted (known, Sept 2026); excluded from both sources and CI.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:41 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer at the preceding findings checkpoint, conditional on a clean result: "Fix it, then merge (Recommended)". Final triage clean (no open findings) and CI all green at the reviewed head 5ca1138.
