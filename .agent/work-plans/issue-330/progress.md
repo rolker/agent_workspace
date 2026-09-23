@@ -284,3 +284,18 @@ Process-group kill otherwise sound: the leader is unreaped when `killpg` runs, s
 **Decision**: address
 
 Fix it first (Recommended): address the round-2 suggestion before publishing — Ctrl-C/SIGTERM during delegate_shape_check orphans the adapter (start_new_session=True takes it out of the terminal's foreground group; communicate() re-raises KeyboardInterrupt without killing it). Wrap the wait so any exception killpg's the group before re-raising, and catch OSError rather than only ProcessLookupError (macOS killpg EPERM for an all-zombie group) — validate_workspace.py:105. Add a test.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-23 11:20 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Dispatch**: resumed (agent aa7adf64ac459d43a, resume 1 of 3)
+
+**Branch**: feature/issue-330 at `6da1c44`
+**Addressed**: Local Review (Pre-Push) at `8868174` (2026-09-23 11:05 -04:00)
+**Commits**: 6da1c44
+
+### Actions
+- [x] Ctrl-C/SIGTERM during `delegate_shape_check` no longer orphans the adapter. Any exception from the wait now runs `kill_process_group` (killpg SIGKILL, ignoring any `OSError`), then `proc.wait()`, then re-raises. `main()` turns SIGTERM into `SystemExit` so that path runs. Test `test_validate_interrupt_kills_adapter` sends INT and TERM to a real validate run whose stub adapter backgrounds `sleep 30`, and asserts that the adapter and its child are both gone. It fails 2/2 with the wrapper removed and fails on TERM with only the SIGTERM handler removed. It SIGKILLs every recorded pid on exit, so even a failing run leaves no stray process. — `.agent/scripts/validate_workspace.py:105`
+
+Full script suite (`run_script_tests.sh`): all 27 suites passed; no stray `sleep` afterwards.
