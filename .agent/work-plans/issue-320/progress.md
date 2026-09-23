@@ -652,3 +652,24 @@ the awk extractor (10 assertions) and pass now; suite 578/578.
 - [x] (suggestion) setext headings leak the title / `===` not a boundary — heading token `.map` starts at the title line; regression `test_plan_context_extractor_setext_headings` — `.agent/scripts/_plan_approach.py`
 - [x] Missing-library / extractor-error fallback (owner direction) — `test_plan_context_parser_unavailable` — `.agent/scripts/cross_model_review.sh`
 - [x] Docs: AGENTS.md script-table row for `_plan_approach.py`; plan.md Implementation Notes — `AGENTS.md`, `.agent/work-plans/issue-320/plan.md`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 13:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a71ad0d031dc122c0, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-320 at `8723b44`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff against merge-base d149cc7, work-plans excluded: 1591 lines, 9 files — 200+ lines; override triggers: review-code + address-findings SKILL.md, knowledge doc, ADR-0015, AGENTS.md, requirements.txt)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 7 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round-6 must-fixes verified gone in the markdown-it extractor (probes: closed-then-unclosed fence keeps `step B`; `## Approach` inside an earlier fence is skipped; indented ATX and setext headings end the section). The owner's intent holds: boundaries, fences and headings all come from markdown-it tokens; the only hand rule left is the closer regex in `_fence_closed`, needed because markdown-it does not flag an unclosed fence. The re-parse loop terminates (`start` strictly increases, bounded by the line count). Every in-script failure maps to exit 3, never to 1. Interpreter resolution uses the script's own git common dir, so worktrees and project-rooted sessions reach the main checkout's `.venv`; with no `make setup` the review still runs with one warning and no Plan Context (the local main `.venv` lacks markdown-it today; system python3 3.0.0 served). CI's `make lint` installs requirements.txt into `.venv` (stamp depends on it), so the extractor tests run there. Full suite 27/27 locally; pre-commit clean; CI green at 8723b44.
+Outside reviewers: codex ran (complete, "No issues found", brief, did not execute tests); gemini failed first run (headless ViewFile/read_file auto-denied, empty response — #336), ran on the one retry (5 findings, complete). Dropped: gemini's closed-by-a-later-section fence (the CommonMark reading itself; only a hand rule could second-guess it, bounded by the 200-line cap), `---` as a boundary and exact `Approach` heading text (plan's design), list-item unclosed fence (a flush-left heading ends the item; probe confirmed), duplicate interpreter path (cosmetic).
+
+### Findings
+- [ ] (suggestion) An unclosed fence *before* the Approach swallows the `## Approach` heading, so the extractor exits 1 ("no section") and Plan Context is silently omitted with no warning; the unclosed-fence recovery only runs after the section start (repro: `## Context` / ```sh / `open` / `## Approach` / `REAL` → rc=1). Apply the same re-parse when locating the heading, or warn when exit 1 but the plan has a literal `## Approach` line — `.agent/scripts/_plan_approach.py:118`
+- [ ] (suggestion) Exit 2 ("markdown-it-py missing") collides with python's own exit 2 for "can't open file" / usage errors, so a missing or unreadable `_plan_approach.py` is reported as a missing library and the next interpreter is tried; use a code python never emits (e.g. 4) for no-library — `.agent/scripts/_plan_approach.py:36`
+- [ ] (suggestion) The extractor tests skip rather than fail when no interpreter imports markdown-it, and pre-commit hides a passing hook's output in CI, so a CI skip would be invisible; fail instead of skip when `CI` is set (GitHub sets `CI=true`) — `.agent/scripts/tests/test_cross_model_review.sh:1461`
