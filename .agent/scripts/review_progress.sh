@@ -41,9 +41,12 @@
 #                                        current worktree's progress.md, inline
 #                                        append + `git add` + `git commit`.
 #
-# sources  Integrator input for triage-reviews: local review findings at the
-#          PR head, GitHub inline comments, and candidate cross-source
-#          confirmations (same file, same head SHA) as JSON. See cmd_sources.
+# sources  Integrator input for triage-reviews: local review findings that
+#          cover the PR head (recorded at it, or at an ancestor with only
+#          bookkeeping changes since -- _bookkeeping.sh, #309), the entries
+#          dropped and why, GitHub inline comments, and candidate cross-source
+#          confirmations (same file, comment at the head) as JSON. Run it from
+#          the PR worktree. See cmd_sources.
 #
 # plan-sha The plan-commit SHA (last commit touching plan.md) for the
 #          **Plan** correlation field of Plan Authored / Plan Review
@@ -321,12 +324,18 @@ _persist_impl() {
 
 # -------------------------------------------------------------- sources ---
 # sources --progress <file> --head <sha> --reviews <fetch_pr_reviews json>
-# Integrator input for triage-reviews (PR C): the local review findings at
-# the PR head plus the GitHub-side inline comments, and the CANDIDATE
-# cross-source confirmations — a local finding and a GitHub comment that
-# name the same file and cover the current head. The skill confirms each
-# candidate semantically; this only does the mechanical correlation
-# (ADR-0013: review entries correlate by head SHA).
+# Integrator input for triage-reviews (PR C): the local review findings that
+# cover the PR head plus the GitHub-side inline comments, and the CANDIDATE
+# cross-source confirmations — a local finding covering the head and a
+# GitHub comment submitted at the head that name the same file. The skill
+# confirms each candidate semantically; this only does the mechanical
+# correlation (ADR-0013: review entries correlate by head SHA; #309: an
+# entry at an ancestor with only bookkeeping changes since still covers it,
+# and keeps its own SHA). Local coverage is checked in the repository of
+# the current directory, so run it from the PR worktree; entries with open
+# findings that do not cover the head are listed in dropped_entries with
+# reason "stale" (verified) or "unverifiable" (could not check; also warned
+# on stderr). Nothing is fetched.
 cmd_sources() {
     local progress="" head="" reviews=""
     while [[ $# -gt 0 ]]; do
@@ -357,47 +366,72 @@ head = os.environ["HEAD"]
 data = json.load(sys.stdin)
 reviews = json.load(open(os.environ["REVIEWS"], encoding="utf-8"))
 short = lambda s: (s or "")[:7]
-# The timeline may live in the workspace while cwd is a project worktree.
-# Its canonical path supplies only the issue number, never the Git repository.
+# Coverage (#309): an entry recorded at review SHA R still speaks for head H
+# when R == H (short-SHA match, the pre-#309 rule) or when the shared merge
+# gate rule (_bookkeeping.sh) verifies, in the repository of the CURRENT
+# directory, that R is an ancestor of H and only the work-plan dir of this
+# issue and the roadmap files differ. The timeline file may live outside that
+# repository; its canonical path supplies only the issue number.
 issue = re.search(r"(?:^|/)\.agent/work-plans/issue-([0-9]+)/progress\.md$",
-                  os.path.abspath(os.environ["PROGRESS"]))
+                  os.path.abspath(os.environ["PROGRESS"])) if os.environ["PROGRESS"] else None
 coverage_cache = {}
 def coverage(sha):
-    if short(sha) == short(head):
-        return "exact"
+    """(kind, why): kind is "exact" | "bookkeeping" | "stale" | "unverifiable"."""
+    if sha and short(sha) == short(head):
+        return ("exact", "")
     if sha not in coverage_cache:
-        covered = False
-        if issue:
+        if not issue:
+            coverage_cache[sha] = ("unverifiable", "--progress is not a .agent/work-plans/issue-<N>/progress.md path, so only an exact head-SHA match counts")
+        else:
             try:
-                covered = subprocess.run(
+                r = subprocess.run(
                     ["bash", os.environ["BOOKKEEPING"], "--review", os.getcwd(),
                      sha or "", head, issue.group(1)],
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL, check=False).returncode == 0
-            except OSError:
-                pass  # No local Git access: retain exact-SHA compatibility.
-        coverage_cache[sha] = "bookkeeping" if covered else None
+                    stdin=subprocess.DEVNULL, capture_output=True, text=True, check=False)
+                why = (r.stdout.strip().splitlines() or [""])[-1]
+                if r.returncode == 0:
+                    coverage_cache[sha] = ("bookkeeping", "")
+                elif r.returncode == 1:
+                    coverage_cache[sha] = ("stale", why)
+                elif r.returncode == 3:
+                    coverage_cache[sha] = ("unverifiable", why)
+                else:
+                    coverage_cache[sha] = ("unverifiable", "coverage check failed (exit {}): {}".format(
+                        r.returncode, (r.stderr.strip().splitlines() or [why])[-1]))
+            except OSError as exc:
+                coverage_cache[sha] = ("unverifiable", "coverage check could not run: {}".format(exc))
+        if coverage_cache[sha][0] == "unverifiable":
+            print("warning: sources: review at `{}` not verified against head `{}`: {}".format(
+                short(sha) or "?", short(head), coverage_cache[sha][1]), file=sys.stderr)
     return coverage_cache[sha]
 
 # OPEN local findings covering this head. Checked boxes are resolved;
 # False-positives bullets are dismissals.
 # Every repo-relative path cited in backticks counts, not only the last.
 local = []
+# Entries with open findings that do NOT cover this head, and why — so a
+# caller can tell "no open findings" from "open findings, but stale" and,
+# above all, from "open findings the helper could not check" (#309).
+dropped = []
 loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
 for e in data.get("entries", []):
     c = e.get("correlation") or {}
     if c.get("kind") not in ("pr", "branch"):
         continue
-    covered_by = coverage(c.get("sha"))
-    if not covered_by:
+    open_f = [f for f in e.get("findings", [])
+              if f.get("section") != "False positives" and not f.get("checked")]
+    if not open_f:
         continue
-    for f in e.get("findings", []):
-        if f.get("section") == "False positives" or f.get("checked"):
-            continue
+    kind, why = coverage(c.get("sha"))
+    if kind not in ("exact", "bookkeeping"):
+        dropped.append({"entry_type": e["type"], "sha": short(c.get("sha")),
+                        "open_findings": len(open_f), "reason": kind, "why": why})
+        continue
+    for f in open_f:
         cited = [(m.group(1), int(m.group(2)) if m.group(2) else None)
                  for m in loc_re.finditer(f.get("text", "")) if "/" in m.group(1) or "." in m.group(1)]
         local.append({"entry_type": e["type"], "sha": short(c.get("sha")), "text": f.get("text"),
-                      "covers_head": True, "coverage": covered_by,
+                      "covers_head": True, "coverage": kind,
                       "source_hint": f.get("source_hint"),
                       "files": [p for p, _ in cited],
                       "lines": {p: ln for p, ln in cited if ln is not None}})
@@ -422,8 +456,8 @@ for lf in local:
             candidates.append({"file": gc["path"], "local": lf["text"], "local_entry": lf["entry_type"],
                                "github": gc["body"], "github_source": gc["source"],
                                "local_line": lf["lines"].get(hit[0]), "github_line": gc["line"]})
-json.dump({"head": short(head), "local_findings": local, "github_comments": github,
-           "candidates": candidates}, sys.stdout, indent=2)
+json.dump({"head": short(head), "local_findings": local, "dropped_entries": dropped,
+           "github_comments": github, "candidates": candidates}, sys.stdout, indent=2)
 print()
 '
 }

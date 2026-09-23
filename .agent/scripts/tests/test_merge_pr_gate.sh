@@ -912,6 +912,27 @@ else
     fail "(ci-30) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
 fi
 
+echo "TEST: CI target — a host-pushed docs/roadmap.md commit (#334 spelling) after a green head reuses its verdict"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; green=$(git -C "$wt" rev-parse HEAD)
+mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/docs/roadmap.md"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "roadmap"
+git -C "$wt" push --quiet origin feature/issue-7
+head_now=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI target: \`${green:0:7}\`"*"bookkeeping commits"* ]]; then
+    pass "(ci-30b) docs/roadmap.md commit after a green head: CI target walks back to the green head, merges"
+else
+    fail "(ci-30b) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
 echo "TEST: CI target — a code commit after the green head is NOT walked over (#300)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; green=$(git -C "$wt" rev-parse HEAD)
@@ -1211,6 +1232,8 @@ fi
 #   code-after     R -> some_file.sh -> progress.md
 #   roadmap-after  R -> docs/ROADMAP.md -> progress.md
 #   plan-after     R -> work-plans/issue-7/plan.md -> progress.md
+#   roadmap-lower-after  R -> docs/roadmap.md (the #334 spelling) -> progress.md
+#   other-issue-after    R -> work-plans/issue-70/progress.md -> progress.md
 #   unrelated      review cites a commit on main that is not in H's history
 make_gate_sandbox() {  # <mode>
     local mode="$1" sb wt r head remote comments body review
@@ -1226,6 +1249,13 @@ make_gate_sandbox() {  # <mode>
         roadmap-after)
             mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/docs/ROADMAP.md"
             git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "roadmap" ;;
+        roadmap-lower-after)
+            mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/docs/roadmap.md"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "roadmap" ;;
+        other-issue-after)
+            mkdir -p "$wt/.agent/work-plans/issue-70"
+            printf -- '# Issue #70\n' > "$wt/.agent/work-plans/issue-70/progress.md"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "stray timeline" ;;
         plan-after)
             mkdir -p "$wt/.agent/work-plans/issue-7"
             printf -- '# Plan\n\n## Addendum 1\n\nowner rule\n' > "$wt/.agent/work-plans/issue-7/plan.md"
@@ -1303,6 +1333,24 @@ if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]] \
     pass "(g6) plan.md addendum after the review: gate passes under the default (enforce)"
 else
     fail "(g6) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a docs/roadmap.md commit (the #334 lowercase spelling) keeps the review current"
+sb="$(make_gate_sandbox roadmap-lower-after)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]]; then
+    pass "(g7) docs/roadmap.md + progress.md after the review: gate passes"
+else
+    fail "(g7) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — another issue's work-plan dir is not exempt, even with a prefix-sharing number (#309)"
+sb="$(make_gate_sandbox other-issue-after)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"stale review"*"touches \`.agent/work-plans/issue-70/progress.md\`"* ]]; then
+    pass "(g8) issue-70 timeline after an issue-7 review: stale, names the path"
+else
+    fail "(g8) (out=${out:0:400})"
 fi
 
 echo ""

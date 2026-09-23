@@ -1054,7 +1054,10 @@ _ci_poll_state() {  # <sha> -- prints "<state>|<excluded>": state is one of none
 # THIS run committed; this walk covers the same shape when the host pushed
 # them. A batch push runs CI only on its tip, so the walk takes the newest
 # bookkeeping-only ancestor whose checks actually reached a verdict.
-MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "ROADMAP.md" "docs/ROADMAP.md")
+# Any issue's work-plan dir (a CI question, not a review one: a document
+# commit needs no new CI round whoever's timeline it is), plus the roadmap
+# set shared with the review policy (_bookkeeping.sh).
+MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "${BOOKKEEPING_ROADMAP_PATHS[@]}")
 _is_bookkeeping_path() {  # <path> -- rc 0 when the path is a merge-time document file
     local p="$1" pat
     for pat in "${MERGE_PR_CI_BOOKKEEPING_PATTERNS[@]}"; do
