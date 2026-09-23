@@ -562,3 +562,13 @@ Owner scope addition, not addressing a review box. The owner answered the "found
 - [ ] (suggestion) A plan fence that never closes runs the Approach to EOF, pulling later sections in (capped at 200 lines); cheap fix: if the fence is still open at EOF, cut at the first boundary line seen while it was open (the old one-sided "shorter, never longer" result) — `.agent/scripts/cross_model_review.sh:997-1025`
 - [ ] (suggestion) The section stop recognises only `-` thematic breaks; `***` / `___` (with optional inner spaces) are CommonMark rules too and currently let a later section leak in (reproduced with markdown_it by the Claude adversarial reviewer) — `.agent/scripts/cross_model_review.sh:1025`
 - [ ] (suggestion) `trap cleanup_jobs EXIT` is registered 90 lines after the `mktemp` calls, so a failure or signal in between leaks `SHARED_PROMPT` and now `SHARED_DIFF` too (window predates #320) — register the trap before the first `mktemp` — `.agent/scripts/cross_model_review.sh:743-833`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 12:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Owner chose "Fix 3, then publish (Recommended)": address the three round-5 suggestions (unclosed plan fence over-extends the Approach; `***`/`___` thematic breaks not recognised as section stops; cleanup trap registered after the mktemp calls), one more review round, then publish. Gemini's two round-5 failures (headless read_file denial; output-token limit) go to a separate issue, not this branch.
