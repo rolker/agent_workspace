@@ -365,3 +365,13 @@ later reader sees them as decisions rather than incidental code.
 - `test_cross_model_review.sh`: 379 passed, 0 failed
 - `run_script_tests.sh`: all 23 suites passed in 90s
 - Diff since round 1 touches only the script, its tests, plan.md and progress.md — no #313 files
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-23 10:43 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Owner, 2026-09-23: "yes, update 320 with same codex/gemini rules". Scope addition before publish (recorded on the issue): a fix-round re-review classifies the fix round's own delta (changes since the last reviewed SHA) with the same tier table as a first review, so a Standard-sized delta dispatches the cross-model reviewers (Gemini via agy, Codex) exactly as a first review does; the reviewer may raise the tier, never lower it; a Light delta stays Light. #313 has merged and origin/main is merged into this branch (8b55f02).
