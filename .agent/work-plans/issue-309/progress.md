@@ -44,3 +44,13 @@ None beyond the implementation plan.
 
 ### Actions
 - [x] No actions needed.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-23 14:10-04:00
+**By**: Codex CLI Agent (gpt-6)
+**Plan**: `.agent/work-plans/issue-309/plan.md` at `bed79ef`
+
+Share the existing merge-gate coverage rule with sources; preserve original review
+SHAs and test real-history boundaries. Draft PR deferred until the fix is reviewable.
+User authorized implementation and the workspace workflow in this session.
