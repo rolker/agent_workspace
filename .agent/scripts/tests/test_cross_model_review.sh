@@ -2373,18 +2373,31 @@ test_job_finished_proc_comm_with_space() {
         sed -n '/^proc_state() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
         sed -n '/^job_finished() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
         echo "bindir='${bindir}'"
+        echo "pidfile='${TMPDIR_BASE}/zombie.pid'"
         cat << 'PROBE_EOF'
 "${bindir}/a Z b" 30 &
 live=$!
-"${bindir}/x y" 0.2 &
-dead=$!
-sleep 1   # "x y" has exited but has NOT been waited on yet
+# The zombie must belong to a parent that never reaps it. A child of
+# this bash would be reaped by bash's SIGCHLD handler during the sleep
+# below, and job_finished would then return through `kill -0` without
+# ever reading /proc. `exec sleep` replaces the sh, and sleep does not
+# wait, so "x y" stays a zombie until its parent is killed.
+sh -c '"$1" 0.2 & echo $! > "$2"; exec sleep 10' _ "${bindir}/x y" "$pidfile" &
+reaper=$!
+for _ in $(seq 50); do [[ -s "$pidfile" ]] && break; sleep 0.1; done
+dead=$(< "$pidfile")
+sleep 1   # "x y" has exited; its non-reaping parent keeps it a zombie
+# Precondition: the zombie still answers kill -0, so the verdict below
+# can only come from the /proc state read.
+kill -0 "$dead" 2>/dev/null && echo "zombie: present" || echo "ZOMBIE-ALREADY-REAPED"
 job_finished "$live" && echo "RUNNING-REPORTED-FINISHED" || echo "running: alive"
 if job_finished "$dead"; then echo "dead: finished"; else echo "DEAD-REPORTED-ALIVE"; fi
-kill "$live" 2>/dev/null; wait 2>/dev/null
+# Killing the parent reparents the zombie to init, which reaps it.
+kill "$live" "$reaper" 2>/dev/null; wait 2>/dev/null
 PROBE_EOF
     } > "$probe"
     local output; output=$(bash "$probe" 2>&1)
+    assert_contains "the 'x y' zombie is still unreaped when probed" "zombie: present" "$output"
     assert_contains "a running job named 'a Z b' is reported as running" "running: alive" "$output"
     assert_contains "a zombie named 'x y' is reported as finished" "dead: finished" "$output"
     assert_not_contains "no misreport of a running job" "RUNNING-REPORTED-FINISHED" "$output"
