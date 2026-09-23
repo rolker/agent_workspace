@@ -299,3 +299,25 @@ Fix it first (Recommended): address the round-2 suggestion before publishing —
 - [x] Ctrl-C/SIGTERM during `delegate_shape_check` no longer orphans the adapter. Any exception from the wait now runs `kill_process_group` (killpg SIGKILL, ignoring any `OSError`), then `proc.wait()`, then re-raises. `main()` turns SIGTERM into `SystemExit` so that path runs. Test `test_validate_interrupt_kills_adapter` sends INT and TERM to a real validate run whose stub adapter backgrounds `sleep 30`, and asserts that the adapter and its child are both gone. It fails 2/2 with the wrapper removed and fails on TERM with only the SIGTERM handler removed. It SIGKILLs every recorded pid on exit, so even a failing run leaves no stray process. — `.agent/scripts/validate_workspace.py:105`
 
 Full script suite (`run_script_tests.sh`): all 27 suites passed; no stray `sleep` afterwards.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 11:26 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Dispatch**: resumed (agent a47a591d46a70481f, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-330 at `febc732`
+**Base**: main
+**Depth**: Deep (reason: AGENTS.md governance file; ~400 changed lines outside work-plans)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+The round-2 suggestion is resolved (6da1c44): any exception during the wait SIGKILLs the adapter's process group (every `OSError` ignored), then waits and re-raises; `main()` turns SIGTERM into `SystemExit(143)`. Tested by breaking a scratch copy: removing the `except BaseException` wrapper fails both the INT and TERM orphan asserts; removing only the SIGTERM handler fails TERM only; no stray `sleep` was left after any run. Registry suite 258/258. Nothing in `validate_workspace.py` or `workspace.py` swallows `SystemExit` (the only broad except is the new wrapper, which re-raises).
+
+What the SIGTERM handler means for callers: none depends on death-by-signal. `make validate` and `dashboard.sh` (`&>/dev/null`, exit status only) run it directly and see 143 either way in a shell. The session-start hook only prints an `adapter --project <name> validate` hint and never runs the validator.
+
+Fresh Claude adversarial specialist: no issues (checked the signal scope, the group kill, a double SIGTERM during cleanup (harmless: SIGKILL already sent), no recursion back into the validator, the nested-repo test, and that the tests are real). No cross-model run this round: the change since round 2 is a 20-line fix inside what codex already reviewed.
+
+### Findings
+- [ ] No issues found. LGTM.
