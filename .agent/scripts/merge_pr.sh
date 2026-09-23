@@ -773,7 +773,7 @@ else
                 elif [[ -z "$_gate_h_full" ]]; then
                     _gate_stale_why="head \`${_gate_head_short}\` is not present locally"
                 elif _gate_stale_why=$(_only_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" \
-                        ".agent/work-plans/issue-${ISSUE_NUM}/*" "ROADMAP.md" "docs/ROADMAP.md"); then
+                        ".agent/work-plans/issue-${ISSUE_NUM}/*" "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md"); then
                     _gate_covered=true
                     echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only work-plan / progress.md / roadmap changed since"
                 fi
@@ -1094,7 +1094,7 @@ _ci_poll_state() {  # <sha> -- prints "<state>|<excluded>": state is one of none
 # THIS run committed; this walk covers the same shape when the host pushed
 # them. A batch push runs CI only on its tip, so the walk takes the newest
 # bookkeeping-only ancestor whose checks actually reached a verdict.
-MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "ROADMAP.md" "docs/ROADMAP.md")
+MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
 _is_bookkeeping_path() {  # <path> -- rc 0 when the path is a merge-time document file
     local p="$1" pat
     for pat in "${MERGE_PR_CI_BOOKKEEPING_PATTERNS[@]}"; do

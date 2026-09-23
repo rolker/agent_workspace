@@ -5,11 +5,13 @@
 # Usage:
 #   update_roadmap.sh --issue <N> [--root <dir>] [--dry-run]
 #
-# Searches for #<N> in ROADMAP.md files under --root and updates status:
+# Searches for #<N> in roadmap files under --root and updates status:
 #   - Table format: changes the Status column to "done"
 #   - Checklist format: changes "- [ ]" to "- [x]"
 #
-# Discovers roadmap files at: ROADMAP.md, docs/ROADMAP.md
+# Discovers roadmap files at: ROADMAP.md, docs/ROADMAP.md, docs/roadmap.md
+# (every one that exists; a path that is the same file as one already
+# processed — case-insensitive filesystems — is skipped).
 # Both formats are tried against each file found.
 #
 # Only matches explicit #<N> references (no fuzzy matching).
@@ -143,10 +145,21 @@ _try_checklist_format() {
 }
 
 # --- Discover and process roadmap files ---
-# Check both possible locations; try both formats against each file.
-for rel_path in "ROADMAP.md" "docs/ROADMAP.md"; do
+# Check every candidate location; try both formats against each file.
+# docs/roadmap.md is the workspace's own spelling; the uppercase paths stay
+# so project repos keep their existing convention.
+PROCESSED_ROADMAPS=()
+for rel_path in "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md"; do
     roadmap="$ROOT_DIR/$rel_path"
     [[ -f "$roadmap" ]] || continue
+    # On a case-insensitive filesystem docs/ROADMAP.md and docs/roadmap.md
+    # are one file — process it once.
+    already=false
+    for seen in "${PROCESSED_ROADMAPS[@]+"${PROCESSED_ROADMAPS[@]}"}"; do
+        [[ "$roadmap" -ef "$seen" ]] && { already=true; break; }
+    done
+    $already && continue
+    PROCESSED_ROADMAPS+=("$roadmap")
 
     _try_table_format "$roadmap" "$rel_path"
     _try_checklist_format "$roadmap" "$rel_path"

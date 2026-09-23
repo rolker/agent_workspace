@@ -651,6 +651,33 @@ else
     fail "(ci-2) (out=${out:0:400})"
 fi
 
+echo "TEST: CI target — the same with the lowercase docs/roadmap.md spelling (#334)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"
+mkdir -p "$wt/docs"
+printf -- '# Roadmap\n\n- [ ] Something (#7)\n' > "$wt/docs/roadmap.md"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "add roadmap"
+git -C "$wt" push --quiet origin feature/issue-7
+reviewed=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+comments='[{"body":"## Decision summary\n\n**What changed**: x\n\n**Recommendation**: merge"}]'
+body='"## Summary\n\nplain body"'
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":%s,"body":%s}\n' "$reviewed" "$comments" "$body" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=0 \
+    MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 MERGE_PR_CI_TIMEOUT_SECONDS=5 \
+    GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+    "$sb/.agent/scripts/merge_pr.sh" --pr "$PR" --type workspace --report-only 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"Roadmap updated"* ]] && [[ "$out" == *"CI target: reviewed head \`${reviewed:0:7}\`"* ]] \
+    && [[ "$out" == *"docs/roadmap.md: #7"* ]] && [[ "$out" == *"only touches paths this script committed itself (docs/roadmap.md,"* ]] \
+    && grep -qF "api repos//commits/${reviewed}/check-runs" "$sb/gh_calls.log"; then
+    pass "(ci-2b) lowercase docs/roadmap.md: updated, and its commit is exempt like the uppercase one"
+else
+    fail "(ci-2b) (out=${out:0:400})"
+fi
+
 echo "TEST: CI target — a head that also touches a path the script didn't commit voids the exemption"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"
@@ -911,6 +938,30 @@ if merged_called "$sb" && [[ "$out" == *"CI target: \`${green:0:7}\`"*"bookkeepi
 else
     fail "(ci-30) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
 fi
+
+for roadmap_rel in docs/ROADMAP.md docs/roadmap.md; do
+    echo "TEST: CI target — a host-pushed $roadmap_rel-only commit after a green head is bookkeeping (#334)"
+    sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+    wt="$(ci_wt "$sb")"; green=$(git -C "$wt" rev-parse HEAD)
+    mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/$roadmap_rel"
+    git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "roadmap"
+    git -C "$wt" push --quiet origin feature/issue-7
+    head_now=$(git -C "$wt" rev-parse HEAD)
+    remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+    printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+        > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+    write_workflows "$sb" '{"total_count":1}'
+    write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
+    write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+    write_mergeable_fixture "$sb" "MERGEABLE"
+    out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+    if merged_called "$sb" && [[ "$out" == *"CI target: \`${green:0:7}\`"*"bookkeeping commits"* ]] \
+        && [[ "$out" == *"CI checks passed on \`${green:0:7}\`"* ]]; then
+        pass "(ci-30 $roadmap_rel) roadmap-only commit after a green head: walks back to the green head, merges"
+    else
+        fail "(ci-30 $roadmap_rel) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+    fi
+done
 
 echo "TEST: CI target — a code commit after the green head is NOT walked over (#300)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
@@ -1210,6 +1261,7 @@ fi
 #   progress-only  R -> progress.md (the live failure shape)
 #   code-after     R -> some_file.sh -> progress.md
 #   roadmap-after  R -> docs/ROADMAP.md -> progress.md
+#   roadmap-after-lower  R -> docs/roadmap.md -> progress.md (#334)
 #   plan-after     R -> work-plans/issue-7/plan.md -> progress.md
 #   unrelated      review cites a commit on main that is not in H's history
 make_gate_sandbox() {  # <mode>
@@ -1225,6 +1277,9 @@ make_gate_sandbox() {  # <mode>
             git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "later code" ;;
         roadmap-after)
             mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/docs/ROADMAP.md"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "roadmap" ;;
+        roadmap-after-lower)
+            mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/docs/roadmap.md"
             git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "roadmap" ;;
         plan-after)
             mkdir -p "$wt/.agent/work-plans/issue-7"
@@ -1293,6 +1348,15 @@ if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]]; th
     pass "(g5) roadmap + progress.md after the review: gate passes"
 else
     fail "(g5) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — the same with the lowercase docs/roadmap.md spelling (#334)"
+sb="$(make_gate_sandbox roadmap-after-lower)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]]; then
+    pass "(g5b) docs/roadmap.md + progress.md after the review: gate passes"
+else
+    fail "(g5b) (out=${out:0:400})"
 fi
 
 echo "TEST: gate (a) — a plan addendum committed after the review keeps it current (#300 owner rule)"

@@ -41,6 +41,21 @@ check_file() {
     fi
 }
 
+# check_file_alt <path> <type> <scope> <earlier-path>...
+# Like check_file, but skips <path> when it is the same file as one of the
+# earlier spellings already checked — on a case-insensitive filesystem
+# (macOS default) docs/principles.md and docs/PRINCIPLES.md resolve to one
+# file and must be reported once.
+check_file_alt() {
+    local path="$1" type="$2" scope="$3"
+    shift 3
+    local earlier
+    for earlier in "$@"; do
+        [[ "$path" -ef "$earlier" ]] && return 0
+    done
+    check_file "$path" "$type" "$scope"
+}
+
 check_dir() {
     local dir="$1" type="$2" scope="$3" pattern="${4:-*.md}"
     if [[ -d "$dir" ]]; then
@@ -64,9 +79,15 @@ check_directory() {
 scan_scope() {
     local dir="$1" scope="$2"
 
-    check_file "$dir/PRINCIPLES.md"       principles    "$scope"
-    check_file "$dir/docs/PRINCIPLES.md"  principles    "$scope"
-    check_file "$dir/ARCHITECTURE.md"     architecture  "$scope"
+    # Both spellings are accepted: the root/uppercase names (ARCHITECTURE.md,
+    # PRINCIPLES.md) and the lowercase docs/ names the workspace itself uses
+    # (docs/design.md, docs/principles.md). Projects are not forced into
+    # either convention.
+    check_file     "$dir/PRINCIPLES.md"       principles    "$scope"
+    check_file     "$dir/docs/PRINCIPLES.md"  principles    "$scope"
+    check_file_alt "$dir/docs/principles.md"  principles    "$scope" "$dir/docs/PRINCIPLES.md"
+    check_file     "$dir/ARCHITECTURE.md"     architecture  "$scope"
+    check_file     "$dir/docs/design.md"      architecture  "$scope"
     check_file "$dir/AGENTS.md"           agents-config "$scope"
     check_file "$dir/.agents/README.md"   agent-guide   "$scope"
     check_dir  "$dir/docs/decisions"      adr           "$scope"
