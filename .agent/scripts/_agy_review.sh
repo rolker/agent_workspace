@@ -251,8 +251,13 @@ if [[ "$STATUS" != "SUCCESS" ]]; then
     # own error text and stderr only, never RESPONSE — the response is the
     # model's text and can legitimately quote the phrase (a review of a
     # diff that mentions it), which must not relabel an unrelated error.
-    # The phrase is the CLI text quoted in #336; which of the two channels
-    # agy puts it on was not captured live, so both are checked. Both
+    # Captured live (#336 round 2): status non-SUCCESS with `.error` a
+    # plain string, verbatim:
+    #   Your previous response was cut off because it exceeded the output token limit
+    #   Please continue from where you left off, keeping your response shorter
+    #   Retries remaining: 3
+    # So `.error` is the observed channel; the stderr tail stays checked
+    # as a cheap second channel in case a CLI version moves it. Both
     # halves must sit on the SAME line: across the whole blob, an unrelated
     # "connection was cut off" plus a separate banner naming the token
     # limit would mislabel an ordinary failure as a cutoff.

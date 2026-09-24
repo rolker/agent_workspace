@@ -55,6 +55,9 @@ setup() {
     #                       `response` text sent alongside it (default "")
     #   MOCK_AGY_ERROR_STDERR=<l>    with MOCK_AGY_ERROR: also print <l>
     #                       on stderr before the result event
+    #   MOCK_AGY_ERROR_STRING=1      with MOCK_AGY_ERROR: send `error` as
+    #                       the plain string <m> (the live cutoff shape)
+    #                       instead of the {code,message} object
     #   MOCK_AGY_DENY_PARTIAL=1  normal response PLUS one denied action
     #   MOCK_AGY_SLEEP=<s>  sleep <s> before answering normally
     #   MOCK_AGY_STALL=1    read the prompt, then never answer (sleep 60):
@@ -109,8 +112,13 @@ if [[ -n "${MOCK_AGY_DENY:-}" ]]; then
 fi
 if [[ -n "${MOCK_AGY_ERROR:-}" ]]; then
     [[ -n "${MOCK_AGY_ERROR_STDERR:-}" ]] && echo "${MOCK_AGY_ERROR_STDERR}" >&2
-    jq -cn --arg m "$MOCK_AGY_ERROR" --arg r "${MOCK_AGY_ERROR_RESPONSE:-}" \
-        '{event:"result",result:{status:"ERROR",response:$r,error:{code:429,message:$m}}}'
+    if [[ -n "${MOCK_AGY_ERROR_STRING:-}" ]]; then
+        jq -cn --arg m "$MOCK_AGY_ERROR" --arg r "${MOCK_AGY_ERROR_RESPONSE:-}" \
+            '{event:"result",result:{status:"ERROR",response:$r,error:$m}}'
+    else
+        jq -cn --arg m "$MOCK_AGY_ERROR" --arg r "${MOCK_AGY_ERROR_RESPONSE:-}" \
+            '{event:"result",result:{status:"ERROR",response:$r,error:{code:429,message:$m}}}'
+    fi
     exit 0
 fi
 if [[ -n "${MOCK_AGY_TIMEOUT:-}" ]]; then
@@ -1111,9 +1119,10 @@ test_agy_viewfile_denial_is_failure() {
     teardown
 }
 
-# The cutoff shape below is modelled on the CLI text quoted in #336, not
-# on a captured live agy result: which channel agy puts it on (`.error`
-# or stderr) was not observed, so both are exercised.
+# The live cutoff (captured in #336 round 2) puts the text in `.error` as
+# a plain string; test_agy_live_cutoff_fixture replays it verbatim. The
+# tests here keep exercising the object-valued `.error` and the stderr
+# channel, which the helper also checks.
 test_agy_output_token_cutoff_is_named() {
     echo "TEST: agy's output-token cutoff is a failure with a precise reason; the partial response is dropped (#336)"
     setup
@@ -1135,6 +1144,27 @@ test_agy_output_token_cutoff_is_named() {
     content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
     assert_contains "stderr-reported cutoff is named" "exceeded the output token limit \(status ERROR\)" "$content"
     assert_not_contains "partial response is not recorded (stderr case)" "PARTIAL REVIEW TEXT" "$content"
+
+    teardown
+}
+
+# Verbatim live capture from #336 round 2: `.error` is a plain string
+# carrying agy's three-line cutoff message.
+test_agy_live_cutoff_fixture() {
+    echo "TEST: agy's live cutoff shape (string .error, verbatim) is named as a cutoff (#336)"
+    setup
+
+    local live_error=$'Your previous response was cut off because it exceeded the output token limit\nPlease continue from where you left off, keeping your response shorter\nRetries remaining: 3'
+    local exit_code content
+    exit_code=$(MOCK_AGY_ERROR="$live_error" MOCK_AGY_ERROR_STRING=1 \
+        MOCK_AGY_ERROR_RESPONSE="PARTIAL REVIEW TEXT" run_gemini_sync)
+    assert_exit_code "live cutoff exits 3" "3" "$exit_code"
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "live cutoff reason is named" \
+        "response was cut off because it exceeded the output token limit \(status ERROR\); the prompt or response was too large" "$content"
+    assert_contains "agy's own error text is kept" "Retries remaining: 3" "$content"
+    assert_not_contains "partial response is not recorded" "PARTIAL REVIEW TEXT" "$content"
+    assert_contains "findings file has failed marker" "Review failed" "$content"
 
     teardown
 }
@@ -4126,6 +4156,7 @@ test_diff_fetch_failure_is_marked
 test_agy_api_error_message_kept
 test_agy_viewfile_denial_is_failure
 test_agy_output_token_cutoff_is_named
+test_agy_live_cutoff_fixture
 test_agy_cutoff_phrase_in_response_not_misread
 test_agy_cutoff_halves_on_separate_lines_not_misread
 test_agy_findings_truncated
