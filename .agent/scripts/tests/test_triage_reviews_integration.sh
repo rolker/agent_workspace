@@ -362,6 +362,59 @@ out=$(hist_sources "$(hist_head)")
         and (.dropped_entries[0].why | contains("scripts/code.sh"))' <<<"$out" >/dev/null \
     && pass "sources (h16): a code file renamed into the work-plan dir is stale, naming its old path" \
     || fail "sources (h16): rename into the exempt dir accepted (out=$out)"
+
+# (h17-h20) git failing inside the check is "unverifiable" (warned), never
+# a verified "stale". Each damaging case runs on its own copy of the history.
+copy_hist() { cp -R "$HIST" "$TMPD/$1" && echo "$TMPD/$1"; }
+loose_object() { echo "$1/.git/objects/${2:0:2}/${2:2}"; }
+src_in() {  # <repo> <head> -- sources run from <repo>
+    (cd "$1" && "$RP" sources --progress "$HP" --head "$2" --reviews "$REVIEWS" 2>"$HERR")
+}
+# (h17) a commit on the ancestry walk is unreadable: git exits 1 but says so
+# on stderr, which must not read as "not an ancestor".
+C17=$(copy_hist missing-commit)
+if rm "$(loose_object "$C17" "$BOOK_HEAD")" 2>/dev/null; then
+    out=$(src_in "$C17" "$DOC_HEAD"); rc=$?
+    unverifiable_ok "$out" "$rc" "could not check whether" \
+        && pass "sources (h17): unreadable commit on the ancestry walk -> unverifiable, warned, rc 0" \
+        || fail "sources (h17): missing ancestry object (rc=$rc out=$out err=$(<"$HERR"))"
+else
+    fail "sources (h17): fixture: $BOOK_HEAD is not a loose object in the copy"
+fi
+# (h18) the ancestry check passes but the diff cannot read the review's tree.
+C18=$(copy_hist missing-tree)
+if rm "$(loose_object "$C18" "$(git -C "$C18" rev-parse "${REVIEWED}^{tree}")")" 2>/dev/null; then
+    out=$(src_in "$C18" "$DOC_HEAD"); rc=$?
+    unverifiable_ok "$out" "$rc" "could not diff" \
+        && pass "sources (h18): failed diff -> unverifiable, warned, rc 0" \
+        || fail "sources (h18): failed diff (rc=$rc out=$out err=$(<"$HERR"))"
+else
+    fail "sources (h18): fixture: the review's tree is not a loose object in the copy"
+fi
+# (h19) a shallow clone that holds both commits but not the history between
+# them answers "not an ancestor" for a real ancestor.
+git -C "$HIST" branch -f review-tip "$REVIEWED"
+git -C "$HIST" branch -f doc-tip "$DOC_HEAD"
+git clone -q --depth 1 --no-single-branch "file://$HIST" "$TMPD/shallow" 2>/dev/null
+if [[ "$(git -C "$TMPD/shallow" rev-parse --is-shallow-repository 2>/dev/null)" == true ]] \
+        && git -C "$TMPD/shallow" cat-file -e "${REVIEWED}^{commit}" 2>/dev/null; then
+    out=$(src_in "$TMPD/shallow" "$DOC_HEAD"); rc=$?
+    unverifiable_ok "$out" "$rc" "shallow" \
+        && pass "sources (h19): non-ancestor in a shallow repository -> unverifiable, warned, rc 0" \
+        || fail "sources (h19): shallow history (rc=$rc out=$out err=$(<"$HERR"))"
+else
+    fail "sources (h19): fixture: shallow clone missing or without the review commit"
+fi
+# (h20) an ancestry check exiting other than 0/1 is unverifiable (rc 3), not
+# stale: a git shim fails only `merge-base`, silently.
+mkdir -p "$TMPD/gitshim"
+printf '#!/bin/bash\nfor a in "$@"; do [[ "$a" == merge-base ]] && exit 128; done\nexec %q "$@"\n' \
+    "$(command -v git)" > "$TMPD/gitshim/git"
+chmod +x "$TMPD/gitshim/git"
+why=$(PATH="$TMPD/gitshim:$PATH" bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$REVIEWED" "$DOC_HEAD" 7); rc=$?
+[[ "$rc" == 3 && "$why" == *"git exit 128"* ]] \
+    && pass "sources (h20): ancestry check exit 128 -> bridge rc 3 (unverifiable), reason names the exit" \
+    || fail "sources (h20): ancestry exit 128 (rc=$rc why=$why)"
 rm -f "$HERR"
 
 # ========================================================== persist =====

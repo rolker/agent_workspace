@@ -1397,6 +1397,20 @@ else
     fail "(g9) (out=${out:0:400})"
 fi
 
+echo "TEST: gate (a) — an unverifiable coverage check (git failure, helper rc 3) is still not covered (#309)"
+sb="$(make_gate_sandbox roadmap-after)"
+# A git shim in the sandbox's stub PATH fails only the ancestry check.
+printf '#!/bin/bash\n[[ "$1 $2" == "merge-base --is-ancestor" || "$3 $4" == "merge-base --is-ancestor" ]] && { echo "error: shim" >&2; exit 128; }\nexec %q "$@"\n' \
+    "$(command -v git)" > "$sb/stubbin/git"
+chmod +x "$sb/stubbin/git"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"stale review"*"could not check whether"*"git exit 128"* ]] \
+    && [[ "$out" != *"covers head"* ]]; then
+    pass "(g10) ancestry check failing with exit 128: not covered, reason quoted"
+else
+    fail "(g10) (out=${out:0:400})"
+fi
+
 echo ""
 echo "test_merge_pr_gate: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

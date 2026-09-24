@@ -28,15 +28,34 @@ BOOKKEEPING_ROADMAP_PATHS=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
 # work-plan addenda, roadmap updates). The comparison is the endpoint tree
 # diff, so a later bookkeeping commit can never hide an earlier code commit,
 # and renames are not detected, so a move into an allowed path still counts
-# its source path. An allowed entry may be a glob. Returns 0 on equivalence; on failure
-# returns 1 and prints the reason (one line, for the caller to quote). Both
-# SHAs must be full and resolvable in <wt>; callers resolve short SHAs first
-# so an ambiguous prefix is a failure there, not a silent match here.
+# its source path. An allowed entry may be a glob. Returns 0 on equivalence;
+# 1 when a difference is verified (not an ancestor in a complete history, or
+# a path outside the allowed set); 3 when git cannot answer (an ancestry
+# check that errors or cannot read a commit, a failed diff, a non-ancestor in
+# a shallow repository). Prints the reason for 1 and 3 (one line, for the
+# caller to quote); callers that only ask "covered or not" treat any
+# non-zero alike. Both SHAs must be full and resolvable in <wt>; callers
+# resolve short SHAs first so an ambiguous prefix is a failure there, not a
+# silent match here.
 _only_bookkeeping_between() {
     local wt="$1" from="$2" to="$3"; shift 3
     local -a allowed=("$@")
-    local diff_paths p a ok
-    if ! git -C "$wt" merge-base --is-ancestor "$from" "$to" 2>/dev/null; then
+    local diff_paths p a ok anc_err anc_rc=0 shallow
+    # Only a clean "no" (exit 1, nothing on stderr) in a complete history is
+    # a verified non-ancestor. git also exits 1 when it cannot read a commit
+    # on the walk (it says so on stderr), and a shallow clone's cut history
+    # answers "no" for an ancestor it cannot see.
+    anc_err=$(git -C "$wt" merge-base --is-ancestor "$from" "$to" 2>&1 >/dev/null) || anc_rc=$?
+    if [[ "$anc_rc" -ne 0 ]]; then
+        if [[ "$anc_rc" -ne 1 || -n "$anc_err" ]]; then
+            echo "could not check whether \`${from:0:7}\` is an ancestor of \`${to:0:7}\` (git exit ${anc_rc}: ${anc_err%%$'\n'*})"
+            return 3
+        fi
+        shallow=$(git -C "$wt" rev-parse --is-shallow-repository 2>/dev/null) || shallow=""
+        if [[ "$shallow" != "false" ]]; then
+            echo "\`${from:0:7}\` is not an ancestor of \`${to:0:7}\` in a shallow (or unknown-depth) repository, whose history may be cut"
+            return 3
+        fi
         echo "\`${from:0:7}\` is not an ancestor of \`${to:0:7}\` (force-push or a concurrent history change)"
         return 1
     fi
@@ -45,7 +64,7 @@ _only_bookkeeping_between() {
     # (With rename detection only the destination would be listed.)
     diff_paths=$(git -C "$wt" diff --no-renames --name-only "$from" "$to" 2>/dev/null) || {
         echo "could not diff \`${from:0:7}\`..\`${to:0:7}\` in $wt"
-        return 1
+        return 3
     }
     while IFS= read -r p; do
         [[ -z "$p" ]] && continue
@@ -73,8 +92,9 @@ _only_bookkeeping_between() {
 # exempt (a stray commit of it is a real change to this branch). The SHAs
 # may be short; each must resolve to exactly one commit in <wt>.
 # Returns 0 covered; 1 stale (a verified code/other-path change or a
-# non-ancestor); 3 unverifiable (bad issue, <wt> not a repository, a SHA
-# that does not resolve there). Prints the reason for 1 and 3.
+# non-ancestor in a complete history); 3 unverifiable (bad issue, <wt> not a
+# repository, a SHA that does not resolve there, or a git failure / shallow
+# history inside _only_bookkeeping_between). Prints the reason for 1 and 3.
 _review_bookkeeping_between() {
     local wt="$1" from="$2" to="$3" issue="$4" from_full to_full
     if [[ ! "$issue" =~ ^[0-9]+$ ]]; then
