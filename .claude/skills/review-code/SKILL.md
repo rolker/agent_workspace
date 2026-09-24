@@ -208,7 +208,7 @@ For project repo PRs:
 
   > ℹ No review-context.yaml found. Review proceeds with .agents/README.md only.
 
-- Read project `PRINCIPLES.md` if it exists
+- Read project `PRINCIPLES.md` / `docs/principles.md` if it exists
 - Check `.agent/project_knowledge/` symlink for workspace-level project summaries
 
 ### 4. Classify changed files
@@ -285,7 +285,7 @@ behavior.
 
 Load governance context:
 - `$WS_ROOT/.agent/knowledge/principles_review_guide.md` — evaluation criteria
-- `docs/PRINCIPLES.md` — workspace principles
+- `docs/principles.md` — workspace principles
 - `docs/decisions/*.md` — ADRs (scan titles, read those triggered by this change)
 - Project-level governance (if applicable)
 

@@ -44,12 +44,13 @@ agent_workspace/
 ├── project/               # Gitignored — cloned or symlinked project repo (legacy shape)
 ├── projects/              # Gitignored — named project checkouts, projects/<name>/ (issue #227)
 ├── docs/
-│   ├── PRINCIPLES.md
+│   ├── design.md          # This file
+│   ├── principles.md
+│   ├── roadmap.md
 │   └── decisions/         # Architecture Decision Records (ADRs)
 ├── scripts -> .agent/scripts  # Convenience symlink
 ├── CLAUDE.md              # Claude Code adapter
 ├── AGENTS.md              # Shared agent rules
-├── ARCHITECTURE.md        # This file
 ├── README.md
 ├── Makefile
 ├── requirements.txt
@@ -219,4 +220,4 @@ See `.agent/knowledge/review_loop_lifecycle.md` for the one-page summary.
 - **Worktree isolation**: All work in isolated worktrees, never the main tree
 - **Pre-commit hooks**: Enforce identity, branch hygiene, and code quality
 - **ADR system**: Architecture decisions recorded in `docs/decisions/`
-- **PRINCIPLES.md**: Seven guiding principles in `docs/PRINCIPLES.md`
+- **principles.md**: Seven guiding principles in `docs/principles.md`

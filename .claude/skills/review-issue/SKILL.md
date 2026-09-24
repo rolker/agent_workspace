@@ -113,11 +113,11 @@ Read the evaluation criteria:
 
 Read the governance docs:
 
-- `docs/PRINCIPLES.md` — workspace principles
+- `docs/principles.md` — workspace principles
 - `docs/decisions/*.md` — ADR titles (read full text only for triggered ADRs)
 
 If the issue targets a project repo, also check:
-- The project repo's `PRINCIPLES.md`
+- The project repo's `PRINCIPLES.md` / `docs/principles.md`
 - `.agent/project_knowledge/` if available (symlink to manifest repo's `.agents/workspace-context/`)
 
 ### 3. Assess scope

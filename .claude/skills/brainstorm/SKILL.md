@@ -29,12 +29,12 @@ Read available knowledge sources:
 - `.agent/knowledge/research_digest.md` — workspace research (if exists)
 - `.agent/project_knowledge/research_digest.md` — project research (symlink to manifest repo's `.agents/workspace-context/`; may not exist)
 - `.agent/project_knowledge/` — aggregated project knowledge (symlink to `.agents/workspace-context/`; may not exist)
-- `docs/PRINCIPLES.md` — workspace principles (for feasibility checks)
+- `docs/principles.md` — workspace principles (for feasibility checks)
 - `AGENTS.md` — workspace-wide agent rules and conventions
-- `ARCHITECTURE.md` — system design and layering constraints
+- `docs/design.md` — system design and layering constraints
 - `docs/decisions/` — ADRs for historical context
-- Project-level equivalents (e.g., project `PRINCIPLES.md`, `.agents/README.md`,
-  `ARCHITECTURE.md`, `docs/decisions/`) when the topic is project-specific
+- Project-level equivalents (e.g., project `PRINCIPLES.md` / `docs/principles.md`,
+  `.agents/README.md`, `ARCHITECTURE.md` / `docs/design.md`, `docs/decisions/`) when the topic is project-specific
 
 Check digest freshness — if older than 30 days, note it and suggest
 running `/research --refresh` but don't block on it.

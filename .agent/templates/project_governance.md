@@ -21,6 +21,11 @@ recommended structure.
         └── 0001-example.md
 ```
 
+The lowercase `docs/` names the workspace itself uses are equally
+discoverable: `docs/principles.md` in place of `PRINCIPLES.md` (or
+`docs/PRINCIPLES.md`), and `docs/design.md` in place of `ARCHITECTURE.md`.
+Use whichever convention the project already follows.
+
 ## What Each File Does
 
 | File | Purpose | When to Add |
