@@ -105,3 +105,16 @@ mechanism, `user_tier_install.sh`).
 - [ ] Scope the first PR to skills only (defer hooks) per the owner's own open question, and settle plugin name/prefix, where "enable in this project" happens, and how `dispatch_phase.sh` names skills across workspace vs. project sessions as explicit plan decisions, not implementation-time choices.
 - [ ] Cross-link #335, #332, and #321 from this issue (or its plan) so the naming/registration/dispatch dependencies are visible to whoever picks this up next.
 - [ ] Keep the fix framework-neutral where the rule is naturally portable (skill discovery, naming convention) and confine anything Claude-Code-specific (`${CLAUDE_PLUGIN_ROOT}`, `claude plugin ...` commands) to the Claude-only path, consistent with the owner's portability direction for Codex.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 14:33 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to plan (Recommended) — plan covers a skills-only first PR, an ADR-0016 revision (or new ADR) recording the plugin decision, cross-links to #335/#332/#321, and these answers:
+- Plugin name: owner — "Part of me likes 3 for being complete and un-ambiguous. If I have to type these a lot, I'd go 1, but in reality I probably don't need to type these much if at all." Host chose  (option 3; descriptive kebab-case matches plugin convention); confirm at the plan checkpoint.
+- Enable step: "In registration now (Recommended)" — registering a project runs the two --scope local install commands; onboarding (#332) takes it over later.
+- Naming: "Prefix outside workspace (Recommended)" — bare /review-code in workspace sessions, /agent-workspace:review-code in project sessions, decided from the session root.
