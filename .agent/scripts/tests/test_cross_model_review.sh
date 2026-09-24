@@ -3370,18 +3370,132 @@ test_cli_claude_error_payload_in_reason() {
     make_mock_agent claude
     local out="${TMPDIR_BASE}/out.txt" ec
 
+    # Synthetic fallback coverage for the `.error` branch — not observed
+    # CLI output. The live captures in test_cli_claude_live_failure_shapes
+    # show claude 2.1.281 uses `.errors` (an array), not `.error`, for
+    # max-turns; these two keep the `.error` reader covered for shapes
+    # that were not captured live (e.g. error_during_execution).
     # is_error with an EMPTY .result: the payload is the only cause there is.
     ec=$(MOCK_CLAUDE_RAW='{"type":"result","subtype":"error_during_execution","is_error":true,"result":"","error":{"message":"upstream connect error: 503"}}' \
         run_agents "$out" "claude")
     assert_exit_code "is_error with an object payload exits 3" "3" "$ec"
     assert_contains "reason carries .error.message" "upstream connect error: 503" "$(findings_of claude)"
 
-    # A string-valued .error on a bad subtype.
+    # A string-valued .error on a bad subtype (synthetic, as above).
     ec=$(MOCK_CLAUDE_RAW='{"type":"result","subtype":"error_max_turns","is_error":false,"result":"","error":"max turns exceeded"}' \
         run_agents "$out" "claude")
     assert_exit_code "bad subtype with a string payload exits 3" "3" "$ec"
     assert_contains "reason names the subtype" "error_max_turns" "$(findings_of claude)"
     assert_contains "reason carries the string .error" "max turns exceeded" "$(findings_of claude)"
+    teardown
+}
+
+# Full result objects captured live from claude 2.1.281 (#336) with
+# `--output-format json --permission-prompts none`, from a scratch
+# directory. Scrubbed: session_id / uuid, and the max-turns shape's
+# permission_denials tool_input values and tool_use_id (fields kept,
+# values replaced). Every failure shape exited 1 — the reason is in the
+# JSON only, which is why the helper must read it before the exit code.
+CLAUDE_LIVE_BAD_MODEL=$(cat << 'JSON_EOF'
+{"api_error_status":404,"duration_api_ms":0,"duration_ms":611,"fast_mode_disabled_reason":"sdk_opt_in_required","fast_mode_state":"off","is_error":true,"modelUsage":{},"num_turns":1,"permission_denials":[],"queued_turn_count":0,"result":"There's an issue with the selected model (bogus-model-xyz). It may not exist or you may not have access to it. Run --model to pick a different model.","result_index":0,"session_id":"<scrubbed>","stop_reason":"stop_sequence","subagent_stats":{"by_type":{},"completed":0,"failed":0,"killed":{"parent":0,"system":0,"user":0},"max_depth":0,"refused":{"budget":0,"concurrency_limit":0,"depth_limit":0},"requested":{"background":0,"foreground":0,"unset":0},"spawned":0,"spawned_by_subagents":0,"started_in_background":0},"subtype":"success","terminal_reason":"api_error","total_cost_usd":0,"type":"result","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"","input_tokens":0,"iterations":[],"output_tokens":0,"output_tokens_details":{"thinking_tokens":0},"server_tool_use":{"web_fetch_requests":0,"web_search_requests":0},"service_tier":"standard","speed":"standard"},"uuid":"<scrubbed>"}
+JSON_EOF
+)
+CLAUDE_LIVE_MAX_TURNS=$(cat << 'JSON_EOF'
+{"duration_api_ms":2561,"duration_ms":2707,"errors":["Reached maximum number of turns (1)"],"fast_mode_disabled_reason":"sdk_opt_in_required","fast_mode_state":"off","is_error":true,"modelUsage":{"claude-opus-5-5":{"cacheCreationInputTokens":0,"cacheReadInputTokens":19247,"canonicalModel":"claude-opus-5-5","contextWindow":1000000,"costBasis":"list","costUSD":0.0071774000000000004,"inputTokens":2,"maxOutputTokens":128000,"outputTokens":166,"provider":"firstParty","thinkingTokens":50,"webSearchRequests":0}},"num_turns":2,"permission_denials":[{"tool_input":{"command":"<scrubbed>","description":"<scrubbed>"},"tool_name":"Bash","tool_use_id":"<scrubbed>"}],"queued_turn_count":0,"result_index":0,"session_id":"<scrubbed>","stop_reason":"tool_use","subagent_stats":{"by_type":{},"completed":0,"failed":0,"killed":{"parent":0,"system":0,"user":0},"max_depth":0,"refused":{"budget":0,"concurrency_limit":0,"depth_limit":0},"requested":{"background":0,"foreground":0,"unset":0},"spawned":0,"spawned_by_subagents":0,"started_in_background":0},"subtype":"error_max_turns","terminal_reason":"max_turns","total_cost_usd":0.0071774000000000004,"type":"result","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":19247,"inference_geo":"not_available","input_tokens":2,"iterations":[{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":19247,"input_tokens":2,"output_tokens":166,"type":"message"}],"output_tokens":166,"output_tokens_details":{"thinking_tokens":50},"server_tool_use":{"web_fetch_requests":0,"web_search_requests":0},"service_tier":"standard","speed":"standard"},"uuid":"<scrubbed>"}
+JSON_EOF
+)
+CLAUDE_LIVE_MAX_BUDGET=$(cat << 'JSON_EOF'
+{"duration_api_ms":0,"duration_ms":3429,"errors":["Reached maximum budget ($0.0001)"],"fast_mode_disabled_reason":"sdk_opt_in_required","fast_mode_state":"off","is_error":true,"modelUsage":{"claude-opus-5-5":{"cacheCreationInputTokens":0,"cacheReadInputTokens":19261,"canonicalModel":"claude-opus-5-5","contextWindow":1000000,"costBasis":"list","costUSD":0.0080202,"inputTokens":2,"maxOutputTokens":128000,"outputTokens":208,"provider":"firstParty","thinkingTokens":170,"webSearchRequests":0}},"num_turns":1,"permission_denials":[],"queued_turn_count":0,"result_index":0,"session_id":"<scrubbed>","stop_reason":"end_turn","subagent_stats":{"by_type":{},"completed":0,"failed":0,"killed":{"parent":0,"system":0,"user":0},"max_depth":0,"refused":{"budget":0,"concurrency_limit":0,"depth_limit":0},"requested":{"background":0,"foreground":0,"unset":0},"spawned":0,"spawned_by_subagents":0,"started_in_background":0},"subtype":"error_max_budget_usd","terminal_reason":"budget_exhausted","total_cost_usd":0.0080202,"type":"result","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"","input_tokens":0,"iterations":[],"output_tokens":0,"output_tokens_details":{"thinking_tokens":0},"server_tool_use":{"web_fetch_requests":0,"web_search_requests":0},"service_tier":"standard","speed":"standard"},"uuid":"<scrubbed>"}
+JSON_EOF
+)
+CLAUDE_LIVE_SUCCESS=$(cat << 'JSON_EOF'
+{"api_error_status":null,"duration_api_ms":2254,"duration_ms":2369,"fast_mode_disabled_reason":"sdk_opt_in_required","fast_mode_state":"off","first_content_frame_ms":834,"is_error":false,"modelUsage":{"claude-opus-5-5":{"cacheCreationInputTokens":7291,"cacheReadInputTokens":11945,"canonicalModel":"claude-opus-5-5","contextWindow":1000000,"costBasis":"list","costUSD":0.062805,"inputTokens":2,"maxOutputTokens":128000,"outputTokens":104,"provider":"firstParty","thinkingTokens":100,"webSearchRequests":0}},"num_turns":1,"permission_denials":[],"queued_turn_count":0,"result":"OK","result_index":0,"session_id":"<scrubbed>","stop_reason":"end_turn","subagent_stats":{"by_type":{},"completed":0,"failed":0,"killed":{"parent":0,"system":0,"user":0},"max_depth":0,"refused":{"budget":0,"concurrency_limit":0,"depth_limit":0},"requested":{"background":0,"foreground":0,"unset":0},"spawned":0,"spawned_by_subagents":0,"started_in_background":0},"subtype":"success","terminal_reason":"completed","time_to_request_ms":115,"total_cost_usd":0.062805,"ttft_ms":1835,"ttft_stream_ms":834,"type":"result","usage":{"cache_creation":{"ephemeral_1h_input_tokens":7291,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":7291,"cache_read_input_tokens":11945,"inference_geo":"not_available","input_tokens":2,"iterations":[{"cache_creation":{"ephemeral_1h_input_tokens":7291,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":7291,"cache_read_input_tokens":11945,"input_tokens":2,"output_tokens":104,"type":"message"}],"output_tokens":104,"output_tokens_details":{"thinking_tokens":100},"server_tool_use":{"web_fetch_requests":0,"web_search_requests":0},"service_tier":"standard","speed":"standard"},"uuid":"<scrubbed>"}
+JSON_EOF
+)
+
+test_cli_claude_live_failure_shapes() {
+    echo "TEST: claude 2.1.281's live failure shapes (exit 1) report the JSON reason, not just the exit code (#336)"
+    setup
+    make_mock_agent claude
+    local out="${TMPDIR_BASE}/out.txt" ec content
+
+    # Unknown --model: no `.errors`, reason in `.result`, subtype success.
+    ec=$(MOCK_CLAUDE_RAW="$CLAUDE_LIVE_BAD_MODEL" MOCK_CLAUDE_EXIT=1 run_agents "$out" "claude")
+    assert_exit_code "bad model exits 3" "3" "$ec"
+    content=$(findings_of claude)
+    assert_contains "bad model: reason carries .result" "issue with the selected model \(bogus-model-xyz\)" "$content"
+    assert_contains "bad model: reason carries api_error_status 404" "api_error_status: 404" "$content"
+    assert_contains "bad model: reason carries terminal_reason" "terminal_reason: api_error" "$content"
+    assert_contains "bad model: exit code kept" "claude also exited 1" "$content"
+    assert_not_contains "bad model: not the bare exit-code reason" "^claude exited 1" "$content"
+
+    # --max-turns: `.errors` array, `.result` null.
+    ec=$(MOCK_CLAUDE_RAW="$CLAUDE_LIVE_MAX_TURNS" MOCK_CLAUDE_EXIT=1 run_agents "$out" "claude")
+    assert_exit_code "max turns exits 3" "3" "$ec"
+    content=$(findings_of claude)
+    assert_contains "max turns: reason carries .errors" "Reached maximum number of turns \(1\)" "$content"
+    assert_contains "max turns: reason carries terminal_reason" "terminal_reason: max_turns" "$content"
+    assert_contains "max turns: exit code kept" "claude also exited 1" "$content"
+
+    # --max-budget-usd: `.errors` array, `.result` null.
+    ec=$(MOCK_CLAUDE_RAW="$CLAUDE_LIVE_MAX_BUDGET" MOCK_CLAUDE_EXIT=1 run_agents "$out" "claude")
+    assert_exit_code "max budget exits 3" "3" "$ec"
+    content=$(findings_of claude)
+    assert_contains "max budget: reason carries .errors" "Reached maximum budget \(\\\$0.0001\)" "$content"
+    assert_contains "max budget: reason carries terminal_reason" "terminal_reason: budget_exhausted" "$content"
+
+    # Control: the live success shape at exit 0 is still accepted.
+    ec=$(MOCK_CLAUDE_RAW="$CLAUDE_LIVE_SUCCESS" MOCK_CLAUDE_EXIT=0 run_agents "$out" "claude")
+    assert_exit_code "live success shape exits 0" "0" "$ec"
+    content=$(findings_of claude)
+    assert_contains "live success: the result is the review" "^OK$" "$content"
+    assert_contains "live success: completion marker" "Review complete" "$content"
+    teardown
+}
+
+test_cli_claude_exit_code_never_lost() {
+    echo "TEST: reading claude's JSON first never loses a non-zero exit (#336)"
+    setup
+    make_mock_agent claude
+    local out="${TMPDIR_BASE}/out.txt" ec content
+
+    # No JSON at all + a kill-style exit: the exit code is the reason.
+    ec=$(MOCK_CLAUDE_RAW='not json' MOCK_CLAUDE_EXIT=137 run_agents "$out" "claude")
+    assert_exit_code "no JSON + exit 137 exits 3" "3" "$ec"
+    content=$(findings_of claude)
+    assert_contains "reason is the exit code" "claude exited 137" "$content"
+    assert_not_contains "not the no-JSON reason" "did not emit a JSON result object" "$content"
+
+    # A success-looking result with a non-zero exit is not trusted.
+    ec=$(MOCK_CLAUDE_RAW="$CLAUDE_LIVE_SUCCESS" MOCK_CLAUDE_EXIT=4 run_agents "$out" "claude")
+    assert_exit_code "success JSON + exit 4 exits 3" "3" "$ec"
+    content=$(findings_of claude)
+    assert_contains "reason names the exit despite the JSON" \
+        "claude exited 4 despite a successful-looking JSON result" "$content"
+    assert_not_contains "the result is not kept as a review" "^OK$" "$content"
+    teardown
+}
+
+test_cli_claude_errors_field_type_safe() {
+    echo "TEST: a non-string .errors element is reported, not a jq crash (#336)"
+    setup
+    make_mock_agent claude
+    local out="${TMPDIR_BASE}/out.txt" ec content
+
+    ec=$(MOCK_CLAUDE_RAW='{"type":"result","subtype":"error_during_execution","is_error":true,"result":"","errors":[{"code":1,"message":"boom"},"plain"]}' \
+        run_agents "$out" "claude")
+    assert_exit_code "object-element .errors exits 3" "3" "$ec"
+    content=$(findings_of claude)
+    assert_not_contains "the read did not fail" "could not be read" "$content"
+    assert_contains "object element is kept as JSON" '\{"code":1,"message":"boom"\}; plain' "$content"
+
+    # A non-array .errors falls back to tostring.
+    ec=$(MOCK_CLAUDE_RAW='{"type":"result","subtype":"error_during_execution","is_error":true,"result":"","errors":"just a string"}' \
+        run_agents "$out" "claude")
+    assert_exit_code "string .errors exits 3" "3" "$ec"
+    content=$(findings_of claude)
+    assert_not_contains "string .errors: the read did not fail" "could not be read" "$content"
+    assert_contains "string .errors is kept" "just a string" "$content"
     teardown
 }
 
@@ -4042,6 +4156,9 @@ test_cli_error_text_explains_never_causes
 test_cli_codex_transcript_marker_does_not_fail_the_review
 test_cli_review_text_is_never_reclassified
 test_cli_claude_error_payload_in_reason
+test_cli_claude_live_failure_shapes
+test_cli_claude_exit_code_never_lost
+test_cli_claude_errors_field_type_safe
 test_cli_claude_non_object_json_is_a_reported_failure
 test_cli_helper_returns_promptly_on_term
 test_claude_unavailable_without_jq
