@@ -180,7 +180,12 @@ Entries with open findings that do not cover the head are listed in
   `""`, as for a historical `## External Review` without `at <sha>`); a
   warning is also printed on stderr. **Do not treat these as
   resolved**: read that entry in `progress.md` and check its open findings
-  against the code yourself.
+  against the code yourself. An entry with no parseable SHA can never
+  cover the head, so it can never be superseded either: its open boxes are
+  re-listed as unverifiable on every future triage. That is expected
+  (nothing vanishes without a decision). Rule on its findings once, in an
+  Integrated Review; on later rounds, cite that earlier ruling instead of
+  triaging them again.
 - `reason: "superseded"` — the entry covers the head, and so does a newer
   `## Integrated Review` with `**Status**: complete`; a `partial` or
   `failed` one decided nothing and supersedes nothing, and neither does a
