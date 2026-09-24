@@ -722,7 +722,11 @@ else
         _gate_r_sha=$(jq -r '.sha' <<<"$_gate_review")
         _gate_covered=$(jq -r '.at_head' <<<"$_gate_review")
         _gate_stale_why=""
-        _gate_stale_label="stale review"
+        # Only a verified difference (helper rc 1) is a "stale review". Every
+        # other not-covered outcome was never checked — no worktree, a SHA
+        # that does not resolve, helper rc 3 — and must not read as stale
+        # (an operator may reach for --force-unreviewed). Both refuse.
+        _gate_stale_label="review coverage could not be confirmed"
         if [[ "$_gate_covered" != "true" ]]; then
             if [[ -z "$_ci_wt" ]]; then
                 _gate_stale_why="no local worktree to verify ancestry"
@@ -735,16 +739,13 @@ else
                 elif [[ -z "$_gate_h_full" ]]; then
                     _gate_stale_why="head \`${_gate_head_short}\` is not present locally"
                 else
-                    # rc 1 = verified stale; rc 3 = git could not answer. Both
-                    # refuse, but an unconfirmed check must not read as
-                    # "stale" (an operator may reach for --force-unreviewed).
                     _gate_bk_rc=0
                     _gate_stale_why=$(_review_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" "$ISSUE_NUM") || _gate_bk_rc=$?
                     if [[ "$_gate_bk_rc" -eq 0 ]]; then
                         _gate_covered=true
                         echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only work-plan / progress.md / roadmap changed since"
-                    elif [[ "$_gate_bk_rc" -ne 1 ]]; then
-                        _gate_stale_label="review coverage could not be confirmed"
+                    elif [[ "$_gate_bk_rc" -eq 1 ]]; then
+                        _gate_stale_label="stale review"
                     fi
                 fi
             fi

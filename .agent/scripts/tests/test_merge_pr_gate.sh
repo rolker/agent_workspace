@@ -1462,6 +1462,29 @@ else
     fail "(g10) (out=${out:0:400})"
 fi
 
+echo "TEST: gate (a) — a review SHA that does not resolve locally is unconfirmed, not stale (#309)"
+sb="$(make_sandbox "$STALE" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"review coverage could not be confirmed: \`"*"does not resolve to one commit"* ]] \
+    && [[ "$out" != *"stale review"* ]]; then
+    pass "(g11) unresolvable review SHA: worded as unconfirmed, not stale"
+else
+    fail "(g11) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a PR head missing from the local worktree is unconfirmed, not stale (#309)"
+sb="$(make_gate_sandbox progress-only)"
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+fixture="$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+jq -c '.headRefOid = "0123456789abcdef0123456789abcdef01234567"' "$fixture" > "$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"review coverage could not be confirmed: head \`0123456\` is not present locally"* ]] \
+    && [[ "$out" != *"stale review"* ]]; then
+    pass "(g12) PR head not present locally: worded as unconfirmed, not stale"
+else
+    fail "(g12) (out=${out:0:400})"
+fi
+
 echo ""
 echo "test_merge_pr_gate: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
