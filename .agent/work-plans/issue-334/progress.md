@@ -407,3 +407,13 @@ Lint (pre-commit) still running on both workflow runs; Validate Adapter Contract
 - [ ] (suggestion, Local Review (Pre-Push) r4) The third helper state — helper sources cleanly but defines no `real_case_relpath` — works (hand-verified) but has no test in either suite; add an empty-helper case asserting "could not be loaded" and the fallback — `.agent/scripts/tests/test_discover_governance.sh:169`, `.agent/scripts/tests/test_update_roadmap.sh:122`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 09:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Add the test first — fix pass for the empty-helper test, re-review on the PR, then triage and merge.
