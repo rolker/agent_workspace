@@ -37,9 +37,13 @@ review's Recommendation and the owner's checkpoint decision).
 ## Live-captured claude failure shapes (claude 2.1.281, re-captured in full this session)
 
 `claude --version` → `2.1.281 (Claude Code)`. All captured from an isolated
-scratch directory (no repo context, no CLAUDE.md), `--permission-prompts
-none`. `session_id` / `uuid` scrubbed to `<scrubbed>`; no other field
-dropped or restructured. `[Review #4]`
+scratch directory (no repo context; the user-global `~/.claude/CLAUDE.md`
+*was* loaded, as the max-turns shape's `permission_denials` entry shows),
+`--permission-prompts none`. `session_id` / `uuid` scrubbed to
+`<scrubbed>`, and the max-turns shape's `permission_denials[].tool_input`
+values and `tool_use_id` scrubbed too (fields kept, values replaced) so a
+personal tool path does not land in a public file; no other field dropped
+or restructured. `[Review #4; round-2 #5]`
 
 **Bad `--model bogus-model-xyz`** — exit 1, `.result` carries the reason,
 **no `.errors` key at all**, `api_error_status: 404`, `subtype: "success"`
@@ -83,7 +87,7 @@ despite `is_error: true`:
   "is_error": true,
   "modelUsage": {"claude-opus-5-5": {"cacheCreationInputTokens": 0, "cacheReadInputTokens": 19247, "canonicalModel": "claude-opus-5-5", "contextWindow": 1000000, "costBasis": "list", "costUSD": 0.0071774000000000004, "inputTokens": 2, "maxOutputTokens": 128000, "outputTokens": 166, "provider": "firstParty", "thinkingTokens": 50, "webSearchRequests": 0}},
   "num_turns": 2,
-  "permission_denials": [{"tool_input": {"command": "~/.claude/bin/agent-status \"three ocean haiku\" \"DONE: haiku written, nothing pending\"", "description": "Update status line to show haiku task done"}, "tool_name": "Bash", "tool_use_id": "toolu_01ChTvAnFmDeesB9mJLXkSkw"}],
+  "permission_denials": [{"tool_input": {"command": "<scrubbed>", "description": "<scrubbed>"}, "tool_name": "Bash", "tool_use_id": "<scrubbed>"}],
   "queued_turn_count": 0,
   "result_index": 0,
   "session_id": "<scrubbed>",
@@ -306,7 +310,15 @@ how the plan compensates. `[Review #4, #7]`
    - Add a ViewFile-specific denial case alongside the existing
      `test_agy_denial_is_failure` (which uses `RunCommand`): a
      `denied_actions` entry naming `ViewFile`, asserting the reason names
-     `ViewFile` — the issue's literal failure signature.
+     `ViewFile` — the issue's literal failure signature. `MOCK_AGY_DENY`
+     hardcodes `RunCommand`, so add a `MOCK_AGY_DENY_ACTION` knob for the
+     denied action's name. The same test asserts the reworded denial
+     reason (next bullet). `[round-2 #2]`
+   - Reword the empty-response denial reason in `_agy_review.sh` ("The
+     reviewer needs the diff only; it must not run shell commands.") to
+     the no-tools policy: "it must not call any tools (file reads and
+     shell commands are both denied headlessly)". The old text is wrong
+     for the issue's own `ViewFile` denial. `[round-2 #2]`
    - Add `MOCK_AGY_ERROR` case with a message containing "response was cut
      off because it exceeded the output token limit" and, separately, a
      **non-empty partial `response`** field (extend the mock, since today
@@ -316,11 +328,15 @@ how the plan compensates. `[Review #4, #7]`
      precisely, and the findings file does **not** contain the partial
      response text (proving a cut-off turn is never recorded as a
      review). `[Review #6]`
-   - Add a case where the diff/prompt itself contains the phrase "output
-     token limit" but the agy status is `SUCCESS` (a real, unrelated
-     review), asserting the review is accepted normally — proving the
-     phrase match only fires on `ERROR_MSG`/stderr, never on `RESPONSE`.
-     `[Review #7]`
+   - Phrase-source control: status `ERROR` with an unrelated
+     `MOCK_AGY_ERROR` ("quota exceeded for model") and a
+     `MOCK_AGY_ERROR_RESPONSE` that contains "response was cut off because
+     it exceeded the output token limit". Assert the reason is the generic
+     `result status ERROR: …quota exceeded…` and carries no cutoff reason
+     line — proving the phrase match only fires on `ERROR_MSG`/stderr,
+     never on `RESPONSE`. (Revision 2's `SUCCESS`-status version was
+     vacuous: the matcher only runs on a non-SUCCESS status.)
+     `[Review #7; round-2 #1]`
 
 5. **Tests — claude** (`.agent/scripts/tests/test_cross_model_review.sh`,
    near `test_cli_claude_error_payload_in_reason`, ~line 3266):
@@ -371,16 +387,18 @@ how the plan compensates. `[Review #4, #7]`
 7. **Live acceptance — Gemini, Deep-sized, from a detached scratch
    worktree** (manual, recorded in the progress.md entry for
    implementation/review — not a committed script):
-   - `48b0d82` (current `main` tip) is the merge commit for #341
-     (feature/issue-320). `48b0d82^1` is `main` immediately before that
-     merge; `48b0d82^2` is the tip of `feature/issue-320`. Verified this
-     session: `git diff 48b0d82^1 48b0d82^2` is 23 files,
-     3408 insertions / 699 deletions, **268,391 bytes** — comfortably
-     Deep-tier (the issue's own reference run was ~57 KB). `[Review #11]`
+   - `48b0d82` is the merge commit for #341 (feature/issue-320).
+     `48b0d82^1` is `main` immediately before that merge; `48b0d82^2` is
+     the tip of `feature/issue-320`. The script embeds the three-dot diff
+     with `.agent/work-plans/**` excluded:
+     `git diff 48b0d82^1...48b0d82^2 -- . ':(exclude).agent/work-plans/**'`
+     is 11 files, +2635/−48, about 83.7 KB — still above the issue's ~57 KB
+     reference, so Deep-sized. The prompt size the script itself reports
+     is the number of record. `[Review #11; round-2 #3]`
    - Create a detached scratch worktree at that tip:
      ```
-     git worktree add --detach /tmp/.../scratch-320-review 48b0d82^2
-     cd /tmp/.../scratch-320-review
+     git worktree add --detach <session-scratchpad>/scratch-320-review 48b0d82^2
+     cd <session-scratchpad>/scratch-320-review
      /home/roland/agent_workspace/worktrees/workspace/issue-workspace-336/.agent/scripts/cross_model_review.sh \
          --branch 48b0d82^1 --agents gemini --no-progress
      ```
@@ -392,9 +410,11 @@ how the plan compensates. `[Review #4, #7]`
      artifact dir, printed by the script), `agy --version` (`1.2.9`,
      confirmed installed this session), `EXIT=` for the gemini job, and
      the first ~10 lines of the gemini findings file.
-   - Remove the scratch worktree afterward
-     (`git worktree remove /tmp/.../scratch-320-review`) regardless of
-     outcome.
+   - Remove the `--no-progress` `mktemp -d` artifact dir once those are
+     recorded (the script leaves it behind by design), and remove the
+     scratch worktree (`git worktree remove
+     <session-scratchpad>/scratch-320-review`) regardless of outcome.
+     `[round-2 #4]`
    - If the run fails, the progress entry says so plainly — it is not
      recorded as an accepted acceptance run. `[Review #11]`
 
@@ -414,9 +434,9 @@ how the plan compensates. `[Review #4, #7]`
 | File | Change |
 |------|--------|
 | `.agent/scripts/cross_model_review.sh` | Gemini-only `## Tool Use` heredoc: no-tools + concise-output instructions; update the stale "Reading files is permitted" comment above the per-agent loop |
-| `.agent/scripts/_agy_review.sh` | Precise reason line for the output-token-cutoff ERROR case, matched against `ERROR_MSG`/stderr only |
+| `.agent/scripts/_agy_review.sh` | Precise reason line for the output-token-cutoff ERROR case, matched against `ERROR_MSG`/stderr only; denial reason reworded to the no-tools policy |
 | `.agent/scripts/_cli_review.sh` | Claude arm: parse JSON before failing on exit status (preserving the exit-code reason when there's no JSON), add `.errors`/`api_error_status`/`terminal_reason` to the reason, type-safe `.errors` read |
-| `.agent/scripts/tests/test_cross_model_review.sh` | New agy mock cases (ViewFile denial, output-limit ERROR with partial response, unrelated-phrase-in-diff control); new/relabeled claude mock cases (4 live-captured shapes, no-JSON+exit137, object-element `.errors`); extended prompt-isolation test |
+| `.agent/scripts/tests/test_cross_model_review.sh` | New agy mock knobs (`MOCK_AGY_DENY_ACTION`, `MOCK_AGY_ERROR_RESPONSE`, `MOCK_AGY_ERROR_STDERR`) and cases (ViewFile denial with the new reason, output-limit ERROR with partial response on both channels, ERROR-status phrase-in-response control); new/relabeled claude mock cases (4 live-captured shapes, no-JSON+exit137, object-element `.errors`); extended prompt-isolation test |
 
 ## Principles Self-Check
 
@@ -455,6 +475,12 @@ scripts).
 
 ## Implementation Notes
 
-- Revision 2 (this version) folds in all 12 Recommended Actions from the
+- Revision 2 folds in all 12 Recommended Actions from the
   `## Plan Review` at `ce728e4`. See the `[Review #N]` tags throughout for
   traceability back to that entry's numbered findings.
+- Implementation folds in the 5 findings of the round-2 `## Plan Review`
+  at `9865e58` (owner checkpoint: "fold in all 5"), tagged
+  `[round-2 #N]`: the ERROR-status phrase control (#1), the denial
+  reason reword and its mock knob (#2), the corrected acceptance diff size
+  (#3), acceptance cleanup and scratchpad location (#4), and the capture
+  provenance and scrubbing (#5).
