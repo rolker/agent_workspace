@@ -118,3 +118,18 @@ Proceed to plan (Recommended) — plan covers a skills-only first PR, an ADR-001
 - Plugin name: owner — "Part of me likes 3 for being complete and un-ambiguous. If I have to type these a lot, I'd go 1, but in reality I probably don't need to type these much if at all." Host chose `agent-workspace` (option 3; descriptive kebab-case matches plugin convention); confirm at the plan checkpoint.
 - Enable step: "In registration now (Recommended)" — registering a project runs the two --scope local install commands; onboarding (#332) takes it over later.
 - Naming: "Prefix outside workspace (Recommended)" — bare /review-code in workspace sessions, /agent-workspace:review-code in project sessions, decided from the session root.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-24 14:45 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-345/plan.md` at `8b64626`
+
+Skills-only first PR: a Claude Code plugin (`agent-workspace`, namespaced
+skills) replaces the user-tier symlink mechanism, retiring the
+symlink/drift logic in user_tier_install.sh with a migration cleanup for
+stale links, prefixing dispatch_phase.sh skill names by session root, and
+recording the decision as a new ADR-0017 superseding ADR-0016 section 3
+(cross-linking #335, #332, #321). Hooks-into-plugin is named as an explicit
+follow-up. Open questions for the owner: session_scope filtering after the
+plugin, start-task inclusion, and the new ADR number.
