@@ -207,3 +207,39 @@ Owner decision (finding 1): "Newest current review wins" — only the newest rev
 - Mutation checks: disabling supersession fails h21 and h22; the pre-fix helper fails both h23 cases; removing only the error-line rule (trace unset kept) fails the shim h23 case; dropping the rc-3 label fails g10.
 - Unverifiable warnings are now printed only for entries whose open findings are dropped (the classification pass checks every review entry).
 - The gate's pre-helper reasons (no local worktree, review SHA or head not resolvable) still say "stale review"; the finding scoped the rewording to the helper's rc.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-24 11:15 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a54034ed4b2be2139, resume 2 of 3)
+
+**Branch**: feature/issue-309 at `c022692`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 1000+ lines across 12 files, including merge_pr.sh, AGENTS.md, an ADR and a SKILL.md)
+**Must-fix**: 2 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — round 3: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+All round-2 findings are verified closed:
+- Supersession is implemented to the owner's rule, with tests h21/h22.
+- The adversarial reviewer probed the edge cases; all behave as intended:
+  - A newest covering entry with zero open findings still supersedes.
+  - An unverifiable newer entry does not supersede a verified older one.
+  - At the same SHA, file order decides.
+  - Implementation and Checkpoint entries, and entries with no correlation, cannot enter the pool (`--type` filter plus the kind check).
+- GIT_TRACE no longer misclassifies (h23); only `^(error|fatal):` lines count, which also covers trace variables not in the `env -u` list.
+- The gate wording now depends on the helper's rc (g10).
+
+Static checks are clean (shellcheck). The adversarial reviewer ran the suites: triage 45/45, gate 86/86.
+
+Reviewers:
+- Gemini (agy): failed — empty response; headless mode auto-denied a read_file (ViewFile) tool action (third round running).
+- Codex: ran — 1 must-fix (reproduced for diff.relative).
+- Copilot: skipped — quota exhausted (September 2026).
+- Claude adversarial (fresh): ran — 1 must-fix.
+
+### Findings
+- [ ] (must-fix) Git config can filter the coverage diff. With `diff.relative=true`, running from a subdirectory lists only that subdirectory's paths (reproduced), so a code change elsewhere reads as covered. `diff.ignoreSubmodules=all` likewise hides a submodule pointer change (Codex reproduced). Add `--no-relative --ignore-submodules=none` to both diffs, plus tests. Codex — `.agent/scripts/_bookkeeping.sh:70`, `.agent/scripts/merge_pr.sh:1097`
+- [ ] (must-fix) The gate's three pre-helper not-covered branches still say "stale review" for conditions that are really unchecked: no local worktree, review SHA not resolvable, head not present locally. That is the operator risk this PR's own comment names. Use the "review coverage could not be confirmed" label for them too, plus a test. It is in scope here, not a follow-up. Claude adversarial — `.agent/scripts/merge_pr.sh:726-737`
+- [ ] (suggestion) The supersession rationale in the triage skill says a newer review "already disposed of" the older one's findings. That holds for a newer Integrated Review. It does not hold for a newer PR-mode `## Local Review` after a pre-push review: that review re-reads the code independently, and the pre-push entry's unaddressed suggestions are now dropped as `superseded`. The behaviour follows the owner's rule, but the text should say what actually happens (or the owner confirms this case) — `.claude/skills/triage-reviews/SKILL.md:182-187`
