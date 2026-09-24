@@ -253,3 +253,25 @@ Reviewers:
 **Decision**: address
 
 Review round 4, then publish (Recommended) — fix both mechanical must-fix (git-config-proof diffs; gate "could not be confirmed" labels), then pre-push round 4. Supersession: "Only triage supersedes" — only a newer Integrated Review drops older review entries' open findings; nothing vanishes without a decision (replaces the earlier "newest current review wins" rule).
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 11:57 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a7d34766692007bc4, resume 2 of 3)
+
+**Branch**: feature/issue-309 at `5b518cf`
+**Addressed**: Local Review (Pre-Push) at `c022692` (2026-09-24 11:15 -04:00), with the owner's Checkpoint (2026-09-24 11:39 -04:00)
+**Commits**: 93dd42a, 83e641d, 5b518cf
+
+Owner decision (replaces "newest current review wins"): "Only triage supersedes — only a newer Integrated Review drops older review entries' open findings; nothing vanishes without a decision."
+
+### Actions
+- [x] (must-fix) Coverage diffs immune to user git config: `--no-relative --ignore-submodules=none` on the `_bookkeeping.sh` diff and the CI walk-back diff. Tests h24 (diff.relative=true, sources run from the work-plan dir), h25 (diff.ignoreSubmodules=all, submodule pointer bump via the bridge) and ci-31c (walk-back over a submodule bump) — `.agent/scripts/_bookkeeping.sh:70`, `.agent/scripts/merge_pr.sh:1097` (93dd42a)
+- [x] (must-fix) Gate label: "stale review" only for helper rc 1; no local worktree, unresolvable review SHA, head not present locally and rc 3 all read "review coverage could not be confirmed: …". Tests g11 (unresolvable review SHA) and g12 (PR head not present locally) — `.agent/scripts/merge_pr.sh:726-737` (83e641d)
+- [x] (suggestion) Supersession rationale, rewritten for the owner's changed rule: only a newer covering Integrated Review (or legacy External Review) supersedes; a newer Local Review / Local Review (Pre-Push) supersedes nothing. h21/h22 kept (h22 relabelled); new h26 (pre-push suggestion survives a later PR-mode Local Review with no findings). triage-reviews SKILL.md, AGENTS.md row and ADR-0013 addendum updated — `.claude/skills/triage-reviews/SKILL.md:182-187` (5b518cf)
+
+### Notes
+- Mutation checks: flags removed fails h24, h25, ci-31c; old gate label default fails g11, g12; old newest-wins code fails h26; supersession disabled fails h21, h22; any-newer-entry-supersedes fails h26.
+- The "no local worktree" gate branch is reachable only for package worktrees (without a worktree the progress file cannot be read), so it has no dedicated test; it shares the default label with g11/g12.
+- Suites: triage 48/48, gate 89/89, merge_pr 91/91.
