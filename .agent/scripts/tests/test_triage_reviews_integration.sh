@@ -479,6 +479,21 @@ out=$(qp_sources "$(hist_head)")
         and (.dropped_entries[0].why | contains("scripts/naïve.sh"))' <<<"$out" >/dev/null \
     && pass "sources (h29): a non-ASCII code file is stale and named as spelled" \
     || fail "sources (h29): non-ASCII code file (out=$out)"
+# (h33) a code file whose name is not valid UTF-8: the helper's stale
+# reason quotes the raw bytes, which sources must decode tolerantly — the
+# entry is reported stale (the byte shown as \xff), never a traceback.
+git -C "$HIST" checkout -q -B non-utf8 "$DOC_HEAD"
+printf 'code\n' > "$HIST/scripts/bad-"$'\xff'".sh"
+hist_commit "non-UTF-8 code file name"
+out=$(qp_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 && "$(n_local "$out")" == 0 ]] && jq -e '(.dropped_entries | length) == 1
+        and .dropped_entries[0].reason == "stale"
+        and (.dropped_entries[0].why | contains("scripts/bad-\\xff.sh"))' <<<"$out" >/dev/null \
+    && ! grep -q Traceback "$HERR"; then
+    pass "sources (h33): a non-UTF-8 code file name is reported stale (as bad-\\xff.sh), not a crash"
+else
+    fail "sources (h33): non-UTF-8 path (rc=$rc out=$out err=$(<"$HERR"))"
+fi
 
 # (h21) supersession (owner decision "Only triage supersedes — only a newer
 # Integrated Review drops older review entries' open findings"): a Local
