@@ -493,8 +493,51 @@ hist_commit "progress: integrated finding addressed"
 out=$(hist_sources "$(hist_head)")
 [[ "$(n_local "$out")" == 0 ]] && jq -e '(.dropped_entries | length) == 1
         and .dropped_entries[0].reason == "superseded"' <<<"$out" >/dev/null \
-    && pass "sources (h22): newest covering review with no open findings still supersedes the older one" \
+    && pass "sources (h22): a newer covering Integrated Review with no open findings still supersedes the older one" \
     || fail "sources (h22): closed newest review (out=$out)"
+# (h26) only triage supersedes (owner decision): a Local Review (Pre-Push)
+# with an open suggestion, then a PR-mode Local Review with no findings and
+# its bookkeeping commit. The newer Local Review re-read the code on its
+# own; it disposed of nothing, so the pre-push suggestion is still listed.
+git -C "$HIST" checkout -q -B local-after-prepush "$DOC_HEAD"
+cat > "$HP" <<EOF
+---
+issue: 7
+---
+
+# Issue #7
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 11:00 -04:00
+**By**: t (m)
+**Verdict**: approved
+
+**Branch**: feature/issue-7 at \`${REVIEWED:0:7}\`
+
+### Findings
+- [ ] (suggestion) pre-push suggestion — \`scripts/code.sh:5\`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: t (m)
+**Verdict**: approved
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+
+No findings.
+EOF
+hist_commit "progress: local review (PR)"
+out=$(hist_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e '(.local_findings | length) == 1
+        and .local_findings[0].entry_type == "Local Review (Pre-Push)"
+        and (.local_findings[0].text | contains("pre-push suggestion"))
+        and (.dropped_entries | length) == 0' <<<"$out" >/dev/null && [[ ! -s "$HERR" ]]; then
+    pass "sources (h26): a newer Local Review supersedes nothing; the pre-push suggestion is still listed"
+else
+    fail "sources (h26): pre-push suggestion lost (rc=$rc out=$out err=$(<"$HERR"))"
+fi
 rm -f "$HERR"
 
 # ========================================================== persist =====

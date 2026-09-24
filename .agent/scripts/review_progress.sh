@@ -335,9 +335,9 @@ _persist_impl() {
 # the current directory, so run it from the PR worktree; entries with open
 # findings that do not cover the head are listed in dropped_entries with
 # reason "stale" (verified) or "unverifiable" (could not check; also warned
-# on stderr). Only the newest review entry covering the head feeds
-# local_findings; an older covering entry with open findings is dropped with
-# reason "superseded" (owner decision, #309). Nothing is fetched.
+# on stderr). A covering entry with a NEWER covering Integrated Review is
+# dropped with reason "superseded" (owner decision "Only triage supersedes",
+# #309); newer Local Reviews supersede nothing. Nothing is fetched.
 cmd_sources() {
     local progress="" head="" reviews=""
     while [[ $# -gt 0 ]]; do
@@ -420,28 +420,31 @@ local = []
 # above all, from "open findings the helper could not check" (#309).
 dropped = []
 loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
-# Supersession (#309, owner decision "Newest current review wins"): of the
-# review entries that cover the head, only the NEWEST (file order is
-# chronological) feeds local_findings, whether or not it has open findings.
-# A later review has already disposed of the findings of the earlier one (triage
-# and address-findings never tick the boxes of the older entry), so an older
-# covering entry with open findings is listed as "superseded", not
-# re-listed as open. "Review entry" = every entry read above (Local Review,
-# Local Review (Pre-Push), Integrated Review and their predecessors) with a
-# PR/branch correlation.
+# Supersession (#309, owner decision "Only triage supersedes"): only a
+# newer covering Integrated Review (or its legacy External Review
+# predecessor) drops the open findings of older covering review entries,
+# which are listed as "superseded". That entry is a triage decision over
+# them (triage and address-findings never tick the boxes of the older
+# entry). A newer Local Review / Local Review (Pre-Push) supersedes nothing:
+# it re-reads the code independently, so every covering entry without a
+# newer covering Integrated Review feeds local_findings. Nothing vanishes
+# without a decision. "Review entry" = every entry read above with a
+# PR/branch correlation; file order is chronological.
 reviews_in = [e for e in data.get("entries", [])
               if (e.get("correlation") or {}).get("kind") in ("pr", "branch")]
 classified = [(e, coverage((e.get("correlation") or {}).get("sha"))) for e in reviews_in]
-covering = [i for i, (_, (kind, _w)) in enumerate(classified) if kind in ("exact", "bookkeeping")]
-newest = covering[-1] if covering else None
+is_triage = lambda e: "Integrated Review" in (e.get("base_type"), e.get("predecessor_of"))
+triage_covering = [i for i, (e, (kind, _w)) in enumerate(classified)
+                   if kind in ("exact", "bookkeeping") and is_triage(e)]
 for i, (e, (kind, why)) in enumerate(classified):
     c = e.get("correlation") or {}
     open_f = [f for f in e.get("findings", [])
               if f.get("section") != "False positives" and not f.get("checked")]
     if not open_f:
         continue
-    if kind in ("exact", "bookkeeping") and i != newest:
-        w = classified[newest][0]
+    later_triage = [j for j in triage_covering if j > i]
+    if kind in ("exact", "bookkeeping") and later_triage:
+        w = classified[later_triage[-1]][0]
         kind, why = "superseded", "a newer {} at `{}` covers the head".format(
             w["type"], short((w.get("correlation") or {}).get("sha")) or "?")
     if kind not in ("exact", "bookkeeping"):
