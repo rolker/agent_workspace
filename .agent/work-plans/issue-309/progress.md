@@ -546,3 +546,30 @@ Reviewers:
 - [ ] (suggestion) Operator-local paths (`$PKG_WT_DIR`, `$_gate_wt`, `$_gate_progress`, `$_ci_wt`) enter gate reasons raw, while the helper escapes the same worktree path, so a non-ASCII root prints two ways. Escape them too, or narrow the stated claim to "the helper's reasons are safe ASCII". Claude adversarial — `.agent/scripts/merge_pr.sh:702`, `:704`, `:710`, `:722`, `:741`
 - [ ] (suggestion) `_bk_display` is quadratic in length (`${s:i:1}` rescans the string). Measured: 64 KiB takes 8.7 s. A committed 80 KB path (git update-index --cacheinfo) makes `--review` take 10.4 s and prints an 80 KB reason line into **Conditions**. Cap the displayed value (e.g. 256 bytes plus an ellipsis) before the loop. Claude adversarial, measured — `.agent/scripts/_bookkeeping.sh:36-52`
 - [ ] (suggestion) The bridge comment still says the reason quotes a raw non-UTF-8 path. After 31d484a the helper output is always ASCII; say that `errors="backslashreplace"` is only a backstop now. h34 could also pin 0x01 and 0x7f, which the byte sweep shows are handled. Claude adversarial — `.agent/scripts/review_progress.sh:393-395`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-24 13:58 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #349 at `1b488b5`
+**Sources**: 2 (Local Review @ `3d30684`, covering head `1b488b5` by bookkeeping-only coverage; CI rollup). Copilot: 7 reviews, all quota notices with no comments, not sources. No human reviews or conversation comments.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Sources were read with this branch's own `review_progress.sh sources` (the worktree's scripts, since the PR changes that helper). It listed the 4 open suggestions from the Local Review at `3d30684` and dropped the three earlier PR-mode Local Reviews as `stale`. Each suggestion was checked against the code at `1b488b5` and is accurate.
+
+### Prior entries ruled on
+The earlier PR-mode Local Reviews have open boxes because address-findings cannot tick a Local Review. Ruling on each once, from the later reviews and the code:
+- Local Review at `df33a3f` (6 open): all closed. `-z` diff in `_bookkeeping.sh:117` and `merge_pr.sh:1117` (489a7ca, h29/g13/ci-31d). Invariant tests h30/h31 (41de3b7). Unparseable-SHA entries listed as unverifiable, h32 (67700d4). External Review no longer supersedes, per the owner's "No, remove it", h28 flipped (6aec69f). The gate requires a complete Integrated Review, per the owner's "Gate requires complete, here" (f214382). The h21 header cites "Only triage supersedes" (1458639). The `fabaa34` review confirmed these.
+- Local Review at `9dc974f` (3 open): all closed. backslashreplace decode, h33 (efffa60). Gate d5/e5 (e86ac56). SKILL.md "can never be superseded" note (1a15852). The `f2118b0` review confirmed these.
+- Local Review at `f2118b0` (1 open must-fix): closed by `_bk_display` (31d484a, h34/g14). The `3d30684` review verified it by a byte sweep and approved.
+
+### Findings
+- [ ] (suggestion, Local Review @ `3d30684`) Gate reasons carry branch-committed text raw. The `_gate_r_type` heading and the **Status** / **Verdict** values from `jq -r` reach the terminal and the Merge record's **Conditions** unescaped, so ESC/BEL in a heading suffix pass through. Confirmed at `merge_pr.sh:760-765`. Fix: wrap all three in `_bk_display`, and add a gate test with a control byte in the heading suffix — `.agent/scripts/merge_pr.sh`
+- [ ] (suggestion, Local Review @ `3d30684`) Operator-local paths (`$PKG_WT_DIR`, `$_gate_wt`, `$_gate_progress`, `$_ci_wt`) enter gate reasons raw, while the helper escapes the same worktree path. A non-UTF-8 worktree root could put invalid bytes into a committed **Conditions** line, the failure 31d484a closed for diff paths. Confirmed at `merge_pr.sh:702-741`. Fix: pass them through `_bk_display` (preferred over narrowing the claim) — `.agent/scripts/merge_pr.sh`
+- [ ] (suggestion, Local Review @ `3d30684`) `_bk_display` is quadratic: `${s:i:1}` in a per-character loop took 10.4 s on a committed 80 KB path, and it prints the whole value into **Conditions**. Fix: cap the input (e.g. 256 bytes plus a marker) before the loop, and add a test — `.agent/scripts/_bookkeeping.sh:36-52`
+- [ ] (suggestion, Local Review @ `3d30684`) The bridge comment still says the reason quotes a raw non-UTF-8 path. Since 31d484a the output is ASCII, so `errors="backslashreplace"` is only a backstop. Reword the comment. Optionally, h34 can also pin 0x01 and 0x7f — `.agent/scripts/review_progress.sh:393-395`
+
+### False positives
+- None.
