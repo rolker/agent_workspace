@@ -359,3 +359,24 @@ Fix all 4, review again (Recommended) — dispatch address-findings for both mus
 - [x] (must-fix) Added a **(source)** Script Reference row for `_real_case_path.sh` — `AGENTS.md:387`
 - [x] (suggestion) Both scripts test `-f` first; a present-but-broken helper (load failure, or no `real_case_relpath` defined) keeps its own error on stderr and warns "could not be loaded" before the candidate-spelling fallback; broken-helper cases added to both suites (test_update_roadmap 10/10, test_discover_governance 22/22) — `.agent/scripts/discover_governance.sh:19`, `.agent/scripts/update_roadmap.sh:28`
 - [x] (suggestion) docs/ tree diagram lists roadmap.md — `docs/design.md:47`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-24 08:45 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-334 at `6cd387b`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff re-classified per #320, 31 files / +707 -56 outside work-plans; CI workflow + AGENTS.md/CLAUDE.md + skills are override triggers)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 4 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round-3 findings resolved, each verified: (1) the no-helper roadmap fixture is stored as docs/ROADMAP.md, the first docs/ probe, so the expected path holds on either filesystem kind (root ROADMAP.md probe is a different directory and cannot collide); (2) AGENTS.md Script Reference has a **(source)** row for `_real_case_path.sh`; (3) both scripts test `-f` first, then `source` + `declare -F real_case_relpath`, warning "not found" vs "could not be loaded" with the load error left on stderr — G1–G3 and broken-helper roadmap cases pass; a hand probe with an empty helper (sources OK, no function) also warns "could not be loaded" and still checks the roadmap off (rc 0); (4) docs/design.md tree lists roadmap.md.
+
+Verified: shellcheck --severity=warning clean on the 3 scripts and 3 test files; test_discover_governance 22/22, test_update_roadmap 10/10, test_real_case_path 10/10, test_merge_pr_gate 82/82; old-name grep leaves only deliberate dual-spelling code/tests, project-scope mentions and historical records; no tracked ARCHITECTURE.md / docs/PRINCIPLES.md / docs/ROADMAP.md.
+
+Reviewers: Claude adversarial (fresh) — ran, 1 suggestion, no must-fix. Codex — ran, complete, no issues found. Gemini — failed: agy empty response, headless read_file (ViewFile) auto-denied. Copilot — skipped (quota exhausted, Sept 2026).
+
+### Findings
+- [ ] (suggestion) The third helper state — helper sources cleanly but defines no `real_case_relpath` — works (hand-verified) but has no test in either suite; add an empty-helper case asserting "could not be loaded" and the fallback — `.agent/scripts/tests/test_discover_governance.sh:169`, `.agent/scripts/tests/test_update_roadmap.sh:122`
