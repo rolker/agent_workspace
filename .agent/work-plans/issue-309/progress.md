@@ -185,3 +185,25 @@ Reviewers:
 - [x] (must-fix) Bookkeeping coverage resurrects findings a later `## Integrated Review` already disposed of. triage-reviews and address-findings never tick the original Local Review's boxes, so after the Integrated Review's own progress commit the older Local Review still covers the head and `sources` re-lists its closed, deferred or false-positive findings as open on every later triage. Needs a supersession rule: the newest covering review entry wins, and older covering entries are reported in `dropped_entries` (e.g. reason `superseded`). Add a regression test. Design call. Codex — `.agent/scripts/review_progress.sh:418-431`
 - [x] (must-fix) A verified non-ancestor (git exit 1) is misreported as unverifiable whenever git writes any stderr. Reproduced with `GIT_TRACE=1`: rc 3 instead of rc 1, plus a false warning. Treat exit 1 as a git failure only when stderr carries a git error line (`^(error|fatal):`), or run the check with `GIT_TRACE*` unset; add a test. Claude adversarial — `.agent/scripts/_bookkeeping.sh:48-53`
 - [x] (suggestion) The gate's refusal still labels an unverifiable coverage check "stale review". The decision is right, but an operator reading "stale" may reach for `--force-unreviewed`. Word it by rc (e.g. "review coverage could not be confirmed: …"), and update g10's expected text — `.agent/scripts/merge_pr.sh:743`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 11:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a7d34766692007bc4, resume 1 of 3)
+
+**Branch**: feature/issue-309 at `5c4b64c`
+**Addressed**: Local Review (Pre-Push) at `0d59d41` (2026-09-24 10:49 -04:00)
+**Commits**: d01d088, 5ce465d, 5c4b64c
+
+Owner decision (finding 1): "Newest current review wins" — only the newest review entry that covers the head (via the bookkeeping rule) feeds `sources`; older covering review entries are reported in `dropped_entries` with reason `superseded`.
+
+### Actions
+- [x] (must-fix) Supersession: of the review entries `sources` reads (Local Review, Local Review (Pre-Push), Integrated Review) with a PR/branch correlation, only the newest covering one feeds `local_findings` (even when it has no open findings); older covering entries with open findings are dropped as `superseded`. Tests h21 (Local Review then Integrated Review + its progress commit) and h22 (newest covering review fully addressed); the existing single-review cases h1-h20 still pass. triage-reviews SKILL.md, the AGENTS.md `review_progress.sh` row and the ADR-0013 addendum updated — `.agent/scripts/review_progress.sh:418-431` (d01d088)
+- [x] (must-fix) A verified non-ancestor stays rc 1 when git writes non-error stderr: only `^(error|fatal):` lines make exit 1 a failure, and GIT_TRACE* is unset for the check. Tests h23 (GIT_TRACE=1; a shim printing a warning) — `.agent/scripts/_bookkeeping.sh:48-53` (5ce465d)
+- [x] (suggestion) Gate refusal worded by rc: rc 3 reads "review coverage could not be confirmed: …", rc 1 keeps "stale review"; g10 updated — `.agent/scripts/merge_pr.sh:743` (5c4b64c)
+
+### Notes
+- Mutation checks: disabling supersession fails h21 and h22; the pre-fix helper fails both h23 cases; removing only the error-line rule (trace unset kept) fails the shim h23 case; dropping the rc-3 label fails g10.
+- Unverifiable warnings are now printed only for entries whose open findings are dropped (the classification pass checks every review entry).
+- The gate's pre-helper reasons (no local worktree, review SHA or head not resolvable) still say "stale review"; the finding scoped the rewording to the helper's rc.
