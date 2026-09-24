@@ -325,3 +325,13 @@ Live acceptance, claude bad-model wrapper:
 - Specialists: static analysis (shellcheck --severity=warning on all 4 scripts: clean); governance (AGENTS.md script-table entries for `_agy_review.sh` / `_cli_review.sh` remain accurate; no ADR triggered beyond ADR-0015, which is complied with); plan drift (implementation matches Approach items 1-6; no unplanned files); Claude adversarial (fresh subagent, ran the suite: 648/648 passed; source of the cutoff-match finding; claude JSON-before-exit reorder traced against all four live shapes, no regressions).
 - Cross-model (run from this branch, so the Gemini arm ran the NEW `_agy_review.sh` and the new prompt): Gemini failed — API 503 "No capacity available for model gemini-3.8-flash-high"; correctly reported as a failed review through the generic `result status ERROR` path, so it produced no review of this branch. Codex ran — "No issues found" + 2-sentence summary; prompt 47.9 KB. Copilot skipped — quota exhausted this month.
 - Flagged point 2 (history): the pre-scrub `permission_denials` object (a `~/.claude/bin/agent-status` command with its status text, and a `tool_use_id`) is in plan commits a122288 / 3f4249c; the tip (37ddf47 onward) and the test file are scrubbed. The branch is not on origin yet, so nothing is public. Low sensitivity (a home-relative path; the id is an opaque, non-credential value; `/home/roland` paths already appear on main in about 10 work-plan files). Owner's call before the first push: push as-is, or rewrite only the unpushed plan commits (non-interactive filter/rebase over main..HEAD, which contains a merge commit) before pushing. A squash merge would not help, because the repo uses merge commits.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 11:09 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Fix 1+2 first (Recommended) — short fix pass: one-line cutoff match + test, softer concise wording; then review round 2 and publish. Suggestion 3 goes in the PR body. History: "Push as is (Recommended)" — do not rewrite the plan commits that hold the agent-status command text and tool-call id.
