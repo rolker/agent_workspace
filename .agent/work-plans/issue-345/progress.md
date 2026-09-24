@@ -220,3 +220,13 @@ The core mechanism (plugin, local scope, skills-only, new superseding ADR) is so
 - [ ] Drop the AGENTS.md / CLAUDE.md / adapter / AGENT_ONBOARDING.md edits, or get explicit owner approval for each.
 - [ ] Verify whether `plugin.json` can list individual skill dirs. If it can, expose only `session_scope: project|both` skills and test the list against the frontmatter.
 - [ ] Port the spike as an opt-in live acceptance script covering the workspace root, gz4d-shape and p11-shape roots, and an unrelated repo. Add `claude plugin validate` to the manifest test when `claude` is available.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 15:02 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Accept all 8, revise (Recommended) — plan revision folds in all findings from the Plan Review at 956e633 and the reviewer's 8 recommended decisions: (1) user_tier_install.sh enables the plugin for each registered root, with --check and uninstall, #332 reuses it later; (2) accept writing the ignored .claude/settings.local.json into projects and record the exception in the new ADR; (3) p11 projects decided after a live check of what a session there already loads; (4) expose only project/both-scoped skills if plugin.json supports a list, otherwise all with workspace-only skills handled; (5) include start-task; (6) open the hooks follow-up issue now; (7) no instruction-file edits, any note goes in the SessionStart hook header; (8) plugin name agent-workspace confirmed. Then plan review round 2.
