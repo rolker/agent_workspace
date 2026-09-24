@@ -390,3 +390,20 @@ Reviewers: Claude adversarial (fresh) — ran, 1 suggestion, no must-fix. Codex 
 **Decision**: publish
 
 Publish now (Recommended) — push the branch and open the PR with the reviewer's Decision summary; the empty-helper test suggestion stays noted in the PR.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-24 08:53 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #346 at `b062b3d`
+**Sources**: 2 (Local Review (Pre-Push) round 4 @ `6cd387b` — only progress.md bookkeeping commits since, carried forward; CI rollup @ `b062b3d`). No GitHub reviews or comments; Copilot skipped (quota exhausted, Sept 2026 — its reviewer check-run was still pending at triage and is not awaited).
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Lint (pre-commit) still running on both workflow runs; Validate Adapter Contract, Validate Documentation and ros-manifest tests pass. The one open item is the round-4 suggestion the owner chose to publish with; re-verified against the code at head: both suites cover the missing-helper and syntax-broken-helper states, neither covers a helper that sources cleanly but defines no `real_case_relpath`. No must-fix open.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) r4) The third helper state — helper sources cleanly but defines no `real_case_relpath` — works (hand-verified) but has no test in either suite; add an empty-helper case asserting "could not be loaded" and the fallback — `.agent/scripts/tests/test_discover_governance.sh:169`, `.agent/scripts/tests/test_update_roadmap.sh:122`
+
+### False positives
