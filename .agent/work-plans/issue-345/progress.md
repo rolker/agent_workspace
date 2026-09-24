@@ -230,3 +230,31 @@ The core mechanism (plugin, local scope, skills-only, new superseding ADR) is so
 **Decision**: revise
 
 Accept all 8, revise (Recommended) — plan revision folds in all findings from the Plan Review at 956e633 and the reviewer's 8 recommended decisions: (1) user_tier_install.sh enables the plugin for each registered root, with --check and uninstall, #332 reuses it later; (2) accept writing the ignored .claude/settings.local.json into projects and record the exception in the new ADR; (3) p11 projects decided after a live check of what a session there already loads; (4) expose only project/both-scoped skills if plugin.json supports a list, otherwise all with workspace-only skills handled; (5) include start-task; (6) open the hooks follow-up issue now; (7) no instruction-file edits, any note goes in the SessionStart hook header; (8) plugin name agent-workspace confirmed. Then plan review round 2.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-24 15:11 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Dispatch**: resumed (agent a92e944bf41c8ecfb, resume 1 of 3)
+**Plan**: `.agent/work-plans/issue-345/plan.md` at `9828235`
+
+Revision 2, folding in every finding from the round-1 Plan Review
+(`956e633`, needs-work) and the owners accept-all-8-revise checkpoint:
+skill prefix now an explicit `--skill-prefix` on dispatch_phase.sh set
+from `${CLAUDE_PLUGIN_ROOT}` (not the wrong --type signal); the plugin is
+enabled per registered root from user_tier_install.sh itself (install,
+--check, --uninstall; #332 reuses the function), guarded against roots
+that share the workspaces own git toplevel (confirmed live: p11-jazzy and
+p11-rolling already see bare workspace skills by directory walk-up and
+must never get the plugin); --check keeps legacy symlink-drift detection
+(foreign_skill_link retained) instead of losing it; plugin.json exposes
+only session_scope project|both skills (generated + cross-checked against
+frontmatter), verified with claude plugin validate; the Makefile
+generate-user-tier-skills target and make generate-skills are now in
+scope; ADR-0017s pointer moves to ADR-0016s Status/References (not
+Consequences) and records the ADR-0016 section 2 write-into-checkout
+exception plus the relationship to the #317 acceptance run; the
+hooks-into-plugin follow-up issue is opened now (host action); no
+AGENTS.md/CLAUDE.md/adapter edits (dropped; a one-line note goes in the
+SessionStart hook header instead); a live acceptance script is ported
+from the spike as an opt-in suite.
