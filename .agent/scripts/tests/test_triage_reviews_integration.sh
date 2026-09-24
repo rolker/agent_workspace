@@ -612,6 +612,92 @@ if jq -e --arg lr "${REVIEWED:0:7}" '(.local_findings | length) == 1
 else
     fail "sources (h28): External Review supersession (out=$out)"
 fi
+# (h30) supersession runs forward only: a triage entry supersedes OLDER
+# review entries, never a Local Review written after it. From DOC_HEAD (the
+# pre-push entry with one open finding): a complete Integrated Review, then
+# a PR-mode Local Review with its own open finding, both at DOC_HEAD.
+git -C "$HIST" checkout -q -B local-after-triage "$DOC_HEAD"
+cat >> "$HP" <<EOF
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-17 12:00 -04:00
+**By**: t (m)
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) triage finding — \`scripts/code.sh:9\`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: t (m)
+**Verdict**: changes-requested
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) later local finding — \`scripts/code.sh:11\`
+EOF
+hist_commit "progress: integrated review, then local review"
+out=$(hist_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e --arg lr "${REVIEWED:0:7}" '(.local_findings | length) == 2
+        and ([.local_findings[].text] | any(contains("triage finding")))
+        and ([.local_findings[] | select(.text | contains("later local finding")) | .entry_type] == ["Local Review"])
+        and (.dropped_entries | length) == 1 and .dropped_entries[0].reason == "superseded"
+        and .dropped_entries[0].sha == $lr' <<<"$out" >/dev/null; then
+    pass "sources (h30): a Local Review written after the triage entry is not superseded by it; only the older one is"
+else
+    fail "sources (h30): newer Local Review superseded by an older triage entry (rc=$rc out=$out)"
+fi
+# (h31) a triage entry supersedes only while it covers the head itself. A
+# covering Local Review at a code commit, then a complete Integrated Review
+# recorded at the pre-change SHA (stale): the stale triage decided nothing
+# about the current code, so the Local Review's finding is still listed.
+git -C "$HIST" checkout -q -B stale-triage "$DOC_HEAD"
+printf 'changed after triage\n' >> "$HIST/scripts/code.sh"
+hist_commit "code after the triage SHA"
+CODE_HEAD=$(hist_head)
+cat > "$HP" <<EOF
+---
+issue: 7
+---
+
+# Issue #7
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: t (m)
+**Verdict**: changes-requested
+
+**PR**: #70 at \`${CODE_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) local finding at the code head — \`scripts/code.sh:1\`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-17 14:00 -04:00
+**By**: t (m)
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) stale triage finding — \`scripts/code.sh:9\`
+EOF
+hist_commit "progress: local review, then a stale integrated review"
+out=$(hist_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e --arg code "${CODE_HEAD:0:7}" --arg ir "${DOC_HEAD:0:7}" '(.local_findings | length) == 1
+        and .local_findings[0].sha == $code
+        and (.local_findings[0].text | contains("local finding at the code head"))
+        and (.dropped_entries | length) == 1 and .dropped_entries[0].reason == "stale"
+        and .dropped_entries[0].sha == $ir' <<<"$out" >/dev/null; then
+    pass "sources (h31): a stale (non-covering) Integrated Review supersedes nothing; the covering Local Review is still listed"
+else
+    fail "sources (h31): stale triage superseded a covering review (rc=$rc out=$out)"
+fi
 rm -f "$HERR"
 
 # ========================================================== persist =====
