@@ -424,3 +424,25 @@ Tests: test_cross_model_review.sh 662 passed, 0 failed; shellcheck --severity=wa
 **Decision**: publish
 
 Publish now (Recommended) — push and open the PR; body names #347 and the SUCCESS-with-truncated-reply residual; the near-unreachable claude JSON-read suggestion is noted, not fixed.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-24 12:04 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #348 at `a01b23b`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `3ee52b4` — head delta to `a01b23b` is progress.md only; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) r3) The claude "JSON result could not be read" failure omits the exit code and the claude stderr excerpt; append the exit note and `log_excerpt 'claude stderr'` (near-unreachable: every field expression is type-safe on a JSON object; owner chose to publish without it) — `.agent/scripts/_cli_review.sh:385`
+
+### False positives
+
+### Notes
+- GitHub side: 0 reviews, 0 inline comments, 0 conversation comments at `a01b23b`. Copilot quota exhausted for September; its check-run is not a review source.
+- Verified the round-3 suggestion still applies at head: the `fail` call at `_cli_review.sh:385` carries only the jq error and claude stdout excerpts.
+- Owner-deferred, already ticked in earlier entries: output-token cutoff reliability → #347; agy SUCCESS-with-truncated-reply residual → #347 (both named in the PR body's Decision summary).
+- CI at 12:04: Validate Documentation, Validate Adapter Contract, ros-manifest tests pass; Lint (pre-commit) pending (both runs).
+- PR body already carries a `## Decision summary`.
