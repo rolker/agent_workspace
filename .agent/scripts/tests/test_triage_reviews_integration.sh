@@ -698,6 +698,47 @@ if [[ "$rc" == 0 ]] && jq -e --arg code "${CODE_HEAD:0:7}" --arg ir "${DOC_HEAD:
 else
     fail "sources (h31): stale triage superseded a covering review (rc=$rc out=$out)"
 fi
+# (h32) an entry whose **PR**/**Branch** line does not parse has no SHA to
+# check: its open findings are listed as unverifiable and warned about,
+# never silently skipped. A PR line without "#", and a legacy External
+# Review without "at <sha>" (the historical shape).
+git -C "$HIST" checkout -q -B uncorrelated "$DOC_HEAD"
+cat >> "$HP" <<EOF
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: t (m)
+**Verdict**: changes-requested
+
+**PR**: 70 at \`${DOC_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) finding under a bad PR line — \`scripts/code.sh:4\`
+
+## External Review
+**Status**: complete
+**When**: 2026-09-17 14:00 -04:00
+**By**: t (m)
+
+**PR**: #70
+
+### Findings
+- [ ] (must-fix) legacy external finding — \`scripts/code.sh:6\`
+EOF
+hist_commit "progress: uncorrelated entries"
+out=$(hist_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e '(.local_findings | length) == 1
+        and (.local_findings[0].text | contains("still open"))
+        and (.dropped_entries | length) == 2
+        and ([.dropped_entries[] | select(.reason == "unverifiable" and .sha == "" and .open_findings == 1
+              and (.why | contains("no PR/Branch correlation SHA"))) | .entry_type] == ["Local Review", "External Review"])' <<<"$out" >/dev/null \
+    && [[ "$(grep -c 'no PR/Branch correlation SHA' "$HERR")" == 2 ]] \
+    && grep -q '`## Local Review` entry (2026-09-17 13:00 -04:00) has 1 open finding' "$HERR"; then
+    pass "sources (h32): entries with no parseable PR/Branch SHA are listed as unverifiable and warned, not skipped"
+else
+    fail "sources (h32): uncorrelated entries (rc=$rc out=$out err=$(<"$HERR"))"
+fi
 rm -f "$HERR"
 
 # ========================================================== persist =====

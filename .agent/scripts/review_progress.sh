@@ -334,8 +334,8 @@ _persist_impl() {
 # and keeps its own SHA). Local coverage is checked in the repository of
 # the current directory, so run it from the PR worktree; entries with open
 # findings that do not cover the head are listed in dropped_entries with
-# reason "stale" (verified) or "unverifiable" (could not check; also warned
-# on stderr). A covering entry with a NEWER covering Integrated Review is
+# reason "stale" (verified) or "unverifiable" (could not check, including an
+# entry with no parseable PR/Branch correlation SHA; also warned on stderr). A covering entry with a NEWER covering Integrated Review is
 # dropped with reason "superseded" (owner decision "Only triage supersedes",
 # #309); newer Local Reviews supersede nothing. Nothing is fetched.
 cmd_sources() {
@@ -429,9 +429,16 @@ loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
 # it re-reads the code independently, so every covering entry without a
 # newer covering Integrated Review feeds local_findings. Nothing vanishes
 # without a decision. "Review entry" = every entry read above with a
-# PR/branch correlation; file order is chronological.
+# PR/branch correlation; file order is chronological. An entry whose
+# **PR**/**Branch** line does not parse (no "#", no "at <sha>") has no SHA
+# to check: its open findings are listed as "unverifiable" below and
+# warned about, never silently skipped.
+open_of = lambda e: [f for f in e.get("findings", [])
+                     if f.get("section") != "False positives" and not f.get("checked")]
 reviews_in = [e for e in data.get("entries", [])
               if (e.get("correlation") or {}).get("kind") in ("pr", "branch")]
+uncorrelated = [e for e in data.get("entries", [])
+                if (e.get("correlation") or {}).get("kind") not in ("pr", "branch") and open_of(e)]
 classified = [(e, coverage((e.get("correlation") or {}).get("sha"))) for e in reviews_in]
 is_triage = lambda e: "Integrated Review" in (e.get("base_type"), e.get("predecessor_of"))
 # A partial or failed triage decided nothing, so only a complete one counts.
@@ -440,8 +447,7 @@ triage_covering = [i for i, (e, (kind, _w)) in enumerate(classified)
                    and (e.get("status") or "").strip().lower() == "complete"]
 for i, (e, (kind, why)) in enumerate(classified):
     c = e.get("correlation") or {}
-    open_f = [f for f in e.get("findings", [])
-              if f.get("section") != "False positives" and not f.get("checked")]
+    open_f = open_of(e)
     if not open_f:
         continue
     later_triage = [j for j in triage_covering if j > i]
@@ -463,6 +469,13 @@ for i, (e, (kind, why)) in enumerate(classified):
                       "source_hint": f.get("source_hint"),
                       "files": [p for p, _ in cited],
                       "lines": {p: ln for p, ln in cited if ln is not None}})
+NO_SHA = "no PR/Branch correlation SHA (the **PR** / **Branch** line is missing or does not parse as `#<N> at <sha>` / `<branch> at <sha>`)"
+for e in uncorrelated:
+    n = len(open_of(e))
+    print("warning: sources: `## {}` entry ({}) has {} open finding(s) but {}; not checked against head `{}`".format(
+        e["type"], e.get("when") or "no When", n, NO_SHA, short(head)), file=sys.stderr)
+    dropped.append({"entry_type": e["type"], "sha": "", "open_findings": n,
+                    "reason": "unverifiable", "why": NO_SHA})
 github = []
 for r in reviews.get("reviews", []):
     src = "{} ({})".format(r.get("user_login"), r.get("user_type"))

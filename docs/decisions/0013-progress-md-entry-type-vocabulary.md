@@ -222,7 +222,7 @@ file is rewritten by this ADR's adoption.
   **Status**: complete exists (only triage supersedes: nothing vanishes
   without a decision), and an entry
   that does not cover the head is reported as stale, or as unverifiable
-  when git cannot check. The helper now lives in
+  when git cannot check or the entry's PR/branch key does not parse. The helper now lives in
   `.agent/scripts/_bookkeeping.sh`, shared by `merge_pr.sh` and
   `review_progress.sh`. Cross-reference addendum per ADR-0008; the key
   itself is unchanged.

@@ -175,8 +175,10 @@ Entries with open findings that do not cover the head are listed in
   it, do not re-list what it closed.
 - `reason: "unverifiable"` — the helper could not check (no repository at
   the cwd, a SHA that does not resolve there, a non-canonical `--progress`
-  path, a git error, a shallow history); a warning is also printed on
-  stderr. **Do not treat these as
+  path, a git error, a shallow history, or an entry whose `**PR**` /
+  `**Branch**` line does not parse, so it has no SHA at all — its `sha` is
+  `""`, as for a historical `## External Review` without `at <sha>`); a
+  warning is also printed on stderr. **Do not treat these as
   resolved**: read that entry in `progress.md` and check its open findings
   against the code yourself.
 - `reason: "superseded"` — the entry covers the head, and so does a newer
