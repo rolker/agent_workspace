@@ -254,3 +254,52 @@ Revision 2 addresses all 12 round-1 items. The claude-arm reorder is sound: ever
 **Decision**: proceed
 
 Implement, fold in all 5 (Recommended) — dispatch the implementation in the background; the implementer applies the 5 notes from the round-2 Plan Review at 9865e58 as it goes.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 10:48 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-336 at `1ce2404`
+
+Merged `origin/main` first (`91cc114`, clean, no conflicts). Plan revision 2 implemented with all 5 round-2 Plan Review findings (`9865e58`) folded in.
+
+- `37ddf47` plan: fold round-2 plan review into #336 plan. Adds the ERROR-status phrase control, the denial reword and its mock knob, the ~83.7 KB three-dot diff size, acceptance cleanup under the scratchpad, and corrected capture provenance. The max-turns `permission_denials` values are now scrubbed in the plan text too.
+- `b918899` Gemini reviews: no tools, concise output, name the token cutoff (`cross_model_review.sh`, `_agy_review.sh`, tests).
+  - Gemini-only Tool Use section: no tools may be called; the diff and Plan Context are the only material; concise-output instruction. The stale comment above the loop is updated.
+  - Precise output-token-cutoff reason, matched on `.error` and stderr only, never on the response.
+  - Denial reason reworded to the no-tools policy.
+  - New mock knobs: `MOCK_AGY_DENY_ACTION`, `MOCK_AGY_ERROR_RESPONSE`, `MOCK_AGY_ERROR_STDERR`.
+- `1ce2404` Claude reviews: read the JSON result before failing on exit status (`_cli_review.sh`, tests).
+  - Reports `.errors`, then `.error`, then `.result`, plus `api_error_status` and `terminal_reason`.
+  - The exit code is never lost: it is the reason when there is no JSON, it is appended as "(claude also exited N)", and a success-looking JSON with a non-zero exit fails.
+  - Type-safe `.errors` read.
+  - The four live captures are embedded with ids and tool inputs scrubbed. The two `.error` mocks are relabelled synthetic.
+
+Tests: `test_cross_model_review.sh` 648 passed, 0 failed; hooks passed on every commit. shellcheck `--severity=warning` is clean on all four files. Mutation checks: 14 of 14 caught:
+- cutoff matcher also reading RESPONSE
+- cutoff detection removed
+- stderr channel dropped
+- old denial text
+- "You may read files" restored
+- concise line removed
+- tool-use block for all agents
+- exit check before the JSON read
+- no-JSON exit branch removed
+- terminal exit check removed
+- naive `.errors` join
+- `api_error_status` dropped
+- `.errors` dropped from the detail
+- exit note dropped
+
+Live acceptance, Gemini (agy 1.2.10, not the 1.2.9 the plan recorded):
+- Ran from a detached scratch worktree at `48b0d82^2`: `--branch 48b0d82^1 --agents gemini --no-progress`.
+- The embedded diff is 83,710 bytes. The prompt the script wrote is 85,989 bytes; the script does not print the size, so it was measured with `wc -c`.
+- Result: `EXIT=0`, completed in about 3 minutes, 492-byte findings. Findings head: "### Findings / No issues found. / ### Summary / The implementation in `_plan_approach.py` and `cross_model_review.sh` is robust ...".
+- The failure mode is fixed: no denial, no cutoff. But a no-findings verdict on an 84 KB diff is a thin review; the concise instruction may be over-compressing.
+- The run-banner prints an empty branch name ("for branch  (no-progress mode)") from a detached HEAD. This is cosmetic and was already there.
+- The artifact dir and the scratch worktree were removed.
+
+Live acceptance, claude bad-model wrapper:
+- `EXIT=1`.
+- Reason: "claude returned is_error=true (subtype success): There's an issue with the selected model (no-such-model-xyz) ... (api_error_status: 404) (terminal_reason: api_error) (claude also exited 1)".
+- The wrapper was removed.
