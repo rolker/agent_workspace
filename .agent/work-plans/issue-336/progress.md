@@ -436,7 +436,7 @@ Publish now (Recommended) — push and open the PR; body names #347 and the SUCC
 **CI**: pending
 
 ### Findings
-- [ ] (suggestion, Local Review (Pre-Push) r3) The claude "JSON result could not be read" failure omits the exit code and the claude stderr excerpt; append the exit note and `log_excerpt 'claude stderr'` (near-unreachable: every field expression is type-safe on a JSON object; owner chose to publish without it) — `.agent/scripts/_cli_review.sh:385`
+- [x] (suggestion, Local Review (Pre-Push) r3) The claude "JSON result could not be read" failure omits the exit code and the claude stderr excerpt; append the exit note and `log_excerpt 'claude stderr'` (near-unreachable: every field expression is type-safe on a JSON object; owner chose to publish without it) — `.agent/scripts/_cli_review.sh:385` (deferred: owner: merge without it (near-unreachable path))
 
 ### False positives
 
