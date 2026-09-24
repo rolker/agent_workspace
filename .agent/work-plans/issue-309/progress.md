@@ -275,3 +275,39 @@ Owner decision (replaces "newest current review wins"): "Only triage supersedes 
 - Mutation checks: flags removed fails h24, h25, ci-31c; old gate label default fails g11, g12; old newest-wins code fails h26; supersession disabled fails h21, h22; any-newer-entry-supersedes fails h26.
 - The "no local worktree" gate branch is reachable only for package worktrees (without a worktree the progress file cannot be read), so it has no dedicated test; it shares the default label with g11/g12.
 - Suites: triage 48/48, gate 89/89, merge_pr 91/91.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-24 12:07 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a54034ed4b2be2139, resume 3 of 3)
+
+**Branch**: feature/issue-309 at `9fed386`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 1000+ lines across 12 files, including merge_pr.sh, AGENTS.md, an ADR and a SKILL.md)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 4 | **Ship**: recommended — round 4: 1 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+All round-3 findings are verified closed:
+- Both coverage diffs pass `--no-relative --ignore-submodules=none`. The adversarial reviewer also re-probed color.diff, diff.external, diff.noprefix and a path with a space; none hides a change.
+- The gate label defaults to "review coverage could not be confirmed"; "stale review" appears only on helper rc 1.
+- "Only triage supersedes" is implemented, and SKILL.md, AGENTS.md and ADR-0013 describe it consistently with the code.
+
+The new rule's edge cases were probed in real repos and hold:
+- Two covering Local Reviews both feed `local_findings`.
+- A newer Local Review is not superseded by an older Integrated Review.
+- Of two Integrated Reviews, the older is superseded.
+- A legacy External Review supersedes (via progress_read's predecessor mapping).
+
+Tests h24-h26, g11, g12 and ci-31c fail on the pre-fix commit. Static checks are clean (shellcheck). The adversarial reviewer ran the suites: triage 48/48, gate 89/89.
+
+Reviewers:
+- Gemini (agy): failed — empty response; headless mode auto-denied a read_file (ViewFile) tool action (fourth round running).
+- Codex: ran — 1 must-fix (confirmed by code reading, below).
+- Copilot: skipped — quota exhausted (September 2026).
+- Claude adversarial (fresh): ran — 0 must-fix, 1 suggestion.
+
+### Findings
+- [ ] (must-fix) Supersession ignores the Integrated Review's `**Status**`. A `partial` or `failed` triage entry (both allowed by ADR-0013) still suppresses every older covering finding as `superseded`. Codex reproduced this with a partial Integrated Review that has no findings. This breaks the owner's "nothing vanishes without a decision" rule. Only a `complete` Integrated/External Review should supersede. Add tests for partial and failed, and say so in the triage-reviews SKILL.md `superseded` bullet. Codex — `.agent/scripts/review_progress.sh:436-438`
+- [ ] (suggestion) No test pins supersession by a legacy `## External Review`; it was verified only by hand. Add a copy of h21 with an `## External Review (Round N)` heading — `.agent/scripts/tests/test_triage_reviews_integration.sh`
