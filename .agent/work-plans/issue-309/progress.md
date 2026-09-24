@@ -583,3 +583,34 @@ The earlier PR-mode Local Reviews have open boxes because address-findings canno
 **Decision**: address
 
 Fix all 4, then merge (Recommended) — one fix pass for the 4 suggestions in the Integrated Review at 833c070, PR-mode re-review, triage, then the merge question again.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 14:32 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af3d391529e7ce405, resume 3 of 3)
+
+**PR**: #349 at `3aa5dcd`
+**Addressed**: Integrated Review at `1b488b5` (2026-09-24 13:58 -04:00), with the owner's Checkpoint "Fix all 4, then merge (Recommended)" (2026-09-24 14:12 -04:00)
+**Commits**: 3345803, 57c9e9f, 3aa5dcd
+
+### Actions
+- [x] (suggestion) Gate reasons escape the entry heading, **Status** and **Verdict** values: every value a gate reason interpolates now goes through `_bk_display`. Tests g15 (ESC/BEL in a heading suffix and a Status value), g15b (heading in the not-covering reason), g16 (ESC in a Verdict) — `.agent/scripts/merge_pr.sh` (57c9e9f)
+- [x] (suggestion) Operator-local paths (`$PKG_WT_DIR`, `$_gate_wt`, `$_gate_progress`, `$_ci_wt`), SHAs, the issue number and the must-fix count go through `_bk_display` in gate reasons. Tests g17, g17b and g17c use a worktree root named with 0xff/ESC; `$PKG_WT_DIR` follows the same pattern but has no dedicated test — `.agent/scripts/merge_pr.sh` (57c9e9f)
+- [x] (suggestion) `_bk_display` caps its input at 256 bytes, plus "...(+N bytes)", before the loop. Test h35: an 80 KB value takes 0 s, against 10 s uncapped — `.agent/scripts/_bookkeeping.sh:36-52` (3345803)
+- [x] (suggestion) The bridge comment calls backslashreplace a backstop; h34 pins 0x01 and DEL — `.agent/scripts/review_progress.sh:393-395` (3aa5dcd)
+
+### Notes
+- Mutation checks (each restored after):
+  - no cap: fails h35 (10 s, full length);
+  - raw heading in the status reason: fails g15;
+  - raw Status value: fails g15;
+  - raw Verdict: fails g16;
+  - raw heading in the not-covering reason: fails g15b;
+  - raw `$_gate_wt`: fails g17;
+  - raw `$_gate_progress`: fails g17b;
+  - raw `$_ci_wt`: fails g17c;
+  - treating 0x01 / DEL as printable: fails h34.
+- The gate record's `**PR**` line and the "covers head" echo still interpolate SHAs unescaped. They are hex-validated (rev-parse, or GitHub's headRefOid) and are not gate reasons.
+- Suites: triage integration 59/0, merge gate 103/0, merge_pr 91/0, convergence 31/0, address_findings 15/0; shellcheck (warning) clean.
+- g17's run prints an awk "invalid multibyte data" warning from the worktree helpers on the raw-byte root. It is terminal noise outside the gate reasons and does not affect the record.
