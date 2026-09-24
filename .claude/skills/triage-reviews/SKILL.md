@@ -143,7 +143,7 @@ It prints JSON with `local_findings` (unchecked findings, never the
 (Pre-Push)`, prior `## Integrated Review`, and legacy `## External Review`
 entries whose correlation SHA matches this head or covers it through verified
 bookkeeping-only changes, unless a newer covering `## Integrated Review`
-supersedes them — see `superseded` below), `github_comments` (every inline comment,
+(complete) supersedes them — see `superseded` below), `github_comments` (every inline comment,
 with `at_head` marking those submitted against the current head), and
 `candidates`: a local finding and a GitHub comment that name the same
 repo-relative file at this head. Every file a finding cites in backticks
@@ -179,17 +179,18 @@ Entries with open findings that do not cover the head are listed in
   stderr. **Do not treat these as
   resolved**: read that entry in `progress.md` and check its open findings
   against the code yourself.
-- `reason: "superseded"` — the entry covers the head, and so does a
-  newer `## Integrated Review` (or a legacy `## External Review`). **Only
-  triage supersedes** (owner decision, #309): that Integrated Review is a
-  triage decision over the earlier findings — each was fixed, deferred or
-  dismissed there — and triage and address-findings never tick the older
-  entry's boxes, so re-listing them would resurrect closed findings. Do
-  not re-list them. A newer `## Local Review` or `## Local Review
-  (Pre-Push)` supersedes nothing: it re-reads the code independently and
-  decides nothing about earlier findings, so a pre-push review's
-  unaddressed suggestions stay in `local_findings` next to a later
-  PR-mode review's. Nothing vanishes without a decision.
+- `reason: "superseded"` — the entry covers the head, and so does a newer
+  `## Integrated Review` (or a legacy `## External Review`) with
+  `**Status**: complete`; a `partial` or `failed` one decided nothing and
+  supersedes nothing. **Only triage supersedes** (owner decision, #309):
+  that Integrated Review is a triage decision over the earlier findings —
+  each was fixed, deferred or dismissed there — and triage and
+  address-findings never tick the older entry's boxes, so re-listing them
+  would resurrect closed findings. Do not re-list them. A newer `## Local
+  Review` or `## Local Review (Pre-Push)` supersedes nothing: it re-reads
+  the code independently and decides nothing about earlier findings, so a
+  pre-push review's unaddressed suggestions stay in `local_findings` next
+  to a later PR-mode review's. Nothing vanishes without a decision.
 
 ### 4. Load governance context
 

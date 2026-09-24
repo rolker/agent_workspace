@@ -538,6 +538,42 @@ if [[ "$rc" == 0 ]] && jq -e '(.local_findings | length) == 1
 else
     fail "sources (h26): pre-push suggestion lost (rc=$rc out=$out err=$(<"$HERR"))"
 fi
+
+# (h27/h28) which triage entries supersede. triage_after <branch> <heading>
+# <status>: from DOC_HEAD (a Local Review (Pre-Push) with one open finding),
+# append a triage entry at DOC_HEAD with that heading and **Status**, commit
+# it (bookkeeping), and print sources for the new head.
+triage_after() {
+    git -C "$HIST" checkout -q -B "$1" "$DOC_HEAD"
+    cat >> "$HP" <<EOF
+
+## $2
+**Status**: $3
+**When**: 2026-09-17 12:00 -04:00
+**By**: t (m)
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+**Sources**: 1 (Local Review @ \`${REVIEWED:0:7}\`)
+
+### Findings
+- [ ] (must-fix) triage finding — \`scripts/code.sh:9\`
+EOF
+    hist_commit "progress: $2 ($3)"
+    hist_sources "$(hist_head)"
+}
+# (h27) a partial or failed Integrated Review decided nothing: it supersedes
+# nothing, so the older finding is still listed next to its own.
+for st in partial failed; do
+    out=$(triage_after "triage-$st" "Integrated Review" "$st")
+    if jq -e '(.local_findings | length) == 2
+            and ([.local_findings[].text] | any(contains("still open")))
+            and ([.local_findings[].text] | any(contains("triage finding")))
+            and (.dropped_entries | length) == 0' <<<"$out" >/dev/null; then
+        pass "sources (h27): a $st Integrated Review supersedes nothing; the older finding is still listed"
+    else
+        fail "sources (h27): $st Integrated Review superseded (out=$out)"
+    fi
+done
 rm -f "$HERR"
 
 # ========================================================== persist =====

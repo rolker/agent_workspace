@@ -421,9 +421,9 @@ local = []
 dropped = []
 loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
 # Supersession (#309, owner decision "Only triage supersedes"): only a
-# newer covering Integrated Review (or its legacy External Review
-# predecessor) drops the open findings of older covering review entries,
-# which are listed as "superseded". That entry is a triage decision over
+# newer covering Integrated Review with **Status**: complete (or its legacy
+# External Review predecessor) drops the open findings of older covering
+# review entries, which are listed as "superseded". That entry is a triage decision over
 # them (triage and address-findings never tick the boxes of the older
 # entry). A newer Local Review / Local Review (Pre-Push) supersedes nothing:
 # it re-reads the code independently, so every covering entry without a
@@ -434,8 +434,10 @@ reviews_in = [e for e in data.get("entries", [])
               if (e.get("correlation") or {}).get("kind") in ("pr", "branch")]
 classified = [(e, coverage((e.get("correlation") or {}).get("sha"))) for e in reviews_in]
 is_triage = lambda e: "Integrated Review" in (e.get("base_type"), e.get("predecessor_of"))
+# A partial or failed triage decided nothing, so only a complete one counts.
 triage_covering = [i for i, (e, (kind, _w)) in enumerate(classified)
-                   if kind in ("exact", "bookkeeping") and is_triage(e)]
+                   if kind in ("exact", "bookkeeping") and is_triage(e)
+                   and (e.get("status") or "").strip().lower() == "complete"]
 for i, (e, (kind, why)) in enumerate(classified):
     c = e.get("correlation") or {}
     open_f = [f for f in e.get("findings", [])
