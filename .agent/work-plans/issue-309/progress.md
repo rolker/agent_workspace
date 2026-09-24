@@ -423,3 +423,27 @@ Reviewers:
 - [ ] (must-fix) The coverage bridge decodes the helper's stdout strictly as UTF-8 (`text=True`). The helper's rc-1 reason quotes the raw git path. A code file whose name is not valid UTF-8 (e.g. `bad-\xff.sh`) then raises `UnicodeDecodeError`, a ValueError that `except OSError` does not catch, so `sources` exits 1 with a traceback and no JSON. Codex reproduced it; the decode failure was confirmed locally. Fix: decode with `errors="backslashreplace"` (or catch ValueError and report unverifiable), and add a regression test — `.agent/scripts/review_progress.sh:389-392`
 - [ ] (suggestion) The gate's status branch has no test for a mixed-case or padded `Complete`, nor for an Integrated Review with no `**Status**` line, which should refuse and name `<missing>`. Both behave correctly today; this was checked only against the jq expressions. Found by the Claude adversarial reviewer — `.agent/scripts/tests/test_merge_pr_gate.sh` (near d3/d4)
 - [ ] (suggestion) An entry with no parseable PR/Branch SHA can never be superseded. A pre-ADR-0013 entry with open boxes is therefore re-listed as `unverifiable` on every future triage, which follows the owner's rule. Say in the triage-reviews SKILL.md that this is expected and that the triager rules on it once. Found by the Claude adversarial reviewer — `.claude/skills/triage-reviews/SKILL.md` (unverifiable bullet)
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 13:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af3d391529e7ce405, resume 1 of 3)
+
+**PR**: #349 at `1a15852`
+**Addressed**: Local Review at `9dc974f` (2026-09-24 13:17 -04:00), under the owner's standing "fix it completely" standard (no new owner decision needed)
+**Commits**: efffa60, e86ac56, 1a15852
+
+### Actions
+- [x] (must-fix) The coverage bridge decodes the helper's stdout and stderr with `encoding="utf-8", errors="backslashreplace"`. A non-UTF-8 code path is reported stale (shown as `bad-\xff.sh`) instead of crashing with a traceback. That subprocess call is the bridge's only read of git output. Test h33 — `.agent/scripts/review_progress.sh:389-392` (efffa60)
+- [x] (suggestion) Gate tests d5 (no `**Status**` line: refused, named `<missing>`) and e5 (`**Status**:  Complete  ` passes) — `.agent/scripts/tests/test_merge_pr_gate.sh` (e86ac56)
+- [x] (suggestion) triage-reviews SKILL.md unverifiable bullet: an entry with no parseable SHA can never be superseded, so it is re-listed as unverifiable every triage. This is expected; the triager rules on it once and cites that ruling afterwards — `.claude/skills/triage-reviews/SKILL.md` (1a15852)
+
+### Notes
+- Mutation checks:
+  - Restoring `text=True` fails h33 with a traceback.
+  - Dropping `ascii_downcase` in the gate fails e5.
+  - Dropping the `<missing>` placeholder fails d5.
+  - Dropping the gate's jq whitespace trim does not fail e5. progress_read.py already strips field values, so that trim is redundant defence; e5 pins the end-to-end behaviour.
+- Suites: triage integration 57/0, merge gate 96/0, merge_pr 91/0, convergence 31/0; shellcheck (warning) clean.
+- The source entry's boxes are not ticked, for the same reason as last pass: `check` targets only Integrated Review / Local Review (Pre-Push) entries.
