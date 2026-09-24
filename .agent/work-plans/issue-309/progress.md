@@ -152,3 +152,36 @@ Reviewers: static (shellcheck --severity=warning + bash -n: clean), governance, 
 ### Notes
 - Same rename blind spot found and fixed beyond the cited line: the CI walk-back in `merge_pr.sh` (`_ci_walk_bookkeeping`) listed paths with `git diff --name-only`; now `--no-renames`, test ci-31b (7ce5bae).
 - Mutation checks: removing `--no-renames` fails h16 and g9; restoring the pre-fix `_bookkeeping.sh` fails h17-h20 and g10; ci-31b failed before its fix.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-24 10:49 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a54034ed4b2be2139, resume 1 of 3)
+
+**Branch**: feature/issue-309 at `0d59d41`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 900+ lines across 12 files, including merge_pr.sh, AGENTS.md, an ADR and a SKILL.md)
+**Must-fix**: 2 | **Suggestions**: 1
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+All round-1 findings are verified closed:
+- Renames: `--no-renames` in `_bookkeeping.sh` and in the CI walk-back. A rename whose two paths are both exempt (docs/ROADMAP.md to docs/roadmap.md) is still accepted.
+- git failures now return 3 (unverifiable). Tests h16-h20, g9, g10 and ci-31b cover both fixes.
+- AGENTS.md now has the two Script Reference rows, and ADR-0013 has the References addendum. Their claims match the code.
+
+The out-of-findings CI walk-back change (7ce5bae) only makes the walk more conservative, and ci-31b pins it.
+
+Static checks are clean (shellcheck, bash -n). The adversarial reviewer ran the suites: triage 41/41, gate 86/86.
+
+Reviewers:
+- Gemini (agy): failed — empty response; headless mode auto-denied a read_file (ViewFile) tool action (same as round 1).
+- Codex: ran — 1 must-fix (confirmed by code reading, below).
+- Copilot: skipped — quota exhausted (September 2026).
+- Claude adversarial (fresh): ran — 1 must-fix (reproduced), 1 suggestion.
+
+### Findings
+- [ ] (must-fix) Bookkeeping coverage resurrects findings a later `## Integrated Review` already disposed of. triage-reviews and address-findings never tick the original Local Review's boxes, so after the Integrated Review's own progress commit the older Local Review still covers the head and `sources` re-lists its closed, deferred or false-positive findings as open on every later triage. Needs a supersession rule: the newest covering review entry wins, and older covering entries are reported in `dropped_entries` (e.g. reason `superseded`). Add a regression test. Design call. Codex — `.agent/scripts/review_progress.sh:418-431`
+- [ ] (must-fix) A verified non-ancestor (git exit 1) is misreported as unverifiable whenever git writes any stderr. Reproduced with `GIT_TRACE=1`: rc 3 instead of rc 1, plus a false warning. Treat exit 1 as a git failure only when stderr carries a git error line (`^(error|fatal):`), or run the check with `GIT_TRACE*` unset; add a test. Claude adversarial — `.agent/scripts/_bookkeeping.sh:48-53`
+- [ ] (suggestion) The gate's refusal still labels an unverifiable coverage check "stale review". The decision is right, but an operator reading "stale" may reach for `--force-unreviewed`. Word it by rc (e.g. "review coverage could not be confirmed: …"), and update g10's expected text — `.agent/scripts/merge_pr.sh:743`
