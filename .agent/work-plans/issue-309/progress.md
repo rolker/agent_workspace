@@ -133,3 +133,22 @@ Reviewers: static (shellcheck --severity=warning + bash -n: clean), governance, 
 - [x] (must-fix) Git errors are classified as "stale" (rc 1), not "unverifiable" (rc 3): any non-zero `merge-base --is-ancestor` (including 128 on a missing object) and a failed `git diff` both return 1, so `sources` lists them as verified-stale with no stderr warning. That is the silent path this issue exists to remove. Return 3 for is-ancestor rc other than 0/1, for a diff failure, and for a non-ancestor in a shallow repository; add tests. Merge gate behaviour is unchanged (1 and 3 are both "not covered"). Codex — `.agent/scripts/_bookkeeping.sh:38-45`
 - [x] (must-fix) Missing consequence: the AGENTS.md Script Reference still says `sources` is "correlated by head SHA" and has no row for the new `_bookkeeping.sh`. AGENTS.md is Ask First, so this needs the owner's go-ahead — `AGENTS.md:419`
 - [x] (suggestion) ADR-0013 References says one helper applies the rule "for both the gate and the CI target". Add `review_progress.sh sources` (#309) and the helper's new home, `_bookkeeping.sh`, as a cross-reference addendum (ADR-0008) — `docs/decisions/0013-progress-md-entry-type-vocabulary.md:209-216`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 10:39 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-309 at `65ecdb7`
+**Addressed**: Local Review (Pre-Push) at `b4ca2ea` (2026-09-24 10:12 -04:00)
+**Commits**: 88cd46c, 6aed940, 7ce5bae, a724ecb, 65ecdb7
+
+### Actions
+- [x] (must-fix) Rename blind spot: `git diff --no-renames` so a code file renamed into `.agent/work-plans/issue-<N>/` names its old path; tests h16 (sources) and g9 (gate) — `.agent/scripts/_bookkeeping.sh:42` (88cd46c)
+- [x] (must-fix) Git failures are unverifiable (rc 3), not stale: an ancestry check that errors or reports an unreadable commit on stderr (git exits 1 in that case), a failed diff, and a non-ancestor in a shallow repository; `sources` lists them as unverifiable with its warning; gate unchanged (1 and 3 both "not covered"); tests h17-h20 (sources) and g10 (gate) — `.agent/scripts/_bookkeeping.sh:38-45` (6aed940)
+- [x] (must-fix) AGENTS.md Script Reference: `review_progress.sh` row's `sources` clause rewritten; new **(source)** row for `_bookkeeping.sh`; table rows only (owner standing rule, #269 rule 2) — `AGENTS.md:419` (a724ecb)
+- [x] (suggestion) ADR-0013 References: cross-reference addendum for #309 and `_bookkeeping.sh` (ADR-0008) — `docs/decisions/0013-progress-md-entry-type-vocabulary.md:209-216` (65ecdb7)
+
+### Notes
+- Same rename blind spot found and fixed beyond the cited line: the CI walk-back in `merge_pr.sh` (`_ci_walk_bookkeeping`) listed paths with `git diff --name-only`; now `--no-renames`, test ci-31b (7ce5bae).
+- Mutation checks: removing `--no-renames` fails h16 and g9; restoring the pre-fix `_bookkeeping.sh` fails h17-h20 and g10; ci-31b failed before its fix.
