@@ -454,6 +454,32 @@ why=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.ignoreSubmodules GIT_CONFIG_VALUE
     && pass "sources (h25): diff.ignoreSubmodules=all does not hide a submodule pointer change (stale)" \
     || fail "sources (h25): submodule change hidden (rc=$rc why=$why)"
 
+# (h29) non-ASCII paths: git quotes them under core.quotePath=true (the
+# default) unless the diff is read NUL-delimited. A non-ASCII file in the
+# issue's work-plan dir is still bookkeeping, and a non-ASCII code file is
+# named as it is spelled in the stale reason.
+qp_sources() {  # <head> -- hist_sources with core.quotePath=true forced
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.quotePath GIT_CONFIG_VALUE_0=true hist_sources "$1"
+}
+git -C "$HIST" checkout -q -B non-ascii "$DOC_HEAD"
+mkdir -p "$HIST/.agent/work-plans/issue-7/notes"
+printf 'note\n' > "$HIST/.agent/work-plans/issue-7/notes/café.md"
+hist_commit "plan(#7): non-ASCII note"
+out=$(qp_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 && "$(n_local "$out")" == 1 && "$(jq -r '.local_findings[0].coverage' <<<"$out")" == bookkeeping ]] \
+    && jq -e '(.dropped_entries | length) == 0' <<<"$out" >/dev/null; then
+    pass "sources (h29): a non-ASCII file in the issue's work-plan dir is bookkeeping (core.quotePath=true)"
+else
+    fail "sources (h29): non-ASCII work-plan file (rc=$rc out=$out err=$(<"$HERR"))"
+fi
+printf 'code\n' > "$HIST/scripts/naïve.sh"
+hist_commit "non-ASCII code"
+out=$(qp_sources "$(hist_head)")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"
+        and (.dropped_entries[0].why | contains("scripts/naïve.sh"))' <<<"$out" >/dev/null \
+    && pass "sources (h29): a non-ASCII code file is stale and named as spelled" \
+    || fail "sources (h29): non-ASCII code file (out=$out)"
+
 # (h21) supersession (owner decision "Newest current review wins"): a Local
 # Review with open findings, then an Integrated Review and its own progress
 # commit. Both cover the head; only the newest feeds local_findings and the

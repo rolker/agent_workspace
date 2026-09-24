@@ -1009,6 +1009,30 @@ else
     fail "(ci-31b) (out=${out:0:500})"
 fi
 
+echo "TEST: CI target — a non-ASCII work-plan file after the green head is walked over (core.quotePath=true, #309)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; green=$(git -C "$wt" rev-parse HEAD)
+mkdir -p "$wt/.agent/work-plans/issue-7/notes"
+printf 'note\n' > "$wt/.agent/work-plans/issue-7/notes/café.md"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "plan(#7): note"
+git -C "$wt" push --quiet origin feature/issue-7
+head_now=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.quotePath GIT_CONFIG_VALUE_0=true \
+    GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI target: \`${green:0:7}\`"*"bookkeeping commits"* ]] \
+    && [[ "$out" == *"CI checks passed on \`${green:0:7}\`"* ]]; then
+    pass "(ci-31d) non-ASCII work-plan file after a green head: walks back to the green head, merges"
+else
+    fail "(ci-31d) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
 echo "TEST: CI target — diff.ignoreSubmodules=all cannot hide a submodule bump after the green head (#309)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"
@@ -1315,6 +1339,7 @@ fi
 #   roadmap-after-lower  R -> docs/roadmap.md -> progress.md (#334)
 #   plan-after     R -> work-plans/issue-7/plan.md -> progress.md
 #   other-issue-after    R -> work-plans/issue-70/progress.md -> progress.md
+#   plan-nonascii-after  R -> work-plans/issue-7/notes/café.md -> progress.md (#309)
 #   rename-into-plan     R -> reviewed.sh moved into work-plans/issue-7/ -> progress.md
 #   unrelated      review cites a commit on main that is not in H's history
 make_gate_sandbox() {  # <mode>
@@ -1342,6 +1367,10 @@ make_gate_sandbox() {  # <mode>
             mkdir -p "$wt/.agent/work-plans/issue-7"
             printf -- '# Plan\n\n## Addendum 1\n\nowner rule\n' > "$wt/.agent/work-plans/issue-7/plan.md"
             git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "plan(#7): addendum" ;;
+        plan-nonascii-after)
+            mkdir -p "$wt/.agent/work-plans/issue-7/notes"
+            printf -- 'note\n' > "$wt/.agent/work-plans/issue-7/notes/café.md"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "plan(#7): note" ;;
         rename-into-plan)
             mkdir -p "$wt/.agent/work-plans/issue-7"
             git -C "$wt" mv reviewed.sh .agent/work-plans/issue-7/reviewed.sh
@@ -1446,6 +1475,17 @@ if [[ "$out" == *"would have refused"*"stale review"*"touches \`reviewed.sh\`"* 
     pass "(g9) code renamed into work-plans/issue-7/: stale, names the old path"
 else
     fail "(g9) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a non-ASCII work-plan file after the review keeps it current (core.quotePath=true, #309)"
+sb="$(make_gate_sandbox plan-nonascii-after)"
+out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.quotePath GIT_CONFIG_VALUE_0=true \
+    GH_MERGE_EXIT=0 run_merge "$sb" 2>&1)" || true
+if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]] \
+    && [[ "$out" != *"review gate refused"* ]] && merged_called "$sb"; then
+    pass "(g13) work-plans/issue-7/notes/café.md after the review: gate passes under the default (enforce)"
+else
+    fail "(g13) (out=${out:0:400})"
 fi
 
 echo "TEST: gate (a) — an unverifiable coverage check (git failure, helper rc 3) is still not covered, worded as unconfirmed (#309)"

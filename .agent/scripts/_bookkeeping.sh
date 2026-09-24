@@ -40,7 +40,8 @@ BOOKKEEPING_ROADMAP_PATHS=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
 _only_bookkeeping_between() {
     local wt="$1" from="$2" to="$3"; shift 3
     local -a allowed=("$@")
-    local diff_paths p a ok anc_err anc_errline anc_rc=0 shallow
+    local -a diff_paths
+    local p a ok anc_err anc_errline anc_rc=0 shallow
     # Only a clean "no" (exit 1 with no git error line) in a complete history
     # is a verified non-ancestor. git also exits 1 when it cannot read a
     # commit on the walk (it prints an `error:`/`fatal:` line), and a shallow
@@ -70,11 +71,23 @@ _only_bookkeeping_between() {
     # --no-relative / --ignore-submodules=none: user config (diff.relative,
     # diff.ignoreSubmodules, submodule.*.ignore) must not filter the paths;
     # <wt> may be a subdirectory and a submodule pointer is a real change.
-    diff_paths=$(git -C "$wt" diff --no-renames --no-relative --ignore-submodules=none --name-only "$from" "$to" 2>/dev/null) || {
+    # -z: paths are NUL-terminated and never quoted. Without it,
+    # core.quotePath (default true) C-quotes a non-ASCII or otherwise
+    # unusual path ("caf\303\251.md"), which then fails the allowed-path
+    # match, and a newline in a path would split it into two entries.
+    # Bash variables cannot hold NUL, so the paths are read straight from
+    # the process substitution; git's exit status follows the last NUL as an
+    # unterminated "rc=<N>" trailer, which the final (failing) read leaves
+    # in $p. Anything but rc=0 is a failed diff.
+    diff_paths=()
+    while IFS= read -r -d '' p; do
+        diff_paths+=("$p")
+    done < <(git -C "$wt" diff --no-renames --no-relative --ignore-submodules=none --name-only -z "$from" "$to" 2>/dev/null; printf 'rc=%s' "$?")
+    if [[ "$p" != "rc=0" ]]; then
         echo "could not diff \`${from:0:7}\`..\`${to:0:7}\` in $wt"
         return 3
-    }
-    while IFS= read -r p; do
+    fi
+    for p in ${diff_paths[@]+"${diff_paths[@]}"}; do
         [[ -z "$p" ]] && continue
         ok=false
         for a in ${allowed[@]+"${allowed[@]}"}; do
@@ -86,10 +99,11 @@ _only_bookkeeping_between() {
             [[ "$p" == $a ]] && { ok=true; break; }
         done
         if [[ "$ok" == false ]]; then
-            echo "touches \`${p}\`, which is not a merge-time document file"
+            # One line for the caller: a newline in a path is shown as \n.
+            echo "touches \`${p//$'\n'/\\n}\`, which is not a merge-time document file"
             return 1
         fi
-    done <<<"$diff_paths"
+    done
     return 0
 }
 

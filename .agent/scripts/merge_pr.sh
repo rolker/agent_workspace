@@ -1078,7 +1078,8 @@ _is_bookkeeping_path() {  # <path> -- rc 0 when the path is a merge-time documen
     return 1
 }
 _ci_walk_bookkeeping() {  # <wt> <start-sha> -- prints ancestors of <start>, newest first, reachable through bookkeeping-only single-parent commits; stops at the first other commit, a merge, a root commit, the default branch, or 25 steps
-    local wt="$1" cur="$2" base default_branch line parents paths p n=0
+    local wt="$1" cur="$2" base default_branch line parents p n=0
+    local -a paths
     # The stop bound is the repo's own default branch, not a hardcoded
     # `origin/main`: where they differ (or origin/main is absent) the
     # merge-base would fail silently and drop this bound entirely.
@@ -1096,11 +1097,20 @@ _ci_walk_bookkeeping() {  # <wt> <start-sha> -- prints ancestors of <start>, new
         # --no-renames: a code file moved into a work-plan dir still lists
         # its old path, and --no-relative / --ignore-submodules=none keep
         # user diff config from filtering paths, as in _bookkeeping.sh (#309).
-        paths=$(git -C "$wt" diff --no-renames --no-relative --ignore-submodules=none --name-only "$parents" "$cur" 2>/dev/null) || return 0
-        while IFS= read -r p; do
+        # -z: NUL-terminated, unquoted paths, so core.quotePath cannot turn
+        # a non-ASCII work-plan file into a quoted string that fails the
+        # pattern match. git's exit status arrives as an unterminated
+        # "rc=<N>" trailer after the last NUL (left in $p by the final read);
+        # a failed diff stops the walk, as before.
+        paths=()
+        while IFS= read -r -d '' p; do
+            paths+=("$p")
+        done < <(git -C "$wt" diff --no-renames --no-relative --ignore-submodules=none --name-only -z "$parents" "$cur" 2>/dev/null; printf 'rc=%s' "$?")
+        [[ "$p" == "rc=0" ]] || return 0
+        for p in ${paths[@]+"${paths[@]}"}; do
             [[ -z "$p" ]] && continue
             _is_bookkeeping_path "$p" || return 0
-        done <<<"$paths"
+        done
         cur="$parents"
         echo "$cur"
         n=$((n + 1))
