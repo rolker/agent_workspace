@@ -334,3 +334,13 @@ Verified: shellcheck clean on changed scripts/tests; test_discover_governance 19
 - [ ] (must-fix) New sourced helper `_real_case_path.sh` is missing from AGENTS.md's Script Reference table (consequence map: a script in `.agent/scripts/` → that table); add a **(source)** row — `AGENTS.md:386`
 - [ ] (suggestion) `source … 2>/dev/null` also swallows a present-but-broken helper (syntax error) and reports it as "not found"; test `-f` first and let a load error show, or word the warning "could not be loaded" — `.agent/scripts/discover_governance.sh:19`, `.agent/scripts/update_roadmap.sh:28`
 - [ ] (suggestion) The docs/ tree in the rewritten diagram lists design.md and principles.md but not roadmap.md — `docs/design.md:47`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 08:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Fix all 4, review again (Recommended) — dispatch address-findings for both must-fix and both suggestions, then pre-push review round 4.
