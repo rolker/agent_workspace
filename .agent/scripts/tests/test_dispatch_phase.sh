@@ -461,6 +461,49 @@ out=$(cd "$SBP2" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_ph
     && pass "resolve_worktree --type project: no registry entry -- falls back to the deprecated project/worktrees/ shape" || fail "resolve_worktree project legacy fallback (rc=$rc out=$out)"
 
 echo ""
+echo "TEST: --skill-prefix -- the host's skill set, independent of the issue's --type (#345)"
+# The four host/issue combinations. The host is expressed ONLY by
+# --skill-prefix (empty = a workspace-hosted or Codex session with bare
+# skills; agent-workspace: = a project session whose workspace skills came
+# from the plugin, ADR-0017); the issue by --type. Neither may leak into the
+# other: round 1 of the #345 plan keyed the prefix on --type, which broke a
+# workspace host driving a project issue.
+run_prefixed() {  # <dir> [args...]
+    local d="$1"; shift
+    (cd "$d" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh "$@" 2>&1)
+}
+out=$(run_prefixed "$SB" --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "--skill-prefix: workspace host + workspace issue -- bare" || fail "prefix ws/ws (out=${out:0:200})"
+out=$(run_prefixed "$SBP1" --issue 9 --skill review-code --type project)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "--skill-prefix: workspace host + project issue -- bare (--type project must not prefix)" || fail "prefix ws/project (out=${out:0:200})"
+out=$(run_prefixed "$SB" --issue 9 --skill review-code --skill-prefix agent-workspace:)
+[[ "$out" == *$'\ntask=/agent-workspace:review-code --branch --issue 9\n'* ]] \
+    && pass "--skill-prefix: plugin host + workspace issue -- prefixed" || fail "prefix plugin/ws (out=${out:0:200})"
+out=$(run_prefixed "$SBP1" --issue 9 --skill review-code --type project --skill-prefix agent-workspace:)
+[[ "$out" == *$'\ntask=/agent-workspace:review-code --branch --issue 9\n'* ]] \
+    && pass "--skill-prefix: plugin host + project issue -- prefixed" || fail "prefix plugin/project (out=${out:0:200})"
+# Every slash-command skill is prefixed; the literal implement instruction
+# (not a slash command) is not.
+ok=1
+for args in "review-issue" "plan-task" "review-plan" "review-code --pr 42" "triage-reviews --pr 42" "address-findings"; do
+    read -r sk rest <<< "$args"
+    # shellcheck disable=SC2086
+    out=$(run_prefixed "$SB" --issue 9 --skill $sk $rest --skill-prefix agent-workspace:)
+    [[ "$out" == *$'\ntask=/agent-workspace:'"$sk "* ]] || { ok=0; echo "    not prefixed: $sk -> $(grep '^task=' <<< "$out")"; }
+done
+[[ "$ok" -eq 1 ]] && pass "--skill-prefix: every slash-command phase is prefixed" || fail "--skill-prefix: a phase was not prefixed"
+out=$(run_prefixed "$SB" --issue 9 --skill implement --skill-prefix agent-workspace:)
+[[ "$out" == *$'\ntask=implement the plan at'* ]] \
+    && pass "--skill-prefix: the literal implement instruction is not prefixed" || fail "prefix implement (out=${out:0:200})"
+for bad in "agent-workspace" "/agent-workspace:" "Agent:" "a b:"; do
+    out=$(run_prefixed "$SB" --issue 9 --skill review-code --skill-prefix "$bad"); rc=$?
+    [[ "$rc" -eq 2 && "$out" == *"--skill-prefix must be"* ]] \
+        && pass "--skill-prefix: '$bad' is a usage error" || fail "--skill-prefix '$bad' accepted (rc=$rc out=${out:0:160})"
+done
+
+echo ""
 echo "TEST: --check-exit -- OK/PARTIAL/FAILED/MISSING per expected type"
 SBX="$(mk_sandbox 9)"
 WT="$SBX/worktrees/workspace/issue-workspace-9"

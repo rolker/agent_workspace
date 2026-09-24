@@ -8,7 +8,7 @@
 #   dispatch_phase.sh --issue <N> --skill <phase> [--type workspace|project]
 #                      [--project <name>]
 #                      [--pr <M>] [--prompt-file <f>] [--entry-type <T>]
-#                      [--model <alias>]
+#                      [--model <alias>] [--skill-prefix <name>:]
 #     Prints the handoff block for a phase the host is about to dispatch
 #     via the Agent tool: the worktree, the phase's literal task line (per
 #     the plan's per-skill table), the commit identity, the model to stamp
@@ -17,6 +17,9 @@
 #     `key=value` lines, one per line, in this order: worktree, task,
 #     agent_name, agent_email, model, entry_type, exit_contract,
 #     conventions, and prompt_file (only when --prompt-file was given).
+#     --skill-prefix (default empty) namespaces every slash command in the
+#     task line, e.g. `agent-workspace:` gives `/agent-workspace:review-code`
+#     -- for a host whose workspace skills came from the plugin (ADR-0017).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--project <name>]
@@ -86,6 +89,7 @@ Usage:
   dispatch_phase.sh --issue <N> --skill <phase> [--type workspace|project]
                      [--project <name>] [--pr <M>] [--prompt-file <f>]
                      [--entry-type <T>] [--model <alias>]
+                     [--skill-prefix <name>:]
   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
                      [--type workspace|project] [--project <name>]
                      [--pr <M>] --before <count>
@@ -230,18 +234,26 @@ resolve_worktree() {
 # block), the ADR-0013 entry type the dispatch is expected to write, and the
 # model tier (owner decision, 2026-09-17). `review-code` and `triage-reviews`
 # are mode-aware on `--pr`; every other skill ignores it.
+#
+# <prefix> (the --skill-prefix value, default empty) goes between the `/` and
+# the skill name of every slash command: `agent-workspace:` when the HOST
+# session loaded its workspace skills through the agent-workspace plugin
+# (ADR-0017), where the bare name may be a project's own same-named skill.
+# It is deliberately a caller-supplied string, not derived from --type or
+# $PWD: the issue type says nothing about which skill set the host loaded
+# (a workspace-hosted session driving a project issue has bare skills only).
 skill_task_line() {
-    local skill="$1" issue="$2" pr="$3"
+    local skill="$1" issue="$2" pr="$3" prefix="${4:-}"
     case "$skill" in
-        review-issue)     echo "/review-issue $issue" ;;
-        plan-task)        echo "/plan-task $issue --no-pr" ;;
-        review-plan)      echo "/review-plan --issue $issue" ;;
+        review-issue)     echo "/${prefix}review-issue $issue" ;;
+        plan-task)        echo "/${prefix}plan-task $issue --no-pr" ;;
+        review-plan)      echo "/${prefix}review-plan --issue $issue" ;;
         review-code)
-            if [[ -n "$pr" ]]; then echo "/review-code $pr"
-            else echo "/review-code --branch --issue $issue"; fi
+            if [[ -n "$pr" ]]; then echo "/${prefix}review-code $pr"
+            else echo "/${prefix}review-code --branch --issue $issue"; fi
             ;;
-        triage-reviews)   echo "/triage-reviews $pr" ;;
-        address-findings) echo "/address-findings --issue $issue" ;;
+        triage-reviews)   echo "/${prefix}triage-reviews $pr" ;;
+        address-findings) echo "/${prefix}address-findings --issue $issue" ;;
         # No `/implement` slash command exists — the post-plan implementation
         # pass is dispatched with a literal instruction instead (issue #314).
         implement)        echo "implement the plan at .agent/work-plans/issue-$issue/plan.md on this branch" ;;
@@ -283,10 +295,11 @@ skill_requires_pr() {
 
 # --------------------------------------------------------------- handoff ---
 cmd_handoff() {
-    local issue="" skill="" type="workspace" project="" pr="" prompt_file="" entry_type_override="" model_override=""
+    local issue="" skill="" type="workspace" project="" pr="" prompt_file="" entry_type_override="" model_override="" skill_prefix=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue)       [[ $# -ge 2 ]] || usage; issue="$2"; shift 2 ;;
+            --skill-prefix) [[ $# -ge 2 ]] || usage; skill_prefix="$2"; shift 2 ;;
             --skill)       [[ $# -ge 2 ]] || usage; skill="$2"; shift 2 ;;
             --type)        [[ $# -ge 2 ]] || usage; type="$2"; shift 2 ;;
             --project)     [[ $# -ge 2 ]] || usage; project="$2"; shift 2 ;;
@@ -301,13 +314,20 @@ cmd_handoff() {
     [[ -n "$skill" ]] || { echo "error: dispatch: --skill <phase> is required" >&2; exit 2; }
     [[ "$type" == "workspace" || "$type" == "project" ]] || { echo "error: dispatch: --type must be workspace or project" >&2; exit 2; }
 
+    # A plugin namespace is `<name>:`; anything else would print a task line
+    # naming no skill at all. Empty (the default) is the bare form.
+    if [[ -n "$skill_prefix" && ! "$skill_prefix" =~ ^[a-z0-9][a-z0-9-]*:$ ]]; then
+        echo "error: dispatch: --skill-prefix must be empty or a plugin namespace like 'agent-workspace:' (got '$skill_prefix')" >&2
+        exit 2
+    fi
+
     if skill_requires_pr "$skill" && [[ -z "$pr" ]]; then
         echo "error: dispatch: --skill $skill requires --pr <M>" >&2
         exit 2
     fi
 
     local task entry_type model
-    task=$(skill_task_line "$skill" "$issue" "$pr") || {
+    task=$(skill_task_line "$skill" "$issue" "$pr" "$skill_prefix") || {
         echo "error: dispatch: unknown --skill '$skill' (expected one of review-issue, plan-task, review-plan, implement, review-code, triage-reviews, address-findings)" >&2
         exit 2
     }
