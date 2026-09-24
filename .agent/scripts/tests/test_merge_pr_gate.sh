@@ -984,6 +984,31 @@ else
     fail "(ci-31) (out=${out:0:500})"
 fi
 
+echo "TEST: CI target — a code file renamed into a work-plan dir after the green head is NOT walked over (#309)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"
+echo "real code" > "$wt/moved.sh"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "code"
+green=$(git -C "$wt" rev-parse HEAD)
+mkdir -p "$wt/.agent/work-plans/issue-7"
+git -C "$wt" mv moved.sh .agent/work-plans/issue-7/moved.sh
+git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "move code into the plan dir"
+git -C "$wt" push --quiet origin feature/issue-7
+head_now=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${head_now:0:7}"* ]] \
+    && [[ "$out" != *"bookkeeping commits"* ]]; then
+    pass "(ci-31b) code renamed into a work-plan dir: no walk-back, waits on the new head"
+else
+    fail "(ci-31b) (out=${out:0:500})"
+fi
+
 # make_walkback_sandbox: the ci-30 shape — a progress-only commit pushed on
 # top of a green code head — with the caller free to set each head's
 # check-runs. Prints "<sb> <green> <head_now>".
