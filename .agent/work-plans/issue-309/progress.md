@@ -310,7 +310,7 @@ Reviewers:
 
 ### Findings
 - [x] (must-fix) Supersession ignores the Integrated Review's `**Status**`. A `partial` or `failed` triage entry (both allowed by ADR-0013) still suppresses every older covering finding as `superseded`. Codex reproduced this with a partial Integrated Review that has no findings. This breaks the owner's "nothing vanishes without a decision" rule. Only a `complete` Integrated/External Review should supersede. Add tests for partial and failed, and say so in the triage-reviews SKILL.md `superseded` bullet. Codex — `.agent/scripts/review_progress.sh:436-438`
-- [ ] (suggestion) No test pins supersession by a legacy `## External Review`; it was verified only by hand. Add a copy of h21 with an `## External Review (Round N)` heading — `.agent/scripts/tests/test_triage_reviews_integration.sh`
+- [x] (suggestion) No test pins supersession by a legacy `## External Review`; it was verified only by hand. Add a copy of h21 with an `## External Review (Round N)` heading — `.agent/scripts/tests/test_triage_reviews_integration.sh`
 
 ## Checkpoint
 **Status**: complete

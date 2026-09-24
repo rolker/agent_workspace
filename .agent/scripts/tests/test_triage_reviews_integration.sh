@@ -574,6 +574,18 @@ for st in partial failed; do
         fail "sources (h27): $st Integrated Review superseded (out=$out)"
     fi
 done
+# (h28) a complete legacy External Review (suffixed heading) supersedes like
+# an Integrated Review (progress_read maps it as the predecessor).
+out=$(triage_after triage-external "External Review (Round 2)" complete)
+if jq -e --arg lr "${REVIEWED:0:7}" '(.local_findings | length) == 1
+        and (.local_findings[0].text | contains("triage finding"))
+        and (.dropped_entries | length) == 1 and .dropped_entries[0].reason == "superseded"
+        and .dropped_entries[0].sha == $lr
+        and (.dropped_entries[0].why | contains("External Review"))' <<<"$out" >/dev/null; then
+    pass "sources (h28): a complete legacy External Review (Round 2) supersedes the older Local Review"
+else
+    fail "sources (h28): External Review supersession (out=$out)"
+fi
 rm -f "$HERR"
 
 # ========================================================== persist =====
