@@ -450,3 +450,20 @@ Reviewers: Claude adversarial (fresh) — ran, no findings (mutation-checked the
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-24 09:45 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ace75b2ff6f4e97f6, resume 1 of 3)
+
+**PR**: #346 at `6214d9b`
+**Sources**: 2 (Local Review @ `131c1a8` — only progress.md bookkeeping since, carried forward; CI rollup @ `6214d9b`). GitHub: no inline or conversation comments; Copilot's two PR reviews (@ `b062b3d`, `131c1a8`) are quota notices, not review sources.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+The prior Integrated Review's one suggestion (empty-helper test) is resolved by b40045a: both suites now cover a helper that sources cleanly but defines no `real_case_relpath` (checked at head; the Local Review mutation-checked the cases against the `declare -F` guard). The Local Review's "No issues found. LGTM." line is a no-findings marker, not an action item. At triage, Validate Documentation passed on both runs and ros-manifest tests on one; Lint (pre-commit), Validate Adapter Contract and the other ros-manifest run were still pending. No open findings.
+
+### Findings
+
+### False positives
