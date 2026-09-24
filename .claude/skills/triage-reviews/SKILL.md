@@ -184,7 +184,7 @@ Read the evaluation criteria (only if comments exist):
 
 - `$WS_ROOT/.agent/knowledge/principles_review_guide.md` — principle quick reference,
   ADR applicability, and consequences map
-- `docs/PRINCIPLES.md` — workspace principles
+- `docs/principles.md` — workspace principles
 - `docs/decisions/*.md` — ADRs (scan titles, read those relevant to the flagged issues)
 
 For project repo PRs, also check:
@@ -232,7 +232,7 @@ e. **Evaluate conversation comments** — `conversation_comments` are PR-level
    - Look for requested changes, questions, or concerns that apply to the PR
      as a whole.
 f. **Check governance context** — does the comment align with or contradict:
-   - Workspace principles (`docs/PRINCIPLES.md`)
+   - Workspace principles (`docs/principles.md`)
    - Relevant ADRs (`docs/decisions/`)
    - Project-level governance (`.agents/README.md` in the project repo, if applicable)
 g. **Confirm cross-source confirmations** (integrator step) — for each

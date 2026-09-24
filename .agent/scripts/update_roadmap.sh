@@ -5,11 +5,15 @@
 # Usage:
 #   update_roadmap.sh --issue <N> [--root <dir>] [--dry-run]
 #
-# Searches for #<N> in ROADMAP.md files under --root and updates status:
+# Searches for #<N> in roadmap files under --root and updates status:
 #   - Table format: changes the Status column to "done"
 #   - Checklist format: changes "- [ ]" to "- [x]"
 #
-# Discovers roadmap files at: ROADMAP.md, docs/ROADMAP.md
+# Discovers roadmap files at: ROADMAP.md, docs/ROADMAP.md, docs/roadmap.md
+# (every one that exists; a path that is the same file as one already
+# processed — case-insensitive filesystems — is skipped). A file is read,
+# written and reported under its stored name, whichever candidate spelling
+# found it.
 # Both formats are tried against each file found.
 #
 # Only matches explicit #<N> references (no fuzzy matching).
@@ -20,6 +24,21 @@ set -o pipefail
 trap 'exit 0' EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# This script never blocks a merge: without a working helper, fall back to
+# the candidate spelling (exact on case-sensitive filesystems) and say why.
+# A helper that is present but fails to load keeps its own error on stderr.
+REAL_CASE_HELPER="$SCRIPT_DIR/_real_case_path.sh"
+real_case_problem=""
+# shellcheck source=_real_case_path.sh
+if [[ ! -f "$REAL_CASE_HELPER" ]]; then
+    real_case_problem="not found"
+elif ! source "$REAL_CASE_HELPER" || ! declare -F real_case_relpath >/dev/null; then
+    real_case_problem="could not be loaded"
+fi
+if [[ -n "$real_case_problem" ]]; then
+    echo "  ⚠️  _real_case_path.sh $real_case_problem next to update_roadmap.sh; using candidate spellings as-is" >&2
+    real_case_relpath() { printf '%s\n' "$2"; }
+fi
 
 ISSUE_NUM=""
 ROOT_DIR=""
@@ -143,10 +162,27 @@ _try_checklist_format() {
 }
 
 # --- Discover and process roadmap files ---
-# Check both possible locations; try both formats against each file.
-for rel_path in "ROADMAP.md" "docs/ROADMAP.md"; do
+# Check every candidate location; try both formats against each file.
+# docs/roadmap.md is the workspace's own spelling; the uppercase paths stay
+# so project repos keep their existing convention.
+PROCESSED_ROADMAPS=()
+for rel_path in "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md"; do
     roadmap="$ROOT_DIR/$rel_path"
     [[ -f "$roadmap" ]] || continue
+    # Use the stored name: on a case-insensitive filesystem the
+    # docs/ROADMAP.md probe also opens a stored docs/roadmap.md; reporting
+    # (stdout feeds merge_pr.sh's git add) and the write-back (mv of a temp
+    # file onto the path) must use the name the file really has.
+    rel_path="$(real_case_relpath "$ROOT_DIR" "$rel_path")"
+    roadmap="$ROOT_DIR/$rel_path"
+    # On a case-insensitive filesystem docs/ROADMAP.md and docs/roadmap.md
+    # are one file — process it once.
+    already=false
+    for seen in "${PROCESSED_ROADMAPS[@]+"${PROCESSED_ROADMAPS[@]}"}"; do
+        [[ "$roadmap" -ef "$seen" ]] && { already=true; break; }
+    done
+    $already && continue
+    PROCESSED_ROADMAPS+=("$roadmap")
 
     _try_table_format "$roadmap" "$rel_path"
     _try_checklist_format "$roadmap" "$rel_path"

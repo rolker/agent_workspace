@@ -77,8 +77,8 @@ as reference, check what exists:
 | Item | Status | Path |
 |---|---|---|
 | `.agents/README.md` | Present / Missing | ... |
-| `PRINCIPLES.md` | Present / Missing | ... |
-| `ARCHITECTURE.md` | Present / Missing | ... |
+| `PRINCIPLES.md` / `docs/principles.md` | Present / Missing | ... |
+| `ARCHITECTURE.md` / `docs/design.md` | Present / Missing | ... |
 | `docs/decisions/` | Present / Missing (N ADRs) | ... |
 | `.agents/workspace-context/` | Present / Missing | ... |
 
@@ -145,7 +145,7 @@ Report test existence and pass/fail, not test quality.
 | Item | Status |
 |---|---|
 | `.agents/README.md` | Present / Missing |
-| `PRINCIPLES.md` | Present / Missing |
+| `PRINCIPLES.md` / `docs/principles.md` | Present / Missing |
 | ... | ... |
 
 ### Agent Guide

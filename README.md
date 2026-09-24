@@ -1,7 +1,7 @@
 # Agent Workspace
 
-A general-purpose multi-agent development platform. Manages one external project
-repository with full AI agent infrastructure: worktree isolation, governance, skills,
+A general-purpose multi-agent development platform. Manages one or more external
+project repositories with full AI agent infrastructure: worktree isolation, governance, skills,
 hooks, and multi-agent coordination.
 
 ## Quick Start
@@ -104,7 +104,7 @@ Read [`AGENTS.md`](AGENTS.md) before starting any task. The key rules:
 - [`AGENTS.md`](AGENTS.md) — Rules for all agents
 - [`CLAUDE.md`](CLAUDE.md) — Claude Code specific setup
 - [`CODEX.md`](CODEX.md) — Codex CLI specific setup
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — System design
+- [`docs/design.md`](docs/design.md) — System design
 - [`docs/decisions/`](docs/decisions/) — Architecture Decision Records
-- [`docs/PRINCIPLES.md`](docs/PRINCIPLES.md) — Guiding principles
+- [`docs/principles.md`](docs/principles.md) — Guiding principles
 - [`.agent/WORKTREE_GUIDE.md`](.agent/WORKTREE_GUIDE.md) — Worktree patterns
