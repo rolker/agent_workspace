@@ -243,3 +243,13 @@ Reviewers:
 - [ ] (must-fix) Git config can filter the coverage diff. With `diff.relative=true`, running from a subdirectory lists only that subdirectory's paths (reproduced), so a code change elsewhere reads as covered. `diff.ignoreSubmodules=all` likewise hides a submodule pointer change (Codex reproduced). Add `--no-relative --ignore-submodules=none` to both diffs, plus tests. Codex — `.agent/scripts/_bookkeeping.sh:70`, `.agent/scripts/merge_pr.sh:1097`
 - [ ] (must-fix) The gate's three pre-helper not-covered branches still say "stale review" for conditions that are really unchecked: no local worktree, review SHA not resolvable, head not present locally. That is the operator risk this PR's own comment names. Use the "review coverage could not be confirmed" label for them too, plus a test. It is in scope here, not a follow-up. Claude adversarial — `.agent/scripts/merge_pr.sh:726-737`
 - [ ] (suggestion) The supersession rationale in the triage skill says a newer review "already disposed of" the older one's findings. That holds for a newer Integrated Review. It does not hold for a newer PR-mode `## Local Review` after a pre-push review: that review re-reads the code independently, and the pre-push entry's unaddressed suggestions are now dropped as `superseded`. The behaviour follows the owner's rule, but the text should say what actually happens (or the owner confirms this case) — `.claude/skills/triage-reviews/SKILL.md:182-187`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 11:39 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Review round 4, then publish (Recommended) — fix both mechanical must-fix (git-config-proof diffs; gate "could not be confirmed" labels), then pre-push round 4. Supersession: "Only triage supersedes" — only a newer Integrated Review drops older review entries' open findings; nothing vanishes without a decision (replaces the earlier "newest current review wins" rule).
