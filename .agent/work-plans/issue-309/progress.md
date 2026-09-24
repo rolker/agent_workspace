@@ -349,3 +349,23 @@ Fix + test, then publish (Recommended) — fix pass for the round-4 must-fix (on
 **Decision**: publish
 
 Recorded from the owner's earlier answer at the round-4 rounds checkpoint: "Fix + test, then publish (Recommended) — publish without a 5th pre-push round; the PR-mode re-review checks it." The fix pass (1593fd1) is complete; publishing now, then a PR-mode review of the last fix before triage.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-24 12:41 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #349 at `df33a3f`
+**Depth**: Deep (reason: whole-PR re-review; enforcement script merge_pr.sh plus governance files AGENTS.md, ADR-0013, triage-reviews SKILL.md; 1401+/80- over 12 files)
+**Must-fix**: 1 | **Suggestions**: 5
+
+Last fix checked: 910b0d4 (only a complete Integrated/External Review supersedes; h27) and 257bb7f (h28) behave as claimed. The main merge at df33a3f touched none of this PR's files (only #336's reviewer scripts, their test and issue-336 work-plans; #334 was already in the branch). Tests: triage integration 51/0, merge gate 89/0, merge_pr 91/0, convergence 31/0; shellcheck clean. Reviewers: Claude adversarial ran; Codex completed; Gemini failed (empty response, one RunCommand auto-denied headlessly, even with #336's no-tools prompt); Copilot skipped (quota).
+
+### Findings
+- [ ] (must-fix) Non-ASCII paths break coverage: `git diff --name-only` quotes them under the default `core.quotePath=true`, so a bookkeeping-only file such as `.agent/work-plans/issue-7/notes/café.md` fails the allowlist match. The helper then returns rc 1 (stale): `sources` drops current findings as stale, and the gate refuses valid coverage. Read NUL-delimited output (`--name-only -z`), keep the diff-failure check, apply the same change to the CI walk-back (`merge_pr.sh:1099`), and add a test. Codex reproduced it; the local repro was blocked by permissions. — `.agent/scripts/_bookkeeping.sh:73`
+- [ ] (suggestion) Two central supersession invariants have no test. Mutating `j > i` to `j != i`, so a triage entry supersedes later Local Reviews, still passes 51/51. Dropping the covering check from `triage_covering`, so a stale Integrated Review supersedes, also passes 51/51. Add a Local Review after a complete Integrated Review, and a complete Integrated Review at a code-changed SHA followed by a covering Local Review. Found by the Claude adversarial reviewer. — `.agent/scripts/review_progress.sh:438-447`
+- [ ] (suggestion) A review entry whose correlation line does not parse is filtered out before classification. Examples are `**PR**: 9 at` with no `#`, and every real legacy External Review, which has no `at <sha>`. Its open findings appear in neither `local_findings` nor `dropped_entries`, with no warning. This was already the behaviour before this PR, but it now contradicts the new `dropped_entries` contract. List these entries as `unverifiable` ("no PR/Branch correlation SHA") and warn. Claude adversarial, reproduced. — `.agent/scripts/review_progress.sh:433`
+- [ ] (suggestion) A legacy `## External Review` counts as triage for supersession, but ADR-0013 defines it as a single-source GitHub findings table that never ruled on Local Review findings. Against the owner's rule verbatim ("only a newer Integrated Review drops..."), letting it supersede drops findings without a decision. Real exposure is small (see the previous finding). Either take it out of the triage set, updating h28, or record in SKILL.md and the ADR addendum that the owner accepts this approximation. Owner call. Found by the Claude adversarial reviewer. — `.agent/scripts/review_progress.sh:437`
+- [ ] (suggestion) The merge gate does not read `**Status**`. A `partial` or `failed` latest Integrated Review with no open must-fix passes gate condition (a), while `sources` (after 910b0d4) still lists the older Local Review's open must-fix findings. The gate and the integrator input now disagree. Require `status == complete` for a non-Local latest entry, or open a follow-up issue. This comes from reading the code; it was not run through the gate harness. Found by the Claude adversarial reviewer. — `.agent/scripts/merge_pr.sh:712-716`, `:755-757`
+- [ ] (suggestion) The h21 header comment still cites the retired owner decision "Newest current review wins". Update it to "Only triage supersedes". — `.agent/scripts/tests/test_triage_reviews_integration.sh:457`
