@@ -115,6 +115,6 @@ mechanism, `user_tier_install.sh`).
 **Decision**: proceed
 
 Proceed to plan (Recommended) — plan covers a skills-only first PR, an ADR-0016 revision (or new ADR) recording the plugin decision, cross-links to #335/#332/#321, and these answers:
-- Plugin name: owner — "Part of me likes 3 for being complete and un-ambiguous. If I have to type these a lot, I'd go 1, but in reality I probably don't need to type these much if at all." Host chose  (option 3; descriptive kebab-case matches plugin convention); confirm at the plan checkpoint.
+- Plugin name: owner — "Part of me likes 3 for being complete and un-ambiguous. If I have to type these a lot, I'd go 1, but in reality I probably don't need to type these much if at all." Host chose `agent-workspace` (option 3; descriptive kebab-case matches plugin convention); confirm at the plan checkpoint.
 - Enable step: "In registration now (Recommended)" — registering a project runs the two --scope local install commands; onboarding (#332) takes it over later.
 - Naming: "Prefix outside workspace (Recommended)" — bare /review-code in workspace sessions, /agent-workspace:review-code in project sessions, decided from the session root.
