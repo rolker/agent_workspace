@@ -41,9 +41,12 @@
 #                                        current worktree's progress.md, inline
 #                                        append + `git add` + `git commit`.
 #
-# sources  Integrator input for triage-reviews: local review findings at the
-#          PR head, GitHub inline comments, and candidate cross-source
-#          confirmations (same file, same head SHA) as JSON. See cmd_sources.
+# sources  Integrator input for triage-reviews: local review findings that
+#          cover the PR head (recorded at it, or at an ancestor with only
+#          bookkeeping changes since -- _bookkeeping.sh, #309), the entries
+#          dropped and why, GitHub inline comments, and candidate cross-source
+#          confirmations (same file, comment at the head) as JSON. Run it from
+#          the PR worktree. See cmd_sources.
 #
 # plan-sha The plan-commit SHA (last commit touching plan.md) for the
 #          **Plan** correlation field of Plan Authored / Plan Review
@@ -321,12 +324,20 @@ _persist_impl() {
 
 # -------------------------------------------------------------- sources ---
 # sources --progress <file> --head <sha> --reviews <fetch_pr_reviews json>
-# Integrator input for triage-reviews (PR C): the local review findings at
-# the PR head plus the GitHub-side inline comments, and the CANDIDATE
-# cross-source confirmations — a local finding and a GitHub comment that
-# name the same file at the same head SHA. The skill confirms each
-# candidate semantically; this only does the mechanical correlation
-# (ADR-0013: review entries correlate by head SHA).
+# Integrator input for triage-reviews (PR C): the local review findings that
+# cover the PR head plus the GitHub-side inline comments, and the CANDIDATE
+# cross-source confirmations — a local finding covering the head and a
+# GitHub comment submitted at the head that name the same file. The skill
+# confirms each candidate semantically; this only does the mechanical
+# correlation (ADR-0013: review entries correlate by head SHA; #309: an
+# entry at an ancestor with only bookkeeping changes since still covers it,
+# and keeps its own SHA). Local coverage is checked in the repository of
+# the current directory, so run it from the PR worktree; entries with open
+# findings that do not cover the head are listed in dropped_entries with
+# reason "stale" (verified) or "unverifiable" (could not check, including an
+# entry with no parseable PR/Branch correlation SHA; also warned on stderr). A covering entry with a NEWER covering Integrated Review is
+# dropped with reason "superseded" (owner decision "Only triage supersedes",
+# #309); newer Local Reviews supersede nothing. Nothing is fetched.
 cmd_sources() {
     local progress="" head="" reviews=""
     while [[ $# -gt 0 ]]; do
@@ -350,30 +361,127 @@ cmd_sources() {
     if ! "$PYTHON" -c 'import json,sys; json.load(open(sys.argv[1], encoding="utf-8"))' "$reviews" 2>/dev/null; then
         echo "error: sources: reviews file is not valid JSON: $reviews (truncated fetch_pr_reviews.sh output?)" >&2; exit 2
     fi
-    printf '%s' "$json" | HEAD="$head" REVIEWS="$reviews" "$PYTHON" -c '
-import json, os, re, sys
+    printf '%s' "$json" | HEAD="$head" REVIEWS="$reviews" PROGRESS="$progress" \
+        BOOKKEEPING="$SCRIPT_DIR/_bookkeeping.sh" "$PYTHON" -c '
+import json, os, re, subprocess, sys
 head = os.environ["HEAD"]
 data = json.load(sys.stdin)
 reviews = json.load(open(os.environ["REVIEWS"], encoding="utf-8"))
 short = lambda s: (s or "")[:7]
-# OPEN local findings at this head (entries correlate by head SHA, short or
-# full). Checked boxes are resolved; False-positives bullets are dismissals.
+# Coverage (#309): an entry recorded at review SHA R still speaks for head H
+# when R == H (short-SHA match, the pre-#309 rule) or when the shared merge
+# gate rule (_bookkeeping.sh) verifies, in the repository of the CURRENT
+# directory, that R is an ancestor of H and only the work-plan dir of this
+# issue and the roadmap files differ. The timeline file may live outside that
+# repository; its canonical path supplies only the issue number.
+issue = re.search(r"(?:^|/)\.agent/work-plans/issue-([0-9]+)/progress\.md$",
+                  os.path.abspath(os.environ["PROGRESS"])) if os.environ["PROGRESS"] else None
+coverage_cache = {}
+def coverage(sha):
+    """(kind, why): kind is "exact" | "bookkeeping" | "stale" | "unverifiable"."""
+    if sha and short(sha) == short(head):
+        return ("exact", "")
+    if sha not in coverage_cache:
+        if not issue:
+            coverage_cache[sha] = ("unverifiable", "--progress is not a .agent/work-plans/issue-<N>/progress.md path, so only an exact head-SHA match counts")
+        else:
+            try:
+                r = subprocess.run(
+                    ["bash", os.environ["BOOKKEEPING"], "--review", os.getcwd(),
+                     sha or "", head, issue.group(1)],
+                    stdin=subprocess.DEVNULL, capture_output=True, check=False,
+                    # The helper C-quotes every value it prints
+                    # (_bk_display), so its output is ASCII; this tolerant
+                    # decode is only a backstop, so a future raw byte could
+                    # never turn into a traceback.
+                    encoding="utf-8", errors="backslashreplace")
+                why = (r.stdout.strip().splitlines() or [""])[-1]
+                if r.returncode == 0:
+                    coverage_cache[sha] = ("bookkeeping", "")
+                elif r.returncode == 1:
+                    coverage_cache[sha] = ("stale", why)
+                elif r.returncode == 3:
+                    coverage_cache[sha] = ("unverifiable", why)
+                else:
+                    coverage_cache[sha] = ("unverifiable", "coverage check failed (exit {}): {}".format(
+                        r.returncode, (r.stderr.strip().splitlines() or [why])[-1]))
+            except OSError as exc:
+                coverage_cache[sha] = ("unverifiable", "coverage check could not run: {}".format(exc))
+    return coverage_cache[sha]
+warned = set()
+def warn_unverifiable(sha, why):
+    """Once per SHA, and only for an entry whose open findings are dropped."""
+    if sha not in warned:
+        warned.add(sha)
+        print("warning: sources: review at `{}` not verified against head `{}`: {}".format(
+            short(sha) or "?", short(head), why), file=sys.stderr)
+
+# OPEN local findings covering this head. Checked boxes are resolved;
+# False-positives bullets are dismissals.
 # Every repo-relative path cited in backticks counts, not only the last.
 local = []
+# Entries with open findings that do NOT cover this head, and why — so a
+# caller can tell "no open findings" from "open findings, but stale" and,
+# above all, from "open findings the helper could not check" (#309).
+dropped = []
 loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
-for e in data.get("entries", []):
+# Supersession (#309, owner decision "Only triage supersedes"): only a
+# newer covering Integrated Review with **Status**: complete drops the open
+# findings of older covering review entries, which are listed as
+# "superseded". That entry is a triage decision over them (triage and
+# address-findings never tick the boxes of the older entry). A legacy
+# External Review does not qualify (owner decision): ADR-0013 defines it as
+# a single-source GitHub findings table that never ruled on local findings. A newer Local Review / Local Review (Pre-Push) supersedes nothing:
+# it re-reads the code independently, so every covering entry without a
+# newer covering Integrated Review feeds local_findings. Nothing vanishes
+# without a decision. "Review entry" = every entry read above with a
+# PR/branch correlation; file order is chronological. An entry whose
+# **PR**/**Branch** line does not parse (no "#", no "at <sha>") has no SHA
+# to check: its open findings are listed as "unverifiable" below and
+# warned about, never silently skipped.
+open_of = lambda e: [f for f in e.get("findings", [])
+                     if f.get("section") != "False positives" and not f.get("checked")]
+reviews_in = [e for e in data.get("entries", [])
+              if (e.get("correlation") or {}).get("kind") in ("pr", "branch")]
+uncorrelated = [e for e in data.get("entries", [])
+                if (e.get("correlation") or {}).get("kind") not in ("pr", "branch") and open_of(e)]
+classified = [(e, coverage((e.get("correlation") or {}).get("sha"))) for e in reviews_in]
+is_triage = lambda e: e.get("base_type") == "Integrated Review"
+# A partial or failed triage decided nothing, so only a complete one counts.
+triage_covering = [i for i, (e, (kind, _w)) in enumerate(classified)
+                   if kind in ("exact", "bookkeeping") and is_triage(e)
+                   and (e.get("status") or "").strip().lower() == "complete"]
+for i, (e, (kind, why)) in enumerate(classified):
     c = e.get("correlation") or {}
-    if c.get("kind") not in ("pr", "branch") or short(c.get("sha")) != short(head):
+    open_f = open_of(e)
+    if not open_f:
         continue
-    for f in e.get("findings", []):
-        if f.get("section") == "False positives" or f.get("checked"):
-            continue
+    later_triage = [j for j in triage_covering if j > i]
+    if kind in ("exact", "bookkeeping") and later_triage:
+        w = classified[later_triage[-1]][0]
+        kind, why = "superseded", "a newer {} at `{}` covers the head".format(
+            w["type"], short((w.get("correlation") or {}).get("sha")) or "?")
+    if kind not in ("exact", "bookkeeping"):
+        if kind == "unverifiable":
+            warn_unverifiable(c.get("sha"), why)
+        dropped.append({"entry_type": e["type"], "sha": short(c.get("sha")),
+                        "open_findings": len(open_f), "reason": kind, "why": why})
+        continue
+    for f in open_f:
         cited = [(m.group(1), int(m.group(2)) if m.group(2) else None)
                  for m in loc_re.finditer(f.get("text", "")) if "/" in m.group(1) or "." in m.group(1)]
         local.append({"entry_type": e["type"], "sha": short(c.get("sha")), "text": f.get("text"),
+                      "covers_head": True, "coverage": kind,
                       "source_hint": f.get("source_hint"),
                       "files": [p for p, _ in cited],
                       "lines": {p: ln for p, ln in cited if ln is not None}})
+NO_SHA = "no PR/Branch correlation SHA (the **PR** / **Branch** line is missing or does not parse as `#<N> at <sha>` / `<branch> at <sha>`)"
+for e in uncorrelated:
+    n = len(open_of(e))
+    print("warning: sources: `## {}` entry ({}) has {} open finding(s) but {}; not checked against head `{}`".format(
+        e["type"], e.get("when") or "no When", n, NO_SHA, short(head)), file=sys.stderr)
+    dropped.append({"entry_type": e["type"], "sha": "", "open_findings": n,
+                    "reason": "unverifiable", "why": NO_SHA})
 github = []
 for r in reviews.get("reviews", []):
     src = "{} ({})".format(r.get("user_login"), r.get("user_type"))
@@ -395,8 +503,8 @@ for lf in local:
             candidates.append({"file": gc["path"], "local": lf["text"], "local_entry": lf["entry_type"],
                                "github": gc["body"], "github_source": gc["source"],
                                "local_line": lf["lines"].get(hit[0]), "github_line": gc["line"]})
-json.dump({"head": short(head), "local_findings": local, "github_comments": github,
-           "candidates": candidates}, sys.stdout, indent=2)
+json.dump({"head": short(head), "local_findings": local, "dropped_entries": dropped,
+           "github_comments": github, "candidates": candidates}, sys.stdout, indent=2)
 print()
 '
 }

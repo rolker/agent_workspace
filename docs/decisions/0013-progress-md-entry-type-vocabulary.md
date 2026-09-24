@@ -214,6 +214,19 @@ file is rewritten by this ADR's adoption.
   (`_only_bookkeeping_between`) applies the rule for both the gate and
   the CI target (#284). Cross-reference addendum per ADR-0008; the key
   itself is unchanged.
+- Issue [#309](https://github.com/rolker/agent_workspace/issues/309) —
+  `review_progress.sh sources` applies the same rule when selecting the
+  local findings that cover a PR head, so a bookkeeping-only commit no
+  longer ages out a review's open findings; a covering entry is reported
+  as superseded only when a newer covering Integrated Review with
+  **Status**: complete exists (only triage supersedes: nothing vanishes
+  without a decision; a legacy External Review, which never ruled on
+  local findings, supersedes nothing), and an entry
+  that does not cover the head is reported as stale, or as unverifiable
+  when git cannot check or the entry's PR/branch key does not parse. The helper now lives in
+  `.agent/scripts/_bookkeeping.sh`, shared by `merge_pr.sh` and
+  `review_progress.sh`. Cross-reference addendum per ADR-0008; the key
+  itself is unchanged.
 - Issue [#269](https://github.com/rolker/agent_workspace/issues/269) — Port
   the review loop from `ros2_agent_workspace`: this ADR is PR A of that
   port's PR sequence.

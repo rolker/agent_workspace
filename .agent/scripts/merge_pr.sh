@@ -74,6 +74,8 @@ source "$SCRIPT_DIR/_issue_helpers.sh"
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 # shellcheck source=_resolve_default_branch.sh
 source "$SCRIPT_DIR/_resolve_default_branch.sh"
+# shellcheck source=_bookkeeping.sh
+source "$SCRIPT_DIR/_bookkeeping.sh"
 
 PR_NUMBER=""
 WORKTREE_TYPE=""
@@ -645,49 +647,13 @@ fi
 # issue's progress.md at the head commit and the PR body/comments — and a
 # branch-protection rule requiring it. Enabling that changes CI and branch
 # protection, so it waits on the owner's explicit decision.
-# _only_bookkeeping_between <wt> <from-sha> <to-sha> <allowed-path>...
-# The one equivalence rule shared by gate condition (a) (#286) and the
-# Step 2 CI target (#284): <to> is "the same reviewed state" as <from> when
-# <from> is an ancestor of <to> and every path that differs is one of the
-# document files this workflow writes on the reviewed branch after review
-# (progress.md records, work-plan addenda, roadmap updates). An allowed
-# entry may be a glob. Returns 0 on equivalence; on
-# failure returns 1 and prints the reason (one line, for the caller to
-# quote). Both SHAs must be full and resolvable in <wt>; callers resolve
-# short SHAs first (see the gate) so an ambiguous prefix is a failure
-# there, not a silent match here.
-_only_bookkeeping_between() {
-    local wt="$1" from="$2" to="$3"; shift 3
-    local -a allowed=("$@")
-    local diff_paths p a ok
-    if ! git -C "$wt" merge-base --is-ancestor "$from" "$to" 2>/dev/null; then
-        echo "\`${from:0:7}\` is not an ancestor of \`${to:0:7}\` (force-push or a concurrent history change)"
-        return 1
-    fi
-    diff_paths=$(git -C "$wt" diff --name-only "$from" "$to" 2>/dev/null) || {
-        echo "could not diff \`${from:0:7}\`..\`${to:0:7}\` in $wt"
-        return 1
-    }
-    while IFS= read -r p; do
-        [[ -z "$p" ]] && continue
-        ok=false
-        for a in ${allowed[@]+"${allowed[@]}"}; do
-            # Unquoted RHS on purpose: an allowed entry may be a glob (the
-            # gate passes the issue's whole work-plans dir). Callers that
-            # pass literal paths are unaffected — those carry no glob
-            # metacharacters.
-            # shellcheck disable=SC2053
-            [[ "$p" == $a ]] && { ok=true; break; }
-        done
-        if [[ "$ok" == false ]]; then
-            echo "touches \`${p}\`, which is not a merge-time document file"
-            return 1
-        fi
-    done <<<"$diff_paths"
-    return 0
-}
 
 _gate_reasons=()
+# One rule for every gate reason (#309): each value it interpolates — a path,
+# a SHA, an entry heading, a **Status** / **Verdict** value, a count — goes
+# through _bk_display (_bookkeeping.sh), so the joined reasons are safe
+# ASCII on one line. They are printed and committed as the `**Conditions**:`
+# of a `## Merge (...)` record, and progress_read.py must still parse it.
 # Reuse the pre-Step-1 read (#284) instead of a second `gh pr view` call.
 # This is also correctness-bearing: the review entry the gate looks for
 # correlates with the head as of BEFORE this run's own roadmap push, not
@@ -726,7 +692,9 @@ if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
 fi
 # (a) latest review entry at the head, approved. The reader's --type filter
 # already includes `## External Review` as Integrated Review's recognized
-# predecessor (ADR-0013); it is judged by the Integrated Review rule.
+# predecessor (ADR-0013); it is judged by the Integrated Review rule: it
+# must be **Status**: complete (#309) and have no open must-fix /
+# cross-confirmed finding.
 # "At the head" (#286): the entry's SHA equals HEAD_REVIEWED, or is an
 # ancestor of it with only merge-time document files changed in between —
 # recording the review itself commits progress.md on the branch, so the
@@ -736,31 +704,37 @@ if [[ -z "$_gate_head" ]]; then
     _gate_reasons+=("could not read the PR head SHA")
 elif [[ -z "$_gate_progress" ]]; then
     if [[ -n "$PKG_WT_DIR" ]]; then
-        _gate_reasons+=("package worktree ${PKG_WT_DIR} carries no issue timeline (no progress.md for issue #${ISSUE_NUM})")
+        _gate_reasons+=("package worktree $(_bk_display "$PKG_WT_DIR") carries no issue timeline (no progress.md for issue #$(_bk_display "$ISSUE_NUM"))")
     else
-        _gate_reasons+=("no progress.md for issue #${ISSUE_NUM} in an open worktree (looked for ${_gate_wt:-<no worktree found for $PR_BRANCH>})")
+        _gate_reasons+=("no progress.md for issue #$(_bk_display "$ISSUE_NUM") in an open worktree (looked for $(_bk_display "${_gate_wt:-<no worktree found for $PR_BRANCH>}"))")
     fi
 else
     _gate_read_rc=0
     _gate_read_json=$(python3 "$SCRIPT_DIR/progress_read.py" "$_gate_progress" --type "Local Review" --type "Integrated Review" 2>/dev/null) || _gate_read_rc=$?
     if [[ "$_gate_read_rc" -ne 0 ]]; then
-        _gate_reasons+=("progress.md at $_gate_progress could not be parsed (progress_read.py exit $_gate_read_rc — malformed file, e.g. an unterminated code fence)")
+        _gate_reasons+=("progress.md at $(_bk_display "$_gate_progress") could not be parsed (progress_read.py exit $_gate_read_rc — malformed file, e.g. an unterminated code fence)")
     else
         _gate_review=$(jq -c --arg head "$_gate_head_short" '
             .entries | map(select(.base_type == "Local Review" or .base_type == "Integrated Review" or .base_type == "External Review")) | last // empty
             | {type, sha: (.correlation.sha // ""), verdict: (.fields.Verdict // ""),
+               status: ((.status // "") | gsub("^\\s+|\\s+$"; "")),
                open_mustfix: ([.findings[] | select((.checked | not) and ((.source_hint // "") | test("^(must-fix|cross-confirmed)")))] | length),
                at_head: (((.correlation.sha // "")[0:7]) == $head)}' <<<"$_gate_read_json" 2>/dev/null || echo "")
     fi
     if [[ "$_gate_read_rc" -ne 0 ]]; then
         :
     elif [[ -z "$_gate_review" ]]; then
-        _gate_reasons+=("no ## Local Review / ## Integrated Review entry in $_gate_progress")
+        _gate_reasons+=("no ## Local Review / ## Integrated Review entry in $(_bk_display "$_gate_progress")")
     else
         _gate_r_type=$(jq -r '.type' <<<"$_gate_review")
         _gate_r_sha=$(jq -r '.sha' <<<"$_gate_review")
         _gate_covered=$(jq -r '.at_head' <<<"$_gate_review")
         _gate_stale_why=""
+        # Only a verified difference (helper rc 1) is a "stale review". Every
+        # other not-covered outcome was never checked — no worktree, a SHA
+        # that does not resolve, helper rc 3 — and must not read as stale
+        # (an operator may reach for --force-unreviewed). Both refuse.
+        _gate_stale_label="review coverage could not be confirmed"
         if [[ "$_gate_covered" != "true" ]]; then
             if [[ -z "$_ci_wt" ]]; then
                 _gate_stale_why="no local worktree to verify ancestry"
@@ -769,22 +743,35 @@ else
                 _gate_r_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_r_sha}^{commit}" 2>/dev/null || echo "")
                 _gate_h_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_head}^{commit}" 2>/dev/null || echo "")
                 if [[ -z "$_gate_r_full" ]]; then
-                    _gate_stale_why="\`${_gate_r_sha:-?}\` does not resolve to one commit in ${_ci_wt}"
+                    _gate_stale_why="\`$(_bk_display "${_gate_r_sha:-?}")\` does not resolve to one commit in $(_bk_display "$_ci_wt")"
                 elif [[ -z "$_gate_h_full" ]]; then
-                    _gate_stale_why="head \`${_gate_head_short}\` is not present locally"
-                elif _gate_stale_why=$(_only_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" \
-                        ".agent/work-plans/issue-${ISSUE_NUM}/*" "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md"); then
-                    _gate_covered=true
-                    echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only work-plan / progress.md / roadmap changed since"
+                    _gate_stale_why="head \`$(_bk_display "$_gate_head_short")\` is not present locally"
+                else
+                    _gate_bk_rc=0
+                    _gate_stale_why=$(_review_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" "$ISSUE_NUM") || _gate_bk_rc=$?
+                    if [[ "$_gate_bk_rc" -eq 0 ]]; then
+                        _gate_covered=true
+                        echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only work-plan / progress.md / roadmap changed since"
+                    elif [[ "$_gate_bk_rc" -eq 1 ]]; then
+                        _gate_stale_label="stale review"
+                    fi
                 fi
             fi
         fi
         if [[ "$_gate_covered" != "true" ]]; then
-            _gate_reasons+=("latest ${_gate_r_type} entry is at \`${_gate_r_sha:-?}\`, not the PR head \`${_gate_head_short}\` (stale review: ${_gate_stale_why})")
+            # _gate_stale_why is already display-safe (_bk_display inside
+            # the helper, or above); the label is a constant.
+            _gate_reasons+=("latest $(_bk_display "$_gate_r_type") entry is at \`$(_bk_display "${_gate_r_sha:-?}")\`, not the PR head \`$(_bk_display "$_gate_head_short")\` (${_gate_stale_label}: ${_gate_stale_why})")
         elif [[ "$_gate_r_type" == "Local Review" && "$(jq -r '.verdict' <<<"$_gate_review")" != "approved" ]]; then
-            _gate_reasons+=("latest Local Review at the head has **Verdict**: $(jq -r '.verdict' <<<"$_gate_review"), not approved")
+            _gate_reasons+=("latest Local Review at the head has **Verdict**: $(_bk_display "$(jq -r '.verdict' <<<"$_gate_review")"), not approved")
+        elif [[ "$_gate_r_type" != "Local Review" \
+                && "$(jq -r '.status | ascii_downcase' <<<"$_gate_review")" != "complete" ]]; then
+            # A partial or failed triage decided nothing (#309, the rule
+            # review_progress.sh sources applies to supersession): its own
+            # open-box count says nothing about the findings it never ruled on.
+            _gate_reasons+=("latest $(_bk_display "$_gate_r_type") at the head has **Status**: $(_bk_display "$(jq -r '.status | if . == "" then "<missing>" else . end' <<<"$_gate_review")"), not complete — a partial or failed triage decided nothing")
         elif [[ "$_gate_r_type" != "Local Review" && "$(jq -r '.open_mustfix' <<<"$_gate_review")" != "0" ]]; then
-            _gate_reasons+=("latest Integrated Review at the head still has $(jq -r '.open_mustfix' <<<"$_gate_review") open must-fix/cross-confirmed finding(s)")
+            _gate_reasons+=("latest Integrated Review at the head still has $(_bk_display "$(jq -r '.open_mustfix' <<<"$_gate_review")") open must-fix/cross-confirmed finding(s)")
         fi
     fi
 fi
@@ -1094,7 +1081,10 @@ _ci_poll_state() {  # <sha> -- prints "<state>|<excluded>": state is one of none
 # THIS run committed; this walk covers the same shape when the host pushed
 # them. A batch push runs CI only on its tip, so the walk takes the newest
 # bookkeeping-only ancestor whose checks actually reached a verdict.
-MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
+# Any issue's work-plan dir (a CI question, not a review one: a document
+# commit needs no new CI round whoever's timeline it is), plus the roadmap
+# set shared with the review policy (_bookkeeping.sh).
+MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "${BOOKKEEPING_ROADMAP_PATHS[@]}")
 _is_bookkeeping_path() {  # <path> -- rc 0 when the path is a merge-time document file
     local p="$1" pat
     for pat in "${MERGE_PR_CI_BOOKKEEPING_PATTERNS[@]}"; do
@@ -1104,7 +1094,8 @@ _is_bookkeeping_path() {  # <path> -- rc 0 when the path is a merge-time documen
     return 1
 }
 _ci_walk_bookkeeping() {  # <wt> <start-sha> -- prints ancestors of <start>, newest first, reachable through bookkeeping-only single-parent commits; stops at the first other commit, a merge, a root commit, the default branch, or 25 steps
-    local wt="$1" cur="$2" base default_branch line parents paths p n=0
+    local wt="$1" cur="$2" base default_branch line parents p n=0
+    local -a paths
     # The stop bound is the repo's own default branch, not a hardcoded
     # `origin/main`: where they differ (or origin/main is absent) the
     # merge-base would fail silently and drop this bound entirely.
@@ -1119,11 +1110,23 @@ _ci_walk_bookkeeping() {  # <wt> <start-sha> -- prints ancestors of <start>, new
         line=$(git -C "$wt" rev-list --parents -n 1 "$cur" 2>/dev/null)
         [[ $(wc -w <<<"$line") -eq 2 ]] || return 0
         parents="${line#* }"
-        paths=$(git -C "$wt" diff --name-only "$parents" "$cur" 2>/dev/null) || return 0
-        while IFS= read -r p; do
+        # --no-renames: a code file moved into a work-plan dir still lists
+        # its old path, and --no-relative / --ignore-submodules=none keep
+        # user diff config from filtering paths, as in _bookkeeping.sh (#309).
+        # -z: NUL-terminated, unquoted paths, so core.quotePath cannot turn
+        # a non-ASCII work-plan file into a quoted string that fails the
+        # pattern match. git's exit status arrives as an unterminated
+        # "rc=<N>" trailer after the last NUL (left in $p by the final read);
+        # a failed diff stops the walk, as before.
+        paths=()
+        while IFS= read -r -d '' p; do
+            paths+=("$p")
+        done < <(git -C "$wt" diff --no-renames --no-relative --ignore-submodules=none --name-only -z "$parents" "$cur" 2>/dev/null; printf 'rc=%s' "$?")
+        [[ "$p" == "rc=0" ]] || return 0
+        for p in ${paths[@]+"${paths[@]}"}; do
             [[ -z "$p" ]] && continue
             _is_bookkeeping_path "$p" || return 0
-        done <<<"$paths"
+        done
         cur="$parents"
         echo "$cur"
         n=$((n + 1))

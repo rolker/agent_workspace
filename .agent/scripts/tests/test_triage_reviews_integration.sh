@@ -5,6 +5,10 @@
 #     GitHub inline comments -> candidate cross-source confirmations (one row
 #     for a finding both sources raise on the same file at the same head SHA,
 #     not two), with stale-head comments and other-head local entries excluded
+#   - sources coverage (#309): a review at an ancestor with only bookkeeping
+#     changes since (this issue's work-plan dir, the roadmap files) still
+#     covers the head, in real git histories; stale / unverifiable entries
+#     are listed in dropped_entries, never silently lost
 #   - review_progress.sh persist for an `## Integrated Review` entry through
 #     triage-reviews' own call site: strict abort on a mismatched worktree,
 #     compatibility notice + inline commit, matching worktree no-notice,
@@ -153,6 +157,628 @@ if [[ "$c_first" -eq 1 && "$c_suffix" -eq 0 && "$c_checked" -eq 0 && "$n_open" -
 else
     fail "sources: matching rules (first=$c_first suffix=$c_suffix checked=$c_checked open=$n_open)"
 fi
+
+# ============================================ sources: coverage (#309) =====
+# Real git histories. A review recorded at R still covers head H when R is an
+# ancestor of H and only this issue's work-plan dir / the roadmap files
+# changed (the merge gate's shared rule, _bookkeeping.sh). Git runs in the
+# CURRENT directory's repository — the PR worktree — never the workspace
+# the script lives in. Fixtures stay under this suite's TMPDIR allocation.
+HIST="$TMPD/history"
+mkdir -p "$HIST/.agent/work-plans/issue-7" "$HIST/docs" "$HIST/scripts"
+git -C "$HIST" init -q -b feature/issue-7
+hist_commit() {
+    git -C "$HIST" add -A &&
+        git -C "$HIST" -c user.name=t -c user.email=t@t commit -q -m "$1"
+}
+hist_head() { git -C "$HIST" rev-parse HEAD; }
+printf 'original\n' > "$HIST/scripts/code.sh"
+hist_commit reviewed
+REVIEWED=$(hist_head)
+HP="$HIST/.agent/work-plans/issue-7/progress.md"
+cat > "$HP" <<EOF
+---
+issue: 7
+---
+
+# Issue #7
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 11:00 -04:00
+**By**: t (m)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-7 at \`${REVIEWED:0:7}\`
+
+### Findings
+- [ ] (must-fix) still open — \`scripts/code.sh:1\`
+- [x] (must-fix) already fixed — \`scripts/code.sh:2\`
+
+### False positives
+- dismissed — \`scripts/code.sh:3\`
+EOF
+hist_commit "progress: checkpoint"          # the live #309 shape
+BOOK_HEAD=$(hist_head)
+HERR="$TMPD/history.err"
+hist_sources() {  # <head> [progress] -- run from the target repository
+    (cd "$HIST" && "$RP" sources --progress "${2:-$HP}" --head "$1" --reviews "$REVIEWS" 2>"$HERR")
+}
+n_local() { jq '.local_findings | length' <<<"$1"; }
+
+# (h1) the regression: a bookkeeping-only commit after the review.
+out=$(hist_sources "$BOOK_HEAD"); rc=$?
+if [[ "$rc" -eq 0 ]] && jq -e --arg sha "${REVIEWED:0:7}" '
+    (.local_findings | length) == 1 and
+    .local_findings[0].sha == $sha and .local_findings[0].covers_head == true and
+    .local_findings[0].coverage == "bookkeeping" and
+    (.local_findings[0].text | contains("still open")) and
+    (.dropped_entries | length) == 0' <<<"$out" >/dev/null && [[ ! -s "$HERR" ]]; then
+    pass "sources (h1): progress-only commit after the review keeps its open finding at its own SHA; checked/false positives stay excluded"
+else
+    fail "sources (h1): checkpoint coverage (rc=$rc out=$out err=$(<"$HERR"))"
+fi
+# (h2) exact match, full and short head: coverage "exact", no git needed.
+for h in "$REVIEWED" "${REVIEWED:0:7}"; do
+    out=$(hist_sources "$h")
+    jq -e '(.local_findings | length) == 1 and .local_findings[0].coverage == "exact"' <<<"$out" >/dev/null \
+        && pass "sources (h2): head \`${#h}\`-char exact match reports coverage exact" \
+        || fail "sources (h2): exact coverage metadata (head=$h out=$out)"
+done
+
+# (h3) every allowed document class, cumulatively: the issue's plan (any
+# file in its work-plan dir), both legacy roadmap spellings, and the #334
+# lowercase docs/roadmap.md.
+for doc in .agent/work-plans/issue-7/plan.md .agent/work-plans/issue-7/notes/extra.md \
+        ROADMAP.md docs/ROADMAP.md docs/roadmap.md; do
+    mkdir -p "$(dirname "$HIST/$doc")"
+    printf 'bookkeeping\n' >> "$HIST/$doc"
+    hist_commit "$doc"
+    out=$(hist_sources "$(hist_head)")
+    [[ "$(n_local "$out")" == 1 && "$(jq -r '.local_findings[0].coverage' <<<"$out")" == bookkeeping ]] \
+        && pass "sources (h3): retains the finding after a $doc commit" \
+        || fail "sources (h3): lost the finding after $doc (out=$out)"
+done
+DOC_HEAD=$(hist_head)
+
+# (h4) a covered finding pairs only with GitHub comments AT the head.
+OLD_REVIEWS="$REVIEWS"
+REVIEWS="$TMPD/history-reviews.json"
+jq -n --arg head "$DOC_HEAD" --arg old "$REVIEWED" '{reviews: [
+    {commit_id: $head, comments: [{path: "scripts/code.sh", line: 1, body: "current"}]},
+    {commit_id: $old, comments: [{path: "scripts/code.sh", line: 1, body: "stale"}]}
+]}' > "$REVIEWS"
+out=$(hist_sources "$DOC_HEAD")
+jq -e '(.candidates | length) == 1 and .candidates[0].github == "current"' <<<"$out" >/dev/null \
+    && pass "sources (h4): a bookkeeping-covered finding matches the current-head GitHub comment only" \
+    || fail "sources (h4): covered cross-source candidate (out=$out)"
+REVIEWS="$OLD_REVIEWS"
+
+# (h5) a code change (plus bookkeeping) is a genuinely stale review — and
+# (h6) a later checkpoint cannot hide it (endpoint diff, not last commit).
+printf 'changed\n' >> "$HIST/scripts/code.sh"
+printf 'more\n' >> "$HIST/docs/roadmap.md"
+hist_commit "code + roadmap"
+out=$(hist_sources "$(hist_head)")
+if [[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries | length == 1 and .[0].reason == "stale"
+        and .[0].open_findings == 1 and (.[0].why | contains("scripts/code.sh"))' <<<"$out" >/dev/null \
+        && [[ ! -s "$HERR" ]]; then
+    pass "sources (h5): code change since the review -> dropped as stale, naming the path, no warning"
+else
+    fail "sources (h5): code change accepted or not reported (out=$out err=$(<"$HERR"))"
+fi
+printf 'later checkpoint\n' >> "$HP"
+hist_commit later-checkpoint
+out=$(hist_sources "$(hist_head)")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"' <<<"$out" >/dev/null \
+    && pass "sources (h6): a later checkpoint cannot hide an earlier code change" \
+    || fail "sources (h6): code hidden by checkpoint (out=$out)"
+
+# (h7) another issue's work-plan dir is not exempt — including one whose
+# number merely starts with this issue's (issue-70 vs issue-7).
+for other in issue-8 issue-70; do
+    git -C "$HIST" checkout -q -B "other-$other" "$DOC_HEAD"
+    mkdir -p "$HIST/.agent/work-plans/$other"
+    printf 'other issue\n' > "$HIST/.agent/work-plans/$other/progress.md"
+    hist_commit "$other timeline"
+    out=$(hist_sources "$(hist_head)")
+    [[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"' <<<"$out" >/dev/null \
+        && pass "sources (h7): $other's timeline is not exempt for issue 7" \
+        || fail "sources (h7): $other accepted (out=$out)"
+done
+
+# (h8) an identical tree is not enough when the review is not an ancestor.
+DIVERGED=$(printf 'unrelated root\n' | git -C "$HIST" -c user.name=t -c user.email=t@t commit-tree "${DOC_HEAD}^{tree}")
+out=$(hist_sources "$DIVERGED")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"
+        and (.dropped_entries[0].why | contains("not an ancestor"))' <<<"$out" >/dev/null \
+    && pass "sources (h8): non-ancestor review with an identical tree is stale" \
+    || fail "sources (h8): divergent history accepted (out=$out)"
+
+# (h9-h12) whatever cannot be checked is dropped as "unverifiable" — never
+# silently: it is listed with the reason and warned about on stderr — and
+# never an error (rc 0; exact matches still work).
+unverifiable_ok() {  # <out> <rc> <why-substring>
+    [[ "$2" == 0 && "$(n_local "$1")" == 0 ]] \
+        && jq -e --arg w "$3" '.dropped_entries | length == 1 and .[0].reason == "unverifiable"
+            and (.[0].why | contains($w))' <<<"$1" >/dev/null \
+        && grep -q "warning: sources: review at" "$HERR"
+}
+out=$(hist_sources 0000000000000000000000000000000000000000); rc=$?
+unverifiable_ok "$out" "$rc" "does not resolve" \
+    && pass "sources (h9): unresolvable head -> unverifiable, warned, rc 0" \
+    || fail "sources (h9): unresolved head (rc=$rc out=$out err=$(<"$HERR"))"
+mkdir -p "$TMPD/external/.agent/work-plans/issue-7"
+sed "s/${REVIEWED:0:7}/0000000/" "$HP" > "$TMPD/external/.agent/work-plans/issue-7/progress.md"
+out=$(hist_sources "$DOC_HEAD" "$TMPD/external/.agent/work-plans/issue-7/progress.md"); rc=$?
+unverifiable_ok "$out" "$rc" "review \`0000000\` does not resolve" \
+    && pass "sources (h10): review SHA missing from the repository -> unverifiable, warned, rc 0" \
+    || fail "sources (h10): unresolved review (rc=$rc out=$out err=$(<"$HERR"))"
+cp "$HP" "$TMPD/noncanonical.md"
+out=$(hist_sources "$DOC_HEAD" "$TMPD/noncanonical.md"); rc=$?
+unverifiable_ok "$out" "$rc" "only an exact head-SHA match counts" \
+    && pass "sources (h11): a non-canonical --progress path gets exact matching only (unverifiable, warned)" \
+    || fail "sources (h11): noncanonical path (rc=$rc out=$out err=$(<"$HERR"))"
+# No repository at all: GIT_CEILING_DIRECTORIES stops discovery at TMPD, so
+# this holds even when TMPDIR itself sits inside some checkout.
+mkdir -p "$TMPD/norepo"
+for head in "$REVIEWED" "$DOC_HEAD"; do
+    out=$(cd "$TMPD/norepo" && GIT_CEILING_DIRECTORIES="$TMPD" "$RP" sources --progress "$HP" \
+        --head "$head" --reviews "$REVIEWS" 2>"$HERR"); rc=$?
+    if [[ "$head" == "$REVIEWED" ]]; then
+        [[ "$rc" == 0 && "$(n_local "$out")" == 1 ]] \
+            && pass "sources (h12): no repository -> exact match still retained" \
+            || fail "sources (h12): no-repository exact match (rc=$rc out=$out)"
+    else
+        unverifiable_ok "$out" "$rc" "not a git repository" \
+            && pass "sources (h12): no repository -> non-exact review unverifiable, warned, rc 0" \
+            || fail "sources (h12): no-repository fallback (rc=$rc out=$out err=$(<"$HERR"))"
+    fi
+done
+
+# (h13) the timeline may be stored outside the target repository (a
+# workspace timeline for a project worktree): git still runs in the cwd.
+cp "$HP" "$TMPD/external/.agent/work-plans/issue-7/progress.md"
+out=$(hist_sources "$DOC_HEAD" "$TMPD/external/.agent/work-plans/issue-7/progress.md")
+[[ "$(n_local "$out")" == 1 ]] \
+    && pass "sources (h13): externally stored timeline is checked against the cwd repository" \
+    || fail "sources (h13): wrong repository resolution (out=$out)"
+
+# (h14) the bridge refuses a malformed call (rc 2) rather than guessing.
+bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$REVIEWED" >/dev/null 2>&1; rc=$?
+[[ "$rc" == 2 ]] && pass "sources (h14): _bookkeeping.sh bridge usage error is rc 2" \
+    || fail "sources (h14): bridge usage (rc=$rc)"
+# (h15) a ref name is never resolved as a recorded SHA.
+bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" HEAD "$DOC_HEAD" 7 >/dev/null 2>&1; rc=$?
+[[ "$rc" == 3 ]] && pass "sources (h15): a non-hex review 'SHA' (HEAD) is unverifiable, not resolved" \
+    || fail "sources (h15): ref name resolved (rc=$rc)"
+# (h16) a code file renamed INTO this issue's work-plan dir is not
+# bookkeeping: the rename's source path is a code change (--no-renames).
+git -C "$HIST" checkout -q -B rename-into-plan "$DOC_HEAD"
+git -C "$HIST" mv scripts/code.sh .agent/work-plans/issue-7/code.sh
+hist_commit "move code into the work-plan dir"
+out=$(hist_sources "$(hist_head)")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"
+        and (.dropped_entries[0].why | contains("scripts/code.sh"))' <<<"$out" >/dev/null \
+    && pass "sources (h16): a code file renamed into the work-plan dir is stale, naming its old path" \
+    || fail "sources (h16): rename into the exempt dir accepted (out=$out)"
+
+# (h17-h20) git failing inside the check is "unverifiable" (warned), never
+# a verified "stale". Each damaging case runs on its own copy of the history.
+copy_hist() { cp -R "$HIST" "$TMPD/$1" && echo "$TMPD/$1"; }
+loose_object() { echo "$1/.git/objects/${2:0:2}/${2:2}"; }
+src_in() {  # <repo> <head> -- sources run from <repo>
+    (cd "$1" && "$RP" sources --progress "$HP" --head "$2" --reviews "$REVIEWS" 2>"$HERR")
+}
+# (h17) a commit on the ancestry walk is unreadable: git exits 1 but says so
+# on stderr, which must not read as "not an ancestor".
+C17=$(copy_hist missing-commit)
+if rm "$(loose_object "$C17" "$BOOK_HEAD")" 2>/dev/null; then
+    out=$(src_in "$C17" "$DOC_HEAD"); rc=$?
+    unverifiable_ok "$out" "$rc" "could not check whether" \
+        && pass "sources (h17): unreadable commit on the ancestry walk -> unverifiable, warned, rc 0" \
+        || fail "sources (h17): missing ancestry object (rc=$rc out=$out err=$(<"$HERR"))"
+else
+    fail "sources (h17): fixture: $BOOK_HEAD is not a loose object in the copy"
+fi
+# (h18) the ancestry check passes but the diff cannot read the review's tree.
+C18=$(copy_hist missing-tree)
+if rm "$(loose_object "$C18" "$(git -C "$C18" rev-parse "${REVIEWED}^{tree}")")" 2>/dev/null; then
+    out=$(src_in "$C18" "$DOC_HEAD"); rc=$?
+    unverifiable_ok "$out" "$rc" "could not diff" \
+        && pass "sources (h18): failed diff -> unverifiable, warned, rc 0" \
+        || fail "sources (h18): failed diff (rc=$rc out=$out err=$(<"$HERR"))"
+else
+    fail "sources (h18): fixture: the review's tree is not a loose object in the copy"
+fi
+# (h19) a shallow clone that holds both commits but not the history between
+# them answers "not an ancestor" for a real ancestor.
+git -C "$HIST" branch -f review-tip "$REVIEWED"
+git -C "$HIST" branch -f doc-tip "$DOC_HEAD"
+git clone -q --depth 1 --no-single-branch "file://$HIST" "$TMPD/shallow" 2>/dev/null
+if [[ "$(git -C "$TMPD/shallow" rev-parse --is-shallow-repository 2>/dev/null)" == true ]] \
+        && git -C "$TMPD/shallow" cat-file -e "${REVIEWED}^{commit}" 2>/dev/null; then
+    out=$(src_in "$TMPD/shallow" "$DOC_HEAD"); rc=$?
+    unverifiable_ok "$out" "$rc" "shallow" \
+        && pass "sources (h19): non-ancestor in a shallow repository -> unverifiable, warned, rc 0" \
+        || fail "sources (h19): shallow history (rc=$rc out=$out err=$(<"$HERR"))"
+else
+    fail "sources (h19): fixture: shallow clone missing or without the review commit"
+fi
+# (h20) an ancestry check exiting other than 0/1 is unverifiable (rc 3), not
+# stale: a git shim fails only `merge-base`, silently.
+mkdir -p "$TMPD/gitshim"
+printf '#!/bin/bash\nfor a in "$@"; do [[ "$a" == merge-base ]] && exit 128; done\nexec %q "$@"\n' \
+    "$(command -v git)" > "$TMPD/gitshim/git"
+chmod +x "$TMPD/gitshim/git"
+why=$(PATH="$TMPD/gitshim:$PATH" bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$REVIEWED" "$DOC_HEAD" 7); rc=$?
+[[ "$rc" == 3 && "$why" == *"git exit 128"* ]] \
+    && pass "sources (h20): ancestry check exit 128 -> bridge rc 3 (unverifiable), reason names the exit" \
+    || fail "sources (h20): ancestry exit 128 (rc=$rc why=$why)"
+# (h23) a verified non-ancestor stays stale (rc 1) when git writes stderr
+# that is not an error: with GIT_TRACE=1 set by the caller, and with a shim
+# that prints a warning before a clean "no". Only error:/fatal: lines count.
+why=$(GIT_TRACE=1 bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$DOC_HEAD" "$REVIEWED" 7 2>/dev/null); rc=$?
+[[ "$rc" == 1 && "$why" == *"not an ancestor"* ]] \
+    && pass "sources (h23): GIT_TRACE=1 does not turn a verified non-ancestor into unverifiable" \
+    || fail "sources (h23): GIT_TRACE=1 non-ancestor (rc=$rc why=$why)"
+printf '#!/bin/bash\nfor a in "$@"; do [[ "$a" == merge-base ]] && { echo "warning: some notice" >&2; exit 1; }; done\nexec %q "$@"\n' \
+    "$(command -v git)" > "$TMPD/gitshim/git"
+why=$(PATH="$TMPD/gitshim:$PATH" bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$REVIEWED" "$DOC_HEAD" 7); rc=$?
+[[ "$rc" == 1 && "$why" == *"not an ancestor"* ]] \
+    && pass "sources (h23): a non-error stderr line with exit 1 is a verified non-ancestor (rc 1)" \
+    || fail "sources (h23): non-error stderr (rc=$rc why=$why)"
+
+# (h24) user diff config cannot filter the coverage diff. diff.relative=true
+# with sources run from a subdirectory (the work-plan dir) would list only
+# that directory's paths and hide a code change elsewhere.
+git -C "$HIST" checkout -q -B relative-config "$DOC_HEAD"
+printf 'code change\n' >> "$HIST/scripts/code.sh"
+hist_commit "code change outside the work-plan dir"
+out=$(cd "$HIST/.agent/work-plans/issue-7" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.relative GIT_CONFIG_VALUE_0=true \
+    "$RP" sources --progress "$HP" --head "$(hist_head)" --reviews "$REVIEWS" 2>"$HERR")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"
+        and (.dropped_entries[0].why | contains("scripts/code.sh"))' <<<"$out" >/dev/null \
+    && pass "sources (h24): diff.relative=true from a subdirectory still sees a code change elsewhere (stale)" \
+    || fail "sources (h24): diff.relative hid a code change (out=$out)"
+# (h25) diff.ignoreSubmodules=all cannot hide a submodule pointer change.
+git -C "$HIST" checkout -q -B submodule-config "$DOC_HEAD"
+git -C "$HIST" update-index --add --cacheinfo "160000,$REVIEWED,vendor/sub"
+git -C "$HIST" -c user.name=t -c user.email=t@t commit -q -m "add submodule"
+SUB_BASE=$(hist_head)
+git -C "$HIST" update-index --cacheinfo "160000,$DOC_HEAD,vendor/sub"
+git -C "$HIST" -c user.name=t -c user.email=t@t commit -q -m "bump submodule"
+why=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.ignoreSubmodules GIT_CONFIG_VALUE_0=all \
+    bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$SUB_BASE" "$(hist_head)" 7); rc=$?
+[[ "$rc" == 1 && "$why" == *"vendor/sub"* ]] \
+    && pass "sources (h25): diff.ignoreSubmodules=all does not hide a submodule pointer change (stale)" \
+    || fail "sources (h25): submodule change hidden (rc=$rc why=$why)"
+# (h34) the helper's displayed path is safe ASCII on one line, C-quoted like
+# core.quotePath: \\ \" \t \n \r escapes, a backtick as \140 (the reason's
+# code span stays closed), every other non-printable or non-ASCII byte as a
+# three-digit octal escape (pinned at both ends of the ASCII control range:
+# 0x01 and DEL 0x7f). Matching still uses the raw path.
+got=$(bash -c 'source "$1"; _bk_display "$2"' _ "$SCRIPT_DIR/../_bookkeeping.sh" \
+    "a b"$'\xff'"c"$'\r'$'\e'"é\\\"\`"$'\t'$'\n'"~"$'\x01\x7f')
+want='a b\377c\r\033\303\251\\\"\140\t\n~\001\177'
+[[ "$got" == "$want" ]] \
+    && pass "sources (h34): _bk_display C-quotes control, non-ASCII and invalid UTF-8 bytes to safe ASCII" \
+    || fail "sources (h34): _bk_display (got=$(printf %q "$got") want=$want)"
+# (h35) the displayed value is capped before the escaping loop: an 80 KB
+# path shows its first 256 bytes plus "...(+81664 bytes)", and returns fast
+# (the uncapped per-byte loop took ~10 s at this size).
+long=$(printf '%*s' 81920 '' | tr ' ' a)
+start=$SECONDS
+got=$(timeout 20 bash -c 'source "$1"; _bk_display "$2"' _ "$SCRIPT_DIR/../_bookkeeping.sh" "$long"); rc=$?
+took=$((SECONDS - start))
+[[ "$rc" == 0 && "$got" == "$(printf '%*s' 256 '' | tr ' ' a)...(+81664 bytes)" && "$took" -le 3 ]] \
+    && pass "sources (h35): _bk_display caps an 80 KB value at 256 bytes plus a marker, in ${took}s" \
+    || fail "sources (h35): cap (rc=$rc took=${took}s len=${#got} tail=${got: -24})"
+
+# (h29) non-ASCII paths: git quotes them under core.quotePath=true (the
+# default) unless the diff is read NUL-delimited. A non-ASCII file in the
+# issue's work-plan dir is still bookkeeping, and a non-ASCII code file is
+# named C-quoted (octal escapes, safe ASCII) in the stale reason.
+qp_sources() {  # <head> -- hist_sources with core.quotePath=true forced
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.quotePath GIT_CONFIG_VALUE_0=true hist_sources "$1"
+}
+git -C "$HIST" checkout -q -B non-ascii "$DOC_HEAD"
+mkdir -p "$HIST/.agent/work-plans/issue-7/notes"
+printf 'note\n' > "$HIST/.agent/work-plans/issue-7/notes/café.md"
+hist_commit "plan(#7): non-ASCII note"
+out=$(qp_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 && "$(n_local "$out")" == 1 && "$(jq -r '.local_findings[0].coverage' <<<"$out")" == bookkeeping ]] \
+    && jq -e '(.dropped_entries | length) == 0' <<<"$out" >/dev/null; then
+    pass "sources (h29): a non-ASCII file in the issue's work-plan dir is bookkeeping (core.quotePath=true)"
+else
+    fail "sources (h29): non-ASCII work-plan file (rc=$rc out=$out err=$(<"$HERR"))"
+fi
+printf 'code\n' > "$HIST/scripts/naïve.sh"
+hist_commit "non-ASCII code"
+out=$(qp_sources "$(hist_head)")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"
+        and (.dropped_entries[0].why | contains("scripts/na\\303\\257ve.sh"))' <<<"$out" >/dev/null \
+    && pass "sources (h29): a non-ASCII code file is stale and named C-quoted (na\\303\\257ve.sh)" \
+    || fail "sources (h29): non-ASCII code file (out=$out)"
+# (h33) a code file whose name is not valid UTF-8: the helper's stale
+# reason is C-quoted by the helper (the byte shown as \377) and decoded
+# tolerantly by the bridge — reported stale, never a traceback.
+git -C "$HIST" checkout -q -B non-utf8 "$DOC_HEAD"
+printf 'code\n' > "$HIST/scripts/bad-"$'\xff'".sh"
+hist_commit "non-UTF-8 code file name"
+out=$(qp_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 && "$(n_local "$out")" == 0 ]] && jq -e '(.dropped_entries | length) == 1
+        and .dropped_entries[0].reason == "stale"
+        and (.dropped_entries[0].why | contains("scripts/bad-\\377.sh"))' <<<"$out" >/dev/null \
+    && ! grep -q Traceback "$HERR"; then
+    pass "sources (h33): a non-UTF-8 code file name is reported stale (as bad-\\377.sh), not a crash"
+else
+    fail "sources (h33): non-UTF-8 path (rc=$rc out=$out err=$(<"$HERR"))"
+fi
+
+# (h21) supersession (owner decision "Only triage supersedes — only a newer
+# Integrated Review drops older review entries' open findings"): a Local
+# Review with open findings, then a complete Integrated Review and its own
+# progress commit. Both cover the head; only the Integrated Review feeds
+# local_findings and the older one is dropped as superseded (its findings
+# are not re-listed).
+git -C "$HIST" checkout -q -B superseded "$DOC_HEAD"
+cat >> "$HP" <<EOF
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-17 12:00 -04:00
+**By**: t (m)
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+**Sources**: 1 (Local Review @ \`${REVIEWED:0:7}\`)
+
+### Findings
+- [ ] (must-fix) integrated finding — \`scripts/code.sh:9\`
+EOF
+hist_commit "progress: integrated review"
+SUP_HEAD=$(hist_head)
+out=$(hist_sources "$SUP_HEAD"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e --arg lr "${REVIEWED:0:7}" --arg ir "${DOC_HEAD:0:7}" '
+    (.local_findings | length) == 1 and .local_findings[0].entry_type == "Integrated Review"
+    and .local_findings[0].sha == $ir and (.local_findings[0].text | contains("integrated finding"))
+    and (.dropped_entries | length) == 1 and .dropped_entries[0].reason == "superseded"
+    and .dropped_entries[0].sha == $lr and .dropped_entries[0].open_findings == 1
+    and (.dropped_entries[0].why | contains("Integrated Review") and contains($ir))' <<<"$out" >/dev/null \
+    && [[ ! -s "$HERR" ]]; then
+    pass "sources (h21): a newer covering Integrated Review supersedes the Local Review; only its findings listed"
+else
+    fail "sources (h21): supersession (rc=$rc out=$out err=$(<"$HERR"))"
+fi
+# (h22) the newest covering review has no open findings: nothing is listed,
+# and the older one is still superseded (it was disposed of, not re-opened).
+sed -i 's/^- \[ \] (must-fix) integrated finding/- [x] (must-fix) integrated finding/' "$HP"
+hist_commit "progress: integrated finding addressed"
+out=$(hist_sources "$(hist_head)")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '(.dropped_entries | length) == 1
+        and .dropped_entries[0].reason == "superseded"' <<<"$out" >/dev/null \
+    && pass "sources (h22): a newer covering Integrated Review with no open findings still supersedes the older one" \
+    || fail "sources (h22): closed newest review (out=$out)"
+# (h26) only triage supersedes (owner decision): a Local Review (Pre-Push)
+# with an open suggestion, then a PR-mode Local Review with no findings and
+# its bookkeeping commit. The newer Local Review re-read the code on its
+# own; it disposed of nothing, so the pre-push suggestion is still listed.
+git -C "$HIST" checkout -q -B local-after-prepush "$DOC_HEAD"
+cat > "$HP" <<EOF
+---
+issue: 7
+---
+
+# Issue #7
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-17 11:00 -04:00
+**By**: t (m)
+**Verdict**: approved
+
+**Branch**: feature/issue-7 at \`${REVIEWED:0:7}\`
+
+### Findings
+- [ ] (suggestion) pre-push suggestion — \`scripts/code.sh:5\`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: t (m)
+**Verdict**: approved
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+
+No findings.
+EOF
+hist_commit "progress: local review (PR)"
+out=$(hist_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e '(.local_findings | length) == 1
+        and .local_findings[0].entry_type == "Local Review (Pre-Push)"
+        and (.local_findings[0].text | contains("pre-push suggestion"))
+        and (.dropped_entries | length) == 0' <<<"$out" >/dev/null && [[ ! -s "$HERR" ]]; then
+    pass "sources (h26): a newer Local Review supersedes nothing; the pre-push suggestion is still listed"
+else
+    fail "sources (h26): pre-push suggestion lost (rc=$rc out=$out err=$(<"$HERR"))"
+fi
+
+# (h27/h28) which triage entries supersede. triage_after <branch> <heading>
+# <status>: from DOC_HEAD (a Local Review (Pre-Push) with one open finding),
+# append a triage entry at DOC_HEAD with that heading and **Status**, commit
+# it (bookkeeping), and print sources for the new head.
+triage_after() {
+    git -C "$HIST" checkout -q -B "$1" "$DOC_HEAD"
+    cat >> "$HP" <<EOF
+
+## $2
+**Status**: $3
+**When**: 2026-09-17 12:00 -04:00
+**By**: t (m)
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+**Sources**: 1 (Local Review @ \`${REVIEWED:0:7}\`)
+
+### Findings
+- [ ] (must-fix) triage finding — \`scripts/code.sh:9\`
+EOF
+    hist_commit "progress: $2 ($3)"
+    hist_sources "$(hist_head)"
+}
+# (h27) a partial or failed Integrated Review decided nothing: it supersedes
+# nothing, so the older finding is still listed next to its own.
+for st in partial failed; do
+    out=$(triage_after "triage-$st" "Integrated Review" "$st")
+    if jq -e '(.local_findings | length) == 2
+            and ([.local_findings[].text] | any(contains("still open")))
+            and ([.local_findings[].text] | any(contains("triage finding")))
+            and (.dropped_entries | length) == 0' <<<"$out" >/dev/null; then
+        pass "sources (h27): a $st Integrated Review supersedes nothing; the older finding is still listed"
+    else
+        fail "sources (h27): $st Integrated Review superseded (out=$out)"
+    fi
+done
+# (h28) a complete legacy External Review (suffixed heading) supersedes
+# nothing (owner decision: only a complete Integrated Review supersedes; an
+# External Review is a single-source GitHub table that never ruled on local
+# findings), so the older finding is still listed next to its own.
+out=$(triage_after triage-external "External Review (Round 2)" complete)
+if jq -e '(.local_findings | length) == 2
+        and ([.local_findings[].text] | any(contains("still open")))
+        and ([.local_findings[] | select(.text | contains("triage finding")) | .entry_type] == ["External Review (Round 2)"])
+        and (.dropped_entries | length) == 0' <<<"$out" >/dev/null; then
+    pass "sources (h28): a complete legacy External Review (Round 2) does not supersede the older Local Review"
+else
+    fail "sources (h28): External Review superseded (out=$out)"
+fi
+# (h30) supersession runs forward only: a triage entry supersedes OLDER
+# review entries, never a Local Review written after it. From DOC_HEAD (the
+# pre-push entry with one open finding): a complete Integrated Review, then
+# a PR-mode Local Review with its own open finding, both at DOC_HEAD.
+git -C "$HIST" checkout -q -B local-after-triage "$DOC_HEAD"
+cat >> "$HP" <<EOF
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-17 12:00 -04:00
+**By**: t (m)
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) triage finding — \`scripts/code.sh:9\`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: t (m)
+**Verdict**: changes-requested
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) later local finding — \`scripts/code.sh:11\`
+EOF
+hist_commit "progress: integrated review, then local review"
+out=$(hist_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e --arg lr "${REVIEWED:0:7}" '(.local_findings | length) == 2
+        and ([.local_findings[].text] | any(contains("triage finding")))
+        and ([.local_findings[] | select(.text | contains("later local finding")) | .entry_type] == ["Local Review"])
+        and (.dropped_entries | length) == 1 and .dropped_entries[0].reason == "superseded"
+        and .dropped_entries[0].sha == $lr' <<<"$out" >/dev/null; then
+    pass "sources (h30): a Local Review written after the triage entry is not superseded by it; only the older one is"
+else
+    fail "sources (h30): newer Local Review superseded by an older triage entry (rc=$rc out=$out)"
+fi
+# (h31) a triage entry supersedes only while it covers the head itself. A
+# covering Local Review at a code commit, then a complete Integrated Review
+# recorded at the pre-change SHA (stale): the stale triage decided nothing
+# about the current code, so the Local Review's finding is still listed.
+git -C "$HIST" checkout -q -B stale-triage "$DOC_HEAD"
+printf 'changed after triage\n' >> "$HIST/scripts/code.sh"
+hist_commit "code after the triage SHA"
+CODE_HEAD=$(hist_head)
+cat > "$HP" <<EOF
+---
+issue: 7
+---
+
+# Issue #7
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: t (m)
+**Verdict**: changes-requested
+
+**PR**: #70 at \`${CODE_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) local finding at the code head — \`scripts/code.sh:1\`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-17 14:00 -04:00
+**By**: t (m)
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) stale triage finding — \`scripts/code.sh:9\`
+EOF
+hist_commit "progress: local review, then a stale integrated review"
+out=$(hist_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e --arg code "${CODE_HEAD:0:7}" --arg ir "${DOC_HEAD:0:7}" '(.local_findings | length) == 1
+        and .local_findings[0].sha == $code
+        and (.local_findings[0].text | contains("local finding at the code head"))
+        and (.dropped_entries | length) == 1 and .dropped_entries[0].reason == "stale"
+        and .dropped_entries[0].sha == $ir' <<<"$out" >/dev/null; then
+    pass "sources (h31): a stale (non-covering) Integrated Review supersedes nothing; the covering Local Review is still listed"
+else
+    fail "sources (h31): stale triage superseded a covering review (rc=$rc out=$out)"
+fi
+# (h32) an entry whose **PR**/**Branch** line does not parse has no SHA to
+# check: its open findings are listed as unverifiable and warned about,
+# never silently skipped. A PR line without "#", and a legacy External
+# Review without "at <sha>" (the historical shape).
+git -C "$HIST" checkout -q -B uncorrelated "$DOC_HEAD"
+cat >> "$HP" <<EOF
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-17 13:00 -04:00
+**By**: t (m)
+**Verdict**: changes-requested
+
+**PR**: 70 at \`${DOC_HEAD:0:7}\`
+
+### Findings
+- [ ] (must-fix) finding under a bad PR line — \`scripts/code.sh:4\`
+
+## External Review
+**Status**: complete
+**When**: 2026-09-17 14:00 -04:00
+**By**: t (m)
+
+**PR**: #70
+
+### Findings
+- [ ] (must-fix) legacy external finding — \`scripts/code.sh:6\`
+EOF
+hist_commit "progress: uncorrelated entries"
+out=$(hist_sources "$(hist_head)"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e '(.local_findings | length) == 1
+        and (.local_findings[0].text | contains("still open"))
+        and (.dropped_entries | length) == 2
+        and ([.dropped_entries[] | select(.reason == "unverifiable" and .sha == "" and .open_findings == 1
+              and (.why | contains("no PR/Branch correlation SHA"))) | .entry_type] == ["Local Review", "External Review"])' <<<"$out" >/dev/null \
+    && [[ "$(grep -c 'no PR/Branch correlation SHA' "$HERR")" == 2 ]] \
+    && grep -q '`## Local Review` entry (2026-09-17 13:00 -04:00) has 1 open finding' "$HERR"; then
+    pass "sources (h32): entries with no parseable PR/Branch SHA are listed as unverifiable and warned, not skipped"
+else
+    fail "sources (h32): uncorrelated entries (rc=$rc out=$out err=$(<"$HERR"))"
+fi
+rm -f "$HERR"
 
 # ========================================================== persist =====
 mk_repo() { mkdir -p "$1"; git -C "$1" init -q -b "$2"; git -C "$1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init; }
