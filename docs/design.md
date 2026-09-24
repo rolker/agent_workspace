@@ -46,6 +46,7 @@ agent_workspace/
 ├── docs/
 │   ├── design.md          # This file
 │   ├── principles.md
+│   ├── roadmap.md
 │   └── decisions/         # Architecture Decision Records (ADRs)
 ├── scripts -> .agent/scripts  # Convenience symlink
 ├── CLAUDE.md              # Claude Code adapter
