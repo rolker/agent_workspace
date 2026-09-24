@@ -311,3 +311,26 @@ Fix both first (Recommended): address the round-2 suggestions before publishing 
 - [x] update_roadmap.sh helper-missing fallback covered: a sandbox copy without the helper asserts the warning and that the roadmap is still checked off — `.agent/scripts/tests/test_update_roadmap.sh`
 
 Both new tests verified to fail with the fallback removed (discover: 4 failures, exit 1 with only a bash "No such file" error; roadmap: 2 failures, "real_case_relpath: command not found", roadmap untouched). Full script suite: 29/29 suites passed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-23 15:03 -04:00
+**By**: Claude Code Agent (claude-opus-5)
+**Dispatch**: resumed (agent a4df0d4054a396e56, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-334 at `de74fd1`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff re-classified per #320; CI workflow + AGENTS.md/CLAUDE.md + skills are override triggers)
+**Must-fix**: 2 | **Suggestions**: 2
+**Round**: 3 | **Ship**: continue — round 3: must-fix rising (0 -> 2); both must-fix are mechanical one-spot fixes
+
+Round-2 suggestions resolved: discover_governance.sh now loads the helper guarded and warns + falls back like update_roadmap.sh (F1–F4); update_roadmap.sh's fallback has a no-helper test. Both new tests are real by construction: without the guard, discover_governance.sh aborts under `set -e` (F1–F4 fail) and update_roadmap.sh prints no warning and calls an undefined `real_case_relpath` (both no-helper assertions fail); the implementer recorded running exactly that mutation. My own mutation run was refused by the permission system, so that part is by reading, not by re-running.
+
+Verified: shellcheck clean on changed scripts/tests; test_discover_governance 19/19, test_update_roadmap 8/8, test_real_case_path 10/10, test_merge_pr_gate 82/82 (adversarial reviewer). No merge from main since round 2 (origin/main 0 ahead). Cross-model: gemini complete (5 findings: 2 kept as must-fix, 1 kept as suggestion, 2 dropped — probe-order reshuffle in fallback mode only moves the degraded case to uppercase-stored repos; `./` prefix is never passed by callers); codex omitted (usage limit until 17:36). Claude adversarial (fresh): 2 suggestions, 1 kept. Noted, not listed: both test files' final summary line lost its space after the colon (`test_update_roadmap:8 passed`) — cosmetic, the runner does not parse it.
+
+### Findings
+- [ ] (must-fix) The no-helper test breaks on case-insensitive filesystems: with a stored docs/roadmap.md the docs/ROADMAP.md probe (checked first) matches, the fallback prints `$root/docs/ROADMAP.md`, and the case-sensitive `== "$root/docs/roadmap.md"` check fails; use a fixture whose first-probe spelling is its stored name (e.g. docs/ROADMAP.md) or gate the expectation on CASE_INSENSITIVE — `.agent/scripts/tests/test_update_roadmap.sh:111`
+- [ ] (must-fix) New sourced helper `_real_case_path.sh` is missing from AGENTS.md's Script Reference table (consequence map: a script in `.agent/scripts/` → that table); add a **(source)** row — `AGENTS.md:386`
+- [ ] (suggestion) `source … 2>/dev/null` also swallows a present-but-broken helper (syntax error) and reports it as "not found"; test `-f` first and let a load error show, or word the warning "could not be loaded" — `.agent/scripts/discover_governance.sh:19`, `.agent/scripts/update_roadmap.sh:28`
+- [ ] (suggestion) The docs/ tree in the rewritten diagram lists design.md and principles.md but not roadmap.md — `docs/design.md:47`
