@@ -482,3 +482,34 @@ Reviewers:
   - A `\r` or ESC in a path goes raw too: it splits the Conditions line or reaches the terminal.
   - Fix: escape the displayed path in the helper (`printf %q`, or C-quote it like core.quotePath), keeping `-z` for matching. Add a gate test as the counterpart of h33.
   - Claude adversarial, reproduced (rc 1 reason contains byte 0xff; progress_append commits it; progress_read.py then raises UnicodeDecodeError). — `.agent/scripts/_bookkeeping.sh:103`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 13:47 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af3d391529e7ce405, resume 2 of 3)
+
+**PR**: #349 at `31d484a`
+**Addressed**: Local Review at `f2118b0` (the newest PR-mode review, recorded in a8ea93e), under the owner's standing "fix it completely" standard
+**Commits**: 31d484a
+
+### Actions
+- [x] (must-fix) Raw path bytes can no longer reach progress.md. A new `_bk_display` in `_bookkeeping.sh` C-quotes every value a reason quotes, like core.quotePath:
+  - backslash, double quote, `\t`, `\n` and `\r` get C escapes;
+  - a backtick becomes `\140`;
+  - every other non-printable or non-ASCII byte becomes a three-digit octal escape.
+  - The quoted values are the path, the SHAs, git's error line, the worktree path and the issue argument.
+  - Matching still uses the raw `-z` path.
+  - Tests: h34 (the escaping itself) and g14 (gate counterpart of h33: a code file named `bad-<0xff><CR><ESC>.sh` under `--report-only` gives the reason `touches bad-\377\r\033.sh`; the record holds no byte >= 0x80, CR or ESC, and progress_read.py still parses the file). h29 and h33 now expect the C-quoted form. — `.agent/scripts/_bookkeeping.sh:103` (31d484a)
+
+### Notes
+- Other routes checked:
+  - The CI walk-back prints only SHAs, never a path.
+  - `sources` warnings print the helper's reason, now ASCII (the bridge's backslashreplace decode stays as a second layer), plus entry type and When read from the UTF-8 progress.md.
+  - merge_pr.sh's own gate reasons quote only hex SHAs from progress_read.py, entry types from progress.md, and workspace-managed worktree paths. None of them come from diff output.
+- Mutation checks:
+  - Quoting the raw path in the stale reason fails h29, h33 and g14.
+  - Making `_bk_display` the identity fails h34, h29, h33 and g14.
+  - Dropping the backtick escape fails h34.
+- Suites: triage integration 58/0, merge gate 97/0, merge_pr 91/0, convergence 31/0; shellcheck (warning) clean.
+- The source entry's box is not ticked: `check` targets only Integrated Review / Local Review (Pre-Push) entries.
