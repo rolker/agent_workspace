@@ -1009,6 +1009,32 @@ else
     fail "(ci-31b) (out=${out:0:500})"
 fi
 
+echo "TEST: CI target — diff.ignoreSubmodules=all cannot hide a submodule bump after the green head (#309)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"
+base_sha=$(git -C "$wt" rev-parse HEAD)
+git -C "$wt" update-index --add --cacheinfo "160000,${base_sha},vendor/sub"
+git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "add submodule"
+green=$(git -C "$wt" rev-parse HEAD)
+git -C "$wt" update-index --cacheinfo "160000,${green},vendor/sub"   # a different pointer
+git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "bump submodule"
+git -C "$wt" push --quiet origin feature/issue-7
+head_now=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.ignoreSubmodules GIT_CONFIG_VALUE_0=all \
+    MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${head_now:0:7}"* ]] \
+    && [[ "$out" != *"bookkeeping commits"* ]]; then
+    pass "(ci-31c) submodule bump under diff.ignoreSubmodules=all: no walk-back, waits on the new head"
+else
+    fail "(ci-31c) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
 # make_walkback_sandbox: the ci-30 shape — a progress-only commit pushed on
 # top of a green code head — with the caller free to set each head's
 # check-runs. Prints "<sb> <green> <head_now>".

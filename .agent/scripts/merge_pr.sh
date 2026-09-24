@@ -1093,8 +1093,9 @@ _ci_walk_bookkeeping() {  # <wt> <start-sha> -- prints ancestors of <start>, new
         [[ $(wc -w <<<"$line") -eq 2 ]] || return 0
         parents="${line#* }"
         # --no-renames: a code file moved into a work-plan dir still lists
-        # its old path, as in _bookkeeping.sh (#309).
-        paths=$(git -C "$wt" diff --no-renames --name-only "$parents" "$cur" 2>/dev/null) || return 0
+        # its old path, and --no-relative / --ignore-submodules=none keep
+        # user diff config from filtering paths, as in _bookkeeping.sh (#309).
+        paths=$(git -C "$wt" diff --no-renames --no-relative --ignore-submodules=none --name-only "$parents" "$cur" 2>/dev/null) || return 0
         while IFS= read -r p; do
             [[ -z "$p" ]] && continue
             _is_bookkeeping_path "$p" || return 0

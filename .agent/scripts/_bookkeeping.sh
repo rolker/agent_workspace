@@ -67,7 +67,10 @@ _only_bookkeeping_between() {
     # --no-renames: a rename is reported as its deletion AND its addition, so
     # a code file moved into an exempt directory still names its old path.
     # (With rename detection only the destination would be listed.)
-    diff_paths=$(git -C "$wt" diff --no-renames --name-only "$from" "$to" 2>/dev/null) || {
+    # --no-relative / --ignore-submodules=none: user config (diff.relative,
+    # diff.ignoreSubmodules, submodule.*.ignore) must not filter the paths;
+    # <wt> may be a subdirectory and a submodule pointer is a real change.
+    diff_paths=$(git -C "$wt" diff --no-renames --no-relative --ignore-submodules=none --name-only "$from" "$to" 2>/dev/null) || {
         echo "could not diff \`${from:0:7}\`..\`${to:0:7}\` in $wt"
         return 3
     }

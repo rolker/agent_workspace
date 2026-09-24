@@ -429,6 +429,31 @@ why=$(PATH="$TMPD/gitshim:$PATH" bash "$SCRIPT_DIR/../_bookkeeping.sh" --review 
     && pass "sources (h23): a non-error stderr line with exit 1 is a verified non-ancestor (rc 1)" \
     || fail "sources (h23): non-error stderr (rc=$rc why=$why)"
 
+# (h24) user diff config cannot filter the coverage diff. diff.relative=true
+# with sources run from a subdirectory (the work-plan dir) would list only
+# that directory's paths and hide a code change elsewhere.
+git -C "$HIST" checkout -q -B relative-config "$DOC_HEAD"
+printf 'code change\n' >> "$HIST/scripts/code.sh"
+hist_commit "code change outside the work-plan dir"
+out=$(cd "$HIST/.agent/work-plans/issue-7" && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.relative GIT_CONFIG_VALUE_0=true \
+    "$RP" sources --progress "$HP" --head "$(hist_head)" --reviews "$REVIEWS" 2>"$HERR")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"
+        and (.dropped_entries[0].why | contains("scripts/code.sh"))' <<<"$out" >/dev/null \
+    && pass "sources (h24): diff.relative=true from a subdirectory still sees a code change elsewhere (stale)" \
+    || fail "sources (h24): diff.relative hid a code change (out=$out)"
+# (h25) diff.ignoreSubmodules=all cannot hide a submodule pointer change.
+git -C "$HIST" checkout -q -B submodule-config "$DOC_HEAD"
+git -C "$HIST" update-index --add --cacheinfo "160000,$REVIEWED,vendor/sub"
+git -C "$HIST" -c user.name=t -c user.email=t@t commit -q -m "add submodule"
+SUB_BASE=$(hist_head)
+git -C "$HIST" update-index --cacheinfo "160000,$DOC_HEAD,vendor/sub"
+git -C "$HIST" -c user.name=t -c user.email=t@t commit -q -m "bump submodule"
+why=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.ignoreSubmodules GIT_CONFIG_VALUE_0=all \
+    bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$SUB_BASE" "$(hist_head)" 7); rc=$?
+[[ "$rc" == 1 && "$why" == *"vendor/sub"* ]] \
+    && pass "sources (h25): diff.ignoreSubmodules=all does not hide a submodule pointer change (stale)" \
+    || fail "sources (h25): submodule change hidden (rc=$rc why=$why)"
+
 # (h21) supersession (owner decision "Newest current review wins"): a Local
 # Review with open findings, then an Integrated Review and its own progress
 # commit. Both cover the head; only the newest feeds local_findings and the
