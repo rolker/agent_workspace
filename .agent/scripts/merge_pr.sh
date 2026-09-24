@@ -722,6 +722,7 @@ else
         _gate_r_sha=$(jq -r '.sha' <<<"$_gate_review")
         _gate_covered=$(jq -r '.at_head' <<<"$_gate_review")
         _gate_stale_why=""
+        _gate_stale_label="stale review"
         if [[ "$_gate_covered" != "true" ]]; then
             if [[ -z "$_ci_wt" ]]; then
                 _gate_stale_why="no local worktree to verify ancestry"
@@ -733,14 +734,23 @@ else
                     _gate_stale_why="\`${_gate_r_sha:-?}\` does not resolve to one commit in ${_ci_wt}"
                 elif [[ -z "$_gate_h_full" ]]; then
                     _gate_stale_why="head \`${_gate_head_short}\` is not present locally"
-                elif _gate_stale_why=$(_review_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" "$ISSUE_NUM"); then
-                    _gate_covered=true
-                    echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only work-plan / progress.md / roadmap changed since"
+                else
+                    # rc 1 = verified stale; rc 3 = git could not answer. Both
+                    # refuse, but an unconfirmed check must not read as
+                    # "stale" (an operator may reach for --force-unreviewed).
+                    _gate_bk_rc=0
+                    _gate_stale_why=$(_review_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" "$ISSUE_NUM") || _gate_bk_rc=$?
+                    if [[ "$_gate_bk_rc" -eq 0 ]]; then
+                        _gate_covered=true
+                        echo "  review at \`${_gate_r_sha:0:7}\` covers head \`${_gate_head_short}\`: only work-plan / progress.md / roadmap changed since"
+                    elif [[ "$_gate_bk_rc" -ne 1 ]]; then
+                        _gate_stale_label="review coverage could not be confirmed"
+                    fi
                 fi
             fi
         fi
         if [[ "$_gate_covered" != "true" ]]; then
-            _gate_reasons+=("latest ${_gate_r_type} entry is at \`${_gate_r_sha:-?}\`, not the PR head \`${_gate_head_short}\` (stale review: ${_gate_stale_why})")
+            _gate_reasons+=("latest ${_gate_r_type} entry is at \`${_gate_r_sha:-?}\`, not the PR head \`${_gate_head_short}\` (${_gate_stale_label}: ${_gate_stale_why})")
         elif [[ "$_gate_r_type" == "Local Review" && "$(jq -r '.verdict' <<<"$_gate_review")" != "approved" ]]; then
             _gate_reasons+=("latest Local Review at the head has **Verdict**: $(jq -r '.verdict' <<<"$_gate_review"), not approved")
         elif [[ "$_gate_r_type" != "Local Review" && "$(jq -r '.open_mustfix' <<<"$_gate_review")" != "0" ]]; then
