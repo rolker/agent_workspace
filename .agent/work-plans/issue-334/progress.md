@@ -430,3 +430,23 @@ Add the test first — fix pass for the empty-helper test, re-review on the PR, 
 
 ### Actions
 - [x] (suggestion) Empty-helper case (sources cleanly, defines no `real_case_relpath`) added to both suites: asserts the "could not be loaded" warning, never "not found", and the candidate-spelling fallback (test_update_roadmap 12/12, test_discover_governance 25/25); mutation-checked — dropping the `declare -F` guard makes the update_roadmap case fail — `.agent/scripts/tests/test_discover_governance.sh:193`, `.agent/scripts/tests/test_update_roadmap.sh:147`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-24 09:41 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a2cbc558dfe7eb807, resume 1 of 3)
+**Verdict**: approved
+
+**PR**: #346 at `131c1a8`
+**Depth**: Deep (reason: whole-PR tier on re-review per #320; CI workflow + AGENTS.md/CLAUDE.md + skills are override triggers)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Delta since the approved round-4 pre-push review (`6cd387b`): one code commit, b40045a, adding an empty-helper case (helper sources cleanly, defines no `real_case_relpath`) to both suites; the rest is progress.md bookkeeping. The Integrated Review's carried suggestion is resolved. The cases are load-bearing: with the `declare -F` guard removed (scratch copy), exactly the new assertions fail — H1–H3 in test_discover_governance, both empty-helper assertions in test_update_roadmap — with `real_case_relpath: command not found`; all earlier assertions still pass. Temp paths are unique and under `$TMP_ROOT`; nothing case- or bash-version-sensitive added.
+
+Verified: shellcheck --severity=warning clean on both test files; test_discover_governance 25/25, test_update_roadmap 12/12. PR comments: none; the only GitHub review is Copilot's quota notice. CI at head: Validate Documentation, Validate Adapter Contract, ros-manifest tests pass; Lint (pre-commit) still running at review time.
+
+Reviewers: Claude adversarial (fresh) — ran, no findings (mutation-checked the new cases). Codex — ran, complete, no issues found. Gemini — failed: agy empty response, headless read_file (ViewFile) auto-denied. Copilot — skipped (quota exhausted; its PR review is a quota notice).
+
+### Findings
+- [ ] No issues found. LGTM.
