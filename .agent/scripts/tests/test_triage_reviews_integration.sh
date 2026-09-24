@@ -456,10 +456,11 @@ why=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.ignoreSubmodules GIT_CONFIG_VALUE
 # (h34) the helper's displayed path is safe ASCII on one line, C-quoted like
 # core.quotePath: \\ \" \t \n \r escapes, a backtick as \140 (the reason's
 # code span stays closed), every other non-printable or non-ASCII byte as a
-# three-digit octal escape. Matching still uses the raw path.
+# three-digit octal escape (pinned at both ends of the ASCII control range:
+# 0x01 and DEL 0x7f). Matching still uses the raw path.
 got=$(bash -c 'source "$1"; _bk_display "$2"' _ "$SCRIPT_DIR/../_bookkeeping.sh" \
-    "a b"$'\xff'"c"$'\r'$'\e'"é\\\"\`"$'\t'$'\n'"~")
-want='a b\377c\r\033\303\251\\\"\140\t\n~'
+    "a b"$'\xff'"c"$'\r'$'\e'"é\\\"\`"$'\t'$'\n'"~"$'\x01\x7f')
+want='a b\377c\r\033\303\251\\\"\140\t\n~\001\177'
 [[ "$got" == "$want" ]] \
     && pass "sources (h34): _bk_display C-quotes control, non-ASCII and invalid UTF-8 bytes to safe ASCII" \
     || fail "sources (h34): _bk_display (got=$(printf %q "$got") want=$want)"

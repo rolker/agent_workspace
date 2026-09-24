@@ -390,9 +390,10 @@ def coverage(sha):
                     ["bash", os.environ["BOOKKEEPING"], "--review", os.getcwd(),
                      sha or "", head, issue.group(1)],
                     stdin=subprocess.DEVNULL, capture_output=True, check=False,
-                    # The reason quotes a raw git path, which need not be
-                    # UTF-8 (a file named bad-\xff.sh): decode tolerantly so
-                    # it is reported as bad-\\xff.sh, never a traceback.
+                    # The helper C-quotes every value it prints
+                    # (_bk_display), so its output is ASCII; this tolerant
+                    # decode is only a backstop, so a future raw byte could
+                    # never turn into a traceback.
                     encoding="utf-8", errors="backslashreplace")
                 why = (r.stdout.strip().splitlines() or [""])[-1]
                 if r.returncode == 0:
