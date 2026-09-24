@@ -324,3 +324,13 @@ Every round-1 finding is addressed, and all 8 owner decisions are carried out fa
 - [ ] Put the prefix note in the hook's printed project header, and assert it in the hook's test.
 - [ ] Repurpose `generate-user-tier-skills` to regenerate the `plugin.json` skills array.
 - [ ] Fix step 2's skill count and the `what-next` classification.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 15:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Approve, start implementing now — dispatch the implementation now (owner accepted it will likely run past 15:30); the implementer folds in round-2 Plan Review findings A–F (5fadd1a).
