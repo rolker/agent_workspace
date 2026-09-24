@@ -45,10 +45,16 @@ setup() {
     #     whose `response` echoes the prompt content back.
     # Knobs (env):
     #   MOCK_AGY_DENY=1     empty response + denied_actions, exit 0 (#288)
+    #   MOCK_AGY_DENY_ACTION=<n>  display_name of that denied action
+    #                       (default RunCommand; #336 saw ViewFile)
     #   MOCK_AGY_TIMEOUT=1  SUCCESS result + the print-timeout stderr marker
     #   MOCK_AGY_EXIT=<n>   exit <n> after printing "boom" on stderr
     #   MOCK_AGY_ERROR=<m>  status ERROR with an object-valued `error`
     #                       whose message is <m>, exit 0 (API failure)
+    #   MOCK_AGY_ERROR_RESPONSE=<r>  with MOCK_AGY_ERROR: the partial
+    #                       `response` text sent alongside it (default "")
+    #   MOCK_AGY_ERROR_STDERR=<l>    with MOCK_AGY_ERROR: also print <l>
+    #                       on stderr before the result event
     #   MOCK_AGY_DENY_PARTIAL=1  normal response PLUS one denied action
     #   MOCK_AGY_SLEEP=<s>  sleep <s> before answering normally
     #   MOCK_AGY_STALL=1    read the prompt, then never answer (sleep 60):
@@ -98,11 +104,13 @@ echo 'agy: a newer version is available (mock banner, not JSON)'
 echo '{"event":"init","init":{"tools":[]}}'
 if [[ -n "${MOCK_AGY_DENY:-}" ]]; then
     echo 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.' >&2
-    echo '{"event":"result","result":{"status":"SUCCESS","response":"","denied_actions":[{"action":"command","display_name":"RunCommand"}]}}'
+    jq -cn --arg a "${MOCK_AGY_DENY_ACTION:-RunCommand}" '{event:"result",result:{status:"SUCCESS",response:"",denied_actions:[{action:"command",display_name:$a}]}}'
     exit 0
 fi
 if [[ -n "${MOCK_AGY_ERROR:-}" ]]; then
-    jq -cn --arg m "$MOCK_AGY_ERROR" '{event:"result",result:{status:"ERROR",response:"",error:{code:429,message:$m}}}'
+    [[ -n "${MOCK_AGY_ERROR_STDERR:-}" ]] && echo "${MOCK_AGY_ERROR_STDERR}" >&2
+    jq -cn --arg m "$MOCK_AGY_ERROR" --arg r "${MOCK_AGY_ERROR_RESPONSE:-}" \
+        '{event:"result",result:{status:"ERROR",response:$r,error:{code:429,message:$m}}}'
     exit 0
 fi
 if [[ -n "${MOCK_AGY_TIMEOUT:-}" ]]; then
@@ -1083,6 +1091,75 @@ test_agy_api_error_message_kept() {
     teardown
 }
 
+test_agy_viewfile_denial_is_failure() {
+    echo "TEST: a denied ViewFile read (#336's live signature) fails with the no-tools reason"
+    setup
+
+    local exit_code
+    exit_code=$(MOCK_AGY_DENY=1 MOCK_AGY_DENY_ACTION=ViewFile run_gemini_sync)
+
+    assert_exit_code "ViewFile-denied review exits 3" "3" "$exit_code"
+    local content
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "findings file has failed marker" "Review failed" "$content"
+    assert_contains "findings file names the denied ViewFile action" "\(ViewFile\)" "$content"
+    assert_contains "reason states the no-tools policy" \
+        "must not call any tools \(file reads and shell commands are both denied headlessly\)" "$content"
+    assert_not_contains "reason no longer blames shell commands alone" \
+        "it must not run shell commands" "$content"
+
+    teardown
+}
+
+# The cutoff shape below is modelled on the CLI text quoted in #336, not
+# on a captured live agy result: which channel agy puts it on (`.error`
+# or stderr) was not observed, so both are exercised.
+test_agy_output_token_cutoff_is_named() {
+    echo "TEST: agy's output-token cutoff is a failure with a precise reason; the partial response is dropped (#336)"
+    setup
+
+    local phrase="response was cut off because it exceeded the output token limit"
+    local exit_code content
+    exit_code=$(MOCK_AGY_ERROR="The ${phrase}." MOCK_AGY_ERROR_RESPONSE="PARTIAL REVIEW TEXT" run_gemini_sync)
+    assert_exit_code "cut-off review exits 3" "3" "$exit_code"
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "reason names the cutoff precisely" \
+        "response was cut off because it exceeded the output token limit \(status ERROR\); the prompt or response was too large" "$content"
+    assert_not_contains "partial response is not recorded as a review" "PARTIAL REVIEW TEXT" "$content"
+    assert_contains "findings file has failed marker" "Review failed" "$content"
+
+    # Same condition reported on stderr instead, with an unrelated .error.
+    exit_code=$(MOCK_AGY_ERROR="internal error" MOCK_AGY_ERROR_STDERR="[agy] Response was cut off: it exceeded the output token limit" \
+        MOCK_AGY_ERROR_RESPONSE="PARTIAL REVIEW TEXT" run_gemini_sync)
+    assert_exit_code "stderr-reported cutoff exits 3" "3" "$exit_code"
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "stderr-reported cutoff is named" "exceeded the output token limit \(status ERROR\)" "$content"
+    assert_not_contains "partial response is not recorded (stderr case)" "PARTIAL REVIEW TEXT" "$content"
+
+    teardown
+}
+
+test_agy_cutoff_phrase_in_response_not_misread() {
+    echo "TEST: the cutoff phrase in the model's own response never relabels an unrelated error (#336)"
+    setup
+
+    # Status ERROR with an unrelated message, and a partial response that
+    # quotes the cutoff phrase (as a review of a diff mentioning it would).
+    # Only ERROR_MSG / stderr may drive the cutoff reason.
+    local exit_code content
+    exit_code=$(MOCK_AGY_ERROR="quota exceeded for model" \
+        MOCK_AGY_ERROR_RESPONSE="| 1 | major | x.sh:3 | response was cut off because it exceeded the output token limit |" \
+        run_gemini_sync)
+    assert_exit_code "unrelated ERROR exits 3" "3" "$exit_code"
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "reason is the generic status line with the real error" \
+        "result status ERROR: .*quota exceeded for model" "$content"
+    assert_not_contains "no cutoff reason line" "\(status ERROR\); the prompt or response was too large" "$content"
+    assert_not_contains "the partial response is not recorded" "x.sh:3" "$content"
+
+    teardown
+}
+
 test_agy_findings_truncated() {
     echo "TEST: a failed run never leaves the previous run's findings in place (#288)"
     setup
@@ -1181,7 +1258,7 @@ MKTEMP_EOF
 }
 
 test_prompt_tool_use_guidance() {
-    echo "TEST: tool-use paragraph is present for gemini and absent for codex (#288)"
+    echo "TEST: no-tools + concise-output guidance is gemini-only (#288, #336)"
     setup
 
     run_gemini_sync >/dev/null
@@ -1189,6 +1266,14 @@ test_prompt_tool_use_guidance() {
     gemini_prompt=$(cat "${MOCK_REPO}/${PROMPT_REL}")
     assert_contains "gemini prompt tells the model not to run commands" \
         "Do NOT run shell commands" "$gemini_prompt"
+    assert_contains "gemini prompt tells the model to call no tools" \
+        "Do not call any" "$gemini_prompt"
+    assert_contains "gemini prompt says there is no file-reading tool" \
+        "there is no file-reading tool in this session" "$gemini_prompt"
+    assert_contains "gemini prompt asks for a concise answer" \
+        "Keep the answer concise" "$gemini_prompt"
+    assert_not_contains "gemini prompt no longer invites file reads" \
+        "You may read files" "$gemini_prompt"
 
     # codex: a mock that consumes stdin and prints something.
     cat > "${MOCK_BIN}/codex" << 'CODEX_EOF'
@@ -1204,6 +1289,23 @@ CODEX_EOF
     codex_prompt=$(cat "${MOCK_REPO}/.agent/work-plans/issue-42/review-codex-prompt.md")
     assert_not_contains "codex prompt has no tool-use paragraph" \
         "Do NOT run shell commands" "$codex_prompt"
+    assert_not_contains "codex prompt has no no-tools instruction" \
+        "Do not call any|no file-reading tool" "$codex_prompt"
+    assert_not_contains "codex prompt has no concise-output instruction" \
+        "Keep the answer concise" "$codex_prompt"
+
+    make_mock_agent claude
+    local out="${TMPDIR_BASE}/out.txt"
+    run_agents "$out" "claude" >/dev/null
+    local claude_prompt
+    claude_prompt=$(cat "${MOCK_REPO}/.agent/work-plans/issue-42/review-claude-prompt.md")
+    assert_contains "claude prompt was generated" "### Findings" "$claude_prompt"
+    assert_not_contains "claude prompt has no tool-use paragraph" \
+        "Do NOT run shell commands" "$claude_prompt"
+    assert_not_contains "claude prompt has no no-tools instruction" \
+        "Do not call any|no file-reading tool" "$claude_prompt"
+    assert_not_contains "claude prompt has no concise-output instruction" \
+        "Keep the answer concise" "$claude_prompt"
 
     teardown
 }
@@ -3879,6 +3981,9 @@ test_agy_timeout_is_failure
 test_agy_partial_denial_is_noted
 test_diff_fetch_failure_is_marked
 test_agy_api_error_message_kept
+test_agy_viewfile_denial_is_failure
+test_agy_output_token_cutoff_is_named
+test_agy_cutoff_phrase_in_response_not_misread
 test_agy_findings_truncated
 test_agy_no_temp_leak
 test_shared_temp_no_leak_on_early_abort
