@@ -94,12 +94,16 @@ fi
 echo "TEST: without _real_case_path.sh the roadmap is still updated, with a warning"
 # update_roadmap.sh never blocks a merge: a copy of it with no helper beside
 # it warns on stderr naming the helper and updates via the candidate spelling.
+# The fixture is stored as docs/ROADMAP.md — the first docs/ probe — so the
+# candidate spelling that finds it is its stored name on case-sensitive and
+# case-insensitive filesystems alike (a stored docs/roadmap.md would be found,
+# and reported, as docs/ROADMAP.md on macOS without the helper).
 nohelper="$(mktemp -d "$TMP_ROOT/nohelper.XXXXXX")"
 cp "$UPDATE" "$nohelper/update_roadmap.sh"
 [[ ! -e "$nohelper/_real_case_path.sh" ]] || fail "(no-helper) fixture: helper unexpectedly present"
 root="$(mktemp -d "$TMP_ROOT/root.XXXXXX")"
 mkdir -p "$root/docs"
-printf '%s' "$roadmap_body" > "$root/docs/roadmap.md"
+printf '%s' "$roadmap_body" > "$root/docs/ROADMAP.md"
 rc=0
 stdout="$("$nohelper/update_roadmap.sh" --issue 7 --root "$root" 2>"$TMP_ROOT/nohelper.err")" || rc=$?
 stderr="$(cat "$TMP_ROOT/nohelper.err")"
@@ -108,11 +112,11 @@ if [[ "$stderr" == *"_real_case_path.sh not found"* ]]; then
 else
     fail "(no-helper) stderr was: $stderr"
 fi
-if [[ $rc -eq 0 ]] && [[ "$stdout" == "$root/docs/roadmap.md" ]] \
-    && grep -qF -- '- [x] Something (#7)' "$root/docs/roadmap.md"; then
+if [[ $rc -eq 0 ]] && [[ "$stdout" == "$root/docs/ROADMAP.md" ]] \
+    && grep -qF -- '- [x] Something (#7)' "$root/docs/ROADMAP.md"; then
     pass "(no-helper) roadmap still checked off; changed path printed"
 else
-    fail "(no-helper) rc=$rc stdout='$stdout' file=$(tr '\n' '|' < "$root/docs/roadmap.md")"
+    fail "(no-helper) rc=$rc stdout='$stdout' file=$(tr '\n' '|' < "$root/docs/ROADMAP.md")"
 fi
 
 echo ""
