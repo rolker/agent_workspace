@@ -644,3 +644,31 @@ Reviewers:
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-24 14:46 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent afa8f1226fae092f2, resume 1 of 3)
+
+**PR**: #349 at `ad24005`
+**Sources**: 2 (Local Review @ `f2ef6da`, covering head `ad24005` by bookkeeping-only coverage; CI rollup). Copilot: quota notices only, not a source. No human reviews, inline comments or conversation comments.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Sources were read with this branch's own `review_progress.sh sources`. It dropped the Local Review at `3d30684` as `stale`, alongside the three earlier ones ruled on in the Integrated Review at `1b488b5`.
+
+The 4 suggestions from the Integrated Review at `1b488b5` are closed by fix pass 4. The owner's checkpoint was "Fix all 4, then merge (Recommended)".
+- **Escaping, 57c9e9f:** every `_gate_reasons+=` site that interpolates a value now routes it through `_bk_display`. The only exceptions are two literal-only reasons, and `_gate_read_rc` and the already-escaped `_gate_stale_why`. Covered by tests g15/g15b/g16/g17/g17b/g17c.
+- **Cap, 3345803:** `_bk_display` caps its input at `BK_DISPLAY_MAX` before the loop. Covered by h35.
+- **Comment, 3aa5dcd:** the bridge comment is corrected, and h34 now pins 0x01 and DEL.
+
+I spot-checked all three against the code at `ad24005`. The PR-mode Local Review at `f2ef6da` approved with no findings. It dropped one adversarial suggestion as unreachable: the "covers head" echo's SHA is hex-only because of the progress_read.py correlation regex.
+
+The reviewer judged the remaining risk structural: escaping is by convention across about 15 gate-reason sites, so a future site could forget it. The reviewer did not consider this worth blocking. It is recorded here as context, not as a finding.
+
+### Findings
+- [x] No open findings.
+
+### False positives
+- (Local Review @ `f2ef6da`) "No issues found. LGTM." — this is review-code's placeholder bullet for an empty findings list, written as an unchecked box. It is not a defect. `sources` lists it only because the box is open.
