@@ -374,3 +374,21 @@ Tests: test_cross_model_review.sh 657 passed, 0 failed; shellcheck --severity=wa
 - Specialists: shellcheck --severity=warning clean on the 3 changed scripts. Fresh Claude adversarial subagent: no must-fix, 657/657 tests pass, no temp leaks. Its two observations were dropped (pre-existing / harmless).
 - Cross-model (run from this branch, so the Gemini arm ran the NEW helper and the softened prompt): Gemini failed — output-token cutoff, named precisely by the new code (live capture above). Codex ran — "No issues found"; it did not run the test suite. Copilot skipped — quota exhausted this month.
 - The history point is closed (owner: push as is). The live-capture residual for a SUCCESS status with a truncated reply is still deferred to the PR body; this round's capture covers only the ERROR shape.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 11:50 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af505968a635cb8f0, resume 1 of 3)
+
+**Branch**: feature/issue-336 at `a8507c9`
+**Addressed**: Local Review (Pre-Push) at `9c03610` (2026-09-24 11:32 -04:00)
+**Commits**: 6f95663, a8507c9
+
+Owner decision: "Ship detection, follow-up" — output-token cutoff reliability moves to follow-up issue #347.
+
+### Actions
+- [x] Concise-output prompt does not reliably prevent agy's output-token cutoff (live run failed; detection worked) — `.agent/scripts/_agy_review.sh:249` / `.agent/scripts/cross_model_review.sh:1140` (deferred: owner: ship detection; reliability tracked in #347)
+- [x] Live cutoff shape recorded: "not captured live / not observed" comments replaced with the capture (`.error` as a plain string, verbatim three-line text); new mock mode `MOCK_AGY_ERROR_STRING=1` and verbatim fixture test `test_agy_live_cutoff_fixture` asserting the cutoff reason; existing object/stderr mock tests kept — `.agent/scripts/_agy_review.sh:255`, `.agent/scripts/tests/test_cross_model_review.sh:1116`
+
+Tests: test_cross_model_review.sh 662 passed, 0 failed; shellcheck --severity=warning clean. Mutations: dropping `.error` from the cutoff source fails 2 (incl. the fixture); reading only `.error.message` fails the fixture's 2 assertions while the object mocks pass. Nothing pushed.
