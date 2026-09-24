@@ -14,9 +14,18 @@
 #   - cwd outside the workspace checkout and outside every registered root:
 #     exit 0 with no output. Silence is the contract -- an unrelated repo's
 #     session must look exactly as it does today.
-#   - cwd under a registered root: print the header, the workspace-root
-#     idiom, the workspace layer (rendered from AGENTS.md by a pinned
-#     heading list) and the project layer.
+#   - cwd under a registered root: print the header, how workspace skills
+#     are named in this session, the workspace-root idiom, the workspace
+#     layer (rendered from AGENTS.md by a pinned heading list) and the
+#     project layer.
+#
+# This hook does not deliver the workspace SKILLS. In a project session they
+# come from the agent-workspace Claude Code plugin, which user_tier_install.sh
+# enables per registered root (ADR-0017), and are namespaced
+# /agent-workspace:<skill> so a project's own same-named skill keeps its
+# bare name. The skills' own text still names each other by bare slash
+# command, so the header says which form to invoke -- that line is for the
+# model, which never sees this comment.
 #
 # What this hook deliberately does NOT print: any `KEY=value` line meant for
 # a script to parse. SessionStart stdout is context text for the model; it
@@ -88,6 +97,28 @@ echo "=== agent_workspace session layer ==="
 echo "Project: $P_NAME (type: $P_TYPE)"
 echo "Project root: $P_PATH"
 echo "Session cwd: $CWD"
+echo ""
+
+# --- how workspace skills are named here (ADR-0017) ---------------------
+# A root whose git toplevel is the workspace checkout itself sees the
+# workspace's .claude/skills by directory walk-up, bare, and the installer
+# never enables the plugin there; everywhere else the plugin namespaces them.
+# Same rule as user_tier_install.sh's plugin_roots(), in `pwd -P` forms.
+_ws_phys="$(cd "$WS_ROOT" 2>/dev/null && pwd -P)"
+_top="$(git -C "$P_PATH" rev-parse --show-toplevel 2>/dev/null)" \
+    && _top="$(cd "$_top" 2>/dev/null && pwd -P)" || _top=""
+if [[ -n "$_top" && "$_top" == "$_ws_phys" ]]; then
+    echo "Workspace skills: this root lies inside the workspace checkout, so they"
+    echo "load under their bare names (/review-code, /run-issue, ...)."
+else
+    echo "Workspace skills: they reach this session through the agent-workspace"
+    echo "plugin, namespaced /agent-workspace:<skill> (e.g. /agent-workspace:review-code)."
+    echo "Where a skill's text names another skill by its bare slash command, invoke"
+    echo "the agent-workspace: form -- a bare /<skill> here may be this project's own"
+    echo "skill of the same name. If no agent-workspace: skills are listed, the"
+    echo "plugin is not enabled for this root: run the workspace's"
+    echo ".agent/scripts/user_tier_install.sh."
+fi
 echo ""
 
 # --- the workspace-root idiom -------------------------------------------

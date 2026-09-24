@@ -247,6 +247,37 @@ out=$(run_hook "$PROOT")
     && pass "the layer's idiom carries the || echo . fallback" \
     || fail "the layer's idiom omits the fallback"
 
+# ------------------------------------ how workspace skills are named ---
+# ADR-0017 (#345): the header tells the model which name to invoke. A root
+# outside the workspace checkout gets the plugin's namespaced names; a root
+# whose git toplevel IS the workspace checkout (the p11-* shape) loads the
+# bare skills by walk-up and must be told so, not sent to agent-workspace:.
+out=$(run_hook "$PROOT")
+[[ "$out" == *"namespaced /agent-workspace:<skill>"* && "$out" == *"invoke"*"the agent-workspace: form"* ]] \
+    && pass "a project root outside the workspace is told workspace skills are /agent-workspace:<skill>" \
+    || fail "the namespaced-skills note is missing for a project root outside the workspace"
+note_at=$(grep -n "^Workspace skills:" <<< "$out" | head -n1 | cut -d: -f1)
+rules_at=$(grep -n "Workspace rules (rendered from AGENTS.md)" <<< "$out" | head -n1 | cut -d: -f1)
+[[ -n "$note_at" && -n "$rules_at" && "$note_at" -lt "$rules_at" ]] \
+    && pass "the skill-naming note is in the header, before the rendered rules" \
+    || fail "the skill-naming note is not in the header (note=$note_at rules=$rules_at)"
+
+git -C "$WSC" init -q
+mkdir -p "$WSC/projects/inner"
+printf 'demo single_project %s\ninner single_project %s\n' "$PROOT" "$WSC/projects/inner" > "$WSC/.agent/projects.local"
+out=$(run_hook "$WSC/projects/inner")
+[[ "$out" == *"Project: inner"* && "$out" == *"load under their bare names"* && "$out" != *"/agent-workspace:"* ]] \
+    && pass "a root inside the workspace checkout's own git tree is told the skills are bare" \
+    || fail "a workspace-toplevel root got the wrong skill-naming note (out=$(grep '^Workspace skills' <<< "$out"))"
+
+# Through a symlinked path the toplevel comparison still holds (pwd -P).
+ln -s "$WSC" "$SANDBOX/ws-link"
+printf 'inner single_project %s\n' "$SANDBOX/ws-link/projects/inner" > "$WSC/.agent/projects.local"
+out=$(run_hook "$SANDBOX/ws-link/projects/inner")
+[[ "$out" == *"load under their bare names"* ]] \
+    && pass "a workspace-toplevel root registered through a symlinked path is still recognised" \
+    || fail "the symlinked workspace-toplevel root got the namespaced note"
+
 echo ""
 echo "test_session_start_layer: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
