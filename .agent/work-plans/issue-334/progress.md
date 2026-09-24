@@ -404,7 +404,7 @@ Publish now (Recommended) — push the branch and open the PR with the reviewer'
 Lint (pre-commit) still running on both workflow runs; Validate Adapter Contract, Validate Documentation and ros-manifest tests pass. The one open item is the round-4 suggestion the owner chose to publish with; re-verified against the code at head: both suites cover the missing-helper and syntax-broken-helper states, neither covers a helper that sources cleanly but defines no `real_case_relpath`. No must-fix open.
 
 ### Findings
-- [ ] (suggestion, Local Review (Pre-Push) r4) The third helper state — helper sources cleanly but defines no `real_case_relpath` — works (hand-verified) but has no test in either suite; add an empty-helper case asserting "could not be loaded" and the fallback — `.agent/scripts/tests/test_discover_governance.sh:169`, `.agent/scripts/tests/test_update_roadmap.sh:122`
+- [x] (suggestion, Local Review (Pre-Push) r4) The third helper state — helper sources cleanly but defines no `real_case_relpath` — works (hand-verified) but has no test in either suite; add an empty-helper case asserting "could not be loaded" and the fallback — `.agent/scripts/tests/test_discover_governance.sh:169`, `.agent/scripts/tests/test_update_roadmap.sh:122`
 
 ### False positives
 

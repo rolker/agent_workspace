@@ -190,6 +190,29 @@ else
 fi
 assert_row "(G3) helper broken: docs/design.md still reported" "$out" docs/design.md architecture workspace
 
+echo "TEST: a _real_case_path.sh that loads but defines no real_case_relpath is unloadable too"
+# Sourcing succeeds, so only the function check catches it: the warning says
+# "could not be loaded" (not "not found") and the report still runs.
+sb="$(make_sandbox)"
+printf '# no functions here\n' > "$sb/.agent/scripts/_real_case_path.sh"
+mkdir -p "$sb/docs"
+echo "# Design" > "$sb/docs/design.md"
+rc=0
+out="$(run_discover "$sb" 2>"$TMP_ROOT/empty.err")" || rc=$?
+err="$(cat "$TMP_ROOT/empty.err")"
+if [[ $rc -eq 0 ]]; then
+    pass "(H1) helper empty: exits 0"
+else
+    fail "(H1) helper empty: exit $rc, stderr: $err"
+fi
+if [[ "$err" == *"WARNING"*"_real_case_path.sh could not be loaded"* ]] \
+    && [[ "$err" != *"not found"* ]]; then
+    pass "(H2) helper empty: warning says could not be loaded"
+else
+    fail "(H2) helper empty: stderr was: $err"
+fi
+assert_row "(H3) helper empty: docs/design.md still reported" "$out" docs/design.md architecture workspace
+
 echo ""
 echo "test_discover_governance:${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]

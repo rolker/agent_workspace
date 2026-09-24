@@ -145,6 +145,31 @@ else
     fail "(broken-helper) rc=$rc stdout='$stdout' file=$(tr '\n' '|' < "$root/docs/ROADMAP.md")"
 fi
 
+echo "TEST: a _real_case_path.sh that loads but defines no real_case_relpath is unloadable too"
+# Sourcing succeeds, so only the function check catches it: the warning says
+# "could not be loaded" (not "not found") and the fallback still updates.
+empty="$(mktemp -d "$TMP_ROOT/empty.XXXXXX")"
+cp "$UPDATE" "$empty/update_roadmap.sh"
+printf '# no functions here\n' > "$empty/_real_case_path.sh"
+root="$(mktemp -d "$TMP_ROOT/root.XXXXXX")"
+mkdir -p "$root/docs"
+printf '%s' "$roadmap_body" > "$root/docs/ROADMAP.md"
+rc=0
+stdout="$("$empty/update_roadmap.sh" --issue 7 --root "$root" 2>"$TMP_ROOT/empty.err")" || rc=$?
+stderr="$(cat "$TMP_ROOT/empty.err")"
+if [[ "$stderr" == *"_real_case_path.sh could not be loaded"* ]] \
+    && [[ "$stderr" != *"not found"* ]]; then
+    pass "(empty-helper) warning says could not be loaded"
+else
+    fail "(empty-helper) stderr was: $stderr"
+fi
+if [[ $rc -eq 0 ]] && [[ "$stdout" == "$root/docs/ROADMAP.md" ]] \
+    && grep -qF -- '- [x] Something (#7)' "$root/docs/ROADMAP.md"; then
+    pass "(empty-helper) roadmap still checked off; changed path printed"
+else
+    fail "(empty-helper) rc=$rc stdout='$stdout' file=$(tr '\n' '|' < "$root/docs/ROADMAP.md")"
+fi
+
 echo ""
 echo "test_update_roadmap:${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]
