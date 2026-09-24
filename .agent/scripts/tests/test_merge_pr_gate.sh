@@ -1359,6 +1359,7 @@ fi
 #   plan-after     R -> work-plans/issue-7/plan.md -> progress.md
 #   other-issue-after    R -> work-plans/issue-70/progress.md -> progress.md
 #   plan-nonascii-after  R -> work-plans/issue-7/notes/café.md -> progress.md (#309)
+#   code-rawbytes-after  R -> bad-<0xff><CR><ESC>.sh (code) -> progress.md (#309)
 #   rename-into-plan     R -> reviewed.sh moved into work-plans/issue-7/ -> progress.md
 #   unrelated      review cites a commit on main that is not in H's history
 make_gate_sandbox() {  # <mode>
@@ -1386,6 +1387,10 @@ make_gate_sandbox() {  # <mode>
             mkdir -p "$wt/.agent/work-plans/issue-7"
             printf -- '# Plan\n\n## Addendum 1\n\nowner rule\n' > "$wt/.agent/work-plans/issue-7/plan.md"
             git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "plan(#7): addendum" ;;
+        code-rawbytes-after)
+            # A code file named with an invalid UTF-8 byte, a CR and an ESC.
+            printf 'code\n' > "$wt/bad-"$'\xff\r\e'".sh"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "raw-byte name" ;;
         plan-nonascii-after)
             mkdir -p "$wt/.agent/work-plans/issue-7/notes"
             printf -- 'note\n' > "$wt/.agent/work-plans/issue-7/notes/café.md"
@@ -1505,6 +1510,21 @@ if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]] \
     pass "(g13) work-plans/issue-7/notes/café.md after the review: gate passes under the default (enforce)"
 else
     fail "(g13) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a raw-byte code path is quoted safe ASCII in the reason and the record; progress.md stays parseable (#309)"
+sb="$(make_gate_sandbox code-rawbytes-after)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+pf="$sb/worktrees/workspace/issue-workspace-7/.agent/work-plans/issue-7/progress.md"
+if [[ "$out" == *"would have refused"*"stale review"*'touches `bad-\377\r\033.sh`'* ]] \
+    && progress_of "$sb" | grep -qF '**Conditions**: latest Local Review entry is at' \
+    && progress_of "$sb" | grep -qF 'touches `bad-\377\r\033.sh`' \
+    && ! LC_ALL=C grep -q $'[\x80-\xff\r\x1b]' "$pf" \
+    && python3 "$sb/.agent/scripts/progress_read.py" "$pf" --type "Merge (report-only)" \
+        | jq -e '.entries | length == 1' >/dev/null; then
+    pass "(g14) raw-byte path: stale reason and Merge (report-only) record are safe ASCII; progress_read.py still parses the file"
+else
+    fail "(g14) (out=$(printf %q "${out:0:600}"))"
 fi
 
 echo "TEST: gate (a) — an unverifiable coverage check (git failure, helper rc 3) is still not covered, worded as unconfirmed (#309)"

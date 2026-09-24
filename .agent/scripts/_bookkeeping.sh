@@ -21,6 +21,37 @@
 # and branches that predate it.
 BOOKKEEPING_ROADMAP_PATHS=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
 
+# _bk_display <text> -- print <text> as safe ASCII for a reason line.
+# Reasons end up in the terminal and, through the merge gate's
+# `**Conditions**:` field, in a committed progress.md, which must stay valid
+# UTF-8 on one line. So a path read raw from `diff -z` (any bytes but NUL)
+# or any other caller-supplied text is C-quoted the way core.quotePath
+# quotes a path, without the surrounding quotes: backslash and double quote
+# are escaped, \t \n \r get their C escapes, every other byte outside
+# printable ASCII (control bytes, DEL, ESC, and each byte of a non-ASCII or
+# invalid UTF-8 name) becomes a three-digit octal escape, and a backtick
+# becomes \140 so the reason's `code span` stays closed. Matching never
+# uses this form; it is display only. Runs in a subshell so LC_ALL=C (byte
+# iteration) cannot leak into the caller.
+_bk_display() (
+    LC_ALL=C
+    local s="$1" out="" c o i
+    for ((i = 0; i < ${#s}; i++)); do
+        c="${s:i:1}"
+        case "$c" in
+            '\') out+='\\' ;;
+            '"') out+='\"' ;;
+            $'\t') out+='\t' ;;
+            $'\n') out+='\n' ;;
+            $'\r') out+='\r' ;;
+            '`') out+='\140' ;;
+            [' '-'~']) out+="$c" ;;
+            *) printf -v o '\\%03o' "'$c"; out+="$o" ;;
+        esac
+    done
+    printf '%s' "$out"
+)
+
 # _only_bookkeeping_between <wt> <from-sha> <to-sha> <allowed-path>...
 # <to> is "the same reviewed state" as <from> when <from> is an ancestor of
 # <to> and every path that differs is one of the document files this
@@ -33,7 +64,8 @@ BOOKKEEPING_ROADMAP_PATHS=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
 # a path outside the allowed set); 3 when git cannot answer (an ancestry
 # check that exits other than 0/1 or prints an error:/fatal: line, a failed
 # diff, a non-ancestor in a shallow repository). Prints the reason for 1 and 3 (one line, for the
-# caller to quote); callers that only ask "covered or not" treat any
+# caller to quote; every quoted value is passed through _bk_display, so the
+# line is safe ASCII); callers that only ask "covered or not" treat any
 # non-zero alike. Both SHAs must be full and resolvable in <wt>; callers
 # resolve short SHAs first so an ambiguous prefix is a failure there, not a
 # silent match here.
@@ -54,15 +86,15 @@ _only_bookkeeping_between() {
     anc_errline=$(grep -m1 -E '^(error|fatal):' <<<"$anc_err" || true)
     if [[ "$anc_rc" -ne 0 ]]; then
         if [[ "$anc_rc" -ne 1 || -n "$anc_errline" ]]; then
-            echo "could not check whether \`${from:0:7}\` is an ancestor of \`${to:0:7}\` (git exit ${anc_rc}: ${anc_errline:-${anc_err%%$'\n'*}})"
+            echo "could not check whether \`$(_bk_display "${from:0:7}")\` is an ancestor of \`$(_bk_display "${to:0:7}")\` (git exit ${anc_rc}: $(_bk_display "${anc_errline:-${anc_err%%$'\n'*}}"))"
             return 3
         fi
         shallow=$(git -C "$wt" rev-parse --is-shallow-repository 2>/dev/null) || shallow=""
         if [[ "$shallow" != "false" ]]; then
-            echo "\`${from:0:7}\` is not an ancestor of \`${to:0:7}\` in a shallow (or unknown-depth) repository, whose history may be cut"
+            echo "\`$(_bk_display "${from:0:7}")\` is not an ancestor of \`$(_bk_display "${to:0:7}")\` in a shallow (or unknown-depth) repository, whose history may be cut"
             return 3
         fi
-        echo "\`${from:0:7}\` is not an ancestor of \`${to:0:7}\` (force-push or a concurrent history change)"
+        echo "\`$(_bk_display "${from:0:7}")\` is not an ancestor of \`$(_bk_display "${to:0:7}")\` (force-push or a concurrent history change)"
         return 1
     fi
     # --no-renames: a rename is reported as its deletion AND its addition, so
@@ -84,7 +116,7 @@ _only_bookkeeping_between() {
         diff_paths+=("$p")
     done < <(git -C "$wt" diff --no-renames --no-relative --ignore-submodules=none --name-only -z "$from" "$to" 2>/dev/null; printf 'rc=%s' "$?")
     if [[ "$p" != "rc=0" ]]; then
-        echo "could not diff \`${from:0:7}\`..\`${to:0:7}\` in $wt"
+        echo "could not diff \`$(_bk_display "${from:0:7}")\`..\`$(_bk_display "${to:0:7}")\` in $(_bk_display "$wt")"
         return 3
     fi
     for p in ${diff_paths[@]+"${diff_paths[@]}"}; do
@@ -99,8 +131,8 @@ _only_bookkeeping_between() {
             [[ "$p" == $a ]] && { ok=true; break; }
         done
         if [[ "$ok" == false ]]; then
-            # One line for the caller: a newline in a path is shown as \n.
-            echo "touches \`${p//$'\n'/\\n}\`, which is not a merge-time document file"
+            # Displayed C-quoted (safe ASCII, one line); matched raw above.
+            echo "touches \`$(_bk_display "$p")\`, which is not a merge-time document file"
             return 1
         fi
     done
@@ -120,11 +152,11 @@ _only_bookkeeping_between() {
 _review_bookkeeping_between() {
     local wt="$1" from="$2" to="$3" issue="$4" from_full to_full
     if [[ ! "$issue" =~ ^[0-9]+$ ]]; then
-        echo "no issue number to scope the work-plan exemption (got '${issue}')"
+        echo "no issue number to scope the work-plan exemption (got '$(_bk_display "$issue")')"
         return 3
     fi
     if ! git -C "$wt" rev-parse --git-dir >/dev/null 2>&1; then
-        echo "$wt is not a git repository"
+        echo "$(_bk_display "$wt") is not a git repository"
         return 3
     fi
     # Hex only: a ref name ("HEAD", a branch) or an option-like argument
@@ -134,7 +166,7 @@ _review_bookkeeping_between() {
         from_full=$(git -C "$wt" rev-parse --verify --quiet "${from}^{commit}" 2>/dev/null) || from_full=""
     fi
     if [[ -z "$from_full" ]]; then
-        echo "review \`${from:-?}\` does not resolve to one commit in $wt"
+        echo "review \`$(_bk_display "${from:-?}")\` does not resolve to one commit in $(_bk_display "$wt")"
         return 3
     fi
     to_full=""
@@ -142,7 +174,7 @@ _review_bookkeeping_between() {
         to_full=$(git -C "$wt" rev-parse --verify --quiet "${to}^{commit}" 2>/dev/null) || to_full=""
     fi
     if [[ -z "$to_full" ]]; then
-        echo "head \`${to:-?}\` does not resolve to one commit in $wt"
+        echo "head \`$(_bk_display "${to:-?}")\` does not resolve to one commit in $(_bk_display "$wt")"
         return 3
     fi
     _only_bookkeeping_between "$wt" "$from_full" "$to_full" \

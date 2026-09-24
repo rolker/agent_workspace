@@ -453,11 +453,21 @@ why=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.ignoreSubmodules GIT_CONFIG_VALUE
 [[ "$rc" == 1 && "$why" == *"vendor/sub"* ]] \
     && pass "sources (h25): diff.ignoreSubmodules=all does not hide a submodule pointer change (stale)" \
     || fail "sources (h25): submodule change hidden (rc=$rc why=$why)"
+# (h34) the helper's displayed path is safe ASCII on one line, C-quoted like
+# core.quotePath: \\ \" \t \n \r escapes, a backtick as \140 (the reason's
+# code span stays closed), every other non-printable or non-ASCII byte as a
+# three-digit octal escape. Matching still uses the raw path.
+got=$(bash -c 'source "$1"; _bk_display "$2"' _ "$SCRIPT_DIR/../_bookkeeping.sh" \
+    "a b"$'\xff'"c"$'\r'$'\e'"é\\\"\`"$'\t'$'\n'"~")
+want='a b\377c\r\033\303\251\\\"\140\t\n~'
+[[ "$got" == "$want" ]] \
+    && pass "sources (h34): _bk_display C-quotes control, non-ASCII and invalid UTF-8 bytes to safe ASCII" \
+    || fail "sources (h34): _bk_display (got=$(printf %q "$got") want=$want)"
 
 # (h29) non-ASCII paths: git quotes them under core.quotePath=true (the
 # default) unless the diff is read NUL-delimited. A non-ASCII file in the
 # issue's work-plan dir is still bookkeeping, and a non-ASCII code file is
-# named as it is spelled in the stale reason.
+# named C-quoted (octal escapes, safe ASCII) in the stale reason.
 qp_sources() {  # <head> -- hist_sources with core.quotePath=true forced
     GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.quotePath GIT_CONFIG_VALUE_0=true hist_sources "$1"
 }
@@ -476,21 +486,21 @@ printf 'code\n' > "$HIST/scripts/naïve.sh"
 hist_commit "non-ASCII code"
 out=$(qp_sources "$(hist_head)")
 [[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"
-        and (.dropped_entries[0].why | contains("scripts/naïve.sh"))' <<<"$out" >/dev/null \
-    && pass "sources (h29): a non-ASCII code file is stale and named as spelled" \
+        and (.dropped_entries[0].why | contains("scripts/na\\303\\257ve.sh"))' <<<"$out" >/dev/null \
+    && pass "sources (h29): a non-ASCII code file is stale and named C-quoted (na\\303\\257ve.sh)" \
     || fail "sources (h29): non-ASCII code file (out=$out)"
 # (h33) a code file whose name is not valid UTF-8: the helper's stale
-# reason quotes the raw bytes, which sources must decode tolerantly — the
-# entry is reported stale (the byte shown as \xff), never a traceback.
+# reason is C-quoted by the helper (the byte shown as \377) and decoded
+# tolerantly by the bridge — reported stale, never a traceback.
 git -C "$HIST" checkout -q -B non-utf8 "$DOC_HEAD"
 printf 'code\n' > "$HIST/scripts/bad-"$'\xff'".sh"
 hist_commit "non-UTF-8 code file name"
 out=$(qp_sources "$(hist_head)"); rc=$?
 if [[ "$rc" == 0 && "$(n_local "$out")" == 0 ]] && jq -e '(.dropped_entries | length) == 1
         and .dropped_entries[0].reason == "stale"
-        and (.dropped_entries[0].why | contains("scripts/bad-\\xff.sh"))' <<<"$out" >/dev/null \
+        and (.dropped_entries[0].why | contains("scripts/bad-\\377.sh"))' <<<"$out" >/dev/null \
     && ! grep -q Traceback "$HERR"; then
-    pass "sources (h33): a non-UTF-8 code file name is reported stale (as bad-\\xff.sh), not a crash"
+    pass "sources (h33): a non-UTF-8 code file name is reported stale (as bad-\\377.sh), not a crash"
 else
     fail "sources (h33): non-UTF-8 path (rc=$rc out=$out err=$(<"$HERR"))"
 fi
