@@ -447,3 +447,38 @@ Reviewers:
   - Dropping the gate's jq whitespace trim does not fail e5. progress_read.py already strips field values, so that trim is redundant defence; e5 pins the end-to-end behaviour.
 - Suites: triage integration 57/0, merge gate 96/0, merge_pr 91/0, convergence 31/0; shellcheck (warning) clean.
 - The source entry's boxes are not ticked, for the same reason as last pass: `check` targets only Integrated Review / Local Review (Pre-Push) entries.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-24 13:37 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent aea98abffc0d1b756, resume 2 of 3)
+
+**PR**: #349 at `f2118b0`
+**Depth**: Deep (reason: whole-PR re-review; enforcement script merge_pr.sh plus governance files AGENTS.md, ADR-0013, triage-reviews SKILL.md)
+**Must-fix**: 1 | **Suggestions**: 0
+
+The three findings from the Local Review at `fabaa34` are closed:
+- efffa60: the bridge decodes with errors="backslashreplace", tested by h33. The adversarial reviewer checked every other decode point in cmd_sources; none can crash.
+- e86ac56: d5 (`<missing>` refused) and e5 (mixed-case/padded Complete).
+- 1a15852: the SKILL.md text matches the code.
+
+The surviving mutation (the gate's jq whitespace trim) does not matter. progress_read.py's `_field` already strips the value, so the trim is redundant defence, and d5 asserts the exact refusal text.
+
+Suites: triage integration 57/0, merge gate 96/0, merge_pr 91/0, convergence 31/0. shellcheck is clean. There has been no merge from main since `df33a3f`.
+
+Reviewers:
+- Claude adversarial: ran fresh; found 1 must-fix.
+- Codex: completed; no issues.
+- Gemini: failed; the response hit the output token limit.
+- Copilot: skipped (quota).
+
+### Findings
+- [ ] (must-fix) Raw path bytes from the `-z` diff can corrupt progress.md through the merge gate.
+  - Since 489a7ca, the helper's stale reason quotes the path unescaped; only `\n` is escaped. Before, git C-quoted it as ASCII (`"bad-\377.sh"`). efffa60 fixed only the Python bridge; the bash gate passes the raw reason on.
+  - Path: `_gate_why`, then `_gate_record`, then `**Conditions**: ${why}` (`merge_pr.sh:792`, from `:908` / `:924`). Under `--report-only` (also the project-PR default) or `--force-unreviewed`, this commits a `## Merge (...)` entry holding byte 0xff.
+  - Effect: after that, progress_read.py fails to decode the file. `sources` exits 2, and every later gate run reports progress.md unparseable. Under `--force-unreviewed` the corrupt file reaches main.
+  - A `\r` or ESC in a path goes raw too: it splits the Conditions line or reaches the terminal.
+  - Fix: escape the displayed path in the helper (`printf %q`, or C-quote it like core.quotePath), keeping `-z` for matching. Add a gate test as the counterpart of h33.
+  - Claude adversarial, reproduced (rc 1 reason contains byte 0xff; progress_append commits it; progress_read.py then raises UnicodeDecodeError). — `.agent/scripts/_bookkeeping.sh:103`
