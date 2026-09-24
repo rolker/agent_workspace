@@ -352,6 +352,16 @@ bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$REVIEWED" >/dev/null 2>
 bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" HEAD "$DOC_HEAD" 7 >/dev/null 2>&1; rc=$?
 [[ "$rc" == 3 ]] && pass "sources (h15): a non-hex review 'SHA' (HEAD) is unverifiable, not resolved" \
     || fail "sources (h15): ref name resolved (rc=$rc)"
+# (h16) a code file renamed INTO this issue's work-plan dir is not
+# bookkeeping: the rename's source path is a code change (--no-renames).
+git -C "$HIST" checkout -q -B rename-into-plan "$DOC_HEAD"
+git -C "$HIST" mv scripts/code.sh .agent/work-plans/issue-7/code.sh
+hist_commit "move code into the work-plan dir"
+out=$(hist_sources "$(hist_head)")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '.dropped_entries[0].reason == "stale"
+        and (.dropped_entries[0].why | contains("scripts/code.sh"))' <<<"$out" >/dev/null \
+    && pass "sources (h16): a code file renamed into the work-plan dir is stale, naming its old path" \
+    || fail "sources (h16): rename into the exempt dir accepted (out=$out)"
 rm -f "$HERR"
 
 # ========================================================== persist =====

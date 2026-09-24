@@ -1264,6 +1264,7 @@ fi
 #   roadmap-after-lower  R -> docs/roadmap.md -> progress.md (#334)
 #   plan-after     R -> work-plans/issue-7/plan.md -> progress.md
 #   other-issue-after    R -> work-plans/issue-70/progress.md -> progress.md
+#   rename-into-plan     R -> reviewed.sh moved into work-plans/issue-7/ -> progress.md
 #   unrelated      review cites a commit on main that is not in H's history
 make_gate_sandbox() {  # <mode>
     local mode="$1" sb wt r head remote comments body review
@@ -1290,6 +1291,10 @@ make_gate_sandbox() {  # <mode>
             mkdir -p "$wt/.agent/work-plans/issue-7"
             printf -- '# Plan\n\n## Addendum 1\n\nowner rule\n' > "$wt/.agent/work-plans/issue-7/plan.md"
             git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "plan(#7): addendum" ;;
+        rename-into-plan)
+            mkdir -p "$wt/.agent/work-plans/issue-7"
+            git -C "$wt" mv reviewed.sh .agent/work-plans/issue-7/reviewed.sh
+            git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "move code into the plan dir" ;;
         unrelated)
             git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "elsewhere"
             r=$(git -C "$sb" rev-parse HEAD) ;;
@@ -1381,6 +1386,15 @@ if [[ "$out" == *"would have refused"*"stale review"*"touches \`.agent/work-plan
     pass "(g8) issue-70 timeline after an issue-7 review: stale, names the path"
 else
     fail "(g8) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a code file renamed into this issue's work-plan dir is not bookkeeping (#309)"
+sb="$(make_gate_sandbox rename-into-plan)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"stale review"*"touches \`reviewed.sh\`"* ]]; then
+    pass "(g9) code renamed into work-plans/issue-7/: stale, names the old path"
+else
+    fail "(g9) (out=${out:0:400})"
 fi
 
 echo ""

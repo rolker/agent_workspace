@@ -26,8 +26,9 @@ BOOKKEEPING_ROADMAP_PATHS=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
 # <to> and every path that differs is one of the document files this
 # workflow writes on the reviewed branch after review (progress.md records,
 # work-plan addenda, roadmap updates). The comparison is the endpoint tree
-# diff, so a later bookkeeping commit can never hide an earlier code commit.
-# An allowed entry may be a glob. Returns 0 on equivalence; on failure
+# diff, so a later bookkeeping commit can never hide an earlier code commit,
+# and renames are not detected, so a move into an allowed path still counts
+# its source path. An allowed entry may be a glob. Returns 0 on equivalence; on failure
 # returns 1 and prints the reason (one line, for the caller to quote). Both
 # SHAs must be full and resolvable in <wt>; callers resolve short SHAs first
 # so an ambiguous prefix is a failure there, not a silent match here.
@@ -39,7 +40,10 @@ _only_bookkeeping_between() {
         echo "\`${from:0:7}\` is not an ancestor of \`${to:0:7}\` (force-push or a concurrent history change)"
         return 1
     fi
-    diff_paths=$(git -C "$wt" diff --name-only "$from" "$to" 2>/dev/null) || {
+    # --no-renames: a rename is reported as its deletion AND its addition, so
+    # a code file moved into an exempt directory still names its old path.
+    # (With rename detection only the destination would be listed.)
+    diff_paths=$(git -C "$wt" diff --no-renames --name-only "$from" "$to" 2>/dev/null) || {
         echo "could not diff \`${from:0:7}\`..\`${to:0:7}\` in $wt"
         return 1
     }
