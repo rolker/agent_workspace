@@ -672,3 +672,13 @@ The reviewer judged the remaining risk structural: escaping is by convention acr
 
 ### False positives
 - (Local Review @ `f2ef6da`) "No issues found. LGTM." — this is review-code's placeholder bullet for an empty findings list, written as an unchecked box. It is not a defect. `sources` lists it only because the box is open.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 14:58 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge (Recommended) — push bookkeeping, run merge_pr.sh (gate enforces).
