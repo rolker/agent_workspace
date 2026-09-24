@@ -446,3 +446,13 @@ Publish now (Recommended) — push and open the PR; body names #347 and the SUCC
 - Owner-deferred, already ticked in earlier entries: output-token cutoff reliability → #347; agy SUCCESS-with-truncated-reply residual → #347 (both named in the PR body's Decision summary).
 - CI at 12:04: Validate Documentation, Validate Adapter Contract, ros-manifest tests pass; Lint (pre-commit) pending (both runs).
 - PR body already carries a `## Decision summary`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 12:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Merge, defer it (Recommended) — mark the near-unreachable claude JSON-read suggestion deferred, push bookkeeping, run merge_pr.sh.
