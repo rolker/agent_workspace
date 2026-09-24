@@ -380,3 +380,13 @@ Reviewers: Claude adversarial (fresh) — ran, 1 suggestion, no must-fix. Codex 
 
 ### Findings
 - [ ] (suggestion) The third helper state — helper sources cleanly but defines no `real_case_relpath` — works (hand-verified) but has no test in either suite; add an empty-helper case asserting "could not be loaded" and the fallback — `.agent/scripts/tests/test_discover_governance.sh:169`, `.agent/scripts/tests/test_update_roadmap.sh:122`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 08:50 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish now (Recommended) — push the branch and open the PR with the reviewer's Decision summary; the empty-helper test suggestion stays noted in the PR.
