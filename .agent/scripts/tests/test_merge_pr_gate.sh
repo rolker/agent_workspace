@@ -1527,6 +1527,93 @@ else
     fail "(g14) (out=$(printf %q "${out:0:600}"))"
 fi
 
+# safe_reason_and_record <sb> <out> -- the printed reason line and the
+# committed Merge record (the fixture's own entries may hold raw bytes) are
+# valid UTF-8 with no control byte but newline
+# (the script's own text may carry UTF-8 such as an em dash; quoted values
+# may not carry raw bytes), and progress_read.py still parses the file.
+utf8_no_ctrl() {  # stdin: text -> rc 0 when valid UTF-8 with no C0 control but \n, and no DEL
+    python3 -c 'import re, sys
+try:
+    t = sys.stdin.buffer.read().decode("utf-8")
+except UnicodeDecodeError:
+    sys.exit(1)
+sys.exit(1 if re.search(r"[\x00-\x09\x0b-\x1f\x7f]", t) else 0)'
+}
+safe_reason_and_record() {
+    local pf
+    pf="$(ci_wt "$1")/.agent/work-plans/issue-7/progress.md"
+    grep 'would have refused' <<<"$2" | utf8_no_ctrl \
+        && sed -n '/^## Merge (report-only)$/,$p' "$pf" | utf8_no_ctrl \
+        && python3 "$1/.agent/scripts/progress_read.py" "$pf" --type "Merge (report-only)" \
+            | jq -e '.entries | length == 1' >/dev/null
+}
+echo "TEST: gate (a) — control bytes in a heading suffix and a **Status** value are quoted safe ASCII in the reason and the record (#309)"
+IR_CTRL="${IR_CLEAN/\#\# Integrated Review/## Integrated Review (Round $'\e'[31m2$'\a')}"
+IR_CTRL="${IR_CTRL/\*\*Status\*\*: complete/**Status**: partial$'\e'[0m}"
+sb="$(make_sandbox "$IR_CTRL" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'latest Integrated Review (Round \033[31m2\007) at the head has **Status**: partial\033[0m, not complete'* ]] \
+    && progress_of "$sb" | grep -qF '**Conditions**: latest Integrated Review (Round \033[31m2\007) at the head has **Status**: partial\033[0m' \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g15) ESC/BEL in the heading suffix and the Status value: reason and Merge record are safe ASCII; progress.md still parses"
+else
+    fail "(g15) (out=$(printf %q "${out:0:600}"))"
+fi
+sb="$(make_sandbox "${STALE/\#\# Local Review/## Local Review (Round $'\e'[1m3)}" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'latest Local Review (Round \033[1m3) entry is at `0000000`, not the PR head'* ]] \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g15b) ESC in the heading suffix of a not-covering entry: the stale/unconfirmed reason is safe ASCII"
+else
+    fail "(g15b) (out=$(printf %q "${out:0:600}"))"
+fi
+echo "TEST: gate (a) — a control byte in a **Verdict** value is quoted safe ASCII (#309)"
+sb="$(make_sandbox "${APPROVED_AT_HEAD/approved/approved$'\e'[2J}" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'**Verdict**: approved\033[2J, not approved'* ]] \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g16) ESC in the Verdict value: reason and Merge record are safe ASCII"
+else
+    fail "(g16) (out=$(printf %q "${out:0:600}"))"
+fi
+echo "TEST: gate (a) — an operator-local worktree path with raw bytes is quoted safe ASCII (#309)"
+_saved_sandbox="$SANDBOX"
+SANDBOX="$SANDBOX/raw-"$'\xff\e'"-root"; mkdir -p "$SANDBOX"
+sb="$(make_sandbox "" with_summary)"
+SANDBOX="$_saved_sandbox"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'no progress.md for issue #7 in an open worktree (looked for '*'raw-\377\033-root'* ]] \
+    && progress_of "$sb" | grep -qF 'raw-\377\033-root' \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g17) worktree root with 0xff/ESC: the looked-for path is C-quoted in the reason and the record"
+else
+    fail "(g17) (out=$(printf %q "${out:0:600}"))"
+fi
+raw_root_sandbox() {  # <progress-body> -- make_sandbox under a root named with 0xff/ESC
+    local saved="$SANDBOX" sb
+    SANDBOX="$SANDBOX/raw-"$'\xff\e'"-root"; mkdir -p "$SANDBOX"
+    sb="$(make_sandbox "$1" with_summary)"
+    SANDBOX="$saved"
+    echo "$sb"
+}
+sb="$(raw_root_sandbox $'## Implementation\n```\nunterminated')"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'progress.md at '*'raw-\377\033-root'*'could not be parsed'* ]] \
+    && grep 'would have refused' <<<"$out" | utf8_no_ctrl; then
+    pass "(g17b) malformed progress.md under a raw-byte root: the progress.md path is C-quoted in the reason"
+else
+    fail "(g17b) (out=$(printf %q "${out:0:600}"))"
+fi
+sb="$(raw_root_sandbox "$STALE")"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'does not resolve to one commit in '*'raw-\377\033-root'* ]] \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g17c) unresolvable review SHA under a raw-byte root: the worktree path is C-quoted in the reason and the record"
+else
+    fail "(g17c) (out=$(printf %q "${out:0:600}"))"
+fi
+
 echo "TEST: gate (a) — an unverifiable coverage check (git failure, helper rc 3) is still not covered, worded as unconfirmed (#309)"
 sb="$(make_gate_sandbox roadmap-after)"
 # A git shim in the sandbox's stub PATH fails only the ancestry check.

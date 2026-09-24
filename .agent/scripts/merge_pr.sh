@@ -649,6 +649,11 @@ fi
 # protection, so it waits on the owner's explicit decision.
 
 _gate_reasons=()
+# One rule for every gate reason (#309): each value it interpolates — a path,
+# a SHA, an entry heading, a **Status** / **Verdict** value, a count — goes
+# through _bk_display (_bookkeeping.sh), so the joined reasons are safe
+# ASCII on one line. They are printed and committed as the `**Conditions**:`
+# of a `## Merge (...)` record, and progress_read.py must still parse it.
 # Reuse the pre-Step-1 read (#284) instead of a second `gh pr view` call.
 # This is also correctness-bearing: the review entry the gate looks for
 # correlates with the head as of BEFORE this run's own roadmap push, not
@@ -699,15 +704,15 @@ if [[ -z "$_gate_head" ]]; then
     _gate_reasons+=("could not read the PR head SHA")
 elif [[ -z "$_gate_progress" ]]; then
     if [[ -n "$PKG_WT_DIR" ]]; then
-        _gate_reasons+=("package worktree ${PKG_WT_DIR} carries no issue timeline (no progress.md for issue #${ISSUE_NUM})")
+        _gate_reasons+=("package worktree $(_bk_display "$PKG_WT_DIR") carries no issue timeline (no progress.md for issue #$(_bk_display "$ISSUE_NUM"))")
     else
-        _gate_reasons+=("no progress.md for issue #${ISSUE_NUM} in an open worktree (looked for ${_gate_wt:-<no worktree found for $PR_BRANCH>})")
+        _gate_reasons+=("no progress.md for issue #$(_bk_display "$ISSUE_NUM") in an open worktree (looked for $(_bk_display "${_gate_wt:-<no worktree found for $PR_BRANCH>}"))")
     fi
 else
     _gate_read_rc=0
     _gate_read_json=$(python3 "$SCRIPT_DIR/progress_read.py" "$_gate_progress" --type "Local Review" --type "Integrated Review" 2>/dev/null) || _gate_read_rc=$?
     if [[ "$_gate_read_rc" -ne 0 ]]; then
-        _gate_reasons+=("progress.md at $_gate_progress could not be parsed (progress_read.py exit $_gate_read_rc — malformed file, e.g. an unterminated code fence)")
+        _gate_reasons+=("progress.md at $(_bk_display "$_gate_progress") could not be parsed (progress_read.py exit $_gate_read_rc — malformed file, e.g. an unterminated code fence)")
     else
         _gate_review=$(jq -c --arg head "$_gate_head_short" '
             .entries | map(select(.base_type == "Local Review" or .base_type == "Integrated Review" or .base_type == "External Review")) | last // empty
@@ -719,7 +724,7 @@ else
     if [[ "$_gate_read_rc" -ne 0 ]]; then
         :
     elif [[ -z "$_gate_review" ]]; then
-        _gate_reasons+=("no ## Local Review / ## Integrated Review entry in $_gate_progress")
+        _gate_reasons+=("no ## Local Review / ## Integrated Review entry in $(_bk_display "$_gate_progress")")
     else
         _gate_r_type=$(jq -r '.type' <<<"$_gate_review")
         _gate_r_sha=$(jq -r '.sha' <<<"$_gate_review")
@@ -738,9 +743,9 @@ else
                 _gate_r_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_r_sha}^{commit}" 2>/dev/null || echo "")
                 _gate_h_full=$(git -C "$_ci_wt" rev-parse --verify --quiet "${_gate_head}^{commit}" 2>/dev/null || echo "")
                 if [[ -z "$_gate_r_full" ]]; then
-                    _gate_stale_why="\`${_gate_r_sha:-?}\` does not resolve to one commit in ${_ci_wt}"
+                    _gate_stale_why="\`$(_bk_display "${_gate_r_sha:-?}")\` does not resolve to one commit in $(_bk_display "$_ci_wt")"
                 elif [[ -z "$_gate_h_full" ]]; then
-                    _gate_stale_why="head \`${_gate_head_short}\` is not present locally"
+                    _gate_stale_why="head \`$(_bk_display "$_gate_head_short")\` is not present locally"
                 else
                     _gate_bk_rc=0
                     _gate_stale_why=$(_review_bookkeeping_between "$_ci_wt" "$_gate_r_full" "$_gate_h_full" "$ISSUE_NUM") || _gate_bk_rc=$?
@@ -754,17 +759,19 @@ else
             fi
         fi
         if [[ "$_gate_covered" != "true" ]]; then
-            _gate_reasons+=("latest ${_gate_r_type} entry is at \`${_gate_r_sha:-?}\`, not the PR head \`${_gate_head_short}\` (${_gate_stale_label}: ${_gate_stale_why})")
+            # _gate_stale_why is already display-safe (_bk_display inside
+            # the helper, or above); the label is a constant.
+            _gate_reasons+=("latest $(_bk_display "$_gate_r_type") entry is at \`$(_bk_display "${_gate_r_sha:-?}")\`, not the PR head \`$(_bk_display "$_gate_head_short")\` (${_gate_stale_label}: ${_gate_stale_why})")
         elif [[ "$_gate_r_type" == "Local Review" && "$(jq -r '.verdict' <<<"$_gate_review")" != "approved" ]]; then
-            _gate_reasons+=("latest Local Review at the head has **Verdict**: $(jq -r '.verdict' <<<"$_gate_review"), not approved")
+            _gate_reasons+=("latest Local Review at the head has **Verdict**: $(_bk_display "$(jq -r '.verdict' <<<"$_gate_review")"), not approved")
         elif [[ "$_gate_r_type" != "Local Review" \
                 && "$(jq -r '.status | ascii_downcase' <<<"$_gate_review")" != "complete" ]]; then
             # A partial or failed triage decided nothing (#309, the rule
             # review_progress.sh sources applies to supersession): its own
             # open-box count says nothing about the findings it never ruled on.
-            _gate_reasons+=("latest ${_gate_r_type} at the head has **Status**: $(jq -r '.status | if . == "" then "<missing>" else . end' <<<"$_gate_review"), not complete — a partial or failed triage decided nothing")
+            _gate_reasons+=("latest $(_bk_display "$_gate_r_type") at the head has **Status**: $(_bk_display "$(jq -r '.status | if . == "" then "<missing>" else . end' <<<"$_gate_review")"), not complete — a partial or failed triage decided nothing")
         elif [[ "$_gate_r_type" != "Local Review" && "$(jq -r '.open_mustfix' <<<"$_gate_review")" != "0" ]]; then
-            _gate_reasons+=("latest Integrated Review at the head still has $(jq -r '.open_mustfix' <<<"$_gate_review") open must-fix/cross-confirmed finding(s)")
+            _gate_reasons+=("latest Integrated Review at the head still has $(_bk_display "$(jq -r '.open_mustfix' <<<"$_gate_review")") open must-fix/cross-confirmed finding(s)")
         fi
     fi
 fi
