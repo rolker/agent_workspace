@@ -183,3 +183,64 @@ old ones; and the live acceptance step is now concrete — a detached scratch
 worktree at `48b0d82^2` reviewed against base `48b0d82^1` (#320's merge,
 verified this session at 268,391 bytes of diff, Deep-tier), plus the
 optional live claude bad-model wrapper check via `_cli_review.sh` directly.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-24 10:16 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #336 — Gemini (agy) reviews fail on real branches: headless read_file denied, output-token limit on large prompts
+**Plan**: `.agent/work-plans/issue-336/plan.md` at `3f4249c`
+**Branch**: `feature/issue-336`
+
+Round 2. The 12 items from the round-1 review at `ce728e4` are all addressed in the plan text; item 7's control test is weak (finding 1 below). Main's state: the branch's merge-base is `48b0d82`. Everything on `origin/main` since then (#334's docs moves and roadmap/governance script changes) leaves the four files this plan edits untouched: `cross_model_review.sh`, `_agy_review.sh`, `_cli_review.sh` and `test_cross_model_review.sh`. The plan references none of the renamed docs, so nothing in it is invalidated. Merge main before the PR as usual.
+
+### Round-1 items
+
+| # | Item | Addressed |
+|---|---|---|
+| 1 | No-JSON + non-zero exit keeps `claude exited N` + bound/marker; exit code in is_error/subtype reason; exit-137 test | Yes |
+| 2 | `api_error_status` / `terminal_reason` in reason; `404` asserted | Yes |
+| 3 | Type-safe `.errors` read; object-element test | Yes |
+| 4 | Full verbatim captures (3 failures + success), CLI version in test comments | Yes (see finding 5 on a provenance claim) |
+| 5 | Relabel kept `.error` mocks as synthetic | Yes |
+| 6 | Partial-response cutoff mock; not recorded as review; continue path never taken | Yes |
+| 7 | Match cutoff on `ERROR_MSG`/stderr only; say mock is modelled on issue text | Yes in approach; the control test cannot exercise it (finding 1) |
+| 8 | Stale "Reading files is permitted" comment in Files to Change | Yes |
+| 9 | "Do not call any tools" wording; missing context to Summary / suggestion row; gemini-only heredoc | Yes |
+| 10 | Extend `test_prompt_tool_use_guidance` for gemini/codex/claude | Yes (`make_mock_agent claude` already exists) |
+| 11 | Concrete detached-worktree acceptance run against #320's range | Yes (verified `--branch <sha-expr>` resolves via `git rev-parse --verify`; size figure wrong, finding 3) |
+| 12 | Optional claude bad-model wrapper check | Yes |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Four files, two commits, nothing from the reviewer-isolation work (#342) or the Copilot CLI removal (#344). |
+| Issue alignment | Good | Owner's "Prompt change" option, both failure shapes, and the live Deep-sized acceptance all covered. |
+| File targeting | Good | One missed line in `_agy_review.sh` (finding 2), already inside a listed file. |
+| Consequences | Good | Stale comment now listed; `review_depth_classification.md` correctly ruled out; AGENTS.md Script Reference text for `_cli_review.sh` stays accurate (failure signals unchanged). |
+| Principle alignment | Needs work (minor) | "Test what breaks": the phrase-source control test cannot fail (finding 1). |
+| ADR compliance | Good | ADR-0015 per-agent job / timeout / `EXIT=` contract unchanged; ADR-0013 not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment — vacuous cutoff control test]** (medium) Approach 4's third case uses agy status `SUCCESS` with the phrase in the diff. The cutoff matcher only runs inside the `STATUS != "SUCCESS"` branch (`_agy_review.sh:249`), so this test passes whether the matcher reads `RESPONSE` or not. It cannot detect the regression round-1 item 7 was about. Replace it with, or add, a case that has status `ERROR`, an unrelated `MOCK_AGY_ERROR` (e.g. "quota exceeded for model"), and a `MOCK_AGY_ERROR_RESPONSE` containing "response was cut off because it exceeded the output token limit". Assert the reason is the generic `result status ERROR: …quota exceeded…` and does not contain the cutoff reason line.
+2. **[File targeting — denial reason text]** (low-medium) `_agy_review.sh:254` explains every empty-response denial with "The reviewer needs the diff only; it must not run shell commands." For the issue's own failure (a `ViewFile` / `read_file` denial) that text is wrong. Reword it to the new policy, e.g. "it must not call any tools (file reads and shell commands are both denied headlessly)". Assert the new wording in the planned ViewFile denial test. That test also needs a mock knob for the denied action's name, because `MOCK_AGY_DENY` hardcodes `RunCommand` (test file ~line 99). The plan adds a knob for the partial response but not this one.
+3. **[Issue alignment — acceptance size claim]** (low) 268,391 bytes is the two-dot `git diff 48b0d82^1 48b0d82^2`. The script embeds a three-dot diff (`${BASE_REF}...HEAD`, `cross_model_review.sh:938`) with `.agent/work-plans/**` filtered out. For this range that is about 83.7 KB (`git diff 48b0d82^1...48b0d82^2 -- . ':(exclude).agent/work-plans/**'`: 11 files, +2635/−48). That is still above the issue's ~57 KB reference, so the step stays valid as a Deep-sized run. Correct the figure, and treat the prompt size the script actually reports as the number of record.
+4. **[Consequences — acceptance cleanup and stale wording]** (low) `--no-progress` leaves its `mktemp -d` artifact dir behind by design (`cross_model_review.sh:655-669`). Remove it once the prompt size and findings head are recorded. Put the scratch worktree under the session scratchpad, not `/tmp/...`. The phrase "`48b0d82` (current `main` tip)" is now stale: `origin/main` is `529ffa8` after #334. The SHAs themselves are still right.
+5. **[Principle alignment — capture provenance]** (low) The plan says the captures ran with "no CLAUDE.md". The max-turns shape's `permission_denials` holds an `agent-status` Bash call, which shows the user-global `~/.claude/CLAUDE.md` was loaded. Correct the claim. When pasting that object into the committed test, consider scrubbing the `tool_input` values and `tool_use_id` (replace the values; keep the fields) so a personal tool path does not land in a public test file. This does not change which branch the shape exercises.
+
+### Summary
+
+Revision 2 addresses all 12 round-1 items. The claude-arm reorder is sound: every live-captured failure still lands in the `is_error` / `subtype` branches, now with the reason; a no-JSON crash keeps its exit code; and every existing `MOCK_CLAUDE_EXIT` use (`test_cli_no_temp_leak`, exit 4 with a success-looking JSON) still fails, through the new terminal branch. What remains is one ineffective control test, one stale denial reason line, and small accuracy fixes in the acceptance and capture notes. The implementer can fold these in without another plan round.
+
+### Recommended Actions
+
+- [ ] Replace or supplement the SUCCESS-status phrase control with an ERROR-status case: an unrelated error message plus a partial response containing the cutoff phrase. Assert the generic reason, not the cutoff reason.
+- [ ] Reword the denial reason at `_agy_review.sh:254` to the no-tools policy. Add a mock knob for the denied action name, and assert `ViewFile` and the new wording in the ViewFile test.
+- [ ] Correct the acceptance diff size to the script's real embedded diff (~84 KB), and record the script-reported prompt size.
+- [ ] Remove the `--no-progress` artifact dir after the acceptance run. Keep the scratch worktree under the session scratchpad. Drop "current main tip" for `48b0d82`.
+- [ ] Correct the "no CLAUDE.md" capture claim. Consider scrubbing `permission_denials[].tool_input` / `tool_use_id` values in the committed mock.
