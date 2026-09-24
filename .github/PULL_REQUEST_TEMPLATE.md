@@ -56,5 +56,5 @@ Closes #
   - [ ] Changes workspace structure or scripts
 
 ### If architecture-relevant:
-- [ ] ARCHITECTURE.md updated (or confirmed still accurate)
+- [ ] docs/design.md updated (or confirmed still accurate)
 - [ ] ADR created in `docs/decisions/` (if a new architectural decision)

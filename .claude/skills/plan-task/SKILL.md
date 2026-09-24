@@ -107,7 +107,7 @@ is the issue body).
 ### 2. Load governance context
 
 - `$WS_ROOT/.agent/knowledge/principles_review_guide.md` — evaluation criteria
-- `docs/PRINCIPLES.md` — workspace principles
+- `docs/principles.md` — workspace principles
 - `docs/decisions/*.md` — ADR titles (read triggered ADRs in full)
 - Project-level governance if the issue targets a project repo
 

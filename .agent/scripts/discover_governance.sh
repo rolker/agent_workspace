@@ -15,6 +15,23 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# A read-only report: without a working helper, still report, using the
+# candidate spelling that found each file (exact on case-sensitive
+# filesystems; on a case-insensitive one a file may be reported under the
+# probe's spelling rather than its stored name) — and say why. A helper that
+# is present but fails to load keeps its own error on stderr.
+REAL_CASE_HELPER="$SCRIPT_DIR/_real_case_path.sh"
+real_case_problem=""
+# shellcheck source=_real_case_path.sh
+if [[ ! -f "$REAL_CASE_HELPER" ]]; then
+    real_case_problem="not found"
+elif ! source "$REAL_CASE_HELPER" || ! declare -F real_case_relpath >/dev/null; then
+    real_case_problem="could not be loaded"
+fi
+if [[ -n "$real_case_problem" ]]; then
+    echo "WARNING: _real_case_path.sh $real_case_problem next to discover_governance.sh; reporting candidate spellings as-is" >&2
+    real_case_relpath() { printf '%s\n' "$2"; }
+fi
 
 OUTPUT_JSON=false
 if [[ "${1:-}" == "--json" ]]; then
@@ -36,9 +53,28 @@ check_file() {
     local path="$1" type="$2" scope="$3"
     if [[ -f "$path" ]]; then
         local size
+        # Report the name the file is stored under, not the candidate
+        # spelling that found it: on a case-insensitive filesystem the
+        # docs/PRINCIPLES.md probe also opens a stored docs/principles.md.
+        path="$ROOT_DIR/$(real_case_relpath "$ROOT_DIR" "${path#"$ROOT_DIR"/}")"
         size=$(stat -c%s "$path" 2>/dev/null || stat -f%z "$path" 2>/dev/null || echo 0)
         emit "$path" "$type" "$size" "$scope"
     fi
+}
+
+# check_file_alt <path> <type> <scope> <earlier-path>...
+# Like check_file, but skips <path> when it is the same file as one of the
+# earlier spellings already checked — on a case-insensitive filesystem
+# (macOS default) docs/principles.md and docs/PRINCIPLES.md resolve to one
+# file and must be reported once (under its stored name, via check_file).
+check_file_alt() {
+    local path="$1" type="$2" scope="$3"
+    shift 3
+    local earlier
+    for earlier in "$@"; do
+        [[ "$path" -ef "$earlier" ]] && return 0
+    done
+    check_file "$path" "$type" "$scope"
 }
 
 check_dir() {
@@ -64,9 +100,15 @@ check_directory() {
 scan_scope() {
     local dir="$1" scope="$2"
 
-    check_file "$dir/PRINCIPLES.md"       principles    "$scope"
-    check_file "$dir/docs/PRINCIPLES.md"  principles    "$scope"
-    check_file "$dir/ARCHITECTURE.md"     architecture  "$scope"
+    # Both spellings are accepted: the root/uppercase names (ARCHITECTURE.md,
+    # PRINCIPLES.md) and the lowercase docs/ names the workspace itself uses
+    # (docs/design.md, docs/principles.md). Projects are not forced into
+    # either convention.
+    check_file     "$dir/PRINCIPLES.md"       principles    "$scope"
+    check_file     "$dir/docs/PRINCIPLES.md"  principles    "$scope"
+    check_file_alt "$dir/docs/principles.md"  principles    "$scope" "$dir/docs/PRINCIPLES.md"
+    check_file     "$dir/ARCHITECTURE.md"     architecture  "$scope"
+    check_file     "$dir/docs/design.md"      architecture  "$scope"
     check_file "$dir/AGENTS.md"           agents-config "$scope"
     check_file "$dir/.agents/README.md"   agent-guide   "$scope"
     check_dir  "$dir/docs/decisions"      adr           "$scope"

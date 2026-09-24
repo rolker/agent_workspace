@@ -107,10 +107,11 @@ High-level workspace inventory:
 
 Unified governance view organized by theme, not by repo:
 
-- Workspace principles (from `docs/PRINCIPLES.md`) — short summary of each
+- Workspace principles (from `docs/principles.md`) — short summary of each
 - ADR index with one-line summaries and applicability
-- Project-level principles (from any repo's `PRINCIPLES.md`) — note where
-  they differ from or extend workspace principles
+- Project-level principles (from any repo's `PRINCIPLES.md` /
+  `docs/principles.md`) — note where they differ from or extend workspace
+  principles
 - Governance coverage: which repos have principles, ADRs, agent guides
 
 ##### `project_profiles/<repo>.md`

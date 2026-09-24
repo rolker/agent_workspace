@@ -169,11 +169,11 @@ is the issue body).
 ### 3. Load governance context
 
 - `$WS_ROOT/.agent/knowledge/principles_review_guide.md` — evaluation criteria
-- `docs/PRINCIPLES.md` — workspace principles
+- `docs/principles.md` — workspace principles
 - `docs/decisions/*.md` — ADR titles (read triggered ADRs in full)
 
 For project repo plans, also read:
-- Project `PRINCIPLES.md` if it exists
+- Project `PRINCIPLES.md` / `docs/principles.md` if it exists
 - `.agents/README.md` for architecture context
 - `.agents/review-context.yaml` for the compact relevance map (if available)
 

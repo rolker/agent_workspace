@@ -1,6 +1,6 @@
 ---
 name: what-next
-description: Read ROADMAP.md files, cross-reference with GitHub issues, detect staleness, and suggest prioritized next work.
+description: Read the workspace and project roadmaps (docs/roadmap.md, ROADMAP.md), cross-reference with GitHub issues, detect staleness, and suggest prioritized next work.
 session_scope: both
 ---
 
@@ -18,7 +18,7 @@ Without flags, checks both workspace and project roadmaps.
 
 **Lifecycle position**: Utility — run when choosing what to work on next.
 
-Reads `ROADMAP.md` from the workspace and project repos, cross-references
+Reads the roadmap from the workspace and project repos, cross-references
 checklist items against GitHub issues, and surfaces:
 - Completed items not yet checked off (staleness)
 - Unchecked items without issues (work needing tickets)
@@ -31,17 +31,19 @@ checklist items against GitHub issues, and surfaces:
 
 Check for roadmaps in both repos:
 
-- **Workspace**: `docs/ROADMAP.md`
-- **Project**: `project/ROADMAP.md`
+- **Workspace**: `docs/roadmap.md`
+- **Project**: the first that exists of `project/ROADMAP.md`,
+  `project/docs/ROADMAP.md`, `project/docs/roadmap.md` (the same candidates
+  `update_roadmap.sh` discovers)
 
-If a file doesn't exist, skip that repo (don't error). If neither exists,
-report "No ROADMAP.md found in workspace or project" and stop.
+If a file doesn't exist, skip that repo (don't error). If neither repo has a
+roadmap, report "No roadmap found in workspace or project" and stop.
 
 If `--workspace-only` or `--project-only` was specified, check only that repo.
 
 ### 2. Parse roadmap checklists
 
-Read each ROADMAP.md and extract checklist items. Two formats are supported:
+Read each roadmap file found in step 1 and extract checklist items. Two formats are supported:
 
 **Simple checklists** (project style):
 ```markdown
