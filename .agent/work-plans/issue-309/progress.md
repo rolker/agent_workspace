@@ -513,3 +513,36 @@ Reviewers:
   - Dropping the backtick escape fails h34.
 - Suites: triage integration 58/0, merge gate 97/0, merge_pr 91/0, convergence 31/0; shellcheck (warning) clean.
 - The source entry's box is not ticked: `check` targets only Integrated Review / Local Review (Pre-Push) entries.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-24 13:54 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent aea98abffc0d1b756, resume 3 of 3)
+
+**PR**: #349 at `3d30684`
+**Depth**: Deep (reason: whole-PR re-review; enforcement script merge_pr.sh plus governance files AGENTS.md, ADR-0013, triage-reviews SKILL.md)
+**Must-fix**: 0 | **Suggestions**: 4
+
+The must-fix from the Local Review at `a8ea93e` is closed by 31d484a (`_bk_display`, tests h34/g14):
+- **Byte sweep:** every byte 0x01-0xff escapes to printable ASCII; \t \n \r get C escapes; backtick becomes \140; multibyte UTF-8 is escaped byte by byte; no sign-extension.
+- **Locale:** LC_ALL=C does not leak to the caller.
+- **Idempotency:** the escaped Conditions text round-trips through progress_read.py and jq, so `_gate_already_recorded` still matches.
+- **Coverage:** every value the helper quotes is escaped: $wt, SHAs, issue, git stderr, and the CI-target reason.
+
+The fixer's claim that merge_pr.sh's own reasons are safe unescaped is only partly true (suggestions 1-2).
+
+Suites: triage integration 58/0, merge gate 97/0, merge_pr 91/0, convergence 31/0. shellcheck is clean. There has been no merge from main since `df33a3f`.
+
+Reviewers:
+- Claude adversarial: ran fresh; no must-fix.
+- Codex: completed; no issues.
+- Gemini: failed; the response hit the output token limit, for the third round in a row.
+- Copilot: skipped (quota).
+
+### Findings
+- [ ] (suggestion) Gate reasons carry branch-committed text raw: the entry heading (`_gate_r_type`), plus the **Status** and **Verdict** values via `jq -r`. progress_read.py accepts any `(...)` heading suffix. The heading `## Local Review (x\x1b]0;pwned\x07)` parses as Local Review, and its ESC/BEL bytes reach the operator's terminal and the Merge record's **Conditions**. The record stays valid UTF-8, but this breaks the commit's "safe ASCII reason" invariant. Wrap these three in `_bk_display`. Claude adversarial, reproduced — `.agent/scripts/merge_pr.sh:757`, `:765` and the Verdict reason
+- [ ] (suggestion) Operator-local paths (`$PKG_WT_DIR`, `$_gate_wt`, `$_gate_progress`, `$_ci_wt`) enter gate reasons raw, while the helper escapes the same worktree path, so a non-ASCII root prints two ways. Escape them too, or narrow the stated claim to "the helper's reasons are safe ASCII". Claude adversarial — `.agent/scripts/merge_pr.sh:702`, `:704`, `:710`, `:722`, `:741`
+- [ ] (suggestion) `_bk_display` is quadratic in length (`${s:i:1}` rescans the string). Measured: 64 KiB takes 8.7 s. A committed 80 KB path (git update-index --cacheinfo) makes `--review` take 10.4 s and prints an 80 KB reason line into **Conditions**. Cap the displayed value (e.g. 256 bytes plus an ellipsis) before the loop. Claude adversarial, measured — `.agent/scripts/_bookkeeping.sh:36-52`
+- [ ] (suggestion) The bridge comment still says the reason quotes a raw non-UTF-8 path. After 31d484a the helper output is always ASCII; say that `errors="backslashreplace"` is only a backstop now. h34 could also pin 0x01 and 0x7f, which the byte sweep shows are handled. Claude adversarial — `.agent/scripts/review_progress.sh:393-395`
