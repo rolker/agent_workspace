@@ -414,3 +414,13 @@ Tests: test_cross_model_review.sh 662 passed, 0 failed; shellcheck --severity=wa
 - Fresh Claude adversarial subagent: no findings; 662/662 tests pass; no temp leaks.
 - Cross-model (run from this branch, so the Gemini arm ran the NEW helper and the softened prompt): Gemini ran and completed on a 52.9 KB prompt with a 6-row review, so the softened wording did not suppress findings. Row 1 was downgraded to the suggestion above. Rows 2-6 were dropped: (2) the `| result:` suffix is empty on every live `.errors` shape and is the planned design; (3) a double space when only api_error_status exists is cosmetic; (4) broadening the cutoff regex to "cutoff" / "cut-off" is not supported by the live capture and widens the false-positive surface; (5) is false, since `assert_not_contains` uses `grep -E`, so `|` is alternation; (6) is not vacuous: "whole review is lost" was this branch's round-1 text, and the assertion guards its removal. Codex ran — "No issues found" (diff only; it did not run tests). Copilot skipped — quota exhausted this month.
 - Deferred, per the owner: cutoff reliability goes to #347 ("Gemini (agy) reviews still cut off at the output-token limit on Deep-sized prompts"). The SUCCESS-status truncated-reply residual goes in the PR body.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 12:01 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish now (Recommended) — push and open the PR; body names #347 and the SUCCESS-with-truncated-reply residual; the near-unreachable claude JSON-read suggestion is noted, not fixed.
