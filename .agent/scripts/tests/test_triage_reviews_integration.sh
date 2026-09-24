@@ -600,17 +600,18 @@ for st in partial failed; do
         fail "sources (h27): $st Integrated Review superseded (out=$out)"
     fi
 done
-# (h28) a complete legacy External Review (suffixed heading) supersedes like
-# an Integrated Review (progress_read maps it as the predecessor).
+# (h28) a complete legacy External Review (suffixed heading) supersedes
+# nothing (owner decision: only a complete Integrated Review supersedes; an
+# External Review is a single-source GitHub table that never ruled on local
+# findings), so the older finding is still listed next to its own.
 out=$(triage_after triage-external "External Review (Round 2)" complete)
-if jq -e --arg lr "${REVIEWED:0:7}" '(.local_findings | length) == 1
-        and (.local_findings[0].text | contains("triage finding"))
-        and (.dropped_entries | length) == 1 and .dropped_entries[0].reason == "superseded"
-        and .dropped_entries[0].sha == $lr
-        and (.dropped_entries[0].why | contains("External Review"))' <<<"$out" >/dev/null; then
-    pass "sources (h28): a complete legacy External Review (Round 2) supersedes the older Local Review"
+if jq -e '(.local_findings | length) == 2
+        and ([.local_findings[].text] | any(contains("still open")))
+        and ([.local_findings[] | select(.text | contains("triage finding")) | .entry_type] == ["External Review (Round 2)"])
+        and (.dropped_entries | length) == 0' <<<"$out" >/dev/null; then
+    pass "sources (h28): a complete legacy External Review (Round 2) does not supersede the older Local Review"
 else
-    fail "sources (h28): External Review supersession (out=$out)"
+    fail "sources (h28): External Review superseded (out=$out)"
 fi
 # (h30) supersession runs forward only: a triage entry supersedes OLDER
 # review entries, never a Local Review written after it. From DOC_HEAD (the

@@ -220,7 +220,8 @@ file is rewritten by this ADR's adoption.
   longer ages out a review's open findings; a covering entry is reported
   as superseded only when a newer covering Integrated Review with
   **Status**: complete exists (only triage supersedes: nothing vanishes
-  without a decision), and an entry
+  without a decision; a legacy External Review, which never ruled on
+  local findings, supersedes nothing), and an entry
   that does not cover the head is reported as stale, or as unverifiable
   when git cannot check or the entry's PR/branch key does not parse. The helper now lives in
   `.agent/scripts/_bookkeeping.sh`, shared by `merge_pr.sh` and

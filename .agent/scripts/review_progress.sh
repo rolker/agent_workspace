@@ -421,11 +421,12 @@ local = []
 dropped = []
 loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
 # Supersession (#309, owner decision "Only triage supersedes"): only a
-# newer covering Integrated Review with **Status**: complete (or its legacy
-# External Review predecessor) drops the open findings of older covering
-# review entries, which are listed as "superseded". That entry is a triage decision over
-# them (triage and address-findings never tick the boxes of the older
-# entry). A newer Local Review / Local Review (Pre-Push) supersedes nothing:
+# newer covering Integrated Review with **Status**: complete drops the open
+# findings of older covering review entries, which are listed as
+# "superseded". That entry is a triage decision over them (triage and
+# address-findings never tick the boxes of the older entry). A legacy
+# External Review does not qualify (owner decision): ADR-0013 defines it as
+# a single-source GitHub findings table that never ruled on local findings. A newer Local Review / Local Review (Pre-Push) supersedes nothing:
 # it re-reads the code independently, so every covering entry without a
 # newer covering Integrated Review feeds local_findings. Nothing vanishes
 # without a decision. "Review entry" = every entry read above with a
@@ -440,7 +441,7 @@ reviews_in = [e for e in data.get("entries", [])
 uncorrelated = [e for e in data.get("entries", [])
                 if (e.get("correlation") or {}).get("kind") not in ("pr", "branch") and open_of(e)]
 classified = [(e, coverage((e.get("correlation") or {}).get("sha"))) for e in reviews_in]
-is_triage = lambda e: "Integrated Review" in (e.get("base_type"), e.get("predecessor_of"))
+is_triage = lambda e: e.get("base_type") == "Integrated Review"
 # A partial or failed triage decided nothing, so only a complete one counts.
 triage_covering = [i for i, (e, (kind, _w)) in enumerate(classified)
                    if kind in ("exact", "bookkeeping") and is_triage(e)

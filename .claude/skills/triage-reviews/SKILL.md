@@ -182,9 +182,10 @@ Entries with open findings that do not cover the head are listed in
   resolved**: read that entry in `progress.md` and check its open findings
   against the code yourself.
 - `reason: "superseded"` — the entry covers the head, and so does a newer
-  `## Integrated Review` (or a legacy `## External Review`) with
-  `**Status**: complete`; a `partial` or `failed` one decided nothing and
-  supersedes nothing. **Only triage supersedes** (owner decision, #309):
+  `## Integrated Review` with `**Status**: complete`; a `partial` or
+  `failed` one decided nothing and supersedes nothing, and neither does a
+  legacy `## External Review` (a single-source GitHub findings table that
+  never ruled on local findings; owner decision, #309). **Only triage supersedes** (owner decision, #309):
   that Integrated Review is a triage decision over the earlier findings —
   each was fixed, deferred or dismissed there — and triage and
   address-findings never tick the older entry's boxes, so re-listing them
