@@ -139,7 +139,7 @@ make_sandbox() {  # <progress-body|""> [with_summary]
     local sb bare
     sb="$(mktemp -d -p "$SANDBOX")"
     mkdir -p "$sb/.agent/scripts" "$sb/stubbin" "$sb/gh_fixtures"
-    for f in merge_pr.sh worktree_remove.sh worktree_list.sh _worktree_helpers.sh _issue_helpers.sh _project_registry.sh _resolve_default_branch.sh progress_read.py progress_append.sh _progress_entry.sh update_roadmap.sh _real_case_path.sh; do
+    for f in _bookkeeping.sh merge_pr.sh worktree_remove.sh worktree_list.sh _worktree_helpers.sh _issue_helpers.sh _project_registry.sh _resolve_default_branch.sh progress_read.py progress_append.sh _progress_entry.sh update_roadmap.sh _real_case_path.sh; do
         cp "$REAL_ROOT/.agent/scripts/$f" "$sb/.agent/scripts/"
     done
     printf '#!/usr/bin/env bash\nexit 1\n' > "$sb/stubbin/git-bug"; chmod +x "$sb/stubbin/git-bug"
@@ -333,6 +333,24 @@ run_case "(b) review at a stale SHA"                     "$STALE"             wi
 run_case "(c) changes-requested at the head"             "$CHANGES_REQUESTED" with_summary  "not approved"
 run_case "(d) approved at head, no decision summary"     "$APPROVED_AT_HEAD"  ""            "no \"## Decision summary\" heading in the PR body or a PR comment"
 run_case "(d2) Integrated Review with an open cross-confirmed finding" "$IR_OPEN" with_summary "open must-fix/cross-confirmed"
+# A partial or failed Integrated Review decided nothing (#309): no open
+# must-fix of its own is not enough; condition (a) needs **Status**: complete.
+IR_PARTIAL="${IR_CLEAN/\*\*Status\*\*: complete/**Status**: partial}"
+IR_FAILED="${IR_CLEAN/\*\*Status\*\*: complete/**Status**: failed}"
+run_case "(d3) partial Integrated Review with no open must-fix" "$IR_PARTIAL" with_summary "partial, not complete"
+run_case "(d4) failed Integrated Review with no open must-fix"  "$IR_FAILED"  with_summary "failed, not complete"
+# No **Status** line at all: refused, and named as <missing>.
+IR_NO_STATUS="${IR_CLEAN/\*\*Status\*\*: complete
+/}"
+run_case "(d5) Integrated Review with no **Status** line" "$IR_NO_STATUS" with_summary "<missing>, not complete"
+# Case and padding do not matter: " Complete " is complete.
+sb="$(make_sandbox "${IR_CLEAN/\*\*Status\*\*: complete/**Status**:  Complete  }" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"Review gate: approved review at head"* && "$out" != *"not complete"* ]]; then
+    pass "(e5) a mixed-case, padded **Status**: Complete passes like complete"
+else
+    fail "(e5) padded Complete (out=${out:0:300})"
+fi
 # record is pushed to origin (survives the worktree's later removal)
 sb="$(make_sandbox "$STALE" with_summary)"; run_merge "$sb" --report-only >/dev/null 2>&1 || true
 [[ "$(git -C "${sb}.remote.git" log -1 --format=%s feature/issue-7)" == "progress: merge (report-only) for #7" ]] \
@@ -418,6 +436,7 @@ enforce_refuses "(a) no progress.md"                 "" "" "no progress.md for i
 enforce_refuses "(b) stale SHA"                      "$STALE" with_summary "not the PR head"
 enforce_refuses "(c) changes-requested"              "$CHANGES_REQUESTED" with_summary "not approved"
 enforce_refuses "(d) no decision summary"            "$APPROVED_AT_HEAD" "" "Decision summary"
+enforce_refuses "(d3) partial Integrated Review, no open must-fix" "$IR_PARTIAL" with_summary "**Status**: partial, not complete — a partial or failed triage decided nothing"
 sb="$(make_sandbox "$APPROVED_AT_HEAD" body_summary)"
 out="$(GH_MERGE_EXIT=0 run_merge "$sb" --enforce 2>&1)"; rc=$?
 [[ "$rc" -eq 0 ]] && merged_called "$sb" && pass "(e-body) --enforce with the summary in the PR body merges" || fail "(e-body) (rc=$rc out=${out:0:200})"
@@ -984,6 +1003,81 @@ else
     fail "(ci-31) (out=${out:0:500})"
 fi
 
+echo "TEST: CI target — a code file renamed into a work-plan dir after the green head is NOT walked over (#309)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"
+echo "real code" > "$wt/moved.sh"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "code"
+green=$(git -C "$wt" rev-parse HEAD)
+mkdir -p "$wt/.agent/work-plans/issue-7"
+git -C "$wt" mv moved.sh .agent/work-plans/issue-7/moved.sh
+git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "move code into the plan dir"
+git -C "$wt" push --quiet origin feature/issue-7
+head_now=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${head_now:0:7}"* ]] \
+    && [[ "$out" != *"bookkeeping commits"* ]]; then
+    pass "(ci-31b) code renamed into a work-plan dir: no walk-back, waits on the new head"
+else
+    fail "(ci-31b) (out=${out:0:500})"
+fi
+
+echo "TEST: CI target — a non-ASCII work-plan file after the green head is walked over (core.quotePath=true, #309)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; green=$(git -C "$wt" rev-parse HEAD)
+mkdir -p "$wt/.agent/work-plans/issue-7/notes"
+printf 'note\n' > "$wt/.agent/work-plans/issue-7/notes/café.md"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "plan(#7): note"
+git -C "$wt" push --quiet origin feature/issue-7
+head_now=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.quotePath GIT_CONFIG_VALUE_0=true \
+    GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"CI target: \`${green:0:7}\`"*"bookkeeping commits"* ]] \
+    && [[ "$out" == *"CI checks passed on \`${green:0:7}\`"* ]]; then
+    pass "(ci-31d) non-ASCII work-plan file after a green head: walks back to the green head, merges"
+else
+    fail "(ci-31d) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
+echo "TEST: CI target — diff.ignoreSubmodules=all cannot hide a submodule bump after the green head (#309)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"
+base_sha=$(git -C "$wt" rev-parse HEAD)
+git -C "$wt" update-index --add --cacheinfo "160000,${base_sha},vendor/sub"
+git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "add submodule"
+green=$(git -C "$wt" rev-parse HEAD)
+git -C "$wt" update-index --cacheinfo "160000,${green},vendor/sub"   # a different pointer
+git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "bump submodule"
+git -C "$wt" push --quiet origin feature/issue-7
+head_now=$(git -C "$wt" rev-parse HEAD)
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
+    > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+write_workflows "$sb" '{"total_count":1}'
+write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
+write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
+out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.ignoreSubmodules GIT_CONFIG_VALUE_0=all \
+    MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${head_now:0:7}"* ]] \
+    && [[ "$out" != *"bookkeeping commits"* ]]; then
+    pass "(ci-31c) submodule bump under diff.ignoreSubmodules=all: no walk-back, waits on the new head"
+else
+    fail "(ci-31c) (green=${green:0:7} head=${head_now:0:7} out=${out:0:500})"
+fi
+
 # make_walkback_sandbox: the ci-30 shape — a progress-only commit pushed on
 # top of a green code head — with the caller free to set each head's
 # check-runs. Prints "<sb> <green> <head_now>".
@@ -1263,6 +1357,10 @@ fi
 #   roadmap-after  R -> docs/ROADMAP.md -> progress.md
 #   roadmap-after-lower  R -> docs/roadmap.md -> progress.md (#334)
 #   plan-after     R -> work-plans/issue-7/plan.md -> progress.md
+#   other-issue-after    R -> work-plans/issue-70/progress.md -> progress.md
+#   plan-nonascii-after  R -> work-plans/issue-7/notes/café.md -> progress.md (#309)
+#   code-rawbytes-after  R -> bad-<0xff><CR><ESC>.sh (code) -> progress.md (#309)
+#   rename-into-plan     R -> reviewed.sh moved into work-plans/issue-7/ -> progress.md
 #   unrelated      review cites a commit on main that is not in H's history
 make_gate_sandbox() {  # <mode>
     local mode="$1" sb wt r head remote comments body review
@@ -1281,10 +1379,26 @@ make_gate_sandbox() {  # <mode>
         roadmap-after-lower)
             mkdir -p "$wt/docs"; printf -- '# Roadmap\n\n- [x] Something (#7)\n' > "$wt/docs/roadmap.md"
             git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "roadmap" ;;
+        other-issue-after)
+            mkdir -p "$wt/.agent/work-plans/issue-70"
+            printf -- '# Issue #70\n' > "$wt/.agent/work-plans/issue-70/progress.md"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "stray timeline" ;;
         plan-after)
             mkdir -p "$wt/.agent/work-plans/issue-7"
             printf -- '# Plan\n\n## Addendum 1\n\nowner rule\n' > "$wt/.agent/work-plans/issue-7/plan.md"
             git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "plan(#7): addendum" ;;
+        code-rawbytes-after)
+            # A code file named with an invalid UTF-8 byte, a CR and an ESC.
+            printf 'code\n' > "$wt/bad-"$'\xff\r\e'".sh"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "raw-byte name" ;;
+        plan-nonascii-after)
+            mkdir -p "$wt/.agent/work-plans/issue-7/notes"
+            printf -- 'note\n' > "$wt/.agent/work-plans/issue-7/notes/café.md"
+            git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "plan(#7): note" ;;
+        rename-into-plan)
+            mkdir -p "$wt/.agent/work-plans/issue-7"
+            git -C "$wt" mv reviewed.sh .agent/work-plans/issue-7/reviewed.sh
+            git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "move code into the plan dir" ;;
         unrelated)
             git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m "elsewhere"
             r=$(git -C "$sb" rev-parse HEAD) ;;
@@ -1367,6 +1481,174 @@ if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]] \
     pass "(g6) plan.md addendum after the review: gate passes under the default (enforce)"
 else
     fail "(g6) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — another issue's work-plan dir is not exempt, even with a prefix-sharing number (#309)"
+sb="$(make_gate_sandbox other-issue-after)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"stale review"*"touches \`.agent/work-plans/issue-70/progress.md\`"* ]]; then
+    pass "(g8) issue-70 timeline after an issue-7 review: stale, names the path"
+else
+    fail "(g8) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a code file renamed into this issue's work-plan dir is not bookkeeping (#309)"
+sb="$(make_gate_sandbox rename-into-plan)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"stale review"*"touches \`reviewed.sh\`"* ]]; then
+    pass "(g9) code renamed into work-plans/issue-7/: stale, names the old path"
+else
+    fail "(g9) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a non-ASCII work-plan file after the review keeps it current (core.quotePath=true, #309)"
+sb="$(make_gate_sandbox plan-nonascii-after)"
+out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.quotePath GIT_CONFIG_VALUE_0=true \
+    GH_MERGE_EXIT=0 run_merge "$sb" 2>&1)" || true
+if [[ "$out" == *"covers head"* ]] && [[ "$out" != *"would have refused"* ]] \
+    && [[ "$out" != *"review gate refused"* ]] && merged_called "$sb"; then
+    pass "(g13) work-plans/issue-7/notes/café.md after the review: gate passes under the default (enforce)"
+else
+    fail "(g13) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a raw-byte code path is quoted safe ASCII in the reason and the record; progress.md stays parseable (#309)"
+sb="$(make_gate_sandbox code-rawbytes-after)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+pf="$sb/worktrees/workspace/issue-workspace-7/.agent/work-plans/issue-7/progress.md"
+if [[ "$out" == *"would have refused"*"stale review"*'touches `bad-\377\r\033.sh`'* ]] \
+    && progress_of "$sb" | grep -qF '**Conditions**: latest Local Review entry is at' \
+    && progress_of "$sb" | grep -qF 'touches `bad-\377\r\033.sh`' \
+    && ! LC_ALL=C grep -q $'[\x80-\xff\r\x1b]' "$pf" \
+    && python3 "$sb/.agent/scripts/progress_read.py" "$pf" --type "Merge (report-only)" \
+        | jq -e '.entries | length == 1' >/dev/null; then
+    pass "(g14) raw-byte path: stale reason and Merge (report-only) record are safe ASCII; progress_read.py still parses the file"
+else
+    fail "(g14) (out=$(printf %q "${out:0:600}"))"
+fi
+
+# safe_reason_and_record <sb> <out> -- the printed reason line and the
+# committed Merge record (the fixture's own entries may hold raw bytes) are
+# valid UTF-8 with no control byte but newline
+# (the script's own text may carry UTF-8 such as an em dash; quoted values
+# may not carry raw bytes), and progress_read.py still parses the file.
+utf8_no_ctrl() {  # stdin: text -> rc 0 when valid UTF-8 with no C0 control but \n, and no DEL
+    python3 -c 'import re, sys
+try:
+    t = sys.stdin.buffer.read().decode("utf-8")
+except UnicodeDecodeError:
+    sys.exit(1)
+sys.exit(1 if re.search(r"[\x00-\x09\x0b-\x1f\x7f]", t) else 0)'
+}
+safe_reason_and_record() {
+    local pf
+    pf="$(ci_wt "$1")/.agent/work-plans/issue-7/progress.md"
+    grep 'would have refused' <<<"$2" | utf8_no_ctrl \
+        && sed -n '/^## Merge (report-only)$/,$p' "$pf" | utf8_no_ctrl \
+        && python3 "$1/.agent/scripts/progress_read.py" "$pf" --type "Merge (report-only)" \
+            | jq -e '.entries | length == 1' >/dev/null
+}
+echo "TEST: gate (a) — control bytes in a heading suffix and a **Status** value are quoted safe ASCII in the reason and the record (#309)"
+IR_CTRL="${IR_CLEAN/\#\# Integrated Review/## Integrated Review (Round $'\e'[31m2$'\a')}"
+IR_CTRL="${IR_CTRL/\*\*Status\*\*: complete/**Status**: partial$'\e'[0m}"
+sb="$(make_sandbox "$IR_CTRL" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'latest Integrated Review (Round \033[31m2\007) at the head has **Status**: partial\033[0m, not complete'* ]] \
+    && progress_of "$sb" | grep -qF '**Conditions**: latest Integrated Review (Round \033[31m2\007) at the head has **Status**: partial\033[0m' \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g15) ESC/BEL in the heading suffix and the Status value: reason and Merge record are safe ASCII; progress.md still parses"
+else
+    fail "(g15) (out=$(printf %q "${out:0:600}"))"
+fi
+sb="$(make_sandbox "${STALE/\#\# Local Review/## Local Review (Round $'\e'[1m3)}" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'latest Local Review (Round \033[1m3) entry is at `0000000`, not the PR head'* ]] \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g15b) ESC in the heading suffix of a not-covering entry: the stale/unconfirmed reason is safe ASCII"
+else
+    fail "(g15b) (out=$(printf %q "${out:0:600}"))"
+fi
+echo "TEST: gate (a) — a control byte in a **Verdict** value is quoted safe ASCII (#309)"
+sb="$(make_sandbox "${APPROVED_AT_HEAD/approved/approved$'\e'[2J}" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'**Verdict**: approved\033[2J, not approved'* ]] \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g16) ESC in the Verdict value: reason and Merge record are safe ASCII"
+else
+    fail "(g16) (out=$(printf %q "${out:0:600}"))"
+fi
+echo "TEST: gate (a) — an operator-local worktree path with raw bytes is quoted safe ASCII (#309)"
+_saved_sandbox="$SANDBOX"
+SANDBOX="$SANDBOX/raw-"$'\xff\e'"-root"; mkdir -p "$SANDBOX"
+sb="$(make_sandbox "" with_summary)"
+SANDBOX="$_saved_sandbox"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'no progress.md for issue #7 in an open worktree (looked for '*'raw-\377\033-root'* ]] \
+    && progress_of "$sb" | grep -qF 'raw-\377\033-root' \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g17) worktree root with 0xff/ESC: the looked-for path is C-quoted in the reason and the record"
+else
+    fail "(g17) (out=$(printf %q "${out:0:600}"))"
+fi
+raw_root_sandbox() {  # <progress-body> -- make_sandbox under a root named with 0xff/ESC
+    local saved="$SANDBOX" sb
+    SANDBOX="$SANDBOX/raw-"$'\xff\e'"-root"; mkdir -p "$SANDBOX"
+    sb="$(make_sandbox "$1" with_summary)"
+    SANDBOX="$saved"
+    echo "$sb"
+}
+sb="$(raw_root_sandbox $'## Implementation\n```\nunterminated')"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'progress.md at '*'raw-\377\033-root'*'could not be parsed'* ]] \
+    && grep 'would have refused' <<<"$out" | utf8_no_ctrl; then
+    pass "(g17b) malformed progress.md under a raw-byte root: the progress.md path is C-quoted in the reason"
+else
+    fail "(g17b) (out=$(printf %q "${out:0:600}"))"
+fi
+sb="$(raw_root_sandbox "$STALE")"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *'would have refused'*'does not resolve to one commit in '*'raw-\377\033-root'* ]] \
+    && safe_reason_and_record "$sb" "$out"; then
+    pass "(g17c) unresolvable review SHA under a raw-byte root: the worktree path is C-quoted in the reason and the record"
+else
+    fail "(g17c) (out=$(printf %q "${out:0:600}"))"
+fi
+
+echo "TEST: gate (a) — an unverifiable coverage check (git failure, helper rc 3) is still not covered, worded as unconfirmed (#309)"
+sb="$(make_gate_sandbox roadmap-after)"
+# A git shim in the sandbox's stub PATH fails only the ancestry check.
+printf '#!/bin/bash\n[[ "$1 $2" == "merge-base --is-ancestor" || "$3 $4" == "merge-base --is-ancestor" ]] && { echo "error: shim" >&2; exit 128; }\nexec %q "$@"\n' \
+    "$(command -v git)" > "$sb/stubbin/git"
+chmod +x "$sb/stubbin/git"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"review coverage could not be confirmed: could not check whether"*"git exit 128"* ]] \
+    && [[ "$out" != *"covers head"* && "$out" != *"stale review"* ]]; then
+    pass "(g10) ancestry check failing with exit 128: not covered, worded as unconfirmed (not stale), reason quoted"
+else
+    fail "(g10) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a review SHA that does not resolve locally is unconfirmed, not stale (#309)"
+sb="$(make_sandbox "$STALE" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"review coverage could not be confirmed: \`"*"does not resolve to one commit"* ]] \
+    && [[ "$out" != *"stale review"* ]]; then
+    pass "(g11) unresolvable review SHA: worded as unconfirmed, not stale"
+else
+    fail "(g11) (out=${out:0:400})"
+fi
+
+echo "TEST: gate (a) — a PR head missing from the local worktree is unconfirmed, not stale (#309)"
+sb="$(make_gate_sandbox progress-only)"
+remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
+fixture="$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
+jq -c '.headRefOid = "0123456789abcdef0123456789abcdef01234567"' "$fixture" > "$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"would have refused"*"review coverage could not be confirmed: head \`0123456\` is not present locally"* ]] \
+    && [[ "$out" != *"stale review"* ]]; then
+    pass "(g12) PR head not present locally: worded as unconfirmed, not stale"
+else
+    fail "(g12) (out=${out:0:400})"
 fi
 
 echo ""
