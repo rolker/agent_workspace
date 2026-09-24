@@ -467,3 +467,13 @@ The prior Integrated Review's one suggestion (empty-helper test) is resolved by 
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 09:52 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge (Recommended) — push the last bookkeeping commit, leave the worktree, run merge_pr.sh (gate enforces).
