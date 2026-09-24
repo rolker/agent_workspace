@@ -333,6 +333,12 @@ run_case "(b) review at a stale SHA"                     "$STALE"             wi
 run_case "(c) changes-requested at the head"             "$CHANGES_REQUESTED" with_summary  "not approved"
 run_case "(d) approved at head, no decision summary"     "$APPROVED_AT_HEAD"  ""            "no \"## Decision summary\" heading in the PR body or a PR comment"
 run_case "(d2) Integrated Review with an open cross-confirmed finding" "$IR_OPEN" with_summary "open must-fix/cross-confirmed"
+# A partial or failed Integrated Review decided nothing (#309): no open
+# must-fix of its own is not enough; condition (a) needs **Status**: complete.
+IR_PARTIAL="${IR_CLEAN/\*\*Status\*\*: complete/**Status**: partial}"
+IR_FAILED="${IR_CLEAN/\*\*Status\*\*: complete/**Status**: failed}"
+run_case "(d3) partial Integrated Review with no open must-fix" "$IR_PARTIAL" with_summary "partial, not complete"
+run_case "(d4) failed Integrated Review with no open must-fix"  "$IR_FAILED"  with_summary "failed, not complete"
 # record is pushed to origin (survives the worktree's later removal)
 sb="$(make_sandbox "$STALE" with_summary)"; run_merge "$sb" --report-only >/dev/null 2>&1 || true
 [[ "$(git -C "${sb}.remote.git" log -1 --format=%s feature/issue-7)" == "progress: merge (report-only) for #7" ]] \
@@ -418,6 +424,7 @@ enforce_refuses "(a) no progress.md"                 "" "" "no progress.md for i
 enforce_refuses "(b) stale SHA"                      "$STALE" with_summary "not the PR head"
 enforce_refuses "(c) changes-requested"              "$CHANGES_REQUESTED" with_summary "not approved"
 enforce_refuses "(d) no decision summary"            "$APPROVED_AT_HEAD" "" "Decision summary"
+enforce_refuses "(d3) partial Integrated Review, no open must-fix" "$IR_PARTIAL" with_summary "**Status**: partial, not complete — a partial or failed triage decided nothing"
 sb="$(make_sandbox "$APPROVED_AT_HEAD" body_summary)"
 out="$(GH_MERGE_EXIT=0 run_merge "$sb" --enforce 2>&1)"; rc=$?
 [[ "$rc" -eq 0 ]] && merged_called "$sb" && pass "(e-body) --enforce with the summary in the PR body merges" || fail "(e-body) (rc=$rc out=${out:0:200})"

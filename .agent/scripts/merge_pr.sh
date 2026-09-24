@@ -687,7 +687,9 @@ if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
 fi
 # (a) latest review entry at the head, approved. The reader's --type filter
 # already includes `## External Review` as Integrated Review's recognized
-# predecessor (ADR-0013); it is judged by the Integrated Review rule.
+# predecessor (ADR-0013); it is judged by the Integrated Review rule: it
+# must be **Status**: complete (#309) and have no open must-fix /
+# cross-confirmed finding.
 # "At the head" (#286): the entry's SHA equals HEAD_REVIEWED, or is an
 # ancestor of it with only merge-time document files changed in between —
 # recording the review itself commits progress.md on the branch, so the
@@ -710,6 +712,7 @@ else
         _gate_review=$(jq -c --arg head "$_gate_head_short" '
             .entries | map(select(.base_type == "Local Review" or .base_type == "Integrated Review" or .base_type == "External Review")) | last // empty
             | {type, sha: (.correlation.sha // ""), verdict: (.fields.Verdict // ""),
+               status: ((.status // "") | gsub("^\\s+|\\s+$"; "")),
                open_mustfix: ([.findings[] | select((.checked | not) and ((.source_hint // "") | test("^(must-fix|cross-confirmed)")))] | length),
                at_head: (((.correlation.sha // "")[0:7]) == $head)}' <<<"$_gate_read_json" 2>/dev/null || echo "")
     fi
@@ -754,6 +757,12 @@ else
             _gate_reasons+=("latest ${_gate_r_type} entry is at \`${_gate_r_sha:-?}\`, not the PR head \`${_gate_head_short}\` (${_gate_stale_label}: ${_gate_stale_why})")
         elif [[ "$_gate_r_type" == "Local Review" && "$(jq -r '.verdict' <<<"$_gate_review")" != "approved" ]]; then
             _gate_reasons+=("latest Local Review at the head has **Verdict**: $(jq -r '.verdict' <<<"$_gate_review"), not approved")
+        elif [[ "$_gate_r_type" != "Local Review" \
+                && "$(jq -r '.status | ascii_downcase' <<<"$_gate_review")" != "complete" ]]; then
+            # A partial or failed triage decided nothing (#309, the rule
+            # review_progress.sh sources applies to supersession): its own
+            # open-box count says nothing about the findings it never ruled on.
+            _gate_reasons+=("latest ${_gate_r_type} at the head has **Status**: $(jq -r '.status | if . == "" then "<missing>" else . end' <<<"$_gate_review"), not complete — a partial or failed triage decided nothing")
         elif [[ "$_gate_r_type" != "Local Review" && "$(jq -r '.open_mustfix' <<<"$_gate_review")" != "0" ]]; then
             _gate_reasons+=("latest Integrated Review at the head still has $(jq -r '.open_mustfix' <<<"$_gate_review") open must-fix/cross-confirmed finding(s)")
         fi

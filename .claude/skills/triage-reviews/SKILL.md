@@ -414,7 +414,8 @@ round. One `## ` heading per entry; the helper rejects anything else.
 `/address-findings` as the next command for the calling session, which
 works them and then re-reviews with `review-code`. With no open findings,
 the PR is ready for the merge decision: `merge_pr.sh`'s review gate will
-look for this entry at the PR head with no open must-fix, and for a
+look for this entry at the PR head with `**Status**: complete` and no
+open must-fix (a `partial` or `failed` entry is refused), and for a
 `## Decision summary` in the PR body or a comment — post one on the PR
 if none is there yet. Never chain the next skill yourself.
 
