@@ -166,6 +166,30 @@ fi
 assert_row "(F3) helper missing: docs/design.md still reported" "$out" docs/design.md architecture workspace
 assert_row "(F4) helper missing: project/ARCHITECTURE.md still reported" "$out" project/ARCHITECTURE.md architecture project
 
+echo "TEST: a present-but-broken _real_case_path.sh is reported as unloadable, not missing"
+# The load error itself stays visible on stderr, the warning says "could not
+# be loaded", and the report still runs on candidate spellings.
+sb="$(make_sandbox)"
+printf 'real_case_relpath() {\n' > "$sb/.agent/scripts/_real_case_path.sh"
+mkdir -p "$sb/docs"
+echo "# Design" > "$sb/docs/design.md"
+rc=0
+out="$(run_discover "$sb" 2>"$TMP_ROOT/broken.err")" || rc=$?
+err="$(cat "$TMP_ROOT/broken.err")"
+if [[ $rc -eq 0 ]]; then
+    pass "(G1) helper broken: exits 0"
+else
+    fail "(G1) helper broken: exit $rc, stderr: $err"
+fi
+if [[ "$err" == *"_real_case_path.sh"*"syntax error"* ]] \
+    && [[ "$err" == *"WARNING"*"_real_case_path.sh could not be loaded"* ]] \
+    && [[ "$err" != *"not found"* ]]; then
+    pass "(G2) helper broken: load error shown; warning says could not be loaded"
+else
+    fail "(G2) helper broken: stderr was: $err"
+fi
+assert_row "(G3) helper broken: docs/design.md still reported" "$out" docs/design.md architecture workspace
+
 echo ""
 echo "test_discover_governance:${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]

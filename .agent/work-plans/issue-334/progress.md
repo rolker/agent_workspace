@@ -332,7 +332,7 @@ Verified: shellcheck clean on changed scripts/tests; test_discover_governance 19
 ### Findings
 - [x] (must-fix) The no-helper test breaks on case-insensitive filesystems: with a stored docs/roadmap.md the docs/ROADMAP.md probe (checked first) matches, the fallback prints `$root/docs/ROADMAP.md`, and the case-sensitive `== "$root/docs/roadmap.md"` check fails; use a fixture whose first-probe spelling is its stored name (e.g. docs/ROADMAP.md) or gate the expectation on CASE_INSENSITIVE — `.agent/scripts/tests/test_update_roadmap.sh:111`
 - [x] (must-fix) New sourced helper `_real_case_path.sh` is missing from AGENTS.md's Script Reference table (consequence map: a script in `.agent/scripts/` → that table); add a **(source)** row — `AGENTS.md:386`
-- [ ] (suggestion) `source … 2>/dev/null` also swallows a present-but-broken helper (syntax error) and reports it as "not found"; test `-f` first and let a load error show, or word the warning "could not be loaded" — `.agent/scripts/discover_governance.sh:19`, `.agent/scripts/update_roadmap.sh:28`
+- [x] (suggestion) `source … 2>/dev/null` also swallows a present-but-broken helper (syntax error) and reports it as "not found"; test `-f` first and let a load error show, or word the warning "could not be loaded" — `.agent/scripts/discover_governance.sh:19`, `.agent/scripts/update_roadmap.sh:28`
 - [ ] (suggestion) The docs/ tree in the rewritten diagram lists design.md and principles.md but not roadmap.md — `docs/design.md:47`
 
 ## Checkpoint

@@ -119,6 +119,32 @@ else
     fail "(no-helper) rc=$rc stdout='$stdout' file=$(tr '\n' '|' < "$root/docs/ROADMAP.md")"
 fi
 
+echo "TEST: a present-but-broken _real_case_path.sh is reported as unloadable, not missing"
+# The load error itself stays visible on stderr, the warning says "could not
+# be loaded", and the roadmap is still updated via the candidate spelling.
+broken="$(mktemp -d "$TMP_ROOT/broken.XXXXXX")"
+cp "$UPDATE" "$broken/update_roadmap.sh"
+printf 'real_case_relpath() {\n' > "$broken/_real_case_path.sh"
+root="$(mktemp -d "$TMP_ROOT/root.XXXXXX")"
+mkdir -p "$root/docs"
+printf '%s' "$roadmap_body" > "$root/docs/ROADMAP.md"
+rc=0
+stdout="$("$broken/update_roadmap.sh" --issue 7 --root "$root" 2>"$TMP_ROOT/broken.err")" || rc=$?
+stderr="$(cat "$TMP_ROOT/broken.err")"
+if [[ "$stderr" == *"_real_case_path.sh"*"syntax error"* ]] \
+    && [[ "$stderr" == *"_real_case_path.sh could not be loaded"* ]] \
+    && [[ "$stderr" != *"not found"* ]]; then
+    pass "(broken-helper) load error shown; warning says could not be loaded"
+else
+    fail "(broken-helper) stderr was: $stderr"
+fi
+if [[ $rc -eq 0 ]] && [[ "$stdout" == "$root/docs/ROADMAP.md" ]] \
+    && grep -qF -- '- [x] Something (#7)' "$root/docs/ROADMAP.md"; then
+    pass "(broken-helper) roadmap still checked off; changed path printed"
+else
+    fail "(broken-helper) rc=$rc stdout='$stdout' file=$(tr '\n' '|' < "$root/docs/ROADMAP.md")"
+fi
+
 echo ""
 echo "test_update_roadmap:${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]

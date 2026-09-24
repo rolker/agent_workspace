@@ -24,11 +24,19 @@ set -o pipefail
 trap 'exit 0' EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# This script never blocks a merge: without a working helper, fall back to
+# the candidate spelling (exact on case-sensitive filesystems) and say why.
+# A helper that is present but fails to load keeps its own error on stderr.
+REAL_CASE_HELPER="$SCRIPT_DIR/_real_case_path.sh"
+real_case_problem=""
 # shellcheck source=_real_case_path.sh
-if ! source "$SCRIPT_DIR/_real_case_path.sh" 2>/dev/null; then
-    # This script never blocks a merge: without the helper, fall back to the
-    # candidate spelling (exact on case-sensitive filesystems) and say so.
-    echo "  ⚠️  _real_case_path.sh not found next to update_roadmap.sh; using candidate spellings as-is" >&2
+if [[ ! -f "$REAL_CASE_HELPER" ]]; then
+    real_case_problem="not found"
+elif ! source "$REAL_CASE_HELPER" || ! declare -F real_case_relpath >/dev/null; then
+    real_case_problem="could not be loaded"
+fi
+if [[ -n "$real_case_problem" ]]; then
+    echo "  ⚠️  _real_case_path.sh $real_case_problem next to update_roadmap.sh; using candidate spellings as-is" >&2
     real_case_relpath() { printf '%s\n' "$2"; }
 fi
 
