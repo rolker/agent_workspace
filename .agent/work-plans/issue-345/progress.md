@@ -258,3 +258,69 @@ hooks-into-plugin follow-up issue is opened now (host action); no
 AGENTS.md/CLAUDE.md/adapter edits (dropped; a one-line note goes in the
 SessionStart hook header instead); a live acceptance script is ported
 from the spike as an opt-in suite.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-24 15:22 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a027be12a6ebddfcd, resume 1 of 3)
+**Verdict**: ready
+
+**Issue**: #345 — User-tier skill symlinks replace a project's own same-named skills in unregistered repos
+**Plan**: `.agent/work-plans/issue-345/plan.md` at `9828235`
+**Branch**: `feature/issue-345`
+
+Round 2. It checks the plan against the round-1 review (`956e633`) and the owner's accept-all-8 checkpoint.
+
+### Round-1 findings
+
+| # | Finding | Resolved? |
+|---|---|---|
+| 1 | Enable step: manual step instead of "in registration" | Yes. Step 5 enables per registered root from `user_tier_install.sh` (install, `--check`, `--uninstall`), and #332 reuses it. |
+| 2 | Prefix keyed on `--type` | Yes in design. Step 7 adds an explicit `--skill-prefix` (default bare) and tests the four combinations. The detection rule needs pinning down (new finding A). |
+| 3 | `--check` loses drift detection; Makefile | Yes. `foreign_skill_link` and removal are kept, and `--check` reports legacy links. The Makefile is in scope, but its fate is left open (new finding E). |
+| 4 | Workspace-root and p11 duplicates | Yes. There is a toplevel-equality skip, a stale-enable error in `--check`, and a live workspace-root case. |
+| 5 | ADR placement, §2, #317 | Yes. (a), (b) and (c) are all in step 9. |
+| 6 | Ask-First instruction edits | Yes. They are dropped. |
+| 7 | Expose only project/both skills | Yes. The array is generated and cross-checked, and the glob fallback is documented. The count in the plan text is wrong (new finding F). |
+| 8 | Scripted live acceptance | Yes. Step 13 ports the spike as an opt-in suite and adds `claude plugin validate`. |
+| 9 | Bare cross-references in prose | Partly. The note goes into the hook's *source comment*, which the model never sees (new finding D). |
+| 10 | ADR number / hooks issue | Yes. The number is re-checked at commit time, and the hooks follow-up is opened as #351. |
+
+The owner's 8 decisions are all implemented as stated. Decision 3 (p11) was settled by the live walk-up check: p11 never gets the plugin.
+
+### Findings
+
+A. **[Approach — prefix detection, Medium]** Step 7 sets the prefix "when `${CLAUDE_PLUGIN_ROOT}` is non-empty in its own rendered text". Spike Q4 proved only the plugin-loaded case, where the variable is substituted with the source directory. The bare case, run-issue loaded from the workspace's `.claude/skills`, was never tested. In that case the token is most likely left *literal*. A literal `${CLAUDE_PLUGIN_ROOT}` string is non-empty, so a naive test fires in exactly the session that must stay bare. And if the token lands unquoted in a Bash command, the shell expands it from the environment, which may be set by some *other* enabled plugin. The user has `clangd-lsp` enabled at user scope. Specify a rule that works whether or not the token is substituted:
+- Emit it single-quoted, e.g. `PR='${CLAUDE_PLUGIN_ROOT}'`, so the shell never expands it.
+- Prefix only if `"$PR" == "$WS_ROOT"` after `pwd -P` normalisation. The plugin source is the workspace root, and comparing against it beats testing for "non-empty" or "starts with /".
+
+Add the bare-load case to step 13's live suite: a workspace-root session's run-issue must produce bare names. That is the one behaviour the design rests on that nobody has observed yet.
+
+B. **[Approach — toplevel guard, Medium]** Step 5's skip condition is `git -C <root> rev-parse --show-toplevel == $WS_ROOT`. The installer builds `$WS_ROOT` from a plain `cd && pwd`, which keeps symlinks, while git returns the resolved physical path. So a checkout reached through a symlinked path never matches, and p11 would get enabled into the workspace-root `settings.local.json`, the exact hazard the guard exists for. Compare `pwd -P` forms on both sides. Also define:
+- a root that is not in any git repo (rev-parse fails): enable, not skip, and not an error;
+- `parent=` pseudo-roots versus their instances: say which one gets enabled.
+
+C. **[Approach — installer runs the `claude` CLI, Medium]** Step 5 has `install`, `--check` and `--uninstall` call `claude plugin ...`, but the plan does not cover three things:
+- **No `claude` on PATH.** On a Codex-only or ROS machine, install must skip with a note and exit 0. `--check`'s per-root check reads JSON only and must not need the CLI.
+- **Idempotency.** Re-running `marketplace add` or `install` when already enabled must be a no-op. Check `enabledPlugins` first.
+- **Tests.** `test_user_tier_install.sh` must put a stub `claude` on PATH that records its argv. It must never invoke the real CLI, which writes real settings and costs a session.
+
+D. **[Consequences — model-visible note, Low]** Step 11 adds the "workspace skills are `agent-workspace:`-prefixed here" line to the hook's header *comment*. Round-1 finding 9 needs it in the hook's *printed* project-session header, which the model reads. Owner decision 7 says "in the SessionStart hook header", which fits the printed header. If the line is printed, `test_session_start_layer.sh` needs one assertion for it.
+
+E. **[File targeting — Makefile, Low]** Step 8 and the Open Questions leave the `generate-user-tier-skills` target as either "repoint to `--check`" or "retire". The target has a natural new job: regenerate `plugin.json`'s `skills` array. That is the generator step 2 needs a home for, and the target's own comment ("derived from session_scope frontmatter") already describes it. Recommend that option, so step 2's generator is not a second, unnamed entry point.
+
+F. **[Plan text, Low]** Step 2 says "14 of 22 … the other 8" and lists `what-next` as workspace-scoped. On disk, 13 skills declare `project|both`, and `what-next` is `both`. The other 9 are analyze-permissions, audit-workspace, brainstorm, brand-guidelines, gather-project-knowledge, inspiration-tracker, issue-triage, research and skill-importer. The generator makes this moot for the manifest, but the ADR and PR text should not copy the wrong count.
+
+### Summary
+
+Every round-1 finding is addressed, and all 8 owner decisions are carried out faithfully. The plan is ready to implement. A, B and C are implementation-level corrections, not structural ones. A matters most because the whole prefix design rests on it. Carry A–C into the implementation and verify A live before the prefix is wired into run-issue.
+
+### Recommended Actions
+
+- [ ] Detect plugin loading with a single-quoted `${CLAUDE_PLUGIN_ROOT}` compared to `$WS_ROOT` (`pwd -P`). Add the bare-load case to the live suite.
+- [ ] Compare `pwd -P` forms in the toplevel skip guard. Define the no-git-root and `parent=` behaviour.
+- [ ] Make the installer's `claude plugin` calls optional when the CLI is absent, idempotent, and stubbed in tests.
+- [ ] Put the prefix note in the hook's printed project header, and assert it in the hook's test.
+- [ ] Repurpose `generate-user-tier-skills` to regenerate the `plugin.json` skills array.
+- [ ] Fix step 2's skill count and the `what-next` classification.
