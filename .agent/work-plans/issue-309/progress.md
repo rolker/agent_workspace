@@ -321,3 +321,21 @@ Reviewers:
 **Decision**: address
 
 Fix + test, then publish (Recommended) — fix pass for the round-4 must-fix (only a complete Integrated/External Review supersedes) including the optional External Review test; then publish without a 5th pre-push round; the PR-mode re-review checks it.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 12:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a7d34766692007bc4, resume 3 of 3)
+
+**Branch**: feature/issue-309 at `257bb7f`
+**Addressed**: Local Review (Pre-Push) at `9fed386` (2026-09-24 12:07 -04:00), with the owner's Checkpoint "Fix + test, then publish" (2026-09-24 12:21 -04:00)
+**Commits**: 910b0d4, 257bb7f
+
+### Actions
+- [x] (must-fix) Only an Integrated Review (or legacy External Review) with `**Status**: complete` supersedes; a partial or failed one decided nothing and supersedes nothing. Tests h27 (partial, failed: the older finding is still listed next to the triage entry's own). triage-reviews SKILL.md `superseded` bullet, the AGENTS.md row and the ADR-0013 addendum say "complete" — `.agent/scripts/review_progress.sh:436-438` (910b0d4)
+- [x] (suggestion) h28: a complete `## External Review (Round 2)` supersedes the older Local Review (Pre-Push) — `.agent/scripts/tests/test_triage_reviews_integration.sh` (257bb7f)
+
+### Notes
+- Mutation checks: dropping the status filter fails both h27 cases; dropping the predecessor mapping from the triage check fails h28.
+- Suites: triage 51/51, gate 89/89, merge_pr 91/91; shellcheck clean.
