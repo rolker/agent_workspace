@@ -417,3 +417,16 @@ Lint (pre-commit) still running on both workflow runs; Validate Adapter Contract
 **Decision**: address
 
 Add the test first — fix pass for the empty-helper test, re-review on the PR, then triage and merge.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 09:37 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a16dbdee4e406edcb, resume 1 of 3)
+
+**PR**: #346 at `b40045a`
+**Addressed**: Integrated Review at `b062b3d` (2026-09-24 08:53 -04:00)
+**Commits**: b40045a
+
+### Actions
+- [x] (suggestion) Empty-helper case (sources cleanly, defines no `real_case_relpath`) added to both suites: asserts the "could not be loaded" warning, never "not found", and the candidate-spelling fallback (test_update_roadmap 12/12, test_discover_governance 25/25); mutation-checked — dropping the `declare -F` guard makes the update_roadmap case fail — `.agent/scripts/tests/test_discover_governance.sh:193`, `.agent/scripts/tests/test_update_roadmap.sh:147`
