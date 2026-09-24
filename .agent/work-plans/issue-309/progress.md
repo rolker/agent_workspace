@@ -339,3 +339,13 @@ Fix + test, then publish (Recommended) — fix pass for the round-4 must-fix (on
 ### Notes
 - Mutation checks: dropping the status filter fails both h27 cases; dropping the predecessor mapping from the triage check fails h28.
 - Suites: triage 51/51, gate 89/89, merge_pr 91/91; shellcheck clean.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 12:33 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: publish
+
+Recorded from the owner's earlier answer at the round-4 rounds checkpoint: "Fix + test, then publish (Recommended) — publish without a 5th pre-push round; the PR-mode re-review checks it." The fix pass (1593fd1) is complete; publishing now, then a PR-mode review of the last fix before triage.
