@@ -614,3 +614,33 @@ Fix all 4, then merge (Recommended) — one fix pass for the 4 suggestions in th
 - The gate record's `**PR**` line and the "covers head" echo still interpolate SHAs unescaped. They are hex-validated (rev-parse, or GitHub's headRefOid) and are not gate reasons.
 - Suites: triage integration 59/0, merge gate 103/0, merge_pr 91/0, convergence 31/0, address_findings 15/0; shellcheck (warning) clean.
 - g17's run prints an awk "invalid multibyte data" warning from the worktree helpers on the raw-byte root. It is terminal noise outside the gate reasons and does not affect the record.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-24 14:42 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #349 at `f2ef6da`
+**Depth**: Deep (reason: whole-PR re-review; enforcement script merge_pr.sh plus governance files AGENTS.md, ADR-0013, triage-reviews SKILL.md)
+**Must-fix**: 0 | **Suggestions**: 0
+
+This re-review follows fix pass 4 (3345803, 57c9e9f, 3aa5dcd). It closes all 4 suggestions from the Integrated Review at `1b488b5`:
+- **Gate reasons:** every `_gate_reasons+=` site (merge_pr.sh:704-781) now wraps its interpolated values in `_bk_display`. That covers the heading type, Status, Verdict, must-fix count, operator paths, SHAs and issue number. The only raw values left are `_gate_read_rc`, an integer, and `_gate_stale_why`, which is already escaped.
+- **No double-escape:** the helper's output is consumed as-is, and the Python bridge only JSON-encodes it.
+- **Idempotency:** `_bk_display` is pure and deterministic, including the cap, so the recomputed Conditions text matches the recorded one byte for byte.
+- **Cap edges hold:** 256 bytes gives no marker; 257 gives `...(+1 bytes)`; the empty string stays empty. A multibyte split at the cap is escaped byte by byte.
+- **Unescaped SHAs are acceptable:** the fixer left the Merge record's **PR** line and the "covers head" echo unescaped, and both are safe. `_gate_head_short` comes from GitHub's headRefOid. `PR_NUMBER` must resolve through `gh`. `_gate_r_sha` can only be hex, because every correlation regex in progress_read.py:172/187/196 is `[0-9a-fA-F]+`.
+
+The Claude adversarial reviewer suggested escaping the merge_pr.sh:754 echo, on the theory that git accepts non-hex revisions. That was dropped: the parser never yields a non-hex sha, and the line is an echo, not a gate reason.
+
+Suites: merge gate 103/0, triage integration 59/0, merge_pr 91/0. shellcheck (warning) is clean.
+
+Reviewers:
+- Claude adversarial: ran fresh; 1 suggestion, dropped as not reachable.
+- Codex: completed; no issues.
+- Gemini: failed; empty response after a RunCommand tool call was auto-denied in headless mode.
+- Copilot: skipped (quota).
+
+### Findings
+- [ ] No issues found. LGTM.
