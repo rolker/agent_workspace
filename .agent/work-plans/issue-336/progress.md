@@ -151,3 +151,35 @@ The owner's option is followed correctly. The Gemini change stays Gemini-only, a
 **Decision**: revise
 
 Revise the plan (Recommended): fold in all 12 items from the plan review at ce728e4, including the optional live claude bad-model check; then one more plan review.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-23 15:04 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Dispatch**: resumed (agent a77946816a6f43db3, resume 1 of 3)
+**Plan**: `.agent/work-plans/issue-336/plan.md` at `3f4249c`
+
+Revision 2, folding in all 12 Recommended Actions from the `## Plan Review`
+at `ce728e4` per the owner's checkpoint. Key changes from revision 1: the
+claude-arm reorder now keeps `claude exited ${CLI_EXIT}` (with bound/marker
+notes) when stdout is not JSON and the exit is non-zero, and adds a new
+terminal check for a clean-looking JSON result that still exited non-zero;
+`api_error_status` and `terminal_reason` are added to the reason; the
+`.errors` read is type-safe against non-string array elements; all three
+claude failure shapes (bad `--model` 404, `--max-turns`, `--max-budget-usd`)
+plus a success shape were re-captured in full against the installed claude
+2.1.281 (pasted verbatim into the plan, session_id/uuid scrubbed) via
+`claude --version`; the two kept `.error` mocks are now labelled synthetic
+fallback coverage, not observed output; the agy cutoff phrase now matches
+only `ERROR_MSG`/stderr (never the model's own response text), with a new
+partial-response test and an explicit note that the real agy field
+placement could not be captured live and the mock is modelled on the
+issue's quoted text; the stale "Reading files is permitted" comment is now
+in Files to Change; the Gemini instruction is reworded to "do not call any
+tools" with missing-context routed to the Summary, and the concise-output
+text stays in the gemini-only heredoc; the existing prompt-isolation test
+is extended to assert the new/removed instructions rather than just the
+old ones; and the live acceptance step is now concrete — a detached scratch
+worktree at `48b0d82^2` reviewed against base `48b0d82^1` (#320's merge,
+verified this session at 268,391 bytes of diff, Deep-tier), plus the
+optional live claude bad-model wrapper check via `_cli_review.sh` directly.
