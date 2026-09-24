@@ -1160,6 +1160,27 @@ test_agy_cutoff_phrase_in_response_not_misread() {
     teardown
 }
 
+test_agy_cutoff_halves_on_separate_lines_not_misread() {
+    echo "TEST: 'cut off' and 'output token limit' on separate lines is not a cutoff (#336)"
+    setup
+
+    # An unrelated "connection was cut off" error plus a separate stderr
+    # line naming the token limit: still a failure, but the generic one.
+    local exit_code content
+    exit_code=$(MOCK_AGY_ERROR="connection was cut off by the server" \
+        MOCK_AGY_ERROR_STDERR="[agy] model output token limit: 8192" \
+        MOCK_AGY_ERROR_RESPONSE="PARTIAL REVIEW TEXT" run_gemini_sync)
+    assert_exit_code "split-phrase failure still exits 3" "3" "$exit_code"
+    content=$(cat "${MOCK_REPO}/${FINDINGS_REL}")
+    assert_contains "reason is the generic status line with the real error" \
+        "result status ERROR: .*connection was cut off by the server" "$content"
+    assert_not_contains "no cutoff reason line" "\(status ERROR\); the prompt or response was too large" "$content"
+    assert_not_contains "the partial response is not recorded" "PARTIAL REVIEW TEXT" "$content"
+    assert_contains "findings file has failed marker" "Review failed" "$content"
+
+    teardown
+}
+
 test_agy_findings_truncated() {
     echo "TEST: a failed run never leaves the previous run's findings in place (#288)"
     setup
@@ -4098,6 +4119,7 @@ test_agy_api_error_message_kept
 test_agy_viewfile_denial_is_failure
 test_agy_output_token_cutoff_is_named
 test_agy_cutoff_phrase_in_response_not_misread
+test_agy_cutoff_halves_on_separate_lines_not_misread
 test_agy_findings_truncated
 test_agy_no_temp_leak
 test_shared_temp_no_leak_on_early_abort

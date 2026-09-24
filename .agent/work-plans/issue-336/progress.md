@@ -317,7 +317,7 @@ Live acceptance, claude bad-model wrapper:
 **Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
 
 ### Findings
-- [ ] (suggestion) Cutoff match ORs "cut off" and "output token limit" across the whole ERROR_MSG + 20-line stderr blob, so unrelated lines (e.g. "connection was cut off" + a stderr banner mentioning the token limit) mislabel the failure as a cutoff; require both phrases on one line and add a test for the split case (failure still fails; only the reason is wrong) — `.agent/scripts/_agy_review.sh:256`
+- [x] (suggestion) Cutoff match ORs "cut off" and "output token limit" across the whole ERROR_MSG + 20-line stderr blob, so unrelated lines (e.g. "connection was cut off" + a stderr banner mentioning the token limit) mislabel the failure as a cutoff; require both phrases on one line and add a test for the split case (failure still fails; only the reason is wrong) — `.agent/scripts/_agy_review.sh:256`
 - [ ] (suggestion) Soften the concise-output wording: keep "do not restate the diff / cite file:line" (the real token sink), drop the "the whole review is lost" threat, and add "report every finding you have; keep each row short" so brevity applies per row, not to the number of findings — `.agent/scripts/cross_model_review.sh:1140`
 - [ ] (suggestion) The cutoff shape is modelled on the issue's quoted text, not a live capture; the one case still able to count a truncated reply as a complete review is agy returning status SUCCESS with a cut-off response. State this residual in the PR body and track a live capture as follow-up (not blocking: every non-SUCCESS status already fails) — `.agent/scripts/_agy_review.sh:249`
 

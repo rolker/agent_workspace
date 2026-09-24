@@ -252,10 +252,12 @@ if [[ "$STATUS" != "SUCCESS" ]]; then
     # model's text and can legitimately quote the phrase (a review of a
     # diff that mentions it), which must not relabel an unrelated error.
     # The phrase is the CLI text quoted in #336; which of the two channels
-    # agy puts it on was not captured live, so both are checked.
+    # agy puts it on was not captured live, so both are checked. Both
+    # halves must sit on the SAME line: across the whole blob, an unrelated
+    # "connection was cut off" plus a separate banner naming the token
+    # limit would mislabel an ordinary failure as a cutoff.
     cutoff_source="${ERROR_MSG}"$'\n'"$(tail -n 20 "$STDERR_FILE" 2>/dev/null || true)"
-    if grep -qi 'cut off' <<< "$cutoff_source" \
-        && grep -qi 'output token limit' <<< "$cutoff_source"; then
+    if grep -qiE 'cut off.*output token limit|output token limit.*cut off' <<< "$cutoff_source"; then
         fail "response was cut off because it exceeded the output token limit (status ${STATUS}); the prompt or response was too large for this turn${ERROR_MSG:+: ${ERROR_MSG}}$(stderr_excerpt)"
     fi
     fail "result status ${STATUS}${ERROR_MSG:+: ${ERROR_MSG}}$(stderr_excerpt)"
