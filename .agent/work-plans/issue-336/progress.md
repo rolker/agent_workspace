@@ -244,3 +244,13 @@ Revision 2 addresses all 12 round-1 items. The claude-arm reorder is sound: ever
 - [ ] Correct the acceptance diff size to the script's real embedded diff (~84 KB), and record the script-reported prompt size.
 - [ ] Remove the `--no-progress` artifact dir after the acceptance run. Keep the scratch worktree under the session scratchpad. Drop "current main tip" for `48b0d82`.
 - [ ] Correct the "no CLAUDE.md" capture claim. Consider scrubbing `permission_denials[].tool_input` / `tool_use_id` values in the committed mock.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 10:22 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Implement, fold in all 5 (Recommended) — dispatch the implementation in the background; the implementer applies the 5 notes from the round-2 Plan Review at 9865e58 as it goes.
