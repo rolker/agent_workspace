@@ -6,243 +6,330 @@ https://github.com/rolker/agent_workspace/issues/345
 
 ## Context
 
-The user tier (`~/.claude`, ADR-0016 §3) currently ships workspace skills to
-project sessions as flat symlinks in `~/.claude/skills/`. Symlinks by name
-collide with a project's own same-named skill (`gz4d` already has its own
-`plan-task`, `research`, `audit-project`, `brand-guidelines` — all shadowed
-today), and a symlink is global to the machine, so it silently reaches
-*every* repo, registered or not. Interim state on this machine: the 12
-symlinks were removed by hand; only `start-task` remains, and
-`user_tier_install.sh`/`--check` still carry the symlink logic and would
-recreate them on the next install.
+The user tier (`~/.claude`, ADR-0016 §3) ships workspace skills to project
+sessions as flat symlinks in `~/.claude/skills/`. Symlinks collide by name
+with a project's own same-named skill (`gz4d` already has `plan-task`,
+`research`, `audit-project`, `brand-guidelines`, all shadowed today), and a
+symlink is global to the machine — it reaches every repo, registered or
+not. Interim state on this machine: the 12 symlinks were removed by hand;
+only `start-task` remains, and `user_tier_install.sh`/`--check` still carry
+the symlink logic and would recreate them on the next install.
 
 The owner has decided the fix is a **Claude Code plugin** (namespace rename
 accepted as the trade-off), spiked and confirmed live (claude 2.1.281,
 `reference-plugin-spike-345`): a local-scope marketplace + plugin install
 writes only the *project's* gitignored `.claude/settings.local.json`,
-namespaced skills (`agent-workspace:plan-task`) coexist with a project's own
-`/plan-task`, worktrees inherit it, unrelated repos don't, and directory
-marketplaces load in place (edits apply next session, no reinstall).
+namespaced skills (`agent-workspace:plan-task`) coexist with a project's
+own `/plan-task`, worktrees inherit it, unrelated repos don't, and
+directory marketplaces load in place.
 
-This plan covers **skills only**. Hooks (the `SessionStart` layer injection
-and `log-tool-use.sh`) stay on the current user-tier mechanism and move into
-the plugin in a follow-up issue — see Open Questions.
+This is **revision 2**, folding in the round-1 `review-plan` verdict
+(needs-work, `956e633`) and the owner's "Accept all 8, revise" checkpoint.
+Every numbered finding from that review is addressed below; the section
+that answers it is named inline.
+
+This plan still covers **skills only**. Hooks move into the plugin in a
+follow-up issue opened alongside this plan (step 10).
 
 ## Approach
 
 1. **Add the plugin manifest at the workspace root.**
-   `.claude-plugin/plugin.json` — `"name": "agent-workspace"`,
-   `"skills": "./.claude/skills"` (the whole existing directory; see decision
-   below on `session_scope` filtering). `.claude-plugin/marketplace.json` —
-   one entry, plugin source `"./"`. Both are plain JSON, committed at the
-   workspace root; nothing project-side is touched by adding them.
+   `.claude-plugin/plugin.json` — `"name": "agent-workspace"` (owner
+   confirmed). `.claude-plugin/marketplace.json` — one entry, source `"./"`.
+   The `skills` field is an **array of per-skill directory paths**, not the
+   whole `./.claude/skills` glob — see step 2 (finding 7). Verify the array
+   form against `claude plugin validate .` (available locally: claude
+   2.1.282) before committing the manifest shape; if the schema rejects an
+   array, fall back to the whole-directory glob and document the fallback's
+   effect in step 2.
 
-2. **Decide `session_scope`'s meaning post-plugin.** Symlink-based delivery
-   used `session_scope: project|both` to curate *which* skills reached a
-   project session, because every symlinked name was a collision risk. The
-   plugin's namespacing removes that risk — a bare `session_scope: workspace`
-   skill like `audit-workspace` or `research` can now be exposed under
-   `agent-workspace:` without touching the project's own `/research`. Decision:
-   expose the whole `.claude/skills` directory through the plugin (all 21
-   skills, unfiltered) rather than build a curated subset tree — the field
-   stops gating *exposure* and keeps documenting *intended* scope (a skill
-   whose SKILL.md assumes the workspace cwd, e.g. `audit-workspace`, still
-   only makes sense run bare from the workspace; running it under
-   `agent-workspace:audit-workspace` from a project is harmless but not
-   useful). This is simpler than maintaining a second, filtered skills tree
-   and matches "namespacing solves the collision problem, so the curation
-   problem doesn't need solving too." Flagged as a decision to confirm, not
-   an obvious no-op — see Open Questions.
+2. **Expose only `session_scope: project|both` skills (finding 7).**
+   14 of 22 skills declare `project`/`both`; the other 8
+   (`analyze-permissions`, `audit-workspace`, `brainstorm`,
+   `brand-guidelines`, `gather-project-knowledge`, `inspiration-tracker`,
+   `issue-triage`, `research`, `skill-importer`, `what-next` — default
+   `workspace`, no field) call `.agent/scripts/...` cwd-relative, which
+   `test_skill_paths.sh` allows precisely because they're documented as
+   workspace-only. Exposing them through the plugin would either fail
+   loudly (script not found under the project cwd) or, worse, silently run
+   a same-named script the project happens to ship (`project11` already
+   forks some of this tree). Decision: generate `plugin.json`'s `skills`
+   array from `session_scope` frontmatter at commit time (a small
+   generator step, mirroring `selected_skills()`'s existing awk logic, now
+   repurposed rather than deleted) and verify it in
+   `test_plugin_manifest.sh` (step 6) by re-deriving the list from
+   frontmatter and diffing against the manifest. If `claude plugin
+   validate` rejects an array `skills` field (checked in step 1), the
+   fallback is the whole-directory glob *and* each workspace-scoped
+   skill's cwd-relative script calls become a documented known limitation
+   referenced from the hooks-into-plugin follow-up (step 10), not solved
+   here.
 
-3. **`start-task` stays in the plugin.** It's `session_scope: both` and
-   Claude-Code-only already; excluding it from the plugin would need a
-   second, curated skills path (rejected in step 2) just for one skill.
-   Running `agent-workspace:start-task` from a project session (to open a
-   *workspace* worktree without leaving the project session) is an unusual
-   but not harmful use; simplicity wins. Confirm at the plan checkpoint.
+3. **`start-task` is included** (owner decision). It's `session_scope: both`
+   already, so it's in the generated list from step 2 without a special
+   case.
 
-4. **Retire the skill-symlink code in `user_tier_install.sh`.** Remove
-   `SKILLS_DIR`, `selected_skills()`, the skill portion of `sync_skills()`,
-   `--list-skills`, `--sync-skills`'s skill effect, the skill section of
-   `--check`'s drift report, and the skill-symlink removal loop in
-   `--uninstall`. Update the file's header comment (item 5 goes away).
-   Add a one-time **migration cleanup**: on `install` and `uninstall`, scan
-   `~/.claude/skills/` for symlinks pointing into `$WS_ROOT/.claude/skills/*`
-   (the old delivery mechanism) and remove them — this is what makes the
-   change correct on a machine that hasn't manually removed them yet (only
-   this machine has; #345's own interim state), not just on this one.
+4. **Retire the skill-symlink *delivery* code, keep symlink drift
+   detection (finding 3).** In `user_tier_install.sh`:
+   - Remove `sync_skills()`'s *creation* half (the `ln -s` add/repair loop)
+     and `--list-skills`/`--sync-skills` as skill-creating modes — the
+     plugin is the delivery mechanism now.
+   - **Keep `foreign_skill_link()` and the removal loop.** `--check` keeps
+     reporting any `~/.claude/skills/*` symlink that resolves into *any*
+     `agent_workspace` checkout (this one or another) as legacy drift, the
+     same precedent as the #328 retired-hook-entry check. `--uninstall`
+     keeps removing symlinks this checkout owns. This is what makes the
+     fix correct on a machine that never re-runs install, not just this
+     one (which had them removed by hand already).
+   - `selected_skills()` is repurposed by step 2's manifest generator, not
+     deleted.
 
-5. **Add a mechanical plugin-manifest check.** New
-   `.agent/scripts/tests/test_plugin_manifest.sh`: `plugin.json` is valid
-   JSON, `name` is `agent-workspace`, `skills` points at `./.claude/skills`;
-   `marketplace.json` is valid JSON and its one plugin entry's `source` is
-   `./`. This is the enforcement-over-documentation replacement for the
-   drift check step 4 removes — a renamed/malformed manifest fails a test
-   run instead of silently breaking every project's plugin install.
+5. **Enable the plugin from `user_tier_install.sh`, per registered root
+   (finding 1, owner decision 1).** New behavior, reusing
+   `_project_registry.sh`:
+   - `install`: for every `registry_names()` entry, resolve its path
+     (`registry_field ... path`), then **skip any root whose
+     `git -C <root> rev-parse --show-toplevel` equals `$WS_ROOT`**
+     (finding 4's guard — confirmed live on this machine: `p11-jazzy` and
+     `p11-rolling` have no `.git` of their own; their toplevel is the
+     workspace checkout itself, so they already see the workspace's bare
+     `.claude/skills` by ordinary directory walk-up, and enabling the
+     plugin there would duplicate every skill under both names *and* write
+     into the shared workspace-root `settings.local.json`, defeating the
+     whole point of scoping). For every other root (`gz4d` today): `cd
+     <root> && claude plugin marketplace add "$WS_ROOT" --scope local &&
+     claude plugin install agent-workspace@agent-workspace --scope local`.
+   - `--check`: verify each non-skipped registered root's
+     `<root>/.claude/settings.local.json` has
+     `enabledPlugins["agent-workspace@agent-workspace"] == true`;
+     report drift per-root if missing, and separately flag (as an error,
+     not silent) any *skipped* root whose settings show the plugin enabled
+     anyway (a stale enable from before the guard existed).
+   - `--uninstall`: `claude plugin uninstall agent-workspace@agent-workspace
+     --scope local` from each enabled root (best-effort; a root that no
+     longer exists on disk is skipped with a note, not a failure).
+   - This function is written so #332's registration flow can call it
+     directly for one new root, per the owner's decision that #332 reuses
+     it later — no separate "enable" entry point to keep in sync.
+   - **ADR-0016 §2 exception, accepted (owner decision 2).** §2 says "the
+     workspace never writes into a project checkout (beyond `.git/info/
+     exclude` and an untracked `COLCON_IGNORE`)". Running the two `claude
+     plugin` commands from the installer writes the project's *gitignored*
+     `.claude/settings.local.json`. ADR-0017 (step 9) records this as an
+     explicit, scoped exception to §2, not a silent violation.
 
-6. **Prefix skill names by session root in `dispatch_phase.sh`.**
-   `skill_task_line()` (lines ~236–244) hardcodes bare `/review-issue`,
-   `/plan-task`, etc. `dispatch_phase.sh` already resolves `--type
-   workspace|project` for every dispatch. Add a local prefix — empty for
-   `--type workspace`, `agent-workspace:` for `--type project` — and apply
-   it to every skill name in `skill_task_line()`'s case statement (not to
-   the literal `implement` instruction, which isn't a slash command). Add
-   test cases to the existing `dispatch_phase.sh` test suite covering both
-   `--type` values for at least two skills.
+6. **Add the mechanical plugin-manifest check (finding 7, finding 8).**
+   New `.agent/scripts/tests/test_plugin_manifest.sh`:
+   - `plugin.json`/`marketplace.json` are valid JSON; `name` is
+     `agent-workspace`; marketplace source is `./`.
+   - The `skills` array (or glob, per step 1's outcome) matches exactly
+     the skills `session_scope: project|both` selects from frontmatter —
+     re-derives the list independently rather than trusting the generator
+     that wrote it.
+   - Runs `claude plugin validate .` when `claude` is on `PATH`, skips
+     with a note otherwise (CI/other machines may not have it).
 
-7. **Document the enable step as a manual, then-automated action.**
-   `register_project.sh` doesn't exist yet (#332 / ADR-0016 decision 5 is
-   PR-4-scoped and not landed) — today, registering a project means hand-
-   editing `.agent/projects.local`. Add the two commands as the documented
-   next manual step wherever that hand-edit is documented (`.agent/
-   WORKTREE_GUIDE.md`), run from the project root:
-   ```
-   claude plugin marketplace add <workspace-root> --scope local
-   claude plugin install agent-workspace@<marketplace-name> --scope local
-   ```
-   Note inline that #332's onboarding automation takes this step over once
-   it lands — this plan does not implement #332.
+7. **Explicit `--skill-prefix` on `dispatch_phase.sh`, not `--type`-keyed
+   (finding 2 — the round-1 plan's biggest defect).** `--type` is the
+   *issue/worktree* type, not which skill set the *host* session has
+   loaded; a workspace-launched host driving a `--type project` issue has
+   no plugin and only bare skills (the primary `/run-issue` use case for
+   every p11-* and gz4d issue today), and `$PWD` is not a safe substitute
+   (`/start-task` `cd`s the host into a worktree, and Codex hosts have no
+   plugin at all). Fix:
+   - `dispatch_phase.sh` gains `--skill-prefix <p>` (default: empty —
+     correct for a workspace-hosted session and for Codex, which never has
+     the plugin). `skill_task_line()` prepends the prefix to every slash
+     command it prints (not to the literal `implement` instruction, which
+     isn't a slash command).
+   - `run-issue`'s SKILL.md (Claude-Code-only) sets `--skill-prefix
+     agent-workspace:` when `${CLAUDE_PLUGIN_ROOT}` is non-empty in its own
+     rendered text — that variable expands only when the *skill itself* was
+     loaded through the plugin (confirmed in the spike, Q4), which is
+     exactly "this host session has the plugin" and is independent of
+     `--type`/`$PWD`.
+   - Test all four host/issue-type combinations: workspace-host +
+     workspace-issue (bare, unaffected), workspace-host + project-issue
+     (bare — the case round-1 broke), project-host + workspace-issue
+     (prefixed — the exact bug #345 fixes, now correctly prefixed instead
+     of colliding), project-host + project-issue (prefixed).
 
-8. **Record the decision durably: new ADR-0017.** ADR-0016 is itself
-   Provisional (pending #317's gz4d acceptance run) and its Decision §3
-   ("skill symlinks") is exactly what this issue replaces — a substantive
-   change per ADR-0008's test, which needs a superseding ADR, not an
-   addendum. Decision: a **new** `docs/decisions/0017-<slug>.md` that
-   supersedes ADR-0016 §3 only (skill delivery), leaving §1/§2/§4–§8
-   (session roots, registry, memory placement, the user-tier inertness
-   rule, the root-file convention) untouched and in force. Rationale for a
-   new ADR over editing 0016 in place: 0016 is still awaiting its own
-   promotion decision, and folding an unrelated mechanism swap into a
-   document that hasn't been accepted yet would conflate two open
-   questions in one file; a scoped superseding ADR is the smaller, more
-   reviewable diff and matches how 0016 itself points at 0011 for its own
-   future supersession rather than editing 0011 in place. Add a "Record
-   the plugin decision" cross-link from ADR-0016's Consequences section
-   (same pattern as its existing "ADR-0011's discovery order will be
-   superseded" subsection) pointing at ADR-0017.
-   Cross-link #335 (zero-footprint design doc — this plugin mechanism is
-   its packaging answer), #332 (registration automation — names the
-   enable step above), and #321 (orchestrator skill — sub-agent handoffs
-   already confirmed to work with prefixed names in the spike) from
-   ADR-0017's References section.
+8. **Makefile and generated-skill housekeeping (finding 3).**
+   `Makefile:159-161`'s `generate-user-tier-skills` target currently calls
+   `user_tier_install.sh --sync-skills` for its skill-creating effect,
+   which step 4 removes. Repoint it at the drift-check-only path
+   (`--check`, or drop the target and fold its comment into
+   `user-tier-install`'s) — a plan-time decision to make explicit in the
+   PR diff, not leave implicit. Update the target's own comment (it
+   currently says "derived from session_scope frontmatter" — still true,
+   now for the plugin manifest instead of symlinks). Re-run `make
+   generate-skills` after any `.PHONY` line change, per this repo's own
+   convention (`CLAUDE.md`).
 
-9. **Update the ADR table and framework docs.**
-   `.agent/knowledge/principles_review_guide.md` row 42 (ADR-0016) gets a
-   trailing note that skill delivery moved to ADR-0017; add a new row for
-   0017. `AGENTS.md`/`CLAUDE.md` and the non-Claude adapters
-   (`.github/copilot-instructions.md`,
-   `.agent/instructions/gemini-cli.instructions.md`,
-   `.agent/AGENT_ONBOARDING.md`) get a one-line correction: workspace
-   skills reach a registered project via the `agent-workspace` plugin
-   (Claude Code only), not via symlinks; Codex/Gemini/Copilot are
-   unaffected — they already read `.claude/skills/*/SKILL.md` (or the
-   equivalent tree) directly and never had the symlink mechanism.
+9. **Record the decision durably: new ADR-0017 (finding 5).**
+   `docs/decisions/0017-plugin-based-skill-delivery.md`, superseding
+   ADR-0016 §3 only. Three corrections from round 1:
+   - (a) **Pointer placement**: ADR-0016 gets a **Status-line and
+     References** addition naming ADR-0017 — not a Consequences
+     subsection. ADR-0008 counts a Consequences addition as substantive;
+     the existing "ADR-0011's discovery order will be superseded" text is
+     ADR-0016 *itself* recording its own future supersession of another
+     document, not the pattern for *receiving* one. The correct precedent
+     is the one-line pointer ADR-0011 received.
+   - (b) **§2 exception**: ADR-0017 explicitly states the write-into-
+     project-checkout exception from step 5 (owner decision 2), scoped to
+     exactly `.claude/settings.local.json` via the two `claude plugin`
+     commands, nothing else.
+   - (c) **Relationship to #317's acceptance run**: state plainly that the
+     gz4d `/run-issue` acceptance run (ADR-0016's own promotion condition)
+     will now exercise plugin-delivered skills, and that a passing run
+     satisfies both ADR-0016's promotion *and* stands in for ADR-0017's own
+     live acceptance (step 11) — one run, two ADRs watching it.
+   - Cross-link #335 (zero-footprint design doc — this is its packaging
+     answer), #332 (registration automation — reuses step 5's function),
+     and #321 (orchestrator skill — prefixed sub-agent handoffs already
+     confirmed live in the spike) from ADR-0017's References.
 
-10. **Tests.**
-    - Update `.agent/scripts/tests/test_user_tier_install.sh`: delete every
-      symlink/`--list-skills`/`--sync-skills`/skill-drift test case; add one
-      case asserting a fresh `install` (and `uninstall`) removes a
-      pre-existing stale symlink under `~/.claude/skills/` that points into
-      the sandboxed workspace copy (the migration-cleanup path from step 4).
-    - `.agent/scripts/tests/test_user_tier_guard.sh` is unaffected (it
-      governs promoted *scripts/hooks*, not skills) — no change, confirmed
-      by reading it; note this in the PR so a reviewer doesn't go looking
-      for a change that isn't there.
-    - New `test_plugin_manifest.sh` (step 5).
-    - Extend `dispatch_phase.sh`'s existing test coverage for the
-      `--type`-aware prefix (step 6).
-    - Add `.agent/scripts/tests/run_script_tests.sh` picks up the new suite
-      automatically (glob-based); no registration step needed.
+10. **Open the hooks-into-plugin follow-up issue now (owner decision 6).**
+    Title: "Move SessionStart/log-tool-use.sh hook delivery into the
+    agent-workspace plugin". Body references this plan and ADR-0017,
+    names the two remaining user-tier mechanisms hooks still use, and
+    records step 2's workspace-scoped-skill limitation as in-scope for
+    that follow-up if step 1's array form isn't supported. The host opens
+    this issue (not scripted here) — the plan step is "open it", the
+    action is manual per the owner's note.
 
-11. **Live acceptance step (manual, documented in the PR description, not
-    automated — collisions with a real project's own skill can't be
-    asserted without a real `claude` CLI session).**
-    - Create a scratch git repo (synthetic — never a real registered
-      project) with its own `.claude/skills/plan-task/SKILL.md` (or reuse
-      an existing gz4d-style collision).
-    - `claude plugin marketplace add <this-workspace-root> --scope local`
-      then `claude plugin install agent-workspace@agent-workspace --scope
-      local` from the scratch repo root.
-    - In a Claude Code session there: confirm `/agent-workspace:plan-task`
-      is available and distinct from the scratch repo's own `/plan-task`,
-      and that an unrelated third repo (no marketplace/install) sees
-      neither.
-    - Record the result in the PR description; this substitutes for a
-      scripted assertion the plugin CLI doesn't expose non-interactively
-      for "list skills the picker resolves."
+11. **No instruction-file edits; the note lives in the SessionStart hook
+    header instead (finding 6, owner decision 7).** Round 1 proposed
+    edits to `AGENTS.md`/`CLAUDE.md`/three adapters/`AGENT_ONBOARDING.md`
+    "correcting" text that doesn't exist there — confirmed by grep, none
+    of the five files mentions symlinks, the user tier, or skill delivery.
+    Dropped entirely. Instead,
+    `.claude/hooks/session_start_project_layer.sh`'s own header comment
+    (lines 6–17, already describing what the hook injects for a project
+    session) gets one added line: workspace skills reach a registered
+    project through the `agent-workspace` plugin (Claude Code only, not
+    through this hook), since 7 skills reference each other by bare slash
+    command in prose (finding 9) and a reader of *this* file — not an
+    Ask-First instruction file — is exactly who needs to know that.
+
+12. **Tests.**
+    - `test_user_tier_install.sh`: remove the skill-*creation* test cases
+      (the `ln -s` add/repair paths); **keep and extend** the drift-
+      detection cases for `foreign_skill_link()`/stale-symlink removal
+      (finding 3 — nothing here gets deleted, only the creation half).
+      Add cases for the new per-root enable/`--check`/`--uninstall` logic
+      (step 5), including the workspace-toplevel skip guard, using a
+      sandboxed registry the same way the existing suite sandboxes
+      `$WS_ROOT`.
+    - New `test_plugin_manifest.sh` (step 6).
+    - Extend `dispatch_phase.sh`'s test suite with the four
+      `--skill-prefix` combinations (step 7).
+    - `test_user_tier_guard.sh` and `test_skill_paths.sh` are unaffected
+      (guard governs promoted scripts/hooks, not skills; skill-paths keeps
+      enforcing `$WS_ROOT` idiom for `project|both` skills regardless of
+      delivery mechanism) — confirmed by reading both; noted in the PR so
+      a reviewer isn't left looking for a change that isn't there.
+
+13. **Live acceptance: port the spike, opt-in (finding 8).**
+    `.agent/scripts/tests/live/plugin_acceptance.sh`, adapted from
+    `scratchpad/plugin-spike/spike.sh` — **not** collected by
+    `run_script_tests.sh` (needs a real `claude` session and, for the
+    p11-shape case, is destructive-adjacent to the real registry — auth
+    and cost gate it as opt-in). Covers, headlessly via `claude -p`:
+    - Collision: a synthetic repo with its own `plan-task` skill sees
+      both `/plan-task` (its own) and `/agent-workspace:plan-task`.
+    - Worktree inheritance and the unrelated-repo negative (from the
+      spike).
+    - Workspace-root shape: a session *at* `$WS_ROOT` sees every plugin
+      skill exactly once, bare — never doubled.
+    - p11-shape: a synthetic root with no `.git` of its own, toplevel
+      pointing at a synthetic "workspace", confirms the guard in step 5
+      would skip it (this can be asserted without the real registry by
+      pointing the script at a sandboxed one, matching the hermetic
+      pattern the existing installer tests already use).
+    - The `--skill-prefix` end-to-end path from step 7.
+    Run once against the real workspace + a scratch project as part of
+    this PR; record the transcript/output in the PR description.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.claude-plugin/plugin.json` | New — plugin manifest, `name: agent-workspace`, `skills: ./.claude/skills` |
+| `.claude-plugin/plugin.json` | New — `name: agent-workspace`, `skills` as a generated array of `project\|both` skill paths (or documented glob fallback) |
 | `.claude-plugin/marketplace.json` | New — one-entry marketplace, source `./` |
-| `.agent/scripts/user_tier_install.sh` | Remove skill-symlink logic (`SKILLS_DIR`, `selected_skills`, skill half of `sync_skills`/`--check`/`--uninstall`, `--list-skills`, `--sync-skills`'s skill effect); add stale-symlink migration cleanup on install/uninstall; update header comment |
-| `.agent/scripts/tests/test_user_tier_install.sh` | Remove symlink/skill-selection test cases; add stale-symlink-cleanup case |
-| `.agent/scripts/tests/test_plugin_manifest.sh` | New — validates `plugin.json`/`marketplace.json` shape |
-| `.agent/scripts/dispatch_phase.sh` | `skill_task_line()`: prefix skill names with `agent-workspace:` for `--type project`, bare for `--type workspace` |
-| `.agent/scripts/tests/` (dispatch_phase test suite) | Add cases for the `--type`-aware prefix |
-| `docs/decisions/0017-<slug>.md` | New ADR — supersedes ADR-0016 §3 (skill delivery), cross-links #335/#332/#321 |
-| `docs/decisions/0016-session-roots-and-the-user-tier.md` | Add a Consequences pointer to ADR-0017 (pattern matches its existing ADR-0011 pointer) |
+| `.agent/scripts/user_tier_install.sh` | Remove skill-symlink *creation* only (keep drift detection/`foreign_skill_link()`); add per-registered-root plugin enable/`--check`/`--uninstall` with the workspace-toplevel skip guard |
+| `.agent/scripts/tests/test_user_tier_install.sh` | Remove creation-only cases; keep/extend drift cases; add per-root enable/check/uninstall + guard cases |
+| `.agent/scripts/tests/test_plugin_manifest.sh` | New — manifest shape, skill-list-matches-frontmatter, `claude plugin validate` when available |
+| `.agent/scripts/dispatch_phase.sh` | `--skill-prefix` flag (default empty) on `skill_task_line()` |
+| `.agent/scripts/tests/` (dispatch_phase suite) | Four `--skill-prefix`/host/issue-type combinations |
+| `Makefile` | Repoint or retire `generate-user-tier-skills` (its `--sync-skills` call is gone); update comment; re-run `make generate-skills` |
+| `docs/decisions/0017-plugin-based-skill-delivery.md` | New ADR — supersedes ADR-0016 §3, records the §2 exception, states the #317-run relationship, cross-links #335/#332/#321 |
+| `docs/decisions/0016-session-roots-and-the-user-tier.md` | Status-line/References pointer to ADR-0017 (not Consequences) |
 | `.agent/knowledge/principles_review_guide.md` | Update ADR-0016 row; add ADR-0017 row |
-| `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md` | One-line correction: plugin, not symlinks, delivers workspace skills to registered projects (Claude Code only) |
-| `.agent/WORKTREE_GUIDE.md` | Document the two `claude plugin ...` commands as the current manual enable step, with a note that #332 will automate it |
+| `.claude/hooks/session_start_project_layer.sh` | One added header-comment line: plugin delivers workspace skills to project sessions, not this hook |
+| `.agent/scripts/tests/live/plugin_acceptance.sh` | New — opt-in, ported from the spike |
+| GitHub issue (new) | Hooks-into-plugin follow-up, opened by the host, referencing this plan and ADR-0017 |
+
+**Explicitly not touched** (round 1 proposed, round 2 drops, per owner
+decision 7): `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`,
+`.agent/instructions/gemini-cli.instructions.md`,
+`.agent/AGENT_ONBOARDING.md`.
 
 ## Principles Self-Check
 
 | Principle | Consideration |
 |---|---|
-| Capture decisions, not just implementations | ADR-0017 records the plugin decision, the namespace-rename trade-off, and the plugin-name/enable-step/naming answers from the owner's checkpoint before implementation starts |
-| A change includes its consequences | Step 9 updates the ADR table and every framework adapter that names the delivery mechanism; step 8 cross-links the three dependent issues |
-| Enforcement over documentation | Step 5's manifest test replaces the drift check step 4 removes, rather than leaving the plugin shape undocumented and unverified |
-| Improve incrementally | First PR is skills-only; hooks are an explicit named follow-up (Open Questions), matching the owner's "In registration now" / "first PR skills only" checkpoint answers |
-| Primary framework first, portability where free | `${CLAUDE_PLUGIN_ROOT}`/`claude plugin ...` stay confined to the Claude-only steps (manifest, install docs); `dispatch_phase.sh`'s prefixing logic is a plain string swap on `--type`, not plugin-runtime-dependent, so it stays framework-neutral where a Codex session reads the same script |
-| Workspace improvements cascade to projects | Plugin install is per-project opt-in via each project's own gitignored `settings.local.json`; the workspace checkout's own tracked files are untouched |
-| The workspace serves the product | Directly unblocks `gz4d` (currently zero workspace skills after the by-hand symlink removal) and both `p11-*` projects once each runs the two enable commands (step 11 / follow-up) |
+| Capture decisions, not just implementations | ADR-0017 records the plugin decision, the §2 exception, the #317-run relationship, and the plugin-name/enable-step/prefix/scope answers before implementation starts |
+| A change includes its consequences | Step 9 updates the ADR table; step 8 the Makefile; step 11 the one file that actually needed a note; no unrelated instruction-file edits |
+| Enforcement over documentation | Step 4 keeps `--check` drift detection rather than removing it; step 5 adds a mechanical per-root enable check; step 6 verifies the manifest against frontmatter instead of trusting hand-maintenance |
+| Improve incrementally | Skills-only first PR; hooks are a named, opened follow-up issue (step 10) |
+| Primary framework first, portability where free | `${CLAUDE_PLUGIN_ROOT}`/`claude plugin ...` stay confined to the Claude-only steps (manifest, `run-issue`'s own prefix-detection); `dispatch_phase.sh`'s `--skill-prefix` is a plain string parameter a Codex-equivalent caller can simply never pass |
+| Workspace improvements cascade to projects | Plugin install is per-registered-root opt-in via each project's own gitignored `settings.local.json`, with an explicit guard against the workspace-root/p11-shape case where a project shares the workspace's own tree |
+| The workspace serves the product | Unblocks `gz4d` (zero workspace skills today); p11-jazzy/p11-rolling are correctly identified as already covered by directory walk-up, not needing the plugin at all — verified from this machine's actual registry, not assumed |
 
 ## ADR Compliance
 
 | ADR | Triggered | How addressed |
 |---|---|---|
-| 0016 — Session roots and the user tier | Yes | §3 (skill symlinks) is superseded by new ADR-0017; §1/§2/§4–§8 untouched. A Consequences pointer added, mirroring the existing ADR-0011 pattern |
-| 0008 — Cross-reference addendums | Yes | Confirms this is a substantive Decision change (not a cross-reference), so a superseding ADR is required, not an addendum — step 8's rationale |
-| 0014 — In-process phase handoff | Yes | `dispatch_phase.sh`'s per-skill task-line table changes shape (prefix added); its test suite gets matching new cases |
-| 0013 — progress.md entry-type vocabulary | No | No new entry type introduced |
-| 0006 — Shared AGENTS.md | Yes | Framework adapters updated so Codex/Copilot/Gemini docs stay accurate about a mechanism that is Claude-Code-only |
+| 0016 — Session roots and the user tier | Yes | §3 superseded by ADR-0017; §2's write-into-checkout rule gets an explicit, scoped exception (step 5/9); §1/§4–§8 untouched |
+| 0008 — Cross-reference addendums | Yes | Confirms the supersession needs a new ADR, and that the pointer belongs in Status/References, not Consequences |
+| 0014 — In-process phase handoff | Yes | `dispatch_phase.sh` gains `--skill-prefix`; its test suite covers all four combinations |
+| 0013 — progress.md entry-type vocabulary | No | No new entry type |
+| 0006 — Shared AGENTS.md | No (revised) | Round 1 wrongly triggered this on non-existent text; round 2 makes no AGENTS.md-family edits |
 
 ## Consequences
 
 | If we change... | Also update... | Included in plan? |
 |---|---|---|
-| Skill delivery mechanism (symlink → plugin) | ADR-0016, new ADR-0017, principles_review_guide.md ADR table | Yes — steps 8–9 |
-| `dispatch_phase.sh` skill-name strings | Its test suite | Yes — step 6/10 |
-| `user_tier_install.sh` skill logic | `test_user_tier_install.sh` | Yes — step 10 |
-| Framework-adapter docs naming the delivery mechanism | AGENTS.md, CLAUDE.md, non-Claude adapters | Yes — step 9 |
-| gz4d / p11-jazzy / p11-rolling currently have no workspace skills (symlinks removed) | Each needs the two enable commands run once, post-merge | Follow-up — not part of this PR's code, called out in the PR description and step 11's acceptance run |
-| Hooks still on the old user-tier mechanism | Move into the plugin | No — explicit follow-up issue, out of scope for this PR |
+| Skill delivery mechanism (symlink creation → plugin) | ADR-0016, new ADR-0017, principles_review_guide.md | Yes — steps 9 |
+| `dispatch_phase.sh` skill-name strings | Its test suite | Yes — step 7/12 |
+| `user_tier_install.sh` skill/enable logic | `test_user_tier_install.sh` | Yes — step 12 |
+| `Makefile` `generate-user-tier-skills` | Its comment, `make generate-skills` re-run | Yes — step 8 |
+| gz4d has no workspace skills today (symlinks removed) | Enabled automatically by the next `user_tier_install.sh` run (step 5) — no manual step | Yes — step 5, no follow-up needed |
+| p11-jazzy / p11-rolling share the workspace git toplevel | Confirmed NOT needing the plugin (already see bare skills); guarded against double-enable | Yes — step 5's guard, verified live on this machine |
+| Hooks still on the old user-tier mechanism | Move into the plugin | No — follow-up issue opened now (step 10), not implemented here |
 
 ## Open Questions
 
-- **Plugin name confirmation.** Host picked `agent-workspace` (owner leaned
-  towards the unambiguous option; confirm this is still the pick before
-  the manifest is committed).
-- **`session_scope` after the plugin (step 2).** Confirm exposing all 21
-  skills unfiltered through the plugin is acceptable, versus keeping a
-  curated subset (would need a second skills tree or a filtering shim in
-  `plugin.json`, adding complexity this plan avoids).
-- **`start-task` in the plugin (step 3).** Confirm including it is fine,
-  versus excluding it (which would force the curated-subset approach step 2
-  rejects).
-- **Hooks follow-up.** This plan does not open the follow-up issue for
-  moving `SessionStart`/`log-tool-use.sh` into the plugin — confirm whether
-  to open it now (referencing this plan) or after the skills-only PR lands
-  and gets its own acceptance signal.
-- **New ADR number.** `0017` is the next free slot as of this plan; confirm
-  no other in-flight PR is also claiming it (checked `docs/decisions/`
-  locally — 0016 is the highest landed — but a concurrent branch could
-  collide).
+- **`skills` array vs. glob in `plugin.json` (step 1/2).** Needs a direct
+  `claude plugin validate .` check against a trial array-form manifest
+  before the real manifest is written — first implementation step, not
+  deferred.
+- **`generate-user-tier-skills` Makefile target's exact fate (step 8)** —
+  repoint to `--check`, or retire and fold into `user-tier-install`'s own
+  comment. Either is fine; pick one during implementation and say why in
+  the commit.
+- **New ADR number.** `0017` was free as of the round-1 review
+  (2026-09-24); re-check immediately before committing the ADR file in
+  case a concurrent branch has since claimed it.
+- **Hooks follow-up issue body detail** — opened per step 10, but its own
+  scope (which hook entries, whether `log-tool-use.sh` moves whole or
+  gets a plugin-native equivalent) is intentionally left thin; that's the
+  follow-up's own planning work, not this plan's.
 
 ## Estimated Scope
 
-Single PR (skills-only, per the owner's checkpoint decision). Hooks moving
-into the plugin is an explicit follow-up issue, not part of this PR.
+Single PR (skills-only, per the owner's checkpoint decision), plus one new
+GitHub issue opened for the hooks follow-up (step 10, not implemented in
+this PR).
