@@ -1293,6 +1293,14 @@ test_prompt_tool_use_guidance() {
         "there is no file-reading tool in this session" "$gemini_prompt"
     assert_contains "gemini prompt asks for a concise answer" \
         "Keep the answer concise" "$gemini_prompt"
+    assert_contains "gemini prompt keeps every finding, brevity per row" \
+        "Report every finding you have; keep each row short" "$gemini_prompt"
+    assert_contains "gemini prompt says not to restate the diff" \
+        "Do not restate the" "$gemini_prompt"
+    assert_contains "gemini prompt asks for file:line citations" \
+        "cite file:line instead" "$gemini_prompt"
+    assert_not_contains "gemini prompt drops the lost-review threat" \
+        "whole review is lost" "$gemini_prompt"
     assert_not_contains "gemini prompt no longer invites file reads" \
         "You may read files" "$gemini_prompt"
 

@@ -1137,10 +1137,9 @@ Do NOT run shell commands. If you need context the diff does not show, say
 so in a `suggestion`-severity finding or in the `### Summary`; never invent
 that context, and never write as if you had read a file.
 
-Keep the answer concise: the findings table and a short summary only. Do
-not restate the diff, and do not quote large spans of it back; cite
-file:line instead. An over-long answer is cut off at the output-token
-limit and the whole review is lost.
+Keep the answer concise: the findings table and a short summary only.
+Report every finding you have; keep each row short. Do not restate the
+diff, and do not quote large spans of it back; cite file:line instead.
 PROMPT_TOOL_USE
     fi
 done
