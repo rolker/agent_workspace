@@ -335,3 +335,19 @@ Live acceptance, claude bad-model wrapper:
 **Decision**: address
 
 Fix 1+2 first (Recommended) — short fix pass: one-line cutoff match + test, softer concise wording; then review round 2 and publish. Suggestion 3 goes in the PR body. History: "Push as is (Recommended)" — do not rewrite the plan commits that hold the agent-status command text and tool-call id.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 11:23 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-336 at `4b1b0f8`
+**Addressed**: Local Review (Pre-Push) at `8176942` (2026-09-24 10:53 -04:00)
+**Commits**: 6061321, 7310f24, 4b1b0f8
+
+### Actions
+- [x] Cutoff reason now requires "cut off" and "output token limit" on the same line of ERROR_MSG / stderr tail; new test `test_agy_cutoff_halves_on_separate_lines_not_misread` (split case → generic reason, still exit 3); mutation (cross-blob match restored) fails it — `.agent/scripts/_agy_review.sh:256`
+- [x] Gemini concise-output wording softened: "whole review is lost" dropped, "Report every finding you have; keep each row short" added, restate-diff / file:line kept; `test_prompt_tool_use_guidance` pins all four; mutation (threat restored) fails it — `.agent/scripts/cross_model_review.sh:1140`
+- [x] Live-capture residual (agy SUCCESS with a truncated reply) — `.agent/scripts/_agy_review.sh:249` (deferred: owner: goes in the PR body; live capture tracked as follow-up)
+
+Tests: test_cross_model_review.sh 657 passed, 0 failed; shellcheck --severity=warning clean. Branch history not rewritten (owner decision); nothing pushed.
