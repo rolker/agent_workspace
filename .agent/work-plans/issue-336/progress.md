@@ -351,3 +351,26 @@ Fix 1+2 first (Recommended) — short fix pass: one-line cutoff match + test, so
 - [x] Live-capture residual (agy SUCCESS with a truncated reply) — `.agent/scripts/_agy_review.sh:249` (deferred: owner: goes in the PR body; live capture tracked as follow-up)
 
 Tests: test_cross_model_review.sh 657 passed, 0 failed; shellcheck --severity=warning clean. Branch history not rewritten (owner decision); nothing pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-24 11:32 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a128dbd21cf1b0ffa, resume 1 of 3)
+
+**Branch**: feature/issue-336 at `9c03610`
+**Base**: main
+**Depth**: Standard (reason: behavioural change to the cross-model review helpers, 4 script files; whole-branch classification per #320)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 2 | **Ship**: continue — round 2: 1 must-fix is a design/correctness concern (not mechanical)
+
+### Findings
+- [ ] (must-fix) The concise-output prompt does not reliably prevent agy's output-token cutoff: this round's live Gemini run from this branch (50.8 KB prompt, softened wording, gemini-3.8-flash-high) failed with the cutoff, so the issue's core goal (Gemini reviews complete on Deep-sized branches) holds in 1 of 2 live runs. Detection worked exactly as designed. Design call needed: take agy's continue path (its error offers "Please continue ... keeping your response shorter / Retries remaining: 3"), use a lower-thinking model or level for reviews, shrink the Gemini prompt, or accept this and track it as a follow-up — `.agent/scripts/_agy_review.sh:249` / `.agent/scripts/cross_model_review.sh:1140`
+- [ ] (suggestion) The cutoff ERROR shape is now captured live (channel: `.error` as a plain string; text "Your previous response was cut off because it exceeded the output token limit\nPlease continue from where you left off, keeping your response shorter\nRetries remaining: 3"). Replace the "not captured live / not observed" comments with this capture, and add it as a verbatim fixture (a string `.error`, not the mock's `{code,message}` object) — `.agent/scripts/_agy_review.sh:255`, `.agent/scripts/tests/test_cross_model_review.sh:1116`
+
+### Notes
+- Fixes from round 1 verified: the cutoff reason now needs both phrases on one line (`grep -qiE`, per-line; spot-checked on 4 strings, including the split case). The Gemini wording drops the "whole review is lost" threat and adds "Report every finding you have; keep each row short". Both are pinned by tests.
+- Specialists: shellcheck --severity=warning clean on the 3 changed scripts. Fresh Claude adversarial subagent: no must-fix, 657/657 tests pass, no temp leaks. Its two observations were dropped (pre-existing / harmless).
+- Cross-model (run from this branch, so the Gemini arm ran the NEW helper and the softened prompt): Gemini failed — output-token cutoff, named precisely by the new code (live capture above). Codex ran — "No issues found"; it did not run the test suite. Copilot skipped — quota exhausted this month.
+- The history point is closed (owner: push as is). The live-capture residual for a SUCCESS status with a truncated reply is still deferred to the PR body; this round's capture covers only the ERROR shape.
