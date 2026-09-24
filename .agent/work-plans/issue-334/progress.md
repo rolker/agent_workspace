@@ -344,3 +344,18 @@ Verified: shellcheck clean on changed scripts/tests; test_discover_governance 19
 **Decision**: address
 
 Fix all 4, review again (Recommended) — dispatch address-findings for both must-fix and both suggestions, then pre-push review round 4.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 08:37 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-334 at `d092b59`
+**Addressed**: Local Review (Pre-Push) at `de74fd1` (2026-09-23 15:03 -04:00)
+**Commits**: 3fa654e, 2ea6d9f, 6dd03d6, d092b59
+
+### Actions
+- [x] (must-fix) No-helper test now stores its fixture as docs/ROADMAP.md (the first docs/ probe), so the expected path holds on case-sensitive and case-insensitive filesystems — `.agent/scripts/tests/test_update_roadmap.sh:111`
+- [x] (must-fix) Added a **(source)** Script Reference row for `_real_case_path.sh` — `AGENTS.md:387`
+- [x] (suggestion) Both scripts test `-f` first; a present-but-broken helper (load failure, or no `real_case_relpath` defined) keeps its own error on stderr and warns "could not be loaded" before the candidate-spelling fallback; broken-helper cases added to both suites (test_update_roadmap 10/10, test_discover_governance 22/22) — `.agent/scripts/discover_governance.sh:19`, `.agent/scripts/update_roadmap.sh:28`
+- [x] (suggestion) docs/ tree diagram lists roadmap.md — `docs/design.md:47`
