@@ -369,3 +369,25 @@ Last fix checked: 910b0d4 (only a complete Integrated/External Review supersedes
 - [ ] (suggestion) A legacy `## External Review` counts as triage for supersession, but ADR-0013 defines it as a single-source GitHub findings table that never ruled on Local Review findings. Against the owner's rule verbatim ("only a newer Integrated Review drops..."), letting it supersede drops findings without a decision. Real exposure is small (see the previous finding). Either take it out of the triage set, updating h28, or record in SKILL.md and the ADR addendum that the owner accepts this approximation. Owner call. Found by the Claude adversarial reviewer. — `.agent/scripts/review_progress.sh:437`
 - [ ] (suggestion) The merge gate does not read `**Status**`. A `partial` or `failed` latest Integrated Review with no open must-fix passes gate condition (a), while `sources` (after 910b0d4) still lists the older Local Review's open must-fix findings. The gate and the integrator input now disagree. Require `status == complete` for a non-Local latest entry, or open a follow-up issue. This comes from reading the code; it was not run through the gate harness. Found by the Claude adversarial reviewer. — `.agent/scripts/merge_pr.sh:712-716`, `:755-757`
 - [ ] (suggestion) The h21 header comment still cites the retired owner decision "Newest current review wins". Update it to "Only triage supersedes". — `.agent/scripts/tests/test_triage_reviews_integration.sh:457`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-24 13:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #349 at `1458639`
+**Addressed**: Local Review at `df33a3f` (2026-09-24 12:41 -04:00), with the owner's decisions: "Fix all (Recommended)"; finding 4: "No, remove it (Recommended) — Only a complete Integrated Review supersedes; test h28 flips to 'does not supersede'."; finding 5: "Gate requires complete, here (Recommended) — A non-Local latest entry must be **Status**: complete for gate condition (a); add a gate test." Standing rule: "Only triage supersedes — only a newer Integrated Review drops older review entries' open findings; nothing vanishes without a decision."
+**Commits**: 489a7ca, 41de3b7, 67700d4, 6aec69f, f214382, 1458639
+
+### Actions
+- [x] (must-fix) Non-ASCII paths: `_bookkeeping.sh` and the `merge_pr.sh` CI walk-back read `git diff --name-only -z` (NUL-delimited; --no-renames --no-relative --ignore-submodules=none kept; git's exit status arrives as an `rc=<N>` trailer after the last NUL, so a failed diff is still rc 3 / stops the walk). Tests: sources h29 (non-ASCII work-plan file covered; non-ASCII code file stale and named as spelled, under forced core.quotePath=true), gate g13 and CI walk-back ci-31d — `.agent/scripts/_bookkeeping.sh:73`, `.agent/scripts/merge_pr.sh:1099` (489a7ca)
+- [x] (suggestion) Supersession invariants pinned: h30 (a Local Review written after a complete Integrated Review is not superseded by it), h31 (a complete Integrated Review at a pre-change SHA covers nothing and supersedes nothing) — `.agent/scripts/review_progress.sh:438-447` (41de3b7)
+- [x] (suggestion) Entries whose PR/Branch line does not parse are listed in `dropped_entries` as `unverifiable` (sha "", "no PR/Branch correlation SHA") with a stderr warning; test h32; SKILL.md, AGENTS.md row and ADR-0013 addendum updated — `.agent/scripts/review_progress.sh:433` (67700d4)
+- [x] (suggestion, owner: remove) A legacy External Review no longer supersedes; h28 flipped to "does not supersede"; triage-reviews SKILL.md superseded bullet and the ADR-0013 addendum say so (the AGENTS.md row already named only a complete Integrated Review) — `.agent/scripts/review_progress.sh:437` (6aec69f)
+- [x] (suggestion, owner: gate requires complete) Gate condition (a) refuses a non-Local latest entry whose **Status** is not complete ("has **Status**: <s>, not complete — a partial or failed triage decided nothing"); tests d3/d4 (report-only) and d3 (enforce); triage-reviews SKILL.md next-step note updated — `.agent/scripts/merge_pr.sh:712-716`, `:755-757` (f214382)
+- [x] (suggestion) h21 header cites "Only triage supersedes" — `.agent/scripts/tests/test_triage_reviews_integration.sh:457` (1458639)
+
+### Notes
+- Mutation checks (each fails only the new tests, restored after): newline-read without -z in `_bookkeeping.sh` fails h29 x2 and g13 (h18 too, since that mutation also dropped the rc check); the same in the walk-back fails ci-31d; `j > i` -> `j != i` fails h30; dropping the covering check from `triage_covering` fails h31; skipping the uncorrelated loop fails h32; restoring the predecessor match in `is_triage` fails h28; disabling the status branch in the gate fails d3, d4 and enforce d3.
+- Suites: triage integration 56/0, merge gate 94/0, merge_pr 91/0, convergence 31/0, address_findings 15/0; shellcheck (warning) clean.
+- The source entry's boxes are not ticked: `review_progress.sh check` only targets the latest Integrated Review / Local Review (Pre-Push), and the source here is a post-PR `## Local Review`. The next triage rules on them.
