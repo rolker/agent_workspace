@@ -573,3 +573,13 @@ The earlier PR-mode Local Reviews have open boxes because address-findings canno
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-24 14:12 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Fix all 4, then merge (Recommended) — one fix pass for the 4 suggestions in the Integrated Review at 833c070, PR-mode re-review, triage, then the merge question again.
