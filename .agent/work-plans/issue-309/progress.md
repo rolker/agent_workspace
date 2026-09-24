@@ -391,3 +391,35 @@ Last fix checked: 910b0d4 (only a complete Integrated/External Review supersedes
 - Mutation checks (each fails only the new tests, restored after): newline-read without -z in `_bookkeeping.sh` fails h29 x2 and g13 (h18 too, since that mutation also dropped the rc check); the same in the walk-back fails ci-31d; `j > i` -> `j != i` fails h30; dropping the covering check from `triage_covering` fails h31; skipping the uncorrelated loop fails h32; restoring the predecessor match in `is_triage` fails h28; disabling the status branch in the gate fails d3, d4 and enforce d3.
 - Suites: triage integration 56/0, merge gate 94/0, merge_pr 91/0, convergence 31/0, address_findings 15/0; shellcheck (warning) clean.
 - The source entry's boxes are not ticked: `review_progress.sh check` only targets the latest Integrated Review / Local Review (Pre-Push), and the source here is a post-PR `## Local Review`. The next triage rules on them.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-24 13:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent aea98abffc0d1b756, resume 1 of 3)
+
+**PR**: #349 at `9dc974f`
+**Depth**: Deep (reason: whole-PR re-review; enforcement script merge_pr.sh plus governance files AGENTS.md, ADR-0013, triage-reviews SKILL.md)
+**Must-fix**: 1 | **Suggestions**: 2
+
+All six findings from the Local Review at `df33a3f` are closed in the code:
+- 489a7ca: `-z` diffs with an rc trailer. The adversarial reviewer probed empty diffs, newline and `rc=0` filenames, glob-like names, a failed diff, user diff config and set -euo pipefail. It found the trailer cannot be spoofed.
+- 41de3b7: h30/h31.
+- 67700d4: h32.
+- 6aec69f: h28 flipped.
+- f214382: the gate requires a complete status, tested by d3/d4. Every Integrated/External Review in the repo is complete, so no legitimate flow is newly blocked.
+- 1458639: the h21 comment.
+
+Suites: triage integration 56/0, merge gate 94/0, merge_pr 91/0, convergence 31/0. shellcheck is clean. There has been no merge from main since `df33a3f`.
+
+Reviewers:
+- Claude adversarial: ran fresh; no must-fix.
+- Codex: completed; found 1 must-fix.
+- Gemini: failed; the response hit the output token limit.
+- Copilot: skipped (quota).
+
+### Findings
+- [ ] (must-fix) The coverage bridge decodes the helper's stdout strictly as UTF-8 (`text=True`). The helper's rc-1 reason quotes the raw git path. A code file whose name is not valid UTF-8 (e.g. `bad-\xff.sh`) then raises `UnicodeDecodeError`, a ValueError that `except OSError` does not catch, so `sources` exits 1 with a traceback and no JSON. Codex reproduced it; the decode failure was confirmed locally. Fix: decode with `errors="backslashreplace"` (or catch ValueError and report unverifiable), and add a regression test — `.agent/scripts/review_progress.sh:389-392`
+- [ ] (suggestion) The gate's status branch has no test for a mixed-case or padded `Complete`, nor for an Integrated Review with no `**Status**` line, which should refuse and name `<missing>`. Both behave correctly today; this was checked only against the jq expressions. Found by the Claude adversarial reviewer — `.agent/scripts/tests/test_merge_pr_gate.sh` (near d3/d4)
+- [ ] (suggestion) An entry with no parseable PR/Branch SHA can never be superseded. A pre-ADR-0013 entry with open boxes is therefore re-listed as `unverifiable` on every future triage, which follows the owner's rule. Say in the triage-reviews SKILL.md that this is expected and that the triager rules on it once. Found by the Claude adversarial reviewer — `.claude/skills/triage-reviews/SKILL.md` (unverifiable bullet)
