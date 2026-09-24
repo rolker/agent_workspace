@@ -217,9 +217,10 @@ file is rewritten by this ADR's adoption.
 - Issue [#309](https://github.com/rolker/agent_workspace/issues/309) —
   `review_progress.sh sources` applies the same rule when selecting the
   local findings that cover a PR head, so a bookkeeping-only commit no
-  longer ages out a review's open findings; an entry that does not cover
-  the head is reported as stale, or as unverifiable when git cannot
-  check. The helper now lives in `.agent/scripts/_bookkeeping.sh`, shared
+  longer ages out a review's open findings; only the newest review entry
+  that covers the head counts (an older covering entry is reported as
+  superseded), and an entry that does not cover the head is reported as
+  stale, or as unverifiable when git cannot check. The helper now lives in `.agent/scripts/_bookkeeping.sh`, shared
   by `merge_pr.sh` and `review_progress.sh`. Cross-reference addendum per
   ADR-0008; the key itself is unchanged.
 - Issue [#269](https://github.com/rolker/agent_workspace/issues/269) — Port

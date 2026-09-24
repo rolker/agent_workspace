@@ -415,6 +415,48 @@ why=$(PATH="$TMPD/gitshim:$PATH" bash "$SCRIPT_DIR/../_bookkeeping.sh" --review 
 [[ "$rc" == 3 && "$why" == *"git exit 128"* ]] \
     && pass "sources (h20): ancestry check exit 128 -> bridge rc 3 (unverifiable), reason names the exit" \
     || fail "sources (h20): ancestry exit 128 (rc=$rc why=$why)"
+
+# (h21) supersession (owner decision "Newest current review wins"): a Local
+# Review with open findings, then an Integrated Review and its own progress
+# commit. Both cover the head; only the newest feeds local_findings and the
+# older one is dropped as superseded (its findings are not re-listed).
+git -C "$HIST" checkout -q -B superseded "$DOC_HEAD"
+cat >> "$HP" <<EOF
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-17 12:00 -04:00
+**By**: t (m)
+
+**PR**: #70 at \`${DOC_HEAD:0:7}\`
+**Sources**: 1 (Local Review @ \`${REVIEWED:0:7}\`)
+
+### Findings
+- [ ] (must-fix) integrated finding — \`scripts/code.sh:9\`
+EOF
+hist_commit "progress: integrated review"
+SUP_HEAD=$(hist_head)
+out=$(hist_sources "$SUP_HEAD"); rc=$?
+if [[ "$rc" == 0 ]] && jq -e --arg lr "${REVIEWED:0:7}" --arg ir "${DOC_HEAD:0:7}" '
+    (.local_findings | length) == 1 and .local_findings[0].entry_type == "Integrated Review"
+    and .local_findings[0].sha == $ir and (.local_findings[0].text | contains("integrated finding"))
+    and (.dropped_entries | length) == 1 and .dropped_entries[0].reason == "superseded"
+    and .dropped_entries[0].sha == $lr and .dropped_entries[0].open_findings == 1
+    and (.dropped_entries[0].why | contains("Integrated Review") and contains($ir))' <<<"$out" >/dev/null \
+    && [[ ! -s "$HERR" ]]; then
+    pass "sources (h21): a newer covering Integrated Review supersedes the Local Review; only its findings listed"
+else
+    fail "sources (h21): supersession (rc=$rc out=$out err=$(<"$HERR"))"
+fi
+# (h22) the newest covering review has no open findings: nothing is listed,
+# and the older one is still superseded (it was disposed of, not re-opened).
+sed -i 's/^- \[ \] (must-fix) integrated finding/- [x] (must-fix) integrated finding/' "$HP"
+hist_commit "progress: integrated finding addressed"
+out=$(hist_sources "$(hist_head)")
+[[ "$(n_local "$out")" == 0 ]] && jq -e '(.dropped_entries | length) == 1
+        and .dropped_entries[0].reason == "superseded"' <<<"$out" >/dev/null \
+    && pass "sources (h22): newest covering review with no open findings still supersedes the older one" \
+    || fail "sources (h22): closed newest review (out=$out)"
 rm -f "$HERR"
 
 # ========================================================== persist =====

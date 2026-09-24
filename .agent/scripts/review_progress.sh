@@ -335,7 +335,9 @@ _persist_impl() {
 # the current directory, so run it from the PR worktree; entries with open
 # findings that do not cover the head are listed in dropped_entries with
 # reason "stale" (verified) or "unverifiable" (could not check; also warned
-# on stderr). Nothing is fetched.
+# on stderr). Only the newest review entry covering the head feeds
+# local_findings; an older covering entry with open findings is dropped with
+# reason "superseded" (owner decision, #309). Nothing is fetched.
 cmd_sources() {
     local progress="" head="" reviews=""
     while [[ $# -gt 0 ]]; do
@@ -400,10 +402,14 @@ def coverage(sha):
                         r.returncode, (r.stderr.strip().splitlines() or [why])[-1]))
             except OSError as exc:
                 coverage_cache[sha] = ("unverifiable", "coverage check could not run: {}".format(exc))
-        if coverage_cache[sha][0] == "unverifiable":
-            print("warning: sources: review at `{}` not verified against head `{}`: {}".format(
-                short(sha) or "?", short(head), coverage_cache[sha][1]), file=sys.stderr)
     return coverage_cache[sha]
+warned = set()
+def warn_unverifiable(sha, why):
+    """Once per SHA, and only for an entry whose open findings are dropped."""
+    if sha not in warned:
+        warned.add(sha)
+        print("warning: sources: review at `{}` not verified against head `{}`: {}".format(
+            short(sha) or "?", short(head), why), file=sys.stderr)
 
 # OPEN local findings covering this head. Checked boxes are resolved;
 # False-positives bullets are dismissals.
@@ -414,16 +420,33 @@ local = []
 # above all, from "open findings the helper could not check" (#309).
 dropped = []
 loc_re = re.compile(r"`(?:\./)?([\w./-]+?)(?::(\d+)(?:-\d+)?)?`")
-for e in data.get("entries", []):
+# Supersession (#309, owner decision "Newest current review wins"): of the
+# review entries that cover the head, only the NEWEST (file order is
+# chronological) feeds local_findings, whether or not it has open findings.
+# A later review has already disposed of the findings of the earlier one (triage
+# and address-findings never tick the boxes of the older entry), so an older
+# covering entry with open findings is listed as "superseded", not
+# re-listed as open. "Review entry" = every entry read above (Local Review,
+# Local Review (Pre-Push), Integrated Review and their predecessors) with a
+# PR/branch correlation.
+reviews_in = [e for e in data.get("entries", [])
+              if (e.get("correlation") or {}).get("kind") in ("pr", "branch")]
+classified = [(e, coverage((e.get("correlation") or {}).get("sha"))) for e in reviews_in]
+covering = [i for i, (_, (kind, _w)) in enumerate(classified) if kind in ("exact", "bookkeeping")]
+newest = covering[-1] if covering else None
+for i, (e, (kind, why)) in enumerate(classified):
     c = e.get("correlation") or {}
-    if c.get("kind") not in ("pr", "branch"):
-        continue
     open_f = [f for f in e.get("findings", [])
               if f.get("section") != "False positives" and not f.get("checked")]
     if not open_f:
         continue
-    kind, why = coverage(c.get("sha"))
+    if kind in ("exact", "bookkeeping") and i != newest:
+        w = classified[newest][0]
+        kind, why = "superseded", "a newer {} at `{}` covers the head".format(
+            w["type"], short((w.get("correlation") or {}).get("sha")) or "?")
     if kind not in ("exact", "bookkeeping"):
+        if kind == "unverifiable":
+            warn_unverifiable(c.get("sha"), why)
         dropped.append({"entry_type": e["type"], "sha": short(c.get("sha")),
                         "open_findings": len(open_f), "reason": kind, "why": why})
         continue

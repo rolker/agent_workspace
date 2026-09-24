@@ -142,7 +142,8 @@ It prints JSON with `local_findings` (unchecked findings, never the
 `### False positives` bullets, from `## Local Review`, `## Local Review
 (Pre-Push)`, prior `## Integrated Review`, and legacy `## External Review`
 entries whose correlation SHA matches this head or covers it through verified
-bookkeeping-only changes), `github_comments` (every inline comment,
+bookkeeping-only changes — only the **newest** such covering entry, see
+Supersession below), `github_comments` (every inline comment,
 with `at_head` marking those submitted against the current head), and
 `candidates`: a local finding and a GitHub comment that name the same
 repo-relative file at this head. Every file a finding cites in backticks
@@ -174,9 +175,16 @@ Entries with open findings that do not cover the head are listed in
   it, do not re-list what it closed.
 - `reason: "unverifiable"` — the helper could not check (no repository at
   the cwd, a SHA that does not resolve there, a non-canonical `--progress`
-  path); a warning is also printed on stderr. **Do not treat these as
+  path, a git error, a shallow history); a warning is also printed on
+  stderr. **Do not treat these as
   resolved**: read that entry in `progress.md` and check its open findings
   against the code yourself.
+- `reason: "superseded"` — the entry covers the head, but a newer review
+  entry also covers it. **Newest current review wins** (owner decision,
+  #309): only the newest covering entry feeds `local_findings`, because a
+  later review already disposed of the earlier one's findings (triage and
+  address-findings never tick the older entry's boxes). Do not re-list
+  them.
 
 ### 4. Load governance context
 
