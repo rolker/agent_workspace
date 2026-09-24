@@ -392,3 +392,25 @@ Owner decision: "Ship detection, follow-up" — output-token cutoff reliability 
 - [x] Live cutoff shape recorded: "not captured live / not observed" comments replaced with the capture (`.error` as a plain string, verbatim three-line text); new mock mode `MOCK_AGY_ERROR_STRING=1` and verbatim fixture test `test_agy_live_cutoff_fixture` asserting the cutoff reason; existing object/stderr mock tests kept — `.agent/scripts/_agy_review.sh:255`, `.agent/scripts/tests/test_cross_model_review.sh:1116`
 
 Tests: test_cross_model_review.sh 662 passed, 0 failed; shellcheck --severity=warning clean. Mutations: dropping `.error` from the cutoff source fails 2 (incl. the fixture); reading only `.error.message` fails the fixture's 2 assertions while the object mocks pass. Nothing pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-24 11:55 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a128dbd21cf1b0ffa, resume 2 of 3)
+
+**Branch**: feature/issue-336 at `3ee52b4`
+**Base**: main
+**Depth**: Standard (reason: behavioural change to the cross-model review helpers, 4 script files; whole-branch classification per #320)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+### Findings
+- [ ] (suggestion) The claude "JSON result could not be read" failure omits the exit code and the claude stderr excerpt; before the reorder a non-zero exit was reported first, so this path lost that context. Append the exit note and `log_excerpt 'claude stderr'` (in practice near-unreachable: every field expression is type-safe on a JSON object) — `.agent/scripts/_cli_review.sh:385`
+
+### Notes
+- Fix pass verified: the live cutoff shape (`.error` as a plain three-line string) is documented in `_agy_review.sh` and replayed verbatim by `test_agy_live_cutoff_fixture` through the new `MOCK_AGY_ERROR_STRING` mode; the mock shape matches the round-2 capture. shellcheck --severity=warning clean.
+- Fresh Claude adversarial subagent: no findings; 662/662 tests pass; no temp leaks.
+- Cross-model (run from this branch, so the Gemini arm ran the NEW helper and the softened prompt): Gemini ran and completed on a 52.9 KB prompt with a 6-row review, so the softened wording did not suppress findings. Row 1 was downgraded to the suggestion above. Rows 2-6 were dropped: (2) the `| result:` suffix is empty on every live `.errors` shape and is the planned design; (3) a double space when only api_error_status exists is cosmetic; (4) broadening the cutoff regex to "cutoff" / "cut-off" is not supported by the live capture and widens the false-positive surface; (5) is false, since `assert_not_contains` uses `grep -E`, so `|` is alternation; (6) is not vacuous: "whole review is lost" was this branch's round-1 text, and the assertion guards its removal. Codex ran — "No issues found" (diff only; it did not run tests). Copilot skipped — quota exhausted this month.
+- Deferred, per the owner: cutoff reliability goes to #347 ("Gemini (agy) reviews still cut off at the output-token limit on Deep-sized prompts"). The SUCCESS-status truncated-reply residual goes in the PR body.
