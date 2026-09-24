@@ -32,10 +32,18 @@ BOOKKEEPING_ROADMAP_PATHS=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
 # invalid UTF-8 name) becomes a three-digit octal escape, and a backtick
 # becomes \140 so the reason's `code span` stays closed. Matching never
 # uses this form; it is display only. Runs in a subshell so LC_ALL=C (byte
-# iteration) cannot leak into the caller.
+# iteration) cannot leak into the caller. The input is capped at
+# BK_DISPLAY_MAX (256) bytes before the loop, with "...(+N bytes)" appended
+# for the rest: a reason line stays short, and the per-byte substring loop
+# (quadratic in the length) stays fast on an arbitrarily long committed path.
+BK_DISPLAY_MAX=256
 _bk_display() (
     LC_ALL=C
-    local s="$1" out="" c o i
+    local s="$1" out="" c o i more=0
+    if (( ${#s} > BK_DISPLAY_MAX )); then
+        more=$(( ${#s} - BK_DISPLAY_MAX ))
+        s="${s:0:BK_DISPLAY_MAX}"
+    fi
     for ((i = 0; i < ${#s}; i++)); do
         c="${s:i:1}"
         case "$c" in
@@ -49,6 +57,7 @@ _bk_display() (
             *) printf -v o '\\%03o' "'$c"; out+="$o" ;;
         esac
     done
+    (( more > 0 )) && out+="...(+${more} bytes)"
     printf '%s' "$out"
 )
 

@@ -463,6 +463,16 @@ want='a b\377c\r\033\303\251\\\"\140\t\n~'
 [[ "$got" == "$want" ]] \
     && pass "sources (h34): _bk_display C-quotes control, non-ASCII and invalid UTF-8 bytes to safe ASCII" \
     || fail "sources (h34): _bk_display (got=$(printf %q "$got") want=$want)"
+# (h35) the displayed value is capped before the escaping loop: an 80 KB
+# path shows its first 256 bytes plus "...(+81664 bytes)", and returns fast
+# (the uncapped per-byte loop took ~10 s at this size).
+long=$(printf '%*s' 81920 '' | tr ' ' a)
+start=$SECONDS
+got=$(timeout 20 bash -c 'source "$1"; _bk_display "$2"' _ "$SCRIPT_DIR/../_bookkeeping.sh" "$long"); rc=$?
+took=$((SECONDS - start))
+[[ "$rc" == 0 && "$got" == "$(printf '%*s' 256 '' | tr ' ' a)...(+81664 bytes)" && "$took" -le 3 ]] \
+    && pass "sources (h35): _bk_display caps an 80 KB value at 256 bytes plus a marker, in ${took}s" \
+    || fail "sources (h35): cap (rc=$rc took=${took}s len=${#got} tail=${got: -24})"
 
 # (h29) non-ASCII paths: git quotes them under core.quotePath=true (the
 # default) unless the diff is read NUL-delimited. A non-ASCII file in the
