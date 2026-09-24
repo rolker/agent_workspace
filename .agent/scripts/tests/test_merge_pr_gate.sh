@@ -339,6 +339,18 @@ IR_PARTIAL="${IR_CLEAN/\*\*Status\*\*: complete/**Status**: partial}"
 IR_FAILED="${IR_CLEAN/\*\*Status\*\*: complete/**Status**: failed}"
 run_case "(d3) partial Integrated Review with no open must-fix" "$IR_PARTIAL" with_summary "partial, not complete"
 run_case "(d4) failed Integrated Review with no open must-fix"  "$IR_FAILED"  with_summary "failed, not complete"
+# No **Status** line at all: refused, and named as <missing>.
+IR_NO_STATUS="${IR_CLEAN/\*\*Status\*\*: complete
+/}"
+run_case "(d5) Integrated Review with no **Status** line" "$IR_NO_STATUS" with_summary "<missing>, not complete"
+# Case and padding do not matter: " Complete " is complete.
+sb="$(make_sandbox "${IR_CLEAN/\*\*Status\*\*: complete/**Status**:  Complete  }" with_summary)"
+out="$(run_merge "$sb" --report-only 2>&1)" || true
+if [[ "$out" == *"Review gate: approved review at head"* && "$out" != *"not complete"* ]]; then
+    pass "(e5) a mixed-case, padded **Status**: Complete passes like complete"
+else
+    fail "(e5) padded Complete (out=${out:0:300})"
+fi
 # record is pushed to origin (survives the worktree's later removal)
 sb="$(make_sandbox "$STALE" with_summary)"; run_merge "$sb" --report-only >/dev/null 2>&1 || true
 [[ "$(git -C "${sb}.remote.git" log -1 --format=%s feature/issue-7)" == "progress: merge (report-only) for #7" ]] \
