@@ -480,10 +480,12 @@ out=$(qp_sources "$(hist_head)")
     && pass "sources (h29): a non-ASCII code file is stale and named as spelled" \
     || fail "sources (h29): non-ASCII code file (out=$out)"
 
-# (h21) supersession (owner decision "Newest current review wins"): a Local
-# Review with open findings, then an Integrated Review and its own progress
-# commit. Both cover the head; only the newest feeds local_findings and the
-# older one is dropped as superseded (its findings are not re-listed).
+# (h21) supersession (owner decision "Only triage supersedes — only a newer
+# Integrated Review drops older review entries' open findings"): a Local
+# Review with open findings, then a complete Integrated Review and its own
+# progress commit. Both cover the head; only the Integrated Review feeds
+# local_findings and the older one is dropped as superseded (its findings
+# are not re-listed).
 git -C "$HIST" checkout -q -B superseded "$DOC_HEAD"
 cat >> "$HP" <<EOF
 
