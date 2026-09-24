@@ -415,6 +415,19 @@ why=$(PATH="$TMPD/gitshim:$PATH" bash "$SCRIPT_DIR/../_bookkeeping.sh" --review 
 [[ "$rc" == 3 && "$why" == *"git exit 128"* ]] \
     && pass "sources (h20): ancestry check exit 128 -> bridge rc 3 (unverifiable), reason names the exit" \
     || fail "sources (h20): ancestry exit 128 (rc=$rc why=$why)"
+# (h23) a verified non-ancestor stays stale (rc 1) when git writes stderr
+# that is not an error: with GIT_TRACE=1 set by the caller, and with a shim
+# that prints a warning before a clean "no". Only error:/fatal: lines count.
+why=$(GIT_TRACE=1 bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$DOC_HEAD" "$REVIEWED" 7 2>/dev/null); rc=$?
+[[ "$rc" == 1 && "$why" == *"not an ancestor"* ]] \
+    && pass "sources (h23): GIT_TRACE=1 does not turn a verified non-ancestor into unverifiable" \
+    || fail "sources (h23): GIT_TRACE=1 non-ancestor (rc=$rc why=$why)"
+printf '#!/bin/bash\nfor a in "$@"; do [[ "$a" == merge-base ]] && { echo "warning: some notice" >&2; exit 1; }; done\nexec %q "$@"\n' \
+    "$(command -v git)" > "$TMPD/gitshim/git"
+why=$(PATH="$TMPD/gitshim:$PATH" bash "$SCRIPT_DIR/../_bookkeeping.sh" --review "$HIST" "$REVIEWED" "$DOC_HEAD" 7); rc=$?
+[[ "$rc" == 1 && "$why" == *"not an ancestor"* ]] \
+    && pass "sources (h23): a non-error stderr line with exit 1 is a verified non-ancestor (rc 1)" \
+    || fail "sources (h23): non-error stderr (rc=$rc why=$why)"
 
 # (h21) supersession (owner decision "Newest current review wins"): a Local
 # Review with open findings, then an Integrated Review and its own progress
