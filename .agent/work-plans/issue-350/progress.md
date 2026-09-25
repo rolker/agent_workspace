@@ -160,3 +160,25 @@ Proceed — approve the plan; the implementer folds in the three Plan Review not
 **Decision**: publish
 
 Publish — push feature/issue-350 and open the PR; merge comes back to the owner.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-09-25 09:01 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #352 at `e33f66f`
+**Sources**: 2 (Local Review (Pre-Push) @ `e881924` (covers `e33f66f` via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+No open findings. The pre-push review (Deep; shellcheck, governance, plan drift, Claude adversarial, gemini + codex cross-model) approved with 0 must-fix / 0 suggestions; its single checkbox is the "No issues found. LGTM." placeholder, not an action item. Independent read of the `_cli_review.sh` / `test_cross_model_review.sh` diff agrees: `-s read-only -a never` precede `exec`, and the argv test pins the exact five leading tokens.
+
+### False positives
+None.
+
+### Notes
+- CI at `e33f66f`: Validate Documentation, Validate Adapter Contract, ros-manifest tests pass (both runs); Lint (pre-commit) still pending in both runs.
+- The `copilot-pull-request-reviewer` check-run exists at the head but completed `failure` with no review posted — consistent with the September Copilot quota exhaustion; not a code signal.
+- No human reviews or conversation comments.
+- Reviewer-discipline observation (not a finding against this PR): the pre-push adversarial Claude subagent ran one live read-only codex turn despite instructions not to.
