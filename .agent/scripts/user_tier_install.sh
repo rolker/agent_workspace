@@ -694,8 +694,21 @@ uninstall_plugin_from() {  # <root>
     esac
 }
 
+# Does any registered root, or this checkout, hold a plugin declaration or
+# enable (or a file that cannot be read)? --uninstall's "nothing installed"
+# must mean the plugin too: the user-tier files can be gone while roots
+# still enable it.
+plugin_anywhere() {
+    local _name root _verdict
+    while IFS=$'\t' read -r _name root _verdict; do
+        [[ -n "$root" && -d "$root" ]] || continue
+        [[ "$(plugin_state "$root")" != absent ]] && return 0
+    done < <(plugin_roots)
+    [[ "$(plugin_state "$WS_ROOT")" != absent ]]
+}
+
 if [[ "$MODE" == "uninstall" ]]; then
-    if [[ ! -e "$ROOT_FILE" && ! -e "$SESSION_HOOK_LINK" && ! -f "$SETTINGS" ]]; then
+    if [[ ! -e "$ROOT_FILE" && ! -e "$SESSION_HOOK_LINK" && ! -f "$SETTINGS" ]] && ! plugin_anywhere; then
         echo "agent_workspace user tier: nothing installed at $CLAUDE_DIR"
         exit 0
     fi

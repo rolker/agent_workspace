@@ -1037,6 +1037,25 @@ else
     pass "--uninstall does not run the CLI in the skipped workspace-toplevel roots"
 fi
 
+# --uninstall with the user-tier files all gone (root file, hook link,
+# settings.json) but the plugin still enabled in registered roots: it is
+# not "nothing installed", and the roots are cleaned.
+run >/dev/null
+mv "$SETTINGS" "$SANDBOX/settings.saved"
+rm -f "$ROOT_FILE" "$HOOK_LINK"
+out="$(run --uninstall)"; rc=$?
+if [[ "$rc" -eq 0 && "$out" != *"nothing installed"* && "$out" == *"removed the agent-workspace plugin from $ROOTS/a"* ]] \
+   && ! enabled_in "$ROOTS/a" && ! enabled_in "$ROOTS/fam"; then
+    pass "--uninstall removes plugin enables from registered roots even with the user-tier files gone"
+else
+    fail "--uninstall with only plugin enables left (rc=$rc out=${out:0:400})"
+fi
+out="$(run --uninstall)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"nothing installed"* ]] \
+    && pass "--uninstall then says nothing is installed" \
+    || fail "--uninstall with nothing left (rc=$rc out=${out:0:400})"
+mv "$SANDBOX/settings.saved" "$SETTINGS"
+
 # The CLI's machine-level marketplace record is keyed by name: one source
 # per machine. --check flags a record naming another checkout, and nothing
 # else about the file (absent, another marketplace, no path field).
