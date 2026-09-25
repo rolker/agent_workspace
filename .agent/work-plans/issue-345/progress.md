@@ -374,3 +374,24 @@ Reviewers: Claude adversarial ran; Codex ran (3 findings, all confirmed); Gemini
 - [x] (suggestion) only one enabled root is exercised against the real CLI; a second `marketplace add` of the same name/source from another root (the #332 path) is untested — add a second project root to the live suite — `.agent/scripts/tests/live/plugin_acceptance.sh:111`
 - [x] (suggestion) live-suite header says it removes what it adds on exit; the two records do go, but a copy of the checkout stays in `~/.claude/plugins/cache/aw-accept/` (orphan-marked by Claude Code, seen after the implementer's run); remove that cache dir in `cleanup()`, or state in the header that Claude Code's orphan sweep clears it (unverified) — `.agent/scripts/tests/live/plugin_acceptance.sh:13,59-65`
 - [x] (suggestion) the `claude plugin` calls do not redirect stdin, so if a CLI version asks for a trust prompt the installer hangs instead of failing; add `</dev/null` — `.agent/scripts/user_tier_install.sh:493-516`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-25 09:40 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-345 at `3d7b698`
+**Addressed**: Local Review (Pre-Push) at `63e0944` (2026-09-25 08:56 -04:00)
+**Commits**: 945b83b, ee4150a, d59f473, af1b6d5, 2b1aed5, f8bb651, 9d15cf5, 3d7b698
+
+### Actions
+- [x] No-CLI disable now returns 1 with an ERROR, so `--uninstall` and install over a doubled root exit 1 instead of claiming success; ADR-0017 updated — `.agent/scripts/user_tier_install.sh` `disable_plugin_in_root` (945b83b)
+- [x] An unparseable settings.local.json is reported, left untouched and exits 1 in `--uninstall`, and also in install/`--check` for a skipped workspace-toplevel root and the workspace checkout itself (the same silent pass-over) — `.agent/scripts/user_tier_install.sh` `unparseable_root` (ee4150a)
+- [x] Live suite `probe()` returns reached / not reached / session failed; every negative demands "ran, not reached", C runs a control skill in the unrelated repo first, A and F check exit status; new hermetic `test_plugin_acceptance_helpers.sh` pins probe() against a stub claude — `.agent/scripts/tests/live/plugin_acceptance.sh` (d59f473)
+- [x] New `foreign` plugin state: `--uninstall` leaves another checkout's declaration with a note, `--check` names the other checkout, install still repoints registered roots and clears doubled ones; `--check` also reads `~/.claude/plugins/known_marketplaces.json` (read-only) and flags a record naming another checkout; ADR-0017 records one-source-per-machine — `.agent/scripts/user_tier_install.sh` `plugin_state`, `uninstall_plugin_from` (af1b6d5)
+- [x] `parent=` instance skipped only when its path lies inside the parent's (`pwd -P`); a mis-nested one is enabled as its own root with a note and `--check` holds it to that; live case G checks the containment assumption itself — `.agent/scripts/user_tier_install.sh` `plugin_roots`, `path_inside` (2b1aed5)
+- [x] Live case H enables a second root from the same source and re-probes both — `.agent/scripts/tests/live/plugin_acceptance.sh` (f8bb651)
+- [x] Live suite `cleanup()` removes `~/.claude/plugins/cache/aw-accept` (only after an enable); helpers test pins it removes nothing beside it — `.agent/scripts/tests/live/plugin_acceptance.sh` (9d15cf5)
+- [x] Every `claude plugin` call goes through `claude_plugin()` with `</dev/null`; the mutation run showed a stdin-reading CLI would also consume the `while read < <(plugin_roots)` loop input and skip later roots; the live suite's plugin calls and `claude -p` sessions redirect too — `.agent/scripts/user_tier_install.sh` (3d7b698)
+
+Tests: install suite 111 -> 130, new helpers suite 9; `run_script_tests.sh` 31/31 suites pass. Each new test was mutation-checked (fix broken, test fails, fix restored). The live suite was edited but not run: its 10/10 result predates these changes, and the new cases G (parent= instance) and H (second root) have never run live.
