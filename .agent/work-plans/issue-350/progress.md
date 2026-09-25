@@ -150,3 +150,13 @@ Proceed — approve the plan; the implementer folds in the three Plan Review not
 - Plan drift: none — both planned files changed as planned, Plan Review notes folded in.
 - Claude adversarial: no findings; suite 662 passed / 0 failed; confirmed on codex-cli 0.156.1 that unflagged `codex debug prompt-input` in a trusted project renders `workspace-write`, and `-s read-only -a never` renders `read-only` / approval `never`; `-o` still written under read-only.
 - Cross-model: gemini EXIT=0 no issues; codex EXIT=0 no issues (ran via the worktree's patched `_cli_review.sh`, i.e. with the new pinned flags — it reported it could not run the suite "in this read-only environment"); copilot not dispatched (quota exhausted).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-25 08:57 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish — push feature/issue-350 and open the PR; merge comes back to the owner.
