@@ -37,6 +37,8 @@ agent_workspace/
 │   └── AI_RULES.md
 ├── .claude/
 │   └── skills/            # Claude Code slash commands
+├── .claude-plugin/        # agent-workspace plugin + one-plugin marketplace: ships the
+│                          # session_scope project|both skills to project sessions (ADR-0017)
 ├── .github/
 │   ├── workflows/         # CI
 │   ├── PULL_REQUEST_TEMPLATE.md

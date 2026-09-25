@@ -17,6 +17,13 @@ makes about itself, resolved by that test. If the acceptance run instead
 forces a change to any Decision below, that is a substantive revision and
 takes a superseding ADR, not an edit here.
 
+Decision 3 is superseded for skills by
+[ADR-0017](0017-plugin-based-skill-delivery.md): workspace skills reach
+project sessions through the `agent-workspace` Claude Code plugin, not
+`~/.claude/skills/` symlinks. ADR-0017 also records a scoped exception to
+decision 2 (the project's gitignored `.claude/settings.local.json`, written
+only by `claude plugin`).
+
 ## Context
 
 Until now, every session started in the workspace checkout. `projects/<name>`
@@ -239,3 +246,5 @@ machine that expects it.
 - Issue #265 (umbrella, design B), #317 (PR 3), #295 (folded, first half
   deferred to PR 4), #259 (`AGENTS.md` trim — keep the rendered headings)
 - `.agent/work-plans/issue-265/spike-results.md` — the mechanism spike
+- [ADR-0017](0017-plugin-based-skill-delivery.md) — supersedes decision 3
+  for skills (plugin delivery); scoped exception to decision 2
