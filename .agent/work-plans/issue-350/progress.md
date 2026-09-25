@@ -51,3 +51,13 @@ issue: 350
 - [ ] The existing test checks argv shape but not that `-a`/`-s` precede `exec`; the PR should add/adjust an assertion that specifically locks in correct flag placement (not just update the existing one to keep it green), since the whole point of the issue is that flag placement is easy to get backwards (`-a` after `exec` errors per codex-cli 0.156.1).
 - [ ] Verify the pinned flags against the currently-installed codex-cli version in CI/dev environments (issue confirms 0.156.1 locally); note the version checked in the PR description since CLI flag contracts can shift across releases.
 - [ ] Confirm `-s read-only -a never` doesn't change codex's behavior in a way that breaks an existing passing review turn (e.g., if some current usage relies on write access) — grep for any workspace code path that expects codex to write files during a review turn before merging.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-25 08:18 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to planning — the planner folds the three Issue Review actions into the plan (flag-placement test, codex-cli 0.156.1 check, grep for code expecting codex write access); the plan returns to the owner before any code.
