@@ -516,7 +516,9 @@ is_this_checkout() {  # <path>
 #                or not): that checkout's, not this one's, to remove
 #   stale        enabled with no declaration, declared from this checkout
 #                but not enabled, or declared from a source no longer on
-#                disk (no checkout is left to remove it, so this one may)
+#                disk (no checkout is left to remove it, so this one may;
+#                a checkout that is only unmounted looks the same, and is
+#                out of scope -- ADR-0017)
 #   absent       neither
 #   unparseable  the file exists and is not JSON
 plugin_state() {  # <root>

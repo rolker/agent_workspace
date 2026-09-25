@@ -139,8 +139,12 @@ reports:
 `--uninstall` removes the plugin from every root where this checkout
 declared it. A root whose declaration names another checkout is left alone
 with a note: it is that checkout's to remove. A declaration whose source
-is no longer on disk has no checkout left to remove it, so it counts as
-this checkout's. Install, by contrast,
+is not on disk has no checkout left to remove it, so it counts as this
+checkout's. The installer cannot tell a deleted checkout from one that is
+only unreachable for now, such as one on an unmounted drive or network
+share, so both are treated as stale: this checkout's `--uninstall` removes
+such a declaration from a shared root, and install replaces it. Checkouts
+on storage that comes and goes are out of scope. Install, by contrast,
 repoints such a root when it is in this checkout's registry, and removes
 the plugin from a skipped root or the workspace checkout whichever
 checkout declared it, since there it doubles every skill either way.
