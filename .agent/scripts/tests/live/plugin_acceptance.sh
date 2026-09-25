@@ -67,6 +67,10 @@ U="$SANDBOX/other"    # an unrelated repo
 FAM="$SANDBOX/fam"    # a parent= root: a plain directory grouping instances
 P2="$SANDBOX/proj2"   # a second project root, enabled after the first
 
+# Every `claude plugin` call, stdin closed, so a prompt the CLI might show
+# fails the call instead of hanging the suite.
+cli_plugin() { claude plugin "$@" </dev/null; }
+
 # Every root the suite enables the plugin in, recorded BEFORE the CLI runs
 # there, so a half-finished enable is still undone on exit.
 ENABLED_ROOTS=()
@@ -74,8 +78,8 @@ cleanup() {
     local r
     for r in ${ENABLED_ROOTS[@]+"${ENABLED_ROOTS[@]}"}; do
         [[ -d "$r" ]] || continue
-        (cd "$r" && claude plugin uninstall "$NAME@$NAME" --scope local >/dev/null 2>&1)
-        (cd "$r" && claude plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1)
+        (cd "$r" && cli_plugin uninstall "$NAME@$NAME" --scope local >/dev/null 2>&1)
+        (cd "$r" && cli_plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1)
     done
     # The CLI's cached copy of the plugin, which uninstall leaves behind.
     # Only after an enable, and only the suite's own `aw-accept` name.
@@ -89,8 +93,8 @@ trap cleanup EXIT
 # enable_in <root>: the installer's two CLI calls, run from <root>.
 enable_in() {
     ENABLED_ROOTS+=("$1")
-    (cd "$1" && claude plugin marketplace add "$W" --scope local >/dev/null \
-        && claude plugin install "$NAME@$NAME" --scope local >/dev/null)
+    (cd "$1" && cli_plugin marketplace add "$W" --scope local >/dev/null \
+        && cli_plugin install "$NAME@$NAME" --scope local >/dev/null)
 }
 
 # session <dir> <prompt>: one headless session, no tools. Leaves its output
@@ -100,7 +104,9 @@ enable_in() {
 SESSION_OUT=""
 SESSION_RC=0
 session() {
-    SESSION_OUT="$(cd "$1" && timeout 300 claude -p "$2" --model "$MODEL" --tools "" 2>&1)"
+    # stdin closed: `claude -p` reads piped stdin into the prompt, and a
+    # harness's stdin must never leak into (or stall) a session.
+    SESSION_OUT="$(cd "$1" && timeout 300 claude -p "$2" --model "$MODEL" --tools "" 2>&1 </dev/null)"
     SESSION_RC=$?
     return "$SESSION_RC"
 }
@@ -131,7 +137,7 @@ jq --arg n "$NAME" '.name = $n' "$W/.claude-plugin/plugin.json" > "$W/p.json" \
 HOME="$SANDBOX/home" bash "$W/.agent/scripts/user_tier_install.sh" --generate-plugin-manifest >/dev/null \
     || { echo "FATAL: could not regenerate the copy's manifest" >&2; exit 1; }
 git -C "$W" init -q
-(cd "$W" && claude plugin validate . >/dev/null 2>&1) \
+(cd "$W" && cli_plugin validate . >/dev/null 2>&1) \
     && pass "the workspace copy validates as a marketplace" \
     || fail "claude plugin validate failed on the workspace copy"
 

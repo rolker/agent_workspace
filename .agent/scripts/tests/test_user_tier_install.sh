@@ -52,7 +52,9 @@ mkdir -p "$HOMEDIR"
 # The claude stub. Records "<cwd>|<argv>" per call, then edits the cwd's
 # .claude/settings.local.json as `claude plugin ... --scope local` would.
 # STUB_FAIL=1 makes it exit 1; STUB_NOOP=1 makes it exit 0 having written
-# nothing (a CLI that claims success but did not enable anything).
+# nothing (a CLI that claims success but did not enable anything);
+# STUB_STDIN_LOG=<file> makes it append any line it can read from stdin there
+# (a CLI that stops for a prompt would read exactly that).
 STUB_BIN="$SANDBOX/bin"
 STUB="$STUB_BIN/claude"
 STUB_LOG="$SANDBOX/claude-stub.log"
@@ -60,6 +62,9 @@ mkdir -p "$STUB_BIN"
 cat > "$STUB" <<'STUBEOF'
 #!/usr/bin/env bash
 printf '%s|%s\n' "$PWD" "$*" >> "$STUB_LOG"
+if [[ -n "${STUB_STDIN_LOG:-}" ]] && IFS= read -r -t 2 line; then
+    printf '%s|%s\n' "$*" "$line" >> "$STUB_STDIN_LOG"
+fi
 [[ -n "${STUB_FAIL:-}" ]] && exit 1
 [[ -n "${STUB_NOOP:-}" ]] && exit 0
 f=.claude/settings.local.json
@@ -856,6 +861,22 @@ for broken in "$WSC/projects/inner" "$WSC"; do
     rm -f "$broken/$SLJ"
 done
 rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+
+# Every `claude plugin` call runs with stdin closed: a CLI that stopped for
+# a prompt must fail, not hang the installer or read the caller's input.
+# Here the caller's stdin holds answers; the stub records any it reads.
+STDIN_LOG="$SANDBOX/claude-stdin.log"
+: > "$STDIN_LOG"
+: > "$STUB_LOG"
+stale_enable "$WSC/projects/inner"          # forces an uninstall + remove too
+out="$(printf 'y\ny\ny\ny\ny\ny\ny\ny\n' | STUB_STDIN_LOG="$STDIN_LOG" run)"; rc=$?
+if [[ "$rc" -eq 0 && ! -s "$STDIN_LOG" ]] && enabled_in "$ROOTS/a" \
+   && grep -q "^$ROOTS/a|plugin install" "$STUB_LOG" && grep -q "^$WSC/projects/inner|plugin uninstall" "$STUB_LOG"; then
+    pass "every claude plugin call (enable and remove) runs with stdin closed"
+else
+    fail "a claude plugin call could read the caller's stdin (rc=$rc read=$(cat "$STDIN_LOG") out=${out:0:300})"
+fi
+rm -f "${ROOTS:?}/a/.claude/settings.local.json" "$STDIN_LOG"
 
 # CLI failure, and a CLI that claims success but enabled nothing.
 out="$(STUB_FAIL=1 run)"; rc=$?

@@ -420,6 +420,11 @@ legacy_skill_links() {
 # ---------------------------------------------------- plugin, per root ---
 have_claude() { command -v "$CLAUDE_BIN" >/dev/null 2>&1; }
 
+# Every `claude plugin` call, stdin closed: a CLI version that stops to ask
+# (a trust or confirmation prompt) then fails instead of hanging the
+# installer on a read nobody will answer.
+claude_plugin() { "$CLAUDE_BIN" plugin "$@" </dev/null; }
+
 # Does <path> lie strictly inside <dir>? Both in `pwd -P` form; false when
 # either is not on disk.
 path_inside() {  # <path> <dir>
@@ -549,10 +554,10 @@ enable_plugin_in_root() {  # <root>
     # checkout's registry's to repoint (uninstall, by contrast, leaves
     # another checkout's declaration alone).
     if [[ -n "$(plugin_source "$root")" && ( "$state" == stale || "$state" == foreign ) ]]; then
-        (cd "$root" && "$CLAUDE_BIN" plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
+        (cd "$root" && claude_plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
     fi
-    if ! (cd "$root" && "$CLAUDE_BIN" plugin marketplace add "$WS_PHYS" --scope local >/dev/null) \
-       || ! (cd "$root" && "$CLAUDE_BIN" plugin install "$PLUGIN_ID" --scope local >/dev/null); then
+    if ! (cd "$root" && claude_plugin marketplace add "$WS_PHYS" --scope local >/dev/null) \
+       || ! (cd "$root" && claude_plugin install "$PLUGIN_ID" --scope local >/dev/null); then
         echo "  ERROR: enabling the $PLUGIN_NAME plugin in $root failed (claude plugin exited non-zero)" >&2
         return 1
     fi
@@ -574,8 +579,8 @@ disable_plugin_in_root() {  # <root>
         echo "  ERROR: the claude CLI is not on PATH -- cannot remove the $PLUGIN_NAME plugin from $root; run \`claude plugin uninstall $PLUGIN_ID --scope local\` and \`claude plugin marketplace remove $MARKETPLACE_NAME --scope local\` there" >&2
         return 1
     fi
-    (cd "$root" && "$CLAUDE_BIN" plugin uninstall "$PLUGIN_ID" --scope local >/dev/null 2>&1) || true
-    (cd "$root" && "$CLAUDE_BIN" plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
+    (cd "$root" && claude_plugin uninstall "$PLUGIN_ID" --scope local >/dev/null 2>&1) || true
+    (cd "$root" && claude_plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
     if [[ "$(plugin_state "$root")" == absent ]]; then
         echo "  removed the $PLUGIN_NAME plugin from $root"
         return 0
