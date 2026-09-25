@@ -113,7 +113,8 @@ reports:
 
 - a registered root without the plugin, or with it declared from another
   checkout;
-- a skipped root that has the plugin enabled anyway;
+- a root inside the workspace checkout's git tree (skipped) that has the
+  plugin enabled anyway;
 - the plugin enabled at the workspace checkout itself;
 - a machine-level marketplace record that names another checkout (see
   Consequences).

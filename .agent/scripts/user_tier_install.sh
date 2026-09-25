@@ -848,6 +848,9 @@ if [[ "$MODE" == "check" ]]; then
                     enabled|stale|foreign) note "$PLUGIN_NAME plugin is enabled in $name ($root), whose git toplevel is this workspace checkout -- it already sees the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check that the $PLUGIN_NAME plugin is NOT enabled there (a doubled root)" ;;
                 esac ;;
+            skip-instance)
+                [[ "$state" == unparseable ]] \
+                    && note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin in parent= instance $name" ;;
             missing)
                 echo "  note: registered root $name is not on disk ($root) -- plugin not checked there" ;;
         esac
@@ -1007,7 +1010,11 @@ while IFS=$'\t' read -r name root verdict; do
                 unparseable) unparseable_root "$root" "cannot tell whether the plugin doubles its skills there"; plugin_rc=1 ;;
             esac ;;
         skip-instance)
-            echo "  skipped $name: a parent= instance; its parent root gets the plugin" ;;
+            echo "  skipped $name: a parent= instance; its parent root gets the plugin"
+            if [[ "$(plugin_state "$root")" == unparseable ]]; then
+                unparseable_root "$root" "cannot tell whether the plugin is there"
+                plugin_rc=1
+            fi ;;
         missing)
             echo "  NOTE: registered root $name is not on disk ($root) -- plugin not enabled there" ;;
     esac

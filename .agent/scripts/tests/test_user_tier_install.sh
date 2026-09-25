@@ -853,10 +853,11 @@ out="$(run --check)"; rc=$?
     || fail "--check missed the unparseable file (rc=$rc)"
 rm -f "${ROOTS:?}/a/.claude/settings.local.json"
 run >/dev/null
-# ...and so is one in a root where the plugin must NOT be (a skipped
-# workspace-toplevel root, the workspace checkout itself): whether it doubles
-# every skill there is unknowable, so install and --check say so.
-for broken in "$WSC/projects/inner" "$WSC"; do
+# ...and so is one in a root the installer skips (a workspace-toplevel
+# root, a parent= instance inside its parent) or the workspace checkout
+# itself: whether the plugin is there is unknowable, so install and --check
+# say so.
+for broken in "$WSC/projects/inner" "$ROOTS/fam/inst" "$WSC"; do
     mkdir -p "$broken/.claude"
     printf '{not json' > "$broken/$SLJ"
     out="$(run)"; rc=$?
