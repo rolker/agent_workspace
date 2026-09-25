@@ -61,3 +61,11 @@ issue: 350
 **Decision**: proceed
 
 Proceed to planning — the planner folds the three Issue Review actions into the plan (flag-placement test, codex-cli 0.156.1 check, grep for code expecting codex write access); the plan returns to the owner before any code.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-25 08:25 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-350/plan.md` at `e9d9b4f`
+
+Pin `-s read-only -a never` before `exec` in the codex `run_cli` call in `_cli_review.sh` (flag order matters: `-a` is a top-level flag, confirmed on codex-cli 0.156.1), and tighten `test_cross_model_review.sh`'s codex-argv assertion to check that the flags precede `exec` rather than just checking `exec` is present. Grep confirmed no other workspace code path invokes codex or expects it to write during a review turn.
