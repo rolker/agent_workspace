@@ -51,9 +51,9 @@
 #      remove`): what it does to the machine record and to another root is
 #      printed as FACT lines, and re-taking a dropped record the way the
 #      installer's step 6c does must restore the other root;
-#   K  where local scope lands from a plain subdirectory of a git repo:
-#      printed as a FACT line (the installer refuses to run the CLI there
-#      either way).
+#   K  a local-scope add from a plain subdirectory of a git repo writes
+#      the repo toplevel's settings (why the installer refuses to run the
+#      CLI from such a directory).
 #
 # Exit: 0 all pass (or not opted in); 1 a case failed; 3 missing dependency.
 
@@ -549,15 +549,23 @@ else
 fi
 
 # ------------------------- K: local scope from a subdir of a git repo ---
-mkdir -p "$FAMG/sub"
-ENABLED_ROOTS+=("$FAMG/sub")
-(cd "$FAMG/sub" && cli_plugin marketplace add "$W" --scope local >/dev/null 2>&1); k_rc=$?
-if [[ -f "$FAMG/sub/.claude/settings.local.json" ]]; then
-    k_where="$FAMG/sub (the cwd)"
+# The installer refuses to run the CLI from a plain directory inside a git
+# repository (enclosing_repo), on the ground that local scope from there
+# lands on the repository's toplevel. Checked against a repository that
+# declares nothing yet, so "wrote the toplevel's file" and "wrote nothing"
+# cannot be confused: the declaration must appear at the toplevel, and not
+# in the subdirectory.
+KR="$SANDBOX/krepo"
+mkdir -p "$KR/sub"
+git -C "$KR" init -q
+ENABLED_ROOTS+=("$KR")
+(cd "$KR/sub" && cli_plugin marketplace add "$W" --scope local >/dev/null 2>&1); k_rc=$?
+if [[ "$k_rc" -eq 0 && ! -e "$KR/sub/.claude/settings.local.json" ]] \
+   && jq -e --arg m "$NAME" '.extraKnownMarketplaces[$m] != null' "$KR/.claude/settings.local.json" >/dev/null 2>&1; then
+    pass "K: a local-scope add from a plain subdirectory of a git repo writes the repo toplevel's settings.local.json"
 else
-    k_where="not the cwd -- $FAMG/sub has no .claude/settings.local.json (the git toplevel $FAMG already declared it)"
+    fail "K: local scope from $KR/sub (exit $k_rc; toplevel file: $(tr -d '\n ' < "$KR/.claude/settings.local.json" 2>/dev/null || echo '<absent>'); sub file: $([[ -e "$KR/sub/.claude/settings.local.json" ]] && echo present || echo absent))"
 fi
-echo "  FACT: local-scope add from a plain subdirectory of git repo $FAMG (exit $k_rc) wrote: $k_where"
 
 echo ""
 echo "plugin_acceptance: $PASS passed, $FAIL failed (model: $MODEL)"

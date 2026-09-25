@@ -107,7 +107,9 @@ registered session root. It skips:
   A declaration in a skipped instance, from this checkout or another, can
   shadow the parent's: `--check` reports it and install removes it. When
   the instance is a plain directory inside a git repository, the CLI's
-  local scope from there resolves to that repository (live case K), so
+  local scope from there resolves to that repository (live case K
+  asserts this against a repository with no declaration; that form of
+  the case has not run yet), so
   install does not run the CLI there: it names the file to edit by hand
   and exits 1. The takeover's scratch directory is refused inside a git
   repository for the same reason.
