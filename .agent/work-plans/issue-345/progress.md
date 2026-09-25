@@ -513,3 +513,13 @@ The structural fix closes the regression chain: the machine record is claimed on
 - [ ] (suggestion) an instance with `enabledPlugins[id] = false` and no declaration is classed `absent`, so the new skip-instance check misses an explicit local disable that could block the parent's plugin (Codex; not caused by a round-3 fix) — `.agent/scripts/user_tier_install.sh:528`
 - [ ] (suggestion) test gaps in round-3 tests: the helpers test's `enc()` copies the implementation's sed, so pin a known real encoding (`/a/b_c.d` -> `-a-b-c-d`); `stale_enable` writes a complete enable (state `enabled`), so the instance loop never sees a real `stale`; the session-dir fixture still names the old `proj-worktrees-wt` and not the new `proj-wt` (Claude adversarial; caused by a round-3 fix: yes) — `.agent/scripts/tests/test_plugin_acceptance_helpers.sh:~139`, `.agent/scripts/tests/test_user_tier_install.sh:~724`
 - [ ] (suggestion) no live case runs claim_machine_record, so it is unverified that a scratch-dir `marketplace add --scope local` repoints the record and that the record survives the scratch dir's removal (no orphan sweep); `claim_machine_record` also has no trap, so an interrupt leaves `agent-workspace-claim.*` in TMPDIR (Claude adversarial, own review; caused by a round-3 fix: yes) — `.agent/scripts/user_tier_install.sh:582-611`, `.agent/scripts/tests/live/plugin_acceptance.sh`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-25 11:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Fix all, live test, review — fix the round-4 must-fix (live-suite mktemp/cd guard before the trap) and all 7 suggestions, then run the live suite once (renamed plugin copy in ~/.claude/plugins, cleaned up after), fix what it shows, then a final pre-push review.
