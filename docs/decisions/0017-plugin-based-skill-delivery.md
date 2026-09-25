@@ -96,7 +96,12 @@ registered session root. It skips:
   instance outside its parent's directory is enabled as a root of its
   own, with a note, and `--check` holds it to that. A declaration in an
   instance inside its parent, from this checkout or another, can shadow
-  the parent's: `--check` reports it and install removes it.
+  the parent's: `--check` reports it and install removes it. When the
+  instance is a plain directory inside a git repository (often the
+  parent), the CLI's local scope from there may resolve to that
+  repository, so install does not run the CLI there: it names the file to
+  edit by hand and exits 1. The takeover's scratch directory is refused
+  inside a git repository for the same reason.
 - **A root not on disk.** The installer prints a note. This is not an
   error.
 

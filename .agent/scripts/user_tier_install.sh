@@ -586,6 +586,21 @@ machine_record_source() {
     jq -r --arg m "$MARKETPLACE_NAME" '.[$m].source.path? // empty' "$KNOWN_MARKETPLACES" 2>/dev/null || true
 }
 
+# Is <dir> inside a git repository whose toplevel is somewhere else? Prints
+# that toplevel. The CLI's local scope may resolve to the enclosing
+# repository rather than the cwd, so a `--scope local` call from such a
+# directory could act on that repository's settings.local.json instead --
+# for a parent= instance, the parent's working enable. Both callers refuse
+# to run the CLI there.
+enclosing_repo() {  # <dir>
+    local top top_phys dir_phys
+    top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" || return 1
+    top_phys="$(cd "$top" 2>/dev/null && pwd -P)" || return 1
+    dir_phys="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
+    [[ "$top_phys" != "$dir_phys" ]] || return 1
+    printf '%s\n' "$top"
+}
+
 # Take the machine-level record over for this checkout (last install wins,
 # ADR-0017). Called once per install run, BEFORE any project root is
 # touched, and only when the record names another checkout. The record is
@@ -612,10 +627,9 @@ claim_machine_record() {  # [<when>, for the message]
         echo "  ERROR: could not create a scratch directory to take the machine-level record over from" >&2
         return 1
     }
-    # The CLI's local scope may resolve to the enclosing git repository, so
-    # an add from a scratch directory inside one would write that repo's
-    # settings.local.json instead.
-    if top="$(git -C "$scratch" rev-parse --show-toplevel 2>/dev/null)"; then
+    # An add from a scratch directory inside a git repository could write
+    # that repository's settings.local.json instead (enclosing_repo).
+    if top="$(enclosing_repo "$scratch")"; then
         rm -rf "$scratch"
         echo "  ERROR: the scratch directory for the machine-level takeover is inside the git repository $top -- not running the CLI there (point TMPDIR at a directory outside any git repository)" >&2
         return 1
@@ -965,7 +979,7 @@ if [[ "$MODE" == "check" ]]; then
                 # every root above looks right.
                 case "$state" in
                     enabled|stale|foreign)
-                        note "$PLUGIN_NAME plugin is declared in parent= instance $name ($root) itself$(src="$(plugin_source "$root")"; [[ -n "$src" ]] && printf ', from %s' "$src") -- its parent root provides the plugin, and a declaration here can shadow the parent's (re-run the installer to remove it)" ;;
+                        note "$PLUGIN_NAME plugin is declared in parent= instance $name ($root) itself$(src="$(plugin_source "$root")"; [[ -n "$src" ]] && printf ', from %s' "$src") -- its parent root provides the plugin, and a declaration here can shadow the parent's ($(if top="$(enclosing_repo "$root")"; then echo "remove it from $root/.claude/settings.local.json by hand: the directory is inside the git repository $top, so the installer does not run the CLI there"; else echo "re-run the installer to remove it"; fi))" ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin in parent= instance $name" ;;
                 esac ;;
             missing)
@@ -1178,8 +1192,16 @@ while IFS=$'\t' read -r name root verdict detail; do
             # A declaration of its own can shadow the parent's (see --check).
             case "$(plugin_state "$root")" in
                 enabled|stale|foreign)
-                    echo "  the $PLUGIN_NAME plugin is declared in parent= instance $name itself, where it can shadow its parent's -- removing it"
-                    disable_plugin_in_root "$root" || plugin_rc=1 ;;
+                    if inst_top="$(enclosing_repo "$root")"; then
+                        # A plain directory inside a git repository -- often
+                        # the parent itself: a local-scope remove from here
+                        # could strip the parent's working enable instead.
+                        echo "  ERROR: the $PLUGIN_NAME plugin is declared in parent= instance $name itself ($root), but that directory is inside the git repository $inst_top, where the claude CLI's local scope may resolve -- not running the CLI there; remove the $PLUGIN_ID and $MARKETPLACE_NAME entries from $root/.claude/settings.local.json by hand" >&2
+                        plugin_rc=1
+                    else
+                        echo "  the $PLUGIN_NAME plugin is declared in parent= instance $name itself, where it can shadow its parent's -- removing it"
+                        disable_plugin_in_root "$root" || plugin_rc=1
+                    fi ;;
                 unparseable)
                     unparseable_root "$root" "cannot tell whether the plugin is there"
                     plugin_rc=1 ;;

@@ -882,6 +882,45 @@ out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 ]] && pass "--check is clean once the instance's own declaration is gone" \
     || fail "--check after removing the instance declaration (rc=$rc out=${out:0:400})"
 
+# An instance that is a plain directory inside a git repository -- here its
+# parent -- is not acted on: the CLI's local scope from there may resolve to
+# the parent's settings.local.json and strip the parent's working enable.
+# Install refuses, names the file to edit, and exits 1; the parent's file is
+# untouched and no CLI call runs from the instance. An instance that is a
+# git repository of its own is removed as usual.
+cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
+mkdir -p "$ROOTS/famg/inst" "$ROOTS/famg/repo-inst"
+git -C "$ROOTS/famg" init -q
+git -C "$ROOTS/famg/repo-inst" init -q
+cat > "$WSC/.agent/projects.local" <<REG
+famg     project         $ROOTS/famg
+famg-i   single_project  $ROOTS/famg/inst       parent=famg
+famg-r   single_project  $ROOTS/famg/repo-inst  parent=famg
+REG
+run >/dev/null
+parent_before="$(cat "$ROOTS/famg/$SLJ")"
+stale_enable "$ROOTS/famg/inst"
+stale_enable "$ROOTS/famg/repo-inst"
+: > "$STUB_LOG"
+out="$(run)"; rc=$?
+if [[ "$rc" -eq 1 && "$out" == *"parent= instance famg-i itself ($ROOTS/famg/inst), but that directory is inside the git repository $ROOTS/famg"* \
+      && "$(cat "$ROOTS/famg/$SLJ")" == "$parent_before" ]] && enabled_in "$ROOTS/famg" && enabled_in "$ROOTS/famg/inst" \
+   && ! grep -q "^$ROOTS/famg/inst|" "$STUB_LOG"; then
+    pass "install does not run the CLI from an instance inside a git repository, leaving the parent's enable intact"
+else
+    fail "instance inside a git repo (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
+fi
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"instance famg-i ($ROOTS/famg/inst) itself"*"remove it from $ROOTS/famg/inst/.claude/settings.local.json by hand"* ]] \
+    && pass "--check tells the user to remove that instance's declaration by hand, not to re-run the installer" \
+    || fail "--check advice for an instance inside a git repo (rc=$rc out=${out:0:500})"
+[[ "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/famg/repo-inst/$SLJ")" == 0 ]] \
+    && pass "an instance that is its own git repository still has its declaration removed" \
+    || fail "the repo instance's declaration survived ($(cat "$ROOTS/famg/repo-inst/$SLJ"))"
+mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
+rm -rf "${ROOTS:?}/famg"
+run >/dev/null
+
 # The plugin enabled at the workspace checkout itself.
 stale_enable "$WSC"
 out="$(run --check)"; rc=$?
