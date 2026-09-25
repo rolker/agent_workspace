@@ -334,3 +334,19 @@ Every round-1 finding is addressed, and all 8 owner decisions are carried out fa
 **Decision**: proceed
 
 Approve, start implementing now — dispatch the implementation now (owner accepted it will likely run past 15:30); the implementer folds in round-2 Plan Review findings A–F (5fadd1a).
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-25 08:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-345 at `28d15be`
+
+Resumed pass. It adds 5 commits on top of the 2 from the interrupted pass (8e14d33 --skill-prefix, e6266ce the printed SessionStart note). Main had not moved.
+
+- 6d8682f: the `.claude-plugin/` manifests. The plugin ships 13 `project|both` skills as a generated per-skill array, and `claude plugin validate` accepts that form. New `test_plugin_manifest.sh` re-derives the list independently. It also asserts that only skills ship: no default component dirs, no other manifest keys.
+- a564d97: `user_tier_install.sh`. It enables the plugin at local scope per registered root. The skip guard compares `pwd -P` forms and skips p11-shape roots (B). A root with no git repo is enabled, and so is a parent root; its `parent=` instance is skipped. With no CLI, install notes and exits 0. `--check` reads JSON only. Enabling is idempotent and the result is verified from the file (C). Also: the workspace-root self-enable guard, legacy symlink removal and drift reporting, and `--generate-plugin-manifest`, which the Makefile target now runs (E). The claude stub in the tests brings the suite to 111 passing.
+- 6e8111a: run-issue detects the prefix with a single-quoted `${CLAUDE_PLUGIN_ROOT}` compared to `$WS_ROOT` in `pwd -P` form (A).
+- c5a1291: ADR-0017, plus pointers from ADR-0016 (Status and References only), the principles guide and design.md. The ADR carries the correct 13/9 count (F).
+- 28d15be: the opt-in live suite, `tests/live/plugin_acceptance.sh`. One run (claude 2.1.282, haiku) passed 10 of 10. That run includes the bare-load case: there `${CLAUDE_PLUGIN_ROOT}` stays literal, so the prefix is empty. AGENTS.md: `--skill-prefix` added to the dispatch_phase row.
+
+Tests: `run_script_tests.sh` passes all 30 suites.
