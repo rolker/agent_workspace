@@ -1174,6 +1174,21 @@ out="$(run)"; rc=$?
     && pass "with no root to enable, install leaves a foreign machine-level record alone" \
     || fail "install took the record with no root to enable (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:400})"
 mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
+# Nor when every root to be enabled has an unparseable settings.local.json:
+# each fails in the per-root step whatever happens, so the name would move
+# for nothing. Install exits 1 on those roots and leaves the record.
+cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
+printf 'a single_project %s\n' "$ROOTS/a" > "$WSC/.agent/projects.local"
+cp "$ROOTS/a/$SLJ" "$SANDBOX/a-slj.saved"
+printf '{not json' > "$ROOTS/a/$SLJ"
+: > "$STUB_LOG"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" != *"taking it over"* && ! -s "$STUB_LOG" \
+      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$SANDBOX/elsewhere" ]] \
+    && pass "with every root to enable unparseable, install leaves a foreign machine-level record alone" \
+    || fail "install took the record for roots that cannot succeed (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:400})"
+mv "$SANDBOX/a-slj.saved" "$ROOTS/a/$SLJ"
+mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
 
 # No claude CLI: the takeover cannot run. Install says so and carries on
 # (a no-CLI machine enables nothing either), and an already-enabled root is

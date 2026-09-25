@@ -1102,10 +1102,19 @@ done < <(legacy_skill_links)
 PLUGIN_ROOTS="$(plugin_roots)"
 
 # 6a. the machine-level marketplace record, once, before any project root.
-# Only when some root is to be enabled from here: with none, taking the
-# name would only move another checkout's sessions onto this one's skills.
-if machine_record_foreign \
-   && awk -F'\t' '$3 == "enable" || $3 == "enable-outside-parent" { f = 1 } END { exit !f }' <<< "$PLUGIN_ROOTS"; then
+# Only when some root is to be enabled from here and can be: with none,
+# taking the name would only move another checkout's sessions onto this
+# one's skills. A root whose settings.local.json is unparseable fails in
+# 6b whatever happens, so it does not count.
+enable_root_can_succeed() {
+    local _name root verdict _detail
+    while IFS=$'\t' read -r _name root verdict _detail; do
+        case "$verdict" in enable|enable-outside-parent) ;; *) continue ;; esac
+        [[ "$(plugin_state "$root")" != unparseable ]] && return 0
+    done <<< "$PLUGIN_ROOTS"
+    return 1
+}
+if machine_record_foreign && enable_root_can_succeed; then
     if ! have_claude; then
         echo "  NOTE: the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace names another checkout, $(machine_record_source) -- taking it over needs the claude CLI, which is not on PATH, so sessions may load that checkout's skills"
     elif ! claim_machine_record; then
