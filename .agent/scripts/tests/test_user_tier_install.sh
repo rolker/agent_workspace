@@ -862,7 +862,17 @@ foreign_enable() {  # <root>: an enable declared from $SANDBOX/elsewhere
     jq -n --arg p "$SANDBOX/elsewhere" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
         extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$1/$SLJ"
 }
-for who in stale_enable foreign_enable; do
+# stale_enable writes a COMPLETE enable from this checkout (state
+# `enabled`); these two are the genuinely `stale` shapes.
+enable_only() {  # <root>: enabled, with no marketplace declaration
+    mkdir -p "$1/.claude"
+    echo '{"enabledPlugins": {"agent-workspace@agent-workspace": true}}' > "$1/$SLJ"
+}
+declare_only() {  # <root>: declared from this checkout, not enabled
+    mkdir -p "$1/.claude"
+    jq -n --arg p "$WSC_PHYS" '{extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$1/$SLJ"
+}
+for who in stale_enable enable_only declare_only foreign_enable; do
     "$who" "$ROOTS/fam/inst"
     out="$(run --check)"; rc=$?
     [[ "$rc" -eq 1 && "$out" == *"DRIFT: agent-workspace plugin is declared in parent= instance fam-i ($ROOTS/fam/inst) itself"*"can shadow the parent's"* ]] \

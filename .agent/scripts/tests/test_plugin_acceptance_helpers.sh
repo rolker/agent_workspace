@@ -152,6 +152,20 @@ else
     rm -rf "$work"
 fi
 
+# The encoding itself, pinned to literal names rather than re-derived with
+# the implementation's own sed: every character but [A-Za-z0-9] becomes
+# `-` (as Claude Code named the real directories earlier runs left, e.g.
+# /tmp/claude-1000/-home-... -> -tmp-claude-1000--home-...). session_dirs
+# only reads the sandbox path as a string, so it need not exist.
+lit="$SANDBOX/lit-projects"
+mkdir -p "$lit/-a-b-c-aw-plugin-accept-Q1w2" "$lit/-a-b-c-aw-plugin-accept-Q1w2-proj-wt" \
+    "$lit/-a-b_c-aw-plugin-accept-Q1w2" "$lit/-a-b-c-aw-plugin-accept.Q1w2" "$lit/-a-b-c-aw-plugin-accept-Q1w2x"
+got="$(eval "$cleanup_def"; session_dirs "$lit" "/a/b_c/aw-plugin-accept.Q1w2" | xargs -n1 basename | sort | tr '\n' ' ')"
+[[ "$got" == "-a-b-c-aw-plugin-accept-Q1w2 -a-b-c-aw-plugin-accept-Q1w2-proj-wt " ]] \
+    && pass "session_dirs encodes /a/b_c/aw-plugin-accept.Q1w2 as -a-b-c-aw-plugin-accept-Q1w2, matching it and paths below it only" \
+    || fail "session_dirs literal encoding (got: '$got')"
+rm -rf "$lit"
+
 # The plugin name is per run: the CLI keys its machine-level records and
 # plugin cache by it, so two concurrent runs sharing one would remove each
 # other's. Two processes evaluating the suite's NAME line must differ.
@@ -182,7 +196,7 @@ else
         mkdir -p "$run_sb"
         e="$(enc "$run_sb")"
         other="$(enc "$SANDBOX/aw-plugin-accept.ZZ9yX8wV7u")"
-        mine=("$e" "$e-proj" "$e-proj-worktrees-wt" "$e-famg-inst")
+        mine=("$e" "$e-proj" "$e-proj-wt" "$e-famg-inst")
         keep=("${e}X" "${e}0-proj" "$other" "$other-proj" "-home-user-project")
         for d in "${mine[@]}" "${keep[@]}"; do mkdir -p "$proj/$d/memory"; done
         # shellcheck disable=SC2034  # NAME and ENABLED_ROOTS are read by the eval'd cleanup()
