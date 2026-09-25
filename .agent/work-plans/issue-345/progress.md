@@ -597,3 +597,26 @@ Open human call (live case F / run-issue prefix): detection = harness text subst
 **Decision**: address
 
 Finish option 3: fix the round-5 must-fix and the suggestions, then re-review now with the reviewers available (Codex at its 5-hour limit, Gemini failing). Skill-name (prefix) detection: owner asked for more context — undecided; suggestion 2 (prefix veto / case F rewrite) waits for that decision. Owner also asked whether Gemini needs a reliability fix.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-25 13:05 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4f2b47b9f324e986, resume 2 of 3)
+
+**Branch**: feature/issue-345 at `be6bed0`
+**Addressed**: Local Review (Pre-Push) at `d038832` (2026-09-25 12:19 -04:00)
+**Commits**: b3259f9, 16bd037, 73a03f5, cce0c90, b6279af, 4635af7, be6bed0
+
+### Actions
+- [x] (must-fix) An absent machine record is now claimed and flagged. Step 6a claims whenever the record is not this checkout's (another checkout's, or no entry) and some root to enable can succeed. Step 6c takes the record back whenever some root is enabled from here after 6b and the record is not this checkout's; the before/after baseline is gone, and 6c is skipped without the CLI. The takeover's read-back now demands the record name this checkout. `--check` flags "no entry" (no entry, no file, unreadable) while roots are enabled from here. ADR-0017 drops "missing ... says nothing" and "if the record named this checkout before" — `.agent/scripts/user_tier_install.sh` (b3259f9)
+- [x] The 6c note no longer prints the path twice; it went with the 6c rewrite, which uses `machine_record_what` (b3259f9)
+- [x] Run-issue's prefix is decided by location (owner's decision): the new `.agent/scripts/skill_prefix.sh` prints bare in the workspace checkout's repo, `agent-workspace:` where a session reads a registered root's local settings, and exits 1 with the reason anywhere else. It replaces the `${CLAUDE_PLUGIN_ROOT}` transcription in run-issue. Live case F now has sessions run the real script through the Bash tool; this was edited and not run. ADR-0017 decision 6 states the rule and the reason (b6279af)
+- [x] Live cases E and G run the copy's installer through `sandbox_install()`, which drops an inherited `CLAUDE_CONFIG_DIR` (16bd037)
+- [x] Live case K asserts, against a repo with no declaration, that the toplevel file appears and the subdirectory's does not. The ADR says the asserting form has not run yet (73a03f5)
+- [x] The installer never runs the CLI from a skipped instance, which is either a plain directory of the parent's repo or a linked worktree of it. Install reports the instance's own declaration, exits 1 and names the file to edit by hand; `--check` gives the reason. Nothing is removed there (cce0c90)
+- [x] The SessionStart hook applies `skill_prefix.sh` to the session's cwd, so a nested package repo is told that neither form reaches it (4635af7, be6bed0)
+
+Tests: install 175 -> 187, helpers 21 -> 23, session-start 46 -> 47, and a new `test_skill_prefix.sh` with 19 cases. Every new test was mutation-checked and each mutation made a test fail. Two mutations first survived (claim only a foreign record in 6a; a lax read-back), so tests were added until they failed. The full script suite passed in each pre-commit hook. No live run (as instructed); cases F and K were changed and have not run in their new form.
+
+New paths opened: a claim over an absent record in 6a; a 6c claim whenever the record is not ours; "no entry" as drift in `--check`; exit 1 for any skipped instance with its own declaration (install no longer removes one); `skill_prefix.sh` exit 1 for unregistered or nested locations, where run-issue stops and the hook states the reason. `skill_prefix.sh` is not in AGENTS.md's script table (an Ask-First edit) or in `.agent/user_tier_scripts.txt` (`dispatch_phase.sh` is not there either).
