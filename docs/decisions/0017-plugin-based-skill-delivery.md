@@ -141,7 +141,10 @@ reports:
   checkout;
 - a root inside the workspace checkout's git tree (skipped) that has the
   plugin enabled anyway;
-- a `parent=` instance inside its parent that declares the plugin itself;
+- a `parent=` instance inside its parent that declares the plugin itself
+  (and, as a note, one that disables it locally with
+  `enabledPlugins[...] = false`, which install leaves alone because it may
+  be deliberate);
 - the plugin enabled at the workspace checkout itself;
 - a machine-level marketplace record that names another checkout (see
   Consequences). Without the `claude` CLI on `PATH` this is a note that

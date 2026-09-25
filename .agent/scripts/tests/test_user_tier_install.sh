@@ -878,6 +878,19 @@ for who in stale_enable foreign_enable; do
     fi
     rm -f "${ROOTS:?}/fam/inst/.claude/settings.local.json"
 done
+# An explicit local disable (enabledPlugins[id] = false, no declaration)
+# is not a declaration, but it can turn the parent's plugin off there:
+# --check and install report it, and leave it (it may be deliberate).
+mkdir -p "$ROOTS/fam/inst/.claude"
+echo '{"enabledPlugins": {"agent-workspace@agent-workspace": false}}' > "$ROOTS/fam/inst/$SLJ"
+out_check="$(run --check)"; rc_check=$?
+out="$(run)"; rc=$?
+want="parent= instance fam-i ($ROOTS/fam/inst) disables the agent-workspace plugin locally"
+[[ "$rc_check" -eq 0 && "$out_check" == *"note: $want"* && "$rc" -eq 0 && "$out" == *"note: $want"* \
+      && "$(cat "$ROOTS/fam/inst/$SLJ")" == '{"enabledPlugins": {"agent-workspace@agent-workspace": false}}' ]] \
+    && pass "--check and install report a parent= instance's local disable, and leave it" \
+    || fail "instance local disable (check rc=$rc_check out=${out_check:0:300}; install rc=$rc out=${out:0:300})"
+rm -f "${ROOTS:?}/fam/inst/.claude/settings.local.json"
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 ]] && pass "--check is clean once the instance's own declaration is gone" \
     || fail "--check after removing the instance declaration (rc=$rc out=${out:0:400})"

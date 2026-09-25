@@ -562,6 +562,16 @@ plugin_enabled_flag() {  # <root>
     jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id] == true' "$1/.claude/settings.local.json" >/dev/null 2>&1
 }
 
+# Does <root> set the plugin explicitly to false (a local disable)? With no
+# declaration, plugin_state calls that `absent`; in a parent= instance it
+# can still turn off the plugin its parent enables.
+plugin_disabled_flag() {  # <root>
+    jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id] == false' "$1/.claude/settings.local.json" >/dev/null 2>&1
+}
+local_disable_note() {  # <name> <root>
+    echo "  note: parent= instance $1 ($2) disables the $PLUGIN_NAME plugin locally (enabledPlugins[\"$PLUGIN_ID\"] = false in its .claude/settings.local.json), which can turn off the plugin its parent enables there -- left as it is, since it may be deliberate; delete that entry to use the parent's"
+}
+
 # The marketplace source <root> currently declares, or empty.
 plugin_source() {  # <root>
     local f="$1/.claude/settings.local.json"
@@ -981,6 +991,7 @@ if [[ "$MODE" == "check" ]]; then
                     enabled|stale|foreign)
                         note "$PLUGIN_NAME plugin is declared in parent= instance $name ($root) itself$(src="$(plugin_source "$root")"; [[ -n "$src" ]] && printf ', from %s' "$src") -- its parent root provides the plugin, and a declaration here can shadow the parent's ($(if top="$(enclosing_repo "$root")"; then echo "remove it from $root/.claude/settings.local.json by hand: the directory is inside the git repository $top, so the installer does not run the CLI there"; else echo "re-run the installer to remove it"; fi))" ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin in parent= instance $name" ;;
+                    absent) plugin_disabled_flag "$root" && local_disable_note "$name" "$root" ;;
                 esac ;;
             missing)
                 echo "  note: registered root $name is not on disk ($root) -- plugin not checked there" ;;
@@ -1205,6 +1216,8 @@ while IFS=$'\t' read -r name root verdict detail; do
                 unparseable)
                     unparseable_root "$root" "cannot tell whether the plugin is there"
                     plugin_rc=1 ;;
+                absent)
+                    plugin_disabled_flag "$root" && local_disable_note "$name" "$root" ;;
             esac ;;
         missing)
             echo "  NOTE: registered root $name is not on disk ($root) -- plugin not enabled there" ;;
