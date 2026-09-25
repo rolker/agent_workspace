@@ -1040,6 +1040,25 @@ else
 fi
 rm -f "${ROOTS:?}/a/.claude/settings.local.json"
 
+# A declaration whose source is no longer on disk is no checkout's to
+# remove any more (its --uninstall cannot run): it is stale, not foreign,
+# so --check calls it not enabled from here and --uninstall removes it.
+run >/dev/null
+mkdir -p "$ROOTS/a/.claude"
+jq -n --arg p "$SANDBOX/deleted-checkout" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
+    extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$ROOTS/a/$SLJ"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"plugin not enabled from this checkout in registered root a"* \
+      && "$out" != *"declared from another checkout"* ]] \
+    && pass "--check treats a declaration whose source is gone as stale, not another checkout's" \
+    || fail "orphaned declaration misreported (rc=$rc out=${out:0:400})"
+out="$(run --uninstall)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"removed the agent-workspace plugin from $ROOTS/a"* \
+      && "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/a/$SLJ")" == 0 ]] \
+    && pass "--uninstall removes a declaration whose source is no longer on disk" \
+    || fail "orphaned declaration left by --uninstall (rc=$rc out=${out:0:400})"
+rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+
 # ...but another checkout's plugin in a root inside THIS checkout's tree
 # still doubles every skill there: --check flags it and install removes it.
 run >/dev/null

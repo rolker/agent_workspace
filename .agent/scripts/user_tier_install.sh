@@ -494,8 +494,9 @@ is_this_checkout() {  # <path>
 #   enabled      enabled, and the marketplace source is this checkout
 #   foreign      the marketplace is declared from ANOTHER checkout (enabled
 #                or not): that checkout's, not this one's, to remove
-#   stale        enabled with no declaration, or declared from this
-#                checkout but not enabled
+#   stale        enabled with no declaration, declared from this checkout
+#                but not enabled, or declared from a source no longer on
+#                disk (no checkout is left to remove it, so this one may)
 #   absent       neither
 #   unparseable  the file exists and is not JSON
 plugin_state() {  # <root>
@@ -505,7 +506,7 @@ plugin_state() {  # <root>
     enabled="$(jq -r --arg id "$PLUGIN_ID" '.enabledPlugins[$id] // false' "$f")"
     src="$(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path // ""' "$f")"
     if [[ -n "$src" ]] && ! is_this_checkout "$src"; then
-        echo foreign
+        if [[ -d "$src" ]]; then echo foreign; else echo stale; fi
     elif [[ "$enabled" == true && -n "$src" ]]; then
         echo enabled
     elif [[ "$enabled" == true || -n "$src" ]]; then
