@@ -69,3 +69,41 @@ Proceed to planning — the planner folds the three Issue Review actions into th
 **Plan**: `.agent/work-plans/issue-350/plan.md` at `e9d9b4f`
 
 Pin `-s read-only -a never` before `exec` in the codex `run_cli` call in `_cli_review.sh` (flag order matters: `-a` is a top-level flag, confirmed on codex-cli 0.156.1), and tighten `test_cross_model_review.sh`'s codex-argv assertion to check that the flags precede `exec` rather than just checking `exec` is present. Grep confirmed no other workspace code path invokes codex or expects it to write during a review turn.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-25 08:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #350 — Pin codex's sandbox/approval flags in _cli_review.sh instead of relying on CLI defaults
+**Plan**: `.agent/work-plans/issue-350/plan.md` at `e9d9b4f`
+**Branch**: `feature/issue-350`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One argv change plus one test assertion; single PR. |
+| Issue alignment | Good | Covers the issue's recommendation and all three Issue Review actions (placement assertion, 0.156.1 version note, write-expectation grep). |
+| File targeting | Good | `_cli_review.sh:311` is the only place codex is run. Re-grepped `.agent/scripts`, `.claude`, `Makefile`, `.github`: no other `codex exec`/`codex -s`/`-a` invocation, so nothing else expects write access. Two stale comments sit in the same files (finding 2). |
+| Consequences | Good | Test assertion is covered. The mock's argv parser finds `-o` by scanning, so it keeps working when flags come first; the `^-o$` and prompt-not-on-argv assertions are unaffected. |
+| Principle alignment | Good | Explicit over implicit; the tightened exact-prefix assertion locks in placement. |
+| ADR compliance | Good | ADR-0015: dispatch and failure handling are unchanged. No other ADRs triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Issue alignment]** — The plan's evidence shows only that `codex -s read-only -a never exec --help` *parses*, not that `exec` *honours* top-level flags. I re-verified parsing on 0.156.1 (`codex exec -a never` exits 2; the top-level form exits 0). I also ran a local probe that makes no model call: `codex debug prompt-input` renders the permissions block. There, top-level `-s danger-full-access` changes `sandbox_mode` from `read-only`, and top-level `-a never` adds "Approval policy is currently never". So root `-s`/`-a` do reach a subcommand's config. That is strong evidence, but it comes from `debug`, not `exec`. Suggest citing the probe in the code comment or PR. After the first live codex review, confirm the rollout's turn context in `~/.codex/sessions` shows read-only/never. Also note: 0.156.1's `-a` accepts only `on-request|never`, so `never` is valid.
+2. **[File targeting]** — `_cli_review.sh:76-77`'s header already says "Verified against codex-cli 0.155.1 … `codex exec [PROMPT]`", and the mock's comment at `test_cross_model_review.sh:2708` reads "codex exec [-o FILE]". Update both to the new invocation and version. Don't add a second, separate verification note beside the stale one.
+3. **[Consequences]** — The sketched assertion's `"-s\nread-only\n-a\nnever\nexec"` is a double-quoted string, which holds literal backslash-n rather than newlines against `head -n 5` output. Use `$'-s\nread-only\n-a\nnever\nexec'` (or compare `paste -sd' '` output). The plan already flags the wiring as adjustable.
+
+### Summary
+
+The plan is sound and minimal. Its central claims (flag placement, no other codex call sites, test impact) check out against the code and the installed codex-cli 0.156.1. The three findings are small implementation notes, not plan changes. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] Update the `_cli_review.sh` header verification note (0.155.1 → 0.156.1, new invocation) and the mock comment at test line ~2708 instead of adding a parallel note.
+- [ ] Write the exact-prefix assertion with real newlines (`$'...'`) so it can actually pass or fail on placement.
+- [ ] Record the `codex debug prompt-input` probe (top-level `-s`/`-a` take effect) in the PR description alongside the 0.156.1 version note.
