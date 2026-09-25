@@ -87,13 +87,14 @@ if [[ "$cleanup_def" != *"cleanup() {"* ]]; then
 else
     for enabled in yes no; do
         fake_home="$SANDBOX/home-$enabled"
-        mkdir -p "$fake_home/.claude/plugins/cache/aw-accept/x" "$fake_home/.claude/plugins/cache/aw-accept-other" \
+        mkdir -p "$fake_home/.claude/plugins/cache/aw-accept-4242/x" "$fake_home/.claude/plugins/cache/aw-accept-42" \
+            "$fake_home/.claude/plugins/cache/aw-accept-424242" "$fake_home/.claude/plugins/cache/aw-accept" \
             "$SANDBOX/root-$enabled" "$SANDBOX/suite-$enabled"
         # shellcheck disable=SC2034  # NAME and ENABLED_ROOTS are read by the eval'd cleanup()
         (
             HOME="$fake_home"
             unset CLAUDE_CONFIG_DIR
-            NAME=aw-accept
+            NAME=aw-accept-4242
             SANDBOX="$SANDBOX/suite-$enabled"
             eval "$cleanup_def"
             [[ "$enabled" == yes ]] && ENABLED_ROOTS=("$SANDBOX/../root-$enabled")
@@ -101,16 +102,27 @@ else
         )
         cache="$fake_home/.claude/plugins/cache"
         if [[ "$enabled" == yes ]]; then
-            [[ ! -e "$cache/aw-accept" && -d "$cache/aw-accept-other" && ! -e "$SANDBOX/suite-$enabled" ]] \
-                && pass "cleanup removes the suite's aw-accept plugin cache, and nothing beside it" \
+            [[ ! -e "$cache/aw-accept-4242" && -d "$cache/aw-accept-42" && -d "$cache/aw-accept-424242" \
+                  && -d "$cache/aw-accept" && ! -e "$SANDBOX/suite-$enabled" ]] \
+                && pass "cleanup removes this run's own plugin cache, and not another run's beside it" \
                 || fail "cleanup after an enable left: $(ls "$cache" 2>&1)"
         else
-            [[ -d "$cache/aw-accept" ]] \
+            [[ -d "$cache/aw-accept-4242" ]] \
                 && pass "cleanup leaves the plugin cache alone when the suite enabled nothing" \
-                || fail "cleanup removed the aw-accept cache without having enabled anything"
+                || fail "cleanup removed this run's plugin cache without having enabled anything"
         fi
     done
 fi
+
+# The plugin name is per run: the CLI keys its machine-level records and
+# plugin cache by it, so two concurrent runs sharing one would remove each
+# other's. Two processes evaluating the suite's NAME line must differ.
+name_line="$(grep -m1 '^NAME=' "$SUITE")"
+n1="$(bash -c "$name_line; printf '%s' \"\$NAME\"")"
+n2="$(bash -c "$name_line; printf '%s' \"\$NAME\"")"
+[[ -n "$n1" && "$n1" != "$n2" && "$n1" == aw-accept-* ]] \
+    && pass "each live run gets its own plugin name ($n1, $n2)" \
+    || fail "two live runs would share the plugin name ('$n1', '$n2' from: $name_line)"
 
 # cleanup() also removes the ~/.claude/projects directories the sessions
 # left, and it deletes under the real ~/.claude, so pin that it removes
@@ -139,7 +151,7 @@ else
         (
             HOME="$fake_home"
             unset CLAUDE_CONFIG_DIR
-            NAME=aw-accept
+            NAME=aw-accept-4242
             SANDBOX="$run_sb"
             eval "$cleanup_def"
             ENABLED_ROOTS=()

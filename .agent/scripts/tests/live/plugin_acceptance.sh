@@ -10,21 +10,24 @@
 #
 # It never touches this checkout, the real registry or ~/.claude/settings.json.
 # It works on a COPY of the checkout whose plugin and marketplace are renamed
-# `aw-accept`, so the machine-level plugin records the CLI keeps under
+# `aw-accept-<pid>` (per run, so two concurrent runs never share a name, a
+# machine-level record or a plugin cache), so the records the CLI keeps under
 # ~/.claude/plugins/ never gain or lose an `agent-workspace` entry. On exit
 # it removes both records it adds, the copy of the plugin the CLI leaves
-# in ~/.claude/plugins/cache/aw-accept/ (which `plugin uninstall` does not
+# in ~/.claude/plugins/cache/aw-accept-<pid>/ (which `plugin uninstall` does not
 # delete; Claude Code only marks it orphaned), and the ~/.claude/projects/
 # directory (transcripts, memory) each session leaves for its cwd -- only
 # those named from this run's own sandbox path. Cases, each asserting on
 # what a real session reports:
 #   A  collision: in a repo with its own plan-task, bare /plan-task is still
-#      the project's, and /aw-accept:<skill> reaches the plugin;
-#   B  a git worktree of that repo inherits the plugin;
-#   C  an unrelated repo has no aw-accept: skill (its own control skill
+#      the project's, and /aw-accept-<pid>:<skill> reaches the plugin;
+#   B  a git worktree of that repo, OUTSIDE the project's directory,
+#      inherits the plugin (so it is worktree inheritance, not directory
+#      walk-up, that reaches it);
+#   C  an unrelated repo has no aw-accept-<pid>: skill (its own control skill
 #      answering first, so the session is known to work);
 #   D  a session at the workspace root has the skills bare, not also
-#      under aw-accept: (never doubled);
+#      under aw-accept-<pid>: (never doubled);
 #   E  p11 shape: a registered root inside the workspace's git tree is
 #      skipped by the installer (sandbox HOME; the CLI is a stub that fails
 #      loudly if called) and its session has them bare, once;
@@ -56,7 +59,9 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WS_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 MODEL="${LIVE_MODEL:-haiku}"
-NAME="aw-accept"
+# Per run: the CLI keys its machine-level records and plugin cache by this
+# name, so a fixed one would let two concurrent runs remove each other's.
+NAME="aw-accept-$$"
 
 PASS=0
 FAIL=0
@@ -68,7 +73,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
 # the match to this run.
 SANDBOX="$(mktemp -d -t aw-plugin-accept.XXXXXXXXXX)"
 SANDBOX="$(cd "$SANDBOX" && pwd -P)"
-W="$SANDBOX/ws"       # the workspace copy (marketplace aw-accept)
+W="$SANDBOX/ws"       # the workspace copy (marketplace $NAME)
 P="$SANDBOX/proj"     # a project with its own plan-task
 U="$SANDBOX/other"    # an unrelated repo
 FAM="$SANDBOX/fam"    # a parent= root: a plain directory grouping instances
@@ -108,7 +113,7 @@ cleanup() {
         (cd "$r" && cli_plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1)
     done
     # The CLI's cached copy of the plugin, which uninstall leaves behind.
-    # Only after an enable, and only the suite's own `aw-accept` name.
+    # Only after an enable, and only this run's own `aw-accept-<pid>` name.
     if [[ ${#ENABLED_ROOTS[@]} -gt 0 ]]; then
         rm -rf "${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/cache/${NAME:?}"
     fi
@@ -245,11 +250,14 @@ else
 fi
 
 # -------------------------------------------------- B: worktree inherits ---
-git -C "$P" worktree add -q "$P/worktrees/wt" 2>/dev/null
-probe "$P/worktrees/wt" "/$NAME:zz-probe"; b=$?
+# Outside $P on purpose: a worktree inside the project directory would also
+# be reached by directory walk-up, so it could not show that the plugin
+# follows the worktree itself.
+git -C "$P" worktree add -q "$SANDBOX/proj-wt" 2>/dev/null
+probe "$SANDBOX/proj-wt" "/$NAME:zz-probe"; b=$?
 [[ "$b" -eq "$PROBE_REACHED" ]] \
-    && pass "B: a worktree of the project inherits the plugin" \
-    || fail "B: in a worktree, /$NAME:zz-probe $(probe_said "$b")"
+    && pass "B: a worktree of the project outside its directory inherits the plugin" \
+    || fail "B: in a worktree outside the project, /$NAME:zz-probe $(probe_said "$b")"
 
 # ------------------------------------------------- C: unrelated repo ---
 # A control first: the repo's own skill must answer, so a session there is
