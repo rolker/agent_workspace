@@ -675,7 +675,7 @@ fi
 # parent root with an instance (parent enabled, instance skipped), and a
 # root not on disk (a note). The claude stub stands in for the CLI.
 ROOTS="$SANDBOX/roots"
-mkdir -p "$ROOTS/a" "$ROOTS/nogit" "$ROOTS/fam/inst"
+mkdir -p "$ROOTS/a" "$ROOTS/nogit" "$ROOTS/fam/inst" "$ROOTS/fam-stray"
 git -C "$ROOTS/a" init -q
 git -C "$WSC" init -q
 mkdir -p "$WSC/projects/inner" "$WSC/projects/inner2"
@@ -689,6 +689,7 @@ inner    single_project  $WSC/projects/inner
 inner2   single_project  $SANDBOX/ws-link/projects/inner2
 fam      project         $ROOTS/fam
 fam-i    single_project  $ROOTS/fam/inst  parent=fam
+fam-s    single_project  $ROOTS/fam-stray  parent=fam
 gone     single_project  $ROOTS/gone
 REG
 WSC_PHYS="$(cd "$WSC" && pwd -P)"
@@ -731,6 +732,14 @@ fi
 enabled_in "$ROOTS/fam" && [[ ! -e "$ROOTS/fam/inst/$SLJ" && "$out" == *"skipped fam-i: a parent= instance"* ]] \
     && pass "a parent root is enabled and its parent= instance is skipped" \
     || fail "parent/instance handling is wrong (out=${out:0:400})"
+# An instance registered OUTSIDE its parent's directory (here a sibling
+# whose path merely starts with the parent's) cannot see the parent's
+# settings, so skipping it would leave it with no plugin: it is enabled
+# as a root of its own, with a note.
+enabled_in "$ROOTS/fam-stray" && [[ "$out" == *"fam-s is a parent= instance outside its parent's directory"* \
+      && "$out" != *"skipped fam-s"* ]] \
+    && pass "a parent= instance outside its parent's directory is enabled directly, with a note" \
+    || fail "mis-nested instance handling is wrong (out=${out:0:600})"
 [[ "$out" == *"registered root gone is not on disk"* ]] \
     && pass "a registered root not on disk is a note, not a failure" \
     || fail "missing root not noted (out=${out:0:400})"
@@ -744,6 +753,15 @@ out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
     && pass "--check is clean with the plugin enabled in every session root" \
     || fail "--check after plugin install (rc=$rc out=${out:0:400})"
+[[ "$out" == *"note: fam-s is a parent= instance outside its parent's directory"* ]] \
+    && pass "--check notes a parent= instance outside its parent's directory" \
+    || fail "--check did not note the mis-nested instance (out=${out:0:400})"
+rm -f "${ROOTS:?}/fam-stray/.claude/settings.local.json"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"plugin not enabled from this checkout in registered root fam-s"* ]] \
+    && pass "--check reports a mis-nested instance without the plugin as drift" \
+    || fail "mis-nested instance without the plugin not flagged (rc=$rc out=${out:0:400})"
+run >/dev/null
 
 : > "$STUB_LOG"
 run >/dev/null

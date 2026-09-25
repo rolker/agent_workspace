@@ -32,8 +32,10 @@
 #          `pwd -P` forms): a session there already sees the bare skills by
 #          directory walk-up, and enabling would double every skill and write
 #          the workspace's own settings.local.json;
-#        - a `parent=` instance: its parent root is the session unit, and the
-#          parent is what gets enabled;
+#        - a `parent=` instance inside its parent's directory: its parent
+#          root is the session unit, and the parent is what gets enabled.
+#          An instance registered OUTSIDE its parent's directory cannot see
+#          the parent's settings, so it is enabled as a root of its own;
 #        - a root not on disk (a note, not an error);
 #        - every enable, with a note, when the `claude` CLI is not on PATH
 #          (a Codex-only machine has no plugins to enable). A plugin that
@@ -418,27 +420,55 @@ legacy_skill_links() {
 # ---------------------------------------------------- plugin, per root ---
 have_claude() { command -v "$CLAUDE_BIN" >/dev/null 2>&1; }
 
+# Does <path> lie strictly inside <dir>? Both in `pwd -P` form; false when
+# either is not on disk.
+path_inside() {  # <path> <dir>
+    local p d
+    p="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
+    d="$(cd "$2" 2>/dev/null && pwd -P)" || return 1
+    [[ "$p" == "$d/"* ]]
+}
+
 # One line per registered entry: <name>\t<path>\t<verdict>, where verdict is
 #   enable          a session root that gets the plugin
+#   enable-outside-parent
+#                   a parent= instance whose path is NOT inside its parent's:
+#                   the parent's settings cannot reach it, so it is enabled
+#                   as a session root of its own (a note says so)
 #   skip-workspace  its git toplevel is this workspace checkout
-#   skip-instance   a parent= instance (the parent root is enabled instead)
+#   skip-instance   a parent= instance inside its parent's directory (the
+#                   parent root is enabled instead)
 #   missing         the path does not exist on disk
 # A malformed registry line is reported by the registry parser on stderr and
 # dropped; the valid lines are still returned.
 plugin_roots() {
-    local entries name _type path fields top top_phys
+    local entries name _type path fields top top_phys parent parent_path
+    local outside
     entries="$(registry_entries_full "$WS_ROOT")" || true
     [[ -n "$entries" ]] || return 0
     while IFS=$'\t' read -r name _type path fields; do
         [[ -z "$name" ]] && continue
-        if [[ -n "$(_registry_field_of "$fields" parent)" ]]; then
-            printf '%s\t%s\t%s\n' "$name" "$path" skip-instance
-        elif [[ ! -d "$path" ]]; then
+        outside=false
+        if parent="$(_registry_field_of "$fields" parent)" && [[ -n "$parent" ]]; then
+            # Skipping an instance is right only while the parent's
+            # .claude/settings.local.json can reach its sessions, which
+            # needs the instance to lie inside the parent's directory. The
+            # registry does not require that, so check it here.
+            parent_path="$(awk -F'\t' -v n="$parent" '$1 == n { print $3; exit }' <<< "$entries")"
+            if [[ -n "$parent_path" ]] && path_inside "$path" "$parent_path"; then
+                printf '%s\t%s\t%s\n' "$name" "$path" skip-instance
+                continue
+            fi
+            outside=true
+        fi
+        if [[ ! -d "$path" ]]; then
             printf '%s\t%s\t%s\n' "$name" "$path" missing
         elif top="$(git -C "$path" rev-parse --show-toplevel 2>/dev/null)" \
              && top_phys="$(cd "$top" 2>/dev/null && pwd -P)" \
              && [[ "$top_phys" == "$WS_PHYS" ]]; then
             printf '%s\t%s\t%s\n' "$name" "$path" skip-workspace
+        elif [[ "$outside" == true ]]; then
+            printf '%s\t%s\t%s\n' "$name" "$path" enable-outside-parent
         else
             # Includes a root in no git repository at all: nothing there
             # sees the workspace's skills, so it is a session root like any.
@@ -768,7 +798,10 @@ if [[ "$MODE" == "check" ]]; then
         state=""
         [[ -d "$root" ]] && state="$(plugin_state "$root")"
         case "$verdict" in
-            enable)
+            enable|enable-outside-parent)
+                if [[ "$verdict" == enable-outside-parent ]]; then
+                    echo "  note: $name is a parent= instance outside its parent's directory ($root), so the parent's plugin enable cannot reach it -- checked as a session root of its own"
+                fi
                 case "$state" in
                     enabled) ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
@@ -933,6 +966,9 @@ while IFS=$'\t' read -r name root verdict; do
     [[ -z "$name" ]] && continue
     case "$verdict" in
         enable)
+            enable_plugin_in_root "$root" || plugin_rc=1 ;;
+        enable-outside-parent)
+            echo "  NOTE: $name is a parent= instance outside its parent's directory ($root) -- the parent's plugin enable cannot reach it, so it is enabled there directly"
             enable_plugin_in_root "$root" || plugin_rc=1 ;;
         skip-workspace)
             echo "  skipped $name: its git toplevel is this workspace checkout, which already provides the skills"

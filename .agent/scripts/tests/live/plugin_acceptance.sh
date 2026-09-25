@@ -27,7 +27,10 @@
 #   F  prefix detection (plan-review round-2 finding A): a probe skill
 #      reports what ${CLAUDE_PLUGIN_ROOT} became. Loaded bare it must not
 #      name the workspace; loaded through the plugin it must, and run-issue's
-#      rule then yields `<plugin>:` in the plugin session and empty bare.
+#      rule then yields `<plugin>:` in the plugin session and empty bare;
+#   G  parent= instance: enabled at the parent only, sessions in the
+#      instance (and a git repo inside it) still reach the plugin -- the
+#      assumption behind the installer's skip-instance.
 #
 # Exit: 0 all pass (or not opted in); 1 a case failed; 3 missing dependency.
 
@@ -56,15 +59,28 @@ SANDBOX="$(cd "$SANDBOX" && pwd -P)"
 W="$SANDBOX/ws"       # the workspace copy (marketplace aw-accept)
 P="$SANDBOX/proj"     # a project with its own plan-task
 U="$SANDBOX/other"    # an unrelated repo
+FAM="$SANDBOX/fam"    # a parent= root: a plain directory grouping instances
 
+# Every root the suite enables the plugin in, recorded BEFORE the CLI runs
+# there, so a half-finished enable is still undone on exit.
+ENABLED_ROOTS=()
 cleanup() {
-    if [[ -d "$P" ]]; then
-        (cd "$P" && claude plugin uninstall "$NAME@$NAME" --scope local >/dev/null 2>&1)
-        (cd "$P" && claude plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1)
-    fi
+    local r
+    for r in ${ENABLED_ROOTS[@]+"${ENABLED_ROOTS[@]}"}; do
+        [[ -d "$r" ]] || continue
+        (cd "$r" && claude plugin uninstall "$NAME@$NAME" --scope local >/dev/null 2>&1)
+        (cd "$r" && claude plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1)
+    done
     rm -rf "${SANDBOX:?}"
 }
 trap cleanup EXIT
+
+# enable_in <root>: the installer's two CLI calls, run from <root>.
+enable_in() {
+    ENABLED_ROOTS+=("$1")
+    (cd "$1" && claude plugin marketplace add "$W" --scope local >/dev/null \
+        && claude plugin install "$NAME@$NAME" --scope local >/dev/null)
+}
 
 # session <dir> <prompt>: one headless session, no tools. Leaves its output
 # in SESSION_OUT and its exit status (124 = timed out) in SESSION_RC, and
@@ -130,7 +146,7 @@ description: Control skill for the unrelated repo.
 Reply UNRELATED-CONTROL.
 EOF
 
-(cd "$P" && claude plugin marketplace add "$W" --scope local >/dev/null && claude plugin install "$NAME@$NAME" --scope local >/dev/null) \
+enable_in "$P" \
     || { echo "FATAL: could not enable the $NAME plugin in the sandbox project" >&2; exit 1; }
 jq -e --arg id "$NAME@$NAME" '.enabledPlugins[$id] == true' "$P/.claude/settings.local.json" >/dev/null \
     && pass "local-scope install writes the project's settings.local.json" \
@@ -259,6 +275,29 @@ if [[ "$f" -eq "$PROBE_REACHED" && "$(prefix_for "$plug_val")" == "$NAME:" ]]; t
 else
     fail "F: plugin-load probe (/$NAME:zz-probe $(probe_said "$f"); value '$plug_val')"
 fi
+# ------------------------------------------- G: parent= instance ---
+# The installer enables a parent= root and SKIPS each instance inside it,
+# on the assumption that a session in the instance sees the parent's
+# local-scope settings. This is that assumption, checked: the plugin is
+# enabled at the parent only, and sessions in the instance directory and in
+# a git repo inside it (a package of a colcon-style instance) must reach it.
+# If this fails, skip-instance in user_tier_install.sh is wrong, and each
+# instance must be enabled as a root of its own.
+mkdir -p "$FAM/inst/src/pkg"
+git -C "$FAM/inst/src/pkg" init -q
+if enable_in "$FAM"; then
+    probe "$FAM/inst" "/$NAME:zz-probe"; g_inst=$?
+    g_inst_said="$(probe_said "$g_inst")"
+    probe "$FAM/inst/src/pkg" "/$NAME:zz-probe"; g_pkg=$?
+    if [[ "$g_inst" -eq "$PROBE_REACHED" && "$g_pkg" -eq "$PROBE_REACHED" ]]; then
+        pass "G: sessions inside a parent= instance see the plugin enabled at the parent"
+    else
+        fail "G: parent= instance (instance dir: $g_inst_said; package repo: $(probe_said "$g_pkg"))"
+    fi
+else
+    fail "G: could not enable the $NAME plugin in the parent root"
+fi
+
 echo ""
 echo "plugin_acceptance: $PASS passed, $FAIL failed (model: $MODEL)"
 [ "$FAIL" -eq 0 ]

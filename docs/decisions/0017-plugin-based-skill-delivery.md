@@ -88,7 +88,13 @@ registered session root. It skips:
   skills by directory walk-up. Enabling the plugin would load every skill
   twice, under two names, and would write into the workspace's own
   settings.
-- **A `parent=` instance.** Its parent root is the one that gets enabled.
+- **A `parent=` instance inside its parent's directory.** Its parent root
+  is the one that gets enabled. This rests on a session in the instance
+  seeing the parent's local-scope settings, which the live suite's case G
+  checks. The registry does not require an instance to lie under its
+  parent, so the installer checks containment (`pwd -P` forms). An
+  instance outside its parent's directory is enabled as a root of its
+  own, with a note, and `--check` holds it to that.
 - **A root not on disk.** The installer prints a note. This is not an
   error.
 
@@ -204,7 +210,8 @@ then, the opt-in `.agent/scripts/tests/live/plugin_acceptance.sh` covers:
 - worktree inheritance, and no plugin in an unrelated repo;
 - the workspace-root shape, with no doubled skills;
 - the skip guard for a `p11`-shape root;
-- the bare-load and plugin-load prefix detection.
+- the bare-load and plugin-load prefix detection;
+- a `parent=` instance reaching the plugin enabled at its parent.
 
 ## Alternatives Considered
 
