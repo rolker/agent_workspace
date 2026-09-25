@@ -117,3 +117,14 @@ The plan is sound and minimal. Its central claims (flag placement, no other code
 **Decision**: proceed
 
 Proceed — approve the plan; the implementer folds in the three Plan Review notes (7ddc882): flags-applied evidence for the PR description, update the two stale comments, use $'...' in the placement assertion.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-25 08:45 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-350 at `9fe0818`
+
+- `.agent/scripts/_cli_review.sh`: codex now runs as `codex -s read-only -a never exec -o <file>`; rationale comment above the call (flags are top-level and must precede `exec`); header verification note updated in place (0.155.1 → 0.156.1, new invocation, `codex debug prompt-input` evidence) — Plan Review note 2.
+- `.agent/scripts/tests/test_cross_model_review.sh`: `test_agents_all_succeed` asserts the exact leading argv `$'-s\nread-only\n-a\nnever\nexec'` (real newlines — Plan Review note 3); mock codex comment updated in place.
+- Suite: 662 passed, 0 failed. Mutation check (each restored afterwards): flags after `exec`, flags missing, and `-a`/`-s` swapped each fail exactly the new assertion (661/1).
+- Evidence for the PR (Plan Review note 1): on codex-cli 0.156.1, `codex debug prompt-input` with no flags renders `sandbox_mode` `workspace-write` from this trusted cwd; with top-level `-s read-only -a never` it renders `read-only` plus "Approval policy is currently never". `codex exec -a never --help` exits 2; `codex -s read-only -a never exec --help` exits 0. No live codex review turn was run.
