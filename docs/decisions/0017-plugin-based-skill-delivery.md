@@ -101,8 +101,10 @@ registered session root. It skips:
 A root that is in no git repository at all is enabled.
 
 Enabling is idempotent. A root that already has the plugin enabled from
-this checkout does not run the CLI at all. The installer checks the result
-by reading the settings file, not by trusting the CLI's exit code. With no
+this checkout does not run the CLI at all, unless the machine-level
+marketplace record names another checkout (see Consequences). The
+installer checks the result by reading the settings file, not by trusting
+the CLI's exit code. With no
 `claude` CLI on `PATH` (a Codex-only machine) the installer prints a note
 and skips enabling the plugin. Removing one that is present (a doubled
 root, `--uninstall`) cannot be done without the CLI, so that is an error,
@@ -183,18 +185,25 @@ in their prose.
   Until then, the permission allow-rules and the two hook entries in
   `~/.claude/settings.json` are unchanged.
 - **The machine-level `~/.claude/plugins/` records** are the CLI's
-  bookkeeping, not the workspace's. The installer never edits them.
+  bookkeeping, not the workspace's. The installer never edits them
+  itself; they change only through the CLI calls it runs.
 - **One `agent-workspace` marketplace source per machine.** The CLI keys
   `~/.claude/plugins/known_marketplaces.json` by marketplace name, so two
   checkouts on one machine cannot both be the plugin's source. A root's
   `settings.local.json` can declare this checkout while the machine record
   names another, and then sessions may load the other checkout's skills.
   `--check` reads that one record, read-only, and flags it only when it
-  positively names a different directory. A missing file, entry or `path`
-  field says nothing either way, because the format is the CLI's. The fix
-  is the other checkout's `--uninstall`, then this checkout's install. This
-  matches the user tier, which is already singular (one checkout owns
-  `~/.claude`).
+  positively names a different directory and some root has the plugin
+  enabled from this checkout. A missing file, entry or `path` field says
+  nothing either way, because the format is the CLI's. **Last install
+  wins**: install from this checkout, finding the record on another
+  checkout, re-enables the plugin in its first enabled root, and that
+  `marketplace add` takes the name over. That the CLI replaces the record
+  on such an add is not yet verified live, so the installer reads the
+  record back and exits 1 if it still names the other checkout. The other
+  checkout's `--check` then flags the record in turn, and its own install
+  takes the name back. This matches the user tier, which is already
+  singular (one checkout owns `~/.claude`).
 - **A new skill ships only after the manifest is regenerated.** Add the
   `session_scope` field, run `make generate-user-tier-skills`, and commit
   the manifest. `test_plugin_manifest.sh` fails the commit otherwise.

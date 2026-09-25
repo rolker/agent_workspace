@@ -108,8 +108,8 @@ ROOT_FILE="$CLAUDE_DIR/agent-workspace-root"
 RULES_FILE="$CLAUDE_DIR/agent-workspace-rules.json"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
-# The claude CLI's own machine-level marketplace records (ADR-0017). Read by
-# --check only, never written.
+# The claude CLI's own machine-level marketplace records (ADR-0017). Read
+# only, never written here; install's `marketplace add` is what repoints it.
 KNOWN_MARKETPLACES="$CLAUDE_DIR/plugins/known_marketplaces.json"
 SESSION_HOOK_LINK="$HOOKS_DIR/agent-workspace-session-start.sh"
 SESSION_HOOK_TARGET="$WS_ROOT/.claude/hooks/session_start_project_layer.sh"
@@ -522,6 +522,17 @@ plugin_source() {  # <root>
     jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path // ""' "$f" 2>/dev/null
 }
 
+# Does the claude CLI's machine-level record of the marketplace positively
+# name another checkout? The CLI keys it by name, so a machine holds ONE
+# source. A missing file, entry or `path` field (the format is the CLI's,
+# not ours) says nothing either way, and is not "another checkout".
+machine_record_foreign() {
+    local src
+    [[ -f "$KNOWN_MARKETPLACES" ]] || return 1
+    src="$(jq -r --arg m "$MARKETPLACE_NAME" '.[$m].source.path? // empty' "$KNOWN_MARKETPLACES" 2>/dev/null)" || return 1
+    [[ -n "$src" ]] && ! is_this_checkout "$src"
+}
+
 # The report for a root whose settings.local.json cannot be read: whether
 # the plugin is there is unknowable, so the caller fails rather than guess,
 # and the file is left exactly as it is.
@@ -530,16 +541,22 @@ unparseable_root() {  # <root> <what was not done>
 }
 
 # Enable the plugin in one root. Idempotent: an already-enabled root is left
-# alone, without running the CLI at all. Also the entry point the
-# registration flow (#332) re-runs for a newly registered root, by re-running
-# this installer. Returns 1 on a CLI failure or an unparseable settings file.
+# alone, without running the CLI at all -- unless the machine-level record
+# names another checkout: then that root is enabled afresh, which repoints
+# the record here (last install wins, ADR-0017), and every later root is
+# left alone again because the record now names this checkout. Also the
+# entry point the registration flow (#332) re-runs for a newly registered
+# root, by re-running this installer. Returns 1 on a CLI failure, an
+# unparseable settings file, or a machine record the CLI left elsewhere.
 enable_plugin_in_root() {  # <root>
     local root="$1" state
     state="$(plugin_state "$root")"
     case "$state" in
         enabled)
-            echo "  plugin already enabled: $root"
-            return 0 ;;
+            if ! machine_record_foreign; then
+                echo "  plugin already enabled: $root"
+                return 0
+            fi ;;
         unparseable)
             unparseable_root "$root" "not enabling the plugin there"
             return 1 ;;
@@ -548,12 +565,15 @@ enable_plugin_in_root() {  # <root>
         echo "  NOTE: the claude CLI is not on PATH -- not enabling the $PLUGIN_NAME plugin in $root"
         return 0
     fi
-    # A leftover declaration -- another checkout's, or this one's without
-    # the enable -- would make `marketplace add` refuse the name; drop it
-    # first so this source takes its place. A registered root is this
+    [[ "$state" == enabled ]] \
+        && echo "  the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace names another checkout -- re-enabling in $root to take it over (last install wins)"
+    # A leftover declaration -- another checkout's, this one's without the
+    # enable, or this one's complete one being re-added to repoint the
+    # machine record -- would make `marketplace add` refuse the name; drop
+    # it first so this source takes its place. A registered root is this
     # checkout's registry's to repoint (uninstall, by contrast, leaves
     # another checkout's declaration alone).
-    if [[ -n "$(plugin_source "$root")" && ( "$state" == stale || "$state" == foreign ) ]]; then
+    if [[ -n "$(plugin_source "$root")" ]]; then
         (cd "$root" && claude_plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
     fi
     if ! (cd "$root" && claude_plugin marketplace add "$WS_PHYS" --scope local >/dev/null) \
@@ -563,6 +583,10 @@ enable_plugin_in_root() {  # <root>
     fi
     if [[ "$(plugin_state "$root")" != enabled ]]; then
         echo "  ERROR: the claude CLI reported success, but $root/.claude/settings.local.json does not show $PLUGIN_ID enabled from $WS_PHYS" >&2
+        return 1
+    fi
+    if machine_record_foreign; then
+        echo "  ERROR: enabled the $PLUGIN_NAME plugin in $root, but the claude CLI's machine-level record ($KNOWN_MARKETPLACES) still names another checkout, so sessions may load that checkout's skills" >&2
         return 1
     fi
     echo "  enabled the $PLUGIN_NAME plugin in $root"
@@ -798,6 +822,7 @@ if [[ "$MODE" == "check" ]]; then
     done < <(legacy_skill_links)
 
     # The plugin, per registered root. JSON reads only -- no CLI call.
+    own_enabled=false
     while IFS=$'\t' read -r name root verdict; do
         [[ -z "$name" ]] && continue
         state=""
@@ -808,7 +833,7 @@ if [[ "$MODE" == "check" ]]; then
                     echo "  note: $name is a parent= instance outside its parent's directory ($root), so the parent's plugin enable cannot reach it -- checked as a session root of its own"
                 fi
                 case "$state" in
-                    enabled) ;;
+                    enabled) own_enabled=true ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
                     foreign) note "$PLUGIN_NAME plugin in registered root $name ($root) is declared from another checkout, $(plugin_source "$root"), not from this one (re-run the installer to repoint it)" ;;
                     *)
@@ -844,11 +869,11 @@ if [[ "$MODE" == "check" ]]; then
     # here would notice. Read-only, and only a record that positively names
     # a different directory is drift -- a missing file, entry or `path`
     # field (the format is the CLI's, not ours) says nothing either way.
-    if [[ -f "$KNOWN_MARKETPLACES" ]]; then
-        km_src="$(jq -r --arg m "$MARKETPLACE_NAME" '.[$m].source.path? // empty' "$KNOWN_MARKETPLACES" 2>/dev/null)"
-        if [[ -n "$km_src" ]] && ! is_this_checkout "$km_src"; then
-            note "the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names another checkout, $km_src -- one source per machine, so sessions may load that checkout's skills (run that checkout's --uninstall, then re-run this installer)"
-        fi
+    # Only while some root has the plugin enabled from this checkout: with
+    # none, no session of this checkout's loads the record, and install
+    # (which repoints it from an enabled root) would have nowhere to do it.
+    if [[ "$own_enabled" == true ]] && machine_record_foreign; then
+        note "the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names another checkout, $(jq -r --arg m "$MARKETPLACE_NAME" '.[$m].source.path' "$KNOWN_MARKETPLACES") -- one source per machine, so sessions may load that checkout's skills (re-run this installer to take it over: last install wins)"
     fi
 
     if [[ "$drift" -eq 0 ]]; then

@@ -54,7 +54,10 @@ mkdir -p "$HOMEDIR"
 # STUB_FAIL=1 makes it exit 1; STUB_NOOP=1 makes it exit 0 having written
 # nothing (a CLI that claims success but did not enable anything);
 # STUB_STDIN_LOG=<file> makes it append any line it can read from stdin there
-# (a CLI that stops for a prompt would read exactly that).
+# (a CLI that stops for a prompt would read exactly that). `marketplace add`
+# also records its source in ~/.claude/plugins/known_marketplaces.json, the
+# CLI's machine-level record keyed by name (left alone when it is not JSON);
+# STUB_NO_KM=1 makes it skip that (a CLI that does not repoint the record).
 STUB_BIN="$SANDBOX/bin"
 STUB="$STUB_BIN/claude"
 STUB_LOG="$SANDBOX/claude-stub.log"
@@ -78,6 +81,13 @@ case "$1 $2 ${3:-}" in
     *) exit 0 ;;
 esac
 jq --arg a "$arg" "$filter" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+if [[ "$2 $3" == "marketplace add" && -z "${STUB_NO_KM:-}" ]]; then
+    km="$HOME/.claude/plugins/known_marketplaces.json"
+    mkdir -p "$(dirname "$km")"
+    [[ -f "$km" ]] || echo '{}' > "$km"
+    jq --arg a "$arg" '.["agent-workspace"] = {source: {source: "directory", path: $a}}' "$km" > "$km.tmp" 2>/dev/null \
+        && mv "$km.tmp" "$km" || rm -f "$km.tmp"
+fi
 STUBEOF
 chmod +x "$STUB"
 : > "$STUB_LOG"
@@ -967,6 +977,46 @@ printf '{not json' > "$KM"
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] && pass "--check ignores a machine-level record it cannot parse (the CLI's file, not ours)" \
     || fail "unparseable known_marketplaces.json changed --check (rc=$rc out=${out:0:400})"
+# Last install wins: install over a record naming another checkout takes the
+# name over (re-enabling in ONE root, which the CLI records machine-wide),
+# so --check clears by following its own advice. Every root is already
+# enabled here, which is the case that used to short-circuit.
+km "$SANDBOX/elsewhere"
+: > "$STUB_LOG"
+out="$(run)"; rc=$?
+adds="$(grep -c '|plugin marketplace add ' "$STUB_LOG")"
+if [[ "$rc" -eq 0 && "$out" == *"to take it over (last install wins)"* && "$adds" -eq 1 ]] \
+   && [[ "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" ]]; then
+    pass "install over a machine-level record naming another checkout repoints it, from one root"
+else
+    fail "install did not take the machine-level record over (rc=$rc adds=$adds km=$(cat "$KM") out=${out:0:400})"
+fi
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean after install took the machine-level record over" \
+    || fail "--check still flags the machine-level record after install (rc=$rc out=${out:0:400})"
+# ...and a CLI that leaves the record on the other checkout is an error,
+# not a silent success that --check would contradict.
+km "$SANDBOX/elsewhere"
+out="$(STUB_NO_KM=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"machine-level record ($KM) still names another checkout"* ]] \
+    && pass "install fails when the CLI leaves the machine-level record on another checkout" \
+    || fail "an unrepointed machine-level record passed install (rc=$rc out=${out:0:400})"
+# With no root enabled from this checkout, no session of this checkout's
+# loads the record and install has no root to repoint it from: not drift.
+saved_slj="$SANDBOX/saved-slj"
+mkdir -p "$saved_slj"
+for r in a nogit fam fam-stray; do
+    [[ -f "$ROOTS/$r/$SLJ" ]] && mv "$ROOTS/$r/$SLJ" "$saved_slj/$r.json"
+done
+out="$(run --check)"
+[[ "$out" != *"machine-level record"* ]] \
+    && pass "--check does not flag the machine-level record while no root has the plugin from this checkout" \
+    || fail "machine-level record flagged with no root enabled from this checkout (out=${out:0:400})"
+for r in a nogit fam fam-stray; do
+    [[ -f "$saved_slj/$r.json" ]] && mv "$saved_slj/$r.json" "$ROOTS/$r/$SLJ"
+done
+rm -rf "$saved_slj"
 rm -f "$KM"
 
 # --uninstall leaves another checkout's plugin alone: a second checkout's
