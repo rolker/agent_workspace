@@ -458,3 +458,13 @@ Round-2 fixes verified: all 5 close their findings, each with a hermetic test (i
 - [ ] (suggestion) the live suite's `claude -p` probes leave one Claude Code project dir per probed path (transcripts and a `memory/` dir) under ~/.claude/projects, named from the sandbox path: two earlier runs left 10 (92-276K each), and the round-2 G/H cases add about 5 more per run; cleanup() should remove the dirs derived from $SANDBOX (guarded by its unique mktemp prefix), or the header should say they stay (own review; not caused by round-2 fix, extended by it) — `.agent/scripts/tests/live/plugin_acceptance.sh:78-95`
 - [ ] (suggestion) --uninstall exits "nothing installed" before the plugin loop when the root file, hook link and ~/.claude/settings.json are all absent, so plugin enables left in registered roots survive; rare (settings.json almost always exists), check the roots before that return (Codex; not caused by round-2 fix) — `.agent/scripts/user_tier_install.sh:649-651`
 - [ ] (suggestion) live case B puts the worktree inside the project ($P/worktrees/wt), so it cannot tell directory walk-up from git-worktree inheritance; add a sibling worktree outside $P, and note that two concurrent live runs share the `aw-accept` name and cache (Gemini, Codex; not caused by round-2 fix) — `.agent/scripts/tests/live/plugin_acceptance.sh:227,90`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-25 10:22 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Structural fix + round 4 — take over the machine-wide plugin record (known_marketplaces.json) once per run as its own step before any per-root work; a failed takeover stops install before touching any project. Fold in the 6 round-3 suggestions, then one more pre-push review.
