@@ -819,6 +819,25 @@ out="$(run --check)"; rc=$?
     && pass "--check reports the unparseable settings.local.json" \
     || fail "--check missed the unparseable file (rc=$rc)"
 rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+run >/dev/null
+# ...and so is one in a root where the plugin must NOT be (a skipped
+# workspace-toplevel root, the workspace checkout itself): whether it doubles
+# every skill there is unknowable, so install and --check say so.
+for broken in "$WSC/projects/inner" "$WSC"; do
+    mkdir -p "$broken/.claude"
+    printf '{not json' > "$broken/$SLJ"
+    out="$(run)"; rc=$?
+    [[ "$rc" -eq 1 && "$out" == *"$broken/.claude/settings.local.json is not valid JSON"* \
+          && "$(cat "$broken/$SLJ")" == '{not json' ]] \
+        && pass "install fails on an unparseable settings.local.json where the plugin must not be (${broken#"$SANDBOX"/}), leaving it alone" \
+        || fail "unparseable settings.local.json in ${broken#"$SANDBOX"/} passed install (rc=$rc out=${out:0:400})"
+    out="$(run --check)"; rc=$?
+    [[ "$rc" -eq 1 && "$out" == *"DRIFT: $broken/.claude/settings.local.json is not valid JSON"* ]] \
+        && pass "--check reports the unparseable settings.local.json in ${broken#"$SANDBOX"/}" \
+        || fail "--check missed the unparseable file in ${broken#"$SANDBOX"/} (rc=$rc out=${out:0:400})"
+    rm -f "$broken/$SLJ"
+done
+rm -f "${ROOTS:?}/a/.claude/settings.local.json"
 
 # CLI failure, and a CLI that claims success but enabled nothing.
 out="$(STUB_FAIL=1 run)"; rc=$?
@@ -882,6 +901,17 @@ if grep -q "^$WSC" "$STUB_LOG"; then
 else
     pass "--uninstall does not run the CLI in the skipped workspace-toplevel roots"
 fi
+
+# --uninstall over an unparseable settings.local.json: it cannot tell
+# whether the plugin is there, so it says so, exits 1, and leaves the file.
+run >/dev/null
+printf '{not json' > "$ROOTS/a/$SLJ"
+out="$(run --uninstall)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"$ROOTS/a/.claude/settings.local.json is not valid JSON"* \
+      && "$(cat "$ROOTS/a/$SLJ")" == '{not json' ]] \
+    && pass "--uninstall reports an unparseable settings.local.json, exits 1 and leaves it alone" \
+    || fail "--uninstall over an unparseable settings.local.json (rc=$rc out=${out:0:400})"
+rm -f "${ROOTS:?}/a/.claude/settings.local.json"
 
 rm -f "${WSC:?}/.agent/projects.local" "${SANDBOX:?}/ws-link"
 rm -rf "${WSC:?}/.git" "${WSC:?}/projects"

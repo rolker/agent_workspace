@@ -109,6 +109,11 @@ reports:
 
 `--uninstall` removes the plugin from every root that has it.
 
+A root whose `.claude/settings.local.json` is not valid JSON is reported
+and never rewritten. Whether the plugin is enabled there cannot be known,
+so install, `--check` and `--uninstall` all exit 1 on it, including in a
+root where the plugin must not be (a skipped root, the workspace checkout).
+
 Issue #332's registration flow reuses this step for a newly registered
 root by re-running the installer. There is no second enable entry point
 to keep in sync.

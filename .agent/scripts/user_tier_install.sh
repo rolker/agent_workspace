@@ -470,6 +470,13 @@ plugin_source() {  # <root>
     jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path // ""' "$f" 2>/dev/null
 }
 
+# The report for a root whose settings.local.json cannot be read: whether
+# the plugin is there is unknowable, so the caller fails rather than guess,
+# and the file is left exactly as it is.
+unparseable_root() {  # <root> <what was not done>
+    echo "  ERROR: $1/.claude/settings.local.json is not valid JSON -- $2 (fix it: jq . \"$1/.claude/settings.local.json\")" >&2
+}
+
 # Enable the plugin in one root. Idempotent: an already-enabled root is left
 # alone, without running the CLI at all. Also the entry point the
 # registration flow (#332) re-runs for a newly registered root, by re-running
@@ -482,7 +489,7 @@ enable_plugin_in_root() {  # <root>
             echo "  plugin already enabled: $root"
             return 0 ;;
         unparseable)
-            echo "  ERROR: $root/.claude/settings.local.json is not valid JSON -- not enabling the plugin there" >&2
+            unparseable_root "$root" "not enabling the plugin there"
             return 1 ;;
     esac
     if ! have_claude; then
@@ -556,10 +563,12 @@ if [[ "$MODE" == "uninstall" ]]; then
         fi
         case "$(plugin_state "$root")" in
             enabled|stale) disable_plugin_in_root "$root" || uninstall_rc=1 ;;
+            unparseable) unparseable_root "$root" "cannot tell whether the plugin is there; not removing it"; uninstall_rc=1 ;;
         esac
     done < <(plugin_roots)
     case "$(plugin_state "$WS_ROOT")" in
         enabled|stale) disable_plugin_in_root "$WS_ROOT" || uninstall_rc=1 ;;
+        unparseable) unparseable_root "$WS_ROOT" "cannot tell whether the plugin is there; not removing it"; uninstall_rc=1 ;;
     esac
     if [[ -f "$SETTINGS" ]]; then
         require_parseable_settings || exit 1
@@ -746,6 +755,7 @@ if [[ "$MODE" == "check" ]]; then
             skip-workspace)
                 case "$state" in
                     enabled|stale) note "$PLUGIN_NAME plugin is enabled in $name ($root), whose git toplevel is this workspace checkout -- it already sees the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
+                    unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check that the $PLUGIN_NAME plugin is NOT enabled there (a doubled root)" ;;
                 esac ;;
             missing)
                 echo "  note: registered root $name is not on disk ($root) -- plugin not checked there" ;;
@@ -886,6 +896,7 @@ while IFS=$'\t' read -r name root verdict; do
             echo "  skipped $name: its git toplevel is this workspace checkout, which already provides the skills"
             case "$(plugin_state "$root")" in
                 enabled|stale) disable_plugin_in_root "$root" || plugin_rc=1 ;;
+                unparseable) unparseable_root "$root" "cannot tell whether the plugin doubles its skills there"; plugin_rc=1 ;;
             esac ;;
         skip-instance)
             echo "  skipped $name: a parent= instance; its parent root gets the plugin" ;;
@@ -898,10 +909,13 @@ case "$(plugin_state "$WS_ROOT")" in
     enabled|stale)
         echo "  the $PLUGIN_NAME plugin is enabled in the workspace checkout itself, where every skill would load twice -- removing it"
         disable_plugin_in_root "$WS_ROOT" || plugin_rc=1 ;;
+    unparseable)
+        unparseable_root "$WS_ROOT" "cannot tell whether the plugin doubles every skill in the workspace checkout itself"
+        plugin_rc=1 ;;
 esac
 if [[ "$plugin_rc" -ne 0 ]]; then
     echo "" >&2
-    echo "agent_workspace user tier installed from $WS_ROOT, but enabling the plugin failed in the root(s) above." >&2
+    echo "agent_workspace user tier installed from $WS_ROOT, but the plugin step failed in the root(s) above." >&2
     exit 1
 fi
 
