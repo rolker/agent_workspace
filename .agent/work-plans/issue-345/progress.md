@@ -395,3 +395,24 @@ Reviewers: Claude adversarial ran; Codex ran (3 findings, all confirmed); Gemini
 - [x] Every `claude plugin` call goes through `claude_plugin()` with `</dev/null`; the mutation run showed a stdin-reading CLI would also consume the `while read < <(plugin_roots)` loop input and skip later roots; the live suite's plugin calls and `claude -p` sessions redirect too — `.agent/scripts/user_tier_install.sh` (3d7b698)
 
 Tests: install suite 111 -> 130, new helpers suite 9; `run_script_tests.sh` 31/31 suites pass. Each new test was mutation-checked (fix broken, test fails, fix restored). The live suite was edited but not run: its 10/10 result predates these changes, and the new cases G (parent= instance) and H (second root) have never run live.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-25 09:47 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-345 at `2662178`
+**Base**: main
+**Depth**: Deep (reason: governance/enforcement files — ADR-0016/0017, user-tier installer, dispatch_phase.sh, SessionStart hook; 20 files, +2717/-166)
+**Must-fix**: 1 | **Suggestions**: 4
+**Round**: 2 | **Ship**: continue — round 2: 1 must-fix includes a design/correctness concern (not mechanical)
+
+Round-1 fixes verified: all 8 close their findings (no-CLI removal errors, unparseable uninstall, tri-state probe, foreign state, containment check, case H, cache cleanup, stdin closed); each has a hermetic test. Reviewers: Claude adversarial ran; Codex ran (2 findings: 1 confirmed must-fix, 1 kept as suggestion); Gemini ran (4 suggestions: 2 false positives — selected_skills already reads only frontmatter and strips quotes — 1 duplicate of the must-fix, 1 dropped as needing a broken install); Copilot skipped (quota exhausted Sept 2026). Static: shellcheck --severity=warning clean on changed scripts; hermetic suites pass (install 130, acceptance helpers 9, manifest 12, dispatch 112, session-start 46). Live suite not run (cases G/H never run live).
+
+### Findings
+- [ ] (must-fix) the new --check machine-record drift (known_marketplaces.json names another checkout) cannot be cleared by its own advice: install short-circuits on roots already `enabled` from this checkout and never runs the CLI, so after the other checkout is deleted or its --uninstall leaves the record, --check stays red forever; repoint (run `marketplace add` in one root when the record is foreign) or give the exact live-verified command, plus a test of install after the fixture (Codex, Claude, Gemini; caused by round-1 fix) — `.agent/scripts/user_tier_install.sh:540,840-852`
+- [ ] (suggestion) `skip-instance` roots get no local-state check in install or --check (unparseable, foreign or stale settings.local.json pass silently) while ADR-0017 now says install and --check exit 1 on an unparseable file in any skipped root; add the case or narrow the ADR sentence (Codex; ADR wording from round-1 fix) — `.agent/scripts/user_tier_install.sh:984,803-826`, `docs/decisions/0017-plugin-based-skill-delivery.md`
+- [ ] (suggestion) a declaration whose source path no longer exists is classed `foreign`, so --uninstall leaves it "for that checkout's --uninstall", which can never run; treat a source not on disk as removable, or call it orphaned in the note (caused by round-1 fix) — `.agent/scripts/user_tier_install.sh:486-503,601`
+- [ ] (suggestion) notes misdescribe two cases: an instance at the same path as its parent, or whose parent is not on disk, is told it is "outside its parent's directory"; and a foreign/stale declaration without an enable in a skipped root is reported as "enabled ... every skill loads twice" (caused by round-1 fixes) — `.agent/scripts/user_tier_install.sh:458-477,823,836`
+- [ ] (suggestion) live case G uses plain directories for the parent and instance, so the likely real shape (parent a git repo, instance a separate repo or worktree inside it) is not the one that validates skip-instance; `git init` the parent (caused by round-1 fix) — `.agent/scripts/tests/live/plugin_acceptance.sh:297-313`
