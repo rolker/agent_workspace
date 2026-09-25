@@ -620,3 +620,24 @@ Finish option 3: fix the round-5 must-fix and the suggestions, then re-review no
 Tests: install 175 -> 187, helpers 21 -> 23, session-start 46 -> 47, and a new `test_skill_prefix.sh` with 19 cases. Every new test was mutation-checked and each mutation made a test fail. Two mutations first survived (claim only a foreign record in 6a; a lax read-back), so tests were added until they failed. The full script suite passed in each pre-commit hook. No live run (as instructed); cases F and K were changed and have not run in their new form.
 
 New paths opened: a claim over an absent record in 6a; a 6c claim whenever the record is not ours; "no entry" as drift in `--check`; exit 1 for any skipped instance with its own declaration (install no longer removes one); `skill_prefix.sh` exit 1 for unregistered or nested locations, where run-issue stops and the hook states the reason. `skill_prefix.sh` is not in AGENTS.md's script table (an Ask-First edit) or in `.agent/user_tier_scripts.txt` (`dispatch_phase.sh` is not there either).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-25 13:15 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: fresh
+
+**Branch**: feature/issue-345 at `6c2f733`
+**Base**: main
+**Depth**: Deep (reason: governance/enforcement files — ADR-0016/0017, user-tier installer, SessionStart hook, run-issue skill, new skill_prefix.sh; 22 files, +4497/-167)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 6 | **Ship**: continue — round 6: 1 must-fix is a design/correctness concern (not mechanical)
+
+All seven round-5 findings are closed in code and tests: an absent machine record is claimed in 6a and 6c and flagged by --check; the 6c note uses machine_record_what; run-issue and the hook use skill_prefix.sh; live E/G run through sandbox_install (no inherited CLAUDE_CONFIG_DIR); live K asserts against an undeclared repo; a skipped instance's declaration is reported, never CLI-removed; the hook applies the rule to the session cwd. No regression from the round-5 fixes in the installer. Hermetic suites pass (install 187, skill_prefix 19, session-start 47, helpers 23, manifest 12, dispatch 112); shellcheck --severity=warning clean. Live cases F and K in their new form have not run. Reviewers: Claude adversarial ran (fresh; 0 must-fix, 3 minor suggestions); Codex failed (usage limit, resets 1:48 PM); Gemini failed (agy auto-denied a RunCommand tool call headlessly, empty response); Copilot skipped (quota exhausted Sept 2026). One independent reviewer this round.
+
+### Findings
+- [ ] (must-fix) run-issue runs skill_prefix.sh on the CURRENT cwd, but its own text and ADR-0017 decision 6 say the rule applies to the directory the session started in; a workspace session that has already moved into a project worktree (an earlier /start-task in a long session) gets `agent-workspace:` from the project root's repo while its skills are bare, so every handoff names skills the session does not have; the old placeholder check did not depend on cwd. Pin the start directory deterministically (e.g. the SessionStart hook records the prefix or start dir per session id, which CLAUDE_CODE_SESSION_ID exposes to Bash), or stop when cwd is not the start dir (own review; caused by a round-5 fix: yes) — `.claude/skills/run-issue/SKILL.md` "Skill names in this session", `docs/decisions/0017-plugin-based-skill-delivery.md:~226`
+- [ ] (suggestion) skill_prefix.sh and the hook state that a git repo nested in a root sees "neither the plugin nor the workspace's bare skills", but only the plugin half was observed (case G, in a sandbox parent outside any workspace); for a package repo under a p11 root inside the workspace tree, bare skills by directory walk-up (which the ADR says reaches p11 roots) is unverified, and if it holds run-issue refuses to run in the primary project shape; add a live case (E shape + nested repo) or soften the wording (own review; caused by a round-5 fix: yes) — `.agent/scripts/skill_prefix.sh:97`, `.claude/hooks/session_start_project_layer.sh:122-123`
+- [ ] (suggestion) no test for the no-CLI + absent-record combination (--check note, install 6a NOTE); only no-CLI + foreign is covered (Claude adversarial; caused by a round-5 fix: yes) — `.agent/scripts/tests/test_user_tier_install.sh:~1405`
+- [ ] (suggestion) small cleanups: comment typo "where where local scope writes" in instance_cli_reason; the hook runs skill_prefix.sh twice on its failure path (capture stdout and stderr in one call) (Claude adversarial; caused by a round-5 fix: yes) — `.agent/scripts/user_tier_install.sh:665`, `.claude/hooks/session_start_project_layer.sh:108,123`
