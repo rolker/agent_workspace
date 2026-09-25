@@ -468,3 +468,23 @@ Round-2 fixes verified: all 5 close their findings, each with a hermetic test (i
 **Decision**: address
 
 Structural fix + round 4 — take over the machine-wide plugin record (known_marketplaces.json) once per run as its own step before any per-root work; a failed takeover stops install before touching any project. Fold in the 6 round-3 suggestions, then one more pre-push review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-25 10:55 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-345 at `cc5973d`
+**Addressed**: Local Review (Pre-Push) at `14a0bc7` (2026-09-25 10:17 -04:00)
+**Commits**: 0ad8a67, e816b87, 1fad013, 08fdf9b, ecf8949, 4ce1635, cc5973d
+
+### Actions
+- [x] Structural fix (owner's checkpoint decision): the machine-level marketplace record is now one step, run once before any project root. When it names another checkout and some root is to be enabled, install runs one `marketplace add` from a throwaway directory outside every project and git repository, then reads the record back. A refused add, or one that leaves the record elsewhere, exits 1 with no root touched. The per-root loop handles each root's own declaration only. Removed: the per-root takeover in `enable_plugin_in_root` (remove + add of an enabled root) and its post-add record check. ADR-0017 describes the two-part structure — `.agent/scripts/user_tier_install.sh` `claim_machine_record`, step 6a (0ad8a67)
+- [x] No CLI + foreign record: `--check` now gives a note, not drift, and says the claude CLI is needed. Install notes the same and reports enabled roots as "already enabled" — `.agent/scripts/user_tier_install.sh` (0ad8a67, e816b87)
+- [x] ADR-0017 says a source on an unmounted drive or share is treated as stale and is out of scope — `docs/decisions/0017-plugin-based-skill-delivery.md` (1fad013)
+- [x] A `parent=` instance that declares the plugin itself (this checkout's or another's) is drift in `--check`, and install removes it. Without the CLI that removal is an error — `.agent/scripts/user_tier_install.sh` skip-instance (08fdf9b)
+- [x] `--uninstall` looks at the registered roots before saying "nothing installed" — `.agent/scripts/user_tier_install.sh` `plugin_anywhere` (ecf8949)
+- [x] The live suite's cleanup removes the `~/.claude/projects` dirs its sessions leave. It matches only the sandbox path's exact encoded name, or that name plus `-`, and only for a sandbox with the suite's `aw-plugin-accept.XXXXXXXXXX` mktemp name. A helpers test pins exactly what it removes. Existing leftovers are untouched — `.agent/scripts/tests/live/plugin_acceptance.sh` `session_dirs` (4ce1635)
+- [x] Live case B's worktree is now a sibling of the project. The plugin name is now `aw-accept-<pid>` per run, and the helpers test pins that names differ between runs and that cleanup removes only its own cache — `.agent/scripts/tests/live/plugin_acceptance.sh` (cc5973d)
+
+Tests: install suite 143 -> 158, acceptance helpers 9 -> 12. The full script suite passed in each commit's pre-commit hook. Every new test was mutation-checked, and each mutation made a test fail. The mutations were: carry on after a failed takeover; skip the read-back; drop the git-repo guard; claim with no root to enable; keep the scratch dir; drift regardless of CLI; claim without CLI; the instance check and removal each off; the uninstall early exit unguarded; a broader session-dir glob; no mktemp-name guard; no session-dir removal; a fixed plugin name. New paths opened and tested: the scratch directory (removed afterwards; refused inside a git repo), no takeover with no root to enable, the no-CLI takeover note, and no-CLI removal of an instance declaration (exit 1). Not verified live: that `marketplace add` from a scratch directory repoints the CLI's record (read back and fails safe if not), and case B in its new form. The live suite was not run.
