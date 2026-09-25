@@ -182,3 +182,13 @@ None.
 - The `copilot-pull-request-reviewer` check-run exists at the head but completed `failure` with no review posted — consistent with the September Copilot quota exhaustion; not a code signal.
 - No human reviews or conversation comments.
 - Reviewer-discipline observation (not a finding against this PR): the pre-push adversarial Claude subagent ran one live read-only codex turn despite instructions not to.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-25 09:09 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge — clean reviews, CI all green.
