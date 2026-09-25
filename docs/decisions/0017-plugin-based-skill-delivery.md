@@ -239,7 +239,7 @@ replacing that placeholder with its cwd, so the decision no longer passes
 through anything the model has to transcribe.
 
 For the model, the project session's `SessionStart` header states which
-form applies. That header is output, not a source comment, because the
+form applies, from the same script run on the session's cwd. That header is output, not a source comment, because the
 model reads the output. Skills still name each other by bare slash command
 in their prose.
 
