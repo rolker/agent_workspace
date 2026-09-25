@@ -350,3 +350,27 @@ Resumed pass. It adds 5 commits on top of the 2 from the interrupted pass (8e14d
 - 28d15be: the opt-in live suite, `tests/live/plugin_acceptance.sh`. One run (claude 2.1.282, haiku) passed 10 of 10. That run includes the bare-load case: there `${CLAUDE_PLUGIN_ROOT}` stays literal, so the prefix is empty. AGENTS.md: `--skill-prefix` added to the dispatch_phase row.
 
 Tests: `run_script_tests.sh` passes all 30 suites.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-25 08:56 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-345 at `63e0944`
+**Base**: main
+**Depth**: Deep (reason: governance/enforcement files — ADR-0016/0017, user-tier installer, dispatch_phase.sh, SessionStart hook; 19 files, +2127/-167)
+**Must-fix**: 3 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Reviewers: Claude adversarial ran; Codex ran (3 findings, all confirmed); Gemini failed (agy response exceeded its output token limit); Copilot skipped (quota exhausted Sept 2026). Static: shellcheck (pre-commit) passed; hermetic suites pass (install 111, manifest 12, dispatch 112, session-start 46).
+
+### Findings
+- [ ] (must-fix) `disable_plugin_in_root` returns 0 when the claude CLI is absent, so `--uninstall` says "removed" and install says success while the plugin stays enabled (a doubled workspace-root enable included); return 1 when a present plugin cannot be removed (Codex) — `.agent/scripts/user_tier_install.sh:511`
+- [ ] (must-fix) `--uninstall` ignores a root whose settings.local.json is `unparseable` and exits 0; report it and exit non-zero, leaving the file alone (Codex) — `.agent/scripts/user_tier_install.sh:552`
+- [ ] (must-fix) live suite `has_probe` discards the session's exit status, so a timeout/auth/CLI failure passes the negative isolation case C (unrelated repo has no plugin); fail the case when the session itself failed (Codex) — `.agent/scripts/tests/live/plugin_acceptance.sh:122`
+- [ ] (suggestion) `plugin_state` "stale" also covers a root enabled from ANOTHER checkout, and `--uninstall` removes it; either restrict uninstall to roots sourced from this checkout, or state it as intended — and record in ADR-0017 Consequences that the marketplace name is one-source-per-machine (`~/.claude/plugins/known_marketplaces.json` is keyed by name, so --check can say "enabled" from settings.local.json while another checkout's record is what loads) — `.agent/scripts/user_tier_install.sh:448-462,543-558`
+- [ ] (suggestion) `skip-instance` assumes a session inside a `parent=` instance sees the parent's local-scope settings; that is unverified live, and the registry does not require an instance path to lie under its parent, so a mis-nested instance gets no plugin while the SessionStart header still promises `/agent-workspace:` and --check stays clean; verify (live case) or validate containment and flag it in --check — `.agent/scripts/user_tier_install.sh:427`, `.claude/hooks/session_start_project_layer.sh:102`
+- [ ] (suggestion) only one enabled root is exercised against the real CLI; a second `marketplace add` of the same name/source from another root (the #332 path) is untested — add a second project root to the live suite — `.agent/scripts/tests/live/plugin_acceptance.sh:111`
+- [ ] (suggestion) live-suite header claims both machine-level records are removed on exit, but cleanup runs `marketplace remove --scope local`, which removes only the local declaration (the spike's `spikemkt` is still in the real known_marketplaces.json); drop `--scope` in cleanup or correct the claim — `.agent/scripts/tests/live/plugin_acceptance.sh:13,62`
+- [ ] (suggestion) the `claude plugin` calls do not redirect stdin, so if a CLI version asks for a trust prompt the installer hangs instead of failing; add `</dev/null` — `.agent/scripts/user_tier_install.sh:493-516`
