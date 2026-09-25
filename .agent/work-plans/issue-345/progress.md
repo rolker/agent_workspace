@@ -587,3 +587,13 @@ Open human call (live case F / run-issue prefix): detection = harness text subst
 - [ ] (suggestion) live case K only prints a FACT and $FAMG already declares the plugin, so it cannot tell "wrote to the toplevel" from "wrote nothing", yet ADR decision 3 cites it; run K against an undeclared repo and assert the toplevel file appears (Claude adversarial; caused by a round-4 fix: yes) — `.agent/scripts/tests/live/plugin_acceptance.sh:544-553`
 - [ ] (suggestion) a worktree instance passes enclosing_repo (its toplevel is itself), but its sessions read the main repo's local settings, so its own declaration cannot shadow anything (--check drift is noise) and, if local scope from a worktree also resolves to the main repo, removal strips the parent's enable; verify live or treat worktree instances like the plain-subdir case (Claude adversarial; caused by a round-4 fix: yes, same_project change) — `.agent/scripts/user_tier_install.sh:1237`
 - [ ] (suggestion) the SessionStart hook checks the registered root's toplevel, not the session cwd's, so a session in a nested package repo under a root (which case G shows never sees the plugin) is told the skills arrive via the plugin and to re-run the installer; apply the same_project rule to the cwd (Claude adversarial; caused by a round-4 fix: no, exposed by live G) — `.claude/hooks/session_start_project_layer.sh:107-121`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-25 12:28 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Finish option 3: fix the round-5 must-fix and the suggestions, then re-review now with the reviewers available (Codex at its 5-hour limit, Gemini failing). Skill-name (prefix) detection: owner asked for more context — undecided; suggestion 2 (prefix veto / case F rewrite) waits for that decision. Owner also asked whether Gemini needs a reliability fix.
