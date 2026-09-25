@@ -68,18 +68,6 @@ FAIL=0
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
 
-# A distinctive mktemp name: cleanup() matches the session directories it
-# removes by this run's sandbox path, so the random suffix is what keeps
-# the match to this run.
-SANDBOX="$(mktemp -d -t aw-plugin-accept.XXXXXXXXXX)"
-SANDBOX="$(cd "$SANDBOX" && pwd -P)"
-W="$SANDBOX/ws"       # the workspace copy (marketplace $NAME)
-P="$SANDBOX/proj"     # a project with its own plan-task
-U="$SANDBOX/other"    # an unrelated repo
-FAM="$SANDBOX/fam"    # a parent= root: a plain directory grouping instances
-FAMG="$SANDBOX/famg"  # a parent= root that is itself a git repo
-P2="$SANDBOX/proj2"   # a second project root, enabled after the first
-
 # Every `claude plugin` call, stdin closed, so a prompt the CLI might show
 # fails the call instead of hanging the suite.
 cli_plugin() { claude plugin "$@" </dev/null; }
@@ -105,6 +93,30 @@ session_dirs() {
         esac
     done
 }
+# sandbox_safe <path>: may cleanup() `rm -rf` this as the sandbox? Only a
+# directory with this suite's mktemp name, never the filesystem root, the
+# directory the suite runs from, or one containing it. An empty path fails
+# too: `cd ""` succeeds in bash, so an unchecked empty SANDBOX would turn
+# into the current directory.
+sandbox_safe() {
+    local p="${1:-}" phys here
+    [[ -n "$p" && -d "$p" ]] || return 1
+    [[ "$(basename "$p")" == aw-plugin-accept.?* ]] || return 1
+    phys="$(cd "$p" && pwd -P)" || return 1
+    here="$(pwd -P)" || return 1
+    [[ "$phys" != / && "$phys" != "$here" && "$here" != "$phys"/* ]]
+}
+# new_sandbox: print the pwd -P form of a fresh sandbox, or fail. The
+# distinctive mktemp name is what cleanup() matches session directories by,
+# so its random suffix keeps that match to this run.
+new_sandbox() {
+    local s
+    s="$(mktemp -d -t aw-plugin-accept.XXXXXXXXXX)" || return 1
+    [[ -n "$s" ]] || return 1
+    s="$(cd "$s" && pwd -P)" || return 1
+    sandbox_safe "$s" || return 1
+    printf '%s\n' "$s"
+}
 cleanup() {
     local r
     for r in ${ENABLED_ROOTS[@]+"${ENABLED_ROOTS[@]}"}; do
@@ -117,13 +129,27 @@ cleanup() {
     if [[ ${#ENABLED_ROOTS[@]} -gt 0 ]]; then
         rm -rf "${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/cache/${NAME:?}"
     fi
+    if ! sandbox_safe "${SANDBOX:-}"; then
+        echo "plugin_acceptance: WARNING: not removing sandbox '${SANDBOX:-}' (not this suite's own directory)" >&2
+        return 0
+    fi
     local d
     while IFS= read -r d; do
         rm -rf "$d"
     done < <(session_dirs "${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/projects" "$SANDBOX")
     rm -rf "${SANDBOX:?}"
 }
+# Created and checked BEFORE the trap is set: with no sandbox there is
+# nothing to clean up, and nothing below may run.
+SANDBOX="$(new_sandbox)" || { echo "FATAL: could not create the sandbox directory (mktemp or cd failed)" >&2; exit 1; }
 trap cleanup EXIT
+W="$SANDBOX/ws"       # the workspace copy (marketplace $NAME)
+P="$SANDBOX/proj"     # a project with its own plan-task
+U="$SANDBOX/other"    # an unrelated repo
+FAM="$SANDBOX/fam"    # a parent= root: a plain directory grouping instances
+FAMG="$SANDBOX/famg"  # a parent= root that is itself a git repo
+P2="$SANDBOX/proj2"   # a second project root, enabled after the first
+
 
 # enable_in <root>: the installer's two CLI calls, run from <root>.
 enable_in() {

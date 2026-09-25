@@ -81,7 +81,7 @@ said="$(probe_said "$?")"
 # cleanup() deletes under the real ~/.claude when the live suite runs, so
 # pin exactly what it removes: the suite's own plugin cache entry, only
 # after an enable, and never a neighbour.
-cleanup_def="$(awk '/^ENABLED_ROOTS=\(\)/ { on = 1 } /^trap cleanup EXIT/ { on = 0 } on' "$SUITE")"
+cleanup_def="$(awk '/^ENABLED_ROOTS=\(\)/ { on = 1 } /^SANDBOX="\$\(new_sandbox\)"/ { on = 0 } on' "$SUITE")"
 if [[ "$cleanup_def" != *"cleanup() {"* ]]; then
     fail "could not find cleanup() in $SUITE (section markers moved?)"
 else
@@ -89,13 +89,13 @@ else
         fake_home="$SANDBOX/home-$enabled"
         mkdir -p "$fake_home/.claude/plugins/cache/aw-accept-4242/x" "$fake_home/.claude/plugins/cache/aw-accept-42" \
             "$fake_home/.claude/plugins/cache/aw-accept-424242" "$fake_home/.claude/plugins/cache/aw-accept" \
-            "$SANDBOX/root-$enabled" "$SANDBOX/suite-$enabled"
+            "$SANDBOX/root-$enabled" "$SANDBOX/aw-plugin-accept.suite-$enabled"
         # shellcheck disable=SC2034  # NAME and ENABLED_ROOTS are read by the eval'd cleanup()
         (
             HOME="$fake_home"
             unset CLAUDE_CONFIG_DIR
             NAME=aw-accept-4242
-            SANDBOX="$SANDBOX/suite-$enabled"
+            SANDBOX="$SANDBOX/aw-plugin-accept.suite-$enabled"
             eval "$cleanup_def"
             [[ "$enabled" == yes ]] && ENABLED_ROOTS=("$SANDBOX/../root-$enabled")
             cleanup
@@ -103,7 +103,7 @@ else
         cache="$fake_home/.claude/plugins/cache"
         if [[ "$enabled" == yes ]]; then
             [[ ! -e "$cache/aw-accept-4242" && -d "$cache/aw-accept-42" && -d "$cache/aw-accept-424242" \
-                  && -d "$cache/aw-accept" && ! -e "$SANDBOX/suite-$enabled" ]] \
+                  && -d "$cache/aw-accept" && ! -e "$SANDBOX/aw-plugin-accept.suite-$enabled" ]] \
                 && pass "cleanup removes this run's own plugin cache, and not another run's beside it" \
                 || fail "cleanup after an enable left: $(ls "$cache" 2>&1)"
         else
@@ -112,6 +112,44 @@ else
                 || fail "cleanup removed this run's plugin cache without having enabled anything"
         fi
     done
+fi
+
+# The sandbox (round-4 must-fix). `cd ""` succeeds in bash, so a failed
+# mktemp used to leave SANDBOX as the directory the suite ran from, which
+# the EXIT trap then deleted. new_sandbox() must fail, printing nothing,
+# when mktemp fails or prints nothing; cleanup() must refuse to delete an
+# empty SANDBOX, the current directory, or one without the suite's name.
+if [[ "$cleanup_def" != *"new_sandbox() {"* || "$cleanup_def" != *"sandbox_safe() {"* ]]; then
+    fail "could not find new_sandbox()/sandbox_safe() in $SUITE"
+else
+    work="$SANDBOX/sb-work"
+    mkdir -p "$work/bin" "$work/tmp"
+    printf '#!/bin/sh\nexit 0\n' > "$work/bin/mktemp"      # succeeds, prints nothing
+    chmod +x "$work/bin/mktemp"
+    try_new() {  # <label> <TMPDIR> [PATH prefix]: new_sandbox must fail, printing nothing
+        local got rc
+        got="$(cd "$work" && TMPDIR="$2" PATH="${3:+$3:}$PATH" bash -c "$cleanup_def"$'\n''new_sandbox')"; rc=$?
+        [[ "$rc" -ne 0 && -z "$got" && -d "$work" ]] \
+            && pass "new_sandbox fails, printing nothing, when $1" \
+            || fail "new_sandbox when $1 (rc=$rc printed='$got')"
+    }
+    try_new "mktemp fails (TMPDIR not on disk)" "$work/no-such-dir"
+    try_new "mktemp succeeds but prints nothing" "$work/tmp" "$work/bin"
+    got="$(cd "$work" && TMPDIR="$work/tmp" bash -c "$cleanup_def"$'\n''new_sandbox')"; rc=$?
+    [[ "$rc" -eq 0 && -d "$got" && "$(basename "$got")" == aw-plugin-accept.* && "$got" == "$(cd "$work/tmp" && pwd -P)"/* ]] \
+        && pass "new_sandbox prints a fresh aw-plugin-accept.* directory under TMPDIR" \
+        || fail "new_sandbox normal case (rc=$rc got='$got')"
+    # cleanup() over a SANDBOX that is not its own: each must survive.
+    here="$work/aw-plugin-accept.cwd"      # named like a sandbox, but the cwd
+    mkdir -p "$here" "$work/plain-dir"
+    for sb in "" "$here" "$work/plain-dir"; do
+        # shellcheck disable=SC2034  # read by the eval'd cleanup()
+        out="$(cd "$here" && HOME="$work/home" NAME=aw-accept-4242 SANDBOX="$sb" bash -c "unset CLAUDE_CONFIG_DIR; $cleanup_def"$'\n''ENABLED_ROOTS=(); cleanup' 2>&1)"
+        [[ -d "$here" && -d "$work/plain-dir" && "$out" == *"not removing sandbox"* ]] \
+            && pass "cleanup refuses to remove SANDBOX='${sb#"$work"/}' (empty, the cwd, or not the suite's)" \
+            || fail "cleanup with SANDBOX='${sb#"$work"/}' (out=$out)"
+    done
+    rm -rf "$work"
 fi
 
 # The plugin name is per run: the CLI keys its machine-level records and
@@ -156,7 +194,7 @@ else
             eval "$cleanup_def"
             ENABLED_ROOTS=()
             cleanup
-        )
+        ) 2>/dev/null
         left_mine=0; left_keep=0
         for d in "${mine[@]}"; do [[ -e "$proj/$d" ]] && left_mine=$((left_mine + 1)); done
         for d in "${keep[@]}"; do [[ -d "$proj/$d" ]] && left_keep=$((left_keep + 1)); done
