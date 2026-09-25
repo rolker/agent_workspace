@@ -1162,6 +1162,9 @@ mv "$SANDBOX/settings.saved" "$SETTINGS"
 KM="$HOMEDIR/.claude/plugins/known_marketplaces.json"
 mkdir -p "$(dirname "$KM")"
 run >/dev/null
+root_calls_all() {  # CLI calls the stub saw from inside any registered root
+    awk -F'|' -v p="$ROOTS/" 'index($1, p) == 1' "$STUB_LOG" | wc -l
+}
 km() {  # <agent-workspace source path, or "" for none>
     jq -n --arg p "$1" '{"claude-plugins-official": {source: {source: "github", repo: "x/y"}}}
         + (if $p == "" then {} else {"agent-workspace": {source: {source: "directory", path: $p}}} end)' > "$KM"
@@ -1171,17 +1174,43 @@ out="$(run --check)"; rc=$?
 [[ "$rc" -eq 1 && "$out" == *"machine-level record of the agent-workspace marketplace ($KM) names another checkout, $SANDBOX/elsewhere"* ]] \
     && pass "--check flags a machine-level marketplace record naming another checkout" \
     || fail "foreign machine-level marketplace record not flagged (rc=$rc out=${out:0:400})"
-for src in "$WSC_PHYS" "$SANDBOX/ws-link" ""; do
+for src in "$WSC_PHYS" "$SANDBOX/ws-link"; do
     km "$src"
     out="$(run --check)"; rc=$?
     [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
-        && pass "--check accepts a machine-level record of '${src#"$SANDBOX"/}' (this checkout, or none)" \
+        && pass "--check accepts a machine-level record of '${src#"$SANDBOX"/}' (this checkout)" \
         || fail "machine-level record '${src#"$SANDBOX"/}' wrongly flagged (rc=$rc out=${out:0:400})"
 done
-printf '{not json' > "$KM"
-out="$(run --check)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] && pass "--check ignores a machine-level record it cannot parse (the CLI's file, not ours)" \
-    || fail "unparseable known_marketplaces.json changed --check (rc=$rc out=${out:0:400})"
+# No entry for it -- no entry, no file, or a file with no readable entry --
+# is drift while roots are enabled from here: live case J saw an absent
+# record leave every enabled root without the plugin.
+for shape in entry file json; do
+    case "$shape" in
+        entry) km "" ;;
+        file)  rm -f "$KM" ;;
+        json)  printf '{not json' > "$KM" ;;
+    esac
+    out="$(run --check)"; rc=$?
+    [[ "$rc" -eq 1 && "$out" == *"DRIFT: the claude CLI's machine-level record of the agent-workspace marketplace ($KM) has no entry for it"* ]] \
+        && pass "--check flags a machine-level record with no entry for it (no $shape) while roots are enabled from here" \
+        || fail "absent machine record (no $shape) not flagged (rc=$rc out=${out:0:400})"
+done
+mkdir -p "$(dirname "$KM")"
+km ""
+: > "$STUB_LOG"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" && "$(grep -c '|plugin marketplace add ' "$STUB_LOG")" -eq 1 && "$(root_calls_all)" -eq 0 \
+      && "$out" == *"has no entry for it, not this checkout -- taking it over once, before any project root"* ]] \
+    && pass "install takes an absent machine-level record over before any root, with every root already enabled" \
+    || fail "install over an absent record (rc=$rc km=$(tr -d '\n' < "$KM") out=${out:0:400})"
+# ...and the read-back demands the record name this checkout: a CLI that
+# exits 0 and leaves no entry is a failure, not "no longer foreign".
+km ""
+out="$(STUB_NO_KM=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"reported success, but its machine-level record ($KM) has no entry for it, not this checkout"* ]] \
+    && pass "a takeover that leaves the record with no entry fails the read-back" \
+    || fail "entry-less read-back passed (rc=$rc out=${out:0:400})"
+run >/dev/null
 # Last install wins, as ONE machine-level step before any project root:
 # install over a record naming another checkout takes the name over with a
 # single `marketplace add`, run from a throwaway directory outside every
@@ -1232,7 +1261,7 @@ for mode in STUB_ADD_FAIL STUB_NO_KM; do
     out="$(export "$mode=1"; run)"; rc=$?
     case "$mode" in
         STUB_ADD_FAIL) why="exited non-zero, so the machine-level record still names $SANDBOX/elsewhere" ;;
-        STUB_NO_KM)    why="reported success, but its machine-level record ($KM) still names $SANDBOX/elsewhere" ;;
+        STUB_NO_KM)    why="reported success, but its machine-level record ($KM) names $SANDBOX/elsewhere, not this checkout" ;;
     esac
     if [[ "$rc" -eq 1 && "$out" == *"$why"* && "$out" == *"stopped before touching any project root"* \
           && "$(root_files)" == "$before" && "$(root_calls)" -eq 0 && -z "$(ls -A "$INST_TMP")" ]]; then
@@ -1293,7 +1322,7 @@ rm -rf "${SANDBOX:?}/gittmp"
 km "$WSC_PHYS"
 stale_enable "$WSC/projects/inner"
 out="$(STUB_REMOVE_DROPS_KM=1 run)"; rc=$?
-[[ "$rc" -eq 0 && "$out" == *"left the machine-level record"*"without an entry for it"* && "$out" == *"taking it over again, after the per-root step"* \
+[[ "$rc" -eq 0 && "$out" == *"after the per-root step the machine-level record of the agent-workspace marketplace has no entry for it"* && "$out" == *"taking it over again, after the per-root step"* \
       && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" ]] \
     && pass "a machine record dropped by the per-root step's CLI calls is caught and taken back" \
     || fail "record lost in the per-root step (rc=$rc km=$(cat "$KM") out=${out:0:500})"
@@ -1302,6 +1331,21 @@ out="$(STUB_REMOVE_DROPS_KM=1 STUB_ADD_FAIL=1 run)"; rc=$?
 [[ "$rc" -eq 1 && "$out" == *"lost the machine-level record"*"could not be taken back"* ]] \
     && pass "a machine record the per-root step lost and cannot take back makes install exit 1" \
     || fail "unrecoverable lost record passed install (rc=$rc out=${out:0:500})"
+run >/dev/null
+# The round-5 must-fix, as reproduced: the record starts ABSENT, the first
+# root's add creates it in the per-root step, and a later local remove (a
+# leftover declaration in the workspace checkout itself) drops it again.
+# Nothing named this checkout going in, so a before/after gate missed it:
+# install exited 0 with an empty record and --check said "current".
+km ""
+rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+mkdir -p "$WSC/.claude"
+jq -n --arg p "$WSC_PHYS" '{extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$WSC/$SLJ"
+out="$(STUB_REMOVE_DROPS_KM=1 run)"; rc=$?
+[[ "$rc" -eq 0 && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" && "$out" == *"taking it over again, after the per-root step"* ]] \
+    && pass "a record created in the per-root step and dropped later in it is taken back" \
+    || fail "absent-then-dropped record (rc=$rc km=$(tr -d '\n' < "$KM") out=${out:0:500})"
+rm -f "${WSC:?}/.claude/settings.local.json"
 run >/dev/null
 km "$SANDBOX/elsewhere"    # the state the cases below start from
 

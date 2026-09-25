@@ -123,23 +123,25 @@ A root that is in no git repository at all is enabled.
 
 The plugin step has two parts, in this order:
 
-1. **The machine-level marketplace record, once per run, before any
-   project root.** The CLI keeps one record per marketplace name for the
-   whole machine (see Consequences). When that record names another
-   checkout and some registered root is to be enabled from this one,
+1. **The machine-level marketplace record, before any project root.**
+   The CLI keeps one record per marketplace name for the whole machine
+   (see Consequences). When that record does not name this checkout
+   (it names another, or has no entry at all), and some registered root
+   can be enabled from this one,
    install takes it over with one `marketplace add` run from a throwaway
    directory outside every project and every git repository, then reads
-   the record back. If the CLI fails, or exits 0 and leaves the record on
-   the other checkout, install exits 1 at that point and no project root
-   is touched. With no root to enable, the record is left alone.
+   the record back. If the CLI fails, or exits 0 and the record still
+   does not name this checkout, install exits 1 at that point and no
+   project root is touched. With no root to enable, the record is left
+   alone.
 2. **Each registered root's own declaration.** This part never touches
    the machine record and never removes a working declaration to repoint
    anything. It only enables a root that lacks the plugin, or replaces a
    root's declaration that names another checkout or no longer works.
    It still runs `marketplace remove --scope local` in some roots, so the
-   installer reads the machine record again afterwards. If the record
-   named this checkout before and no longer does, the installer takes it
-   back once, the same way, and exits 1 if it cannot.
+   installer reads the machine record again afterwards. If some root is
+   now enabled from this checkout and the record does not name it, the
+   installer takes it back once, the same way, and exits 1 if it cannot.
 
 Enabling is idempotent. A root that already has the plugin enabled from
 this checkout does not run the CLI at all. The installer checks the
@@ -247,19 +249,22 @@ in their prose.
   checkouts on one machine cannot both be the plugin's source. A root's
   `settings.local.json` can declare this checkout while the machine record
   names another, and then sessions may load the other checkout's skills.
-  `--check` reads that one record, read-only, and flags it only when it
-  positively names a different directory and some root has the plugin
-  enabled from this checkout. A missing file, entry or `path` field says
-  nothing either way, because the format is the CLI's. **Last install
+  `--check` reads that one record, read-only, and flags it whenever some
+  root has the plugin enabled from this checkout and the record does not
+  name this checkout. That includes a record with no entry for it: live
+  case J saw an absent record leave every enabled root without the
+  plugin. This relies on the CLI's file format, and a file the installer
+  cannot read an entry from counts as no entry. **Last install
   wins**: install from this checkout, finding the record on another
   checkout, takes the name over as the one machine-level step of
   decision 3, before any project root. The record is global, so it is
   handled once and never inside the per-root loop: an earlier per-root
   takeover that failed left the record foreign, and every later root
-  repeated the failure and lost its declaration. That the CLI replaces the
-  record on such an add is not yet verified live, so the installer reads
-  the record back and exits 1, with every root untouched, if it still
-  names the other checkout. The other checkout's `--check` then flags the
+  repeated the failure and lost its declaration. The live suite's case I
+  saw the CLI replace the record on such an add, and the record survive
+  the throwaway directory's removal. The installer still reads the record
+  back and exits 1, with every root untouched, if it does not name this
+  checkout. The other checkout's `--check` then flags the
   record in turn, and its own install takes the name back. This matches
   the user tier, which is already singular (one checkout owns
   `~/.claude`).

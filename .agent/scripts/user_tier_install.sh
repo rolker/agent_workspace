@@ -611,6 +611,28 @@ machine_record_foreign() {
     [[ -n "$src" ]] && ! is_this_checkout "$src"
 }
 
+# Does the machine-level record name THIS checkout? Anything else -- another
+# checkout, or no entry at all -- leaves this checkout's enabled roots
+# without the plugin: live case J saw an absent record do exactly that.
+machine_record_ours() {
+    local src
+    src="$(machine_record_source)"
+    [[ -n "$src" ]] && is_this_checkout "$src"
+}
+
+# What the machine-level record says, for a message.
+machine_record_what() {
+    local src
+    src="$(machine_record_source)"
+    if [[ -z "$src" ]]; then
+        echo "has no entry for it"
+    elif [[ -d "$src" ]]; then
+        echo "names $src"
+    else
+        echo "names $src (not on disk)"
+    fi
+}
+
 # The source path the machine-level record gives the marketplace, or empty
 # (no file, no entry, no `path` field, or a file that is not JSON).
 machine_record_source() {
@@ -634,8 +656,9 @@ enclosing_repo() {  # <dir>
 }
 
 # Take the machine-level record over for this checkout (last install wins,
-# ADR-0017). Called once per install run, BEFORE any project root is
-# touched, and only when the record names another checkout. The record is
+# ADR-0017). Called BEFORE any project root is touched when the record is
+# not this checkout's (another checkout's, or no entry), and once more
+# after the per-root step if that step lost it. The record is
 # global, so it is handled as one machine-level step, never per root: a
 # per-root takeover that failed left the record foreign, and every later
 # root repeated it.
@@ -646,15 +669,8 @@ enclosing_repo() {  # <dir>
 # record is read back afterwards: a CLI that exits 0 without repointing it
 # is a failure too. Returns 1, with the reason on stderr.
 claim_machine_record() {  # [<when>, for the message]
-    local when="${1:-once, before any project root}" other what scratch top rc=0
-    other="$(machine_record_source)"
-    if [[ -z "$other" ]]; then
-        what="has no entry for it"
-    elif [[ -d "$other" ]]; then
-        what="names $other"
-    else
-        what="names $other (not on disk)"
-    fi
+    local when="${1:-once, before any project root}" what scratch top rc=0
+    what="$(machine_record_what)"
     scratch="$(mktemp -d -t agent-workspace-claim.XXXXXX)" || {
         echo "  ERROR: could not create a scratch directory to take the machine-level record over from" >&2
         return 1
@@ -682,8 +698,8 @@ claim_machine_record() {  # [<when>, for the message]
         echo "  ERROR: \`claude plugin marketplace add $WS_PHYS\` exited non-zero, so the machine-level record still ${what}" >&2
         return 1
     fi
-    if machine_record_foreign; then
-        echo "  ERROR: the claude CLI reported success, but its machine-level record ($KNOWN_MARKETPLACES) still names $(machine_record_source), not this checkout" >&2
+    if ! machine_record_ours; then
+        echo "  ERROR: the claude CLI reported success, but its machine-level record ($KNOWN_MARKETPLACES) $(machine_record_what), not this checkout" >&2
         return 1
     fi
     echo "  the machine-level record of the $MARKETPLACE_NAME marketplace now names this checkout"
@@ -1047,17 +1063,21 @@ if [[ "$MODE" == "check" ]]; then
     # name, so a machine holds ONE `agent-workspace` source: when it names
     # another checkout, sessions may load that checkout's skills even where
     # every settings.local.json above declares this one, and nothing else
-    # here would notice. Read-only, and only a record that positively names
-    # a different directory is drift -- a missing file, entry or `path`
-    # field (the format is the CLI's, not ours) says nothing either way.
-    # Only while some root has the plugin enabled from this checkout: with
+    # here would notice. A record with no entry for it is drift too: live
+    # case J saw an absent record leave every enabled root without the
+    # plugin. (This relies on the CLI's format: a file the installer cannot
+    # read an entry from looks the same.) Read-only. Only while some root has the plugin enabled from this checkout: with
     # none, no session of this checkout's loads the record, so nothing of
     # this checkout's is wrong. Without the claude CLI, install cannot take
     # it over either, so that is a note naming what is needed, as for an
     # unenabled root: drift whose advice cannot clear it would keep --check
     # red.
-    if [[ "$own_enabled" == true ]] && machine_record_foreign; then
-        km_what="the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names another checkout, $(machine_record_source) -- one source per machine, so sessions may load that checkout's skills"
+    if [[ "$own_enabled" == true ]] && ! machine_record_ours; then
+        if machine_record_foreign; then
+            km_what="the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names another checkout, $(machine_record_source) -- one source per machine, so sessions may load that checkout's skills"
+        else
+            km_what="the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) has no entry for it -- sessions in the roots enabled from this checkout may not load the plugin at all"
+        fi
         if have_claude; then
             note "$km_what (re-run this installer: it takes the name over once, before touching any project root -- last install wins)"
         else
@@ -1183,8 +1203,11 @@ done < <(legacy_skill_links)
 # 6. the plugin. The registry is read once, for both steps below.
 PLUGIN_ROOTS="$(plugin_roots)"
 
-# 6a. the machine-level marketplace record, once, before any project root.
-# Only when some root is to be enabled from here and can be: with none,
+# 6a. the machine-level marketplace record, before any project root:
+# claimed whenever it is not this checkout's -- another checkout's, or no
+# entry at all (live case J: an absent record leaves every enabled root
+# without the plugin). Only when some root is to be enabled from here and
+# can be: with none,
 # taking the name would only move another checkout's sessions onto this
 # one's skills. A root whose settings.local.json is unparseable fails in
 # 6b whatever happens, so it does not count.
@@ -1196,9 +1219,9 @@ enable_root_can_succeed() {
     done <<< "$PLUGIN_ROOTS"
     return 1
 }
-if machine_record_foreign && enable_root_can_succeed; then
+if ! machine_record_ours && enable_root_can_succeed; then
     if ! have_claude; then
-        echo "  NOTE: the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace names another checkout, $(machine_record_source) -- taking it over needs the claude CLI, which is not on PATH, so sessions may load that checkout's skills"
+        echo "  NOTE: the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace $(machine_record_what), not this checkout -- taking it over needs the claude CLI, which is not on PATH, so sessions may not load this checkout's skills"
     elif ! claim_machine_record; then
         echo "" >&2
         echo "agent_workspace user tier installed from $WS_ROOT, but the plugin step stopped before touching any project root: the machine-level record of the $MARKETPLACE_NAME marketplace could not be taken over (above). Free the name in the claude CLI's records -- the other checkout's --uninstall, or the \`claude plugin marketplace\` commands -- and re-run this installer." >&2
@@ -1207,13 +1230,6 @@ if machine_record_foreign && enable_root_can_succeed; then
 fi
 
 # 6b. per registered root: each root's own declaration only
-# The record's state going in, for the read-back after this step: 6b still
-# runs `marketplace remove --scope local` (repointing a root, removing a
-# doubled or instance declaration), and should that also drop or move the
-# machine record, a takeover would be undone while install exits 0.
-km_ours=false
-km_src="$(machine_record_source)"
-[[ -n "$km_src" ]] && is_this_checkout "$km_src" && km_ours=true
 plugin_rc=0
 while IFS=$'\t' read -r name root verdict detail; do
     [[ -z "$name" ]] && continue
@@ -1267,11 +1283,25 @@ case "$(plugin_state "$WS_ROOT")" in
         unparseable_root "$WS_ROOT" "cannot tell whether the plugin doubles every skill in the workspace checkout itself"
         plugin_rc=1 ;;
 esac
-# 6c. the machine record again: the per-root step must not have lost it.
-km_src="$(machine_record_source)"
-if [[ "$km_ours" == true ]] && ! { [[ -n "$km_src" ]] && is_this_checkout "$km_src"; }; then
-    echo "  NOTE: the per-root step's claude CLI calls left the machine-level record of the $MARKETPLACE_NAME marketplace ${km_src:+naming $km_src}${km_src:-without an entry for it}, where it named this checkout before"
-    if ! have_claude || ! claim_machine_record "again, after the per-root step"; then
+# 6c. the machine record again. 6b still runs `marketplace remove --scope
+# local` (repointing a root; removing a doubled or instance declaration),
+# and a local remove drops the machine record (live case J), which leaves
+# every enabled root without the plugin. So whenever some root is enabled
+# from here once 6b is done and the record is not this checkout's, it is
+# taken back -- whatever it was before 6b.
+root_enabled_from_here() {
+    local _name root verdict _detail
+    while IFS=$'\t' read -r _name root verdict _detail; do
+        case "$verdict" in enable|enable-instance) ;; *) continue ;; esac
+        [[ "$(plugin_state "$root")" == enabled ]] && return 0
+    done <<< "$PLUGIN_ROOTS"
+    return 1
+}
+# Without the CLI nothing in 6b ran the CLI, and 6a has already said the
+# record needs it.
+if have_claude && ! machine_record_ours && root_enabled_from_here; then
+    echo "  NOTE: after the per-root step the machine-level record of the $MARKETPLACE_NAME marketplace $(machine_record_what), not this checkout, while roots are enabled from here"
+    if ! claim_machine_record "again, after the per-root step"; then
         echo "" >&2
         echo "agent_workspace user tier installed from $WS_ROOT, but the per-root step lost the machine-level record of the $MARKETPLACE_NAME marketplace and it could not be taken back (above): sessions may not load this checkout's skills." >&2
         exit 1
