@@ -434,3 +434,27 @@ Round-1 fixes verified: all 8 close their findings (no-CLI removal errors, unpar
 - [x] Live case G also probes a git-repo parent with a separate-repo instance and a worktree instance inside it. The case was edited but not run — `.agent/scripts/tests/live/plugin_acceptance.sh` (9d5d4f7)
 
 Tests: install suite 130 -> 143, acceptance helpers 9. The full script suite passed in each commit's pre-commit hook. Each new test was mutation-checked: fix broken, test fails, fix restored. New paths tested: a single repoint across several enabled roots, a CLI that does not repoint (error), and a foreign record with no own-enabled root (not drift). Paths not covered: a foreign record on a machine with no claude CLI, where install notes and `--check` stays red. A source on a temporarily unmounted path now counts as stale, so `--uninstall` removes it.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-25 10:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ac5f93dbe244f722a, resume 1 of 3)
+
+**Branch**: feature/issue-345 at `14a0bc7`
+**Base**: main
+**Depth**: Deep (reason: governance/enforcement files — ADR-0016/0017, user-tier installer, dispatch_phase.sh, SessionStart hook; 20 files, +2965/-164)
+**Must-fix**: 1 | **Suggestions**: 6
+**Round**: 3 | **Ship**: continue — round 3: 1 must-fix includes a design/correctness concern (not mechanical)
+
+Round-2 fixes verified: all 5 close their findings, each with a hermetic test (install suite 143, helpers 9, manifest 12, session-start 46 pass; shellcheck --severity=warning clean). Registry output: the optional 4th `detail` field of plugin_roots is read by install and --check and absorbed harmlessly by --uninstall's `_verdict`; no other caller. Reviewers: Claude adversarial ran (fresh; 1 must-fix, 2 suggestions, all reproduced against a patched stub); Codex ran (3 must-fix claims: 1 kept as a suggestion, 2 downgraded to suggestions as rare/pre-existing); Gemini ran (5 suggestions: 1 duplicate, 1 kept, 3 dropped — frontmatter parsing already bounded and quote-stripping, fixed plugin name, source-without-path edge); Copilot skipped (quota exhausted Sept 2026). Live suite not run.
+
+### Findings
+- [ ] (must-fix) a failed machine-record takeover strips the marketplace declaration from EVERY enabled root: an `enabled` root now runs `marketplace remove` before `marketplace add`, and when add fails (or the CLI does not repoint the record) `machine_record_foreign` stays true, so each later root is removed too — reproduced with a refusing stub, four working roots left undeclared; attempt the takeover in one root per run, leave the rest alone after a failure, and add a refusing-add stub mode asserting the other roots survive (Claude adversarial; caused by round-2 fix) — `.agent/scripts/user_tier_install.sh:574-600`
+- [ ] (suggestion) with no claude CLI on PATH a foreign machine record keeps --check red with advice ("re-run this installer") that cannot help, and install says "not enabling" for roots already enabled; gate the machine-record drift on have_claude as the `*` branch does, and reword the no-CLI note (Claude adversarial, own review; caused by round-2 fix) — `.agent/scripts/user_tier_install.sh:574-583,906`
+- [ ] (suggestion) a source on a temporarily unmounted path is now `stale`, so this checkout's --uninstall removes another checkout's plugin from a shared root, the one thing uninstall promised not to do; acceptable if unmounted checkouts are out of scope, but ADR-0017 should say so (it implies only a deleted checkout) (Claude adversarial; caused by round-2 fix) — `.agent/scripts/user_tier_install.sh:520`, `docs/decisions/0017-plugin-based-skill-delivery.md:123`
+- [ ] (suggestion) a skip-instance root is checked only for unparseable JSON; an instance with its own enabled or foreign declaration is ignored by install and --check, and if its local settings shadow the parent's, it loads the other checkout's skills while --check is clean; flag enabled/foreign there (Codex, Gemini; not caused by round-2 fix — round 2 narrowed the gap) — `.agent/scripts/user_tier_install.sh:1040,875`
+- [ ] (suggestion) the live suite's `claude -p` probes leave one Claude Code project dir per probed path (transcripts and a `memory/` dir) under ~/.claude/projects, named from the sandbox path: two earlier runs left 10 (92-276K each), and the round-2 G/H cases add about 5 more per run; cleanup() should remove the dirs derived from $SANDBOX (guarded by its unique mktemp prefix), or the header should say they stay (own review; not caused by round-2 fix, extended by it) — `.agent/scripts/tests/live/plugin_acceptance.sh:78-95`
+- [ ] (suggestion) --uninstall exits "nothing installed" before the plugin loop when the root file, hook link and ~/.claude/settings.json are all absent, so plugin enables left in registered roots survive; rare (settings.json almost always exists), check the roots before that return (Codex; not caused by round-2 fix) — `.agent/scripts/user_tier_install.sh:649-651`
+- [ ] (suggestion) live case B puts the worktree inside the project ($P/worktrees/wt), so it cannot tell directory walk-up from git-worktree inheritance; add a sibling worktree outside $P, and note that two concurrent live runs share the `aw-accept` name and cache (Gemini, Codex; not caused by round-2 fix) — `.agent/scripts/tests/live/plugin_acceptance.sh:227,90`
