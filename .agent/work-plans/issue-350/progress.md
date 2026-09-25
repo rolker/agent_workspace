@@ -128,3 +128,25 @@ Proceed — approve the plan; the implementer folds in the three Plan Review not
 - `.agent/scripts/tests/test_cross_model_review.sh`: `test_agents_all_succeed` asserts the exact leading argv `$'-s\nread-only\n-a\nnever\nexec'` (real newlines — Plan Review note 3); mock codex comment updated in place.
 - Suite: 662 passed, 0 failed. Mutation check (each restored afterwards): flags after `exec`, flags missing, and `-a`/`-s` swapped each fail exactly the new assertion (661/1).
 - Evidence for the PR (Plan Review note 1): on codex-cli 0.156.1, `codex debug prompt-input` with no flags renders `sandbox_mode` `workspace-write` from this trusted cwd; with top-level `-s read-only -a never` it renders `read-only` plus "Approval policy is currently never". `codex exec -a never --help` exits 2; `codex -s read-only -a never exec --help` exits 0. No live codex review turn was run.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-25 08:54 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-350 at `e881924`
+**Base**: main
+**Depth**: Deep (reason: security-relevant — sandbox/approval policy of a headless reviewer reading untrusted diffs; 274 changed lines incl. work-plan)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 1 | **Ship**: recommended — no must-fix findings
+
+### Findings
+- [ ] No issues found. LGTM.
+
+### Specialists
+- Static analysis: shellcheck --severity=warning (workspace .venv) clean on both changed scripts.
+- Governance: ADR-0015 untouched (dispatch mode unchanged); AGENTS.md script table and knowledge docs carry no codex argv that went stale.
+- Plan drift: none — both planned files changed as planned, Plan Review notes folded in.
+- Claude adversarial: no findings; suite 662 passed / 0 failed; confirmed on codex-cli 0.156.1 that unflagged `codex debug prompt-input` in a trusted project renders `workspace-write`, and `-s read-only -a never` renders `read-only` / approval `never`; `-o` still written under read-only.
+- Cross-model: gemini EXIT=0 no issues; codex EXIT=0 no issues (ran via the worktree's patched `_cli_review.sh`, i.e. with the new pinned flags — it reported it could not run the suite "in this read-only environment"); copilot not dispatched (quota exhausted).
