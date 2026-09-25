@@ -59,7 +59,9 @@ mkdir -p "$HOMEDIR"
 # CLI's machine-level record keyed by name (left alone when it is not JSON);
 # STUB_NO_KM=1 makes it skip that (a CLI that does not repoint the record),
 # and STUB_ADD_FAIL=1 makes `marketplace add` alone exit 1 having written
-# nothing (a CLI that refuses to repoint a name another source holds).
+# nothing (a CLI that refuses to repoint a name another source holds), and
+# STUB_REMOVE_DROPS_KM=1 makes a local `marketplace remove` also delete the
+# machine-level entry (a CLI whose local remove drops the record).
 STUB_BIN="$SANDBOX/bin"
 STUB="$STUB_BIN/claude"
 STUB_LOG="$SANDBOX/claude-stub.log"
@@ -84,6 +86,10 @@ case "$1 $2 ${3:-}" in
     *) exit 0 ;;
 esac
 jq --arg a "$arg" "$filter" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+if [[ "$2 $3" == "marketplace remove" && -n "${STUB_REMOVE_DROPS_KM:-}" ]]; then
+    km="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/known_marketplaces.json"
+    [[ -f "$km" ]] && jq 'del(.["agent-workspace"])' "$km" > "$km.tmp" 2>/dev/null && mv "$km.tmp" "$km"
+fi
 if [[ "$2 $3" == "marketplace add" && -z "${STUB_NO_KM:-}" ]]; then
     km="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/known_marketplaces.json"
     mkdir -p "$(dirname "$km")"
@@ -1169,6 +1175,26 @@ else
     fail "scratch-in-git-repo guard (rc=$rc log=$(cat "$STUB_LOG") left=$(ls -A "$SANDBOX/gittmp") out=${out:0:400})"
 fi
 rm -rf "${SANDBOX:?}/gittmp"
+
+# The per-root step still runs local `marketplace remove` (here: removing a
+# doubled declaration from a workspace-toplevel root). A CLI whose local
+# remove also drops the machine record would undo the takeover while install
+# exits 0; the read-back after the per-root step catches that and takes the
+# record back -- or, when it cannot, exits 1.
+km "$WSC_PHYS"
+stale_enable "$WSC/projects/inner"
+out="$(STUB_REMOVE_DROPS_KM=1 run)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"left the machine-level record"*"without an entry for it"* && "$out" == *"taking it over again, after the per-root step"* \
+      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" ]] \
+    && pass "a machine record dropped by the per-root step's CLI calls is caught and taken back" \
+    || fail "record lost in the per-root step (rc=$rc km=$(cat "$KM") out=${out:0:500})"
+stale_enable "$WSC/projects/inner"
+out="$(STUB_REMOVE_DROPS_KM=1 STUB_ADD_FAIL=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"lost the machine-level record"*"could not be taken back"* ]] \
+    && pass "a machine record the per-root step lost and cannot take back makes install exit 1" \
+    || fail "unrecoverable lost record passed install (rc=$rc out=${out:0:500})"
+run >/dev/null
+km "$SANDBOX/elsewhere"    # the state the cases below start from
 
 # With no root to enable from this checkout, install does not take the name:
 # that would only move the other checkout's sessions onto this one's skills.

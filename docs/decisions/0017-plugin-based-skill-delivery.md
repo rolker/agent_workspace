@@ -117,6 +117,10 @@ The plugin step has two parts, in this order:
    the machine record and never removes a working declaration to repoint
    anything. It only enables a root that lacks the plugin, or replaces a
    root's declaration that names another checkout or no longer works.
+   It still runs `marketplace remove --scope local` in some roots, so the
+   installer reads the machine record again afterwards. If the record
+   named this checkout before and no longer does, the installer takes it
+   back once, the same way, and exits 1 if it cannot.
 
 Enabling is idempotent. A root that already has the plugin enabled from
 this checkout does not run the CLI at all. The installer checks the

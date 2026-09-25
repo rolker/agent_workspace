@@ -598,10 +598,16 @@ machine_record_source() {
 # goes with that directory, and a refusal leaves every root as it was. The
 # record is read back afterwards: a CLI that exits 0 without repointing it
 # is a failure too. Returns 1, with the reason on stderr.
-claim_machine_record() {
-    local other scratch top rc=0 gone=""
+claim_machine_record() {  # [<when>, for the message]
+    local when="${1:-once, before any project root}" other what scratch top rc=0
     other="$(machine_record_source)"
-    [[ -d "$other" ]] || gone=" (not on disk)"
+    if [[ -z "$other" ]]; then
+        what="has no entry for it"
+    elif [[ -d "$other" ]]; then
+        what="names $other"
+    else
+        what="names $other (not on disk)"
+    fi
     scratch="$(mktemp -d -t agent-workspace-claim.XXXXXX)" || {
         echo "  ERROR: could not create a scratch directory to take the machine-level record over from" >&2
         return 1
@@ -614,11 +620,11 @@ claim_machine_record() {
         echo "  ERROR: the scratch directory for the machine-level takeover is inside the git repository $top -- not running the CLI there (point TMPDIR at a directory outside any git repository)" >&2
         return 1
     fi
-    echo "  the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names $other$gone, not this checkout -- taking it over once, before any project root (last install wins)"
+    echo "  the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) $what, not this checkout -- taking it over $when (last install wins)"
     (cd "$scratch" && claude_plugin marketplace add "$WS_PHYS" --scope local >/dev/null) || rc=1
     rm -rf "$scratch"
     if [[ "$rc" -ne 0 ]]; then
-        echo "  ERROR: \`claude plugin marketplace add $WS_PHYS\` exited non-zero, so the machine-level record still names $other" >&2
+        echo "  ERROR: \`claude plugin marketplace add $WS_PHYS\` exited non-zero, so the machine-level record still ${what}" >&2
         return 1
     fi
     if machine_record_foreign; then
@@ -1145,6 +1151,13 @@ if machine_record_foreign && enable_root_can_succeed; then
 fi
 
 # 6b. per registered root: each root's own declaration only
+# The record's state going in, for the read-back after this step: 6b still
+# runs `marketplace remove --scope local` (repointing a root, removing a
+# doubled or instance declaration), and should that also drop or move the
+# machine record, a takeover would be undone while install exits 0.
+km_ours=false
+km_src="$(machine_record_source)"
+[[ -n "$km_src" ]] && is_this_checkout "$km_src" && km_ours=true
 plugin_rc=0
 while IFS=$'\t' read -r name root verdict detail; do
     [[ -z "$name" ]] && continue
@@ -1188,6 +1201,16 @@ case "$(plugin_state "$WS_ROOT")" in
         unparseable_root "$WS_ROOT" "cannot tell whether the plugin doubles every skill in the workspace checkout itself"
         plugin_rc=1 ;;
 esac
+# 6c. the machine record again: the per-root step must not have lost it.
+km_src="$(machine_record_source)"
+if [[ "$km_ours" == true ]] && ! { [[ -n "$km_src" ]] && is_this_checkout "$km_src"; }; then
+    echo "  NOTE: the per-root step's claude CLI calls left the machine-level record of the $MARKETPLACE_NAME marketplace ${km_src:+naming $km_src}${km_src:-without an entry for it}, where it named this checkout before"
+    if ! have_claude || ! claim_machine_record "again, after the per-root step"; then
+        echo "" >&2
+        echo "agent_workspace user tier installed from $WS_ROOT, but the per-root step lost the machine-level record of the $MARKETPLACE_NAME marketplace and it could not be taken back (above): sessions may not load this checkout's skills." >&2
+        exit 1
+    fi
+fi
 if [[ "$plugin_rc" -ne 0 ]]; then
     echo "" >&2
     echo "agent_workspace user tier installed from $WS_ROOT, but the plugin step failed in the root(s) above." >&2
