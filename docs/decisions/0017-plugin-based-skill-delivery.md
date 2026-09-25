@@ -94,7 +94,9 @@ registered session root. It skips:
   checks. The registry does not require an instance to lie under its
   parent, so the installer checks containment (`pwd -P` forms). An
   instance outside its parent's directory is enabled as a root of its
-  own, with a note, and `--check` holds it to that.
+  own, with a note, and `--check` holds it to that. A declaration in an
+  instance inside its parent, from this checkout or another, can shadow
+  the parent's: `--check` reports it and install removes it.
 - **A root not on disk.** The installer prints a note. This is not an
   error.
 
@@ -130,6 +132,7 @@ reports:
   checkout;
 - a root inside the workspace checkout's git tree (skipped) that has the
   plugin enabled anyway;
+- a `parent=` instance inside its parent that declares the plugin itself;
 - the plugin enabled at the workspace checkout itself;
 - a machine-level marketplace record that names another checkout (see
   Consequences). Without the `claude` CLI on `PATH` this is a note that

@@ -921,8 +921,15 @@ if [[ "$MODE" == "check" ]]; then
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check that the $PLUGIN_NAME plugin is NOT enabled there (a doubled root)" ;;
                 esac ;;
             skip-instance)
-                [[ "$state" == unparseable ]] \
-                    && note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin in parent= instance $name" ;;
+                # Its parent's enable is what reaches it. A declaration in
+                # the instance itself can shadow the parent's: another
+                # checkout's then loads that checkout's skills here while
+                # every root above looks right.
+                case "$state" in
+                    enabled|stale|foreign)
+                        note "$PLUGIN_NAME plugin is declared in parent= instance $name ($root) itself$(src="$(plugin_source "$root")"; [[ -n "$src" ]] && printf ', from %s' "$src") -- its parent root provides the plugin, and a declaration here can shadow the parent's (re-run the installer to remove it)" ;;
+                    unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin in parent= instance $name" ;;
+                esac ;;
             missing)
                 echo "  note: registered root $name is not on disk ($root) -- plugin not checked there" ;;
         esac
@@ -1113,10 +1120,15 @@ while IFS=$'\t' read -r name root verdict detail; do
             esac ;;
         skip-instance)
             echo "  skipped $name: a parent= instance; its parent root gets the plugin"
-            if [[ "$(plugin_state "$root")" == unparseable ]]; then
-                unparseable_root "$root" "cannot tell whether the plugin is there"
-                plugin_rc=1
-            fi ;;
+            # A declaration of its own can shadow the parent's (see --check).
+            case "$(plugin_state "$root")" in
+                enabled|stale|foreign)
+                    echo "  the $PLUGIN_NAME plugin is declared in parent= instance $name itself, where it can shadow its parent's -- removing it"
+                    disable_plugin_in_root "$root" || plugin_rc=1 ;;
+                unparseable)
+                    unparseable_root "$root" "cannot tell whether the plugin is there"
+                    plugin_rc=1 ;;
+            esac ;;
         missing)
             echo "  NOTE: registered root $name is not on disk ($root) -- plugin not enabled there" ;;
     esac

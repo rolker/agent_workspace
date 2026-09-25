@@ -840,6 +840,35 @@ else
     fail "the stale enable survived install (rc=$rc out=${out:0:400})"
 fi
 
+# A parent= instance with a declaration of its own: its parent's enable is
+# what reaches it, and a declaration there can shadow the parent's -- from
+# another checkout, loading that checkout's skills while every root above
+# looks right. --check flags it, whoever declared it, and install removes it.
+foreign_enable() {  # <root>: an enable declared from $SANDBOX/elsewhere
+    mkdir -p "$1/.claude" "$SANDBOX/elsewhere"
+    jq -n --arg p "$SANDBOX/elsewhere" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
+        extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$1/$SLJ"
+}
+for who in stale_enable foreign_enable; do
+    "$who" "$ROOTS/fam/inst"
+    out="$(run --check)"; rc=$?
+    [[ "$rc" -eq 1 && "$out" == *"DRIFT: agent-workspace plugin is declared in parent= instance fam-i ($ROOTS/fam/inst) itself"*"can shadow the parent's"* ]] \
+        && pass "--check flags a parent= instance with its own declaration ($who)" \
+        || fail "instance declaration ($who) passed --check (rc=$rc out=${out:0:400})"
+    out="$(run)"; rc=$?
+    if [[ "$rc" -eq 0 && "$out" == *"declared in parent= instance fam-i itself"*"removing it"* \
+          && "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/fam/inst/$SLJ")" == 0 ]] \
+       && enabled_in "$ROOTS/fam"; then
+        pass "install removes a parent= instance's own declaration ($who), leaving the parent enabled"
+    else
+        fail "instance declaration ($who) survived install (rc=$rc file=$(cat "$ROOTS/fam/inst/$SLJ") out=${out:0:400})"
+    fi
+    rm -f "${ROOTS:?}/fam/inst/.claude/settings.local.json"
+done
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 ]] && pass "--check is clean once the instance's own declaration is gone" \
+    || fail "--check after removing the instance declaration (rc=$rc out=${out:0:400})"
+
 # The plugin enabled at the workspace checkout itself.
 stale_enable "$WSC"
 out="$(run --check)"; rc=$?
@@ -972,6 +1001,14 @@ out="$(run_nocli)"; rc=$?
     && pass "without the claude CLI, install over a doubled root exits 1 instead of claiming success" \
     || fail "no-CLI install over a doubled root (rc=$rc out=${out:0:400})"
 rm -f "${WSC:?}/projects/inner/.claude/settings.local.json"
+# ...and the same for a parent= instance's own declaration.
+stale_enable "$ROOTS/fam/inst"
+out="$(run_nocli)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"not on PATH -- cannot remove the agent-workspace plugin from $ROOTS/fam/inst"* ]] \
+   && enabled_in "$ROOTS/fam/inst" \
+    && pass "without the claude CLI, install over a parent= instance's own declaration exits 1 and leaves it" \
+    || fail "no-CLI install over an instance declaration (rc=$rc out=${out:0:400})"
+rm -f "${ROOTS:?}/fam/inst/.claude/settings.local.json"
 run >/dev/null
 out="$(run_nocli --uninstall)"; rc=$?
 if [[ "$rc" -eq 1 && "$out" == *"cannot remove the agent-workspace plugin from $ROOTS/a"* \
@@ -1156,11 +1193,6 @@ rm -f "$KM"
 # --uninstall leaves another checkout's plugin alone: a second checkout's
 # uninstall must not take away the first's. This checkout's go as usual.
 run >/dev/null
-foreign_enable() {  # <root>: an enable declared from $SANDBOX/elsewhere
-    mkdir -p "$1/.claude"
-    jq -n --arg p "$SANDBOX/elsewhere" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
-        extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$1/$SLJ"
-}
 foreign_enable "$ROOTS/a"
 before="$(cat "$ROOTS/a/$SLJ")"
 : > "$STUB_LOG"
