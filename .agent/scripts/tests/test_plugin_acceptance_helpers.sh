@@ -182,6 +182,22 @@ for has in yes no; do
 done
 rm -rf "$kmw"
 
+# sandbox_install() runs the copy's installer with the sandbox HOME and no
+# CLAUDE_CONFIG_DIR, however the suite was started; and it is the only way
+# the suite runs that installer.
+siw="$SANDBOX/si-work"
+mkdir -p "$siw/W/.agent/scripts" "$siw/sb/home"
+printf '#!/bin/sh\necho "cfg=[${CLAUDE_CONFIG_DIR:-}] home=[$HOME] bin=[$AGENT_WORKSPACE_CLAUDE_BIN] args=[$*]"\n' > "$siw/W/.agent/scripts/user_tier_install.sh"
+got="$(CLAUDE_CONFIG_DIR=/owner/real/config W="$siw/W" SANDBOX="$siw/sb" bash -c "$cleanup_def"$'\n''sandbox_install --check')"
+[[ "$got" == "cfg=[] home=[$siw/sb/home] bin=[$siw/sb/bin/claude] args=[--check]" ]] \
+    && pass "sandbox_install drops an inherited CLAUDE_CONFIG_DIR and uses the sandbox HOME and stub" \
+    || fail "sandbox_install environment: $got"
+rm -rf "$siw"
+direct="$(grep -n 'bash "\$W/.agent/scripts/user_tier_install.sh"' "$SUITE" | grep -v '^[0-9]*:        bash "\$W/.agent/scripts/user_tier_install.sh" "\$@"$' || true)"
+[[ -z "$direct" ]] \
+    && pass "the live suite runs the copy's installer only through sandbox_install" \
+    || fail "the live suite runs the installer directly: $direct"
+
 # The encoding itself, pinned to literal names rather than re-derived with
 # the implementation's own sed: every character but [A-Za-z0-9] becomes
 # `-` (as Claude Code named the real directories earlier runs left, e.g.

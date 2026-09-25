@@ -109,6 +109,15 @@ session_dirs() {
         esac
     done
 }
+# sandbox_install [args]: the workspace copy's installer against the sandbox
+# HOME, its CLI a stub that only fails. CLAUDE_CONFIG_DIR is dropped: the
+# installer reads the CLI's records under it when set, so an inherited one
+# would point the copy at the owner's real records (a real `agent-workspace`
+# entry reads as foreign, and the takeover calls the failing stub).
+sandbox_install() {
+    env -u CLAUDE_CONFIG_DIR HOME="$SANDBOX/home" AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/bin/claude" \
+        bash "$W/.agent/scripts/user_tier_install.sh" "$@"
+}
 # sandbox_safe <path>: may cleanup() `rm -rf` this as the sandbox? Only a
 # directory with this suite's mktemp name, never the filesystem root, the
 # directory the suite runs from, or one containing it. An empty path fails
@@ -222,7 +231,7 @@ PROBE<<<${CLAUDE_PLUGIN_ROOT}>>>
 EOF
 jq --arg n "$NAME" '.name = $n' "$W/.claude-plugin/plugin.json" > "$W/p.json" \
     && mv "$W/p.json" "$W/.claude-plugin/plugin.json"
-HOME="$SANDBOX/home" bash "$W/.agent/scripts/user_tier_install.sh" --generate-plugin-manifest >/dev/null \
+sandbox_install --generate-plugin-manifest >/dev/null \
     || { echo "FATAL: could not regenerate the copy's manifest" >&2; exit 1; }
 git -C "$W" init -q
 (cd "$W" && cli_plugin validate . >/dev/null 2>&1) \
@@ -347,8 +356,7 @@ mkdir -p "$W/projects/inner" "$SANDBOX/home" "$SANDBOX/bin"
 printf 'inner single_project %s\n' "$W/projects/inner" > "$W/.agent/projects.local"
 printf '#!/bin/sh\necho "claude stub called: $*" >&2\nexit 1\n' > "$SANDBOX/bin/claude"
 chmod +x "$SANDBOX/bin/claude"
-iout="$(HOME="$SANDBOX/home" AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/bin/claude" \
-    bash "$W/.agent/scripts/user_tier_install.sh" 2>&1)"
+iout="$(sandbox_install 2>&1)"
 if [[ "$iout" == *"skipped inner"* && "$iout" != *"claude stub called"* \
       && ! -e "$W/projects/inner/.claude/settings.local.json" && ! -e "$W/.claude/settings.local.json" ]]; then
     pass "E: the installer skips a root inside the workspace's git tree, without running the CLI"
@@ -439,8 +447,7 @@ famg-inst single_project  $FAMG/inst   parent=famg
 famg-wt   single_project  $FAMG/wt     parent=famg
 famg-pl   single_project  $FAMG/plain  parent=famg
 REG
-gout="$(HOME="$SANDBOX/home" AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/bin/claude" \
-    bash "$W/.agent/scripts/user_tier_install.sh" 2>&1)"
+gout="$(sandbox_install 2>&1)"
 rm -f "$W/.agent/projects.local"
 if [[ "$gout" == *"fam-inst is a parent= instance that is in no git repository"* \
       && "$gout" == *"famg-inst is a parent= instance that is a git repository of its own"* \
