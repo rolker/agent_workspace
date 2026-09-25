@@ -27,6 +27,39 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 variable and not `SessionStart` hook output — hook stdout is context text and
 never reaches a tool call's shell (ADR-0016).
 
+## Skill names in this session
+
+In a project session the workspace skills arrive through the
+`agent-workspace` Claude Code plugin and are named
+`/agent-workspace:<skill>`; the bare `/<skill>` there may be the project's
+own skill of the same name (ADR-0017). In a workspace session they are
+bare. Every dispatched task line must use the name *this* session has, and
+neither `--type` nor the cwd says which: a workspace session driving a
+project issue still has bare names, and `/start-task` moves the cwd.
+
+Find out **once, before step 1**, by running exactly this (the single
+quotes matter — they keep the shell from expanding the token from its
+environment, where another plugin may have set it):
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'
+if [[ -d "$PLUGIN_ROOT" && "$(cd "$PLUGIN_ROOT" && pwd -P)" == "$(cd "$WS_ROOT" && pwd -P)" ]]; then
+    echo "skill_prefix=agent-workspace:"
+else
+    echo "skill_prefix="
+fi
+```
+
+When this skill was loaded through the plugin, Claude Code has already
+replaced the quoted token with the plugin's source directory — the
+workspace checkout — so the comparison matches. Loaded bare, the token
+stays literal, is no directory, and the prefix is empty. Remember the
+printed value for the whole run and pass it on every handoff call in step
+4 as `--skill-prefix agent-workspace:` (omit the flag when it printed
+empty). Where this skill's text names another workspace skill by its bare
+slash command, invoke the prefixed form in a plugin session too.
+
 **The `|| echo .` fallback is required, not decoration.** The user tier is
 optional — `--check` and ADR-0016 both say so — and on a machine without it
 the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
@@ -189,10 +222,11 @@ then:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>] [--type <type>]
+$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>] [--type <type>] [--skill-prefix agent-workspace:]
 ```
 
-prints the handoff block: `worktree=`, `task=`, `agent_name=`,
+(`--skill-prefix` exactly as "Skill names in this session" decided.)
+It prints the handoff block: `worktree=`, `task=`, `agent_name=`,
 `agent_email=`, `model=`, `entry_type=`, `exit_contract=`, `conventions=`.
 Paste the task line, the worktree, the exit contract, and the
 `conventions=` line (the `**When**` format and scratch-file hygiene every
