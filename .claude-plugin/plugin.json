@@ -1,0 +1,22 @@
+{
+  "name": "agent-workspace",
+  "description": "Workspace skills whose SKILL.md declares session_scope: project or both, namespaced as agent-workspace:<skill>.",
+  "author": {
+    "name": "agent_workspace"
+  },
+  "skills": [
+    "./.claude/skills/address-findings",
+    "./.claude/skills/audit-project",
+    "./.claude/skills/document-project",
+    "./.claude/skills/onboard-project",
+    "./.claude/skills/plan-task",
+    "./.claude/skills/review-code",
+    "./.claude/skills/review-issue",
+    "./.claude/skills/review-plan",
+    "./.claude/skills/run-issue",
+    "./.claude/skills/start-task",
+    "./.claude/skills/test-engineering",
+    "./.claude/skills/triage-reviews",
+    "./.claude/skills/what-next"
+  ]
+}

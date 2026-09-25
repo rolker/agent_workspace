@@ -1,0 +1,12 @@
+{
+  "name": "agent-workspace",
+  "owner": { "name": "agent_workspace" },
+  "description": "The agent_workspace review-loop skills, delivered to registered project sessions (ADR-0017).",
+  "plugins": [
+    {
+      "name": "agent-workspace",
+      "source": "./",
+      "description": "Workspace skills whose SKILL.md declares session_scope: project or both, namespaced as agent-workspace:<skill>."
+    }
+  ]
+}
