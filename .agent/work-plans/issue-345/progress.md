@@ -416,3 +416,21 @@ Round-1 fixes verified: all 8 close their findings (no-CLI removal errors, unpar
 - [x] (suggestion) a declaration whose source path no longer exists is classed `foreign`, so --uninstall leaves it "for that checkout's --uninstall", which can never run; treat a source not on disk as removable, or call it orphaned in the note (caused by round-1 fix) — `.agent/scripts/user_tier_install.sh:486-503,601`
 - [x] (suggestion) notes misdescribe two cases: an instance at the same path as its parent, or whose parent is not on disk, is told it is "outside its parent's directory"; and a foreign/stale declaration without an enable in a skipped root is reported as "enabled ... every skill loads twice" (caused by round-1 fixes) — `.agent/scripts/user_tier_install.sh:458-477,823,836`
 - [x] (suggestion) live case G uses plain directories for the parent and instance, so the likely real shape (parent a git repo, instance a separate repo or worktree inside it) is not the one that validates skip-instance; `git init` the parent (caused by round-1 fix) — `.agent/scripts/tests/live/plugin_acceptance.sh:297-313`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-25 10:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-345 at `9d5d4f7`
+**Addressed**: Local Review (Pre-Push) at `2662178` (2026-09-25 09:47 -04:00)
+**Commits**: 4871f3b, df7556a, ae1bf86, d941118, 9d5d4f7
+
+### Actions
+- [x] Last install wins (owner's choice): when `known_marketplaces.json` names another checkout, install re-enables the first enabled root (remove + add + install), which takes the name over; later roots short-circuit again. The record is read back after every add, and one the CLI left elsewhere is an error. `--check` flags the record only while some root is enabled from this checkout, because with none install has nowhere to repoint from. The stub now writes the machine record on `marketplace add` (`STUB_NO_KM=1` turns that off). ADR-0017 records the rule and says the CLI's replacement of the record is not yet live-verified — `.agent/scripts/user_tier_install.sh` `machine_record_foreign`, `enable_plugin_in_root` (4871f3b)
+- [x] A skip-instance root with an unparseable settings.local.json now fails install and `--check`. The ADR's `--check` list is narrowed: a doubled enable is reported for a workspace-toplevel root only — `.agent/scripts/user_tier_install.sh`, `docs/decisions/0017-plugin-based-skill-delivery.md` (df7556a)
+- [x] A declaration whose source is not on disk is `stale`, not `foreign`: `--check` reports it as not enabled from this checkout, and `--uninstall` removes it. ADR updated — `.agent/scripts/user_tier_install.sh` `plugin_state` (ae1bf86)
+- [x] An instance whose parent is not on disk says so, not "outside its parent's directory". The same-path and unregistered-parent cases cannot reach the installer, because the registry parser drops both. A leftover declaration without an enable in a workspace-toplevel root or the checkout itself is now called a leftover, not "loads twice", and install still removes it — `.agent/scripts/user_tier_install.sh` `plugin_roots`, `plugin_enabled_flag` (d941118)
+- [x] Live case G also probes a git-repo parent with a separate-repo instance and a worktree instance inside it. The case was edited but not run — `.agent/scripts/tests/live/plugin_acceptance.sh` (9d5d4f7)
+
+Tests: install suite 130 -> 143, acceptance helpers 9. The full script suite passed in each commit's pre-commit hook. Each new test was mutation-checked: fix broken, test fails, fix restored. New paths tested: a single repoint across several enabled roots, a CLI that does not repoint (error), and a foreign record with no own-enabled root (not drift). Paths not covered: a foreign record on a machine with no claude CLI, where install notes and `--check` stays red. A source on a temporarily unmounted path now counts as stale, so `--uninstall` removes it.
