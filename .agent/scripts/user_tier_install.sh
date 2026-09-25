@@ -32,12 +32,14 @@
 #          `pwd -P` forms): a session there already sees the bare skills by
 #          directory walk-up, and enabling would double every skill and write
 #          the workspace's own settings.local.json;
-#        - a `parent=` instance inside its parent's directory: its parent
-#          root is the session unit, and the parent is what gets enabled
-#          (a declaration in the instance itself is removed: it can shadow
-#          the parent's). An instance registered OUTSIDE its parent's
-#          directory cannot see the parent's settings, so it is enabled as
-#          a root of its own;
+#        - a `parent=` instance in its parent's project -- the same git
+#          toplevel, or a git worktree of the parent's repository: a session
+#          there reads the parent's local settings (observed live), so the
+#          parent is what gets enabled (a declaration in the instance
+#          itself is removed: it can shadow the parent's). Any other
+#          instance -- in no git repository, under a plain-directory
+#          parent, or a separate repository -- does not see the parent's
+#          settings, so it is enabled as a root of its own;
 #        - a root not on disk (a note, not an error);
 #        - every enable, with a note, when the `claude` CLI is not on PATH
 #          (a Codex-only machine has no plugins to enable). A plugin that
@@ -452,26 +454,48 @@ have_claude() { command -v "$CLAUDE_BIN" >/dev/null 2>&1; }
 # installer on a read nobody will answer.
 claude_plugin() { "$CLAUDE_BIN" plugin "$@" </dev/null; }
 
-# Does <path> lie strictly inside <dir>? Both in `pwd -P` form; false when
-# either is not on disk.
-path_inside() {  # <path> <dir>
-    local p d
-    p="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
-    d="$(cd "$2" 2>/dev/null && pwd -P)" || return 1
-    [[ "$p" == "$d/"* ]]
+# Would a Claude Code session in <instance> read the local settings of
+# <parent>? Observed live (claude 2.1.282, plugin_acceptance.sh case G): a
+# session reads the local settings of its project root, which is its git
+# toplevel -- the main repository's, for a git worktree. So yes exactly
+# when both are in git and share the toplevel (a plain directory inside
+# the parent's repository) or share the repository (a worktree of it); no
+# for an instance in no git repository (even inside a plain-directory
+# parent) and for a separate repository nested in the parent. Sets
+# NOT_SAME_WHY to the reason when it answers no.
+NOT_SAME_WHY=""
+same_project() {  # <instance> <parent>
+    local it pt ic pc
+    NOT_SAME_WHY=""
+    if ! it="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)"; then
+        NOT_SAME_WHY="is in no git repository, so its sessions have a project root of their own"
+        return 1
+    fi
+    if ! pt="$(git -C "$2" rev-parse --show-toplevel 2>/dev/null)"; then
+        NOT_SAME_WHY="has a parent ($2) in no git repository, whose local settings reach no other directory's sessions"
+        return 1
+    fi
+    # One repository: the same git common dir, which a plain directory in
+    # it and every worktree of it share.
+    ic="$(cd "$1" && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+        && pc="$(cd "$2" && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+        && ic="$(cd "$ic" && pwd -P)" && pc="$(cd "$pc" && pwd -P)" \
+        && [[ "$ic" == "$pc" ]] && return 0
+    NOT_SAME_WHY="is a git repository of its own ($it), not a worktree of its parent's ($pt), so its sessions do not read the parent's local settings"
+    return 1
 }
 
 # One line per registered entry: <name>\t<path>\t<verdict>[\t<detail>], where
 # verdict is
 #   enable          a session root that gets the plugin
-#   enable-outside-parent
-#                   a parent= instance whose path is NOT inside its parent's:
-#                   the parent's settings cannot reach it, so it is enabled
+#   enable-instance a parent= instance whose sessions do NOT read its
+#                   parent's local settings (same_project), so it is enabled
 #                   as a session root of its own (a note says so; <detail>
-#                   is its wording: why the instance is not inside)
+#                   is its wording: why)
 #   skip-workspace  its git toplevel is this workspace checkout
-#   skip-instance   a parent= instance inside its parent's directory (the
-#                   parent root is enabled instead)
+#   skip-instance   a parent= instance in its parent's project (same git
+#                   toplevel, or a worktree of its repository): the parent
+#                   root's enable reaches it, and is what gets enabled
 #   missing         the path does not exist on disk
 # A malformed registry line is reported by the registry parser on stderr and
 # dropped; the valid lines are still returned.
@@ -485,23 +509,21 @@ plugin_roots() {
         outside=false
         detail=""
         if parent="$(_registry_field_of "$fields" parent)" && [[ -n "$parent" ]]; then
-            # Skipping an instance is right only while the parent's
-            # .claude/settings.local.json can reach its sessions, which
-            # needs the instance to lie inside the parent's directory. The
-            # registry does not require that, so check it here.
+            # Skipping an instance is right only while the parent's local
+            # settings reach its sessions; the registry cannot say whether
+            # they do, so check it here (same_project).
             parent_path="$(awk -F'\t' -v n="$parent" '$1 == n { print $3; exit }' <<< "$entries")"
-            if [[ -n "$parent_path" ]] && path_inside "$path" "$parent_path"; then
+            if [[ -d "$path" && -d "$parent_path" ]] && same_project "$path" "$parent_path"; then
                 printf '%s\t%s\t%s\n' "$name" "$path" skip-instance
                 continue
             fi
             outside=true
             # The registry parser already drops an instance whose parent is
-            # unregistered or at the instance's own path, so a parent not on
-            # disk is the one other way to land here.
+            # unregistered or at the instance's own path.
             if [[ ! -d "$parent_path" ]]; then
                 detail="whose parent's directory ($parent_path) is not on disk"
             else
-                detail="outside its parent's directory ($parent_path), which the parent's plugin enable cannot reach"
+                detail="that $NOT_SAME_WHY"
             fi
         fi
         if [[ ! -d "$path" ]]; then
@@ -511,7 +533,7 @@ plugin_roots() {
              && [[ "$top_phys" == "$WS_PHYS" ]]; then
             printf '%s\t%s\t%s\n' "$name" "$path" skip-workspace
         elif [[ "$outside" == true ]]; then
-            printf '%s\t%s\t%s\t%s\n' "$name" "$path" enable-outside-parent "$detail"
+            printf '%s\t%s\t%s\t%s\n' "$name" "$path" enable-instance "$detail"
         else
             # Includes a root in no git repository at all: nothing there
             # sees the workspace's skills, so it is a session root like any.
@@ -966,8 +988,8 @@ if [[ "$MODE" == "check" ]]; then
         state=""
         [[ -d "$root" ]] && state="$(plugin_state "$root")"
         case "$verdict" in
-            enable|enable-outside-parent)
-                if [[ "$verdict" == enable-outside-parent ]]; then
+            enable|enable-instance)
+                if [[ "$verdict" == enable-instance ]]; then
                     echo "  note: $name is a parent= instance $detail -- checked as a session root of its own ($root)"
                 fi
                 case "$state" in
@@ -1169,7 +1191,7 @@ PLUGIN_ROOTS="$(plugin_roots)"
 enable_root_can_succeed() {
     local _name root verdict _detail
     while IFS=$'\t' read -r _name root verdict _detail; do
-        case "$verdict" in enable|enable-outside-parent) ;; *) continue ;; esac
+        case "$verdict" in enable|enable-instance) ;; *) continue ;; esac
         [[ "$(plugin_state "$root")" != unparseable ]] && return 0
     done <<< "$PLUGIN_ROOTS"
     return 1
@@ -1198,7 +1220,7 @@ while IFS=$'\t' read -r name root verdict detail; do
     case "$verdict" in
         enable)
             enable_plugin_in_root "$root" || plugin_rc=1 ;;
-        enable-outside-parent)
+        enable-instance)
             echo "  NOTE: $name is a parent= instance $detail -- enabled as a session root of its own ($root)"
             enable_plugin_in_root "$root" || plugin_rc=1 ;;
         skip-workspace)

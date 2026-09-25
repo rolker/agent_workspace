@@ -88,20 +88,34 @@ registered session root. It skips:
   skills by directory walk-up. Enabling the plugin would load every skill
   twice, under two names, and would write into the workspace's own
   settings.
-- **A `parent=` instance inside its parent's directory.** Its parent root
-  is the one that gets enabled. This rests on a session in the instance
-  seeing the parent's local-scope settings, which the live suite's case G
-  checks. The registry does not require an instance to lie under its
-  parent, so the installer checks containment (`pwd -P` forms). An
-  instance outside its parent's directory is enabled as a root of its
-  own, with a note, and `--check` holds it to that. A declaration in an
-  instance inside its parent, from this checkout or another, can shadow
-  the parent's: `--check` reports it and install removes it. When the
-  instance is a plain directory inside a git repository (often the
-  parent), the CLI's local scope from there may resolve to that
-  repository, so install does not run the CLI there: it names the file to
-  edit by hand and exits 1. The takeover's scratch directory is refused
-  inside a git repository for the same reason.
+- **A `parent=` instance in its parent's project.** A session reads the
+  local settings of its project root, which is its git toplevel, or the
+  main repository's for a git worktree. The live suite observed this with
+  claude 2.1.282 (case G). So a plugin enabled at the parent reaches an
+  instance only when the instance is a plain directory inside the
+  parent's repository or a worktree of it. The installer checks this
+  (`git rev-parse --git-common-dir`, compared as `pwd -P` forms). For
+  those instances the parent is the root that gets enabled. Any other
+  instance is enabled as a root of its own, with a note saying why, and
+  `--check` holds it to that. That covers an instance in no git
+  repository (including every instance of a plain-directory parent) and
+  a separate repository nested in the parent. Before that observation the
+  installer skipped every instance inside its parent's directory, which
+  left the plain-parent and separate-repository shapes without the
+  plugin.
+
+  A declaration in a skipped instance, from this checkout or another, can
+  shadow the parent's: `--check` reports it and install removes it. When
+  the instance is a plain directory inside a git repository, the CLI's
+  local scope from there resolves to that repository (live case K), so
+  install does not run the CLI there: it names the file to edit by hand
+  and exits 1. The takeover's scratch directory is refused inside a git
+  repository for the same reason.
+
+  A session in a git repository nested inside any root, such as a colcon
+  package repository under `src/`, has that repository as its project
+  root. It does not see the root's plugin (live case G), and the
+  registry does not list it, so the installer cannot enable it there.
 - **A root not on disk.** The installer prints a note. This is not an
   error.
 
@@ -249,6 +263,15 @@ in their prose.
   record in turn, and its own install takes the name back. This matches
   the user tier, which is already singular (one checkout owns
   `~/.claude`).
+- **A local `marketplace remove` drops the machine record** (observed
+  live, case J). Removing the plugin from any one root also deletes the
+  machine-level record, and every other root then stops reaching the
+  plugin until the record is written again. Install removes the plugin
+  from doubled roots and instance declarations, so it re-reads the record
+  after the per-root step and takes it back (decision 3). `--uninstall`
+  drops the record along with this checkout's roots, which is intended.
+  Whether it also drops a record that names another checkout is not
+  verified; if it does, that checkout's next install takes the name back.
 - **A new skill ships only after the manifest is regenerated.** Add the
   `session_scope` field, run `make generate-user-tier-skills`, and commit
   the manifest. `test_plugin_manifest.sh` fails the commit otherwise.
@@ -265,7 +288,9 @@ then, the opt-in `.agent/scripts/tests/live/plugin_acceptance.sh` covers:
 - the workspace-root shape, with no doubled skills;
 - the skip guard for a `p11`-shape root;
 - the bare-load and plugin-load prefix detection;
-- a `parent=` instance reaching the plugin enabled at its parent;
+- which `parent=` instance shapes reach the plugin enabled at their parent
+  (a worktree or a plain directory of the parent's repository) and which
+  do not (a plain-directory parent's instance, a separate repository);
 - a second root enabled from the same source, with the first still working;
 - the installer's machine-level takeover: a `marketplace add` from a
   scratch directory repoints the record, and the record survives the

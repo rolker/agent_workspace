@@ -709,11 +709,22 @@ fi
 # (enable), a directory in no git repo (enable), a root inside the
 # workspace copy's own git tree (skip -- it sees the bare skills), the same
 # reached through a symlinked path (still skip: pwd -P on both sides), a
-# parent root with an instance (parent enabled, instance skipped), and a
-# root not on disk (a note). The claude stub stands in for the CLI.
+# parent root with instances, and a root not on disk (a note). The claude
+# stub stands in for the CLI.
+#
+# Instances follow what the live suite observed (case G): a session reads
+# the local settings of its git toplevel -- the main repository's, for a
+# worktree. So the parent `fam` is a git repo; `fam/inst` (a worktree of
+# it) and `fam/sub` (a plain directory in it) are skipped; `fam-stray` (a
+# sibling in no git repo) and `pp/inst` (under a plain-directory parent)
+# are enabled as roots of their own.
 ROOTS="$SANDBOX/roots"
-mkdir -p "$ROOTS/a" "$ROOTS/nogit" "$ROOTS/fam/inst" "$ROOTS/fam-stray"
+mkdir -p "$ROOTS/a" "$ROOTS/nogit" "$ROOTS/fam/sub" "$ROOTS/fam-stray" "$ROOTS/pp/inst" "$ROOTS/pp/repo"
+git -C "$ROOTS/pp/repo" init -q
 git -C "$ROOTS/a" init -q
+git -C "$ROOTS/fam" init -q
+git -C "$ROOTS/fam" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$ROOTS/fam" worktree add -q "$ROOTS/fam/inst" 2>/dev/null
 git -C "$WSC" init -q
 mkdir -p "$WSC/projects/inner" "$WSC/projects/inner2"
 ln -s "$WSC" "$SANDBOX/ws-link"
@@ -727,6 +738,10 @@ inner2   single_project  $SANDBOX/ws-link/projects/inner2
 fam      project         $ROOTS/fam
 fam-i    single_project  $ROOTS/fam/inst  parent=fam
 fam-s    single_project  $ROOTS/fam-stray  parent=fam
+fam-d    single_project  $ROOTS/fam/sub  parent=fam
+pp       project         $ROOTS/pp
+pp-i     single_project  $ROOTS/pp/inst  parent=pp
+pp-r     single_project  $ROOTS/pp/repo  parent=pp
 gone     single_project  $ROOTS/gone
 REG
 WSC_PHYS="$(cd "$WSC" && pwd -P)"
@@ -766,17 +781,25 @@ fi
 [[ ! -e "$WSC/projects/inner2/$SLJ" && "$out" == *"skipped inner2"* ]] \
     && pass "the same root reached through a symlinked path is still skipped (pwd -P)" \
     || fail "the symlinked workspace-toplevel root was not skipped"
-enabled_in "$ROOTS/fam" && [[ ! -e "$ROOTS/fam/inst/$SLJ" && "$out" == *"skipped fam-i: a parent= instance"* ]] \
-    && pass "a parent root is enabled and its parent= instance is skipped" \
+enabled_in "$ROOTS/fam" && [[ ! -e "$ROOTS/fam/inst/$SLJ" && ! -e "$ROOTS/fam/sub/$SLJ" \
+      && "$out" == *"skipped fam-i: a parent= instance"* && "$out" == *"skipped fam-d: a parent= instance"* ]] \
+    && pass "a git-repo parent is enabled; its worktree instance and plain-directory instance are skipped" \
     || fail "parent/instance handling is wrong (out=${out:0:400})"
-# An instance registered OUTSIDE its parent's directory (here a sibling
-# whose path merely starts with the parent's) cannot see the parent's
-# settings, so skipping it would leave it with no plugin: it is enabled
-# as a root of its own, with a note.
-enabled_in "$ROOTS/fam-stray" && [[ "$out" == *"fam-s is a parent= instance outside its parent's directory"* \
+# An instance whose sessions do not read the parent's local settings would
+# have no plugin if skipped: it is enabled as a root of its own, with a
+# note saying why -- a sibling in no git repo, and an instance under a
+# plain-directory parent (the case the live suite showed skip-instance
+# got wrong).
+enabled_in "$ROOTS/fam-stray" && [[ "$out" == *"fam-s is a parent= instance that is in no git repository"* \
       && "$out" != *"skipped fam-s"* ]] \
-    && pass "a parent= instance outside its parent's directory is enabled directly, with a note" \
-    || fail "mis-nested instance handling is wrong (out=${out:0:600})"
+    && pass "a parent= instance in no git repository is enabled directly, with a note" \
+    || fail "no-git instance handling is wrong (out=${out:0:600})"
+enabled_in "$ROOTS/pp/inst" && enabled_in "$ROOTS/pp" && [[ "$out" == *"pp-i is a parent= instance that is in no git repository"* ]] \
+    && pass "an instance under a plain-directory parent is enabled as a root of its own" \
+    || fail "plain-parent instance handling is wrong (out=${out:0:600})"
+enabled_in "$ROOTS/pp/repo" && [[ "$out" == *"pp-r is a parent= instance that has a parent ($ROOTS/pp) in no git repository"* ]] \
+    && pass "a git-repo instance under a plain-directory parent is enabled as a root of its own, naming why" \
+    || fail "git instance under a plain parent (out=${out:0:600})"
 [[ "$out" == *"registered root gone is not on disk"* ]] \
     && pass "a registered root not on disk is a note, not a failure" \
     || fail "missing root not noted (out=${out:0:400})"
@@ -790,8 +813,8 @@ out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
     && pass "--check is clean with the plugin enabled in every session root" \
     || fail "--check after plugin install (rc=$rc out=${out:0:400})"
-[[ "$out" == *"note: fam-s is a parent= instance outside its parent's directory"* ]] \
-    && pass "--check notes a parent= instance outside its parent's directory" \
+[[ "$out" == *"note: fam-s is a parent= instance that is in no git repository"* ]] \
+    && pass "--check notes a parent= instance enabled as a root of its own" \
     || fail "--check did not note the mis-nested instance (out=${out:0:400})"
 rm -f "${ROOTS:?}/fam-stray/.claude/settings.local.json"
 out="$(run --check)"; rc=$?
@@ -813,7 +836,7 @@ out="$(run)"; out_check="$(run --check)"
 want="lost-i is a parent= instance whose parent's directory ($ROOTS/lost-parent) is not on disk"
 [[ "$out" == *"NOTE: $want -- enabled as a session root of its own"* \
       && "$out_check" == *"note: $want -- checked as a session root of its own"* \
-      && "$out$out_check" != *"outside its parent's directory"* ]] \
+      && "$out$out_check" != *"in no git repository"* ]] \
     && pass "install and --check say an instance's parent is not on disk, not that it lies outside it" \
     || fail "missing-parent instance wording (out=${out:0:600} check=${out_check:0:600})"
 mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
@@ -911,7 +934,8 @@ out="$(run --check)"; rc=$?
 # the parent's settings.local.json and strip the parent's working enable.
 # Install refuses, names the file to edit, and exits 1; the parent's file is
 # untouched and no CLI call runs from the instance. An instance that is a
-# git repository of its own is removed as usual.
+# git repository of its own is a separate project (live case G): it is
+# enabled as a root of its own, its declaration kept.
 cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
 mkdir -p "$ROOTS/famg/inst" "$ROOTS/famg/repo-inst"
 git -C "$ROOTS/famg" init -q
@@ -938,9 +962,9 @@ out="$(run --check)"; rc=$?
 [[ "$rc" -eq 1 && "$out" == *"instance famg-i ($ROOTS/famg/inst) itself"*"remove it from $ROOTS/famg/inst/.claude/settings.local.json by hand"* ]] \
     && pass "--check tells the user to remove that instance's declaration by hand, not to re-run the installer" \
     || fail "--check advice for an instance inside a git repo (rc=$rc out=${out:0:500})"
-[[ "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/famg/repo-inst/$SLJ")" == 0 ]] \
-    && pass "an instance that is its own git repository still has its declaration removed" \
-    || fail "the repo instance's declaration survived ($(cat "$ROOTS/famg/repo-inst/$SLJ"))"
+enabled_in "$ROOTS/famg/repo-inst" && [[ "$out" == *"famg-r is a parent= instance that is a git repository of its own ($ROOTS/famg/repo-inst), not a worktree of its parent's"* ]] \
+    && pass "an instance that is its own git repository inside a git-repo parent is enabled as a root of its own" \
+    || fail "the repo instance was not enabled as its own root ($(cat "$ROOTS/famg/repo-inst/$SLJ"); out=${out:0:400})"
 mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
 rm -rf "${ROOTS:?}/famg"
 run >/dev/null
