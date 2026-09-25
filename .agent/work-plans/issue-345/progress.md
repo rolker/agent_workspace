@@ -523,3 +523,41 @@ The structural fix closes the regression chain: the machine record is claimed on
 **Decision**: address
 
 Fix all, live test, review — fix the round-4 must-fix (live-suite mktemp/cd guard before the trap) and all 7 suggestions, then run the live suite once (renamed plugin copy in ~/.claude/plugins, cleaned up after), fix what it shows, then a final pre-push review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-25 12:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4f2b47b9f324e986, resume 1 of 3)
+
+**Branch**: feature/issue-345 at `c8b8581`
+**Addressed**: Local Review (Pre-Push) at `6cbe185` (2026-09-25 11:05 -04:00)
+**Commits**: cd6c2f4, 30bcef9, 9471a2b, 4cdf625, c007eda, 1f8040e, ed8af2f, 25d7b33, 741e776, c8b8581
+
+### Actions
+- [x] (must-fix) The live suite creates its sandbox through `new_sandbox()`, which fails on a failed or silent mktemp or cd, and exits before the EXIT trap is set. `cleanup()` refuses to delete anything that lacks the suite's mktemp name, is `/`, is the cwd, or contains the cwd. Both are pinned in the helpers suite — `.agent/scripts/tests/live/plugin_acceptance.sh` (cd6c2f4)
+- [x] Machine record read back after step 6b (step 6c): if it named this checkout before and no longer does, it is taken back once, and install exits 1 if that fails. Live case J showed a local `marketplace remove` does drop the record, and that the other root stops reaching the plugin until the record is taken back — `.agent/scripts/user_tier_install.sh` (4cdf625)
+- [x] One `enclosing_repo()` guard is shared by the claim scratch dir and instance removal. Install never runs the CLI from an instance that is a plain directory inside a git repo; it names the file to edit and exits 1, and `--check` gives the same advice. Live case K confirmed local scope from such a directory resolves to the git toplevel (c007eda)
+- [x] Step 6a claims the name only when some enable root is not unparseable (30bcef9)
+- [x] The CLI's record is read under `CLAUDE_CONFIG_DIR` when set. Observed with claude 2.1.282 using an isolated config dir (the real `~/.claude` was untouched). Install and `--check` note that the rest of the user tier stays in `~/.claude` (9471a2b)
+- [x] An instance's `enabledPlugins[id] = false` is reported as a note by `--check` and install, and left alone because it may be deliberate (1f8040e)
+- [x] Three test gaps closed: a literal encoding pin, the two genuinely stale fixtures, and `proj-wt` (ed8af2f)
+- [x] The claim step has an INT/TERM trap that removes its scratch dir (a TERM test covers it). Live cases I/J/K added. `cleanup()` removes the machine record of this run's name if it is left behind, and only that name (25d7b33)
+
+### Found by the live run and fixed
+- Case G disproved skip-instance. A session reads the local settings of its git toplevel (the main repo's, for a worktree). The installer now skips an instance only when it shares its parent's git common dir, and enables every other instance as its own root. The installer's verdicts are asserted against the live sessions. ADR-0017 is rewritten for this, and records that a colcon-style package repo nested in a root does not see the root's plugin (741e776, c8b8581)
+- Case A failed because haiku did not echo a loosely worded marker. The markers now use the probe's exact-line wording (c8b8581)
+
+### Live runs (owner-approved; run 2 confirmed the fixes)
+Run 1 (before the G/J/A fixes): 14 passed, 4 failed — A, both G checks, J. Run 2: 18 passed, 1 failed — F's bare-load check. The session returned the workspace path for `${CLAUDE_PLUGIN_ROOT}` where run 1 returned it literally, while D passed in the same run, so this is most likely haiku filling in its cwd. It was not re-run, and it is not fixed. It bears on run-issue's prefix rule (decision 6): a model that substitutes its cwd at the workspace root would pick the `agent-workspace:` prefix in a bare workspace session. This needs the owner's decision.
+
+CLI facts observed (claude 2.1.282):
+- A scratch-dir `marketplace add` repoints the machine record, and the record survives the directory's removal and a later CLI run (case I).
+- A local `marketplace remove` drops the machine record, after which other roots stop reaching the plugin; re-taking the record restores them (case J).
+- Local scope from a plain subdir of a git repo writes to the git toplevel (case K).
+- With `CLAUDE_CONFIG_DIR` set, the CLI's records live under it.
+- `plugin uninstall` + local `marketplace remove` leave `{"enabledPlugins":{},"extraKnownMarketplaces":{}}`.
+
+Cleanup verified after both runs: no `aw-accept-*` in `known_marketplaces.json`, `installed_plugins.json`, `cache/` or `marketplaces/`, and `~/.claude/projects` unchanged. `~/.claude/plugins/cache/aw-accept` was there before the runs, left by an earlier fixed-name run, and is left for the owner.
+
+Tests: install 158 -> 175, helpers 12 -> 21. Every new test was mutation-checked, and each mutation made it fail. One mutation of the same-toplevel branch showed that branch was dead, and it was removed. The full script suite passed in each pre-commit hook.
