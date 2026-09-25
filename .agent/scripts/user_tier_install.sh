@@ -948,10 +948,18 @@ if [[ "$MODE" == "check" ]]; then
     # a different directory is drift -- a missing file, entry or `path`
     # field (the format is the CLI's, not ours) says nothing either way.
     # Only while some root has the plugin enabled from this checkout: with
-    # none, no session of this checkout's loads the record, and install
-    # (which repoints it from an enabled root) would have nowhere to do it.
+    # none, no session of this checkout's loads the record, so nothing of
+    # this checkout's is wrong. Without the claude CLI, install cannot take
+    # it over either, so that is a note naming what is needed, as for an
+    # unenabled root: drift whose advice cannot clear it would keep --check
+    # red.
     if [[ "$own_enabled" == true ]] && machine_record_foreign; then
-        note "the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names another checkout, $(jq -r --arg m "$MARKETPLACE_NAME" '.[$m].source.path' "$KNOWN_MARKETPLACES") -- one source per machine, so sessions may load that checkout's skills (re-run this installer to take it over: last install wins)"
+        km_what="the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names another checkout, $(machine_record_source) -- one source per machine, so sessions may load that checkout's skills"
+        if have_claude; then
+            note "$km_what (re-run this installer: it takes the name over once, before touching any project root -- last install wins)"
+        else
+            echo "  note: $km_what; taking it over needs the claude CLI, which is not on PATH (re-run this installer where \`claude\` is on PATH)"
+        fi
     fi
 
     if [[ "$drift" -eq 0 ]]; then

@@ -1128,6 +1128,13 @@ out="$(run_nocli)"; rc=$?
       && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$SANDBOX/elsewhere" ]] \
     && pass "without the claude CLI, install notes that the takeover needs it, and calls enabled roots enabled" \
     || fail "no-CLI install over a foreign machine-level record (rc=$rc out=${out:0:500})"
+# ...and --check, whose "re-run this installer" could not clear it there,
+# says what is needed instead and stays green, as for an unenabled root.
+out="$(run_nocli --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"note: the claude CLI's machine-level record"*"names another checkout, $SANDBOX/elsewhere"*"taking it over needs the claude CLI, which is not on PATH"* \
+      && "$out" != *"DRIFT"* ]] \
+    && pass "without the claude CLI, --check notes the foreign machine-level record with advice that says the CLI is needed" \
+    || fail "no-CLI --check over a foreign machine-level record (rc=$rc out=${out:0:500})"
 run >/dev/null
 # With no root enabled from this checkout, no session of this checkout's
 # loads the record and install has no root to repoint it from: not drift.

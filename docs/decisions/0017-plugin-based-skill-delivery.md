@@ -132,7 +132,9 @@ reports:
   plugin enabled anyway;
 - the plugin enabled at the workspace checkout itself;
 - a machine-level marketplace record that names another checkout (see
-  Consequences).
+  Consequences). Without the `claude` CLI on `PATH` this is a note that
+  says the CLI is needed, not drift, because install cannot take the
+  record over there either.
 
 `--uninstall` removes the plugin from every root where this checkout
 declared it. A root whose declaration names another checkout is left alone
