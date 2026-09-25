@@ -35,11 +35,10 @@
 #      reports what ${CLAUDE_PLUGIN_ROOT} became. Loaded bare it must not
 #      name the workspace; loaded through the plugin it must, and run-issue's
 #      rule then yields `<plugin>:` in the plugin session and empty bare;
-#   G  parent= instance: enabled at the parent only, sessions in the
-#      instance (and a git repo inside it) still reach the plugin -- the
-#      assumption behind the installer's skip-instance; checked for a
-#      plain-directory parent and for a parent that is itself a git repo
-#      with the instance a separate repo, or a worktree, inside it;
+#   G  parent= instances: which shapes see the plugin enabled at their
+#      parent (a worktree or plain directory of a git-repo parent) and which
+#      do not (a plain-directory parent's instance, a separate repo nested
+#      in the parent), and that the installer's verdicts match;
 #   H  a second root: the same marketplace added and installed from another
 #      project root (the per-root path the installer and #332 take) works
 #      there and leaves the first root working;
@@ -49,8 +48,9 @@
 #      the record survives the scratch directory's removal and a later CLI
 #      run; it is then taken back the same way;
 #   J  removing the plugin from one root (uninstall + local `marketplace
-#      remove`) leaves another root working; whether that local remove
-#      drops the machine record is printed as a FACT line;
+#      remove`): what it does to the machine record and to another root is
+#      printed as FACT lines, and re-taking a dropped record the way the
+#      installer's step 6c does must restore the other root;
 #   K  where local scope lands from a plain subdirectory of a git repo:
 #      printed as a FACT line (the installer refuses to run the CLI there
 #      either way).
@@ -236,7 +236,9 @@ name: plan-task
 description: This project's own planning skill.
 ---
 
-Reply PROJECT-OWN-PLAN-TASK.
+Reply with exactly the following line, copied character for character, and nothing else:
+
+PROJECT-OWN-PLAN-TASK
 EOF
 git -C "$P" init -q
 git -C "$P" -c user.name=t -c user.email=t@t add . && git -C "$P" -c user.name=t -c user.email=t@t commit -qm init
@@ -248,7 +250,9 @@ name: zz-control
 description: Control skill for the unrelated repo.
 ---
 
-Reply UNRELATED-CONTROL.
+Reply with exactly the following line, copied character for character, and nothing else:
+
+UNRELATED-CONTROL
 EOF
 
 enable_in "$P" \
@@ -384,33 +388,29 @@ else
     fail "F: plugin-load probe (/$NAME:zz-probe $(probe_said "$f"); value '$plug_val')"
 fi
 # ------------------------------------------- G: parent= instance ---
-# The installer enables a parent= root and SKIPS each instance inside it,
-# on the assumption that a session in the instance sees the parent's
-# local-scope settings. This is that assumption, checked: the plugin is
-# enabled at the parent only, and sessions in the instance directory and in
-# a git repo inside it (a package of a colcon-style instance) must reach it.
-# If this fails, skip-instance in user_tier_install.sh is wrong, and each
-# instance must be enabled as a root of its own.
+# Which instance shapes see the plugin enabled at their parent. Observed
+# with claude 2.1.282: a session reads the local settings of its git
+# toplevel (the main repository's, for a worktree). So a plain-directory
+# parent reaches none of its instances, and a git-repo parent reaches a
+# worktree of it and a plain directory in it, not a separate repository
+# nested in it. user_tier_install.sh's same_project() encodes exactly this;
+# the last check below runs the installer over these shapes and holds its
+# verdicts to what the sessions showed. A change in either fails here.
 mkdir -p "$FAM/inst/src/pkg"
 git -C "$FAM/inst/src/pkg" init -q
 if enable_in "$FAM"; then
     probe "$FAM/inst" "/$NAME:zz-probe"; g_inst=$?
     g_inst_said="$(probe_said "$g_inst")"
     probe "$FAM/inst/src/pkg" "/$NAME:zz-probe"; g_pkg=$?
-    if [[ "$g_inst" -eq "$PROBE_REACHED" && "$g_pkg" -eq "$PROBE_REACHED" ]]; then
-        pass "G: sessions inside a parent= instance see the plugin enabled at the parent"
+    if [[ "$g_inst" -eq "$PROBE_NOT_REACHED" && "$g_pkg" -eq "$PROBE_NOT_REACHED" ]]; then
+        pass "G: a plain-directory parent's enable reaches neither its instance nor a repo inside it (so the installer enables such instances)"
     else
-        fail "G: parent= instance (instance dir: $g_inst_said; package repo: $(probe_said "$g_pkg"))"
+        fail "G: plain-directory parent (instance dir: $g_inst_said; package repo: $(probe_said "$g_pkg")) -- wanted 'did not reach' for both"
     fi
 else
     fail "G: could not enable the $NAME plugin in the parent root"
 fi
-# The likely real shape: the parent is a git repo of its own, and the
-# instance inside it is a separate git repo (its own toplevel) or a
-# worktree of the parent. A session's project root is then the instance's
-# toplevel, not the parent's, so this is the case that decides whether
-# skip-instance holds.
-mkdir -p "$FAMG/inst"
+mkdir -p "$FAMG/inst" "$FAMG/plain"
 git -C "$FAMG" init -q
 git -C "$FAMG" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
 git -C "$FAMG/inst" init -q
@@ -419,13 +419,35 @@ if enable_in "$FAMG"; then
     probe "$FAMG/inst" "/$NAME:zz-probe"; g_repo=$?
     g_repo_said="$(probe_said "$g_repo")"
     probe "$FAMG/wt" "/$NAME:zz-probe"; g_wt=$?
-    if [[ "$g_repo" -eq "$PROBE_REACHED" && "$g_wt" -eq "$PROBE_REACHED" ]]; then
-        pass "G: in a git-repo parent, a separate-repo instance and a worktree instance see the parent's plugin"
+    g_wt_said="$(probe_said "$g_wt")"
+    probe "$FAMG/plain" "/$NAME:zz-probe"; g_plain=$?
+    if [[ "$g_repo" -eq "$PROBE_NOT_REACHED" && "$g_wt" -eq "$PROBE_REACHED" && "$g_plain" -eq "$PROBE_REACHED" ]]; then
+        pass "G: a git-repo parent's enable reaches a worktree and a plain directory of it, not a separate repo inside it"
     else
-        fail "G: git-repo parent (separate-repo instance: $g_repo_said; worktree instance: $(probe_said "$g_wt"))"
+        fail "G: git-repo parent (separate repo: $g_repo_said, wanted not reached; worktree: $g_wt_said, plain dir: $(probe_said "$g_plain"), wanted reached)"
     fi
 else
     fail "G: could not enable the $NAME plugin in the git-repo parent root"
+fi
+# The installer's verdicts on the same shapes (sandbox HOME; its CLI is a
+# stub that only fails, so nothing is enabled -- only what it decides).
+cat > "$W/.agent/projects.local" <<REG
+fam       project         $FAM
+fam-inst  single_project  $FAM/inst    parent=fam
+famg      project         $FAMG
+famg-inst single_project  $FAMG/inst   parent=famg
+famg-wt   single_project  $FAMG/wt     parent=famg
+famg-pl   single_project  $FAMG/plain  parent=famg
+REG
+gout="$(HOME="$SANDBOX/home" AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/bin/claude" \
+    bash "$W/.agent/scripts/user_tier_install.sh" 2>&1)"
+rm -f "$W/.agent/projects.local"
+if [[ "$gout" == *"fam-inst is a parent= instance that is in no git repository"* \
+      && "$gout" == *"famg-inst is a parent= instance that is a git repository of its own"* \
+      && "$gout" == *"skipped famg-wt: a parent= instance"* && "$gout" == *"skipped famg-pl: a parent= instance"* ]]; then
+    pass "G: the installer skips exactly the instances the sessions showed reached, and enables the rest"
+else
+    fail "G: installer verdicts differ from what the sessions showed ($(tr '\n' ' ' <<< "$gout" | cut -c1-600))"
 fi
 
 # ------------------------------------------------- H: a second root ---
@@ -504,10 +526,20 @@ j_after="$(km_source)"
 echo "  FACT: local marketplace remove in $P2 (exit $j_rc): record ${j_before:-<none>} -> ${j_after:-<none>}"
 echo "  FACT: $P2 settings.local.json after uninstall + remove: $(tr -d '\n ' < "$P2/.claude/settings.local.json" 2>/dev/null || echo '<absent>')"
 probe "$P" "/$NAME:zz-probe"; j=$?
-[[ "$j" -eq "$PROBE_REACHED" ]] \
-    && pass "J: after removing the plugin from one root, another root still reaches it" \
-    || fail "J: after removing it from $P2, /$NAME:zz-probe in $P $(probe_said "$j")"
-[[ -n "$(km_source)" ]] || { claim_from_scratch "$W"; echo "  (restored the machine record for the cases below)"; }
+echo "  FACT: right after that remove, /$NAME:zz-probe in $P $(probe_said "$j")"
+# The installer's repair for this (its step 6c): take the record back with
+# the same scratch-dir add, after which the other root must reach it again.
+if [[ -z "$(km_source)" ]]; then
+    claim_from_scratch "$W"; j_claim=$?
+    probe "$P" "/$NAME:zz-probe"; j2=$?
+    [[ "$j_claim" -eq 0 && "$j2" -eq "$PROBE_REACHED" ]] \
+        && pass "J: re-taking the dropped record (installer step 6c) restores the plugin in the other root" \
+        || fail "J: after re-taking the record (exit $j_claim), /$NAME:zz-probe in $P $(probe_said "$j2")"
+else
+    [[ "$j" -eq "$PROBE_REACHED" ]] \
+        && pass "J: the record survived the remove, and the other root still reaches the plugin" \
+        || fail "J: record kept, but /$NAME:zz-probe in $P $(probe_said "$j")"
+fi
 
 # ------------------------- K: local scope from a subdir of a git repo ---
 mkdir -p "$FAMG/sub"

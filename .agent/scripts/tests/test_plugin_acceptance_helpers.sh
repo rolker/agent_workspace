@@ -128,7 +128,7 @@ else
     chmod +x "$work/bin/mktemp"
     try_new() {  # <label> <TMPDIR> [PATH prefix]: new_sandbox must fail, printing nothing
         local got rc
-        got="$(cd "$work" && TMPDIR="$2" PATH="${3:+$3:}$PATH" bash -c "$cleanup_def"$'\n''new_sandbox')"; rc=$?
+        got="$(cd "$work" && TMPDIR="$2" PATH="${3:+$3:}$PATH" bash -c "$cleanup_def"$'\n''new_sandbox' 2>/dev/null)"; rc=$?
         [[ "$rc" -ne 0 && -z "$got" && -d "$work" ]] \
             && pass "new_sandbox fails, printing nothing, when $1" \
             || fail "new_sandbox when $1 (rc=$rc printed='$got')"
