@@ -98,7 +98,9 @@ Enabling is idempotent. A root that already has the plugin enabled from
 this checkout does not run the CLI at all. The installer checks the result
 by reading the settings file, not by trusting the CLI's exit code. With no
 `claude` CLI on `PATH` (a Codex-only machine) the installer prints a note
-and skips the plugin. `--check` reads JSON only and never runs the CLI. It
+and skips enabling the plugin. Removing one that is present (a doubled
+root, `--uninstall`) cannot be done without the CLI, so that is an error,
+not a note. `--check` reads JSON only and never runs the CLI. It
 reports:
 
 - a registered root without the plugin;

@@ -35,8 +35,10 @@
 #        - a `parent=` instance: its parent root is the session unit, and the
 #          parent is what gets enabled;
 #        - a root not on disk (a note, not an error);
-#        - everything, with a note, when the `claude` CLI is not on PATH
-#          (a Codex-only machine has no plugins to enable).
+#        - every enable, with a note, when the `claude` CLI is not on PATH
+#          (a Codex-only machine has no plugins to enable). A plugin that
+#          must be REMOVED (a doubled root, --uninstall) is an error without
+#          the CLI, not a note: it stays enabled.
 #      A root that is in no git repository at all is enabled.
 #   (Before ADR-0017, item 5 was a symlink per skill in ~/.claude/skills/.
 #   Those links were global to the machine and shadowed a project's own
@@ -505,12 +507,15 @@ enable_plugin_in_root() {  # <root>
 }
 
 # Disable and undeclare the plugin in one root (best-effort CLI calls; the
-# resulting file state is what decides success).
+# resulting file state is what decides success). Only called for a root
+# where the plugin is present, so without the CLI it cannot succeed: the
+# plugin stays enabled, and saying "removed" (or letting install report
+# success over a doubled root) would be a lie.
 disable_plugin_in_root() {  # <root>
     local root="$1"
     if ! have_claude; then
-        echo "  NOTE: the claude CLI is not on PATH -- cannot remove the $PLUGIN_NAME plugin from $root; run \`claude plugin uninstall $PLUGIN_ID --scope local\` there"
-        return 0
+        echo "  ERROR: the claude CLI is not on PATH -- cannot remove the $PLUGIN_NAME plugin from $root; run \`claude plugin uninstall $PLUGIN_ID --scope local\` and \`claude plugin marketplace remove $MARKETPLACE_NAME --scope local\` there" >&2
+        return 1
     fi
     (cd "$root" && "$CLAUDE_BIN" plugin uninstall "$PLUGIN_ID" --scope local >/dev/null 2>&1) || true
     (cd "$root" && "$CLAUDE_BIN" plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true

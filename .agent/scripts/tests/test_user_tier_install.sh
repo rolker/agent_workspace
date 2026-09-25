@@ -846,6 +846,23 @@ out="$(run_nocli --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"the claude CLI is not on PATH"* ]] \
     && pass "without the claude CLI, --check notes the unenabled root and stays green" \
     || fail "no-CLI --check (rc=$rc out=${out:0:400})"
+# ...but a plugin that must be REMOVED cannot be without the CLI: install
+# over a doubled (workspace-toplevel) root fails, and leaves it as it was.
+stale_enable "$WSC/projects/inner"
+out="$(run_nocli)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"not on PATH -- cannot remove the agent-workspace plugin from $WSC/projects/inner"* ]] \
+   && enabled_in "$WSC/projects/inner" \
+    && pass "without the claude CLI, install over a doubled root exits 1 instead of claiming success" \
+    || fail "no-CLI install over a doubled root (rc=$rc out=${out:0:400})"
+rm -f "${WSC:?}/projects/inner/.claude/settings.local.json"
+run >/dev/null
+out="$(run_nocli --uninstall)"; rc=$?
+if [[ "$rc" -eq 1 && "$out" == *"cannot remove the agent-workspace plugin from $ROOTS/a"* \
+      && "$out" != *"removed the agent-workspace plugin from $ROOTS/a"* ]] && enabled_in "$ROOTS/a"; then
+    pass "without the claude CLI, --uninstall exits 1 for a root whose plugin it cannot remove"
+else
+    fail "no-CLI --uninstall (rc=$rc out=${out:0:400})"
+fi
 run >/dev/null
 
 # --uninstall disables the plugin in every root that has it.
