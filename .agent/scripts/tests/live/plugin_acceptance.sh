@@ -17,7 +17,8 @@
 #   A  collision: in a repo with its own plan-task, bare /plan-task is still
 #      the project's, and /aw-accept:<skill> reaches the plugin;
 #   B  a git worktree of that repo inherits the plugin;
-#   C  an unrelated repo has no aw-accept: skill;
+#   C  an unrelated repo has no aw-accept: skill (its own control skill
+#      answering first, so the session is known to work);
 #   D  a session at the workspace root has the skills bare, not also
 #      under aw-accept: (never doubled);
 #   E  p11 shape: a registered root inside the workspace's git tree is
@@ -65,8 +66,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-session() {  # <dir> <prompt>: one headless session, no tools
-    (cd "$1" && timeout 300 claude -p "$2" --model "$MODEL" --tools "" 2>&1)
+# session <dir> <prompt>: one headless session, no tools. Leaves its output
+# in SESSION_OUT and its exit status (124 = timed out) in SESSION_RC, and
+# returns that status. Never call it in $(...): the two globals would be
+# set in the subshell and lost.
+SESSION_OUT=""
+SESSION_RC=0
+session() {
+    SESSION_OUT="$(cd "$1" && timeout 300 claude -p "$2" --model "$MODEL" --tools "" 2>&1)"
+    SESSION_RC=$?
+    return "$SESSION_RC"
+}
+# One line of the last session's output, for a failure message.
+session_said() {
+    printf 'exit %s: %s' "$SESSION_RC" "$(tr '\n' ' ' <<< "$SESSION_OUT" | cut -c1-300)"
 }
 # --------------------------------------------------------------- setup ---
 mkdir -p "$W"
@@ -107,6 +120,15 @@ EOF
 git -C "$P" init -q
 git -C "$P" -c user.name=t -c user.email=t@t add . && git -C "$P" -c user.name=t -c user.email=t@t commit -qm init
 git -C "$U" init -q
+mkdir -p "$U/.claude/skills/zz-control"
+cat > "$U/.claude/skills/zz-control/SKILL.md" <<'EOF'
+---
+name: zz-control
+description: Control skill for the unrelated repo.
+---
+
+Reply UNRELATED-CONTROL.
+EOF
 
 (cd "$P" && claude plugin marketplace add "$W" --scope local >/dev/null && claude plugin install "$NAME@$NAME" --scope local >/dev/null) \
     || { echo "FATAL: could not enable the $NAME plugin in the sandbox project" >&2; exit 1; }
@@ -119,34 +141,77 @@ jq -e --arg id "$NAME@$NAME" '.enabledPlugins[$id] == true' "$P/.claude/settings
 # and the probe answers PROBE<<<...>>> under whichever name reached it. An
 # unavailable name gets no marker. (Asking a tool-less session to LIST its
 # skills does not work: without the Skill tool it is shown none.)
-has_probe() {  # <dir> <slash command>: did that command reach the probe?
-    [[ "$(session "$1" "$2")" == *"PROBE<<<"* ]]
+#
+# A negative ("this name does NOT reach the probe") is only evidence when the
+# session itself ran: a timeout, an auth failure or a CLI error also yields
+# no marker. So probe() has three outcomes, and every negative case demands
+# exactly "ran, not reached". Assumption, not yet observed: an unavailable
+# slash command in `claude -p` is answered with exit 0. If a CLI version
+# exits non-zero for it instead, the negative cases fail loudly, showing
+# that exit status and output -- never pass silently.
+PROBE_REACHED=0
+PROBE_NOT_REACHED=1
+PROBE_SESSION_FAILED=2
+probe() {  # <dir> <slash command>
+    session "$1" "$2"
+    if [[ "$SESSION_RC" -ne 0 || -z "$SESSION_OUT" ]]; then
+        return "$PROBE_SESSION_FAILED"
+    fi
+    [[ "$SESSION_OUT" == *"PROBE<<<"* ]] && return "$PROBE_REACHED"
+    return "$PROBE_NOT_REACHED"
+}
+# What one probe() outcome was, for a failure message.
+probe_said() {  # <probe status>
+    case "$1" in
+        "$PROBE_REACHED") echo "reached the probe" ;;
+        "$PROBE_NOT_REACHED") echo "did not reach the probe" ;;
+        *) echo "session failed ($(session_said))" ;;
+    esac
 }
 
 # ------------------------------------------------------------ A: collision ---
-out="$(session "$P" "/plan-task")"
-if [[ "$out" == *"PROJECT-OWN-PLAN-TASK"* ]] && has_probe "$P" "/$NAME:zz-probe"; then
+session "$P" "/plan-task"
+a_own="$(session_said)"
+own=false
+[[ "$SESSION_RC" -eq 0 && "$SESSION_OUT" == *"PROJECT-OWN-PLAN-TASK"* ]] && own=true
+probe "$P" "/$NAME:zz-probe"; a_plug=$?
+if [[ "$own" == true && "$a_plug" -eq "$PROBE_REACHED" ]]; then
     pass "A: bare /plan-task is still the project's own, and /$NAME:<skill> reaches the plugin"
 else
-    fail "A: collision case (/plan-task got: $(tr '\n' ' ' <<< "$out" | cut -c1-300))"
+    fail "A: collision case (/plan-task: $a_own; /$NAME:zz-probe $(probe_said "$a_plug"))"
 fi
 
 # -------------------------------------------------- B: worktree inherits ---
 git -C "$P" worktree add -q "$P/worktrees/wt" 2>/dev/null
-has_probe "$P/worktrees/wt" "/$NAME:zz-probe" \
+probe "$P/worktrees/wt" "/$NAME:zz-probe"; b=$?
+[[ "$b" -eq "$PROBE_REACHED" ]] \
     && pass "B: a worktree of the project inherits the plugin" \
-    || fail "B: /$NAME:zz-probe did not reach the plugin in a worktree"
+    || fail "B: in a worktree, /$NAME:zz-probe $(probe_said "$b")"
 
 # ------------------------------------------------- C: unrelated repo ---
-has_probe "$U" "/$NAME:zz-probe" \
-    && fail "C: the plugin leaked into an unrelated repo" \
-    || pass "C: an unrelated repo has no $NAME: skill"
+# A control first: the repo's own skill must answer, so a session there is
+# known to work and to dispatch slash commands at all.
+session "$U" "/zz-control"
+c_ctl="$(session_said)"
+ctl=false
+[[ "$SESSION_RC" -eq 0 && "$SESSION_OUT" == *"UNRELATED-CONTROL"* ]] && ctl=true
+probe "$U" "/$NAME:zz-probe"; c=$?
+if [[ "$ctl" == true && "$c" -eq "$PROBE_NOT_REACHED" ]]; then
+    pass "C: an unrelated repo has no $NAME: skill (its own control skill answered)"
+elif [[ "$ctl" != true ]]; then
+    fail "C: the unrelated repo's control skill did not answer, so the negative proves nothing ($c_ctl)"
+else
+    fail "C: in an unrelated repo, /$NAME:zz-probe $(probe_said "$c")"
+fi
 
 # ------------------------------------------------- D: workspace root ---
-if has_probe "$W" "/zz-probe" && ! has_probe "$W" "/$NAME:zz-probe"; then
+probe "$W" "/zz-probe"; d_bare=$?
+d_bare_said="$(probe_said "$d_bare")"
+probe "$W" "/$NAME:zz-probe"; d_plug=$?
+if [[ "$d_bare" -eq "$PROBE_REACHED" && "$d_plug" -eq "$PROBE_NOT_REACHED" ]]; then
     pass "D: a workspace-root session has the skill bare and not under $NAME: (loaded once)"
 else
-    fail "D: workspace-root shape (bare and/or prefixed name wrong)"
+    fail "D: workspace-root shape (bare /zz-probe $d_bare_said; /$NAME:zz-probe $(probe_said "$d_plug"))"
 fi
 
 # ------------------------------------------------------ E: p11 shape ---
@@ -162,10 +227,13 @@ if [[ "$iout" == *"skipped inner"* && "$iout" != *"claude stub called"* \
 else
     fail "E: p11-shape guard (installer said: $(tr '\n' ' ' <<< "$iout" | cut -c1-400))"
 fi
-if has_probe "$W/projects/inner" "/zz-probe" && ! has_probe "$W/projects/inner" "/$NAME:zz-probe"; then
+probe "$W/projects/inner" "/zz-probe"; e_bare=$?
+e_bare_said="$(probe_said "$e_bare")"
+probe "$W/projects/inner" "/$NAME:zz-probe"; e_plug=$?
+if [[ "$e_bare" -eq "$PROBE_REACHED" && "$e_plug" -eq "$PROBE_NOT_REACHED" ]]; then
     pass "E: a session in that root has the skill bare and not under $NAME:"
 else
-    fail "E: p11-shape session (bare and/or prefixed name wrong)"
+    fail "E: p11-shape session (bare /zz-probe $e_bare_said; /$NAME:zz-probe $(probe_said "$e_plug"))"
 fi
 
 # --------------------------------------------- F: prefix detection ---
@@ -177,19 +245,19 @@ prefix_for() {  # <value>
 probe_value() {  # <session output>
     sed -n 's/.*PROBE<<<\(.*\)>>>.*/\1/p' <<< "$1" | head -n1
 }
-out="$(session "$W" "/zz-probe")"
-bare_val="$(probe_value "$out")"
-if [[ "$out" == *"PROBE<<<"* && -z "$(prefix_for "$bare_val")" ]]; then
+probe "$W" "/zz-probe"; f=$?
+bare_val="$(probe_value "$SESSION_OUT")"
+if [[ "$f" -eq "$PROBE_REACHED" && -z "$(prefix_for "$bare_val")" ]]; then
     pass "F: loaded bare, \${CLAUDE_PLUGIN_ROOT} does not name the workspace (got '$bare_val') -- prefix empty"
 else
-    fail "F: bare-load probe (got: $(tr '\n' ' ' <<< "$out"))"
+    fail "F: bare-load probe (/zz-probe $(probe_said "$f"); value '$bare_val')"
 fi
-out="$(session "$P" "/$NAME:zz-probe")"
-plug_val="$(probe_value "$out")"
-if [[ "$(prefix_for "$plug_val")" == "$NAME:" ]]; then
+probe "$P" "/$NAME:zz-probe"; f=$?
+plug_val="$(probe_value "$SESSION_OUT")"
+if [[ "$f" -eq "$PROBE_REACHED" && "$(prefix_for "$plug_val")" == "$NAME:" ]]; then
     pass "F: loaded through the plugin, \${CLAUDE_PLUGIN_ROOT} is the workspace source -- prefix $NAME:"
 else
-    fail "F: plugin-load probe (got: $(tr '\n' ' ' <<< "$out"))"
+    fail "F: plugin-load probe (/$NAME:zz-probe $(probe_said "$f"); value '$plug_val')"
 fi
 echo ""
 echo "plugin_acceptance: $PASS passed, $FAIL failed (model: $MODEL)"
