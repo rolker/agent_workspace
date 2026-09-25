@@ -155,11 +155,13 @@ merge-pr:
 generate-skills:
 	@$(MAIN_ROOT)/.agent/scripts/generate_make_skills.sh
 
-# The ~/.claude/skills/ symlink set, derived from each SKILL.md's
-# session_scope frontmatter (project and both; no field means workspace).
-# Unrelated to generate-skills, which writes the /make_* slash commands.
+# The agent-workspace plugin's skill list (.claude-plugin/plugin.json
+# `skills`), derived from each SKILL.md's session_scope frontmatter (project
+# and both; no field means workspace). Rewrites the tracked manifest in the
+# checkout you run it from -- commit the result. ADR-0017. Unrelated to
+# generate-skills, which writes the /make_* slash commands.
 generate-user-tier-skills:
-	@$(MAIN_ROOT)/.agent/scripts/user_tier_install.sh --sync-skills
+	@$(CURDIR)/.agent/scripts/user_tier_install.sh --generate-plugin-manifest
 
 user-tier-install:
 	@$(MAIN_ROOT)/.agent/scripts/user_tier_install.sh

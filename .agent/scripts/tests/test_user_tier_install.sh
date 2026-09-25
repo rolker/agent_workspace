@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/test_user_tier_install.sh
-# Tests for .agent/scripts/user_tier_install.sh (#317, #265 PR 3):
+# Tests for .agent/scripts/user_tier_install.sh (#317, #265 PR 3; #345):
 # idempotent install, the not-installed / --require split, drift detection
-# (foreign entry, missing entry, stale symlink, retired hook entry), skill
-# selection from session_scope frontmatter, and uninstall.
+# (foreign entry, missing entry, stale symlink, retired hook entry, legacy
+# skill symlink), skill selection from session_scope frontmatter, the
+# plugin manifest generator, per-registered-root plugin enable / --check /
+# --uninstall (ADR-0017), and uninstall.
 #
 # Hermetic: HOME is redirected to a sandbox for every invocation, so the
 # real ~/.claude is never read or written. The installer is run against a
-# COPY of the workspace checkout, so the test can add and remove skills
-# without touching the real ones. No network, no gh.
+# COPY of the workspace checkout -- with the machine's own registry
+# (.agent/projects.local) removed from the copy -- so the test can add and
+# remove skills and registered roots without touching the real ones. The
+# claude CLI is NEVER run: every invocation points AGENT_WORKSPACE_CLAUDE_BIN
+# at a stub that records its argv and edits the root's settings.local.json
+# the way the real CLI does, and a `claude` on the test's PATH is the same
+# stub. No network, no gh.
 #
 # Run: bash .agent/scripts/tests/test_user_tier_install.sh
 
@@ -33,13 +40,46 @@ WSC="$SANDBOX/ws"
 mkdir -p "$WSC"
 cp -r "$WS_ROOT/.agent" "$WSC/.agent"
 cp -r "$WS_ROOT/.claude" "$WSC/.claude"
+cp -r "$WS_ROOT/.claude-plugin" "$WSC/.claude-plugin"
+# The machine's own registry must never reach the copy: the installer would
+# otherwise enable the plugin in the owner's real project roots.
+rm -f "$WSC/.agent/projects.local"
 INSTALL="$WSC/.agent/scripts/user_tier_install.sh"
 
 HOMEDIR="$SANDBOX/home"
 mkdir -p "$HOMEDIR"
 
-run() {  # run the installer with the sandbox HOME
-    HOME="$HOMEDIR" bash "$INSTALL" "$@" 2>&1
+# The claude stub. Records "<cwd>|<argv>" per call, then edits the cwd's
+# .claude/settings.local.json as `claude plugin ... --scope local` would.
+# STUB_FAIL=1 makes it exit 1; STUB_NOOP=1 makes it exit 0 having written
+# nothing (a CLI that claims success but did not enable anything).
+STUB_BIN="$SANDBOX/bin"
+STUB="$STUB_BIN/claude"
+STUB_LOG="$SANDBOX/claude-stub.log"
+mkdir -p "$STUB_BIN"
+cat > "$STUB" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '%s|%s\n' "$PWD" "$*" >> "$STUB_LOG"
+[[ -n "${STUB_FAIL:-}" ]] && exit 1
+[[ -n "${STUB_NOOP:-}" ]] && exit 0
+f=.claude/settings.local.json
+mkdir -p .claude
+[[ -f "$f" ]] || echo '{}' > "$f"
+case "$1 $2 ${3:-}" in
+    "plugin marketplace add")    filter='.extraKnownMarketplaces["agent-workspace"] = {source: {source: "directory", path: $a}}'; arg="$4" ;;
+    "plugin marketplace remove") filter='del(.extraKnownMarketplaces["agent-workspace"])'; arg="" ;;
+    "plugin install "*)          filter='.enabledPlugins[$a] = true'; arg="$3" ;;
+    "plugin uninstall "*)        filter='del(.enabledPlugins[$a])'; arg="$3" ;;
+    *) exit 0 ;;
+esac
+jq --arg a "$arg" "$filter" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+STUBEOF
+chmod +x "$STUB"
+: > "$STUB_LOG"
+
+run() {  # run the installer with the sandbox HOME and the claude stub
+    HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" \
+        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" bash "$INSTALL" "$@" 2>&1
 }
 
 SETTINGS="$HOMEDIR/.claude/settings.json"
@@ -131,10 +171,14 @@ jq -e --arg c "$WSC/.agent/scripts/worktree_create.sh" \
     && pass "absolute-path allow-rule generated from the manifest" \
     || fail "no allow-rule for a manifest script"
 
-[[ -L "$SKILLS_DIR/zz-fixture-proj" ]] \
-    && pass "scoped skill symlinked into ~/.claude/skills/" || fail "scoped skill not symlinked"
-[[ ! -e "$SKILLS_DIR/zz-fixture-ws" ]] \
-    && pass "unscoped skill not symlinked" || fail "unscoped skill was symlinked"
+# ADR-0017: skills are no longer delivered as ~/.claude/skills/ symlinks.
+n_links=$(find "$SKILLS_DIR" -maxdepth 1 -type l 2>/dev/null | wc -l)
+[[ "$n_links" -eq 0 ]] \
+    && pass "install creates no ~/.claude/skills/ symlinks (the plugin delivers skills)" \
+    || fail "install created $n_links skill symlink(s)"
+[[ ! -s "$STUB_LOG" ]] \
+    && pass "with no registered roots, install never runs the claude CLI" \
+    || fail "install ran the claude CLI with no registered roots ($(cat "$STUB_LOG"))"
 
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
@@ -202,12 +246,23 @@ out="$(run --check)"; rc=$?
     || fail "missing-rule drift not detected (rc=$rc out=$out)"
 run >/dev/null
 
-# (e) a stale skill symlink after a scope change
-rm -f "$SKILLS_DIR/zz-fixture-proj"
+# (e) a legacy skill symlink into this checkout (pre-ADR-0017 delivery),
+# including a dangling one whose skill was since deleted
+mkdir -p "$SKILLS_DIR"
+ln -s "$WSC/.claude/skills/zz-fixture-proj" "$SKILLS_DIR/zz-fixture-proj"
+ln -s "$WSC/.claude/skills/zz-since-deleted" "$SKILLS_DIR/zz-since-deleted"
 out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"skill not linked"* ]] \
-    && pass "--check detects an unlinked skill" || fail "unlinked-skill drift not detected (rc=$rc out=$out)"
-run >/dev/null
+[[ "$rc" -eq 1 && "$out" == *"legacy skill symlink"*"zz-fixture-proj"* && "$out" == *"legacy skill symlink"*"zz-since-deleted"* ]] \
+    && pass "--check reports legacy skill symlinks into this checkout, dangling included" \
+    || fail "legacy-symlink drift not detected (rc=$rc out=$out)"
+out="$(run)"
+[[ ! -e "$SKILLS_DIR/zz-fixture-proj" && ! -L "$SKILLS_DIR/zz-fixture-proj" && ! -L "$SKILLS_DIR/zz-since-deleted" \
+   && "$out" == *"removed legacy skill symlink: zz-fixture-proj"* ]] \
+    && pass "install removes legacy skill symlinks" \
+    || fail "install left a legacy skill symlink (out=${out:0:300})"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 ]] && pass "--check is clean once the legacy symlinks are gone" \
+    || fail "--check after legacy removal (rc=$rc out=$out)"
 
 # (f) a tagged, in-checkout hook entry the current generation no longer
 # produces -- a hook retired from the user tier (#328). Tagged with this
@@ -232,19 +287,12 @@ out="$(run --check)"; rc=$?
     && pass "--check is clean after the re-install clears the retired entry" \
     || fail "--check after clearing the retired entry (rc=$rc out=$out)"
 
-# A skill that loses its session_scope is unlinked on the next run.
-mk_skill zz-fixture-proj
-run >/dev/null
-[[ ! -e "$SKILLS_DIR/zz-fixture-proj" ]] \
-    && pass "a skill that drops session_scope is unlinked on re-install" \
-    || fail "a de-scoped skill kept its symlink"
-
 # --------------------------------------------------------------- safety ---
 # A skill directory the user owns is never replaced.
 mkdir -p "$SKILLS_DIR/zz-fixture-both-real"
 mk_skill zz-fixture-both-real both
-out="$(run)"
-[[ "$out" == *"not ours to replace"* && -d "$SKILLS_DIR/zz-fixture-both-real" && ! -L "$SKILLS_DIR/zz-fixture-both-real" ]] \
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && -d "$SKILLS_DIR/zz-fixture-both-real" && ! -L "$SKILLS_DIR/zz-fixture-both-real" ]] \
     && pass "an existing non-symlink skill directory is left alone" \
     || fail "the installer overwrote a user-owned skill directory"
 rm -rf "$SKILLS_DIR/zz-fixture-both-real"
@@ -375,14 +423,10 @@ stale_cmds=$(jq -r --arg oldp "$WSC/" '
     && pass "--force leaves no hook command pointing into the old checkout" \
     || fail "--force left $stale_cmds hook command(s) pointing into $WSC"
 
-bad_links=0
-while IFS= read -r l; do
-    [[ -L "$l" ]] || continue
-    [[ "$(readlink "$l")" == "$WSC2/.claude/skills/"* ]] || bad_links=$((bad_links + 1))
-done < <(ls -1d "$SKILLS_DIR"/* 2>/dev/null)
-[[ "$bad_links" -eq 0 ]] \
-    && pass "--force repoints every skill symlink into the taking-over checkout" \
-    || fail "$bad_links skill symlink(s) still point outside $WSC2"
+n_links=$(find "$SKILLS_DIR" -maxdepth 1 -type l 2>/dev/null | wc -l)
+[[ "$n_links" -eq 0 ]] \
+    && pass "--force leaves no skill symlink into either checkout" \
+    || fail "--force left $n_links skill symlink(s)"
 
 out="$(run2 --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
@@ -393,6 +437,29 @@ out="$(run2 --check)"; rc=$?
 jq -e '[.hooks.PreToolUse[]?.hooks[]?.command] | index("/opt/mine.sh") != null' "$SETTINGS" >/dev/null \
     && pass "--force leaves the user's own untagged hook entry alone" \
     || fail "--force removed the user's own hook entry"
+
+# A legacy link into the OTHER checkout (the one now owning the tier is
+# WSC2; WSC is "another checkout" from its side): --check from WSC2 reports
+# it, and install from WSC2 removes it -- the mechanism is retired
+# everywhere, so there is nothing to preserve it for.
+mkdir -p "$SKILLS_DIR"
+ln -s "$WSC/.claude/skills/zz-fixture-proj" "$SKILLS_DIR/zz-fixture-proj"
+out="$(run2 --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"legacy skill symlink"*"$WSC/.claude/skills/zz-fixture-proj"* ]] \
+    && pass "--check reports a legacy skill symlink into ANOTHER checkout" \
+    || fail "foreign legacy symlink not reported (rc=$rc out=${out:0:300})"
+run2 >/dev/null
+[[ ! -L "$SKILLS_DIR/zz-fixture-proj" ]] \
+    && pass "install removes a legacy skill symlink into another checkout" \
+    || fail "install left a legacy symlink into another checkout"
+# ...but uninstall only removes links into its own checkout.
+ln -s "$WSC/.claude/skills/zz-fixture-proj" "$SKILLS_DIR/zz-fixture-proj"
+run2 --uninstall >/dev/null
+[[ -L "$SKILLS_DIR/zz-fixture-proj" ]] \
+    && pass "uninstall leaves another checkout's legacy symlink for that checkout" \
+    || fail "uninstall removed another checkout's legacy symlink"
+rm -f "$SKILLS_DIR/zz-fixture-proj"
+run2 >/dev/null
 
 # hand it back so the remaining cases run against the original checkout
 run --force >/dev/null
@@ -470,11 +537,11 @@ n_backups=$(ls -1 "$HOMEDIR"/.claude/settings.json.agent-workspace-backup.* 2>/d
     || fail "expected 5 backups after 7 installs, found $n_backups"
 
 # --------------------------------- foreign_skill_link(): negative case ---
-# Round 3: --force repoints a skill symlink that points into ANOTHER
-# agent_workspace checkout, recognised by the .agent/user_tier_scripts.txt
-# three levels up. Nothing tested the other side of that probe: a link the
-# USER made, into a directory that is not a checkout, must survive --force
-# untouched. Without this, loosening the probe would go unnoticed.
+# Install removes a legacy skill symlink into ANOTHER agent_workspace
+# checkout, recognised by the .agent/user_tier_scripts.txt three levels up.
+# The other side of that probe: a link the USER made, into a directory that
+# is not a checkout, must survive install --force untouched, and --check
+# must not report it. Without this, loosening the probe would go unnoticed.
 mk_skill zz-fixture-userlink project
 run >/dev/null   # make sure the skill set is current for this checkout
 
@@ -496,10 +563,11 @@ out="$(run --force)"; rc=$?
 [[ -L "$SKILLS_DIR/zz-fixture-userlink" \
    && "$(readlink "$SKILLS_DIR/zz-fixture-userlink")" == "$USERDIR" ]] \
     && pass "--force leaves a user symlink into a non-checkout directory untouched" \
-    || fail "--force repointed a user symlink (now: $(readlink "$SKILLS_DIR/zz-fixture-userlink" 2>/dev/null))"
-[[ "$out" == *"not ours to replace"* ]] \
-    && pass "--force reports the user's symlink as not ours to replace" \
-    || fail "--force did not report the user's symlink (out=${out:0:300})"
+    || fail "--force removed or repointed a user symlink (now: $(readlink "$SKILLS_DIR/zz-fixture-userlink" 2>/dev/null))"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" != *"zz-fixture-userlink"* ]] \
+    && pass "--check does not report the user's own skill symlink" \
+    || fail "--check reported the user's own symlink (rc=$rc out=${out:0:300})"
 
 rm -f "$SKILLS_DIR/zz-fixture-userlink"
 rm -rf "$WSC/.claude/skills/zz-fixture-userlink"
@@ -572,6 +640,235 @@ out="$(run --check)"; rc=$?
 
 rm -f "$SETTINGS"
 mv "$DOTFILES/claude-settings.json" "$SETTINGS"
+
+# ------------------------------------------- plugin manifest generator ---
+# --generate-plugin-manifest rewrites only the `skills` array, from the same
+# session_scope selection --list-skills prints, and keeps the tracked file's
+# mode (mktemp's 0600 must not leak onto it).
+chmod 644 "$WSC/.claude-plugin/plugin.json"
+out="$(run --generate-plugin-manifest)"; rc=$?
+want="$(run --list-skills | sed 's|^|./.claude/skills/|' | jq -R . | jq -sc .)"
+got="$(jq -c '.skills' "$WSC/.claude-plugin/plugin.json")"
+[[ "$rc" -eq 0 && "$got" == "$want" ]] \
+    && pass "--generate-plugin-manifest writes exactly the session_scope project|both skills" \
+    || fail "generated skills array differs (rc=$rc got=$got want=$want out=$out)"
+[[ "$got" == *"zz-fixture-proj"* && "$got" != *"zz-fixture-ws"* ]] \
+    && pass "the generated array includes a project skill and excludes a workspace one" \
+    || fail "generated array selection is wrong ($got)"
+[[ "$(jq -r .name "$WSC/.claude-plugin/plugin.json")" == "agent-workspace" ]] \
+    && pass "the generator leaves the manifest's other keys alone" \
+    || fail "the generator changed the manifest name"
+[[ "$(stat -c %a "$WSC/.claude-plugin/plugin.json")" == 644 ]] \
+    && pass "the generator keeps the manifest's file mode" \
+    || fail "the generator changed the manifest mode to $(stat -c %a "$WSC/.claude-plugin/plugin.json")"
+if ls "$WSC/.claude-plugin/"plugin.json.* >/dev/null 2>&1; then
+    fail "the generator left a temp file beside the manifest"
+else
+    pass "the generator leaves no temp file behind"
+fi
+
+# ------------------------------------------- plugin, per registered root ---
+# ADR-0017. A sandboxed registry with one root of every verdict: a git repo
+# (enable), a directory in no git repo (enable), a root inside the
+# workspace copy's own git tree (skip -- it sees the bare skills), the same
+# reached through a symlinked path (still skip: pwd -P on both sides), a
+# parent root with an instance (parent enabled, instance skipped), and a
+# root not on disk (a note). The claude stub stands in for the CLI.
+ROOTS="$SANDBOX/roots"
+mkdir -p "$ROOTS/a" "$ROOTS/nogit" "$ROOTS/fam/inst"
+git -C "$ROOTS/a" init -q
+git -C "$WSC" init -q
+mkdir -p "$WSC/projects/inner" "$WSC/projects/inner2"
+ln -s "$WSC" "$SANDBOX/ws-link"
+NOGIT_REAL=true
+git -C "$ROOTS/nogit" rev-parse --show-toplevel >/dev/null 2>&1 && NOGIT_REAL=false
+cat > "$WSC/.agent/projects.local" <<REG
+a        single_project  $ROOTS/a
+nogit    single_project  $ROOTS/nogit
+inner    single_project  $WSC/projects/inner
+inner2   single_project  $SANDBOX/ws-link/projects/inner2
+fam      project         $ROOTS/fam
+fam-i    single_project  $ROOTS/fam/inst  parent=fam
+gone     single_project  $ROOTS/gone
+REG
+WSC_PHYS="$(cd "$WSC" && pwd -P)"
+SLJ=.claude/settings.local.json
+enabled_in() {  # <root>: the plugin enabled from this checkout there?
+    jq -e --arg p "$WSC_PHYS" '.enabledPlugins["agent-workspace@agent-workspace"] == true
+        and .extraKnownMarketplaces["agent-workspace"].source.path == $p' "$1/$SLJ" >/dev/null 2>&1
+}
+stale_enable() {  # <root>: write an enable from this checkout by hand
+    mkdir -p "$1/.claude"
+    jq -n --arg p "$WSC_PHYS" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
+        extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' \
+        > "$1/$SLJ"
+}
+
+: > "$STUB_LOG"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 ]] && pass "install with registered roots exits 0" \
+    || fail "install with registered roots failed (rc=$rc out=${out:0:400})"
+enabled_in "$ROOTS/a" \
+    && pass "the plugin is enabled in a registered git root" \
+    || fail "the plugin is not enabled in root a ($(cat "$ROOTS/a/$SLJ" 2>/dev/null))"
+grep -qxF "$ROOTS/a|plugin marketplace add $WSC_PHYS --scope local" "$STUB_LOG" \
+   && grep -qxF "$ROOTS/a|plugin install agent-workspace@agent-workspace --scope local" "$STUB_LOG" \
+    && pass "enabling runs marketplace add (physical checkout path) and install, local scope, from the root" \
+    || fail "unexpected CLI calls for root a ($(cat "$STUB_LOG"))"
+if [[ "$NOGIT_REAL" == true ]]; then
+    enabled_in "$ROOTS/nogit" \
+        && pass "a root in no git repository is enabled, not skipped" \
+        || fail "the no-git root was not enabled"
+else
+    echo "  SKIP: the sandbox sits inside a git repository; the no-git case cannot be set up here"
+fi
+[[ ! -e "$WSC/projects/inner/$SLJ" && "$out" == *"skipped inner: its git toplevel is this workspace checkout"* ]] \
+    && pass "a root inside the workspace checkout's git tree is skipped" \
+    || fail "the workspace-toplevel root was not skipped (out=${out:0:400})"
+[[ ! -e "$WSC/projects/inner2/$SLJ" && "$out" == *"skipped inner2"* ]] \
+    && pass "the same root reached through a symlinked path is still skipped (pwd -P)" \
+    || fail "the symlinked workspace-toplevel root was not skipped"
+enabled_in "$ROOTS/fam" && [[ ! -e "$ROOTS/fam/inst/$SLJ" && "$out" == *"skipped fam-i: a parent= instance"* ]] \
+    && pass "a parent root is enabled and its parent= instance is skipped" \
+    || fail "parent/instance handling is wrong (out=${out:0:400})"
+[[ "$out" == *"registered root gone is not on disk"* ]] \
+    && pass "a registered root not on disk is a note, not a failure" \
+    || fail "missing root not noted (out=${out:0:400})"
+if grep -q "^$WSC" "$STUB_LOG"; then
+    fail "the CLI ran inside the workspace tree ($(grep "^$WSC" "$STUB_LOG"))"
+else
+    pass "the CLI is never run inside the workspace checkout's tree"
+fi
+
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+    && pass "--check is clean with the plugin enabled in every session root" \
+    || fail "--check after plugin install (rc=$rc out=${out:0:400})"
+
+: > "$STUB_LOG"
+run >/dev/null
+[[ ! -s "$STUB_LOG" ]] \
+    && pass "re-install over enabled roots is a no-op for the CLI (idempotent)" \
+    || fail "re-install ran the CLI again ($(cat "$STUB_LOG"))"
+
+# --check reads JSON only: it must never run the CLI.
+: > "$STUB_LOG"
+rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"plugin not enabled from this checkout in registered root a"* ]] \
+    && pass "--check reports a registered root without the plugin" \
+    || fail "missing-plugin drift not detected (rc=$rc out=${out:0:400})"
+[[ ! -s "$STUB_LOG" ]] \
+    && pass "--check never runs the claude CLI" \
+    || fail "--check ran the CLI ($(cat "$STUB_LOG"))"
+run >/dev/null
+enabled_in "$ROOTS/a" && pass "re-install re-enables the plugin in that root" \
+    || fail "re-install did not re-enable root a"
+
+# A stale enable in a skipped (workspace-toplevel) root.
+stale_enable "$WSC/projects/inner"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"enabled in inner"*"loads twice"* ]] \
+    && pass "--check flags a stale plugin enable in a workspace-toplevel root" \
+    || fail "stale enable in a skipped root not flagged (rc=$rc out=${out:0:400})"
+run >/dev/null
+out="$(run --check)"; rc=$?
+if [[ "$rc" -eq 0 ]] && ! enabled_in "$WSC/projects/inner"; then
+    pass "install removes the stale enable from the skipped root"
+else
+    fail "the stale enable survived install (rc=$rc out=${out:0:400})"
+fi
+
+# The plugin enabled at the workspace checkout itself.
+stale_enable "$WSC"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"enabled in the workspace checkout itself"* ]] \
+    && pass "--check flags the plugin enabled at the workspace checkout itself" \
+    || fail "workspace-root enable not flagged (rc=$rc out=${out:0:400})"
+run >/dev/null
+out="$(run --check)"; rc=$?
+if [[ "$rc" -eq 0 ]] && ! enabled_in "$WSC"; then
+    pass "install removes the plugin from the workspace checkout itself"
+else
+    fail "the workspace-root enable survived install (rc=$rc out=${out:0:400})"
+fi
+
+# A root whose declaration points at ANOTHER checkout: drift, and install
+# replaces the marketplace declaration with this checkout.
+mkdir -p "$SANDBOX/elsewhere"
+jq --arg p "$SANDBOX/elsewhere" '.extraKnownMarketplaces["agent-workspace"].source.path = $p' \
+    "$ROOTS/a/$SLJ" > "$ROOTS/a/$SLJ.new" && mv "$ROOTS/a/$SLJ.new" "$ROOTS/a/$SLJ"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"not enabled from this checkout in registered root a"* ]] \
+    && pass "--check reports a root whose plugin comes from another checkout" \
+    || fail "foreign-source plugin not reported (rc=$rc out=${out:0:400})"
+: > "$STUB_LOG"
+run >/dev/null
+enabled_in "$ROOTS/a" && grep -qxF "$ROOTS/a|plugin marketplace remove agent-workspace --scope local" "$STUB_LOG" \
+    && pass "install drops the other checkout's declaration and enables from this one" \
+    || fail "install did not repoint root a ($(cat "$STUB_LOG"))"
+
+# An unparseable settings.local.json is refused, never overwritten.
+printf '{not json' > "$ROOTS/a/$SLJ"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"not valid JSON -- not enabling"* && "$(cat "$ROOTS/a/$SLJ")" == '{not json' ]] \
+    && pass "install refuses a root with an unparseable settings.local.json and leaves it alone" \
+    || fail "unparseable settings.local.json handled wrong (rc=$rc out=${out:0:400})"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"settings.local.json is not valid JSON"* ]] \
+    && pass "--check reports the unparseable settings.local.json" \
+    || fail "--check missed the unparseable file (rc=$rc)"
+rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+
+# CLI failure, and a CLI that claims success but enabled nothing.
+out="$(STUB_FAIL=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"enabling the agent-workspace plugin in $ROOTS/a failed"* ]] \
+    && pass "a failing claude CLI makes install exit 1, naming the root" \
+    || fail "CLI failure not surfaced (rc=$rc out=${out:0:400})"
+out="$(STUB_NOOP=1 run)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"reported success, but"* ]] \
+    && pass "a CLI that exits 0 without enabling the plugin is caught" \
+    || fail "silent CLI no-op not caught (rc=$rc out=${out:0:400})"
+rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+
+# No claude CLI at all (a Codex-only machine): install notes and exits 0;
+# --check notes and does not call it drift.
+NOCLI_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$STUB_BIN" | paste -sd:)"
+run_nocli() {
+    HOME="$HOMEDIR" PATH="$NOCLI_PATH" AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/no-such-claude" \
+        bash "$INSTALL" "$@" 2>&1
+}
+out="$(run_nocli)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"claude CLI is not on PATH -- not enabling"* && ! -e "$ROOTS/a/$SLJ" ]] \
+    && pass "without the claude CLI, install skips the plugin with a note and exits 0" \
+    || fail "no-CLI install (rc=$rc out=${out:0:400})"
+out="$(run_nocli --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"the claude CLI is not on PATH"* ]] \
+    && pass "without the claude CLI, --check notes the unenabled root and stays green" \
+    || fail "no-CLI --check (rc=$rc out=${out:0:400})"
+run >/dev/null
+
+# --uninstall disables the plugin in every root that has it.
+: > "$STUB_LOG"
+out="$(run --uninstall)"; rc=$?
+if [[ "$rc" -eq 0 ]] && ! enabled_in "$ROOTS/a" && ! enabled_in "$ROOTS/fam" \
+   && [[ "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/a/$SLJ")" == 0 ]]; then
+    pass "--uninstall removes the plugin and its marketplace from every enabled root"
+else
+    fail "--uninstall left the plugin behind (rc=$rc out=${out:0:400})"
+fi
+[[ "$out" == *"$ROOTS/gone is not on disk"* ]] \
+    && pass "--uninstall notes a registered root that is gone, without failing" \
+    || fail "--uninstall did not note the missing root (out=${out:0:400})"
+if grep -q "^$WSC" "$STUB_LOG"; then
+    fail "--uninstall ran the CLI in a skipped workspace-toplevel root"
+else
+    pass "--uninstall does not run the CLI in the skipped workspace-toplevel roots"
+fi
+
+rm -f "${WSC:?}/.agent/projects.local" "${SANDBOX:?}/ws-link"
+rm -rf "${WSC:?}/.git" "${WSC:?}/projects"
+run >/dev/null
 
 echo ""
 echo "test_user_tier_install: $PASS passed, $FAIL failed"

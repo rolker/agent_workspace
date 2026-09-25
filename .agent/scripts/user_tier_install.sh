@@ -20,8 +20,27 @@
 #      retired by #328; --check reports a leftover entry for it as drift.)
 #   4. Permission allow-rules for the promoted scripts in
 #      .agent/user_tier_scripts.txt, by absolute path.
-#   5. Symlinks in ~/.claude/skills/ for every skill whose SKILL.md declares
-#      `session_scope: project` or `session_scope: both`.
+#   5. The agent-workspace Claude Code plugin (ADR-0017), enabled at local
+#      scope in every registered session root: the workspace skills whose
+#      SKILL.md declares `session_scope: project` or `both`, namespaced as
+#      /agent-workspace:<skill> so a project's own same-named skill keeps its
+#      bare name (#345). Enabling runs `claude plugin marketplace add` and
+#      `claude plugin install --scope local` from the root, which writes the
+#      root's gitignored .claude/settings.local.json -- the one scoped
+#      exception to ADR-0016 section 2 that ADR-0017 records. Skipped:
+#        - a root whose git toplevel IS this workspace checkout (compared as
+#          `pwd -P` forms): a session there already sees the bare skills by
+#          directory walk-up, and enabling would double every skill and write
+#          the workspace's own settings.local.json;
+#        - a `parent=` instance: its parent root is the session unit, and the
+#          parent is what gets enabled;
+#        - a root not on disk (a note, not an error);
+#        - everything, with a note, when the `claude` CLI is not on PATH
+#          (a Codex-only machine has no plugins to enable).
+#      A root that is in no git repository at all is enabled.
+#   (Before ADR-0017, item 5 was a symlink per skill in ~/.claude/skills/.
+#   Those links were global to the machine and shadowed a project's own
+#   same-named skills. Install removes any left behind; --check reports them.)
 #
 # Every entry this script writes into ~/.claude/settings.json is tagged
 # "_agent_workspace": "<this checkout>", which is what makes --check able to
@@ -36,21 +55,44 @@
 #   --check --require    also exit 1 when it is not installed, for a machine
 #                        that expects it.
 #   --uninstall          remove every entry tagged with this checkout.
-#   --list-skills        print the skills that would be symlinked, one per
-#                        line (what `make generate-user-tier-skills` shows).
-#   --sync-skills        reconcile ~/.claude/skills/ only.
+#   --list-skills        print the skills the plugin exposes (session_scope
+#                        project|both), one per line.
+#   --generate-plugin-manifest
+#                        rewrite the `skills` array of .claude-plugin/
+#                        plugin.json from that list (what `make
+#                        generate-user-tier-skills` runs). Touches only the
+#                        tracked manifest in this checkout.
 #
 # Exit codes: 0 ok; 1 drift / failure; 2 usage; 3 missing dependency (jq).
 #
-# Scope: this script writes ONLY inside $HOME/.claude. It never edits the
-# tracked .claude/settings.json in the checkout, which stays exactly as it
-# is (Ask-First).
+# Scope: this script writes inside $HOME/.claude, plus -- only through the
+# `claude plugin` CLI, never directly -- each enabled root's gitignored
+# .claude/settings.local.json (item 5; the CLI also keeps its own plugin
+# bookkeeping under ~/.claude/plugins/). It never edits the tracked
+# .claude/settings.json in the checkout, which stays exactly as it is
+# (Ask-First).
+#
+# Test seam: AGENT_WORKSPACE_CLAUDE_BIN names the claude binary (default
+# `claude`), so the test suite can point it at a stub that records argv and
+# never runs the real CLI.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# The physical form, for every comparison against a path git or the claude
+# CLI reports (both resolve symlinks) and for the marketplace source itself.
+WS_PHYS="$(cd "$WS_ROOT" && pwd -P)"
 MANIFEST="$WS_ROOT/.agent/user_tier_scripts.txt"
+PLUGIN_MANIFEST="$WS_ROOT/.claude-plugin/plugin.json"
+
+# shellcheck source=_project_registry.sh
+source "$SCRIPT_DIR/_project_registry.sh"
+
+PLUGIN_NAME="agent-workspace"
+MARKETPLACE_NAME="agent-workspace"
+PLUGIN_ID="$PLUGIN_NAME@$MARKETPLACE_NAME"
+CLAUDE_BIN="${AGENT_WORKSPACE_CLAUDE_BIN:-claude}"
 
 CLAUDE_DIR="${HOME}/.claude"
 SETTINGS="$CLAUDE_DIR/settings.json"
@@ -85,13 +127,13 @@ for arg in "$@"; do
         --force)       FORCE=true ;;
         --uninstall)   set_mode uninstall ;;
         --list-skills) set_mode list-skills ;;
-        --sync-skills) set_mode sync-skills ;;
+        --generate-plugin-manifest) set_mode generate-plugin-manifest ;;
         -h|--help)
-            sed -n '2,45p' "${BASH_SOURCE[0]}"
+            sed -n '2,/^set -uo pipefail/p' "${BASH_SOURCE[0]}" | sed '$d'
             exit 0
             ;;
         *)
-            echo "usage: user_tier_install.sh [--force] | --check [--require] | --uninstall | --list-skills | --sync-skills" >&2
+            echo "usage: user_tier_install.sh [--force] | --check [--require] | --uninstall | --list-skills | --generate-plugin-manifest" >&2
             exit 2
             ;;
     esac
@@ -107,13 +149,13 @@ fi
 # it up front made `make validate` exit 3 on a jq-less machine -- the exact
 # case this script's --check is supposed to keep green.
 case "$MODE" in
-    install|check|uninstall)
+    install|check|uninstall|generate-plugin-manifest)
         if ! command -v jq >/dev/null 2>&1; then
             if [[ "$MODE" == "check" ]]; then
                 echo "agent_workspace user tier: jq not installed -- cannot check (install jq to enable this check)"
                 exit 0
             fi
-            echo "ERROR: jq is required to merge ~/.claude/settings.json" >&2
+            echo "ERROR: jq is required (settings.json merge, plugin manifest)" >&2
             exit 3
         fi
         ;;
@@ -150,7 +192,7 @@ selected_skills() {
         case "$scope" in
             project|both) echo "$name" ;;
         esac
-    done
+    done | LC_ALL=C sort
 }
 
 # The permission rules this checkout owns, as a JSON array.
@@ -298,84 +340,187 @@ if [[ "$MODE" == "list-skills" ]]; then
     exit 0
 fi
 
-# Does <link> point into a DIFFERENT agent_workspace checkout? Recognised by
-# the manifest file that only a workspace checkout has. Used under --force:
-# a takeover that moves $WS_ROOT but leaves every skill symlink pointing into
-# the old checkout is worse than not taking over at all, because the root file
-# and the skills then disagree.
+# The plugin's `skills` array, generated from session_scope frontmatter so
+# the manifest is never hand-maintained. An array of per-skill paths, not the
+# whole .claude/skills directory: workspace-scoped skills call workspace
+# scripts cwd-relative and would fail (or run a project's same-named script)
+# from a project cwd, and the generated /make_* skills are gitignored
+# per-machine files that must not ship.
+if [[ "$MODE" == "generate-plugin-manifest" ]]; then
+    if [[ ! -f "$PLUGIN_MANIFEST" ]] || ! jq -e . "$PLUGIN_MANIFEST" >/dev/null 2>&1; then
+        echo "ERROR: $PLUGIN_MANIFEST is missing or not valid JSON" >&2
+        exit 1
+    fi
+    skills_json="$(selected_skills | sed 's|^|./.claude/skills/|' | jq -R . | jq -s .)"
+    tmp="$(mktemp "$PLUGIN_MANIFEST.XXXXXX")" || exit 1
+    # Copied back over the original rather than renamed onto it: mktemp's
+    # 0600 mode would otherwise replace the tracked file's.
+    if jq --argjson s "$skills_json" '.skills = $s' "$PLUGIN_MANIFEST" > "$tmp" \
+       && cat "$tmp" > "$PLUGIN_MANIFEST"; then
+        rm -f "$tmp"
+    else
+        rm -f "$tmp"
+        echo "ERROR: could not rewrite $PLUGIN_MANIFEST" >&2
+        exit 1
+    fi
+    echo "Wrote $(jq length <<< "$skills_json") skill path(s) to $PLUGIN_MANIFEST"
+    exit 0
+fi
+
+# ------------------------------------------------- legacy skill symlinks ---
+# Before ADR-0017 the user tier shipped skills as symlinks in
+# ~/.claude/skills/. They are global to the machine and shadow a project's
+# own same-named skills (#345), so the mechanism is retired: install removes
+# every such link, --check reports any left behind, and nothing creates them.
+#
+# Does <link> resolve into an agent_workspace checkout OTHER than this one?
+# Recognised by the manifest file that only a workspace checkout has.
 foreign_skill_link() {  # <link path>
     local tgt root
-    [[ "$FORCE" == true ]] || return 1
     tgt="$(readlink -f "$1" 2>/dev/null)" || return 1
     [[ -n "$tgt" ]] || return 1
-    # <checkout>/.claude/skills/<name> -> walk up three levels
-    root="$(cd "$tgt/../../.." 2>/dev/null && pwd -P)" || return 1
+    # <checkout>/.claude/skills/<name>: lexical, so a dangling link whose
+    # skill was since deleted is still recognised.
+    [[ "$(basename "$(dirname "$tgt")")" == "skills" ]] || return 1
+    root="$(dirname "$(dirname "$(dirname "$tgt")")")"
     [[ -f "$root/.agent/user_tier_scripts.txt" ]] || return 1
-    [[ "$root" != "$WS_ROOT" ]] || return 1
+    [[ "$root" != "$WS_PHYS" && "$root" != "$WS_ROOT" ]] || return 1
     return 0
 }
 
-# ------------------------------------------------------------ skill sync ---
-sync_skills() {  # prints what it changed
-    local name target link changed=0
-    mkdir -p "$SKILLS_DIR"
-    # Add or repair.
-    while IFS= read -r name; do
-        [[ -z "$name" ]] && continue
-        target="$WS_ROOT/.claude/skills/$name"
-        link="$SKILLS_DIR/$name"
-        if [[ -L "$link" ]]; then
-            if [[ "$(readlink "$link")" == "$target" ]]; then
-                continue
-            fi
-            if [[ "$(readlink "$link")" == "$WS_ROOT"/* ]] || foreign_skill_link "$link"; then
-                ln -sfn "$target" "$link"
-                echo "  repaired skill symlink: $name"
-                changed=1
-            else
-                echo "  SKIPPED skill $name: ~/.claude/skills/$name is a symlink to something else ($(readlink "$link")) -- not ours to replace"
-            fi
-        elif [[ -e "$link" ]]; then
-            echo "  SKIPPED skill $name: ~/.claude/skills/$name exists and is not a symlink -- not ours to replace"
-        else
-            ln -s "$target" "$link"
-            echo "  linked skill: $name"
-            changed=1
-        fi
-    done < <(selected_skills)
-
-    # Remove stale links this checkout owns but that are no longer selected.
-    # The selection is captured ONCE into a variable rather than re-run into
-    # `grep -q` per link: under `set -o pipefail`, grep -q exits on its first
-    # match and SIGPIPEs the producer, so the pipeline reports 141 and the
-    # first matching skill looks unselected -- and gets deleted.
-    local base selected
-    selected="$(selected_skills)"
-    for link in "$SKILLS_DIR"/*; do
-        [[ -L "$link" ]] || continue
-        # Ours, or -- under --force -- another checkout's, which the takeover
-        # is responsible for clearing out: a skill that this checkout does not
-        # select must not survive as a link into the checkout we just took the
-        # tier away from.
-        if [[ "$(readlink "$link")" != "$WS_ROOT/.claude/skills/"* ]] \
-           && ! foreign_skill_link "$link"; then
-            continue
-        fi
-        base="$(basename "$link")"
-        if ! grep -qxF "$base" <<< "$selected"; then
-            rm -f "$link"
-            echo "  removed stale skill symlink: $base"
-            changed=1
-        fi
-    done
-    return "$changed"
+# Does <link> point into THIS checkout's skills?
+own_skill_link() {  # <link path>
+    local raw tgt
+    raw="$(readlink "$1" 2>/dev/null)" || return 1
+    [[ "$raw" == "$WS_ROOT/.claude/skills/"* || "$raw" == "$WS_PHYS/.claude/skills/"* ]] && return 0
+    tgt="$(readlink -f "$1" 2>/dev/null)" || return 1
+    [[ "$tgt" == "$WS_PHYS/.claude/skills/"* ]]
 }
 
-if [[ "$MODE" == "sync-skills" ]]; then
-    sync_skills || true
-    echo "Skill symlinks reconciled in $SKILLS_DIR"
-    exit 0
-fi
+# Every legacy workspace skill symlink, this checkout's or another's.
+legacy_skill_links() {
+    local link
+    for link in "$SKILLS_DIR"/*; do
+        [[ -L "$link" ]] || continue
+        if own_skill_link "$link" || foreign_skill_link "$link"; then
+            printf '%s\n' "$link"
+        fi
+    done
+}
+
+# ---------------------------------------------------- plugin, per root ---
+have_claude() { command -v "$CLAUDE_BIN" >/dev/null 2>&1; }
+
+# One line per registered entry: <name>\t<path>\t<verdict>, where verdict is
+#   enable          a session root that gets the plugin
+#   skip-workspace  its git toplevel is this workspace checkout
+#   skip-instance   a parent= instance (the parent root is enabled instead)
+#   missing         the path does not exist on disk
+# A malformed registry line is reported by the registry parser on stderr and
+# dropped; the valid lines are still returned.
+plugin_roots() {
+    local entries name _type path fields top top_phys
+    entries="$(registry_entries_full "$WS_ROOT")" || true
+    [[ -n "$entries" ]] || return 0
+    while IFS=$'\t' read -r name _type path fields; do
+        [[ -z "$name" ]] && continue
+        if [[ -n "$(_registry_field_of "$fields" parent)" ]]; then
+            printf '%s\t%s\t%s\n' "$name" "$path" skip-instance
+        elif [[ ! -d "$path" ]]; then
+            printf '%s\t%s\t%s\n' "$name" "$path" missing
+        elif top="$(git -C "$path" rev-parse --show-toplevel 2>/dev/null)" \
+             && top_phys="$(cd "$top" 2>/dev/null && pwd -P)" \
+             && [[ "$top_phys" == "$WS_PHYS" ]]; then
+            printf '%s\t%s\t%s\n' "$name" "$path" skip-workspace
+        else
+            # Includes a root in no git repository at all: nothing there
+            # sees the workspace's skills, so it is a session root like any.
+            printf '%s\t%s\t%s\n' "$name" "$path" enable
+        fi
+    done <<< "$entries"
+}
+
+# The plugin's state in <root>'s .claude/settings.local.json:
+#   enabled      enabled, and the marketplace source is this checkout
+#   stale        enabled or declared, but not both, or sourced elsewhere
+#   absent       neither
+#   unparseable  the file exists and is not JSON
+plugin_state() {  # <root>
+    local f="$1/.claude/settings.local.json" enabled src src_phys=""
+    [[ -f "$f" ]] || { echo absent; return 0; }
+    jq -e . "$f" >/dev/null 2>&1 || { echo unparseable; return 0; }
+    enabled="$(jq -r --arg id "$PLUGIN_ID" '.enabledPlugins[$id] // false' "$f")"
+    src="$(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path // ""' "$f")"
+    [[ -n "$src" ]] && src_phys="$(cd "$src" 2>/dev/null && pwd -P)"
+    if [[ "$enabled" == true && "$src_phys" == "$WS_PHYS" ]]; then
+        echo enabled
+    elif [[ "$enabled" == true || -n "$src" ]]; then
+        echo stale
+    else
+        echo absent
+    fi
+}
+
+# The marketplace source <root> currently declares, or empty.
+plugin_source() {  # <root>
+    local f="$1/.claude/settings.local.json"
+    [[ -f "$f" ]] || return 0
+    jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path // ""' "$f" 2>/dev/null
+}
+
+# Enable the plugin in one root. Idempotent: an already-enabled root is left
+# alone, without running the CLI at all. Also the entry point the
+# registration flow (#332) re-runs for a newly registered root, by re-running
+# this installer. Returns 1 on a CLI failure or an unparseable settings file.
+enable_plugin_in_root() {  # <root>
+    local root="$1" state
+    state="$(plugin_state "$root")"
+    case "$state" in
+        enabled)
+            echo "  plugin already enabled: $root"
+            return 0 ;;
+        unparseable)
+            echo "  ERROR: $root/.claude/settings.local.json is not valid JSON -- not enabling the plugin there" >&2
+            return 1 ;;
+    esac
+    if ! have_claude; then
+        echo "  NOTE: the claude CLI is not on PATH -- not enabling the $PLUGIN_NAME plugin in $root"
+        return 0
+    fi
+    # A declaration pointing at another checkout would make `marketplace add`
+    # refuse the name; drop it first so the new source takes its place.
+    if [[ -n "$(plugin_source "$root")" && "$state" == stale ]]; then
+        (cd "$root" && "$CLAUDE_BIN" plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
+    fi
+    if ! (cd "$root" && "$CLAUDE_BIN" plugin marketplace add "$WS_PHYS" --scope local >/dev/null) \
+       || ! (cd "$root" && "$CLAUDE_BIN" plugin install "$PLUGIN_ID" --scope local >/dev/null); then
+        echo "  ERROR: enabling the $PLUGIN_NAME plugin in $root failed (claude plugin exited non-zero)" >&2
+        return 1
+    fi
+    if [[ "$(plugin_state "$root")" != enabled ]]; then
+        echo "  ERROR: the claude CLI reported success, but $root/.claude/settings.local.json does not show $PLUGIN_ID enabled from $WS_PHYS" >&2
+        return 1
+    fi
+    echo "  enabled the $PLUGIN_NAME plugin in $root"
+}
+
+# Disable and undeclare the plugin in one root (best-effort CLI calls; the
+# resulting file state is what decides success).
+disable_plugin_in_root() {  # <root>
+    local root="$1"
+    if ! have_claude; then
+        echo "  NOTE: the claude CLI is not on PATH -- cannot remove the $PLUGIN_NAME plugin from $root; run \`claude plugin uninstall $PLUGIN_ID --scope local\` there"
+        return 0
+    fi
+    (cd "$root" && "$CLAUDE_BIN" plugin uninstall "$PLUGIN_ID" --scope local >/dev/null 2>&1) || true
+    (cd "$root" && "$CLAUDE_BIN" plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
+    if [[ "$(plugin_state "$root")" == absent ]]; then
+        echo "  removed the $PLUGIN_NAME plugin from $root"
+        return 0
+    fi
+    echo "  ERROR: could not remove the $PLUGIN_NAME plugin from $root (see its .claude/settings.local.json)" >&2
+    return 1
+}
 
 # ------------------------------------------------------------- uninstall ---
 if [[ "$MODE" == "uninstall" ]]; then
@@ -387,12 +532,30 @@ if [[ "$MODE" == "uninstall" ]]; then
         && echo "  removed $ROOT_FILE"
     [[ -L "$SESSION_HOOK_LINK" ]] && rm -f "$SESSION_HOOK_LINK" \
         && echo "  removed $SESSION_HOOK_LINK"
+    # Legacy skill symlinks into THIS checkout only; another checkout's are
+    # that checkout's to remove.
     for link in "$SKILLS_DIR"/*; do
         [[ -L "$link" ]] || continue
-        [[ "$(readlink "$link")" == "$WS_ROOT/.claude/skills/"* ]] || continue
+        own_skill_link "$link" || continue
         rm -f "$link"
-        echo "  removed skill symlink: $(basename "$link")"
+        echo "  removed legacy skill symlink: $(basename "$link")"
     done
+    # The plugin, from every registered root that has it enabled or
+    # declared -- skipped roots included, so a stale enable goes too.
+    uninstall_rc=0
+    while IFS=$'\t' read -r _name root _verdict; do
+        [[ -z "$root" ]] && continue
+        if [[ ! -d "$root" ]]; then
+            echo "  NOTE: registered root $root is not on disk -- nothing to remove there"
+            continue
+        fi
+        case "$(plugin_state "$root")" in
+            enabled|stale) disable_plugin_in_root "$root" || uninstall_rc=1 ;;
+        esac
+    done < <(plugin_roots)
+    case "$(plugin_state "$WS_ROOT")" in
+        enabled|stale) disable_plugin_in_root "$WS_ROOT" || uninstall_rc=1 ;;
+    esac
     if [[ -f "$SETTINGS" ]]; then
         require_parseable_settings || exit 1
         backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
@@ -410,6 +573,10 @@ if [[ "$MODE" == "uninstall" ]]; then
     # Only now: the rewrite above reads this file to find rules written by an
     # earlier manifest generation, so removing it first would orphan them.
     [[ -f "$RULES_FILE" ]] && rm -f "$RULES_FILE" && echo "  removed $RULES_FILE"
+    if [[ "$uninstall_rc" -ne 0 ]]; then
+        echo "agent_workspace user tier removed, except the plugin in the root(s) above." >&2
+        exit 1
+    fi
     echo "agent_workspace user tier removed."
     exit 0
 fi
@@ -546,27 +713,48 @@ if [[ "$MODE" == "check" ]]; then
         note "$n allow-rule(s) for this checkout are no longer in the manifest (re-run the installer, or --uninstall to clear them)"
     fi
 
-    # Skills.
-    while IFS= read -r name; do
-        [[ -z "$name" ]] && continue
-        link="$SKILLS_DIR/$name"
-        if [[ ! -L "$link" ]]; then
-            note "skill not linked: $name"
-        elif [[ "$(readlink "$link")" != "$WS_ROOT/.claude/skills/$name" ]]; then
-            note "stale skill symlink: $name -> $(readlink "$link")"
-        fi
-    done < <(selected_skills)
+    # Legacy skill symlinks: any link left in ~/.claude/skills/ that resolves
+    # into an agent_workspace checkout (this one or another) is drift -- the
+    # mechanism ADR-0017 retired, which shadows a project's own skills.
+    while IFS= read -r link; do
+        [[ -z "$link" ]] && continue
+        note "legacy skill symlink (retired by ADR-0017; re-run the installer to remove it): $link -> $(readlink "$link")"
+    done < <(legacy_skill_links)
 
-    # Captured once -- see sync_skills() for why a per-link pipeline into
-    # `grep -q` is wrong under pipefail.
-    selected_now="$(selected_skills)"
-    for link in "$SKILLS_DIR"/*; do
-        [[ -L "$link" ]] || continue
-        [[ "$(readlink "$link")" == "$WS_ROOT/.claude/skills/"* ]] || continue
-        base="$(basename "$link")"
-        grep -qxF "$base" <<< "$selected_now" \
-            || note "skill symlink is no longer selected (session_scope changed?): $base"
-    done
+    # The plugin, per registered root. JSON reads only -- no CLI call.
+    while IFS=$'\t' read -r name root verdict; do
+        [[ -z "$name" ]] && continue
+        state=""
+        [[ -d "$root" ]] && state="$(plugin_state "$root")"
+        case "$verdict" in
+            enable)
+                case "$state" in
+                    enabled) ;;
+                    unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
+                    *)
+                        if have_claude; then
+                            note "$PLUGIN_NAME plugin not enabled from this checkout in registered root $name ($root)"
+                        else
+                            echo "  note: $PLUGIN_NAME plugin not enabled in $name ($root); the claude CLI is not on PATH, so there is nothing to enable it with"
+                        fi ;;
+                esac ;;
+            skip-workspace)
+                case "$state" in
+                    enabled|stale) note "$PLUGIN_NAME plugin is enabled in $name ($root), whose git toplevel is this workspace checkout -- it already sees the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
+                esac ;;
+            missing)
+                echo "  note: registered root $name is not on disk ($root) -- plugin not checked there" ;;
+        esac
+    done < <(plugin_roots)
+
+    # The workspace checkout itself: its sessions see the bare skills by
+    # directory walk-up, so the plugin there doubles every one of them. The
+    # installer never enables it there; a `claude plugin install` run by hand
+    # (or from a p11-shape root, whose local scope may resolve here) would.
+    case "$(plugin_state "$WS_ROOT")" in
+        enabled|stale) note "$PLUGIN_NAME plugin is enabled in the workspace checkout itself ($WS_ROOT/.claude/settings.local.json) -- its sessions already see the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
+        unparseable) note "$WS_ROOT/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
+    esac
 
     if [[ "$drift" -eq 0 ]]; then
         echo "agent_workspace user tier: installed and current ($WS_ROOT)"
@@ -601,7 +789,7 @@ if [[ -n "${other_root:-}" && "$FORCE" == true ]]; then
     echo "  --force: taking the user tier over from $other_root"
 fi
 
-mkdir -p "$CLAUDE_DIR" "$HOOKS_DIR" "$SKILLS_DIR"
+mkdir -p "$CLAUDE_DIR" "$HOOKS_DIR"
 
 backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
 
@@ -675,8 +863,42 @@ read_settings | jq \
 ' | write_settings || { echo "ERROR: failed to write $SETTINGS" >&2; exit 1; }
 echo "  merged hook entries and $(allow_rules_json | jq 'length') allow-rules into $SETTINGS"
 
-# 5. skills
-sync_skills || true
+# 5. retire legacy skill symlinks (ADR-0017), this checkout's or another's
+while IFS= read -r link; do
+    [[ -z "$link" ]] && continue
+    rm -f "$link"
+    echo "  removed legacy skill symlink: $(basename "$link")"
+done < <(legacy_skill_links)
+
+# 6. the plugin, per registered root
+plugin_rc=0
+while IFS=$'\t' read -r name root verdict; do
+    [[ -z "$name" ]] && continue
+    case "$verdict" in
+        enable)
+            enable_plugin_in_root "$root" || plugin_rc=1 ;;
+        skip-workspace)
+            echo "  skipped $name: its git toplevel is this workspace checkout, which already provides the skills"
+            case "$(plugin_state "$root")" in
+                enabled|stale) disable_plugin_in_root "$root" || plugin_rc=1 ;;
+            esac ;;
+        skip-instance)
+            echo "  skipped $name: a parent= instance; its parent root gets the plugin" ;;
+        missing)
+            echo "  NOTE: registered root $name is not on disk ($root) -- plugin not enabled there" ;;
+    esac
+done < <(plugin_roots)
+# ...and never in the workspace checkout itself (see --check).
+case "$(plugin_state "$WS_ROOT")" in
+    enabled|stale)
+        echo "  the $PLUGIN_NAME plugin is enabled in the workspace checkout itself, where every skill would load twice -- removing it"
+        disable_plugin_in_root "$WS_ROOT" || plugin_rc=1 ;;
+esac
+if [[ "$plugin_rc" -ne 0 ]]; then
+    echo "" >&2
+    echo "agent_workspace user tier installed from $WS_ROOT, but enabling the plugin failed in the root(s) above." >&2
+    exit 1
+fi
 
 echo ""
 echo "agent_workspace user tier installed from $WS_ROOT"
