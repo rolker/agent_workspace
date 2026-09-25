@@ -12,9 +12,11 @@
 # It works on a COPY of the checkout whose plugin and marketplace are renamed
 # `aw-accept`, so the machine-level plugin records the CLI keeps under
 # ~/.claude/plugins/ never gain or lose an `agent-workspace` entry. On exit
-# it removes both records it adds and the copy of the plugin the CLI leaves
+# it removes both records it adds, the copy of the plugin the CLI leaves
 # in ~/.claude/plugins/cache/aw-accept/ (which `plugin uninstall` does not
-# delete; Claude Code only marks it orphaned). Cases, each asserting on
+# delete; Claude Code only marks it orphaned), and the ~/.claude/projects/
+# directory (transcripts, memory) each session leaves for its cwd -- only
+# those named from this run's own sandbox path. Cases, each asserting on
 # what a real session reports:
 #   A  collision: in a repo with its own plan-task, bare /plan-task is still
 #      the project's, and /aw-accept:<skill> reaches the plugin;
@@ -61,7 +63,10 @@ FAIL=0
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
 
-SANDBOX="$(mktemp -d)"
+# A distinctive mktemp name: cleanup() matches the session directories it
+# removes by this run's sandbox path, so the random suffix is what keeps
+# the match to this run.
+SANDBOX="$(mktemp -d -t aw-plugin-accept.XXXXXXXXXX)"
 SANDBOX="$(cd "$SANDBOX" && pwd -P)"
 W="$SANDBOX/ws"       # the workspace copy (marketplace aw-accept)
 P="$SANDBOX/proj"     # a project with its own plan-task
@@ -77,6 +82,24 @@ cli_plugin() { claude plugin "$@" </dev/null; }
 # Every root the suite enables the plugin in, recorded BEFORE the CLI runs
 # there, so a half-finished enable is still undone on exit.
 ENABLED_ROOTS=()
+# session_dirs <projects dir> <sandbox>: the Claude Code project directories
+# this run's sessions left. Claude Code names one per session cwd, from the
+# path with every character but [A-Za-z0-9] turned into `-`. Matched
+# strictly: exactly the sandbox's own encoded name, or it followed by `-`
+# (a path below it) -- never a broader glob -- and only for a sandbox with
+# this suite's mktemp name, whose random suffix makes the name this run's.
+# A name Claude Code shortened (very long paths) does not match, and stays.
+session_dirs() {
+    local enc d
+    [[ "$(basename "${2:?}")" == aw-plugin-accept.?* ]] || return 0
+    enc="$(printf '%s' "$2" | sed 's/[^A-Za-z0-9]/-/g')"
+    for d in "$1"/*; do
+        [[ -d "$d" ]] || continue
+        case "$(basename "$d")" in
+            "$enc"|"$enc"-*) printf '%s\n' "$d" ;;
+        esac
+    done
+}
 cleanup() {
     local r
     for r in ${ENABLED_ROOTS[@]+"${ENABLED_ROOTS[@]}"}; do
@@ -89,6 +112,10 @@ cleanup() {
     if [[ ${#ENABLED_ROOTS[@]} -gt 0 ]]; then
         rm -rf "${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/cache/${NAME:?}"
     fi
+    local d
+    while IFS= read -r d; do
+        rm -rf "$d"
+    done < <(session_dirs "${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/projects" "$SANDBOX")
     rm -rf "${SANDBOX:?}"
 }
 trap cleanup EXIT

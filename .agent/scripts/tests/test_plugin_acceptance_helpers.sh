@@ -10,6 +10,9 @@
 # What it pins: a negative case ("this name does NOT reach the probe") is
 # evidence only when the session itself ran, so probe() must report a
 # timed-out, failed or silent session as a failure, never as "not reached".
+# And cleanup(), which deletes under the real ~/.claude when the live suite
+# runs: only the suite's own plugin cache entry and the session directories
+# named from its own sandbox path.
 #
 # Run: bash .agent/scripts/tests/test_plugin_acceptance_helpers.sh
 
@@ -105,6 +108,54 @@ else
             [[ -d "$cache/aw-accept" ]] \
                 && pass "cleanup leaves the plugin cache alone when the suite enabled nothing" \
                 || fail "cleanup removed the aw-accept cache without having enabled anything"
+        fi
+    done
+fi
+
+# cleanup() also removes the ~/.claude/projects directories the sessions
+# left, and it deletes under the real ~/.claude, so pin that it removes
+# exactly those named from this run's sandbox path (the path itself, and
+# paths below it) and nothing else: not a name that merely starts with it,
+# not another run's, not an unrelated one -- and nothing at all for a
+# sandbox without the suite's mktemp name.
+if [[ "$cleanup_def" != *"session_dirs() {"* ]]; then
+    fail "could not find session_dirs() in $SUITE"
+else
+    enc() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
+    for kind in suite plain; do
+        fake_home="$SANDBOX/home-sessions-$kind"
+        proj="$fake_home/.claude/projects"
+        case "$kind" in
+            suite) run_sb="$SANDBOX/aw-plugin-accept.Ab3dEf9HiJ" ;;
+            plain) run_sb="$SANDBOX/tmp.Ab3dEf9HiJ" ;;
+        esac
+        mkdir -p "$run_sb"
+        e="$(enc "$run_sb")"
+        other="$(enc "$SANDBOX/aw-plugin-accept.ZZ9yX8wV7u")"
+        mine=("$e" "$e-proj" "$e-proj-worktrees-wt" "$e-famg-inst")
+        keep=("${e}X" "${e}0-proj" "$other" "$other-proj" "-home-user-project")
+        for d in "${mine[@]}" "${keep[@]}"; do mkdir -p "$proj/$d/memory"; done
+        # shellcheck disable=SC2034  # NAME and ENABLED_ROOTS are read by the eval'd cleanup()
+        (
+            HOME="$fake_home"
+            unset CLAUDE_CONFIG_DIR
+            NAME=aw-accept
+            SANDBOX="$run_sb"
+            eval "$cleanup_def"
+            ENABLED_ROOTS=()
+            cleanup
+        )
+        left_mine=0; left_keep=0
+        for d in "${mine[@]}"; do [[ -e "$proj/$d" ]] && left_mine=$((left_mine + 1)); done
+        for d in "${keep[@]}"; do [[ -d "$proj/$d" ]] && left_keep=$((left_keep + 1)); done
+        if [[ "$kind" == suite ]]; then
+            [[ "$left_mine" -eq 0 && "$left_keep" -eq "${#keep[@]}" ]] \
+                && pass "cleanup removes exactly the session directories named from its sandbox path" \
+                || fail "cleanup session dirs: $left_mine of ${#mine[@]} own left, $left_keep of ${#keep[@]} others kept ($(ls "$proj" | tr '\n' ' '))"
+        else
+            [[ "$left_mine" -eq "${#mine[@]}" && "$left_keep" -eq "${#keep[@]}" ]] \
+                && pass "cleanup removes no session directory for a sandbox without the suite's mktemp name" \
+                || fail "cleanup removed session dirs for a plain sandbox ($(ls "$proj" | tr '\n' ' '))"
         fi
     done
 fi
