@@ -32,7 +32,9 @@
 #      rule then yields `<plugin>:` in the plugin session and empty bare;
 #   G  parent= instance: enabled at the parent only, sessions in the
 #      instance (and a git repo inside it) still reach the plugin -- the
-#      assumption behind the installer's skip-instance;
+#      assumption behind the installer's skip-instance; checked for a
+#      plain-directory parent and for a parent that is itself a git repo
+#      with the instance a separate repo, or a worktree, inside it;
 #   H  a second root: the same marketplace added and installed from another
 #      project root (the per-root path the installer and #332 take) works
 #      there and leaves the first root working.
@@ -65,6 +67,7 @@ W="$SANDBOX/ws"       # the workspace copy (marketplace aw-accept)
 P="$SANDBOX/proj"     # a project with its own plan-task
 U="$SANDBOX/other"    # an unrelated repo
 FAM="$SANDBOX/fam"    # a parent= root: a plain directory grouping instances
+FAMG="$SANDBOX/famg"  # a parent= root that is itself a git repo
 P2="$SANDBOX/proj2"   # a second project root, enabled after the first
 
 # Every `claude plugin` call, stdin closed, so a prompt the CLI might show
@@ -313,6 +316,28 @@ if enable_in "$FAM"; then
     fi
 else
     fail "G: could not enable the $NAME plugin in the parent root"
+fi
+# The likely real shape: the parent is a git repo of its own, and the
+# instance inside it is a separate git repo (its own toplevel) or a
+# worktree of the parent. A session's project root is then the instance's
+# toplevel, not the parent's, so this is the case that decides whether
+# skip-instance holds.
+mkdir -p "$FAMG/inst"
+git -C "$FAMG" init -q
+git -C "$FAMG" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$FAMG/inst" init -q
+git -C "$FAMG" worktree add -q "$FAMG/wt" 2>/dev/null
+if enable_in "$FAMG"; then
+    probe "$FAMG/inst" "/$NAME:zz-probe"; g_repo=$?
+    g_repo_said="$(probe_said "$g_repo")"
+    probe "$FAMG/wt" "/$NAME:zz-probe"; g_wt=$?
+    if [[ "$g_repo" -eq "$PROBE_REACHED" && "$g_wt" -eq "$PROBE_REACHED" ]]; then
+        pass "G: in a git-repo parent, a separate-repo instance and a worktree instance see the parent's plugin"
+    else
+        fail "G: git-repo parent (separate-repo instance: $g_repo_said; worktree instance: $(probe_said "$g_wt"))"
+    fi
+else
+    fail "G: could not enable the $NAME plugin in the git-repo parent root"
 fi
 
 # ------------------------------------------------- H: a second root ---
