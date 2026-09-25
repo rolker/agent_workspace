@@ -57,7 +57,9 @@ mkdir -p "$HOMEDIR"
 # (a CLI that stops for a prompt would read exactly that). `marketplace add`
 # also records its source in ~/.claude/plugins/known_marketplaces.json, the
 # CLI's machine-level record keyed by name (left alone when it is not JSON);
-# STUB_NO_KM=1 makes it skip that (a CLI that does not repoint the record).
+# STUB_NO_KM=1 makes it skip that (a CLI that does not repoint the record),
+# and STUB_ADD_FAIL=1 makes `marketplace add` alone exit 1 having written
+# nothing (a CLI that refuses to repoint a name another source holds).
 STUB_BIN="$SANDBOX/bin"
 STUB="$STUB_BIN/claude"
 STUB_LOG="$SANDBOX/claude-stub.log"
@@ -69,6 +71,7 @@ if [[ -n "${STUB_STDIN_LOG:-}" ]] && IFS= read -r -t 2 line; then
     printf '%s|%s\n' "$*" "$line" >> "$STUB_STDIN_LOG"
 fi
 [[ -n "${STUB_FAIL:-}" ]] && exit 1
+[[ -n "${STUB_ADD_FAIL:-}" && "$2 ${3:-}" == "marketplace add" ]] && exit 1
 [[ -n "${STUB_NOOP:-}" ]] && exit 0
 f=.claude/settings.local.json
 mkdir -p .claude
@@ -92,8 +95,13 @@ STUBEOF
 chmod +x "$STUB"
 : > "$STUB_LOG"
 
+# The installer's own TMPDIR (its machine-level takeover makes a scratch
+# directory there), so a test can check that nothing is left behind.
+# RUN_TMPDIR=<dir> overrides it for one call.
+INST_TMP="$SANDBOX/tmp"
+mkdir -p "$INST_TMP"
 run() {  # run the installer with the sandbox HOME and the claude stub
-    HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" \
+    HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="${RUN_TMPDIR:-$INST_TMP}" \
         AGENT_WORKSPACE_CLAUDE_BIN="$STUB" bash "$INSTALL" "$@" 2>&1
 }
 
@@ -1018,31 +1026,109 @@ printf '{not json' > "$KM"
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] && pass "--check ignores a machine-level record it cannot parse (the CLI's file, not ours)" \
     || fail "unparseable known_marketplaces.json changed --check (rc=$rc out=${out:0:400})"
-# Last install wins: install over a record naming another checkout takes the
-# name over (re-enabling in ONE root, which the CLI records machine-wide),
-# so --check clears by following its own advice. Every root is already
-# enabled here, which is the case that used to short-circuit.
+# Last install wins, as ONE machine-level step before any project root:
+# install over a record naming another checkout takes the name over with a
+# single `marketplace add`, run from a throwaway directory outside every
+# root, and every root already enabled from here is then left alone (no CLI
+# call there at all). --check clears by following its own advice. Every root
+# is already enabled here -- the case that used to short-circuit.
+root_files() {  # every enable root's settings.local.json, verbatim
+    local r
+    for r in a nogit fam fam-stray; do
+        printf '%s=%s\n' "$r" "$(cat "$ROOTS/$r/$SLJ" 2>/dev/null || echo ABSENT)"
+    done
+}
+root_calls() {  # CLI calls the stub saw from inside any registered root
+    awk -F'|' -v p="$ROOTS/" 'index($1, p) == 1' "$STUB_LOG" | wc -l
+}
 km "$SANDBOX/elsewhere"
+before="$(root_files)"
 : > "$STUB_LOG"
 out="$(run)"; rc=$?
 adds="$(grep -c '|plugin marketplace add ' "$STUB_LOG")"
-if [[ "$rc" -eq 0 && "$out" == *"to take it over (last install wins)"* && "$adds" -eq 1 ]] \
+if [[ "$rc" -eq 0 && "$out" == *"names $SANDBOX/elsewhere, not this checkout -- taking it over once, before any project root"* \
+      && "$adds" -eq 1 && "$(root_calls)" -eq 0 && "$(root_files)" == "$before" ]] \
    && [[ "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" ]]; then
-    pass "install over a machine-level record naming another checkout repoints it, from one root"
+    pass "install takes a foreign machine-level record over with one add outside every root, leaving enabled roots alone"
 else
-    fail "install did not take the machine-level record over (rc=$rc adds=$adds km=$(cat "$KM") out=${out:0:400})"
+    fail "machine-level takeover (rc=$rc adds=$adds root_calls=$(root_calls) km=$(cat "$KM") out=${out:0:500})"
+fi
+if [[ -z "$(ls -A "$INST_TMP")" ]]; then
+    pass "the takeover's scratch directory is removed afterwards"
+else
+    fail "the takeover left files in its TMPDIR: $(ls -A "$INST_TMP")"
 fi
 out="$(run --check)"; rc=$?
 [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
     && pass "--check is clean after install took the machine-level record over" \
     || fail "--check still flags the machine-level record after install (rc=$rc out=${out:0:400})"
-# ...and a CLI that leaves the record on the other checkout is an error,
-# not a silent success that --check would contradict.
+
+# The round-3 must-fix: a takeover that fails -- the CLI refuses the add, or
+# exits 0 without repointing the record -- stops install before any project
+# root. Every root's declaration survives byte for byte, the CLI never runs
+# in any root, and install exits 1. Root a is made to need enabling too, so
+# a per-root path would have run there had install carried on.
+for mode in STUB_ADD_FAIL STUB_NO_KM; do
+    km "$SANDBOX/elsewhere"
+    rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+    before="$(root_files)"
+    : > "$STUB_LOG"
+    out="$(export "$mode=1"; run)"; rc=$?
+    case "$mode" in
+        STUB_ADD_FAIL) why="exited non-zero, so the machine-level record still names $SANDBOX/elsewhere" ;;
+        STUB_NO_KM)    why="reported success, but its machine-level record ($KM) still names $SANDBOX/elsewhere" ;;
+    esac
+    if [[ "$rc" -eq 1 && "$out" == *"$why"* && "$out" == *"stopped before touching any project root"* \
+          && "$(root_files)" == "$before" && "$(root_calls)" -eq 0 && -z "$(ls -A "$INST_TMP")" ]]; then
+        pass "a failed machine-level takeover ($mode) exits 1 with every root's declaration intact and no CLI call in any root"
+    else
+        fail "failed takeover ($mode) touched roots or passed (rc=$rc root_calls=$(root_calls) out=${out:0:500} diff=$(diff <(echo "$before") <(root_files)))"
+    fi
+done
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 ]] && enabled_in "$ROOTS/a" \
+    && pass "once the CLI takes the add, install repoints the record and enables the remaining root" \
+    || fail "install after a failed takeover (rc=$rc out=${out:0:400})"
+
+# The scratch directory must not sit in a git repository, where the CLI's
+# local scope could resolve to that repository instead: install refuses
+# before running the CLI at all.
+mkdir -p "$SANDBOX/gittmp"
+git -C "$SANDBOX/gittmp" init -q
 km "$SANDBOX/elsewhere"
-out="$(STUB_NO_KM=1 run)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"machine-level record ($KM) still names another checkout"* ]] \
-    && pass "install fails when the CLI leaves the machine-level record on another checkout" \
-    || fail "an unrepointed machine-level record passed install (rc=$rc out=${out:0:400})"
+before="$(root_files)"
+: > "$STUB_LOG"
+out="$(RUN_TMPDIR="$SANDBOX/gittmp" run)"; rc=$?
+if [[ "$rc" -eq 1 && "$out" == *"inside the git repository $SANDBOX/gittmp"* && ! -s "$STUB_LOG" \
+      && "$(root_files)" == "$before" && "$(ls -A "$SANDBOX/gittmp")" == ".git" ]]; then
+    pass "a takeover scratch directory inside a git repository is refused before any CLI call"
+else
+    fail "scratch-in-git-repo guard (rc=$rc log=$(cat "$STUB_LOG") left=$(ls -A "$SANDBOX/gittmp") out=${out:0:400})"
+fi
+rm -rf "${SANDBOX:?}/gittmp"
+
+# With no root to enable from this checkout, install does not take the name:
+# that would only move the other checkout's sessions onto this one's skills.
+cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
+printf 'inner single_project %s\ngone single_project %s\n' "$WSC/projects/inner" "$ROOTS/gone" > "$WSC/.agent/projects.local"
+: > "$STUB_LOG"
+out="$(run)"; rc=$?
+[[ "$rc" -eq 0 && "$out" != *"taking it over"* && ! -s "$STUB_LOG" \
+      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$SANDBOX/elsewhere" ]] \
+    && pass "with no root to enable, install leaves a foreign machine-level record alone" \
+    || fail "install took the record with no root to enable (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:400})"
+mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
+
+# No claude CLI: the takeover cannot run. Install says so and carries on
+# (a no-CLI machine enables nothing either), and an already-enabled root is
+# reported as what it is.
+out="$(run_nocli)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"taking it over needs the claude CLI, which is not on PATH"* \
+      && "$out" == *"plugin already enabled: $ROOTS/a"* && "$out" != *"not enabling the agent-workspace plugin in $ROOTS/a"* \
+      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$SANDBOX/elsewhere" ]] \
+    && pass "without the claude CLI, install notes that the takeover needs it, and calls enabled roots enabled" \
+    || fail "no-CLI install over a foreign machine-level record (rc=$rc out=${out:0:500})"
+run >/dev/null
 # With no root enabled from this checkout, no session of this checkout's
 # loads the record and install has no root to repoint it from: not drift.
 saved_slj="$SANDBOX/saved-slj"

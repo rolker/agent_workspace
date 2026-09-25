@@ -100,11 +100,26 @@ registered session root. It skips:
 
 A root that is in no git repository at all is enabled.
 
+The plugin step has two parts, in this order:
+
+1. **The machine-level marketplace record, once per run, before any
+   project root.** The CLI keeps one record per marketplace name for the
+   whole machine (see Consequences). When that record names another
+   checkout and some registered root is to be enabled from this one,
+   install takes it over with one `marketplace add` run from a throwaway
+   directory outside every project and every git repository, then reads
+   the record back. If the CLI fails, or exits 0 and leaves the record on
+   the other checkout, install exits 1 at that point and no project root
+   is touched. With no root to enable, the record is left alone.
+2. **Each registered root's own declaration.** This part never touches
+   the machine record and never removes a working declaration to repoint
+   anything. It only enables a root that lacks the plugin, or replaces a
+   root's declaration that names another checkout or no longer works.
+
 Enabling is idempotent. A root that already has the plugin enabled from
-this checkout does not run the CLI at all, unless the machine-level
-marketplace record names another checkout (see Consequences). The
-installer checks the result by reading the settings file, not by trusting
-the CLI's exit code. With no
+this checkout does not run the CLI at all. The installer checks the
+result by reading the settings file, not by trusting the CLI's exit code.
+With no
 `claude` CLI on `PATH` (a Codex-only machine) the installer prints a note
 and skips enabling the plugin. Removing one that is present (a doubled
 root, `--uninstall`) cannot be done without the CLI, so that is an error,
@@ -200,13 +215,17 @@ in their prose.
   enabled from this checkout. A missing file, entry or `path` field says
   nothing either way, because the format is the CLI's. **Last install
   wins**: install from this checkout, finding the record on another
-  checkout, re-enables the plugin in its first enabled root, and that
-  `marketplace add` takes the name over. That the CLI replaces the record
-  on such an add is not yet verified live, so the installer reads the
-  record back and exits 1 if it still names the other checkout. The other
-  checkout's `--check` then flags the record in turn, and its own install
-  takes the name back. This matches the user tier, which is already
-  singular (one checkout owns `~/.claude`).
+  checkout, takes the name over as the one machine-level step of
+  decision 3, before any project root. The record is global, so it is
+  handled once and never inside the per-root loop: an earlier per-root
+  takeover that failed left the record foreign, and every later root
+  repeated the failure and lost its declaration. That the CLI replaces the
+  record on such an add is not yet verified live, so the installer reads
+  the record back and exits 1, with every root untouched, if it still
+  names the other checkout. The other checkout's `--check` then flags the
+  record in turn, and its own install takes the name back. This matches
+  the user tier, which is already singular (one checkout owns
+  `~/.claude`).
 - **A new skill ships only after the manifest is regenerated.** Add the
   `session_scope` field, run `make generate-user-tier-skills`, and commit
   the manifest. `test_plugin_manifest.sh` fails the commit otherwise.

@@ -33,15 +33,23 @@
 #          directory walk-up, and enabling would double every skill and write
 #          the workspace's own settings.local.json;
 #        - a `parent=` instance inside its parent's directory: its parent
-#          root is the session unit, and the parent is what gets enabled.
-#          An instance registered OUTSIDE its parent's directory cannot see
-#          the parent's settings, so it is enabled as a root of its own;
+#          root is the session unit, and the parent is what gets enabled
+#          (a declaration in the instance itself is removed: it can shadow
+#          the parent's). An instance registered OUTSIDE its parent's
+#          directory cannot see the parent's settings, so it is enabled as
+#          a root of its own;
 #        - a root not on disk (a note, not an error);
 #        - every enable, with a note, when the `claude` CLI is not on PATH
 #          (a Codex-only machine has no plugins to enable). A plugin that
 #          must be REMOVED (a doubled root, --uninstall) is an error without
 #          the CLI, not a note: it stays enabled.
 #      A root that is in no git repository at all is enabled.
+#      The CLI's machine-level record of the marketplace (one source per
+#      machine) is handled once per run, BEFORE any root: when it names
+#      another checkout and some root is to be enabled, install takes it
+#      over with one `marketplace add` from a throwaway directory, reads it
+#      back, and on failure stops with exit 1 before touching any project
+#      root. The per-root step never touches the machine record.
 #   (Before ADR-0017, item 5 was a symlink per skill in ~/.claude/skills/.
 #   Those links were global to the machine and shadowed a project's own
 #   same-named skills. Install removes any left behind; --check reports them.)
@@ -109,7 +117,8 @@ RULES_FILE="$CLAUDE_DIR/agent-workspace-rules.json"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 # The claude CLI's own machine-level marketplace records (ADR-0017). Read
-# only, never written here; install's `marketplace add` is what repoints it.
+# only, never written here; install's one takeover `marketplace add`
+# (claim_machine_record) is what repoints it.
 KNOWN_MARKETPLACES="$CLAUDE_DIR/plugins/known_marketplaces.json"
 SESSION_HOOK_LINK="$HOOKS_DIR/agent-workspace-session-start.sh"
 SESSION_HOOK_TARGET="$WS_ROOT/.claude/hooks/session_start_project_layer.sh"
@@ -546,9 +555,57 @@ plugin_source() {  # <root>
 # not ours) says nothing either way, and is not "another checkout".
 machine_record_foreign() {
     local src
-    [[ -f "$KNOWN_MARKETPLACES" ]] || return 1
-    src="$(jq -r --arg m "$MARKETPLACE_NAME" '.[$m].source.path? // empty' "$KNOWN_MARKETPLACES" 2>/dev/null)" || return 1
+    src="$(machine_record_source)"
     [[ -n "$src" ]] && ! is_this_checkout "$src"
+}
+
+# The source path the machine-level record gives the marketplace, or empty
+# (no file, no entry, no `path` field, or a file that is not JSON).
+machine_record_source() {
+    [[ -f "$KNOWN_MARKETPLACES" ]] || return 0
+    jq -r --arg m "$MARKETPLACE_NAME" '.[$m].source.path? // empty' "$KNOWN_MARKETPLACES" 2>/dev/null || true
+}
+
+# Take the machine-level record over for this checkout (last install wins,
+# ADR-0017). Called once per install run, BEFORE any project root is
+# touched, and only when the record names another checkout. The record is
+# global, so it is handled as one machine-level step, never per root: a
+# per-root takeover that failed left the record foreign, and every later
+# root repeated it.
+#
+# The one `marketplace add` runs from a throwaway directory outside every
+# project and every git repository, so the only local declaration it writes
+# goes with that directory, and a refusal leaves every root as it was. The
+# record is read back afterwards: a CLI that exits 0 without repointing it
+# is a failure too. Returns 1, with the reason on stderr.
+claim_machine_record() {
+    local other scratch top rc=0 gone=""
+    other="$(machine_record_source)"
+    [[ -d "$other" ]] || gone=" (not on disk)"
+    scratch="$(mktemp -d -t agent-workspace-claim.XXXXXX)" || {
+        echo "  ERROR: could not create a scratch directory to take the machine-level record over from" >&2
+        return 1
+    }
+    # The CLI's local scope may resolve to the enclosing git repository, so
+    # an add from a scratch directory inside one would write that repo's
+    # settings.local.json instead.
+    if top="$(git -C "$scratch" rev-parse --show-toplevel 2>/dev/null)"; then
+        rm -rf "$scratch"
+        echo "  ERROR: the scratch directory for the machine-level takeover is inside the git repository $top -- not running the CLI there (point TMPDIR at a directory outside any git repository)" >&2
+        return 1
+    fi
+    echo "  the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names $other$gone, not this checkout -- taking it over once, before any project root (last install wins)"
+    (cd "$scratch" && claude_plugin marketplace add "$WS_PHYS" --scope local >/dev/null) || rc=1
+    rm -rf "$scratch"
+    if [[ "$rc" -ne 0 ]]; then
+        echo "  ERROR: \`claude plugin marketplace add $WS_PHYS\` exited non-zero, so the machine-level record still names $other" >&2
+        return 1
+    fi
+    if machine_record_foreign; then
+        echo "  ERROR: the claude CLI reported success, but its machine-level record ($KNOWN_MARKETPLACES) still names $(machine_record_source), not this checkout" >&2
+        return 1
+    fi
+    echo "  the machine-level record of the $MARKETPLACE_NAME marketplace now names this checkout"
 }
 
 # The report for a root whose settings.local.json cannot be read: whether
@@ -558,23 +615,18 @@ unparseable_root() {  # <root> <what was not done>
     echo "  ERROR: $1/.claude/settings.local.json is not valid JSON -- $2 (fix it: jq . \"$1/.claude/settings.local.json\")" >&2
 }
 
-# Enable the plugin in one root. Idempotent: an already-enabled root is left
-# alone, without running the CLI at all -- unless the machine-level record
-# names another checkout: then that root is enabled afresh, which repoints
-# the record here (last install wins, ADR-0017), and every later root is
-# left alone again because the record now names this checkout. Also the
-# entry point the registration flow (#332) re-runs for a newly registered
-# root, by re-running this installer. Returns 1 on a CLI failure, an
-# unparseable settings file, or a machine record the CLI left elsewhere.
+# Enable the plugin in one root: its own declaration only -- the
+# machine-level record is claim_machine_record's, run once before this.
+# Idempotent: an already-enabled root is left alone, without running the
+# CLI at all. Also the entry point the registration flow (#332) re-runs for
+# a newly registered root, by re-running this installer. Returns 1 on a CLI
+# failure or an unparseable settings file.
 enable_plugin_in_root() {  # <root>
-    local root="$1" state
-    state="$(plugin_state "$root")"
-    case "$state" in
+    local root="$1"
+    case "$(plugin_state "$root")" in
         enabled)
-            if ! machine_record_foreign; then
-                echo "  plugin already enabled: $root"
-                return 0
-            fi ;;
+            echo "  plugin already enabled: $root"
+            return 0 ;;
         unparseable)
             unparseable_root "$root" "not enabling the plugin there"
             return 1 ;;
@@ -583,14 +635,13 @@ enable_plugin_in_root() {  # <root>
         echo "  NOTE: the claude CLI is not on PATH -- not enabling the $PLUGIN_NAME plugin in $root"
         return 0
     fi
-    [[ "$state" == enabled ]] \
-        && echo "  the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace names another checkout -- re-enabling in $root to take it over (last install wins)"
-    # A leftover declaration -- another checkout's, this one's without the
-    # enable, or this one's complete one being re-added to repoint the
-    # machine record -- would make `marketplace add` refuse the name; drop
-    # it first so this source takes its place. A registered root is this
-    # checkout's registry's to repoint (uninstall, by contrast, leaves
-    # another checkout's declaration alone).
+    # A leftover declaration in this root -- another checkout's, or this
+    # one's without the enable -- would make `marketplace add` refuse the
+    # name; drop it first so this source takes its place. A registered root
+    # is this checkout's registry's to repoint (uninstall, by contrast,
+    # leaves another checkout's declaration alone). A root that is already
+    # enabled from here never gets here, so this never removes a working
+    # declaration.
     if [[ -n "$(plugin_source "$root")" ]]; then
         (cd "$root" && claude_plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
     fi
@@ -601,10 +652,6 @@ enable_plugin_in_root() {  # <root>
     fi
     if [[ "$(plugin_state "$root")" != enabled ]]; then
         echo "  ERROR: the claude CLI reported success, but $root/.claude/settings.local.json does not show $PLUGIN_ID enabled from $WS_PHYS" >&2
-        return 1
-    fi
-    if machine_record_foreign; then
-        echo "  ERROR: enabled the $PLUGIN_NAME plugin in $root, but the claude CLI's machine-level record ($KNOWN_MARKETPLACES) still names another checkout, so sessions may load that checkout's skills" >&2
         return 1
     fi
     echo "  enabled the $PLUGIN_NAME plugin in $root"
@@ -1021,7 +1068,24 @@ while IFS= read -r link; do
     echo "  removed legacy skill symlink: $(basename "$link")"
 done < <(legacy_skill_links)
 
-# 6. the plugin, per registered root
+# 6. the plugin. The registry is read once, for both steps below.
+PLUGIN_ROOTS="$(plugin_roots)"
+
+# 6a. the machine-level marketplace record, once, before any project root.
+# Only when some root is to be enabled from here: with none, taking the
+# name would only move another checkout's sessions onto this one's skills.
+if machine_record_foreign \
+   && awk -F'\t' '$3 == "enable" || $3 == "enable-outside-parent" { f = 1 } END { exit !f }' <<< "$PLUGIN_ROOTS"; then
+    if ! have_claude; then
+        echo "  NOTE: the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace names another checkout, $(machine_record_source) -- taking it over needs the claude CLI, which is not on PATH, so sessions may load that checkout's skills"
+    elif ! claim_machine_record; then
+        echo "" >&2
+        echo "agent_workspace user tier installed from $WS_ROOT, but the plugin step stopped before touching any project root: the machine-level record of the $MARKETPLACE_NAME marketplace could not be taken over (above). Free the name in the claude CLI's records -- the other checkout's --uninstall, or the \`claude plugin marketplace\` commands -- and re-run this installer." >&2
+        exit 1
+    fi
+fi
+
+# 6b. per registered root: each root's own declaration only
 plugin_rc=0
 while IFS=$'\t' read -r name root verdict detail; do
     [[ -z "$name" ]] && continue
@@ -1046,7 +1110,7 @@ while IFS=$'\t' read -r name root verdict detail; do
         missing)
             echo "  NOTE: registered root $name is not on disk ($root) -- plugin not enabled there" ;;
     esac
-done < <(plugin_roots)
+done <<< "$PLUGIN_ROOTS"
 # ...and never in the workspace checkout itself (see --check).
 case "$(plugin_state "$WS_ROOT")" in
     enabled|stale|foreign)
