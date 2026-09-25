@@ -107,3 +107,13 @@ The plan is sound and minimal. Its central claims (flag placement, no other code
 - [ ] Update the `_cli_review.sh` header verification note (0.155.1 → 0.156.1, new invocation) and the mock comment at test line ~2708 instead of adding a parallel note.
 - [ ] Write the exact-prefix assertion with real newlines (`$'...'`) so it can actually pass or fail on placement.
 - [ ] Record the `codex debug prompt-input` probe (top-level `-s`/`-a` take effect) in the PR description alongside the 0.156.1 version note.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-25 08:36 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Proceed — approve the plan; the implementer folds in the three Plan Review notes (7ddc882): flags-applied evidence for the PR description, update the two stale comments, use $'...' in the placement assertion.
