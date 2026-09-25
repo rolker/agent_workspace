@@ -103,11 +103,19 @@ root, `--uninstall`) cannot be done without the CLI, so that is an error,
 not a note. `--check` reads JSON only and never runs the CLI. It
 reports:
 
-- a registered root without the plugin;
+- a registered root without the plugin, or with it declared from another
+  checkout;
 - a skipped root that has the plugin enabled anyway;
-- the plugin enabled at the workspace checkout itself.
+- the plugin enabled at the workspace checkout itself;
+- a machine-level marketplace record that names another checkout (see
+  Consequences).
 
-`--uninstall` removes the plugin from every root that has it.
+`--uninstall` removes the plugin from every root where this checkout
+declared it. A root whose declaration names another checkout is left alone
+with a note: it is that checkout's to remove. Install, by contrast,
+repoints such a root when it is in this checkout's registry, and removes
+the plugin from a skipped root or the workspace checkout whichever
+checkout declared it, since there it doubles every skill either way.
 
 A root whose `.claude/settings.local.json` is not valid JSON is reported
 and never rewritten. Whether the plugin is enabled there cannot be known,
@@ -169,8 +177,18 @@ in their prose.
   Until then, the permission allow-rules and the two hook entries in
   `~/.claude/settings.json` are unchanged.
 - **The machine-level `~/.claude/plugins/` records** are the CLI's
-  bookkeeping, not the workspace's. The installer neither reads nor edits
-  them.
+  bookkeeping, not the workspace's. The installer never edits them.
+- **One `agent-workspace` marketplace source per machine.** The CLI keys
+  `~/.claude/plugins/known_marketplaces.json` by marketplace name, so two
+  checkouts on one machine cannot both be the plugin's source. A root's
+  `settings.local.json` can declare this checkout while the machine record
+  names another, and then sessions may load the other checkout's skills.
+  `--check` reads that one record, read-only, and flags it only when it
+  positively names a different directory. A missing file, entry or `path`
+  field says nothing either way, because the format is the CLI's. The fix
+  is the other checkout's `--uninstall`, then this checkout's install. This
+  matches the user tier, which is already singular (one checkout owns
+  `~/.claude`).
 - **A new skill ships only after the manifest is regenerated.** Add the
   `session_scope` field, run `make generate-user-tier-skills`, and commit
   the manifest. `test_plugin_manifest.sh` fails the commit otherwise.

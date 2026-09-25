@@ -799,8 +799,8 @@ mkdir -p "$SANDBOX/elsewhere"
 jq --arg p "$SANDBOX/elsewhere" '.extraKnownMarketplaces["agent-workspace"].source.path = $p' \
     "$ROOTS/a/$SLJ" > "$ROOTS/a/$SLJ.new" && mv "$ROOTS/a/$SLJ.new" "$ROOTS/a/$SLJ"
 out="$(run --check)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"not enabled from this checkout in registered root a"* ]] \
-    && pass "--check reports a root whose plugin comes from another checkout" \
+[[ "$rc" -eq 1 && "$out" == *"registered root a ($ROOTS/a) is declared from another checkout, $SANDBOX/elsewhere"* ]] \
+    && pass "--check reports a root whose plugin comes from another checkout, naming it" \
     || fail "foreign-source plugin not reported (rc=$rc out=${out:0:400})"
 : > "$STUB_LOG"
 run >/dev/null
@@ -901,6 +901,68 @@ if grep -q "^$WSC" "$STUB_LOG"; then
 else
     pass "--uninstall does not run the CLI in the skipped workspace-toplevel roots"
 fi
+
+# The CLI's machine-level marketplace record is keyed by name: one source
+# per machine. --check flags a record naming another checkout, and nothing
+# else about the file (absent, another marketplace, no path field).
+KM="$HOMEDIR/.claude/plugins/known_marketplaces.json"
+mkdir -p "$(dirname "$KM")"
+run >/dev/null
+km() {  # <agent-workspace source path, or "" for none>
+    jq -n --arg p "$1" '{"claude-plugins-official": {source: {source: "github", repo: "x/y"}}}
+        + (if $p == "" then {} else {"agent-workspace": {source: {source: "directory", path: $p}}} end)' > "$KM"
+}
+km "$SANDBOX/elsewhere"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"machine-level record of the agent-workspace marketplace ($KM) names another checkout, $SANDBOX/elsewhere"* ]] \
+    && pass "--check flags a machine-level marketplace record naming another checkout" \
+    || fail "foreign machine-level marketplace record not flagged (rc=$rc out=${out:0:400})"
+for src in "$WSC_PHYS" "$SANDBOX/ws-link" ""; do
+    km "$src"
+    out="$(run --check)"; rc=$?
+    [[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] \
+        && pass "--check accepts a machine-level record of '${src#"$SANDBOX"/}' (this checkout, or none)" \
+        || fail "machine-level record '${src#"$SANDBOX"/}' wrongly flagged (rc=$rc out=${out:0:400})"
+done
+printf '{not json' > "$KM"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"installed and current"* ]] && pass "--check ignores a machine-level record it cannot parse (the CLI's file, not ours)" \
+    || fail "unparseable known_marketplaces.json changed --check (rc=$rc out=${out:0:400})"
+rm -f "$KM"
+
+# --uninstall leaves another checkout's plugin alone: a second checkout's
+# uninstall must not take away the first's. This checkout's go as usual.
+run >/dev/null
+foreign_enable() {  # <root>: an enable declared from $SANDBOX/elsewhere
+    mkdir -p "$1/.claude"
+    jq -n --arg p "$SANDBOX/elsewhere" '{enabledPlugins: {"agent-workspace@agent-workspace": true},
+        extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$1/$SLJ"
+}
+foreign_enable "$ROOTS/a"
+before="$(cat "$ROOTS/a/$SLJ")"
+: > "$STUB_LOG"
+out="$(run --uninstall)"; rc=$?
+if [[ "$rc" -eq 0 && "$out" == *"plugin in $ROOTS/a is declared from another checkout ($SANDBOX/elsewhere) -- left"* \
+      && "$(cat "$ROOTS/a/$SLJ")" == "$before" ]] && ! grep -q "^$ROOTS/a|" "$STUB_LOG" && ! enabled_in "$ROOTS/fam"; then
+    pass "--uninstall leaves a root declared from another checkout untouched, and still removes its own"
+else
+    fail "--uninstall and another checkout's plugin (rc=$rc out=${out:0:400} log=$(cat "$STUB_LOG"))"
+fi
+rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+
+# ...but another checkout's plugin in a root inside THIS checkout's tree
+# still doubles every skill there: --check flags it and install removes it.
+run >/dev/null
+foreign_enable "$WSC/projects/inner"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"enabled in inner"*"loads twice"* ]] \
+    && pass "--check flags another checkout's plugin in a workspace-toplevel root" \
+    || fail "foreign enable in a skipped root not flagged (rc=$rc out=${out:0:400})"
+run >/dev/null
+[[ ! -e "$WSC/projects/inner/$SLJ" ]] || [[ "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$WSC/projects/inner/$SLJ")" == 0 ]] \
+    && pass "install removes another checkout's plugin from a workspace-toplevel root" \
+    || fail "foreign enable in a skipped root survived install ($(cat "$WSC/projects/inner/$SLJ"))"
+rm -f "${WSC:?}/projects/inner/.claude/settings.local.json"
 
 # --uninstall over an unparseable settings.local.json: it cannot tell
 # whether the plugin is there, so it says so, exits 1, and leaves the file.

@@ -56,7 +56,9 @@
 #                        it. Exits 1 on drift when it IS installed.
 #   --check --require    also exit 1 when it is not installed, for a machine
 #                        that expects it.
-#   --uninstall          remove every entry tagged with this checkout.
+#   --uninstall          remove every entry tagged with this checkout, and
+#                        the plugin from every root where this checkout
+#                        declared it (another checkout's is left alone).
 #   --list-skills        print the skills the plugin exposes (session_scope
 #                        project|both), one per line.
 #   --generate-plugin-manifest
@@ -104,6 +106,9 @@ ROOT_FILE="$CLAUDE_DIR/agent-workspace-root"
 RULES_FILE="$CLAUDE_DIR/agent-workspace-rules.json"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
+# The claude CLI's own machine-level marketplace records (ADR-0017). Read by
+# --check only, never written.
+KNOWN_MARKETPLACES="$CLAUDE_DIR/plugins/known_marketplaces.json"
 SESSION_HOOK_LINK="$HOOKS_DIR/agent-workspace-session-start.sh"
 SESSION_HOOK_TARGET="$WS_ROOT/.claude/hooks/session_start_project_layer.sh"
 
@@ -442,19 +447,31 @@ plugin_roots() {
     done <<< "$entries"
 }
 
+# Is <path> this checkout, lexically or as its `pwd -P` form?
+is_this_checkout() {  # <path>
+    local phys
+    [[ "$1" == "$WS_ROOT" || "$1" == "$WS_PHYS" ]] && return 0
+    phys="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
+    [[ "$phys" == "$WS_PHYS" ]]
+}
+
 # The plugin's state in <root>'s .claude/settings.local.json:
 #   enabled      enabled, and the marketplace source is this checkout
-#   stale        enabled or declared, but not both, or sourced elsewhere
+#   foreign      the marketplace is declared from ANOTHER checkout (enabled
+#                or not): that checkout's, not this one's, to remove
+#   stale        enabled with no declaration, or declared from this
+#                checkout but not enabled
 #   absent       neither
 #   unparseable  the file exists and is not JSON
 plugin_state() {  # <root>
-    local f="$1/.claude/settings.local.json" enabled src src_phys=""
+    local f="$1/.claude/settings.local.json" enabled src
     [[ -f "$f" ]] || { echo absent; return 0; }
     jq -e . "$f" >/dev/null 2>&1 || { echo unparseable; return 0; }
     enabled="$(jq -r --arg id "$PLUGIN_ID" '.enabledPlugins[$id] // false' "$f")"
     src="$(jq -r --arg m "$MARKETPLACE_NAME" '.extraKnownMarketplaces[$m].source.path // ""' "$f")"
-    [[ -n "$src" ]] && src_phys="$(cd "$src" 2>/dev/null && pwd -P)"
-    if [[ "$enabled" == true && "$src_phys" == "$WS_PHYS" ]]; then
+    if [[ -n "$src" ]] && ! is_this_checkout "$src"; then
+        echo foreign
+    elif [[ "$enabled" == true && -n "$src" ]]; then
         echo enabled
     elif [[ "$enabled" == true || -n "$src" ]]; then
         echo stale
@@ -496,9 +513,12 @@ enable_plugin_in_root() {  # <root>
         echo "  NOTE: the claude CLI is not on PATH -- not enabling the $PLUGIN_NAME plugin in $root"
         return 0
     fi
-    # A declaration pointing at another checkout would make `marketplace add`
-    # refuse the name; drop it first so the new source takes its place.
-    if [[ -n "$(plugin_source "$root")" && "$state" == stale ]]; then
+    # A leftover declaration -- another checkout's, or this one's without
+    # the enable -- would make `marketplace add` refuse the name; drop it
+    # first so this source takes its place. A registered root is this
+    # checkout's registry's to repoint (uninstall, by contrast, leaves
+    # another checkout's declaration alone).
+    if [[ -n "$(plugin_source "$root")" && ( "$state" == stale || "$state" == foreign ) ]]; then
         (cd "$root" && "$CLAUDE_BIN" plugin marketplace remove "$MARKETPLACE_NAME" --scope local >/dev/null 2>&1) || true
     fi
     if ! (cd "$root" && "$CLAUDE_BIN" plugin marketplace add "$WS_PHYS" --scope local >/dev/null) \
@@ -535,6 +555,19 @@ disable_plugin_in_root() {  # <root>
 }
 
 # ------------------------------------------------------------- uninstall ---
+# Remove the plugin from one root, if it is this checkout's there. A
+# declaration from another checkout is left alone with a note: a second
+# checkout's uninstall must not take away the first's plugin. Sets
+# uninstall_rc=1 on a failure.
+uninstall_plugin_from() {  # <root>
+    local root="$1"
+    case "$(plugin_state "$root")" in
+        enabled|stale) disable_plugin_in_root "$root" || uninstall_rc=1 ;;
+        foreign) echo "  NOTE: the $PLUGIN_NAME plugin in $root is declared from another checkout ($(plugin_source "$root")) -- left for that checkout's --uninstall" ;;
+        unparseable) unparseable_root "$root" "cannot tell whether the plugin is there; not removing it"; uninstall_rc=1 ;;
+    esac
+}
+
 if [[ "$MODE" == "uninstall" ]]; then
     if [[ ! -e "$ROOT_FILE" && ! -e "$SESSION_HOOK_LINK" && ! -f "$SETTINGS" ]]; then
         echo "agent_workspace user tier: nothing installed at $CLAUDE_DIR"
@@ -561,15 +594,9 @@ if [[ "$MODE" == "uninstall" ]]; then
             echo "  NOTE: registered root $root is not on disk -- nothing to remove there"
             continue
         fi
-        case "$(plugin_state "$root")" in
-            enabled|stale) disable_plugin_in_root "$root" || uninstall_rc=1 ;;
-            unparseable) unparseable_root "$root" "cannot tell whether the plugin is there; not removing it"; uninstall_rc=1 ;;
-        esac
+        uninstall_plugin_from "$root"
     done < <(plugin_roots)
-    case "$(plugin_state "$WS_ROOT")" in
-        enabled|stale) disable_plugin_in_root "$WS_ROOT" || uninstall_rc=1 ;;
-        unparseable) unparseable_root "$WS_ROOT" "cannot tell whether the plugin is there; not removing it"; uninstall_rc=1 ;;
-    esac
+    uninstall_plugin_from "$WS_ROOT"
     if [[ -f "$SETTINGS" ]]; then
         require_parseable_settings || exit 1
         backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
@@ -745,6 +772,7 @@ if [[ "$MODE" == "check" ]]; then
                 case "$state" in
                     enabled) ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
+                    foreign) note "$PLUGIN_NAME plugin in registered root $name ($root) is declared from another checkout, $(plugin_source "$root"), not from this one (re-run the installer to repoint it)" ;;
                     *)
                         if have_claude; then
                             note "$PLUGIN_NAME plugin not enabled from this checkout in registered root $name ($root)"
@@ -754,7 +782,7 @@ if [[ "$MODE" == "check" ]]; then
                 esac ;;
             skip-workspace)
                 case "$state" in
-                    enabled|stale) note "$PLUGIN_NAME plugin is enabled in $name ($root), whose git toplevel is this workspace checkout -- it already sees the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
+                    enabled|stale|foreign) note "$PLUGIN_NAME plugin is enabled in $name ($root), whose git toplevel is this workspace checkout -- it already sees the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check that the $PLUGIN_NAME plugin is NOT enabled there (a doubled root)" ;;
                 esac ;;
             missing)
@@ -767,9 +795,23 @@ if [[ "$MODE" == "check" ]]; then
     # installer never enables it there; a `claude plugin install` run by hand
     # (or from a p11-shape root, whose local scope may resolve here) would.
     case "$(plugin_state "$WS_ROOT")" in
-        enabled|stale) note "$PLUGIN_NAME plugin is enabled in the workspace checkout itself ($WS_ROOT/.claude/settings.local.json) -- its sessions already see the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
+        enabled|stale|foreign) note "$PLUGIN_NAME plugin is enabled in the workspace checkout itself ($WS_ROOT/.claude/settings.local.json) -- its sessions already see the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
         unparseable) note "$WS_ROOT/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
     esac
+
+    # The machine-level marketplace record. The CLI keys it by marketplace
+    # name, so a machine holds ONE `agent-workspace` source: when it names
+    # another checkout, sessions may load that checkout's skills even where
+    # every settings.local.json above declares this one, and nothing else
+    # here would notice. Read-only, and only a record that positively names
+    # a different directory is drift -- a missing file, entry or `path`
+    # field (the format is the CLI's, not ours) says nothing either way.
+    if [[ -f "$KNOWN_MARKETPLACES" ]]; then
+        km_src="$(jq -r --arg m "$MARKETPLACE_NAME" '.[$m].source.path? // empty' "$KNOWN_MARKETPLACES" 2>/dev/null)"
+        if [[ -n "$km_src" ]] && ! is_this_checkout "$km_src"; then
+            note "the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) names another checkout, $km_src -- one source per machine, so sessions may load that checkout's skills (run that checkout's --uninstall, then re-run this installer)"
+        fi
+    fi
 
     if [[ "$drift" -eq 0 ]]; then
         echo "agent_workspace user tier: installed and current ($WS_ROOT)"
@@ -895,7 +937,7 @@ while IFS=$'\t' read -r name root verdict; do
         skip-workspace)
             echo "  skipped $name: its git toplevel is this workspace checkout, which already provides the skills"
             case "$(plugin_state "$root")" in
-                enabled|stale) disable_plugin_in_root "$root" || plugin_rc=1 ;;
+                enabled|stale|foreign) disable_plugin_in_root "$root" || plugin_rc=1 ;;
                 unparseable) unparseable_root "$root" "cannot tell whether the plugin doubles its skills there"; plugin_rc=1 ;;
             esac ;;
         skip-instance)
@@ -906,7 +948,7 @@ while IFS=$'\t' read -r name root verdict; do
 done < <(plugin_roots)
 # ...and never in the workspace checkout itself (see --check).
 case "$(plugin_state "$WS_ROOT")" in
-    enabled|stale)
+    enabled|stale|foreign)
         echo "  the $PLUGIN_NAME plugin is enabled in the workspace checkout itself, where every skill would load twice -- removing it"
         disable_plugin_in_root "$WS_ROOT" || plugin_rc=1 ;;
     unparseable)
