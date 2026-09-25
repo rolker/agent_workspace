@@ -434,12 +434,14 @@ path_inside() {  # <path> <dir>
     [[ "$p" == "$d/"* ]]
 }
 
-# One line per registered entry: <name>\t<path>\t<verdict>, where verdict is
+# One line per registered entry: <name>\t<path>\t<verdict>[\t<detail>], where
+# verdict is
 #   enable          a session root that gets the plugin
 #   enable-outside-parent
 #                   a parent= instance whose path is NOT inside its parent's:
 #                   the parent's settings cannot reach it, so it is enabled
-#                   as a session root of its own (a note says so)
+#                   as a session root of its own (a note says so; <detail>
+#                   is its wording: why the instance is not inside)
 #   skip-workspace  its git toplevel is this workspace checkout
 #   skip-instance   a parent= instance inside its parent's directory (the
 #                   parent root is enabled instead)
@@ -448,12 +450,13 @@ path_inside() {  # <path> <dir>
 # dropped; the valid lines are still returned.
 plugin_roots() {
     local entries name _type path fields top top_phys parent parent_path
-    local outside
+    local outside detail
     entries="$(registry_entries_full "$WS_ROOT")" || true
     [[ -n "$entries" ]] || return 0
     while IFS=$'\t' read -r name _type path fields; do
         [[ -z "$name" ]] && continue
         outside=false
+        detail=""
         if parent="$(_registry_field_of "$fields" parent)" && [[ -n "$parent" ]]; then
             # Skipping an instance is right only while the parent's
             # .claude/settings.local.json can reach its sessions, which
@@ -465,6 +468,14 @@ plugin_roots() {
                 continue
             fi
             outside=true
+            # The registry parser already drops an instance whose parent is
+            # unregistered or at the instance's own path, so a parent not on
+            # disk is the one other way to land here.
+            if [[ ! -d "$parent_path" ]]; then
+                detail="whose parent's directory ($parent_path) is not on disk"
+            else
+                detail="outside its parent's directory ($parent_path), which the parent's plugin enable cannot reach"
+            fi
         fi
         if [[ ! -d "$path" ]]; then
             printf '%s\t%s\t%s\n' "$name" "$path" missing
@@ -473,7 +484,7 @@ plugin_roots() {
              && [[ "$top_phys" == "$WS_PHYS" ]]; then
             printf '%s\t%s\t%s\n' "$name" "$path" skip-workspace
         elif [[ "$outside" == true ]]; then
-            printf '%s\t%s\t%s\n' "$name" "$path" enable-outside-parent
+            printf '%s\t%s\t%s\t%s\n' "$name" "$path" enable-outside-parent "$detail"
         else
             # Includes a root in no git repository at all: nothing there
             # sees the workspace's skills, so it is a session root like any.
@@ -514,6 +525,12 @@ plugin_state() {  # <root>
     else
         echo absent
     fi
+}
+
+# Is the plugin enabled in <root> (whatever declares it)? A root where it
+# must not be can hold only a leftover declaration, which doubles nothing.
+plugin_enabled_flag() {  # <root>
+    jq -e --arg id "$PLUGIN_ID" '.enabledPlugins[$id] == true' "$1/.claude/settings.local.json" >/dev/null 2>&1
 }
 
 # The marketplace source <root> currently declares, or empty.
@@ -824,14 +841,14 @@ if [[ "$MODE" == "check" ]]; then
 
     # The plugin, per registered root. JSON reads only -- no CLI call.
     own_enabled=false
-    while IFS=$'\t' read -r name root verdict; do
+    while IFS=$'\t' read -r name root verdict detail; do
         [[ -z "$name" ]] && continue
         state=""
         [[ -d "$root" ]] && state="$(plugin_state "$root")"
         case "$verdict" in
             enable|enable-outside-parent)
                 if [[ "$verdict" == enable-outside-parent ]]; then
-                    echo "  note: $name is a parent= instance outside its parent's directory ($root), so the parent's plugin enable cannot reach it -- checked as a session root of its own"
+                    echo "  note: $name is a parent= instance $detail -- checked as a session root of its own ($root)"
                 fi
                 case "$state" in
                     enabled) own_enabled=true ;;
@@ -846,7 +863,12 @@ if [[ "$MODE" == "check" ]]; then
                 esac ;;
             skip-workspace)
                 case "$state" in
-                    enabled|stale|foreign) note "$PLUGIN_NAME plugin is enabled in $name ($root), whose git toplevel is this workspace checkout -- it already sees the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
+                    enabled|stale|foreign)
+                        if plugin_enabled_flag "$root"; then
+                            note "$PLUGIN_NAME plugin is enabled in $name ($root), whose git toplevel is this workspace checkout -- it already sees the bare skills, so every skill loads twice (re-run the installer to remove it)"
+                        else
+                            note "$PLUGIN_NAME marketplace is declared, with the plugin not enabled, in $name ($root), whose git toplevel is this workspace checkout -- a leftover (re-run the installer to remove it)"
+                        fi ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check that the $PLUGIN_NAME plugin is NOT enabled there (a doubled root)" ;;
                 esac ;;
             skip-instance)
@@ -862,7 +884,12 @@ if [[ "$MODE" == "check" ]]; then
     # installer never enables it there; a `claude plugin install` run by hand
     # (or from a p11-shape root, whose local scope may resolve here) would.
     case "$(plugin_state "$WS_ROOT")" in
-        enabled|stale|foreign) note "$PLUGIN_NAME plugin is enabled in the workspace checkout itself ($WS_ROOT/.claude/settings.local.json) -- its sessions already see the bare skills, so every skill loads twice (re-run the installer to remove it)" ;;
+        enabled|stale|foreign)
+            if plugin_enabled_flag "$WS_ROOT"; then
+                note "$PLUGIN_NAME plugin is enabled in the workspace checkout itself ($WS_ROOT/.claude/settings.local.json) -- its sessions already see the bare skills, so every skill loads twice (re-run the installer to remove it)"
+            else
+                note "$PLUGIN_NAME marketplace is declared, with the plugin not enabled, in the workspace checkout itself ($WS_ROOT/.claude/settings.local.json) -- a leftover (re-run the installer to remove it)"
+            fi ;;
         unparseable) note "$WS_ROOT/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
     esac
 
@@ -996,13 +1023,13 @@ done < <(legacy_skill_links)
 
 # 6. the plugin, per registered root
 plugin_rc=0
-while IFS=$'\t' read -r name root verdict; do
+while IFS=$'\t' read -r name root verdict detail; do
     [[ -z "$name" ]] && continue
     case "$verdict" in
         enable)
             enable_plugin_in_root "$root" || plugin_rc=1 ;;
         enable-outside-parent)
-            echo "  NOTE: $name is a parent= instance outside its parent's directory ($root) -- the parent's plugin enable cannot reach it, so it is enabled there directly"
+            echo "  NOTE: $name is a parent= instance $detail -- enabled as a session root of its own ($root)"
             enable_plugin_in_root "$root" || plugin_rc=1 ;;
         skip-workspace)
             echo "  skipped $name: its git toplevel is this workspace checkout, which already provides the skills"
@@ -1023,7 +1050,11 @@ done < <(plugin_roots)
 # ...and never in the workspace checkout itself (see --check).
 case "$(plugin_state "$WS_ROOT")" in
     enabled|stale|foreign)
-        echo "  the $PLUGIN_NAME plugin is enabled in the workspace checkout itself, where every skill would load twice -- removing it"
+        if plugin_enabled_flag "$WS_ROOT"; then
+            echo "  the $PLUGIN_NAME plugin is enabled in the workspace checkout itself, where every skill would load twice -- removing it"
+        else
+            echo "  the $PLUGIN_NAME marketplace is declared, with the plugin not enabled, in the workspace checkout itself -- removing the leftover"
+        fi
         disable_plugin_in_root "$WS_ROOT" || plugin_rc=1 ;;
     unparseable)
         unparseable_root "$WS_ROOT" "cannot tell whether the plugin doubles every skill in the workspace checkout itself"

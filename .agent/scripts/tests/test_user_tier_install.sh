@@ -778,6 +778,26 @@ out="$(run --check)"; rc=$?
     || fail "mis-nested instance without the plugin not flagged (rc=$rc out=${out:0:400})"
 run >/dev/null
 
+# An instance whose parent is not on disk is not "outside its parent's
+# directory": it says the parent is missing. (An unregistered parent, or an
+# instance at its parent's own path, is dropped by the registry parser.)
+cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
+mkdir -p "$ROOTS/lost-inst"
+cat > "$WSC/.agent/projects.local" <<REG
+lost     project         $ROOTS/lost-parent
+lost-i   single_project  $ROOTS/lost-inst  parent=lost
+REG
+out="$(run)"; out_check="$(run --check)"
+want="lost-i is a parent= instance whose parent's directory ($ROOTS/lost-parent) is not on disk"
+[[ "$out" == *"NOTE: $want -- enabled as a session root of its own"* \
+      && "$out_check" == *"note: $want -- checked as a session root of its own"* \
+      && "$out$out_check" != *"outside its parent's directory"* ]] \
+    && pass "install and --check say an instance's parent is not on disk, not that it lies outside it" \
+    || fail "missing-parent instance wording (out=${out:0:600} check=${out_check:0:600})"
+mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
+rm -rf "${ROOTS:?}/lost-inst"
+run >/dev/null
+
 : > "$STUB_LOG"
 run >/dev/null
 [[ ! -s "$STUB_LOG" ]] \
@@ -825,6 +845,26 @@ if [[ "$rc" -eq 0 ]] && ! enabled_in "$WSC"; then
 else
     fail "the workspace-root enable survived install (rc=$rc out=${out:0:400})"
 fi
+
+# A declaration with no enable, where the plugin must not be, doubles
+# nothing: --check calls it a leftover, not "every skill loads twice", and
+# install still removes it.
+for leftover in "$WSC/projects/inner" "$WSC"; do
+    mkdir -p "$leftover/.claude"
+    jq -n --arg p "$WSC_PHYS" '{extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' \
+        > "$leftover/$SLJ"
+    out="$(run --check)"; rc=$?
+    [[ "$rc" -eq 1 && "$out" == *"marketplace is declared, with the plugin not enabled, in "*"a leftover"* \
+          && "$out" != *"loads twice"* ]] \
+        && pass "--check calls a declaration with no enable in ${leftover#"$SANDBOX"/} a leftover, not a doubled root" \
+        || fail "leftover declaration in ${leftover#"$SANDBOX"/} misreported (rc=$rc out=${out:0:400})"
+    out="$(run)"; rc=$?
+    [[ "$rc" -eq 0 && "$out" != *"every skill would load twice"* \
+          && "$(jq -c '.extraKnownMarketplaces // {} | length' "$leftover/$SLJ")" == 0 ]] \
+        && pass "install removes the leftover declaration from ${leftover#"$SANDBOX"/}" \
+        || fail "leftover declaration in ${leftover#"$SANDBOX"/} not removed (rc=$rc out=${out:0:400})"
+    rm -f "$leftover/$SLJ"
+done
 
 # A root whose declaration points at ANOTHER checkout: drift, and install
 # replaces the marketplace declaration with this checkout.
