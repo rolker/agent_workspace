@@ -36,7 +36,9 @@
 #          toplevel, or a git worktree of the parent's repository: a session
 #          there reads the parent's local settings (observed live), so the
 #          parent is what gets enabled (a declaration in the instance
-#          itself is removed: it can shadow the parent's). Any other
+#          itself is reported, never removed: it can shadow the parent's,
+#          and a local-scope remove from there could strip the parent's
+#          enable). Any other
 #          instance -- in no git repository, under a plain-directory
 #          parent, or a separate repository -- does not see the parent's
 #          settings, so it is enabled as a root of its own;
@@ -655,6 +657,26 @@ enclosing_repo() {  # <dir>
     printf '%s\n' "$top"
 }
 
+# Why the installer does not run the CLI from a skipped parent= instance.
+# Every such instance shares its parent's repository (same_project): it is
+# a plain directory in it, where local scope lands on the repository's
+# toplevel (live case K) -- the parent's working enable -- or a linked
+# worktree of it, where where local scope writes has not been established.
+# Either way a local-scope remove could strip the parent's enable, so the
+# instance's own declaration is reported, never removed.
+instance_cli_reason() {  # <instance>
+    local top gd cd
+    gd="$(cd "$1" 2>/dev/null && git rev-parse --path-format=absolute --git-dir 2>/dev/null)"
+    cd="$(cd "$1" 2>/dev/null && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+    if [[ -n "$gd" && -n "$cd" && "$gd" != "$cd" ]]; then
+        echo "it is a git worktree of its parent's repository, and where the claude CLI's local scope writes from a worktree is not established"
+    elif top="$(enclosing_repo "$1")"; then
+        echo "it is a plain directory inside the git repository $top, and the claude CLI's local scope from there writes that repository's settings"
+    else
+        echo "it shares its parent's git repository, so the claude CLI's local scope from there may write the parent's settings"
+    fi
+}
+
 # Take the machine-level record over for this checkout (last install wins,
 # ADR-0017). Called BEFORE any project root is touched when the record is
 # not this checkout's (another checkout's, or no entry), and once more
@@ -1036,7 +1058,7 @@ if [[ "$MODE" == "check" ]]; then
                 # every root above looks right.
                 case "$state" in
                     enabled|stale|foreign)
-                        note "$PLUGIN_NAME plugin is declared in parent= instance $name ($root) itself$(src="$(plugin_source "$root")"; [[ -n "$src" ]] && printf ', from %s' "$src") -- its parent root provides the plugin, and a declaration here can shadow the parent's ($(if top="$(enclosing_repo "$root")"; then echo "remove it from $root/.claude/settings.local.json by hand: the directory is inside the git repository $top, so the installer does not run the CLI there"; else echo "re-run the installer to remove it"; fi))" ;;
+                        note "$PLUGIN_NAME plugin is declared in parent= instance $name ($root) itself$(src="$(plugin_source "$root")"; [[ -n "$src" ]] && printf ', from %s' "$src") -- its parent root provides the plugin, and a declaration here can shadow the parent's (remove it from $root/.claude/settings.local.json by hand: the installer does not run the CLI there, because $(instance_cli_reason "$root"))" ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin in parent= instance $name" ;;
                     absent) plugin_disabled_flag "$root" && local_disable_note "$name" "$root" ;;
                 esac ;;
@@ -1250,16 +1272,9 @@ while IFS=$'\t' read -r name root verdict detail; do
             # A declaration of its own can shadow the parent's (see --check).
             case "$(plugin_state "$root")" in
                 enabled|stale|foreign)
-                    if inst_top="$(enclosing_repo "$root")"; then
-                        # A plain directory inside a git repository -- often
-                        # the parent itself: a local-scope remove from here
-                        # could strip the parent's working enable instead.
-                        echo "  ERROR: the $PLUGIN_NAME plugin is declared in parent= instance $name itself ($root), but that directory is inside the git repository $inst_top, where the claude CLI's local scope may resolve -- not running the CLI there; remove the $PLUGIN_ID and $MARKETPLACE_NAME entries from $root/.claude/settings.local.json by hand" >&2
-                        plugin_rc=1
-                    else
-                        echo "  the $PLUGIN_NAME plugin is declared in parent= instance $name itself, where it can shadow its parent's -- removing it"
-                        disable_plugin_in_root "$root" || plugin_rc=1
-                    fi ;;
+                    # Reported, never removed: see instance_cli_reason.
+                    echo "  ERROR: the $PLUGIN_NAME plugin is declared in parent= instance $name itself ($root), where it can shadow its parent's; the installer does not run the claude CLI there ($(instance_cli_reason "$root")) -- remove the $PLUGIN_ID and $MARKETPLACE_NAME entries from $root/.claude/settings.local.json by hand" >&2
+                    plugin_rc=1 ;;
                 unparseable)
                     unparseable_root "$root" "cannot tell whether the plugin is there"
                     plugin_rc=1 ;;

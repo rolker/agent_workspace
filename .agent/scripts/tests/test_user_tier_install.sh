@@ -896,21 +896,33 @@ declare_only() {  # <root>: declared from this checkout, not enabled
     mkdir -p "$1/.claude"
     jq -n --arg p "$WSC_PHYS" '{extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$1/$SLJ"
 }
-for who in stale_enable enable_only declare_only foreign_enable; do
-    "$who" "$ROOTS/fam/inst"
-    out="$(run --check)"; rc=$?
-    [[ "$rc" -eq 1 && "$out" == *"DRIFT: agent-workspace plugin is declared in parent= instance fam-i ($ROOTS/fam/inst) itself"*"can shadow the parent's"* ]] \
-        && pass "--check flags a parent= instance with its own declaration ($who)" \
-        || fail "instance declaration ($who) passed --check (rc=$rc out=${out:0:400})"
-    out="$(run)"; rc=$?
-    if [[ "$rc" -eq 0 && "$out" == *"declared in parent= instance fam-i itself"*"removing it"* \
-          && "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/fam/inst/$SLJ")" == 0 ]] \
-       && enabled_in "$ROOTS/fam"; then
-        pass "install removes a parent= instance's own declaration ($who), leaving the parent enabled"
-    else
-        fail "instance declaration ($who) survived install (rc=$rc file=$(cat "$ROOTS/fam/inst/$SLJ") out=${out:0:400})"
-    fi
-    rm -f "${ROOTS:?}/fam/inst/.claude/settings.local.json"
+# It is reported, never removed: every skipped instance shares its
+# parent's repository, where a local-scope remove could strip the parent's
+# enable -- a plain directory of it (fam-d: local scope lands on the
+# toplevel, live case K) or a linked worktree (fam-i: where local scope
+# writes is not established). Install exits 1 naming the file to edit, runs
+# no CLI from the instance, and leaves both files as they are.
+for inst in "fam-i:$ROOTS/fam/inst:a git worktree of its parent's repository" \
+            "fam-d:$ROOTS/fam/sub:a plain directory inside the git repository $ROOTS/fam"; do
+    iname="${inst%%:*}"; rest="${inst#*:}"; ipath="${rest%%:*}"; why="${rest#*:}"
+    for who in stale_enable enable_only declare_only foreign_enable; do
+        "$who" "$ipath"
+        before="$(cat "$ipath/$SLJ")"; parent_before="$(cat "$ROOTS/fam/$SLJ")"
+        out="$(run --check)"; rc=$?
+        [[ "$rc" -eq 1 && "$out" == *"DRIFT: agent-workspace plugin is declared in parent= instance $iname ($ipath) itself"*"remove it from $ipath/.claude/settings.local.json by hand"*"$why"* ]] \
+            && pass "--check flags $iname's own declaration ($who), with by-hand advice" \
+            || fail "instance declaration $iname ($who) in --check (rc=$rc out=${out:0:400})"
+        : > "$STUB_LOG"
+        out="$(run)"; rc=$?
+        if [[ "$rc" -eq 1 && "$out" == *"declared in parent= instance $iname itself ($ipath)"*"does not run the claude CLI there"*"$why"* \
+              && "$(cat "$ipath/$SLJ")" == "$before" && "$(cat "$ROOTS/fam/$SLJ")" == "$parent_before" ]] \
+           && ! grep -q "^$ipath|" "$STUB_LOG" && enabled_in "$ROOTS/fam"; then
+            pass "install reports $iname's own declaration ($who) and runs no CLI there, leaving both files"
+        else
+            fail "instance declaration $iname ($who) at install (rc=$rc log=$(grep "^$ipath|" "$STUB_LOG") out=${out:0:400})"
+        fi
+        rm -f "$ipath/.claude/settings.local.json"
+    done
 done
 # An explicit local disable (enabledPlugins[id] = false, no declaration)
 # is not a declaration, but it can turn the parent's plugin off there:
@@ -951,7 +963,7 @@ stale_enable "$ROOTS/famg/inst"
 stale_enable "$ROOTS/famg/repo-inst"
 : > "$STUB_LOG"
 out="$(run)"; rc=$?
-if [[ "$rc" -eq 1 && "$out" == *"parent= instance famg-i itself ($ROOTS/famg/inst), but that directory is inside the git repository $ROOTS/famg"* \
+if [[ "$rc" -eq 1 && "$out" == *"parent= instance famg-i itself ($ROOTS/famg/inst)"*"a plain directory inside the git repository $ROOTS/famg"* \
       && "$(cat "$ROOTS/famg/$SLJ")" == "$parent_before" ]] && enabled_in "$ROOTS/famg" && enabled_in "$ROOTS/famg/inst" \
    && ! grep -q "^$ROOTS/famg/inst|" "$STUB_LOG"; then
     pass "install does not run the CLI from an instance inside a git repository, leaving the parent's enable intact"
@@ -1104,7 +1116,7 @@ rm -f "${WSC:?}/projects/inner/.claude/settings.local.json"
 # ...and the same for a parent= instance's own declaration.
 stale_enable "$ROOTS/fam/inst"
 out="$(run_nocli)"; rc=$?
-[[ "$rc" -eq 1 && "$out" == *"not on PATH -- cannot remove the agent-workspace plugin from $ROOTS/fam/inst"* ]] \
+[[ "$rc" -eq 1 && "$out" == *"declared in parent= instance fam-i itself"*"by hand"* ]] \
    && enabled_in "$ROOTS/fam/inst" \
     && pass "without the claude CLI, install over a parent= instance's own declaration exits 1 and leaves it" \
     || fail "no-CLI install over an instance declaration (rc=$rc out=${out:0:400})"

@@ -105,14 +105,17 @@ registered session root. It skips:
   plugin.
 
   A declaration in a skipped instance, from this checkout or another, can
-  shadow the parent's: `--check` reports it and install removes it. When
-  the instance is a plain directory inside a git repository, the CLI's
-  local scope from there resolves to that repository (live case K
-  asserts this against a repository with no declaration; that form of
-  the case has not run yet), so
-  install does not run the CLI there: it names the file to edit by hand
-  and exits 1. The takeover's scratch directory is refused inside a git
-  repository for the same reason.
+  shadow the parent's. `--check` reports it and install exits 1 naming the
+  file to edit by hand. The installer does not run the CLI there. A
+  skipped instance always shares its parent's repository. When it is a
+  plain directory in that repository, local scope from there writes the
+  repository's toplevel settings, which hold the parent's working enable
+  (live case K asserts this against a repository with no declaration;
+  that form of the case has not run yet). When it is a linked worktree,
+  where local scope writes has not been established. Either way a
+  local-scope remove could strip the parent's enable. The takeover's
+  scratch directory is refused inside a git repository for the same
+  reason.
 
   A session in a git repository nested inside any root, such as a colcon
   package repository under `src/`, has that repository as its project
@@ -159,7 +162,7 @@ reports:
   checkout;
 - a root inside the workspace checkout's git tree (skipped) that has the
   plugin enabled anyway;
-- a `parent=` instance inside its parent that declares the plugin itself
+- a skipped `parent=` instance that declares the plugin itself
   (and, as a note, one that disables it locally with
   `enabledPlugins[...] = false`, which install leaves alone because it may
   be deliberate);
