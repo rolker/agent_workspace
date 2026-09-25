@@ -215,7 +215,9 @@ in their prose.
   bookkeeping, not the workspace's. The installer never edits them
   itself; they change only through the CLI calls it runs.
 - **One `agent-workspace` marketplace source per machine.** The CLI keys
-  `~/.claude/plugins/known_marketplaces.json` by marketplace name, so two
+  `~/.claude/plugins/known_marketplaces.json` (under `CLAUDE_CONFIG_DIR`
+  instead, when that is set, observed with claude 2.1.282; the installer
+  reads it there) by marketplace name, so two
   checkouts on one machine cannot both be the plugin's source. A root's
   `settings.local.json` can declare this checkout while the machine record
   names another, and then sessions may load the other checkout's skills.

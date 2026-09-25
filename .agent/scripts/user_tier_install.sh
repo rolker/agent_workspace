@@ -118,8 +118,14 @@ HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
 # The claude CLI's own machine-level marketplace records (ADR-0017). Read
 # only, never written here; install's one takeover `marketplace add`
-# (claim_machine_record) is what repoints it.
-KNOWN_MARKETPLACES="$CLAUDE_DIR/plugins/known_marketplaces.json"
+# (claim_machine_record) is what repoints it. They live under the CLI's
+# configuration home: CLAUDE_CONFIG_DIR when set, else ~/.claude. (Observed
+# with claude 2.1.282: with CLAUDE_CONFIG_DIR set, `marketplace add` writes
+# $CLAUDE_CONFIG_DIR/plugins/known_marketplaces.json and leaves ~/.claude
+# alone.) Reading ~/.claude there would see a stale record, and the
+# takeover's read-back would fail on every run.
+CLI_HOME="${CLAUDE_CONFIG_DIR:-$CLAUDE_DIR}"
+KNOWN_MARKETPLACES="$CLI_HOME/plugins/known_marketplaces.json"
 SESSION_HOOK_LINK="$HOOKS_DIR/agent-workspace-session-start.sh"
 SESSION_HOOK_TARGET="$WS_ROOT/.claude/hooks/session_start_project_layer.sh"
 
@@ -350,6 +356,18 @@ write_settings() {  # <json on stdin>
         return 0
     fi
     mv "$tmp" "$SETTINGS"
+}
+
+# CLAUDE_CONFIG_DIR moves where the CLI reads its settings from, but the
+# rest of the user tier (the root file, hook entries, allow-rules) is
+# written to ~/.claude, where such a CLI does not look. Said, not hidden.
+config_dir_note() {
+    local a b
+    [[ -n "${CLAUDE_CONFIG_DIR:-}" ]] || return 0
+    a="$(cd "$CLAUDE_CONFIG_DIR" 2>/dev/null && pwd -P)" || a="$CLAUDE_CONFIG_DIR"
+    b="$(cd "$CLAUDE_DIR" 2>/dev/null && pwd -P)" || b="$CLAUDE_DIR"
+    [[ "$a" != "$b" ]] || return 0
+    echo "  NOTE: CLAUDE_CONFIG_DIR is set ($CLAUDE_CONFIG_DIR): the plugin's machine-level record is read there, but the rest of the user tier lives in $CLAUDE_DIR, which a claude CLI with CLAUDE_CONFIG_DIR set does not read"
 }
 
 # ------------------------------------------------------------- list mode ---
@@ -792,6 +810,7 @@ if [[ "$MODE" == "check" ]]; then
 
     drift=0
     note() { echo "  DRIFT: $1"; drift=1; }
+    config_dir_note
 
     [[ -L "$SESSION_HOOK_LINK" ]] || note "missing SessionStart hook symlink at $SESSION_HOOK_LINK"
     if [[ -L "$SESSION_HOOK_LINK" && "$(readlink "$SESSION_HOOK_LINK")" != "$SESSION_HOOK_TARGET" ]]; then
@@ -1018,6 +1037,7 @@ if [[ -n "${other_root:-}" && "$FORCE" == true ]]; then
 fi
 
 mkdir -p "$CLAUDE_DIR" "$HOOKS_DIR"
+config_dir_note
 
 backup_settings || { echo "ERROR: could not back up $SETTINGS -- not proceeding" >&2; exit 1; }
 

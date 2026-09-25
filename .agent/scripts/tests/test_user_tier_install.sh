@@ -85,7 +85,7 @@ case "$1 $2 ${3:-}" in
 esac
 jq --arg a "$arg" "$filter" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 if [[ "$2 $3" == "marketplace add" && -z "${STUB_NO_KM:-}" ]]; then
-    km="$HOME/.claude/plugins/known_marketplaces.json"
+    km="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/known_marketplaces.json"
     mkdir -p "$(dirname "$km")"
     [[ -f "$km" ]] || echo '{}' > "$km"
     jq --arg a "$arg" '.["agent-workspace"] = {source: {source: "directory", path: $a}}' "$km" > "$km.tmp" 2>/dev/null \
@@ -100,9 +100,16 @@ chmod +x "$STUB"
 # RUN_TMPDIR=<dir> overrides it for one call.
 INST_TMP="$SANDBOX/tmp"
 mkdir -p "$INST_TMP"
+# CLAUDE_CONFIG_DIR is never inherited from the caller; RUN_CFG=<dir> sets
+# it for one call. Like the real CLI (2.1.282), the stub then keeps its
+# machine-level record there instead of in ~/.claude.
 run() {  # run the installer with the sandbox HOME and the claude stub
-    HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="${RUN_TMPDIR:-$INST_TMP}" \
-        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" bash "$INSTALL" "$@" 2>&1
+    (
+        unset CLAUDE_CONFIG_DIR
+        [[ -n "${RUN_CFG:-}" ]] && export CLAUDE_CONFIG_DIR="$RUN_CFG"
+        HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="${RUN_TMPDIR:-$INST_TMP}" \
+            AGENT_WORKSPACE_CLAUDE_BIN="$STUB" bash "$INSTALL" "$@" 2>&1
+    )
 }
 
 SETTINGS="$HOMEDIR/.claude/settings.json"
@@ -387,7 +394,7 @@ WSC2="$SANDBOX/ws2"
 mkdir -p "$WSC2"
 cp -r "$WS_ROOT/.agent" "$WSC2/.agent"
 cp -r "$WS_ROOT/.claude" "$WSC2/.claude"
-run2() { HOME="$HOMEDIR" bash "$WSC2/.agent/scripts/user_tier_install.sh" "$@" 2>&1; }
+run2() { HOME="$HOMEDIR" CLAUDE_CONFIG_DIR='' bash "$WSC2/.agent/scripts/user_tier_install.sh" "$@" 2>&1; }
 
 out="$(run2)"; rc=$?
 [[ "$rc" -ne 0 && "$out" == *"already installed for a different workspace checkout"* && "$out" == *"$WSC"* ]] \
@@ -981,7 +988,7 @@ rm -f "${ROOTS:?}/a/.claude/settings.local.json"
 # --check notes and does not call it drift.
 NOCLI_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF "$STUB_BIN" | paste -sd:)"
 run_nocli() {
-    HOME="$HOMEDIR" PATH="$NOCLI_PATH" AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/no-such-claude" \
+    HOME="$HOMEDIR" PATH="$NOCLI_PATH" CLAUDE_CONFIG_DIR='' AGENT_WORKSPACE_CLAUDE_BIN="$SANDBOX/no-such-claude" \
         bash "$INSTALL" "$@" 2>&1
 }
 out="$(run_nocli)"; rc=$?
@@ -1207,6 +1214,32 @@ out="$(run_nocli --check)"; rc=$?
     && pass "without the claude CLI, --check notes the foreign machine-level record with advice that says the CLI is needed" \
     || fail "no-CLI --check over a foreign machine-level record (rc=$rc out=${out:0:500})"
 run >/dev/null
+# CLAUDE_CONFIG_DIR moves the CLI's records: with it set, the record read
+# (and taken over) is the one under it, and a stale one in ~/.claude is
+# irrelevant -- reading ~/.claude there made the takeover's read-back fail
+# on every run. The rest of the user tier stays in ~/.claude, with a note.
+CFG="$SANDBOX/cfg"
+mkdir -p "$CFG/plugins"
+jq -n --arg p "$SANDBOX/elsewhere" '{"agent-workspace": {source: {source: "directory", path: $p}}}' > "$CFG/plugins/known_marketplaces.json"
+km "$WSC_PHYS"
+out="$(RUN_CFG="$CFG" run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"($CFG/plugins/known_marketplaces.json) names another checkout, $SANDBOX/elsewhere"* \
+      && "$out" == *"NOTE: CLAUDE_CONFIG_DIR is set ($CFG)"* ]] \
+    && pass "with CLAUDE_CONFIG_DIR set, --check reads the CLI's record there (and notes the rest of the tier is in ~/.claude)" \
+    || fail "--check with CLAUDE_CONFIG_DIR (rc=$rc out=${out:0:500})"
+km "$SANDBOX/elsewhere"
+out="$(RUN_CFG="$CFG" run)"; rc=$?
+[[ "$rc" -eq 0 && "$(jq -r '.["agent-workspace"].source.path' "$CFG/plugins/known_marketplaces.json")" == "$WSC_PHYS" \
+      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$SANDBOX/elsewhere" ]] \
+    && pass "with CLAUDE_CONFIG_DIR set, install takes over the record there, and a stale ~/.claude one does not block it" \
+    || fail "install with CLAUDE_CONFIG_DIR (rc=$rc out=${out:0:500})"
+out="$(RUN_CFG="$CFG" run --check)"; rc=$?
+[[ "$rc" -eq 0 && "$out" != *"DRIFT"* ]] \
+    && pass "with CLAUDE_CONFIG_DIR set, --check is clean after the takeover there" \
+    || fail "--check with CLAUDE_CONFIG_DIR after install (rc=$rc out=${out:0:500})"
+rm -rf "${CFG:?}"
+km "$WSC_PHYS"
+
 # With no root enabled from this checkout, no session of this checkout's
 # loads the record and install has no root to repoint it from: not drift.
 saved_slj="$SANDBOX/saved-slj"

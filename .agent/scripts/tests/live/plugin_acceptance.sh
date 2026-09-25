@@ -133,6 +133,10 @@ cleanup() {
         echo "plugin_acceptance: WARNING: not removing sandbox '${SANDBOX:-}' (not this suite's own directory)" >&2
         return 0
     fi
+    # The CLI's configuration home: CLAUDE_CONFIG_DIR when set, else
+    # ~/.claude. Observed for plugins/ (claude 2.1.282); for projects/ it
+    # is assumed, and a wrong guess is harmless -- the strict match then
+    # finds nothing to remove.
     local d
     while IFS= read -r d; do
         rm -rf "$d"
