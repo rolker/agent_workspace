@@ -73,10 +73,13 @@
 #     (cross_model_review.sh: AGENT_TMP_ROOT).
 #   * All diagnostics go to stderr; stdout is unused.
 #
-# Verified against codex-cli 0.155.1, claude 2.x and copilot 1.0.61 help
-# output on this host (2026-09-22): `codex exec [PROMPT]` reads stdin when
-# no prompt argument is given and `-o/--output-last-message <FILE>` writes
-# only the final message; `claude -p --output-format json` emits a single
+# Verified against codex-cli 0.156.1 (2026-09-25), claude 2.x and copilot
+# 1.0.61 help output on this host: `codex -s read-only -a never exec
+# [PROMPT]` reads stdin when no prompt argument is given and
+# `-o/--output-last-message <FILE>` writes only the final message; `-s`
+# and `-a` are top-level flags (`codex exec -a never` is a parse error)
+# and `codex debug prompt-input` confirms they reach the subcommand's
+# sandbox/approval config; `claude -p --output-format json` emits a single
 # result object and `--permission-prompts none` auto-denies anything that
 # would prompt; `copilot -p <text> -s` prints only the agent response,
 # with `--available-tools`, `--disable-builtin-mcps` and `--no-ask-user`
@@ -308,7 +311,14 @@ case "$AGENT" in
         # file fail codex; the text is kept for the reason line.
         DIAG_LABEL='codex transcript'
         DIAG_FILE="$STDOUT_FILE"
-        run_cli "$STDOUT_FILE" "$STDERR_FILE" "$CLI_BIN_RESOLVED" exec -o "$CODEX_OUT_FILE"
+        #
+        # Sandbox and approval policy are pinned, not left to codex's
+        # defaults or a host ~/.codex/config.toml: a headless turn reading
+        # an untrusted diff must never gain write access or a prompt.
+        # `-s`/`-a` are top-level flags and MUST precede `exec` — after it
+        # they are a parse error (codex-cli 0.156.1). The argv test locks
+        # this order in.
+        run_cli "$STDOUT_FILE" "$STDERR_FILE" "$CLI_BIN_RESOLVED" -s read-only -a never exec -o "$CODEX_OUT_FILE"
         if [[ "$CLI_EXIT" -ne 0 ]]; then
             fail "codex exited ${CLI_EXIT}$(bound_note)$(marker_note "$STDERR_FILE")$(log_excerpt 'codex transcript' "$STDOUT_FILE")$(log_excerpt 'codex stderr' "$STDERR_FILE")"
         fi

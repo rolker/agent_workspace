@@ -2705,8 +2705,9 @@ make_mock_agent() {
                 echo '#!/usr/bin/env bash'
                 echo "$MOCK_PREAMBLE"
                 cat << 'CODEX_EOF'
-# codex exec [-o FILE]: the final message goes to FILE, everything else
-# (banner, echoed prompt, tool chatter) to the transcript on stdout.
+# codex -s read-only -a never exec [-o FILE]: the final message goes to
+# FILE, everything else (banner, echoed prompt, tool chatter) to the
+# transcript on stdout.
 out=""
 args=("$@"); i=0
 while [[ $i -lt ${#args[@]} ]]; do
@@ -2846,7 +2847,10 @@ test_agents_all_succeed() {
     local codex_argv copilot_argv
     codex_argv=$(cat "$argv/codex.argv")
     copilot_argv=$(cat "$argv/copilot.argv")
-    assert_eq "codex invoked as 'codex exec'" "exec" "$(head -n 1 "$argv/codex.argv")"
+    # Exact leading argv: fails if -s/-a are missing, reordered, or placed
+    # after `exec` (where codex-cli 0.156.1 rejects them).
+    assert_eq "codex invoked as 'codex -s read-only -a never exec'" \
+        $'-s\nread-only\n-a\nnever\nexec' "$(head -n 5 "$argv/codex.argv")"
     assert_contains "codex asked for a final-message file" "^-o$" "$codex_argv"
     assert_eq "copilot argv is the least-privilege print form" \
         "$(printf -- '-p\n\n-s\n--available-tools=\n--disable-builtin-mcps\n--no-ask-user')" \
