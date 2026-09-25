@@ -100,24 +100,27 @@ echo "Session cwd: $CWD"
 echo ""
 
 # --- how workspace skills are named here (ADR-0017) ---------------------
-# A root whose git toplevel is the workspace checkout itself sees the
-# workspace's .claude/skills by directory walk-up, bare, and the installer
-# never enables the plugin there; everywhere else the plugin namespaces them.
-# Same rule as user_tier_install.sh's plugin_roots(), in `pwd -P` forms.
-_ws_phys="$(cd "$WS_ROOT" 2>/dev/null && pwd -P)"
-_top="$(git -C "$P_PATH" rev-parse --show-toplevel 2>/dev/null)" \
-    && _top="$(cd "$_top" 2>/dev/null && pwd -P)" || _top=""
-if [[ -n "$_top" && "$_top" == "$_ws_phys" ]]; then
-    echo "Workspace skills: this root lies inside the workspace checkout, so they"
-    echo "load under their bare names (/review-code, /run-issue, ...)."
+# The same location rule run-issue uses (skill_prefix.sh), applied to the
+# session's cwd, not the registered root's: a git repository nested in a
+# root (a package repo under src/) is its own project root and sees neither
+# the root's plugin nor the bare skills (live case G).
+_sp_script="$WS_ROOT/.agent/scripts/skill_prefix.sh"
+if _sp="$(bash "$_sp_script" --dir "$CWD" 2>/dev/null)"; then
+    if [[ "$_sp" == "skill_prefix=" ]]; then
+        echo "Workspace skills: this session is in the workspace checkout's repository,"
+        echo "so they load under their bare names (/review-code, /run-issue, ...)."
+    else
+        echo "Workspace skills: they reach this session through the agent-workspace"
+        echo "plugin, namespaced /agent-workspace:<skill> (e.g. /agent-workspace:review-code)."
+        echo "Where a skill's text names another skill by its bare slash command, invoke"
+        echo "the agent-workspace: form -- a bare /<skill> here may be this project's own"
+        echo "skill of the same name. If no agent-workspace: skills are listed, the"
+        echo "plugin is not enabled for this root: run the workspace's"
+        echo ".agent/scripts/user_tier_install.sh."
+    fi
 else
-    echo "Workspace skills: they reach this session through the agent-workspace"
-    echo "plugin, namespaced /agent-workspace:<skill> (e.g. /agent-workspace:review-code)."
-    echo "Where a skill's text names another skill by its bare slash command, invoke"
-    echo "the agent-workspace: form -- a bare /<skill> here may be this project's own"
-    echo "skill of the same name. If no agent-workspace: skills are listed, the"
-    echo "plugin is not enabled for this root: run the workspace's"
-    echo ".agent/scripts/user_tier_install.sh."
+    echo "Workspace skills: neither the bare names nor the agent-workspace: plugin"
+    echo "reach this session. $(bash "$_sp_script" --dir "$CWD" 2>&1 >/dev/null | sed 's/^skill_prefix: //')"
 fi
 echo ""
 
