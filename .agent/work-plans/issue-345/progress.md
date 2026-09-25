@@ -641,3 +641,13 @@ All seven round-5 findings are closed in code and tests: an absent machine recor
 - [ ] (suggestion) skill_prefix.sh and the hook state that a git repo nested in a root sees "neither the plugin nor the workspace's bare skills", but only the plugin half was observed (case G, in a sandbox parent outside any workspace); for a package repo under a p11 root inside the workspace tree, bare skills by directory walk-up (which the ADR says reaches p11 roots) is unverified, and if it holds run-issue refuses to run in the primary project shape; add a live case (E shape + nested repo) or soften the wording (own review; caused by a round-5 fix: yes) — `.agent/scripts/skill_prefix.sh:97`, `.claude/hooks/session_start_project_layer.sh:122-123`
 - [ ] (suggestion) no test for the no-CLI + absent-record combination (--check note, install 6a NOTE); only no-CLI + foreign is covered (Claude adversarial; caused by a round-5 fix: yes) — `.agent/scripts/tests/test_user_tier_install.sh:~1405`
 - [ ] (suggestion) small cleanups: comment typo "where where local scope writes" in instance_cli_reason; the hook runs skill_prefix.sh twice on its failure path (capture stdout and stderr in one call) (Claude adversarial; caused by a round-5 fix: yes) — `.agent/scripts/user_tier_install.sh:665`, `.claude/hooks/session_start_project_layer.sh:108,123`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-25 13:40 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: stop
+
+Paused: "Let's pause here for now until I have time to focus more on understanding the big picture." Open at pause: round-6 must-fix (skill_prefix.sh decides from the current directory, not the session's start directory; host-proposed fix = SessionStart hook records session id -> start dir/prefix in the user tier, run-issue looks it up and stops if missing — NOT yet approved), plus 3 suggestions (nested-repo-in-p11 claim unverified live; missing no-CLI + no-entry test; typo + double script run in the hook). Branch unpushed at 9e07ac0.
