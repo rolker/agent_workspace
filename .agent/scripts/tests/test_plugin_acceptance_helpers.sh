@@ -152,6 +152,36 @@ else
     rm -rf "$work"
 fi
 
+# cleanup()'s last resort for the machine record: only when the record
+# still has THIS run's name, and then one `marketplace remove <that name>`
+# -- never another entry's.
+kmw="$SANDBOX/km-work"
+mkdir -p "$kmw/bin" "$kmw/aw-plugin-accept.km1" "$kmw/home/.claude/plugins"
+printf '#!/bin/sh\necho "$*" >> "%s"\n' "$kmw/cli.log" > "$kmw/bin/claude"
+chmod +x "$kmw/bin/claude"
+for has in yes no; do
+    : > "$kmw/cli.log"
+    mkdir -p "$kmw/aw-plugin-accept.km1"    # cleanup() removes it each time
+    if [[ "$has" == yes ]]; then
+        echo '{"aw-accept-4242": {"source": {"path": "/x"}}, "agent-workspace": {"source": {"path": "/y"}}}' > "$kmw/home/.claude/plugins/known_marketplaces.json"
+    else
+        echo '{"aw-accept-42": {"source": {"path": "/x"}}, "agent-workspace": {"source": {"path": "/y"}}}' > "$kmw/home/.claude/plugins/known_marketplaces.json"
+    fi
+    (cd "$kmw" && HOME="$kmw/home" PATH="$kmw/bin:$PATH" NAME=aw-accept-4242 SANDBOX="$kmw/aw-plugin-accept.km1" \
+        bash -c "unset CLAUDE_CONFIG_DIR; $cleanup_def"$'\n''ENABLED_ROOTS=(); cleanup' >/dev/null 2>&1)
+    calls="$(tr '\n' ';' < "$kmw/cli.log")"
+    if [[ "$has" == yes ]]; then
+        [[ "$calls" == "plugin marketplace remove aw-accept-4242;" ]] \
+            && pass "cleanup removes a machine record still holding this run's name, and only that one" \
+            || fail "cleanup's machine-record fallback called: '$calls'"
+    else
+        [[ -z "$calls" ]] \
+            && pass "cleanup runs no CLI for the machine record when it has no entry of this run's name" \
+            || fail "cleanup called the CLI for another run's record: '$calls'"
+    fi
+done
+rm -rf "$kmw"
+
 # The encoding itself, pinned to literal names rather than re-derived with
 # the implementation's own sed: every character but [A-Za-z0-9] becomes
 # `-` (as Claude Code named the real directories earlier runs left, e.g.

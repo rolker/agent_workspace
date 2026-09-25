@@ -42,7 +42,18 @@
 #      with the instance a separate repo, or a worktree, inside it;
 #   H  a second root: the same marketplace added and installed from another
 #      project root (the per-root path the installer and #332 take) works
-#      there and leaves the first root working.
+#      there and leaves the first root working;
+#   I  the installer's machine-level takeover: a `marketplace add` of a
+#      second copy of the source, run from a scratch directory outside any
+#      project and git repository, repoints the CLI's machine record, and
+#      the record survives the scratch directory's removal and a later CLI
+#      run; it is then taken back the same way;
+#   J  removing the plugin from one root (uninstall + local `marketplace
+#      remove`) leaves another root working; whether that local remove
+#      drops the machine record is printed as a FACT line;
+#   K  where local scope lands from a plain subdirectory of a git repo:
+#      printed as a FACT line (the installer refuses to run the CLI there
+#      either way).
 #
 # Exit: 0 all pass (or not opted in); 1 a case failed; 3 missing dependency.
 
@@ -68,13 +79,18 @@ FAIL=0
 pass() { echo "  PASS: $1"; PASS=$((PASS + 1)); }
 fail() { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
 
+# Every root the suite enables the plugin in, recorded BEFORE the CLI runs
+# there, so a half-finished enable is still undone on exit.
+ENABLED_ROOTS=()
 # Every `claude plugin` call, stdin closed, so a prompt the CLI might show
 # fails the call instead of hanging the suite.
 cli_plugin() { claude plugin "$@" </dev/null; }
 
-# Every root the suite enables the plugin in, recorded BEFORE the CLI runs
-# there, so a half-finished enable is still undone on exit.
-ENABLED_ROOTS=()
+# The CLI's machine-level record of this run's marketplace, and its source.
+KM="${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/known_marketplaces.json"
+km_source() {
+    jq -r --arg m "$NAME" '.[$m].source.path? // empty' "$KM" 2>/dev/null || true
+}
 # session_dirs <projects dir> <sandbox>: the Claude Code project directories
 # this run's sessions left. Claude Code names one per session cwd, from the
 # path with every character but [A-Za-z0-9] turned into `-`. Matched
@@ -124,6 +140,13 @@ cleanup() {
         (cd "$r" && cli_plugin uninstall "$NAME@$NAME" --scope local >/dev/null 2>&1)
         (cd "$r" && cli_plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1)
     done
+    # The machine record for this run's name, if the local removes above
+    # left it (whether they do is case J's FACT): a best-effort remove at
+    # the CLI's default scope, from the sandbox, for this run's name only.
+    if [[ -n "$(km_source)" ]]; then
+        (cd "${SANDBOX:-/nonexistent}" 2>/dev/null && cli_plugin marketplace remove "$NAME" >/dev/null 2>&1)
+        [[ -n "$(km_source)" ]] && echo "plugin_acceptance: WARNING: $KM still has a $NAME entry -- remove it with: claude plugin marketplace remove $NAME" >&2
+    fi
     # The CLI's cached copy of the plugin, which uninstall leaves behind.
     # Only after an enable, and only this run's own `aw-accept-<pid>` name.
     if [[ ${#ENABLED_ROOTS[@]} -gt 0 ]]; then
@@ -429,6 +452,73 @@ if enable_in "$P2"; then
 else
     fail "H: marketplace add + install of the same source failed in a second root"
 fi
+
+# ------------------------------------------- I: machine-level takeover ---
+# What user_tier_install.sh's claim_machine_record does, with this run's
+# name: one `marketplace add` of another source from a scratch directory
+# that is in no project and no git repository.
+W2="$SANDBOX/ws2"
+cp -r "$W" "$W2"
+claim_from_scratch() {  # <source>: add it from a fresh scratch dir, then remove the dir
+    local scr="$SANDBOX/claim-scratch" rc
+    mkdir -p "$scr"
+    if git -C "$scr" rev-parse --show-toplevel >/dev/null 2>&1; then
+        rm -rf "$scr"; return 2
+    fi
+    (cd "$scr" && cli_plugin marketplace add "$1" --scope local >/dev/null 2>&1); rc=$?
+    rm -rf "$scr"
+    return "$rc"
+}
+i_before="$(km_source)"
+echo "  FACT: machine record of $NAME before the takeover: ${i_before:-<none>}"
+claim_from_scratch "$W2"; i_rc=$?
+i_after="$(km_source)"
+echo "  FACT: scratch-dir add of a second source: exit $i_rc; record now ${i_after:-<none>}"
+if [[ "$i_rc" -eq 0 && "$i_after" == "$W2" ]]; then
+    pass "I: a scratch-dir marketplace add repoints the machine record to the new source"
+else
+    fail "I: scratch-dir takeover (exit $i_rc; record '${i_after:-<none>}', wanted $W2)"
+fi
+# A later CLI run from an enabled root, which might reconcile the record
+# against the declarations it can see (the scratch one is gone).
+(cd "$P" && cli_plugin marketplace list >/dev/null 2>&1)
+i_later="$(km_source)"
+echo "  FACT: record after the scratch dir's removal and a CLI run in $P: ${i_later:-<none>}"
+[[ "$i_later" == "$W2" ]] \
+    && pass "I: the taken-over record survives the scratch directory's removal and a later CLI run" \
+    || fail "I: the record did not survive (now '${i_later:-<none>}')"
+claim_from_scratch "$W"; i_back=$?
+[[ "$i_back" -eq 0 && "$(km_source)" == "$W" ]] \
+    && pass "I: taken back the same way (last install wins)" \
+    || fail "I: taking the record back failed (exit $i_back; record '$(km_source)')"
+
+# --------------------------------------- J: removal from one root ---
+# The installer removes the plugin from doubled roots and instances with
+# uninstall + local `marketplace remove`, and then re-reads the machine
+# record. What that remove does to the record, and that it leaves other
+# roots working.
+j_before="$(km_source)"
+(cd "$P2" && cli_plugin uninstall "$NAME@$NAME" --scope local >/dev/null 2>&1)
+(cd "$P2" && cli_plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1); j_rc=$?
+j_after="$(km_source)"
+echo "  FACT: local marketplace remove in $P2 (exit $j_rc): record ${j_before:-<none>} -> ${j_after:-<none>}"
+echo "  FACT: $P2 settings.local.json after uninstall + remove: $(tr -d '\n ' < "$P2/.claude/settings.local.json" 2>/dev/null || echo '<absent>')"
+probe "$P" "/$NAME:zz-probe"; j=$?
+[[ "$j" -eq "$PROBE_REACHED" ]] \
+    && pass "J: after removing the plugin from one root, another root still reaches it" \
+    || fail "J: after removing it from $P2, /$NAME:zz-probe in $P $(probe_said "$j")"
+[[ -n "$(km_source)" ]] || { claim_from_scratch "$W"; echo "  (restored the machine record for the cases below)"; }
+
+# ------------------------- K: local scope from a subdir of a git repo ---
+mkdir -p "$FAMG/sub"
+ENABLED_ROOTS+=("$FAMG/sub")
+(cd "$FAMG/sub" && cli_plugin marketplace add "$W" --scope local >/dev/null 2>&1); k_rc=$?
+if [[ -f "$FAMG/sub/.claude/settings.local.json" ]]; then
+    k_where="$FAMG/sub (the cwd)"
+else
+    k_where="not the cwd -- $FAMG/sub has no .claude/settings.local.json (the git toplevel $FAMG already declared it)"
+fi
+echo "  FACT: local-scope add from a plain subdirectory of git repo $FAMG (exit $k_rc) wrote: $k_where"
 
 echo ""
 echo "plugin_acceptance: $PASS passed, $FAIL failed (model: $MODEL)"

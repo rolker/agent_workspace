@@ -637,16 +637,25 @@ claim_machine_record() {  # [<when>, for the message]
         echo "  ERROR: could not create a scratch directory to take the machine-level record over from" >&2
         return 1
     }
+    # An interrupt while the CLI runs must not leave the scratch directory
+    # behind (the value is fixed into the trap now: the local is gone by
+    # the time a trap set by the caller would run).
+    # shellcheck disable=SC2064  # expand $scratch now, on purpose
+    trap "rm -rf $(printf '%q' "$scratch"); exit 130" INT
+    # shellcheck disable=SC2064
+    trap "rm -rf $(printf '%q' "$scratch"); exit 143" TERM
     # An add from a scratch directory inside a git repository could write
     # that repository's settings.local.json instead (enclosing_repo).
     if top="$(enclosing_repo "$scratch")"; then
         rm -rf "$scratch"
+        trap - INT TERM
         echo "  ERROR: the scratch directory for the machine-level takeover is inside the git repository $top -- not running the CLI there (point TMPDIR at a directory outside any git repository)" >&2
         return 1
     fi
     echo "  the claude CLI's machine-level record of the $MARKETPLACE_NAME marketplace ($KNOWN_MARKETPLACES) $what, not this checkout -- taking it over $when (last install wins)"
     (cd "$scratch" && claude_plugin marketplace add "$WS_PHYS" --scope local >/dev/null) || rc=1
     rm -rf "$scratch"
+    trap - INT TERM
     if [[ "$rc" -ne 0 ]]; then
         echo "  ERROR: \`claude plugin marketplace add $WS_PHYS\` exited non-zero, so the machine-level record still ${what}" >&2
         return 1

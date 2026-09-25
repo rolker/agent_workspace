@@ -266,7 +266,11 @@ then, the opt-in `.agent/scripts/tests/live/plugin_acceptance.sh` covers:
 - the skip guard for a `p11`-shape root;
 - the bare-load and plugin-load prefix detection;
 - a `parent=` instance reaching the plugin enabled at its parent;
-- a second root enabled from the same source, with the first still working.
+- a second root enabled from the same source, with the first still working;
+- the installer's machine-level takeover: a `marketplace add` from a
+  scratch directory repoints the record, and the record survives the
+  directory's removal;
+- removing the plugin from one root, with another still working.
 
 ## Alternatives Considered
 

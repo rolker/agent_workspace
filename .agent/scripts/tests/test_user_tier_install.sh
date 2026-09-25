@@ -72,6 +72,7 @@ printf '%s|%s\n' "$PWD" "$*" >> "$STUB_LOG"
 if [[ -n "${STUB_STDIN_LOG:-}" ]] && IFS= read -r -t 2 line; then
     printf '%s|%s\n' "$*" "$line" >> "$STUB_STDIN_LOG"
 fi
+[[ -n "${STUB_ADD_SLEEP:-}" && "$2 ${3:-}" == "marketplace add" ]] && sleep "$STUB_ADD_SLEEP"
 [[ -n "${STUB_FAIL:-}" ]] && exit 1
 [[ -n "${STUB_ADD_FAIL:-}" && "$2 ${3:-}" == "marketplace add" ]] && exit 1
 [[ -n "${STUB_NOOP:-}" ]] && exit 0
@@ -1220,6 +1221,28 @@ out="$(run)"; rc=$?
 [[ "$rc" -eq 0 ]] && enabled_in "$ROOTS/a" \
     && pass "once the CLI takes the add, install repoints the record and enables the remaining root" \
     || fail "install after a failed takeover (rc=$rc out=${out:0:400})"
+
+# An interrupt during the takeover's CLI call removes the scratch directory
+# too: TERM the installer while a slow stub `marketplace add` runs.
+km "$SANDBOX/elsewhere"
+: > "$STUB_LOG"
+(
+    unset CLAUDE_CONFIG_DIR
+    HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" TMPDIR="$INST_TMP" STUB_ADD_SLEEP=2 \
+        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" exec bash "$INSTALL" >/dev/null 2>&1
+) &
+inst_pid=$!
+for _ in $(seq 1 100); do
+    grep -q '|plugin marketplace add ' "$STUB_LOG" && break
+    sleep 0.1
+done
+saw_scratch="$(ls -A "$INST_TMP")"
+kill -TERM "$inst_pid" 2>/dev/null
+wait "$inst_pid"; rc=$?
+[[ "$rc" -eq 143 && -n "$saw_scratch" && -z "$(ls -A "$INST_TMP")" ]] \
+    && pass "a TERM during the takeover removes its scratch directory (exit 143)" \
+    || fail "interrupted takeover (rc=$rc scratch-before='$saw_scratch' left='$(ls -A "$INST_TMP")')"
+run >/dev/null
 
 # The scratch directory must not sit in a git repository, where the CLI's
 # local scope could resolve to that repository instead: install refuses
