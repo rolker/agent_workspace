@@ -211,7 +211,8 @@ then, the opt-in `.agent/scripts/tests/live/plugin_acceptance.sh` covers:
 - the workspace-root shape, with no doubled skills;
 - the skip guard for a `p11`-shape root;
 - the bare-load and plugin-load prefix detection;
-- a `parent=` instance reaching the plugin enabled at its parent.
+- a `parent=` instance reaching the plugin enabled at its parent;
+- a second root enabled from the same source, with the first still working.
 
 ## Alternatives Considered
 

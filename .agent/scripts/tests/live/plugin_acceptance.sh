@@ -30,7 +30,10 @@
 #      rule then yields `<plugin>:` in the plugin session and empty bare;
 #   G  parent= instance: enabled at the parent only, sessions in the
 #      instance (and a git repo inside it) still reach the plugin -- the
-#      assumption behind the installer's skip-instance.
+#      assumption behind the installer's skip-instance;
+#   H  a second root: the same marketplace added and installed from another
+#      project root (the per-root path the installer and #332 take) works
+#      there and leaves the first root working.
 #
 # Exit: 0 all pass (or not opted in); 1 a case failed; 3 missing dependency.
 
@@ -60,6 +63,7 @@ W="$SANDBOX/ws"       # the workspace copy (marketplace aw-accept)
 P="$SANDBOX/proj"     # a project with its own plan-task
 U="$SANDBOX/other"    # an unrelated repo
 FAM="$SANDBOX/fam"    # a parent= root: a plain directory grouping instances
+P2="$SANDBOX/proj2"   # a second project root, enabled after the first
 
 # Every root the suite enables the plugin in, recorded BEFORE the CLI runs
 # there, so a half-finished enable is still undone on exit.
@@ -296,6 +300,31 @@ if enable_in "$FAM"; then
     fi
 else
     fail "G: could not enable the $NAME plugin in the parent root"
+fi
+
+# ------------------------------------------------- H: a second root ---
+# The installer runs `marketplace add` of the same name and source once per
+# registered root, and the registration flow (#332) does it again for each
+# new one. The CLI keeps one machine-level record per marketplace name, so
+# the second add must succeed and leave the first root working.
+mkdir -p "$P2"
+git -C "$P2" init -q
+if enable_in "$P2"; then
+    jq -e --arg id "$NAME@$NAME" --arg m "$NAME" --arg w "$W" \
+        '.enabledPlugins[$id] == true and .extraKnownMarketplaces[$m].source.path == $w' \
+        "$P2/.claude/settings.local.json" >/dev/null \
+        && pass "H: a second root's marketplace add + install writes its own settings.local.json" \
+        || fail "H: the second root's settings.local.json does not enable $NAME from $W"
+    probe "$P2" "/$NAME:zz-probe"; h2=$?
+    h2_said="$(probe_said "$h2")"
+    probe "$P" "/$NAME:zz-probe"; h1=$?
+    if [[ "$h2" -eq "$PROBE_REACHED" && "$h1" -eq "$PROBE_REACHED" ]]; then
+        pass "H: the plugin reaches sessions in both roots after the second enable"
+    else
+        fail "H: two roots (second: $h2_said; first, re-checked: $(probe_said "$h1"))"
+    fi
+else
+    fail "H: marketplace add + install of the same source failed in a second root"
 fi
 
 echo ""
