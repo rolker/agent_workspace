@@ -75,6 +75,40 @@ said="$(probe_said "$?")"
     && pass "probe_said names the exit status and the output of a failed session" \
     || fail "probe_said gave: $said"
 
+# cleanup() deletes under the real ~/.claude when the live suite runs, so
+# pin exactly what it removes: the suite's own plugin cache entry, only
+# after an enable, and never a neighbour.
+cleanup_def="$(awk '/^ENABLED_ROOTS=\(\)/ { on = 1 } /^trap cleanup EXIT/ { on = 0 } on' "$SUITE")"
+if [[ "$cleanup_def" != *"cleanup() {"* ]]; then
+    fail "could not find cleanup() in $SUITE (section markers moved?)"
+else
+    for enabled in yes no; do
+        fake_home="$SANDBOX/home-$enabled"
+        mkdir -p "$fake_home/.claude/plugins/cache/aw-accept/x" "$fake_home/.claude/plugins/cache/aw-accept-other" \
+            "$SANDBOX/root-$enabled" "$SANDBOX/suite-$enabled"
+        # shellcheck disable=SC2034  # NAME and ENABLED_ROOTS are read by the eval'd cleanup()
+        (
+            HOME="$fake_home"
+            unset CLAUDE_CONFIG_DIR
+            NAME=aw-accept
+            SANDBOX="$SANDBOX/suite-$enabled"
+            eval "$cleanup_def"
+            [[ "$enabled" == yes ]] && ENABLED_ROOTS=("$SANDBOX/../root-$enabled")
+            cleanup
+        )
+        cache="$fake_home/.claude/plugins/cache"
+        if [[ "$enabled" == yes ]]; then
+            [[ ! -e "$cache/aw-accept" && -d "$cache/aw-accept-other" && ! -e "$SANDBOX/suite-$enabled" ]] \
+                && pass "cleanup removes the suite's aw-accept plugin cache, and nothing beside it" \
+                || fail "cleanup after an enable left: $(ls "$cache" 2>&1)"
+        else
+            [[ -d "$cache/aw-accept" ]] \
+                && pass "cleanup leaves the plugin cache alone when the suite enabled nothing" \
+                || fail "cleanup removed the aw-accept cache without having enabled anything"
+        fi
+    done
+fi
+
 echo ""
 echo "test_plugin_acceptance_helpers: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -11,9 +11,11 @@
 # It never touches this checkout, the real registry or ~/.claude/settings.json.
 # It works on a COPY of the checkout whose plugin and marketplace are renamed
 # `aw-accept`, so the machine-level plugin records the CLI keeps under
-# ~/.claude/plugins/ never gain or lose an `agent-workspace` entry; both
-# records it adds are removed on exit. Cases, each asserting on what a real
-# session reports:
+# ~/.claude/plugins/ never gain or lose an `agent-workspace` entry. On exit
+# it removes both records it adds and the copy of the plugin the CLI leaves
+# in ~/.claude/plugins/cache/aw-accept/ (which `plugin uninstall` does not
+# delete; Claude Code only marks it orphaned). Cases, each asserting on
+# what a real session reports:
 #   A  collision: in a repo with its own plan-task, bare /plan-task is still
 #      the project's, and /aw-accept:<skill> reaches the plugin;
 #   B  a git worktree of that repo inherits the plugin;
@@ -75,6 +77,11 @@ cleanup() {
         (cd "$r" && claude plugin uninstall "$NAME@$NAME" --scope local >/dev/null 2>&1)
         (cd "$r" && claude plugin marketplace remove "$NAME" --scope local >/dev/null 2>&1)
     done
+    # The CLI's cached copy of the plugin, which uninstall leaves behind.
+    # Only after an enable, and only the suite's own `aw-accept` name.
+    if [[ ${#ENABLED_ROOTS[@]} -gt 0 ]]; then
+        rm -rf "${CLAUDE_CONFIG_DIR:-${HOME:?}/.claude}/plugins/cache/${NAME:?}"
+    fi
     rm -rf "${SANDBOX:?}"
 }
 trap cleanup EXIT
