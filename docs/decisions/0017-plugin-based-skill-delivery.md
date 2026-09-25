@@ -219,15 +219,24 @@ checkout is left alone.
 `dispatch_phase.sh --skill-prefix <name>:` puts the prefix on every slash
 command in a handoff's task line. The default is empty, which is correct
 for a workspace session and for Codex, which never has the plugin. The
-prefix is a caller-supplied string and is never derived from `--type` or
-`$PWD`. A workspace session driving a project issue has bare skills, and
-`/start-task` moves the cwd.
+prefix is a caller-supplied string and is never derived from `--type`. A
+workspace session driving a project issue has bare skills, and
+`/start-task` moves the cwd mid-run.
 
-`run-issue` decides the prefix once per run. It sets
-`PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'`, single-quoted so that the shell never
-expands the token from an environment another plugin may have set. It uses
-`agent-workspace:` only when that value is a directory whose `pwd -P` form
-equals the workspace root's.
+`run-issue` decides the prefix once per run, before step 1, with
+`.agent/scripts/skill_prefix.sh`. The script applies a location rule to
+the directory the session started in. In the workspace checkout's git
+repository (the checkout, a worktree of it, or a root such as `p11-jazzy`
+inside its tree), the names are bare. In a registered project root, they
+take the `agent-workspace:` prefix. Anywhere else, including a repository
+nested in a root whose sessions read neither, the script fails with a
+message and `run-issue` stops rather than guess. The rule holds because the
+installer never enables the plugin in the workspace: the plugin's source
+is the workspace's own `.claude/skills`, so enabling it there would load
+every shipped skill twice. An earlier version asked the model to copy
+`${CLAUDE_PLUGIN_ROOT}` into a shell command. Live run 2 showed a model
+replacing that placeholder with its cwd, so the decision no longer passes
+through anything the model has to transcribe.
 
 For the model, the project session's `SessionStart` header states which
 form applies. That header is output, not a source comment, because the
@@ -297,7 +306,8 @@ then, the opt-in `.agent/scripts/tests/live/plugin_acceptance.sh` covers:
 - worktree inheritance, and no plugin in an unrelated repo;
 - the workspace-root shape, with no doubled skills;
 - the skip guard for a `p11`-shape root;
-- the bare-load and plugin-load prefix detection;
+- run-issue's prefix step, run by sessions through the Bash tool at the
+  workspace root and at a project root;
 - which `parent=` instance shapes reach the plugin enabled at their parent
   (a worktree or a plain directory of the parent's repository) and which
   do not (a plain-directory parent's instance, a separate repository);
@@ -317,8 +327,12 @@ then, the opt-in `.agent/scripts/tests/live/plugin_acceptance.sh` covers:
   the per-machine `/make_*` skills.
 - **Enable the plugin at user scope.** Rejected: it has the same global
   reach as the symlinks.
-- **Derive the handoff prefix from `--type` or the cwd.** Rejected: neither
-  says which skill set the host loaded (decision 6).
+- **Derive the handoff prefix from `--type` or the current cwd.**
+  Rejected: `--type` says nothing about the host, and the cwd moves during
+  a run (decision 6 uses the session's starting directory, once).
+- **Detect the prefix from `${CLAUDE_PLUGIN_ROOT}` substitution.**
+  Replaced: it depended on the model copying a placeholder literally
+  (decision 6).
 - **Copy the skills into each project.** Rejected for the reasons ADR-0016
   gives: it writes into project checkouts, and the copies drift.
 

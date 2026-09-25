@@ -37,28 +37,29 @@ bare. Every dispatched task line must use the name *this* session has, and
 neither `--type` nor the cwd says which: a workspace session driving a
 project issue still has bare names, and `/start-task` moves the cwd.
 
-Find out **once, before step 1**, by running exactly this (the single
-quotes matter — they keep the shell from expanding the token from its
-environment, where another plugin may have set it):
+Find out **once, before step 1**, from the directory this session started
+in, by running:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'
-if [[ -d "$PLUGIN_ROOT" && "$(cd "$PLUGIN_ROOT" && pwd -P)" == "$(cd "$WS_ROOT" && pwd -P)" ]]; then
-    echo "skill_prefix=agent-workspace:"
-else
-    echo "skill_prefix="
-fi
+"$WS_ROOT/.agent/scripts/skill_prefix.sh"
 ```
 
-When this skill was loaded through the plugin, Claude Code has already
-replaced the quoted token with the plugin's source directory — the
-workspace checkout — so the comparison matches. Loaded bare, the token
-stays literal, is no directory, and the prefix is empty. Remember the
-printed value for the whole run and pass it on every handoff call in step
-4 as `--skill-prefix agent-workspace:` (omit the flag when it printed
-empty). Where this skill's text names another workspace skill by its bare
-slash command, invoke the prefixed form in a plugin session too.
+It decides by location, not by anything this session has to copy or
+interpret: `skill_prefix=` (bare) when the session is in the workspace
+checkout's git repository (the checkout, a worktree of it, or a root like
+`p11-jazzy` inside it), `skill_prefix=agent-workspace:` when it is in a
+registered project root. The installer never enables the plugin in the
+workspace, because the plugin's source is the workspace's own
+`.claude/skills`: enabling it there would load every shipped skill twice.
+Remember the printed value for the whole run and pass it on every handoff
+call in step 4 as `--skill-prefix agent-workspace:` (omit the flag when it
+printed empty). Where this skill's text names another workspace skill by
+its bare slash command, invoke the prefixed form in a plugin session too.
+
+If it exits non-zero (an unregistered location, or a repository nested in
+a root whose sessions see neither form), **stop and report its message**.
+Do not guess a prefix.
 
 **The `|| echo .` fallback is required, not decoration.** The user tier is
 optional — `--check` and ADR-0016 both say so — and on a machine without it

@@ -31,10 +31,10 @@
 #   E  p11 shape: a registered root inside the workspace's git tree is
 #      skipped by the installer (sandbox HOME; the CLI is a stub that fails
 #      loudly if called) and its session has them bare, once;
-#   F  prefix detection (plan-review round-2 finding A): a probe skill
-#      reports what ${CLAUDE_PLUGIN_ROOT} became. Loaded bare it must not
-#      name the workspace; loaded through the plugin it must, and run-issue's
-#      rule then yields `<plugin>:` in the plugin session and empty bare;
+#   F  run-issue's prefix step: sessions at the workspace root and at a
+#      project root run the real skill_prefix.sh through the Bash tool and
+#      report bare and agent-workspace: respectively; an unregistered repo
+#      makes the script fail rather than guess;
 #   G  parent= instances: which shapes see the plugin enabled at their
 #      parent (a worktree or plain directory of a git-repo parent) and which
 #      do not (a plain-directory parent's instance, a separate repo nested
@@ -373,28 +373,39 @@ else
 fi
 
 # --------------------------------------------- F: prefix detection ---
-# run-issue's rule, verbatim in effect: prefix only when the substituted
-# value is a directory whose pwd -P form is the workspace root's.
-prefix_for() {  # <value>
-    if [[ -d "$1" && "$(cd "$1" && pwd -P)" == "$W" ]]; then echo "$NAME:"; else echo ""; fi
+# run-issue's prefix step as a session runs it: the real skill_prefix.sh,
+# through the Bash tool, in a workspace-root session (bare, where D showed
+# the skills load bare) and a project-root session (prefixed, where A showed
+# them under the plugin). The session's answer must be the script's own
+# line, which the suite also gets by running the script directly -- nothing
+# the model has to copy or interpret decides the prefix. And a location
+# the script has no rule for (the unrelated repo) makes it fail, not guess.
+SPS="$W/.agent/scripts/skill_prefix.sh"
+tool_session() {  # <dir> <prompt>: one headless session allowed to run only $SPS
+    SESSION_OUT="$(cd "$1" && timeout 300 claude -p "$2" --model "$MODEL" \
+        --allowedTools "Bash($SPS)" "Bash($SPS:*)" "Bash(bash $SPS)" 2>&1 </dev/null)"
+    SESSION_RC=$?
+    return "$SESSION_RC"
 }
-probe_value() {  # <session output>
-    sed -n 's/.*PROBE<<<\(.*\)>>>.*/\1/p' <<< "$1" | head -n1
-}
-probe "$W" "/zz-probe"; f=$?
-bare_val="$(probe_value "$SESSION_OUT")"
-if [[ "$f" -eq "$PROBE_REACHED" && -z "$(prefix_for "$bare_val")" ]]; then
-    pass "F: loaded bare, \${CLAUDE_PLUGIN_ROOT} does not name the workspace (got '$bare_val') -- prefix empty"
-else
-    fail "F: bare-load probe (/zz-probe $(probe_said "$f"); value '$bare_val')"
-fi
-probe "$P" "/$NAME:zz-probe"; f=$?
-plug_val="$(probe_value "$SESSION_OUT")"
-if [[ "$f" -eq "$PROBE_REACHED" && "$(prefix_for "$plug_val")" == "$NAME:" ]]; then
-    pass "F: loaded through the plugin, \${CLAUDE_PLUGIN_ROOT} is the workspace source -- prefix $NAME:"
-else
-    fail "F: plugin-load probe (/$NAME:zz-probe $(probe_said "$f"); value '$plug_val')"
-fi
+printf 'proj single_project %s\n' "$P" > "$W/.agent/projects.local"
+# (skill_prefix.sh prints the installer's plugin name, agent-workspace:,
+# whatever the copy's plugin is called.)
+for fcase in "workspace root:$W:skill_prefix=" "project root:$P:skill_prefix=agent-workspace:"; do
+    flabel="${fcase%%:*}"; frest="${fcase#*:}"; fdir="${frest%%:*}"; fwant="${frest#*:}"
+    fdirect="$(cd "$fdir" && bash "$SPS" 2>&1)"
+    tool_session "$fdir" "Run the command $SPS with the Bash tool, then reply with exactly the one line it printed, copied character for character, and nothing else."
+    fgot="$(grep -Eo 'skill_prefix=[a-z-]*:?' <<< "$SESSION_OUT" | tail -n1)"
+    if [[ "$fdirect" == "$fwant" && "$SESSION_RC" -eq 0 && "$fgot" == "$fwant" ]]; then
+        pass "F: in a $flabel session, run-issue's prefix step (the real script, via the Bash tool) gives '$fwant'"
+    else
+        fail "F: $flabel (script run directly: '$fdirect', wanted '$fwant'; session $(session_said) -> '$fgot')"
+    fi
+done
+fdirect="$(cd "$U" && bash "$SPS" 2>&1)"; frc=$?
+[[ "$frc" -eq 1 && "$fdirect" == *"nor in any registered project root"* ]] \
+    && pass "F: in an unregistered repo the prefix step fails with a reason instead of guessing" \
+    || fail "F: unregistered repo (exit $frc: $fdirect)"
+rm -f "$W/.agent/projects.local"
 # ------------------------------------------- G: parent= instance ---
 # Which instance shapes see the plugin enabled at their parent. Observed
 # with claude 2.1.282: a session reads the local settings of its git
