@@ -2,6 +2,8 @@
 
 A set of tools that allows multiple agents to safely work on one or more projects with instructions to prioritize quality while keeping the user informed and in control.
 
+Agents use git worktrees to keep work isolated and follow good software engineering practices, documenting plans, reviews, and progress in plain files that any agent tool can pick up.
+
 ## Getting started
 
 Ask your favorite agent to look at github.com/rolker/agent_workspace.
@@ -20,7 +22,7 @@ If you're an AI agent, or you think you are, see [`AGENTS.md`](AGENTS.md).
 
 The workspace exists to help one person manage many AI agents across one or
 more projects, so the results can be trusted and the user stays informed and
-in control.
+in control. These goals drive the design and help agents and me see the big picture as we improve the workspace.
 
 ### Quality of the work
 
