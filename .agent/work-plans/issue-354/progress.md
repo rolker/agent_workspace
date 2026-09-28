@@ -193,3 +193,54 @@ All round-1 findings are resolved, and I checked them against the suites, not th
 - [ ] Add `parents\[` to the root-derivation scan, and allow empty allowlist entries.
 - [ ] Assert every `user_tier_scripts.txt` entry matches the regex. Add `.claude/hooks` to that suite's allowlist.
 - [ ] Replace `git commit --dry-run` with `pre-commit run --files`: one skip case and one run case.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-28 12:20 -0400
+**By**: Claude Code Agent (claude-sonnet-5)
+
+Implemented per the round-2-reviewed plan (`3c91b13`), folding in all
+three of that review's remaining findings:
+
+1. `.pre-commit-config.yaml`: `validate-script-tests` now has
+   `files: ^(\.agent/|\.claude/|AGENTS\.md$|Makefile$|\.pre-commit-config\.yaml$)`
+   and `exclude: ^\.agent/work-plans/`; `always_run: true` removed.
+2. New `.agent/scripts/tests/test_script_tests_hook_scope.sh`: parses the
+   hook's real `files:`/`exclude:` out of `.pre-commit-config.yaml`,
+   scans every suite for root-derivation idioms (triple `../../..`, the
+   two-level `../..` form, nested `dirname "$(dirname "$(dirname`,
+   `rev-parse --show-toplevel`, Python `.parent.parent`/`parents[N]`),
+   and requires each matched suite to declare its out-of-tree read
+   prefixes in a `ROOT_READERS` allowlist (`${ROOT_READERS[$s]+x}`
+   presence test, so an empty "sandbox only" value still counts as
+   declared — covers `test_resolve_work_plans_dir.sh` and
+   `test_merge_pr_root_resolution.sh`). Every declared prefix is checked
+   against the real regex; every root-deriving suite without an entry
+   fails the suite by name.
+3. `test_user_tier_guard.sh`'s reads are manifest-driven
+   (`.agent/user_tier_scripts.txt`, which includes
+   `.claude/hooks/log-tool-use.sh`): rather than a static allowlist for
+   that suite, the drift test parses every manifest entry directly and
+   checks each one against the hook's `files:`/`exclude:` regex, so a
+   future manifest addition is verified for real, not assumed.
+4. Updated `run_script_tests.sh`'s header comment (referenced
+   `always_run: true`; now describes the scoped hook and points at this
+   suite).
+
+### Verification
+
+`pre-commit run validate-script-tests --files <path>`:
+- `README.md` -> `(no files to check)Skipped`
+- `.agent/work-plans/issue-354/progress.md` -> `(no files to check)Skipped`
+- `.agent/scripts/tests/test_script_tests_hook_scope.sh` -> `Passed` (full
+  30-suite run underneath, ~130 s)
+
+`bash .agent/scripts/tests/run_script_tests.sh`: all 30 suites passed
+(131 s), including the new `test_script_tests_hook_scope.sh` (60
+assertions, 0 failed).
+
+`pre-commit run --all-files`: all hooks passed, including
+`validate-script-tests` (30/30 suites, 133 s) and shellcheck/black/
+flake8/pylint/yamllint.
+
+**Commit**: `64b99d4`
