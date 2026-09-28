@@ -5,7 +5,8 @@ A set of tools that allows multiple agents to safely work on one or more project
 ## Getting started
 
 Ask your favorite agent to look at github.com/rolker/agent_workspace.
-You can also clone it yourself and launch an agent CLI in the local destination and ask it to set up the workspace.
+
+You can also clone it yourself, launch an agent CLI in the local clone, and ask it to set up the workspace.
 
 ## Documentation
 
@@ -81,7 +82,7 @@ in control.
 
 Before 2026 I had been dismissing "vibe coding" without having tried it. Towards the end of 2025, I started dabbling with Gemini, which came with my Pixel phone, and was impressed at how quickly it would whip up complex throw-away python scripts to answer some of my questions. That led me to try having Gemini build a web version of one of my projects, and the results were impressive yet needed much more guidance than can be provided in a simple prompt.
 
-Realizing that I essentially had a team of smart interns at my disposal, I started testing them out on real work by having them first help me update documentation and find where documentation was lacking in my ROS 2 based projects. This being an experiment, I didn't want to commit agent instructions in project repos yet, so I had agents create a separate repo so I could try teaching agents how I work with ROS. The result was ros2_agent_workspace.
+Realizing that I essentially had a team of smart interns at my disposal, I started testing them out on real work by having them first help me update documentation and find where documentation was lacking in my ROS 2 based projects. This being an experiment, I didn't want to commit agent instructions in project repos yet, so I had agents create a separate repo so I could try teaching agents how I work with ROS. The result was ros2_agent_workspace. I also tried different GUIs, CLIs, and models, eventually settling on Claude Code as my primary tool, but keeping the workspace usable with other tools.
 
 The focus of the workspace was teaching agents the nuances of ROS 2 development so they wouldn't keep making rookie mistakes. I also recognized the potential of having multiple agents working together, so enabling that capability was the other goal of the workspace.
 
