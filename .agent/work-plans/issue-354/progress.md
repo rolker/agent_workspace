@@ -150,3 +150,46 @@ the original `^\.agent/` alone would have missed the goal), redesigned the
 regression test around root-derivation detection plus a declared-reads
 allowlist instead of path-idiom extraction, and dropped the incorrect claim
 that another suite reads `.pre-commit-config.yaml`'s content.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-28 11:57 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**PR**: https://github.com/rolker/agent_workspace/pull/355 — [PLAN] Pre-commit: run the script test suites only when a commit touches what they test (~133 s on every commit today)
+**Issue**: #354 — Pre-commit: run the script test suites only when a commit touches what they test (~133 s on every commit today)
+**Plan**: `.agent/work-plans/issue-354/plan.md` at `3c91b13`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Still one hook edit plus one test suite. |
+| Issue alignment | Good | Round-1 finding 1 resolved. `exclude: ^\.agent/work-plans/` is there, and 262 of the last 300 non-merge commits on main touch only work-plans (re-measured). Finding 3 resolved: the "existing style" claim is gone. |
+| File targeting | Good | No change. |
+| Consequences | Good | No live doc states the ~18 s figure. |
+| Principle alignment | Good | Round-1 finding 2 resolved in design: root-derivation scan plus a declared-reads allowlist. The small gaps are listed below. |
+| ADR compliance | Good | ADR-0004/0005 layering is kept: CI `make lint` (all files) still runs every suite. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment]** The scan's idiom list catches every real-root suite today: ROOT_DIR (test_sync_gitbug), REAL_ROOT/WS_ROOT via `../../..` or triple dirname, and show-toplevel (test_checkpoint_269). Three gaps remain:
+   - Python `parents[N]` is not listed. Round 1 suggested it, and `Path(__file__).resolve().parents[3]` would slip through. Add `parents\[`.
+   - `$SCRIPT_DIR/../..` (test_dispatch_phase.sh:535, which reaches `.agent/project_types`) is not detected. It is harmless today because it stays under `.agent/`.
+   - The show-toplevel pattern also matches two sandbox-only suites (test_resolve_work_plans_dir.sh:140, test_merge_pr_root_resolution.sh:142), and `parent.parent` in test_progress_read.py resolves only to `.agent/scripts`. The allowlist has to accept an empty "sandbox only" entry, so test presence with `${ROOT_READERS[k]+x}`, not `-n`.
+2. **[Test what breaks]** test_user_tier_guard.sh reads `$WS_ROOT/$rel` for every line of `.agent/user_tier_scripts.txt`, and that includes `.claude/hooks/log-tool-use.sh`. The example allowlist omits it. Because these reads come from the manifest, a static allowlist cannot track them. The drift test should also check each manifest entry against `files:`/`exclude:`.
+3. **[Issue alignment]** Step 2's manual check cites `git commit --dry-run`, which does not run hooks. Keep only `pre-commit run validate-script-tests --files <path>` (expect Skipped), and add a positive case on a covered path.
+
+Residual risk: a suite that derives the root through an idiom the scan doesn't know would slip past the drift test. That is acceptable, because CI runs every suite on every PR push, so the miss shows up at PR time and is not silently merged.
+
+### Summary
+
+All round-1 findings are resolved, and I checked them against the suites, not the plan's evidence. The remaining items are small implementation notes and do not need a re-plan.
+
+### Recommended Actions
+
+- [ ] Add `parents\[` to the root-derivation scan, and allow empty allowlist entries.
+- [ ] Assert every `user_tier_scripts.txt` entry matches the regex. Add `.claude/hooks` to that suite's allowlist.
+- [ ] Replace `git commit --dry-run` with `pre-commit run --files`: one skip case and one run case.
