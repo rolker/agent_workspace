@@ -259,12 +259,19 @@ for suite in "${!ROOT_READERS[@]}"; do
                 # shape: literal `git`, then `show` as a whole word, then a
                 # `:` before the path -- not just the bare word "show"
                 # anywhere in the line, which a comment could satisfy.
-                # Comment lines are stripped first so a `# ... show ...`
-                # note can never justify the claim on its own.
+                # Comments are stripped first -- both whole-line (`#...`)
+                # and trailing (`code  # ...`) -- from the first
+                # whitespace-or-line-start `#` onward, so neither shape of
+                # comment can justify the claim on its own. This is a
+                # simple heuristic, not a shell parser: it does not
+                # understand quoting, so a literal `#` inside a quoted
+                # string would also be stripped. No suite's real
+                # `git ... show <ref>:<path>` line contains a `#`, so this
+                # never clips a legitimate match.
                 path_re="${path//./\\.}"
                 if ! in_list "$suite" "${ALLOWED_GIT_HISTORY_SUITES[@]}"; then
                     fail "$suite: 'git-history:' is restricted to ${ALLOWED_GIT_HISTORY_SUITES[*]} -- '$suite' may not claim it for '$path'"
-                elif ! grep -vE '^[[:space:]]*#' "$SCRIPT_DIR/$suite" 2>/dev/null \
+                elif ! sed -E 's/(^|[[:space:]])#.*$//' "$SCRIPT_DIR/$suite" 2>/dev/null \
                         | grep -qE "git.*\\bshow\\b.*:.*${path_re}"; then
                     fail "$suite: no 'git ... show <ref>:$path' read found in the suite's source -- 'git-history:$path' is unjustified"
                 else
@@ -287,6 +294,27 @@ for suite in "${!ROOT_READERS[@]}"; do
         esac
     done
 done
+
+# --- Direct check on the git-history comment-stripping logic itself: a
+#     trailing comment on a code line (e.g. `foo  # git show main:...`)
+#     must not satisfy the `git ... show <ref>:<path>` shape -- only real
+#     code should. Synthetic input strings only, no files written, so this
+#     stays within the suite's hermetic contract. ---
+strip_comment_for_test() { sed -E 's/(^|[[:space:]])#.*$//'; }
+if printf '%s\n' 'foo  # git show main:.agent/work-plans/x' \
+        | strip_comment_for_test \
+        | grep -qE 'git.*\bshow\b.*:.*\.agent/work-plans/x'; then
+    fail "git-history comment-stripping: a trailing comment ('foo  # git show ...') still satisfies the shape check"
+else
+    pass "git-history comment-stripping: a trailing comment ('foo  # git show ...') does not satisfy the shape check"
+fi
+if printf '%s\n' 'git -C "$repo" show "${base_ref}:.agent/work-plans/x"' \
+        | strip_comment_for_test \
+        | grep -qE 'git.*\bshow\b.*:.*\.agent/work-plans/x'; then
+    pass "git-history comment-stripping: the legitimate code line (no '#') still matches"
+else
+    fail "git-history comment-stripping: the legitimate code line (no '#') no longer matches -- stripping broke real code"
+fi
 
 # --- Manifest-driven reads: test_user_tier_guard.sh reads every entry in
 #     .agent/user_tier_scripts.txt (plus the manifest file itself). A static
