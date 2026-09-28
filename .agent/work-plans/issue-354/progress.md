@@ -329,3 +329,27 @@ All five round-2 findings (Local Review at `e3ac7a1`) verified resolved by mutat
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-28 (session)
+**By**: Claude Code Agent (claude-sonnet-5)
+**Verdict**: approved
+
+**PR**: #355 at `50111e3`
+
+Owner-reported gap (T1) in the merged suite's `git-history:` shape check:
+the comment-stripping step (`grep -vE '^[[:space:]]*#'`) removed only
+whole-line comments, so a trailing comment on a code line (e.g.
+`foo  # git show main:.agent/work-plans/x`) could still satisfy the
+`git ... show <ref>:<path>` match, and the code comment overstated what
+it guarded.
+
+### Actions
+- [x] (must-fix) T1: switched the strip to `sed -E 's/(^|[[:space:]])#.*$//'`, removing both whole-line and trailing comments before the shape match; corrected the accompanying comment to describe the actual (heuristic, not quote-aware) behavior — `.agent/scripts/tests/test_script_tests_hook_scope.sh:262-276`
+- [x] (must-fix) added a self-contained negative/positive pair (no files written) asserting a trailing-comment line no longer satisfies the shape check while the real, comment-free `git -C "$repo" show "${base_ref}:..."` line still does — `.agent/scripts/tests/test_script_tests_hook_scope.sh` (after the `ROOT_READERS` loop)
+
+Verified: `test_script_tests_hook_scope.sh` 70/0 (up from 68); full `run_script_tests.sh` 30/30 suites; `pre-commit run --files` on the changed file clean (incl. shellcheck).
+
+### Findings
+- [ ] No issues found. LGTM.
