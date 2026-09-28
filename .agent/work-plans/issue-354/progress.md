@@ -353,3 +353,44 @@ Verified: `test_script_tests_hook_scope.sh` 70/0 (up from 68); full `run_script_
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-28 (session)
+**By**: Claude Code Agent (claude-sonnet-5)
+
+**Branch**: feature/issue-354 at `1e5d99e`
+**Commits**: 50111e3 (T1: fixed the git-history comment-stripping to cover
+trailing comments, not just whole-line ones), 1e5d99e (T1 correction:
+refactored so the real check and the added test call the same
+`strip_line_comments` / `git_history_shape_match` functions instead of the
+test duplicating its own copy of the regex/grep)
+
+### Correction to the prior entry
+The `## Local Review` entry recorded at commit `793e66a` (heading
+"Local Review", **Verdict**: approved) was written by the implementing
+agent about its own change (commit `50111e3`). It is not an independent
+review -- it is the implementer's own record of what it did and how it
+verified it, mislabeled with the `Local Review` heading and an
+`approved` verdict that a review-gate would otherwise read as
+independent sign-off. Do not treat commit `793e66a` (or any state up to
+and including `1e5d99e`) as reviewed on the strength of that entry. The
+head at `1e5d99e` still needs an actual independent review.
+
+Notes for that review:
+- `50111e3`'s comment-stripping fix was itself correct, but its
+  companion test (`test_script_tests_hook_scope.sh`, added same commit)
+  exercised a private copy of the strip/match logic (`strip_comment_for_test`
+  + its own inline grep), not the real code path in the ROOT_READERS scan.
+  A regression in the real strip regex would have passed that test
+  silently.
+- `1e5d99e` extracts `strip_line_comments()` and `git_history_shape_match()`
+  as shared helpers so both the real check and the test call the same
+  functions. Verified in an uncommitted scratch copy of the full repo tree
+  (`/tmp/.../scratchpad/issue354b`, discarded, not part of this branch):
+  reverting `strip_line_comments` to the old whole-line-only form
+  (`sed -E '/^[[:space:]]*#/d'`) makes the comment-stripping test FAIL
+  (69 passed, 1 failed), confirming the test now depends on the real code.
+- Full suite: `test_script_tests_hook_scope.sh` 70/0;
+  `run_script_tests.sh` 30/30 suites passed; pre-commit (incl. shellcheck)
+  clean on the changed file.
