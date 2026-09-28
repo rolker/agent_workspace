@@ -244,3 +244,20 @@ assertions, 0 failed).
 flake8/pylint/yamllint.
 
 **Commit**: `64b99d4`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-28 12:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #355 at `5fbf7cc`
+**Depth**: Standard (reason: .pre-commit-config.yaml is an enforcement file)
+**Must-fix**: 1 | **Suggestions**: 4
+
+### Findings
+- [ ] (must-fix) `.github/PULL_REQUEST_TEMPLATE.md` is in test_checkpoint_269.sh's GATED_FILES and the real gate diffs merge-base..HEAD over it, but the files: regex omits it, so a template-only commit no longer runs the gate locally; ROOT_READERS[test_checkpoint_269.sh] declares only `git-history:.agent/work-plans`, and the "a branch commit cannot change what it sees" rationale is false for the HEAD side of that diff (confirmed independently by the Claude adversarial reviewer) — `.pre-commit-config.yaml:62`, `.agent/scripts/tests/test_checkpoint_269.sh:69`, `.agent/scripts/tests/test_script_tests_hook_scope.sh:124`
+- [ ] (suggestion) `manifest:`/`git-history:` markers accept any value and print PASS: a scratch suite reading docs/roadmap.md with entry `manifest:docs/` or `git-history:docs/` passed; validate the value (manifest: must name the parsed manifest; git-history: only where the suite does `git show <ref>:<path>`) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:160`
+- [ ] (suggestion) root-derivation scan misses `${SCRIPT_DIR%/.agent/scripts/tests}`, `git rev-parse --show-cdup` and Python `os.path.dirname` chains (scratch suites using them passed 60/0), and cannot see pathspec/transitive reads; soften the "only entirely novel techniques slip through" claim or widen the scan — `.agent/scripts/tests/test_script_tests_hook_scope.sh:106`
+- [ ] (suggestion) no negative assertion: deleting `exclude:` still passes every check; assert `.agent/work-plans/issue-N/progress.md` and a root doc (e.g. `docs/roadmap.md`) do not match (Gemini and Codex both raised this) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:92`
+- [ ] (suggestion) coverage is checked on the bare prefix string, so a future `exclude: ^\.claude/skills/` would still pass for `.claude/skills`; check a representative descendant path instead (Codex; Gemini made a similar point) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:171`
