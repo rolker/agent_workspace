@@ -256,8 +256,26 @@ flake8/pylint/yamllint.
 **Must-fix**: 1 | **Suggestions**: 4
 
 ### Findings
-- [ ] (must-fix) `.github/PULL_REQUEST_TEMPLATE.md` is in test_checkpoint_269.sh's GATED_FILES and the real gate diffs merge-base..HEAD over it, but the files: regex omits it, so a template-only commit no longer runs the gate locally; ROOT_READERS[test_checkpoint_269.sh] declares only `git-history:.agent/work-plans`, and the "a branch commit cannot change what it sees" rationale is false for the HEAD side of that diff (confirmed independently by the Claude adversarial reviewer) — `.pre-commit-config.yaml:62`, `.agent/scripts/tests/test_checkpoint_269.sh:69`, `.agent/scripts/tests/test_script_tests_hook_scope.sh:124`
-- [ ] (suggestion) `manifest:`/`git-history:` markers accept any value and print PASS: a scratch suite reading docs/roadmap.md with entry `manifest:docs/` or `git-history:docs/` passed; validate the value (manifest: must name the parsed manifest; git-history: only where the suite does `git show <ref>:<path>`) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:160`
-- [ ] (suggestion) root-derivation scan misses `${SCRIPT_DIR%/.agent/scripts/tests}`, `git rev-parse --show-cdup` and Python `os.path.dirname` chains (scratch suites using them passed 60/0), and cannot see pathspec/transitive reads; soften the "only entirely novel techniques slip through" claim or widen the scan — `.agent/scripts/tests/test_script_tests_hook_scope.sh:106`
-- [ ] (suggestion) no negative assertion: deleting `exclude:` still passes every check; assert `.agent/work-plans/issue-N/progress.md` and a root doc (e.g. `docs/roadmap.md`) do not match (Gemini and Codex both raised this) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:92`
-- [ ] (suggestion) coverage is checked on the bare prefix string, so a future `exclude: ^\.claude/skills/` would still pass for `.claude/skills`; check a representative descendant path instead (Codex; Gemini made a similar point) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:171`
+- [x] (must-fix) `.github/PULL_REQUEST_TEMPLATE.md` is in test_checkpoint_269.sh's GATED_FILES and the real gate diffs merge-base..HEAD over it, but the files: regex omits it, so a template-only commit no longer runs the gate locally; ROOT_READERS[test_checkpoint_269.sh] declares only `git-history:.agent/work-plans`, and the "a branch commit cannot change what it sees" rationale is false for the HEAD side of that diff (confirmed independently by the Claude adversarial reviewer) — `.pre-commit-config.yaml:62`, `.agent/scripts/tests/test_checkpoint_269.sh:69`, `.agent/scripts/tests/test_script_tests_hook_scope.sh:124`
+- [x] (suggestion) `manifest:`/`git-history:` markers accept any value and print PASS: a scratch suite reading docs/roadmap.md with entry `manifest:docs/` or `git-history:docs/` passed; validate the value (manifest: must name the parsed manifest; git-history: only where the suite does `git show <ref>:<path>`) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:160`
+- [x] (suggestion) root-derivation scan misses `${SCRIPT_DIR%/.agent/scripts/tests}`, `git rev-parse --show-cdup` and Python `os.path.dirname` chains (scratch suites using them passed 60/0), and cannot see pathspec/transitive reads; soften the "only entirely novel techniques slip through" claim or widen the scan — `.agent/scripts/tests/test_script_tests_hook_scope.sh:106`
+- [x] (suggestion) no negative assertion: deleting `exclude:` still passes every check; assert `.agent/work-plans/issue-N/progress.md` and a root doc (e.g. `docs/roadmap.md`) do not match (Gemini and Codex both raised this) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:92`
+- [x] (suggestion) coverage is checked on the bare prefix string, so a future `exclude: ^\.claude/skills/` would still pass for `.claude/skills`; check a representative descendant path instead (Codex; Gemini made a similar point) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:171`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-28 12:55 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+
+**PR**: #355 at `f71a9a8`
+**Addressed**: Local Review at `a317257` (2026-09-28 12:24 -04:00)
+**Commits**: 0c95214, f71a9a8
+
+### Actions
+- [x] (must-fix) `.github/PULL_REQUEST_TEMPLATE.md` now covered by the hook's `files:` regex, and declared as a real (non-git-history) `ROOT_READERS` prefix for `test_checkpoint_269.sh` — `.pre-commit-config.yaml:62`, `.agent/scripts/tests/test_script_tests_hook_scope.sh` — `0c95214`
+- [x] (suggestion) `manifest:`/`git-history:` markers restricted to an explicit allowlist of suites, and `git-history:` further requires a real `git ... show <ref>:<path>` read in the suite's own source — `f71a9a8`
+- [x] (suggestion) root-derivation scan widened to `${VAR%/...}` suffix-stripping, `--show-cdup`, and nested `os.path.dirname(os.path.dirname(...))`; newly caught `test_cross_model_review.sh` (added to `ROOT_READERS` with an empty, git-ignored-only entry); softened the header's "detects every suite" claim to state the scan is heuristic and non-exhaustive — `f71a9a8`
+- [x] (suggestion) added `assert_not_covered` plus three negative assertions (README.md, docs/roadmap.md, a work-plans progress.md) so removing the `exclude:` or widening `files:` onto plain docs fails this suite — `f71a9a8`
+- [x] (suggestion) `ROOT_READERS` prefixes now checked via a synthetic descendant path, not the bare prefix string, so a future trailing-slash-anchored `exclude:` would be caught — `f71a9a8`
+
+All 30 `run_script_tests.sh` suites pass; `pre-commit run --all-files` is clean; re-verified `validate-script-tests --files` skips on README.md, runs on `.github/PULL_REQUEST_TEMPLATE.md`, and runs on a `.agent/scripts/` file.
