@@ -90,3 +90,49 @@ derived from every suite's real (non-sandbox) path reads, remove
 of `.pre-commit-config.yaml` and asserts it covers every real path any
 other suite references — so a future suite reading outside the regex
 fails loudly instead of silently skipping.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-28 11:44 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**PR**: https://github.com/rolker/agent_workspace/pull/355 — [PLAN] Pre-commit: run the script test suites only when a commit touches what they test (~133 s on every commit today)
+**Issue**: #354 — Pre-commit: run the script test suites only when a commit touches what they test (~133 s on every commit today)
+**Plan**: `.agent/work-plans/issue-354/plan.md` at `ef453fd`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One config line plus one test suite. |
+| Issue alignment | Concern | The proposed regex skips almost no real commits (finding 1); "docs-only commit skips" holds for README/docs/ only, not for work-plans/progress commits. |
+| File targeting | Good | `.pre-commit-config.yaml` plus the new suite; nothing missing. |
+| Consequences | Good | Checked: no live doc states the ~18 s figure. |
+| Principle alignment | Needs work | "Test what breaks": the proposed drift test mostly re-confirms paths already under `.agent/` and misses several idioms the suites actually use (finding 2). |
+| ADR compliance | Good | ADR-0004/0005 layering is kept: CI `--all-files` still runs every suite. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Issue alignment]** `^\.agent/` includes `.agent/work-plans/**`. Of the last 300 non-merge commits on main, 262 touch only `.agent/work-plans/` and only 4 would be skipped by the proposed regex. So the review loop's progress.md commits (`review_progress.sh persist` / `progress_append.sh` run `git commit`, and the hook fires on it) would still pay the ~133 s. The whole-tree argument does not hold for work-plans. `test_user_tier_install.sh` and `test_user_tier_guard.sh` `cp -r` `.agent`, but they only read `.agent/user_tier_scripts.txt`, `.agent/scripts/*` and `.agent/projects.local`, which they overwrite. The installer never reads work-plans. The only work-plans read is `test_checkpoint_269.sh`'s real gate, which does `git show <base>:.agent/work-plans/issue-269/progress.md`. That reads main's copy from git history, not the branch's staged file, so a branch commit cannot change it. Fix: add `exclude: ^\.agent/work-plans/` to the hook and keep the rest of the regex.
+2. **[Principle alignment]** The extractor idioms (`cp "$REAL_ROOT/<path>"`, `"$WS_ROOT/<path>"`, `"$SCRIPT_DIR/../<path>"`) miss real forms that exist today:
+   - `ROOT_DIR` in test_sync_gitbug.sh
+   - `$(dirname x3)` in test_merge_pr.sh
+   - `cp "$REAL_ROOT/.agent/scripts/$f"` loops in test_merge_pr_gate.sh and test_precommit_hook_path.sh
+   - `"$WS_ROOT/$rel"` from a manifest in test_user_tier_guard.sh
+   - `Path(__file__).parent.parent` in test_progress_read.py
+   - git-history reads in test_checkpoint_269.sh
+
+   It passes today only because every path is under `.agent/` anyway, which is false confidence. Suggested replacement: detect where a suite derives the repo root (`/../../..`, `show-toplevel`, triple `dirname`, `parents[`). Then require each such suite to name the out-of-tree paths it reads in an allowlist that the test checks against the regex, and fail on any new root-deriving suite that is not in the allowlist. That catches the risky case: a new suite reaching outside `.agent/`/`.claude/`.
+3. **[Issue alignment]** Step 3 says the parser matches "other suites that read `.pre-commit-config.yaml`". The plan's own table says none read it. Drop that claim.
+
+### Summary
+
+The direction is right and the root-file coverage (AGENTS.md, Makefile) is correct. As written, though, the regex does not deliver the goal for the commits the loop makes most often, and the drift test checks the wrong thing. Once findings 1 and 2 are applied, the plan is ready.
+
+### Recommended Actions
+
+- [ ] Add `exclude: ^\.agent/work-plans/` (with a one-line rationale citing the user-tier suites' actual reads) and make the acceptance cover a progress.md-only commit skipping the hook.
+- [ ] Rework the drift suite to detect repo-root derivation plus a declared-reads allowlist, not path-idiom extraction.
+- [ ] Remove the incorrect "existing style" claim in step 3.
