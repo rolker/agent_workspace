@@ -18,9 +18,10 @@ in control. <!-- P -->
   grasp them without much effort. <!-- Q2 -->
 - Agents learn from what's already there: why existing code was written the
   way it was, how the project already solves similar problems, and what the
-  field considers good practice. They bring the same care to new code, say so
-  when a better-known solution exists, and adopt new techniques only when
-  they'll be a long-term gain. <!-- Q3 draft -->  ** the last part here, I want to convey two ideas I think, one is to modernize or improve the code when pre-existing code is not up to snuff, but don't favor a different approach in cases where the existing approach is fine unless there is a clear forward looking reason to do so. 
+  field considers good practice. They bring the same care to new code.
+  Where existing code isn't up to standard, they improve or modernize it;
+  where it's fine, they keep its approach unless there's a clear reason,
+  looking ahead, to change it. <!-- Q3 -->
 - Code meets the safety expectations of the project's field. A path planning
   algorithm for a marine robot should be scrutinized for safety differently
   than a path planning algorithm for a game. <!-- Q4 -->
