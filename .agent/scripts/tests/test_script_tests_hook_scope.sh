@@ -4,10 +4,11 @@
 # commits matching a `files:`/`exclude:` regex, instead of `always_run: true`
 # on every commit. This suite guards the regex against drift going forward:
 # it does not re-confirm today's known-good path prefixes (that only proves
-# today's suites read what today's suites read) — it detects, by shape, every
-# suite that derives a *real* repository root (as opposed to a `mktemp -d`
-# sandbox root), and requires each one to declare in an allowlist here the
-# out-of-tree path prefixes it actually reads from that root. Every declared
+# today's suites read what today's suites read) — it detects, by shape,
+# suites that derive a *real* repository root via a known idiom (as opposed
+# to a `mktemp -d` sandbox root), and requires each one to declare in an
+# allowlist here the out-of-tree path prefixes it actually reads from that
+# root. Every declared
 # prefix is then checked against the hook's real regex in
 # .pre-commit-config.yaml. A suite that starts deriving a root without a
 # matching allowlist entry fails this suite loudly, by name, rather than
@@ -17,7 +18,10 @@
 # directory, plan round 2 review; extended round 3 with the shell/Python
 # forms a scratch suite could still hide behind):
 #   - triple `../../..` (or more) in a path expression
-#   - two-level `../..` (e.g. `$SCRIPT_DIR/../../project_types`)
+#   - two-level `../../` with the slash repeated (e.g.
+#     `$SCRIPT_DIR/../../project_types`) -- a same-depth `../..` *without*
+#     the repeated slash (e.g. `$dir/../..`) does not match; that gap falls
+#     under the heuristic-miss disclaimer below
 #   - the nested `dirname "$(dirname "$(dirname ...` form
 #   - `git ... rev-parse --show-toplevel` or `--show-cdup`
 #   - Python `Path(__file__)....parent.parent` / `.parents[N]`
@@ -32,7 +36,7 @@
 # list (and re-run this suite) when a new one turns up, rather than
 # treating today's list as closed.
 #
-# Two special allowlist value forms:
+# Three special allowlist value forms:
 #   - "" (empty) — the suite derives a root but only ever reads from a
 #     synthetic sandbox through it (e.g. its own `mktemp -d` tree), or reads
 #     a real but git-ignored path that a commit can never change (e.g.
@@ -250,9 +254,18 @@ for suite in "${!ROOT_READERS[@]}"; do
         case "$prefix" in
             git-history:*)
                 path="${prefix#git-history:}"
+                # Regex-quote the path (dots are the only metachar prefixes
+                # here use) and require the real `git ... show <ref>:<path>`
+                # shape: literal `git`, then `show` as a whole word, then a
+                # `:` before the path -- not just the bare word "show"
+                # anywhere in the line, which a comment could satisfy.
+                # Comment lines are stripped first so a `# ... show ...`
+                # note can never justify the claim on its own.
+                path_re="${path//./\\.}"
                 if ! in_list "$suite" "${ALLOWED_GIT_HISTORY_SUITES[@]}"; then
                     fail "$suite: 'git-history:' is restricted to ${ALLOWED_GIT_HISTORY_SUITES[*]} -- '$suite' may not claim it for '$path'"
-                elif ! grep -qE "show.*${path}" "$SCRIPT_DIR/$suite" 2>/dev/null; then
+                elif ! grep -vE '^[[:space:]]*#' "$SCRIPT_DIR/$suite" 2>/dev/null \
+                        | grep -qE "git.*\\bshow\\b.*:.*${path_re}"; then
                     fail "$suite: no 'git ... show <ref>:$path' read found in the suite's source -- 'git-history:$path' is unjustified"
                 else
                     pass "$suite: '$path' read via git history ('git show') -- exempt from files: coverage"
@@ -297,6 +310,18 @@ else
         pass "checked $manifest_entries manifest entries against the hook's files:/exclude: regex"
     fi
 fi
+
+# --- The hook's own inputs: everything above checks paths ROOT_READERS (or
+#     the manifest scan) declares. Nothing yet forces the hook's own
+#     trigger set -- .pre-commit-config.yaml itself, the runner it invokes,
+#     and the suites directory it runs -- to actually be covered. Dropping
+#     .pre-commit-config.yaml from files:, or adding an exclude: for
+#     .agent/scripts/tests/, would silently pass every assertion above while
+#     leaving a config or suite change unable to trigger the hook locally.
+#     Assert coverage of those inputs directly. ---
+assert_covered "hook config itself" ".pre-commit-config.yaml"
+assert_covered "hook runner script" ".agent/scripts/tests/run_script_tests.sh"
+assert_covered "a suite under .agent/scripts/tests/" ".agent/scripts/tests/test_script_tests_hook_scope.sh"
 
 # --- Negative assertions: the whole point of files:/exclude: is that most
 #     commits skip the hook. Assert that directly, on the skip side, not
