@@ -37,8 +37,9 @@
 # --all-files`, which always runs this hook regardless of what changed.
 # Locally, since issue #354, the hook is scoped with `files:`/`exclude:`
 # (see .pre-commit-config.yaml) so a `git commit` only pays this cost when
-# the commit touches .agent/, .claude/, AGENTS.md, Makefile, or
-# .pre-commit-config.yaml itself (excluding .agent/work-plans/, since no
+# the commit touches .agent/, .claude/, AGENTS.md, Makefile,
+# .pre-commit-config.yaml itself, or .github/PULL_REQUEST_TEMPLATE.md
+# (excluding .agent/work-plans/, since no
 # suite reads a branch's working-tree copy of it — see
 # .agent/work-plans/issue-354/plan.md and
 # test_script_tests_hook_scope.sh, which guards the regex against drift).
