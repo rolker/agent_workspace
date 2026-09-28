@@ -298,3 +298,19 @@ All five round-1 findings (Local Review at `a317257`) verified resolved: PR temp
 - [ ] (suggestion) header still says the scan "detects ... every suite" (line 7) and lists "two-level `../..`" (line 20), but `(\.\./){2,}` misses an unslashed `$DIR/../..` (e.g. test_merge_pr_root_resolution.sh:112); from tests/ that only reaches .agent/ (covered), so fix the wording — `.agent/scripts/tests/test_script_tests_hook_scope.sh:7`
 - [ ] (suggestion) run_script_tests.sh's trigger-path comment omits `.github/PULL_REQUEST_TEMPLATE` (Gemini, Claude adversarial, lead) — `.agent/scripts/tests/run_script_tests.sh:39`
 - [ ] (suggestion) "Two special allowlist value forms" introduces three bullets — `.agent/scripts/tests/test_script_tests_hook_scope.sh:35`
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-28 13:33 -04:00
+**By**: Claude Code Agent (claude-sonnet-5)
+
+**Branch**: feature/issue-354 at `b749100`
+**Addressed**: Local Review (plain heading, not the "(Pre-Push)" canonical type recognised by review_progress.sh -- worked from the entry text directly) at `e3ac7a1` (2026-09-28 13:17 -04:00)
+**Commits**: 77ceee1, b749100
+
+### Actions
+- [x] (must-fix) M1: guard never asserted coverage of the hook's own inputs — added direct `assert_covered` lines for `.pre-commit-config.yaml`, `.agent/scripts/tests/run_script_tests.sh`, and a descendant of `.agent/scripts/tests/`; verified with a scratch negative test (dropping the config from `files:`, and adding `^\.agent/scripts/tests/` to `exclude:`) that the new assertions fail without the fix — `.agent/scripts/tests/test_script_tests_hook_scope.sh:301`
+- [x] (suggestion) S1: tightened the `git-history:` check — regex-quotes the path, requires a real `git ... show <ref>:<path>` shape, and strips comment lines first — `.agent/scripts/tests/test_script_tests_hook_scope.sh:255`
+- [x] (suggestion) S2: fixed the header — dropped the "every suite" overclaim and described the two-level idiom accurately (requires the repeated slash; a bare `$dir/../..` is a documented heuristic miss) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:7`
+- [x] (suggestion) S3: added `.github/PULL_REQUEST_TEMPLATE.md` to the trigger-path comment — `.agent/scripts/tests/run_script_tests.sh:39`
+- [x] (suggestion) S4: fixed "Two special allowlist value forms" to "Three" to match the three documented bullets — `.agent/scripts/tests/test_script_tests_hook_scope.sh:35`
