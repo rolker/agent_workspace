@@ -118,7 +118,13 @@ fi
 # --- Allowlist: suite -> space-separated out-of-tree read prefixes ---
 declare -A ROOT_READERS=(
     [test_adapter.sh]=".agent/scripts .agent/project_types"
-    [test_checkpoint_269.sh]="git-history:.agent/work-plans"
+    # The real gate itself (GATED_FILES) diffs merge-base..HEAD over these
+    # paths -- that's a HEAD-side read, not history the branch can't touch,
+    # so only progress.md (read via `git show <base>:...`) is git-history:
+    # exempt. Every other GATED_FILES entry is already under .agent/ or
+    # .claude/ (covered); .github/PULL_REQUEST_TEMPLATE.md is the one path
+    # outside those prefixes, so it is declared here as a real prefix.
+    [test_checkpoint_269.sh]="git-history:.agent/work-plans .github/PULL_REQUEST_TEMPLATE.md"
     [test_dispatch_phase.sh]=".agent/project_types .agent/scripts"
     [test_merge_pr_gate.sh]=".agent/scripts"
     [test_merge_pr_root_resolution.sh]=""

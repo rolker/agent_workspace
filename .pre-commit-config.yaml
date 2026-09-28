@@ -59,7 +59,7 @@ repos:
         entry: bash .agent/scripts/tests/run_script_tests.sh
         language: system
         pass_filenames: false
-        files: ^(\.agent/|\.claude/|AGENTS\.md$|Makefile$|\.pre-commit-config\.yaml$)
+        files: ^(\.agent/|\.claude/|AGENTS\.md$|Makefile$|\.pre-commit-config\.yaml$|\.github/PULL_REQUEST_TEMPLATE)
         exclude: ^\.agent/work-plans/
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
