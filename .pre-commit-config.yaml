@@ -59,7 +59,8 @@ repos:
         entry: bash .agent/scripts/tests/run_script_tests.sh
         language: system
         pass_filenames: false
-        always_run: true
+        files: ^(\.agent/|\.claude/|AGENTS\.md$|Makefile$|\.pre-commit-config\.yaml$)
+        exclude: ^\.agent/work-plans/
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.9.0.6

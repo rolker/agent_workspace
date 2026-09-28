@@ -32,10 +32,19 @@
 #      message names the suite that leaked and the leftover paths)
 #
 # Wired into .pre-commit-config.yaml as the `validate-script-tests` local
-# hook (always_run: true) inside the existing Lint (pre-commit) job — no
-# .github/workflows/validate.yml edit. SKIP=validate-script-tests is the
-# sanctioned escape for work-in-progress commits (same SKIP= mechanism this
-# repo's other local hooks already support).
+# hook inside the existing Lint (pre-commit) job — no .github/workflows/
+# validate.yml edit. CI's Lint (pre-commit) job runs `pre-commit run
+# --all-files`, which always runs this hook regardless of what changed.
+# Locally, since issue #354, the hook is scoped with `files:`/`exclude:`
+# (see .pre-commit-config.yaml) so a `git commit` only pays this cost when
+# the commit touches .agent/, .claude/, AGENTS.md, Makefile, or
+# .pre-commit-config.yaml itself (excluding .agent/work-plans/, since no
+# suite reads a branch's working-tree copy of it — see
+# .agent/work-plans/issue-354/plan.md and
+# test_script_tests_hook_scope.sh, which guards the regex against drift).
+# SKIP=validate-script-tests is the sanctioned escape for work-in-progress
+# commits (same SKIP= mechanism this repo's other local hooks already
+# support).
 #
 # Git-hook environment sanitization (found while wiring this into
 # .pre-commit-config.yaml for the first time — none of these suites had
