@@ -247,6 +247,28 @@ ALLOWED_GIT_HISTORY_SUITES=("test_checkpoint_269.sh")
 ALLOWED_MANIFEST_SUITES=("test_user_tier_guard.sh")
 in_list() { local needle="$1" x; shift; for x in "$@"; do [[ "$x" == "$needle" ]] && return 0; done; return 1; }
 
+# strip_line_comments: strips comments from stdin -- both whole-line (`#...`)
+# and trailing (`code  # ...`) -- from the first whitespace-or-line-start `#`
+# onward. This is a simple heuristic, not a shell parser: it does not
+# understand quoting, so a literal `#` inside a quoted string would also be
+# stripped. No suite's real `git ... show <ref>:<path>` line contains a `#`,
+# so this never clips a legitimate match.
+strip_line_comments() { sed -E 's/(^|[[:space:]])#.*$//'; }
+
+# git_history_shape_match <path_re>: reads candidate source lines from stdin
+# (after strip_line_comments), and checks for the real
+# `git ... show <ref>:<path>` shape -- literal `git`, then `show` as a whole
+# word, then a `:` before the path -- not just the bare word "show" anywhere
+# on the line, which a comment could satisfy on its own. This is the single
+# source of truth for the shape check: both the real ROOT_READERS scan below
+# and the direct comment-stripping test further down call this same
+# function, so a regression in either the stripping or the match regex is
+# caught by the test rather than silently passing a stale copy.
+git_history_shape_match() {
+    local path_re="$1"
+    strip_line_comments | grep -qE "git.*\\bshow\\b.*:.*${path_re}"
+}
+
 for suite in "${!ROOT_READERS[@]}"; do
     prefixes="${ROOT_READERS[$suite]}"
     [[ -z "$prefixes" ]] && continue  # sandbox-only or git-ignored: nothing to check
@@ -256,23 +278,12 @@ for suite in "${!ROOT_READERS[@]}"; do
                 path="${prefix#git-history:}"
                 # Regex-quote the path (dots are the only metachar prefixes
                 # here use) and require the real `git ... show <ref>:<path>`
-                # shape: literal `git`, then `show` as a whole word, then a
-                # `:` before the path -- not just the bare word "show"
-                # anywhere in the line, which a comment could satisfy.
-                # Comments are stripped first -- both whole-line (`#...`)
-                # and trailing (`code  # ...`) -- from the first
-                # whitespace-or-line-start `#` onward, so neither shape of
-                # comment can justify the claim on its own. This is a
-                # simple heuristic, not a shell parser: it does not
-                # understand quoting, so a literal `#` inside a quoted
-                # string would also be stripped. No suite's real
-                # `git ... show <ref>:<path>` line contains a `#`, so this
-                # never clips a legitimate match.
+                # shape via git_history_shape_match (see its definition
+                # above for the comment-stripping and matching rules).
                 path_re="${path//./\\.}"
                 if ! in_list "$suite" "${ALLOWED_GIT_HISTORY_SUITES[@]}"; then
                     fail "$suite: 'git-history:' is restricted to ${ALLOWED_GIT_HISTORY_SUITES[*]} -- '$suite' may not claim it for '$path'"
-                elif ! sed -E 's/(^|[[:space:]])#.*$//' "$SCRIPT_DIR/$suite" 2>/dev/null \
-                        | grep -qE "git.*\\bshow\\b.*:.*${path_re}"; then
+                elif ! git_history_shape_match "$path_re" < "$SCRIPT_DIR/$suite" 2>/dev/null; then
                     fail "$suite: no 'git ... show <ref>:$path' read found in the suite's source -- 'git-history:$path' is unjustified"
                 else
                     pass "$suite: '$path' read via git history ('git show') -- exempt from files: coverage"
@@ -298,19 +309,19 @@ done
 # --- Direct check on the git-history comment-stripping logic itself: a
 #     trailing comment on a code line (e.g. `foo  # git show main:...`)
 #     must not satisfy the `git ... show <ref>:<path>` shape -- only real
-#     code should. Synthetic input strings only, no files written, so this
-#     stays within the suite's hermetic contract. ---
-strip_comment_for_test() { sed -E 's/(^|[[:space:]])#.*$//'; }
+#     code should. This calls the SAME git_history_shape_match function the
+#     real ROOT_READERS scan above uses (not a private copy), so a
+#     regression in the real check trips this test too. Synthetic input
+#     strings only, no files written, so this stays within the suite's
+#     hermetic contract. ---
 if printf '%s\n' 'foo  # git show main:.agent/work-plans/x' \
-        | strip_comment_for_test \
-        | grep -qE 'git.*\bshow\b.*:.*\.agent/work-plans/x'; then
+        | git_history_shape_match '\.agent/work-plans/x'; then
     fail "git-history comment-stripping: a trailing comment ('foo  # git show ...') still satisfies the shape check"
 else
     pass "git-history comment-stripping: a trailing comment ('foo  # git show ...') does not satisfy the shape check"
 fi
 if printf '%s\n' 'git -C "$repo" show "${base_ref}:.agent/work-plans/x"' \
-        | strip_comment_for_test \
-        | grep -qE 'git.*\bshow\b.*:.*\.agent/work-plans/x'; then
+        | git_history_shape_match '\.agent/work-plans/x'; then
     pass "git-history comment-stripping: the legitimate code line (no '#') still matches"
 else
     fail "git-history comment-stripping: the legitimate code line (no '#') no longer matches -- stripping broke real code"
