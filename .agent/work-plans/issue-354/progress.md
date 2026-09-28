@@ -314,3 +314,18 @@ All five round-1 findings (Local Review at `a317257`) verified resolved: PR temp
 - [x] (suggestion) S2: fixed the header — dropped the "every suite" overclaim and described the two-level idiom accurately (requires the repeated slash; a bare `$dir/../..` is a documented heuristic miss) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:7`
 - [x] (suggestion) S3: added `.github/PULL_REQUEST_TEMPLATE.md` to the trigger-path comment — `.agent/scripts/tests/run_script_tests.sh:39`
 - [x] (suggestion) S4: fixed "Two special allowlist value forms" to "Three" to match the three documented bullets — `.agent/scripts/tests/test_script_tests_hook_scope.sh:35`
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-28 13:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #355 at `74b50da`
+**Depth**: Standard (reason: .pre-commit-config.yaml is an enforcement file; fix-round re-review classified on the whole diff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+All five round-2 findings (Local Review at `e3ac7a1`) verified resolved by mutation: dropping `.pre-commit-config.yaml` from files: fails 1 assertion; excluding `^\.agent/scripts/tests/` fails 2 (and `.../tests/run_` fails 1); the tightened git-history grep still accepts test_checkpoint_269.sh's real `git -C "$repo" show "${base_ref}:.agent/work-plans/..."` and fails when that read is removed or only claimed in a comment line; header wording, "Three" forms, and the run_script_tests.sh trigger comment are accurate. Suite 68/0; pre-commit (incl. shellcheck, yamllint) clean. Gemini's six and Codex's one new points were dropped: each fails loud rather than silent (quoted YAML), cannot occur with the current config (awk block bleed, missing trailing newline, unused literal list), only over-triggers (unanchored PR template), or reopens the round-1 descendant-probe design (Codex).
+
+### Findings
+- [ ] No issues found. LGTM.
