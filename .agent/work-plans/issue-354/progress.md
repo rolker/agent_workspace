@@ -76,3 +76,17 @@ always_run hook) but doesn't require any other open issue.
 - [ ] In the plan, enumerate the path-family evidence per suite (script, skill/SKILL.md, template, adapter/project_type, Makefile, doc) rather than a single merged regex derivation, so a reviewer can check coverage claim-by-claim.
 - [ ] Add a regression test asserting the `files:` regex matches every path referenced by the suites (e.g., derived from the same source list used to build the regex), so a new suite added later that reads outside the regex fails loudly instead of silently skipping.
 - [ ] Verify the regex also covers `.pre-commit-config.yaml` itself and `Makefile`, since suites test hook/target wiring, not just script bodies.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-28 11:39 -0400
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-354/plan.md` at `ef453fd`
+
+Scope the `validate-script-tests` pre-commit hook with a `files:` regex
+(`^(\.agent/|\.claude/|AGENTS\.md$|Makefile$|\.pre-commit-config\.yaml$)`)
+derived from every suite's real (non-sandbox) path reads, remove
+`always_run: true`, and add a regression suite that parses the regex out
+of `.pre-commit-config.yaml` and asserts it covers every real path any
+other suite references — so a future suite reading outside the regex
+fails loudly instead of silently skipping.
