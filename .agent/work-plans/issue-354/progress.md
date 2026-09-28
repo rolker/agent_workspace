@@ -136,3 +136,17 @@ The direction is right and the root-file coverage (AGENTS.md, Makefile) is corre
 - [ ] Add `exclude: ^\.agent/work-plans/` (with a one-line rationale citing the user-tier suites' actual reads) and make the acceptance cover a progress.md-only commit skipping the hook.
 - [ ] Rework the drift suite to detect repo-root derivation plus a declared-reads allowlist, not path-idiom extraction.
 - [ ] Remove the incorrect "existing style" claim in step 3.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-28 11:53 -0400
+**By**: Claude Code Agent (claude-sonnet-5)
+**Plan**: `.agent/work-plans/issue-354/plan.md` at `3c91b13`
+
+Revision addressing the plan review (verdict needs-work, `f4cc099`): added
+`exclude: ^\.agent/work-plans/` (verified no suite reads a branch's
+working-tree work-plans copy; 262/300 recent commits are work-plans-only, so
+the original `^\.agent/` alone would have missed the goal), redesigned the
+regression test around root-derivation detection plus a declared-reads
+allowlist instead of path-idiom extraction, and dropped the incorrect claim
+that another suite reads `.pre-commit-config.yaml`'s content.
