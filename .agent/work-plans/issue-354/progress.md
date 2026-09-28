@@ -394,3 +394,18 @@ Notes for that review:
 - Full suite: `test_script_tests_hook_scope.sh` 70/0;
   `run_script_tests.sh` 30/30 suites passed; pre-commit (incl. shellcheck)
   clean on the changed file.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-28 14:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #355 at `d7ec78b`
+**Depth**: Standard (reason: .pre-commit-config.yaml is an enforcement file; fix-round re-review classified on the whole diff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Independent review of 40df9f7..d7ec78b (supersedes the implementer-written entry at 793e66a). Suite 70/0. `strip_line_comments` keeps `$#`, `${#var}`, `"#x"`, `a#b`; strips only a `#` after whitespace (documented; the one allowed suite's line 142 has no `#` and still matches). Mutation in scratch copies: reverting stripping to whole-line only fails the self-test (69/1), so the test does call the shared helper. Gemini's must-fix (`:.*path` too permissive) and its `digit`/`;`-span points target the match regex, which is unchanged since round 3 and applies only to allowlisted test_checkpoint_269.sh: dropped as pre-existing and not reachable. Its `;#` stripping point and the adversarial stderr-on-missing-file note are dropped too: no suite contains that shape, and a missing file still fails loud. Codex: no issues.
+
+### Findings
+- [ ] (suggestion) the helper's comment says a match-regex regression is caught, but loosening it to `git.*:.*path` (dropping `\bshow\b`) still passes 70/0; add a negative code case (e.g. `git log main:<path>`) and a real `git show` line with a trailing comment (Gemini), or soften the comment — `.agent/scripts/tests/test_script_tests_hook_scope.sh:265`
