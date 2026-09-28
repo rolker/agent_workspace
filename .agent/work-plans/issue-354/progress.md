@@ -279,3 +279,22 @@ flake8/pylint/yamllint.
 - [x] (suggestion) `ROOT_READERS` prefixes now checked via a synthetic descendant path, not the bare prefix string, so a future trailing-slash-anchored `exclude:` would be caught — `f71a9a8`
 
 All 30 `run_script_tests.sh` suites pass; `pre-commit run --all-files` is clean; re-verified `validate-script-tests --files` skips on README.md, runs on `.github/PULL_REQUEST_TEMPLATE.md`, and runs on a `.agent/scripts/` file.
+
+## Local Review
+**Status**: complete
+**When**: 2026-09-28 13:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #355 at `b1c2152`
+**Depth**: Standard (reason: .pre-commit-config.yaml is an enforcement file; fix-round re-review classified on the whole diff)
+**Must-fix**: 1 | **Suggestions**: 4
+
+All five round-1 findings (Local Review at `a317257`) verified resolved: PR template in files: and ROOT_READERS; git-history:/manifest: restricted and validated; idiom scan widened (test_cross_model_review.sh's empty entry is correct — it reads only the main checkout's git-ignored .venv); skip-side assertions present; directory prefixes probed via a descendant path.
+
+### Findings
+- [ ] (must-fix) the guard never asserts coverage of the hook's own inputs — `.pre-commit-config.yaml`, `run_script_tests.sh`, and the suites under `.agent/scripts/tests/` appear in no ROOT_READERS entry, manifest entry, or assert_covered call, so dropping `.pre-commit-config.yaml` from files: or adding `^\.agent/scripts/tests/` to exclude: still passes (Codex + Gemini independently); add direct assert_covered lines for those paths — `.agent/scripts/tests/test_script_tests_hook_scope.sh:301`
+- [ ] (suggestion) git-history: check is `grep -qE "show.*${path}"` — unescaped dots, no `<ref>:` required, and a comment line containing "show" satisfies it, weaker than the header's `git ... show <ref>:<path>` claim; require `show [^ ]*:${path//./\\.}` — `.agent/scripts/tests/test_script_tests_hook_scope.sh:255`
+- [ ] (suggestion) header still says the scan "detects ... every suite" (line 7) and lists "two-level `../..`" (line 20), but `(\.\./){2,}` misses an unslashed `$DIR/../..` (e.g. test_merge_pr_root_resolution.sh:112); from tests/ that only reaches .agent/ (covered), so fix the wording — `.agent/scripts/tests/test_script_tests_hook_scope.sh:7`
+- [ ] (suggestion) run_script_tests.sh's trigger-path comment omits `.github/PULL_REQUEST_TEMPLATE` (Gemini, Claude adversarial, lead) — `.agent/scripts/tests/run_script_tests.sh:39`
+- [ ] (suggestion) "Two special allowlist value forms" introduces three bullets — `.agent/scripts/tests/test_script_tests_hook_scope.sh:35`
