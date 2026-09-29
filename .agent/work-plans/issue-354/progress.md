@@ -492,3 +492,19 @@ Fix R1–R3 first (Recommended)
 **Phase**: address-findings
 
 Retry, keep R3 (Recommended)
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-29 08:46 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #355 at `b9a51a0`
+**Addressed**: Local Review (Pre-Push) at `10534dc` (2026-09-29 08:21 -04:00)
+**Commits**: b9a51a0
+
+### Actions
+- [x] git_history_shape_match tightened to POSIX ERE `git[^#]*[[:space:]]show[[:space:]]+[^[:space:]]*:.*<path>`; five direct negatives (no git, reshow, showcase ref, show without ref token, --show-toplevel); mutation-checked: loosening each part fails its case, the old `\bshow\b` form fails 2 — `.agent/scripts/tests/test_script_tests_hook_scope.sh:268`
+- [x] Directory prefixes also check every tracked file (`git ls-files`), skipping only `.agent/work-plans/`; mutation-checked: an exclude: of `.agent/scripts/_bookkeeping.sh` now fails 11 checks (old suite: 72/0) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:240`
+- [x] IDIOM_REGEX matches `%%` as well as `%`, with direct cases (carried over from the interrupted pass) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:150`
+
+Suite: 101 passed, 0 failed; run_script_tests.sh: all 30 suites passed.
