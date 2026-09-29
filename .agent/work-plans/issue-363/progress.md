@@ -136,3 +136,13 @@ The plan is a faithful, well-scoped port of the four fork commits, but it misses
 - [ ] ADR-0015: Status-line amendment note, and raise the ADR-0001/0008 tension in the PR (finding 8)
 - [ ] One real-CLI smoke run after P1b (finding 9)
 - [ ] Confirm `kill_tree` is tracked (finding 10)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-29 14:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise, take all (Recommended) — fix M1–M3 and fold in S4–S10 (including locking the issue folder rather than a lock file).
