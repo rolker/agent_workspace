@@ -240,18 +240,18 @@ Upstream's digest of this repo (`inspiration_agent_workspace_digest.md`)
 recorded the Gemini + Codex adoption on 2026-09-24 (upstream e85f777). The
 P1/P2 fixes should flow back here rather than staying in the fork.
 
-## Pending Review (2026-09-29 round)
+## Decisions (2026-09-29 round)
 
-Decisions not yet made; nothing has been added to `docs/roadmap.md`, no issues
-opened. Owner decides what to file.
+Owner chose "file + publish" on 2026-09-29. Issues opened in
+rolker/agent_workspace; nothing merged.
 
-- P1a-P1g reviewer-helper hardening (2026-09-29)
-- P2 Gemini denied-turn retry, sequenced before #347's cutoff work (2026-09-29)
-- P3 sync false-green (already roadmapped; needs an issue when scheduled) (2026-09-29)
-- P4 issue-triage 100-issue truncation and partial-scan rules (2026-09-29)
-- P5 planning-document vocabulary, fold into #335 (2026-09-29)
-- P6a-P6d janitor sweep pieces (already roadmapped) (2026-09-29)
-- P7 inspiration-tracker step 8 hardening (2026-09-29)
+- P1a-P1g reviewer-helper hardening: filed as #363 (checklist of the seven sub-fixes; adjacent to #342)
+- P2 Gemini denied-turn retry: filed as #364 (supplies the resume mechanism for #347 option 3; re-verify `--conversation` on the installed agy, 1.2.13)
+- P3 sync false-green: filed as #365 (also on docs/roadmap.md)
+- P4 issue-triage 100-issue truncation and partial-scan rules: filed as #366
+- P5 planning-document vocabulary: recorded as a comment on #335 (no separate issue)
+- P6a-P6d janitor sweep pieces: left roadmapped, no issue
+- P7 inspiration-tracker step 8 hardening: filed as #367
 
 Skipped this round (classified R/O above, recorded for the record): R1-R4,
 O1-O4.
