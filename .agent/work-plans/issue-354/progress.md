@@ -471,3 +471,13 @@ Focus: fix `e90663d`. Carried finding (Integrated Review @ `948f8a2`) is closed:
 - [ ] (suggestion) `git_history_shape_match` regex is looser than its comment says: `\bshow\b` matches `--show-toplevel` (verified), `\b` is a GNU grep extension, and only the `show` component is test-pinned; tighten to e.g. `git[^#]*[[:space:]]show[[:space:]]+[^[:space:]]*:.*path` with a `--show-toplevel` negative, or narrow the comment — `.agent/scripts/tests/test_script_tests_hook_scope.sh:269`
 - [ ] (suggestion) Directory-prefix coverage uses one synthetic `coverage-probe.txt`, so a file-specific `exclude:` (verified: excluding `.agent/scripts/_bookkeeping.sh` still passes 72/0) goes undetected; probe the prefix's tracked files (`git ls-files`) too — `.agent/scripts/tests/test_script_tests_hook_scope.sh:240`
 - [ ] (suggestion) Root-derivation `IDIOM_REGEX` matches `${VAR%/...}` but not `${VAR%%/...}`; use `%{1,2}` — `.agent/scripts/tests/test_script_tests_hook_scope.sh:149`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-29 08:26 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Fix R1–R3 first (Recommended)
