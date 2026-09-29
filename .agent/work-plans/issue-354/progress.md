@@ -452,3 +452,22 @@ Fix S1 first (Recommended)
 ### Checks
 - test_script_tests_hook_scope.sh: 72 passed, 0 failed
 - run_script_tests.sh: all 30 suites passed (131s)
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-29 08:21 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-354 at `10534dc`
+**Base**: main
+**Depth**: Standard (reason: override trigger `.pre-commit-config.yaml`; 407 non-bookkeeping lines)
+**Must-fix**: 0 | **Suggestions**: 3
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Focus: fix `e90663d`. Carried finding (Integrated Review @ `948f8a2`) is closed: verified in a scratch clone that loosening the helper regex to `git.*:.*path` now fails 71/1 on the new no-`show` negative, and that a strip that deletes any `#`-bearing line fails 71/1 on the new commented positive; baseline 72/0, run_script_tests.sh 30/30. Residual: dropping `\b`, the `:`, or the leading `git` from the regex still passes 72/0 (finding 1). Reviewers: Claude adversarial ran; Gemini (agy) ran; Codex ran; Copilot skipped (quota exhausted). Dropped: Gemini's unanchored PR-template pattern (over-runs, safe direction), quoted-YAML parsing (would fail loud), manifest trailing newline (file ends with one); adversarial's `scripts` symlink gap (suites use `.agent/scripts` directly).
+
+### Findings
+- [ ] (suggestion) `git_history_shape_match` regex is looser than its comment says: `\bshow\b` matches `--show-toplevel` (verified), `\b` is a GNU grep extension, and only the `show` component is test-pinned; tighten to e.g. `git[^#]*[[:space:]]show[[:space:]]+[^[:space:]]*:.*path` with a `--show-toplevel` negative, or narrow the comment — `.agent/scripts/tests/test_script_tests_hook_scope.sh:269`
+- [ ] (suggestion) Directory-prefix coverage uses one synthetic `coverage-probe.txt`, so a file-specific `exclude:` (verified: excluding `.agent/scripts/_bookkeeping.sh` still passes 72/0) goes undetected; probe the prefix's tracked files (`git ls-files`) too — `.agent/scripts/tests/test_script_tests_hook_scope.sh:240`
+- [ ] (suggestion) Root-derivation `IDIOM_REGEX` matches `${VAR%/...}` but not `${VAR%%/...}`; use `%{1,2}` — `.agent/scripts/tests/test_script_tests_hook_scope.sh:149`
