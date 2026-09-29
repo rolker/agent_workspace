@@ -555,3 +555,15 @@ GitHub side has no review content: the only review is copilot-pull-request-revie
 
 ### False positives
 - (Copilot) quota-limit review notice / "failure" check-run: not a review and not a CI failure. Copilot never reviewed this PR because the requester's quota is exhausted.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-29 09:09 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Re-run job, then merge (Recommended)
+
+The only open box is triage's "No issues found. LGTM." placeholder (routing gap, issue to be filed). One Lint run at 39e0696 failed on an unrelated flaky fixture check (test_triage_reviews_integration.sh h17); the other Lint run passed; the failed job is re-run before merging.
