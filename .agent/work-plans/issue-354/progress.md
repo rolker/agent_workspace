@@ -436,3 +436,19 @@ GitHub side empty: 0 reviews, 0 inline, 0 conversation comments (draft; Copilot 
 **Decision**: address
 
 Fix S1 first (Recommended)
+
+## Implementation
+**Status**: complete
+**When**: 2026-09-29 08:16 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #355 at `e90663d`
+**Addressed**: Integrated Review at `948f8a2` (2026-09-29 08:10 -04:00)
+**Commits**: e90663d
+
+### Actions
+- [x] Pinned `git_history_shape_match`'s match regex with two direct cases: a `git log main:<path>` negative (no `show`, must not match) and a real `git -C ... show "<ref>:<path>"  # comment` positive (must still match). Mutation-checked in a scratch copy: loosening the regex to `git.*:.*path` now fails the suite (71/1); restored, 72/0. Owner direction: add tests, keep the comment. — `.agent/scripts/tests/test_script_tests_hook_scope.sh:329-346`
+
+### Checks
+- test_script_tests_hook_scope.sh: 72 passed, 0 failed
+- run_script_tests.sh: all 30 suites passed (131s)
