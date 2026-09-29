@@ -481,3 +481,14 @@ Focus: fix `e90663d`. Carried finding (Integrated Review @ `948f8a2`) is closed:
 **Decision**: address
 
 Fix R1–R3 first (Recommended)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-29 08:40 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: phase-failed
+**Decision**: retry
+**Phase**: address-findings
+
+Retry, keep R3 (Recommended)
