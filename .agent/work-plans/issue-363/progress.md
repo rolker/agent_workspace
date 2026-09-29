@@ -215,3 +215,13 @@ Every round-1 finding is closed, and the deterministic adoption tests do fail wh
 - [ ] Scope the orphan-sleep check to this test (distinctive escalation value or parent PID) (finding 3)
 - [ ] Fix the stale ADR-0013 row and the "env passthrough" Files-table text (finding 4)
 - [ ] Build the no-setsid PATH shim from `command -v` with named failures (finding 5)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-29 14:55 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: stop
+
+Stop here (asked after the round-2 plan review: ready, with F1 must-do during implementation — drop the directory-lock fallback so a contended lock always exits 5 — and suggestions F2–F5).
