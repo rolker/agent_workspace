@@ -146,3 +146,12 @@ The plan is a faithful, well-scoped port of the four fork commits, but it misses
 **Decision**: revise
 
 Revise, take all (Recommended) — fix M1–M3 and fold in S4–S10 (including locking the issue folder rather than a lock file).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-29 14:13 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-363/plan.md` at `8658c58`
+**Dispatch**: resumed (agent a222271354b5b9331, resume 1 of 3)
+
+Revision after the needs-work plan review (owner: revise, take all). Adds the watchdog SIGKILL cancel, the both-zero direct-helper P1a test, deterministic extracted-function tests of each adoption branch in place of the stress test, and locks the work-plans directory itself; folds in S4-S10 (setsid/timeout trade-off, no env-passthrough step, review-code exits 4 and 5, ADR-0015 Status-line note with the ADR-0001/0008 tension, live CLI run, kill_tree untracked).
