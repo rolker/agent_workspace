@@ -26,8 +26,9 @@
 #   - `git ... rev-parse --show-toplevel` or `--show-cdup`
 #   - Python `Path(__file__)....parent.parent` / `.parents[N]`
 #   - Python nested `os.path.dirname(os.path.dirname(...))` chains
-#   - shell suffix-stripping parameter expansion, e.g.
-#     `${SCRIPT_DIR%/.agent/scripts/tests}` or `${common%/.git}`
+#   - shell suffix-stripping parameter expansion, shortest or longest
+#     match, e.g. `${SCRIPT_DIR%/.agent/scripts/tests}`, `${common%/.git}`
+#     or `${SCRIPT_DIR%%/.agent/*}`
 #
 # This is a heuristic match on known idioms, not a semantic read-detector:
 # it cannot see a root reached through a variable indirection, a pathspec,
@@ -63,9 +64,9 @@
 #     could claim `manifest:` to dodge coverage for reads that are not
 #     manifest-driven at all.
 #
-# Hermetic: reads only the real .pre-commit-config.yaml and the real
-# .agent/scripts/tests/ directory and .agent/user_tier_scripts.txt; writes
-# nothing.
+# Hermetic: reads only the real .pre-commit-config.yaml, the real
+# .agent/scripts/tests/ directory, .agent/user_tier_scripts.txt and the
+# repository's tracked-file list (`git ls-files`); writes nothing.
 # Run: bash .agent/scripts/tests/test_script_tests_hook_scope.sh
 
 set -u
@@ -146,7 +147,7 @@ assert_not_covered() {  # <label> <path>
 }
 
 # --- Detect every suite that derives a real repository root ---
-IDIOM_REGEX='(\.\./){2,}|dirname "\$\(dirname "\$\(dirname|rev-parse --show-(toplevel|cdup)|\.parent\.parent|parents\[|\$\{[A-Za-z_]+%/[^}]*\}|os\.path\.dirname\(os\.path\.dirname'
+IDIOM_REGEX='(\.\./){2,}|dirname "\$\(dirname "\$\(dirname|rev-parse --show-(toplevel|cdup)|\.parent\.parent|parents\[|\$\{[A-Za-z_]+%{1,2}/[^}]*\}|os\.path\.dirname\(os\.path\.dirname'
 
 mapfile -t ROOT_DERIVING < <(
     cd "$SCRIPT_DIR" && grep -lE "$IDIOM_REGEX" test_*.sh test_*.py 2>/dev/null \
@@ -235,10 +236,36 @@ is_literal_file_prefix() {
 # with a trailing "/" (e.g. `^\.claude/skills/`) only matches a real path
 # under it, and checking the bare prefix would silently stop proving
 # coverage the moment such a regex replaced a looser one (round-N review).
+#
+# The synthetic probe proves coverage of the prefix as a whole (including
+# files added later), but not of any one real file under it: an exclude:
+# naming a single file (e.g. `^\.agent/scripts/_bookkeeping\.sh$`) leaves
+# the probe covered. So a directory prefix also checks every file git
+# tracks under it (`git ls-files`), reporting one pass line per prefix and
+# one fail line per uncovered file. Files under TRACKED_FILE_EXEMPT are
+# skipped: that is the hook's deliberate exclude: (work-plans), carried
+# only by the whole-tree `.agent/` copies, and asserted on the skip side at
+# the bottom of this suite.
+TRACKED_FILE_EXEMPT_RE='^\.agent/work-plans/'
 assert_prefix_covered() {  # <label> <prefix>
     local label="$1" prefix="$2" path="$2"
     is_literal_file_prefix "$prefix" || path="${prefix%/}/coverage-probe.txt"
     assert_covered "$label" "$path"
+    is_literal_file_prefix "$prefix" && return 0
+    local f checked=0 uncovered=0
+    while IFS= read -r f; do
+        [[ "$f" =~ $TRACKED_FILE_EXEMPT_RE ]] && continue
+        checked=$((checked + 1))
+        if path_matches_exclude "$f" || ! path_matches_files "$f"; then
+            uncovered=$((uncovered + 1))
+            fail "$label: tracked file '$f' under '$prefix' is NOT covered by the hook's files:/exclude: regex"
+        fi
+    done < <(git -C "$REAL_ROOT" ls-files -- "${prefix%/}/")
+    if [[ $checked -eq 0 ]]; then
+        fail "$label: no tracked files found under '$prefix' -- prefix is stale, or git ls-files failed"
+    elif [[ $uncovered -eq 0 ]]; then
+        pass "$label: all $checked tracked files under '$prefix' are covered"
+    fi
 }
 
 # Only these suites may claim git-history:/manifest: -- see the header
@@ -257,16 +284,20 @@ strip_line_comments() { sed -E 's/(^|[[:space:]])#.*$//'; }
 
 # git_history_shape_match <path_re>: reads candidate source lines from stdin
 # (after strip_line_comments), and checks for the real
-# `git ... show <ref>:<path>` shape -- literal `git`, then `show` as a whole
-# word, then a `:` before the path -- not just the bare word "show" anywhere
-# on the line, which a comment could satisfy on its own. This is the single
+# `git ... show <ref>:<path>` shape -- literal `git`, then `show` as its own
+# whitespace-delimited word (so `--show-toplevel` does not count), then the
+# `<ref>:` token directly after it (no whitespace between `show` and the
+# `:`), then the path -- not just the bare word "show" anywhere on the line,
+# which a comment could satisfy on its own. POSIX ERE only (no `\b`), and
+# every one of those parts is pinned by a direct case further down. This is the single
 # source of truth for the shape check: both the real ROOT_READERS scan below
 # and the direct comment-stripping test further down call this same
 # function, so a regression in either the stripping or the match regex is
 # caught by the test rather than silently passing a stale copy.
 git_history_shape_match() {
     local path_re="$1"
-    strip_line_comments | grep -qE "git.*\\bshow\\b.*:.*${path_re}"
+    strip_line_comments \
+        | grep -qE "git[^#]*[[:space:]]show[[:space:]]+[^[:space:]]*:.*${path_re}"
 }
 
 for suite in "${!ROOT_READERS[@]}"; do
@@ -327,11 +358,11 @@ else
     fail "git-history comment-stripping: the legitimate code line (no '#') no longer matches -- stripping broke real code"
 fi
 # The match regex itself: a `git <ref>:<path>` line without `show` (here
-# `git log`) must not match -- this pins the `\bshow\b` requirement, which
+# `git log`) must not match -- this pins the `show` requirement, which
 # the two cases above do not depend on.
 if printf '%s\n' 'git log main:.agent/work-plans/x' \
         | git_history_shape_match '\.agent/work-plans/x'; then
-    fail "git-history shape: a 'git log <ref>:<path>' line (no 'show') still satisfies the shape check -- the \\bshow\\b requirement is gone"
+    fail "git-history shape: a 'git log <ref>:<path>' line (no 'show') still satisfies the shape check -- the 'show' requirement is gone"
 else
     pass "git-history shape: a 'git log <ref>:<path>' line (no 'show') does not satisfy the shape check"
 fi
@@ -342,6 +373,44 @@ if printf '%s\n' 'git -C "$repo" show "${base_ref}:.agent/work-plans/x"  # read 
     pass "git-history shape: a real 'git ... show <ref>:<path>' line with a trailing comment still matches"
 else
     fail "git-history shape: a real 'git ... show <ref>:<path>' line with a trailing comment no longer matches -- stripping clipped the code"
+fi
+
+# Each remaining part of the shape regex, pinned by a line that only that
+# part rejects (loosening any one of them makes exactly its case match):
+#   - `git` required:            no `git` on the line at all
+#   - space before `show`:       `show` as the tail of another word
+#   - space after `show`:        a ref that merely starts with `show`
+#   - `<ref>:` right after show: the `:<path>` is further along the line
+#   - both spaces together:      `--show-toplevel`, which the old `\bshow\b`
+#                                form wrongly accepted
+while IFS='|' read -r shape_why shape_line; do
+    if printf '%s\n' "$shape_line" | git_history_shape_match '\.agent/work-plans/x'; then
+        fail "git-history shape: $shape_why still satisfies the shape check: $shape_line"
+    else
+        pass "git-history shape: $shape_why does not satisfy the shape check"
+    fi
+done <<'SHAPE_NEGATIVES'
+a line without 'git'|echo show main:.agent/work-plans/x
+'show' inside another word|git log --grep=reshow main:.agent/work-plans/x
+a ref starting with 'show'|git log showcase:.agent/work-plans/x
+'show' not followed by a '<ref>:' token|git show HEAD >/dev/null; cat "$root":.agent/work-plans/x
+'--show-toplevel'|root="$(git rev-parse --show-toplevel)":.agent/work-plans/x
+SHAPE_NEGATIVES
+
+# --- Direct check on the root-derivation IDIOM_REGEX's suffix-stripping
+#     form: both shortest (`%`) and longest (`%%`) match must be detected,
+#     and a plain `${VAR}` must not. Synthetic strings only. ---
+for idiom_case in 'ROOT="${SCRIPT_DIR%/.agent/scripts/tests}"' 'ROOT="${SCRIPT_DIR%%/.agent/*}"'; do
+    if printf '%s\n' "$idiom_case" | grep -qE "$IDIOM_REGEX"; then
+        pass "root-derivation scan: suffix-stripping idiom detected: $idiom_case"
+    else
+        fail "root-derivation scan: suffix-stripping idiom NOT detected: $idiom_case"
+    fi
+done
+if printf '%s\n' 'cd "${SCRIPT_DIR}"' | grep -qE "$IDIOM_REGEX"; then
+    fail "root-derivation scan: a plain '\${SCRIPT_DIR}' is flagged as a root-derivation idiom"
+else
+    pass "root-derivation scan: a plain '\${SCRIPT_DIR}' is not flagged"
 fi
 
 # --- Manifest-driven reads: test_user_tier_guard.sh reads every entry in
