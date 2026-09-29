@@ -508,3 +508,21 @@ Retry, keep R3 (Recommended)
 - [x] IDIOM_REGEX matches `%%` as well as `%`, with direct cases (carried over from the interrupted pass) — `.agent/scripts/tests/test_script_tests_hook_scope.sh:150`
 
 Suite: 101 passed, 0 failed; run_script_tests.sh: all 30 suites passed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-09-29 08:51 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a51da27cdbc1539f7, resume 1 of 3)
+
+**Branch**: feature/issue-354 at `523093e`
+**Base**: main
+**Depth**: Standard (reason: override trigger `.pre-commit-config.yaml`; 481 non-bookkeeping lines)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — no must-fix findings
+
+Focus: fix `b9a51a0`. All three round-1 suggestions verified closed by mutation in a scratch clone (baseline 101/0; run_script_tests.sh 30/30). R1: reverting to the old `\bshow\b` regex fails 99/2 (incl. `--show-toplevel`); dropping `git`, the space before `show`, the space after `show`, or the no-whitespace `<ref>:` token each fails 100/1; only `[^#]`→`.` is unpinned, redundant after comment stripping. R2: excluding `.agent/scripts/_bookkeeping.sh` fails 90/11; excluding one skill file fails 98/3; removing the work-plans exemption fails 220 (exemption is load-bearing, not hiding a gap: no suite reads working-tree work-plans from the real root). `git ls-files` reads the index only; `run_script_tests.sh` unsets the GIT_* hook family, and a broken git (GIT_DIR=/nonexistent) fails loud (80/21), not vacuous. R3: reverting to single `%` fails 100/1. Reviewers: Claude adversarial ran (no issues); Gemini (agy) ran; Codex ran (no issues); Copilot skipped (quota exhausted). Dropped all 5 Gemini items: unanchored PR-template pattern (over-runs, safe direction; raised and dropped in round 1), awk block bleed (only repo/rev/hooks lines can bleed before the next `- id:`), quoted YAML (fails loud), unquoted-dirname / Python-list rev-parse idioms (no suite uses them; header disclaims heuristic scan), manifest trailing newline (file ends with one).
+
+### Findings
+- [ ] No issues found. LGTM.
