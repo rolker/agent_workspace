@@ -74,3 +74,11 @@ issue: 363
 Split: "Core here, small split off (Recommended)" — this issue = P1a–P1d; P1e–P1g moved to #369.
 Order: "#363 first (Recommended)" — plan against today's code; #344 rebases after.
 Also carry into the plan: state how P1c is covered (asserted vs not).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-09-29 13:52 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-363/plan.md` at `a205f07`
+
+Ports P1a-P1d from the fork (refuse AGENT_KILL_AFTER=0, setsid group kill with PID-only fallback, launch-window adoption of `$!`, per-issue-dir non-blocking flock with exit 5 and `9>&-` on jobs) in five atomic commits, with ADR-0015, AGENTS.md rows and review-code exit-5 text updated. P1c is covered by existing TERM tests plus a bounded staggered-TERM stress test; the exact window is stated as not deterministically asserted. P1e-P1g stay in #369.
