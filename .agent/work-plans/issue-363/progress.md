@@ -155,3 +155,63 @@ Revise, take all (Recommended) — fix M1–M3 and fold in S4–S10 (including l
 **Dispatch**: resumed (agent a222271354b5b9331, resume 1 of 3)
 
 Revision after the needs-work plan review (owner: revise, take all). Adds the watchdog SIGKILL cancel, the both-zero direct-helper P1a test, deterministic extracted-function tests of each adoption branch in place of the stress test, and locks the work-plans directory itself; folds in S4-S10 (setsid/timeout trade-off, no env-passthrough step, review-code exits 4 and 5, ADR-0015 Status-line note with the ADR-0001/0008 tension, live CLI run, kill_tree untracked).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-09-29 14:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+**Dispatch**: resumed (agent a164f026f89c7408d, resume 1 of 3)
+
+**Issue**: #363 — Cross-model reviewer scripts still lack seven hardening fixes the fork found
+**Plan**: `.agent/work-plans/issue-363/plan.md` at `8658c58`
+**Branch**: `feature/issue-363`
+
+Round 2. I checked the revised plan against the round-1 findings (entry 294391a) and against the fork's a2b04c8 test and helper diffs, and I checked the new material. No external reviewers were run.
+
+### Round-1 findings: status
+
+| Round-1 finding | Status |
+|---|---|
+| M1 watchdog cancel | Closed. Uses the a2b04c8 form (`pkill -KILL -P` then `kill -KILL`), corrects the comment, and adds a cancel assertion plus an orphan-sleep check. |
+| M2 both-zero helper test | Closed. |
+| M3 stress test | Closed. Replaced by extracted-function tests of all four adoption branches, each with a no-adopt guard case. |
+| S4 setsid vs `timeout` | Closed, with a measure-the-overrun step. |
+| S5 test details | Closed: no passthrough, orphan stays in the CLI's group, `set -u`-safe expansion, PATH-shim fallback test. |
+| S6 directory lock | Closed for the primary path; see finding 1 about the fallback. |
+| S7 exit 4 and 5 documented | Closed. |
+| S8 ADR Status note and ADR-0001/0008 tension | Closed. |
+| S9 live CLI run | Closed. |
+| S10 `kill_tree` | Closed: stated as untracked and flagged in the PR. |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Still P1a-P1d; about six commits. |
+| Issue alignment | Good | Round-1 actions all addressed. |
+| File targeting | Good | `.gitignore` correctly dropped from the primary path. |
+| Consequences | Good | Exit-code consumers resolved by grep; lock has no footprint. |
+| Principle alignment | Needs work | The lock fallback as worded can silently disable serialization (finding 1). |
+| ADR compliance | Good | Amend-in-place with Status note and the tension raised in the PR. One stale row (finding 4). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Approach 4] Must-fix during implementation: drop the directory-lock "probe" fallback, or make it tell the two failures apart.** The plan says to "probe once with `flock -n 9` right after the open" and fall back to the lock file if the host "cannot lock a directory". But `flock -n 9` also fails when another run holds the lock. Read literally, a contended second run would fall back to the lock file, take that lock uncontended, and proceed. That removes exactly the serialization P1d exists for. The fallback is also very likely dead code. `flock(2)` on a read-only directory fd works on Linux and the BSDs/macOS, and the no-`flock`-binary case is already the separate warn-and-proceed branch. Simplest fix: delete the lock-file fallback. Otherwise distinguish the two cases by exit status: util-linux has `-E/--conflict-exit-code`, but other `flock` ports may not. Whichever way, a contended lock must always end in exit 5.
+2. **[Tests / P1c] Suggestion: make the `terminate_child` no-adopt guard fail fast.** The "unrelated background job" should be `setsid sleep 30`, and it needs no parent pipe (`</dev/null >/dev/null 2>&1`). If the guard were broken, a plain `sleep` would be adopted. `kill -- -PID` then misses it, because it is not a group leader, and the handler's `wait` blocks for the full 30 s before the test notices. A `setsid` sleep is killed at once. Also, `cleanup_jobs` needs `job_finished` and `proc_state` extracted with it, and every test `sleep` should be killed at the end of the test whatever the outcome, so a failure does not hold the suite's output pipe open.
+3. **[Tests / M1] Suggestion: scope the orphan-sleep check to this test.** The fork's check is `pgrep -fx 'sleep 5s'`, which matches any such sleep on the host, including one from another agent's suite running at the same time. Use an escalation value no one else will use (e.g. `REVIEW_KILL_ESCALATION=7.3s`), or match the sleep by parent PID. `pkill` and `pgrep` come from procps. A host without them turns the new cancel into a no-op that leaves only a stray `sleep`, which is harmless. Guarding it with `command -v pkill` is optional.
+4. **[Plan text] Suggestion: fix two leftovers from round 1.** The ADR Compliance row for 0013 still says "the lock file is a gitignored sibling". The Files table's test row still lists "env passthrough". Correct both so the implementer is not misled.
+5. **[Tests / P1b] Note: the PATH-shim tool list is hand-kept.** The mocks also need whatever they call, such as `cat` and `sleep` (both listed), and `#!/usr/bin/env bash` resolves `bash` through the shim. If a tool is missing, the test fails loudly rather than passing, so this is acceptable. Build the shim from `command -v` so a tool missing on the host is reported by name.
+
+### Summary
+
+Every round-1 finding is closed, and the deterministic adoption tests do fail when the adoption `if` is removed. The one real defect is the lock fallback: as worded it would turn a contended lock into an unserialized run. It is a one-line change to make during implementation (delete the fallback, or require that a contended lock always gives exit 5), so the plan is ready, with that change carried as a required action.
+
+### Recommended Actions
+
+- [ ] P1d: remove the lock-file fallback (or distinguish conflict from unsupported by exit code); a contended lock must always give exit 5 (finding 1)
+- [ ] Use a fd-detached `setsid sleep` for the `terminate_child` no-adopt case; extract `job_finished`/`proc_state` with `cleanup_jobs`; always kill test sleeps (finding 2)
+- [ ] Scope the orphan-sleep check to this test (distinctive escalation value or parent PID) (finding 3)
+- [ ] Fix the stale ADR-0013 row and the "env passthrough" Files-table text (finding 4)
+- [ ] Build the no-setsid PATH shim from `command -v` with named failures (finding 5)
