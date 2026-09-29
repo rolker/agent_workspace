@@ -551,7 +551,7 @@ Publish (Recommended)
 GitHub side has no review content: the only review is copilot-pull-request-reviewer's "unable to review ... reached their quota limit" notice. That is not a review source, and its check-run's "failure" conclusion comes from the quota, not CI. 0 inline comments, 0 conversation comments. CI at 39e0696: Validate Documentation, Validate Adapter Contract, ros-manifest tests pass; both Lint (pre-commit) runs are still in progress, hence pending. Carried forward and verified at head: the earlier S1 finding (this triage's previous entry at `948f8a2`) closed by e90663d, and R1–R3 (pre-push review at `10534dc`) closed by b9a51a0. The shape regex at `test_script_tests_hook_scope.sh:300` is now POSIX `git[^#]*[[:space:]]show[[:space:]]+[^[:space:]]*:.*<path>`, directory prefixes also probe tracked files, and IDIOM_REGEX (:150) accepts `%{1,2}`. The round-2 pre-push review mutation-checked each of these. Only progress.md changed since 523093e. Re-ran test_script_tests_hook_scope.sh at head: 101 passed, 0 failed.
 
 ### Findings
-- [ ] No issues found. LGTM.
+- [x] No issues found. LGTM. (deferred: placeholder, not a finding: owner answered merge at the findings checkpoint)
 
 ### False positives
 - (Copilot) quota-limit review notice / "failure" check-run: not a review and not a CI failure. Copilot never reviewed this PR because the requester's quota is exhausted.
