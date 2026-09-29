@@ -326,6 +326,23 @@ if printf '%s\n' 'git -C "$repo" show "${base_ref}:.agent/work-plans/x"' \
 else
     fail "git-history comment-stripping: the legitimate code line (no '#') no longer matches -- stripping broke real code"
 fi
+# The match regex itself: a `git <ref>:<path>` line without `show` (here
+# `git log`) must not match -- this pins the `\bshow\b` requirement, which
+# the two cases above do not depend on.
+if printf '%s\n' 'git log main:.agent/work-plans/x' \
+        | git_history_shape_match '\.agent/work-plans/x'; then
+    fail "git-history shape: a 'git log <ref>:<path>' line (no 'show') still satisfies the shape check -- the \\bshow\\b requirement is gone"
+else
+    pass "git-history shape: a 'git log <ref>:<path>' line (no 'show') does not satisfy the shape check"
+fi
+# A real `git ... show <ref>:<path>` code line followed by a trailing
+# comment must still match: stripping removes only the comment, not the code.
+if printf '%s\n' 'git -C "$repo" show "${base_ref}:.agent/work-plans/x"  # read the base plan' \
+        | git_history_shape_match '\.agent/work-plans/x'; then
+    pass "git-history shape: a real 'git ... show <ref>:<path>' line with a trailing comment still matches"
+else
+    fail "git-history shape: a real 'git ... show <ref>:<path>' line with a trailing comment no longer matches -- stripping clipped the code"
+fi
 
 # --- Manifest-driven reads: test_user_tier_guard.sh reads every entry in
 #     .agent/user_tier_scripts.txt (plus the manifest file itself). A static

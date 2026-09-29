@@ -423,7 +423,7 @@ Independent review of 40df9f7..d7ec78b (supersedes the implementer-written entry
 GitHub side empty: 0 reviews, 0 inline, 0 conversation comments (draft; Copilot quota exhausted). Dropped stale entries checked: `b1c2152`'s five findings were verified resolved by the `74b50da` review; the `74b50da` and `50111e3` entries' only open boxes are "No issues found" placeholders, and the `50111e3` entry (implementer-written, mislabeled as a Local Review) is superseded in substance by the independent `d7ec78b` review. Verified the carried finding against the code: the only direct self-tests (lines 317-328) are a trailing-comment negative and a legitimate-line positive, and neither needs `\bshow\b`, so the helper comment's claim that a match-regex regression is caught is not backed by a test.
 
 ### Findings
-- [ ] (suggestion, Local Review @ `d7ec78b`) `git_history_shape_match`'s comment claims a match-regex regression is caught, but loosening the regex to `git.*:.*path` still passes 70/0; add a negative code case with no `show` (e.g. `git log main:.agent/work-plans/x`) and a real `git ... show ...:<path>  # comment` positive, rather than softening the comment — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
+- [x] (suggestion, Local Review @ `d7ec78b`) `git_history_shape_match`'s comment claims a match-regex regression is caught, but loosening the regex to `git.*:.*path` still passes 70/0; add a negative code case with no `show` (e.g. `git log main:.agent/work-plans/x`) and a real `git ... show ...:<path>  # comment` positive, rather than softening the comment — `.agent/scripts/tests/test_script_tests_hook_scope.sh`
 
 ### False positives
 
