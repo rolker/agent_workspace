@@ -62,3 +62,15 @@ issue: 363
 - [ ] Sequence PR 1 against #344 (drop Copilot CLI): whichever lands second rebases across `_cli_review.sh`; ideally decide #344's timing before planning.
 - [ ] In the plan, state how P1c is covered (what is asserted, what is not) instead of leaving it implicit.
 - [ ] Fix `assert_not_contains` together with `assert_contains` in P1g, and update the closing-keyword error text with P1f.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-09-29 13:49 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Split: "Core here, small split off (Recommended)" — this issue = P1a–P1d; P1e–P1g moved to #369.
+Order: "#363 first (Recommended)" — plan against today's code; #344 rebases after.
+Also carry into the plan: state how P1c is covered (asserted vs not).
