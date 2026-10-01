@@ -40,10 +40,13 @@
 #     an exit so it still fires — after waiting for agy to die (with a
 #     bounded escalation to SIGKILL), so the temp dir is never removed
 #     under a running agy. SIGKILL is the exception — no trap runs,
-#     so the `agy-review.XXXXXX` dir would be left behind. The only sender
-#     is `timeout -k` on the caller's backstop (a wedged helper), and
-#     cross_model_review.sh closes that gap by pointing TMPDIR at a
-#     scratch root it owns and removes itself.
+#     so the `agy-review.XXXXXX` dir would be left behind. Two callers
+#     send it, both only to a helper that did not finish in time: the
+#     `timeout -k` on the caller's backstop, and cross_model_review.sh's
+#     interrupt cleanup, which SIGKILLs a job still running after its
+#     reap budget together with everything it can find of that job
+#     (kill_tree). cross_model_review.sh closes that gap by pointing
+#     TMPDIR at a scratch root it owns and removes itself.
 #   * All diagnostics go to stderr; stdout is unused.
 #
 # Signals and the agy's process group (#363; the job-lifecycle rules

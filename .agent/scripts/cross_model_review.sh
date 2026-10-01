@@ -127,15 +127,19 @@
 #     `--no-progress` runs get their own directory and never contend.
 #     Without flock, or when util-linux flock reports a real error (65 or
 #     71, not a conflict), the run warns and proceeds unserialized; every
-#     other flock failure counts as a conflict. The lock fd is held by
-#     this script and by each agent job's shell, `timeout` and helper,
-#     so a run killed with SIGKILL keeps its directory locked until its
-#     jobs have ended: at the latest AGENT_TIMEOUT + AGENT_KILL_AFTER
-#     after launch (gemini: GEMINI_BACKSTOP + AGENT_KILL_AFTER), when
-#     `timeout -k` SIGKILLs its group. It is closed for the CLIs (the
-#     helpers launch them with fd 9 closed; a CLI runs in its own process
-#     group, which `timeout` does not reach) and for git, gh and python,
-#     so nothing that can outlive that bound holds it.
+#     other flock failure counts as a conflict. On NFS expect the 65 path
+#     on every run: the Linux NFS client emulates flock with POSIX locks,
+#     and an exclusive one needs a writable fd, which a directory fd
+#     cannot be (util-linux's flock.c calls this EBADF "probably NFSv4").
+#     The lock fd is held by this script and by each agent job's shell,
+#     `timeout` and helper, so a run killed with SIGKILL keeps its
+#     directory locked until its jobs have ended: at the latest
+#     AGENT_TIMEOUT + AGENT_KILL_AFTER after launch (gemini:
+#     GEMINI_BACKSTOP + AGENT_KILL_AFTER), when `timeout -k` SIGKILLs its
+#     group. It is closed for the CLIs (the helpers launch them with fd 9
+#     closed; a CLI runs in its own process group, which `timeout` does
+#     not reach) and for git, gh and python, so nothing that can outlive
+#     that bound holds it.
 #
 # Exit codes:
 #   0 — every selected agent completed successfully
@@ -148,7 +152,9 @@
 #       selected findings file carries the `--- Review error: ... ---`
 #       marker), OR at least one agent failed (triplets printed — read
 #       EXIT= per agent). The presence of triplets is the disambiguator.
-#   4 — wrong worktree / invalid environment (see _resolve_work_plans_dir.sh)
+#   4 — wrong worktree / invalid environment (see _resolve_work_plans_dir.sh),
+#       or the artifact dir could not be opened to take its run lock
+#       (check that it is a readable directory); nothing was written
 #   5 — another run is already reviewing into the same artifact dir;
 #       nothing was written (wait for it to finish, do not start a second).
 #       Also any flock failure that cannot be told apart from that.

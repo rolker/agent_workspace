@@ -375,7 +375,7 @@ Gemini findings rejected:
 - [x] (suggestion) SIGKILL the recorded groups before the PIDs. A group can otherwise empty out between being listed and being killed; it is only theoretical, since hitting another group needs a PID wrap — `.agent/scripts/cross_model_review.sh:913-923`
 - [x] (suggestion) The "5s" bound is 50 polls per over-budget job, each with forks, so 4 wedged jobs can hold the exit and the lock for about 8 + 4×5 s. Make it one shared deadline, or fix the warning text — `.agent/scripts/cross_model_review.sh:928-942`
 - [x] (suggestion) `test_helper_term_after_the_cli_was_reaped` passes on `41bbb23~1`, because 372d002 had already removed the symptom it times. It does not observe the TERM-to-reaped-PID hazard that 41bbb23 fixed — `.agent/scripts/tests/test_cross_model_review.sh:4948`
-- [ ] (suggestion) Docs:
+- [x] (suggestion) Docs:
   - The `_agy_review.sh` header still says `timeout -k` is the only sender of SIGKILL; `kill_tree` now sends it too.
   - Exit 4 when the directory cannot be opened for the lock is missing from the header's exit-code list and from SKILL.md, and the remediation given there does not fit this case.
   - The header could say that on NFSv4 every run takes the 65 warn-and-proceed path — `.agent/scripts/_agy_review.sh:40-46`, `.agent/scripts/cross_model_review.sh:723`, `.claude/skills/review-code/SKILL.md`
