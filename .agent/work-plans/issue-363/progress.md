@@ -458,7 +458,7 @@ Reviewers:
 - [x] (suggestion) Exit 5 says "wait for that run to finish". After a SIGKILLed run no run is visible, yet its helpers hold the lock for up to 1810 s (gemini about 2110 s). The message, header and SKILL should say so, give the bound and name `fuser -v <dir>`/`lsof +d <dir>` — `.agent/scripts/cross_model_review.sh:776`, `.claude/skills/review-code/SKILL.md:442`
 - [x] (suggestion) Codex: if `timeout -k` ever SIGKILLs a helper before its watchdog fires, the setsid'd CLI survives, and the marker sweep does not run on normal job completion. This is the design dependency already accepted at plan stage (escalation < kill grace, so it needs a wedged helper). Defense in depth: sweep marked descendants when a job ends 124/137 — `.agent/scripts/cross_model_review.sh:1059`
 - [x] (suggestion) The header reads "waits (at least 5 s, at most 6 s in total)"; it means up to 5-6 s — `.agent/scripts/cross_model_review.sh:117`
-- [ ] (suggestion) Possible flake: the second run must reach `flock` within the mock's 3 s sleep. Use a longer `MOCK_CODEX_SLEEP` — `.agent/scripts/tests/test_cross_model_review.sh:4732`
+- [x] (suggestion) Possible flake: the second run must reach `flock` within the mock's 3 s sleep. Use a longer `MOCK_CODEX_SLEEP` — `.agent/scripts/tests/test_cross_model_review.sh:4732`
 
 ## Checkpoint
 **Status**: complete

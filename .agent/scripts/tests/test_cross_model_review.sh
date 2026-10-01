@@ -4743,7 +4743,9 @@ test_lock_held_by_jobs_after_the_parent_is_killed() {
     cd "${MOCK_REPO}"
     # TMPDIR in the sandbox: a SIGKILLed run cannot remove its temp files.
     mkdir -p "${TMPDIR_BASE}/killed-tmp"
-    MOCK_CODEX_SLEEP=3 MOCK_TIMES_DIR="$times" TMPDIR="${TMPDIR_BASE}/killed-tmp" \
+    # A 10 s review: the second run has to reach its flock while the
+    # first run's job is alive, on a loaded machine too.
+    MOCK_CODEX_SLEEP=10 MOCK_TIMES_DIR="$times" TMPDIR="${TMPDIR_BASE}/killed-tmp" \
         PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
         bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex </dev/null >/dev/null 2>&1 &
     parent=$!
@@ -4761,7 +4763,7 @@ test_lock_held_by_jobs_after_the_parent_is_killed() {
     # The lock may come free only once no helper of the first run is left
     # (lock first, helper second: a helper alive after a successful
     # flock was alive during it).
-    for ((i = 0; i < 300; i++)); do
+    for ((i = 0; i < 600; i++)); do
         if ( exec 8< "$dir"; flock -n 8 ); then
             if pgrep -f -- "$pattern" >/dev/null; then violations=$((violations + 1)); else freed=true; break; fi
         fi
