@@ -4978,6 +4978,69 @@ STUB_EOF
     teardown
 }
 
+# The marker scan reads every process's /proc/<pid>/environ, which can
+# block on a process stuck on a hung mount, on the exit path, with the
+# review lock held. It is cut off after 5 s (#363 round 3). A `grep` shim
+# hangs on exactly that scan; cleanup must still finish well inside the
+# hang, and the wedged job must still be killed through its tree.
+test_cleanup_bounds_a_hanging_marker_scan() {
+    echo "TEST: a hanging environ scan cannot hold up interrupt cleanup (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || ! command -v pgrep >/dev/null 2>&1 \
+        || [[ ! -r /proc/self/environ ]]; then
+        echo "  SKIP: needs setsid, pgrep and /proc"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids" shim="${TMPDIR_BASE}/grep-shim"
+    local name i ec t0 t1 real_grep
+    mkdir -p "$fake_dir" "$piddir" "$shim"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+trap '' TERM HUP INT
+setsid bash -c 'trap "" TERM HUP; echo $$ > "$1/cli.pid"; exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+echo $$ > "$STUB_PIDDIR/helper.pid"
+while :; do wait; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    real_grep=$(command -v grep)
+    # The hang records its pid so the test can end it.
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "for a in \"\$@\"; do [[ \"\$a\" == /proc/*/environ ]] && { echo \$\$ >> '${TMPDIR_BASE}/hang.pids'; exec sleep 30; }; done" \
+        "exec '${real_grep}' \"\$@\"" > "${shim}/grep"
+    chmod +x "${shim}/grep"
+    cd "${MOCK_REPO}"
+    STUB_PIDDIR="$piddir" REVIEW_KILL_ESCALATION=1 CLEANUP_REAP_TIMEOUT=2 AGENT_KILL_AFTER=60 \
+        PATH="${shim}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null >/dev/null 2>&1 &
+    local script_pid=$!
+    for ((i = 0; i < 100; i++)); do
+        [[ -s "${piddir}/helper.pid" && -s "${piddir}/cli.pid" ]] && break
+        sleep 0.05
+    done
+    t0=$(date +%s.%N)
+    kill -TERM "$script_pid" 2>/dev/null || true
+    ec=0; wait "$script_pid" || ec=$?
+    t1=$(date +%s.%N)
+    assert_exit_code "interrupted run exits 143" "143" "$ec"
+    if [[ -s "${TMPDIR_BASE}/hang.pids" ]]; then
+        echo "  PASS: the environ scan did hang"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: the grep shim never saw the environ scan"; FAIL=$((FAIL + 1))
+    fi
+    if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 15) }'; then
+        echo "  PASS: cleanup finished in $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s despite a 30s scan hang"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: cleanup took $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s: the hanging scan held it"; FAIL=$((FAIL + 1))
+    fi
+    for name in helper cli; do
+        assert_eq "${name} is dead after cleanup" "dead" "$(running_state "$(cat "${piddir}/${name}.pid" 2>/dev/null)")"
+        kill -9 "$(cat "${piddir}/${name}.pid" 2>/dev/null)" 2>/dev/null || true
+    done
+    while read -r i; do kill -9 "$i" 2>/dev/null || true; done < "${TMPDIR_BASE}/hang.pids" 2>/dev/null || true
+    teardown
+}
+
 # await_killed waits once, for every job kill_tree killed, against one
 # deadline (at least 5 s, at most 6), and its warning says so (#363
 # review: the bound was 5 s per job, so several wedged jobs added up).
@@ -5358,6 +5421,7 @@ test_no_flock_warns_and_runs
 test_lock_fd_not_inherited_by_git_or_gh
 test_cleanup_kills_the_whole_job_when_the_budget_runs_out
 test_cleanup_survives_processes_exiting_under_it
+test_cleanup_bounds_a_hanging_marker_scan
 test_await_killed_shares_one_deadline
 test_helper_terminate_reaches_a_cli_before_setsid
 test_helper_term_with_the_sweep_pending

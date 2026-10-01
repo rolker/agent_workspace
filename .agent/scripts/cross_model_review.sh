@@ -945,8 +945,22 @@ pgid_of() {
         ps -o pgid= -p "$1" 2>/dev/null | tr -d ' ' || true
     fi
 }
+# marked_pids <marker>: the PIDs whose environment carries this job's
+# CROSS_MODEL_REVIEW_JOB marker (Linux /proc; nothing elsewhere). Reading
+# another process's environ can block on that process's memory, e.g. one
+# stuck on a hung NFS or FUSE mount, and this runs on the exit path while
+# the review lock is held, so the scan is cut off after 5 s; what it
+# found by then is still used (#363 round 3).
+marked_pids() {
+    local f
+    [[ -r /proc/self/environ ]] || return 0
+    while read -r f; do
+        f=${f#/proc/}
+        printf '%s\n' "${f%/environ}"
+    done < <(timeout -k 1 5 grep -l -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=$1" /proc/[0-9]*/environ 2>/dev/null || true)
+}
 kill_tree() {
-    local root="$1" marker="${2:-}" pids=() groups=() i=0 child p f g own_group
+    local root="$1" marker="${2:-}" pids=() groups=() i=0 child p g own_group
     pids=("$root")
     if command -v pgrep >/dev/null 2>&1; then
         while (( i < ${#pids[@]} )); do
@@ -956,12 +970,10 @@ kill_tree() {
             i=$((i + 1))
         done
     fi
-    if [[ -n "$marker" && -r /proc/self/environ ]]; then
-        while read -r f; do
-            p=${f#/proc/}
-            p=${p%/environ}
+    if [[ -n "$marker" ]]; then
+        while read -r p; do
             if [[ "$p" =~ ^[0-9]+$ && "$p" != "$$" ]]; then pids+=("$p"); fi
-        done < <(grep -l -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=${marker}" /proc/[0-9]*/environ 2>/dev/null || true)
+        done < <(marked_pids "$marker")
     fi
     # Without our own group id there is no telling which group is ours,
     # so no group is killed at all.
