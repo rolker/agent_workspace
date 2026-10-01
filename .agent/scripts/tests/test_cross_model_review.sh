@@ -71,6 +71,16 @@ setup() {
 # MOCK_AGY_IGNORE_TERM=1: an agy that ignores SIGTERM, so only the
 # helper's escalation to SIGKILL can end it (#313).
 [[ -n "${MOCK_AGY_IGNORE_TERM:-}" ]] && trap '' TERM HUP
+# MOCK_AGY_ORPHAN_PIDFILE=<f>: start a child that ignores SIGTERM and
+# outlives this mock unless its whole process group is killed; its pid
+# goes to <f> (#363). A plain background subshell, so it stays in this
+# mock's process group (a setsid here would prove nothing). Its fds are
+# detached so it holds no caller pipe; it ends on its own after 30s.
+if [[ -n "${MOCK_AGY_ORPHAN_PIDFILE:-}" ]]; then
+    ( trap '' TERM HUP; echo "$BASHPID" > "${MOCK_AGY_ORPHAN_PIDFILE}"
+      for ((j = 0; j < 300; j++)); do sleep 0.1; done ) </dev/null >/dev/null 2>&1 &
+    for ((j = 0; j < 50; j++)); do [[ -s "${MOCK_AGY_ORPHAN_PIDFILE}" ]] && break; sleep 0.05; done
+fi
 # Sleep in 0.1s slices so a SIGKILLed mock leaves no long-lived orphan
 # sleep behind. Whole seconds only.
 mock_sleep() { local n="$1" i; for ((i = 0; i < n * 10; i++)); do sleep 0.1; done; }
@@ -2717,6 +2727,16 @@ done
 # MOCK_CODEX_IGNORE_TERM=1: a CLI that ignores SIGTERM, so only an
 # escalation to SIGKILL can end it. Armed before the sleep.
 [[ -n "${MOCK_CODEX_IGNORE_TERM:-}" ]] && trap '' TERM HUP
+# MOCK_CODEX_ORPHAN_PIDFILE=<f>: start a child that ignores SIGTERM and
+# outlives this mock unless its whole process group is killed; its pid
+# goes to <f> (#363). A plain background subshell, so it stays in this
+# mock's process group (a setsid here would prove nothing). Its fds are
+# detached so it holds no caller pipe; it ends on its own after 30s.
+if [[ -n "${MOCK_CODEX_ORPHAN_PIDFILE:-}" ]]; then
+    ( trap '' TERM HUP; echo "$BASHPID" > "${MOCK_CODEX_ORPHAN_PIDFILE}"
+      for ((j = 0; j < 300; j++)); do sleep 0.1; done ) </dev/null >/dev/null 2>&1 &
+    for ((j = 0; j < 50; j++)); do [[ -s "${MOCK_CODEX_ORPHAN_PIDFILE}" ]] && break; sleep 0.05; done
+fi
 [[ -n "${MOCK_CODEX_SLEEP:-}" ]] && mock_sleep "${MOCK_CODEX_SLEEP}"
 echo "codex-cli 0.155.1 (mock banner)"
 echo "MOCK TRANSCRIPT: prompt was ${#prompt} bytes"
@@ -4209,6 +4229,192 @@ test_cli_helper_missing_is_unavailable() {
 echo "=== cross_model_review.sh tests ==="
 echo ""
 
+# ---- Process-group kill (#363; rolker/ros2_agent_workspace 69a6907) ----
+#
+# A child the CLI started that ignores SIGTERM must not outlive the
+# helper: the helpers signal the CLI's whole process group, not its PID.
+
+# Wait for <pidfile>'s process to go; FAIL (and kill it, so a failure
+# leaks nothing) if it survives. A missing pidfile is a FAIL: these tests
+# are deterministic, and the mock writes it before the helper is touched.
+assert_orphan_gone() {
+    local label="$1" pidfile="$2" i pid
+    pid=$(cat "$pidfile" 2>/dev/null || echo "")
+    if [[ -z "$pid" ]]; then
+        echo "  FAIL: ${label}: the mock never started its child"; FAIL=$((FAIL + 1)); return
+    fi
+    for ((i = 0; i < 20; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+        echo "  FAIL: ${label}: the CLI's TERM-ignoring child survived the helper"; FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: ${label}: the CLI's TERM-ignoring child is gone"; PASS=$((PASS + 1))
+    fi
+}
+
+# Start <command...> in the background, wait for <pidfile>, TERM it and
+# echo its exit status.
+term_helper_when_ready() {
+    local pidfile="$1" i ec=0
+    shift
+    "$@" >/dev/null 2>&1 &
+    local helper_pid=$!
+    for ((i = 0; i < 50; i++)); do [[ -s "$pidfile" ]] && break; sleep 0.1; done
+    kill -TERM "$helper_pid" 2>/dev/null || true
+    wait "$helper_pid" || ec=$?
+    echo "$ec"
+}
+
+test_local_helpers_kill_the_cli_process_group() {
+    echo "TEST: the helpers kill a CLI's TERM-ignoring child, on TERM and on a normal exit (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    make_mock_agent codex
+    mkdir -p "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md" ec orphan
+    echo "review this" > "$prompt"
+
+    # TERM path, codex: the CLI dies on TERM, its child does not.
+    orphan="${TMPDIR_BASE}/codex-orphan.pid"
+    ec=$(term_helper_when_ready "$orphan" env MOCK_CODEX_ORPHAN_PIDFILE="$orphan" MOCK_CODEX_SLEEP=30 \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800)
+    assert_exit_code "codex helper exits 143 on TERM" "143" "$ec"
+    assert_orphan_gone "codex, TERM" "$orphan"
+
+    # Normal exit, codex: the review finished, its leftovers must not run on.
+    orphan="${TMPDIR_BASE}/codex-orphan2.pid"
+    ec=$(MOCK_CODEX_ORPHAN_PIDFILE="$orphan" run_cli_helper codex "$prompt" "$findings" 1800)
+    assert_exit_code "codex review with a leftover child still succeeds" "0" "$ec"
+    assert_orphan_gone "codex, normal exit" "$orphan"
+
+    # TERM path, agy.
+    orphan="${TMPDIR_BASE}/agy-orphan.pid"
+    ec=$(term_helper_when_ready "$orphan" env MOCK_AGY_ORPHAN_PIDFILE="$orphan" MOCK_AGY_SLEEP=30 \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m)
+    assert_exit_code "agy helper exits 143 on TERM" "143" "$ec"
+    assert_orphan_gone "agy, TERM" "$orphan"
+
+    # Normal exit, agy.
+    orphan="${TMPDIR_BASE}/agy-orphan2.pid"
+    ec=0
+    MOCK_AGY_ORPHAN_PIDFILE="$orphan" TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m \
+        >/dev/null 2>&1 || ec=$?
+    assert_exit_code "agy review with a leftover child still succeeds" "0" "$ec"
+    assert_orphan_gone "agy, normal exit" "$orphan"
+    teardown
+}
+
+# signal_cli / signal_agy, extracted and run as written: group mode
+# signals `-PID`, PID mode signals the PID alone.
+test_signal_helpers_both_modes() {
+    echo "TEST: signal_cli / signal_agy target the group in group mode and the PID otherwise (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    local helper fn probe out
+    for helper in _cli_review.sh:signal_cli:CLI _agy_review.sh:signal_agy:AGY; do
+        fn=$(cut -d: -f2 <<< "$helper")
+        probe="${TMPDIR_BASE}/probe-${fn}.sh"
+        {
+            echo 'set -u'
+            sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${helper%%:*}"
+            echo "fn=${fn}; flag=$(cut -d: -f3 <<< "$helper")_GROUP_KILL"
+            cat << 'PROBE_EOF'
+# Group mode: a group leader with a child that ignores TERM; KILL to the
+# group takes both, and TERM to the leader's PID alone would not.
+setsid bash -c 'trap "" TERM; sleep 30 & echo $! > "$1"; wait' _ "$PWD/child.pid" </dev/null >/dev/null 2>&1 &
+leader=$!
+for _ in $(seq 50); do [[ -s child.pid ]] && break; sleep 0.1; done
+child=$(< child.pid)
+printf -v "$flag" true
+"$fn" 0 "$leader" && echo "group: live" || echo "GROUP-NOT-SEEN"
+"$fn" KILL "$leader"
+wait "$leader" 2>/dev/null
+sleep 0.2
+kill -0 "$child" 2>/dev/null && { echo "GROUP-CHILD-SURVIVED"; kill -9 "$child"; } || echo "group: child gone"
+# PID mode: a plain background sleep is not a group leader, so group
+# mode cannot reach it and PID mode must.
+sleep 30 </dev/null >/dev/null 2>&1 &
+plain=$!
+"$fn" 0 "$plain" && echo "GROUP-MODE-HIT-A-NON-LEADER" || echo "group: non-leader not addressed"
+printf -v "$flag" false
+"$fn" TERM "$plain"
+wait "$plain" 2>/dev/null
+kill -0 "$plain" 2>/dev/null && { echo "PID-MODE-MISSED"; kill -9 "$plain"; } || echo "pid: gone"
+PROBE_EOF
+        } > "$probe"
+        out=$(cd "$TMPDIR_BASE" && bash "$probe" 2>&1)
+        assert_contains "${fn}: group mode sees the group" "group: live" "$out"
+        assert_contains "${fn}: group KILL takes a TERM-ignoring member" "group: child gone" "$out"
+        assert_contains "${fn}: group mode does not address a bare PID" "group: non-leader not addressed" "$out"
+        assert_contains "${fn}: PID mode signals the PID" "pid: gone" "$out"
+        rm -f "${TMPDIR_BASE}/child.pid"
+    done
+    teardown
+}
+
+# Without setsid the helpers fall back to PID-only signalling. Run each
+# helper end to end with PATH limited to symlinks of the tools it and the
+# mocks use, minus setsid. This also exercises the `set -u`-safe
+# expansion of the empty setsid array.
+test_helpers_work_without_setsid() {
+    echo "TEST: without setsid the helpers still review and still stop on TERM (#363)"
+    setup
+    make_mock_agent codex
+    local shim="${TMPDIR_BASE}/no-setsid-bin" tool path missing=""
+    mkdir -p "$shim" "${TMPDIR_BASE}/helper-tmp"
+    for tool in bash env jq mktemp awk sleep pkill tail grep cat rm head sed date wc; do
+        if path=$(command -v "$tool" 2>/dev/null) && [[ "$path" == /* ]]; then
+            ln -s "$path" "${shim}/${tool}"
+        else
+            missing="${missing} ${tool}"
+        fi
+    done
+    if [[ -n "$missing" ]]; then
+        echo "  FAIL: tools missing on this host for the no-setsid shim:${missing}"; FAIL=$((FAIL + 1))
+        teardown; return
+    fi
+    local bash_bin; bash_bin=$(command -v bash)
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md" ec times="${TMPDIR_BASE}/times"
+    mkdir -p "$times"
+    echo "review this" > "$prompt"
+    if PATH="${MOCK_BIN}:${shim}" "$bash_bin" -c 'command -v setsid' >/dev/null 2>&1; then
+        echo "  FAIL: setsid is still reachable through the shim PATH"; FAIL=$((FAIL + 1))
+        teardown; return
+    fi
+
+    ec=0
+    TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${shim}" \
+        "$bash_bin" "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800 \
+        >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+    assert_exit_code "codex review completes without setsid" "0" "$ec"
+    assert_contains "codex findings written" "reviewed by codex" "$(cat "$findings")"
+    assert_not_contains "no unbound-variable error" "unbound variable" "$(cat "${TMPDIR_BASE}/err")"
+    ec=$(term_helper_when_ready "${times}/codex.pid" env MOCK_CODEX_SLEEP=30 MOCK_TIMES_DIR="$times" \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${shim}" \
+        "$bash_bin" "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800)
+    assert_exit_code "codex helper still exits 143 on TERM without setsid" "143" "$ec"
+
+    ec=0
+    TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${shim}" \
+        "$bash_bin" "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m \
+        >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+    assert_exit_code "agy review completes without setsid" "0" "$ec"
+    assert_contains "agy findings written" "review this" "$(cat "$findings")"
+    assert_not_contains "no unbound-variable error (agy)" "unbound variable" "$(cat "${TMPDIR_BASE}/err")"
+    ec=$(term_helper_when_ready "${times}/agy.pid" env MOCK_AGY_SLEEP=30 MOCK_TIMES_DIR="$times" \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${shim}" \
+        "$bash_bin" "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m)
+    assert_exit_code "agy helper still exits 143 on TERM without setsid" "143" "$ec"
+    teardown
+}
+
 test_missing_pr_flag
 test_unknown_argument
 test_invalid_repo_slug
@@ -4316,6 +4522,9 @@ test_cli_helper_forwards_term
 test_cli_findings_truncated_and_usage_errors
 test_cli_no_temp_leak
 test_cli_helper_missing_is_unavailable
+test_local_helpers_kill_the_cli_process_group
+test_signal_helpers_both_modes
+test_helpers_work_without_setsid
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

@@ -221,18 +221,50 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # that ignored SIGTERM would keep running, burning quota on an abandoned
 # review. The escalation is validated above to fit inside the caller's
 # grace (AGENT_KILL_AFTER).
+# The CLI runs as the leader of its own process group (setsid), and
+# every signal below goes to that whole group. Signalling only its PID
+# missed a child it had started that ignored SIGTERM: the CLI died, this
+# helper exited, and the child ran on (#363; rolker/ros2_agent_workspace
+# 69a6907). In a non-interactive shell a background job is not a group
+# leader, so setsid execs in place and the PID from `$!` is the group id.
+# Where setsid is missing (macOS) the signals fall back to the PID alone,
+# and the post-exit sweeps below are skipped: they would signal a bare PID
+# that was just reaped and may already belong to another process.
+#
+# Leaving the caller's process group has one cost. GNU `timeout` (no
+# --foreground) aims its TERM and its `-k` SIGKILL at its own group, which
+# no longer contains the CLI: this helper's forwarding is now the only
+# path to it, and a SIGKILL to this helper reaches nothing in the CLI's
+# group. That is safe only because the escalation below is validated to
+# finish inside the caller's grace (REVIEW_KILL_ESCALATION <
+# AGENT_KILL_AFTER, strictly, above).
+if command -v setsid >/dev/null 2>&1; then
+    CLI_SETSID=(setsid)
+    CLI_GROUP_KILL=true
+else
+    CLI_SETSID=()
+    CLI_GROUP_KILL=false
+fi
+# signal_cli <signal> <pid>: <signal> is a name (TERM, KILL) or 0 (liveness).
+signal_cli() {
+    if [[ "$CLI_GROUP_KILL" == true ]]; then
+        kill -"$1" -- -"$2" 2>/dev/null
+    else
+        kill -"$1" "$2" 2>/dev/null
+    fi
+}
 CLI_PID=""
 terminate_child() {
-    local code="$1" watchdog
+    local code="$1" watchdog i
     # Re-entrancy: a second signal (repeated Ctrl-C, TERM then HUP) would
     # otherwise start a second watchdog and clobber $watchdog, leaking
     # the first one.
     trap '' INT TERM HUP
     if [[ -n "$CLI_PID" ]]; then
-        kill "$CLI_PID" 2>/dev/null
+        signal_cli TERM "$CLI_PID"
         # `wait` returns the moment the CLI dies, so a clean shutdown
         # costs milliseconds, not the escalation window. The watchdog
-        # only matters for a CLI that ignores SIGTERM. It is NOT waited
+        # only matters for a group member that ignores SIGTERM. It is NOT waited
         # on: a subshell sleeping in `sleep` defers the TERM we send it
         # until that sleep ends, so waiting would reintroduce the full
         # window on every clean exit.
@@ -247,9 +279,19 @@ terminate_child() {
         # orphan `sleep` is left either (#363; rolker/ros2_agent_workspace
         # 06871f4, a2b04c8).
         ( sleep "$REVIEW_KILL_ESCALATION"
-          kill -0 "$CLI_PID" 2>/dev/null && kill -9 "$CLI_PID" 2>/dev/null ) &
+          signal_cli 0 "$CLI_PID" && signal_cli KILL "$CLI_PID" ) &
         watchdog=$!
         wait "$CLI_PID" 2>/dev/null
+        # The CLI is gone, but a child of it that ignored the TERM may
+        # not be: give the group the rest of the window, then SIGKILL it.
+        # Group mode only (see signal_cli).
+        if [[ "$CLI_GROUP_KILL" == true ]]; then
+            for ((i = 0; i < ESCALATION_SECONDS * 10; i++)); do
+                signal_cli 0 "$CLI_PID" || break
+                sleep 0.1
+            done
+            signal_cli KILL "$CLI_PID"
+        fi
         pkill -KILL -P "$watchdog" 2>/dev/null
         kill -KILL "$watchdog" 2>/dev/null
         CLI_PID=""
@@ -289,14 +331,19 @@ bound_note() {
 run_cli() {
     local out="$1" err="$2"
     shift 2
+    # `${arr[@]+...}`: an empty array is "unbound" to `set -u` on bash
+    # < 4.4, and empty is exactly the no-setsid path.
     if [[ "$err" == "-" ]]; then
-        "$@" < "$PROMPT_FILE" > "$out" 2>&1 &
+        ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2>&1 &
     else
-        "$@" < "$PROMPT_FILE" > "$out" 2> "$err" &
+        ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2> "$err" &
     fi
     CLI_PID=$!
     CLI_EXIT=0
     wait "$CLI_PID" || CLI_EXIT=$?
+    # The review is over: nothing the CLI started may outlive it. Group
+    # mode only: a bare PID was just reaped and may already be reused.
+    [[ "$CLI_GROUP_KILL" == true ]] && signal_cli KILL "$CLI_PID"
     CLI_PID=""
 }
 
