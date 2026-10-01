@@ -5083,6 +5083,27 @@ test_kill_tree_guards_its_kills() {
             "(^| )${stranger}\$" "$(cat "$log")"
     done
     kill -9 "$stranger" 2>/dev/null || true; wait "$stranger" 2>/dev/null || true
+    # A group is still killed when the first process it was found through
+    # has gone, as long as another found member is still in it (live-run
+    # Gemini review). Process 111111 reports group 4242 once, then has
+    # gone; 222222 stays in it.
+    : > "$log"
+    {
+        echo 'set -u'
+        for fn in pgid_of marked_pids still_marked kill_tree; do
+            sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_UNDER_TEST}"
+        done
+        echo 'KILLED_ROOTS=(); KILLED_PIDS=(); KILLED_GROUPS=()'
+        echo "kill() { printf '%s\\n' \"\$*\" >> '${log}'; }"
+        echo "marked_pids() { echo 111111; echo 222222; }"
+        echo "still_marked() { return 0; }"
+        echo "pgid_of() { case \"\$1\" in \"\$BASHPID\") echo 999999 ;; 111111) if [[ -e '${TMPDIR_BASE}/first-gone' ]]; then :; else touch '${TMPDIR_BASE}/first-gone'; echo 4242; fi ;; 222222) echo 4242 ;; esac; }"
+        echo "kill_tree '' 'job-marker'"
+    } > "$probe"
+    out=$(bash "$probe" 2>&1)
+    assert_not_contains "group via a later member: probe ran without shell errors" \
+        "command not found|unbound variable|syntax error" "$out"
+    assert_contains "the group is killed through a member that is still in it" "[-]- -4242\$" "$(cat "$log")"
     teardown
 }
 

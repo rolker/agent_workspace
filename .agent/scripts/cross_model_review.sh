@@ -962,14 +962,17 @@ pgid_of() {
 # another process's environ can block on that process's memory, e.g. one
 # stuck on a hung NFS or FUSE mount, and this runs on the exit path while
 # the review lock is held, so the scan is cut off after 5 s; what it
-# found by then is still used (#363 round 3).
+# found by then is still used (#363 round 3). The paths go through xargs,
+# not onto one command line, which a host with very many processes could
+# push past ARG_MAX.
 marked_pids() {
     local f
     [[ -r /proc/self/environ ]] || return 0
     while read -r f; do
         f=${f#/proc/}
         printf '%s\n' "${f%/environ}"
-    done < <(timeout -k 1 5 grep -l -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=$1" /proc/[0-9]*/environ 2>/dev/null || true)
+    done < <(printf '%s\0' /proc/[0-9]*/environ \
+        | timeout -k 1 5 xargs -0 grep -l -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=$1" 2>/dev/null || true)
 }
 # still_marked <pid> <marker>: does <pid> still carry the marker? Checked
 # again right before each kill of a marker-found process, so a PID that
@@ -979,7 +982,7 @@ still_marked() {
     timeout -k 1 2 grep -q -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=$2" "/proc/$1/environ" 2>/dev/null
 }
 kill_tree() {
-    local root="$1" marker="${2:-}" pids=() groups=() via=() i=0 child p g own_group
+    local root="$1" marker="${2:-}" pids=() groups=() i=0 child p g own_group
     local -A marked=()
     # No <root>: only the marker scan (a job that `timeout` has already cut
     # off, see run_agent_job).
@@ -1009,21 +1012,22 @@ kill_tree() {
             g=$(pgid_of "$p")
             if [[ "$g" =~ ^[0-9]+$ ]] && (( g > 1 )) && [[ "$g" != "$own_group" && " ${groups[*]} " != *" $g "* ]]; then
                 groups+=("$g")
-                via+=("$p")
             fi
         done
     fi
-    # Groups first: each is killed only while the process it was found
+    # Groups first: each is killed only while some process it was found
     # through is still in it (and, if found by the marker, still carries
     # it), so its id cannot be anyone else's yet; a group could otherwise
     # empty out (and its id be reused) before a kill sent after its
     # members'. A daemon the CLI started on this run carries the marker
     # and is killed with the job.
-    for i in ${groups[@]+"${!groups[@]}"}; do
-        p=${via[i]}
-        [[ "$(pgid_of "$p")" == "${groups[i]}" ]] || continue
-        if [[ -n "${marked[$p]+x}" ]] && ! still_marked "$p" "$marker"; then continue; fi
-        kill -9 -- -"${groups[i]}" 2>/dev/null || true
+    for g in ${groups[@]+"${groups[@]}"}; do
+        for p in "${pids[@]}"; do
+            [[ "$(pgid_of "$p")" == "$g" ]] || continue
+            if [[ -n "${marked[$p]+x}" ]] && ! still_marked "$p" "$marker"; then continue; fi
+            kill -9 -- -"$g" 2>/dev/null || true
+            break
+        done
     done
     # Then every PID, deepest first, so nothing is re-parented out from
     # under the kill; a marker-found one only if it still carries the
