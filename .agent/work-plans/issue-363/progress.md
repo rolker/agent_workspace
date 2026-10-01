@@ -419,3 +419,43 @@ Round 2 fixes. The must-fix and all 6 suggestions are addressed, each in its own
 ### Notes
 - The first M1 commit attempt failed the suite's leftover check. A SIGKILLed run cannot remove its own temp files, so the test now points that run's TMPDIR into its sandbox.
 - When I first ran the S1 test against the old code, it failed on every process, not just the two new ones. The stub helper had passed the lock fd to its fake CLIs, unlike the real helper, so the lock never came free at all. The stub now launches its CLIs without fd 9, and the failure on the old code is exactly the two processes that `kill_tree` used to miss.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-01 12:18 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a168f8abfb0d44c34, resume 2 of 3)
+
+**Branch**: feature/issue-363 at `e4ec91b`
+**Base**: main
+**Depth**: Deep (reason: 2488 changed lines; enforcement scripts plus AGENTS.md, ADR and skill edits)
+**Must-fix**: 1 | **Suggestions**: 6
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 1), not rising — fix and ship rather than another full round
+
+Round-2 items checked:
+- M1: fixed. Every holder of fd 9 is the parent, the job shell, or a process in `timeout`'s group, and the CLI, agy and the watchdog launch with `9<&-`. So the hold after a parent SIGKILL really is bounded by `AGENT_TIMEOUT` (gemini: `GEMINI_BACKSTOP`) + `AGENT_KILL_AFTER`.
+- S1-S6: fixed.
+- The marker scan's reach was probed by running:
+  - The match is exact (`-z -x -F`). The marker is a fresh `mktemp -d` path, so it is unique per run.
+  - The script's own group and the caller's group cannot be reached.
+- ADR-0015 is unchanged since round 2.
+
+Reviewers:
+- Claude adversarial (fresh): full suite 894 passed, 0 failed, no leftovers.
+- Codex: completed, 1 finding (10 lines, short).
+- Gemini: failed, agy hit its output-token limit (status ERROR).
+- Copilot: skipped, quota exhausted.
+
+### Findings
+- [ ] (must-fix) `kill_tree`'s `g=$(ps -o pgid= -p "$p" | tr -d ' ')` (and `own_group=` likewise) fails when a found PID exits before `ps` runs.
+  - Under `set -euo pipefail` that aborts `cleanup_jobs` inside the EXIT trap before any kill: the CLI and helper stay alive, the temp root is left behind and the exit status is 1, not 143.
+  - Reproduced 5/5 by the adversarial reviewer with a busy stub CLI. The errexit-in-trap abort was confirmed here. The 759ef51 code passed the same repro.
+  - Fix: tolerate the failure (or read the pgid from `/proc/<pid>/stat`, falling back to `ps`), skip all group kills when `own_group` is empty, and add a busy-child variant of the cleanup test. That also covers BusyBox `ps`, which rejects `-p`.
+  — `.agent/scripts/cross_model_review.sh:952,954`
+- [ ] (suggestion) The `/proc/[0-9]*/environ` grep reads every process the user owns. A process stuck on a hung NFS/FUSE mount could block the exit path with no limit while fd 9 is held. Traced by reading kernel behaviour only. Bound it with `timeout` — `.agent/scripts/cross_model_review.sh:950`
+- [ ] (suggestion) The marker scan SIGKILLs the whole group of any on-demand daemon the CLI started on this run's interrupt path (git fsmonitor, gpg-agent, a tmux server). Consider guarding against `g` 0/1 and re-checking the marker before each kill — `.agent/scripts/cross_model_review.sh:940-972`
+- [ ] (suggestion) Exit 5 says "wait for that run to finish". After a SIGKILLed run no run is visible, yet its helpers hold the lock for up to 1810 s (gemini about 2110 s). The message, header and SKILL should say so, give the bound and name `fuser -v <dir>`/`lsof +d <dir>` — `.agent/scripts/cross_model_review.sh:776`, `.claude/skills/review-code/SKILL.md:442`
+- [ ] (suggestion) Codex: if `timeout -k` ever SIGKILLs a helper before its watchdog fires, the setsid'd CLI survives, and the marker sweep does not run on normal job completion. This is the design dependency already accepted at plan stage (escalation < kill grace, so it needs a wedged helper). Defense in depth: sweep marked descendants when a job ends 124/137 — `.agent/scripts/cross_model_review.sh:1059`
+- [ ] (suggestion) The header reads "waits (at least 5 s, at most 6 s in total)"; it means up to 5-6 s — `.agent/scripts/cross_model_review.sh:117`
+- [ ] (suggestion) Possible flake: the second run must reach `flock` within the mock's 3 s sleep. Use a longer `MOCK_CODEX_SLEEP` — `.agent/scripts/tests/test_cross_model_review.sh:4732`
