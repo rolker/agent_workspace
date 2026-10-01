@@ -225,3 +225,13 @@ Every round-1 finding is closed, and the deterministic adoption tests do fail wh
 **Decision**: stop
 
 Stop here (asked after the round-2 plan review: ready, with F1 must-do during implementation — drop the directory-lock fallback so a contended lock always exits 5 — and suggestions F2–F5).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-01 08:57 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Resumed from the 2026-09-29 stop: "Have an agent work on B in the background while we work on A" (B = this issue). Implement with plan-review F1 as must-do (drop the directory-lock fallback so a contended lock always exits 5); F2–F5 are suggestions.
