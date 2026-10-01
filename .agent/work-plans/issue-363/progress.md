@@ -235,3 +235,48 @@ Stop here (asked after the round-2 plan review: ready, with F1 must-do during im
 **Decision**: proceed
 
 Resumed from the 2026-09-29 stop: "Have an agent work on B in the background while we work on A" (B = this issue). Implement with plan-review F1 as must-do (drop the directory-lock fallback so a contended lock always exits 5); F2–F5 are suggestions.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-01 09:54 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-363 at `85a6037`
+
+Implemented P1a-P1d from the plan, plus three follow-up fixes for problems the plan's live verification run found. 10 commits, not pushed.
+
+- `a73f7c0` P1a: `AGENT_KILL_AFTER=0` refused (exit 2); the helpers' both-zero carve-out is gone.
+- `42aa034` Watchdog cancel: `pkill -KILL -P` then `kill -KILL` in both helpers (prerequisite M1).
+- `7e9e59b` P1b: the CLI runs under `setsid`, and its whole process group is signalled. The post-exit sweeps run in group mode only; there is a PID fallback without setsid and a `set -u`-safe empty-array expansion. Measured poll overrun: 5.05s at 5s and 10.11s at 10s (about 1%), so the tick loop is kept.
+- `c49a7fa` P1c: launch-window adoption in both helpers, in `run_agent_job`'s trap and in `cleanup_jobs`.
+- `8088a5e` P1d: a non-blocking `flock` on the artifact directory itself, exit 5 on contention, jobs launched with `9>&-`, exit 5 in the header.
+- `3fd41e4` Docs: ADR-0015 amended in place, with a Status-line note. Updated the AGENTS.md rows for the three scripts and documented exits 4 and 5 in the review-code SKILL.
+- `1487b59`, `a3e877a` Follow-up (found by Codex in the live runs): a signal that lands between the fork and `setsid()` found no group, so the TERM missed and so did the watchdog. Now the watchdog starts first and the handler waits for the group within the escalation window. If the window ends first, it SIGKILLs the unreaped PID.
+- `1ca06c8` Follow-up (Gemini suggestion): util-linux `flock -E 75` tells a conflict (exit 5) from an error (warn and proceed unserialized). Any other `flock` still treats every failure as a conflict.
+- `85a6037` The ADR-0015 bullets now cover both follow-ups.
+
+Plan-review findings:
+- F1 (must-do): done. There is no lock-file fallback, and a contended lock always exits 5. This is still true after `1ca06c8`.
+- F2: done. The no-adopt cases use a detached `setsid sleep`, `cleanup_jobs` is extracted with `job_finished` and `proc_state`, and every probe sleep is killed.
+- F3: done. The orphan-sleep check matches a per-run escalation value (`5.0$$s`).
+- F4: skipped. I left the approved plan's text alone. Neither stale phrase (the lock file as a gitignored sibling, and env passthrough) affected the implementation.
+- F5: done. The no-setsid PATH shim is built from `command -v` and names any missing tool.
+
+Tests: each fix has a test that fails on the code before it. For the adoption tests and the `9>&-` test, this was checked on scratch copies with the fix removed. `test_cross_model_review.sh` passes 767 assertions with 0 failures. `run_script_tests.sh` passes all 30 suites.
+
+Live verification ran `--branch --agents gemini,codex --no-progress` with the real CLIs:
+- In both runs codex and agy were their own session and group leaders (pid = pgid = sid).
+- No agy or codex process outlived either run.
+- Run 1: codex completed. The gemini job failed on a syntax error because I edited `_agy_review.sh` while bash was still reading it. My mistake, not a defect.
+- Run 2: both completed (EXIT=0) at `1487b59`. The shutdown-path fixes made after run 2 (`a3e877a`, `1ca06c8`) were not run live again; a successful run does not exercise those paths.
+
+Run-2 review findings not acted on:
+- Gemini 3/4 (the sweep does not deduct `wait` time): false positive. The watchdog fires at the end of the window counted from its start and kills the group, so the poll loop ends there.
+- Gemini 7/8 (the post-exit sweep is unconditional): checking liveness before the KILL does not narrow the check-then-signal window. This is the accepted post-exit sweep design from the plan.
+- Gemini 10 (AGENTS.md edits): script rows need no Ask-First.
+- Codex 2 on run 1 (a watchdog `sleep` can be orphaned when `pkill -P` scans before the fork): skipped. The orphan is a bare `sleep` whose parent is already dead, so it exits on its own and no kill follows.
+
+Not covered: the no-`flock`-binary warn path (no test); that bash actually delivers a TERM inside the real `&`-to-`$!` gap.
+
+For the PR description:
+- The fork's `kill_tree` fix is untracked here. `cleanup_jobs` still SIGKILLs only the job shell when its budget runs out.
+- Amending ADR-0015 in place sits in tension with ADR-0001 and ADR-0008.
