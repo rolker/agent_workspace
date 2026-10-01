@@ -4667,23 +4667,32 @@ test_local_concurrent_runs_refused() {
     assert_exit_code "a run after the lock is released completes" "0" "$ec"
     assert_eq "the CLI does not hold the review lock" "closed" "$(cat "$probe" 2>/dev/null)"
 
-    # A flock failure that is not a conflict: util-linux says which it
-    # was (-E), so the run warns and proceeds; any other flock cannot, so
-    # the failure counts as a conflict (exit 5), never as a free pass.
-    local real_bin="${TMPDIR_BASE}/flock-bin"; mkdir -p "$real_bin"
-    printf '%s\n' '#!/usr/bin/env bash' \
-        '[[ "$1" == --version ]] && { echo "flock from util-linux 2.39.3"; exit 0; }' \
-        'exit 1' > "${real_bin}/flock"
-    chmod +x "${real_bin}/flock"
-    ec=0; err=$(PATH="${real_bin}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
-    assert_exit_code "util-linux flock error (not a conflict) proceeds" "0" "$ec"
-    assert_contains "and warns that the run is unserialized" "not a conflict.*not serialized" "$err"
-    printf '%s\n' '#!/usr/bin/env bash' '[[ "$1" == --version ]] && { echo "flock 0.4.0"; exit 0; }' \
-        'exit 1' > "${real_bin}/flock"
-    ec=0; err=$(PATH="${real_bin}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
-    assert_exit_code "a non-util-linux flock failure counts as a conflict" "5" "$ec"
+    # flock exit codes (#363 review). util-linux reports a conflict with
+    # the -E code and real errors with sysexits 65/71: only those warn and
+    # proceed. Everything else must end in exit 5, never in an
+    # unserialized run. The mock answers --version as the given flock, and
+    # exits <with -E> when called with -E, <plain> otherwise.
+    local real_bin="${TMPDIR_BASE}/flock-bin" spec version with_e plain want
+    mkdir -p "$real_bin"
+    for spec in "util-linux 2.39.3:65:0:0" "util-linux 2.39.3:71:0:0" \
+                "util-linux 2.39.3:1:0:5" "util-linux 2.39.3:66:0:5" \
+                "util-linux 2.20.1:64:1:5" "util-linux 2.20.1:64:0:0" \
+                "flock 0.4.0:0:1:5"; do
+        IFS=: read -r version with_e plain want <<< "$spec"
+        printf '%s\n' '#!/usr/bin/env bash' \
+            "[[ \"\$1\" == --version ]] && { echo 'flock from ${version}'; exit 0; }" \
+            "for a in \"\$@\"; do [[ \"\$a\" == -E ]] && exit ${with_e}; done" \
+            "exit ${plain}" > "${real_bin}/flock"
+        chmod +x "${real_bin}/flock"
+        ec=0; err=$(PATH="${real_bin}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+            --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+        assert_exit_code "flock '${version}', -E exit ${with_e}, plain exit ${plain}" "$want" "$ec"
+        case "${with_e}:${want}" in
+            65:0|71:0) assert_contains "  ... warns that the run is unserialized" "not a conflict.*not serialized" "$err" ;;
+            64:0) assert_not_contains "  ... an uncontended lock without -E needs no warning" "WARNING: could not lock" "$err" ;;
+            1:5|66:5) assert_contains "  ... names the unexplained code" "flock exit ${with_e}, neither a conflict nor a known error" "$err" ;;
+        esac
+    done
 
     # --no-progress runs each get their own temp dir and never contend.
     # TMPDIR keeps those dirs under this test's base, which teardown drops.

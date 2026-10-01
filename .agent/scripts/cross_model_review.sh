@@ -110,7 +110,8 @@
 #       EXIT= per agent). The presence of triplets is the disambiguator.
 #   4 — wrong worktree / invalid environment (see _resolve_work_plans_dir.sh)
 #   5 — another run is already reviewing into the same artifact dir;
-#       nothing was written (wait for it to finish, do not start a second)
+#       nothing was written (wait for it to finish, do not start a second).
+#       Also any flock failure that cannot be told apart from that.
 
 set -euo pipefail
 
@@ -695,23 +696,42 @@ if command -v flock >/dev/null 2>&1; then
         echo "ERROR: cannot open ${WORK_PLANS_DIR} to lock it against a concurrent review" >&2
         exit 4
     fi
-    # util-linux flock reports a conflict with its own exit code (-E), so
-    # an error that is not one (a filesystem that cannot lock a
-    # directory) warns and proceeds unserialized, like a missing flock.
-    # Other flock ports cannot tell the two apart, so there every failure
-    # is a conflict: a contended lock must never become an unserialized run.
+    # util-linux flock reports a conflict with the code given to -E and
+    # uses sysexits codes for real errors: 65 (EX_DATAERR) and 71
+    # (EX_OSERR) when flock(2) itself fails, e.g. on a filesystem that
+    # cannot lock a directory. Only those warn and proceed unserialized,
+    # like a missing flock. Every other failure counts as a conflict, so a
+    # contended lock always ends in exit 5 and never in an unserialized
+    # run (#363 review):
+    #   * 64 (EX_USAGE) from `-E` is an older util-linux without that
+    #     option. Its conflict is exit 1, like any failure, so it is asked
+    #     again without -E and every failure counts as a conflict.
+    #   * Other flock ports cannot tell a conflict from an error at all.
+    #   * An exit code none of the above explains.
     lock_rc=0
     if flock --version 2>&1 | grep -q util-linux; then
         flock -n -E 75 9 || lock_rc=$?
+        if [[ "$lock_rc" -eq 64 ]]; then
+            lock_rc=0
+            flock -n 9 || lock_rc=75
+        fi
     else
         flock -n 9 || lock_rc=75
     fi
-    if [[ "$lock_rc" -eq 75 ]]; then
-        echo "ERROR: another cross_model_review.sh run is already reviewing into ${WORK_PLANS_DIR}; nothing was written. Wait for it to finish instead of starting a second run (its prompt and findings files would be overwritten)." >&2
-        exit 5
-    elif [[ "$lock_rc" -ne 0 ]]; then
-        echo "WARNING: could not lock ${WORK_PLANS_DIR} (flock exit ${lock_rc}, not a conflict); concurrent reviews into it are not serialized" >&2
-    fi
+    case "$lock_rc" in
+        0) ;;
+        65|71)
+            echo "WARNING: could not lock ${WORK_PLANS_DIR} (flock exit ${lock_rc}: an error, not a conflict); concurrent reviews into it are not serialized" >&2
+            ;;
+        75)
+            echo "ERROR: another cross_model_review.sh run is already reviewing into ${WORK_PLANS_DIR}; nothing was written. Wait for it to finish instead of starting a second run (its prompt and findings files would be overwritten)." >&2
+            exit 5
+            ;;
+        *)
+            echo "ERROR: could not lock ${WORK_PLANS_DIR} (flock exit ${lock_rc}, neither a conflict nor a known error); treating it as a conflict, so nothing was written. If no other cross_model_review.sh run is reviewing into it, check the flock installation." >&2
+            exit 5
+            ;;
+    esac
 else
     echo "WARNING: flock is not installed; concurrent reviews into ${WORK_PLANS_DIR} are not serialized" >&2
 fi
