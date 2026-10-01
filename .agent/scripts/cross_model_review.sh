@@ -109,6 +109,8 @@
 #       marker), OR at least one agent failed (triplets printed — read
 #       EXIT= per agent). The presence of triplets is the disambiguator.
 #   4 — wrong worktree / invalid environment (see _resolve_work_plans_dir.sh)
+#   5 — another run is already reviewing into the same artifact dir;
+#       nothing was written (wait for it to finish, do not start a second)
 
 set -euo pipefail
 
@@ -674,6 +676,32 @@ fi
 
 WORK_PLANS_DIR=$(resolve_work_plans_dir "$ISSUE_NUMBER") || exit 4
 mkdir -p "$WORK_PLANS_DIR"
+
+# One run per artifact dir at a time (#363). The prompt and findings
+# filenames are fixed per agent, so a second run into the same dir would
+# overwrite the first's prompt, truncate its findings, or append its
+# success marker to the other's failure. The second run is refused before
+# it writes anything; the lock is held on fd 9 until this script exits.
+# --no-progress runs get a fresh temp dir each and never contend.
+#
+# The lock is taken on the directory itself, not on a lock file in it:
+# this script also writes into project worktrees, where the workspace
+# .gitignore does not apply and a lock file would show up untracked. There
+# is deliberately no lock-file fallback: `flock -n` cannot tell "this
+# host cannot lock a directory" from "another run holds it", and a
+# contended lock must always end in exit 5, never in an unserialized run.
+if command -v flock >/dev/null 2>&1; then
+    if ! exec 9< "$WORK_PLANS_DIR"; then
+        echo "ERROR: cannot open ${WORK_PLANS_DIR} to lock it against a concurrent review" >&2
+        exit 4
+    fi
+    if ! flock -n 9; then
+        echo "ERROR: another cross_model_review.sh run is already reviewing into ${WORK_PLANS_DIR}; nothing was written. Wait for it to finish instead of starting a second run (its prompt and findings files would be overwritten)." >&2
+        exit 5
+    fi
+else
+    echo "WARNING: flock is not installed; concurrent reviews into ${WORK_PLANS_DIR} are not serialized" >&2
+fi
 
 prompt_file_for()   { echo "${WORK_PLANS_DIR}/review-$1-prompt.md"; }
 findings_file_for() { echo "${WORK_PLANS_DIR}/review-$1-findings.md"; }
@@ -1249,11 +1277,13 @@ else
 fi
 
 # LAUNCH_* let cleanup_jobs find a job whose TERM landed between its `&`
-# and the AGENT_PID assignment (#363).
+# and the AGENT_PID assignment (#363). `9>&-`: the jobs do not inherit the
+# review lock, so nothing they leave behind can hold it and refuse later
+# runs (exit 5) after this one exits.
 for agent in "${AGENTS_TO_RUN[@]}"; do
     LAUNCH_PREV="${!:-}"
     LAUNCHING_AGENT="$agent"
-    run_agent_job "$agent" &
+    run_agent_job "$agent" 9>&- &
     AGENT_PID["$agent"]=$!
     LAUNCHING_AGENT=""
 done

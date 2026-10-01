@@ -2737,6 +2737,12 @@ if [[ -n "${MOCK_CODEX_ORPHAN_PIDFILE:-}" ]]; then
       for ((j = 0; j < 300; j++)); do sleep 0.1; done ) </dev/null >/dev/null 2>&1 &
     for ((j = 0; j < 50; j++)); do [[ -s "${MOCK_CODEX_ORPHAN_PIDFILE}" ]] && break; sleep 0.05; done
 fi
+# MOCK_CODEX_FD9_PROBE=<f>: record whether fd 9 (the review lock) is
+# open in the CLI (#363). An existence test, not a write: the lock fd is
+# a read-only directory fd.
+if [[ -n "${MOCK_CODEX_FD9_PROBE:-}" ]]; then
+    if [[ -e /dev/fd/9 ]]; then echo open; else echo closed; fi > "${MOCK_CODEX_FD9_PROBE}"
+fi
 [[ -n "${MOCK_CODEX_SLEEP:-}" ]] && mock_sleep "${MOCK_CODEX_SLEEP}"
 echo "codex-cli 0.155.1 (mock banner)"
 echo "MOCK TRANSCRIPT: prompt was ${#prompt} bytes"
@@ -4594,6 +4600,67 @@ test_cleanup_jobs_adopts_launch_window() {
     teardown
 }
 
+# ---- One run per artifact dir (#363) ----
+test_local_concurrent_runs_refused() {
+    echo "TEST: a second run into the same artifact dir is refused before it writes (#363)"
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "  SKIP: no flock on this host"; return
+    fi
+    setup
+    make_mock_agent codex
+    local dir="${MOCK_REPO}/.agent/work-plans/issue-42" ec=0 err i
+    mkdir -p "$dir"
+    echo "first run's findings" > "${dir}/review-codex-findings.md"
+    # Stand in for a first run holding the directory lock. `exec sleep`
+    # so the recorded pid is the only holder of the fd: killing it
+    # releases the lock.
+    ( exec 8< "$dir"; flock -n 8 || exit 1; echo ready > "${TMPDIR_BASE}/held"; exec sleep 30 ) \
+        </dev/null >/dev/null 2>&1 &
+    local holder=$!
+    for ((i = 0; i < 50; i++)); do [[ -s "${TMPDIR_BASE}/held" ]] && break; sleep 0.1; done
+    cd "${MOCK_REPO}"
+    err=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+    kill "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    assert_eq "the stand-in first run held the lock" "ready" "$(cat "${TMPDIR_BASE}/held" 2>/dev/null)"
+    assert_exit_code "second run exits 5" "5" "$ec"
+    assert_contains "names the other run and the dir" "already reviewing into ${dir}" "$err"
+    assert_eq "first run's findings untouched" "first run's findings" \
+        "$(cat "${dir}/review-codex-findings.md")"
+    if [[ -e "${dir}/review-codex-prompt.md" ]]; then
+        echo "  FAIL: the refused run wrote a prompt file"; FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: the refused run wrote no prompt file"; PASS=$((PASS + 1))
+    fi
+    # Nothing beside the findings file: the lock is on the directory, so
+    # no lock file is left behind (zero footprint in project worktrees).
+    assert_eq "no lock file in the artifact dir" "review-codex-findings.md" "$(ls -A "$dir")"
+
+    # Released: the next run proceeds, and the agent jobs do not inherit
+    # the lock (anything they left behind would otherwise hold it and
+    # refuse every later run).
+    local probe="${TMPDIR_BASE}/fd9"
+    ec=$(MOCK_CODEX_FD9_PROBE="$probe" run_agents "${TMPDIR_BASE}/out.txt" "codex")
+    assert_exit_code "a run after the lock is released completes" "0" "$ec"
+    assert_eq "the CLI does not hold the review lock" "closed" "$(cat "$probe" 2>/dev/null)"
+
+    # --no-progress runs each get their own temp dir and never contend.
+    # TMPDIR keeps those dirs under this test's base, which teardown drops.
+    local ec1=0 ec2=0 p1 p2
+    MOCK_CODEX_SLEEP=2 TMPDIR="$TMPDIR_BASE" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex --no-progress </dev/null >/dev/null 2>&1 &
+    p1=$!
+    MOCK_CODEX_SLEEP=2 TMPDIR="$TMPDIR_BASE" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex --no-progress </dev/null >/dev/null 2>&1 &
+    p2=$!
+    wait "$p1" || ec1=$?
+    wait "$p2" || ec2=$?
+    assert_exit_code "first concurrent --no-progress run completes" "0" "$ec1"
+    assert_exit_code "second concurrent --no-progress run completes" "0" "$ec2"
+    teardown
+}
+
 test_missing_pr_flag
 test_unknown_argument
 test_invalid_repo_slug
@@ -4707,6 +4774,7 @@ test_helpers_work_without_setsid
 test_helper_terminate_adopts_launch_window
 test_run_agent_job_trap_adopts_launch_window
 test_cleanup_jobs_adopts_launch_window
+test_local_concurrent_runs_refused
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
