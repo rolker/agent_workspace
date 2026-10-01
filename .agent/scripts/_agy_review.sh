@@ -190,11 +190,23 @@ signal_agy() {
     fi
 }
 AGY_PID=""
+# Set around the launch so terminate_child can find a agy whose signal
+# landed between the `&` that starts it and the `AGY_PID=$!` that records
+# it (#363; rolker/ros2_agent_workspace 5818535).
+AGY_LAUNCHING=false
+AGY_LAUNCH_PREV=""
 terminate_child() {
     local code="$1" watchdog i
     # Re-entrancy: a second signal would otherwise start a second
     # watchdog and clobber $watchdog, leaking the first one.
     trap '' INT TERM HUP
+    # A signal can land between the `&` that starts the agy and the
+    # `AGY_PID=$!` that records it: the agy then exists but is
+    # unrecorded, and would outlive this helper. `$!` names it iff it
+    # moved since the launch began.
+    if [[ -z "$AGY_PID" && "$AGY_LAUNCHING" == true && "${!:-}" != "$AGY_LAUNCH_PREV" ]]; then
+        AGY_PID=$!
+    fi
     if [[ -n "$AGY_PID" ]]; then
         signal_agy TERM "$AGY_PID"
         # `wait` returns the moment agy dies, so a clean shutdown costs
@@ -254,6 +266,8 @@ fi
 # agy at once instead of being deferred until the turn ends on its own.
 # `${arr[@]+...}`: an empty array is "unbound" to `set -u` on bash < 4.4,
 # and empty is exactly the no-setsid path.
+AGY_LAUNCH_PREV="${!:-}"
+AGY_LAUNCHING=true
 ${AGY_SETSID[@]+"${AGY_SETSID[@]}"} "$AGY_BIN_RESOLVED" \
     --input-format=stream-json \
     --output-format=stream-json \
@@ -261,6 +275,7 @@ ${AGY_SETSID[@]+"${AGY_SETSID[@]}"} "$AGY_BIN_RESOLVED" \
     --disable-slash-commands \
     -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE" &
 AGY_PID=$!
+AGY_LAUNCHING=false
 AGY_EXIT=0
 wait "$AGY_PID" || AGY_EXIT=$?
 # The turn is over: nothing agy started may outlive it. Group mode only:

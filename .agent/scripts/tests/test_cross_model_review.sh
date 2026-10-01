@@ -4415,6 +4415,185 @@ test_helpers_work_without_setsid() {
     teardown
 }
 
+# ---- Launch-window adoption (#363; rolker/ros2_agent_workspace 5818535) ----
+#
+# A signal landing between `cmd &` and `PID=$!` used to find no PID to
+# signal. Each handler now adopts `$!` when a launch is in flight and `$!`
+# has moved since it began. The window itself is microseconds wide and
+# cannot be hit by timing, so each adoption branch is tested by running
+# the REAL handler code (extracted from the script) in the state it would
+# see inside that window, plus the guard cases where it must NOT adopt.
+# Every background sleep a probe starts is recorded and killed by the
+# test whatever the outcome, so a failure leaks nothing.
+
+# Kill and forget every pid listed in the given files.
+kill_recorded() {
+    local f
+    for f in "$@"; do
+        if [[ -s "$f" ]]; then kill -9 "$(cat "$f")" 2>/dev/null || true; fi
+        rm -f "$f"
+    done
+    return 0
+}
+
+# Is the pid in <file> alive? Prints alive / gone / missing.
+pid_state() {
+    local pid
+    pid=$(cat "$1" 2>/dev/null || echo "")
+    if [[ -z "$pid" ]]; then echo missing
+    elif kill -0 "$pid" 2>/dev/null; then echo alive
+    else echo gone
+    fi
+}
+
+test_helper_terminate_adopts_launch_window() {
+    echo "TEST: the helpers' terminate_child adopts a CLI launched but not yet recorded (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    local spec file P fn probe ec case_name
+    for spec in _cli_review.sh:CLI:signal_cli _agy_review.sh:AGY:signal_agy; do
+        file="${spec%%:*}"; P=$(cut -d: -f2 <<< "$spec"); fn=$(cut -d: -f3 <<< "$spec")
+        for case_name in adopt stale-pid not-launching; do
+            probe="${TMPDIR_BASE}/probe-${P}-${case_name}.sh"
+            {
+                echo 'set -u'
+                sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
+                echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=5; ESCALATION_SECONDS=5"
+                echo "${P}_PID=''"
+                case "$case_name" in
+                    adopt)
+                        # Inside the window: launching, `$!` has moved.
+                        echo "${P}_LAUNCH_PREV=\"\${!:-}\"; ${P}_LAUNCHING=true"
+                        echo 'setsid sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid' ;;
+                    stale-pid)
+                        # `$!` names an earlier, unrelated job: not ours.
+                        echo 'setsid sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid'
+                        echo "${P}_LAUNCH_PREV=\"\${!:-}\"; ${P}_LAUNCHING=true" ;;
+                    not-launching)
+                        # `$!` moved, but no launch is in flight.
+                        echo "${P}_LAUNCH_PREV=\"\${!:-}\"; ${P}_LAUNCHING=false"
+                        echo 'setsid sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid' ;;
+                esac
+                echo 'terminate_child 143'
+            } > "$probe"
+            ec=0; (cd "$TMPDIR_BASE" && timeout 20 bash "$probe" >/dev/null 2>&1) || ec=$?
+            assert_exit_code "${file} ${case_name}: handler exits 143" "143" "$ec"
+            sleep 0.2
+            if [[ "$case_name" == adopt ]]; then
+                assert_eq "${file}: a CLI launched but not yet recorded is killed" "gone" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")"
+            else
+                assert_eq "${file} ${case_name}: an unrelated job is left alone" "alive" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")"
+            fi
+            kill_recorded "${TMPDIR_BASE}/target.pid"
+        done
+    done
+    teardown
+}
+
+test_run_agent_job_trap_adopts_launch_window() {
+    echo "TEST: run_agent_job's TERM trap adopts a helper launched but not yet recorded (#363)"
+    setup
+    local trap_line probe ec case_name
+    trap_line=$(grep -m1 -E "^    trap 'if \[\[ -z \"\\\$child\"" "${SCRIPT_DIR}/../cross_model_review.sh" || true)
+    if [[ -z "$trap_line" ]]; then
+        echo "  FAIL: run_agent_job's adopting TERM trap not found"; FAIL=$((FAIL + 1))
+        teardown; return
+    fi
+    for case_name in adopt stale-pid; do
+        probe="${TMPDIR_BASE}/probe-job-${case_name}.sh"
+        {
+            echo 'set -u'
+            echo 'job() {'
+            echo '    local child=""'
+            if [[ "$case_name" == adopt ]]; then
+                echo '    local launch_prev="${!:-}"'
+                echo "$trap_line"
+                echo '    sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid'
+            else
+                echo '    sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid'
+                echo '    local launch_prev="${!:-}"'
+                echo "$trap_line"
+            fi
+            # Signal ourselves before `child=$!` would have run.
+            echo '    kill -TERM $$'
+            echo '    sleep 5; exit 7'
+            echo '}'
+            echo 'job'
+        } > "$probe"
+        ec=0; (cd "$TMPDIR_BASE" && timeout 20 bash "$probe" >/dev/null 2>&1) || ec=$?
+        assert_exit_code "run_agent_job ${case_name}: trap exits 143" "143" "$ec"
+        sleep 0.2
+        if [[ "$case_name" == adopt ]]; then
+            assert_eq "run_agent_job: a helper launched but not yet recorded is killed" "gone" \
+                "$(pid_state "${TMPDIR_BASE}/target.pid")"
+        else
+            assert_eq "run_agent_job stale-pid: an unrelated job is left alone" "alive" \
+                "$(pid_state "${TMPDIR_BASE}/target.pid")"
+        fi
+        kill_recorded "${TMPDIR_BASE}/target.pid"
+    done
+    teardown
+}
+
+test_cleanup_jobs_adopts_launch_window() {
+    echo "TEST: cleanup_jobs adopts an agent job launched but not yet recorded (#363)"
+    setup
+    local probe out case_name
+    for case_name in adopt stale-pid recorded; do
+        probe="${TMPDIR_BASE}/probe-cleanup-${case_name}.sh"
+        {
+            echo 'set -u'
+            sed -n '/^proc_state() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
+            sed -n '/^job_finished() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
+            sed -n '/^cleanup_jobs() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
+            echo 'declare -A AGENT_PID=()'
+            echo 'CLEANUP_REAP_SECONDS=2; CLEANUP_REAP_TIMEOUT=2'
+            echo 'SHARED_PROMPT=""; SHARED_DIFF=""; AGENT_TMP_ROOT=""'
+            case "$case_name" in
+                adopt)
+                    echo 'LAUNCH_PREV="${!:-}"; LAUNCHING_AGENT=codex'
+                    echo 'sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid' ;;
+                stale-pid)
+                    echo 'sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid'
+                    echo 'LAUNCH_PREV="${!:-}"; LAUNCHING_AGENT=codex' ;;
+                recorded)
+                    # The job was recorded just before the signal; a later
+                    # unrelated `$!` must not overwrite that record.
+                    echo 'sleep 30 </dev/null >/dev/null 2>&1 & echo $! > recorded.pid'
+                    echo 'LAUNCH_PREV="${!:-}"; LAUNCHING_AGENT=codex; AGENT_PID[codex]=$(< recorded.pid)'
+                    echo 'sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid' ;;
+            esac
+            echo 'cleanup_jobs'
+            echo 'echo "codex=${AGENT_PID[codex]:-none}"'
+        } > "$probe"
+        out=$(cd "$TMPDIR_BASE" && timeout 20 bash "$probe" 2>&1)
+        sleep 0.2
+        case "$case_name" in
+            adopt)
+                assert_eq "cleanup_jobs: a job launched but not yet recorded is stopped" "gone" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")" ;;
+            stale-pid)
+                assert_eq "cleanup_jobs stale-pid: an unrelated job is left alone" "alive" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")"
+                assert_contains "cleanup_jobs stale-pid: nothing adopted" "codex=none" "$out" ;;
+            recorded)
+                assert_eq "cleanup_jobs recorded: the recorded job is stopped" "gone" \
+                    "$(pid_state "${TMPDIR_BASE}/recorded.pid")"
+                assert_eq "cleanup_jobs recorded: the later job is not adopted over it" "alive" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")"
+                assert_contains "cleanup_jobs recorded: the record is kept" \
+                    "codex=$(cat "${TMPDIR_BASE}/recorded.pid")" "$out" ;;
+        esac
+        kill_recorded "${TMPDIR_BASE}/target.pid" "${TMPDIR_BASE}/recorded.pid"
+    done
+    teardown
+}
+
 test_missing_pr_flag
 test_unknown_argument
 test_invalid_repo_slug
@@ -4525,6 +4704,9 @@ test_cli_helper_missing_is_unavailable
 test_local_helpers_kill_the_cli_process_group
 test_signal_helpers_both_modes
 test_helpers_work_without_setsid
+test_helper_terminate_adopts_launch_window
+test_run_agent_job_trap_adopts_launch_window
+test_cleanup_jobs_adopts_launch_window
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

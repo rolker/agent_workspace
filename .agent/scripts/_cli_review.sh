@@ -254,12 +254,24 @@ signal_cli() {
     fi
 }
 CLI_PID=""
+# Set around the launch so terminate_child can find a CLI whose signal
+# landed between the `&` that starts it and the `CLI_PID=$!` that records
+# it (#363; rolker/ros2_agent_workspace 5818535).
+CLI_LAUNCHING=false
+CLI_LAUNCH_PREV=""
 terminate_child() {
     local code="$1" watchdog i
     # Re-entrancy: a second signal (repeated Ctrl-C, TERM then HUP) would
     # otherwise start a second watchdog and clobber $watchdog, leaking
     # the first one.
     trap '' INT TERM HUP
+    # A signal can land between the `&` that starts the CLI and the
+    # `CLI_PID=$!` that records it: the CLI then exists but is
+    # unrecorded, and would outlive this helper. `$!` names it iff it
+    # moved since the launch began.
+    if [[ -z "$CLI_PID" && "$CLI_LAUNCHING" == true && "${!:-}" != "$CLI_LAUNCH_PREV" ]]; then
+        CLI_PID=$!
+    fi
     if [[ -n "$CLI_PID" ]]; then
         signal_cli TERM "$CLI_PID"
         # `wait` returns the moment the CLI dies, so a clean shutdown
@@ -333,12 +345,15 @@ run_cli() {
     shift 2
     # `${arr[@]+...}`: an empty array is "unbound" to `set -u` on bash
     # < 4.4, and empty is exactly the no-setsid path.
+    CLI_LAUNCH_PREV="${!:-}"
+    CLI_LAUNCHING=true
     if [[ "$err" == "-" ]]; then
         ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2>&1 &
     else
         ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2> "$err" &
     fi
     CLI_PID=$!
+    CLI_LAUNCHING=false
     CLI_EXIT=0
     wait "$CLI_PID" || CLI_EXIT=$?
     # The review is over: nothing the CLI started may outlive it. Group
