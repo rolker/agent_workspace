@@ -114,9 +114,17 @@
 #     already-reaped CLI, a descendant with a session of its own). Not
 #     found: a descendant that left those groups and changed its
 #     environment, or, without /proc, one re-parented outside the CLI's
-#     group. Cleanup then waits (at least 5 s, at most 6 s in total) until
-#     nothing it killed is running, so the script's exit, which releases
-#     the lock below, comes after.
+#     group. Each kill is guarded: no group 0 or 1, never this script's
+#     group, and a process found only by the marker still has to carry
+#     it. The environ scan gives up after 5 s (a process on a hung mount
+#     can block it). Cleanup then waits until nothing it killed is
+#     running, for up to 5-6 s in total, so the script's exit, which
+#     releases the lock below, comes after. Cleanup is best effort: a
+#     process that exits mid-way never aborts it.
+#   * Timeout. A job that its `timeout` cut off (124, or 137 when the
+#     `-k` SIGKILL took the helper before its own escalation ran) kills
+#     whatever still carries its marker: the CLI is in a process group of
+#     its own, out of `timeout`'s reach.
 #   * Launch window. A signal that lands between a background launch and
 #     the line recording its PID (agent job here, helper in the job, CLI
 #     in the helper) is not lost: each handler adopts `$!` when a launch
@@ -1051,10 +1059,10 @@ group_running() {
 
 # SIGKILL takes effect asynchronously. Return only once nothing kill_tree
 # killed is still running (an exited, unreaped process is not), so this
-# script's exit, which releases the review lock, comes after. One shared
-# deadline for every killed job, at least 5 s and at most 6 s (SECONDS
-# counts whole seconds), so a process stuck in uninterruptible sleep
-# cannot hang the exit path however many jobs were killed.
+# script's exit, which releases the review lock, comes after. It gives
+# up after 5-6 s in total (one shared deadline for every killed job;
+# SECONDS counts whole seconds), so a process stuck in uninterruptible
+# sleep cannot hang the exit path however many jobs were killed.
 await_killed() {
     (( ${#KILLED_ROOTS[@]} > 0 )) || return 0
     local deadline=$(( SECONDS + 6 )) p alive
