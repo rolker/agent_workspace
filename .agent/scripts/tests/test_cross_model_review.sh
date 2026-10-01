@@ -4651,6 +4651,24 @@ test_local_concurrent_runs_refused() {
     assert_exit_code "a run after the lock is released completes" "0" "$ec"
     assert_eq "the CLI does not hold the review lock" "closed" "$(cat "$probe" 2>/dev/null)"
 
+    # A flock failure that is not a conflict: util-linux says which it
+    # was (-E), so the run warns and proceeds; any other flock cannot, so
+    # the failure counts as a conflict (exit 5), never as a free pass.
+    local real_bin="${TMPDIR_BASE}/flock-bin"; mkdir -p "$real_bin"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        '[[ "$1" == --version ]] && { echo "flock from util-linux 2.39.3"; exit 0; }' \
+        'exit 1' > "${real_bin}/flock"
+    chmod +x "${real_bin}/flock"
+    ec=0; err=$(PATH="${real_bin}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+    assert_exit_code "util-linux flock error (not a conflict) proceeds" "0" "$ec"
+    assert_contains "and warns that the run is unserialized" "not a conflict.*not serialized" "$err"
+    printf '%s\n' '#!/usr/bin/env bash' '[[ "$1" == --version ]] && { echo "flock 0.4.0"; exit 0; }' \
+        'exit 1' > "${real_bin}/flock"
+    ec=0; err=$(PATH="${real_bin}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+    assert_exit_code "a non-util-linux flock failure counts as a conflict" "5" "$ec"
+
     # --no-progress runs each get their own temp dir and never contend.
     # TMPDIR keeps those dirs under this test's base, which teardown drops.
     local ec1=0 ec2=0 p1 p2

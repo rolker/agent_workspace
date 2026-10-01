@@ -687,17 +687,30 @@ mkdir -p "$WORK_PLANS_DIR"
 # The lock is taken on the directory itself, not on a lock file in it:
 # this script also writes into project worktrees, where the workspace
 # .gitignore does not apply and a lock file would show up untracked. There
-# is deliberately no lock-file fallback: `flock -n` cannot tell "this
-# host cannot lock a directory" from "another run holds it", and a
-# contended lock must always end in exit 5, never in an unserialized run.
+# is deliberately no lock-file fallback: a contended lock must always end
+# in exit 5, never in an unserialized run, and a fallback chosen on a
+# failed `flock -n` would do exactly that when the failure was a conflict.
 if command -v flock >/dev/null 2>&1; then
     if ! exec 9< "$WORK_PLANS_DIR"; then
         echo "ERROR: cannot open ${WORK_PLANS_DIR} to lock it against a concurrent review" >&2
         exit 4
     fi
-    if ! flock -n 9; then
+    # util-linux flock reports a conflict with its own exit code (-E), so
+    # an error that is not one (a filesystem that cannot lock a
+    # directory) warns and proceeds unserialized, like a missing flock.
+    # Other flock ports cannot tell the two apart, so there every failure
+    # is a conflict: a contended lock must never become an unserialized run.
+    lock_rc=0
+    if flock --version 2>&1 | grep -q util-linux; then
+        flock -n -E 75 9 || lock_rc=$?
+    else
+        flock -n 9 || lock_rc=75
+    fi
+    if [[ "$lock_rc" -eq 75 ]]; then
         echo "ERROR: another cross_model_review.sh run is already reviewing into ${WORK_PLANS_DIR}; nothing was written. Wait for it to finish instead of starting a second run (its prompt and findings files would be overwritten)." >&2
         exit 5
+    elif [[ "$lock_rc" -ne 0 ]]; then
+        echo "WARNING: could not lock ${WORK_PLANS_DIR} (flock exit ${lock_rc}, not a conflict); concurrent reviews into it are not serialized" >&2
     fi
 else
     echo "WARNING: flock is not installed; concurrent reviews into ${WORK_PLANS_DIR} are not serialized" >&2
