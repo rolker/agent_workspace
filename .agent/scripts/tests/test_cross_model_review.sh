@@ -4909,6 +4909,51 @@ STUB_EOF
     teardown
 }
 
+# await_killed waits once, for every job kill_tree killed, against one
+# deadline (at least 5 s, at most 6), and its warning says so (#363
+# review: the bound was 5 s per job, so several wedged jobs added up).
+# Real functions, extracted; a live `sleep` stands in for a process that
+# survived its SIGKILL, listed under three killed jobs.
+await_killed_probe() {
+    local probe="${TMPDIR_BASE}/probe-await.sh"
+    {
+        echo 'set -u'
+        for fn in proc_state job_finished await_killed; do
+            sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_UNDER_TEST}"
+        done
+        printf '%s\n' "$@"
+        echo 'await_killed'
+    } > "$probe"
+    (cd "$TMPDIR_BASE" && timeout -k 1 20 bash "$probe" 2>&1)
+}
+test_await_killed_shares_one_deadline() {
+    echo "TEST: await_killed waits once, at least 5s and at most 6s, for every killed job (#363)"
+    setup
+    local out t0 t1 survivor
+    sleep 30 >/dev/null 2>&1 &
+    survivor=$!
+    t0=$(date +%s.%N)
+    out=$(await_killed_probe "KILLED_ROOTS=(999999 999998 999997)" "KILLED_PIDS=(${survivor})" "KILLED_GROUPS=()")
+    t1=$(date +%s.%N)
+    kill -9 "$survivor" 2>/dev/null || true; wait "$survivor" 2>/dev/null || true
+    if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) >= 5 && (b - a) < 7) }'; then
+        echo "  PASS: one 5-6s wait for three killed jobs"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: waited $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s for three killed jobs"; FAIL=$((FAIL + 1))
+    fi
+    assert_contains "the warning names the bound it waited" "still running at least 5s after SIGKILL" "$out"
+    t0=$(date +%s.%N)
+    out=$(await_killed_probe "KILLED_ROOTS=(999999)" "KILLED_PIDS=()" "KILLED_GROUPS=()")
+    t1=$(date +%s.%N)
+    if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 1.5) }'; then
+        echo "  PASS: nothing left running: no wait"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: waited with nothing left running"; FAIL=$((FAIL + 1))
+    fi
+    assert_not_contains "and no warning" "WARNING" "$out"
+    teardown
+}
+
 # running / dead for a pid (an exited, unreaped process is dead).
 running_state() {
     local pid="$1" stat
@@ -5204,6 +5249,7 @@ test_lock_held_by_jobs_after_the_parent_is_killed
 test_no_flock_warns_and_runs
 test_lock_fd_not_inherited_by_git_or_gh
 test_cleanup_kills_the_whole_job_when_the_budget_runs_out
+test_await_killed_shares_one_deadline
 test_helper_terminate_reaches_a_cli_before_setsid
 test_helper_term_after_the_cli_was_reaped
 test_helper_terminate_sweeps_after_the_cli_exited

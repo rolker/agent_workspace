@@ -893,21 +893,25 @@ job_finished() {
     return 1
 }
 
-# SIGKILL an agent job and everything under it, and return once none of
-# it is running. A job is shell -> `timeout` -> helper -> CLI, and SIGKILL
-# cannot be trapped: killing only the job shell left that chain running
-# (and writing findings) after this script exited and released the review
-# lock, so a second run could start into the same directory (#363;
-# rolker/ros2_agent_workspace PR #662). The tree is collected before
-# anything is killed, since a killed parent's children are re-parented
-# and no longer found under it; and the process groups its members lead
-# are killed too: `timeout` leads its own group (the helper and the
-# helper's children), and the helper starts the CLI as the leader of a
-# new one (setsid), so whatever the CLI left behind is found by its group
-# even after its parent has gone. Without `pgrep` only the job shell and
-# any group it leads can be found.
+# SIGKILL an agent job and everything under it. A job is shell ->
+# `timeout` -> helper -> CLI, and SIGKILL cannot be trapped: killing only
+# the job shell left that chain running (and writing findings) after this
+# script exited and released the review lock, so a second run could start
+# into the same directory (#363; rolker/ros2_agent_workspace PR #662).
+# The tree is collected before anything is killed, since a killed
+# parent's children are re-parented and no longer found under it; and the
+# process groups its members lead are killed too: `timeout` leads its own
+# group (the helper and the helper's children), and the helper starts the
+# CLI as the leader of a new one (setsid), so whatever the CLI left behind
+# is found by its group even after its parent has gone. Without `pgrep`
+# only the job shell and any group it leads can be found.
+# What was killed is recorded for await_killed, which waits for all of it
+# at once.
+KILLED_ROOTS=()
+KILLED_PIDS=()
+KILLED_GROUPS=()
 kill_tree() {
-    local root="$1" pids=() groups=() i=0 child p alive
+    local root="$1" pids=() groups=() i=0 child p
     pids=("$root")
     if command -v pgrep >/dev/null 2>&1; then
         while (( i < ${#pids[@]} )); do
@@ -933,25 +937,38 @@ kill_tree() {
     for (( i = ${#pids[@]} - 1; i >= 0; i-- )); do
         kill -9 "${pids[i]}" 2>/dev/null || true
     done
-    # SIGKILL takes effect asynchronously. Return only once nothing of the
-    # tree is still running (an exited, unreaped process is not), so this
-    # script's exit, which releases the review lock, comes after. Bounded:
-    # a process stuck in uninterruptible sleep cannot hang the exit path.
-    for (( i = 0; i < 50; i++ )); do
+    KILLED_ROOTS+=("$root")
+    KILLED_PIDS+=("${pids[@]:1}")
+    KILLED_GROUPS+=(${groups[@]+"${groups[@]}"})
+}
+
+# SIGKILL takes effect asynchronously. Return only once nothing kill_tree
+# killed is still running (an exited, unreaped process is not), so this
+# script's exit, which releases the review lock, comes after. One shared
+# deadline for every killed job, at least 5 s and at most 6 s (SECONDS
+# counts whole seconds), so a process stuck in uninterruptible sleep
+# cannot hang the exit path however many jobs were killed.
+await_killed() {
+    (( ${#KILLED_ROOTS[@]} > 0 )) || return 0
+    local deadline=$(( SECONDS + 6 )) p alive
+    while :; do
         alive=false
-        job_finished "$root" || alive=true
-        for p in "${pids[@]:1}"; do
+        for p in "${KILLED_ROOTS[@]}"; do
+            job_finished "$p" || alive=true
+        done
+        for p in ${KILLED_PIDS[@]+"${KILLED_PIDS[@]}"}; do
             if kill -0 "$p" 2>/dev/null && [[ "$(proc_state "$p" 2>/dev/null || true)" != Z ]]; then
                 alive=true
             fi
         done
-        for p in ${groups[@]+"${groups[@]}"}; do
+        for p in ${KILLED_GROUPS[@]+"${KILLED_GROUPS[@]}"}; do
             if kill -0 -- -"$p" 2>/dev/null; then alive=true; fi
         done
         [[ "$alive" == true ]] || return 0
+        (( SECONDS < deadline )) || break
         sleep 0.1
     done
-    echo "WARNING: parts of agent job ${root} were still running 5s after SIGKILL" >&2
+    echo "WARNING: parts of the killed agent job(s) ${KILLED_ROOTS[*]} were still running at least 5s after SIGKILL" >&2
 }
 
 cleanup_jobs() {
@@ -997,6 +1014,7 @@ cleanup_jobs() {
             kill_tree "$pid"
         fi
     done
+    await_killed
     # Any of these may still be empty: an early exit or signal can land
     # before (or between) the mktemp calls below, and `rm ""` is an error.
     [[ -z "$SHARED_PROMPT" ]] || rm -f "$SHARED_PROMPT"
