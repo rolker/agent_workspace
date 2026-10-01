@@ -4466,8 +4466,9 @@ test_helper_terminate_adopts_launch_window() {
             {
                 echo 'set -u'
                 sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n "/^await_${P,,}_group() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
                 sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
-                echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=5; ESCALATION_SECONDS=5"
+                echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=5; ESCALATION_SECONDS=5; ESCALATION_TICKS=500"
                 echo "${P}_PID=''"
                 case "$case_name" in
                     adopt)
@@ -4485,8 +4486,13 @@ test_helper_terminate_adopts_launch_window() {
                 esac
                 echo 'terminate_child 143'
             } > "$probe"
-            ec=0; (cd "$TMPDIR_BASE" && timeout 20 bash "$probe" >/dev/null 2>&1) || ec=$?
+            ec=0; (cd "$TMPDIR_BASE" && timeout 20 bash "$probe" >/dev/null 2>"${TMPDIR_BASE}/probe.err") || ec=$?
             assert_exit_code "${file} ${case_name}: handler exits 143" "143" "$ec"
+            # An extraction that missed a function would fail quietly into
+            # the PID-only fallback, so a shell error here is a test bug.
+            # (bash's own "Killed" job notice for the watchdog is not one.)
+            assert_not_contains "${file} ${case_name}: probe ran without shell errors" \
+                "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/probe.err")"
             sleep 0.2
             if [[ "$case_name" == adopt ]]; then
                 assert_eq "${file}: a CLI launched but not yet recorded is killed" "gone" \
@@ -4662,46 +4668,60 @@ test_local_concurrent_runs_refused() {
 }
 
 # A TERM that lands after the fork but before setsid's setsid() call finds
-# no process group to signal yet. The handler must wait for the group
-# rather than miss it: with REVIEW_KILL_ESCALATION=0 the watchdog fires at
-# once and misses too, and the handler then waited on an unsignalled CLI
-# until it finished on its own (found by the Codex live review of #363).
+# no process group to signal yet. Found by the Codex live review of #363,
+# in two steps: missing the group left the handler waiting on a CLI
+# nothing had signalled, and the first fix (wait for the group before the
+# watchdog starts) spent time outside the escalation window, so the
+# caller's `timeout -k` could SIGKILL the helper with the CLI alive. The
+# group wait now runs inside the window: the CLI is killed either way and
+# the handler returns within the window.
+#   delay  — how long after the fork the child reaches setsid
+#   escalation — REVIEW_KILL_ESCALATION (ticks = escalation * 100)
 test_helper_terminate_waits_for_the_cli_group() {
-    echo "TEST: terminate_child reaches a CLI signalled before setsid has made its group (#363)"
+    echo "TEST: terminate_child reaches a CLI signalled before setsid has made its group, inside the window (#363)"
     if ! command -v setsid >/dev/null 2>&1; then
         echo "  SKIP: no setsid on this host"; return
     fi
     setup
-    local spec file P fn probe ec t0 t1
+    local spec file P fn probe ec t0 t1 c delay esc limit label
     for spec in _cli_review.sh:CLI:signal_cli _agy_review.sh:AGY:signal_agy; do
         file="${spec%%:*}"; P=$(cut -d: -f2 <<< "$spec"); fn=$(cut -d: -f3 <<< "$spec")
-        probe="${TMPDIR_BASE}/probe-${P}-presetsid.sh"
-        {
-            echo 'set -u'
-            sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
-            sed -n "/^await_${P,,}_group() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
-            sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
-            echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=0; ESCALATION_SECONDS=0"
-            echo "${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''"
-            # The child reaches setsid 0.5s after the fork, standing in for
-            # the microseconds a real launch spends there.
-            echo "bash -c 'sleep 0.5; exec setsid sleep 30' </dev/null >/dev/null 2>&1 &"
-            echo "${P}_PID=\$!; echo \$! > target.pid"
-            echo 'terminate_child 143'
-        } > "$probe"
-        ec=0; t0=$(date +%s)
-        (cd "$TMPDIR_BASE" && timeout 15 bash "$probe" >/dev/null 2>&1) || ec=$?
-        t1=$(date +%s)
-        assert_exit_code "${file}: handler exits 143" "143" "$ec"
-        if (( t1 - t0 < 5 )); then
-            echo "  PASS: ${file}: handler returned in $((t1 - t0))s"; PASS=$((PASS + 1))
-        else
-            echo "  FAIL: ${file}: handler took $((t1 - t0))s — it waited on an unsignalled CLI"; FAIL=$((FAIL + 1))
-        fi
-        sleep 0.2
-        assert_eq "${file}: the CLI is killed once its group exists" "gone" \
-            "$(pid_state "${TMPDIR_BASE}/target.pid")"
-        kill_recorded "${TMPDIR_BASE}/target.pid"
+        # delay:escalation:max-seconds. 0.3:5 — the group forms inside the
+        # window and is signalled as a group. 1.5:0.4 — the window ends
+        # first (Codex's reproduction, AGENT_KILL_AFTER=1 being the bound):
+        # the PID is killed directly. 0.5:0 — no window at all.
+        for c in 0.3:5:2 1.5:0.4:1 0.5:0:1; do
+            IFS=: read -r delay esc limit <<< "$c"
+            label="${file} delay ${delay}s, escalation ${esc}s"
+            probe="${TMPDIR_BASE}/probe-${P}-presetsid.sh"
+            {
+                echo 'set -u'
+                sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n "/^await_${P,,}_group() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
+                echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=${esc}"
+                echo "ESCALATION_SECONDS=$(awk -v e="$esc" 'BEGIN { printf "%.0f", e }')"
+                echo "ESCALATION_TICKS=$(awk -v e="$esc" 'BEGIN { printf "%.0f", e * 100 }')"
+                echo "${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''"
+                echo "bash -c 'sleep ${delay}; exec setsid sleep 30' </dev/null >/dev/null 2>&1 &"
+                echo "${P}_PID=\$!; echo \$! > target.pid"
+                echo 'terminate_child 143'
+            } > "$probe"
+            ec=0; t0=$(date +%s.%N)
+            (cd "$TMPDIR_BASE" && timeout 15 bash "$probe" >/dev/null 2>"${TMPDIR_BASE}/probe.err") || ec=$?
+            t1=$(date +%s.%N)
+            assert_exit_code "${label}: handler exits 143" "143" "$ec"
+            assert_not_contains "${label}: probe ran without shell errors" \
+                "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/probe.err")"
+            if awk -v a="$t0" -v b="$t1" -v l="$limit" 'BEGIN { exit !((b - a) < l) }'; then
+                echo "  PASS: ${label}: handler returned inside ${limit}s"; PASS=$((PASS + 1))
+            else
+                echo "  FAIL: ${label}: handler took $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s, over ${limit}s"; FAIL=$((FAIL + 1))
+            fi
+            sleep 0.2
+            assert_eq "${label}: the CLI is killed" "gone" "$(pid_state "${TMPDIR_BASE}/target.pid")"
+            kill_recorded "${TMPDIR_BASE}/target.pid"
+        done
     done
     teardown
 }

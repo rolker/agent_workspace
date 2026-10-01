@@ -126,6 +126,12 @@ to_seconds() {
 if ! ESCALATION_SECONDS=$(to_seconds "$REVIEW_KILL_ESCALATION"); then
     config_fail "REVIEW_KILL_ESCALATION value '${REVIEW_KILL_ESCALATION}' is not a duration (a number of seconds, optionally with an s/m/h suffix)"
 fi
+# The same window in 10 ms ticks, unrounded: await_agy_group spends part
+# of the window waiting for the process group, never time on top of it.
+ESCALATION_TICKS=$(awk -v d="$REVIEW_KILL_ESCALATION" 'BEGIN {
+    m = 1; u = substr(d, length(d)); if (u ~ /[smhd]/) d = substr(d, 1, length(d) - 1)
+    if (u == "m") m = 60; else if (u == "h") m = 3600; else if (u == "d") m = 86400
+    printf "%.0f", d * m * 100 }')
 if [[ -n "${AGENT_KILL_AFTER:-}" ]]; then
     if ! KILL_AFTER_SECONDS=$(to_seconds "$AGENT_KILL_AFTER"); then
         config_fail "AGENT_KILL_AFTER value '${AGENT_KILL_AFTER}' is not a duration"
@@ -189,22 +195,21 @@ signal_agy() {
         kill -"$1" "$2" 2>/dev/null
     fi
 }
-# await_agy_group <pid>: return once <pid>'s own process group exists.
-# Between the fork and setsid's setsid() call the agy is still in this
-# helper's group, so `kill -- -PID` misses it (no such group yet) and a
-# TERM in that window, plus a watchdog that also misses, would leave this
-# handler waiting on a agy nothing has signalled. <pid> is an unreaped
-# child here, so it cannot have been reused. Returns 1 if the group never
-# appears (the child exited before setsid ran): the caller then signals
-# the PID alone, as in the no-setsid fallback.
+# await_agy_group <pid>: return 0 once <pid>'s own process group exists,
+# 1 if it does not within the escalation window. Between the fork and
+# setsid's setsid() call the agy is still in this helper's group, so
+# `kill -- -PID` misses it (no such group yet): a TERM there, and a
+# watchdog that missed too, left the handler waiting on a agy nothing
+# had signalled. The wait is bounded by ESCALATION_TICKS and runs while
+# the watchdog is already counting, so it costs no time beyond the
+# window validated against AGENT_KILL_AFTER.
 await_agy_group() {
     local pid="$1" i
-    [[ "$AGY_GROUP_KILL" == true ]] || return 0
-    for ((i = 0; i < 200; i++)); do
+    for ((i = 0; ; i++)); do
         kill -0 -- -"$pid" 2>/dev/null && return 0
+        (( i < ESCALATION_TICKS )) || return 1
         sleep 0.01
     done
-    return 1
 }
 AGY_PID=""
 # Set around the launch so terminate_child can find a agy whose signal
@@ -213,9 +218,10 @@ AGY_PID=""
 AGY_LAUNCHING=false
 AGY_LAUNCH_PREV=""
 terminate_child() {
-    local code="$1" watchdog i
-    # Re-entrancy: a second signal would otherwise start a second
-    # watchdog and clobber $watchdog, leaking the first one.
+    local code="$1" watchdog i cleared
+    # Re-entrancy: a second signal (repeated Ctrl-C, TERM then HUP) would
+    # otherwise start a second watchdog and clobber $watchdog, leaking
+    # the first one.
     trap '' INT TERM HUP
     # A signal can land between the `&` that starts the agy and the
     # `AGY_PID=$!` that records it: the agy then exists but is
@@ -225,38 +231,48 @@ terminate_child() {
         AGY_PID=$!
     fi
     if [[ -n "$AGY_PID" ]]; then
-        # No group (yet, or ever): treat this agy as the no-setsid case
-        # for the rest of the handler — PID-only signals, no sweeps.
-        await_agy_group "$AGY_PID" || AGY_GROUP_KILL=false
-        signal_agy TERM "$AGY_PID"
-        # `wait` returns the moment agy dies, so a clean shutdown costs
-        # milliseconds. The watchdog only matters for a group member that
-        # ignores SIGTERM, and is NOT waited on: a subshell sleeping in
-        # `sleep` defers the TERM we send it until that sleep ends, so
-        # waiting would reintroduce the full window on every clean exit.
-        # The watchdog is cancelled with SIGKILL, never TERM: it is forked
-        # while this handler has INT/TERM/HUP ignored, an ignored
-        # disposition is inherited (by its `sleep` too), so a TERM is
-        # lost. A lost cancel let it outlive every clean shutdown by the
-        # whole escalation window and then `kill -9` whatever process had
-        # been given the dead agy's PID (`kill -0` checks that a PID
-        # exists, not that it is the same process). Its `sleep` is killed
-        # first, while still findable as the watchdog's child, so no
-        # orphan `sleep` is left either (#363; rolker/ros2_agent_workspace
-        # 06871f4, a2b04c8).
+        # The watchdog SIGKILLs whatever of the group is still alive once
+        # the escalation window is over. `wait` below returns the moment
+        # the agy dies, so a clean shutdown costs milliseconds, not the
+        # window. It is started first, so everything below (the group
+        # wait included) happens inside the one window.
+        # It is NOT waited on: a subshell sleeping in `sleep` defers the
+        # TERM we send it until that sleep ends, so waiting would
+        # reintroduce the full window on every clean exit.
+        # It is cancelled with SIGKILL, never TERM: it is forked while
+        # this handler has INT/TERM/HUP ignored, an ignored disposition is
+        # inherited (by its `sleep` too), so a TERM is lost. A lost cancel
+        # let it outlive every clean shutdown by the whole escalation
+        # window and then `kill -9` whatever process had been given the
+        # dead agy's PID (`kill -0` checks that a PID exists, not that
+        # it is the same process). Its `sleep` is killed first, while
+        # still findable as the watchdog's child, so no orphan `sleep` is
+        # left either (#363; rolker/ros2_agent_workspace 06871f4, a2b04c8).
         ( sleep "$REVIEW_KILL_ESCALATION"
           signal_agy 0 "$AGY_PID" && signal_agy KILL "$AGY_PID" ) &
         watchdog=$!
+        if [[ "$AGY_GROUP_KILL" == true ]] && ! await_agy_group "$AGY_PID"; then
+            # The window ran out before setsid made the group (or the
+            # child exited before it ran). The PID is an unreaped child,
+            # so it cannot have been reused: SIGKILL it directly, and
+            # treat the rest of the handler as the no-setsid case.
+            kill -KILL "$AGY_PID" 2>/dev/null
+            AGY_GROUP_KILL=false
+        fi
+        signal_agy TERM "$AGY_PID"
         wait "$AGY_PID" 2>/dev/null
         # The agy is gone, but a child of it that ignored the TERM may
-        # not be: give the group the rest of the window, then SIGKILL it.
-        # Group mode only (see signal_agy).
+        # not be: poll the group until it is empty or the watchdog has
+        # killed it, and SIGKILL it only if it outlived the poll (the
+        # group id is not recycled while any member lives). Group mode
+        # only (see signal_agy).
         if [[ "$AGY_GROUP_KILL" == true ]]; then
+            cleared=false
             for ((i = 0; i < ESCALATION_SECONDS * 10; i++)); do
-                signal_agy 0 "$AGY_PID" || break
+                if ! signal_agy 0 "$AGY_PID"; then cleared=true; break; fi
                 sleep 0.1
             done
-            signal_agy KILL "$AGY_PID"
+            [[ "$cleared" == true ]] || signal_agy KILL "$AGY_PID"
         fi
         pkill -KILL -P "$watchdog" 2>/dev/null
         kill -KILL "$watchdog" 2>/dev/null
