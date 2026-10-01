@@ -4661,6 +4661,51 @@ test_local_concurrent_runs_refused() {
     teardown
 }
 
+# A TERM that lands after the fork but before setsid's setsid() call finds
+# no process group to signal yet. The handler must wait for the group
+# rather than miss it: with REVIEW_KILL_ESCALATION=0 the watchdog fires at
+# once and misses too, and the handler then waited on an unsignalled CLI
+# until it finished on its own (found by the Codex live review of #363).
+test_helper_terminate_waits_for_the_cli_group() {
+    echo "TEST: terminate_child reaches a CLI signalled before setsid has made its group (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    local spec file P fn probe ec t0 t1
+    for spec in _cli_review.sh:CLI:signal_cli _agy_review.sh:AGY:signal_agy; do
+        file="${spec%%:*}"; P=$(cut -d: -f2 <<< "$spec"); fn=$(cut -d: -f3 <<< "$spec")
+        probe="${TMPDIR_BASE}/probe-${P}-presetsid.sh"
+        {
+            echo 'set -u'
+            sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+            sed -n "/^await_${P,,}_group() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+            sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
+            echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=0; ESCALATION_SECONDS=0"
+            echo "${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''"
+            # The child reaches setsid 0.5s after the fork, standing in for
+            # the microseconds a real launch spends there.
+            echo "bash -c 'sleep 0.5; exec setsid sleep 30' </dev/null >/dev/null 2>&1 &"
+            echo "${P}_PID=\$!; echo \$! > target.pid"
+            echo 'terminate_child 143'
+        } > "$probe"
+        ec=0; t0=$(date +%s)
+        (cd "$TMPDIR_BASE" && timeout 15 bash "$probe" >/dev/null 2>&1) || ec=$?
+        t1=$(date +%s)
+        assert_exit_code "${file}: handler exits 143" "143" "$ec"
+        if (( t1 - t0 < 5 )); then
+            echo "  PASS: ${file}: handler returned in $((t1 - t0))s"; PASS=$((PASS + 1))
+        else
+            echo "  FAIL: ${file}: handler took $((t1 - t0))s — it waited on an unsignalled CLI"; FAIL=$((FAIL + 1))
+        fi
+        sleep 0.2
+        assert_eq "${file}: the CLI is killed once its group exists" "gone" \
+            "$(pid_state "${TMPDIR_BASE}/target.pid")"
+        kill_recorded "${TMPDIR_BASE}/target.pid"
+    done
+    teardown
+}
+
 test_missing_pr_flag
 test_unknown_argument
 test_invalid_repo_slug
@@ -4775,6 +4820,7 @@ test_helper_terminate_adopts_launch_window
 test_run_agent_job_trap_adopts_launch_window
 test_cleanup_jobs_adopts_launch_window
 test_local_concurrent_runs_refused
+test_helper_terminate_waits_for_the_cli_group
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

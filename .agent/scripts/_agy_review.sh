@@ -189,6 +189,23 @@ signal_agy() {
         kill -"$1" "$2" 2>/dev/null
     fi
 }
+# await_agy_group <pid>: return once <pid>'s own process group exists.
+# Between the fork and setsid's setsid() call the agy is still in this
+# helper's group, so `kill -- -PID` misses it (no such group yet) and a
+# TERM in that window, plus a watchdog that also misses, would leave this
+# handler waiting on a agy nothing has signalled. <pid> is an unreaped
+# child here, so it cannot have been reused. Returns 1 if the group never
+# appears (the child exited before setsid ran): the caller then signals
+# the PID alone, as in the no-setsid fallback.
+await_agy_group() {
+    local pid="$1" i
+    [[ "$AGY_GROUP_KILL" == true ]] || return 0
+    for ((i = 0; i < 200; i++)); do
+        kill -0 -- -"$pid" 2>/dev/null && return 0
+        sleep 0.01
+    done
+    return 1
+}
 AGY_PID=""
 # Set around the launch so terminate_child can find a agy whose signal
 # landed between the `&` that starts it and the `AGY_PID=$!` that records
@@ -208,6 +225,9 @@ terminate_child() {
         AGY_PID=$!
     fi
     if [[ -n "$AGY_PID" ]]; then
+        # No group (yet, or ever): treat this agy as the no-setsid case
+        # for the rest of the handler — PID-only signals, no sweeps.
+        await_agy_group "$AGY_PID" || AGY_GROUP_KILL=false
         signal_agy TERM "$AGY_PID"
         # `wait` returns the moment agy dies, so a clean shutdown costs
         # milliseconds. The watchdog only matters for a group member that

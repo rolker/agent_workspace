@@ -253,6 +253,23 @@ signal_cli() {
         kill -"$1" "$2" 2>/dev/null
     fi
 }
+# await_cli_group <pid>: return once <pid>'s own process group exists.
+# Between the fork and setsid's setsid() call the CLI is still in this
+# helper's group, so `kill -- -PID` misses it (no such group yet) and a
+# TERM in that window, plus a watchdog that also misses, would leave this
+# handler waiting on a CLI nothing has signalled. <pid> is an unreaped
+# child here, so it cannot have been reused. Returns 1 if the group never
+# appears (the child exited before setsid ran): the caller then signals
+# the PID alone, as in the no-setsid fallback.
+await_cli_group() {
+    local pid="$1" i
+    [[ "$CLI_GROUP_KILL" == true ]] || return 0
+    for ((i = 0; i < 200; i++)); do
+        kill -0 -- -"$pid" 2>/dev/null && return 0
+        sleep 0.01
+    done
+    return 1
+}
 CLI_PID=""
 # Set around the launch so terminate_child can find a CLI whose signal
 # landed between the `&` that starts it and the `CLI_PID=$!` that records
@@ -273,6 +290,9 @@ terminate_child() {
         CLI_PID=$!
     fi
     if [[ -n "$CLI_PID" ]]; then
+        # No group (yet, or ever): treat this CLI as the no-setsid case
+        # for the rest of the handler — PID-only signals, no sweeps.
+        await_cli_group "$CLI_PID" || CLI_GROUP_KILL=false
         signal_cli TERM "$CLI_PID"
         # `wait` returns the moment the CLI dies, so a clean shutdown
         # costs milliseconds, not the escalation window. The watchdog
