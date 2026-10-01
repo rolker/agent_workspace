@@ -942,6 +942,21 @@ kill_tree() {
     KILLED_GROUPS+=(${groups[@]+"${groups[@]}"})
 }
 
+# Is anything in process group <pgid> still running? A group of nothing
+# but exited, unreaped members still answers `kill -0`, and under a PID 1
+# that does not reap (a container's) it stays that way, so each member's
+# state is read. Without /proc a member counts as running.
+group_running() {
+    local g="$1" m
+    kill -0 -- -"$g" 2>/dev/null || return 1
+    command -v pgrep >/dev/null 2>&1 || return 0
+    while read -r m; do
+        [[ -n "$m" ]] || continue
+        [[ "$(proc_state "$m" 2>/dev/null || true)" == Z ]] || return 0
+    done < <(pgrep -g "$g" 2>/dev/null || true)
+    return 1
+}
+
 # SIGKILL takes effect asynchronously. Return only once nothing kill_tree
 # killed is still running (an exited, unreaped process is not), so this
 # script's exit, which releases the review lock, comes after. One shared
@@ -962,7 +977,7 @@ await_killed() {
             fi
         done
         for p in ${KILLED_GROUPS[@]+"${KILLED_GROUPS[@]}"}; do
-            if kill -0 -- -"$p" 2>/dev/null; then alive=true; fi
+            if group_running "$p"; then alive=true; fi
         done
         [[ "$alive" == true ]] || return 0
         (( SECONDS < deadline )) || break

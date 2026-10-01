@@ -4272,8 +4272,10 @@ assert_orphan_gone() {
     if [[ -z "$pid" ]]; then
         echo "  FAIL: ${label}: the mock never started its child"; FAIL=$((FAIL + 1)); return
     fi
-    for ((i = 0; i < 20; i++)); do kill -0 "$pid" 2>/dev/null || break; sleep 0.1; done
-    if kill -0 "$pid" 2>/dev/null; then
+    # running_state, not `kill -0`: an exited child that nothing has
+    # reaped yet (a container's PID 1 may never) is gone, not a survivor.
+    for ((i = 0; i < 20; i++)); do [[ "$(running_state "$pid")" == dead ]] && break; sleep 0.1; done
+    if [[ "$(running_state "$pid")" != dead ]]; then
         kill -9 "$pid" 2>/dev/null || true
         echo "  FAIL: ${label}: the CLI's TERM-ignoring child survived the helper"; FAIL=$((FAIL + 1))
     else
@@ -4918,7 +4920,7 @@ await_killed_probe() {
     local probe="${TMPDIR_BASE}/probe-await.sh"
     {
         echo 'set -u'
-        for fn in proc_state job_finished await_killed; do
+        for fn in proc_state job_finished group_running await_killed; do
             sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_UNDER_TEST}"
         done
         printf '%s\n' "$@"
@@ -4927,7 +4929,7 @@ await_killed_probe() {
     (cd "$TMPDIR_BASE" && timeout -k 1 20 bash "$probe" 2>&1)
 }
 test_await_killed_shares_one_deadline() {
-    echo "TEST: await_killed waits once, at least 5s and at most 6s, for every killed job (#363)"
+    echo "TEST: await_killed waits once, at least 5s and at most 6s, for every killed job, and not on unreaped ones (#363)"
     setup
     local out t0 t1 survivor
     sleep 30 >/dev/null 2>&1 &
@@ -4951,6 +4953,32 @@ test_await_killed_shares_one_deadline() {
         echo "  FAIL: waited with nothing left running"; FAIL=$((FAIL + 1))
     fi
     assert_not_contains "and no warning" "WARNING" "$out"
+    # A killed group whose only member has exited but is never reaped (a
+    # container's PID 1 that does not reap) is not running: `kill -0`
+    # alone counted it, for the full wait and a false warning.
+    if command -v python3 >/dev/null 2>&1 && [[ -r /proc/self/stat ]]; then
+        local zpid
+        python3 -c 'import os, sys, time
+pid = os.fork()
+if pid == 0:
+    os.setsid(); os._exit(0)
+print(pid, flush=True); sys.stdout.close(); time.sleep(30)' > "${TMPDIR_BASE}/zombie.pid" 2>/dev/null &
+        local holder=$! i
+        for ((i = 0; i < 50; i++)); do [[ -s "${TMPDIR_BASE}/zombie.pid" ]] && break; sleep 0.05; done
+        zpid=$(cat "${TMPDIR_BASE}/zombie.pid")
+        t0=$(date +%s.%N)
+        out=$(await_killed_probe "KILLED_ROOTS=(999999)" "KILLED_PIDS=()" "KILLED_GROUPS=(${zpid})")
+        t1=$(date +%s.%N)
+        kill -9 "$holder" 2>/dev/null || true; wait "$holder" 2>/dev/null || true
+        if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 1.5) }'; then
+            echo "  PASS: a group of unreaped exited members is not waited on"; PASS=$((PASS + 1))
+        else
+            echo "  FAIL: waited $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s on a group of unreaped exited members"; FAIL=$((FAIL + 1))
+        fi
+        assert_not_contains "and no warning for it" "WARNING" "$out"
+    else
+        echo "  SKIP: zombie-group case needs python3 and /proc"
+    fi
     teardown
 }
 
