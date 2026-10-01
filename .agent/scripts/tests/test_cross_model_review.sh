@@ -4466,9 +4466,9 @@ test_helper_terminate_adopts_launch_window() {
             {
                 echo 'set -u'
                 sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
-                sed -n "/^await_${P,,}_group() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n "/^signal_live_${fn#signal_}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
                 sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
-                echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=5; ESCALATION_SECONDS=5; ESCALATION_TICKS=500"
+                echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=5"
                 echo "${P}_PID=''"
                 case "$case_name" in
                     adopt)
@@ -4686,48 +4686,60 @@ test_local_concurrent_runs_refused() {
 }
 
 # A TERM that lands after the fork but before setsid's setsid() call finds
-# no process group to signal yet. Found by the Codex live review of #363,
-# in two steps: missing the group left the handler waiting on a CLI
-# nothing had signalled, and the first fix (wait for the group before the
-# watchdog starts) spent time outside the escalation window, so the
-# caller's `timeout -k` could SIGKILL the helper with the CLI alive. The
-# group wait now runs inside the window: the CLI is killed either way and
-# the handler returns within the window.
-#   delay  — how long after the fork the child reaches setsid
-#   escalation — REVIEW_KILL_ESCALATION (ticks = escalation * 100)
-test_helper_terminate_waits_for_the_cli_group() {
-    echo "TEST: terminate_child reaches a CLI signalled before setsid has made its group, inside the window (#363)"
+# no process group to signal yet. Found by the Codex reviews of #363, in
+# three steps: missing the group left the handler waiting on a CLI
+# nothing had signalled; waiting for the group outside the window let
+# the caller's `timeout -k` SIGKILL the helper first; and waiting for it
+# inside the window still lost the race at the boundary, where the
+# watchdog fired, found no group and did nothing, and the group appeared
+# just after. The handler now signals the PID as well as the group, and
+# the watchdog SIGKILLs both at the deadline without checking first.
+# Each case runs the real handler (extracted) on a child that reaches
+# setsid after <delay>; the handler must return inside <limit> with the
+# child dead.
+#   kind — coop: the pre-setsid stage dies on TERM (the real setsid does);
+#          deaf: it and the CLI ignore TERM, so only the deadline SIGKILL
+#          ends them, and delays around the 0.4 s window probe the
+#          boundary; dead: the child exited before setsid ran.
+test_helper_terminate_reaches_a_cli_before_setsid() {
+    echo "TEST: terminate_child kills a CLI signalled before setsid has made its group, at any delay (#363)"
     if ! command -v setsid >/dev/null 2>&1; then
         echo "  SKIP: no setsid on this host"; return
     fi
     setup
-    local spec file P fn probe ec t0 t1 c delay esc limit label
-    for spec in _cli_review.sh:CLI:signal_cli _agy_review.sh:AGY:signal_agy; do
+    local spec file P fn probe ec t0 t1 c kind delay esc limit label launch
+    for spec in _cli_review.sh:CLI:cli _agy_review.sh:AGY:agy; do
         file="${spec%%:*}"; P=$(cut -d: -f2 <<< "$spec"); fn=$(cut -d: -f3 <<< "$spec")
-        # delay:escalation:max-seconds. 0.3:5 — the group forms inside the
-        # window and is signalled as a group. 1.5:0.4 — the window ends
-        # first (Codex's reproduction, AGENT_KILL_AFTER=1 being the bound):
-        # the PID is killed directly. 0.5:0 — no window at all.
-        for c in 0.3:5:2 1.5:0.4:1 0.5:0:1; do
-            IFS=: read -r delay esc limit <<< "$c"
-            label="${file} delay ${delay}s, escalation ${esc}s"
+        for c in coop:0.3:5:2 coop:1.5:0.4:1 coop:0.5:0:1 \
+                 deaf:0.3:0.4:1.5 deaf:0.38:0.4:1.5 deaf:0.41:0.4:1.5 deaf:0.42:0.4:1.5 \
+                 deaf:0.43:0.4:1.5 deaf:0.45:0.4:1.5 deaf:0.6:0.4:1.5 dead:0:5:1; do
+            IFS=: read -r kind delay esc limit <<< "$c"
+            label="${file} ${kind}, setsid after ${delay}s, escalation ${esc}s"
+            case "$kind" in
+                coop) launch="bash -c 'sleep ${delay}; exec setsid sleep 30'" ;;
+                # Ignored from birth (an ignored disposition survives exec),
+                # so even the earliest TERM is lost on it.
+                deaf) launch="( trap '' TERM HUP; exec bash -c 'sleep ${delay}; exec setsid sleep 30' )" ;;
+                dead) launch="bash -c 'exit 0'" ;;
+            esac
             probe="${TMPDIR_BASE}/probe-${P}-presetsid.sh"
             {
                 echo 'set -u'
-                sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
-                sed -n "/^await_${P,,}_group() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n "/^signal_${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n "/^signal_live_${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
                 sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
                 echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=${esc}"
-                echo "ESCALATION_SECONDS=$(awk -v e="$esc" 'BEGIN { printf "%.0f", e }')"
-                echo "ESCALATION_TICKS=$(awk -v e="$esc" 'BEGIN { printf "%.0f", e * 100 }')"
                 echo "${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''"
-                echo "bash -c 'sleep ${delay}; exec setsid sleep 30' </dev/null >/dev/null 2>&1 &"
+                echo "${launch} </dev/null >/dev/null 2>&1 &"
                 echo "${P}_PID=\$!; echo \$! > target.pid"
+                # dead: let it exit (bash reaps it; the PID stays recorded).
+                [[ "$kind" == dead ]] && echo 'sleep 0.3'
                 echo 'terminate_child 143'
             } > "$probe"
             ec=0; t0=$(date +%s.%N)
-            (cd "$TMPDIR_BASE" && timeout 15 bash "$probe" >/dev/null 2>"${TMPDIR_BASE}/probe.err") || ec=$?
+            (cd "$TMPDIR_BASE" && timeout -k 1 8 bash "$probe" >/dev/null 2>"${TMPDIR_BASE}/probe.err") || ec=$?
             t1=$(date +%s.%N)
+            [[ "$kind" == dead ]] && t0=$(awk -v a="$t0" 'BEGIN { printf "%.3f", a + 0.3 }')
             assert_exit_code "${label}: handler exits 143" "143" "$ec"
             assert_not_contains "${label}: probe ran without shell errors" \
                 "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/probe.err")"
@@ -4858,7 +4870,7 @@ test_helper_terminate_adopts_launch_window
 test_run_agent_job_trap_adopts_launch_window
 test_cleanup_jobs_adopts_launch_window
 test_local_concurrent_runs_refused
-test_helper_terminate_waits_for_the_cli_group
+test_helper_terminate_reaches_a_cli_before_setsid
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="
