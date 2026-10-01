@@ -1064,7 +1064,7 @@ group_running() {
 # SECONDS counts whole seconds), so a process stuck in uninterruptible
 # sleep cannot hang the exit path however many jobs were killed.
 await_killed() {
-    (( ${#KILLED_ROOTS[@]} > 0 )) || return 0
+    (( ${#KILLED_ROOTS[@]} + ${#KILLED_PIDS[@]} + ${#KILLED_GROUPS[@]} > 0 )) || return 0
     local deadline=$(( SECONDS + 6 )) p alive
     while :; do
         alive=false
@@ -1083,7 +1083,7 @@ await_killed() {
         (( SECONDS < deadline )) || break
         sleep 0.1
     done
-    echo "WARNING: parts of the killed agent job(s) ${KILLED_ROOTS[*]} were still running at least 5s after SIGKILL" >&2
+    echo "WARNING: parts of the killed agent job(s) ${KILLED_ROOTS[*]:-(swept by marker)} were still running at least 5s after SIGKILL" >&2
 }
 
 cleanup_jobs() {
@@ -1471,6 +1471,16 @@ done
 # itself, so a slow agent never delays a fast agent's marker and the
 # parent only has to collect exit statuses. Jobs write nothing to stdout,
 # keeping the machine-parseable block contiguous.
+# sweep_job <agent>: in a job shell, SIGKILL whatever of that agent's job
+# still carries its marker (kill_tree with no root) and wait, bounded,
+# until it has stopped, so the job's exit (which releases its hold on the
+# review lock) comes after. Best effort, never fails.
+sweep_job() {
+    [[ -n "${1:-}" && -n "$AGENT_TMP_ROOT" ]] || return 0
+    kill_tree "" "${AGENT_TMP_ROOT}:$1" || true
+    await_killed || true
+}
+
 run_agent_job() {
     local agent="$1"
     local prompt_file findings_file rc child
@@ -1512,7 +1522,12 @@ run_agent_job() {
     # its `wait` instead of 143.
     child=""
     local launch_prev="${!:-}"
-    trap 'if [[ -z "$child" && "${!:-}" != "$launch_prev" ]]; then child=$!; fi; if [[ -n "$child" ]]; then kill "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; fi; exit 143' TERM
+    # After the child is gone the trap sweeps the job's marked processes
+    # too: if `timeout -k` SIGKILLed a wedged helper meanwhile (137), the
+    # helper's escalation never reached the CLI, and a parent whose reap
+    # budget outlasts AGENT_KILL_AFTER sees this job finish and never
+    # runs kill_tree for it (#363, live-run Codex review).
+    trap 'if [[ -z "$child" && "${!:-}" != "$launch_prev" ]]; then child=$!; fi; if [[ -n "$child" ]]; then kill "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; fi; sweep_job "${agent:-}" || true; exit 143' TERM
     run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file" &
     child=$!
     rc=0
@@ -1522,7 +1537,7 @@ run_agent_job() {
     # group of its own). Kill whatever of the job still carries its marker
     # (#363 round 3).
     if [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then
-        kill_tree "" "${AGENT_TMP_ROOT}:${agent}" || true
+        sweep_job "$agent" || true
     fi
     if [[ "$rc" -eq 124 ]]; then
         if [[ "$agent" == "gemini" ]]; then

@@ -5128,6 +5128,47 @@ STUB_EOF
     teardown
 }
 
+# On an interrupt the job shell TERMs its `timeout`. If the helper is
+# wedged, `timeout -k` SIGKILLs it (137) and the helper's escalation never
+# reaches its CLI, a process group of its own. When the parent's reap
+# budget outlasts AGENT_KILL_AFTER the parent sees the job finish in time
+# and never runs kill_tree for it, so the job's TERM trap has to sweep the
+# job's marked processes itself (#363, found by the live-run Codex review).
+test_interrupted_job_sweeps_its_cli() {
+    echo "TEST: an interrupted job whose helper timeout SIGKILLed leaves no CLI behind (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || [[ ! -r /proc/self/environ ]]; then
+        echo "  SKIP: needs setsid and /proc"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids" ec i cli
+    mkdir -p "$fake_dir" "$piddir"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+trap '' TERM HUP INT
+setsid bash -c 'trap "" TERM HUP; echo $$ > "$1/cli.pid"; exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+while :; do sleep 0.1; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    cd "${MOCK_REPO}"
+    STUB_PIDDIR="$piddir" REVIEW_KILL_ESCALATION=0.5 AGENT_KILL_AFTER=1 CLEANUP_REAP_TIMEOUT=6 \
+        PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null >/dev/null 2>"${TMPDIR_BASE}/err" &
+    local script_pid=$!
+    for ((i = 0; i < 100; i++)); do [[ -s "${piddir}/cli.pid" ]] && break; sleep 0.05; done
+    kill -TERM "$script_pid" 2>/dev/null || true
+    ec=0; wait "$script_pid" || ec=$?
+    cli=$(cat "${piddir}/cli.pid" 2>/dev/null)
+    assert_exit_code "interrupted run exits 143" "143" "$ec"
+    assert_not_contains "the parent's budget did not run out (its kill_tree is not what helps)" \
+        "did not finish within" "$(cat "${TMPDIR_BASE}/err")"
+    for ((i = 0; i < 10; i++)); do [[ "$(running_state "$cli")" == dead ]] && break; sleep 0.1; done
+    assert_eq "the CLI does not outlive its interrupted job" "dead" "$(running_state "$cli")"
+    [[ -z "$cli" ]] || kill -9 "$cli" 2>/dev/null || true
+    teardown
+}
+
 # await_killed waits once, for every job kill_tree killed, against one
 # deadline (at least 5 s, at most 6), and its warning says so (#363
 # review: the bound was 5 s per job, so several wedged jobs added up).
@@ -5161,6 +5202,19 @@ test_await_killed_shares_one_deadline() {
         echo "  FAIL: waited $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s for three killed jobs"; FAIL=$((FAIL + 1))
     fi
     assert_contains "the warning names the bound it waited" "still running at least 5s after SIGKILL" "$out"
+    # A job shell's sweep (kill_tree with no root) records no root: it
+    # must be waited for all the same.
+    sleep 30 >/dev/null 2>&1 &
+    survivor=$!
+    t0=$(date +%s.%N)
+    out=$(await_killed_probe "KILLED_ROOTS=()" "KILLED_PIDS=(${survivor})" "KILLED_GROUPS=()")
+    t1=$(date +%s.%N)
+    kill -9 "$survivor" 2>/dev/null || true; wait "$survivor" 2>/dev/null || true
+    if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) >= 5 && (b - a) < 7) }'; then
+        echo "  PASS: a sweep with no root is waited for too"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: a sweep with no root was waited for $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s"; FAIL=$((FAIL + 1))
+    fi
     t0=$(date +%s.%N)
     out=$(await_killed_probe "KILLED_ROOTS=(999999)" "KILLED_PIDS=()" "KILLED_GROUPS=()")
     t1=$(date +%s.%N)
@@ -5511,6 +5565,7 @@ test_cleanup_survives_processes_exiting_under_it
 test_cleanup_bounds_a_hanging_marker_scan
 test_kill_tree_guards_its_kills
 test_timed_out_job_sweeps_its_cli
+test_interrupted_job_sweeps_its_cli
 test_await_killed_shares_one_deadline
 test_helper_terminate_reaches_a_cli_before_setsid
 test_helper_term_with_the_sweep_pending
