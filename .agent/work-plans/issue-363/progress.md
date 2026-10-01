@@ -564,3 +564,15 @@ The open items (a)-(c) are suggestions for a follow-up issue. (d) is an owner de
 - [ ] (suggestion, follow-up) The SIGKILLed-parent lock bound printed in the exit-5 message, AGENTS.md and SKILL.md omits the job shell's 124/137 sweep, which adds up to about 12 s — `.agent/scripts/cross_model_review.sh:788`
 - [ ] (suggestion, follow-up) bash < 4.4 nounset: `for p in "${KILLED_ROOTS[@]}"` is empty on the sweep path, and so is `" ${groups[*]} "`. Not hit on default Linux bash 5 — `.agent/scripts/cross_model_review.sh:1013,1075`
 - [ ] (suggestion, follow-up) PID reuse between discovery and kill for tree-only PIDs (Codex 1), and `child` not cleared after the job's `wait`. Both need a PID wrap within seconds (pid_max 4194304 here) — `.agent/scripts/cross_model_review.sh:1000-1040,1537`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-01 14:03 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+"For the C questions, I agree with your 3 recommendations" — asked after pre-push round 4 (approved, no must-fix, 7 suggestions). The three recommendations were: C1 open the pull request now; C2 do not sweep a job's processes after a clean finish (it would kill helpers such as gpg-agent that a reviewer CLI starts on purpose); C3 one follow-up issue for the seven suggestions and the reviewer's simplification notes — opened as #371, which also carries the owner's question from the same message: "does taking a step back once we know all the cases that got uncovered in the process, and redesigning a simpler solution to the initial problem make sense?" The merge decision is separate and still the owner's.
+
+Correction: the host model changed from claude-opus-5-5 to claude-fable-5-1 during this session; the "rounds" checkpoint above was written by claude-fable-5-1, not the model its By line names.
