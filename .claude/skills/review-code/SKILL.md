@@ -434,7 +434,14 @@ agent had a usable CLI (each unavailable agent is named on stderr with its
 reason), or — in PR mode only — `gh` itself is missing, which aborts
 before agent resolution and prints a single `gh not installed` warning
 with no per-agent lines. Either way the cross-model specialist is
-reported as unavailable. Informational
+reported as unavailable. Exit 4 means the script refused to run here: the
+session is not in the issue's worktree (or the environment is otherwise
+invalid) and no prompt or findings file was written; re-run from the matching worktree or
+pass `--work-dir` / `--work-plans-dir` / `--no-progress`. Exit 5 means
+another `cross_model_review.sh` run is already reviewing into the same
+artifact directory: nothing was written by this call; wait for that run
+to finish and read its findings — do not start a second run, which would
+overwrite them. Informational
 lines naming each findings file are printed before the agents launch
 (for `tail -f`); parse by line prefix, not by position.
 
