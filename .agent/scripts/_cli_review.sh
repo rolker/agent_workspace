@@ -265,6 +265,11 @@ signal_live_cli() {
     return 0
 }
 CLI_PID=""
+# The group still to be swept once the CLI has exited and been waited on
+# (group mode only). CLI_PID is cleared the moment `wait` returns, so a
+# signal after that never treats a reaped PID as live; the handler
+# sweeps CLI_GROUP instead (#363 review).
+CLI_GROUP=""
 # Set around the launch so terminate_child can find a CLI whose signal
 # landed between the `&` that starts it and the `CLI_PID=$!` that records
 # it (#363; rolker/ros2_agent_workspace 5818535).
@@ -323,6 +328,11 @@ terminate_child() {
         pkill -KILL -P "$watchdog" 2>/dev/null
         kill -KILL "$watchdog" 2>/dev/null
         CLI_PID=""
+    elif [[ -n "$CLI_GROUP" ]]; then
+        # The CLI has exited and been waited on; only the post-exit
+        # sweep was still to run. Run it here, since exit skips it.
+        signal_cli KILL "$CLI_GROUP"
+        CLI_GROUP=""
     fi
     exit "$code"
 }
@@ -370,12 +380,16 @@ run_cli() {
     fi
     CLI_PID=$!
     CLI_LAUNCHING=false
+    if [[ "$CLI_GROUP_KILL" == true ]]; then CLI_GROUP=$CLI_PID; fi
     CLI_EXIT=0
     wait "$CLI_PID" || CLI_EXIT=$?
+    CLI_PID=""
     # The review is over: nothing the CLI started may outlive it. Group
     # mode only: a bare PID was just reaped and may already be reused.
-    [[ "$CLI_GROUP_KILL" == true ]] && signal_cli KILL "$CLI_PID"
-    CLI_PID=""
+    if [[ -n "$CLI_GROUP" ]]; then
+        signal_cli KILL "$CLI_GROUP"
+        CLI_GROUP=""
+    fi
 }
 
 case "$AGENT" in

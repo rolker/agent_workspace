@@ -4469,7 +4469,7 @@ test_helper_terminate_adopts_launch_window() {
                 sed -n "/^signal_live_${fn#signal_}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
                 sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
                 echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=5"
-                echo "${P}_PID=''"
+                echo "${P}_PID=''; ${P}_GROUP=''"
                 case "$case_name" in
                     adopt)
                         # Inside the window: launching, `$!` has moved.
@@ -4729,7 +4729,7 @@ test_helper_terminate_reaches_a_cli_before_setsid() {
                 sed -n "/^signal_live_${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
                 sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
                 echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=${esc}"
-                echo "${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''"
+                echo "${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''; ${P}_GROUP=''"
                 echo "${launch} </dev/null >/dev/null 2>&1 &"
                 echo "${P}_PID=\$!; echo \$! > target.pid"
                 # dead: let it exit (bash reaps it; the PID stays recorded).
@@ -4752,6 +4752,101 @@ test_helper_terminate_reaches_a_cli_before_setsid() {
             assert_eq "${label}: the CLI is killed" "gone" "$(pid_state "${TMPDIR_BASE}/target.pid")"
             kill_recorded "${TMPDIR_BASE}/target.pid"
         done
+    done
+    teardown
+}
+
+# A TERM that lands just after a helper's `wait` reaped its CLI used to
+# find the reaped PID still recorded: with no group left the handler
+# spent the whole escalation window waiting for one, then SIGKILLed a
+# PID that may already belong to another process (#363 review). The
+# helper now clears the PID the moment `wait` returns and keeps only the
+# group for its post-exit sweep. BASH_ENV puts a `wait` wrapper into the
+# helper alone (the mocks are bash too, so it checks $0) that TERMs the
+# helper as soon as its first `wait`, the one on the CLI, returns.
+test_helper_term_after_the_cli_was_reaped() {
+    echo "TEST: a TERM landing just after a helper reaped its CLI returns at once (#363)"
+    setup
+    make_mock_agent codex
+    mkdir -p "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md" inject ec t0 t1 label
+    echo "review this" > "$prompt"
+    inject="${TMPDIR_BASE}/inject-term.sh"
+    cat > "$inject" << 'INJECT_EOF'
+if [[ "$0" == *_review.sh ]]; then
+    wait() {
+        builtin wait "$@"
+        local rc=$?
+        if [[ -z "${INJECTED_TERM:-}" ]]; then INJECTED_TERM=1; kill -TERM "$$"; fi
+        return "$rc"
+    }
+fi
+INJECT_EOF
+    for label in _cli_review.sh _agy_review.sh; do
+        ec=0; t0=$(date +%s.%N)
+        if [[ "$label" == _cli_review.sh ]]; then
+            BASH_ENV="$inject" REVIEW_KILL_ESCALATION=5 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+                timeout -k 1 15 bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800 \
+                >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+        else
+            BASH_ENV="$inject" REVIEW_KILL_ESCALATION=5 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+                timeout -k 1 15 bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m \
+                >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+        fi
+        t1=$(date +%s.%N)
+        assert_exit_code "${label}: the injected TERM ends the helper" "143" "$ec"
+        assert_not_contains "${label}: no shell errors" \
+            "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/err")"
+        if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 2.5) }'; then
+            echo "  PASS: ${label}: returned well inside the 5s window"; PASS=$((PASS + 1))
+        else
+            echo "  FAIL: ${label}: took $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s, waiting out the window on a reaped CLI"; FAIL=$((FAIL + 1))
+        fi
+    done
+    teardown
+}
+
+# The other half of that window: the PID is already cleared, the
+# post-exit sweep has not run, and a signal arrives. The handler must run
+# the sweep itself (exit would skip it), so a TERM-ignoring child the CLI
+# left behind is killed. Real handler code, extracted, in that state.
+test_helper_terminate_sweeps_after_the_cli_exited() {
+    echo "TEST: terminate_child runs the post-exit group sweep when the CLI was already reaped (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    local spec file P fn probe ec t0 t1
+    for spec in _cli_review.sh:CLI:cli _agy_review.sh:AGY:agy; do
+        file="${spec%%:*}"; P=$(cut -d: -f2 <<< "$spec"); fn=$(cut -d: -f3 <<< "$spec")
+        probe="${TMPDIR_BASE}/probe-${P}-sweep.sh"
+        {
+            echo 'set -u'
+            sed -n "/^signal_${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+            sed -n "/^signal_live_${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+            sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
+            echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=5"
+            echo "${P}_PID=''; ${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''"
+            # The CLI's leftover: a TERM-ignoring group leader.
+            echo "setsid bash -c 'trap \"\" TERM; sleep 30' </dev/null >/dev/null 2>&1 &"
+            echo "${P}_GROUP=\$!; echo \$! > target.pid"
+            echo 'for _ in $(seq 50); do kill -0 -- -"$(< target.pid)" 2>/dev/null && break; sleep 0.05; done'
+            echo 'terminate_child 143'
+        } > "$probe"
+        ec=0; t0=$(date +%s.%N)
+        (cd "$TMPDIR_BASE" && timeout -k 1 10 bash "$probe" >/dev/null 2>"${TMPDIR_BASE}/probe.err") || ec=$?
+        t1=$(date +%s.%N)
+        assert_exit_code "${file}: handler exits 143" "143" "$ec"
+        assert_not_contains "${file}: probe ran without shell errors" \
+            "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/probe.err")"
+        if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 3) }'; then
+            echo "  PASS: ${file}: the sweep is a SIGKILL, not a wait"; PASS=$((PASS + 1))
+        else
+            echo "  FAIL: ${file}: handler took $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s"; FAIL=$((FAIL + 1))
+        fi
+        sleep 0.2
+        assert_eq "${file}: the CLI's leftover group is killed" "gone" "$(pid_state "${TMPDIR_BASE}/target.pid")"
+        kill_recorded "${TMPDIR_BASE}/target.pid"
     done
     teardown
 }
@@ -4871,6 +4966,8 @@ test_run_agent_job_trap_adopts_launch_window
 test_cleanup_jobs_adopts_launch_window
 test_local_concurrent_runs_refused
 test_helper_terminate_reaches_a_cli_before_setsid
+test_helper_term_after_the_cli_was_reaped
+test_helper_terminate_sweeps_after_the_cli_exited
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

@@ -201,6 +201,11 @@ signal_live_agy() {
     return 0
 }
 AGY_PID=""
+# The group still to be swept once agy has exited and been waited on
+# (group mode only). AGY_PID is cleared the moment `wait` returns, so a
+# signal after that never treats a reaped PID as live; the handler
+# sweeps AGY_GROUP instead (#363 review).
+AGY_GROUP=""
 # Set around the launch so terminate_child can find an agy whose signal
 # landed between the `&` that starts it and the `AGY_PID=$!` that records
 # it (#363; rolker/ros2_agent_workspace 5818535).
@@ -259,6 +264,11 @@ terminate_child() {
         pkill -KILL -P "$watchdog" 2>/dev/null
         kill -KILL "$watchdog" 2>/dev/null
         AGY_PID=""
+    elif [[ -n "$AGY_GROUP" ]]; then
+        # agy has exited and been waited on; only the post-exit sweep
+        # was still to run. Run it here, since exit skips it.
+        signal_agy KILL "$AGY_GROUP"
+        AGY_GROUP=""
     fi
     exit "$code"
 }
@@ -294,12 +304,16 @@ ${AGY_SETSID[@]+"${AGY_SETSID[@]}"} "$AGY_BIN_RESOLVED" \
     -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE" &
 AGY_PID=$!
 AGY_LAUNCHING=false
+if [[ "$AGY_GROUP_KILL" == true ]]; then AGY_GROUP=$AGY_PID; fi
 AGY_EXIT=0
 wait "$AGY_PID" || AGY_EXIT=$?
+AGY_PID=""
 # The turn is over: nothing agy started may outlive it. Group mode only:
 # a bare PID was just reaped and may already be reused.
-[[ "$AGY_GROUP_KILL" == true ]] && signal_agy KILL "$AGY_PID"
-AGY_PID=""
+if [[ -n "$AGY_GROUP" ]]; then
+    signal_agy KILL "$AGY_GROUP"
+    AGY_GROUP=""
+fi
 
 # Last 20 lines of stderr, for failure reports: a fatal error lands at
 # the end, after any startup chatter.
