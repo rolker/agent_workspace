@@ -280,3 +280,29 @@ Not covered: the no-`flock`-binary warn path (no test); that bash actually deliv
 For the PR description:
 - The fork's `kill_tree` fix is untracked here. `cleanup_jobs` still SIGKILLs only the job shell when its budget runs out.
 - Amending ADR-0015 in place sits in tension with ADR-0001 and ADR-0008.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-01 10:12 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-363 at `f272bc1`
+**Base**: main
+**Depth**: Deep (reason: 1605 changed lines; enforcement scripts plus ADR, AGENTS.md and skill edits)
+**Must-fix**: 3 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Reviewers: static analysis (shellcheck clean), governance, plan drift, Claude adversarial, Codex (complete, 1 finding with a reproduction). Gemini failed: agy hit its output-token limit (status ERROR). Copilot was skipped because its quota is exhausted. Checked by running code: the new tests fail on main's scripts (30 FAIL), and the group-wait test fails at 7e9e59b (10 FAIL). shellcheck is clean. The group-wait test was reproduced with extracted functions.
+
+### Findings
+- [ ] (must-fix) Watchdog/group-wait boundary race: the watchdog fires at the end of the window, finds no group yet, and exits without killing. `await_cli_group` then finds the group late (its tick loop overruns about 10%), and the TERM goes to a TERM-ignoring CLI. `wait` then blocks with no watchdog left, and the outer `timeout -k` orphans the detached CLI. Codex found it; reproduced here at escalation 0.4 s with setsid delayed 0.42/0.43 s: the handler hung until the CLI exited. Keep escalation armed until the child is gone (or SIGKILL the group directly when await succeeds after the watchdog has exited) and add a boundary test — `.agent/scripts/_cli_review.sh:315-327`, `.agent/scripts/_agy_review.sh:251-266`
+- [ ] (must-fix) ADR-0015 amended in place adds two Consequences bullets and reverses the recorded `AGENT_KILL_AFTER=0` exception. ADR-0008 says that needs a superseding or new ADR. Either move the job-lifecycle rules into a new ADR with an ADR-0015 Status pointer (permitted), or get the owner's explicit waiver — `docs/decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md:7-10,126-145`
+- [ ] (must-fix) Plan-review F1 reopens on util-linux flock without `-E` (pre-2.25 from memory, unverified): `-E` is a usage error (exit 64 here for an unknown option), which counts as "error, proceed unserialized", so a contended lock runs unserialized. Treat only util-linux's error codes (65/71) as errors, or probe `-E` support first — `.agent/scripts/cross_model_review.sh:703-715`
+- [ ] (suggestion) The `REVIEW_KILL_ESCALATION < AGENT_KILL_AFTER` check compares rounded whole seconds (2.49/2.51 is accepted). Since setsid this margin is the only protection against an orphan, so compare unrounded values; "enforced strictly" in the ADR and AGENTS.md overstates it — `.agent/scripts/_cli_review.sh:188`, `.agent/scripts/_agy_review.sh:141`
+- [ ] (suggestion) The await loop is bounded by ticks, not time (500 ticks = 5.5 s), and does not stop when the child died before setsid (5.6 s shutdown). "Costs no time beyond the window" (comments, ADR) is false. Budget by elapsed time and stop early on a zombie or dead PID — `.agent/scripts/_cli_review.sh:270-276`, `.agent/scripts/_agy_review.sh:206-212`
+- [ ] (suggestion) A TERM after `wait` but before `CLI_PID=""` waits the full window, then `kill -KILL`s a reaped PID, contrary to the "unreaped child" comment. Clear `CLI_PID`/`AGY_PID` right after `wait` and use a local for the sweep — `.agent/scripts/_cli_review.sh:392-396`, `.agent/scripts/_agy_review.sh:316-320`
+- [ ] (suggestion) Watchdog cancel race: after `pkill -P` kills its `sleep`, the subshell can still run its kill body (1 in 100 trials), plus "Killed sleep" job notices on stderr (about 58/100). Use `sleep … && signal_cli 0 … && signal_cli KILL …` — `.agent/scripts/_cli_review.sh:315-316,341`, `.agent/scripts/_agy_review.sh:251-252,277`
+- [ ] (suggestion) Lock fd 9 is inherited by git/gh/python run between locking and launch. A daemon they spawn (e.g. git fsmonitor) would hold the lock and refuse later runs with exit 5 (speculative). Close fd 9 on those calls — `.agent/scripts/cross_model_review.sh:693-715`
+- [ ] (suggestion) When `cleanup_jobs` runs out of reap budget it SIGKILLs the job shell only. The parent's exit then releases the lock while a helper may still write findings, so a new run can start in the same dir. Note this in the ADR or PR alongside the untracked kill_tree gap — `.agent/scripts/cross_model_review.sh:868-870`
+- [ ] (suggestion) Test gaps: dead-before-setsid, TERM-after-wait, watchdog-expiry boundary, util-linux without `-E`, no-flock warning path — `.agent/scripts/tests/test_cross_model_review.sh`
