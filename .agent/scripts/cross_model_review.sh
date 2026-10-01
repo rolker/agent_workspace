@@ -858,6 +858,62 @@ job_finished() {
     return 1
 }
 
+# SIGKILL an agent job and everything under it, and return once none of
+# it is running. A job is shell -> `timeout` -> helper -> CLI, and SIGKILL
+# cannot be trapped: killing only the job shell left that chain running
+# (and writing findings) after this script exited and released the review
+# lock, so a second run could start into the same directory (#363;
+# rolker/ros2_agent_workspace PR #662). The tree is collected before
+# anything is killed, since a killed parent's children are re-parented
+# and no longer found under it; and the process groups its members lead
+# are killed too: `timeout` leads its own group (the helper and the
+# helper's children), and the helper starts the CLI as the leader of a
+# new one (setsid), so whatever the CLI left behind is found by its group
+# even after its parent has gone. Without `pgrep` only the job shell and
+# any group it leads can be found.
+kill_tree() {
+    local root="$1" pids=() groups=() i=0 child p alive
+    pids=("$root")
+    if command -v pgrep >/dev/null 2>&1; then
+        while (( i < ${#pids[@]} )); do
+            while read -r child; do
+                [[ -n "$child" ]] && pids+=("$child")
+            done < <(pgrep -P "${pids[i]}" 2>/dev/null || true)
+            i=$((i + 1))
+        done
+    fi
+    # A group whose id is a live member's PID is that member's own group.
+    for p in "${pids[@]}"; do
+        if kill -0 -- -"$p" 2>/dev/null; then groups+=("$p"); fi
+    done
+    # Deepest first, so nothing is re-parented out from under the kill.
+    for (( i = ${#pids[@]} - 1; i >= 0; i-- )); do
+        kill -9 "${pids[i]}" 2>/dev/null || true
+    done
+    for p in ${groups[@]+"${groups[@]}"}; do
+        kill -9 -- -"$p" 2>/dev/null || true
+    done
+    # SIGKILL takes effect asynchronously. Return only once nothing of the
+    # tree is still running (an exited, unreaped process is not), so this
+    # script's exit, which releases the review lock, comes after. Bounded:
+    # a process stuck in uninterruptible sleep cannot hang the exit path.
+    for (( i = 0; i < 50; i++ )); do
+        alive=false
+        job_finished "$root" || alive=true
+        for p in "${pids[@]:1}"; do
+            if kill -0 "$p" 2>/dev/null && [[ "$(proc_state "$p" 2>/dev/null || true)" != Z ]]; then
+                alive=true
+            fi
+        done
+        for p in ${groups[@]+"${groups[@]}"}; do
+            if kill -0 -- -"$p" 2>/dev/null; then alive=true; fi
+        done
+        [[ "$alive" == true ]] || return 0
+        sleep 0.1
+    done
+    echo "WARNING: parts of agent job ${root} were still running 5s after SIGKILL" >&2
+}
+
 cleanup_jobs() {
     local pid waited=0 finished
     # A job launched but not yet recorded (a signal between its `&` and
@@ -893,11 +949,12 @@ cleanup_jobs() {
             # past the bound and hang the exit path forever (#313 round 3).
             wait "$pid" 2>/dev/null || true
         else
-            # Budget spent and the job is still alive. SIGKILL it and do
-            # NOT wait: cleaning up beats blocking, and the job's CLI was
+            # Budget spent and the job is still alive. SIGKILL it with its
+            # whole tree (helper, CLI, the CLI's group) rather than wait
+            # on it: cleaning up beats blocking, and the job's CLI was
             # already signalled twice over by this point.
-            echo "WARNING: agent job ${pid} did not finish within CLEANUP_REAP_TIMEOUT=${CLEANUP_REAP_TIMEOUT}s; killing it and removing the shared temp root anyway" >&2
-            kill -9 "$pid" 2>/dev/null || true
+            echo "WARNING: agent job ${pid} did not finish within CLEANUP_REAP_TIMEOUT=${CLEANUP_REAP_TIMEOUT}s; killing it, its helper and its CLI, and removing the shared temp root anyway" >&2
+            kill_tree "$pid"
         fi
     done
     # Any of these may still be empty: an early exit or signal can land

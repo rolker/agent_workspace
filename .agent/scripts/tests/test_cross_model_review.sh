@@ -3870,9 +3870,11 @@ WEDGED_EOF
         echo "  FAIL: exit path took ${elapsed}s — the wedged job blocked it"; FAIL=$((FAIL + 1))
     fi
     assert_eq "the shared temp root was removed anyway" "0" "$(ls -A "$scratch" | wc -l)"
-    # Tidy up the deliberately unkillable stub (SIGKILL is not trappable).
+    # SIGKILL is not trappable: cleanup kills the stub with its job's
+    # whole tree (#363), and kills it here whatever the outcome.
     local pid; pid=$(cat "${times}/wedge.pid" 2>/dev/null || echo "")
-    [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
+    assert_eq "the wedged helper was killed with its job" "dead" "$(running_state "$pid")"
+    [[ -z "$pid" ]] || kill -9 "$pid" 2>/dev/null || true
     teardown
 }
 
@@ -4754,6 +4756,88 @@ test_lock_fd_not_inherited_by_git_or_gh() {
     teardown
 }
 
+# When an interrupted run's reap budget runs out, cleanup used to SIGKILL
+# only the job shell: `timeout`, the helper and the CLI (its own process
+# group since setsid) ran on after the script exited and released the
+# review lock, so a second run could start into the same directory while
+# the first one's CLI was still writing there (#363 review;
+# rolker/ros2_agent_workspace PR #662). The helper here is a wedged stub
+# that ignores TERM and starts a TERM-ignoring "CLI" as a group leader,
+# as the real helper does, plus a child of that CLI already re-parented
+# away from it (only its group still finds it) and a plain child of its
+# own. The test polls the directory lock during cleanup: at the first
+# moment it can be taken, nothing of the job may still be running.
+test_cleanup_kills_the_whole_job_when_the_budget_runs_out() {
+    echo "TEST: an over-budget job is killed whole (helper, CLI, CLI's group) before the lock is released (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || ! command -v flock >/dev/null 2>&1 \
+        || ! command -v pgrep >/dev/null 2>&1; then
+        echo "  SKIP: needs setsid, flock and pgrep"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids"
+    local dir="${MOCK_REPO}/.agent/work-plans/issue-42" name i ec states
+    mkdir -p "$fake_dir" "$piddir" "$dir"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+trap '' TERM HUP INT
+setsid bash -c '
+    trap "" TERM HUP
+    ( ( trap "" TERM HUP; echo $BASHPID > "$1/orphan.pid"; exec sleep 60 ) & ) </dev/null >/dev/null 2>&1
+    echo $$ > "$1/cli.pid"
+    exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 &
+( trap '' TERM HUP; echo $BASHPID > "$STUB_PIDDIR/helper-child.pid"; exec sleep 60 ) </dev/null >/dev/null 2>&1 &
+echo $$ > "$STUB_PIDDIR/helper.pid"
+while :; do wait; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    cd "${MOCK_REPO}"
+    STUB_PIDDIR="$piddir" REVIEW_KILL_ESCALATION=1 CLEANUP_REAP_TIMEOUT=2 AGENT_KILL_AFTER=60 \
+        PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null >/dev/null 2>"${TMPDIR_BASE}/err" &
+    local script_pid=$!
+    for ((i = 0; i < 100; i++)); do
+        [[ -s "${piddir}/helper.pid" && -s "${piddir}/cli.pid" && -s "${piddir}/orphan.pid" \
+            && -s "${piddir}/helper-child.pid" ]] && break
+        sleep 0.05
+    done
+    kill -TERM "$script_pid" 2>/dev/null || true
+    # The first moment the lock is free, record what of the job still runs.
+    states=""
+    for ((i = 0; i < 400; i++)); do
+        if ( exec 8< "$dir"; flock -n 8 ); then
+            for name in helper helper-child cli orphan; do
+                states+="${name}=$(running_state "$(cat "${piddir}/${name}.pid" 2>/dev/null)") "
+            done
+            break
+        fi
+        sleep 0.025
+    done
+    ec=0; wait "$script_pid" || ec=$?
+    assert_exit_code "interrupted run exits 143" "143" "$ec"
+    assert_contains "cleanup says it killed the job" "did not finish within CLEANUP_REAP_TIMEOUT" "$(cat "${TMPDIR_BASE}/err")"
+    for name in helper helper-child cli orphan; do
+        assert_contains "${name} is dead by the time the lock is free" "${name}=dead" "$states"
+    done
+    # Whatever the outcome, nothing of the stub may outlive the test.
+    for name in helper helper-child cli orphan; do
+        kill -9 "$(cat "${piddir}/${name}.pid" 2>/dev/null)" 2>/dev/null || true
+    done
+    teardown
+}
+
+# running / dead for a pid (an exited, unreaped process is dead).
+running_state() {
+    local pid="$1" stat
+    if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then echo dead; return; fi
+    if [[ -r "/proc/${pid}/stat" ]] && IFS= read -r stat < "/proc/${pid}/stat" 2>/dev/null; then
+        stat=${stat##*) }
+        [[ "${stat%% *}" == Z ]] && { echo dead; return; }
+    fi
+    echo running
+}
+
 # A TERM that lands after the fork but before setsid's setsid() call finds
 # no process group to signal yet. Found by the Codex reviews of #363, in
 # three steps: missing the group left the handler waiting on a CLI
@@ -5035,6 +5119,7 @@ test_run_agent_job_trap_adopts_launch_window
 test_cleanup_jobs_adopts_launch_window
 test_local_concurrent_runs_refused
 test_lock_fd_not_inherited_by_git_or_gh
+test_cleanup_kills_the_whole_job_when_the_budget_runs_out
 test_helper_terminate_reaches_a_cli_before_setsid
 test_helper_term_after_the_cli_was_reaped
 test_helper_terminate_sweeps_after_the_cli_exited
