@@ -379,3 +379,43 @@ Gemini findings rejected:
   - The `_agy_review.sh` header still says `timeout -k` is the only sender of SIGKILL; `kill_tree` now sends it too.
   - Exit 4 when the directory cannot be opened for the lock is missing from the header's exit-code list and from SKILL.md, and the remediation given there does not fit this case.
   - The header could say that on NFSv4 every run takes the 65 warn-and-proceed path — `.agent/scripts/_agy_review.sh:40-46`, `.agent/scripts/cross_model_review.sh:723`, `.claude/skills/review-code/SKILL.md`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-01 12:04 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8021c18b0b8a229a, resume 1 of 3)
+
+**Branch**: feature/issue-363 at `cd23df4`
+**Addressed**: Local Review (Pre-Push) at `38721ea` (2026-10-01 11:24 -04:00)
+**Commits**: `7c656ad`, `6394eab`, `c8a473a`, `9194dfb`, `5bd44cd`, `5113c60`, `cd23df4`
+
+Round 2 fixes. The must-fix and all 6 suggestions are addressed, each in its own commit. Nothing pushed. ADR-0015 and `docs/design.md` are untouched.
+
+### Actions
+- [x] M1, a SIGKILLed parent released the lock while its jobs ran on (`7c656ad`). I followed the host's direction, which I checked first. The job shell, `timeout` and the helper now inherit fd 9. The helpers close it only where they launch the CLI or agy, and for their watchdog. This keeps the reason `9>&-` was added in the first place: the CLI (with whatever it leaves running) is the only process that can outlive `timeout -k`, because it runs in its own process group. The CLI still never holds the lock. Every process that does hold it is in timeout's group or waits on timeout.
+  - **Longest hold after the parent dies:** until each job ends, at the latest `AGENT_TIMEOUT + AGENT_KILL_AFTER` after it launched. For gemini it is `GEMINI_BACKSTOP + AGENT_KILL_AFTER`. With the defaults that is 1810 s, or 2110 s for gemini. At that point `timeout -k` SIGKILLs the helper's group, and the job shell writes its marker and exits.
+  - **Test:** SIGKILL the parent in the middle of a review. A second run must exit 5, the lock must never come free while a helper of the first run is alive, and it must come free once that job has finished its findings. On the previous code the lock was free at once and the second run proceeded. The fd probe now checks agy as well as codex. — `cross_model_review.sh` job launch, `_cli_review.sh` run_cli, `_agy_review.sh` launch
+- [x] S1, `kill_tree` missed a group whose leader had been reaped, and a setsid descendant (`5bd44cd`). Each job now carries a unique `CROSS_MODEL_REVIEW_JOB` environment marker. On Linux, `kill_tree` also collects every process whose `/proc/*/environ` carries that marker, and kills every process group that any found process belongs to, except the script's own group.
+  - The header and AGENTS.md now say exactly what is not found: a descendant that both left those groups and changed its environment, or, without /proc, one re-parented outside the CLI's group.
+  - **Test:** the over-budget stub adds a descendant that runs setsid itself, and a child of a second CLI that has already been reaped. On the previous code exactly those two ran on. — `cross_model_review.sh` kill_tree, run_agent_sync
+- [x] S2, zombie groups were counted as live (`9194dfb`). The new `group_running` reads each member's state through `pgrep -g` and /proc, and ignores zombies. The test helper `assert_orphan_gone` uses `running_state`.
+  - **Test:** a group whose only member is a zombie, with a python parent that never reaps it. The previous code waited 5.9 s on it and warned. — `cross_model_review.sh` await_killed
+- [x] S3, kill the groups before the PIDs (`6394eab`). This was theoretical (it needs a PID wrap), so there is no test.
+- [x] S4, the "5s" bound applied per job (`c8a473a`). `kill_tree` now only kills and records. `await_killed` runs once, with one shared deadline of at least 5 s and at most 6 s (`SECONDS` counts whole seconds), and its warning says "at least 5s".
+  - **Test:** one survivor listed under three killed jobs gives a single 5–6 s wait and the warning. With nothing left running there is no wait. The total extra hold on the exit and the lock is now at most 6 s.
+- [x] S5, the TERM-after-reap test proved nothing (`5113c60`). I replaced it with `test_helper_term_with_the_sweep_pending`. A BASH_ENV DEBUG trap TERMs each helper right before its post-exit sweep runs, which is the state where the PID is cleared and the sweep is pending. A `kill` wrapper logs every signal the helper sends.
+  - The test asserts exit 143, that the CLI's child which ignores TERM is gone, and that the reaped CLI's bare PID is never signalled.
+  - It fails when the handler's sweep-pending branch is removed. On 372d002 (the commit before the round-1 S3 fix) the injection point does not exist and the helper exits 0.
+- [x] S6, the docs (`cd23df4`):
+  - The `_agy_review.sh` header now names both senders of SIGKILL.
+  - Exit 4 for an artifact directory that cannot be opened for its lock is now in the script header and the review-code skill, with its own remedy.
+  - There is an NFS note: every run on NFS takes the 65 warn-and-proceed path. I checked this in util-linux `flock.c`. With an fd argument it does not retry read-write, and its comment calls this EBADF "probably NFSv4".
+
+### Tests
+- `test_cross_model_review.sh` passes 894 with 0 failures, and `run_script_tests.sh` passes all 30 suites.
+- Every new or changed test was also run against scratch copies of the scripts from before its fix, and failed there. S3 has no test.
+
+### Notes
+- The first M1 commit attempt failed the suite's leftover check. A SIGKILLed run cannot remove its own temp files, so the test now points that run's TMPDIR into its sandbox.
+- When I first ran the S1 test against the old code, it failed on every process, not just the two new ones. The stub helper had passed the lock fd to its fake CLIs, unlike the real helper, so the lock never came free at all. The stub now launches its CLIs without fd 9, and the failure on the old code is exactly the two processes that `kill_tree` used to miss.
