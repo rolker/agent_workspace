@@ -4712,6 +4712,34 @@ test_local_concurrent_runs_refused() {
     teardown
 }
 
+# Without flock the run is not serialized, but it still runs, and says
+# so (#363 review: this path had no test). PATH is the mocks plus a copy
+# of /usr/bin and /bin as symlinks, minus flock.
+test_no_flock_warns_and_runs() {
+    echo "TEST: without flock a review still runs and warns that it is not serialized (#363)"
+    setup
+    make_mock_agent codex
+    local shim="${TMPDIR_BASE}/no-flock-bin" d ec err
+    mkdir -p "$shim"
+    for d in /usr/bin /bin; do
+        # A name already linked (merged /usr) is refused; that is fine.
+        [[ -d "$d" ]] && { cp -s "$d"/* "$shim/" 2>/dev/null || true; }
+    done
+    rm -f "${shim}/flock"
+    if PATH="${MOCK_BIN}:${shim}" bash -c 'command -v flock' >/dev/null 2>&1; then
+        echo "  FAIL: flock is still reachable through the shim PATH"; FAIL=$((FAIL + 1))
+        teardown; return
+    fi
+    cd "${MOCK_REPO}"
+    ec=0; err=$(PATH="${MOCK_BIN}:${shim}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+    assert_exit_code "the review completes without flock" "0" "$ec"
+    assert_contains "and warns that it is not serialized" \
+        "flock is not installed; concurrent reviews into .* are not serialized" "$err"
+    assert_contains "codex findings written" "Review complete" "$(findings_of codex)"
+    teardown
+}
+
 # The review lock (fd 9) must not reach git or gh: a process either
 # leaves running (git's fsmonitor daemon) would hold the lock and refuse
 # every later run with exit 5 (#363 review). Shims first on PATH record
@@ -5118,6 +5146,7 @@ test_helper_terminate_adopts_launch_window
 test_run_agent_job_trap_adopts_launch_window
 test_cleanup_jobs_adopts_launch_window
 test_local_concurrent_runs_refused
+test_no_flock_warns_and_runs
 test_lock_fd_not_inherited_by_git_or_gh
 test_cleanup_kills_the_whole_job_when_the_budget_runs_out
 test_helper_terminate_reaches_a_cli_before_setsid
