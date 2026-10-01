@@ -3107,6 +3107,19 @@ test_duration_knobs_validated() {
     assert_contains "reason names both knobs" \
         "AGENT_KILL_AFTER \(1\) must be greater than REVIEW_KILL_ESCALATION \(5\)" "$(findings_of codex)"
     assert_contains "the refused run is marked failed" "Review failed" "$(findings_of codex)"
+    # Compared unrounded (#363 review): 2.6 against 2.9 is a real margin
+    # (both rounded to 3 and were refused), and equal values are refused.
+    local pair grace esc want
+    for pair in 2.9:2.6:0 2.5:2.5:2 2.5:2.51:2 0.5s:0.4:0; do
+        IFS=: read -r grace esc want <<< "$pair"
+        ec=$(AGENT_KILL_AFTER="$grace" REVIEW_KILL_ESCALATION="$esc" run_cli_helper codex "$prompt" "$hfind")
+        assert_exit_code "_cli_review.sh: grace ${grace} against escalation ${esc}" "$want" "$ec"
+        ec=0
+        AGENT_KILL_AFTER="$grace" REVIEW_KILL_ESCALATION="$esc" TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+            bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$hfind" 30m \
+            >/dev/null 2>&1 || ec=$?
+        assert_exit_code "_agy_review.sh: grace ${grace} against escalation ${esc}" "$want" "$ec"
+    done
 
     # Go-duration subset: AGY_PRINT_TIMEOUT reaches agy's --print-timeout,
     # which needs an explicit s/m/h unit and has no `d`. Both shapes below

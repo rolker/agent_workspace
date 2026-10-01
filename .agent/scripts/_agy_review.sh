@@ -121,7 +121,9 @@ to_seconds() {
     [[ "$1" =~ ^([0-9]+(\.[0-9]+)?)([smhd]?)$ ]] || return 1
     local number="${BASH_REMATCH[1]}" unit="${BASH_REMATCH[3]}" mult=1
     case "$unit" in m) mult=60 ;; h) mult=3600 ;; d) mult=86400 ;; *) mult=1 ;; esac
-    awk -v n="$number" -v m="$mult" 'BEGIN { printf "%.0f", n * m }'
+    # Unrounded: the comparison below must not round a fractional
+    # margin away (2.6 against 2.9 is a real 0.3 s margin).
+    awk -v n="$number" -v m="$mult" 'BEGIN { printf "%.6f", n * m }'
 }
 if ! ESCALATION_SECONDS=$(to_seconds "$REVIEW_KILL_ESCALATION"); then
     config_fail "REVIEW_KILL_ESCALATION value '${REVIEW_KILL_ESCALATION}' is not a duration (a number of seconds, optionally with an s/m/h suffix)"
@@ -130,9 +132,10 @@ if [[ -n "${AGENT_KILL_AFTER:-}" ]]; then
     if ! KILL_AFTER_SECONDS=$(to_seconds "$AGENT_KILL_AFTER"); then
         config_fail "AGENT_KILL_AFTER value '${AGENT_KILL_AFTER}' is not a duration"
     fi
-    # Strictly greater, which also rules out 0: `timeout -k 0` disables
-    # the caller's SIGKILL instead of sending it at once (#363).
-    if [[ "$KILL_AFTER_SECONDS" -le "$ESCALATION_SECONDS" ]]; then
+    # Strictly greater, compared unrounded, which also rules out 0:
+    # `timeout -k 0` disables the caller's SIGKILL instead of sending it
+    # at once (#363).
+    if ! awk -v k="$KILL_AFTER_SECONDS" -v e="$ESCALATION_SECONDS" 'BEGIN { exit !(k > e) }'; then
         config_fail "AGENT_KILL_AFTER (${AGENT_KILL_AFTER}) must be greater than REVIEW_KILL_ESCALATION (${REVIEW_KILL_ESCALATION}): the caller's SIGKILL would land on this helper before it could SIGKILL an agy that ignored SIGTERM, orphaning it. Raise AGENT_KILL_AFTER or lower REVIEW_KILL_ESCALATION."
     fi
 fi
@@ -171,9 +174,12 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # --foreground) aims its TERM and its `-k` SIGKILL at its own group, which
 # no longer contains the agy: this helper's forwarding is now the only
 # path to it, and a SIGKILL to this helper reaches nothing in the agy's
-# group. That is safe only because the escalation below is validated to
-# finish inside the caller's grace (REVIEW_KILL_ESCALATION <
-# AGENT_KILL_AFTER, strictly, above).
+# group. That is safe only because the escalation's SIGKILL lands inside
+# the caller's grace: REVIEW_KILL_ESCALATION < AGENT_KILL_AFTER is checked
+# above (strictly, unrounded), and the watchdog that sends it starts as
+# the handler starts, so it fires a few milliseconds (a fork and a `sleep`
+# exec) after the window. The check does not reserve those milliseconds:
+# keep the grace clearly above the escalation (the defaults are 5 and 10).
 if command -v setsid >/dev/null 2>&1; then
     AGY_SETSID=(setsid)
     AGY_GROUP_KILL=true
