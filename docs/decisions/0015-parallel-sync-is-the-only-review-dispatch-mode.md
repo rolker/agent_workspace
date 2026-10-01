@@ -132,13 +132,17 @@ returns typed per-provider results.
   the only path, which holds because `REVIEW_KILL_ESCALATION <
   AGENT_KILL_AFTER` is enforced strictly. Without `setsid` (macOS) the
   signals fall back to the PID and the post-exit sweeps are skipped.
-  Every background launch (CLI, helper, agent job) also adopts `$!` when a
-  signal lands before the PID is recorded.
+  A signal landing before `setsid` has made the group waits for it inside
+  the same escalation window (and SIGKILLs the PID if the window ends
+  first). Every background launch (CLI, helper, agent job) also adopts
+  `$!` when a signal lands before the PID is recorded.
 - One run per artifact directory: the script takes a non-blocking `flock`
   on the directory itself before writing anything and exits 5 when
   another run holds it (no lock file, so nothing appears in a project
-  worktree; `--no-progress` runs never contend). Without `flock` it warns
-  and runs unserialized (#363).
+  worktree; `--no-progress` runs never contend). Without `flock`, or when
+  util-linux `flock` reports an error that is not a conflict, it warns and
+  runs unserialized; a `flock` that cannot tell the two apart counts every
+  failure as a conflict (#363).
 
 ## References
 
