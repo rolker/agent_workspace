@@ -973,7 +973,9 @@ still_marked() {
 kill_tree() {
     local root="$1" marker="${2:-}" pids=() groups=() via=() i=0 child p g own_group
     local -A marked=()
-    pids=("$root")
+    # No <root>: only the marker scan (a job that `timeout` has already cut
+    # off, see run_agent_job).
+    if [[ -n "$root" ]]; then pids=("$root"); fi
     if command -v pgrep >/dev/null 2>&1; then
         while (( i < ${#pids[@]} )); do
             while read -r child; do
@@ -984,7 +986,7 @@ kill_tree() {
     fi
     if [[ -n "$marker" ]]; then
         while read -r p; do
-            if [[ "$p" =~ ^[0-9]+$ && "$p" != "$$" ]]; then
+            if [[ "$p" =~ ^[0-9]+$ && "$p" != "$$" && "$p" != "$BASHPID" ]]; then
                 pids+=("$p")
                 marked[$p]=1
             fi
@@ -993,9 +995,9 @@ kill_tree() {
     # Without our own group id there is no telling which group is ours,
     # so no group is killed at all. Group 0 or 1 is never a job's own (and
     # `kill -- -1` would mean every process this user may signal).
-    own_group=$(pgid_of "$$")
+    own_group=$(pgid_of "$BASHPID")
     if [[ -n "$own_group" ]]; then
-        for p in "${pids[@]}"; do
+        for p in ${pids[@]+"${pids[@]}"}; do
             g=$(pgid_of "$p")
             if [[ "$g" =~ ^[0-9]+$ ]] && (( g > 1 )) && [[ "$g" != "$own_group" && " ${groups[*]} " != *" $g "* ]]; then
                 groups+=("$g")
@@ -1023,8 +1025,12 @@ kill_tree() {
         if [[ -n "${marked[$p]+x}" ]] && ! still_marked "$p" "$marker"; then continue; fi
         kill -9 "$p" 2>/dev/null || true
     done
-    KILLED_ROOTS+=("$root")
-    KILLED_PIDS+=("${pids[@]:1}")
+    if [[ -n "$root" ]]; then
+        KILLED_ROOTS+=("$root")
+        KILLED_PIDS+=("${pids[@]:1}")
+    else
+        KILLED_PIDS+=(${pids[@]+"${pids[@]}"})
+    fi
     KILLED_GROUPS+=(${groups[@]+"${groups[@]}"})
 }
 
@@ -1503,6 +1509,13 @@ run_agent_job() {
     child=$!
     rc=0
     wait "$child" || rc=$?
+    # 124/137: `timeout` cut the job off; 137 means its SIGKILL took the
+    # helper, whose own escalation then never reached the CLI (a process
+    # group of its own). Kill whatever of the job still carries its marker
+    # (#363 round 3).
+    if [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then
+        kill_tree "" "${AGENT_TMP_ROOT}:${agent}" || true
+    fi
     if [[ "$rc" -eq 124 ]]; then
         if [[ "$agent" == "gemini" ]]; then
             # The backstop firing means the helper never reported its own

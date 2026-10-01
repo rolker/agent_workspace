@@ -5084,6 +5084,48 @@ test_kill_tree_guards_its_kills() {
     teardown
 }
 
+# When `timeout` cuts a job off (124), or its SIGKILL takes the helper
+# before the helper's own escalation ran (137), the CLI, a process group
+# of its own, is out of `timeout`'s reach. The job sweeps whatever still
+# carries its marker (#363 round 3). The stub helper starts a
+# TERM-ignoring CLI with setsid, as the real one does, and then either
+# dies on timeout's TERM (124) or ignores it until the SIGKILL (137).
+test_timed_out_job_sweeps_its_cli() {
+    echo "TEST: a job cut off by its timeout (124 or 137) leaves no CLI behind (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || [[ ! -r /proc/self/environ ]]; then
+        echo "  SKIP: needs setsid and /proc"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids" mode ec i cli
+    mkdir -p "$fake_dir" "$piddir"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+[[ "$STUB_MODE" == deaf ]] && trap '' TERM HUP INT
+setsid bash -c 'trap "" TERM HUP; echo $$ > "$1/cli.pid"; exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+while :; do sleep 0.1; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    cd "${MOCK_REPO}"
+    for mode in polite deaf; do
+        rm -f "${piddir}/cli.pid"
+        ec=0
+        STUB_MODE="$mode" STUB_PIDDIR="$piddir" AGENT_TIMEOUT=1 AGENT_KILL_AFTER=1 REVIEW_KILL_ESCALATION=0.5 \
+            PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+            timeout -k 1 30 bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null \
+            > "${TMPDIR_BASE}/out" 2>/dev/null || ec=$?
+        cli=$(cat "${piddir}/cli.pid" 2>/dev/null)
+        assert_exit_code "${mode}: the cut-off agent fails the run" "3" "$ec"
+        assert_contains "${mode}: the job reports $([[ $mode == polite ]] && echo 124 || echo 137)" \
+            "EXIT=$([[ $mode == polite ]] && echo 124 || echo 137)" "$(cat "${TMPDIR_BASE}/out")"
+        for ((i = 0; i < 10; i++)); do [[ "$(running_state "$cli")" == dead ]] && break; sleep 0.1; done
+        assert_eq "${mode}: the CLI does not outlive its job" "dead" "$(running_state "$cli")"
+        [[ -z "$cli" ]] || kill -9 "$cli" 2>/dev/null || true
+    done
+    teardown
+}
+
 # await_killed waits once, for every job kill_tree killed, against one
 # deadline (at least 5 s, at most 6), and its warning says so (#363
 # review: the bound was 5 s per job, so several wedged jobs added up).
@@ -5466,6 +5508,7 @@ test_cleanup_kills_the_whole_job_when_the_budget_runs_out
 test_cleanup_survives_processes_exiting_under_it
 test_cleanup_bounds_a_hanging_marker_scan
 test_kill_tree_guards_its_kills
+test_timed_out_job_sweeps_its_cli
 test_await_killed_shares_one_deadline
 test_helper_terminate_reaches_a_cli_before_setsid
 test_helper_term_with_the_sweep_pending
