@@ -931,13 +931,27 @@ job_finished() {
 KILLED_ROOTS=()
 KILLED_PIDS=()
 KILLED_GROUPS=()
+# pgid_of <pid>: <pid>'s process group id, or nothing (status 0) when the
+# process has already gone. /proc first (field 5, after the parenthesised
+# comm), else `ps`. Never fails: kill_tree runs in the EXIT trap, under
+# `set -e`, on processes that may exit at any moment (#363 round 3).
+pgid_of() {
+    local stat
+    if IFS= read -r stat < "/proc/$1/stat" 2>/dev/null; then
+        stat=${stat##*) }
+        read -r _ _ stat _ <<< "$stat"
+        printf '%s' "$stat"
+    else
+        ps -o pgid= -p "$1" 2>/dev/null | tr -d ' ' || true
+    fi
+}
 kill_tree() {
     local root="$1" marker="${2:-}" pids=() groups=() i=0 child p f g own_group
     pids=("$root")
     if command -v pgrep >/dev/null 2>&1; then
         while (( i < ${#pids[@]} )); do
             while read -r child; do
-                [[ -n "$child" ]] && pids+=("$child")
+                if [[ -n "$child" ]]; then pids+=("$child"); fi
             done < <(pgrep -P "${pids[i]}" 2>/dev/null || true)
             i=$((i + 1))
         done
@@ -946,14 +960,20 @@ kill_tree() {
         while read -r f; do
             p=${f#/proc/}
             p=${p%/environ}
-            [[ "$p" =~ ^[0-9]+$ && "$p" != "$$" ]] && pids+=("$p")
+            if [[ "$p" =~ ^[0-9]+$ && "$p" != "$$" ]]; then pids+=("$p"); fi
         done < <(grep -l -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=${marker}" /proc/[0-9]*/environ 2>/dev/null || true)
     fi
-    own_group=$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')
-    for p in "${pids[@]}"; do
-        g=$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')
-        [[ -n "$g" && "$g" != "$own_group" && " ${groups[*]} " != *" $g "* ]] && groups+=("$g")
-    done
+    # Without our own group id there is no telling which group is ours,
+    # so no group is killed at all.
+    own_group=$(pgid_of "$$")
+    if [[ -n "$own_group" ]]; then
+        for p in "${pids[@]}"; do
+            g=$(pgid_of "$p")
+            if [[ -n "$g" && "$g" != "$own_group" && " ${groups[*]} " != *" $g "* ]]; then
+                groups+=("$g")
+            fi
+        done
+    fi
     # Groups first: a group listed above still has the member it was
     # found through, so its id cannot be anyone else's yet, while it could
     # empty out (and its id be reused) before a kill sent after its
@@ -1017,6 +1037,12 @@ await_killed() {
 
 cleanup_jobs() {
     local agent pid waited=0 finished
+    # Best effort from here on: this is the EXIT trap, and under `set -e`
+    # any command that fails because a process vanished mid-way (a lookup
+    # on a PID that has just exited) aborted the whole cleanup before a
+    # single kill, leaving the CLI running and the temp root behind
+    # (#363 round 3). Every step below tolerates failure on its own too.
+    set +e
     # A job launched but not yet recorded (a signal between its `&` and
     # the AGENT_PID assignment) is still ours to stop: `$!` names it iff
     # it moved since that launch began.
@@ -1024,7 +1050,7 @@ cleanup_jobs() {
           && -z "${AGENT_PID[$LAUNCHING_AGENT]+x}" ]]; then
         AGENT_PID["$LAUNCHING_AGENT"]=$!
     fi
-    for pid in "${AGENT_PID[@]}"; do
+    for pid in ${AGENT_PID[@]+"${AGENT_PID[@]}"}; do
         kill "$pid" 2>/dev/null || true
     done
     # Reap BEFORE removing AGENT_TMP_ROOT (#313 round 2). Each helper may
@@ -1032,7 +1058,7 @@ cleanup_jobs() {
     # CLI that ignored SIGTERM, and that CLI is still writing into a temp
     # dir under this root: removing it here would pull the ground out
     # from under a live process.
-    for agent in "${!AGENT_PID[@]}"; do
+    for agent in ${AGENT_PID[@]+"${!AGENT_PID[@]}"}; do
         pid=${AGENT_PID[$agent]}
         finished=false
         while (( waited < CLEANUP_REAP_SECONDS * 10 )); do
@@ -1430,10 +1456,12 @@ run_agent_job() {
     # a helper that never returns still cannot hang the exit path.
     # A TERM between the `&` and `child=$!` would find `child` empty and
     # leave the helper running unrecorded; `$!` names it iff it moved
-    # since the launch began (#363).
+    # since the launch began (#363). `|| true`: the job inherits `set -e`,
+    # and a child that has just gone must not make the trap exit 1 before
+    # its `wait` instead of 143.
     child=""
     local launch_prev="${!:-}"
-    trap 'if [[ -z "$child" && "${!:-}" != "$launch_prev" ]]; then child=$!; fi; if [[ -n "$child" ]]; then kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; fi; exit 143' TERM
+    trap 'if [[ -z "$child" && "${!:-}" != "$launch_prev" ]]; then child=$!; fi; if [[ -n "$child" ]]; then kill "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; fi; exit 143' TERM
     run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file" &
     child=$!
     rc=0

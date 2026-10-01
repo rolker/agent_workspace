@@ -448,7 +448,7 @@ Reviewers:
 - Copilot: skipped, quota exhausted.
 
 ### Findings
-- [ ] (must-fix) `kill_tree`'s `g=$(ps -o pgid= -p "$p" | tr -d ' ')` (and `own_group=` likewise) fails when a found PID exits before `ps` runs.
+- [x] (must-fix) `kill_tree`'s `g=$(ps -o pgid= -p "$p" | tr -d ' ')` (and `own_group=` likewise) fails when a found PID exits before `ps` runs.
   - Under `set -euo pipefail` that aborts `cleanup_jobs` inside the EXIT trap before any kill: the CLI and helper stay alive, the temp root is left behind and the exit status is 1, not 143.
   - Reproduced 5/5 by the adversarial reviewer with a busy stub CLI. The errexit-in-trap abort was confirmed here. The 759ef51 code passed the same repro.
   - Fix: tolerate the failure (or read the pgid from `/proc/<pid>/stat`, falling back to `ps`), skip all group kills when `own_group` is empty, and add a busy-child variant of the cleanup test. That also covers BusyBox `ps`, which rejects `-p`.

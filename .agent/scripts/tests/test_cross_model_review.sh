@@ -4926,6 +4926,58 @@ STUB_EOF
     teardown
 }
 
+# Processes that kill_tree finds can exit before it looks them up. The
+# cleanup is an EXIT trap under `set -euo pipefail`, and a failed pgid
+# lookup there aborted it before any kill: the CLI and helper ran on, the
+# temp root was left and the run exited 1, not 143 (#363 round 3). Here
+# the wedged helper's CLI spawns a stream of short-lived children, so
+# the tree kill_tree collects is full of processes that are already gone.
+test_cleanup_survives_processes_exiting_under_it() {
+    echo "TEST: interrupt cleanup still kills everything when found processes exit mid-way (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || ! command -v pgrep >/dev/null 2>&1; then
+        echo "  SKIP: needs setsid and pgrep"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids" scratch="${TMPDIR_BASE}/scratch"
+    local name i ec run
+    mkdir -p "$fake_dir" "$piddir" "$scratch"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+trap '' TERM HUP INT
+setsid bash -c '
+    trap "" TERM HUP
+    echo $$ > "$1/cli.pid"
+    while :; do sleep 0.02; done' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+echo $$ > "$STUB_PIDDIR/helper.pid"
+while :; do wait; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    cd "${MOCK_REPO}"
+    for run in 1 2 3; do
+        rm -f "${piddir}"/*.pid
+        STUB_PIDDIR="$piddir" REVIEW_KILL_ESCALATION=1 CLEANUP_REAP_TIMEOUT=2 AGENT_KILL_AFTER=60 \
+            TMPDIR="$scratch" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+            bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null >/dev/null 2>&1 &
+        local script_pid=$!
+        for ((i = 0; i < 100; i++)); do
+            [[ -s "${piddir}/helper.pid" && -s "${piddir}/cli.pid" ]] && break
+            sleep 0.05
+        done
+        kill -TERM "$script_pid" 2>/dev/null || true
+        ec=0; wait "$script_pid" || ec=$?
+        assert_exit_code "run ${run}: interrupted run exits 143" "143" "$ec"
+        for name in helper cli; do
+            assert_eq "run ${run}: ${name} is dead after cleanup" "dead" \
+                "$(running_state "$(cat "${piddir}/${name}.pid" 2>/dev/null)")"
+            kill -9 "$(cat "${piddir}/${name}.pid" 2>/dev/null)" 2>/dev/null || true
+        done
+        assert_eq "run ${run}: the shared temp root was removed" "0" "$(ls -A "$scratch" | wc -l)"
+    done
+    teardown
+}
+
 # await_killed waits once, for every job kill_tree killed, against one
 # deadline (at least 5 s, at most 6), and its warning says so (#363
 # review: the bound was 5 s per job, so several wedged jobs added up).
@@ -5305,6 +5357,7 @@ test_lock_held_by_jobs_after_the_parent_is_killed
 test_no_flock_warns_and_runs
 test_lock_fd_not_inherited_by_git_or_gh
 test_cleanup_kills_the_whole_job_when_the_budget_runs_out
+test_cleanup_survives_processes_exiting_under_it
 test_await_killed_shares_one_deadline
 test_helper_terminate_reaches_a_cli_before_setsid
 test_helper_term_with_the_sweep_pending
