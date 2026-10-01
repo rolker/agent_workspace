@@ -5079,51 +5079,64 @@ test_helper_terminate_reaches_a_cli_before_setsid() {
     teardown
 }
 
-# A TERM that lands just after a helper's `wait` reaped its CLI used to
-# find the reaped PID still recorded: with no group left the handler
-# spent the whole escalation window waiting for one, then SIGKILLed a
-# PID that may already belong to another process (#363 review). The
-# helper now clears the PID the moment `wait` returns and keeps only the
-# group for its post-exit sweep. BASH_ENV puts a `wait` wrapper into the
-# helper alone (the mocks are bash too, so it checks $0) that TERMs the
-# helper as soon as its first `wait`, the one on the CLI, returns.
-test_helper_term_after_the_cli_was_reaped() {
-    echo "TEST: a TERM landing just after a helper reaped its CLI returns at once (#363)"
+# A signal that lands after a helper has reaped its CLI and cleared the
+# PID, but before the post-exit sweep of the CLI's group has run, must
+# still get the sweep (exit would skip it) and must never signal the bare,
+# reaped PID (#363 round 1 S3, round 2 S5). BASH_ENV puts a DEBUG trap
+# into the helper alone (the mocks are bash too, so it checks $0): it
+# TERMs the helper right before the sweep's `[[ -n "$<P>_GROUP" ]]` test
+# runs, i.e. with the PID cleared and the sweep pending, and a `kill`
+# wrapper logs every signal the helper sends. The CLI mock leaves a
+# TERM-ignoring child in its group, which only the sweep kills.
+test_helper_term_with_the_sweep_pending() {
+    echo "TEST: a TERM after the helper reaped its CLI still sweeps the group and never signals the reaped PID (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
     setup
     make_mock_agent codex
     mkdir -p "${TMPDIR_BASE}/helper-tmp"
-    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md" inject ec t0 t1 label
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md" inject times log
+    local spec label P ec cli orphan
     echo "review this" > "$prompt"
+    times="${TMPDIR_BASE}/times"; log="${TMPDIR_BASE}/kill.log"
+    mkdir -p "$times"
     inject="${TMPDIR_BASE}/inject-term.sh"
     cat > "$inject" << 'INJECT_EOF'
 if [[ "$0" == *_review.sh ]]; then
-    wait() {
-        builtin wait "$@"
-        local rc=$?
-        if [[ -z "${INJECTED_TERM:-}" ]]; then INJECTED_TERM=1; kill -TERM "$$"; fi
-        return "$rc"
-    }
+    set -T
+    trap 'if [[ -z "${INJECTED_TERM:-}" && "$BASH_COMMAND" == "[[ -n \"\$${INJECT_PREFIX}_GROUP\" ]]" ]]; then INJECTED_TERM=1; builtin kill -TERM "$$"; fi' DEBUG
+    kill() { printf '%s\n' "$*" >> "$KILL_LOG"; builtin kill "$@"; }
 fi
 INJECT_EOF
-    for label in _cli_review.sh _agy_review.sh; do
-        ec=0; t0=$(date +%s.%N)
-        if [[ "$label" == _cli_review.sh ]]; then
-            BASH_ENV="$inject" REVIEW_KILL_ESCALATION=5 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+    for spec in _cli_review.sh:CLI _agy_review.sh:AGY; do
+        label="${spec%%:*}"; P="${spec#*:}"
+        rm -f "$log" "${times}"/*.pid
+        orphan="${TMPDIR_BASE}/${P}-orphan.pid"
+        ec=0
+        if [[ "$P" == CLI ]]; then
+            BASH_ENV="$inject" INJECT_PREFIX="$P" KILL_LOG="$log" MOCK_TIMES_DIR="$times" \
+                MOCK_CODEX_ORPHAN_PIDFILE="$orphan" REVIEW_KILL_ESCALATION=5 \
+                TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
                 timeout -k 1 15 bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800 \
                 >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+            cli=$(cat "${times}/codex.pid" 2>/dev/null)
         else
-            BASH_ENV="$inject" REVIEW_KILL_ESCALATION=5 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+            BASH_ENV="$inject" INJECT_PREFIX="$P" KILL_LOG="$log" MOCK_TIMES_DIR="$times" \
+                MOCK_AGY_ORPHAN_PIDFILE="$orphan" REVIEW_KILL_ESCALATION=5 \
+                TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
                 timeout -k 1 15 bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m \
                 >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+            cli=$(cat "${times}/agy.pid" 2>/dev/null)
         fi
-        t1=$(date +%s.%N)
-        assert_exit_code "${label}: the injected TERM ends the helper" "143" "$ec"
+        assert_exit_code "${label}: the TERM, sent with the sweep pending, ends the helper" "143" "$ec"
         assert_not_contains "${label}: no shell errors" \
             "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/err")"
-        if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 2.5) }'; then
-            echo "  PASS: ${label}: returned well inside the 5s window"; PASS=$((PASS + 1))
+        assert_orphan_gone "${label}: the pending sweep still ran" "$orphan"
+        if [[ -n "$cli" ]] && grep -qE "(^| )${cli}\$" "$log" 2>/dev/null; then
+            echo "  FAIL: ${label}: signalled the reaped CLI's bare PID: $(grep -E "(^| )${cli}\$" "$log" | head -1)"; FAIL=$((FAIL + 1))
         else
-            echo "  FAIL: ${label}: took $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s, waiting out the window on a reaped CLI"; FAIL=$((FAIL + 1))
+            echo "  PASS: ${label}: never signalled the reaped CLI's bare PID"; PASS=$((PASS + 1))
         fi
     done
     teardown
@@ -5294,7 +5307,7 @@ test_lock_fd_not_inherited_by_git_or_gh
 test_cleanup_kills_the_whole_job_when_the_budget_runs_out
 test_await_killed_shares_one_deadline
 test_helper_terminate_reaches_a_cli_before_setsid
-test_helper_term_after_the_cli_was_reaped
+test_helper_term_with_the_sweep_pending
 test_helper_terminate_sweeps_after_the_cli_exited
 
 echo ""
