@@ -107,10 +107,16 @@
 #   * Interrupt. Cleanup TERMs every job, then waits up to
 #     CLEANUP_REAP_TIMEOUT (which must exceed REVIEW_KILL_ESCALATION) for
 #     the helpers to finish their own escalation. A job still running
-#     after that is SIGKILLed with its whole tree: the job shell,
-#     `timeout`, the helper and the CLI's process group. Cleanup returns
-#     only once none of it runs (bounded), so the script's exit, which
-#     releases the lock below, comes after.
+#     after that is SIGKILLed with everything that can be found of it:
+#     its process tree, every process group a member of it belongs to
+#     (`timeout`'s, the CLI's), and on Linux every process still carrying
+#     the job's CROSS_MODEL_REVIEW_JOB environment marker (a child of an
+#     already-reaped CLI, a descendant with a session of its own). Not
+#     found: a descendant that left those groups and changed its
+#     environment, or, without /proc, one re-parented outside the CLI's
+#     group. Cleanup then waits (at least 5 s, at most 6 s in total) until
+#     nothing it killed is running, so the script's exit, which releases
+#     the lock below, comes after.
 #   * Launch window. A signal that lands between a background launch and
 #     the line recording its PID (agent job here, helper in the job, CLI
 #     in the helper) is not lost: each handler adopts `$!` when a launch
@@ -294,13 +300,15 @@ run_agent_sync() {
         # print-timeout, not a replacement for it.
         # AGENT_KILL_AFTER is exported so the helper can check that its
         # own SIGKILL escalation fits inside this grace (#313 round 2).
-        gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
+        # CROSS_MODEL_REVIEW_JOB marks every process of this job, so
+        # kill_tree can find one that has been re-parented away (#363).
+        gemini)  exec env CROSS_MODEL_REVIEW_JOB="${AGENT_TMP_ROOT}:${agent}" TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
         # codex, claude and copilot (and anything that somehow reaches
         # here — _cli_review.sh rejects an unknown agent with a readable
         # reason in the findings file rather than running a CLI blind).
         # AGENT_TIMEOUT is passed through as an informational label so
         # the helper's failure reasons can name the bound they ran under.
-        *)       exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
+        *)       exec env CROSS_MODEL_REVIEW_JOB="${AGENT_TMP_ROOT}:${agent}" TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
     esac
 }
 
@@ -893,25 +901,32 @@ job_finished() {
     return 1
 }
 
-# SIGKILL an agent job and everything under it. A job is shell ->
-# `timeout` -> helper -> CLI, and SIGKILL cannot be trapped: killing only
-# the job shell left that chain running (and writing findings) after this
-# script exited and released the review lock, so a second run could start
-# into the same directory (#363; rolker/ros2_agent_workspace PR #662).
-# The tree is collected before anything is killed, since a killed
-# parent's children are re-parented and no longer found under it; and the
-# process groups its members lead are killed too: `timeout` leads its own
-# group (the helper and the helper's children), and the helper starts the
-# CLI as the leader of a new one (setsid), so whatever the CLI left behind
-# is found by its group even after its parent has gone. Without `pgrep`
-# only the job shell and any group it leads can be found.
+# SIGKILL an agent job and everything that can be found of it. A job is
+# shell -> `timeout` -> helper -> CLI, and SIGKILL cannot be trapped:
+# killing only the job shell left that chain running (and writing
+# findings) after this script exited and released the review lock, so a
+# second run could start into the same directory (#363;
+# rolker/ros2_agent_workspace PR #662). Found, before anything is killed
+# (a killed parent's children are re-parented and no longer found under
+# it):
+#   * the process tree under the job shell (`pgrep -P`);
+#   * on Linux, every process whose environment still carries this job's
+#     CROSS_MODEL_REVIEW_JOB marker (set by run_agent_sync), wherever it
+#     was re-parented: a child of a CLI that has already been reaped, or a
+#     descendant that started a session of its own;
+#   * every process group any of those belongs to, except this script's:
+#     `timeout`'s own group (the helper and its children) and the CLI's
+#     (setsid), which also holds whatever the CLI left behind.
+# Not found: a descendant that both left those groups and changed its
+# environment, and, without /proc, anything re-parented outside the CLI's
+# group; without `pgrep` only the job shell and its group.
 # What was killed is recorded for await_killed, which waits for all of it
 # at once.
 KILLED_ROOTS=()
 KILLED_PIDS=()
 KILLED_GROUPS=()
 kill_tree() {
-    local root="$1" pids=() groups=() i=0 child p
+    local root="$1" marker="${2:-}" pids=() groups=() i=0 child p f g own_group
     pids=("$root")
     if command -v pgrep >/dev/null 2>&1; then
         while (( i < ${#pids[@]} )); do
@@ -921,14 +936,22 @@ kill_tree() {
             i=$((i + 1))
         done
     fi
-    # A group whose id is a live member's PID is that member's own group.
+    if [[ -n "$marker" && -r /proc/self/environ ]]; then
+        while read -r f; do
+            p=${f#/proc/}
+            p=${p%/environ}
+            [[ "$p" =~ ^[0-9]+$ && "$p" != "$$" ]] && pids+=("$p")
+        done < <(grep -l -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=${marker}" /proc/[0-9]*/environ 2>/dev/null || true)
+    fi
+    own_group=$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')
     for p in "${pids[@]}"; do
-        if kill -0 -- -"$p" 2>/dev/null; then groups+=("$p"); fi
+        g=$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')
+        [[ -n "$g" && "$g" != "$own_group" && " ${groups[*]} " != *" $g "* ]] && groups+=("$g")
     done
-    # Groups first: while its leader is alive a group id cannot be reused,
-    # so killing a group before its leader can never hit another process's
-    # group, while a group listed above could empty out (and its id be
-    # reused) between the listing and a kill sent after its members'.
+    # Groups first: a group listed above still has the member it was
+    # found through, so its id cannot be anyone else's yet, while it could
+    # empty out (and its id be reused) before a kill sent after its
+    # members'.
     for p in ${groups[@]+"${groups[@]}"}; do
         kill -9 -- -"$p" 2>/dev/null || true
     done
@@ -987,7 +1010,7 @@ await_killed() {
 }
 
 cleanup_jobs() {
-    local pid waited=0 finished
+    local agent pid waited=0 finished
     # A job launched but not yet recorded (a signal between its `&` and
     # the AGENT_PID assignment) is still ours to stop: `$!` names it iff
     # it moved since that launch began.
@@ -1003,7 +1026,8 @@ cleanup_jobs() {
     # CLI that ignored SIGTERM, and that CLI is still writing into a temp
     # dir under this root: removing it here would pull the ground out
     # from under a live process.
-    for pid in "${AGENT_PID[@]}"; do
+    for agent in "${!AGENT_PID[@]}"; do
+        pid=${AGENT_PID[$agent]}
         finished=false
         while (( waited < CLEANUP_REAP_SECONDS * 10 )); do
             if job_finished "$pid"; then
@@ -1026,7 +1050,7 @@ cleanup_jobs() {
             # on it: cleaning up beats blocking, and the job's CLI was
             # already signalled twice over by this point.
             echo "WARNING: agent job ${pid} did not finish within CLEANUP_REAP_TIMEOUT=${CLEANUP_REAP_TIMEOUT}s; killing it, its helper and its CLI, and removing the shared temp root anyway" >&2
-            kill_tree "$pid"
+            kill_tree "$pid" "${AGENT_TMP_ROOT}:${agent}"
         fi
     done
     await_killed

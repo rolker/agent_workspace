@@ -4587,7 +4587,10 @@ test_cleanup_jobs_adopts_launch_window() {
             echo 'set -u'
             sed -n '/^proc_state() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
             sed -n '/^job_finished() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
-            sed -n '/^cleanup_jobs() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
+            for fn in group_running kill_tree await_killed cleanup_jobs; do
+                sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../cross_model_review.sh"
+            done
+            echo 'KILLED_ROOTS=(); KILLED_PIDS=(); KILLED_GROUPS=()'
             echo 'declare -A AGENT_PID=()'
             echo 'CLEANUP_REAP_SECONDS=2; CLEANUP_REAP_TIMEOUT=2'
             echo 'SHARED_PROMPT=""; SHARED_DIFF=""; AGENT_TMP_ROOT=""'
@@ -4863,14 +4866,25 @@ test_cleanup_kills_the_whole_job_when_the_budget_runs_out() {
     local dir="${MOCK_REPO}/.agent/work-plans/issue-42" name i ec states
     mkdir -p "$fake_dir" "$piddir" "$dir"
     cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    # cli: a live group leader. orphan: its child, already re-parented.
+    # own-session: its descendant that ran setsid itself. group-orphan: the
+    # child of a second CLI that has exited and been reaped (the stub's
+    # `wait` loop reaps it), so no live process leads that group. Like the
+    # real helper, the stub launches its CLIs without the lock fd.
     cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
 #!/usr/bin/env bash
 trap '' TERM HUP INT
 setsid bash -c '
     trap "" TERM HUP
     ( ( trap "" TERM HUP; echo $BASHPID > "$1/orphan.pid"; exec sleep 60 ) & ) </dev/null >/dev/null 2>&1
+    ( setsid bash -c "trap \"\" TERM HUP; echo \$\$ > \"\$1/own-session.pid\"; exec sleep 60" _ "$1" & ) </dev/null >/dev/null 2>&1
     echo $$ > "$1/cli.pid"
-    exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 &
+    exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+setsid bash -c '
+    trap "" TERM HUP
+    ( trap "" TERM HUP; echo $BASHPID > "$1/group-orphan.pid"; exec sleep 60 ) </dev/null >/dev/null 2>&1 &
+    for i in $(seq 50); do [[ -s "$1/group-orphan.pid" ]] && break; sleep 0.05; done
+    exit 0' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
 ( trap '' TERM HUP; echo $BASHPID > "$STUB_PIDDIR/helper-child.pid"; exec sleep 60 ) </dev/null >/dev/null 2>&1 &
 echo $$ > "$STUB_PIDDIR/helper.pid"
 while :; do wait; done
@@ -4883,7 +4897,8 @@ STUB_EOF
     local script_pid=$!
     for ((i = 0; i < 100; i++)); do
         [[ -s "${piddir}/helper.pid" && -s "${piddir}/cli.pid" && -s "${piddir}/orphan.pid" \
-            && -s "${piddir}/helper-child.pid" ]] && break
+            && -s "${piddir}/helper-child.pid" && -s "${piddir}/own-session.pid" \
+            && -s "${piddir}/group-orphan.pid" ]] && break
         sleep 0.05
     done
     kill -TERM "$script_pid" 2>/dev/null || true
@@ -4891,7 +4906,7 @@ STUB_EOF
     states=""
     for ((i = 0; i < 400; i++)); do
         if ( exec 8< "$dir"; flock -n 8 ); then
-            for name in helper helper-child cli orphan; do
+            for name in helper helper-child cli orphan own-session group-orphan; do
                 states+="${name}=$(running_state "$(cat "${piddir}/${name}.pid" 2>/dev/null)") "
             done
             break
@@ -4901,11 +4916,11 @@ STUB_EOF
     ec=0; wait "$script_pid" || ec=$?
     assert_exit_code "interrupted run exits 143" "143" "$ec"
     assert_contains "cleanup says it killed the job" "did not finish within CLEANUP_REAP_TIMEOUT" "$(cat "${TMPDIR_BASE}/err")"
-    for name in helper helper-child cli orphan; do
+    for name in helper helper-child cli orphan own-session group-orphan; do
         assert_contains "${name} is dead by the time the lock is free" "${name}=dead" "$states"
     done
     # Whatever the outcome, nothing of the stub may outlive the test.
-    for name in helper helper-child cli orphan; do
+    for name in helper helper-child cli orphan own-session group-orphan; do
         kill -9 "$(cat "${piddir}/${name}.pid" 2>/dev/null)" 2>/dev/null || true
     done
     teardown
