@@ -576,3 +576,26 @@ The open items (a)-(c) are suggestions for a follow-up issue. (d) is an owner de
 "For the C questions, I agree with your 3 recommendations" — asked after pre-push round 4 (approved, no must-fix, 7 suggestions). The three recommendations were: C1 open the pull request now; C2 do not sweep a job's processes after a clean finish (it would kill helpers such as gpg-agent that a reviewer CLI starts on purpose); C3 one follow-up issue for the seven suggestions and the reviewer's simplification notes — opened as #371, which also carries the owner's question from the same message: "does taking a step back once we know all the cases that got uncovered in the process, and redesigning a simpler solution to the initial problem make sense?" The merge decision is separate and still the owner's.
 
 Correction: the host model changed from claude-opus-5-5 to claude-fable-5-1 during this session; the "rounds" checkpoint above was written by claude-fable-5-1, not the model its By line names.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-01 14:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #372 at `7fe2b31`
+**Sources**: 3 (Copilot @ `7fe2b31` overview, Local Review (Pre-Push) r4 @ `4b55020` (covers `7fe2b31` via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+Copilot reviewed the head (quota is back): "Findings: None", no inline comments; its "needs a closer look" note asks for the final human decision, which the merge checkpoint already provides. No human or conversation comments. CI: Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests all pass (two runs each). The seven round-4 suggestions are carried forward and closed as deferred: the owner decided on 2026-10-01 (Checkpoint at `7fe2b31`) that they and the reviewer's simplification notes go to #371, and that a job that finished cleanly is not swept. No open findings remain.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) r4 @ `4b55020`, covers `7fe2b31` via bookkeeping) A second Ctrl-C during cleanup cuts `cleanup_jobs` short; fix is `trap '' INT TERM HUP` as cleanup's first line — `.agent/scripts/cross_model_review.sh:1093` (deferred: owner 2026-10-01: follow-up issue #371, not this branch)
+- [x] (suggestion, Local Review (Pre-Push) r4 @ `4b55020`, covers `7fe2b31` via bookkeeping) `pgid_of` prints "No such file or directory" for a vanished PID (redirection applied before `2>/dev/null`) — `.agent/scripts/cross_model_review.sh:950-958` (deferred: owner 2026-10-01: follow-up issue #371, not this branch)
+- [x] (suggestion, Local Review (Pre-Push) r4 @ `4b55020`, covers `7fe2b31` via bookkeeping) KILLED_GROUPS / KILLED_PIDS record skipped entries, costing a 6 s wait and a false warning on id reuse — `.agent/scripts/cross_model_review.sh:1040-1046` (deferred: owner 2026-10-01: follow-up issue #371, not this branch)
+- [x] (suggestion, Local Review (Pre-Push) r4 @ `4b55020`, covers `7fe2b31` via bookkeeping) No shared deadline across `still_marked` re-checks; a scan cut off at 5 s skips later PIDs — `.agent/scripts/cross_model_review.sh:960-975` (deferred: owner 2026-10-01: follow-up issue #371, not this branch)
+- [x] (suggestion, Local Review (Pre-Push) r4 @ `4b55020`, covers `7fe2b31` via bookkeeping) The printed SIGKILLed-parent lock bound omits the job's 124/137 sweep (up to about 12 s); also in AGENTS.md and SKILL.md — `.agent/scripts/cross_model_review.sh:788` (deferred: owner 2026-10-01: follow-up issue #371, not this branch)
+- [x] (suggestion, Local Review (Pre-Push) r4 @ `4b55020`, covers `7fe2b31` via bookkeeping) Two empty-array expansions fail under nounset on bash < 4.4 — `.agent/scripts/cross_model_review.sh:1013,1075` (deferred: owner 2026-10-01: follow-up issue #371, not this branch)
+- [x] (suggestion, Local Review (Pre-Push) r4 @ `4b55020`, covers `7fe2b31` via bookkeeping) PID reuse between discovery and kill for tree-only PIDs, and `child` not cleared after the job's `wait` — `.agent/scripts/cross_model_review.sh:1000-1040,1537` (deferred: owner 2026-10-01: follow-up issue #371, not this branch)
+
+### False positives
