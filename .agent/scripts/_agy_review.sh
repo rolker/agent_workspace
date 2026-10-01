@@ -234,9 +234,10 @@ terminate_child() {
         # left to kill it before the caller's `timeout -k` orphaned it
         # (#363 review). `wait` below returns the moment agy dies, so a
         # clean shutdown costs milliseconds, not the window.
-        # It is NOT waited on: a subshell sleeping in `sleep` defers the
-        # TERM we send it until that sleep ends, so waiting would
-        # reintroduce the full window on every clean exit.
+        # It is not waited on until it has been SIGKILLed below: a
+        # subshell sleeping in `sleep` defers a TERM until that sleep
+        # ends, so waiting first would reintroduce the full window on
+        # every clean exit.
         # It is cancelled with SIGKILL, never TERM: it is forked while
         # this handler has INT/TERM/HUP ignored, an ignored disposition is
         # inherited (by its `sleep` too), so a TERM is lost. A lost cancel
@@ -245,7 +246,11 @@ terminate_child() {
         # dead agy's PID. Its `sleep` is killed first, while still
         # findable as the watchdog's child, so no orphan `sleep` is left
         # either (#363; rolker/ros2_agent_workspace 06871f4, a2b04c8).
-        ( sleep "$REVIEW_KILL_ESCALATION"; signal_live_agy KILL "$AGY_PID" ) &
+        # `&&`: a `sleep` killed by the cancel below fails, so a watchdog
+        # whose sleep is already gone never runs its kill. Its stderr is
+        # dropped: the subshell reports its killed `sleep` there as a
+        # "Killed" job notice.
+        ( sleep "$REVIEW_KILL_ESCALATION" && signal_live_agy KILL "$AGY_PID" ) 2>/dev/null &
         watchdog=$!
         signal_live_agy TERM "$AGY_PID"
         wait "$AGY_PID" 2>/dev/null
@@ -263,6 +268,9 @@ terminate_child() {
         fi
         pkill -KILL -P "$watchdog" 2>/dev/null
         kill -KILL "$watchdog" 2>/dev/null
+        # Reaped here (at once: it was just SIGKILLed), or this shell
+        # reports it on stderr as a "Killed ( sleep ... )" job notice.
+        wait "$watchdog" 2>/dev/null
         AGY_PID=""
     elif [[ -n "$AGY_GROUP" ]]; then
         # agy has exited and been waited on; only the post-exit sweep

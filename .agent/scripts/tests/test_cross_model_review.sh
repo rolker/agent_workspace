@@ -3706,9 +3706,9 @@ assert_watchdog_cancelled() {
 # inside the escalation window and leaves no watchdog behind.
 # Args: <label> <pidfile the mock writes> <findings> <command...>
 assert_prompt_clean_term() {
-    local label="$1" pidfile="$2" findings="$3"
+    local label="$1" pidfile="$2" findings="$3" err="${TMPDIR_BASE}/clean-term.err"
     shift 3
-    "$@" >/dev/null 2>&1 &
+    "$@" >/dev/null 2>"$err" &
     local helper_pid=$! i
     for ((i = 0; i < 60; i++)); do
         [[ -f "$pidfile" ]] && break
@@ -3726,6 +3726,9 @@ assert_prompt_clean_term() {
         echo "  FAIL: ${label}: helper waited out the escalation window after a clean CLI exit"; FAIL=$((FAIL + 1))
     fi
     assert_watchdog_cancelled "$label" "$findings" "$WATCHDOG_ESCALATION"
+    # The cancelled watchdog is reaped, not left for bash to report as a
+    # "Killed ( sleep ... )" job notice on the caller's stderr (#363).
+    assert_not_contains "${label}: no job notice for the cancelled watchdog" "Killed" "$(cat "$err")"
 }
 
 # 5 s for the to_seconds check, with a fraction unique to this suite run
