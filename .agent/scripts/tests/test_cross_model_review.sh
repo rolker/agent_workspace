@@ -4710,6 +4710,50 @@ test_local_concurrent_runs_refused() {
     teardown
 }
 
+# The review lock (fd 9) must not reach git or gh: a process either
+# leaves running (git's fsmonitor daemon) would hold the lock and refuse
+# every later run with exit 5 (#363 review). Shims first on PATH record
+# whether fd 9 is open, then exec the real git / the mock gh.
+test_lock_fd_not_inherited_by_git_or_gh() {
+    echo "TEST: git and gh run without the review lock's fd (#363)"
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "  SKIP: no flock on this host"; return
+    fi
+    setup
+    make_mock_agent codex
+    local shim="${TMPDIR_BASE}/fd9-shim" log="${TMPDIR_BASE}/fd9" tool base ec
+    mkdir -p "$shim" "$log"
+    for tool in git gh; do
+        printf '%s\n' '#!/usr/bin/env bash' \
+            "if [[ -e /dev/fd/9 ]]; then echo open; else echo closed; fi >> '${log}/${tool}'" \
+            'PATH="${PATH#*:}" exec '"${tool}"' "$@"' > "${shim}/${tool}"
+        chmod +x "${shim}/${tool}"
+    done
+    base=$(git -C "${MOCK_REPO}" branch --show-current)
+    git -C "${MOCK_REPO}" checkout -q -b feature/issue-42
+    mkdir -p "${MOCK_REPO}/src"
+    echo "BRANCH CODE" > "${MOCK_REPO}/src/code.py"
+    git -C "${MOCK_REPO}" add -A
+    git -C "${MOCK_REPO}" -c user.name="Test" -c user.email="test@test" commit -q -m "feature"
+    cd "${MOCK_REPO}"
+    ec=0
+    PATH="${shim}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --branch "$base" --agents codex < /dev/null >/dev/null 2>&1 || ec=$?
+    assert_exit_code "branch review completes" "0" "$ec"
+    ec=0
+    PATH="${shim}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex < /dev/null >/dev/null 2>&1 || ec=$?
+    assert_exit_code "PR review completes" "0" "$ec"
+    for tool in git gh; do
+        if [[ ! -s "${log}/${tool}" ]]; then
+            echo "  FAIL: ${tool} was never run through the shim"; FAIL=$((FAIL + 1))
+        else
+            assert_not_contains "${tool} never sees the lock fd" "open" "$(cat "${log}/${tool}")"
+        fi
+    done
+    teardown
+}
+
 # A TERM that lands after the fork but before setsid's setsid() call finds
 # no process group to signal yet. Found by the Codex reviews of #363, in
 # three steps: missing the group left the handler waiting on a CLI
@@ -4990,6 +5034,7 @@ test_helper_terminate_adopts_launch_window
 test_run_agent_job_trap_adopts_launch_window
 test_cleanup_jobs_adopts_launch_window
 test_local_concurrent_runs_refused
+test_lock_fd_not_inherited_by_git_or_gh
 test_helper_terminate_reaches_a_cli_before_setsid
 test_helper_term_after_the_cli_was_reaped
 test_helper_terminate_sweeps_after_the_cli_exited

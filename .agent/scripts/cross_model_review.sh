@@ -736,6 +736,16 @@ else
     echo "WARNING: flock is not installed; concurrent reviews into ${WORK_PLANS_DIR} are not serialized" >&2
 fi
 
+# The lock fd stays open in this shell until it exits, and every command
+# started from here inherits it. git, gh and python can leave a process
+# running after they return (git's fsmonitor daemon, for one); holding
+# fd 9, that process would keep the lock and refuse every later run with
+# exit 5. So they run with fd 9 closed: git and gh through these
+# wrappers, python at its one call site. The agent jobs close it at
+# launch (`9>&-`).
+git() { command git "$@" 9<&-; }
+gh() { command gh "$@" 9<&-; }
+
 prompt_file_for()   { echo "${WORK_PLANS_DIR}/review-$1-prompt.md"; }
 findings_file_for() { echo "${WORK_PLANS_DIR}/review-$1-findings.md"; }
 
@@ -1100,7 +1110,7 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
     for plan_python in "${PLAN_APPROACH_PYTHONS[@]}"; do
         PLAN_APPROACH_RC=0
         PLAN_APPROACH=$("$plan_python" "${SCRIPT_SELF_DIR}/_plan_approach.py" \
-            "$PLAN_CONTEXT_FILE" 2> "$PLAN_APPROACH_ERR") || PLAN_APPROACH_RC=$?
+            "$PLAN_CONTEXT_FILE" 2> "$PLAN_APPROACH_ERR" 9<&-) || PLAN_APPROACH_RC=$?
         (( PLAN_APPROACH_RC == 4 )) || break
     done
     case "$PLAN_APPROACH_RC" in
