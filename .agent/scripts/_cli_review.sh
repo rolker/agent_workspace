@@ -73,6 +73,32 @@
 #     (cross_model_review.sh: AGENT_TMP_ROOT).
 #   * All diagnostics go to stderr; stdout is unused.
 #
+# Signals and the CLI's process group (#363; the job-lifecycle rules
+# ADR-0015's Status line points here for):
+#   * The CLI runs under `setsid` as the leader of its own process group,
+#     and every signal reaches the whole group, so a child the CLI started
+#     that ignores SIGTERM cannot outlive the review. On a TERM/INT/HUP
+#     the handler TERMs the CLI's PID and its group (before setsid() has
+#     run the child is still in this helper's group and only the PID
+#     reaches it), waits, and a watchdog SIGKILLs the PID and the group
+#     once REVIEW_KILL_ESCALATION is over, whether or not the group exists
+#     by then. The handler returns as soon as the CLI and its group are
+#     gone, and at the latest when the watchdog has fired. After a normal
+#     exit the group is swept with SIGKILL (and that sweep still runs if a
+#     signal arrives after the CLI was reaped).
+#   * Without setsid (macOS) the signals go to the PID alone and the
+#     post-exit sweep is skipped: it would signal a reaped PID that may
+#     already belong to another process.
+#   * Leaving `timeout`'s process group means the caller's `timeout -k`
+#     no longer reaches the CLI: this helper's escalation is the only path.
+#     So REVIEW_KILL_ESCALATION must be strictly less than the caller's
+#     AGENT_KILL_AFTER, compared unrounded (exit 2 otherwise). The check
+#     does not reserve the few milliseconds the watchdog needs to start;
+#     keep the grace clearly above the escalation (defaults 5 and 10).
+#   * A signal that lands between the `&` that starts the CLI and the
+#     `CLI_PID=$!` that records it is not lost: the handler adopts `$!`
+#     when a launch is in flight and `$!` has moved since it began.
+#
 # Verified against codex-cli 0.156.1 (2026-09-25), claude 2.x and copilot
 # 1.0.61 help output on this host: `codex -s read-only -a never exec
 # [PROMPT]` reads stdin when no prompt argument is given and
@@ -168,7 +194,9 @@ to_seconds() {
     [[ "$1" =~ ^([0-9]+(\.[0-9]+)?)([smhd]?)$ ]] || return 1
     local number="${BASH_REMATCH[1]}" unit="${BASH_REMATCH[3]}" mult=1
     case "$unit" in m) mult=60 ;; h) mult=3600 ;; d) mult=86400 ;; *) mult=1 ;; esac
-    awk -v n="$number" -v m="$mult" 'BEGIN { printf "%.0f", n * m }'
+    # Unrounded: the comparison below must not round a fractional
+    # margin away (2.6 against 2.9 is a real 0.3 s margin).
+    awk -v n="$number" -v m="$mult" 'BEGIN { printf "%.6f", n * m }'
 }
 if ! ESCALATION_SECONDS=$(to_seconds "$REVIEW_KILL_ESCALATION"); then
     usage_fail "REVIEW_KILL_ESCALATION value '${REVIEW_KILL_ESCALATION}' is not a duration (a number of seconds, optionally with an s/m/h suffix)"
@@ -177,11 +205,11 @@ if [[ -n "${AGENT_KILL_AFTER:-}" ]]; then
     if ! KILL_AFTER_SECONDS=$(to_seconds "$AGENT_KILL_AFTER"); then
         usage_fail "AGENT_KILL_AFTER value '${AGENT_KILL_AFTER}' is not a duration"
     fi
-    # Both zero is the one legal equal case: the caller wants no grace at
-    # all, and this helper escalates immediately to match.
-    if [[ "$KILL_AFTER_SECONDS" -le "$ESCALATION_SECONDS" ]] \
-        && ! [[ "$KILL_AFTER_SECONDS" -eq 0 && "$ESCALATION_SECONDS" -eq 0 ]]; then
-        usage_fail "AGENT_KILL_AFTER (${AGENT_KILL_AFTER}) must be greater than REVIEW_KILL_ESCALATION (${REVIEW_KILL_ESCALATION}): the caller's SIGKILL would land on this helper before it could SIGKILL a CLI that ignored SIGTERM, orphaning that CLI. Raise AGENT_KILL_AFTER or lower REVIEW_KILL_ESCALATION (set both to 0 for no grace at all)."
+    # Strictly greater, compared unrounded, which also rules out 0:
+    # `timeout -k 0` disables the caller's SIGKILL instead of sending it
+    # at once (#363).
+    if ! awk -v k="$KILL_AFTER_SECONDS" -v e="$ESCALATION_SECONDS" 'BEGIN { exit !(k > e) }'; then
+        usage_fail "AGENT_KILL_AFTER (${AGENT_KILL_AFTER}) must be greater than REVIEW_KILL_ESCALATION (${REVIEW_KILL_ESCALATION}): the caller's SIGKILL would land on this helper before it could SIGKILL a CLI that ignored SIGTERM, orphaning that CLI. Raise AGENT_KILL_AFTER or lower REVIEW_KILL_ESCALATION."
     fi
 fi
 
@@ -222,29 +250,129 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # that ignored SIGTERM would keep running, burning quota on an abandoned
 # review. The escalation is validated above to fit inside the caller's
 # grace (AGENT_KILL_AFTER).
+# The CLI runs as the leader of its own process group (setsid), and
+# every signal below goes to that whole group. Signalling only its PID
+# missed a child it had started that ignored SIGTERM: the CLI died, this
+# helper exited, and the child ran on (#363; rolker/ros2_agent_workspace
+# 69a6907). In a non-interactive shell a background job is not a group
+# leader, so setsid execs in place and the PID from `$!` is the group id.
+# Where setsid is missing (macOS) the signals fall back to the PID alone,
+# and the post-exit sweeps below are skipped: they would signal a bare PID
+# that was just reaped and may already belong to another process.
+#
+# Leaving the caller's process group has one cost. GNU `timeout` (no
+# --foreground) aims its TERM and its `-k` SIGKILL at its own group, which
+# no longer contains the CLI: this helper's forwarding is now the only
+# path to it, and a SIGKILL to this helper reaches nothing in the CLI's
+# group. That is safe only because the escalation's SIGKILL lands inside
+# the caller's grace: REVIEW_KILL_ESCALATION < AGENT_KILL_AFTER is checked
+# above (strictly, unrounded), and the watchdog that sends it starts as
+# the handler starts, so it fires a few milliseconds (a fork and a `sleep`
+# exec) after the window. The check does not reserve those milliseconds:
+# keep the grace clearly above the escalation (the defaults are 5 and 10).
+if command -v setsid >/dev/null 2>&1; then
+    CLI_SETSID=(setsid)
+    CLI_GROUP_KILL=true
+else
+    CLI_SETSID=()
+    CLI_GROUP_KILL=false
+fi
+# signal_cli <signal> <pid>: <signal> is a name (TERM, KILL) or 0 (liveness).
+signal_cli() {
+    if [[ "$CLI_GROUP_KILL" == true ]]; then
+        kill -"$1" -- -"$2" 2>/dev/null
+    else
+        kill -"$1" "$2" 2>/dev/null
+    fi
+}
+# signal_live_cli <signal> <pid>: for a CLI this helper has not yet
+# waited on. The PID first, then (group mode) the group: between the fork
+# and setsid's setsid() call the child is still in this helper's group,
+# so `-PID` names no group yet and only the PID reaches it. The PID
+# number cannot belong to another process while the CLI's group has any
+# member, so signalling it ahead of the group is safe.
+signal_live_cli() {
+    kill -"$1" "$2" 2>/dev/null
+    if [[ "$CLI_GROUP_KILL" == true ]]; then kill -"$1" -- -"$2" 2>/dev/null; fi
+    return 0
+}
 CLI_PID=""
+# The group still to be swept once the CLI has exited and been waited on
+# (group mode only). CLI_PID is cleared the moment `wait` returns, so a
+# signal after that never treats a reaped PID as live; the handler
+# sweeps CLI_GROUP instead (#363 review).
+CLI_GROUP=""
+# Set around the launch so terminate_child can find a CLI whose signal
+# landed between the `&` that starts it and the `CLI_PID=$!` that records
+# it (#363; rolker/ros2_agent_workspace 5818535).
+CLI_LAUNCHING=false
+CLI_LAUNCH_PREV=""
 terminate_child() {
     local code="$1" watchdog
     # Re-entrancy: a second signal (repeated Ctrl-C, TERM then HUP) would
     # otherwise start a second watchdog and clobber $watchdog, leaking
     # the first one.
     trap '' INT TERM HUP
+    # A signal can land between the `&` that starts the CLI and the
+    # `CLI_PID=$!` that records it: the CLI then exists but is
+    # unrecorded, and would outlive this helper. `$!` names it iff it
+    # moved since the launch began.
+    if [[ -z "$CLI_PID" && "$CLI_LAUNCHING" == true && "${!:-}" != "$CLI_LAUNCH_PREV" ]]; then
+        CLI_PID=$!
+    fi
     if [[ -n "$CLI_PID" ]]; then
-        kill "$CLI_PID" 2>/dev/null
-        # `wait` returns the moment the CLI dies, so a clean shutdown
-        # costs milliseconds, not the escalation window. The watchdog
-        # only matters for a CLI that ignores SIGTERM. It is NOT waited
-        # on: a subshell sleeping in `sleep` defers the TERM we send it
-        # until that sleep ends, so waiting would reintroduce the full
-        # window on every clean exit. Unwaited, it exits on its own
-        # (and re-checks liveness before any kill, so it cannot hit a
-        # recycled PID).
-        ( sleep "$REVIEW_KILL_ESCALATION"
-          kill -0 "$CLI_PID" 2>/dev/null && kill -9 "$CLI_PID" 2>/dev/null ) &
+        # The watchdog owns the deadline: once the escalation window is
+        # over it SIGKILLs the PID and the group unconditionally. It does
+        # not first check that the group exists: a CLI signalled before
+        # setsid() has no group yet, and a watchdog that skipped it then
+        # left the handler waiting on a TERM-ignoring CLI that setsid
+        # moved into its own group just after the window, with nothing
+        # left to kill it before the caller's `timeout -k` orphaned it
+        # (#363 review). `wait` below returns the moment the CLI dies, so
+        # a clean shutdown costs milliseconds, not the window.
+        # It is not waited on until it has been SIGKILLed below: a
+        # subshell sleeping in `sleep` defers a TERM until that sleep
+        # ends, so waiting first would reintroduce the full window on
+        # every clean exit.
+        # It is cancelled with SIGKILL, never TERM: it is forked while
+        # this handler has INT/TERM/HUP ignored, an ignored disposition is
+        # inherited (by its `sleep` too), so a TERM is lost. A lost cancel
+        # let it outlive every clean shutdown by the whole escalation
+        # window and then `kill -9` whatever process had been given the
+        # dead CLI's PID. Its `sleep` is killed first, while still
+        # findable as the watchdog's child, so no orphan `sleep` is left
+        # either (#363; rolker/ros2_agent_workspace 06871f4, a2b04c8).
+        # `&&`: a `sleep` killed by the cancel below fails, so a watchdog
+        # whose sleep is already gone never runs its kill. Its stderr is
+        # dropped: the subshell reports its killed `sleep` there as a
+        # "Killed" job notice.
+        ( sleep "$REVIEW_KILL_ESCALATION" && signal_live_cli KILL "$CLI_PID" ) 2>/dev/null 9<&- &
         watchdog=$!
+        signal_live_cli TERM "$CLI_PID"
         wait "$CLI_PID" 2>/dev/null
-        kill "$watchdog" 2>/dev/null
+        # The CLI is gone, but a child of it that ignored the TERM may
+        # not be: poll the group until it is empty or the watchdog has
+        # fired, then SIGKILL whatever is left. The poll is bounded by
+        # the watchdog's lifetime, i.e. by elapsed time, so the handler
+        # ends at the window, not a whole window after the CLI died.
+        # Group mode only (see signal_cli).
+        if [[ "$CLI_GROUP_KILL" == true ]]; then
+            while signal_cli 0 "$CLI_PID" && kill -0 "$watchdog" 2>/dev/null; do
+                sleep 0.05
+            done
+            signal_cli 0 "$CLI_PID" && signal_cli KILL "$CLI_PID"
+        fi
+        pkill -KILL -P "$watchdog" 2>/dev/null
+        kill -KILL "$watchdog" 2>/dev/null
+        # Reaped here (at once: it was just SIGKILLed), or this shell
+        # reports it on stderr as a "Killed ( sleep ... )" job notice.
+        wait "$watchdog" 2>/dev/null
         CLI_PID=""
+    elif [[ -n "$CLI_GROUP" ]]; then
+        # The CLI has exited and been waited on; only the post-exit
+        # sweep was still to run. Run it here, since exit skips it.
+        signal_cli KILL "$CLI_GROUP"
+        CLI_GROUP=""
     fi
     exit "$code"
 }
@@ -281,15 +409,32 @@ bound_note() {
 run_cli() {
     local out="$1" err="$2"
     shift 2
+    # `${arr[@]+...}`: an empty array is "unbound" to `set -u` on bash
+    # < 4.4, and empty is exactly the no-setsid path.
+    CLI_LAUNCH_PREV="${!:-}"
+    CLI_LAUNCHING=true
+    # `9<&-`: fd 9 is cross_model_review.sh's per-directory review lock,
+    # held by this helper. The CLI runs in its own process group, out of
+    # reach of the caller's `timeout -k`, so it must not hold the lock:
+    # whatever it leaves running would refuse every later review into the
+    # directory (#363). A no-op when fd 9 is not open.
     if [[ "$err" == "-" ]]; then
-        "$@" < "$PROMPT_FILE" > "$out" 2>&1 &
+        ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2>&1 9<&- &
     else
-        "$@" < "$PROMPT_FILE" > "$out" 2> "$err" &
+        ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2> "$err" 9<&- &
     fi
     CLI_PID=$!
+    CLI_LAUNCHING=false
+    if [[ "$CLI_GROUP_KILL" == true ]]; then CLI_GROUP=$CLI_PID; fi
     CLI_EXIT=0
     wait "$CLI_PID" || CLI_EXIT=$?
     CLI_PID=""
+    # The review is over: nothing the CLI started may outlive it. Group
+    # mode only: a bare PID was just reaped and may already be reused.
+    if [[ -n "$CLI_GROUP" ]]; then
+        signal_cli KILL "$CLI_GROUP"
+        CLI_GROUP=""
+    fi
 }
 
 case "$AGENT" in
