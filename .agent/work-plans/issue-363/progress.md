@@ -521,3 +521,46 @@ The two SIGKILL runs let the real reviewers finish reviewing this branch. The fi
 ### Tests
 - `test_cross_model_review.sh` passes 931 with 0 failures, and `run_script_tests.sh` passes all 30 suites (199 s).
 - Each new test was also run against the script from before its fix and failed there. The exceptions are S5 and S6, which have no new test.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-01 13:46 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a168f8abfb0d44c34, resume 3 of 3)
+
+**Branch**: feature/issue-363 at `4b55020`
+**Base**: main
+**Depth**: Deep (reason: 2984 changed lines; enforcement scripts plus AGENTS.md, ADR and skill edits)
+**Must-fix**: 0 | **Suggestions**: 7
+**Round**: 4 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round-3 items checked:
+- M1 and S1-S6 are fixed. The two live-check follow-ups (`0f75c39`, `894db05`) hold up.
+- The errexit audit holds:
+  - `cleanup_jobs` runs under `set +e`, and it is only the EXIT trap, so this neither leaks nor changes the exit status. Checked by running: 143, 130 and 1 are preserved.
+  - Both `sweep_job` sites are in `||` context.
+  - A stress test with errexit forced on ran 40/40 with no abort and nothing left running.
+- Sweeps stay inside their job: the per-agent marker is an exact match, and the parent's or job's own group is excluded.
+
+Reviewers:
+- Claude adversarial (fresh): suite 931 passed, 0 failed, no marked leftovers. Four new tests fail on f045131.
+- Codex: completed, 3 findings (12 lines).
+- Gemini: completed, 3 findings (12 lines).
+- Copilot: skipped, quota exhausted.
+
+Rejected:
+- Gemini 1, the shared reap budget: it predates the branch, and a post-loop `job_finished` check exists.
+- Gemini 3, the ADR: settled.
+- Codex 3, the watchdog's orphan `sleep`: harmless, it exits on its own.
+
+The open items (a)-(c) are suggestions for a follow-up issue. (d) is an owner decision.
+
+### Findings
+- [ ] (suggestion, this branch if another commit is made, else follow-up) A second Ctrl-C during the cleanup (up to about 8+6+6 s) runs the INT trap's `exit` and cuts `cleanup_jobs` short. The over-budget kill_tree and the temp-file removal are lost; the lock and the job-level sweeps still hold. Reproduced. It predates the branch but is more likely now. Fix: `trap '' INT TERM HUP` as cleanup's first line — `.agent/scripts/cross_model_review.sh:1093`
+- [ ] (suggestion, follow-up) `pgid_of` prints "No such file or directory" for every vanished PID: the `<` redirection is applied before `2>/dev/null`. Use `{ …; } 2>/dev/null` — `.agent/scripts/cross_model_review.sh:950-958`
+- [ ] (suggestion, follow-up) Item (c): KILLED_GROUPS and KILLED_PIDS record entries that were skipped. A reused id then costs a 6 s wait and a false warning. Append only where the kill is sent — `.agent/scripts/cross_model_review.sh:1040-1046`
+- [ ] (suggestion, follow-up) Item (a): there is no shared deadline across the `still_marked` re-checks. Also, a scan cut off at 5 s skips every PID after the hung one in glob order (xargs could use `-P`) — `.agent/scripts/cross_model_review.sh:960-975`
+- [ ] (suggestion, follow-up) The SIGKILLed-parent lock bound printed in the exit-5 message, AGENTS.md and SKILL.md omits the job shell's 124/137 sweep, which adds up to about 12 s — `.agent/scripts/cross_model_review.sh:788`
+- [ ] (suggestion, follow-up) bash < 4.4 nounset: `for p in "${KILLED_ROOTS[@]}"` is empty on the sweep path, and so is `" ${groups[*]} "`. Not hit on default Linux bash 5 — `.agent/scripts/cross_model_review.sh:1013,1075`
+- [ ] (suggestion, follow-up) PID reuse between discovery and kill for tree-only PIDs (Codex 1), and `child` not cleared after the job's `wait`. Both need a PID wrap within seconds (pid_max 4194304 here) — `.agent/scripts/cross_model_review.sh:1000-1040,1537`
