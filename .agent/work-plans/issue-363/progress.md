@@ -599,3 +599,13 @@ Copilot reviewed the head (quota is back): "Findings: None", no inline comments;
 - [x] (suggestion, Local Review (Pre-Push) r4 @ `4b55020`, covers `7fe2b31` via bookkeeping) PID reuse between discovery and kill for tree-only PIDs, and `child` not cleared after the job's `wait` — `.agent/scripts/cross_model_review.sh:1000-1040,1537` (deferred: owner 2026-10-01: follow-up issue #371, not this branch)
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-01 14:31 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+"merge" — asked after triage of PR #372 (CI all passed, no new findings, seven round-4 suggestions deferred to #371, Copilot reviewed the head with no findings). The question put to the owner was merge now, or hold for the simpler redesign that #371 asks about; he chose to merge now, with the redesign question staying in #371.
