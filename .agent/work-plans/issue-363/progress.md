@@ -469,3 +469,55 @@ Reviewers:
 **Decision**: address
 
 "address everything regarding 363" — asked after pre-push round 3 (1 must-fix M1: interrupt cleanup aborts when a found PID exits before its pgid lookup; suggestions S1–S6). The host had recommended a narrow round that left S4 (sweep a job's marked processes when it ends with 124/137) to a follow-up issue; the owner chose the option that fixes S4 on this branch too. The round also includes one live interrupt test with the real reviewer CLIs. Then review round 4 and back to the owner for the publish decision.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-01 13:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a8021c18b0b8a229a, resume 2 of 3)
+
+**Branch**: feature/issue-363 at `894db05`
+**Addressed**: Local Review (Pre-Push) at `e4ec91b` (2026-10-01 12:18 -04:00), with the owner's checkpoint "address everything regarding 363"
+**Commits**: `dd1efed`, `3bdf0ef`, `6fb81dc`, `5d63437`, `83bd895`, `169009b`, `251bfc9`, plus live-check follow-ups `0f75c39`, `894db05`
+
+Round 3 fixes. All 7 findings are fixed, each in its own commit, and the required live check ran twice against the real CLIs. Two follow-up commits fix defects that the live check's own reviews found. Nothing pushed. ADR-0015 and `docs/design.md` are untouched.
+
+### Actions
+- [x] M1, the cleanup aborted when a found process exited under it (`dd1efed`). `pgid_of` reads the group from `/proc/<pid>/stat`, falls back to `ps`, and never fails. No group is killed when the script's own group cannot be read. `cleanup_jobs` runs `set +e`, because it is best effort. **Test:** a wedged helper whose CLI spawns a stream of short-lived children. Three interrupted runs each exit 143 with the helper and the CLI dead and the temp root gone; before the fix, all 12 checks failed.
+  - **Audit of the whole cleanup path** for the same class of defect: a command that fails because a process vanished must not abort cleanup.
+    - `cleanup_jobs` runs under errexit and nounset. Every variable it reads is set before the trap is armed. Its `$(...)` substitutions and arithmetic cannot fail. The `AGENT_PID` loops are now safe on an empty array under `set -u` (bash < 4.4).
+    - `kill_tree` is called as a plain statement, so errexit applied inside it. Both `ps` substitutions were the defect, fixed above. Its `[[ ]] && x` loop bodies became `if` statements.
+    - `job_finished`, `group_running` and `proc_state` are only ever called in conditional context, where errexit is off. All their substitutions already end in `|| true`.
+    - `await_killed`'s list forms are all `||` lists. The `SECONDS` arithmetic cannot fail.
+    - The job shell's TERM trap inherits `set -e`: `kill` and `wait` on a child that has already gone could exit 1 before the `wait`. Both now end in `|| true`.
+    - The helpers' TERM handlers run without `-e` (`set -uo pipefail`). Every variable they read is initialised, so there was nothing to fix.
+- [x] S1, the environ scan could hang (`3bdf0ef`). The scan is now `marked_pids` under `timeout -k 1 5`. **Test:** a `grep` shim that hangs on the scan. Cleanup now takes 7.2 s; before the fix it took 32 s.
+- [x] S2, unguarded group and PID kills (`6fb81dc`). Group 0 or 1 is never killed. The previous code would have sent `kill -9 -- -1`, which reaches every process the user can signal, if a lookup had ever returned 1. A process found by the marker is killed only if it still carries the marker right before the kill (`still_marked`, bounded). A group is killed only while a found member is still in it. **Test:** the real `kill_tree` with `kill` replaced by a logger. The previous code logged `-- -1`, `-- -0` and a process that had never carried the marker.
+- [x] S3, the exit-5 message (`5d63437`). The message, the header and the review-code skill now explain that a killed run's jobs still hold the lock, give the bound (the message computes it for the current settings) and name `fuser -v <dir>` and `lsof +d <dir>`. I checked both commands on this host: they show the holder of a directory fd. **Test:** the refused second run's message is asserted.
+- [x] S4, sweep a job that its `timeout` cut off (`83bd895`). This reuses `kill_tree` with no root, which runs only the marker scan: no second scan was written. The job shell excludes its own group through `$BASHPID`. **Test:** a stub whose CLI is a separate setsid group. In the 124 case (the helper dies on TERM) and the 137 case (the helper is SIGKILLed), the CLI is dead at the end of the run; before the fix it survived.
+- [x] S5, header wording (`169009b`). The header now says the cleanup gives up after 5–6 s in total. It and the AGENTS.md row also cover this round's guards, the bounded scan, best-effort cleanup and the timeout sweep.
+- [x] S6, a possibly flaky test (`251bfc9`). The killed-parent test's mock review now takes 10 s, and its lock poll covers 30 s.
+
+### Live check (real `agy` and `codex`)
+Each run was `TMPDIR=<scratch>/tmp cross_model_review.sh --branch --agents gemini,codex --work-plans-dir <scratch>/art`, signalled 10 s in. Survivors were found by scanning `/proc/*/environ` for this run's `CROSS_MODEL_REVIEW_JOB` marker, not with `pgrep -f`. I ran each case twice: once after round-3 commits 1–7 and once at `894db05`. The results were the same both times; the numbers below are from `894db05`.
+- **Parent TERM:** exit 143 after 0.41 s. No marked process survived. Before the TERM the marked processes were 2 × `timeout`, 2 × helper `bash`, `codex`, `agy` and `codex-code-mode`. Afterwards the lock was free and the temp root was removed.
+- **Parent SIGKILL:** the jobs kept running and the lock stayed held. A second run exited 5 with the new message (1810 s bound, gemini 2110 s, `fuser`/`lsof`), and `fuser -v` listed the holders: the two job shells, the two `timeout`s and the two helpers. Both real reviews finished, writing `--- Review complete ---`. The lock came free about 171 s after the SIGKILL (the first run took about 172 s). No marked process survived. As expected after a SIGKILL, the temp root stayed behind.
+
+### Defects found by the live check's reviews (fixed)
+The two SIGKILL runs let the real reviewers finish reviewing this branch. The first pair's findings that held up are fixed:
+- `0f75c39` (Codex 1 and 2, Gemini 2 and 3): the job's TERM trap exited without a sweep, so the CLI ran on when `timeout -k` killed a wedged helper and the parent's reap budget outlasted `AGENT_KILL_AFTER`. Also, a sweep with no root was never waited for. `sweep_job` (the sweep, then `await_killed`) now runs on the 124/137 path and in the TERM trap, and `await_killed` waits whenever anything was killed. **Tests:** an interrupted job with a reap budget above `AGENT_KILL_AFTER` leaves no CLI (before the fix it did); a rootless sweep is waited for 5–6 s (it was 0 s).
+- `894db05` (Gemini 4 and 5): a group is now killed through any found member still in it, not only the first. The scan now goes through `xargs` to avoid hitting ARG_MAX. **Test:** the first member has gone and a second is still in the group; the group is killed (before the fix it was not). The ARG_MAX case has no test.
+- Not acted on:
+  - Gemini 1, the shared `waited` budget: it predates this branch, and `job_finished` is still checked once the budget is spent.
+  - Gemini 6, a TERM between `wait` and `CLI_PID=""`: the known one-command window, documented in round 1.
+
+### Raised by the final live run's reviews (at `894db05`), not acted on, for review round 4
+- Codex 1 and Gemini 1: sweep marked processes on every job exit, including a successful one, because a setsid'd daemon the CLI leaves behind after a normal finish is not killed. This is a design choice: it would also kill daemons such as gpg-agent that a CLI starts deliberately.
+- Codex 2: the per-process `still_marked` checks (up to 2 s each when an environ read stalls) have no shared deadline with the scan, so several stalled processes could add up.
+- Gemini 2 and 3: the watchdog passes `REVIEW_KILL_ESCALATION` to `sleep` unparsed, and BSD `sleep` rejects a unit suffix. This predates the branch (#313). It also matters little on macOS, which has no `setsid` by default.
+- Gemini 4: a false positive. I checked earlier in this branch that a one-element `"${pids[@]:1}"` appends nothing.
+- Gemini 5: `kill_tree` records a group in `KILLED_GROUPS` even when no member qualified it to be killed, so `await_killed` may poll it. This is small; recording only the groups actually killed would fix it.
+
+### Tests
+- `test_cross_model_review.sh` passes 931 with 0 failures, and `run_script_tests.sh` passes all 30 suites (199 s).
+- Each new test was also run against the script from before its fix and failed there. The exceptions are S5 and S6, which have no new test.
