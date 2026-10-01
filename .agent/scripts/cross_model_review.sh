@@ -157,7 +157,11 @@
 #       (check that it is a readable directory); nothing was written
 #   5 — another run is already reviewing into the same artifact dir;
 #       nothing was written (wait for it to finish, do not start a second).
-#       Also any flock failure that cannot be told apart from that.
+#       After a run killed with SIGKILL no run is visible, but its agent
+#       jobs still hold the lock until they end (at most AGENT_TIMEOUT +
+#       AGENT_KILL_AFTER; gemini GEMINI_BACKSTOP + AGENT_KILL_AFTER):
+#       `fuser -v <dir>` or `lsof +d <dir>` shows the holders. Also any
+#       flock failure that cannot be told apart from a conflict.
 
 set -euo pipefail
 
@@ -773,7 +777,7 @@ if command -v flock >/dev/null 2>&1; then
             echo "WARNING: could not lock ${WORK_PLANS_DIR} (flock exit ${lock_rc}: an error, not a conflict); concurrent reviews into it are not serialized" >&2
             ;;
         75)
-            echo "ERROR: another cross_model_review.sh run is already reviewing into ${WORK_PLANS_DIR}; nothing was written. Wait for it to finish instead of starting a second run (its prompt and findings files would be overwritten)." >&2
+            echo "ERROR: another cross_model_review.sh run is already reviewing into ${WORK_PLANS_DIR}; nothing was written. Wait for it to finish instead of starting a second run (its prompt and findings files would be overwritten). If no run is visible: a run that was killed (SIGKILL) leaves its agent jobs finishing, and they hold the lock until they end, at most AGENT_TIMEOUT + AGENT_KILL_AFTER after they started ($(( $(duration_to_seconds "$AGENT_TIMEOUT") + $(duration_to_seconds "$AGENT_KILL_AFTER") ))s with these settings; gemini $(( GEMINI_BACKSTOP + $(duration_to_seconds "$AGENT_KILL_AFTER") ))s). To see what holds it: fuser -v ${WORK_PLANS_DIR} (access f) or lsof +d ${WORK_PLANS_DIR} (FD 9r)." >&2
             exit 5
             ;;
         *)

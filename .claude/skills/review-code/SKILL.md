@@ -439,11 +439,16 @@ no prompt or findings file was written. Either the session is not in the
 issue's worktree (or the environment is otherwise invalid): re-run from
 the matching worktree or pass `--work-dir` / `--work-plans-dir` /
 `--no-progress`; or the artifact directory could not be opened to take
-its run lock (the error says so): check that it is a readable directory. Exit 5 means
-another `cross_model_review.sh` run is already reviewing into the same
-artifact directory: nothing was written by this call; wait for that run
+its run lock (the error says so): check that it is a readable directory.
+Exit 5 means another `cross_model_review.sh` run is already reviewing
+into the same artifact directory: nothing was written by this call; wait for that run
 to finish and read its findings — do not start a second run, which would
-overwrite them. (A `flock` failure the script cannot tell apart from that
+overwrite them. If no run is visible, an earlier run was killed (SIGKILL)
+and its agent jobs are still finishing: they hold the lock until they
+end, at most `AGENT_TIMEOUT` + `AGENT_KILL_AFTER` after they started
+(about 30 min with the defaults; gemini about 35 min). `fuser -v <dir>`
+or `lsof +d <dir>` shows which processes hold it; the error message
+gives the exact bound for the current settings. (A `flock` failure the script cannot tell apart from that
 also exits 5, with a message naming the flock exit code.) Informational
 lines naming each findings file are printed before the agents launch
 (for `tail -f`); parse by line prefix, not by position.

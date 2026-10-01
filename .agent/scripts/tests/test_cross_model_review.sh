@@ -4755,6 +4755,9 @@ test_lock_held_by_jobs_after_the_parent_is_killed() {
     ec=0; err=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
         --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
     assert_exit_code "a second run while the first run's jobs live is refused" "5" "$ec"
+    assert_contains "the refusal explains a killed run's jobs and their bound" \
+        "a run that was killed \(SIGKILL\) leaves its agent jobs finishing.*1810s with these settings" "$err"
+    assert_contains "and names how to see the holder" "fuser -v ${dir} .*lsof \+d ${dir}" "$err"
     # The lock may come free only once no helper of the first run is left
     # (lock first, helper second: a helper alive after a successful
     # flock was alive during it).
