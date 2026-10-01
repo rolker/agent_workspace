@@ -4,10 +4,11 @@
 
 Accepted. Trigger tier for cross-model dispatch is recorded in issue #320
 (Standard + Deep, fix-round re-reviews included at the whole diff's tier);
-dispatch mechanics unchanged. Amended by #363: `AGENT_KILL_AFTER` must be
-positive, and the per-agent job lifecycle gains process-group kill,
-launch-window adoption and a per-directory run lock (last two
-Consequences bullets); the dispatch decision itself is unchanged.
+dispatch mechanics unchanged. The `AGENT_KILL_AFTER=0` exception recorded
+below was withdrawn by #363; the current job-lifecycle behaviour (kill
+grace, process-group kill, launch window, one run per artifact directory)
+is described in the headers of `cross_model_review.sh`, `_cli_review.sh`
+and `_agy_review.sh`.
 
 ## Context
 
@@ -107,9 +108,8 @@ returns typed per-provider results.
 - `AGY_PRINT_TIMEOUT` and `GEMINI_BACKSTOP_MARGIN` join `AGENT_TIMEOUT` /
   `AGENT_KILL_AFTER` as env knobs; all four are shape- and range-validated
   up front (exit 2) — a duration shape, and a non-zero value wherever zero
-  would remove a bound rather than shorten one (`AGENT_KILL_AFTER`
-  included: `timeout -k 0` disables the SIGKILL rather than sending it at
-  once, #363), with
+  would remove a bound rather than shorten one (`AGENT_KILL_AFTER=0` is
+  excepted: it means SIGKILL immediately after the SIGTERM), with
   `AGY_PRINT_TIMEOUT` additionally held to agy's Go-duration subset (an
   explicit `s`/`m`/`h` unit, no bare number, no `d`) — so a bad value
   cannot surface as an opaque `timeout` exit 125 or fail later inside agy.
@@ -123,32 +123,11 @@ returns typed per-provider results.
   CLI's own status — that appears in the findings file's reason. The
   dispatch structure this decision fixes (one `exec`'d background job per
   agent under `timeout -k`) is unchanged; only what each job execs is.
-- Each helper runs its CLI as the leader of its own process group
-  (`setsid`) and signals that whole group — the TERM, the SIGKILL
-  escalation after `REVIEW_KILL_ESCALATION`, and a sweep once the CLI has
-  exited — so a child the CLI started cannot outlive the review (#363).
-  This takes the CLI out of `timeout`'s process group, so the outer
-  `timeout -k` no longer reaches it directly: the helper's forwarding is
-  the only path, which holds because `REVIEW_KILL_ESCALATION <
-  AGENT_KILL_AFTER` is enforced strictly. Without `setsid` (macOS) the
-  signals fall back to the PID and the post-exit sweeps are skipped.
-  A signal landing before `setsid` has made the group waits for it inside
-  the same escalation window (and SIGKILLs the PID if the window ends
-  first). Every background launch (CLI, helper, agent job) also adopts
-  `$!` when a signal lands before the PID is recorded.
-- One run per artifact directory: the script takes a non-blocking `flock`
-  on the directory itself before writing anything and exits 5 when
-  another run holds it (no lock file, so nothing appears in a project
-  worktree; `--no-progress` runs never contend). Without `flock`, or when
-  util-linux `flock` reports an error that is not a conflict, it warns and
-  runs unserialized; a `flock` that cannot tell the two apart counts every
-  failure as a conflict (#363).
 
 ## References
 
 - Issue #206 (this decision), #106 (`--sync` origin), #2/#65/#66 (tmux
   origin), #311/#288 (Gemini helper and its timeout contract), #313,
-  #320 (trigger tier and the plan-context section of the prompt), #363
-  (job lifecycle hardening ported from rolker/ros2_agent_workspace).
+  #320 (trigger tier and the plan-context section of the prompt).
 - `.agent/scripts/cross_model_review.sh`, `.agent/scripts/_agy_review.sh`,
   `.agent/scripts/_cli_review.sh`, `.claude/skills/review-code/SKILL.md`.

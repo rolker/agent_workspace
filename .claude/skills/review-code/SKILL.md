@@ -441,7 +441,8 @@ pass `--work-dir` / `--work-plans-dir` / `--no-progress`. Exit 5 means
 another `cross_model_review.sh` run is already reviewing into the same
 artifact directory: nothing was written by this call; wait for that run
 to finish and read its findings — do not start a second run, which would
-overwrite them. Informational
+overwrite them. (A `flock` failure the script cannot tell apart from that
+also exits 5, with a message naming the flock exit code.) Informational
 lines naming each findings file are printed before the agents launch
 (for `tail -f`); parse by line prefix, not by position.
 

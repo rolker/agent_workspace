@@ -73,6 +73,32 @@
 #     (cross_model_review.sh: AGENT_TMP_ROOT).
 #   * All diagnostics go to stderr; stdout is unused.
 #
+# Signals and the CLI's process group (#363; the job-lifecycle rules
+# ADR-0015's Status line points here for):
+#   * The CLI runs under `setsid` as the leader of its own process group,
+#     and every signal reaches the whole group, so a child the CLI started
+#     that ignores SIGTERM cannot outlive the review. On a TERM/INT/HUP
+#     the handler TERMs the CLI's PID and its group (before setsid() has
+#     run the child is still in this helper's group and only the PID
+#     reaches it), waits, and a watchdog SIGKILLs the PID and the group
+#     once REVIEW_KILL_ESCALATION is over, whether or not the group exists
+#     by then. The handler returns as soon as the CLI and its group are
+#     gone, and at the latest when the watchdog has fired. After a normal
+#     exit the group is swept with SIGKILL (and that sweep still runs if a
+#     signal arrives after the CLI was reaped).
+#   * Without setsid (macOS) the signals go to the PID alone and the
+#     post-exit sweep is skipped: it would signal a reaped PID that may
+#     already belong to another process.
+#   * Leaving `timeout`'s process group means the caller's `timeout -k`
+#     no longer reaches the CLI: this helper's escalation is the only path.
+#     So REVIEW_KILL_ESCALATION must be strictly less than the caller's
+#     AGENT_KILL_AFTER, compared unrounded (exit 2 otherwise). The check
+#     does not reserve the few milliseconds the watchdog needs to start;
+#     keep the grace clearly above the escalation (defaults 5 and 10).
+#   * A signal that lands between the `&` that starts the CLI and the
+#     `CLI_PID=$!` that records it is not lost: the handler adopts `$!`
+#     when a launch is in flight and `$!` has moved since it began.
+#
 # Verified against codex-cli 0.156.1 (2026-09-25), claude 2.x and copilot
 # 1.0.61 help output on this host: `codex -s read-only -a never exec
 # [PROMPT]` reads stdin when no prompt argument is given and

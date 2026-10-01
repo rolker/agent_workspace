@@ -97,6 +97,34 @@
 # Interrupting the script (SIGINT/SIGTERM) or any early exit kills every
 # agent job it started; nothing is left running in the background.
 #
+# Job lifecycle (#363; ADR-0015's Status line points here and to the two
+# helpers' headers, which cover the CLI's process group):
+#   * Kill grace. Each agent runs under `timeout -k AGENT_KILL_AFTER`.
+#     AGENT_KILL_AFTER must be positive (exit 2): `timeout -k 0` does not
+#     kill at once, it disables the SIGKILL. The helpers refuse (exit 2, a
+#     failed review) a REVIEW_KILL_ESCALATION that is not strictly below
+#     it, compared unrounded.
+#   * Interrupt. Cleanup TERMs every job, then waits up to
+#     CLEANUP_REAP_TIMEOUT (which must exceed REVIEW_KILL_ESCALATION) for
+#     the helpers to finish their own escalation. A job still running
+#     after that is SIGKILLed with its whole tree: the job shell,
+#     `timeout`, the helper and the CLI's process group. Cleanup returns
+#     only once none of it runs (bounded), so the script's exit, which
+#     releases the lock below, comes after.
+#   * Launch window. A signal that lands between a background launch and
+#     the line recording its PID (agent job here, helper in the job, CLI
+#     in the helper) is not lost: each handler adopts `$!` when a launch
+#     is in flight and `$!` has moved since it began.
+#   * One run per artifact directory. A non-blocking `flock` on the
+#     directory itself (no lock file, so nothing appears in a project
+#     worktree), taken before anything is written; a second run exits 5.
+#     `--no-progress` runs get their own directory and never contend.
+#     Without flock, or when util-linux flock reports a real error (65 or
+#     71, not a conflict), the run warns and proceeds unserialized; every
+#     other flock failure counts as a conflict. The lock fd is closed for
+#     the agent jobs and for git, gh and python, so nothing they leave
+#     running can hold it.
+#
 # Exit codes:
 #   0 — every selected agent completed successfully
 #   1 — missing dependencies: gh (PR mode), or no selected agent has a
