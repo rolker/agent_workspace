@@ -3041,14 +3041,39 @@ test_duration_knobs_validated() {
     assert_exit_code "AGY_PRINT_TIMEOUT=0s exits 2" "2" "${result%%|*}"
     assert_contains "AGY_PRINT_TIMEOUT=0s message demands a positive value" \
         "AGY_PRINT_TIMEOUT value '0s' must be greater than zero" "${result#*|}"
-    # AGENT_KILL_AFTER=0 is legitimate: SIGKILL immediately after
-    # SIGTERM. Since #313 round 2 it must be paired with
-    # REVIEW_KILL_ESCALATION=0 — the helpers refuse a grace they cannot
-    # fit their own escalation inside (both zero = no grace anywhere).
-    local out="${TMPDIR_BASE}/out.txt"
+    # AGENT_KILL_AFTER=0 is refused too (#363): `timeout -k 0` DISABLES
+    # the SIGKILL escalation rather than sending it at once, so zero would
+    # remove the backstop for a CLI that ignores SIGTERM. Refused whatever
+    # REVIEW_KILL_ESCALATION says (the helpers' old both-zero carve-out).
+    local assignment
+    for assignment in "AGENT_KILL_AFTER=0" "AGENT_KILL_AFTER=0s"; do
+        result=$(run_with_knob "$assignment")
+        assert_exit_code "${assignment} exits 2" "2" "${result%%|*}"
+        assert_contains "${assignment} message demands a positive value" \
+            "AGENT_KILL_AFTER value '${assignment#*=}' must be greater than zero" "${result#*|}"
+        assert_contains "${assignment} message names the disabled escalation" \
+            "DISABLES the SIGKILL escalation" "${result#*|}"
+    done
+    result=$(REVIEW_KILL_ESCALATION=0 run_with_knob "AGENT_KILL_AFTER=0")
+    assert_exit_code "AGENT_KILL_AFTER=0 with REVIEW_KILL_ESCALATION=0 exits 2" "2" "${result%%|*}"
+    # The helpers refuse it on their own too, for a direct invocation:
+    # the both-zero pair was the one equal case they used to accept.
+    local prompt="${TMPDIR_BASE}/prompt.md" hfind="${TMPDIR_BASE}/helper-findings.md"
+    mkdir -p "${TMPDIR_BASE}/helper-tmp"
+    echo "review this" > "$prompt"
     make_mock_agent codex
-    ec=$(AGENT_KILL_AFTER=0 REVIEW_KILL_ESCALATION=0 run_agents "$out" "codex")
-    assert_exit_code "AGENT_KILL_AFTER=0 with a matching escalation is accepted" "0" "$ec"
+    ec=$(AGENT_KILL_AFTER=0 REVIEW_KILL_ESCALATION=0 run_cli_helper codex "$prompt" "$hfind")
+    assert_exit_code "_cli_review.sh refuses AGENT_KILL_AFTER=0 (both zero)" "2" "$ec"
+    assert_contains "_cli_review.sh names the knobs" \
+        "AGENT_KILL_AFTER \(0\) must be greater than REVIEW_KILL_ESCALATION \(0\)" "$(cat "$hfind")"
+    ec=0
+    AGENT_KILL_AFTER=0 REVIEW_KILL_ESCALATION=0 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$hfind" 30m \
+        >/dev/null 2>&1 || ec=$?
+    assert_exit_code "_agy_review.sh refuses AGENT_KILL_AFTER=0 (both zero)" "2" "$ec"
+    assert_contains "_agy_review.sh names the knobs" \
+        "AGENT_KILL_AFTER \(0\) must be greater than REVIEW_KILL_ESCALATION \(0\)" "$(cat "$hfind")"
+    local out="${TMPDIR_BASE}/out.txt"
     # A grace the helper cannot fit its escalation inside is refused by
     # the helper (exit 2) rather than silently orphaning the CLI.
     ec=$(AGENT_KILL_AFTER=1 REVIEW_KILL_ESCALATION=5 run_agents "$out" "codex")
