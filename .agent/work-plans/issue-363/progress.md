@@ -338,3 +338,44 @@ Round 1 fixes. All 3 must-fix and 7 suggestions are addressed. Each fix has a te
 - The previous code produced "Killed" notices from two places. The helper reported the unreaped watchdog job, and when the machine was under load the watchdog subshell also reported its killed `sleep`. The second source surfaced only in the pre-commit run, so the watchdog's stderr is now dropped as well.
 - The older wedged-job test's cleanup line (`kill -9` on a stub that was already dead, under `set -e`) aborted the suite once kill_tree started killing the stub. It now asserts that the stub was killed and tolerates the failed kill.
 - These shutdown paths have not been re-run live with the real CLIs. The last live run was at `1487b59`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-01 11:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a168f8abfb0d44c34, resume 1 of 3)
+
+**Branch**: feature/issue-363 at `38721ea`
+**Base**: main
+**Depth**: Deep (reason: 2135 changed lines; enforcement scripts plus AGENTS.md, ADR and skill edits)
+**Must-fix**: 1 | **Suggestions**: 6
+**Round**: 2 | **Ship**: continue — round 2: 1 must-fix with a design/correctness concern (not mechanical)
+
+Round-1 items checked: M1, M3, S1-S5 and S7 are fixed as described. M2 matches the owner's choice: `git diff origin/main` on ADR-0015 shows only the Status sentence. That sentence notes the withdrawn exception and points to the script headers, and does not reword the Decision or Consequences, so it stays within ADR-0008's Status-line allowance. The script headers and the AGENTS.md rows carry the lifecycle rules. The new `kill_tree` was read cold.
+
+Reviewers:
+- Claude adversarial (fresh) ran the full suite: 878 passed, 0 failed, no leftovers. It ran each new test against the code before its fix; all failed there except the one in suggestion 5.
+- Codex completed with 2 findings, with a reproduction.
+- Gemini completed with 6 findings: 1 kept, 5 false positive or settled.
+- Copilot skipped: quota exhausted.
+- shellcheck clean.
+
+Gemini findings rejected:
+- `run_agent_job` re-adopts a reaped PID: `child` is never cleared, and the trap behaviour is unchanged from main.
+- Bash < 4.4 `set -u` on the parent's arrays: these lines predate this branch, and the parent needs bash 4 anyway.
+- Subscripts running git with fd 9: this script runs none.
+- ADR body left as it was: the owner's choice.
+- AGENTS.md Ask-First: settled at the plan stage.
+
+### Findings
+- [ ] (must-fix) If the parent is SIGKILLed (or its whole process group is, as a harness kill would do), the lock is released while the job chain keeps running. `timeout`, the helper and the CLI sit in their own groups and none of them hold fd 9, so a second run can start and its findings get overwritten. Reproduced by the adversarial reviewer: `flock -n` succeeded 0.3 s after `kill -9` of the parent group, with 3 codex-chain processes alive, and the findings were written afterwards. Fix: let the job shell, `timeout` and the helper keep fd 9 (they are bounded by `timeout -k`) and close it only at the CLI and agy launch — `.agent/scripts/cross_model_review.sh:1414`, `.agent/scripts/_cli_review.sh` run_cli, `.agent/scripts/_agy_review.sh` agy launch
+- [ ] (suggestion) `kill_tree` finds the CLI's group only through a live leader. It misses that group once the CLI has been reaped but its children remain, and it misses a descendant that called setsid itself and was re-parented. Codex reproduced this with the real function. It is reachable only with a wedged helper, so either record the CLI's group id for the parent or soften "none of it runs" in the header — `.agent/scripts/cross_model_review.sh:902-923`
+- [ ] (suggestion) Group liveness in `kill_tree` and the test's `assert_orphan_gone` use a raw `kill -0`, so zombies count as live. Under a PID 1 that does not reap (containers), that gives a 5 s stall plus a false warning, and false test failures — `.agent/scripts/cross_model_review.sh:935-937`, `.agent/scripts/tests/test_cross_model_review.sh:4264`
+- [ ] (suggestion) SIGKILL the recorded groups before the PIDs. A group can otherwise empty out between being listed and being killed; it is only theoretical, since hitting another group needs a PID wrap — `.agent/scripts/cross_model_review.sh:913-923`
+- [ ] (suggestion) The "5s" bound is 50 polls per over-budget job, each with forks, so 4 wedged jobs can hold the exit and the lock for about 8 + 4×5 s. Make it one shared deadline, or fix the warning text — `.agent/scripts/cross_model_review.sh:928-942`
+- [ ] (suggestion) `test_helper_term_after_the_cli_was_reaped` passes on `41bbb23~1`, because 372d002 had already removed the symptom it times. It does not observe the TERM-to-reaped-PID hazard that 41bbb23 fixed — `.agent/scripts/tests/test_cross_model_review.sh:4948`
+- [ ] (suggestion) Docs:
+  - The `_agy_review.sh` header still says `timeout -k` is the only sender of SIGKILL; `kill_tree` now sends it too.
+  - Exit 4 when the directory cannot be opened for the lock is missing from the header's exit-code list and from SKILL.md, and the remediation given there does not fit this case.
+  - The header could say that on NFSv4 every run takes the 65 warn-and-proceed path — `.agent/scripts/_agy_review.sh:40-46`, `.agent/scripts/cross_model_review.sh:723`, `.claude/skills/review-code/SKILL.md`
