@@ -121,9 +121,15 @@
 #     `--no-progress` runs get their own directory and never contend.
 #     Without flock, or when util-linux flock reports a real error (65 or
 #     71, not a conflict), the run warns and proceeds unserialized; every
-#     other flock failure counts as a conflict. The lock fd is closed for
-#     the agent jobs and for git, gh and python, so nothing they leave
-#     running can hold it.
+#     other flock failure counts as a conflict. The lock fd is held by
+#     this script and by each agent job's shell, `timeout` and helper,
+#     so a run killed with SIGKILL keeps its directory locked until its
+#     jobs have ended: at the latest AGENT_TIMEOUT + AGENT_KILL_AFTER
+#     after launch (gemini: GEMINI_BACKSTOP + AGENT_KILL_AFTER), when
+#     `timeout -k` SIGKILLs its group. It is closed for the CLIs (the
+#     helpers launch them with fd 9 closed; a CLI runs in its own process
+#     group, which `timeout` does not reach) and for git, gh and python,
+#     so nothing that can outlive that bound holds it.
 #
 # Exit codes:
 #   0 — every selected agent completed successfully
@@ -710,7 +716,8 @@ mkdir -p "$WORK_PLANS_DIR"
 # filenames are fixed per agent, so a second run into the same dir would
 # overwrite the first's prompt, truncate its findings, or append its
 # success marker to the other's failure. The second run is refused before
-# it writes anything; the lock is held on fd 9 until this script exits.
+# it writes anything. The lock is held on fd 9 by this script and by each
+# agent job's shell, `timeout` and helper (see the job launch below).
 # --no-progress runs get a fresh temp dir each and never contend.
 #
 # The lock is taken on the directory itself, not on a lock file in it:
@@ -769,8 +776,8 @@ fi
 # running after they return (git's fsmonitor daemon, for one); holding
 # fd 9, that process would keep the lock and refuse every later run with
 # exit 5. So they run with fd 9 closed: git and gh through these
-# wrappers, python at its one call site. The agent jobs close it at
-# launch (`9>&-`).
+# wrappers, python at its one call site. The helpers close it where they
+# launch the CLI.
 git() { command git "$@" 9<&-; }
 gh() { command gh "$@" 9<&-; }
 
@@ -1405,13 +1412,20 @@ else
 fi
 
 # LAUNCH_* let cleanup_jobs find a job whose TERM landed between its `&`
-# and the AGENT_PID assignment (#363). `9>&-`: the jobs do not inherit the
-# review lock, so nothing they leave behind can hold it and refuse later
-# runs (exit 5) after this one exits.
+# and the AGENT_PID assignment (#363).
+# The jobs inherit the review lock (fd 9), and so do their `timeout` and
+# helper. If this script is SIGKILLed (no cleanup runs), the jobs keep
+# running and keep writing their findings; holding the lock, they keep a
+# second run out until they end. That hold is bounded: `timeout -k`
+# SIGKILLs the helper's whole group by AGENT_TIMEOUT + AGENT_KILL_AFTER
+# (gemini: GEMINI_BACKSTOP + AGENT_KILL_AFTER), and the job shell exits
+# right after. The CLI, the one process that can outlive that (its own
+# process group, out of `timeout`'s reach), is launched by the helper
+# with fd 9 closed, so nothing it leaves behind can hold the lock (#363).
 for agent in "${AGENTS_TO_RUN[@]}"; do
     LAUNCH_PREV="${!:-}"
     LAUNCHING_AGENT="$agent"
-    run_agent_job "$agent" 9>&- &
+    run_agent_job "$agent" &
     AGENT_PID["$agent"]=$!
     LAUNCHING_AGENT=""
 done

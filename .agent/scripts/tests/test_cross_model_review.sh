@@ -81,6 +81,11 @@ if [[ -n "${MOCK_AGY_ORPHAN_PIDFILE:-}" ]]; then
       for ((j = 0; j < 300; j++)); do sleep 0.1; done ) </dev/null >/dev/null 2>&1 &
     for ((j = 0; j < 50; j++)); do [[ -s "${MOCK_AGY_ORPHAN_PIDFILE}" ]] && break; sleep 0.05; done
 fi
+# MOCK_AGY_FD9_PROBE=<f>: record whether fd 9 (the review lock) is open
+# in agy (#363). An existence test: the lock fd is a read-only dir fd.
+if [[ -n "${MOCK_AGY_FD9_PROBE:-}" ]]; then
+    if [[ -e /dev/fd/9 ]]; then echo open; else echo closed; fi > "${MOCK_AGY_FD9_PROBE}"
+fi
 # Sleep in 0.1s slices so a SIGKILLed mock leaves no long-lived orphan
 # sleep behind. Whole seconds only.
 mock_sleep() { local n="$1" i; for ((i = 0; i < n * 10; i++)); do sleep 0.1; done; }
@@ -4664,10 +4669,11 @@ test_local_concurrent_runs_refused() {
     # Released: the next run proceeds, and the agent jobs do not inherit
     # the lock (anything they left behind would otherwise hold it and
     # refuse every later run).
-    local probe="${TMPDIR_BASE}/fd9"
-    ec=$(MOCK_CODEX_FD9_PROBE="$probe" run_agents "${TMPDIR_BASE}/out.txt" "codex")
+    local probe="${TMPDIR_BASE}/fd9" agy_probe="${TMPDIR_BASE}/fd9-agy"
+    ec=$(MOCK_CODEX_FD9_PROBE="$probe" MOCK_AGY_FD9_PROBE="$agy_probe" run_agents "${TMPDIR_BASE}/out.txt" "codex,gemini")
     assert_exit_code "a run after the lock is released completes" "0" "$ec"
     assert_eq "the CLI does not hold the review lock" "closed" "$(cat "$probe" 2>/dev/null)"
+    assert_eq "agy does not hold the review lock" "closed" "$(cat "$agy_probe" 2>/dev/null)"
 
     # flock exit codes (#363 review). util-linux reports a conflict with
     # the -E code and real errors with sysexits 65/71: only those warn and
@@ -4709,6 +4715,54 @@ test_local_concurrent_runs_refused() {
     wait "$p2" || ec2=$?
     assert_exit_code "first concurrent --no-progress run completes" "0" "$ec1"
     assert_exit_code "second concurrent --no-progress run completes" "0" "$ec2"
+    teardown
+}
+
+# A run killed with SIGKILL runs no cleanup: its agent jobs carry on and
+# still write their findings. They hold the review lock until they end
+# (#363 review), so a second run into the directory is refused for as
+# long as any helper of the first is alive, instead of starting and
+# having its findings overwritten. Only the CLI (out of `timeout`'s
+# reach) is launched without the lock.
+test_lock_held_by_jobs_after_the_parent_is_killed() {
+    echo "TEST: a SIGKILLed run's jobs keep the directory locked until they end (#363)"
+    if ! command -v flock >/dev/null 2>&1 || ! command -v pgrep >/dev/null 2>&1; then
+        echo "  SKIP: needs flock and pgrep"; return
+    fi
+    setup
+    make_mock_agent codex
+    local dir="${MOCK_REPO}/.agent/work-plans/issue-42" times="${TMPDIR_BASE}/times"
+    local pattern parent i ec err violations=0 freed=false helper_seen
+    mkdir -p "$dir" "$times"
+    pattern="_cli_review.sh codex .*${dir}/review-codex-findings.md"
+    cd "${MOCK_REPO}"
+    # TMPDIR in the sandbox: a SIGKILLed run cannot remove its temp files.
+    mkdir -p "${TMPDIR_BASE}/killed-tmp"
+    MOCK_CODEX_SLEEP=3 MOCK_TIMES_DIR="$times" TMPDIR="${TMPDIR_BASE}/killed-tmp" \
+        PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex </dev/null >/dev/null 2>&1 &
+    parent=$!
+    for ((i = 0; i < 100; i++)); do [[ -s "${times}/codex.pid" ]] && break; sleep 0.05; done
+    kill -9 "$parent" 2>/dev/null || true
+    wait "$parent" 2>/dev/null || true
+    helper_seen=$(pgrep -f -- "$pattern" >/dev/null && echo alive || echo gone)
+    assert_eq "the first run's helper outlives its SIGKILLed parent" "alive" "$helper_seen"
+    ec=0; err=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+    assert_exit_code "a second run while the first run's jobs live is refused" "5" "$ec"
+    # The lock may come free only once no helper of the first run is left
+    # (lock first, helper second: a helper alive after a successful
+    # flock was alive during it).
+    for ((i = 0; i < 300; i++)); do
+        if ( exec 8< "$dir"; flock -n 8 ); then
+            if pgrep -f -- "$pattern" >/dev/null; then violations=$((violations + 1)); else freed=true; break; fi
+        fi
+        sleep 0.05
+    done
+    assert_eq "the lock never came free while a helper of the first run was alive" "0" "$violations"
+    assert_eq "the lock comes free once the first run's job has ended" "true" "$freed"
+    assert_contains "the first run's job still finished its findings" "Review complete" "$(cat "${dir}/review-codex-findings.md")"
+    pkill -KILL -f -- "$pattern" 2>/dev/null || true
     teardown
 }
 
@@ -5146,6 +5200,7 @@ test_helper_terminate_adopts_launch_window
 test_run_agent_job_trap_adopts_launch_window
 test_cleanup_jobs_adopts_launch_window
 test_local_concurrent_runs_refused
+test_lock_held_by_jobs_after_the_parent_is_killed
 test_no_flock_warns_and_runs
 test_lock_fd_not_inherited_by_git_or_gh
 test_cleanup_kills_the_whole_job_when_the_budget_runs_out

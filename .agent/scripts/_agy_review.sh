@@ -282,7 +282,7 @@ terminate_child() {
         # whose sleep is already gone never runs its kill. Its stderr is
         # dropped: the subshell reports its killed `sleep` there as a
         # "Killed" job notice.
-        ( sleep "$REVIEW_KILL_ESCALATION" && signal_live_agy KILL "$AGY_PID" ) 2>/dev/null &
+        ( sleep "$REVIEW_KILL_ESCALATION" && signal_live_agy KILL "$AGY_PID" ) 2>/dev/null 9<&- &
         watchdog=$!
         signal_live_agy TERM "$AGY_PID"
         wait "$AGY_PID" 2>/dev/null
@@ -334,6 +334,11 @@ fi
 # agy at once instead of being deferred until the turn ends on its own.
 # `${arr[@]+...}`: an empty array is "unbound" to `set -u` on bash < 4.4,
 # and empty is exactly the no-setsid path.
+# `9<&-`: fd 9 is cross_model_review.sh's per-directory review lock, held
+# by this helper. agy runs in its own process group, out of reach of the
+# caller's `timeout -k`, so it must not hold the lock: whatever it leaves
+# running would refuse every later review into the directory (#363). A
+# no-op when fd 9 is not open.
 AGY_LAUNCH_PREV="${!:-}"
 AGY_LAUNCHING=true
 ${AGY_SETSID[@]+"${AGY_SETSID[@]}"} "$AGY_BIN_RESOLVED" \
@@ -341,7 +346,7 @@ ${AGY_SETSID[@]+"${AGY_SETSID[@]}"} "$AGY_BIN_RESOLVED" \
     --output-format=stream-json \
     --print-timeout "$PRINT_TIMEOUT" \
     --disable-slash-commands \
-    -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE" &
+    -p= < "$INPUT_FILE" > "$STREAM_FILE" 2> "$STDERR_FILE" 9<&- &
 AGY_PID=$!
 AGY_LAUNCHING=false
 if [[ "$AGY_GROUP_KILL" == true ]]; then AGY_GROUP=$AGY_PID; fi

@@ -346,7 +346,7 @@ terminate_child() {
         # whose sleep is already gone never runs its kill. Its stderr is
         # dropped: the subshell reports its killed `sleep` there as a
         # "Killed" job notice.
-        ( sleep "$REVIEW_KILL_ESCALATION" && signal_live_cli KILL "$CLI_PID" ) 2>/dev/null &
+        ( sleep "$REVIEW_KILL_ESCALATION" && signal_live_cli KILL "$CLI_PID" ) 2>/dev/null 9<&- &
         watchdog=$!
         signal_live_cli TERM "$CLI_PID"
         wait "$CLI_PID" 2>/dev/null
@@ -413,10 +413,15 @@ run_cli() {
     # < 4.4, and empty is exactly the no-setsid path.
     CLI_LAUNCH_PREV="${!:-}"
     CLI_LAUNCHING=true
+    # `9<&-`: fd 9 is cross_model_review.sh's per-directory review lock,
+    # held by this helper. The CLI runs in its own process group, out of
+    # reach of the caller's `timeout -k`, so it must not hold the lock:
+    # whatever it leaves running would refuse every later review into the
+    # directory (#363). A no-op when fd 9 is not open.
     if [[ "$err" == "-" ]]; then
-        ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2>&1 &
+        ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2>&1 9<&- &
     else
-        ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2> "$err" &
+        ${CLI_SETSID[@]+"${CLI_SETSID[@]}"} "$@" < "$PROMPT_FILE" > "$out" 2> "$err" 9<&- &
     fi
     CLI_PID=$!
     CLI_LAUNCHING=false
