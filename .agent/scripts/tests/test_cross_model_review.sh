@@ -3647,22 +3647,45 @@ test_cli_claude_non_object_json_is_a_reported_failure() {
     teardown
 }
 
-test_cli_helper_returns_promptly_on_term() {
-    echo "TEST: TERM to the helper returns at once when the CLI exits cleanly (#313 round 2, gemini 4)"
-    setup
-    make_mock_agent codex
-    local times="${TMPDIR_BASE}/times"; mkdir -p "$times" "${TMPDIR_BASE}/helper-tmp"
-    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md"
-    echo "review this" > "$prompt"
-    # A fast-exiting mock (no TERM trap): the escalation window is 5s, so
-    # anything close to that means the handler waited on its watchdog.
-    MOCK_CODEX_SLEEP=30 MOCK_TIMES_DIR="$times" REVIEW_KILL_ESCALATION=5 \
-        TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
-        bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800 \
-        >/dev/null 2>&1 &
+# The escalation watchdog is a subshell forked while the helper's
+# terminate handler has INT/TERM/HUP ignored; an ignored disposition is
+# inherited, so a TERM cannot cancel it. Before #363 the cancel was a
+# TERM: after every clean CLI exit the watchdog outlived the helper by
+# the whole escalation window and then `kill -9`'d whatever process held
+# the dead CLI's PID by then. The forked subshell keeps the helper's
+# argv, so the per-test findings path identifies it; the watchdog's own
+# `sleep` is identified by a per-suite escalation value nothing else on
+# the host uses (a plain `sleep 5` would also match another suite's).
+assert_watchdog_cancelled() {
+    local label="$1" findings="$2" sleep_arg="$3" i
+    for ((i = 0; i < 10; i++)); do
+        pgrep -f -- "$findings" >/dev/null || break
+        sleep 0.1
+    done
+    if pgrep -f -- "$findings" >/dev/null; then
+        echo "  FAIL: ${label}: escalation watchdog still running after a clean CLI exit"; FAIL=$((FAIL + 1))
+        pkill -KILL -f -- "$findings" 2>/dev/null || true
+    else
+        echo "  PASS: ${label}: escalation watchdog cancelled with the helper"; PASS=$((PASS + 1))
+    fi
+    if pgrep -fx -- "sleep ${sleep_arg}" >/dev/null; then
+        echo "  FAIL: ${label}: the watchdog's sleep was left running"; FAIL=$((FAIL + 1))
+        pkill -KILL -fx -- "sleep ${sleep_arg}" 2>/dev/null || true
+    else
+        echo "  PASS: ${label}: no orphan watchdog sleep"; PASS=$((PASS + 1))
+    fi
+}
+
+# TERM a helper whose CLI exits cleanly on TERM; assert it returns well
+# inside the escalation window and leaves no watchdog behind.
+# Args: <label> <pidfile the mock writes> <findings> <command...>
+assert_prompt_clean_term() {
+    local label="$1" pidfile="$2" findings="$3"
+    shift 3
+    "$@" >/dev/null 2>&1 &
     local helper_pid=$! i
     for ((i = 0; i < 60; i++)); do
-        [[ -f "$times/codex.pid" ]] && break
+        [[ -f "$pidfile" ]] && break
         sleep 0.1
     done
     local t0 t1 ec=0
@@ -3670,12 +3693,37 @@ test_cli_helper_returns_promptly_on_term() {
     kill -TERM "$helper_pid" 2>/dev/null || true
     wait "$helper_pid" || ec=$?
     t1=$(date +%s.%N)
-    assert_exit_code "helper exits 143" "143" "$ec"
+    assert_exit_code "${label}: helper exits 143" "143" "$ec"
     if awk -v a="$t0" -v b="$t1" 'BEGIN{exit !((b - a) < 3)}'; then
-        echo "  PASS: helper returned well inside the 5s escalation window"; PASS=$((PASS + 1))
+        echo "  PASS: ${label}: helper returned well inside the 5s escalation window"; PASS=$((PASS + 1))
     else
-        echo "  FAIL: helper waited out the escalation window after a clean CLI exit"; FAIL=$((FAIL + 1))
+        echo "  FAIL: ${label}: helper waited out the escalation window after a clean CLI exit"; FAIL=$((FAIL + 1))
     fi
+    assert_watchdog_cancelled "$label" "$findings" "$WATCHDOG_ESCALATION"
+}
+
+# 5 s for the to_seconds check, with a fraction unique to this suite run
+# so the orphan-sleep check matches only this run's watchdog.
+WATCHDOG_ESCALATION="5.0$$s"
+
+test_cli_helper_returns_promptly_on_term() {
+    echo "TEST: TERM to a helper returns at once and cancels its watchdog when the CLI exits cleanly (#313 round 2, #363)"
+    setup
+    make_mock_agent codex
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times" "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md"
+    echo "review this" > "$prompt"
+    # Fast-exiting mocks (no TERM trap): the escalation window is 5s, so
+    # anything close to that means the handler waited on its watchdog.
+    assert_prompt_clean_term "cli helper" "$times/codex.pid" "$findings" \
+        env MOCK_CODEX_SLEEP=30 MOCK_TIMES_DIR="$times" REVIEW_KILL_ESCALATION="$WATCHDOG_ESCALATION" \
+        TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800
+    local agy_findings="${TMPDIR_BASE}/agy-findings.md"
+    assert_prompt_clean_term "agy helper" "$times/agy.pid" "$agy_findings" \
+        env MOCK_AGY_SLEEP=30 MOCK_TIMES_DIR="$times" REVIEW_KILL_ESCALATION="$WATCHDOG_ESCALATION" \
+        TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$agy_findings" 30m
     teardown
 }
 
