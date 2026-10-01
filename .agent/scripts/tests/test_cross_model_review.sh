@@ -5041,6 +5041,46 @@ STUB_EOF
     teardown
 }
 
+# kill_tree must never signal group 0 or 1 (`kill -- -1` is every process
+# the user may signal), and must not kill a marker-found PID that no
+# longer carries the marker: it exited after the scan and the PID was
+# reused (#363 round 3). The real kill_tree runs with `kill` replaced by
+# a logger, so nothing is signalled; marked_pids is stubbed to report a
+# live process that never had the marker, and pgid_of to report group 1
+# or 0 for everything but the script itself.
+test_kill_tree_guards_its_kills() {
+    echo "TEST: kill_tree never signals group 0/1 or a PID that lost the job marker (#363)"
+    if [[ ! -r /proc/self/environ ]]; then
+        echo "  SKIP: needs /proc"; return
+    fi
+    setup
+    local probe="${TMPDIR_BASE}/probe-guards.sh" log="${TMPDIR_BASE}/kills" stranger bad out
+    sleep 30 >/dev/null 2>&1 &
+    stranger=$!
+    for bad in 1 0; do
+        : > "$log"
+        {
+            echo 'set -u'
+            for fn in pgid_of marked_pids still_marked kill_tree; do
+                sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_UNDER_TEST}"
+            done
+            echo 'KILLED_ROOTS=(); KILLED_PIDS=(); KILLED_GROUPS=()'
+            echo "kill() { printf '%s\\n' \"\$*\" >> '${log}'; }"
+            echo "marked_pids() { echo ${stranger}; }"
+            echo "pgid_of() { if [[ \"\$1\" == \"\$\$\" ]]; then echo 999999; else echo ${bad}; fi; }"
+            echo "kill_tree 999998 'job-marker-nobody-has'"
+        } > "$probe"
+        out=$(bash "$probe" 2>&1)
+        assert_not_contains "group ${bad}: probe ran without shell errors" \
+            "command not found|unbound variable|syntax error" "$out"
+        assert_not_contains "group ${bad} is never signalled" "[-]- -${bad}\$" "$(cat "$log")"
+        assert_not_contains "a PID without the marker is never signalled (group ${bad} case)" \
+            "(^| )${stranger}\$" "$(cat "$log")"
+    done
+    kill -9 "$stranger" 2>/dev/null || true; wait "$stranger" 2>/dev/null || true
+    teardown
+}
+
 # await_killed waits once, for every job kill_tree killed, against one
 # deadline (at least 5 s, at most 6), and its warning says so (#363
 # review: the bound was 5 s per job, so several wedged jobs added up).
@@ -5422,6 +5462,7 @@ test_lock_fd_not_inherited_by_git_or_gh
 test_cleanup_kills_the_whole_job_when_the_budget_runs_out
 test_cleanup_survives_processes_exiting_under_it
 test_cleanup_bounds_a_hanging_marker_scan
+test_kill_tree_guards_its_kills
 test_await_killed_shares_one_deadline
 test_helper_terminate_reaches_a_cli_before_setsid
 test_helper_term_with_the_sweep_pending

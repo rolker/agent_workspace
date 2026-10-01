@@ -959,8 +959,16 @@ marked_pids() {
         printf '%s\n' "${f%/environ}"
     done < <(timeout -k 1 5 grep -l -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=$1" /proc/[0-9]*/environ 2>/dev/null || true)
 }
+# still_marked <pid> <marker>: does <pid> still carry the marker? Checked
+# again right before each kill of a marker-found process, so a PID that
+# exited after the scan and was reused is never hit (bounded like the
+# scan).
+still_marked() {
+    timeout -k 1 2 grep -q -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=$2" "/proc/$1/environ" 2>/dev/null
+}
 kill_tree() {
-    local root="$1" marker="${2:-}" pids=() groups=() i=0 child p g own_group
+    local root="$1" marker="${2:-}" pids=() groups=() via=() i=0 child p g own_group
+    local -A marked=()
     pids=("$root")
     if command -v pgrep >/dev/null 2>&1; then
         while (( i < ${#pids[@]} )); do
@@ -972,31 +980,44 @@ kill_tree() {
     fi
     if [[ -n "$marker" ]]; then
         while read -r p; do
-            if [[ "$p" =~ ^[0-9]+$ && "$p" != "$$" ]]; then pids+=("$p"); fi
+            if [[ "$p" =~ ^[0-9]+$ && "$p" != "$$" ]]; then
+                pids+=("$p")
+                marked[$p]=1
+            fi
         done < <(marked_pids "$marker")
     fi
     # Without our own group id there is no telling which group is ours,
-    # so no group is killed at all.
+    # so no group is killed at all. Group 0 or 1 is never a job's own (and
+    # `kill -- -1` would mean every process this user may signal).
     own_group=$(pgid_of "$$")
     if [[ -n "$own_group" ]]; then
         for p in "${pids[@]}"; do
             g=$(pgid_of "$p")
-            if [[ -n "$g" && "$g" != "$own_group" && " ${groups[*]} " != *" $g "* ]]; then
+            if [[ "$g" =~ ^[0-9]+$ ]] && (( g > 1 )) && [[ "$g" != "$own_group" && " ${groups[*]} " != *" $g "* ]]; then
                 groups+=("$g")
+                via+=("$p")
             fi
         done
     fi
-    # Groups first: a group listed above still has the member it was
-    # found through, so its id cannot be anyone else's yet, while it could
+    # Groups first: each is killed only while the process it was found
+    # through is still in it (and, if found by the marker, still carries
+    # it), so its id cannot be anyone else's yet; a group could otherwise
     # empty out (and its id be reused) before a kill sent after its
-    # members'.
-    for p in ${groups[@]+"${groups[@]}"}; do
-        kill -9 -- -"$p" 2>/dev/null || true
+    # members'. A daemon the CLI started on this run carries the marker
+    # and is killed with the job.
+    for i in ${groups[@]+"${!groups[@]}"}; do
+        p=${via[i]}
+        [[ "$(pgid_of "$p")" == "${groups[i]}" ]] || continue
+        if [[ -n "${marked[$p]+x}" ]] && ! still_marked "$p" "$marker"; then continue; fi
+        kill -9 -- -"${groups[i]}" 2>/dev/null || true
     done
     # Then every PID, deepest first, so nothing is re-parented out from
-    # under the kill.
+    # under the kill; a marker-found one only if it still carries the
+    # marker.
     for (( i = ${#pids[@]} - 1; i >= 0; i-- )); do
-        kill -9 "${pids[i]}" 2>/dev/null || true
+        p=${pids[i]}
+        if [[ -n "${marked[$p]+x}" ]] && ! still_marked "$p" "$marker"; then continue; fi
+        kill -9 "$p" 2>/dev/null || true
     done
     KILLED_ROOTS+=("$root")
     KILLED_PIDS+=("${pids[@]:1}")
