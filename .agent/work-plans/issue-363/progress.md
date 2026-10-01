@@ -459,3 +459,13 @@ Reviewers:
 - [ ] (suggestion) Codex: if `timeout -k` ever SIGKILLs a helper before its watchdog fires, the setsid'd CLI survives, and the marker sweep does not run on normal job completion. This is the design dependency already accepted at plan stage (escalation < kill grace, so it needs a wedged helper). Defense in depth: sweep marked descendants when a job ends 124/137 — `.agent/scripts/cross_model_review.sh:1059`
 - [ ] (suggestion) The header reads "waits (at least 5 s, at most 6 s in total)"; it means up to 5-6 s — `.agent/scripts/cross_model_review.sh:117`
 - [ ] (suggestion) Possible flake: the second run must reach `flock` within the mock's 3 s sleep. Use a longer `MOCK_CODEX_SLEEP` — `.agent/scripts/tests/test_cross_model_review.sh:4732`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-01 12:40 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+"address everything regarding 363" — asked after pre-push round 3 (1 must-fix M1: interrupt cleanup aborts when a found PID exits before its pgid lookup; suggestions S1–S6). The host had recommended a narrow round that left S4 (sweep a job's marked processes when it ends with 124/137) to a follow-up issue; the owner chose the option that fixes S4 on this branch too. The round also includes one live interrupt test with the real reviewer CLIs. Then review round 4 and back to the owner for the publish decision.
