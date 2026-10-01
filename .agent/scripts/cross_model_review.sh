@@ -921,12 +921,17 @@ kill_tree() {
     for p in "${pids[@]}"; do
         if kill -0 -- -"$p" 2>/dev/null; then groups+=("$p"); fi
     done
-    # Deepest first, so nothing is re-parented out from under the kill.
-    for (( i = ${#pids[@]} - 1; i >= 0; i-- )); do
-        kill -9 "${pids[i]}" 2>/dev/null || true
-    done
+    # Groups first: while its leader is alive a group id cannot be reused,
+    # so killing a group before its leader can never hit another process's
+    # group, while a group listed above could empty out (and its id be
+    # reused) between the listing and a kill sent after its members'.
     for p in ${groups[@]+"${groups[@]}"}; do
         kill -9 -- -"$p" 2>/dev/null || true
+    done
+    # Then every PID, deepest first, so nothing is re-parented out from
+    # under the kill.
+    for (( i = ${#pids[@]} - 1; i >= 0; i-- )); do
+        kill -9 "${pids[i]}" 2>/dev/null || true
     done
     # SIGKILL takes effect asynchronously. Return only once nothing of the
     # tree is still running (an exited, unreaped process is not), so this
