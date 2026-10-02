@@ -31,8 +31,10 @@ block phase 1.
    given in the agents' handoff at run time, deliberately not written in tracked files),
    remote `rolker/ros2_agent_workspace`, its closed issues/PRs, work-plans, roadmap.
    Agents read first, as prior art, `.agent/knowledge/inspiration_ros2_agent_workspace_digest.md`
-   and the fork-parity items in `docs/roadmap.md` (both exist). Project results are read
-   only as far as the workspaces' own records show them.
+   and the fork-parity items in `docs/roadmap.md` (both exist). The project repos each
+   workspace served are read too (owner, 2026-10-02), with a short baseline from before
+   agents were used; private projects are reported under labels, with no names, titles or
+   numbers saved.
 2. **Bias control.** Reading agents are NOT given the goals or principles. They record
    mechanisms (what was introduced, when, why) and outcomes. The host does the comparison
    in session, from their tables.
@@ -142,10 +144,6 @@ block phase 1.
 
 ## Open Questions
 
-- Does the review also read the project repos' own history to judge results, or only the
-  two workspaces? The owner's words were "what improved the quality of project
-  improvements". Until he answers, project results are read only as far as the
-  workspaces' own records show them.
 - ADR-0001 row wording (soften to "record a decision where it will be found"?).
 - Hypotheses the review may inform, not blockers: an orientation principle ("Write for
   someone who just arrived"); whether time for quality and field safety stay at goal level.
