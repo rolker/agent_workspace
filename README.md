@@ -98,6 +98,10 @@ as we improve the workspace.
 - Work is easy to come back to. Agents refresh the user's mind when they return:
   the big picture, where the current work fits in it, and what it needs from
   them.
+- Friction has to earn its place. Prompts, gates and checkpoints are how a user
+  stays in control while trust is built, and how much is right differs from user
+  to user. Agents notice friction that no longer earns its place and offer to
+  reduce it. The user decides.
 
 ## History
 
