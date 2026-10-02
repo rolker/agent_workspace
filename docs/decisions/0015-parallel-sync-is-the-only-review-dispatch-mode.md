@@ -4,7 +4,11 @@
 
 Accepted. Trigger tier for cross-model dispatch is recorded in issue #320
 (Standard + Deep, fix-round re-reviews included at the whole diff's tier);
-dispatch mechanics unchanged.
+dispatch mechanics unchanged. The `AGENT_KILL_AFTER=0` exception recorded
+below was withdrawn by #363; the current job-lifecycle behaviour (kill
+grace, process-group kill, launch window, one run per artifact directory)
+is described in the headers of `cross_model_review.sh`, `_cli_review.sh`
+and `_agy_review.sh`.
 
 ## Context
 
