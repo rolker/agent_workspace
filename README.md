@@ -85,6 +85,20 @@ as we improve the workspace.
 - A project that workspace agents have worked on can still be developed and
   maintained without them. Using this workspace doesn't lock you in.
 
+### Easy to use
+
+- The workspace is easy to use on a project wherever it lives. It doesn't impose
+  a rigid file structure on the project or around it.
+- The user works the way they normally would: start an agent in the project's
+  own directory and the workspace is there.
+- Setting up the workspace is something an agent can do for the user.
+- There is little to remember. Agents know the commands and describe work in
+  plain words, so the user doesn't have to recall flags or what an issue number
+  refers to.
+- Work is easy to come back to. Agents refresh the user's mind when they return:
+  the big picture, where the current work fits in it, and what it needs from
+  them.
+
 ## History
 
 Before 2026 I had been dismissing "vibe coding" without having tried it. Towards
