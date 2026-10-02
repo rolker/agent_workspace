@@ -103,6 +103,14 @@ as we improve the workspace.
   to user. Agents notice friction that no longer earns its place and offer to
   reduce it. The user decides.
 
+### The long view
+
+- The workspace keeps track of a project's long-term view, so day-to-day work
+  keeps it healthy and moving in the right direction.
+- Each project says what healthy and the right direction mean for it, and so
+  does the workspace.
+- They move toward their goals without carrying extra baggage.
+
 ## History
 
 Before 2026 I had been dismissing "vibe coding" without having tried it. Towards
