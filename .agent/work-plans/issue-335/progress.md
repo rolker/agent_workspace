@@ -61,3 +61,11 @@ The plan does what the owner asked, plus one extra slice, and its agent split in
 - [ ] Add the review-issue and plan-task templates, README label and Deep-tier note to Phase 2 consequences
 - [ ] Add a project-name grep on copied principle texts before commit
 - [ ] Trim the plan to about 100 lines
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-02 13:00 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `2f20dd1`
+
+Revision after the plan review: history agents are not given the goals, a pilot slice comes first, counts come from a saved script, the project-repo slice is an open question, phase 2 consequences extended.
