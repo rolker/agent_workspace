@@ -125,7 +125,11 @@ If the issue targets a project repo, also check:
 - **Well-scoped?** Can this be completed in a single PR? If not, should it
   be broken into sub-issues?
 - **Right repo?** Does this change belong in the workspace repo or a project
-  repo? Check the workspace vs. project separation principle.
+  repo? Check the "Put each thing at the level it applies to" principle.
+- **Design picture?** Does the proposal change how the parts fit, or is it
+  not covered by the current design? If so, name the design section it
+  touches and bring the question to the user on its own ("Ask about what
+  matters, and show how much").
 - **Dependencies?** Does this depend on other open issues? Will other issues
   need to wait for this one?
 
