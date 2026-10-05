@@ -33,8 +33,8 @@ mechanism exists:
 
 | Principle | Enforcement | Status |
 |---|---|---|
-| Human control and transparency | PR template consequence checklist | OK / Missing |
-| Enforcement over documentation | Pre-commit hooks, CI checks | OK / Missing |
+| A change includes its consequences | PR template consequence checklist | OK / Missing |
+| Enforce what matters, as simply as possible | Pre-commit hooks, CI checks | OK / Missing |
 | ... | ... | ... |
 
 Flag principles that exist only as documentation with no hook, CI check,
