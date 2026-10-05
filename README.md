@@ -110,6 +110,7 @@ as we improve the workspace.
 - Each project says what healthy and the right direction mean for it, and so
   does the workspace.
 - They move toward their goals without carrying extra baggage.
+- It is known whether a change helped.
 
 ## History
 
