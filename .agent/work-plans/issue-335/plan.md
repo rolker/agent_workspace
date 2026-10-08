@@ -6,7 +6,7 @@ https://github.com/rolker/agent_workspace/issues/335
 
 ## Context
 
-The README "Workspace goals" section is written (six sections). The 14 principles are
+The README "Workspace goals" section is written (seven sections as of 2026-10-02). The 16 principles are
 settled in the owner's notes (`.agent/scratchpad/design-doc-sources/goals-draft-2026-09-24.md`,
 main tree, gitignored; final state is the entry "PASS COMPLETE 2026-10-02", exact texts in
 the entries marked DECIDED, later entries override earlier ones). Not yet written:
@@ -124,7 +124,7 @@ block phase 1.
 | Name the rule before bending it | AGENTS.md / CLAUDE.md edits flagged Ask First (step 12) |
 | A change includes its consequences | Step 9 list, found by grep and opened |
 
-(Uses the settled names; the repo copy is the old set until phase 2.)
+(Uses the settled names; the repo copy was rewritten in phase 2, commit 091532c.)
 
 ## ADR Compliance
 
@@ -144,6 +144,10 @@ block phase 1.
 
 ## Open Questions
 
-- ADR-0001 row wording (soften to "record a decision where it will be found"?).
-- Hypotheses the review may inform, not blockers: an orientation principle ("Write for
-  someone who just arrived"); whether time for quality and field safety stay at goal level.
+All closed (2026-10-08):
+
+- ADR-0001 row wording: accepted as drafted, plus the ADR-0008 addendum exception.
+- Orientation principle: shipped as "Give the user what they need now" (16th principle).
+- Time for quality and field safety: stay at goal level, no principle.
+- "Each project says what healthy and the right direction mean": stays at goal level;
+  served by the Direction role in the documentation-layers design (design-only).
