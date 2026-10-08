@@ -44,7 +44,14 @@ is native capabilities that make hand-rolled workspace tooling redundant.
   evidence was strong enough to state a verdict (marketplace/plugin entries
   describe distribution mechanics, not a direct format comparison to
   `.claude/skills/*/SKILL.md`) — left out of the capability map table
-  rather than guess.
+  rather than guess. *Update 2026-10-08:* the plugin spike for workspace
+  issue #345 (claude 2.1.281) confirmed a local-scope directory marketplace
+  plus plugin works end to end — plugin root at the repo root with
+  `"skills": "./.claude/skills"`, namespaced skills beside a project's own
+  same-named skills, worktrees of the enabled project see it, `bin/` on the
+  Bash PATH, edits apply next session without reinstall. Packaging is a
+  viable replacement for the user-tier skill symlinks; the format question
+  stays open for the next survey.
 - Did not run any prompts against the installed `claude` CLI beyond
   `--version` and `--help`, per instructions.
 
@@ -60,7 +67,9 @@ is native capabilities that make hand-rolled workspace tooling redundant.
 ## Pending Review
 
 - `retire-bash-tool-mapping-hook` — the hook fights auto mode's own
-  dedicated-tool guidance and fired repeatedly during this survey run (2026-09-22)
+  dedicated-tool guidance and fired repeatedly during this survey run
+  (2026-09-22). **Done 2026-09-23**: hook and its registration deleted on
+  main in 599a10f (#328); noted here 2026-10-08.
 - `dispatcher-to-workflow-and-agent-files` — replace `dispatch_phase.sh`'s
   hand-rolled state machine with Workflow tool scripts + `.claude/agents/*.md`,
   keeping `progress.md` as the durable timeline (2026-09-22)
