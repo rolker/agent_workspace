@@ -168,3 +168,19 @@ AGENTS.md candidates: fold Documentation Accuracy into "Verify before claiming";
 
 ### False positives
 - none
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-08 15:40 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**PR**: #376 at `b8a837a`
+**Sources**: 2 (Copilot bot @ `b8a837a` — approval recommended, 0 findings; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [ ] No issues found. LGTM. (Four owner-approved AGENTS.md edits + hook section rename; test_session_start_layer 42/42.)
+
+### False positives
+- none
