@@ -69,3 +69,31 @@ The plan does what the owner asked, plus one extra slice, and its agent split in
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `2f20dd1`
 
 Revision after the plan review: history agents are not given the goals, a pilot slice comes first, counts come from a saved script, the project-repo slice is an open question, phase 2 consequences extended.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-08 09:40 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-335 at `73d59e8`
+**Base**: origin/main
+**Depth**: Standard (reason: governance files — docs/principles.md, principles_review_guide.md, skill files)
+**Must-fix**: 2 | **Suggestions**: 9
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Specialists: static (pre-commit, clean); governance (Sonnet); plan drift (Sonnet); Claude adversarial (Sonnet); cross-model gemini/codex/copilot all EXIT=0.
+False positives dropped: Gemini "Design picture? nested under project-only check" (it is under Assess scope); Copilot "failing-first stricter than the principle" (the principle says a test that fails without the fix); Gemini hard-coded README URL (owner's text).
+
+### Findings
+- [ ] (must-fix) ADR-0001 row "supersede it, do not edit it" contradicts the ADR-0008 row's permitted status-line/References addendums; add the exception — `.agent/knowledge/principles_review_guide.md:36`
+- [ ] (must-fix) plan-task Design Picture step and template name `docs/design.md` unconditionally, but plan-task also runs on project issues whose design lives elsewhere or nowhere (Codex + Gemini) — `.claude/skills/plan-task/SKILL.md:124,211`
+- [ ] (suggestion) OPEN HUMAN CALL: "Leave in a project only what it chose to carry" row and README Light-touch bullet describe behaviour the tooling does not have yet (plan-task/progress_append commit work-plans into project worktrees by default); state the interim rule or mark as target — `.agent/knowledge/principles_review_guide.md:27`, `README.md:80`
+- [ ] (suggestion) OPEN HUMAN CALL: README rewrite drops Quick Start / Common Commands / Worktree Workflow and adapter links; `make setup` now documented only in docs/design.md (4 reviewers) — `README.md:11-16`
+- [ ] (suggestion) review-issue "Design picture?" check has no slot in the comment template or Actions routing; route it as an Action-needed Principle Alignment row (adversarial + Gemini) — `.claude/skills/review-issue/SKILL.md:128-132,154-160`
+- [ ] (suggestion) ADR-0001 gets an ADR-0008 status-line note pointing at "Keep one current design" and the guide row, so the ADR and its checklist do not silently disagree — `docs/decisions/0001-adopt-architecture-decision-records.md`
+- [ ] (suggestion) code comment cites the removed "workspace-improvements-cascade-to-projects" principle — `.agent/scripts/_resolve_default_branch.sh:28`
+- [ ] (suggestion) review-plan "failing-first test" → "a test that fails without the fix" to match the principle; note docs/skill-only changes — `.claude/skills/review-plan/SKILL.md:219`
+- [ ] (suggestion) audit-workspace step 1 still flags every principle without a hook, which the revised "Enforce what matters" principle no longer asks for (Codex) — `.claude/skills/audit-workspace/SKILL.md:31-41`
+- [ ] (suggestion) "Name the rule before bending it" row: say AGENTS.md Never / Ask-First rules are not bendable by naming them (adversarial) — `.agent/knowledge/principles_review_guide.md:28`
+- [ ] (suggestion) bookkeeping before PR: Implementation entry on this timeline; refresh stale plan text (14 principles / six sections / open questions); PR description notes README goals rewrite rides along and lists held AGENTS.md candidates (plan drift) — `.agent/work-plans/issue-335/plan.md:9,145-149`
