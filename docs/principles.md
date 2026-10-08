@@ -33,7 +33,7 @@ A change that alters behaviour also updates what depends on it: tests, documents
 
 Before adding code, process or documents, name the concrete problem it solves. Remove what no longer solves one.
 
-*Why: everything kept has to be read, checked and maintained, by agents and by the user. Serves: Quality of the work; Trust, control and information.*
+*Why: everything kept has to be read, checked and maintained, by agents and by the user. Serves: Quality of the work; Trust, control and information; The long view.*
 
 ## Small steps; step back when they stop converging
 
