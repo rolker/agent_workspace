@@ -151,3 +151,20 @@ AGENTS.md candidates: fold Documentation Accuracy into "Verify before claiming";
 - Gemini: "Design picture? nested under project-only check" — it sits under "Assess scope" (checked twice).
 - Gemini: review-issue and plan-task templates "still list old principles" — both use `...` placeholders.
 - Gemini: hard-coded README URL — owner's text.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-08 13:45 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**PR**: #375 at `61f8d5b`
+**Sources**: 2 (Copilot bot R2 @ `9641604`, CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass (at 9641604; re-running on 61f8d5b)
+
+### Findings
+- [x] (must-fix, Copilot bot) ADR-0017 made the known-stale docs/design.md authoritative before phase 3 rewrites it — transition bullet now says the current file does not override an accepted ADR until the rewrite lands; reviewers read the newer of the two (61f8d5b) — `docs/decisions/0017-design-document-is-the-current-picture.md`
+- [x] (must-fix, Copilot bot) audit-workspace step 2 flagged any accepted ADR whose implementation drifted, which ADR-0017 now expects — step checks status/supersession links and that design.md records current behaviour; drift is "superseded in practice", not an error (61f8d5b) — `.claude/skills/audit-workspace/SKILL.md`
+
+### False positives
+- none
