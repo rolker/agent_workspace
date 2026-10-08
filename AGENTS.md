@@ -95,6 +95,10 @@ with tests.
 - Never offer to "table this for later" when the permanent solve is five minutes
   away. Never present a workaround when the real fix exists.
 
+How work is judged beyond this list is in [`docs/principles.md`](docs/principles.md);
+reviews apply it through
+[`.agent/knowledge/principles_review_guide.md`](.agent/knowledge/principles_review_guide.md).
+
 ## Tool Usage
 
 - **Prefer dedicated tools where they fit** — shell commands (`cat`,
@@ -353,11 +357,16 @@ These dispatch through the project-type adapter (`.agent/scripts/adapter`),
 which resolves `PROJECT_TYPE` and calls that type's implementation in
 `.agent/project_types/<type>/adapter.sh`. See ADR-0011.
 
-## Documentation Accuracy
+## Verify Before Claiming
+
+Each claim in a PR description, a hand-back or a document traces to a command run
+or a file read (principle "Verify before claiming").
 
 - **Never document from assumptions** — verify every claim against actual source code.
 - Before writing or updating project documentation, read the relevant source files.
 - Check for `.agents/README.md` in the project repo before making changes.
+- "Tests pass" names which tests. A step that was skipped, denied or failed is
+  reported as skipped, denied or failed, never as done.
 
 ## Workspace Cleanliness
 
@@ -372,7 +381,10 @@ Before marking a task complete or opening a PR:
 1. Re-read issue description and work plan
 2. Compare changes against requirements
 3. Check consequences: do tests, docs, or dependent references need updating?
-4. List any gaps; complete them or explain in PR description
+4. Does the change alter the design picture (how the parts fit)? If so, the
+   matching section of the owning repo's design document is updated in the same
+   change (ADR-0017)
+5. List any gaps; complete them or explain in PR description
 
 ## Script Reference
 
