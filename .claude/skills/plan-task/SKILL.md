@@ -118,6 +118,13 @@ Read relevant files to understand the current state:
 - Tests that exist for those files
 - Documentation that references them
 - Use the consequences map to identify what else may be affected
+- Look for prior art before designing something new: existing code in the
+  project, features of the tools already in use, and outside practice. Note
+  what was found and what was taken or rejected; the plan records it
+- Ask whether the change alters the design picture (how the parts fit
+  today) and, if so, which section of the owning repo's design document
+  changes in the same change (`docs/design.md` for the workspace; a
+  project's own design document, if it keeps one)
 
 ### 4. Ensure correct worktree (hard check)
 
@@ -193,6 +200,19 @@ prompts/findings) alongside the plan:
 | File | Change |
 |------|--------|
 | `path/to/file` | Description of change |
+
+## Prior Art
+
+<What was looked at (existing code, tools already in use, outside practice)
+and what was taken or rejected. "Nothing new is being built" is a valid
+answer when true.>
+
+## Design Picture
+
+<Does this change alter how the parts fit? If yes, which section of the
+owning repo's design document changes, in this PR (`docs/design.md` for the
+workspace; a project's own design document, if it keeps one; if the project
+has none, say so). If no, say "No change to the design picture".>
 
 ## Principles Self-Check
 

@@ -214,8 +214,14 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 - Focus on principles most likely to be violated:
   - "A change includes its consequences" — is the plan complete?
   - "Only what's needed" — is the plan minimal?
-  - "Enforcement over documentation" — does a new rule have enforcement?
-  - "Test what breaks" — are tests planned for risky logic?
+  - "Enforce what matters, as simply as possible" — does a rule that matters
+    have the simplest check that fails when it is broken?
+  - "Test what breaks" — does each fix come with a test that fails without
+    it? (A docs- or skill-only change says so instead of planning one)
+  - "Keep one current design" — does the plan say whether the change alters
+    the design picture, and which design section changes?
+  - "Look for prior art before building" — does the plan say what was looked
+    at and what was taken or rejected?
 
 #### ADR compliance
 

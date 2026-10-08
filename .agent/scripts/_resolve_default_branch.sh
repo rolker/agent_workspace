@@ -24,10 +24,10 @@
 # or on `origin/`. Callers receive a ref that is safe to feed straight
 # into `git diff <ref>...HEAD`.
 #
-# Rationale: workspace and project repos default to `main` today, but
-# the workspace-improvements-cascade-to-projects principle and #172's
-# upcoming per-project manifest mean we need a single resolution point
-# rather than hardcoding `main` in every consumer.
+# Rationale: workspace and project repos default to `main` today, but a
+# project may choose another default branch and #172's upcoming
+# per-project manifest will record it, so we need a single resolution
+# point rather than hardcoding `main` in every consumer.
 
 resolve_default_branch() {
     local repo_root="${1:-}"

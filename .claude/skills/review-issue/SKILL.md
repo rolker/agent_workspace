@@ -125,7 +125,15 @@ If the issue targets a project repo, also check:
 - **Well-scoped?** Can this be completed in a single PR? If not, should it
   be broken into sub-issues?
 - **Right repo?** Does this change belong in the workspace repo or a project
-  repo? Check the workspace vs. project separation principle.
+  repo? Check the "Put each thing at the level it applies to" principle.
+- **Design picture?** Does the proposal change how the parts fit, or is it
+  not covered by the current design? If so, name the design section it
+  touches and bring the question to the user on its own ("Ask about what
+  matters, and show how much"). Record it as a "Keep one current design"
+  row with Status `Action needed` in the Principle Alignment table (step 4),
+  so it reaches the posted comment and the `### Actions` list. If the issue
+  already records the user's decision and names the design update, record
+  the row as `OK` with a pointer and do not re-ask.
 - **Dependencies?** Does this depend on other open issues? Will other issues
   need to wait for this one?
 
@@ -169,6 +177,7 @@ Post the review as a comment on the issue. **Do not modify the issue body.**
 
 **Well-scoped?** Yes/No — [explanation]
 **Right repo?** Yes/No — [explanation]
+**Design picture?** No change / Changes [section] — [explanation]
 **Dependencies**: [list or "none identified"]
 
 ### Principle Alignment

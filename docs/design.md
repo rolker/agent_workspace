@@ -220,4 +220,4 @@ See `.agent/knowledge/review_loop_lifecycle.md` for the one-page summary.
 - **Worktree isolation**: All work in isolated worktrees, never the main tree
 - **Pre-commit hooks**: Enforce identity, branch hygiene, and code quality
 - **ADR system**: Architecture decisions recorded in `docs/decisions/`
-- **principles.md**: Seven guiding principles in `docs/principles.md`
+- **principles.md**: Guiding principles in `docs/principles.md`

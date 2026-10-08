@@ -33,22 +33,29 @@ mechanism exists:
 
 | Principle | Enforcement | Status |
 |---|---|---|
-| Human control and transparency | PR template consequence checklist | OK / Missing |
-| Enforcement over documentation | Pre-commit hooks, CI checks | OK / Missing |
+| A change includes its consequences | PR template consequence checklist | OK / Missing / Not needed |
+| Enforce what matters, as simply as possible | Pre-commit hooks, CI checks | OK / Missing / Not needed |
 | ... | ... | ... |
 
-Flag principles that exist only as documentation with no hook, CI check,
-or guardrail.
+Flag a principle that exists only as documentation when a breach would cost
+more than a check ("Enforce what matters, as simply as possible"). A
+principle whose breaches are cheap or caught in review may stay unenforced:
+mark it `Not needed` with the reason in the Enforcement column, rather than
+flagging it every run. The summary counts `OK` and `Not needed` as enforced.
 
 ### 2. ADR accuracy
 
-For each ADR in `docs/decisions/`:
+Accepted ADRs are history (ADR-0017): drift between an old ADR and the code
+is expected after a design change and is not an error. For each ADR in
+`docs/decisions/`:
 
-- Read the ADR's decision and consequences
-- Verify the decision is still implemented as described
-- Check that consequences listed have been addressed
-- Flag any ADR whose status says "Accepted" but whose implementation has
-  drifted
+- Check the Status line: an ADR that is superseded or scoped names the ADR
+  that did it, and that link resolves
+- Check that the consequences it lists were addressed when it was accepted
+- Where the implementation no longer matches the Decision, check that
+  `docs/design.md` records the current behaviour; flag the design document
+  if it does not, and note the ADR as "superseded in practice, not yet
+  superseded on paper" rather than asking for the ADR to be edited
 
 ### 3. Script reference table
 
