@@ -68,7 +68,7 @@ WORKSPACE_SECTIONS=(
     "Tool Usage"
     "Issue-First Policy"
     "AI Signature (Required on all GitHub Issues/PRs/Comments)"
-    "Documentation Accuracy"
+    "Verify Before Claiming"
     "Workspace Cleanliness"
     "Post-Task Verification"
 )
