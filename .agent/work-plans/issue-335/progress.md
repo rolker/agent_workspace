@@ -97,3 +97,29 @@ False positives dropped: Gemini "Design picture? nested under project-only check
 - [ ] (suggestion) audit-workspace step 1 still flags every principle without a hook, which the revised "Enforce what matters" principle no longer asks for (Codex) — `.claude/skills/audit-workspace/SKILL.md:31-41`
 - [ ] (suggestion) "Name the rule before bending it" row: say AGENTS.md Never / Ask-First rules are not bendable by naming them (adversarial) — `.agent/knowledge/principles_review_guide.md:28`
 - [ ] (suggestion) bookkeeping before PR: Implementation entry on this timeline; refresh stale plan text (14 principles / six sections / open questions); PR description notes README goals rewrite rides along and lists held AGENTS.md candidates (plan drift) — `.agent/work-plans/issue-335/plan.md:9,145-149`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-08 10:05 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `fe8705f`
+**Branch**: feature/issue-335 at `HEAD`
+
+### Summary
+Phase 2 of the plan (the principles PR). Phase 1, the history review of both workspaces and their projects, ran 2026-10-02 in the scratchpad (private; results settled with the owner in session) and produced the 16th principle "Know whether it works" and the README "The long view" section. Phase 3 (docs/design.md rewrite) is deferred to its own plan.
+
+### Commits
+- 091532c principles.md: 16 settled principles, verbatim from the owner-settled notes
+- 2b8e43a review guide: one row per principle; ADR-0001 row revised (owner accepted 2026-10-08)
+- 8951d00 plan-task / review-plan / review-issue: design-picture and prior-art checks
+- 9bbf75c audit-workspace rows and design.md principle line
+- e7d49f6 "Only what's needed" also serves The long view (owner decision D2)
+- 0b8c583, 0baae47, fe8c066, fe8705f, and the ADR-0001 pointer: pre-push review round 1 fixes (M1, M2, H3, S1–S6)
+
+### Owner decisions recorded 2026-10-08
+- ADR-0001 row accepted as drafted, plus the ADR-0008 addendum exception.
+- "Each project says what healthy and the right direction mean" stays at goal level (design-only; Direction role).
+- Project-footprint row left as a target; README setup-command removal intended.
+
+### Held (Ask First, not in this PR)
+AGENTS.md candidates: fold Documentation Accuracy into "Verify before claiming"; point Quality Standard at docs/principles.md; add "does the design picture change?" to Post-Task Verification. Owed: test guidance into the test-engineering skill.
