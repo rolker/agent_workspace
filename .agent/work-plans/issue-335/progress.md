@@ -123,3 +123,31 @@ Phase 2 of the plan (the principles PR). Phase 1, the history review of both wor
 
 ### Held (Ask First, not in this PR)
 AGENTS.md candidates: fold Documentation Accuracy into "Verify before claiming"; point Quality Standard at docs/principles.md; add "does the design picture change?" to Post-Task Verification. Owed: test guidance into the test-engineering skill.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-08 11:20 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**PR**: #375 at `ca53f45`
+**Sources**: 7 (Copilot bot R1 @ `e66cf2c`, cross-model PR-mode gemini/codex/copilot @ `e66cf2c` all EXIT=0, Sonnet governance R2, Sonnet adversarial R2, Local Review (Pre-Push) @ `73d59e8`, CI rollup)
+**Cross-source confirmations**: 3
+**CI**: all-pass (at e66cf2c; re-running on ca53f45)
+
+### Findings
+- [x] (cross-confirmed ×4: Codex, Copilot CLI, Copilot bot, adversarial) narrowed ADR trigger is substantive under ADR-0008; needs a superseding ADR, not a status note — owner chose ADR-0017 in this PR; ADR-0001 status is now a pointer; guide gains the 0017 row (ca53f45) — `docs/decisions/0017-design-document-is-the-current-picture.md`
+- [x] (cross-confirmed ×2: governance, adversarial) audit-workspace prose allowed a status the table lacked — `Not needed` added, summary counts it as enforced (d7993e2) — `.claude/skills/audit-workspace/SKILL.md`
+- [x] (cross-confirmed ×2: adversarial R2, review-plan text) docs-only test exemption lived only in review-plan — added to the guide's Test row (d7993e2) — `.agent/knowledge/principles_review_guide.md`
+- [x] (must-fix, Copilot bot) Implementation entry's Branch field said `HEAD`; ADR-0013 needs a SHA — `4e478d8` (d7993e2) — `.agent/work-plans/issue-335/progress.md`
+- [x] (suggestion, Codex) review-issue design-picture check re-asked settled decisions — now `OK` with a pointer when the issue records the decision (d7993e2) — `.claude/skills/review-issue/SKILL.md`
+- [x] (suggestion, Gemini) comment template scope block gains a Design picture line (d7993e2) — `.claude/skills/review-issue/SKILL.md`
+- [x] (suggestion, Copilot bot) "python" → "Python" in README history (d7993e2) — `README.md`
+- [x] (suggestion, governance R2, pre-existing) ADR-0016 guide row's unescaped `||` split the row — escaped (d7993e2) — `.agent/knowledge/principles_review_guide.md`
+- [ ] (owner decision, left) Never/Ask-First carve-out lives in the guide row, not the principle (H3: guide row only) — `docs/principles.md`
+- [ ] (owner decision, left) README setup commands removed on purpose (Copilot CLI, Gemini raised again) — `README.md`
+- [ ] (owner decision, left) project-footprint row stays a target until zero-footprint mode exists — `.agent/knowledge/principles_review_guide.md`
+
+### False positives
+- Gemini: "Design picture? nested under project-only check" — it sits under "Assess scope" (checked twice).
+- Gemini: review-issue and plan-task templates "still list old principles" — both use `...` placeholders.
+- Gemini: hard-coded README URL — owner's text.
