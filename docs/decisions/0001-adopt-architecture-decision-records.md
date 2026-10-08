@@ -2,13 +2,8 @@
 
 ## Status
 
-Accepted. Scoped on 2026-10-08 by the principle "Keep one current design"
-([docs/principles.md](../principles.md)) and the ADR-0001 row of
-[`.agent/knowledge/principles_review_guide.md`](../../.agent/knowledge/principles_review_guide.md):
-the current picture lives in [docs/design.md](../design.md); accepted ADRs
-are history. The scoping itself is recorded there, not here (ADR-0008
-addendum; a superseding ADR, if one is needed, belongs to the design-document
-stage of #335).
+Accepted. Trigger and the role of accepted ADRs scoped by
+[ADR-0017](0017-design-document-is-the-current-picture.md).
 
 ## Context
 
