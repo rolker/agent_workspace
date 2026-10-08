@@ -37,8 +37,10 @@ mechanism exists:
 | Enforce what matters, as simply as possible | Pre-commit hooks, CI checks | OK / Missing |
 | ... | ... | ... |
 
-Flag principles that exist only as documentation with no hook, CI check,
-or guardrail.
+Flag a principle that exists only as documentation when a breach would cost
+more than a check ("Enforce what matters, as simply as possible"). A
+principle whose breaches are cheap or caught in review may stay unenforced;
+say so in the Status column rather than flagging it every run.
 
 ### 2. ADR accuracy
 

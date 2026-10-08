@@ -216,7 +216,8 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
   - "Only what's needed" — is the plan minimal?
   - "Enforce what matters, as simply as possible" — does a rule that matters
     have the simplest check that fails when it is broken?
-  - "Test what breaks" — is a failing-first test planned for each fix?
+  - "Test what breaks" — does each fix come with a test that fails without
+    it? (A docs- or skill-only change says so instead of planning one)
   - "Keep one current design" — does the plan say whether the change alters
     the design picture, and which design section changes?
   - "Look for prior art before building" — does the plan say what was looked

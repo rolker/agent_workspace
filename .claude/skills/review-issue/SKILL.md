@@ -129,7 +129,9 @@ If the issue targets a project repo, also check:
 - **Design picture?** Does the proposal change how the parts fit, or is it
   not covered by the current design? If so, name the design section it
   touches and bring the question to the user on its own ("Ask about what
-  matters, and show how much").
+  matters, and show how much"). Record it as a "Keep one current design"
+  row with Status `Action needed` in the Principle Alignment table (step 4),
+  so it reaches the posted comment and the `### Actions` list.
 - **Dependencies?** Does this depend on other open issues? Will other issues
   need to wait for this one?
 
