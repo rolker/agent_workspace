@@ -32,9 +32,11 @@ script lifecycles has landed in ADRs, where it goes stale. The principle
 - Fewer ADRs. The design document carries the current picture and has to be
   kept current; the review guide's "Keep one current design" row checks
   that.
-- `docs/design.md` is rewritten to carry that picture (#335, phase 3). Until
-  then, existing ADRs stand as written; where one disagrees with the design
-  document, the design document wins and the ADR is superseded when next
-  touched.
+- `docs/design.md` is rewritten to carry that picture (#335, phase 3). The
+  current file predates this decision and is known to be behind the code in
+  places, so until the rewrite lands it does not override an accepted ADR:
+  existing ADRs stand as written, and a reviewer reads the newer of the two.
+  The rewrite reconciles them and supersedes ADRs where needed. From then on,
+  where the design document and an ADR disagree, the design document wins.
 - ADR-0001's "would reverting cause problems?" bar is replaced by the one
   above. The review guide's ADR-0001 row states the operational rule.

@@ -45,13 +45,17 @@ flagging it every run. The summary counts `OK` and `Not needed` as enforced.
 
 ### 2. ADR accuracy
 
-For each ADR in `docs/decisions/`:
+Accepted ADRs are history (ADR-0017): drift between an old ADR and the code
+is expected after a design change and is not an error. For each ADR in
+`docs/decisions/`:
 
-- Read the ADR's decision and consequences
-- Verify the decision is still implemented as described
-- Check that consequences listed have been addressed
-- Flag any ADR whose status says "Accepted" but whose implementation has
-  drifted
+- Check the Status line: an ADR that is superseded or scoped names the ADR
+  that did it, and that link resolves
+- Check that the consequences it lists were addressed when it was accepted
+- Where the implementation no longer matches the Decision, check that
+  `docs/design.md` records the current behaviour; flag the design document
+  if it does not, and note the ADR as "superseded in practice, not yet
+  superseded on paper" rather than asking for the ADR to be edited
 
 ### 3. Script reference table
 
