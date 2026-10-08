@@ -76,10 +76,9 @@ code being changed:
 
 ## Quality Standard
 
-This project is bound for public release. Players will see what we ship; bugs,
-half-fixes, and silent failures degrade trust in the product. The marginal cost
-of completeness is near zero with AI — do the whole thing, do it right, do it
-with tests.
+What we ship is used by people who will see every bug, half-fix and silent
+failure, and each one costs their trust. The marginal cost of completeness is
+near zero with AI — do the whole thing, do it right, do it with tests.
 
 - When fixing a bug, fix it completely: add the test, handle the edge case, check
   the state transition. Never leave a "good enough" fix when the proper one is
