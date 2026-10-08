@@ -131,7 +131,9 @@ If the issue targets a project repo, also check:
   touches and bring the question to the user on its own ("Ask about what
   matters, and show how much"). Record it as a "Keep one current design"
   row with Status `Action needed` in the Principle Alignment table (step 4),
-  so it reaches the posted comment and the `### Actions` list.
+  so it reaches the posted comment and the `### Actions` list. If the issue
+  already records the user's decision and names the design update, record
+  the row as `OK` with a pointer and do not re-ask.
 - **Dependencies?** Does this depend on other open issues? Will other issues
   need to wait for this one?
 
@@ -175,6 +177,7 @@ Post the review as a comment on the issue. **Do not modify the issue body.**
 
 **Well-scoped?** Yes/No — [explanation]
 **Right repo?** Yes/No — [explanation]
+**Design picture?** No change / Changes [section] — [explanation]
 **Dependencies**: [list or "none identified"]
 
 ### Principle Alignment

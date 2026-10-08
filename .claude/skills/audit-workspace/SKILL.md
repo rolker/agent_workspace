@@ -33,14 +33,15 @@ mechanism exists:
 
 | Principle | Enforcement | Status |
 |---|---|---|
-| A change includes its consequences | PR template consequence checklist | OK / Missing |
-| Enforce what matters, as simply as possible | Pre-commit hooks, CI checks | OK / Missing |
+| A change includes its consequences | PR template consequence checklist | OK / Missing / Not needed |
+| Enforce what matters, as simply as possible | Pre-commit hooks, CI checks | OK / Missing / Not needed |
 | ... | ... | ... |
 
 Flag a principle that exists only as documentation when a breach would cost
 more than a check ("Enforce what matters, as simply as possible"). A
-principle whose breaches are cheap or caught in review may stay unenforced;
-say so in the Status column rather than flagging it every run.
+principle whose breaches are cheap or caught in review may stay unenforced:
+mark it `Not needed` with the reason in the Enforcement column, rather than
+flagging it every run. The summary counts `OK` and `Not needed` as enforced.
 
 ### 2. ADR accuracy
 

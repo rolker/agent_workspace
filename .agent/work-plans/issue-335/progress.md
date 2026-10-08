@@ -103,7 +103,7 @@ False positives dropped: Gemini "Design picture? nested under project-only check
 **When**: 2026-10-08 10:05 -04:00
 **By**: Claude Code Agent (claude-fable-5-1)
 **Plan**: `fe8705f`
-**Branch**: feature/issue-335 at `HEAD`
+**Branch**: feature/issue-335 at `4e478d8`
 
 ### Summary
 Phase 2 of the plan (the principles PR). Phase 1, the history review of both workspaces and their projects, ran 2026-10-02 in the scratchpad (private; results settled with the owner in session) and produced the 16th principle "Know whether it works" and the README "The long view" section. Phase 3 (docs/design.md rewrite) is deferred to its own plan.

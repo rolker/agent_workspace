@@ -116,7 +116,7 @@ as we improve the workspace.
 
 Before 2026 I had been dismissing "vibe coding" without having tried it. Towards
 the end of 2025, I started dabbling with Gemini, which came with my Pixel phone,
-and was impressed at how quickly it would whip up complex throw-away python
+and was impressed at how quickly it would whip up complex throw-away Python
 scripts to answer some of my questions. That led me to try having Gemini build a
 web version of one of my projects, and the results were impressive yet needed
 much more guidance than can be provided in a simple prompt.
