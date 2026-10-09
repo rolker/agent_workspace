@@ -626,3 +626,22 @@ Owner decisions 2026-10-09 for PR A (phase-3 plan `acd2cc3`). Pre-push review ro
 - Make the `WORKTREE_GUIDE.md` package-worktree example synthetic too (`acme/sonar_driver#111`); done in `c6c85f5`, after the reviewed head.
 - Leave the `tools/ros-manifest/` prose as is; the synthetic-name boundary is unchanged. Round-2 finding 6 is owner-decided "leave", not addressed.
 - Publish PR A now (Part of the design-doc issue; PR B follows).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-09 11:37 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #377 at `4e9cab3`
+**Sources**: 2 (Copilot R1 @ `4e9cab3`, CI rollup); no local-review entry covers this head (the round-3 approval at `0aab56d` is stale: `c6c85f5` touched `.agent/WORKTREE_GUIDE.md`)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [ ] (low, Copilot R1) The "Anything but `OK` is a `phase-failed` checkpoint" sentence contradicts the paragraph above it: exits 2 and 3 print no `status=` line and are errors in the check itself, while `run-issue` routes only returned `PARTIAL|FAILED|MISSING` to `checkpoint:phase-failed`. Reword to "Any returned status other than `OK` (`PARTIAL`, `FAILED`, `MISSING`) is a `phase-failed` checkpoint ...; exit 2 or 3 is a failure of the check, fix it and re-run" — `.agent/knowledge/review_loop_lifecycle.md:108`
+- [ ] (medium, Copilot R1) The `## Plan Authored` entry for plan commit `0f604b7` carries `**Plan**: `0f604b7`` without the path; ADR-0013 requires `` `<path>` at `<plan-commit-sha>` `` and `progress_read.py::_corr_plan` returns no correlation for it. Change to `` `.agent/work-plans/issue-335/plan.md` at `0f604b7` `` (the commit exists; sibling entries use that form) — `.agent/work-plans/issue-335/progress.md:192`
+
+### False positives
+- none
+
+Carried forward, not re-listed: `tools/ros-manifest/` real-name prose is owner-decided "leave" (Checkpoint at `4e9cab3`); earlier-round findings from the phase-2 principles work are stale prior rounds, not PR A scope.
