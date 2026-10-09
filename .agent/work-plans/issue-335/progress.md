@@ -258,3 +258,55 @@ The approach is sound and matches the owner's shape, but several destination cla
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `aec3cbd`
 
 Revision 2 of the phase-3 plan, answering the round-1 Plan Review (`6f8c643`, needs-work) and the owner's 2026-10-08 decision on document shape (five Status values, Now/Target, no hard line cap). Main merged (PR #376 in). The plan's closing section lists what changed per review item.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-09 08:30 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: needs-work
+
+**Issue**: #335 — Workspace design document
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `aec3cbd`
+**Branch**: `feature/issue-335`
+
+Round 2. Revision 2 of the plan (336 lines), read against the files in the worktree at 34ad41e. All eight round-1 must-fix items and all eight suggestions are resolved in the plan text, not only in its change log. The "already lives" claims were each re-opened: the `adapter` header, `projects.local.example`, `validate_workspace.py` docstring, `ros2_colcon/adapter.sh` header, Makefile header, `WORKTREE_GUIDE.md`, `lock.sh`/`unlock.sh`/`dashboard.sh`, `WORKFORCE_PROTOCOL.md`, `review_loop_lifecycle.md`, `dispatch_phase.sh` header, ADR-0008/0016/0017, README, roadmap. Two new must-fix items and a few small false facts remain.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | No line cap per owner Q1; three PRs; the 17-row register is no longer squeezed |
+| Issue alignment | Good | Issue scope item 3 (one-line ADR pointers) is dropped for ADR-0008 reasons and asked as B1, but the plan never says it departs from the issue text (S-N3) |
+| File targeting | Needs work | PR A real-name sweep is described as three files; more files carry real names (N3) |
+| Consequences | Needs work | Anchor test does not cover the citation forms the plan itself creates (N2) |
+| Principle alignment | Needs work | "Test what breaks" / "Enforce what matters": the test has no case that fails (N2) |
+| ADR compliance | Good | Register only; link fix is within ADR-0008 "Permitted"; ADR-0016 as `decided, not proven` is right |
+| ROS conventions | N/A | Workspace plan |
+
+### Round-1 items
+
+All resolved: F1 (plan.md 118-126), F2 (161-162, Files to Change), F3 (63-69, "Why Rules"), F4 (Wire-in 4), F5 (Wire-in 3, ADR-0017 line 27 link fix in PR A), F6 (main merged at 306938a; #375 `b7e8838`, #376 `ea0df4a`, AGENTS.md 442 lines all match git and `wc -l`), F7 (five-value Status table), F8 (cap removed, 60-line prompt, line count in change log). S1 to S8 applied. Verified true: resolution order is in the `adapter` header; the workspace lock is documented nowhere (`lock.sh` has no header, `dashboard.sh` line 196 is the only reader, `WORKFORCE_PROTOCOL.md` section 3 is issue-based task locking); the lifecycle file cites ADR-0014 once (line 5) and never names `--check-exit` or ADR-0015; the Makefile header lists three stamps and `design.md` two; README heading is `## Workspace goals` (line 26); ADR-0003 is superseded by ADR-0011; `no-commit-to-branch`, `check-commit-identity`, `verify-issue-branch` exist in `.pre-commit-config.yaml`; all three both-scope skills have `session_scope: both` and the `$WS_ROOT` idiom.
+
+### Findings
+
+1. **[Approach]** (must-fix, N1) — The Status key says each part opens with a `Status:` line "taking exactly one of five values", but the section table gives compound statuses: row 3 "roles decided; per-project mapping proposed", row 5 "decided, not proven; Target open", row 6 "decided (ADR-0011/0012); rest proposed or open", row 7 "decided; footprint proposed", row 8 "decided; candidates proposed". Under the key as written none of these can be written. Decide whether Status attaches to each block (Now and Target each carry one) or per part, and make the key and the table agree. This is the control the owner chose in Q1, so it has to be consistent before sections are drafted.
+2. **[Consequences / Test what breaks]** (must-fix, N2) — `test_design_anchors.sh` is specified to check "every `design.md#...` citation in skills, knowledge files, the roadmap and the guide". Today there are zero `design.md#` citations in the repo (grep), the skill edits in PR C cite sections "by its heading" in prose (Wire-in 2), and the README pointer `docs/design.md#how-it-works` is outside the listed scope. So the test passes vacuously and cannot catch a rename of the sections the plan actually cites. Fix: fix a citation form (a link with an anchor) for skills, README and roadmap; include design.md's own cross-references and the register's "section that carries it" column; and give the test a negative fixture (a deliberately broken anchor must fail), so it is shown to fail when the thing breaks.
+3. **[File targeting]** (should-fix, N3) — S5 says real project names appear "in three files". Also: `Makefile` line 80 (`make build PROJECT=gz4d`, user-visible help), `.agent/knowledge/principles_review_guide.md` line 51 (ADR-0016 row names `gz4d`), `ros2_colcon/adapter.sh` line 835 and `merge_pr.sh` line 497 (comments naming `p11-jazzy`/`p11`). ADR-0016 and test fixtures are history or fixtures. Either widen PR A to the Makefile line and the guide row, or state the boundary ("only the examples design.md points at"). The word "checked" in the S5 change-log row overstates what was checked.
+4. **[Open questions]** (suggestion) — B3 (keep the anchor test) is settled by "Test what breaks"; drop it or turn it into a statement. D1 to D4 are wording changes to principles and guide, "not this document"; they belong on their own issue or in a note, not in the list the owner must answer for #335. A1 asks whether Status applies to "every part"; the plan text already says every part and Q1 decided the marking, so reduce A1 to Now/Target only.
+5. **[Issue alignment]** (suggestion) — Issue scope item 3 says "existing ADRs get a one-line pointer to their design section". The plan departs (register only) with good reason (ADR-0008, ADR-0017 "history"), but only B1 mentions it. Say in Wire-in 3 that this departs from the issue text, and that the issue body is updated or the departure recorded on the issue. The issue also lists a "Purpose" part pointing at README goals and `docs/principles.md`; the table has no row that carries it (How it works and the documentation-layers row may, but say so).
+6. **[Accuracy]** (suggestion, small) — "Directory tree (lines 11-66)": the tree is lines 11 to 58; "Project Repository Model" starts at line 60 and lines 60-66 are its opening on the 12-verb contract. `projects.local.example` "lines 62-67": the resolution text runs 62 to 69 (the default_instance sentence is 67-69).
+7. **[Scope]** (suggestion) — Register column "Re-examined: `yes` with the date when the rewrite checked the decision against the code" implies 17 checks against code; Estimated Scope does not size that. Say which ADRs are checked in PR B and that the rest are `not yet` (the issue allows "re-examined or 'not yet'").
+8. **[Consequences]** (suggestion) — The "System design" label for `docs/design.md` also appears in `AGENT_ONBOARDING.md` line 91 (`AGENTS.md` and `CLAUDE.md` are Ask First). The plan changes the label in README only; say whether the others stay.
+
+### Summary
+
+Revision 2 resolves every round-1 item in the plan text, and the previously false "already lives" claims are now correct against the files. Two things remain to fix before the owner reads it: the Status key and the section table disagree, and the anchor test as specified cannot fail. A small number of line references and the "three files" claim are off. No owner question is missing that the plan can't answer from files, other than the ones in finding 4.
+
+### Recommended Actions
+
+- [ ] Make the Status key and the section table agree (finding 1)
+- [ ] Specify the citation form, widen the anchor test scope, add a failing fixture (finding 2)
+- [ ] Widen PR A's name sweep or state its boundary (finding 3)
+- [ ] Trim B3, D1 to D4 and A1 from the owner list (finding 4)
+- [ ] Record the departure from issue scope item 3 (finding 5)
+- [ ] Correct line ranges; size the register check; decide the label question (findings 6 to 8)
