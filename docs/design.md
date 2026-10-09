@@ -262,6 +262,86 @@ projects, a repository carrying tools of another flavour, are supported (#310). 
 C4 holds what is unsettled. The legacy `project/` shape is dropped with the registry-only change
 described under [Sessions and roots](#sessions-and-roots).
 
+## Worktrees
+
+**Now**
+
+Status: `decided`
+
+- All feature work happens in an isolated git worktree, never by switching branches in the main tree
+  (ADR-0002). There are two kinds, and the worktree scripts take `--type workspace|project`, derived
+  from the cwd when it is omitted (`worktree_create.sh`, `worktree_enter.sh`, `worktree_remove.sh`; see
+  [Registry and adapters](#registry-and-adapters), Table 1).
+- A workspace worktree is a worktree of the workspace repository, under `worktrees/workspace/`. A
+  project worktree is a worktree of the project's repository, under the registered root's own
+  `worktrees/` or its `worktrees=` override, resolved by `registry_worktree_dir`. An unregistered
+  project falls back to `worktrees/project/<repo>/`, dropped with the legacy `project/` checkout.
+  Naming, the `.git/info/exclude` line the workspace adds to a project root, and the `COLCON_IGNORE`
+  marker a `ros2_colcon` worktree writes are in `.agent/WORKTREE_GUIDE.md` and `_worktree_helpers.sh`.
+- A worktree is entered with `cd`, not the native `EnterWorktree` tool, because that tool accepts only
+  worktrees of the current repository and a project is a separate repository (`AGENTS.md`, "Worktree
+  Entry").
+- Agents work concurrently in separate worktrees. Work in progress is made visible by a draft pull
+  request, which `worktree_create.sh --plan-file` opens, and an agent checks for one before starting
+  (`WORKFORCE_PROTOCOL.md` sections 1 to 3). `make lock` is an advisory note shown by the dashboard and
+  stops nothing (`lock.sh` header).
+- **Records.** An issue's work plan and progress timeline are committed in the project repository on
+  the issue's feature branch, under `.agent/work-plans/issue-N/` (owner decision 2026-10-09, C3).
+  `progress_append.sh` line 87 writes `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013
+  names that path. One gap shows in the project case: `merge_pr.sh` looks up the gate's timeline at
+  `$ROOT_DIR/project` (line 670), the legacy checkout, and the gate is report-only for project pull
+  requests (lines 916 and 929). That is tracked as #379 ("merge_pr.sh review gate looks up a project
+  PR's timeline at the legacy project/ path, not the registry root"). Its fix is one line, using the
+  registry-aware root that line 555 already uses (`${PJ_REPO_ROOT:-$ROOT_DIR/project}`), and it does not
+  wait for the Target below. The change that fixes #379 edits this paragraph in the same change.
+
+**Target**
+
+Status: `proposed`
+
+Proposed: a project carries its records by choice, through two settings in its registry entry, each with
+a default derived when the entry omits it.
+
+- `location`: in the project repository (the default), or an outside path. The default outside path is
+  a fixed derived one, such as a sibling directory of the project root; the exact path is chosen when
+  this is built.
+- `tracking`: untracked; tracked in the project repository (the default when the location is in the
+  project repository); or tracked in a repository the user names. This document gives no example of
+  that repository being `agent_workspace` (owner: "I don't want to prohibit it, but I also don't want to
+  encourage it").
+
+| location | tracking | What it is |
+|---|---|---|
+| in the project repository | tracked in the project repository | Today. The records travel with the feature branch |
+| outside | untracked | No footprint in the project; one machine |
+| outside | tracked in a named repository | No footprint in the project; portable |
+| in the project repository | untracked, through the clone's `.git/info/exclude` | Behaves like outside and untracked |
+
+Other combinations are not named as working; whether the registry rejects them is decided when this is
+built. Three mechanisms would do it, each a later build:
+
+1. One lookup, "where are the records for this project and issue", fed by the registry entry and used
+   by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
+   342, 344, 387, 479: the exit contract, `--check-exit` and `next`, which is what a resumed session
+   reads), `merge_pr.sh` (674-675, 829-837: the gate and its `Merge` entry), `review_progress.sh` (112,
+   268, 290) and `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is the nearest lookup that
+   exists, and `cross_model_review.sh --work-plans-dir` already feeds it an override. The seven skills
+   that cite the path follow it. The gate's lookup at `merge_pr.sh` line 670 is the first to be wrong
+   for a registered project (#379).
+2. The merge gate's "same reviewed state" rule (`_bookkeeping.sh`, shared with `review_progress.sh
+   sources`) reads the record from where it lives and checks the project commit the entry names, so the
+   walk changes repository. Finding the record at all is #379, which comes before this.
+3. Untracked records are per machine and per clone. A second machine or a fresh clone starts with no
+   timeline, and losing the directory loses the history. That is the cost of the combination.
+
+One rule: when records exist in two places, the registry setting names the source of truth.
+
+Acceptance test for this Target: a colleague's project, by shape only: a single-repository web app
+developed in a different style, with no GitHub issues or pull requests, and records where its developer
+chooses. Both settings must be able to describe it. Because it has no pull requests it exercises the
+lookup and the tracking and not the merge gate (mechanism 2), which a project with pull requests has to
+exercise.
+
 ## Open questions
 
 **Now**
@@ -291,3 +371,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Open questions | Section started with the first gap found while writing: where a project records its role mapping | #335 | 143 |
 | 2026-10-09 | Sessions and roots | Three session places, the user-tier mechanisms that are built, the PR 4 items decided but not built, #295 as an open pointer; OQ-2 added. Section is 63 lines, past the 60-line prompt: asked whether the detail moves next to the code; it stays, because the pinned `AGENTS.md` headings, the user-tier rule and the root file are interfaces between the hook, the installer, the skills and `AGENTS.md`, and no one script header shows all four | #335 | 208 |
 | 2026-10-09 | Registry and adapters | Registry, the 12-verb contract, resolution, the C2 inventory (8 script rows, 4 scripts without a branch, 12 verbs classified), Target from #332 and #310; C4 added. Section is 83 lines, past the 60-line prompt: asked whether the detail moves next to the code; the registry and contract text already lives there and is one sentence each here, and the rest is the owner-directed inventory, a dated probe for the #295 decision that is cut back once #295 is decided | #335 | 293 |
+| 2026-10-09 | Worktrees | Two kinds and where they live, entering, concurrency, the Records Now text citing #379, and the C3 Target (location and tracking, the four combinations, three mechanisms, source-of-truth rule, acceptance test by shape). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the layout detail already lives in the worktree guide and is one bullet here, and the Target is design for something not built, so no code or script header can hold it yet. Stays; it splits into its own Records section if the Target grows past 60 lines | #335 | 374 |
