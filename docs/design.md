@@ -567,8 +567,15 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 
 ## Change log
 
+**Now**
+
+Status: `decided`
+
 One row per change to this file, appended in the same change that alters a section: date, section, one
-line, issue, and the line count of the document after the change.
+line, issue, and the line count of the document after the change. The line count is how growth shows up
+as a number (principle "Know whether it works"); a section past about 60 lines says in its row whether
+its detail should move next to the code. A change that fixes #379 or builds a Target also edits the
+sentence it makes untrue in the same change (ADR-0017).
 
 | Date | Section | Change | Issue | Lines |
 |---|---|---|---|---|
@@ -586,3 +593,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Instruction layers | The four layers an agent's instructions load in and a budget for the always-loaded one, all proposed; AGENTS.md is 442 lines against the under-200 target | #335 | 536 |
 | 2026-10-09 | Decision register | 17 rows, standing and re-examined, four rows superseded in practice (0002, 0011, 0013, 0014) with what the code does; no ADR file edited; both checker guards are live from here. Section is 40 lines | #335 | 583 |
 | 2026-10-09 | Open questions | Table finished: OQ-1 to OQ-5, C4 and C5 | #335 | 588 |
+| 2026-10-09 | Change log | Now block: the rule for rows and the line count | #335 | 596 |
