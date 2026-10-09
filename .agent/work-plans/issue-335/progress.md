@@ -695,3 +695,24 @@ Revision 8 of the phase-3 plan, applying two owner decisions of 2026-10-09 after
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `16283cc`
 
 Revision 9 of the phase-3 plan, applying the owner's A-group decisions of 2026-10-09 ("Go for group A") and citing issue #379. A1: every section carries the label Now, also with no Target. A2: the admission rule is the opening paragraph of "The design"; How it works stays first and unencumbered. A3: the Rules table gets the enforced-by column (hook, script, CI, review only, nothing). A4: no per-section dates; the register's Re-examined column is the checked-date and PR C adds one line to audit-workspace step 2 (the skill's "Report, don't fix" guideline gets a one-cell exception). A5: Instruction layers is a real section with status proposed; the tree pointer is dropped. #379 is cited as the tracker of the merge gate's legacy-path timeline lookup (its one-line fix does not wait for the records resolver); the roadmap gets no row for it. Only B1, B2, C4 and C5 remain open. The plan's closing section lists what changed per item.
+
+## Implementation
+**Status**: partial
+**When**: 2026-10-09 15:40 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `16283cc`
+**Branch**: feature/issue-335 at `46794b3`
+
+### Summary
+PR B, commit 1 of the phase-3 plan (revision 9): the design-anchor checker, its pre-commit hook and its script-tests suite. Tooling only: `docs/design.md`, `AGENTS.md`, `CLAUDE.md` and every section are untouched. Remaining PR B commits (sections, register, glossary, deletions, guide row) are not started; no push.
+
+### Commits
+- 46794b3 `check_design_anchors.sh`, the `check-design-anchors` hook (placed before `validate-script-tests`, `files:` the eight paths of Wire-in 6 including `docs/decisions/`; hook approved by the owner 2026-10-09, B4) and `test_design_anchors.sh`
+
+### Tests
+`run_script_tests.sh`: all 31 suites passed (also through the `validate-script-tests` hook on the commit); `test_design_anchors.sh` has 26 cases (fixtures (a) to (g) plus slug, fence, scope, usage and `DESIGN_ANCHORS_ROOT` cases) and passes with gawk and mawk; `test_script_tests_hook_scope.sh` passes with no ROOT_READERS entry. The checker exits 0 on this repo (no `docs/design.md#` citation and no register heading exist yet). shellcheck (style severity) clean on both scripts.
+
+### Deviations from the plan
+- Guard (a) and guard (b) are both live only when the register heading AND `docs/decisions/` exist, as Wire-in 6 words it; a register heading with no ADR directory leaves both off.
+- In-file `](#...)` links are matched up to the closing `)`; an all-digit fragment or one containing `<` is ignored (not only the empty `#<section>` form), so `[y](#<slug>)` placeholders do not fail. Links inside fenced code in design.md are not links; citations in fenced code of the citing files still count.
+- The hook's `files:` line exceeds yamllint's 120 characters, so it carries a `yamllint disable-line` comment rather than being split.
