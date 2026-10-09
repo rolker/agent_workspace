@@ -412,6 +412,37 @@ Status: `open`
 What a review finding must contain, and how independent the reviewers are: C5 in
 [Open questions](#open-questions).
 
+## Merge gate
+
+**Now**
+
+Status: `decided`
+
+- The owner decides every merge. The loop stops at the `merge` checkpoint, and the flags that relax the
+  gate (`--report-only`, `--no-wait`, `--allow-pending-review`, `--force-unreviewed`) are passed only on
+  the owner's answer for that merge, never on the host's judgment (`run-issue/SKILL.md` step 11; see
+  [Review loop and timeline](#review-loop-and-timeline)).
+- `merge_pr.sh` checks two things before it merges. (a) The newest review entry (`## Local Review` or
+  `## Integrated Review`) is at the pull request's head, and is approved, or for an Integrated Review is
+  complete with no open must-fix or cross-confirmed finding. (b) The pull request body or a comment has
+  a `## Decision summary` heading (`merge_pr.sh`, Step 1.5).
+- A review at an earlier commit still counts when only bookkeeping changed since: that issue's
+  `.agent/work-plans/issue-N/` files and the roadmap. `_bookkeeping.sh` holds that one rule; the merge
+  gate, the CI target and `review_progress.sh sources` all use it.
+- The script then waits for CI on the reviewed head, not on whatever the head has moved to. A review
+  check-run that is still running (Copilot's) holds the merge unless `--allow-pending-review` is passed;
+  its conclusion is never read as CI.
+- The gate enforces by default on workspace pull requests: a gap refuses with exit 1 and no entry.
+  Project and package pull requests are report-only: the gap is printed and recorded as a
+  `## Merge (report-only)` entry and the merge goes ahead. `--force-unreviewed` bypasses both conditions
+  with a banner and a `## Merge (unreviewed)` entry. A merge that does not end merged after one of
+  those entries goes to the `merge-refused` checkpoint.
+- The gate is local only. A Merge click on GitHub bypasses it, and the server-side complement, a required
+  status check, is not built; building it changes CI and branch protection, which is Ask First
+  (`merge_pr.sh`, Step 1.5 comment; [Rules](#rules)).
+- For a project pull request the gate's timeline lookup is anchored at the legacy `project/` checkout.
+  That is #379, described under [Worktrees](#worktrees).
+
 ## Open questions
 
 **Now**
@@ -444,3 +475,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Registry and adapters | Registry, the 12-verb contract, resolution, the C2 inventory (8 script rows, 4 scripts without a branch, 12 verbs classified), Target from #332 and #310; C4 added. Section is 83 lines, past the 60-line prompt: asked whether the detail moves next to the code; the registry and contract text already lives there and is one sentence each here, and the rest is the owner-directed inventory, a dated probe for the #295 decision that is cut back once #295 is decided | #335 | 293 |
 | 2026-10-09 | Worktrees | Two kinds and where they live, entering, concurrency, the Records Now text citing #379, and the C3 Target (location and tracking, the four combinations, three mechanisms, source-of-truth rule, acceptance test by shape). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the layout detail already lives in the worktree guide and is one bullet here, and the Target is design for something not built, so no code or script header can hold it yet. Stays; it splits into its own Records section if the Target grows past 60 lines | #335 | 374 |
 | 2026-10-09 | Review loop and timeline | The eight phases in order with what each produces and who decides, the timeline as the only loop state, fresh sub-agent per phase, the exit check, nine checkpoints; Target candidates and the C5 pointer; C5 added. Also the review guide's work-plan row now names this section instead of the removed directory tree. Section is about 70 lines, past the 60-line prompt: asked whether the detail moves next to the code; the lifecycle file and dispatch_phase.sh header already hold the mechanics, so the section keeps only the phase table and one bullet per mechanism, and what it adds is the who-decides column and the code-versus-reported line, which no one file shows | #335 | 446 |
+| 2026-10-09 | Merge gate | Who decides a merge, the two conditions, the bookkeeping rule, the CI wait, enforce versus report-only, local-only, the #379 gap | #335 | 478 |
