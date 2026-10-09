@@ -794,27 +794,57 @@ ADR-0002 (project worktree location), ADR-0011 (discovery order; 12 verbs), ADR-
 **Round**: 4 | **Ship**: continue — round 4: 10 must-fix is high; another independent read warranted
 
 ### Findings
-- [ ] (must-fix) "`dispatch_phase.sh next` reads only the newest entry" is false: `round_count()` reads every earlier pre-push review and `skill_for()` earlier Implementation entries; say it routes on the newest entry (same wrong sentence is in review_loop_lifecycle.md) — `docs/design.md:411`
-- [ ] (must-fix) Table 2 `setup` row cites "`setup-dev` and `git-bug` stamps (`Makefile` header, line 98)"; line 98 is `setup: $(STAMP)/project.done $(STAMP)/git-bug.done`, the header lists setup-dev.done, git-bug.done, project.done — `docs/design.md:277`
-- [ ] (must-fix) "each run by a fresh sub-agent" / "Each phase runs in a fresh sub-agent" omits that a repeat phase may resume the earlier agent (review_loop_lifecycle.md line 77, run-issue step 4a, ADR-0014 #314) — `docs/design.md:11` and `docs/design.md:415`
-- [ ] (must-fix) "a merge that does not end merged goes to `merge-refused`" is too broad: only a run that recorded a merge entry re-routes (run-issue step 11); line 475-476 says it correctly — `docs/design.md:403`
-- [ ] (must-fix) All four gate flags are said to be passed only on the owner's answer per run-issue step 11, which lists only `--report-only`, `--no-wait` and `--allow-pending-review` — `docs/design.md:458`
-- [ ] (must-fix) "`progress.md` is 726 lines (`wc -l`, 2026-10-09)"; the file is 782 lines at the reviewed head — `docs/design.md:442`
-- [ ] (must-fix) Checker closes a fence on any line starting with the fence characters, even with an info string; probe: "```md / ```bash / more / ``` / [x](#nope)" exits 0 with the broken link unseen — `.agent/scripts/check_design_anchors.sh:140`
-- [ ] (must-fix) A punctuation-only heading (`## !!!`) gives an empty slug, `SLUGS[""]` fails with "bad array subscript" and the checker still exits 0; handle empty slugs and test it — `.agent/scripts/check_design_anchors.sh:183`
-- [ ] (must-fix) Heading lines `next` before link extraction, so `## [See](#gone)` is never checked; probe exits 0 — `.agent/scripts/check_design_anchors.sh:157`
+- [x] (must-fix) "`dispatch_phase.sh next` reads only the newest entry" is false: `round_count()` reads every earlier pre-push review and `skill_for()` earlier Implementation entries; say it routes on the newest entry (same wrong sentence is in review_loop_lifecycle.md) — `docs/design.md:411`
+- [x] (must-fix) Table 2 `setup` row cites "`setup-dev` and `git-bug` stamps (`Makefile` header, line 98)"; line 98 is `setup: $(STAMP)/project.done $(STAMP)/git-bug.done`, the header lists setup-dev.done, git-bug.done, project.done — `docs/design.md:277`
+- [x] (must-fix) "each run by a fresh sub-agent" / "Each phase runs in a fresh sub-agent" omits that a repeat phase may resume the earlier agent (review_loop_lifecycle.md line 77, run-issue step 4a, ADR-0014 #314) — `docs/design.md:11` and `docs/design.md:415`
+- [x] (must-fix) "a merge that does not end merged goes to `merge-refused`" is too broad: only a run that recorded a merge entry re-routes (run-issue step 11); line 475-476 says it correctly — `docs/design.md:403`
+- [x] (must-fix) All four gate flags are said to be passed only on the owner's answer per run-issue step 11, which lists only `--report-only`, `--no-wait` and `--allow-pending-review` — `docs/design.md:458`
+- [x] (must-fix) "`progress.md` is 726 lines (`wc -l`, 2026-10-09)"; the file is 782 lines at the reviewed head — `docs/design.md:442`
+- [x] (must-fix) Checker closes a fence on any line starting with the fence characters, even with an info string; probe: "```md / ```bash / more / ``` / [x](#nope)" exits 0 with the broken link unseen — `.agent/scripts/check_design_anchors.sh:140`
+- [x] (must-fix) A punctuation-only heading (`## !!!`) gives an empty slug, `SLUGS[""]` fails with "bad array subscript" and the checker still exits 0; handle empty slugs and test it — `.agent/scripts/check_design_anchors.sh:183`
+- [x] (must-fix) Heading lines `next` before link extraction, so `## [See](#gone)` is never checked; probe exits 0 — `.agent/scripts/check_design_anchors.sh:157`
 - [ ] (must-fix) Three `Proposed (candidate)` bullets remain; the plan says each is accepted or dropped by the owner and no marker survives into the final text (owner call) — `docs/design.md:437`
 - [ ] (suggestion) Register guard (b) compares only a row count to the ADR file count; duplicate or non-ADR linked rows can satisfy it; match each docs/decisions/NNNN to a row — `.agent/scripts/check_design_anchors.sh:242`
 - [ ] (suggestion) Guards are off whenever no heading slugs to `decision-register`; now that the register exists, a rename switches them off silently — `.agent/scripts/check_design_anchors.sh:231`
 - [ ] (suggestion) `slug()` keeps `_` but `ANCHOR_RE` rejects it, so such a heading can never be cited; link titles (`](#x "t")`) and inline-code links give false positives; GitHub `#L42` permalinks fail as malformed — `.agent/scripts/check_design_anchors.sh:130`
 - [ ] (suggestion) Test gaps: tilde fences, closing #s, info-string closer, link in heading, empty slug, underscore heading, `\|` cell — `.agent/scripts/tests/test_design_anchors.sh`
-- [ ] (suggestion) ADR-0011 register row cites "12 verbs, not 10" as drift, but ADR-0011's own Status already says "now 12 verbs"; only the resolution order is real drift — `docs/design.md:569`
-- [ ] (suggestion) ADR-0012 row links `#worktrees`, which never cites ADR-0012 or the two verbs (they are under Registry and adapters) — `docs/design.md:570`
+- [x] (suggestion) ADR-0011 register row cites "12 verbs, not 10" as drift, but ADR-0011's own Status already says "now 12 verbs"; only the resolution order is real drift — `docs/design.md:569`
+- [x] (suggestion) ADR-0012 row links `#worktrees`, which never cites ADR-0012 or the two verbs (they are under Registry and adapters) — `docs/design.md:570`
 - [ ] (suggestion) Instruction layers cites `prior-art-comparison-2026-10-08/summary.md` and `prior-art-alignment-agent-frameworks.md`, which exist only under the gitignored `.agent/scratchpad/` (.gitignore:38) — `docs/design.md:535`
 - [ ] (suggestion) Glossary "convergence" ("each finds fewer must-fix items than the last") differs from the `review_progress.sh verdict` rule (zero, or round >= 2, <= 2, not rising, mechanical); owner-settled wording, so flag only — `docs/design.md:654`
-- [ ] (suggestion) Gate (a) names `Local Review` or `Integrated Review`; `merge_pr.sh:718` also takes `External Review` as newest — `docs/design.md:462`
-- [ ] (suggestion) Table 1 `worktree_list.sh` row omits the second recognised path `*/.workspace-worktrees/*` (worktree_list.sh:149) — `docs/design.md:263`
-- [ ] (suggestion) "grep finds only help text and docstrings" also hits the `single_project` default at `.agent/scripts/adapter:73` — `docs/design.md:235`
+- [x] (suggestion) Gate (a) names `Local Review` or `Integrated Review`; `merge_pr.sh:718` also takes `External Review` as newest — `docs/design.md:462`
+- [x] (suggestion) Table 1 `worktree_list.sh` row omits the second recognised path `*/.workspace-worktrees/*` (worktree_list.sh:149) — `docs/design.md:263`
+- [x] (suggestion) "grep finds only help text and docstrings" also hits the `single_project` default at `.agent/scripts/adapter:73` — `docs/design.md:235`
 - [ ] (suggestion) The `open` rule says an open block holds no question text, but the Open questions section is itself an `open` block holding the table; add the exception to the Status key — `docs/design.md:68`
-- [ ] (suggestion) Change-log row says the Decision register section is 40 lines; it is 46 (539-584) — `docs/design.md:631`
+- [x] (suggestion) Change-log row says the Decision register section is 40 lines; it is 46 (539-584) — `docs/design.md:631`
 - [ ] (suggestion) "Plan-level decisions that never got an ADR: none are listed" departs from plan row 13 without a recorded reason — `docs/design.md:577`
+
+## Implementation
+**Status**: partial
+**When**: 2026-10-09 16:12 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-335 at `625c987`
+**Addressed**: Local Review (Pre-Push) at `5500dc0` (2026-10-09 16:05 -04:00)
+**Commits**: 1e852db, ec38c57, 625c987
+
+### Actions
+- [x] Routing wording (newest entry; earlier entries for round count and failed-Implementation skill) — `docs/design.md:415`, `.agent/knowledge/review_loop_lifecycle.md:50`
+- [x] `setup` row: line 98 is `setup: $(STAMP)/project.done $(STAMP)/git-bug.done`, header lists three stamps — `docs/design.md:281`
+- [x] Repeat-phase resume exception (run-issue 4a) — `docs/design.md:11`, `docs/design.md:419`
+- [x] `merge-refused` only after the run recorded a merge entry — `docs/design.md:407`
+- [x] Gate flags: the three step 11 lists; `--force-unreviewed` described as the fourth bypass — `docs/design.md:460`
+- [x] progress.md line count recomputed, 820 at 1e852db's parent (`wc -l`, 2026-10-09) — `docs/design.md:447`
+- [x] Checker: a fence closes only on a bare fence line; suite cases for a bash-tagged line and tilde fences — `.agent/scripts/check_design_anchors.sh:140`
+- [x] Checker: an empty slug is skipped, awk failure exits 2, `${LINKS[@]}` is set -u safe; suite case — `.agent/scripts/check_design_anchors.sh:183`
+- [x] Checker: heading lines keep link extraction; suite case — `.agent/scripts/check_design_anchors.sh:157`
+- [x] ADR-0011 register row: only the resolution order is drift — `docs/design.md:569`
+- [x] ADR-0012 row now links Registry and adapters — `docs/design.md:570`
+- [x] Gate (a) names `External Review` — `docs/design.md:462`
+- [x] Table 1 `worktree_list.sh` row names `*/.workspace-worktrees/*` — `docs/design.md:263`
+- [x] `adapter:73` default named — `docs/design.md:235`
+- [x] Register section length 46 — `docs/design.md:631`
+- [ ] Three Review-loop proposals (owner decision pending in this entry's commits): the owner's decision to keep all three as plain `Proposed:` lines was relayed mid-pass; the edit is made in the working tree but not committed because the commit was denied by the permission classifier — `docs/design.md:442`
+- [ ] Partly done: `slug()`/`ANCHOR_RE` now agree on `_` and the suite covers closing #s, link in heading, empty slug, underscore heading; link titles, inline-code links, `#L42` permalinks and the `\|` cell case are not addressed — `.agent/scripts/check_design_anchors.sh:130`, `.agent/scripts/tests/test_design_anchors.sh`
+- [ ] Not addressed (outside the brief): register guard (b) row-to-ADR matching, guards switching off on a renamed register heading — `.agent/scripts/check_design_anchors.sh:231`, `:242`
+- [ ] Not addressed (left for the owner): scratchpad citations, glossary "convergence" wording, open-block rule vs Open questions, plan-level decisions line — `docs/design.md:535`, `:654`, `:68`, `:577`
