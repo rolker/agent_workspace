@@ -82,6 +82,40 @@ Proposed: a project records its own mapping of the seven roles, seeded from the 
 project has no documentation (owner goal of 2026-09-23, issue #335), and a project may leave a role
 unmapped. Where that mapping is kept is not decided.
 
+## Rules
+
+**Now**
+
+Status: `decided`
+
+Each rule below is stated in [`AGENTS.md`](../AGENTS.md) or the principles; this table adds the one thing
+they do not say, which check stands behind it. Rules are listed only where there is an enforcement fact
+to give. The principle column cites the principle by name and does not restate it. The "Enforced by"
+column takes exactly one of five values: `hook` (a pre-commit hook that fails the commit), `script` (a
+workspace script refuses), `CI` (the validation workflow fails), `review only` (a reviewer checks it
+against [`.agent/knowledge/principles_review_guide.md`](../.agent/knowledge/principles_review_guide.md))
+or `nothing`. Each row was checked against the file it names; the four hooks that read local state
+(`check-commit-identity`, `no-commit-to-branch`, `check-branch-updates`, `verify-issue-branch`) are
+skipped in CI (`SKIP` in `.github/workflows/validate.yml`), so they run on the committer's machine
+only.
+
+| Rule | Principle or ADR | Enforced by | The check |
+|---|---|---|---|
+| No commit to `main` | Leave a trail; start limits strict | `hook` | `no-commit-to-branch` (`.pre-commit-config.yaml`), local only. GitHub also refuses a direct push: the repository ruleset `require_pr` is active on `main` (`gh api repos/rolker/agent_workspace/rules/branches/main`, 2026-10-09) |
+| Commits carry an agent or owner identity | Leave a trail; start limits strict | `hook` | `.agent/hooks/check-commit-identity.py` fails a commit whose author email matches none of its accepted patterns, local only |
+| Hooks are not skipped (no `--no-verify`) | Enforce what matters, as simply as possible | `CI` | The Lint job runs `make lint`, which runs every hook on all files; the four local-state hooks above are skipped there. A local `--no-verify` is not detected |
+| Issue number matches the branch | Leave a trail; start limits strict | `nothing` | `.agent/hooks/verify-issue-branch.py` prints the issue's title and state and always returns 0 (its docstring: "Informational only") |
+| A progress entry has the ADR-0013 shape | Leave a trail; start limits strict | `script` | `_progress_entry.sh` validates the heading, the entry type, fences and title in every writer (`progress_append.sh`, `review_progress.sh persist`); editing the file by hand is not checked |
+| Merge only after a current review and a decision summary | Leave a trail; start limits strict | `script` | The gate in `merge_pr.sh` refuses by default on workspace PRs and is report-only for project PRs. It is local only: the script's own comment says a Merge click on GitHub bypasses it, and the server-side complement is not built |
+| Every project type implements every adapter verb | Put each thing at the level it applies to | `hook` | `validate_adapter.sh` (`validate-adapter-contract`), also its own CI job |
+| Design anchors resolve | Keep one current design | `hook` | `check_design_anchors.sh` (`check-design-anchors`); `make lint` and CI run it again |
+| A change that alters how the parts fit updates this file | Keep one current design | `review only` | Review guide rows "Keep one current design" and ADR-0017 |
+| Nothing committed to the workspace names a particular project | Put each thing at the level it applies to | `review only` | Review guide row "Put each thing at the level it applies to" (search the diff for project names) |
+| Work happens in a worktree, not the main tree | ADR-0002 | `review only` | The main tree stays on `main`, so `no-commit-to-branch` stops the usual slip; nothing stops a branch switch there. The guide's ADR-0002 row says the worktree scripts and hooks enforce it; the hooks do not |
+| Ask first: instruction files, CI or branch protection, the project remote URL | Leave a trail; start limits strict | `review only` | Review guide row "Name the rule before bending it" (an Ask-First rule treated as bendable). No code-owner file or hook watches those paths |
+| A pull request carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` appends it and exits 2 when `AGENT_NAME` and `AGENT_MODEL` are unset. Issues and comments are signed by habit only: `gh_create_issue.sh` does not add one |
+| No secrets in a commit | Enforce what matters, as simply as possible | `nothing` | No hook scans for secrets; `check-added-large-files` is the only content check on file size |
+
 ## Change log
 
 One row per change to this file, appended in the same change that alters a section: date, section, one
@@ -92,3 +126,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Whole file | Skeleton. Rewrite starts from the plan's section table: `# How it works` is a stub (written last), `# The design` opens with the admission rule and the Status key, and everything the old file held that now lives next to the code is gone (destinations landed in #377) | #335 | 40 |
 | 2026-10-09 | Purpose | What the file is for, with pointers to the README goals and the principles | #335 | 54 |
 | 2026-10-09 | Documentation layers | The seven roles and the workspace's mapping, with the two gaps (healthy, measures) shown; per-project mapping as a proposal | #335 | 94 |
+| 2026-10-09 | Rules | Rules table with the enforced-by column: 14 rules, each with the check checked against the hook, script or CI file | #335 | 129 |
