@@ -189,7 +189,7 @@ AGENTS.md candidates: fold Documentation Accuracy into "Verify before claiming";
 **Status**: complete
 **When**: 2026-10-08 16:05 -04:00
 **By**: Claude Code Agent (claude-fable-5-1)
-**Plan**: `0f604b7`
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `0f604b7`
 
 ### Summary
 Phase-3 plan (rewrite docs/design.md as the current picture) committed as the issue's plan.md, replacing the three-phase outline. Drafted from the prior-art comparison (design-doc-sources/prior-art-comparison-2026-10-08) and the owner's 2026-10-05 decisions (How it works at the top; documentation layers as roles; Direction role serves the healthy/direction goal). Fifteen open questions ordered for the owner. Next: review-plan, then owner decisions one at a time.
