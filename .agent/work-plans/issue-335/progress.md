@@ -385,3 +385,56 @@ Revision 3 closes every round-2 item and the factual claims I re-opened are true
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `81c2119`
 
 Revision 4 of the phase-3 plan, answering the round-3 Plan Review (`e3c3eac`, needs-work): the anchor check gets its own cheap pre-commit hook and a grep-level checker script so it runs on docs-only commits without widening the script-tests hook (#354 scoping kept), and its suite tests the checker with fixtures only. Suggestions applied: in-file link form excludes issue refs, placeholders ignored, onboarding label covered by plan approval, open-block pointer rule, ADR-0003 cited by Registry, roadmap rows limited to design-changing ones, brainstorm label. The plan's closing section lists what changed per item.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-09 08:45 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: needs-work
+
+**Issue**: #335 — Workspace design document
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `81c2119`
+**Branch**: `feature/issue-335`
+
+Round 4. Revision 4 of the plan (496 lines), read end to end against the worktree at 321e49a. Q1, the A/B/C owner questions (including B4), the follow-up subsection and the three reviser choices were not re-opened. All eight round-3 items are resolved in the plan text and the new hook design is sound against `.pre-commit-config.yaml`, the #354 guard and CI. One new must-fix: the commit order the plan prescribes cannot pass its own checker.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three PRs; checker, hook and suite are small additions |
+| Issue alignment | Good | Departure from scope item 3 stated; Purpose row present |
+| File targeting | Good | Files to Change now lists the checker, hook and suite; guard file correctly excluded |
+| Consequences | Good | Hook, label and roadmap rows present |
+| Principle alignment | Needs work | "Test what breaks": the checker runs locally on the right commits, but the order of commits (finding 1) makes it fail by design |
+| ADR compliance | Good | ADR-0005 layering (CI enforcement, pre-commit local feedback) matches the plan's wording; ADR-0008 link fix permitted |
+| ROS conventions | N/A | Workspace plan |
+
+### Round-3 items
+
+- Finding 1 (must-fix, hook scope): resolved. A separate local hook `check-design-anchors` placed before `validate-script-tests` leaves that hook's block unchanged: the guard's awk (`/- id: validate-script-tests/` to the next `- id:`) reads only that block, so its `files:` regex, always_run check and the negative assertions at lines 454 and 455 (README.md, docs/roadmap.md) stay true. `test_design_anchors.sh` under `.agent/scripts/tests/` is covered by the existing `files:` (`^(\.agent/|...)`). The guard's `IDIOM_REGEX` needs `../../` (repeated slash), `rev-parse --show-toplevel/--show-cdup` or three nested dirname; a single `$SCRIPT_DIR/../check_design_anchors.sh` matches none, so no ROOT_READERS entry is needed. `.github/workflows/validate.yml` job `Lint (pre-commit)` runs `make lint` = `pre-commit run --all-files`, with `SKIP` listing only the four identity/branch hooks, so the new hook runs in CI.
+- Findings 2 and 3 (link form, placeholder): resolved in Wire-in 6; the `[a-z0-9][a-z0-9-]*` pattern does not match `<section>`, and `(#295)`/`[x](#12)` are excluded by form. Checker home named. Grep confirms no `design.md#` citation exists today.
+- Finding 4 (`AGENT_ONBOARDING.md`): resolved. `AGENTS.md` line 12 is the "Other" row naming it; plan approval covers the one-line edit.
+- Finding 5 (`open` blocks, row 5): resolved.
+- Finding 6 (ADR-0003): resolved. Row 7 cites it; 0004/0005 `not yet` reasoned.
+- Finding 7 (roadmap bound): resolved. Recounted: 27 planned, 4 in progress, 3 deferred.
+- Finding 8 (brainstorm label): resolved. `.claude/skills/brainstorm/SKILL.md` line 34 reads "system design and layering constraints".
+
+Verified true: README lines 22 and 26; `AGENT_ONBOARDING.md` 91; `AGENTS.md` 436 and 442 lines; `CLAUDE.md` 36; guide lines 51 and 71; Makefile 80; WORKTREE_GUIDE 72 and 181; `_project_registry.sh` 11; `projects.local.example` 52 and 72; ADR-0017 line 27 link names `...-in-accepted-adrs.md` while the file is `0008-permit-cross-reference-addendums-in-adrs.md`; `docs/decisions/` holds 17 files; roadmap Cross-cutting at 405, Design History at 484. No false claim found.
+
+### Findings
+
+1. **[Approach / Test what breaks]** (must-fix) — PR B says "the checker and hook land first, so each later section commit is checked" (PR split), but Wire-in 6 makes the checker fail "when design.md holds no in-file anchor links at all" and when the register has fewer anchored rows than the 17 files in `docs/decisions/`. Today `docs/design.md` has 0 `](#` links and no register. So the first PR B commit (the hook, whose `files:` includes `.pre-commit-config.yaml`) fails its own hook, and so does every section commit until the Decision register (table row 13, near the end of the document order) lands. CI `make lint` on the pushed feature branch fails the same way. The implementer must either `SKIP` the hook (the plan never says so) or reorder. Pick one and say it: land the checker, hook and suite with or after the register commit (sections before it are then unchecked, say so), or make the two vacuity guards apply only once design.md has the register heading.
+2. **[Approach]** (suggestion) — "the Decision register" is not defined for the checker. Say how it finds the rows (for example table rows containing `](#`, counted against `docs/decisions/*.md`), or the count test cannot be written unambiguously.
+3. **[Approach]** (suggestion, small) — the citation pattern `[a-z0-9][a-z0-9-]*` silently ignores a wrongly cased citation such as `design.md#How-it-works` (the capital never matches), so a mistyped anchor passes. A one-line fixture or a case-insensitive match that then fails on lookup closes it.
+4. **[Scope of check]** (suggestion, small) — the checker's scope omits `AGENTS.md`, `CLAUDE.md`, `docs/principles.md` and `docs/decisions/`; fine today (none cite an anchor), but the follow-up label change to `AGENTS.md`/`CLAUDE.md` could later add one unchecked. One clause in the follow-up list is enough.
+
+### Summary
+
+The round-3 fix is correct and cheap: the hook is a separate, tree-reading check that does not touch the #354 guard, and CI runs it. The remaining defect is ordering: as written, the checker's anti-vacuity guards make the first commits of PR B fail. One sentence choosing the commit order fixes it; then the plan is ready for the owner.
+
+### Recommended Actions
+
+- [ ] State the commit order or guard timing so no PR B commit fails the checker before the register exists (finding 1)
+- [ ] Define how the checker finds the register rows (finding 2)
+- [ ] Apply or decline suggestions 3 and 4
