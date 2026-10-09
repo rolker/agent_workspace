@@ -310,3 +310,11 @@ Revision 2 resolves every round-1 item in the plan text, and the previously fals
 - [ ] Trim B3, D1 to D4 and A1 from the owner list (finding 4)
 - [ ] Record the departure from issue scope item 3 (finding 5)
 - [ ] Correct line ranges; size the register check; decide the label question (findings 6 to 8)
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 08:34 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `7a91301`
+
+Revision 3 of the phase-3 plan, answering the round-2 Plan Review (`9cfd1fe`, needs-work): Status is now per block so the key and section table agree, the anchor test is re-specified with one citation form and a negative fixture, and the suggestions are applied (real-name sweep widened, owner list trimmed, issue departure stated, register check sized, onboarding label). The plan's closing section lists what changed per item.
