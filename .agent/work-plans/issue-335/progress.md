@@ -716,3 +716,11 @@ PR B, commit 1 of the phase-3 plan (revision 9): the design-anchor checker, its 
 - Guard (a) and guard (b) are both live only when the register heading AND `docs/decisions/` exist, as Wire-in 6 words it; a register heading with no ADR directory leaves both off.
 - In-file `](#...)` links are matched up to the closing `)`; an all-digit fragment or one containing `<` is ignored (not only the empty `#<section>` form), so `[y](#<slug>)` placeholders do not fail. Links inside fenced code in design.md are not links; citations in fenced code of the citing files still count.
 - The hook's `files:` line exceeds yamllint's 120 characters, so it carries a `yamllint disable-line` comment rather than being split.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 15:21 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `aa5765f`
+
+Revision 10 of the phase-3 plan, applying one owner decision of 2026-10-09 about writing order. The owner does not write "How it works" first: the first section commit creates `# How it works` as a stub (heading plus "Written last; see the change log.") so the anchor exists, the other sections are written in table order, and an agent drafts How it works last from the fact list and the owner's recorded phrasings only, with no new ideas, for the owner to edit when he has bandwidth. Process step 2, the PR B commit order, row 1 and Estimated Scope are reworded; PR B is written in two dispatches (rows 1 to 9, then rows 10 to 16 and the draft). Nothing else changes.
