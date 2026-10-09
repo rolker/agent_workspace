@@ -572,10 +572,28 @@ PR A of the phase-3 plan (revision 6): fill the gaps the new `docs/design.md` wi
 **Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
 
 ### Findings
-- [ ] (must-fix) `OK` is defined as "newest entry is Status complete", but an implement / address-findings Implementation entry that is complete without the PR/Branch line is PARTIAL, so the two bullets overlap; qualify OK (Gemini) — `.agent/knowledge/review_loop_lifecycle.md:87-91`
-- [ ] (suggestion) "hands each phase to a fresh sub-agent" omits the owner-chosen takeover, which the host runs inline (row 27); name it beside the 4a exception (adversarial) — `.agent/knowledge/review_loop_lifecycle.md:73`
-- [ ] (suggestion) the command example omits --pr (required for triage-reviews; PR-mode review-code checks a different entry type), --type and --project; --check-exit can also exit 2 or 3 with no status line (Codex, adversarial) — `.agent/knowledge/review_loop_lifecycle.md:83`
-- [ ] (suggestion) "The only reader is dashboard.sh ... does not stop any script": lock.sh and unlock.sh also test the file, and a second `make lock` is refused while it exists — `.agent/scripts/lock.sh:6-8`
-- [ ] (suggestion) the `project '<name>':` prefix claim does not cover type-project parent roots, which report as `parent root '<name>':`; qualify or add (Codex) — `.agent/scripts/validate_workspace.py:20`
-- [ ] (suggestion) help text "Lock workspace (prevent concurrent agent work)" now contradicts the lock.sh header (advisory, stops nothing); predates the diff — `Makefile:88`
+- [x] (must-fix) `OK` is defined as "newest entry is Status complete", but an implement / address-findings Implementation entry that is complete without the PR/Branch line is PARTIAL, so the two bullets overlap; qualify OK (Gemini) — `.agent/knowledge/review_loop_lifecycle.md:87-91`
+- [x] (suggestion) "hands each phase to a fresh sub-agent" omits the owner-chosen takeover, which the host runs inline (row 27); name it beside the 4a exception (adversarial) — `.agent/knowledge/review_loop_lifecycle.md:73`
+- [x] (suggestion) the command example omits --pr (required for triage-reviews; PR-mode review-code checks a different entry type), --type and --project; --check-exit can also exit 2 or 3 with no status line (Codex, adversarial) — `.agent/knowledge/review_loop_lifecycle.md:83`
+- [x] (suggestion) "The only reader is dashboard.sh ... does not stop any script": lock.sh and unlock.sh also test the file, and a second `make lock` is refused while it exists — `.agent/scripts/lock.sh:6-8`
+- [x] (suggestion) the `project '<name>':` prefix claim does not cover type-project parent roots, which report as `parent root '<name>':`; qualify or add (Codex) — `.agent/scripts/validate_workspace.py:20`
+- [x] (suggestion) help text "Lock workspace (prevent concurrent agent work)" now contradicts the lock.sh header (advisory, stops nothing); predates the diff — `Makefile:88`
 - [ ] (suggestion) user-visible prose still names the real project (README "project11", west-variant "p11"); outside the plan's stated boundary, so decide whether to extend it — `tools/ros-manifest/README.md:6`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-09 09:55 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-335 at `42f4714`
+**Addressed**: Local Review (Pre-Push) at `fb79191` (2026-10-09 09:40 -04:00)
+**Commits**: `1682437`, `195cf60`, `42f4714`
+
+### Actions
+- [x] `OK` overlapped `PARTIAL` — `OK` now also requires the `**PR**` / `**Branch**` line for an implement / address-findings `## Implementation` entry, `PARTIAL` reworded to "a complete ... entry that lacks" it, and "none of the three above" now names `complete`, `partial` or `failed` (matches `dispatch_phase.sh` 424-440) — `.agent/knowledge/review_loop_lifecycle.md:87-100` (`1682437`)
+- [x] "fresh sub-agent" omitted the owner-chosen takeover — now names the 4a resumed-agent case and the row-27 `mode=inline` takeover (`run-issue` section 5) — `.agent/knowledge/review_loop_lifecycle.md:73-79` (`1682437`)
+- [x] `--check-exit` example — now mentions `--pr` (required for `triage-reviews`, PR-mode `review-code` uses `## Local Review`), `--type` / `--project`, and exit 2 / 3 with no `status=` line — `.agent/knowledge/review_loop_lifecycle.md:83-102` (`1682437`)
+- [x] `lock.sh` "only reader is dashboard.sh" — header now says `lock.sh` / `unlock.sh` also test the file, a second `make lock` is refused (exit 1), still advisory for every other script — `.agent/scripts/lock.sh:4-10` (`195cf60`)
+- [x] `validate_workspace.py` prefix claim — docstring now covers `parent root '<name>':` and the unprefixed indented "Clone the project there" follow-up — `.agent/scripts/validate_workspace.py:20-27` (`42f4714`)
+- [x] `Makefile` help text contradicted the lock.sh header — now "Advisory workspace lock, shown by the dashboard (a second lock is refused)" — `Makefile:88` (`195cf60`)
+- [ ] user-visible prose still names the real project — NOT addressed: owner decision (extend the synthetic-name boundary to `tools/ros-manifest/`?); the files were not touched — `tools/ros-manifest/README.md:6`
