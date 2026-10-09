@@ -638,10 +638,23 @@ Owner decisions 2026-10-09 for PR A (phase-3 plan `acd2cc3`). Pre-push review ro
 **CI**: all-pass
 
 ### Findings
-- [ ] (low, Copilot R1) The "Anything but `OK` is a `phase-failed` checkpoint" sentence contradicts the paragraph above it: exits 2 and 3 print no `status=` line and are errors in the check itself, while `run-issue` routes only returned `PARTIAL|FAILED|MISSING` to `checkpoint:phase-failed`. Reword to "Any returned status other than `OK` (`PARTIAL`, `FAILED`, `MISSING`) is a `phase-failed` checkpoint ...; exit 2 or 3 is a failure of the check, fix it and re-run" — `.agent/knowledge/review_loop_lifecycle.md:108`
-- [ ] (medium, Copilot R1) The `## Plan Authored` entry for plan commit `0f604b7` carries `**Plan**: `0f604b7`` without the path; ADR-0013 requires `` `<path>` at `<plan-commit-sha>` `` and `progress_read.py::_corr_plan` returns no correlation for it. Change to `` `.agent/work-plans/issue-335/plan.md` at `0f604b7` `` (the commit exists; sibling entries use that form) — `.agent/work-plans/issue-335/progress.md:192`
+- [x] (low, Copilot R1) The "Anything but `OK` is a `phase-failed` checkpoint" sentence contradicts the paragraph above it: exits 2 and 3 print no `status=` line and are errors in the check itself, while `run-issue` routes only returned `PARTIAL|FAILED|MISSING` to `checkpoint:phase-failed`. Reword to "Any returned status other than `OK` (`PARTIAL`, `FAILED`, `MISSING`) is a `phase-failed` checkpoint ...; exit 2 or 3 is a failure of the check, fix it and re-run" — `.agent/knowledge/review_loop_lifecycle.md:108`
+- [x] (medium, Copilot R1) The `## Plan Authored` entry for plan commit `0f604b7` carries `**Plan**: `0f604b7`` without the path; ADR-0013 requires `` `<path>` at `<plan-commit-sha>` `` and `progress_read.py::_corr_plan` returns no correlation for it. Change to `` `.agent/work-plans/issue-335/plan.md` at `0f604b7` `` (the commit exists; sibling entries use that form) — `.agent/work-plans/issue-335/progress.md:192`
 
 ### False positives
 - none
 
 Carried forward, not re-listed: `tools/ros-manifest/` real-name prose is owner-decided "leave" (Checkpoint at `4e9cab3`); earlier-round findings from the phase-2 principles work are stale prior rounds, not PR A scope.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-09 11:50 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #377 at `bdab476`
+**Addressed**: Integrated Review at `4e9cab3` (2026-10-09 11:37 -04:00)
+**Commits**: `fcafa3c`, `bdab476`
+
+### Actions
+- [x] (low, Copilot) "Anything but `OK` is a `phase-failed` checkpoint" contradicted exits 2 and 3 — reworded: a returned `PARTIAL` / `FAILED` / `MISSING` is the checkpoint; exit 2 or 3 means the check itself failed, is fixed and re-run, raises no checkpoint (`run-issue` routes only returned `PARTIAL|FAILED|MISSING` to `phase-failed`) — `.agent/knowledge/review_loop_lifecycle.md:107-110` (`fcafa3c`)
+- [x] (medium, Copilot) `## Plan Authored` for `0f604b7` lacked the path — `**Plan**` now `` `.agent/work-plans/issue-335/plan.md` at `0f604b7` ``; `progress_read.py --type "Plan Authored"` now returns a plan correlation (path + sha `0f604b7`) for it — `.agent/work-plans/issue-335/progress.md:192` (`bdab476`)
