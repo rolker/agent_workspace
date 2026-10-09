@@ -724,3 +724,30 @@ PR B, commit 1 of the phase-3 plan (revision 9): the design-anchor checker, its 
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `aa5765f`
 
 Revision 10 of the phase-3 plan, applying one owner decision of 2026-10-09 about writing order. The owner does not write "How it works" first: the first section commit creates `# How it works` as a stub (heading plus "Written last; see the change log.") so the anchor exists, the other sections are written in table order, and an agent drafts How it works last from the fact list and the owner's recorded phrasings only, with no new ideas, for the owner to edit when he has bandwidth. Process step 2, the PR B commit order, row 1 and Estimated Scope are reworded; PR B is written in two dispatches (rows 1 to 9, then rows 10 to 16 and the draft). Nothing else changes.
+
+## Implementation
+**Status**: partial
+**When**: 2026-10-09 15:34 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `aa5765f`
+**Branch**: feature/issue-335 at `b9d689a`
+
+### Summary
+PR B part 1: the skeleton and rows 3 to 9 of the section table in `docs/design.md` (Purpose, Documentation layers, Rules, Sessions and roots, Registry and adapters, Worktrees, Review loop and timeline), one commit per section, after plan revision 10 (How it works is a stub first and drafted last). The document is 446 lines. Rows 10 to 16 (Merge gate, Identity, Instruction layers, Decision register, Open questions content, Change log content, Glossary) and the How it works draft are part 2. No push.
+
+### Commits
+- aa5765f plan revision 10; f413beb its Plan Authored entry
+- 5007c8d skeleton (stub, The design opening and Status key, change log)
+- 2edd550 Purpose; fe8ef6d Documentation layers; bf0f050 Rules
+- 73e7472 Open questions, started (OQ-1)
+- b884c28 Sessions and roots (OQ-2); d128f0a Registry and adapters (C4)
+- e5217b9 Worktrees; b9d689a Review loop and timeline (C5; review guide work-plan row now names this section)
+
+### Deviations from the plan
+- The Open questions section was started early (own commit, before Sessions) so gaps found while writing had a place; new sections are inserted before `## Open questions`, so part 2's rows 10 to 13 go in the same place. New IDs OQ-1 and OQ-2; the plan's C4 and C5 keep their IDs.
+- Rules: the plan listed "issue number matches the branch" as a hook. `verify-issue-branch.py` only prints the issue and always returns 0, so the row says `nothing`. Four hooks that read local state are skipped in CI (`SKIP` in validate.yml); the column's check cell says so. Added rows: hooks not skipped (CI), adapter contract (hook), design anchors (hook), no project names, Ask First (review only), PR signature (script), secrets (nothing).
+- Sessions and roots has two Target blocks, `decided, not built` (registry-only discovery, register_project.sh, workspace hosts no project, memory) and `open` (#295 pointer), because one block may hold one status.
+- The review guide's work-plan row edit (plan line 71) went into the Review loop commit, the section it now names.
+- Review loop and timeline keeps three `(candidate)` Target lines for the owner to accept or drop; the Status key does not mention the marker.
+- The Change log section has no Now block yet (its content is part 2). Sections over 60 lines (Sessions 63, Registry 83, Worktrees 80, Review loop 70) carry the plan's question answered in their change-log row.
+- Local commits for Purpose, Rules, Open questions, Sessions and Registry were amended before the checker ran at the next commit (unpushed, wording only).
