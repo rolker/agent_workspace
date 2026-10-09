@@ -8,7 +8,8 @@ day-to-day harness around each piece of work, and a long view of where each proj
 principles in [`docs/principles.md`](principles.md) connect them.
 
 **The day-to-day harness.** Work happens in an isolated worktree, never in the main tree
-([Worktrees](#worktrees)). An issue passes through eight phases, each run by a fresh sub-agent, and each
+([Worktrees](#worktrees)). An issue passes through eight phases, each run by a fresh sub-agent (a repeat of a
+phase may resume the earlier one), and each
 phase leaves one entry in the issue's progress timeline, which is the only record of where the issue
 stands ([Review loop and timeline](#review-loop-and-timeline)). The loop stops at checkpoints and asks the
 owner. The owner decides every merge, and no phase moves on by its own judgment
@@ -233,7 +234,8 @@ Status: `decided`
   `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
   every type implements every verb, in pre-commit and in CI.
 - Workflow scripts call adapter verbs and do not branch on the project type: a grep of `.agent/scripts/`
-  for the two type names finds only help text and docstrings (2026-10-09).
+  for the two type names finds only help text and docstrings, and the `single_project` default in
+  `_resolve_project_type` (`adapter:73`) (2026-10-09).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
   colcon layers driven by a manifest, and its `adapter.sh` header holds the layers, the bootstrap URL
   order and the distro rule.
@@ -260,7 +262,7 @@ probe, not a description to keep current.
 | `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the roadmap-commit worktree lookup uses `PJ_REPO_ROOT`; the gate's timeline lookup is anchored at `$ROOT_DIR/project`, the legacy checkout, not `PJ_REPO_ROOT` (tracked as #379); the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 236-270, 379-418, 555, 670, 916 and 929, 1612-1628 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all three modes | 122, 183-208, 302, 369, 461 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 205-232 |
-| `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` | 149-150 |
+| `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
 | `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
 | `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
 
@@ -274,7 +276,7 @@ needs logic of its own; "thin wrapper" means a script or target that already exi
 
 | Verb | For the workspace | Based on |
 |---|---|---|
-| `setup` | thin wrapper | The `setup-dev` and `git-bug` stamps (`Makefile` header, line 98); `single_project/setup.sh` clones a project, which the workspace does not need |
+| `setup` | thin wrapper | The `project` and `git-bug` stamps (`Makefile` line 98; the header lists `setup-dev`, `git-bug` and `project`); `single_project/setup.sh` clones a project, which the workspace does not need |
 | `sync` | thin wrapper | `single_project/sync.py` already syncs the workspace repo with the project |
 | `validate` | thin wrapper, with care | `validate_workspace.py` checks the whole workspace and calls this verb for each registry entry, so the workspace's own implementation must not call back into it |
 | `build` | no-op | Nothing is built; `make build` runs the project's `BUILD_CMD` |
@@ -400,7 +402,7 @@ sessions walk the same order by hand, one `SKILL.md` at a time
 | `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the owner at the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) without approval the owner is asked at `rounds`. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
 | `publish` | The push and the pull request, whose body carries a `## Decision summary` heading | The owner has just decided at `publish`; the host does the push (`run-issue/SKILL.md` step 7) |
 | `triage-reviews` | An `## Integrated Review` entry: every review source combined into one list of findings with a verdict on each | Open findings go to the owner at `findings`; with none open the owner is asked at `merge` |
-| `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged goes to `merge-refused` |
+| `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged, after the run recorded a merge entry, goes to `merge-refused` |
 
 - **One entry per phase, in `progress.md`.** `.agent/work-plans/issue-<N>/progress.md` is the only place
   loop state lives: not the conversation, not a lock file. The directory sits in the repository that
@@ -408,11 +410,14 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   vocabulary and header (`**Status**`, `**When**`, `**By**`, a correlation to an issue, a plan or a
   commit; ADR-0013), are written by `progress_append.sh`, checked by `_progress_entry.sh` and read by
   `progress_read.py`.
-- **The next step is read from the newest entry.** `dispatch_phase.sh next` reads only the newest entry
-  and, as its one other input, the pull request state; it makes no `gh` call and returns one action from a
+- **The next step is routed on the newest entry.** `dispatch_phase.sh next` routes on the newest entry
+  and, as its one other input, the pull request state; it reads earlier entries for two things only, the
+  count of completed pre-push reviews on the branch (`round_count`) and whether a failed `Implementation`
+  entry belongs to `address-findings` (`skill_for`); it makes no `gh` call and returns one action from a
   28-row table (`dispatch_phase.sh` header). A partial or failed newest entry is always a `phase-failed`
   checkpoint, never a silent retry.
-- **Each phase runs in a fresh sub-agent.** `dispatch_phase.sh --issue <N> --skill <phase>` prints the
+- **Each phase runs in a fresh sub-agent**, except that a repeat of a phase in the same drive may resume
+  the earlier agent (`run-issue/SKILL.md` 4a). `dispatch_phase.sh --issue <N> --skill <phase>` prints the
   handoff, and the host pastes it into a new Agent call, in this process only. The sub-agent fetches its
   own inputs with `gh` and never pushes (ADR-0014; `dispatch_phase.sh` exit contract). Reviewers outside
   Claude run in parallel and synchronously through `cross_model_review.sh` (ADR-0015).
@@ -439,7 +444,7 @@ Status: `proposed`
   verified in code, and the content of a review is reported.
 - Proposed (candidate): a new session finds the records for its issue through the one lookup in the
   Target of [Worktrees](#worktrees), so the path is not written out in each reader.
-- Proposed (candidate): a size bound on records. This issue's own `progress.md` is 726 lines
+- Proposed (candidate): a size bound on records. This issue's own `progress.md` is 820 lines
   (`wc -l`, 2026-10-09), and every reader parses the whole file.
 
 **Target (open)**
@@ -456,11 +461,12 @@ What a review finding must contain, and how independent the reviewers are: C5 in
 Status: `decided`
 
 - The owner decides every merge. The loop stops at the `merge` checkpoint, and the flags that relax the
-  gate (`--report-only`, `--no-wait`, `--allow-pending-review`, `--force-unreviewed`) are passed only on
-  the owner's answer for that merge, never on the host's judgment (`run-issue/SKILL.md` step 11; see
-  [Review loop and timeline](#review-loop-and-timeline)).
-- `merge_pr.sh` checks two things before it merges. (a) The newest review entry (`## Local Review` or
-  `## Integrated Review`) is at the pull request's head, and is approved, or for an Integrated Review is
+  gate (`--report-only`, `--no-wait`, `--allow-pending-review`) are passed only on the owner's answer for
+  that merge, never on the host's judgment (`run-issue/SKILL.md` step 11; see
+  [Review loop and timeline](#review-loop-and-timeline)). `--force-unreviewed` is the fourth bypass; step
+  11 mentions it only as the flag that records a `## Merge (unreviewed)` entry.
+- `merge_pr.sh` checks two things before it merges. (a) The newest review entry (`## Local Review`,
+  `## Integrated Review` or a legacy `## External Review`) is at the pull request's head, and is approved, or for an Integrated Review is
   complete with no open must-fix or cross-confirmed finding. (b) The pull request body or a comment has
   a `## Decision summary` heading (`merge_pr.sh`, Step 1.5).
 - A review at an earlier commit still counts when only bookkeeping changed since: that issue's
@@ -566,8 +572,8 @@ this file carries that ADR.
 | [0008](decisions/0008-permit-cross-reference-addendums-in-adrs.md) | An accepted ADR may gain a status note, a references list or link and typo fixes; anything else needs a superseding ADR | in force | [Documentation layers](#documentation-layers) | not yet |
 | [0009](decisions/0009-python-package-management-policy.md) | Python tools go in the workspace `.venv` (from `requirements.txt`) or in pipx; PEP 668 is the guardrail | in force | [Decision register](#decision-register) | not yet |
 | [0010](decisions/0010-git-bug-is-optional.md) | git-bug is installed by default and `skip-git-bug` opts out; scripts work without it | in force | [Decision register](#decision-register) | not yet |
-| [0011](decisions/0011-project-type-adapter-contract.md) | Behaviour that differs per project shape sits behind a fixed adapter contract per project type; workflow scripts never branch on the type | superseded in practice: the dispatcher resolves `--project`, then the cwd inside a registered directory, then the legacy `project_config.sh`, and the contract has 12 verbs, not the 10 its Decision lists | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
-| [0012](decisions/0012-worktree-composition-is-an-adapter-concern.md) | Worktree composition is an adapter concern: the `worktree_repos` and `worktree_env` verbs | in force | [Worktrees](#worktrees) | yes 2026-10-09 |
+| [0011](decisions/0011-project-type-adapter-contract.md) | Behaviour that differs per project shape sits behind a fixed adapter contract per project type; workflow scripts never branch on the type | superseded in practice: the dispatcher resolves `--project`, then the cwd inside a registered directory, then the legacy `project_config.sh`; the verb count is not drift, its Status already says 12 | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
+| [0012](decisions/0012-worktree-composition-is-an-adapter-concern.md) | Worktree composition is an adapter concern: the `worktree_repos` and `worktree_env` verbs | in force | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
 | [0013](decisions/0013-progress-md-entry-type-vocabulary.md) | `progress.md` has a fixed entry vocabulary and header, with a correlation key per entry type | superseded in practice: its writer table says `address-findings` and "any future implement skill" write `## Implementation`; there is no implement skill, and the dispatched implement pass writes it | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0014](decisions/0014-in-process-phase-handoff.md) | Each phase runs in a fresh in-process sub-agent through `dispatch_phase.sh`, and the host checks the exit instead of trusting the sub-agent | superseded in practice: its Decision calls `implement` the inline pass; since #314 `implement` is dispatched like every other phase and only a `takeover` answer runs a phase inline | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0015](decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md) | Cross-model reviewers run in parallel and synchronously; there is no tmux mode | in force | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
@@ -628,11 +634,12 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-09 | Merge gate | Who decides a merge, the two conditions, the bookkeeping rule, the CI wait, enforce versus report-only, local-only, the #379 gap | #335 | 478 |
 | 2026-10-09 | Identity | Framework identity, ephemeral per session, what refuses to run without it, and what needs Claude Code versus what any tool can do | #335 | 507 |
 | 2026-10-09 | Instruction layers | The four layers an agent's instructions load in and a budget for the always-loaded one, all proposed; AGENTS.md is 442 lines against the under-200 target | #335 | 536 |
-| 2026-10-09 | Decision register | 17 rows, standing and re-examined, four rows superseded in practice (0002, 0011, 0013, 0014) with what the code does; no ADR file edited; both checker guards are live from here. Section is 40 lines | #335 | 583 |
+| 2026-10-09 | Decision register | 17 rows, standing and re-examined, four rows superseded in practice (0002, 0011, 0013, 0014) with what the code does; no ADR file edited; both checker guards are live from here. Section is 46 lines | #335 | 583 |
 | 2026-10-09 | Open questions | Table finished: OQ-1 to OQ-5, C4 and C5 | #335 | 588 |
 | 2026-10-09 | Change log | Now block: the rule for rows and the line count | #335 | 596 |
 | 2026-10-09 | Glossary | Added as the last section: 15 settled entries (7 own terms, 8 standard), the admission rule, WIP limit and appetite left out | #335 | 650 |
 | 2026-10-09 | How it works | Agent draft from the fact list and the owner's recorded phrasings, no new ideas, replacing the stub; owner to edit | #335 | 688 |
+| 2026-10-09 | How it works, Registry and adapters, Review loop and timeline, Merge gate, Decision register | Review fixes: the next-step routing wording (newest entry, earlier entries for round count and failed-Implementation skill), the repeat-phase resume exception, the `setup` row's stamps, the `merge-refused` condition, the gate flags step 11 lists, the progress.md line count, gate (a) with `External Review`, the worktree_list second path, the `adapter:73` default, the ADR-0011 and ADR-0012 register rows, the register section length | #335 | 695 |
 
 ## Glossary
 
