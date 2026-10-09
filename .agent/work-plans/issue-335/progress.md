@@ -612,3 +612,17 @@ PR A of the phase-3 plan (revision 6): fill the gaps the new `docs/design.md` wi
 
 ### Findings
 - [ ] No issues found. LGTM. (Round-2 must-fix and suggestions 1-5 verified resolved; suggestion 6 and the cube_bathymetry example stay with the owner. Gemini's two round-3 findings were a false positive and the owner-held item.)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-09 10:20 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Owner decisions 2026-10-09 for PR A (phase-3 plan `acd2cc3`). Pre-push review round 3 approved (reviewed `0aab56d`, entry recorded in `cab33dc`).
+
+- Make the `WORKTREE_GUIDE.md` package-worktree example synthetic too (`acme/sonar_driver#111`); done in `c6c85f5`, after the reviewed head.
+- Leave the `tools/ros-manifest/` prose as is; the synthetic-name boundary is unchanged. Round-2 finding 6 is owner-decided "leave", not addressed.
+- Publish PR A now (Part of the design-doc issue; PR B follows).
