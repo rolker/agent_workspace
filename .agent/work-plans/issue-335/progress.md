@@ -318,3 +318,62 @@ Revision 2 resolves every round-1 item in the plan text, and the previously fals
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `7a91301`
 
 Revision 3 of the phase-3 plan, answering the round-2 Plan Review (`9cfd1fe`, needs-work): Status is now per block so the key and section table agree, the anchor test is re-specified with one citation form and a negative fixture, and the suggestions are applied (real-name sweep widened, owner list trimmed, issue departure stated, register check sized, onboarding label). The plan's closing section lists what changed per item.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-09 08:38 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: needs-work
+
+**Issue**: #335 — Workspace design document
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `7a91301`
+**Branch**: `feature/issue-335`
+
+Round 3. Revision 3 of the plan (418 lines), read end to end against the worktree at 955c589. The owner's Q1 decision, the three reviser choices awaiting the owner (label wording, `## Purpose` row, anchor targets) and the A/B/C questions were not re-opened. All nine round-2 items are resolved in the plan text. One new must-fix remains: the planned anchor test collides with the existing `validate-script-tests` hook scope and its guard suite, and the plan does not mention either.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | No cap; three PRs; 17-row register sized (9 re-examined, 8 not yet) |
+| Issue alignment | Good | Departure from issue scope item 3 stated in Issue and Wire-in 3; Purpose has its own row (3) |
+| File targeting | Needs work | PR B's anchor test needs `.pre-commit-config.yaml` and `test_script_tests_hook_scope.sh` changes that are not listed (finding 1) |
+| Consequences | Needs work | Same gap; also the "System design" label in `AGENT_ONBOARDING.md` (finding 4) |
+| Principle alignment | Needs work | "Test what breaks": the anchor test would not run on a docs-only commit that renames a heading (finding 1) |
+| ADR compliance | Good | Register only; ADR-0017 link fix is within ADR-0008 "Permitted"; ADR-0016 as `decided, not proven` matches its Status |
+| ROS conventions | N/A | Workspace plan |
+
+### Round-2 items
+
+- N1 (Status key vs table): resolved. Status is per block; the Now and Target columns each carry one of the five values. Every table cell is a single value, with parenthetical citations only. Small residue in finding 5.
+- N2 (anchor test cannot fail): resolved in the spec (one citation form, widened scope, negative fixture, register-anchor count against the 17 files in `docs/decisions/`). New gaps are findings 1 to 3.
+- N3 (real names): resolved. The Makefile line 80 and the guide line 51 are in PR A; the boundary is stated. Checked: `gz4d`/`p11`/`project11` appear outside tests, ADRs, roadmap and work-plans only in the files PR A lists plus `ros2_colcon/adapter.sh` line 835 and `merge_pr.sh` line 497, which the boundary keeps.
+- Round-2 finding 4 (B3, D1 to D4, A1): resolved (B3 dropped; follow-up subsection; A1 cut to the Now label).
+- Finding 5 (departure from item 3; Purpose row): resolved (Issue section, Wire-in 3, row 3).
+- Finding 6 (line ranges): resolved. `docs/design.md` Directory Structure is lines 11 to 58 and Project Repository Model starts at 60; `.agent/projects.local.example` resolution text is lines 62 to 69.
+- Finding 7 (register sizing): resolved in the register row and Estimated Scope; see finding 6 for the one ADR that does not match.
+- Finding 8 (label elsewhere): resolved, see finding 4.
+
+Verified true this round: every line reference in Files to Change and Wire-in (README 22 and 26, `AGENT_ONBOARDING.md` 91, `AGENTS.md` 436, `CLAUDE.md` 36, guide lines 51 and 71, Makefile 80, WORKTREE_GUIDE 72 and 181, `_project_registry.sh` 11 to 14, `projects.local.example` 52 and 72 to 76, ADR-0017 line 27, roadmap Cross-cutting at 405 with Design History at 484); the 12 adapter verbs; `lock.sh` has no header and only `dashboard.sh` line 196 reads the lock file; WORKFORCE_PROTOCOL section 3 is task locking; `--check-exit` results OK/PARTIAL/FAILED/MISSING; ADR-0003 superseded by 0011, ADR-0016 Provisional; commits `b7e8838` and `ea0df4a` exist; `AGENTS.md` is 442 lines; 16 principles, and every name in the self-check exists in `docs/principles.md`; `docs/decisions/` holds exactly 17 files.
+
+### Findings
+
+1. **[File targeting / Consequences / Test what breaks]** (must-fix) — The anchor test reads the real tree (`docs/design.md`, `README.md`, `docs/roadmap.md`). The `validate-script-tests` hook in `.pre-commit-config.yaml` has `files: ^(\.agent/|\.claude/|AGENTS\.md$|Makefile$|\.pre-commit-config\.yaml$|\.github/PULL_REQUEST_TEMPLATE)`, so a commit that only renames a heading in `docs/design.md` (or edits README or the roadmap) does not run the suite locally; only `make lint` (`pre-commit run --all-files`, the CI lint job) would. The existing guard `.agent/scripts/tests/test_script_tests_hook_scope.sh` (issue #354) makes a suite that derives a real root declare its out-of-tree read prefixes in `ROOT_READERS`, each of which must match the hook regex; and it asserts at lines 454 and 455 that `README.md` and `docs/roadmap.md` are NOT covered. So `test_design_anchors.sh` as planned fails the guard whichever way it declares: prefixes `docs/design.md`, `README.md`, `docs/roadmap.md` are uncovered, and widening the regex breaks the two negative assertions. Neither file is in Files to Change or the Consequences table. Add both to PR B and state the choice: widen the hook regex to those three paths and amend the two assertions (reverses part of #354's scoping), or accept CI-only coverage and say so (an empty `ROOT_READERS` entry is meant for sandbox-only or git-ignored reads, so it does not fit). The Principles Self-Check row "Test what breaks" and Wire-in 1 ("the anchor test catches a miss") should say where it runs.
+2. **[Approach]** (suggestion) — "every `(#...)` link in design.md" will match issue references; the plan's own text has `(#295)`, `(#332)`, `(#310)`. Specify the form as a Markdown link, `](#<slug>)` with a slug that is not all digits.
+3. **[Approach]** (suggestion) — Wire-in 2 tells the skills to write the literal `docs/design.md#<slug>`. `.claude/skills/*/SKILL.md` is in the test scope, so the checker would flag `<slug>` as a broken anchor after PR C. Exclude placeholders (`#<`) in the regex or reword the skill text. Also say where the checker lives (a function in the test file or a separate script; none is listed in Files to Change).
+4. **[Consequences]** (suggestion) — `.agent/AGENT_ONBOARDING.md` is the "Other" framework adapter in the `AGENTS.md` adapter table, and the plan keeps `AGENTS.md` and `CLAUDE.md` out as Ask First while editing the label there in PR C. Either treat it like the other two (add it to the follow-up) or note that the owner's plan approval covers it.
+5. **[Approach]** (suggestion, small) — Row 6 Target is `open (#295)`, but the rule above says a question goes to Open questions "not into a block that claims a status". Say that an `open` block holds only a pointer. Row 5 Now is `decided` while its enforced-by column awaits A3; fine if the column is a separate Target-free note, worth one clause.
+6. **[Register]** (suggestion) — The Re-examined split is 9 yes / 8 not yet. Eight of the nine match a section row that cites the ADR (0002 Worktrees; 0011/0012 Registry; 0013/0014/0015 Review loop; 0016 Sessions; 0017 The design). ADR-0003 is cited by no section row (Registry cites only 0011/0012). Add it to Registry ("superseded by ADR-0011") or move it to `not yet`. Conversely the Rules section's enforced-by column is ADR-0004/0005 territory, both marked `not yet`; one line saying why is enough.
+7. **[Wire-in 4]** (suggestion) — "Rows whose status is planned, in progress or deferred name the design section they would change": `docs/roadmap.md` has 27 `planned`, 4 `in progress`, 3 `deferred` cells, many in "To Consider". Limit it to rows that would change the design picture, or the PR C size is unbounded.
+8. **[Consequences]** (suggestion, small) — `.claude/skills/brainstorm/SKILL.md` line 34 describes `docs/design.md` as "system design and layering constraints"; one-line label touch in PR C. `discover_governance.sh`, `validate.yml` (file-exists check) and `PULL_REQUEST_TEMPLATE.md` need no change.
+
+### Summary
+
+Revision 3 closes every round-2 item and the factual claims I re-opened are true. One consequence is missing: the anchor test cannot be added under the current hook scope and its guard suite without a decision the plan does not state, and without it the test does not run on the very commits it exists for. Fix finding 1 (add two files and the choice); the suggestions can be taken or declined.
+
+### Recommended Actions
+
+- [ ] Add `.pre-commit-config.yaml` and `test_script_tests_hook_scope.sh` to PR B and state the hook-scope choice (finding 1)
+- [ ] Define the in-file link regex so issue references do not match; handle `<slug>` placeholders (findings 2, 3)
+- [ ] Decide the `AGENT_ONBOARDING.md` Ask First question (finding 4)
+- [ ] Apply or decline suggestions 5 to 8
