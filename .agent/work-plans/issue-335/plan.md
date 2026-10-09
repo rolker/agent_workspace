@@ -1,9 +1,9 @@
 # Plan: Workspace design document, phase 3 (rewrite docs/design.md as the current picture)
 
-Revision 4 (2026-10-09), after plan review round 3 (needs-work, entry `e3c3eac`); revision 3 answered
-round 2 (entry `9cfd1fe`), revision 2 answered round 1 (entry `6f8c643`) and the owner's decision on
-the shape of the document (2026-10-08). What changed is in the "Revision 2", "Revision 3" and
-"Revision 4 change log" sections at the end.
+Revision 5 (2026-10-09), after plan review round 4 (needs-work, entry `ffa20fe`); revision 4 answered
+round 3 (entry `e3c3eac`), revision 3 answered round 2 (entry `9cfd1fe`), revision 2 answered round 1
+(entry `6f8c643`) and the owner's decision on the shape of the document (2026-10-08). What changed is
+in the "Revision 2" to "Revision 5 change log" sections at the end.
 
 ## Issue
 
@@ -37,7 +37,7 @@ served by the Direction role (G2). The owner writes plain prose and wants text h
 
 ### Process (how the document gets written)
 
-1. Plan reviewed (rounds 1 to 3 done, this is revision 4), then owner approval. Worktree for #335 exists.
+1. Plan reviewed (rounds 1 to 4 done, this is revision 5), then owner approval. Worktree for #335 exists.
    No section is written before approval. Approval also covers two things that are otherwise Ask First:
    the new pre-commit hook in PR B (it is CI-like config: CI runs `make lint`, which runs every hook;
    question **B4**) and the one-line label edit in `.agent/AGENT_ONBOARDING.md` (Wire-in 7).
@@ -202,8 +202,12 @@ destination, quote the matching lines in the PR description); gaps are filled fi
    repository root; the tests pass a fixture root. Exit 0 clean, 1 with each broken citation printed as
    `file:line: #anchor`, 2 if `docs/design.md` is missing.
    *One citation form.* From outside, `docs/design.md#<anchor>` (any prefix, so
-   `$WS_ROOT/docs/design.md#<anchor>` counts), with the anchor matching `[a-z0-9][a-z0-9-]*`, so a
-   `#<section>` placeholder is not a citation and is ignored. Inside design.md, including the
+   `$WS_ROOT/docs/design.md#<anchor>` counts). The fragment is the run of `[A-Za-z0-9_-]` after the
+   `#`. An empty run, as in the `#<section>` placeholder, is not a citation and is ignored. Any other
+   fragment must match the lowercase pattern `[a-z0-9][a-z0-9-]*` or the checker reports it as a
+   malformed anchor (exit 1), so a mistyped `design.md#How-it-works` or `#how_it_works` fails instead of
+   slipping past a lowercase-only match; a fragment that matches is then looked up among the slugs.
+   Inside design.md, including the
    register's section column, a Markdown link `](#<slug>)` whose slug is not all digits, so issue
    references such as a bare `(#295)` or a link written `[x](#295)` are never matched. `<slug>` is the heading's GitHub
    slug (lowercase, punctuation dropped, spaces to hyphens, repeats numbered `-1`, `-2`; `# How it
@@ -211,10 +215,18 @@ destination, quote the matching lines in the PR description); gaps are filled fi
    there is no second list to keep in sync.
    *Scope.* Every `docs/design.md#...` citation in `README.md`, `.agent/AGENT_ONBOARDING.md`,
    `.claude/skills/*/SKILL.md`, `.agent/knowledge/*.md` and `docs/roadmap.md`, and every `](#...)`
-   link in design.md. When `<root>/docs/decisions/` exists it also fails if the Decision register has
-   fewer rows carrying an anchor than there are files in `docs/decisions/`, and when design.md holds no
-   in-file anchor links at all, so a rewrite that drops the register cannot pass vacuously. PR C's
-   README pointer and skill wording come under it as they land.
+   link in design.md. PR C's README pointer and skill wording come under it as they land.
+   *Anti-vacuity guards, conditional on the register.* The register section is identified by its
+   heading anchor: the heading whose slug is `decision-register` (the section is named "Decision
+   register", row 13). While design.md has no such heading, the checker does only the resolve check
+   above, so the checker, hook and suite can land before the register exists. Once the heading exists
+   (and `<root>/docs/decisions/` exists) two guards are live and each fails with exit 1: (a) design.md
+   holds no `](#<slug>)` link at all; (b) the register has fewer anchored rows than there are
+   `docs/decisions/*.md` files. A rewrite that drops the register's rows therefore cannot pass
+   vacuously, while a rewrite that drops the register heading itself is caught in review and by the
+   change log, not by the checker. *How the rows are found:* the lines that begin with `|` between the
+   register heading and the next heading of the same or higher level, and that contain `](#`; the
+   count is compared with `ls docs/decisions/*.md`, which is 17 today.
    *The local hook.* PR B adds a second pre-commit hook beside `validate-script-tests`, in
    `.pre-commit-config.yaml` under `repo: local`, placed before `validate-script-tests` so the block
    that suite's guard parses is unchanged: id `check-design-anchors`, `entry: bash
@@ -235,8 +247,13 @@ destination, quote the matching lines in the PR description); gaps are filled fi
    design.md and a citing file containing `docs/design.md#no-such-section` (checker must exit 1 and
    name the citation); (b) a positive fixture with only valid anchors (exit 0); (c) a fixture whose
    citing file holds a `#<section>` placeholder and a design.md that mentions `(#295)` and
-   `[x](#12)` (both ignored, exit 0); (d) a fixture with a `docs/decisions/` of three files and a
-   register with two anchored rows (exit 1), and a design.md with no in-file links (exit 1). Because it
+   `[x](#12)` (both ignored, exit 0); (d) a citing file with `docs/design.md#How-it-works` against a
+   design.md that has the heading `How it works` (exit 1, malformed anchor); (e) the guards before the
+   register exists: a design.md with no register heading and no in-file links, plus a `docs/decisions/`
+   of three files (exit 0); (f) the guards once it exists: the same trees with a `## Decision register`
+   heading added, first with two anchored rows against three ADR files (exit 1), then with a design.md
+   whose register has three anchored rows (exit 0), and one whose register heading is present but the
+   document holds no `](#` link (exit 1). Because it
    reads only fixtures, it stays under the existing `validate-script-tests` hook (`.agent/` is covered)
    and satisfies the #354 guard's ROOT_READERS rule without any entry: it finds the checker with a single
    `$SCRIPT_DIR/../check_design_anchors.sh`, which the guard's root-derivation scan (`(\.\./){2,}` and
@@ -273,8 +290,11 @@ destination, quote the matching lines in the PR description); gaps are filled fi
   names (`tests/test_*.sh`, `tools/ros-manifest/tests/`); ADRs and the roadmap are history. Also fix the
   ADR-0017 link. Nothing is deleted yet.
 - **PR B: the rewrite.** New `docs/design.md`, the deletions, the guide-row edit (line 71), the anchor
-  checker script, its pre-commit hook in `.pre-commit-config.yaml` and its script-tests suite. Section
-  commits kept separate; the checker and hook land first, so each later section commit is checked.
+  checker script, its pre-commit hook in `.pre-commit-config.yaml` and its script-tests suite. Commit
+  order, so that no commit fails the hook (the hook is never skipped): (1) checker, hook and suite
+  (the guards are conditional on the register, so this commit passes with no design.md register);
+  (2) the section commits, kept separate, each checked for resolving anchors by the hook; (3) the
+  register section, after which both guards are live and the 17 rows are counted from then on.
 - **PR C: wire-in.** Skills (citing by anchor), roadmap (open items, Cross-cutting note), README pointer
   and label, the `AGENT_ONBOARDING.md` and `brainstorm` labels. `Closes #335`.
 
@@ -296,7 +316,7 @@ B and C may merge together if the owner prefers fewer reviews. Review depth is a
 | `.agent/knowledge/principles_review_guide.md` (line 71) | Consequences Map row "Work-plan directory convention": replace the directory-tree cell | B |
 | `.agent/scripts/check_design_anchors.sh` (new, `chmod +x`) | The anchor checker: citation form, scope and register count as in Wire-in 6; grep and awk only | B |
 | `.pre-commit-config.yaml` | New local hook `check-design-anchors` (files: the seven paths in Wire-in 6), placed before `validate-script-tests`. Ask First (CI-like config), approved with this plan (B4) | B |
-| `.agent/scripts/tests/test_design_anchors.sh` (new, `chmod +x`) | Tests the checker with fixtures only (negative, positive, placeholder and issue-ref, register count); reads no real docs | B |
+| `.agent/scripts/tests/test_design_anchors.sh` (new, `chmod +x`) | Tests the checker with fixtures only (negative, positive, placeholder and issue-ref, uppercase citation, guards before and after the register exists); reads no real docs | B |
 | `.claude/skills/{review-issue,review-plan,plan-task}/SKILL.md` | Section wording cites the real anchors `$WS_ROOT/docs/design.md#how-it-works` and `#the-design`, plus the `#<section>` placeholder (Wire-in 2) | C |
 | `.claude/skills/audit-workspace/SKILL.md` | Checks the dates, only if A4 is accepted | C |
 | `docs/roadmap.md` | Open and planned items name the design section; Cross-cutting Decisions note and pointers | C |
@@ -423,6 +443,8 @@ their own issue, opened only if the owner says so; the design document does not 
 - A stated re-read trigger for the roadmap (Direction role).
 - The "System design" label for `docs/design.md` in `AGENTS.md` line 436 and `CLAUDE.md` line 36
   (Ask First), so all four places agree after PR C.
+- Widen the checker's scope to `AGENTS.md`, `CLAUDE.md`, `docs/principles.md` and `docs/decisions/`
+  (none cites a design anchor today; the label change above could add one).
 
 Dropped: the former Q14 (mention session-clearing advice at all), per the standing rule against proposing it.
 
@@ -494,3 +516,15 @@ logged from the first section commit.
 | 6 | ADR-0003 added to the Registry row (row 7: superseded by 0011, doctrine carried forward), so its `yes` has a section behind it. Register row also says why 0004 and 0005 stay `not yet` |
 | 7 | Wire-in 4 limited to roadmap rows whose issue adds, removes or re-shapes a part named in a design.md section (34 non-done rows counted: 27 planned, 4 in progress, 3 deferred); the rest untouched, PR C lists the counts. Consequences row added |
 | 8 | `brainstorm` SKILL.md line 34 label touch added to PR C, Files to Change and the label Consequences row (line verified) |
+
+## Revision 5 change log
+
+Answers plan review round 4 (entry `ffa20fe`): item 1 is its must-fix (finding 1), items 2 to 4 its
+suggestions (findings 2 to 4, all applied). The plan is 530 lines.
+
+| Item | What changed |
+|---|---|
+| 1 | Commit order no longer fails the checker. The two anti-vacuity guards (no in-file links; fewer anchored rows than ADR files) apply only once a heading with slug `decision-register` exists; before it the checker only checks that cited anchors resolve. PR split states the order: (1) checker, hook and suite, (2) section commits, (3) register section, guards live. The hook is never skipped. Fixtures (e) and (f) cover both states |
+| 2 | Register rows defined: lines beginning `|` between the register heading and the next heading of the same or higher level that contain `](#`, counted against `ls docs/decisions/*.md` (17) |
+| 3 | A `design.md#` fragment (run of `[A-Za-z0-9_-]`) that does not match `[a-z0-9][a-z0-9-]*` is a malformed-anchor error; an empty run (the `#<section>` placeholder) is still ignored. Fixture (d) covers `#How-it-works` |
+| 4 | Follow-up list gains one line: widen the checker scope to `AGENTS.md`, `CLAUDE.md`, `docs/principles.md`, `docs/decisions/` |
