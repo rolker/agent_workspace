@@ -1,8 +1,9 @@
 # Plan: Workspace design document, phase 3 (rewrite docs/design.md as the current picture)
 
-Revision 3 (2026-10-09), after plan review round 2 (needs-work, entry `9cfd1fe`); revision 2 answered
-round 1 (entry `6f8c643`) and the owner's decision on the shape of the document (2026-10-08). What
-changed is in "Revision 2 change log" and "Revision 3 change log" at the end.
+Revision 4 (2026-10-09), after plan review round 3 (needs-work, entry `e3c3eac`); revision 3 answered
+round 2 (entry `9cfd1fe`), revision 2 answered round 1 (entry `6f8c643`) and the owner's decision on
+the shape of the document (2026-10-08). What changed is in the "Revision 2", "Revision 3" and
+"Revision 4 change log" sections at the end.
 
 ## Issue
 
@@ -36,8 +37,10 @@ served by the Direction role (G2). The owner writes plain prose and wants text h
 
 ### Process (how the document gets written)
 
-1. Plan reviewed (rounds 1 and 2 done, this is revision 3), then owner approval. Worktree for #335 exists.
-   No section is written before approval.
+1. Plan reviewed (rounds 1 to 3 done, this is revision 4), then owner approval. Worktree for #335 exists.
+   No section is written before approval. Approval also covers two things that are otherwise Ask First:
+   the new pre-commit hook in PR B (it is CI-like config: CI runs `make lint`, which runs every hook;
+   question **B4**) and the one-line label edit in `.agent/AGENT_ONBOARDING.md` (Wire-in 7).
 2. **"How it works" first, in the owner's words.** The agent supplies only a list of the facts and
    decisions it must cover (from H1 and the 16 principles' Serves lines), not prose. The owner writes
    or edits the paragraphs; the agent trims nothing without asking, and there is no length guide for
@@ -87,7 +90,7 @@ block that claims a status.
 | `decided, not built` | Decided and cited; the code does not do it yet |
 | `decided, not proven` | Decided and built, but the acceptance test has not run (ADR-0016 is Provisional until the `/run-issue` run from a project root in #317) |
 | `proposed` | Agent or owner suggestion, not decided |
-| `open` | A question, listed under Open questions |
+| `open` | A question, listed under Open questions. An `open` block holds only a pointer to where the question is tracked (an issue number or the Open questions row), no question text |
 
 `Now` states only what the code does today and cites where to check it; nothing proposed appears in
 `Now`. `Target` paragraphs start with "Target:"; each proposal inside starts with "Proposed:" and moves
@@ -106,15 +109,15 @@ where the part has none.
 | 2 | `# The design` opening | Admission rule; the split (current picture / ADRs / `progress.md`); update-at-merge; the Status key | decided (ADR-0017) | - |
 | 3 | `## Purpose` | Two or three sentences: what this file is for (how the parts fit today, checked at merge). Points at README `## Workspace goals` and `docs/principles.md` without restating them. This carries the issue's "Purpose" part | decided (ADR-0017) | - |
 | 4 | Documentation layers | The seven roles; where each lives for the workspace (Goals: README `## Workspace goals`; How it works and Design: this file; Principles: `docs/principles.md` and the review guide; Decisions: `docs/decisions/`; Direction: `docs/roadmap.md`, "healthy" has no home yet; Measures: none yet). Shows the two gaps honestly. How a project maps its own is Target, seeded by `discover_governance.sh` types | decided (the roles and the workspace's mapping) | proposed (per-project mapping) |
-| 5 | Rules | See "Why `Rules`" below. One table: rule, principle it implements (cited, not restated), enforced by. Only rules that carry an enforcement fact `AGENTS.md` does not state. Candidates verified in this revision: no commit to a protected branch, commit identity set, issue number matches the branch (all pre-commit hooks); progress entry shape (`_progress_entry.sh` and `progress_append.sh` validate it); the merge gate (`merge_pr.sh`). Rules with no check (for example worktree for all work) are listed as review only or nothing, after the owner accepts the column (A3) | decided | - |
-| 6 | Sessions and roots | A session starts in the workspace or in a project root; the user tier supplies the workspace layer to project sessions (ADR-0016). Target: the workspace as a registered project (#295) | decided, not proven | open (#295) |
-| 7 | Registry and adapters | Registry maps names to roots and types; a 12-verb adapter contract per project type; resolution order in one sentence. GitHub is not a project dependency, the workspace uses it for now (owner 2026-10-05). Target: `onboard-project` as the one registration path (#332), mixed-flavour projects (#310), project lifecycle register to unregister; the unsettled parts also sit in Open questions | decided (ADR-0011/0012) | proposed |
+| 5 | Rules | See "Why `Rules`" below. One table: rule, principle it implements (cited, not restated), enforced by. Only rules that carry an enforcement fact `AGENTS.md` does not state. Candidates verified in this revision: no commit to a protected branch, commit identity set, issue number matches the branch (all pre-commit hooks); progress entry shape (`_progress_entry.sh` and `progress_append.sh` validate it); the merge gate (`merge_pr.sh`). Rules with no check (for example worktree for all work) are listed as review only or nothing, after the owner accepts the column (A3). Now is `decided` because each listed rule and its check were verified; the "review only" and "nothing" entries are facts shown in the column, not a status | decided | - |
+| 6 | Sessions and roots | A session starts in the workspace or in a project root; the user tier supplies the workspace layer to project sessions (ADR-0016). Target: the workspace as a registered project, a pointer to #295 only (an `open` block holds no question text) | decided, not proven | open (#295) |
+| 7 | Registry and adapters | Registry maps names to roots and types; a 12-verb adapter contract per project type (ADR-0011, which supersedes ADR-0003 and carries its project-agnostic doctrine forward; one clause says so, which is why 0003 is checked in PR B); resolution order in one sentence. GitHub is not a project dependency, the workspace uses it for now (owner 2026-10-05). Target: `onboard-project` as the one registration path (#332), mixed-flavour projects (#310), project lifecycle register to unregister; the unsettled parts also sit in Open questions | decided (ADR-0011/0012) | proposed |
 | 8 | Worktrees | Two kinds, workspace and project; why (ADR-0002); where they live is a pointer to the guide. What a project carries by choice is Target (zero-footprint mode; candidate) | decided | proposed |
 | 9 | Review loop and timeline | Phase order, one entry per phase in `progress.md` (the only loop state), fresh-context sub-agent per phase (ADR-0013/0014/0015); where the work-plans directory lives. Target (candidates): which claims code verifies (exit contracts, entry validation, merge gate) versus self-reported; what a finding must contain and reviewer independence (C5); how a new session finds the records for its issue; size bound on records | decided | proposed |
 | 10 | Merge gate | The owner decides every merge; the gate checks review currency and CI on the reviewed head; bookkeeping-only commits exempt; enforce by default on workspace PRs (`merge_pr.sh`, `_bookkeeping.sh`) | decided | - |
 | 11 | Identity | Agents sign work with framework identity, ephemeral per session; pointer to `AI_IDENTITY_STRATEGY.md`; tool-neutral rule and what degrades without the main tool (principle "Use the main tool fully" cited) | decided | - |
 | 12 | Instruction layers (candidate) | Only if accepted (A5): the four layers (always loaded, path-scoped, skill, on demand) and a size budget for the always-loaded layer (`AGENTS.md` is 442 lines against vendor guidance under 200); this file is not always loaded. Changing `AGENTS.md` is Ask First and is not part of this plan. Nothing is built, so this part has only a Target block | - | proposed |
-| 13 | Decision register | **Purpose** (stated in the section): tell a reader which ADR still governs, so nobody follows a superseded or drifted one. One row per ADR (17, 0001 to 0017): one-line decision, standing (in force / superseded / superseded in practice / Provisional), the design section that carries it as an in-file link `(#<slug>)`, and **Re-examined**: `yes <date>` for the nine ADRs PR B's sections cite and check against code (0002, 0003, 0011, 0012, 0013, 0014, 0015, 0016, 0017), `not yet` for the other eight (0001, 0004 to 0010), which the issue allows. Plan-level decisions that never got an ADR listed with their issue. ADR-0003 is already superseded by 0011 | decided | - |
+| 13 | Decision register | **Purpose** (stated in the section): tell a reader which ADR still governs, so nobody follows a superseded or drifted one. One row per ADR (17, 0001 to 0017): one-line decision, standing (in force / superseded / superseded in practice / Provisional), the design section that carries it as an in-file link `(#<slug>)`, and **Re-examined**: `yes <date>` for the nine ADRs PR B's sections cite and check against code (0002, 0003, 0011, 0012, 0013, 0014, 0015, 0016, 0017), `not yet` for the other eight (0001, 0004 to 0010), which the issue allows. Plan-level decisions that never got an ADR listed with their issue. ADR-0003 is superseded by 0011 and is cited by the Registry row (row 7), so its `yes` is backed by a section. ADR-0004 and ADR-0005 stay `not yet` even though the Rules enforced-by column touches their ground: the column cites the hooks and scripts that do the checking, not those ADRs' reasoning, and the issue allows `not yet` | decided | - |
 | 14 | Open questions | Table: ID, question, owner, what it changes. Seeded from the questions below | open | - |
 | 15 | Change log | Date, section, one line, issue/PR, **document line count**; appended in the same change that alters a section | decided | - |
 
@@ -151,15 +154,19 @@ destination, quote the matching lines in the PR description); gaps are filled fi
 ### Wire-in
 
 1. **Names.** Headings are the names; there is no separate list and no HTML comment. Renaming a
-   heading is a design change that updates every citer in the same change; the anchor test (6) catches a miss.
+   heading is a design change that updates every citer in the same change; the anchor check (6) catches
+   a miss, on the commit that renames it (the new pre-commit hook), again in `make lint` and CI, and its
+   own logic is tested by the script-tests suite.
 2. **Skills.** `review-issue`, `review-plan` and `plan-task` all run in project sessions
    (`session_scope: both`), where a bare `docs/design.md` does not resolve. Their wording changes from
    "which design section" to "name the section by its anchor in `$WS_ROOT/docs/design.md`", with
    `$WS_ROOT` resolved by the skills' existing idiom. The skills cite by anchor, not by heading in
    prose, so the anchor test reaches them: `review-issue` cites `$WS_ROOT/docs/design.md#how-it-works`
    for the goal an issue serves; `plan-task` and `review-plan` cite `$WS_ROOT/docs/design.md#the-design`
-   for the Status key and the section list, and tell the agent to cite the matching section as
-   `docs/design.md#<slug>`. Project issues keep the "the project's own design document, or say there is none"
+   for the Status key and the section list, and tell the agent to cite the matching section by its
+   anchor, written in the skill text as `docs/design.md#<section>`. The skill text uses only the two
+   real anchors above and that one angle-bracket placeholder; the checker ignores a placeholder because
+   its anchor pattern is `[a-z0-9][a-z0-9-]*` and `<` does not match (a fixture proves it, Wire-in 6). Project issues keep the "the project's own design document, or say there is none"
    branch. `audit-workspace` (workspace scope only) keeps plain `docs/design.md` and checks section
    dates only if A4 is accepted.
 3. **ADRs: register only (a departure from issue scope item 3, see Issue).** ADR-0008 permits a Status-line note of a related ADR, a References list
@@ -170,9 +177,12 @@ destination, quote the matching lines in the PR description); gaps are filled fi
    `0008-permit-cross-reference-addendums-in-accepted-adrs.md`; the file is
    `0008-permit-cross-reference-addendums-in-adrs.md` (a broken-link fix, ADR-0008 "Permitted").
    Whether ADRs should also carry a pointer, with an ADR-0008 scope note allowing it, is **B1**.
-4. **Roadmap, open and planned items only.** Rows in `docs/roadmap.md` whose status is `planned`,
-   `in progress` or deferred name the design section they would change (the #172 and cutover tables
-   have such rows). Rows marked `done` are not touched. Separately, `## Cross-cutting Decisions`
+4. **Roadmap, only rows that change the design picture.** `docs/roadmap.md` has 34 rows in `planned`
+   (27), `in progress` (4) or `deferred` (3) status (recounted from the file; many sit under "To
+   Consider"). Only a row whose issue adds, removes or re-shapes a part named in a design.md section
+   gets a "design section:" note naming that section (the #172 and cutover tables have such rows). The
+   rest are untouched, and so are rows marked `done`; PR C's description lists the rows it touched and
+   the count left alone. Separately, `## Cross-cutting Decisions`
    (lines 405-482: storage model, 5-layer review model, progress as lifecycle record, roadmap over
    issues, triage-and-fix sessions, permission prompts) is an older second copy of parts of the design
    and already stale (it says review summaries "continue to work" in plan.md). PR C marks the section
@@ -184,29 +194,68 @@ destination, quote the matching lines in the PR description); gaps are filled fi
    so the same change rewrites that cell to "the work-plans description in `docs/design.md` (Review
    loop and timeline)". The "Keep one current design" rows already say "matching section" and need no edit.
    (The same file's ADR-0016 row, line 51, names a real project; that is PR A.)
-6. **Anchor test (PR B).** `.agent/scripts/tests/test_design_anchors.sh` (new; `chmod +x` in the
-   same step, because the `check-shebang-scripts-are-executable` hook fails the commit otherwise).
-   *One citation form.* From outside, `docs/design.md#<slug>` (any prefix, so `$WS_ROOT/docs/design.md#<slug>`
-   counts); inside design.md, including the register's section column, a link `(#<slug>)`. `<slug>` is
-   the heading's GitHub slug (lowercase, punctuation dropped, spaces to hyphens, repeats numbered `-1`,
-   `-2`; `# How it works` is `how-it-works`). The test computes slugs from the headings (skipping fenced
-   code), so there is no second list to keep in sync.
+6. **Anchor check (PR B).** Two pieces, so the check runs where the breakage happens and the suite
+   stays inside the #354 scoping.
+   *The checker.* `.agent/scripts/check_design_anchors.sh [<root>]` (new; `chmod +x` in the same step,
+   because the `check-shebang-scripts-are-executable` hook fails the commit otherwise). Plain grep and
+   awk, no Python, so it is cheap enough to run on every docs commit. The root defaults to the
+   repository root; the tests pass a fixture root. Exit 0 clean, 1 with each broken citation printed as
+   `file:line: #anchor`, 2 if `docs/design.md` is missing.
+   *One citation form.* From outside, `docs/design.md#<anchor>` (any prefix, so
+   `$WS_ROOT/docs/design.md#<anchor>` counts), with the anchor matching `[a-z0-9][a-z0-9-]*`, so a
+   `#<section>` placeholder is not a citation and is ignored. Inside design.md, including the
+   register's section column, a Markdown link `](#<slug>)` whose slug is not all digits, so issue
+   references such as a bare `(#295)` or a link written `[x](#295)` are never matched. `<slug>` is the heading's GitHub
+   slug (lowercase, punctuation dropped, spaces to hyphens, repeats numbered `-1`, `-2`; `# How it
+   works` is `how-it-works`). The checker computes slugs from the headings (skipping fenced code), so
+   there is no second list to keep in sync.
    *Scope.* Every `docs/design.md#...` citation in `README.md`, `.agent/AGENT_ONBOARDING.md`,
-   `.claude/skills/*/SKILL.md`, `.agent/knowledge/*.md` and `docs/roadmap.md`, and every `(#...)` link in
-   design.md. PR C's README pointer and skill wording are in scope because they use the form above.
-   *Shown to fail.* The checker takes a root directory. (a) A negative fixture: the test builds a small
-   tree under its private `TMPDIR` with a design.md and a citing file that contains
-   `docs/design.md#no-such-section`; the checker must exit non-zero and name that citation, and the test
-   fails if it does not. (b) A positive fixture with only valid anchors must exit zero. (c) Against the
-   real tree it fails when design.md holds no in-file anchor links, or when the Decision register has
-   fewer rows carrying an anchor than there are files in `docs/decisions/`, so a rewrite that drops the
-   register cannot pass vacuously. It lands in PR B because the rewrite creates the anchors; skill and
-   README citations (PR C) come under it as they land. Test what breaks: renaming a section breaks
-   citers silently otherwise.
+   `.claude/skills/*/SKILL.md`, `.agent/knowledge/*.md` and `docs/roadmap.md`, and every `](#...)`
+   link in design.md. When `<root>/docs/decisions/` exists it also fails if the Decision register has
+   fewer rows carrying an anchor than there are files in `docs/decisions/`, and when design.md holds no
+   in-file anchor links at all, so a rewrite that drops the register cannot pass vacuously. PR C's
+   README pointer and skill wording come under it as they land.
+   *The local hook.* PR B adds a second pre-commit hook beside `validate-script-tests`, in
+   `.pre-commit-config.yaml` under `repo: local`, placed before `validate-script-tests` so the block
+   that suite's guard parses is unchanged: id `check-design-anchors`, `entry: bash
+   .agent/scripts/check_design_anchors.sh`, `language: system`, `pass_filenames: false`, and `files:
+   ^(docs/design\.md$|README\.md$|docs/roadmap\.md$|\.agent/AGENT_ONBOARDING\.md$|\.agent/knowledge/|\.claude/skills/|\.pre-commit-config\.yaml$)`.
+   A commit that renames a heading or edits a citer now runs the check locally; `make lint` and the CI
+   Lint job (`make lint` runs every hook on all files) run it again, which is ADR-0005's CI layer plus a
+   local feedback layer. The pattern does not include `docs/decisions/`, so a new ADR file without a
+   register row is caught by `make lint` and CI, not by the local hook; adding that path is a one-word
+   change if the owner wants it local too.
+   *Why a separate hook and not a wider `validate-script-tests`.* Issue #354 narrowed that hook so docs
+   commits skip the whole script-tests run; widening its `files:` to design.md, README and the roadmap
+   would re-slow every docs commit and undo #354. Its guard suite also asserts the opposite:
+   `test_script_tests_hook_scope.sh` lines 454 and 455 require `README.md` and `docs/roadmap.md` to be
+   NOT covered.
+   *The suite.* `.agent/scripts/tests/test_design_anchors.sh` (new, `chmod +x`) tests the checker, not
+   the real docs. It builds small trees under its private `TMPDIR`: (a) a negative fixture with a
+   design.md and a citing file containing `docs/design.md#no-such-section` (checker must exit 1 and
+   name the citation); (b) a positive fixture with only valid anchors (exit 0); (c) a fixture whose
+   citing file holds a `#<section>` placeholder and a design.md that mentions `(#295)` and
+   `[x](#12)` (both ignored, exit 0); (d) a fixture with a `docs/decisions/` of three files and a
+   register with two anchored rows (exit 1), and a design.md with no in-file links (exit 1). Because it
+   reads only fixtures, it stays under the existing `validate-script-tests` hook (`.agent/` is covered)
+   and satisfies the #354 guard's ROOT_READERS rule without any entry: it finds the checker with a single
+   `$SCRIPT_DIR/../check_design_anchors.sh`, which the guard's root-derivation scan (`(\.\./){2,}` and
+   its siblings) does not match. If it ever did derive a root, the entry to add would be
+   `.agent/scripts`, which the hook covers. `test_script_tests_hook_scope.sh` is therefore not in Files
+   to Change: its assertions at lines 454 and 455 and its parsed hook block stay as they are. Not done:
+   an assertion that the new hook's `files:` keeps covering the seven paths (it would make the suite
+   read the real config and need a ROOT_READERS entry); the CI run of `make lint` is what catches a
+   dropped path.
+   *Where it runs.* Locally on the commits it exists for (new hook), in `make lint` and CI (same hook),
+   and its logic on any `.agent/` commit (script-tests suite). Test what breaks: renaming a section
+   breaks citers silently otherwise.
 
 7. **The "System design" label.** `docs/design.md` is labelled "System design" in `README.md` line 22,
    `.agent/AGENT_ONBOARDING.md` line 91, `AGENTS.md` line 436 and `CLAUDE.md` line 36. PR C changes the
-   label in README and AGENT_ONBOARDING to "Design: how the parts fit today". `AGENTS.md` and
+   label in README and AGENT_ONBOARDING to "Design: how the parts fit today". `.claude/skills/brainstorm/SKILL.md` line 34 calls it "system design and layering
+   constraints"; PR C changes that to "how the parts fit today". `AGENT_ONBOARDING.md` is the "Other"
+   framework row of the adapter table in `AGENTS.md` (line 12), so its edit is near Ask First ground;
+   the owner's approval of this plan covers that one-line label edit. `AGENTS.md` and
    `CLAUDE.md` are Ask First and are not touched, so they keep the old label until the owner decides
    (listed under the follow-up issue).
 
@@ -223,10 +272,11 @@ destination, quote the matching lines in the PR description); gaps are filled fi
   line 497 cite the real checkout where a bug was found, #237); test sandboxes and fixtures keep their
   names (`tests/test_*.sh`, `tools/ros-manifest/tests/`); ADRs and the roadmap are history. Also fix the
   ADR-0017 link. Nothing is deleted yet.
-- **PR B: the rewrite.** New `docs/design.md`, the deletions, the guide-row edit (line 71), the anchor test.
-  Section commits kept separate.
+- **PR B: the rewrite.** New `docs/design.md`, the deletions, the guide-row edit (line 71), the anchor
+  checker script, its pre-commit hook in `.pre-commit-config.yaml` and its script-tests suite. Section
+  commits kept separate; the checker and hook land first, so each later section commit is checked.
 - **PR C: wire-in.** Skills (citing by anchor), roadmap (open items, Cross-cutting note), README pointer
-  and label, the `AGENT_ONBOARDING.md` label. `Closes #335`.
+  and label, the `AGENT_ONBOARDING.md` and `brainstorm` labels. `Closes #335`.
 
 B and C may merge together if the owner prefers fewer reviews. Review depth is at least Standard
 (governance files). Both reviews and the merge stay the owner's call (standing rule).
@@ -244,13 +294,16 @@ B and C may merge together if the owner prefers fewer reviews. Review depth is a
 | `docs/decisions/0017-design-document-is-the-current-picture.md` | Fix the ADR-0008 link filename | A |
 | `docs/design.md` | Rewrite per the section table | B |
 | `.agent/knowledge/principles_review_guide.md` (line 71) | Consequences Map row "Work-plan directory convention": replace the directory-tree cell | B |
-| `.agent/scripts/tests/test_design_anchors.sh` (new, `chmod +x`) | Anchor test: one citation form, scope as in Wire-in 6, negative and positive fixtures | B |
-| `.claude/skills/{review-issue,review-plan,plan-task}/SKILL.md` | Section wording cites `$WS_ROOT/docs/design.md#<slug>` (Wire-in 2) | C |
+| `.agent/scripts/check_design_anchors.sh` (new, `chmod +x`) | The anchor checker: citation form, scope and register count as in Wire-in 6; grep and awk only | B |
+| `.pre-commit-config.yaml` | New local hook `check-design-anchors` (files: the seven paths in Wire-in 6), placed before `validate-script-tests`. Ask First (CI-like config), approved with this plan (B4) | B |
+| `.agent/scripts/tests/test_design_anchors.sh` (new, `chmod +x`) | Tests the checker with fixtures only (negative, positive, placeholder and issue-ref, register count); reads no real docs | B |
+| `.claude/skills/{review-issue,review-plan,plan-task}/SKILL.md` | Section wording cites the real anchors `$WS_ROOT/docs/design.md#how-it-works` and `#the-design`, plus the `#<section>` placeholder (Wire-in 2) | C |
 | `.claude/skills/audit-workspace/SKILL.md` | Checks the dates, only if A4 is accepted | C |
 | `docs/roadmap.md` | Open and planned items name the design section; Cross-cutting Decisions note and pointers | C |
 | `README.md` | Under `## Workspace goals`, a closing pointer to `docs/design.md#how-it-works`; the Documentation list label (line 22) | C |
-| `.agent/AGENT_ONBOARDING.md` (line 91) | The same "System design" label change as README | C |
-| Not touched | `AGENTS.md` line 436, `CLAUDE.md` line 36 (Ask First; they keep the old label, see follow-up), `docs/principles.md` (principle wording is a separate change), accepted ADRs other than the link fix | |
+| `.agent/AGENT_ONBOARDING.md` (line 91) | The same "System design" label change as README (covered by plan approval, Wire-in 7) | C |
+| `.claude/skills/brainstorm/SKILL.md` (line 34) | Label "system design and layering constraints" becomes "how the parts fit today" | C |
+| Not touched | `.agent/scripts/tests/test_script_tests_hook_scope.sh` (its assertions at lines 454-455 and the `validate-script-tests` hook's `files:` stay as they are), `AGENTS.md` line 436, `CLAUDE.md` line 36 (Ask First; they keep the old label, see follow-up), `docs/principles.md` (principle wording is a separate change), accepted ADRs other than the link fix | |
 
 ## Prior Art
 
@@ -287,8 +340,8 @@ which design section the planning and review skills cite (headings in the new fi
 | Leave in a project only what it chose to carry | Footprint is Target, not described as built |
 | Look for prior art before building | Prior Art section above |
 | Small steps; step back when they stop converging | Three PRs, one commit per section; if sections keep passing 60 lines or the owner's edits keep reshaping the table, stop and propose a simpler section set instead of patching |
-| Test what breaks | `test_design_anchors.sh` in PR B, with a negative fixture that must fail so the test is shown to catch a broken anchor; the rest of the change is documentation, covered by the with/without test and spot-checks rather than unit tests |
-| Enforce what matters, as simply as possible | The admission rule is a review check, backed by the cheapest mechanical check that fails when a name breaks (anchor test) and a recorded line count in place of a cap |
+| Test what breaks | The checker runs in a new pre-commit hook on the commits that can break an anchor (design.md, README, roadmap, onboarding, knowledge files, skills, the config itself), then in `make lint` and CI; `test_design_anchors.sh` tests the checker with a negative fixture that must fail, so the check is shown to catch a broken anchor. The script-tests hook is not widened (#354). The rest of the change is documentation, covered by the with/without test and spot-checks |
+| Enforce what matters, as simply as possible | The admission rule is a review check, backed by the cheapest mechanical check that fails when a name breaks (the grep-level anchor checker and its hook) and a recorded line count in place of a cap |
 
 ## ADR Compliance
 
@@ -298,22 +351,25 @@ which design section the planning and review skills cite (headings in the new fi
 | 0001 | Yes | No new ADR here; one is written only if the rewrite changes a decision two parts could choose incompatibly |
 | 0008 | Yes | ADRs get no design pointers (register only); the one ADR edit is a link fix, which ADR-0008 permits |
 | 0016 | Yes | Provisional: shown as `decided, not proven` until the acceptance run |
-| 0003 / 0011 | Yes | 0003 is superseded by 0011; the workspace stays project-agnostic, no project names |
+| 0003 / 0011 | Yes | 0003 is superseded by 0011; the workspace stays project-agnostic, no project names; the Registry row cites both |
+| 0005 | Yes | The anchor check follows its layers: a pre-commit hook for local feedback, the same hook in CI lint as the enforcement layer |
 | 0013 | Yes | Entries via `progress_append.sh` |
 
 ## Consequences
 
 | If we change... | Also update... | Included in plan? |
 |---|---|---|
-| Design section names | Skills, README, roadmap, register column, anchor test | Yes (anchor test PR B; skills, README and roadmap PR C) |
+| Design section names | Skills, README, roadmap, register column, anchor checker | Yes (checker, hook and suite PR B; skills, README and roadmap PR C) |
+| Anchor checker added | `.pre-commit-config.yaml` (new hook, files: the seven paths); `test_design_anchors.sh` (fixtures only); NOT `test_script_tests_hook_scope.sh` or the script-tests hook's `files:` (#354 scoping and its lines 454-455) | Yes (PR B); the hook is Ask First, flagged at plan approval (B4) |
 | Real project names in user-visible text | Makefile help line, review guide ADR-0016 row | Yes (PR A); code comments and test fixtures keep names |
-| The "System design" label | README, `AGENT_ONBOARDING.md` (PR C); `AGENTS.md`, `CLAUDE.md` | README and onboarding yes; the other two No, Ask First (follow-up) |
+| The "System design" label | README, `AGENT_ONBOARDING.md`, `brainstorm` skill (PR C); `AGENTS.md`, `CLAUDE.md` | README, onboarding and brainstorm yes; the other two No, Ask First (follow-up) |
 | Directory tree removed | Review guide Consequences Map row "Work-plan directory convention" | Yes (PR B) |
 | Detail removed from design.md | Its destination file | Yes (PR A, verified first) |
 | Registry or adapter text | `adapter` and registry headers | Yes (verified; no gap found) |
 | Lock text removed | `lock.sh` header (nothing else documents it) | Yes (PR A) |
 | README Workspace goals pointer | README Documentation list label | Yes (PR C) |
 | Roadmap Cross-cutting Decisions | The design sections that now hold the facts | Yes (PR C; B2 open) |
+| Roadmap rows that change the design picture | A "design section:" note on those rows only; the other open rows stay as they are | Yes (PR C) |
 | `AGENTS.md` (instruction budget) | Framework adapters | No, Ask First |
 
 ## Open Questions
@@ -338,6 +394,10 @@ Grouped by what they change. Stable IDs; ask in group order, each design questio
 - **B1.** Should accepted ADRs carry a pointer to their design section (issue scope item 3)? Needs a
   scope note on ADR-0008 (or a superseding ADR). Default in this plan: no. Hard to undo once ADRs are edited.
 - **B2.** Roadmap Cross-cutting Decisions: mark as history (this plan), delete, or leave. Marking is easy to reverse.
+- **B4.** The new pre-commit hook `check-design-anchors` in `.pre-commit-config.yaml` (Ask First: CI-like
+  config). This plan adds it, so a heading rename is caught on the commit that makes it, without
+  widening the script-tests hook. Alternative: no hook, the check runs only in the script-tests suite
+  and CI (a rename then fails after the push, not at the commit). Easy to remove.
 
 **C. Content that stays open in the document**
 - **C1.** Register scope and which ADRs the rewrite supersedes (ADR-0016 is Provisional). Superseding is hardest to undo; wording of standing per ADR is easy.
@@ -368,12 +428,13 @@ Dropped: the former Q14 (mention session-clearing advice at all), per the standi
 
 ## Estimated Scope
 
-Three PRs (A: destinations; B: the rewrite and the anchor test; C: wire-in), merge-able as two. The
+Three PRs (A: destinations; B: the rewrite, the anchor checker with its hook and suite; C: wire-in), merge-able as two. The
 writing is paced by the owner's edits (process step 2 first), not by drafting. Register sizing: 17 rows
 written in PR B; nine of them (0002, 0003, 0011, 0012, 0013, 0014, 0015, 0016, 0017) are checked against
 the code each describes, one short read per ADR done in the commit of the section that cites it; the
 other eight are `not yet`. PR A is small (one script header, one docstring line, one paragraph, name
-swaps in three files plus the Makefile help line and one guide row).
+swaps in three files plus the Makefile help line and one guide row). PR B gains one small script
+(grep and awk), one hook entry and one fixture suite.
 
 ## Revision 2 change log
 
@@ -416,3 +477,20 @@ rewrite's line count is still logged from the first section commit.
 | 7 | `AGENT_ONBOARDING.md` line 91 checked: it carries "System design". It changes in PR C with README (Files to Change, Wire-in 7). `AGENTS.md` line 436 and `CLAUDE.md` line 36 stay (Ask First) and are listed in the follow-up |
 | F1 | "Directory tree (lines 11-66)" is now "Directory Structure section (lines 11-58); Project Repository Model starts at line 60" (checked in `docs/design.md`) |
 | F2 | `projects.local.example` "lines 62-67" is now 62-69 (checked in the file) |
+
+## Revision 4 change log
+
+Answers plan review round 3 (entry `e3c3eac`): item 1 is its must-fix (finding 1), items 2 to 8 its
+suggestions (findings 2 to 8, all applied). The plan is 496 lines. The rewrite's line count is still
+logged from the first section commit.
+
+| Item | What changed |
+|---|---|
+| 1 | The anchor test never ran locally on a docs-only commit: the `validate-script-tests` hook does not cover design.md, README or the roadmap, and the #354 guard asserts README and the roadmap stay uncovered (lines 454-455). Not widened (that would re-slow docs commits). PR B instead adds a grep-level checker `.agent/scripts/check_design_anchors.sh` and its own pre-commit hook `check-design-anchors` with `files:` covering the seven paths. `test_design_anchors.sh` now tests the checker with fixtures only, so it stays under the existing hook and needs no ROOT_READERS entry. Added to Files to Change, Consequences, PR split, Wire-in 1 and 6, the "Test what breaks" row and ADR table (0005). New question B4 flags the hook (Ask First) for plan approval |
+| 2 | In-file link form is `](#<slug>)` with a slug that is not all digits; `(#295)` and similar are never matched. A fixture checks it |
+| 3 | Wire-in 2 and the skills row use the real anchors `#how-it-works` and `#the-design`, plus one `#<section>` placeholder that the checker ignores (anchor pattern excludes `<`; fixture checks it). The checker's home is `.agent/scripts/` (Wire-in 6, Files to Change) |
+| 4 | Wire-in 7 and process step 1 say plan approval covers the `AGENT_ONBOARDING.md` label edit ("Other" row, `AGENTS.md` line 12); `AGENTS.md` and `CLAUDE.md` stay in the follow-up |
+| 5 | Status key: an `open` block holds only a pointer, no question text; row 6 Target wording follows. Row 5 gets one clause saying why Now is `decided` while the enforced-by column awaits A3 |
+| 6 | ADR-0003 added to the Registry row (row 7: superseded by 0011, doctrine carried forward), so its `yes` has a section behind it. Register row also says why 0004 and 0005 stay `not yet` |
+| 7 | Wire-in 4 limited to roadmap rows whose issue adds, removes or re-shapes a part named in a design.md section (34 non-done rows counted: 27 planned, 4 in progress, 3 deferred); the rest untouched, PR C lists the counts. Consequences row added |
+| 8 | `brainstorm` SKILL.md line 34 label touch added to PR C, Files to Change and the label Consequences row (line verified) |
