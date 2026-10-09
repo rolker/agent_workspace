@@ -377,3 +377,11 @@ Revision 3 closes every round-2 item and the factual claims I re-opened are true
 - [ ] Define the in-file link regex so issue references do not match; handle `<slug>` placeholders (findings 2, 3)
 - [ ] Decide the `AGENT_ONBOARDING.md` Ask First question (finding 4)
 - [ ] Apply or decline suggestions 5 to 8
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 08:42 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `81c2119`
+
+Revision 4 of the phase-3 plan, answering the round-3 Plan Review (`e3c3eac`, needs-work): the anchor check gets its own cheap pre-commit hook and a grep-level checker script so it runs on docs-only commits without widening the script-tests hook (#354 scoping kept), and its suite tests the checker with fixtures only. Suggestions applied: in-file link form excludes issue refs, placeholders ignored, onboarding label covered by plan approval, open-block pointer rule, ADR-0003 cited by Registry, roadmap rows limited to design-changing ones, brainstorm label. The plan's closing section lists what changed per item.
