@@ -524,3 +524,37 @@ Owner approval of the phase-3 plan, 2026-10-09. Plan `.agent/work-plans/issue-33
 - Anchor hook approved, with `docs/decisions/` in its scope.
 - Purpose section and the `#how-it-works` / `#the-design` anchors accepted.
 - Glossary terms (C6) to be settled with the owner before PR B writes the glossary.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-09 11:10 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `acd2cc3`
+**Branch**: feature/issue-335 at `fb79191`
+
+### Summary
+PR A of the phase-3 plan (revision 6): fill the gaps the new `docs/design.md` will point at, replace real project names in user-visible text with synthetic ones, fix the ADR-0017 link. Nothing is deleted from `docs/design.md`; no push.
+
+### Commits
+- c4ff312 progress: Checkpoint entry recording the owner's approval of 2026-10-09
+- a80936e `review_loop_lifecycle.md`: "Exit contract and dispatch" section (`dispatch_phase.sh --check-exit`, its OK / PARTIAL / FAILED / MISSING results, fresh sub-agent per phase with the repeat-phase exception, ADR-0014, ADR-0015)
+- 959abbb `lock.sh`: header says what the lock is (file path, only reader `dashboard.sh`, advisory)
+- d19ba93 `validate_workspace.py`: docstring names the `project '<name>':` failure prefix
+- 8510202 synthetic names: `_project_registry.sh`, `projects.local.example`, `WORKTREE_GUIDE.md`, `Makefile` help line, `principles_review_guide.md` ADR-0016 row
+- fb79191 ADR-0017: ADR-0008 link filename corrected to `0008-permit-cross-reference-addendums-in-adrs.md`
+
+### Synthetic names
+`gz4d` -> `boat_sim`; `p11` -> `shore_tools`; `p11-jazzy` / `p11-rolling` -> `shore_tools-jazzy` / `shore_tools-rolling`; `project11-ng` -> `shore_tools`. The guide's ADR-0016 row now reads "#317's acceptance run in a registered project" (no name).
+
+### Tests
+`run_script_tests.sh` (all 30 `test_*.sh` suites) ran through the `validate-script-tests` pre-commit hook on the commits touching `.agent/` and `Makefile` (a80936e, 959abbb, d19ba93, 8510202) and passed; the hook skipped on the ADR-0017 commit (no matching files). No suite reads `projects.local.example`. All other hooks passed on every commit.
+
+### Verified facts behind the new text
+- `workspace.lock`: readers are `dashboard.sh` (line 196) and `unlock.sh` (removes it); no other script or test reads it.
+- `project '<name>':` appears in `validate_workspace.py` at the adapter-delegation, unknown-type and missing-hosting-dir failures.
+- ADR-0015 governs `cross_model_review.sh` dispatch (inside `review-code`), not phase handoff; the lifecycle paragraph says so rather than attributing the fresh-sub-agent rule to it.
+
+### Deviations from the plan
+- The Checkpoint `**Decision**` is `proceed`, not `approve`: `proceed` is the token `dispatch_phase.sh` accepts for `After: plan`.
+- The plan's `Makefile` line 80, `.agent/projects.local.example` lines 52 and 72-76, `WORKTREE_GUIDE.md` lines 72 and 181, `_project_registry.sh` lines 11-14, guide line 51 and ADR-0017 line 27 were all as stated; no line reference was wrong.
+- `WORKTREE_GUIDE.md` still contains `rolker/cube_bathymetry#111` (a real package-repo example); the plan did not list it, so it was left.
