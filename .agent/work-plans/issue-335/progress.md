@@ -454,3 +454,55 @@ Revision 5 of the phase-3 plan, answering the round-4 Plan Review (`ffa20fe`, ne
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `acd2cc3`
 
 Revision 6 of the phase-3 plan, applying the owner's four decisions of 2026-10-09: the `check-design-anchors` hook is approved and also watches `docs/decisions/` (B4 decided); the "System design" label stays everywhere, so all label edits and Wire-in 7 are gone; the Purpose row and the `#how-it-works` / `#the-design` anchors are accepted; a last `## Glossary` section is added, with a new question C6 (which terms go in) to settle with the owner before PR B writes it. The plan's closing section lists what changed per item.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-09 09:13 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: ready
+
+**Issue**: #335 — Workspace design document
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `acd2cc3`
+**Branch**: `feature/issue-335`
+
+Round 5. Revision 6 of the plan (554 lines), read end to end against the worktree at a96973c. Q1, the owner decisions of 2026-10-09 (hook with `docs/decisions/` in scope, "System design" label kept, Purpose row and the two anchors, Glossary section), C6 and the other owner questions, and the `Rules` heading were not re-opened. All four round-4 items are resolved in the plan text and revision 6's edits leave no dangling reference that would mislead the implementer. No must-fix. Two small suggestions.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three PRs; glossary adds a section commit, not a new component |
+| Issue alignment | Good | Departure from scope item 3 stated; Purpose row and Glossary present |
+| File targeting | Good | Files to Change lists checker, hook (eight paths), suite, guide row, glossary |
+| Consequences | Good | New-ADR-file and glossary rows added; label rows correctly gone |
+| Principle alignment | Good | "Test what breaks" and "Enforce what matters" now backed by a commit order that passes its own checker |
+| ADR compliance | Good | 0005 layering, 0008 link-fix-only, 0016 `decided, not proven` unchanged |
+| ROS conventions | N/A | Workspace plan |
+
+### Round-4 items
+
+- Finding 1 (must-fix, commit order): resolved. Wire-in 6 keys both anti-vacuity guards on a heading with slug `decision-register`; without it only the resolve check runs. PR B states the order (1) checker, hook and suite, (2) section commits, (3) register, (4) glossary. Walked through against the current tree: commit 1 passes (no `docs/design.md#` citation exists today in README, onboarding, skills, knowledge files or roadmap; current design.md has no `](#` link and no register heading); section commits pass while their links resolve; the register commit turns on guards (a) and (b) and needs 17 anchored rows, matching the 17 files in `docs/decisions/`; a broken or wrongly cased anchor fails the resolve check at every stage. Fixtures (e), (f), (g) cover before, after and the new-ADR-file case.
+- Finding 2 (register-row definition): resolved. Lines beginning `|` between the register heading and the next heading of equal or higher level that contain `](#`, counted against `ls docs/decisions/*.md`.
+- Finding 3 (malformed anchor): resolved. A fragment run of `[A-Za-z0-9_-]` that does not match `[a-z0-9][a-z0-9-]*` exits 1 as malformed; an empty run (the `#<section>` placeholder) is ignored; fixture (d) covers `#How-it-works`.
+- Finding 4 (follow-up line): resolved, and correctly narrowed in revision 6 now that `docs/decisions/` is in the hook's scope.
+
+### Revision 6 cross-reference check
+
+- No reference to the removed Wire-in 7 remains outside the historical change logs for revisions 3 and 4, which record what those revisions said. Wire-in 1 to 6 are cited consistently (rows 16, Wire-in 1, 2).
+- "Eight paths" is consistent in Wire-in 6, Files to Change, Consequences and the suite note; counted: design.md, README.md, roadmap.md, AGENT_ONBOARDING.md, docs/decisions/, .agent/knowledge/, .claude/skills/, .pre-commit-config.yaml. "Seven" survives only in "seven roles" (correct) and the revision 4 log (history).
+- The "System design" label rows are gone from Consequences and Files to Change; the "Not touched" row lists the five label sites, and all five were confirmed (README.md 22, AGENT_ONBOARDING.md 91, brainstorm SKILL.md 34 reads "system design", AGENTS.md 436, CLAUDE.md 36).
+- Facts re-verified against the files: plan 554 lines, AGENTS.md 442, current design.md 223, 17 ADR files, ADR-0017 line 27 links `...-accepted-adrs.md` while the file is `0008-permit-cross-reference-addendums-in-adrs.md`, test_script_tests_hook_scope.sh lines 454 and 455 are the README.md and docs/roadmap.md not-covered assertions, `validate-script-tests` block as described, guide lines 51 and 71, Makefile line 80, README `## Workspace goals` at line 26.
+
+### Findings
+
+1. **[File targeting] Suggestion** — Guard (b) needs 17 rows that each contain an in-file `](#` link, but the plan only says each row links "the design section that carries it". Eight ADRs are `not yet` (0001, 0004 to 0010) and several have no section (0001 ADR process, 0006 AGENTS.md as shared file, 0007 make, 0009 Python policy, 0010 git-bug optional). Say in the register row definition where such a row links (for example to `#decision-register` itself or the nearest section, such as `#rules` for 0004 and 0005), so the implementer does not invent a section to satisfy the count.
+2. **[Process] Suggestion** — The section commits in step (2) run the resolve check on in-file links; a section that links forward to one not yet written fails its own commit. One sentence in the PR split ("a section links only to sections already committed; the register links last") would remove the trap.
+
+### Summary
+
+Revision 6 applies the owner's decisions cleanly and the conditional-guard design is not vacuous at any stage: hook-adding commit, section commits, register commit and glossary commit all behave as intended, and a broken anchor fails throughout. The one residue (a rewrite that drops the register heading disables the guards) is acknowledged in the plan and left to review and the change log. Ready for owner approval and implementation.
+
+### Recommended Actions
+
+- [ ] Optionally add the two one-line clarifications above (register link target for ADRs without a section; no forward in-file links before the register).
+- [ ] Settle C6 with the owner before PR B's glossary commit; no action needed on the plan itself.
