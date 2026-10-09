@@ -24,7 +24,7 @@ script lifecycles has landed in ADRs, where it goes stale. The principle
   decision and consequences, and keeps implementation detail where the code
   is (script header, document next to it).
 - Accepted ADRs are history: superseded, not edited, apart from
-  [ADR-0008](0008-permit-cross-reference-addendums-in-accepted-adrs.md)
+  [ADR-0008](0008-permit-cross-reference-addendums-in-adrs.md)
   addendums.
 
 ## Consequences
