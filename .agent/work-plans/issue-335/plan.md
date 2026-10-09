@@ -1,16 +1,19 @@
 # Plan: Workspace design document, phase 3 (rewrite docs/design.md as the current picture)
 
-Revision 8 (2026-10-09). The owner approved revision 6 on 2026-10-09 (the `## Checkpoint` entry in
-`progress.md`). This revision does not reopen the plan. It applies the owner's decisions on C2 (the
-workspace as a registered project: leave it open, add an inventory) and C3 (where an issue's work plan
-and progress timeline live), both owner decisions of 2026-10-09. Revision 7 recorded that PR A is
-merged (#377, merge commit `249a8d0`), applied the decisions on C1 and C6 and folded in the two
+Revision 9 (2026-10-09). The owner approved revision 6 on 2026-10-09 (the `## Checkpoint` entry in
+`progress.md`). This revision does not reopen the plan. It applies the owner's decisions on the A
+group (shape of the document, A1 to A5; owner decision 2026-10-09: "Go for group A", the host's
+recommendations accepted as stated) and cites issue #379, opened the same day for the merge-gate
+lookup gap that revision 8 recorded. After this revision the only open questions are B1, B2, C4 and C5.
+Revision 8 applied the owner's decisions on C2 (the workspace as a registered project: leave it open,
+add an inventory) and C3 (where an issue's work plan and progress timeline live), both owner decisions
+of 2026-10-09. Revision 7 recorded that PR A is merged (#377, merge commit `249a8d0`), applied the decisions on C1 and C6 and folded in the two
 accepted suggestions from plan review round 5 (entry `65fb3c4`, verdict ready). Revision 6 applied
 four owner decisions of 2026-10-09 (hook scope, label, purpose and anchors, glossary); revision 5
 answered plan review round 4 (needs-work, entry `ffa20fe`), revision 4 answered round 3 (entry
 `e3c3eac`), revision 3 answered round 2 (entry `9cfd1fe`), revision 2 answered round 1 (entry
 `6f8c643`) and the owner's decision on the shape of the document (2026-10-08). What changed is in the
-"Revision 2" to "Revision 8 change log" sections at the end.
+"Revision 2" to "Revision 9 change log" sections at the end.
 
 ## Issue
 
@@ -47,7 +50,7 @@ served by the Direction role (G2). The owner writes plain prose and wants text h
 ### Process (how the document gets written)
 
 1. Plan reviewed (rounds 1 to 5 done) and approved by the owner at revision 6 on 2026-10-09; this is
-   revision 8, which applies decisions made after that approval. Worktree for #335 exists. PR A is
+   revision 9, which applies decisions made after that approval. Worktree for #335 exists. PR A is
    merged (#377). No PR B section is written before the owner's say-so on the plan. The new pre-commit hook in PR B is CI-like config (CI runs
    `make lint`, which runs every hook), so it is Ask First; the owner approved it on 2026-10-09 (owner
    decision 2026-10-09: "Yes, and watch the ADR directory too."), which settles question **B4**.
@@ -86,14 +89,18 @@ newcomer cannot see it from the code. Two soft checks back it up:
 **Order of the file.** The first heading in the file is `# How it works` (owner's words, H1). A
 second H1, `# The design`, follows; its opening paragraph states the admission rule, the split ("this
 file = the current picture, ADRs = rationale and history, `progress.md` = per-issue history", the
-reference updates at merge, ADR-0017) and the Status key. Every other part is an H2 under it. Reading
-"first" as "first heading in the file" is a judgement call; the alternative (the admission rule above
-the H1, unheaded) is open question **A2**.
+reference updates at merge, ADR-0017) and the Status key. Every other part is an H2 under it. The admission
+rule is the opening paragraph of `# The design`, not a note above the H1, so `# How it works` (the
+owner's prose) stays first and unencumbered (decided, owner decision 2026-10-09, A2: "Go for group A").
 
 **Status.** Status is per block. A part has a `Now` block (what the code does today, with the source
-each line was checked against) and, only where it differs, a `Target` block. Each block opens with one
+each line was checked against) and, only where it differs, a `Target` block. Every `##` section
+carries the label `Now`, also when it has no Target (decided, owner decision 2026-10-09, A1: yes);
+`# How it works` (the owner's prose) and the opening paragraph of `# The design` (which holds this
+key) carry no label. Each block opens with one
 line `Status:` taking exactly one of five values, so a part can be `decided` now and `proposed` as a
-target. A part with nothing built has only a Target block. A block holds statements of one status; if
+target. A part with nothing built has one block, labelled `Now` (A1), with the status `proposed` (row 12).
+A block holds statements of one status; if
 it would mix, it is split, and a question goes to the Open questions table with a pointer, not into a
 block that claims a status.
 
@@ -106,11 +113,13 @@ block that claims a status.
 | `open` | A question, listed under Open questions. An `open` block holds only a pointer to where the question is tracked (an issue number or the Open questions row), no question text |
 
 `Now` states only what the code does today and cites where to check it; nothing proposed appears in
-`Now`. `Target` paragraphs start with "Target:"; each proposal inside starts with "Proposed:" and moves
-to `Now` when built (the change that builds it makes the move). A part with no Target carries one
-status line (whether it also carries the `Now` label is A1). Research candidates are marked
-`(candidate)` in the draft so the owner accepts or drops each before the PR; no `(candidate)` marker
-survives into the final text.
+`Now`, except in a part with nothing built (row 12, Instruction layers), whose single block is
+labelled `Now` for A1 and carries `proposed`. `Target` paragraphs start with "Target:"; each proposal inside starts with "Proposed:" and moves
+to `Now` when built (the change that builds it makes the move). A part with no Target carries the
+`Now` label and one status line (A1, decided). Research candidates are marked `(candidate)` in the
+draft so the owner accepts or drops each before the PR; no `(candidate)` marker survives into the
+final text. As of revision 9 every candidate raised so far is accepted or dropped (A1 to A5 included),
+so the marker is for anything new the drafts surface.
 
 **Sections** (document order; no line column, since there is no cap). Status is given per block: the
 Now column is the status of the part's Now block, the Target column the status of its Target block, `-`
@@ -118,25 +127,29 @@ where the part has none.
 
 | # | Section (stable heading) | What goes in | Now | Target |
 |---|---|---|---|---|
-| 1 | `# How it works` | Owner's words. Core ideas, day-to-day harness plus long view, principles connect them; README Workspace goals ends with a pointer. Optional one-line tree picture if the owner wants it (A5) | decided (H1) | - |
+| 1 | `# How it works` | Owner's words. Core ideas, day-to-day harness plus long view, principles connect them; README Workspace goals ends with a pointer. No tree and no tree pointer: the directory tree leaves the document, and a pointer would only point at the repo (decided, owner decision 2026-10-09, A5) | decided (H1) | - |
 | 2 | `# The design` opening | Admission rule; the split (current picture / ADRs / `progress.md`); update-at-merge; the Status key | decided (ADR-0017) | - |
 | 3 | `## Purpose` | Two or three sentences: what this file is for (how the parts fit today, checked at merge). Points at README `## Workspace goals` and `docs/principles.md` without restating them. This carries the issue's "Purpose" part (row accepted, owner decision 2026-10-09) | decided (ADR-0017) | - |
 | 4 | Documentation layers | The seven roles; where each lives for the workspace (Goals: README `## Workspace goals`; How it works and Design: this file; Principles: `docs/principles.md` and the review guide; Decisions: `docs/decisions/`; Direction: `docs/roadmap.md`, "healthy" has no home yet; Measures: none yet). Shows the two gaps honestly. How a project maps its own is Target, seeded by `discover_governance.sh` types | decided (the roles and the workspace's mapping) | proposed (per-project mapping) |
-| 5 | Rules | See "Why `Rules`" below. One table: rule, principle it implements (cited, not restated), enforced by. Only rules that carry an enforcement fact `AGENTS.md` does not state. Candidates verified in this revision: no commit to a protected branch, commit identity set, issue number matches the branch (all pre-commit hooks); progress entry shape (`_progress_entry.sh` and `progress_append.sh` validate it); the merge gate (`merge_pr.sh`). Rules with no check (for example worktree for all work) are listed as review only or nothing, after the owner accepts the column (A3). Now is `decided` because each listed rule and its check were verified; the "review only" and "nothing" entries are facts shown in the column, not a status | decided | - |
+| 5 | Rules | See "Why `Rules`" below. One table: rule, principle it implements (cited, not restated), enforced by. Only rules that carry an enforcement fact `AGENTS.md` does not state. Candidates verified in this revision: no commit to a protected branch, commit identity set, issue number matches the branch (all pre-commit hooks); progress entry shape (`_progress_entry.sh` and `progress_append.sh` validate it); the merge gate (`merge_pr.sh`). The column takes exactly one of five values: hook, script, CI, review only, nothing (decided, owner decision 2026-10-09, A3: yes). Rules with no check (for example worktree for all work) are listed as review only or nothing from the first commit. Now is `decided` because each listed rule and its check were verified; the "review only" and "nothing" entries are facts shown in the column, not a status | decided | - |
 | 6 | Sessions and roots | A session starts in the workspace or in a project root; the user tier supplies the workspace layer to project sessions (ADR-0016). Target: the workspace as a registered project, a pointer to #295 only (an `open` block holds no question text) | decided, not proven | open (#295) |
 | 7 | Registry and adapters | Registry maps names to roots and types; a 12-verb adapter contract per project type (ADR-0011, which supersedes ADR-0003 and carries its project-agnostic doctrine forward; one clause says so, which is why 0003 is checked in PR B); resolution order in one sentence. GitHub is not a project dependency, the workspace uses it for now (owner 2026-10-05). **Inventory, in this section's Now block (owner decision 2026-10-09, C2):** two tables from one grep pass. (1) Every place where the workspace path differs from the registered-project path in the scripts: the `--type workspace|project` switch sites and the cwd derivation that stands in for them, named by script. (2) The 12 adapter verbs, each marked for the workspace, if it were a registered project, as real, thin wrapper or no-op. **Purpose:** #295 is decided by reading these two tables after the ADR-0016 acceptance run (#317), not by a hunch. Owner's reasoning: sorting project functionality from workspace-only functionality is a worthy goal; #295 is one route to it; the inventory is the cheaper probe. The seed found in this revision is under "Registry inventory" below and is re-verified when the section is written. The workspace as a registered project stays `open` in "Sessions and roots" (row 6), a pointer to #295 only. Target: `onboard-project` as the one registration path (#332), mixed-flavour projects (#310), project lifecycle register to unregister; the unsettled parts also sit in Open questions | decided (ADR-0011/0012) | proposed |
-| 8 | Worktrees | Two kinds, workspace and project; why (ADR-0002); where they live is a pointer to the guide. **Records (owner decision 2026-10-09, C3).** Now: an issue's work plan and progress timeline are committed in the project repo on the issue's feature branch under `.agent/work-plans/issue-N/` (`progress_append.sh` line 87 writes `<repo-root>/.agent/work-plans/issue-<N>/progress.md`; ADR-0013 names that path). The one gap in the project case is shown, not hidden: `merge_pr.sh` anchors the gate's timeline lookup at `$ROOT_DIR/project` (line 670) and the gate is report-only for project PRs (lines 916, 929). Target: what a project carries by choice, as two per-project settings in its registry entry, `location` and `tracking`, defaults derived when absent; three mechanisms; the colleague's project as acceptance test. Detail under "Records: where they live and whether they are tracked" below | decided | proposed |
+| 8 | Worktrees | Two kinds, workspace and project; why (ADR-0002); where they live is a pointer to the guide. **Records (owner decision 2026-10-09, C3).** Now: an issue's work plan and progress timeline are committed in the project repo on the issue's feature branch under `.agent/work-plans/issue-N/` (`progress_append.sh` line 87 writes `<repo-root>/.agent/work-plans/issue-<N>/progress.md`; ADR-0013 names that path). The one gap in the project case is shown, not hidden: `merge_pr.sh` anchors the gate's timeline lookup at `$ROOT_DIR/project` (line 670) and the gate is report-only for project PRs (lines 916, 929). The lookup gap is tracked as #379 (opened 2026-10-09, "merge_pr.sh review gate looks up a project PR's timeline at the legacy project/ path, not the registry root"); its one-line fix does not wait for the records resolver below. Target: what a project carries by choice, as two per-project settings in its registry entry, `location` and `tracking`, defaults derived when absent; three mechanisms; the colleague's project as acceptance test. Detail under "Records: where they live and whether they are tracked" below | decided | proposed |
 | 9 | Review loop and timeline | **Names the eight phases in order** (`review-issue`, `plan-task`, `review-plan`, `implement`, `review-code`, `publish`, `triage-reviews`, `merge`), **with what each produces and who decides** (owner decision 2026-10-09, C6: the phase names are the workflow, described here, not glossary entries). Also: one entry per phase in `progress.md` (the only loop state), fresh-context sub-agent per phase (ADR-0013/0014/0015); where the work-plans directory lives. Target (candidates): which claims code verifies (exit contracts, entry validation, merge gate) versus self-reported; what a finding must contain and reviewer independence (C5); how a new session finds the records for its issue (the lookup is mechanism 1 of the row 8 Target); size bound on records | decided | proposed |
 | 10 | Merge gate | The owner decides every merge; the gate checks review currency and CI on the reviewed head; bookkeeping-only commits exempt; enforce by default on workspace PRs (`merge_pr.sh`, `_bookkeeping.sh`) | decided | - |
 | 11 | Identity | Agents sign work with framework identity, ephemeral per session; pointer to `AI_IDENTITY_STRATEGY.md`; tool-neutral rule and what degrades without the main tool (principle "Use the main tool fully" cited) | decided | - |
-| 12 | Instruction layers (candidate) | Only if accepted (A5): the four layers (always loaded, path-scoped, skill, on demand) and a size budget for the always-loaded layer (`AGENTS.md` is 442 lines against vendor guidance under 200); this file is not always loaded. Changing `AGENTS.md` is Ask First and is not part of this plan. Nothing is built, so this part has only a Target block | - | proposed |
+| 12 | `## Instruction layers` | A real section (decided, owner decision 2026-10-09, A5: keep it). The four layers an agent's instructions load in (always loaded, path-scoped, skill, on demand) and a budget for the always-loaded layer; this file is not always loaded. Sources: `AGENTS.md` is 442 lines (`wc -l`, this revision) against the Claude Code docs' target of under 200 lines per file, as the prior-art note records it (`prior-art-comparison-2026-10-08/summary.md` item 5; `prior-art-alignment-agent-frameworks.md`, Claude Code entry). Nothing is built, so its one block is labelled `Now` (A1) and carries `proposed`; the budget is a "Proposed:" line and no number is set in this plan. Changing `AGENTS.md` is Ask First and is not part of this plan | proposed | - |
 | 13 | Decision register | **Purpose** (stated in the section): tell a reader which ADR still governs, so nobody follows a superseded or drifted one. One row per ADR (17, 0001 to 0017): one-line decision, standing, the design section that carries it as an in-file link `(#<slug>)`, and **Re-examined**: `yes <date>` for the nine ADRs PR B's sections cite and check against code (0002, 0003, 0011, 0012, 0013, 0014, 0015, 0016, 0017), `not yet` for the other eight (0001, 0004 to 0010), which the issue allows. **Standing values (owner decision 2026-10-09, C1-c): `in force`, `superseded`, `superseded in practice`, `Provisional`.** A drifted ADR gets `superseded in practice` plus one line saying what the code does instead. The register is the only place PR B records it: **no ADR file is edited in PR B**. ADR-0016 stays `Provisional`. The ADRs marked `superseded in practice` become candidates, listed for the owner after PR B; superseding happens afterwards, one ADR at a time, each the owner's call. **Rows with no carrying section** (0001 ADR process, 0006 AGENTS.md as shared file, 0007 make, 0009 Python policy, 0010 git-bug optional, per plan review round 5): the row's section link is `(#decision-register)`, the register's own anchor, so the implementer invents no section to satisfy the row count (Wire-in 6). Plan-level decisions that never got an ADR listed with their issue. ADR-0003 is superseded by 0011 and is cited by the Registry row (row 7), so its `yes` is backed by a section. ADR-0004 and ADR-0005 stay `not yet` even though the Rules enforced-by column touches their ground: the column cites the hooks and scripts that do the checking, not those ADRs' reasoning, and the issue allows `not yet` | decided | - |
 | 14 | Open questions | Table: ID, question, owner, what it changes. Seeded from the questions below | open | - |
 | 15 | Change log | Date, section, one line, issue/PR, **document line count**; appended in the same change that alters a section | decided | - |
 | 16 | `## Glossary` (last in the document) | Owner decision 2026-10-09: "make it a glossary since it might have terminology that I'm not currently familiar with, so we should assume others might not be familiar with them too". One line per term, in plain words, for a reader who has never seen the workspace. **Rule: every term that appears in a situation report or checkpoint is in the glossary, except the eight phase names.** Those (`review-issue`, `plan-task`, `review-plan`, `implement`, `review-code`, `publish`, `triage-reviews`, `merge`) are the workflow, not vocabulary: they are described in order in the Review loop and timeline section (row 9), and are not glossary entries (owner decision 2026-10-09, C6). **Settled list (owner decision 2026-10-09, C6), with the owner's one-line definitions; the agent makes light edits for fit only.** *Own terms:* **phase**, one of the eight steps an issue passes through (names and order in the Review loop section); **round**, one pass of a review phase (round 2 is the re-review after fixes); **convergence**, rounds converge when each finds fewer must-fix items than the last (when they stop converging the loop steps back); **checkpoint**, a point where the loop stops and asks the owner (after the plan, before publish, before merge); **progress timeline**, the per-issue file where every phase writes an entry, so a new session can see what happened without re-reading the chat; **Integrated Review**, the entry `triage-reviews` writes (all review sources combined into one list of findings with a verdict on each); **must-fix / suggestion**, a review finding that blocks the next phase, versus one the implementer may take or leave with a reason. *Standard terms:* **stage gate**, work passes through fixed phases and a check at each boundary decides whether it goes on (our loop is one); **Definition of Done**, the agreed list of what must be true before work counts as finished (ours is the principles "A change includes its consequences" and "Verify before claiming"); **proposal status**, labels a proposal carries through its life (Kubernetes uses provisional, implementable, implemented; our ADRs use proposed, accepted, superseded; the design doc uses decided, decided not built, decided not proven, proposed, open); **ADR, Architecture Decision Record**, a short dated note recording one decision, its context and consequences (a record of history, not the current picture); **spike**, a short, throwaway experiment that answers one question, usually whether an approach works or what it would cost, before committing to it (ours: the plugin spike, #345, and the interop spike, Codex and agy as headless phase workers; not the same as prior-art research, which reads what others did); **backlog**, the ordered list of work not yet started (ours is the roadmap plus open issues); **circuit breaker**, a rule that stops work automatically when it exceeds a budget (we have none; the nearest is the review-round limit, `MAX_ROUNDS`); **reference versus record**, a reference says what is true now and is kept current, a record says what was decided when and is never rewritten (the design doc is the reference; ADRs and the progress timeline are records). That is 15 entries (the must-fix / suggestion pair is one). **Left out on purpose (owner): WIP limit and appetite.** The workspace has neither: a grep of `docs/`, `.agent/knowledge/`, `AGENTS.md` and the skills finds no use of either as a workspace term. The glossary's admission rule is the rule above (a newcomer cannot see the term from the code); there is no length guide beyond it. Its heading is an anchor like any other (`#glossary`, covered by the checker, Wire-in 6) | decided (C6) | - |
 
-Section dates (candidate, A4): if accepted, each part carries `Checked: <date>` against the code,
-refreshed by `/audit-workspace` step 2, which ADR-0017 work already pointed at this file.
+Section dates (decided, owner decision 2026-10-09, A4: yes, register rows only). Sections carry no
+`Checked: <date>`. The register's `Re-examined: yes <date>` column (row 13) is the checked-date. PR C
+adds one line to `/audit-workspace` step 2 telling it to refresh that column when it checks an ADR
+against the code (Wire-in 2). Checked in this revision: step 2 of the skill today checks the Status
+line, the listed consequences and whether `docs/design.md` records the current behaviour; it says
+nothing about a register or a date.
 
 **Why `Rules`, not `Rules that stay true`.** The heading is a citation anchor (`#rules`), so short and
 stable wins. "Stay true" also promises more than the enforced-by column can back: some rules are
@@ -161,7 +174,7 @@ decision: the list is what a newcomer cannot see from any one script.
 |---|---|---|
 | `worktree_create.sh` | Worktree base `wt_workspace_base` (`worktrees/workspace`) versus the registry entry's own root or `worktrees=` (`wt_project_base`); repo manifest from the adapter's `worktree_repos` for a project only, the workspace case never calls the adapter; draft PR to the workspace remote versus `$PROJECT_GH_SLUG`; `--layer` and `--package-repos` project only; `--type` derived from the cwd when omitted | 252-260, 301, 345, 546, 1023-1033 |
 | `worktree_enter.sh`, `worktree_remove.sh` | Same `--type` check and cwd derivation; `--project` valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root and an `origin` remote; PR-owner auto-detect queries both remotes; the roadmap update searches `PJ_REPO_ROOT`; the gate's timeline lookup is anchored at `$ROOT_DIR/project`, the legacy checkout, not `PJ_REPO_ROOT`; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 248-270, 379-418, 555, 670, 916 and 929, 1612-1630 |
+| `merge_pr.sh` | A project PR needs a resolved project root and an `origin` remote; PR-owner auto-detect queries both remotes; the roadmap update searches `PJ_REPO_ROOT`; the gate's timeline lookup is anchored at `$ROOT_DIR/project`, the legacy checkout, not `PJ_REPO_ROOT` (tracked as #379); the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 248-270, 379-418, 555, 670, 916 and 929, 1612-1630 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace = `wt_workspace_base` plus the legacy base; project = `derive_project_name` (from `--project` or the registry), then the registry, transition and legacy bases; `--type` validated in all three modes | 122, 183, 302, 369, 461 |
 | `gh_create_pr.sh` | Repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 215-229 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` | 149 |
@@ -209,7 +222,10 @@ the 60-line prompt, it splits out as a `## Records` section then; the anchor che
 **Now (status `decided`).** The records are committed in the project repo on the issue's feature branch
 under `.agent/work-plans/issue-N/`. Checked: `progress_append.sh` line 87, `_resolve_work_plans_dir.sh`
 (the worktree's git toplevel, or `WORK_PLANS_DIR_OVERRIDE`), ADR-0013 line 11. The gap in the project
-case is the one named in row 8 (`merge_pr.sh` 670, 916).
+case is the one named in row 8 (`merge_pr.sh` 670, 916), tracked as #379. Its fix is one line: use the
+registry-aware root at line 670 that line 555 already uses (`${PJ_REPO_ROOT:-$ROOT_DIR/project}`). It
+does not wait for the one lookup in mechanism 1; the lookup would replace that line later, and #379 is
+the first thing it fixes. The change that fixes #379 edits this sentence in the same change (ADR-0017).
 
 **Target (status `proposed`).** Two per-project settings carried in the project's registry entry; each
 has a default derived when absent.
@@ -240,10 +256,13 @@ Three mechanisms, each a later build and none of it PR B work (PR B writes the T
    (112, 268, 290: `sources` and `persist`), `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
    override. The seven skills that cite the path (`start-task`, `run-issue`, `plan-task`, `review-plan`,
-   `review-code`, `triage-reviews`, `address-findings`) follow it.
+   `review-code`, `triage-reviews`, `address-findings`) follow it. The gate's lookup at `merge_pr.sh`
+   line 670 is the first of these to be wrong for a registered project and is tracked as #379; its
+   one-line fix does not wait for this lookup.
 2. **The merge gate's "same reviewed state" rule** (`_bookkeeping.sh`, shared with
    `review_progress.sh sources`) reads the record from where it lives and checks the project SHA the
-   entry names; the walk changes repo. Today both live in one worktree and the rule treats
+   entry names; the walk changes repo. Finding the record at all is #379 (the gate looks in the legacy
+   `project/` checkout), so that fix comes before this mechanism, not with it. Today both live in one worktree and the rule treats
    `.agent/work-plans/issue-N/*` and the roadmap as bookkeeping-only changes (`_bookkeeping.sh` line 190).
 3. **Untracked records are per machine and per clone.** A second machine or a fresh clone starts with
    no timeline, and losing the directory loses the history. This is the cost of that combination and
@@ -305,8 +324,12 @@ headers, and it is cut back when #295 is decided.
    anchor, written in the skill text as `docs/design.md#<section>`. The skill text uses only the two
    real anchors above and that one angle-bracket placeholder; the checker ignores a placeholder because
    its anchor pattern is `[a-z0-9][a-z0-9-]*` and `<` does not match (a fixture proves it, Wire-in 6). Project issues keep the "the project's own design document, or say there is none"
-   branch. `audit-workspace` (workspace scope only) keeps plain `docs/design.md` and checks section
-   dates only if A4 is accepted.
+   branch. `audit-workspace` (workspace scope only) keeps plain `docs/design.md` paths. PR C adds
+   one line to its step 2 (A4, decided, owner decision 2026-10-09): when the audit checks an ADR
+   against the code, it sets that ADR's `Re-examined` cell in the Decision register
+   (`docs/design.md#decision-register`, cited by anchor so the checker reaches it) to `yes <today>`.
+   The skill's Guidelines say "Report, don't fix"; this line is the one exception, a register cell and
+   nothing else, and PR C words that Guidelines bullet to say so. No other date is added anywhere.
 3. **ADRs: register only (a departure from issue scope item 3, see Issue).** ADR-0008 permits a Status-line note of a related ADR, a References list
    of related ADRs, and link or typo fixes; a "Current description: design.md#..." line is none of
    those, and an ADR that gains one can read as restated decision. The mapping from ADR to design
@@ -320,7 +343,10 @@ headers, and it is cut back when #295 is decided.
    Consider"). Only a row whose issue adds, removes or re-shapes a part named in a design.md section
    gets a "design section:" note naming that section (the #172 and cutover tables have such rows). The
    rest are untouched, and so are rows marked `done`; PR C's description lists the rows it touched and
-   the count left alone. Separately, `## Cross-cutting Decisions`
+   the count left alone. #379 (the merge-gate lookup bug) is not such a row, so the roadmap is left
+   alone for it: it fixes a lookup inside the Merge gate part, which already exists, and adds, removes
+   or re-shapes no part named in a design.md section; `docs/roadmap.md` carries no row for it (grep
+   finds no #379 there). Separately, `## Cross-cutting Decisions`
    (lines 405-482: storage model, 5-layer review model, progress as lifecycle record, roadmap over
    issues, triage-and-fix sessions, permission prompts) is an older second copy of parts of the design
    and already stale (it says review summaries "continue to work" in plan.md). PR C marks the section
@@ -355,7 +381,12 @@ headers, and it is cut back when #295 is decided.
    `.claude/skills/*/SKILL.md`, `.agent/knowledge/*.md` and `docs/roadmap.md`, and every `](#...)`
    link in design.md. PR C's README pointer and skill wording come under it as they land. Every
    heading in design.md is an anchor, the `## Glossary` heading (`#glossary`) included: a citation of
-   `docs/design.md#glossary` resolves from the headings like any other, with no list to extend.
+   `docs/design.md#glossary` resolves from the headings like any other, with no list to extend. The
+   same holds for the new `## Instruction layers` heading (`#instruction-layers`, A5). PR C's
+   `audit-workspace` line cites `docs/design.md#decision-register` from
+   `.claude/skills/audit-workspace/SKILL.md`, which is in the checker's scope; it resolves only once
+   the register heading exists, so PR C's skill commit comes after PR B's register commit. The `Now`
+   label and the Rules column add no heading.
    *Anti-vacuity guards, conditional on the register.* The register section is identified by its
    heading anchor: the heading whose slug is `decision-register` (the section is named "Decision
    register", row 13). While design.md has no such heading, the checker does only the resolve check
@@ -446,7 +477,7 @@ headers, and it is cut back when #295 is decided.
   (Wire-in 6). No ADR file is edited in PR B (owner decision 2026-10-09, C1-c): a drifted ADR gets
   standing `superseded in practice` in the register only, and the list of those goes to the owner
   after PR B.
-- **PR C: wire-in.** Skills (citing by anchor), roadmap (open items, Cross-cutting note), README pointer
+- **PR C: wire-in.** Skills (citing by anchor; `audit-workspace` gains its one `Re-examined` line, A4), roadmap (open items, Cross-cutting note), README pointer
   to `docs/design.md#how-it-works`. No label edits (owner decision 2026-10-09: keep "System design").
   `Closes #335`.
 
@@ -467,17 +498,17 @@ split says what landed.
 | `Makefile` | Help line 80: `PROJECT=gz4d` becomes `PROJECT=boat_sim`; `make lock` help line says advisory | A (done, #377) |
 | `.agent/knowledge/principles_review_guide.md` (line 51) | ADR-0016 row: drop the real project name from the acceptance-run wording | A (done, #377) |
 | `docs/decisions/0017-design-document-is-the-current-picture.md` | Fix the ADR-0008 link filename | A (done, #377) |
-| `docs/design.md` | Rewrite per the section table; the Decision register marks standing only, no ADR file is edited (C1-c); the Registry inventory (two tables, C2) and the Worktrees records Target (C3) | B |
+| `docs/design.md` | Rewrite per the section table; the `Now` label on every `##` section (A1); the Rules table with its enforced-by column (A3); the `## Instruction layers` section, `proposed` (A5); no directory tree and no tree pointer; the Decision register marks standing only, no ADR file is edited (C1-c); the Registry inventory (two tables, C2) and the Worktrees records Target (C3), with the gate-lookup gap cited as #379 | B |
 | `docs/design.md` (`## Glossary`, last section) | Vocabulary and standard terms, one plain line each; every term used in a situation report or checkpoint except the eight phase names; terms and definitions settled with the owner 2026-10-09 (C6, row 16); 15 entries | B |
 | `.agent/knowledge/principles_review_guide.md` (line 71) | Consequences Map row "Work-plan directory convention": replace the directory-tree cell | B |
 | `.agent/scripts/check_design_anchors.sh` (new, `chmod +x`) | The anchor checker: citation form, scope and register count as in Wire-in 6; grep and awk only | B |
 | `.pre-commit-config.yaml` | New local hook `check-design-anchors` (files: the eight paths in Wire-in 6, `docs/decisions/` among them), placed before `validate-script-tests`. Ask First (CI-like config), approved by the owner 2026-10-09 (B4) | B |
 | `.agent/scripts/tests/test_design_anchors.sh` (new, `chmod +x`) | Tests the checker with fixtures only (negative, positive, placeholder and issue-ref, uppercase citation, `#glossary` anchor, guards before and after the register exists, a new ADR file without a register row); reads no real docs | B |
 | `.claude/skills/{review-issue,review-plan,plan-task}/SKILL.md` | Section wording cites the real anchors `$WS_ROOT/docs/design.md#how-it-works` and `#the-design`, plus the `#<section>` placeholder (Wire-in 2) | C |
-| `.claude/skills/audit-workspace/SKILL.md` | Checks the dates, only if A4 is accepted | C |
+| `.claude/skills/audit-workspace/SKILL.md` | Step 2 gains one line: refresh the Decision register's `Re-examined` cell (cited as `docs/design.md#decision-register`) when an ADR is checked against the code; the Guidelines "Report, don't fix" bullet notes that one exception (A4, owner decision 2026-10-09). No per-section dates | C |
 | `docs/roadmap.md` | Open and planned items name the design section; Cross-cutting Decisions note and pointers | C |
 | `README.md` | Under `## Workspace goals`, a closing pointer to `docs/design.md#how-it-works` | C |
-| Not touched | `.agent/scripts/tests/test_script_tests_hook_scope.sh` (its assertions at lines 454-455 and the `validate-script-tests` hook's `files:` stay as they are), every "System design" label (`README.md` line 22, `.agent/AGENT_ONBOARDING.md` line 91, `.claude/skills/brainstorm/SKILL.md` line 34, `AGENTS.md` line 436, `CLAUDE.md` line 36; owner decision 2026-10-09: keep "System design"), `docs/principles.md` (principle wording is a separate change), accepted ADRs other than the link fix | |
+| Not touched | `.agent/scripts/merge_pr.sh` and `test_merge_pr_gate.sh` (the gate-lookup fix is #379, its own change); `.agent/scripts/tests/test_script_tests_hook_scope.sh` (its assertions at lines 454-455 and the `validate-script-tests` hook's `files:` stay as they are), every "System design" label (`README.md` line 22, `.agent/AGENT_ONBOARDING.md` line 91, `.claude/skills/brainstorm/SKILL.md` line 34, `AGENTS.md` line 436, `CLAUDE.md` line 36; owner decision 2026-10-09: keep "System design"), `docs/principles.md` (principle wording is a separate change), accepted ADRs other than the link fix | |
 
 ## Prior Art
 
@@ -490,7 +521,9 @@ above as a marked candidate; detail in `comparison-with-se-approaches.md`,
 `redesign-fragments.md` section 13 (document kinds; roadmap needs a forcing function);
 `zero-footprint-inventory.md`. Taken: reference plus dated records with a merge-time update step
 (matches ADR-0017); the admission test; the draft-then-merge shape of the world-store design draft.
-Held as candidates, not taken: dated sections, enforced-by column, instruction-layer budget.
+Taken as candidates, owner decision 2026-10-09: the enforced-by column (A3), the instruction-layer
+section with a budget, `proposed` (A5), and the register's Re-examined column as the checked-date
+(A4). Not taken: a `Checked: <date>` on every section.
 Rejected for now: a separate VISION file; a document-kind vocabulary from the fork's
 planning-document proposal beyond the seven roles the owner chose; a hard line cap (owner, Q1).
 
@@ -504,18 +537,18 @@ which design section the planning and review skills cite (headings in the new fi
 | Principle | Consideration |
 |---|---|
 | Keep one current design | The deliverable. Five status values keep decided, built, proven and proposed apart; the roadmap's stale second copy is marked history |
-| Only what's needed | Admission rule, 60-line prompt, detail goes next to code; a glossary term is in only if a report or checkpoint uses it; each research candidate is owner-accepted, not added by default; no separate name list |
+| Only what's needed | Admission rule, 60-line prompt, detail goes next to code; no tree pointer and no per-section dates (A4, A5); a glossary term is in only if a report or checkpoint uses it; each research candidate is owner-accepted, not added by default; no separate name list |
 | A change includes its consequences | Moves confirmed before deletion; the guide's directory-tree row, skills, roadmap and README updated in the PR that makes each stale; ADR link fixed |
 | Leave a trail; start limits strict | Decision register and change log with line counts; each section its own commit |
 | Ask about what matters, and show how much | Design questions asked one at a time with what each changes (list below) |
 | Verify before claiming | Every "Now" line cites its source and is spot-checked; revision 2 rechecked every "already lives" claim and found three wrong |
-| Know whether it works | With/without test; line count in the change log; section dates if accepted; Measures role shown honestly as "none yet" |
+| Know whether it works | With/without test; line count in the change log; the register's `Re-examined` column is the checked-date and `/audit-workspace` refreshes it (A4); Measures role shown honestly as "none yet" |
 | Put each thing at the level it applies to | Script detail to script headers; per-project mapping is project-level, the workspace's own mapping is here |
 | Leave in a project only what it chose to carry | Footprint is Target, not described as built; the records settings (C3, row 8) make it a per-project choice, with the in-repo default unchanged |
 | Look for prior art before building | Prior Art section above |
 | Small steps; step back when they stop converging | Three PRs, one commit per section; if sections keep passing 60 lines or the owner's edits keep reshaping the table, stop and propose a simpler section set instead of patching |
 | Test what breaks | The checker runs in a new pre-commit hook on the commits that can break an anchor (design.md, README, roadmap, onboarding, ADRs, knowledge files, skills, the config itself), then in `make lint` and CI; `test_design_anchors.sh` tests the checker with a negative fixture that must fail, so the check is shown to catch a broken anchor. The script-tests hook is not widened (#354). The rest of the change is documentation, covered by the with/without test and spot-checks |
-| Enforce what matters, as simply as possible | The admission rule is a review check, backed by the cheapest mechanical check that fails when a name breaks (the grep-level anchor checker and its hook) and a recorded line count in place of a cap |
+| Enforce what matters, as simply as possible | The admission rule is a review check, backed by the cheapest mechanical check that fails when a name breaks (the grep-level anchor checker and its hook) and a recorded line count in place of a cap; the Rules enforced-by column (hook, script, CI, review only, nothing) shows which rules have a check at all (A3) |
 
 ## ADR Compliance
 
@@ -547,11 +580,20 @@ which design section the planning and review skills cite (headings in the new fi
 | Registry inventory in `docs/design.md` | Re-grep the `--type` branches when the Registry commit is written; cut the inventory back once #295 is decided | Yes (PR B writes it; the cut-back follows the #295 decision) |
 | Where records live (C3 Target) | Every reader and writer of `.agent/work-plans/issue-N/`: `dispatch_phase.sh`, `merge_pr.sh`, `review_progress.sh`, `progress_append.sh`, `_bookkeeping.sh`, `cross_model_review.sh`, and the seven skills that cite the path | No. A later build; PR B writes only the Target text, status `proposed` |
 | Roadmap rows that change the design picture | A "design section:" note on those rows only; the other open rows stay as they are | Yes (PR C) |
-| `AGENTS.md` (instruction budget) | Framework adapters | No, Ask First |
+| `AGENTS.md` (the instruction budget proposed in `## Instruction layers`) | Framework adapters | No, Ask First |
+| Status key (`Now` label on every `##` section, A1) | The opening paragraph of `# The design`; each section's block; the skills that cite `#the-design` for the key | Yes (PR B writes the key and the blocks; PR C's skill wording cites the anchor) |
+| A rule's check added or removed | Its row in the Rules enforced-by column (A3) | Yes (PR B writes the column; later upkeep is the change that adds or removes the check, per "A change includes its consequences") |
+| `/audit-workspace` step 2 (A4) | `.claude/skills/audit-workspace/SKILL.md` (one line, plus the Guidelines exception); the register's `Re-examined` cells | Yes (PR C) |
+| The merge gate's timeline lookup (#379) | `merge_pr.sh` line 670, `test_merge_pr_gate.sh`; the Worktrees Now sentence that cites the gap in `docs/design.md` | No. #379 is its own change; the change that fixes it edits the design sentence in the same change (ADR-0017). The roadmap needs no row (Wire-in 4) |
 
 ## Open Questions
 
 Grouped by what they change. Stable IDs; ask in group order, each design question on its own.
+
+**Still open (4): B1 and B2 (wire-in; B1 needs an answer before PR C, B2 before PR C marks the
+roadmap section) and C4 and C5 (content that stays open in the document).** Every other question is
+decided, below. As of revision 9 the A group (A1 to A5) is decided; the Q1, B4, Purpose and anchors,
+Label, C1 to C3 and C6 entries are older decisions.
 
 **Decided**
 - **Q1 (decided 2026-10-08).** Status marking yes with five values; Now block with sources, Target
@@ -562,6 +604,25 @@ Grouped by what they change. Stable IDs; ask in group order, each design questio
 - **Purpose section and anchors (decided 2026-10-09).** The `## Purpose` row and the skills' anchors
   `#how-it-works` and `#the-design` are accepted (owner: "Accept both.").
 - **Label (decided 2026-10-09).** "System design" stays everywhere; no label edits in this plan.
+- **A1 (decided 2026-10-09, owner decision: "Go for group A").** Every `##` section carries the label
+  `Now`, also when it has no Target. The Status key says so. `# How it works` and the opening paragraph
+  of `# The design` carry no label (the first is the owner's prose, A2; the second holds the key).
+- **A2 (decided 2026-10-09, owner decision).** The admission rule is the opening paragraph of
+  `# The design`. `# How it works`, the owner's prose, stays first and unencumbered. The plan's text
+  already said this; it is marked decided.
+- **A3 (decided 2026-10-09, owner decision).** The Rules table gets the enforced-by column with the
+  values hook, script, CI, review only, nothing. The "review only" and "nothing" rows are in from the
+  start; row 5's clause that waited on A3 is gone.
+- **A4 (decided 2026-10-09, owner decision: yes, register rows only).** No `Checked: <date>` per
+  section. The register's `Re-examined: yes <date>` column is the checked-date, and PR C adds one line
+  to `/audit-workspace` step 2 to refresh it when an ADR is checked against the code. The skill file is
+  in Files to Change (PR C). One wrinkle for PR C, found by reading the skill: its Guidelines say
+  "Report, don't fix", so the line is worded as the one exception (a register cell only) and the
+  bullet says so (Wire-in 2).
+- **A5 (decided 2026-10-09, owner decision: keep the section, drop the tree line).** `## Instruction
+  layers` is a real section (row 12), `Now` block status `proposed`, with the four layers and a budget
+  for the always-loaded layer; sources in row 12. The one-line directory-tree pointer in How it works
+  is dropped: the tree leaves the document, and a pointer would only point at the repo.
 - **C1 (decided 2026-10-09, owner decision C1-c).** Register only in PR B. A drifted ADR gets standing
   `superseded in practice` with one line saying what the code does instead; no ADR file is edited in
   PR B. ADR supersession happens afterwards, one ADR at a time, each the owner's call. ADR-0016 stays
@@ -584,16 +645,8 @@ Grouped by what they change. Stable IDs; ask in group order, each design questio
   entry with derived defaults; three mechanisms (one lookup, the gate reading across repos, untracked
   means per machine and per clone); one rule (the registry setting names the source of truth). The
   design text gives no `agent_workspace` example. A colleague's single-repo project is the acceptance
-  test. Row 8 and "Records: where they live and whether they are tracked".
-
-**A. Shape of the document**
-- **A1.** A part with no Target: carry the `Now` label anyway, or leave it implicit (Status line and
-  text only)? Q1 decided Now/Target and the Status marks; this is only the label. Cosmetic; trivial to change.
-- **A2.** Placement of the admission rule: opening paragraph of `# The design` (this plan) or an
-  unheaded note above `# How it works`. Changes the first screen of the file; trivial to undo.
-- **A3.** The "enforced by" column in Rules. Shows gaps; needs upkeep; easy to undo.
-- **A4.** `Checked: <date>` per section, refreshed by `/audit-workspace`. Adds upkeep and touches one skill; easy to drop.
-- **A5.** Candidate sections: instruction layers (section 12) and the tree line in How it works. Each is an add or drop; cheap.
+  test. Row 8 and "Records: where they live and whether they are tracked". The gate's lookup gap in
+  the project case is tracked as #379 and does not wait for this.
 
 **B. Wire-in**
 - **B1.** Should accepted ADRs carry a pointer to their design section (issue scope item 3)? Needs a
@@ -633,7 +686,11 @@ swaps in three files plus the Makefile help lines and one guide row) and is merg
 script (grep and awk), one hook entry and one fixture suite, and the glossary (15 entries, settled by
 the owner, C6, row 16). The Registry inventory (C2) is one grep pass over the `--type` and workspace
 branches, written as a table of 8 rows plus a 12-row verb table (seeded in this revision, re-verified in
-the Registry commit). The records Target (C3) is about 30 lines of Target text in Worktrees and no code.
+the Registry commit). The records Target (C3) is about 30 lines of Target text in Worktrees and no code. Revision 9 adds
+no code: the `Now` label on each section, the enforced-by column (one value per rule row), the
+Instruction layers section (about 15 lines, all `proposed`) and, in PR C, one line in
+`/audit-workspace` step 2 with a matching exception in its Guidelines. The tree pointer and
+per-section dates are gone.
 
 ## Revision 2 change log
 
@@ -742,3 +799,20 @@ logged from the first section commit.
 |---|---|
 | 1 | C2 decided (owner decision 2026-10-09, C2-c plus an inventory): the workspace as a registered project stays `open`, a pointer to #295 only (row 6 unchanged). Row 7 gains the inventory in its Now block; the new subsection "Registry inventory" seeds it from one grep pass: a table of 8 script rows (`worktree_create.sh`, `worktree_enter.sh` and `worktree_remove.sh`, `merge_pr.sh`, `dispatch_phase.sh`, `gh_create_pr.sh`, `worktree_list.sh`, `_project_registry.sh`, the `run-issue` skill with `agent start-task`) and a 12-row verb table (3 no-op, 5 thin wrapper, 4 real). Purpose stated: #295 is decided by reading it after the ADR-0016 acceptance run (#317). "What leaves design.md" gains a "what stays in Registry and adapters" paragraph; Estimated Scope sizes it; Consequences, Files to Change and the ADR-0016 row follow. C2 moved to Decided |
 | 2 | C3 decided (owner decision 2026-10-09). It lands in row 8 (Worktrees), not a new row, so no renumbering and no new anchor (reason in the subsection "Records: where they live and whether they are tracked"). Now, `decided`: records are committed in the project repo on the issue's feature branch under `.agent/work-plans/issue-N/`, with the `merge_pr.sh` project-case gap (lines 670, 916) shown. Target, `proposed`: settings `location` and `tracking` in the registry entry with derived defaults, the four combinations, three mechanisms (one lookup, the gate reading across repos, untracked means per machine and per clone), one rule (the registry setting names the source of truth), no `agent_workspace` example, a colleague's single-repo project (by shape only) as acceptance test. Row 9's Target candidate points at mechanism 1; Consequences, Self-Check and the ADR-0013 row follow. C3 moved to Decided; C4 and C5 are the only open C questions |
+
+## Revision 9 change log
+
+Applies the owner's A-group decisions of 2026-10-09 ("Go for group A": the host's recommendations
+accepted as stated) and cites issue #379 (opened 2026-10-09). No review round in between. It does not
+reopen the plan approved at revision 6. The plan is 818 lines. The rewrite's line count is still
+logged from the first section commit.
+
+| Item | What changed |
+|---|---|
+| 1 | A1 decided: every `##` section carries the label `Now`, also with no Target. The Status key says so; `# How it works` and the opening paragraph of `# The design` carry none (the first is the owner's prose, the second holds the key); the key's "nothing proposed in Now" rule now names its one exception, row 12 |
+| 2 | A2 decided: the admission rule is the opening paragraph of `# The design`; `# How it works` stays first and unencumbered. The plan already said this; the "judgement call" sentence that pointed at A2 is replaced by the decision |
+| 3 | A3 decided: row 5's Rules table has the enforced-by column with five values (hook, script, CI, review only, nothing); the clause waiting on A3 is gone and the review-only and nothing rows are in from the start |
+| 4 | A4 decided, register rows only: no `Checked: <date>` per section; the register's `Re-examined` column is the checked-date; `/audit-workspace` step 2 gains one line in PR C (skill read: step 2 has no register or date wording today). Skill file added to Files to Change (PR C) with the Guidelines exception ("Report, don't fix" bullet), Wire-in 2, Consequences and Self-Check. The candidate paragraph under the section table is replaced by the decision |
+| 5 | A5 decided: row 12 is a real section, `## Instruction layers`, Now `proposed`, sources named (`AGENTS.md` is 442 lines, counted this revision; the Claude Code docs' under-200-lines target as the prior-art note records it). The one-line tree pointer in row 1 is dropped. The new heading is an anchor like any other (Wire-in 6) |
+| 6 | #379 cited: row 8's Now text, the "Records" Now paragraph, mechanisms 1 and 2, and the `merge_pr.sh` row of the Registry inventory name it as the tracker of the gate lookup at `merge_pr.sh` line 670 and say its one-line fix does not wait for the records resolver. Wire-in 4 says why the roadmap gets no row for it (it adds, removes or re-shapes no part named in a design.md section; grep finds no #379 in the roadmap). `merge_pr.sh` and its gate test are listed under "Not touched" |
+| 7 | Open Questions: A1 to A5 moved to Decided; the A group heading is gone; a "Still open (4)" line at the top lists B1, B2, C4 and C5. Prior Art, Self-Check (three rows), Consequences (four new rows and the `AGENTS.md` row reworded), Files to Change (design.md and audit-workspace rows, one Not touched entry), PR split (PR C) and Estimated Scope follow |
