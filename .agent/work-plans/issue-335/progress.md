@@ -679,3 +679,11 @@ Carried forward, not re-listed: `tools/ros-manifest/` real-name prose is owner-d
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `1b561b8`
 
 Revision 7 of the phase-3 plan, applying owner decisions of 2026-10-09 after the revision 6 approval: PR A is recorded as merged (#377, 249a8d0) with what it landed; C1 is decided (register only in PR B, a drifted ADR gets standing "superseded in practice", no ADR file edited, supersession later one at a time); C6 is decided (the eight phase names are not glossary entries, the settled list of 15 terms with the owner's definitions sits in row 16, WIP limit and appetite left out). The two accepted round-5 suggestions are folded in (register rows for ADRs with no section link to the register itself; sections link only to already-committed sections, the register last). The plan's closing section lists what changed per item.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 13:59 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `0d7ea07`
+
+Revision 8 of the phase-3 plan, applying two owner decisions of 2026-10-09 after the revision 6 approval. C2 (workspace as a registered project, #295): stays open as a pointer; row 7 gains an inventory of where the workspace path differs from the registered-project path (8 script rows) and a classification of the 12 adapter verbs (3 no-op, 5 thin wrapper, 4 real), so #295 is decided by reading it after the ADR-0016 acceptance run. C3 (where an issue's work plan and progress timeline live): lands in row 8 (Worktrees); Now is records committed in the project repo on the feature branch; Target is two per-project registry settings, location and tracking, with derived defaults, three mechanisms and one source-of-truth rule, tested against a colleague's single-repo project. The Now block also shows a gap found while checking: merge_pr.sh anchors the gate's timeline lookup at the legacy project/ checkout. Both questions move to Decided; the plan's closing section lists what changed per item.
