@@ -876,3 +876,20 @@ ADR-0002 (project worktree location), ADR-0011 (discovery order; 12 verbs), ADR-
 - [ ] (suggestion) Open, known: the `open` block rule says no question text, but the Open questions section is itself an `open` block holding the table — `docs/design.md:68`
 - [ ] (suggestion) Open, known: glossary "convergence" wording differs from the `review_progress.sh verdict` rule (owner-settled wording) — `docs/design.md:659`
 - [ ] (suggestion) Open, known: the ADR-0011 and register wording otherwise fine; Review-loop Target bullets 2 and 3 repeat the Worktrees Target (lookup) and could shrink to pointers — `docs/design.md:445`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-09 17:05 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Owner decisions 2026-10-09 for PR B (pre-push review round 5, approved, reviewed at `5691639`, entry recorded in `d0d7dcc`).
+
+- Publish PR B now (Part of #335; PR C follows).
+- Two suggestions folded in before publishing: the Rules row for the owner deciding every merge (`803ae39`), and the `progress.md` size stated as "more than 800 lines" (`fb422b8`).
+- The checker edge cases from Codex and Copilot (fence indentation, empty heading and register boundary, duplicate-slug numbering, citation grep exit status) go to a follow-up issue, not this PR.
+- Stopping point for the weekend: the PR is open and unmerged; the merge decision stays with the owner.
+
+The last checkbox of the round-5 review entry (Review-loop Target bullets 2 and 3 as pointers) is unverified filler per the reviewer and is not a finding.
