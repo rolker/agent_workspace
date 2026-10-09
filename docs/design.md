@@ -1,6 +1,43 @@
 # How it works
 
-Written last; see the change log.
+The workspace helps one person manage many AI agents across one or more projects, so the results can be
+trusted and the user stays informed and in control.
+
+Agents are strong within one piece of work and weak across time. So the workspace has two halves: a
+day-to-day harness around each piece of work, and a long view of where each project is going. The
+principles in [`docs/principles.md`](principles.md) connect them.
+
+**The day-to-day harness.** Work happens in an isolated worktree, never in the main tree
+([Worktrees](#worktrees)). An issue passes through eight phases, each run by a fresh sub-agent, and each
+phase leaves one entry in the issue's progress timeline, which is the only record of where the issue
+stands ([Review loop and timeline](#review-loop-and-timeline)). The loop stops at checkpoints and asks the
+owner. The owner decides every merge, and no phase moves on by its own judgment
+([Merge gate](#merge-gate)).
+
+**What agents may do alone.** Agents decide small things within their limits and record them. Limits
+start strict, and only the user relaxes them. Changing instruction files, CI or branch protection, or the
+project remote URL needs the owner's approval first, and an agent never commits to `main` or skips hooks,
+so it cannot do lasting damage unasked. Where a rule matters it is backed by the simplest check that
+fails when it is broken, and [Rules](#rules) shows which rules have one.
+
+**Projects.** The workspace is project-agnostic. What differs per kind of project sits behind adapters,
+and a project's own remote is its URL ([Registry and adapters](#registry-and-adapters)). Each project
+chooses how much footprint the workspace leaves in it: agent instructions and records go into a project
+only if the user chose that, and a project can be developed without the agents. How far that is built is
+described under [Worktrees](#worktrees). A session starts in the workspace or in a project's own root,
+and a user tier gives a project session the workspace's skills and rules; that is built and not yet
+proven ([Sessions and roots](#sessions-and-roots)).
+
+**Tools.** The work is tool-neutral. Plans, reviews and progress are plain files any tool can read, and a
+Codex or Gemini session walks the phases by hand ([Identity](#identity)). GitHub is not a project
+dependency; the workspace uses it for now.
+
+**Reports.** Agents lead with what the work is and what they need from the user, in plain words.
+
+**The long view.** Each project, and the workspace, is meant to say what healthy and the right direction
+mean, and it should be known whether a change helped. The workspace does not yet have a home for either
+of those ([Documentation layers](#documentation-layers)). This file is the current picture of how the
+parts fit; the ADRs in `docs/decisions/` record what was decided and when, and are history.
 
 # The design
 
@@ -595,6 +632,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-09 | Open questions | Table finished: OQ-1 to OQ-5, C4 and C5 | #335 | 588 |
 | 2026-10-09 | Change log | Now block: the rule for rows and the line count | #335 | 596 |
 | 2026-10-09 | Glossary | Added as the last section: 15 settled entries (7 own terms, 8 standard), the admission rule, WIP limit and appetite left out | #335 | 650 |
+| 2026-10-09 | How it works | Agent draft from the fact list and the owner's recorded phrasings, no new ideas, replacing the stub; owner to edit | #335 | 688 |
 
 ## Glossary
 
