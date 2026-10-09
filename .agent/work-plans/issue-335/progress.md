@@ -438,3 +438,11 @@ The round-3 fix is correct and cheap: the hook is a separate, tree-reading check
 - [ ] State the commit order or guard timing so no PR B commit fails the checker before the register exists (finding 1)
 - [ ] Define how the checker finds the register rows (finding 2)
 - [ ] Apply or decline suggestions 3 and 4
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 08:47 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `e22d500`
+
+Revision 5 of the phase-3 plan, answering the round-4 Plan Review (`ffa20fe`, needs-work): the anchor checker's two anti-vacuity guards now apply only once a `decision-register` heading exists in design.md, so the checker, hook and suite land first without failing; the PR B commit order is stated (checker and hook, section commits, register). Suggestions applied: register rows defined, wrongly cased citations flagged as malformed anchors, checker-scope widening added to the follow-up list. The plan's closing section lists what changed per item.
