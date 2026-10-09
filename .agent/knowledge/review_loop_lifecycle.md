@@ -104,8 +104,10 @@ result:
 (`progress.md` could not be parsed) with no `status=` line; that is an error
 in the check itself, not an `OK`.
 
-Anything but `OK` is a `phase-failed` checkpoint, never a silent retry: the
-owner picks retry, takeover or stop.
+Any returned status other than `OK` (`PARTIAL`, `FAILED`, `MISSING`) is a
+`phase-failed` checkpoint, never a silent retry: the owner picks retry,
+takeover or stop. An exit of 2 or 3 means the check itself failed, so it is
+fixed and re-run; it is not a phase outcome and raises no checkpoint.
 
 ## Where the human checkpoints are
 
