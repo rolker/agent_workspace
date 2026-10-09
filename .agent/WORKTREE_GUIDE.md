@@ -179,8 +179,8 @@ package repos, and issue are all explicit:
 
 ```bash
 .agent/scripts/worktree_create.sh --type project --project shore_tools-jazzy \
-    --issue rolker/cube_bathymetry#111 \
-    --layer platforms --package-repos cube_bathymetry,marine_msgs
+    --issue acme/sonar_driver#111 \
+    --layer platforms --package-repos sonar_driver,marine_msgs
 ```
 
 - `--issue` **must** be the qualified `owner/repo#N` form for a package
@@ -193,7 +193,7 @@ package repos, and issue are all explicit:
   qualified `--issue owner/repo#N --type project --project <name>` form only.
 - Branch names: the repo that owns the issue gets `feature/issue-<N>`; every
   other named repo gets `feature/<repo>-issue-<N>` (e.g.
-  `feature/cube_bathymetry-issue-111` in `marine_msgs`).
+  `feature/sonar_driver-issue-111` in `marine_msgs`).
 - Directory: `<project root>/worktrees/issue-<project>-<owner>-<repo>-<N>/`
   (under the instance's own worktree dir, issue #265) — cosmetic only. Every
   script that needs project/issue/layer reads the `.worktree-repos` manifest
