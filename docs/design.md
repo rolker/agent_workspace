@@ -445,8 +445,8 @@ Status: `proposed`
   verified in code, and the content of a review is reported.
 - Proposed: a new session finds the records for its issue through the one lookup in the
   Target of [Worktrees](#worktrees), so the path is not written out in each reader.
-- Proposed: a size bound on records. This issue's own `progress.md` is 820 lines
-  (`wc -l`, 2026-10-09), and every reader parses the whole file.
+- Proposed: a size bound on records. This issue's own `progress.md` is more than 800
+  lines (2026-10-09), and every reader parses the whole file.
 
 **Target (open)**
 
@@ -641,6 +641,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-09 | Glossary | Added as the last section: 15 settled entries (7 own terms, 8 standard), the admission rule, WIP limit and appetite left out | #335 | 650 |
 | 2026-10-09 | How it works | Agent draft from the fact list and the owner's recorded phrasings, no new ideas, replacing the stub; owner to edit | #335 | 688 |
 | 2026-10-09 | How it works, Registry and adapters, Review loop and timeline, Merge gate, Decision register | Review fixes: the next-step routing wording (newest entry, earlier entries for round count and failed-Implementation skill), the repeat-phase resume exception, the `setup` row's stamps, the `merge-refused` condition, the gate flags step 11 lists, the progress.md line count, gate (a) with `External Review`, the worktree_list second path, the `adapter:73` default, the ADR-0011 and ADR-0012 register rows, the register section length; three Review-loop proposals accepted by the owner 2026-10-09 ("candidate" marker dropped) | #335 | 695 |
+| 2026-10-09 | Rules, Review loop and timeline | Rules table gains the row for the owner deciding every merge (`review only`; `merge_pr.sh` has no owner check), making 15 rules; the Target's `progress.md` size is stated as more than 800 lines, so it does not go stale with each entry | #335 | 697 |
 
 ## Glossary
 
