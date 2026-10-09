@@ -829,21 +829,21 @@ ADR-0002 (project worktree location), ADR-0011 (discovery order; 12 verbs), ADR-
 **Commits**: 1e852db, ec38c57, 625c987
 
 ### Actions
-- [x] Routing wording (newest entry; earlier entries for round count and failed-Implementation skill) — `docs/design.md:415`, `.agent/knowledge/review_loop_lifecycle.md:50`
-- [x] `setup` row: line 98 is `setup: $(STAMP)/project.done $(STAMP)/git-bug.done`, header lists three stamps — `docs/design.md:281`
+- [x] Routing wording (newest entry; earlier entries for round count and failed-Implementation skill) — `docs/design.md:413`, `.agent/knowledge/review_loop_lifecycle.md:50`
+- [x] `setup` row: line 98 is `setup: $(STAMP)/project.done $(STAMP)/git-bug.done`, header lists three stamps — `docs/design.md:279`
 - [x] Repeat-phase resume exception (run-issue 4a) — `docs/design.md:11`, `docs/design.md:419`
-- [x] `merge-refused` only after the run recorded a merge entry — `docs/design.md:407`
-- [x] Gate flags: the three step 11 lists; `--force-unreviewed` described as the fourth bypass — `docs/design.md:460`
-- [x] progress.md line count recomputed, 820 at 1e852db's parent (`wc -l`, 2026-10-09) — `docs/design.md:447`
-- [x] Checker: a fence closes only on a bare fence line; suite cases for a bash-tagged line and tilde fences — `.agent/scripts/check_design_anchors.sh:140`
-- [x] Checker: an empty slug is skipped, awk failure exits 2, `${LINKS[@]}` is set -u safe; suite case — `.agent/scripts/check_design_anchors.sh:183`
-- [x] Checker: heading lines keep link extraction; suite case — `.agent/scripts/check_design_anchors.sh:157`
-- [x] ADR-0011 register row: only the resolution order is drift — `docs/design.md:569`
-- [x] ADR-0012 row now links Registry and adapters — `docs/design.md:570`
-- [x] Gate (a) names `External Review` — `docs/design.md:462`
-- [x] Table 1 `worktree_list.sh` row names `*/.workspace-worktrees/*` — `docs/design.md:263`
-- [x] `adapter:73` default named — `docs/design.md:235`
-- [x] Register section length 46 — `docs/design.md:631`
+- [x] `merge-refused` only after the run recorded a merge entry — `docs/design.md:405`
+- [x] Gate flags: the three step 11 lists; `--force-unreviewed` described as the fourth bypass — `docs/design.md:463`
+- [x] progress.md line count recomputed, 820 at 57cfca4 (`wc -l`, 2026-10-09) — `docs/design.md:447`
+- [x] Checker: a fence closes only on a bare fence line; suite cases for a bash-tagged line and tilde fences — `.agent/scripts/check_design_anchors.sh:142`
+- [x] Checker: an empty slug is skipped, awk failure exits 2, `${LINKS[@]}` is set -u safe; suite case — `.agent/scripts/check_design_anchors.sh:165`
+- [x] Checker: heading lines keep link extraction; suite case — `.agent/scripts/check_design_anchors.sh:165`
+- [x] ADR-0011 register row: only the resolution order is drift — `docs/design.md:575`
+- [x] ADR-0012 row now links Registry and adapters — `docs/design.md:576`
+- [x] Gate (a) names `External Review` — `docs/design.md:468`
+- [x] Table 1 `worktree_list.sh` row names `*/.workspace-worktrees/*` — `docs/design.md:265`
+- [x] `adapter:73` default named — `docs/design.md:238`
+- [x] Register section length 46 — `docs/design.md:637`
 - [ ] Three Review-loop proposals (owner decision pending in this entry's commits): the owner's decision to keep all three as plain `Proposed:` lines was relayed mid-pass; the edit is made in the working tree but not committed because the commit was denied by the permission classifier — `docs/design.md:442`
 - [ ] Partly done: `slug()`/`ANCHOR_RE` now agree on `_` and the suite covers closing #s, link in heading, empty slug, underscore heading; link titles, inline-code links, `#L42` permalinks and the `\|` cell case are not addressed — `.agent/scripts/check_design_anchors.sh:130`, `.agent/scripts/tests/test_design_anchors.sh`
 - [ ] Not addressed (outside the brief): register guard (b) row-to-ADR matching, guards switching off on a renamed register heading — `.agent/scripts/check_design_anchors.sh:231`, `:242`
