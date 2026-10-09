@@ -250,3 +250,11 @@ The approach is sound and matches the owner's shape, but several destination cla
 - [ ] Update for the merged state (F6)
 - [ ] Add "decided, not proven"; resolve the line-count arithmetic (F7, F8)
 - [ ] Apply suggestions S1–S8 or say why not
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 09:10 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `aec3cbd`
+
+Revision 2 of the phase-3 plan, answering the round-1 Plan Review (`6f8c643`, needs-work) and the owner's 2026-10-08 decision on document shape (five Status values, Now/Target, no hard line cap). Main merged (PR #376 in). The plan's closing section lists what changed per review item.
