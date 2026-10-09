@@ -751,3 +751,32 @@ PR B part 1: the skeleton and rows 3 to 9 of the section table in `docs/design.m
 - Review loop and timeline keeps three `(candidate)` Target lines for the owner to accept or drop; the Status key does not mention the marker.
 - The Change log section has no Now block yet (its content is part 2). Sections over 60 lines (Sessions 63, Registry 83, Worktrees 80, Review loop 70) carry the plan's question answered in their change-log row.
 - Local commits for Purpose, Rules, Open questions, Sessions and Registry were amended before the checker ran at the next commit (unpushed, wording only).
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-09 15:43 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `aa5765f`
+**Branch**: feature/issue-335 at `5ac0fc5`
+
+### Summary
+PR B part 2: rows 10 to 16 of the section table and the How it works draft, finishing the content of `docs/design.md` (688 lines). With part 1 (5420953) the PR B content is complete. Not done, by design: PR C (skills, roadmap, README pointer), the with/without test of process step 4, and the owner's edit of the How it works draft. No push.
+
+### Commits
+- 3cbffa5 Merge gate; eceeb89 Identity; d91ea1e Instruction layers (all `proposed`)
+- fc74627 Decision register (17 rows; both checker guards live from here, checked by deleting a row in a scratch copy: exit 1)
+- 9281306 Open questions table finished (OQ-1 to OQ-5, C4, C5); c92402d Change log Now block
+- d07b25a Glossary (15 entries); 5ac0fc5 How it works, agent draft from the fact list, marked in the change log
+
+### Checks
+`check_design_anchors.sh` exit 0 at every commit and at HEAD; `make lint` exit 0 (all 20 hooks passed, including the anchors hook and the script-tests suite); no private project name in `docs/design.md`; no `docs/design.md#` self-citation.
+
+### Superseded in practice (register rows, for the owner one at a time, C1-c)
+ADR-0002 (project worktree location), ADR-0011 (discovery order; 12 verbs), ADR-0013 (the dispatched implement pass writes `## Implementation`, there is no implement skill), ADR-0014 (`implement` is dispatched since #314, not inline). No ADR file was edited. The coordinator named three; ADR-0014 is a fourth found while checking the register.
+
+### Deviations from the plan
+- Instruction layers: the four layers are one `proposed` block with the sizes as citations; no budget number is set.
+- Register: carrying sections for ADRs the plan does not list: 0004 and 0005 link Rules, 0008 links Documentation layers, 0017 links The design. Standing `in force` for the `not yet` rows is read from each ADR's Status line, not re-examined, and the register says so.
+- Open questions gains OQ-3 (home for "healthy" and measures), OQ-4 (instruction budget) and OQ-5 (server-side merge gate). B1 and B2 stay out as wire-in questions.
+- Identity text stays on ephemeral identity; the persistent (container) identity of AI_IDENTITY_STRATEGY.md is not described.
+- Seen and not acted on: ADR-0007's examples describe ROS layer setup that this workspace's Makefile does not have (register says `not yet`).
