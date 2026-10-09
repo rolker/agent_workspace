@@ -17,6 +17,10 @@ Checks that:
 4. .venv shebangs match the current workspace path
 5. pre-commit hook points to a valid Python path
 
+Problems found for a registry entry are reported as lines that start with
+`project '<name>':` (for example an unknown project type, a missing hosting
+dir, or a line from that type's `adapter --project <name> validate`).
+
 Usage:
     python3 validate_workspace.py [--verbose]
 """
