@@ -594,3 +594,57 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-09 | Decision register | 17 rows, standing and re-examined, four rows superseded in practice (0002, 0011, 0013, 0014) with what the code does; no ADR file edited; both checker guards are live from here. Section is 40 lines | #335 | 583 |
 | 2026-10-09 | Open questions | Table finished: OQ-1 to OQ-5, C4 and C5 | #335 | 588 |
 | 2026-10-09 | Change log | Now block: the rule for rows and the line count | #335 | 596 |
+| 2026-10-09 | Glossary | Added as the last section: 15 settled entries (7 own terms, 8 standard), the admission rule, WIP limit and appetite left out | #335 | 650 |
+
+## Glossary
+
+**Now**
+
+Status: `decided`
+
+One line per term, in plain words, for a reader who has never seen the workspace. A term is here if it
+appears in a situation report or a checkpoint, except the eight phase names (`review-issue`,
+`plan-task`, `review-plan`, `implement`, `review-code`, `publish`, `triage-reviews`, `merge`). Those are
+the workflow, not vocabulary, and are described in order in
+[Review loop and timeline](#review-loop-and-timeline). The terms and their definitions were settled
+with the owner on 2026-10-09 (C6).
+
+Our own terms:
+
+- **phase**: one of the eight steps an issue passes through (names and order in the Review loop section).
+- **round**: one pass of a review phase. Round 2 is the re-review after fixes.
+- **convergence**: rounds converge when each finds fewer must-fix items than the last. When they stop
+  converging the loop steps back.
+- **checkpoint**: a point where the loop stops and asks the owner (after the plan, before publish,
+  before merge).
+- **progress timeline**: the per-issue file where every phase writes an entry, so a new session can see
+  what happened without re-reading the chat.
+- **Integrated Review**: the entry `triage-reviews` writes, with all review sources combined into one
+  list of findings and a verdict on each.
+- **must-fix / suggestion**: a review finding that blocks the next phase, versus one the implementer may
+  take or leave with a reason.
+
+Standard terms:
+
+- **stage gate**: work passes through fixed phases, and a check at each boundary decides whether it goes
+  on. Our loop is one.
+- **Definition of Done**: the agreed list of what must be true before work counts as finished. Ours is
+  the principles "A change includes its consequences" and "Verify before claiming".
+- **proposal status**: the labels a proposal carries through its life. Kubernetes uses provisional,
+  implementable, implemented; our ADRs use proposed, accepted, superseded; this document uses decided,
+  decided not built, decided not proven, proposed, open.
+- **ADR, Architecture Decision Record**: a short dated note recording one decision, its context and its
+  consequences. It is a record of history, not the current picture.
+- **spike**: a short, throwaway experiment that answers one question, usually whether an approach works
+  or what it would cost, before committing to it. Ours: the plugin spike (#345) and the interop spike
+  (Codex and agy as headless phase workers). It is not the same as prior-art research, which reads what
+  others did.
+- **backlog**: the ordered list of work not yet started. Ours is the roadmap plus the open issues.
+- **circuit breaker**: a rule that stops work automatically when it exceeds a budget. We have none; the
+  nearest is the review-round limit, `MAX_ROUNDS`.
+- **reference versus record**: a reference says what is true now and is kept current; a record says what
+  was decided when and is never rewritten. This document is the reference; the ADRs and the progress
+  timeline are records.
+
+Left out on purpose: WIP limit and appetite. The workspace has neither: a search of `docs/`,
+`.agent/knowledge/`, `AGENTS.md` and the skills finds no use of either as a workspace term.
