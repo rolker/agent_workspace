@@ -443,6 +443,34 @@ Status: `decided`
 - For a project pull request the gate's timeline lookup is anchored at the legacy `project/` checkout.
   That is #379, described under [Worktrees](#worktrees).
 
+## Identity
+
+**Now**
+
+Status: `decided`
+
+- An agent signs its work with a framework identity: a name, an email of the form
+  `roland+<framework>@<domain>`, a model name and a framework key. The table of frameworks is
+  `.agent/scripts/framework_config.sh`; the strategy and the reasons are in
+  [`.agent/AI_IDENTITY_STRATEGY.md`](../.agent/AI_IDENTITY_STRATEGY.md). The identity is on the commit
+  and, through `AGENT_NAME` and `AGENT_MODEL`, in the signature on GitHub text.
+- On an agent that runs on the host, the identity is ephemeral: `set_git_identity_env.sh` is sourced
+  into the session, sets the `GIT_AUTHOR_*` and `GIT_COMMITTER_*` variables and the `AGENT_*` variables,
+  and leaves `.git/config` alone, so the owner commits as himself afterwards. Shell state does not
+  carry between tool calls, so it is sourced in the same call as the command that needs it.
+- Three things refuse to run without an identity or with a wrong one: the `check-commit-identity` hook
+  (accepted emails are the agent pattern and the owner's two addresses), `dispatch_phase.sh` (exit 2
+  when `AGENT_NAME` or `AGENT_EMAIL` is unset, with no fallback to the owner's git config) and
+  `progress_append.sh` (fails loudly when unset). `gh_create_pr.sh` exits 2 for an unsigned body
+  ([Rules](#rules)).
+- The work is kept tool-neutral (principle "Use the main tool fully; keep the work tool-neutral"):
+  plans, reviews and progress are plain files any tool reads. What needs Claude Code is the
+  `/run-issue` and `/start-task` skills (their descriptions say so), the user tier in `~/.claude`
+  ([Sessions and roots](#sessions-and-roots)) and the Agent tool that dispatches phases. Without it, a
+  Codex or Gemini session walks the same phases by hand, one `SKILL.md` at a time
+  ([Review loop and timeline](#review-loop-and-timeline)). Each framework has an
+  adapter file listed in `AGENTS.md`.
+
 ## Open questions
 
 **Now**
@@ -476,3 +504,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Worktrees | Two kinds and where they live, entering, concurrency, the Records Now text citing #379, and the C3 Target (location and tracking, the four combinations, three mechanisms, source-of-truth rule, acceptance test by shape). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the layout detail already lives in the worktree guide and is one bullet here, and the Target is design for something not built, so no code or script header can hold it yet. Stays; it splits into its own Records section if the Target grows past 60 lines | #335 | 374 |
 | 2026-10-09 | Review loop and timeline | The eight phases in order with what each produces and who decides, the timeline as the only loop state, fresh sub-agent per phase, the exit check, nine checkpoints; Target candidates and the C5 pointer; C5 added. Also the review guide's work-plan row now names this section instead of the removed directory tree. Section is about 70 lines, past the 60-line prompt: asked whether the detail moves next to the code; the lifecycle file and dispatch_phase.sh header already hold the mechanics, so the section keeps only the phase table and one bullet per mechanism, and what it adds is the who-decides column and the code-versus-reported line, which no one file shows | #335 | 446 |
 | 2026-10-09 | Merge gate | Who decides a merge, the two conditions, the bookkeeping rule, the CI wait, enforce versus report-only, local-only, the #379 gap | #335 | 478 |
+| 2026-10-09 | Identity | Framework identity, ephemeral per session, what refuses to run without it, and what needs Claude Code versus what any tool can do | #335 | 507 |
