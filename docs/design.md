@@ -499,6 +499,52 @@ under 200 lines per instruction file, as recorded in the prior-art notes
 (`prior-art-comparison-2026-10-08/summary.md` item 5; `prior-art-alignment-agent-frameworks.md`, Claude
 Code entry). Changing `AGENTS.md` is Ask First and is not part of this change.
 
+## Decision register
+
+**Now**
+
+Status: `decided`
+
+Purpose: tell a reader which ADR still governs, so nobody follows a superseded or drifted one. One row
+per ADR in `docs/decisions/` (17), in order. The ADRs are history and none is edited here (owner
+decision 2026-10-09, C1-c); this table is the only place the standing below is recorded.
+
+Standing takes one of four values. `in force`: the ADR's Status line says Accepted and nothing found
+contradicts it. `superseded`: a later ADR replaced it, as its Status line says. `superseded in
+practice`: the ADR is Accepted but the code does something else, stated in the cell. `Provisional`: the
+ADR's own Status line. Re-examined is `yes <date>` when the ADR was checked against the code while
+this document was rewritten, and `not yet` when it was not; the date is the checked-date, and
+`/audit-workspace` is meant to refresh it. A section link of `#decision-register` means no section of
+this file carries that ADR.
+
+| ADR | Decision | Standing | Section | Re-examined |
+|---|---|---|---|---|
+| [0001](decisions/0001-adopt-architecture-decision-records.md) | Record decisions as short dated ADRs in `docs/decisions/`; accepted ADRs are history, superseded and not edited. Its trigger is scoped by ADR-0017 | in force | [Decision register](#decision-register) | not yet |
+| [0002](decisions/0002-worktree-isolation-over-branch-switching.md) | All feature work happens in git worktrees, not by switching branches; the worktree scripts take `--type workspace\|project` | superseded in practice: project worktrees live under the registered root's own `worktrees/` (or `worktrees=`), and `worktrees/project/<repo>/` is only the legacy fallback; `--type` is derived from the cwd when omitted | [Worktrees](#worktrees) | yes 2026-10-09 |
+| [0003](decisions/0003-workspace-infrastructure-is-project-agnostic.md) | The workspace stays project-agnostic for a single-repo project | superseded by ADR-0011, which carries the doctrine forward | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
+| [0004](decisions/0004-enforcement-hierarchy-for-agent-compliance.md) | A rule that matters is enforced at more than one layer; instruction files alone are not enough | in force | [Rules](#rules) | not yet |
+| [0005](decisions/0005-layered-enforcement-strategy.md) | CI is the enforcement layer, pre-commit hooks the local mirror, framework hooks the early feedback; new rules go CI-first | in force | [Rules](#rules) | not yet |
+| [0006](decisions/0006-adopt-agents-md-as-shared-instruction-file.md) | `AGENTS.md` holds the shared rules and each framework gets a thin adapter file | in force | [Decision register](#decision-register) | not yet |
+| [0007](decisions/0007-retain-make-with-dependency-tracking.md) | Keep Make as the task runner, with stamp files for setup dependencies | in force | [Decision register](#decision-register) | not yet |
+| [0008](decisions/0008-permit-cross-reference-addendums-in-adrs.md) | An accepted ADR may gain a status note, a references list or link and typo fixes; anything else needs a superseding ADR | in force | [Documentation layers](#documentation-layers) | not yet |
+| [0009](decisions/0009-python-package-management-policy.md) | Python tools go in the workspace `.venv` (from `requirements.txt`) or in pipx; PEP 668 is the guardrail | in force | [Decision register](#decision-register) | not yet |
+| [0010](decisions/0010-git-bug-is-optional.md) | git-bug is installed by default and `skip-git-bug` opts out; scripts work without it | in force | [Decision register](#decision-register) | not yet |
+| [0011](decisions/0011-project-type-adapter-contract.md) | Behaviour that differs per project shape sits behind a fixed adapter contract per project type; workflow scripts never branch on the type | superseded in practice: the dispatcher resolves `--project`, then the cwd inside a registered directory, then the legacy `project_config.sh`, and the contract has 12 verbs, not the 10 its Decision lists | [Registry and adapters](#registry-and-adapters) | yes 2026-10-09 |
+| [0012](decisions/0012-worktree-composition-is-an-adapter-concern.md) | Worktree composition is an adapter concern: the `worktree_repos` and `worktree_env` verbs | in force | [Worktrees](#worktrees) | yes 2026-10-09 |
+| [0013](decisions/0013-progress-md-entry-type-vocabulary.md) | `progress.md` has a fixed entry vocabulary and header, with a correlation key per entry type | superseded in practice: its writer table says `address-findings` and "any future implement skill" write `## Implementation`; there is no implement skill, and the dispatched implement pass writes it | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
+| [0014](decisions/0014-in-process-phase-handoff.md) | Each phase runs in a fresh in-process sub-agent through `dispatch_phase.sh`, and the host checks the exit instead of trusting the sub-agent | superseded in practice: its Decision calls `implement` the inline pass; since #314 `implement` is dispatched like every other phase and only a `takeover` answer runs a phase inline | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
+| [0015](decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md) | Cross-model reviewers run in parallel and synchronously; there is no tmux mode | in force | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
+| [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions | Provisional | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
+| [0017](decisions/0017-design-document-is-the-current-picture.md) | This file is the current picture and the authority; an ADR is written only when two parts could otherwise choose incompatibly | in force | [The design](#the-design) | yes 2026-10-09 |
+
+Plan-level decisions that never got an ADR: none are listed. The plan for this rewrite names none that
+is not already stated in a section above with its issue.
+
+**For the owner, one at a time (C1-c).** Four ADRs are `superseded in practice` (0002, 0011, 0013,
+0014). Each is a candidate for a superseding ADR, and each supersession is the owner's call, made one
+ADR at a time; none is made here. ADR-0016 stays `Provisional` until the acceptance run
+([Sessions and roots](#sessions-and-roots)).
+
 ## Open questions
 
 **Now**
@@ -534,3 +580,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Merge gate | Who decides a merge, the two conditions, the bookkeeping rule, the CI wait, enforce versus report-only, local-only, the #379 gap | #335 | 478 |
 | 2026-10-09 | Identity | Framework identity, ephemeral per session, what refuses to run without it, and what needs Claude Code versus what any tool can do | #335 | 507 |
 | 2026-10-09 | Instruction layers | The four layers an agent's instructions load in and a budget for the always-loaded one, all proposed; AGENTS.md is 442 lines against the under-200 target | #335 | 536 |
+| 2026-10-09 | Decision register | 17 rows, standing and re-examined, four rows superseded in practice (0002, 0011, 0013, 0014) with what the code does; no ADR file edited; both checker guards are live from here. Section is 40 lines | #335 | 583 |
