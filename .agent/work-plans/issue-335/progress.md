@@ -446,3 +446,11 @@ The round-3 fix is correct and cheap: the hook is a separate, tree-reading check
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `e22d500`
 
 Revision 5 of the phase-3 plan, answering the round-4 Plan Review (`ffa20fe`, needs-work): the anchor checker's two anti-vacuity guards now apply only once a `decision-register` heading exists in design.md, so the checker, hook and suite land first without failing; the PR B commit order is stated (checker and hook, section commits, register). Suggestions applied: register rows defined, wrongly cased citations flagged as malformed anchors, checker-scope widening added to the follow-up list. The plan's closing section lists what changed per item.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 09:11 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `acd2cc3`
+
+Revision 6 of the phase-3 plan, applying the owner's four decisions of 2026-10-09: the `check-design-anchors` hook is approved and also watches `docs/decisions/` (B4 decided); the "System design" label stays everywhere, so all label edits and Wire-in 7 are gone; the Purpose row and the `#how-it-works` / `#the-design` anchors are accepted; a last `## Glossary` section is added, with a new question C6 (which terms go in) to settle with the owner before PR B writes it. The plan's closing section lists what changed per item.
