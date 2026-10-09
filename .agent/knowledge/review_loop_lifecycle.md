@@ -68,6 +68,34 @@ worth remembering because they read as exceptions:
 `**Status**: complete` on the current branch; a partial or failed review
 that got retried does not inflate the count.
 
+## Exit contract and dispatch
+
+`/run-issue` hands each phase to a fresh sub-agent (ADR-0014): the host
+prints the handoff block with `dispatch_phase.sh --issue <N> --skill <phase>`
+and pastes it into a new Agent tool call, so no phase inherits another's
+context and the phase fetches its own inputs with `gh`. The one exception is
+a repeat of a phase already run in the same drive, which may resume that
+phase's agent (`run-issue` section 4a). Inside `review-code`, the external
+reviewers run through `cross_model_review.sh`, whose single dispatch mode
+(parallel and synchronous) is ADR-0015.
+
+After the sub-agent returns, the host does not take its word for it.
+`dispatch_phase.sh --check-exit --issue <N> --skill <phase> --before <count>`
+compares the number of entries of the phase's expected type before and after
+the dispatch and prints one result:
+
+- `OK` (with the worktree's `sha=`): the newest entry of that type is
+  `**Status**: complete`.
+- `PARTIAL`: its status is `partial`, or an implement / address-findings
+  `## Implementation` entry lacks the `**PR**` / `**Branch**` line that
+  `merge_pr.sh`'s review gate needs.
+- `FAILED`: its status is `failed`.
+- `MISSING`: no new entry of the expected type appeared, or its status is
+  none of the three above.
+
+Anything but `OK` is a `phase-failed` checkpoint, never a silent retry: the
+owner picks retry, takeover or stop.
+
 ## Where the human checkpoints are
 
 Nine checkpoint kinds, each an `AskUserQuestion` the host asks before
