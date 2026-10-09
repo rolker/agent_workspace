@@ -597,3 +597,18 @@ PR A of the phase-3 plan (revision 6): fill the gaps the new `docs/design.md` wi
 - [x] `validate_workspace.py` prefix claim — docstring now covers `parent root '<name>':` and the unprefixed indented "Clone the project there" follow-up — `.agent/scripts/validate_workspace.py:20-27` (`42f4714`)
 - [x] `Makefile` help text contradicted the lock.sh header — now "Advisory workspace lock, shown by the dashboard (a second lock is refused)" — `Makefile:88` (`195cf60`)
 - [ ] user-visible prose still names the real project — NOT addressed: owner decision (extend the synthetic-name boundary to `tools/ros-manifest/`?); the files were not touched — `tools/ros-manifest/README.md:6`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-09 09:57 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-335 at `0aab56d`
+**Base**: a80936e^ (PR A commits a80936e..0aab56d)
+**Depth**: Standard (reason: 9 files; governance and enforcement paths touched; whole-branch classification)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings
+
+### Findings
+- [ ] No issues found. LGTM. (Round-2 must-fix and suggestions 1-5 verified resolved; suggestion 6 and the cube_bathymetry example stay with the owner. Gemini's two round-3 findings were a false positive and the owner-held item.)
