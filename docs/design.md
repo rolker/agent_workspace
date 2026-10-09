@@ -116,6 +116,69 @@ only.
 | A pull request carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` appends it and exits 2 when `AGENT_NAME` and `AGENT_MODEL` are unset. Issues and comments are signed by habit only: `gh_create_issue.sh` does not add one |
 | No secrets in a commit | Enforce what matters, as simply as possible | `nothing` | No hook scans for secrets; `check-added-large-files` is the only content check on file size |
 
+## Sessions and roots
+
+**Now**
+
+Status: `decided, not proven`
+
+A session runs in one of three places: the workspace checkout, a project's own root, or (for the layer
+that reaches project sessions) the user tier in `~/.claude`. The mechanisms below are built and tested
+hermetically. [ADR-0016](decisions/0016-session-roots-and-the-user-tier.md) is Provisional until a
+`/run-issue` run started from a project root passes through the merge checkpoint (the acceptance test
+named in #317), so none of this is marked `decided` yet. [Open questions](#open-questions) OQ-2 asks
+where that run is tracked.
+
+- The workspace and each project are separate session roots. A session is in exactly one, found from
+  its cwd by the longest-prefix match against the registry; registered project roots are checked before
+  the workspace checkout, so a project registered inside the workspace tree is still a project
+  (`registry_resolve_from_dir` and `registry_derive_type_from_dir` in `_project_registry.sh`;
+  ADR-0016 decision 1).
+- When `--type` is omitted, the worktree scripts and `dispatch_phase.sh` take the type and project
+  from the cwd the same way (`registry_derive_type_from_dir`; ADR-0016, "Multi-project machines need
+  disambiguation").
+- The user tier is installed from a workspace checkout by `.agent/scripts/user_tier_install.sh`: a
+  `SessionStart` hook, a `PreToolUse` hook, permission rules for the promoted scripts, and a symlink in
+  `~/.claude/skills/` for every skill that declares `session_scope: project` or `session_scope: both`.
+  Everything it writes is tagged with the checkout, so install is repeatable and `--uninstall` removes
+  only its own entries (`user_tier_install.sh` header).
+- The `SessionStart` hook (`.claude/hooks/session_start_project_layer.sh`) gives a session under a
+  registered root the workspace layer, rendered from nine pinned `AGENTS.md` headings, and the project
+  layer, built from the registry entry and the project's own agent guide. Outside every registered root
+  and the workspace checkout it prints nothing. Because the layer is rendered from pinned headings,
+  those `AGENTS.md` headings are an interface: renaming one would empty the layer silently, so
+  `test_session_start_layer.sh` fails if one goes missing.
+- An entry reaches the user tier only if it does nothing outside the workspace checkout and the
+  registered roots. `.agent/user_tier_scripts.txt` lists the promoted set, and
+  `test_user_tier_guard.sh` fails on an entry that has no guard or does not refuse from an unregistered
+  repository (ADR-0016 decision 6).
+- A skill finds workspace scripts from a project cwd through the file `~/.claude/agent-workspace-root`,
+  not an environment variable: hook output is text for the model and never reaches a tool call's
+  shell. Workspace scripts do not read the file; they resolve their own root from their location and the
+  project from their `$PWD` (ADR-0016 decision 7; `run-issue/SKILL.md` reads it at the head of a command
+  chain).
+
+**Target (decided, not built)**
+
+Status: `decided, not built`
+
+- Discovery becomes registry-only: PR 4 of #265 removes the legacy `project/` step. The dispatcher
+  still has it as step 3 of its resolution order (`adapter` header; ADR-0016, "ADR-0011's discovery
+  order will be superseded").
+- Registration is a workspace script, `register_project.sh`, also PR 4 (ADR-0016 decision 5). It does
+  not exist yet (`.agent/scripts/` has no such file).
+- The workspace tree hosts no project, and the workspace writes nothing into a project checkout beyond
+  `.git/info/exclude` and an untracked `COLCON_IGNORE` (ADR-0016 decision 2). The registry's default
+  hosting directory is still `projects/<name>` under the workspace (`_project_registry.sh` header).
+- A project's memory attaches to its own root, not to the workspace (ADR-0016 decision 4). No workspace
+  script implements or checks this.
+
+**Target (open)**
+
+Status: `open`
+
+The workspace as a registered project: #295.
+
 ## Open questions
 
 **Now**
@@ -128,6 +191,7 @@ or to an issue. Each row says who decides and what the answer changes.
 | ID | Question | Who decides | What it changes |
 |---|---|---|---|
 | OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
+| OQ-2 | ADR-0016 stays Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? | Owner | When the [Sessions and roots](#sessions-and-roots) Now block becomes `decided`, and when the Registry inventory is read to settle #295 |
 
 ## Change log
 
@@ -141,3 +205,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Documentation layers | The seven roles and the workspace's mapping, with the two gaps (healthy, measures) shown; per-project mapping as a proposal | #335 | 94 |
 | 2026-10-09 | Rules | Rules table with the enforced-by column: 14 rules, each with the check checked against the hook, script or CI file | #335 | 129 |
 | 2026-10-09 | Open questions | Section started with the first gap found while writing: where a project records its role mapping | #335 | 143 |
+| 2026-10-09 | Sessions and roots | Three session places, the user-tier mechanisms that are built, the PR 4 items decided but not built, #295 as an open pointer; OQ-2 added. Section is 63 lines, past the 60-line prompt: asked whether the detail moves next to the code; it stays, because the pinned `AGENTS.md` headings, the user-tier rule and the root file are interfaces between the hook, the installer, the skills and `AGENTS.md`, and no one script header shows all four | #335 | 208 |
