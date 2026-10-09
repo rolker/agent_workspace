@@ -19,23 +19,28 @@
 #     the run of [A-Za-z0-9_-] after the '#'.
 #       - an empty run (the literal `docs/design.md#<section>` placeholder) is
 #         not a citation and is ignored;
-#       - any other fragment must match [a-z0-9][a-z0-9-]*, otherwise it is a
-#         malformed-anchor error (so `#How-it-works` and `#how_it_works` fail
-#         instead of slipping past a lowercase-only match);
+#       - any other fragment must match [a-z0-9][a-z0-9_-]*, otherwise it is a
+#         malformed-anchor error (so `#How-it-works` fails instead of slipping
+#         past a lowercase-only match). '_' is allowed because slug() keeps it,
+#         as GitHub does, so a heading with an underscore can be cited;
 #       - a fragment that matches is looked up among the heading slugs.
 #   * Inside design.md: a Markdown link `](#<fragment>)` outside fenced code.
 #     The fragment is everything up to the ')'. Ignored: an all-digit fragment
 #     (an issue reference such as `[x](#12)`; a bare `(#295)` has no `](` and is
 #     never seen) and a fragment containing '<' (a `#<slug>` placeholder).
-#     Anything else must match the lowercase pattern above and resolve.
+#     Anything else must match the lowercase pattern above and resolve. This
+#     holds for links inside headings too (`## [See](#gone)` is checked).
 #
 # Heading slugs (the one place the rule lives is the awk function slug()):
 # GitHub style. Take the ATX heading text (`#` to `######`, up to 3 leading
 # spaces, optional closing #s dropped); replace `[text](url)` by `text`;
 # lowercase ASCII; drop every character that is not a letter, digit, space,
 # '_' or '-'; turn each space into '-'. A repeated slug gets '-1', '-2', ...
-# (`# How it works` is `how-it-works`). Headings inside fenced code are not
-# headings. Setext (underlined) headings are not recognised. Non-ASCII
+# (`# How it works` is `how-it-works`). A heading whose slug is empty (`## !!!`)
+# has no anchor and is skipped. Headings inside fenced code are not headings.
+# A fence opens on ``` or ~~~ (3+, optional info string) and closes only on a
+# line of the same character, at least as long, with nothing after it but
+# spaces; a line such as ```bash inside an open fence does not close it. Setext (underlined) headings are not recognised. Non-ASCII
 # characters are dropped, which can differ from GitHub, but no anchor with
 # such a character can match the citation pattern anyway.
 #
@@ -100,7 +105,7 @@ if [[ ! -f "$DESIGN" ]]; then
     exit 2
 fi
 
-ANCHOR_RE='^[a-z0-9][a-z0-9-]*$'
+ANCHOR_RE='^[a-z0-9][a-z0-9_-]*$'
 FINDINGS=0
 
 finding() {  # <file> <line> <message>
@@ -132,14 +137,21 @@ design_records() {
     BEGIN { fence = ""; reg_level = 0; OFS = "\t" }
     {
         line = $0
-        # fenced code: ``` or ~~~ (3+), closed by the same char, at least as long
-        if (match(line, /^ *(```+|~~~+)/)) {
-            m = substr(line, 1, RLENGTH); gsub(/ /, "", m)
-            ch = substr(m, 1, 1); n = length(m)
-            if (fence == "") { fence = ch; fence_len = n; next }
-            if (ch == fence && n >= fence_len) { fence = ""; next }
+        # fenced code: ``` or ~~~ (3+). It closes only on the same char, at
+        # least as long, with nothing after it but spaces (no info string).
+        if (fence == "") {
+            if (match(line, /^ *(```+|~~~+)/)) {
+                m = substr(line, 1, RLENGTH); gsub(/ /, "", m)
+                fence = substr(m, 1, 1); fence_len = length(m)
+                next
+            }
+        } else {
+            if (match(line, /^ *(```+|~~~+) *$/)) {
+                m = line; gsub(/ /, "", m)
+                if (substr(m, 1, 1) == fence && length(m) >= fence_len) fence = ""
+            }
+            next
         }
-        if (fence != "") next
 
         if (match(line, /^ *#+/)) {
             lead = index(substr(line, 1, RLENGTH), "#") - 1
@@ -149,12 +161,14 @@ design_records() {
                 sub(/^[ \t]+/, "", rest)
                 if (rest != "") {
                     sl = slug(rest)
-                    seen[sl]++
-                    if (seen[sl] > 1) sl = sl "-" (seen[sl] - 1)
-                    print "HEAD", NR, level, sl
                     if (reg_level > 0 && level <= reg_level) reg_level = 0
-                    if (sl == "decision-register") reg_level = level
-                    next
+                    if (sl != "") {          # an empty slug has no anchor
+                        seen[sl]++
+                        if (seen[sl] > 1) sl = sl "-" (seen[sl] - 1)
+                        print "HEAD", NR, level, sl
+                        if (sl == "decision-register") reg_level = level
+                    }
+                    # no next: a heading line may hold links, which are checked
                 }
             }
         }
@@ -172,6 +186,13 @@ design_records() {
     ' "$DESIGN"
 }
 
+# Run awk first so its failure is seen: a failing process substitution would
+# otherwise leave the tables half-filled and the checker exiting 0.
+if ! RECORDS="$(design_records)"; then
+    echo "error: could not read headings and links from $DESIGN" >&2
+    exit 2
+fi
+
 declare -A SLUGS=()
 declare -a LINKS=()
 REG_LINE=""
@@ -180,6 +201,7 @@ LINK_COUNT=0
 while IFS=$'\t' read -r kind a b c; do
     case "$kind" in
         HEAD)
+            [[ -n "$c" ]] || continue
             SLUGS["$c"]=1
             if [[ "$c" == "decision-register" ]]; then REG_LINE="$a"; fi
             ;;
@@ -191,20 +213,20 @@ while IFS=$'\t' read -r kind a b c; do
             ROWS=$((ROWS + 1))
             ;;
     esac
-done < <(design_records)
+done <<<"$RECORDS"
 
 # check_fragment <file> <line> <fragment> -- resolve or report one citation.
 check_fragment() {
     local file="$1" line="$2" frag="$3"
     if [[ ! "$frag" =~ $ANCHOR_RE ]]; then
-        finding "$file" "$line" "malformed anchor '#$frag' (must match [a-z0-9][a-z0-9-]*)"
+        finding "$file" "$line" "malformed anchor '#$frag' (must match [a-z0-9][a-z0-9_-]*)"
     elif [[ -z "${SLUGS[$frag]+x}" ]]; then
         finding "$file" "$line" "broken anchor '#$frag' (no such heading in $DESIGN)"
     fi
 }
 
 # In-file links in design.md.
-for rec in "${LINKS[@]}"; do
+for rec in ${LINKS[@]+"${LINKS[@]}"}; do
     line="${rec%%$'\t'*}"
     frag="${rec#*$'\t'}"
     if [[ -z "$frag" || "$frag" =~ ^[0-9]+$ || "$frag" == *'<'* ]]; then

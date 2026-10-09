@@ -175,6 +175,93 @@ printf 'docs/design.md#not-a-heading\n' > "$R/README.md"
 run_checker "$R"
 expect "b: a heading inside fenced code is not an anchor" 1 "not-a-heading"
 
+# fences: a closer carries no info string; tilde fences work
+R="$(new_root b4)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## A
+
+````md
+```bash
+## Inside the fence
+```
+[x](#still-inside)
+````
+
+~~~
+## Tilde hidden
+[y](#tilde-inside)
+~~~
+
+[z](#a)
+DOC
+run_checker "$R"
+expect "b: a bash-tagged fence line inside an open fence does not close it; tilde fences hide headings and links" 0
+
+R="$(new_root b5)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## A
+
+```md
+```bash
+more
+```
+[x](#nope)
+DOC
+run_checker "$R"
+expect "b: a fence closed by a bare fence line ends, so the link after it is checked" 1 \
+    "docs/design.md:9:" "nope"
+
+R="$(new_root b6)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## A
+
+~~~
+```
+[x](#nope)
+~~~
+[y](#nope2)
+DOC
+run_checker "$R"
+expect "b: a backtick line does not close a tilde fence; the tilde closer does" 1 \
+    "docs/design.md:9:" "nope2"
+
+# headings: closing #s, links in headings, empty slug, underscore
+R="$(new_root b7)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## Closing hashes ##
+
+## snake_case words
+
+## !!!
+
+## Plain
+DOC
+printf 'docs/design.md#closing-hashes docs/design.md#snake_case-words docs/design.md#plain\n' > "$R/README.md"
+run_checker "$R"
+expect "b: closing #s are dropped, '_' is kept and citable, an empty-slug heading is skipped cleanly" 0
+if grep -qiF "subscript" <<<"$OUT"; then fail "b: empty slug leaks a bash error"; else pass "b: empty-slug heading produces no bash error output"; fi
+
+R="$(new_root b8)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## [See](#gone)
+
+## [Self](#self)
+DOC
+run_checker "$R"
+expect "b: a link inside a heading is checked: the broken one is named, the self link passes" 1 \
+    "docs/design.md:3:" "gone"
+if grep -qF "#self" <<<"$OUT"; then fail "b: the resolving heading link was reported"; else pass "b: the resolving heading link is not reported"; fi
+
 # ---------------------------------------------------------------- (c)
 echo "== (c) placeholder and issue references =="
 R="$(new_root c)"
@@ -203,7 +290,7 @@ expect "d: #How-it-works against a 'How it works' heading is a malformed anchor"
     "README.md:1:" "malformed" "How-it-works"
 printf 'See docs/design.md#how_it_works here.\n' > "$R/README.md"
 run_checker "$R"
-expect "d: #how_it_works (underscore) is a malformed anchor" 1 "malformed"
+expect "d: #how_it_works against a 'How it works' heading is a broken anchor, not malformed" 1 "broken" "how_it_works"
 printf 'See docs/design.md#-how here.\n' > "$R/README.md"
 run_checker "$R"
 expect "d: a leading hyphen is a malformed anchor" 1 "malformed"
