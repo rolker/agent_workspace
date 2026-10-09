@@ -179,6 +179,89 @@ Status: `open`
 
 The workspace as a registered project: #295.
 
+## Registry and adapters
+
+**Now**
+
+Status: `decided`
+
+- The registry, `.agent/projects.local` (per machine, gitignored), maps a project name to a hosting
+  directory and a project type, plus optional `key=value` fields. A parent root (pseudo-type `project`)
+  groups the instances of one project, such as one per ROS distro, and has no adapter. The syntax is in
+  the header of `_project_registry.sh` and in `.agent/projects.local.example`.
+- Registration is by hand. No script writes the registry, and `onboard-project` does not mention it
+  (grep of `.agent/scripts/` and `.claude/skills/*/SKILL.md`, 2026-10-09).
+- Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
+  type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12).
+  `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
+  every type implements every verb, in pre-commit and in CI.
+- Workflow scripts call adapter verbs and do not branch on the project type: a grep of `.agent/scripts/`
+  for the two type names finds only help text and docstrings (2026-10-09).
+- Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
+  colcon layers driven by a manifest, and its `adapter.sh` header holds the layers, the bootstrap URL
+  order and the distro rule.
+- The active project is resolved in this order: `--project`, then the cwd inside a registered hosting
+  directory (longest match), then the legacy `project/` checkout (`adapter` header, "Multi-tenant
+  resolution").
+- The project's own `remote.origin.url` is its URL, and the project stays usable without the
+  workspace. ADR-0011 supersedes ADR-0003 and carries that project-agnostic doctrine forward.
+- GitHub is not a project dependency; the workspace uses it for now (owner, 2026-10-05).
+
+**Inventory: where the workspace path differs from the registered-project path**
+
+Owner decision 2026-10-09 (C2). It is here so the open question of making the workspace a registered
+project (#295) is decided by reading these two tables after the ADR-0016 acceptance run, not by a hunch.
+The tables are cut back once #295 is decided. Line numbers are as of this commit; they are a dated
+probe, not a description to keep current.
+
+*Table 1: places where the scripts take a different path for the workspace than for a registered project.*
+
+| Script | What differs | Lines |
+|---|---|---|
+| `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 248-260, 298-304, 452-457, 541-553, 575-587, 1028-1034 |
+| `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the roadmap-commit worktree lookup uses `PJ_REPO_ROOT`; the gate's timeline lookup is anchored at `$ROOT_DIR/project`, the legacy checkout, not `PJ_REPO_ROOT` (tracked as #379); the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 236-270, 379-418, 555, 670, 916 and 929, 1612-1628 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all three modes | 122, 183-208, 302, 369, 461 |
+| `gh_create_pr.sh` | The repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 205-232 |
+| `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` | 149-150 |
+| `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 485-500 |
+| `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
+
+Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
+the cwd's git top level, lines 110-112 and 288-291), `progress_append.sh` (line 85-88),
+`_resolve_work_plans_dir.sh` and `_bookkeeping.sh`.
+
+*Table 2: the 12 adapter verbs, if the workspace were a registered project.* "Real" means the workspace
+needs logic of its own; "thin wrapper" means a script or target that already exists does the work;
+"no-op" means the `adapter` header allows doing nothing.
+
+| Verb | For the workspace | Based on |
+|---|---|---|
+| `setup` | thin wrapper | The `setup-dev` and `git-bug` stamps (`Makefile` header, line 98); `single_project/setup.sh` clones a project, which the workspace does not need |
+| `sync` | thin wrapper | `single_project/sync.py` already syncs the workspace repo with the project |
+| `validate` | thin wrapper, with care | `validate_workspace.py` checks the whole workspace and calls this verb for each registry entry, so the workspace's own implementation must not call back into it |
+| `build` | no-op | Nothing is built; `make build` runs the project's `BUILD_CMD` |
+| `test` | thin wrapper | `.agent/scripts/tests/run_script_tests.sh`, the `validate-script-tests` hook's entry (`.pre-commit-config.yaml`) |
+| `install` | thin wrapper | `user_tier_install.sh` (`make user-tier-install`, `Makefile` line 164) |
+| `env` | no-op | The `adapter` header: a type with no environment to expose emits nothing |
+| `project_root` | real, trivial | Prints the workspace root |
+| `repos` | real, trivial | One `name:path` line |
+| `scope_for_pr` | real, small | Origin URL to `owner/repo`; `single_project`'s verb already does this generically |
+| `worktree_repos` | real, trivial | One line `<root>`, `.`, `feature/issue-<N>`; `worktree_create.sh` does not call it for the workspace today |
+| `worktree_env` | no-op | No per-worktree environment |
+
+Tally: 3 no-op, 5 thin wrapper, 4 real. No conclusion is drawn from it here; that is the #295 decision.
+
+**Target**
+
+Status: `proposed`
+
+Proposed: `onboard-project` is the one way a project is registered and adapted (#332). A project's
+life from register to unregister is defined, including one project on two machines. Mixed-flavour
+projects, a repository carrying tools of another flavour, are supported (#310). [Open questions](#open-questions)
+C4 holds what is unsettled. The legacy `project/` shape is dropped with the registry-only change
+described under [Sessions and roots](#sessions-and-roots).
+
 ## Open questions
 
 **Now**
@@ -192,6 +275,7 @@ or to an issue. Each row says who decides and what the answer changes.
 |---|---|---|---|
 | OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
 | OQ-2 | ADR-0016 stays Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? | Owner | When the [Sessions and roots](#sessions-and-roots) Now block becomes `decided`, and when the Registry inventory is read to settle #295 |
+| C4 | Is `onboard-project` the only path that registers and adapts a project (#332) and is hand registration retired? What does unregistering do to a project's plans, timelines and memory, and how does one project live on two machines? How are mixed-flavour projects (#310) described? | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on it yet |
 
 ## Change log
 
@@ -206,3 +290,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Rules | Rules table with the enforced-by column: 14 rules, each with the check checked against the hook, script or CI file | #335 | 129 |
 | 2026-10-09 | Open questions | Section started with the first gap found while writing: where a project records its role mapping | #335 | 143 |
 | 2026-10-09 | Sessions and roots | Three session places, the user-tier mechanisms that are built, the PR 4 items decided but not built, #295 as an open pointer; OQ-2 added. Section is 63 lines, past the 60-line prompt: asked whether the detail moves next to the code; it stays, because the pinned `AGENTS.md` headings, the user-tier rule and the root file are interfaces between the hook, the installer, the skills and `AGENTS.md`, and no one script header shows all four | #335 | 208 |
+| 2026-10-09 | Registry and adapters | Registry, the 12-verb contract, resolution, the C2 inventory (8 script rows, 4 scripts without a branch, 12 verbs classified), Target from #332 and #310; C4 added. Section is 83 lines, past the 60-line prompt: asked whether the detail moves next to the code; the registry and contract text already lives there and is one sentence each here, and the rest is the owner-directed inventory, a dated probe for the #295 decision that is cut back once #295 is decided | #335 | 293 |
