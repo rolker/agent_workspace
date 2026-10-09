@@ -687,3 +687,11 @@ Revision 7 of the phase-3 plan, applying owner decisions of 2026-10-09 after the
 **Plan**: `.agent/work-plans/issue-335/plan.md` at `0d7ea07`
 
 Revision 8 of the phase-3 plan, applying two owner decisions of 2026-10-09 after the revision 6 approval. C2 (workspace as a registered project, #295): stays open as a pointer; row 7 gains an inventory of where the workspace path differs from the registered-project path (8 script rows) and a classification of the 12 adapter verbs (3 no-op, 5 thin wrapper, 4 real), so #295 is decided by reading it after the ADR-0016 acceptance run. C3 (where an issue's work plan and progress timeline live): lands in row 8 (Worktrees); Now is records committed in the project repo on the feature branch; Target is two per-project registry settings, location and tracking, with derived defaults, three mechanisms and one source-of-truth rule, tested against a colleague's single-repo project. The Now block also shows a gap found while checking: merge_pr.sh anchors the gate's timeline lookup at the legacy project/ checkout. Both questions move to Decided; the plan's closing section lists what changed per item.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 14:52 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `16283cc`
+
+Revision 9 of the phase-3 plan, applying the owner's A-group decisions of 2026-10-09 ("Go for group A") and citing issue #379. A1: every section carries the label Now, also with no Target. A2: the admission rule is the opening paragraph of "The design"; How it works stays first and unencumbered. A3: the Rules table gets the enforced-by column (hook, script, CI, review only, nothing). A4: no per-section dates; the register's Re-examined column is the checked-date and PR C adds one line to audit-workspace step 2 (the skill's "Report, don't fix" guideline gets a one-cell exception). A5: Instruction layers is a real section with status proposed; the tree pointer is dropped. #379 is cited as the tracker of the merge gate's legacy-path timeline lookup (its one-line fix does not wait for the records resolver); the roadmap gets no row for it. Only B1, B2, C4 and C5 remain open. The plan's closing section lists what changed per item.
