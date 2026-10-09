@@ -848,3 +848,31 @@ ADR-0002 (project worktree location), ADR-0011 (discovery order; 12 verbs), ADR-
 - [ ] Partly done: `slug()`/`ANCHOR_RE` now agree on `_` and the suite covers closing #s, link in heading, empty slug, underscore heading; link titles, inline-code links, `#L42` permalinks and the `\|` cell case are not addressed — `.agent/scripts/check_design_anchors.sh:130`, `.agent/scripts/tests/test_design_anchors.sh`
 - [ ] Not addressed (outside the brief): register guard (b) row-to-ADR matching, guards switching off on a renamed register heading — `.agent/scripts/check_design_anchors.sh:231`, `:242`
 - [ ] Not addressed (left for the owner): scratchpad citations, glossary "convergence" wording, open-block rule vs Open questions, plan-level decisions line — `docs/design.md:535`, `:654`, `:68`, `:577`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-09 16:40 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-335 at `5691639`
+**Base**: 071a03f (PR B scope: checker commit 46794b3 through 5691639)
+**Depth**: Standard (reason: governance docs, .pre-commit-config.yaml, scripts and tests; whole-branch classification)
+**Must-fix**: 0 | **Suggestions**: 14
+**Round**: 5 | **Ship**: recommended — no must-fix findings
+
+### Findings
+- [ ] (suggestion) Rules table lacks the owner's standing rule that the owner decides every merge; it is written only in a `merge_pr.sh` comment, not in `docs/principles.md` or the Rules section; add a Rules row (enforced by: `review only` or `nothing`) — `docs/design.md:139`
+- [ ] (suggestion) "`progress.md` is 820 lines" was true when written and is 850 now; the file grows with each entry, so say "more than 800" — `docs/design.md:447`
+- [ ] (suggestion) Fence opener accepts any indentation (a 4-space-indented fence is code in CommonMark, but a fence nested in a list item is valid); Codex and Copilot flagged it, so decide the rule and test it — `.agent/scripts/check_design_anchors.sh:143`
+- [ ] (suggestion) An empty ATX heading (`##`) does not reset the register-section boundary, so later anchored rows can count toward guard (b) — `.agent/scripts/check_design_anchors.sh:162`
+- [ ] (suggestion) Duplicate slugs: headings `A`, `A`, `A-1` give `a`, `a-1`, `a-1`; GitHub gives the third `a-1-1` — `.agent/scripts/check_design_anchors.sh:166`
+- [ ] (suggestion) The external-citation `grep` discards its exit status and stderr, so an unreadable citer passes silently — `.agent/scripts/check_design_anchors.sh:253`
+- [ ] (suggestion) Open, known: register guard (b) counts rows, not one row per ADR number — `.agent/scripts/check_design_anchors.sh:242`
+- [ ] (suggestion) Open, known: guards switch off if the `decision-register` heading is renamed — `.agent/scripts/check_design_anchors.sh:231`
+- [ ] (suggestion) Open, known: link titles, inline-code links and `#L42` permalinks give false positives; test gaps for tilde fences, closing #s, `\|` cells — `.agent/scripts/check_design_anchors.sh:130`
+- [ ] (suggestion) Open, known: Instruction layers cites two prior-art notes that exist only in the gitignored scratchpad — `docs/design.md:540`
+- [ ] (suggestion) Open, known: "Plan-level decisions that never got an ADR: none are listed" departs from plan row 13 without a recorded reason — `docs/design.md:582`
+- [ ] (suggestion) Open, known: the `open` block rule says no question text, but the Open questions section is itself an `open` block holding the table — `docs/design.md:68`
+- [ ] (suggestion) Open, known: glossary "convergence" wording differs from the `review_progress.sh verdict` rule (owner-settled wording) — `docs/design.md:659`
+- [ ] (suggestion) Open, known: the ADR-0011 and register wording otherwise fine; Review-loop Target bullets 2 and 3 repeat the Worktrees Target (lookup) and could shrink to pointers — `docs/design.md:445`
