@@ -193,3 +193,60 @@ AGENTS.md candidates: fold Documentation Accuracy into "Verify before claiming";
 
 ### Summary
 Phase-3 plan (rewrite docs/design.md as the current picture) committed as the issue's plan.md, replacing the three-phase outline. Drafted from the prior-art comparison (design-doc-sources/prior-art-comparison-2026-10-08) and the owner's 2026-10-05 decisions (How it works at the top; documentation layers as roles; Direction role serves the healthy/direction goal). Fifteen open questions ordered for the owner. Next: review-plan, then owner decisions one at a time.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-09 08:25 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: needs-work
+
+**Issue**: #335 — Workspace design document
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `0f604b7`
+**Branch**: `feature/issue-335`
+
+Persisted record of a review run without persistence. The reviewer was a read-only Sonnet sub-agent on 2026-10-08, launched from the Fable host session; this entry was written afterwards from its returned findings. The reviewer's own per-dimension table was not kept, so the table below is derived from the findings (a dimension with no finding says "none raised").
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | Line rule and the 17-row register cannot both hold (F8) |
+| Issue alignment | Needs work | Section order and status vocabulary do not match the owner's settled shape (F3, F7) |
+| File targeting | Needs work | "Already lives" claims wrong for three destinations (F1) |
+| Consequences | Needs work | Guide row, roadmap stale copy, ADR pointer limits missed (F2, F4, F5) |
+| Principle alignment | Needs work | Self-check lacks three principles that bite (S6) |
+| ADR compliance | Needs work | Addenda exceed ADR-0008; ADR-0017 link broken (F5) |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[File targeting]** (must-fix, F1) — three "already lives" claims are wrong. Resolution order lives in the `.agent/scripts/adapter` header, not in the registry headers. The workspace lock is not in `.agent/WORKFORCE_PROTOCOL.md` (its section 3 is GitHub-issue task locking). The review-loop lifecycle file lacks ADR-0014's exit contract and `--check-exit`. Check each against the real file and fill or drop.
+2. **[Consequences]** (must-fix, F2) — `.agent/knowledge/principles_review_guide.md` Consequences Map row "Work-plan directory convention" cites the design.md directory tree. The plan deletes the tree but never updates that row.
+3. **[Approach]** (must-fix, F3) — "How it works" must be the first H1-level section of the new design.md. Drop the HTML-comment list of section names. Choose one heading, "Rules" or "Rules that stay true", and say why.
+4. **[Consequences]** (must-fix, F4) — roadmap wire-in applies only to open or planned items. The roadmap's "Cross-cutting Decisions" section is a stale second copy of the design; reconcile it with design.md or mark it as history.
+5. **[ADR compliance]** (must-fix, F5) — one-line "Current description" addenda pointing at design.md exceed what ADR-0008 permits. Register only, or add a scope note. ADR-0017's link to ADR-0008 uses a wrong filename (`...-in-accepted-adrs.md`; the file is `0008-permit-cross-reference-addendums-in-adrs.md`); fix it.
+6. **[Plan currency]** (must-fix, F6) — merge main, then update the plan for the merged state (PR #376 in, AGENTS.md 442 lines).
+7. **[Approach]** (must-fix, F7) — Status vocabulary needs a "decided, not proven" value (ADR-0016 is Provisional).
+8. **[Scope]** (must-fix, F8) — the line-counting rule plus the decision register (17 rows) cannot fit in the 20 lines allotted; fix the arithmetic or the rule.
+9. **[File targeting]** (suggestion, S1) — move the anchor test into PR B so section names and their checker land together.
+10. **[Approach]** (suggestion, S2) — write `$WS_ROOT/docs/design.md` in skills that run in both scopes.
+11. **[Scope]** (suggestion, S3) — rules section keeps only rules with an enforcement fact AGENTS.md lacks.
+12. **[Approach]** (suggestion, S4) — regroup the open questions; drop Q14 (session-clearing advice).
+13. **[File targeting]** (suggestion, S5) — synthetic names in the `_project_registry.sh` header and WORKTREE_GUIDE belong in PR A.
+14. **[Principle alignment]** (suggestion, S6) — add self-check rows for "Small steps", "Test what breaks", "Enforce what matters".
+15. **[Approach]** (suggestion, S7) — the decision register gets a "re-examined / not yet" marker and a Purpose line.
+16. **[Consequences]** (suggestion, S8) — the README goals heading is `## Workspace goals`; verify and use the real heading.
+
+### Summary
+
+The approach is sound and matches the owner's shape, but several destination claims are false, a consequences row and the roadmap's stale copy are missed, the ADR pointers go past ADR-0008, and the line budget does not add up. Revise before the owner reviews it.
+
+### Recommended Actions
+
+- [ ] Correct the three "already lives" claims against the files (F1)
+- [ ] Add the review-guide Consequences row and the roadmap reconciliation (F2, F4)
+- [ ] Put "How it works" first; pick one rules heading (F3)
+- [ ] Limit ADR changes to what ADR-0008 allows; fix the ADR-0017 link (F5)
+- [ ] Update for the merged state (F6)
+- [ ] Add "decided, not proven"; resolve the line-count arithmetic (F7, F8)
+- [ ] Apply suggestions S1–S8 or say why not
