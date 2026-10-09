@@ -49,7 +49,7 @@
 # .agent/projects.d/<name>.sh (gitignored), with .agent/project_config.sh
 # as the shared fallback. A ros2_colcon config looks like:
 #
-#   # .agent/projects.d/p11-jazzy.sh
+#   # .agent/projects.d/shore_tools-jazzy.sh
 #   MANIFEST_BOOTSTRAP_URL="https://<host>/<manifest-repo>/raw/jazzy/config/bootstrap.yaml"
 #
 # One instance per distro: a second distro of the same project is a second
@@ -69,8 +69,8 @@
 #   that lists them.
 #
 # Examples:
-#gz4d         single_project  /home/me/src/gz4d
-#coastal      single_project  /data/checkouts/coastal_mapper
-#p11          project         /home/me/project11-ng          default_instance=p11-rolling
-#p11-jazzy    ros2_colcon     /home/me/project11-ng/jazzy    parent=p11 distro=jazzy   role=dev
-#p11-rolling  ros2_colcon     /home/me/project11-ng/rolling  parent=p11 distro=rolling role=dev
+#boat_sim            single_project  /home/me/src/boat_sim
+#coastal             single_project  /data/checkouts/coastal_mapper
+#shore_tools         project         /home/me/shore_tools          default_instance=shore_tools-rolling
+#shore_tools-jazzy   ros2_colcon     /home/me/shore_tools/jazzy    parent=shore_tools distro=jazzy   role=dev
+#shore_tools-rolling ros2_colcon     /home/me/shore_tools/rolling  parent=shore_tools distro=rolling role=dev

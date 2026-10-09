@@ -68,6 +68,47 @@ worth remembering because they read as exceptions:
 `**Status**: complete` on the current branch; a partial or failed review
 that got retried does not inflate the count.
 
+## Exit contract and dispatch
+
+`/run-issue` hands each phase to a fresh sub-agent (ADR-0014): the host
+prints the handoff block with `dispatch_phase.sh --issue <N> --skill <phase>`
+and pastes it into a new Agent tool call, so no phase inherits another's
+context and the phase fetches its own inputs with `gh`. Two exceptions: a
+repeat of a phase already run in the same drive may resume that phase's agent
+(`run-issue` section 4a), and when the owner chooses takeover at a
+`phase-failed` checkpoint (decision-table row 27, `mode=inline`) the host runs
+that phase itself in the worktree (`run-issue` section 5). Inside
+`review-code`, the external reviewers run through `cross_model_review.sh`,
+whose single dispatch mode (parallel and synchronous) is ADR-0015.
+
+After the sub-agent returns, the host does not take its word for it.
+`dispatch_phase.sh --check-exit --issue <N> --skill <phase> --before <count>`
+(plus `--pr <M>`, which `triage-reviews` requires and which switches
+`review-code` to its PR-mode entry type, `## Local Review`; and `--type` /
+`--project` for a project worktree) compares the number of entries of the
+phase's expected type before and after the dispatch and prints one `status=`
+result:
+
+- `OK` (with the worktree's `sha=`): the newest entry of that type is
+  `**Status**: complete` and, for an implement / address-findings
+  `## Implementation` entry, it carries the `**PR**` / `**Branch**` line.
+- `PARTIAL`: its status is `partial`, or it is a complete implement /
+  address-findings `## Implementation` entry that lacks the `**PR**` /
+  `**Branch**` line `merge_pr.sh`'s review gate needs.
+- `FAILED`: its status is `failed`.
+- `MISSING`: no new entry of the expected type appeared, or its status is
+  not `complete`, `partial` or `failed`.
+
+`--check-exit` can also exit 2 (usage: no worktree for the issue, unknown
+`--skill`, missing `--pr` for `triage-reviews`, a non-integer `--before`) or 3
+(`progress.md` could not be parsed) with no `status=` line; that is an error
+in the check itself, not an `OK`.
+
+Any returned status other than `OK` (`PARTIAL`, `FAILED`, `MISSING`) is a
+`phase-failed` checkpoint, never a silent retry: the owner picks retry,
+takeover or stop. An exit of 2 or 3 means the check itself failed, so it is
+fixed and re-run; it is not a phase outcome and raises no checkpoint.
+
 ## Where the human checkpoints are
 
 Nine checkpoint kinds, each an `AskUserQuestion` the host asks before
