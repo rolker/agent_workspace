@@ -54,6 +54,18 @@ repos:
         pass_filenames: false
         files: ^\.agent/(scripts/adapter|scripts/validate_adapter\.sh|project_types/)
 
+      # Design-anchor check (issue #335): every docs/design.md#<anchor> citation
+      # and in-file link must resolve; once the Decision register exists, a new
+      # ADR file needs its register row. Separate from validate-script-tests so
+      # docs commits stay fast (issue #354). Hook approved by the owner 2026-10-09.
+      - id: check-design-anchors
+        name: Check docs/design.md anchors resolve (issue #335)
+        entry: bash .agent/scripts/check_design_anchors.sh
+        language: system
+        pass_filenames: false
+        # yamllint disable-line rule:line-length
+        files: ^(docs/design\.md$|README\.md$|docs/roadmap\.md$|\.agent/AGENT_ONBOARDING\.md$|docs/decisions/|\.agent/knowledge/|\.claude/skills/|\.pre-commit-config\.yaml$)
+
       - id: validate-script-tests
         name: Run .agent/scripts/tests/ suite (progress.md vocabulary + issue #269 checkpoint gate)
         entry: bash .agent/scripts/tests/run_script_tests.sh
