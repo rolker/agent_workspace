@@ -68,7 +68,7 @@ Skip rows that clearly do not apply.
 | Worktree scripts | `.agent/WORKTREE_GUIDE.md`; `AGENTS.md` worktree section |
 | `review-code` skill | `.agent/knowledge/review_depth_classification.md`; `.agent/scripts/cross_model_review.sh` |
 | Review depth classification doc | `review-code` skill (if tier definitions change) |
-| Work-plan directory convention | `plan-task`, `review-plan`, `triage-reviews`, `review-code` skills; `docs/design.md` directory tree |
+| Work-plan directory convention | `plan-task`, `review-plan`, `triage-reviews`, `review-code` skills; the work-plans description in `docs/design.md` (Review loop and timeline) |
 | `progress.md` entries (`## Plan Authored`, `## Plan Review`, `## Local Review`, `## Local Review (Pre-Push)`, `## Integrated Review`, `## Implementation` — ADR-0013) | `plan-task`, `review-plan`, `review-code`, `triage-reviews`, `address-findings` write them via `review_progress.sh persist`; `round` / `sources` / `findings` / `plan-sha` read them back — change an entry's shape or correlation field and the writer, the readers, and ADR-0013's tables move together |
 | A phase's entry type, verdict field, or `progress.md` shape | `.agent/scripts/dispatch_phase.sh`'s per-skill tables and `next`'s decision-table rows, `test_dispatch_phase.sh`'s fixtures, `.agent/knowledge/review_loop_lifecycle.md` |
 

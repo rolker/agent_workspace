@@ -342,6 +342,76 @@ chooses. Both settings must be able to describe it. Because it has no pull reque
 lookup and the tracking and not the merge gate (mechanism 2), which a project with pull requests has to
 exercise.
 
+## Review loop and timeline
+
+**Now**
+
+Status: `decided`
+
+An issue passes through eight phases in this order. `review-code` runs twice, once on the unpushed
+branch and once on the pull request, and `address-findings` fixes what a review found between its runs.
+The `/run-issue` skill (Claude Code only) walks the order with `dispatch_phase.sh`; Codex and Gemini
+sessions walk the same order by hand, one `SKILL.md` at a time
+(`.agent/knowledge/review_loop_lifecycle.md`; ADR-0013, ADR-0014).
+
+| Phase | What it produces | What follows, and who decides |
+|---|---|---|
+| `review-issue` | An `## Issue Review` entry and a comment on the issue | Open `### Actions` boxes go to the owner at an `issue-actions` checkpoint; with none open the loop moves on to `plan-task` |
+| `plan-task` | `plan.md`, committed on the feature branch, and a `## Plan Authored` entry | `review-plan` runs next, no decision |
+| `review-plan` | A `## Plan Review` entry | The owner decides at the `plan` checkpoint after every plan review, whatever its verdict: proceed, revise or stop |
+| `implement` | Commits on the branch and an `## Implementation` entry; it never pushes | `review-code` on the branch runs next, no decision |
+| `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the owner at the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) without approval the owner is asked at `rounds`. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
+| `publish` | The push and the pull request, whose body carries a `## Decision summary` heading | The owner has just decided at `publish`; the host does the push (`run-issue/SKILL.md` step 7) |
+| `triage-reviews` | An `## Integrated Review` entry: every review source combined into one list of findings with a verdict on each | Open findings go to the owner at `findings`; with none open the owner is asked at `merge` |
+| `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged goes to `merge-refused` |
+
+- **One entry per phase, in `progress.md`.** `.agent/work-plans/issue-<N>/progress.md` is the only place
+  loop state lives: not the conversation, not a lock file. The directory sits in the repository that
+  owns the issue, on the issue's feature branch ([Worktrees](#worktrees), Records). Entries have a fixed
+  vocabulary and header (`**Status**`, `**When**`, `**By**`, a correlation to an issue, a plan or a
+  commit; ADR-0013), are written by `progress_append.sh`, checked by `_progress_entry.sh` and read by
+  `progress_read.py`.
+- **The next step is read from the newest entry.** `dispatch_phase.sh next` reads only the newest entry
+  and, as its one other input, the pull request state; it makes no `gh` call and returns one action from a
+  28-row table (`dispatch_phase.sh` header). A partial or failed newest entry is always a `phase-failed`
+  checkpoint, never a silent retry.
+- **Each phase runs in a fresh sub-agent.** `dispatch_phase.sh --issue <N> --skill <phase>` prints the
+  handoff, and the host pastes it into a new Agent call, in this process only. The sub-agent fetches its
+  own inputs with `gh` and never pushes (ADR-0014; `dispatch_phase.sh` exit contract). Reviewers outside
+  Claude run in parallel and synchronously through `cross_model_review.sh` (ADR-0015).
+- **The host checks the exit, not the sub-agent's word.** `dispatch_phase.sh --check-exit` compares the
+  count of entries of the phase's type before and after, and returns `OK`, `PARTIAL`, `FAILED` or
+  `MISSING`; anything but `OK` goes to the owner at `phase-failed` to retry, take over or stop. What it
+  checks is that an entry of the right type appeared, its `**Status**` and, for an `## Implementation`
+  entry, its `**PR**` or `**Branch**` line. It does not check whether a review's findings are right; the
+  merge gate reads the `**Verdict**` and the open boxes a reviewer wrote.
+- **Nine checkpoint kinds stop for the owner**: `issue-actions`, `plan`, `publish`, `rounds`,
+  `findings`, `merge`, `merge-refused`, `phase-failed` and `unexpected`. Each answer is recorded as a
+  `## Checkpoint` entry (`**Decided-by**: owner`) before the loop moves on, and an answer outside a
+  checkpoint's fixed vocabulary routes to `unexpected`. No phase advances on its own judgment
+  (`review_loop_lifecycle.md`).
+- **One driver per issue.** There is no lock; a second driver or a hand edit shows only as an unexpected
+  entry at the next check (ADR-0014).
+
+**Target**
+
+Status: `proposed`
+
+- Proposed (candidate): the design says, for each claim in the loop, whether code verifies it or the
+  agent reports it. Today the shape of an entry, the exit count and status, and the gate's conditions are
+  verified in code, and the content of a review is reported.
+- Proposed (candidate): a new session finds the records for its issue through the one lookup in the
+  Target of [Worktrees](#worktrees), so the path is not written out in each reader.
+- Proposed (candidate): a size bound on records. This issue's own `progress.md` is 726 lines
+  (`wc -l`, 2026-10-09), and every reader parses the whole file.
+
+**Target (open)**
+
+Status: `open`
+
+What a review finding must contain, and how independent the reviewers are: C5 in
+[Open questions](#open-questions).
+
 ## Open questions
 
 **Now**
@@ -356,6 +426,7 @@ or to an issue. Each row says who decides and what the answer changes.
 | OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
 | OQ-2 | ADR-0016 stays Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? | Owner | When the [Sessions and roots](#sessions-and-roots) Now block becomes `decided`, and when the Registry inventory is read to settle #295 |
 | C4 | Is `onboard-project` the only path that registers and adapts a project (#332) and is hand registration retired? What does unregistering do to a project's plans, timelines and memory, and how does one project live on two machines? How are mixed-flavour projects (#310) described? | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on it yet |
+| C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
 
 ## Change log
 
@@ -372,3 +443,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Sessions and roots | Three session places, the user-tier mechanisms that are built, the PR 4 items decided but not built, #295 as an open pointer; OQ-2 added. Section is 63 lines, past the 60-line prompt: asked whether the detail moves next to the code; it stays, because the pinned `AGENTS.md` headings, the user-tier rule and the root file are interfaces between the hook, the installer, the skills and `AGENTS.md`, and no one script header shows all four | #335 | 208 |
 | 2026-10-09 | Registry and adapters | Registry, the 12-verb contract, resolution, the C2 inventory (8 script rows, 4 scripts without a branch, 12 verbs classified), Target from #332 and #310; C4 added. Section is 83 lines, past the 60-line prompt: asked whether the detail moves next to the code; the registry and contract text already lives there and is one sentence each here, and the rest is the owner-directed inventory, a dated probe for the #295 decision that is cut back once #295 is decided | #335 | 293 |
 | 2026-10-09 | Worktrees | Two kinds and where they live, entering, concurrency, the Records Now text citing #379, and the C3 Target (location and tracking, the four combinations, three mechanisms, source-of-truth rule, acceptance test by shape). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the layout detail already lives in the worktree guide and is one bullet here, and the Target is design for something not built, so no code or script header can hold it yet. Stays; it splits into its own Records section if the Target grows past 60 lines | #335 | 374 |
+| 2026-10-09 | Review loop and timeline | The eight phases in order with what each produces and who decides, the timeline as the only loop state, fresh sub-agent per phase, the exit check, nine checkpoints; Target candidates and the C5 pointer; C5 added. Also the review guide's work-plan row now names this section instead of the removed directory tree. Section is about 70 lines, past the 60-line prompt: asked whether the detail moves next to the code; the lifecycle file and dispatch_phase.sh header already hold the mechanics, so the section keeps only the phase table and one bullet per mechanism, and what it adds is the who-decides column and the code-versus-reported line, which no one file shows | #335 | 446 |
