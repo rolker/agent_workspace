@@ -116,6 +116,19 @@ only.
 | A pull request carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` appends it and exits 2 when `AGENT_NAME` and `AGENT_MODEL` are unset. Issues and comments are signed by habit only: `gh_create_issue.sh` does not add one |
 | No secrets in a commit | Enforce what matters, as simply as possible | `nothing` | No hook scans for secrets; `check-added-large-files` is the only content check on file size |
 
+## Open questions
+
+**Now**
+
+Status: `open`
+
+Questions this file raised and nobody has answered. An `open` block elsewhere in the file points here
+or to an issue. Each row says who decides and what the answer changes.
+
+| ID | Question | Who decides | What it changes |
+|---|---|---|---|
+| OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
+
 ## Change log
 
 One row per change to this file, appended in the same change that alters a section: date, section, one
@@ -127,3 +140,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Purpose | What the file is for, with pointers to the README goals and the principles | #335 | 54 |
 | 2026-10-09 | Documentation layers | The seven roles and the workspace's mapping, with the two gaps (healthy, measures) shown; per-project mapping as a proposal | #335 | 94 |
 | 2026-10-09 | Rules | Rules table with the enforced-by column: 14 rules, each with the check checked against the hook, script or CI file | #335 | 129 |
+| 2026-10-09 | Open questions | Section started with the first gap found while writing: where a project records its role mapping | #335 | 143 |
