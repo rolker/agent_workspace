@@ -30,6 +30,19 @@ builds it.
 | `proposed` | Agent or owner suggestion, not decided |
 | `open` | A question, listed under Open questions. An `open` block holds only a pointer to where the question is tracked (an issue number or the Open questions row), no question text |
 
+## Purpose
+
+**Now**
+
+Status: `decided`
+
+This file says how the workspace's parts fit together today, so a change to one part can be checked
+against the others. A change that alters the picture updates the matching section here in the same
+change, which is how the file stays current (ADR-0017, Decision; principle "Keep one current design").
+It does not restate the goals or the principles. The goals are in
+[`README.md`](../README.md) under `## Workspace goals`, the principles in
+[`docs/principles.md`](principles.md); this file says how the parts serve them.
+
 ## Change log
 
 One row per change to this file, appended in the same change that alters a section: date, section, one
@@ -38,3 +51,4 @@ line, issue, and the line count of the document after the change.
 | Date | Section | Change | Issue | Lines |
 |---|---|---|---|---|
 | 2026-10-09 | Whole file | Skeleton. Rewrite starts from the plan's section table: `# How it works` is a stub (written last), `# The design` opens with the admission rule and the Status key, and everything the old file held that now lives next to the code is gone (destinations landed in #377) | #335 | 40 |
+| 2026-10-09 | Purpose | What the file is for, with pointers to the README goals and the principles | #335 | 54 |
