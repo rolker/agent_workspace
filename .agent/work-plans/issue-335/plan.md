@@ -1,7 +1,10 @@
 # Plan: Workspace design document, phase 3 (rewrite docs/design.md as the current picture)
 
-Revision 9 (2026-10-09). The owner approved revision 6 on 2026-10-09 (the `## Checkpoint` entry in
-`progress.md`). This revision does not reopen the plan. It applies the owner's decisions on the A
+Revision 10 (2026-10-09). The owner approved revision 6 on 2026-10-09 (the `## Checkpoint` entry in
+`progress.md`). This revision does not reopen the plan. It applies one owner decision of 2026-10-09
+about the order in which the document is written: `# How it works` is a stub first and an agent drafts
+it last (process step 2, the PR B commit order, row 1). Nothing else changes.
+Revision 9 applied the owner's decisions on the A
 group (shape of the document, A1 to A5; owner decision 2026-10-09: "Go for group A", the host's
 recommendations accepted as stated) and cites issue #379, opened the same day for the merge-gate
 lookup gap that revision 8 recorded. After this revision the only open questions are B1, B2, C4 and C5.
@@ -13,7 +16,7 @@ four owner decisions of 2026-10-09 (hook scope, label, purpose and anchors, glos
 answered plan review round 4 (needs-work, entry `ffa20fe`), revision 4 answered round 3 (entry
 `e3c3eac`), revision 3 answered round 2 (entry `9cfd1fe`), revision 2 answered round 1 (entry
 `6f8c643`) and the owner's decision on the shape of the document (2026-10-08). What changed is in the
-"Revision 2" to "Revision 9 change log" sections at the end.
+"Revision 2" to "Revision 10 change log" sections at the end.
 
 ## Issue
 
@@ -54,10 +57,14 @@ served by the Direction role (G2). The owner writes plain prose and wants text h
    merged (#377). No PR B section is written before the owner's say-so on the plan. The new pre-commit hook in PR B is CI-like config (CI runs
    `make lint`, which runs every hook), so it is Ask First; the owner approved it on 2026-10-09 (owner
    decision 2026-10-09: "Yes, and watch the ADR directory too."), which settles question **B4**.
-2. **"How it works" first, in the owner's words.** The agent supplies only a list of the facts and
-   decisions it must cover (from H1 and the 16 principles' Serves lines), not prose. The owner writes
-   or edits the paragraphs; the agent trims nothing without asking, and there is no length guide for
-   this section. Everything below hangs off it.
+2. **"How it works" is a stub first and drafted last (owner decision 2026-10-09, revision 10; it
+   replaces "the owner writes it first").** The owner does not write the section first. (1) The first
+   section commit creates `# How it works` as a stub, the heading plus one line, "Written last; see the
+   change log.", so the anchor `#how-it-works` exists from the start. (2) The other sections are written
+   in table order. (3) An agent drafts How it works last, from the fact list
+   (`how-it-works-facts-2026-10-09.md`, 70 sourced facts) and the owner's recorded phrasings only, with
+   no new ideas, for the owner to edit when he has bandwidth. The owner writes or edits the paragraphs
+   after that; the agent trims nothing without asking, and there is no length guide for this section.
 3. **Then one section at a time**, in the order of the table below. Per section the agent drafts
    "Now" from code and records only (each line cites a script, ADR or file it was checked against),
    drafts "Target" only from recorded decisions, and turns every gap into an Open Questions row. The
@@ -127,7 +134,7 @@ where the part has none.
 
 | # | Section (stable heading) | What goes in | Now | Target |
 |---|---|---|---|---|
-| 1 | `# How it works` | Owner's words. Core ideas, day-to-day harness plus long view, principles connect them; README Workspace goals ends with a pointer. No tree and no tree pointer: the directory tree leaves the document, and a pointer would only point at the repo (decided, owner decision 2026-10-09, A5) | decided (H1) | - |
+| 1 | `# How it works` | A stub first ("Written last; see the change log."), then an agent draft from the fact list and the owner's recorded phrasings only, for the owner to edit (revision 10). Core ideas, day-to-day harness plus long view, principles connect them; README Workspace goals ends with a pointer. No tree and no tree pointer: the directory tree leaves the document, and a pointer would only point at the repo (decided, owner decision 2026-10-09, A5) | decided (H1) | - |
 | 2 | `# The design` opening | Admission rule; the split (current picture / ADRs / `progress.md`); update-at-merge; the Status key | decided (ADR-0017) | - |
 | 3 | `## Purpose` | Two or three sentences: what this file is for (how the parts fit today, checked at merge). Points at README `## Workspace goals` and `docs/principles.md` without restating them. This carries the issue's "Purpose" part (row accepted, owner decision 2026-10-09) | decided (ADR-0017) | - |
 | 4 | Documentation layers | The seven roles; where each lives for the workspace (Goals: README `## Workspace goals`; How it works and Design: this file; Principles: `docs/principles.md` and the review guide; Decisions: `docs/decisions/`; Direction: `docs/roadmap.md`, "healthy" has no home yet; Measures: none yet). Shows the two gaps honestly. How a project maps its own is Target, seeded by `discover_governance.sh` types | decided (the roles and the workspace's mapping) | proposed (per-project mapping) |
@@ -468,9 +475,15 @@ headers, and it is cut back when #295 is decided.
   checker script, its pre-commit hook in `.pre-commit-config.yaml` and its script-tests suite. Commit
   order, so that no commit fails the hook (the hook is never skipped): (1) checker, hook and suite
   (the guards are conditional on the register, so this commit passes with no design.md register);
-  (2) the section commits, kept separate, each checked for resolving anchors by the hook; (3) the
-  register section, after which both guards are live and the 17 rows are counted from then on; (4) the
-  glossary, last in the document (its terms and one-line definitions are settled, row 16). **A section
+  (2) the file skeleton, which creates `# How it works` as a stub (heading plus "Written last; see the
+  change log."), `# The design` with its opening paragraph and Status key, and the change log, then the
+  section commits in table order, kept separate, each checked for resolving anchors by the hook;
+  (3) the register section, after which both guards are live and the 17 rows are counted from then on;
+  (4) the glossary, last in the document (its terms and one-line definitions are settled, row 16);
+  (5) the `# How it works` draft, last of all, replacing the stub (an agent draft from the fact list
+  and the owner's recorded phrasings only, for the owner to edit; owner decision 2026-10-09, revision
+  10). Part 1 of PR B stops after row 9 (Review loop and timeline); rows 10 to 16 and the How it works
+  draft are part 2. **A section
   links only to sections already committed, and the register links last** (plan review round 5,
   accepted): a section that links forward to one not yet written would fail its own commit under the
   hook. The register's rows for ADRs with no carrying section link to `#decision-register` itself
@@ -678,7 +691,7 @@ Dropped: the former Q14 (mention session-clearing advice at all), per the standi
 ## Estimated Scope
 
 Three PRs (A: destinations, **done**, merged as #377; B: the rewrite, the anchor checker with its hook and suite; C: wire-in), B and C merge-able as one. The
-writing is paced by the owner's edits (process step 2 first), not by drafting. Register sizing: 17 rows
+writing is paced by the owner's edits (the How it works draft last, process step 2), not by drafting. Register sizing: 17 rows
 written in PR B; nine of them (0002, 0003, 0011, 0012, 0013, 0014, 0015, 0016, 0017) are checked against
 the code each describes, one short read per ADR done in the commit of the section that cites it; the
 other eight are `not yet`. PR A was small (one script header, one docstring, one lifecycle section, name
@@ -816,3 +829,13 @@ logged from the first section commit.
 | 5 | A5 decided: row 12 is a real section, `## Instruction layers`, Now `proposed`, sources named (`AGENTS.md` is 442 lines, counted this revision; the Claude Code docs' under-200-lines target as the prior-art note records it). The one-line tree pointer in row 1 is dropped. The new heading is an anchor like any other (Wire-in 6) |
 | 6 | #379 cited: row 8's Now text, the "Records" Now paragraph, mechanisms 1 and 2, and the `merge_pr.sh` row of the Registry inventory name it as the tracker of the gate lookup at `merge_pr.sh` line 670 and say its one-line fix does not wait for the records resolver. Wire-in 4 says why the roadmap gets no row for it (it adds, removes or re-shapes no part named in a design.md section; grep finds no #379 in the roadmap). `merge_pr.sh` and its gate test are listed under "Not touched" |
 | 7 | Open Questions: A1 to A5 moved to Decided; the A group heading is gone; a "Still open (4)" line at the top lists B1, B2, C4 and C5. Prior Art, Self-Check (three rows), Consequences (four new rows and the `AGENTS.md` row reworded), Files to Change (design.md and audit-workspace rows, one Not touched entry), PR split (PR C) and Estimated Scope follow |
+
+## Revision 10 change log
+
+Applies one owner decision of 2026-10-09 (no review round in between): the owner does not write
+"How it works" first. It does not reopen the plan approved at revision 6. The rewrite's line count is
+logged in the document's own change log from the first section commit.
+
+| Item | What changed |
+|---|---|
+| 1 | Process step 2 reworded: the first section commit creates `# How it works` as a stub (the heading plus "Written last; see the change log.") so the anchor exists; the other sections are written in table order; an agent drafts How it works last from the fact list and the owner's recorded phrasings only, with no new ideas, for the owner to edit when he has bandwidth. The PR B commit order gains the skeleton commit (stub, `# The design` opening and Status key, change log) and a last commit for the draft; row 1 and Estimated Scope follow. PR B is written in two dispatches: part 1 rows 1 to 9 as far as Review loop and timeline, part 2 rows 10 to 16 and the draft |
