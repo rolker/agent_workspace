@@ -558,3 +558,24 @@ PR A of the phase-3 plan (revision 6): fill the gaps the new `docs/design.md` wi
 - The Checkpoint `**Decision**` is `proceed`, not `approve`: `proceed` is the token `dispatch_phase.sh` accepts for `After: plan`.
 - The plan's `Makefile` line 80, `.agent/projects.local.example` lines 52 and 72-76, `WORKTREE_GUIDE.md` lines 72 and 181, `_project_registry.sh` lines 11-14, guide line 51 and ADR-0017 line 27 were all as stated; no line reference was wrong.
 - `WORKTREE_GUIDE.md` still contains `rolker/cube_bathymetry#111` (a real package-repo example); the plan did not list it, so it was left.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-09 09:40 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-335 at `fb79191`
+**Base**: a80936e^ (PR A commits a80936e..fb79191 only; the branch also carries the phase-2 principles work, whose pre-push review was round 1, so this is round 2 by the script count)
+**Depth**: Standard (reason: 9 files; governance and enforcement paths touched)
+**Must-fix**: 1 | **Suggestions**: 6
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+### Findings
+- [ ] (must-fix) `OK` is defined as "newest entry is Status complete", but an implement / address-findings Implementation entry that is complete without the PR/Branch line is PARTIAL, so the two bullets overlap; qualify OK (Gemini) — `.agent/knowledge/review_loop_lifecycle.md:87-91`
+- [ ] (suggestion) "hands each phase to a fresh sub-agent" omits the owner-chosen takeover, which the host runs inline (row 27); name it beside the 4a exception (adversarial) — `.agent/knowledge/review_loop_lifecycle.md:73`
+- [ ] (suggestion) the command example omits --pr (required for triage-reviews; PR-mode review-code checks a different entry type), --type and --project; --check-exit can also exit 2 or 3 with no status line (Codex, adversarial) — `.agent/knowledge/review_loop_lifecycle.md:83`
+- [ ] (suggestion) "The only reader is dashboard.sh ... does not stop any script": lock.sh and unlock.sh also test the file, and a second `make lock` is refused while it exists — `.agent/scripts/lock.sh:6-8`
+- [ ] (suggestion) the `project '<name>':` prefix claim does not cover type-project parent roots, which report as `parent root '<name>':`; qualify or add (Codex) — `.agent/scripts/validate_workspace.py:20`
+- [ ] (suggestion) help text "Lock workspace (prevent concurrent agent work)" now contradicts the lock.sh header (advisory, stops nothing); predates the diff — `Makefile:88`
+- [ ] (suggestion) user-visible prose still names the real project (README "project11", west-variant "p11"); outside the plan's stated boundary, so decide whether to extend it — `tools/ros-manifest/README.md:6`
