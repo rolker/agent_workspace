@@ -506,3 +506,21 @@ Revision 6 applies the owner's decisions cleanly and the conditional-guard desig
 
 - [ ] Optionally add the two one-line clarifications above (register link target for ADRs without a section; no forward in-file links before the register).
 - [ ] Settle C6 with the owner before PR B's glossary commit; no action needed on the plan itself.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-09 09:30 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Owner approval of the phase-3 plan, 2026-10-09. Plan `.agent/work-plans/issue-335/plan.md` at `acd2cc3` (revision 6); plan review round 5 at `65fb3c4`, verdict ready ("approved with suggestions").
+
+- Plan approved at revision 6; the two round-5 suggestions (register link target for ADRs without a section; no forward in-file links before the register) are folded in before PR B.
+- PR A may start now.
+- Heading "Rules" kept.
+- Label "System design" kept.
+- Anchor hook approved, with `docs/decisions/` in its scope.
+- Purpose section and the `#how-it-works` / `#the-design` anchors accepted.
+- Glossary terms (C6) to be settled with the owner before PR B writes the glossary.
