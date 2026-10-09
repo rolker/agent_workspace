@@ -671,3 +671,11 @@ Carried forward, not re-listed: `tools/ros-manifest/` real-name prose is owner-d
 
 ### Findings
 - [ ] No issues found. LGTM. (Copilot's two PR findings are resolved at fcafa3c and bdab476; external reviewers' round findings were checked against dispatch_phase.sh and lock.sh and are false positives.)
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 12:56 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `1b561b8`
+
+Revision 7 of the phase-3 plan, applying owner decisions of 2026-10-09 after the revision 6 approval: PR A is recorded as merged (#377, 249a8d0) with what it landed; C1 is decided (register only in PR B, a drifted ADR gets standing "superseded in practice", no ADR file edited, supersession later one at a time); C6 is decided (the eight phase names are not glossary entries, the settled list of 15 terms with the owner's definitions sits in row 16, WIP limit and appetite left out). The two accepted round-5 suggestions are folded in (register rows for ADRs with no section link to the register itself; sections link only to already-committed sections, the register last). The plan's closing section lists what changed per item.
