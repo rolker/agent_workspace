@@ -73,25 +73,36 @@ that got retried does not inflate the count.
 `/run-issue` hands each phase to a fresh sub-agent (ADR-0014): the host
 prints the handoff block with `dispatch_phase.sh --issue <N> --skill <phase>`
 and pastes it into a new Agent tool call, so no phase inherits another's
-context and the phase fetches its own inputs with `gh`. The one exception is
-a repeat of a phase already run in the same drive, which may resume that
-phase's agent (`run-issue` section 4a). Inside `review-code`, the external
-reviewers run through `cross_model_review.sh`, whose single dispatch mode
-(parallel and synchronous) is ADR-0015.
+context and the phase fetches its own inputs with `gh`. Two exceptions: a
+repeat of a phase already run in the same drive may resume that phase's agent
+(`run-issue` section 4a), and when the owner chooses takeover at a
+`phase-failed` checkpoint (decision-table row 27, `mode=inline`) the host runs
+that phase itself in the worktree (`run-issue` section 5). Inside
+`review-code`, the external reviewers run through `cross_model_review.sh`,
+whose single dispatch mode (parallel and synchronous) is ADR-0015.
 
 After the sub-agent returns, the host does not take its word for it.
 `dispatch_phase.sh --check-exit --issue <N> --skill <phase> --before <count>`
-compares the number of entries of the phase's expected type before and after
-the dispatch and prints one result:
+(plus `--pr <M>`, which `triage-reviews` requires and which switches
+`review-code` to its PR-mode entry type, `## Local Review`; and `--type` /
+`--project` for a project worktree) compares the number of entries of the
+phase's expected type before and after the dispatch and prints one `status=`
+result:
 
 - `OK` (with the worktree's `sha=`): the newest entry of that type is
-  `**Status**: complete`.
-- `PARTIAL`: its status is `partial`, or an implement / address-findings
-  `## Implementation` entry lacks the `**PR**` / `**Branch**` line that
-  `merge_pr.sh`'s review gate needs.
+  `**Status**: complete` and, for an implement / address-findings
+  `## Implementation` entry, it carries the `**PR**` / `**Branch**` line.
+- `PARTIAL`: its status is `partial`, or it is a complete implement /
+  address-findings `## Implementation` entry that lacks the `**PR**` /
+  `**Branch**` line `merge_pr.sh`'s review gate needs.
 - `FAILED`: its status is `failed`.
 - `MISSING`: no new entry of the expected type appeared, or its status is
-  none of the three above.
+  not `complete`, `partial` or `failed`.
+
+`--check-exit` can also exit 2 (usage: no worktree for the issue, unknown
+`--skill`, missing `--pr` for `triage-reviews`, a non-integer `--before`) or 3
+(`progress.md` could not be parsed) with no `status=` line; that is an error
+in the check itself, not an `OK`.
 
 Anything but `OK` is a `phase-failed` checkpoint, never a silent retry: the
 owner picks retry, takeover or stop.
