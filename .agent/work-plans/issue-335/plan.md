@@ -1,14 +1,16 @@
 # Plan: Workspace design document, phase 3 (rewrite docs/design.md as the current picture)
 
-Revision 7 (2026-10-09). The owner approved revision 6 on 2026-10-09 (the `## Checkpoint` entry in
-`progress.md`). This revision does not reopen the plan. It records that PR A is merged (#377, merge
-commit `249a8d0`), applies the owner's decisions on C1 and C6 (owner decision 2026-10-09), and folds in
-the two accepted suggestions from plan review round 5 (entry `65fb3c4`, verdict ready). Revision 6
-applied four owner decisions of 2026-10-09 (hook scope, label, purpose and anchors, glossary); revision 5
+Revision 8 (2026-10-09). The owner approved revision 6 on 2026-10-09 (the `## Checkpoint` entry in
+`progress.md`). This revision does not reopen the plan. It applies the owner's decisions on C2 (the
+workspace as a registered project: leave it open, add an inventory) and C3 (where an issue's work plan
+and progress timeline live), both owner decisions of 2026-10-09. Revision 7 recorded that PR A is
+merged (#377, merge commit `249a8d0`), applied the decisions on C1 and C6 and folded in the two
+accepted suggestions from plan review round 5 (entry `65fb3c4`, verdict ready). Revision 6 applied
+four owner decisions of 2026-10-09 (hook scope, label, purpose and anchors, glossary); revision 5
 answered plan review round 4 (needs-work, entry `ffa20fe`), revision 4 answered round 3 (entry
 `e3c3eac`), revision 3 answered round 2 (entry `9cfd1fe`), revision 2 answered round 1 (entry
 `6f8c643`) and the owner's decision on the shape of the document (2026-10-08). What changed is in the
-"Revision 2" to "Revision 7 change log" sections at the end.
+"Revision 2" to "Revision 8 change log" sections at the end.
 
 ## Issue
 
@@ -45,7 +47,7 @@ served by the Direction role (G2). The owner writes plain prose and wants text h
 ### Process (how the document gets written)
 
 1. Plan reviewed (rounds 1 to 5 done) and approved by the owner at revision 6 on 2026-10-09; this is
-   revision 7, which applies decisions made after that approval. Worktree for #335 exists. PR A is
+   revision 8, which applies decisions made after that approval. Worktree for #335 exists. PR A is
    merged (#377). No PR B section is written before the owner's say-so on the plan. The new pre-commit hook in PR B is CI-like config (CI runs
    `make lint`, which runs every hook), so it is Ask First; the owner approved it on 2026-10-09 (owner
    decision 2026-10-09: "Yes, and watch the ADR directory too."), which settles question **B4**.
@@ -122,9 +124,9 @@ where the part has none.
 | 4 | Documentation layers | The seven roles; where each lives for the workspace (Goals: README `## Workspace goals`; How it works and Design: this file; Principles: `docs/principles.md` and the review guide; Decisions: `docs/decisions/`; Direction: `docs/roadmap.md`, "healthy" has no home yet; Measures: none yet). Shows the two gaps honestly. How a project maps its own is Target, seeded by `discover_governance.sh` types | decided (the roles and the workspace's mapping) | proposed (per-project mapping) |
 | 5 | Rules | See "Why `Rules`" below. One table: rule, principle it implements (cited, not restated), enforced by. Only rules that carry an enforcement fact `AGENTS.md` does not state. Candidates verified in this revision: no commit to a protected branch, commit identity set, issue number matches the branch (all pre-commit hooks); progress entry shape (`_progress_entry.sh` and `progress_append.sh` validate it); the merge gate (`merge_pr.sh`). Rules with no check (for example worktree for all work) are listed as review only or nothing, after the owner accepts the column (A3). Now is `decided` because each listed rule and its check were verified; the "review only" and "nothing" entries are facts shown in the column, not a status | decided | - |
 | 6 | Sessions and roots | A session starts in the workspace or in a project root; the user tier supplies the workspace layer to project sessions (ADR-0016). Target: the workspace as a registered project, a pointer to #295 only (an `open` block holds no question text) | decided, not proven | open (#295) |
-| 7 | Registry and adapters | Registry maps names to roots and types; a 12-verb adapter contract per project type (ADR-0011, which supersedes ADR-0003 and carries its project-agnostic doctrine forward; one clause says so, which is why 0003 is checked in PR B); resolution order in one sentence. GitHub is not a project dependency, the workspace uses it for now (owner 2026-10-05). Target: `onboard-project` as the one registration path (#332), mixed-flavour projects (#310), project lifecycle register to unregister; the unsettled parts also sit in Open questions | decided (ADR-0011/0012) | proposed |
-| 8 | Worktrees | Two kinds, workspace and project; why (ADR-0002); where they live is a pointer to the guide. What a project carries by choice is Target (zero-footprint mode; candidate) | decided | proposed |
-| 9 | Review loop and timeline | **Names the eight phases in order** (`review-issue`, `plan-task`, `review-plan`, `implement`, `review-code`, `publish`, `triage-reviews`, `merge`), **with what each produces and who decides** (owner decision 2026-10-09, C6: the phase names are the workflow, described here, not glossary entries). Also: one entry per phase in `progress.md` (the only loop state), fresh-context sub-agent per phase (ADR-0013/0014/0015); where the work-plans directory lives. Target (candidates): which claims code verifies (exit contracts, entry validation, merge gate) versus self-reported; what a finding must contain and reviewer independence (C5); how a new session finds the records for its issue; size bound on records | decided | proposed |
+| 7 | Registry and adapters | Registry maps names to roots and types; a 12-verb adapter contract per project type (ADR-0011, which supersedes ADR-0003 and carries its project-agnostic doctrine forward; one clause says so, which is why 0003 is checked in PR B); resolution order in one sentence. GitHub is not a project dependency, the workspace uses it for now (owner 2026-10-05). **Inventory, in this section's Now block (owner decision 2026-10-09, C2):** two tables from one grep pass. (1) Every place where the workspace path differs from the registered-project path in the scripts: the `--type workspace|project` switch sites and the cwd derivation that stands in for them, named by script. (2) The 12 adapter verbs, each marked for the workspace, if it were a registered project, as real, thin wrapper or no-op. **Purpose:** #295 is decided by reading these two tables after the ADR-0016 acceptance run (#317), not by a hunch. Owner's reasoning: sorting project functionality from workspace-only functionality is a worthy goal; #295 is one route to it; the inventory is the cheaper probe. The seed found in this revision is under "Registry inventory" below and is re-verified when the section is written. The workspace as a registered project stays `open` in "Sessions and roots" (row 6), a pointer to #295 only. Target: `onboard-project` as the one registration path (#332), mixed-flavour projects (#310), project lifecycle register to unregister; the unsettled parts also sit in Open questions | decided (ADR-0011/0012) | proposed |
+| 8 | Worktrees | Two kinds, workspace and project; why (ADR-0002); where they live is a pointer to the guide. **Records (owner decision 2026-10-09, C3).** Now: an issue's work plan and progress timeline are committed in the project repo on the issue's feature branch under `.agent/work-plans/issue-N/` (`progress_append.sh` line 87 writes `<repo-root>/.agent/work-plans/issue-<N>/progress.md`; ADR-0013 names that path). The one gap in the project case is shown, not hidden: `merge_pr.sh` anchors the gate's timeline lookup at `$ROOT_DIR/project` (line 670) and the gate is report-only for project PRs (lines 916, 929). Target: what a project carries by choice, as two per-project settings in its registry entry, `location` and `tracking`, defaults derived when absent; three mechanisms; the colleague's project as acceptance test. Detail under "Records: where they live and whether they are tracked" below | decided | proposed |
+| 9 | Review loop and timeline | **Names the eight phases in order** (`review-issue`, `plan-task`, `review-plan`, `implement`, `review-code`, `publish`, `triage-reviews`, `merge`), **with what each produces and who decides** (owner decision 2026-10-09, C6: the phase names are the workflow, described here, not glossary entries). Also: one entry per phase in `progress.md` (the only loop state), fresh-context sub-agent per phase (ADR-0013/0014/0015); where the work-plans directory lives. Target (candidates): which claims code verifies (exit contracts, entry validation, merge gate) versus self-reported; what a finding must contain and reviewer independence (C5); how a new session finds the records for its issue (the lookup is mechanism 1 of the row 8 Target); size bound on records | decided | proposed |
 | 10 | Merge gate | The owner decides every merge; the gate checks review currency and CI on the reviewed head; bookkeeping-only commits exempt; enforce by default on workspace PRs (`merge_pr.sh`, `_bookkeeping.sh`) | decided | - |
 | 11 | Identity | Agents sign work with framework identity, ephemeral per session; pointer to `AI_IDENTITY_STRATEGY.md`; tool-neutral rule and what degrades without the main tool (principle "Use the main tool fully" cited) | decided | - |
 | 12 | Instruction layers (candidate) | Only if accepted (A5): the four layers (always loaded, path-scoped, skill, on demand) and a size budget for the always-loaded layer (`AGENTS.md` is 442 lines against vendor guidance under 200); this file is not always loaded. Changing `AGENTS.md` is Ask First and is not part of this plan. Nothing is built, so this part has only a Target block | - | proposed |
@@ -139,6 +141,121 @@ refreshed by `/audit-workspace` step 2, which ADR-0017 work already pointed at t
 **Why `Rules`, not `Rules that stay true`.** The heading is a citation anchor (`#rules`), so short and
 stable wins. "Stay true" also promises more than the enforced-by column can back: some rules are
 review only, and the table is there to show which.
+
+### Registry inventory (the seed for row 7's Now block)
+
+Owner decision 2026-10-09, C2 (C2-c plus an inventory): the workspace as a registered project (#295)
+stays `open`; the probe is this inventory, one grep pass over the workspace-versus-project branches
+in the scripts and the `adapter` header. **Purpose:** #295 is decided by reading the two tables after
+the ADR-0016 acceptance run (#317, where ADR-0016 leaves Provisional), not by a hunch. Owner's
+reasoning: the goal of sorting project functionality from workspace-only functionality is worthy;
+#295 is one route; the inventory is the cheaper probe. Found in this revision (line numbers as of
+`11a8fac`); PR B's Registry commit re-greps and corrects it before it is written into design.md, and
+the inventory is cut back to what the #295 decision needs once that decision is made (the change log
+says so). It is in the Now block by the owner's direction, and the admission rule is met by that
+decision: the list is what a newcomer cannot see from any one script.
+
+*Table 1: where the workspace path differs from the registered-project path.*
+
+| Script | What differs | Lines |
+|---|---|---|
+| `worktree_create.sh` | Worktree base `wt_workspace_base` (`worktrees/workspace`) versus the registry entry's own root or `worktrees=` (`wt_project_base`); repo manifest from the adapter's `worktree_repos` for a project only, the workspace case never calls the adapter; draft PR to the workspace remote versus `$PROJECT_GH_SLUG`; `--layer` and `--package-repos` project only; `--type` derived from the cwd when omitted | 252-260, 301, 345, 546, 1023-1033 |
+| `worktree_enter.sh`, `worktree_remove.sh` | Same `--type` check and cwd derivation; `--project` valid only with `--type project` | enter 143-174, remove 130-157 |
+| `merge_pr.sh` | A project PR needs a resolved project root and an `origin` remote; PR-owner auto-detect queries both remotes; the roadmap update searches `PJ_REPO_ROOT`; the gate's timeline lookup is anchored at `$ROOT_DIR/project`, the legacy checkout, not `PJ_REPO_ROOT`; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 248-270, 379-418, 555, 670, 916 and 929, 1612-1630 |
+| `dispatch_phase.sh` | `resolve_worktree`: workspace = `wt_workspace_base` plus the legacy base; project = `derive_project_name` (from `--project` or the registry), then the registry, transition and legacy bases; `--type` validated in all three modes | 122, 183, 302, 369, 461 |
+| `gh_create_pr.sh` | Repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 215-229 |
+| `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` | 149 |
+| `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root, else `workspace` when inside the workspace checkout | 475-500 |
+| `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is threaded to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | SKILL.md 47-54; `agent` 35, 91 |
+
+Checked, no workspace/project branch: `review_progress.sh` (finds the records through the cwd's git
+toplevel, lines 112 and 290), `progress_append.sh` (line 87), `_resolve_work_plans_dir.sh` and
+`_bookkeeping.sh`. They matter to C3 (below), not to this table.
+
+*Table 2: the 12 verbs of the `adapter` header, for the workspace as a registered project.* "Real"
+means the workspace needs its own logic; "thin wrapper" means a script or target that already exists
+does the work; "no-op" means the header allows doing nothing.
+
+| Verb | For the workspace | Based on |
+|---|---|---|
+| `setup` | thin wrapper | the `setup-dev` and `git-bug` stamps (`Makefile` 98-115); `single_project/setup.sh` clones a project, which the workspace does not need |
+| `sync` | thin wrapper | `single_project/sync.py` already syncs the workspace repo with the project |
+| `validate` | thin wrapper, with care | `validate_workspace.py` checks the whole workspace and calls this verb for each registry entry, so the workspace's own implementation must not call back into it |
+| `build` | no-op | nothing is built; `make build` runs the project's `BUILD_CMD` |
+| `test` | thin wrapper | `.agent/scripts/tests/run_script_tests.sh`, the `validate-script-tests` hook's entry (`.pre-commit-config.yaml` 57-59) |
+| `install` | thin wrapper | `user_tier_install.sh` (`make user-tier-install`) |
+| `env` | no-op | the header: a type with no environment to expose emits nothing |
+| `project_root` | real, trivial | prints the workspace root |
+| `repos` | real, trivial | one `name:path` line |
+| `scope_for_pr` | real, small | origin URL to `owner/repo`; `single_project`'s verb does this generically |
+| `worktree_repos` | real, trivial | one line `<root>`, `.`, `feature/issue-<N>`; today `worktree_create.sh` does not call it for the workspace |
+| `worktree_env` | no-op | no per-worktree environment |
+
+Tally: 3 no-op, 5 thin wrapper, 4 real. The plan draws no conclusion from it; that is the #295
+decision.
+
+### Records: where they live and whether they are tracked (row 8)
+
+Owner decision 2026-10-09, C3. The question was where an issue's work plan and progress timeline live
+(C3 was raised as "where a zero-footprint project's design and records live").
+
+**Why row 8 and not a new "Records" row.** C3 was asked as what decides the Worktrees Target, and the
+records ride on the issue's feature branch, in its worktree; what a project carries by choice (row 8's
+existing Target) is the same subject. A new row would renumber rows 9 to 16, change every "row N"
+pointer in this plan and add an anchor, for a block of about 30 lines. If the written Target passes
+the 60-line prompt, it splits out as a `## Records` section then; the anchor checker needs no change
+(every heading is an anchor, Wire-in 6).
+
+**Now (status `decided`).** The records are committed in the project repo on the issue's feature branch
+under `.agent/work-plans/issue-N/`. Checked: `progress_append.sh` line 87, `_resolve_work_plans_dir.sh`
+(the worktree's git toplevel, or `WORK_PLANS_DIR_OVERRIDE`), ADR-0013 line 11. The gap in the project
+case is the one named in row 8 (`merge_pr.sh` 670, 916).
+
+**Target (status `proposed`).** Two per-project settings carried in the project's registry entry; each
+has a default derived when absent.
+
+- **location**: in the project repo (the default), or an outside path. The default outside path is a
+  fixed derived one, for example a sibling directory of the project root; the exact path is chosen
+  when this is built, not in this document.
+- **tracking**: untracked; tracked in the project repo (the default when location is in the project
+  repo); or tracked in a repo the user names. The design document gives no example that is the
+  `agent_workspace` repo (owner: "I don't want to prohibit it, but I also don't want to encourage it").
+
+| location | tracking | What it is |
+|---|---|---|
+| in the project repo | tracked in the project repo | Today. The records travel with the feature branch |
+| outside | untracked | Zero footprint in the project; one machine |
+| outside | tracked in a named repo | Zero footprint in the project; portable |
+| in the project repo | untracked, through the clone's local exclude (`.git/info/exclude`) | Behaves like outside and untracked |
+
+Other combinations are not named as working; whether the registry rejects them is decided when this is
+built.
+
+Three mechanisms, each a later build and none of it PR B work (PR B writes the Target text only):
+
+1. **One lookup**, "where are the records for this project and issue", fed by the registry entry and
+   used by every reader and writer. Today the path is written out at each one: `dispatch_phase.sh`
+   (342, 344, 387, 479: the exit contract, `--check-exit` and `next`, which is what a resumed session
+   reads), `merge_pr.sh` (674-675, 829-837: the gate and its `Merge` entry), `review_progress.sh`
+   (112, 268, 290: `sources` and `persist`), `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is
+   the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
+   override. The seven skills that cite the path (`start-task`, `run-issue`, `plan-task`, `review-plan`,
+   `review-code`, `triage-reviews`, `address-findings`) follow it.
+2. **The merge gate's "same reviewed state" rule** (`_bookkeeping.sh`, shared with
+   `review_progress.sh sources`) reads the record from where it lives and checks the project SHA the
+   entry names; the walk changes repo. Today both live in one worktree and the rule treats
+   `.agent/work-plans/issue-N/*` and the roadmap as bookkeeping-only changes (`_bookkeeping.sh` line 190).
+3. **Untracked records are per machine and per clone.** A second machine or a fresh clone starts with
+   no timeline, and losing the directory loses the history. This is the cost of that combination and
+   the design text says so plainly.
+
+One rule: when records exist in two places, the registry setting names the source of truth.
+
+**Acceptance test for this Target:** a colleague's project. By shape only: a single-repo web app
+developed in a different style, with no GitHub issues or pull requests, and records where the
+developer chooses. Both settings must be able to describe it. Because it has no pull requests, it
+exercises the lookup and the tracking and not the merge gate (mechanism 2), which a project with pull
+requests has to exercise.
 
 ### What leaves design.md and where it lands
 
@@ -163,6 +280,13 @@ The gaps found were filled in PR A (merged, #377); those rows say "landed in PR 
 
 Rule for moves: nothing is deleted before its destination is confirmed to hold the text (open the
 destination, quote the matching lines in the PR description); gaps are filled first (PR A).
+
+What stays in "Registry and adapters" (owner decision 2026-10-09, C2): what the registry maps, the
+12-verb contract per project type, the resolution order in one sentence, one sentence on `ros2_colcon`,
+and the inventory (the two tables seeded above). Registry field syntax, the validate paragraph and
+`ros2_colcon` detail leave as the table says. The inventory is the one place the section names scripts
+line by line, on purpose: it is a dated probe for a pending decision, not a restatement of script
+headers, and it is cut back when #295 is decided.
 
 ### Wire-in
 
@@ -343,7 +467,7 @@ split says what landed.
 | `Makefile` | Help line 80: `PROJECT=gz4d` becomes `PROJECT=boat_sim`; `make lock` help line says advisory | A (done, #377) |
 | `.agent/knowledge/principles_review_guide.md` (line 51) | ADR-0016 row: drop the real project name from the acceptance-run wording | A (done, #377) |
 | `docs/decisions/0017-design-document-is-the-current-picture.md` | Fix the ADR-0008 link filename | A (done, #377) |
-| `docs/design.md` | Rewrite per the section table; the Decision register marks standing only, no ADR file is edited (C1-c) | B |
+| `docs/design.md` | Rewrite per the section table; the Decision register marks standing only, no ADR file is edited (C1-c); the Registry inventory (two tables, C2) and the Worktrees records Target (C3) | B |
 | `docs/design.md` (`## Glossary`, last section) | Vocabulary and standard terms, one plain line each; every term used in a situation report or checkpoint except the eight phase names; terms and definitions settled with the owner 2026-10-09 (C6, row 16); 15 entries | B |
 | `.agent/knowledge/principles_review_guide.md` (line 71) | Consequences Map row "Work-plan directory convention": replace the directory-tree cell | B |
 | `.agent/scripts/check_design_anchors.sh` (new, `chmod +x`) | The anchor checker: citation form, scope and register count as in Wire-in 6; grep and awk only | B |
@@ -387,7 +511,7 @@ which design section the planning and review skills cite (headings in the new fi
 | Verify before claiming | Every "Now" line cites its source and is spot-checked; revision 2 rechecked every "already lives" claim and found three wrong |
 | Know whether it works | With/without test; line count in the change log; section dates if accepted; Measures role shown honestly as "none yet" |
 | Put each thing at the level it applies to | Script detail to script headers; per-project mapping is project-level, the workspace's own mapping is here |
-| Leave in a project only what it chose to carry | Footprint is Target, not described as built |
+| Leave in a project only what it chose to carry | Footprint is Target, not described as built; the records settings (C3, row 8) make it a per-project choice, with the in-repo default unchanged |
 | Look for prior art before building | Prior Art section above |
 | Small steps; step back when they stop converging | Three PRs, one commit per section; if sections keep passing 60 lines or the owner's edits keep reshaping the table, stop and propose a simpler section set instead of patching |
 | Test what breaks | The checker runs in a new pre-commit hook on the commits that can break an anchor (design.md, README, roadmap, onboarding, ADRs, knowledge files, skills, the config itself), then in `make lint` and CI; `test_design_anchors.sh` tests the checker with a negative fixture that must fail, so the check is shown to catch a broken anchor. The script-tests hook is not widened (#354). The rest of the change is documentation, covered by the with/without test and spot-checks |
@@ -400,10 +524,10 @@ which design section the planning and review skills cite (headings in the new fi
 | 0017 | Yes | The plan implements it; the rewrite reconciles design and ADRs and records standing in the register |
 | 0001 | Yes | No new ADR here; one is written only if the rewrite changes a decision two parts could choose incompatibly |
 | 0008 | Yes | ADRs get no design pointers (register only); the one ADR edit is a link fix, which ADR-0008 permits |
-| 0016 | Yes | Provisional: shown as `decided, not proven` until the acceptance run |
+| 0016 | Yes | Provisional: shown as `decided, not proven` until the acceptance run; the Registry inventory is read after that run to decide #295 (C2) |
 | 0003 / 0011 | Yes | 0003 is superseded by 0011; the workspace stays project-agnostic, no project names; the Registry row cites both |
 | 0005 | Yes | The anchor check follows its layers: a pre-commit hook for local feedback, the same hook in CI lint as the enforcement layer |
-| 0013 | Yes | Entries via `progress_append.sh` |
+| 0013 | Yes | Entries via `progress_append.sh`. The records Target (C3) keeps the in-repo default path that ADR-0013 names; an outside location moves the root, not the entry vocabulary. ADR-0013 is not edited (C1-c) |
 
 ## Consequences
 
@@ -420,6 +544,8 @@ which design section the planning and review skills cite (headings in the new fi
 | Registry or adapter text | `adapter` and registry headers | Yes (verified; no gap found) |
 | Lock text removed | `lock.sh` header (nothing else documents it) | Yes (PR A, landed #377) |
 | Roadmap Cross-cutting Decisions | The design sections that now hold the facts | Yes (PR C; B2 open) |
+| Registry inventory in `docs/design.md` | Re-grep the `--type` branches when the Registry commit is written; cut the inventory back once #295 is decided | Yes (PR B writes it; the cut-back follows the #295 decision) |
+| Where records live (C3 Target) | Every reader and writer of `.agent/work-plans/issue-N/`: `dispatch_phase.sh`, `merge_pr.sh`, `review_progress.sh`, `progress_append.sh`, `_bookkeeping.sh`, `cross_model_review.sh`, and the seven skills that cite the path | No. A later build; PR B writes only the Target text, status `proposed` |
 | Roadmap rows that change the design picture | A "design section:" note on those rows only; the other open rows stay as they are | Yes (PR C) |
 | `AGENTS.md` (instruction budget) | Framework adapters | No, Ask First |
 
@@ -445,6 +571,20 @@ Grouped by what they change. Stable IDs; ask in group order, each design questio
   vocabulary used about the loop plus the standard terms, with the owner's one-line definitions: the
   settled list of 15 is in row 16. WIP limit and appetite are left out on purpose, because the
   workspace has neither.
+- **C2 (decided 2026-10-09, owner decision C2-c plus an inventory).** The workspace as a registered
+  project (#295) stays `open`, a pointer to #295 only. The Registry section's Now block gains an
+  inventory of the places where the workspace path differs from the registered-project path, and a
+  per-verb classification of the 12 adapter verbs; #295 is decided by reading it after the ADR-0016
+  acceptance run (#317), not by a hunch. Owner's reasoning: sorting project functionality from
+  workspace-only functionality is a worthy goal; #295 is one route; the inventory is the cheaper
+  probe. Seeded under "Registry inventory".
+- **C3 (decided 2026-10-09, owner decision).** An issue's work plan and progress timeline are
+  committed in the project repo on the issue's feature branch under `.agent/work-plans/issue-N/`
+  (`decided`). Target (`proposed`): `location` and `tracking`, two per-project settings in the registry
+  entry with derived defaults; three mechanisms (one lookup, the gate reading across repos, untracked
+  means per machine and per clone); one rule (the registry setting names the source of truth). The
+  design text gives no `agent_workspace` example. A colleague's single-repo project is the acceptance
+  test. Row 8 and "Records: where they live and whether they are tracked".
 
 **A. Shape of the document**
 - **A1.** A part with no Target: carry the `Now` label anyway, or leave it implicit (Status line and
@@ -460,11 +600,7 @@ Grouped by what they change. Stable IDs; ask in group order, each design questio
   scope note on ADR-0008 (or a superseding ADR). Default in this plan: no. Hard to undo once ADRs are edited.
 - **B2.** Roadmap Cross-cutting Decisions: mark as history (this plan), delete, or leave. Marking is easy to reverse.
 
-**C. Content that stays open in the document** (C1 and C6 moved to Decided)
-- **C2.** Workspace as a registered project (#295) or ADR-0016's interim rule made permanent. Hard to
-  undo once built; the document can carry it as `open`.
-- **C3.** Where a zero-footprint project's design and records live (workspace repo, a store outside
-  both repos, or host-tool memory only). Decides the Worktrees Target and the work-plans conflict; can stay open.
+**C. Content that stays open in the document** (C1, C2, C3 and C6 moved to Decided)
 - **C4.** `onboard-project` as the only registration path (#332), project lifecycle (unregister, one
   project on two machines) and mixed-flavour projects (#310). Shapes the Registry Target; can stay open.
 - **C5.** What a review finding must contain (principle, guide row, or design text only). If design
@@ -495,7 +631,9 @@ the code each describes, one short read per ADR done in the commit of the sectio
 other eight are `not yet`. PR A was small (one script header, one docstring, one lifecycle section, name
 swaps in three files plus the Makefile help lines and one guide row) and is merged. PR B gains one small
 script (grep and awk), one hook entry and one fixture suite, and the glossary (15 entries, settled by
-the owner, C6, row 16).
+the owner, C6, row 16). The Registry inventory (C2) is one grep pass over the `--type` and workspace
+branches, written as a table of 8 rows plus a 12-row verb table (seeded in this revision, re-verified in
+the Registry commit). The records Target (C3) is about 30 lines of Target text in Worktrees and no code.
 
 ## Revision 2 change log
 
@@ -593,3 +731,14 @@ plan is 595 lines. The rewrite's line count is still logged from the first secti
 | 3 | C6 decided: the eight phase names are not glossary entries (workflow, described in order in "Review loop and timeline"; row 9 now says it names the eight phases in order with what each produces and who decides). Row 16 holds the settled list of 15 with the owner's one-line definitions (7 own terms, 8 standard terms), the reworded admission rule (phase names excepted) and the left-out terms WIP limit and appetite (the workspace has neither; grep of `docs/`, `.agent/knowledge/`, `AGENTS.md` and the skills finds no use). C6 moved to Decided; process step 3, PR B text, Files to Change, Consequences and Estimated Scope follow. Checked: issue #345 exists (plugin spike); the interop spike has no issue, only the 2026-09-24 notes, so no number is cited for it; `MAX_ROUNDS` exists (`review_loop_lifecycle.md` lines 66 and 122), so "the nearest is the review-round limit" holds |
 | 4 | Round-5 suggestion (a): register rows for ADRs with no carrying section (0001, 0006, 0007, 0009, 0010) link to `#decision-register`; stated in Wire-in 6 and row 13 |
 | 5 | Round-5 suggestion (b): PR B commit order says a section links only to sections already committed and the register links last |
+
+## Revision 8 change log
+
+Applies the owner's decisions of 2026-10-09 on C2 and C3 (no review round in between). It does not
+reopen the plan approved at revision 6. The plan is 744 lines. The rewrite's line count is still
+logged from the first section commit.
+
+| Item | What changed |
+|---|---|
+| 1 | C2 decided (owner decision 2026-10-09, C2-c plus an inventory): the workspace as a registered project stays `open`, a pointer to #295 only (row 6 unchanged). Row 7 gains the inventory in its Now block; the new subsection "Registry inventory" seeds it from one grep pass: a table of 8 script rows (`worktree_create.sh`, `worktree_enter.sh` and `worktree_remove.sh`, `merge_pr.sh`, `dispatch_phase.sh`, `gh_create_pr.sh`, `worktree_list.sh`, `_project_registry.sh`, the `run-issue` skill with `agent start-task`) and a 12-row verb table (3 no-op, 5 thin wrapper, 4 real). Purpose stated: #295 is decided by reading it after the ADR-0016 acceptance run (#317). "What leaves design.md" gains a "what stays in Registry and adapters" paragraph; Estimated Scope sizes it; Consequences, Files to Change and the ADR-0016 row follow. C2 moved to Decided |
+| 2 | C3 decided (owner decision 2026-10-09). It lands in row 8 (Worktrees), not a new row, so no renumbering and no new anchor (reason in the subsection "Records: where they live and whether they are tracked"). Now, `decided`: records are committed in the project repo on the issue's feature branch under `.agent/work-plans/issue-N/`, with the `merge_pr.sh` project-case gap (lines 670, 916) shown. Target, `proposed`: settings `location` and `tracking` in the registry entry with derived defaults, the four combinations, three mechanisms (one lookup, the gate reading across repos, untracked means per machine and per clone), one rule (the registry setting names the source of truth), no `agent_workspace` example, a colleague's single-repo project (by shape only) as acceptance test. Row 9's Target candidate points at mechanism 1; Consequences, Self-Check and the ADR-0013 row follow. C3 moved to Decided; C4 and C5 are the only open C questions |
