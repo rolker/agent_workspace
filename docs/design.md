@@ -471,6 +471,34 @@ Status: `decided`
   ([Review loop and timeline](#review-loop-and-timeline)). Each framework has an
   adapter file listed in `AGENTS.md`.
 
+## Instruction layers
+
+**Now**
+
+Status: `proposed`
+
+Nothing here is built. This section is a proposal, so its one block is labelled `Now` and carries
+`proposed`.
+
+Proposed: this file describes the four layers an agent's instructions load in, and gives the first a
+budget.
+
+1. Always loaded. For Claude Code that is `CLAUDE.md`, which imports `AGENTS.md` with `@AGENTS.md`;
+   `AGENTS.md` is 26,564 bytes and 442 lines, `CLAUDE.md` 42 lines (`wc`, 2026-10-09). A session under a
+   registered project root gets nine pinned `AGENTS.md` sections instead, rendered by the
+   `SessionStart` hook ([Sessions and roots](#sessions-and-roots)).
+2. Path-scoped. Rules that load only when the agent works on matching files. The workspace has none
+   (`.claude/` holds `hooks`, `settings.json` and `skills`).
+3. Skill. A `SKILL.md` loads when its skill is invoked (22 skills in `.claude/skills/`).
+4. On demand. Files an agent opens because a pointer sent it there: this file, the ADRs, the
+   knowledge files. This file is not always loaded.
+
+Proposed: a budget for the always-loaded layer, so that every added rule has to displace or justify
+itself. No number is set here. The reference point is the vendor guidance for Claude Code, a target of
+under 200 lines per instruction file, as recorded in the prior-art notes
+(`prior-art-comparison-2026-10-08/summary.md` item 5; `prior-art-alignment-agent-frameworks.md`, Claude
+Code entry). Changing `AGENTS.md` is Ask First and is not part of this change.
+
 ## Open questions
 
 **Now**
@@ -505,3 +533,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Review loop and timeline | The eight phases in order with what each produces and who decides, the timeline as the only loop state, fresh sub-agent per phase, the exit check, nine checkpoints; Target candidates and the C5 pointer; C5 added. Also the review guide's work-plan row now names this section instead of the removed directory tree. Section is about 70 lines, past the 60-line prompt: asked whether the detail moves next to the code; the lifecycle file and dispatch_phase.sh header already hold the mechanics, so the section keeps only the phase table and one bullet per mechanism, and what it adds is the who-decides column and the code-versus-reported line, which no one file shows | #335 | 446 |
 | 2026-10-09 | Merge gate | Who decides a merge, the two conditions, the bookkeeping rule, the CI wait, enforce versus report-only, local-only, the #379 gap | #335 | 478 |
 | 2026-10-09 | Identity | Framework identity, ephemeral per session, what refuses to run without it, and what needs Claude Code versus what any tool can do | #335 | 507 |
+| 2026-10-09 | Instruction layers | The four layers an agent's instructions load in and a budget for the always-loaded one, all proposed; AGENTS.md is 442 lines against the under-200 target | #335 | 536 |
