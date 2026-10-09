@@ -552,7 +552,8 @@ ADR at a time; none is made here. ADR-0016 stays `Provisional` until the accepta
 Status: `open`
 
 Questions this file raised and nobody has answered. An `open` block elsewhere in the file points here
-or to an issue. Each row says who decides and what the answer changes.
+or to an issue. Each row says who decides and what the answer changes. Wire-in questions about
+ADR pointers and the roadmap belong to the pull request that does that wiring, not to this table.
 
 | ID | Question | Who decides | What it changes |
 |---|---|---|---|
@@ -560,6 +561,9 @@ or to an issue. Each row says who decides and what the answer changes.
 | OQ-2 | ADR-0016 stays Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? | Owner | When the [Sessions and roots](#sessions-and-roots) Now block becomes `decided`, and when the Registry inventory is read to settle #295 |
 | C4 | Is `onboard-project` the only path that registers and adapts a project (#332) and is hand registration retired? What does unregistering do to a project's plans, timelines and memory, and how does one project live on two machines? How are mixed-flavour projects (#310) described? | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on it yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
+| OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
+| OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file; `AGENTS.md` is 442)? | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First |
+| OQ-5 | Should the merge gate get a server-side complement, a required status check asserting the same two conditions? | Owner | [Merge gate](#merge-gate); it changes CI and branch protection, which is Ask First (`merge_pr.sh`, Step 1.5 comment) |
 
 ## Change log
 
@@ -581,3 +585,4 @@ line, issue, and the line count of the document after the change.
 | 2026-10-09 | Identity | Framework identity, ephemeral per session, what refuses to run without it, and what needs Claude Code versus what any tool can do | #335 | 507 |
 | 2026-10-09 | Instruction layers | The four layers an agent's instructions load in and a budget for the always-loaded one, all proposed; AGENTS.md is 442 lines against the under-200 target | #335 | 536 |
 | 2026-10-09 | Decision register | 17 rows, standing and re-examined, four rows superseded in practice (0002, 0011, 0013, 0014) with what the code does; no ADR file edited; both checker guards are live from here. Section is 40 lines | #335 | 583 |
+| 2026-10-09 | Open questions | Table finished: OQ-1 to OQ-5, C4 and C5 | #335 | 588 |
