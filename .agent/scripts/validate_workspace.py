@@ -19,7 +19,11 @@ Checks that:
 
 Problems found for a registry entry are reported as lines that start with
 `project '<name>':` (for example an unknown project type, a missing hosting
-dir, or a line from that type's `adapter --project <name> validate`).
+dir, or a line from that type's `adapter --project <name> validate`). Problems
+with a parent root (a directory that groups instances) start with
+`parent root '<name>':` instead. The one follow-up line printed after a
+missing hosting dir ("  Clone the project there or fix .agent/projects.local")
+has no prefix; it is indented under that report.
 
 Usage:
     python3 validate_workspace.py [--verbose]
