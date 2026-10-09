@@ -77,7 +77,7 @@ help:
 	@echo "  make sync             Fetch/pull workspace + project repos"
 	@echo ""
 	@echo "  PROJECT=<name> targets a registered project from .agent/projects.local"
-	@echo "  (e.g. make build PROJECT=gz4d); default is the legacy project/ symlink."
+	@echo "  (e.g. make build PROJECT=boat_sim); default is the legacy project/ symlink."
 	@echo ""
 	@echo "Worktrees:"
 	@echo "  .agent/scripts/worktree_create.sh --issue <N> --type workspace"

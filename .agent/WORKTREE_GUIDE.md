@@ -69,7 +69,7 @@ agent_workspace/
 │           └── issue-<name>-42/   # symlink) still lands here. Dropped in
 │               └── ...            # PR 4 together with project/ itself.
 
-/anywhere/on/disk/<registered-root>/   # e.g. ~/src/gz4d, ~/project11-ng/rolling
+/anywhere/on/disk/<registered-root>/   # e.g. ~/src/boat_sim, ~/shore_tools/rolling
 └── worktrees/                         # <root>/worktrees/ by default; a
     └── issue-<name>-42/               # registry `worktrees=` field overrides
         └── ...                        # the location per project
@@ -178,7 +178,7 @@ one layer instead of the whole hosting dir. Nothing is inferred — layer,
 package repos, and issue are all explicit:
 
 ```bash
-.agent/scripts/worktree_create.sh --type project --project p11-jazzy \
+.agent/scripts/worktree_create.sh --type project --project shore_tools-jazzy \
     --issue rolker/cube_bathymetry#111 \
     --layer platforms --package-repos cube_bathymetry,marine_msgs
 ```
