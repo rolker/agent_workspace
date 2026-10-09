@@ -3,9 +3,11 @@
 #
 # Advisory workspace lock (`make lock` / `make unlock`). Locking writes
 # .agent/scratchpad/workspace.lock (who, why, when); unlock.sh removes it.
-# The only reader is dashboard.sh, which shows "Workspace is LOCKED" in its
-# status output. Nothing else reads the file, so it does not stop any script
-# or agent: it is a note for the people and agents who look at the dashboard.
+# dashboard.sh shows "Workspace is LOCKED" in its status output, and lock.sh
+# and unlock.sh test the file: a second `make lock` is refused (exit 1, with
+# the existing lock info) while it exists, and `make unlock` on a missing file
+# is a no-op. No other script reads it, so it does not stop any script or
+# agent: it is a note for the people and agents who look at the dashboard.
 # It is unrelated to the GitHub-issue task locking in
 # .agent/WORKFORCE_PROTOCOL.md.
 

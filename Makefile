@@ -85,7 +85,7 @@ help:
 	@echo "  .agent/scripts/worktree_list.sh"
 	@echo ""
 	@echo "Utilities:"
-	@echo "  make lock             Lock workspace (prevent concurrent agent work)"
+	@echo "  make lock             Advisory workspace lock, shown by the dashboard (a second lock is refused)"
 	@echo "  make unlock           Unlock workspace"
 	@echo "  make merge-pr PR=<N|owner/repo#N> [REPO=owner/repo] [MERGE_PR_ARGS=--report-only|--force-unreviewed|--allow-pending-review]  Merge PR (review gate enforced by default on workspace PRs), remove worktree, delete branch, sync"
 	@echo "  make pr-triage        Show PR status across workspace + project"
