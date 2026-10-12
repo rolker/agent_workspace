@@ -411,12 +411,12 @@ sessions walk the same order by hand, one `SKILL.md` at a time
 
 - **One entry per dispatched phase, in `progress.md`.** `.agent/work-plans/issue-<N>/progress.md` is the
   only place loop state lives: not the conversation, not a lock file. `publish` writes no entry, and
-  `merge` writes one only when the gate is relaxed (`--report-only`, `--force-unreviewed`); a gate that
-  passes records nothing (`run-issue/SKILL.md` step 11). The directory sits in the repository that
-  owns the issue, on the issue's feature branch ([Worktrees](#worktrees), Records). Entries have a fixed
-  vocabulary and header (`**Status**`, `**When**`, `**By**`, a correlation to an issue, a plan or a
-  commit; ADR-0013), are written by `progress_append.sh`, checked by `_progress_entry.sh` and read by
-  `progress_read.py`.
+  `merge` writes one only when the gate finds a gap and does not refuse it (a relaxing flag, or a project
+  pull request); a gate that passes records nothing (`merge_pr.sh`, Step 1.5; `run-issue/SKILL.md` step
+  11). The directory sits in the repository that owns the issue, on the issue's feature branch
+  ([Worktrees](#worktrees), Records). Entries have a fixed vocabulary and header (`**Status**`,
+  `**When**`, `**By**`, a correlation to an issue, a plan or a commit; ADR-0013), are written by
+  `progress_append.sh`, checked by `_progress_entry.sh` and read by `progress_read.py`.
 - **The next step is routed on the newest entry.** `dispatch_phase.sh next` routes on the newest entry
   and, as its one other input, the pull request state; it reads earlier entries for two things only, the
   count of completed pre-push reviews on the branch (`round_count`) and whether a failed `Implementation`
@@ -652,6 +652,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-09 | Rules, Review loop and timeline | Rules table gains the row for the owner deciding every merge (`review only`; `merge_pr.sh` has no owner check), making 15 rules; the Target's `progress.md` size is stated as more than 800 lines, so it does not go stale with each entry | #335 | 697 |
 | 2026-10-12 | How it works, Sessions and roots, Worktrees, Review loop and timeline | Review fixes: `publish` and `merge` are host steps, `publish` writes no entry and `merge` one only when its gate is relaxed, and the owner may have the host take over a failed phase; the per-project footprint is a proposal, and records today sit in the repository that owns the issue; two session roots, with the user tier as the layer injected into them | #335 | 706 |
 | 2026-10-12 | Rules | The project-names row states the 2026-10-09 boundary (history, code-origin comments, test fixtures, `tools/ros-manifest/` prose keep real names; examples and guidance use synthetic ones) and the owner's rule of 2026-10-12, a real name only for a public repository; the review guide row it cites gains the same clause, and the worktree guide and review-plan examples drop a real package name | #335 | 707 |
+| 2026-10-12 | Review loop and timeline | Review fix: `merge` writes an entry when its gate finds a gap and does not refuse it (a relaxing flag, or a project pull request), not whenever a flag is passed, as the first 2026-10-12 row put it | #335 | 708 |
 
 ## Glossary
 
