@@ -932,3 +932,20 @@ The last checkbox of the round-5 review entry (Review-loop Target bullets 2 and 
 - [x] F6: process step 1 says revision 10 — `.agent/work-plans/issue-335/plan.md:56`
 
 Change log: two rows of 2026-10-12 appended (706 and 707 lines). Pre-commit hooks passed on each commit, including check-design-anchors and the script-tests suite.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-12 09:12 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-335 at `3dc4de5`
+**Base**: be87238
+**Depth**: Standard (reason: governance-file triggers — principles_review_guide.md, review-plan SKILL.md; 6 files, ~99 lines since be87238)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 6 | **Ship**: continue — round 6: must-fix rising (0 -> 1); the one must-fix is a mechanical wording fix
+
+### Findings
+- [ ] (must-fix) `merge` entry rule is incomplete: a project PR with a gap and no flag also records `## Merge (report-only)` (gate report-only by default there, `merge_pr.sh:916-931`); a relaxed flag with no gap records nothing. Contradicts design.md's own Records bullet (gate report-only for project PRs). Cross-confirmed: Copilot, Claude adversarial, lead — `docs/design.md:414`
+- [ ] (suggestion) Rules row lists "work plans" as a history exception and attributes all exceptions to the 2026-10-09 owner decision; the plan's boundary (`plan.md:468-472`) names code-origin comments, fixtures, ADRs, roadmap and `tools/ros-manifest/` prose, not work plans — label work plans as the 2026-10-12 addition or drop them — `docs/design.md:154`
+- [ ] (suggestion) The edited example keeps `mission_manager` beside synthetic `sonar_msgs`; it is an existing mention of a public repository's package, so allowed, but a synthetic name would match "examples use synthetic names" (optional) — `.claude/skills/review-plan/SKILL.md:359`
