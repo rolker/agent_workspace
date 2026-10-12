@@ -128,3 +128,15 @@ The fix itself is right and minimal. One test-design error blocks it: the planne
 - [ ] Refresh every `merge_pr.sh` line citation in design.md from the edited file, including Target item 1's "674-675, 829-837" and the row's "379-418" and "1612-1628"
 - [ ] Reuse the `projects.local` one-line registration from `test_merge_pr.sh` instead of a new helper unless it is shared
 - [ ] Point the `merge_pr.sh` 250-251 comment at the new `PJ_ROOT_EFFECTIVE` line
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 13:12 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Plan Review (4de93b8) verdict needs-work: must-fix 1 (split the test into an all-good scenario and a real-gap scenario), should-fix 2 (refresh every design.md merge_pr.sh line citation) and 3 (guard scenario asserts the specific reason and an unchanged HEAD), minor 5 (reuse the projects.local echo line) and 6 (comment at merge_pr.sh 250-251). Host recommendation: revise, then a quick second plan review.
+
+> revise
