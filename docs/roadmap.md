@@ -27,7 +27,9 @@ Redesign table below says.
 - Two tables, picked by their header: `| Line | Check |` and
   `| Deferral | Revisit check |`. Any other table here is ignored.
 - A check starts with its kind: `file-exists <path>`,
-  `file-contains <path> <text>`, `gh-issue <N> <open|closed>` (or
+  `file-contains <path> <text>`, `adr-status <path> <word>` (the first line
+  under the file's `## Status` heading starts with that word),
+  `gh-issue <N> <open|closed>` (or
   `gh-issue <owner/repo>#<N> <state>`), or `script` followed by exactly one of
   `adapter --project <name> validate`, `user_tier_install.sh --check`,
   `user_tier_install.sh --check --require`, `check_design_anchors.sh`. Paths
@@ -46,12 +48,12 @@ Redesign table below says.
 | `/run-issue` can run in a project session | `file-contains .claude/skills/run-issue/SKILL.md session_scope: both` |
 | The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
 | A `/run-issue` run started from the project root reaches the merge checkpoint | |
-| ADR-0016 is promoted from Provisional to Accepted | `file-contains docs/decisions/0016-session-roots-and-the-user-tier.md **Accepted.**` |
+| ADR-0016 is promoted from Provisional to Accepted | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
 
 | Deferral | Revisit check |
 |----------|---------------|
-| The registration script and retiring `project/` and `projects/` (#265, PR 4): after the acceptance run | `file-contains docs/decisions/0016-session-roots-and-the-user-tier.md **Accepted.**` |
-| The workspace as a registered project (#295): settled once ADR-0016 is | `file-contains docs/decisions/0016-session-roots-and-the-user-tier.md **Accepted.**` |
+| The registration script and retiring `project/` and `projects/` (#265, PR 4): after the acceptance run | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
+| The workspace as a registered project (#295): settled once ADR-0016 is | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
 | A Direction section in the acceptance project's own repository: waits until onboarding asks a project what it carries | |
 | The sit-rep over every registered root with a Direction section (this first form reads the workspace root only) | |
 

@@ -17,7 +17,7 @@ Resolve `$WS_ROOT` at the head of each command chain, because shell state does
 not persist between tool calls:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 "$WS_ROOT/.agent/scripts/<script>" ...
 ```
 
@@ -25,8 +25,8 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 `.agent/scripts/user_tier_install.sh` and names the main checkout. It is a
 plain file, not an environment variable and not `SessionStart` hook output —
 hook stdout is context text and never reaches a tool call's shell (ADR-0016).
-With no user tier the fallback makes `$WS_ROOT` the cwd, which is right in a
-workspace session.
+With no user tier, or an empty file, the fallback makes `$WS_ROOT` the cwd,
+which is right in a workspace session.
 
 ## Usage
 
@@ -60,22 +60,35 @@ line per sit-rep run, so the next run can say what moved).
 
 ### 1. Check the Direction lines
 
+The checks run once per sit-rep. Their rows are saved to a temporary file,
+and both the summary shown here and the one recorded in step 4 are counted
+from that file, so the report and the record cannot disagree.
+
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-"$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT"
-echo "---"
-"$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT" --summary
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+rows="$(mktemp -t sitrep-rows.XXXXXX)" || rows=""
+if [ -n "$rows" ]; then
+    "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT" > "$rows"
+    cat "$rows"
+    echo "---"
+    "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows"
+    echo "rows_file=$rows"
+else
+    echo "could not create a temporary file; checks not run"
+fi
 ```
 
 Rows are `kind`, `item`, `result`, `check`, `date`, TAB-separated. Kinds:
 `line`, `deferral`, `format` (a checklist item in the section, which breaks
-the section's rules; report it), `section` (no Direction section). The last
-line is the summary, `lines <true>/<total> deferrals <true>/<total>`.
+the section's rules; report it), `section` (nothing to check, and why: no
+roadmap file, no Direction section, or a section with neither table). After
+`---` comes the summary, `lines <true>/<total> deferrals <true>/<total>`,
+then `rows_file=`, which step 4 needs.
 
 ### 2. Read the inbox and the last run record
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 source "$WS_ROOT/.agent/scripts/_settings.sh"
 inbox="$(settings_path "$WS_ROOT" inbox)" || inbox=""
 record="$(settings_path "$WS_ROOT" run_record)" || record=""
@@ -87,10 +100,17 @@ echo "record_file=${record:-unset}"
 echo "last_record=${last:-none}"
 echo "inbox_file=${inbox:-unset}"
 if [ -n "$inbox" ] && [ -f "$inbox" ]; then
-    echo "inbox_lines=$(grep -c . "$inbox")"
+    lines="$(grep -c . "$inbox")"
+    echo "inbox_lines=$lines"
     echo "inbox_oldest=$(head -n1 "$inbox" | cut -f1)"
     if [ -n "$last" ]; then
-        echo "inbox_new=$(awk -F'\t' -v d="${last%%$'\t'*}" '$1 > d' "$inbox" | grep -c .)"
+        seen="$(printf '%s\n' "$last" | cut -f4)"
+        seen="${seen#inbox }"
+        if [[ "$seen" =~ ^[0-9]+$ ]] && [ "$lines" -ge "$seen" ]; then
+            echo "inbox_new=$((lines - seen))"
+        else
+            echo "inbox_new=unknown"
+        fi
     fi
     echo "---"
     head -n 20 "$inbox"
@@ -98,22 +118,31 @@ fi
 ```
 
 Inbox lines are `date`, `project`, `issue`, `text`. The first 20 (oldest)
-are shown; say how many more there are.
+are shown; say how many more there are. `inbox_new` is the line count now
+minus the count the last run recorded: new lines are appended at the end,
+so they are the last `inbox_new` lines. It is `unknown` when the inbox has
+fewer lines than then (lines were removed, so a count cannot say which are
+new) or the last record has no count.
 
 ### 3. Read what is in flight
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 "$WS_ROOT/.agent/scripts/worktree_list.sh" --json
 WS_REPO="$(source "$WS_ROOT/.agent/scripts/_issue_helpers.sh" \
     && extract_gh_slug "$(git -C "$WS_ROOT" remote get-url origin 2>/dev/null)")"
 echo "---"
-gh pr list -R "$WS_REPO" --state open \
-    --json number,title,headRefName,isDraft,reviewDecision,updatedAt
+if [ -n "$WS_REPO" ]; then
+    gh pr list -R "$WS_REPO" --state open \
+        --json number,title,headRefName,isDraft,reviewDecision,updatedAt
+else
+    echo "pull requests: not checked (no GitHub remote for $WS_ROOT)"
+fi
 ```
 
 `-R` names the workspace repository from its own remote, so a project
-session does not list the project's pull requests by mistake. For each
+session does not list the project's pull requests by mistake. With no
+GitHub remote the pull requests are reported as not checked. For each
 worktree, its last commit stands in for a resume note:
 
 ```bash
@@ -123,18 +152,34 @@ git -C "<worktree path>" log -1 --format='%cr: %s'
 ### 4. Write the run record
 
 Only when `run_record` is set and its directory exists; the repository is
-never written to. One line, appended:
+never written to. One line, appended, with the summary counted from the rows
+step 1 saved (the checks are not run again) and the inbox line count, which
+the next run's `inbox_new` is measured from. Put step 1's `rows_file` value
+in place of the placeholder. The rows file is removed either way.
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 source "$WS_ROOT/.agent/scripts/_settings.sh"
-record="$(settings_path "$WS_ROOT" run_record)" \
-    && summary="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT" --summary)" \
-    && printf '%s\tworkspace\t%s\tinbox %s\n' "$(date '+%Y-%m-%d %H:%M %z')" \
-        "$summary" "<inbox line count, or 0>" >> "$record"
+rows="<rows_file printed in step 1>"
+record="$(settings_path "$WS_ROOT" run_record)" || record=""
+inbox="$(settings_path "$WS_ROOT" inbox)" || inbox=""
+n=0
+if [ -n "$inbox" ] && [ -f "$inbox" ]; then n="$(grep -c . "$inbox")"; fi
+if [ -z "$record" ]; then
+    echo "run record: not written (run_record not set)"
+elif [ ! -d "$(dirname "$record")" ]; then
+    echo "run record: not written (directory missing: $(dirname "$record"))"
+elif summary="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows")"; then
+    printf '%s\tworkspace\t%s\tinbox %s\n' "$(date '+%Y-%m-%d %H:%M %z')" \
+        "$summary" "$n" >> "$record" && echo "run record: written to $record"
+else
+    echo "run record: not written (rows file unreadable: $rows)"
+fi
+rm -f -- "$rows"
 ```
 
-With `run_record` unset, say so in the report and skip the write.
+When the record is not written, say so in the report, with the reason
+printed.
 
 ### 5. Print the report
 
@@ -151,7 +196,8 @@ Not yet true:
 - <line> — <result> (<check>)
 Workspace root only; registered project roots are not read in this mode.
 
-**Inbox**: <n> lines, oldest <date>, <k> new since the last run.
+**Inbox**: <n> lines, oldest <date>, <k> new since the last run (or
+"new since the last run: unknown", with the reason).
 Proposed sort, to answer in batches:
 - now: <items>
 - next: <items>

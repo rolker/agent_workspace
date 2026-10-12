@@ -37,6 +37,7 @@ mkdir -p "$MARK" "$RCD" "$SB/bin" "$SB/root/docs" "$SB/root/.agent/scripts" \
 cat > "$SB/bin/gh" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "$MARK/gh"
+[ -e "$SB/gh_eat" ] && cat > /dev/null
 rc=\$(cat "$RCD/gh" 2>/dev/null || echo 0)
 [ "\$rc" -eq 0 ] && cat "$SB/gh_state"
 exit "\$rc"
@@ -283,8 +284,9 @@ Intro text.
 |------|-------|
 | After section | file-exists docs/notes.md |
 '
+body_shape="$body"
 run_rm "$body"
-[[ -z "$(row 'Other table')" && -z "$(row 'Fenced')" && -z "$(row 'After section')" ]] \
+[[ -z "$(row 'Other table')"&& -z "$(row 'Fenced')" && -z "$(row 'After section')" ]] \
     && pass "(shape) other table, fenced example and later sections not read" || fail "(shape) $OUT"
 [[ "$(row 'Paused thing (#12)' | cut -f1,3)" == $'deferral\ttrue' ]] && pass "(shape) deferral row kind and result" || fail "(shape) $(row 'Paused thing (#12)')"
 [[ "$(res 'Waiting thing')" == unchecked ]] && pass "(shape) deferral without a check is unchecked" || fail "(shape) $(row 'Waiting thing')"
@@ -300,6 +302,260 @@ run_rm $'# Roadmap\n\n## Other\n\n| Line | Check |\n|---|---|\n| X | file-exists
     && pass "(section) one section row" || fail "(section) rc=$RC '$OUT'"
 run_rm $'# Roadmap\n' --summary
 [[ "$OUT" == "lines 0/0 deferrals 0/0" ]] && pass "(section) summary of an absent section" || fail "(section) summary '$OUT'"
+
+echo "TEST: a section with no recognised table, an empty section, a missing roadmap"
+run_rm $'## Direction\n\nOnly prose here.\n\n| Item | Notes |\n|---|---|\n| x | y |\n\n## Next\n'
+[[ "$(cut -f1-3 <<< "$OUT")" == $'section\t(no Line or Deferral table)\tunchecked' ]] \
+    && pass "(section) prose-only section prints its own row" || fail "(section) no table: '$OUT'"
+run_rm $'## Direction\n\n## Next\n'
+[[ "$(cut -f1-3 <<< "$OUT")" == $'section\t(no Line or Deferral table)\tunchecked' ]] \
+    && pass "(section) empty section prints the same row" || fail "(section) empty: '$OUT'"
+OUT="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --roadmap "$SB/root/docs/nosuch.md" 2>/dev/null)"
+[[ "$(cut -f1 <<< "$OUT")" == section && "$(cut -f2 <<< "$OUT")" == "(roadmap not found: $SB/root/docs/nosuch.md)" ]] \
+    && pass "(section) a missing roadmap file is named, not read as no section" || fail "(section) missing roadmap: '$OUT'"
+
+# --- 6. fences, headings, line endings ------------------------------------------------------
+echo "TEST: a fenced ## Direction before the real section is skipped"
+for fence in '```' '~~~'; do
+    body="# Roadmap
+
+${fence}markdown
+## Direction
+
+| Line | Check |
+|------|-------|
+| Example only | file-exists docs/ghost.md |
+${fence}
+
+## Direction
+
+| Line | Check |
+|------|-------|
+| Real line | file-exists docs/notes.md |
+
+## Next
+"
+    run_rm "$body"
+    [[ -z "$(row 'Example only')" && "$(res 'Real line')" == true ]] \
+        && pass "(fence $fence) example skipped, real section read" || fail "(fence $fence) '$OUT'"
+done
+body='## Direction
+
+~~~
+```
+| Line | Check |
+|------|-------|
+| Inner | file-exists docs/notes.md |
+~~~
+
+````
+```
+still fenced
+````
+
+| Line | Check |
+|------|-------|
+| After fences | file-exists docs/notes.md |
+'
+run_rm "$body"
+[[ -z "$(row Inner)" && "$(res 'After fences')" == true ]] \
+    && pass "(fence) a backtick fence inside ~~~ does not close it; a longer fence needs a long close" || fail "(fence nested) '$OUT'"
+
+echo "TEST: ### subheadings stay in the section; CRLF roadmap"
+run_rm $'## Direction\n\n### Lines\n\n| Line | Check |\n|---|---|\n| Under sub | file-exists docs/notes.md |\n\n## Next\n'
+[[ "$(res 'Under sub')" == true ]] && pass "(heading) ### does not end the section" || fail "(heading) '$OUT'"
+run_rm $'## Direction\r\n\r\n| Line | Check |\r\n|---|---|\r\n| Crlf | file-contains docs/notes.md hello |\r\n\r\n## Next\r\n'
+[[ "$(res Crlf)" == true ]] && pass "(crlf) CRLF roadmap read" || fail "(crlf) '$OUT'"
+
+# --- 7. cells: escaped pipes, extra cells --------------------------------------------------
+echo "TEST: GFM escaped pipes and rows with extra cells"
+printf 'a|b here\nx\\ only\n' > "$SB/root/docs/pipes.md"
+run_rm "$(direction \
+    '| Escaped true | file-contains docs/pipes.md a\|b |' \
+    '| Escaped false | file-contains docs/pipes.md a\|c |' \
+    '| Prefix only | file-contains docs/pipes.md x\|y |' \
+    '| Extra | file-exists docs/notes.md | stray |')"
+[[ "$(res 'Escaped true')" == true && "$(res 'Escaped false')" == false && "$(res 'Prefix only')" == false ]] \
+    && pass "(pipes) \\| is a literal pipe inside the check" \
+    || fail "(pipes) true=$(res 'Escaped true') false=$(res 'Escaped false') prefix=$(res 'Prefix only')"
+[[ "$(row 'Escaped true' | cut -f4)" == 'file-contains docs/pipes.md a|b' ]] \
+    && pass "(pipes) check column shows the unescaped text" || fail "(pipes) check col '$(row 'Escaped true' | cut -f4)'"
+[[ "$(res Extra)" == unchecked && "$(row Extra | cut -f4)" == *stray* ]] \
+    && pass "(pipes) a row with extra cells is unchecked and shows them" || fail "(pipes) extra '$(row Extra)'"
+
+# --- 8. path containment ---------------------------------------------------------------------
+echo "TEST: symlinks that leave the root are refused"
+printf 's3cret\n' > "$SB/secret.txt"
+ln -s "$SB/secret.txt" "$SB/root/docs/esc"
+ln -s "$SB" "$SB/root/linkdir"
+ln -s notes.md "$SB/root/docs/alias"
+run_rm "$(direction \
+    '| Esc exists | file-exists docs/esc |' \
+    '| Esc contains | file-contains docs/esc s3cret |' \
+    '| Dir escape | file-exists linkdir/secret.txt |' \
+    '| Dir escape missing | file-exists linkdir/nosuch.txt |' \
+    '| In-root link | file-contains docs/alias hello |')"
+[[ "$(res 'Esc exists')" == unchecked && "$(res 'Esc contains')" == unchecked \
+    && "$(res 'Dir escape')" == unchecked && "$(res 'Dir escape missing')" == unchecked ]] \
+    && pass "(contain) links out of the root are unchecked" \
+    || fail "(contain) esc=$(res 'Esc exists') escc=$(res 'Esc contains') dir=$(res 'Dir escape') dirmiss=$(res 'Dir escape missing')"
+[[ "$(res 'In-root link')" == true ]] && pass "(contain) a link inside the root is followed" || fail "(contain) in-root $(row 'In-root link')"
+rm -f "$SB/root/docs/esc" "$SB/root/linkdir" "$SB/root/docs/alias"
+
+# --- 9. ADR status --------------------------------------------------------------------------
+echo "TEST: adr-status reads the status line of that file only"
+mkdir -p "$SB/root/docs/decisions"
+printf '# ADR\n\n## Status\n\n**Provisional.** Promote when **Accepted.** is earned.\n\n## Context\n' > "$SB/root/docs/decisions/a.md"
+printf '# ADR\n\n## Status\n\nAccepted. Plain form.\n' > "$SB/root/docs/decisions/b.md"
+printf '# ADR\n\n## Status\n\n**Accepted.** Bold form.\n' > "$SB/root/docs/decisions/c.md"
+printf '# ADR\n\nNo status heading. Accepted.\n' > "$SB/root/docs/decisions/d.md"
+run_rm "$(direction \
+    '| Prov | adr-status docs/decisions/a.md accepted |' \
+    '| Prov is prov | adr-status docs/decisions/a.md Provisional |' \
+    '| Plain | adr-status docs/decisions/b.md accepted |' \
+    '| Bold | `adr-status docs/decisions/c.md Accepted` |' \
+    '| No heading | adr-status docs/decisions/d.md accepted |' \
+    '| Missing file | adr-status docs/decisions/zz.md accepted |' \
+    '| Bad word | adr-status docs/decisions/b.md acc.pted |' \
+    '| Escape | adr-status ../x.md accepted |')"
+[[ "$(res Prov)" == false && "$(res 'Prov is prov')" == true ]] && pass "(adr) bold Accepted in the body is not the status" || fail "(adr) prov=$(res Prov) provprov=$(res 'Prov is prov')"
+[[ "$(res Plain)" == true && "$(res Bold)" == true ]] && pass "(adr) plain and bold status lines" || fail "(adr) plain=$(res Plain) bold=$(res Bold)"
+[[ "$(res 'No heading')" == unknown && "$(res 'Missing file')" == false ]] && pass "(adr) no Status heading unknown, missing file false" || fail "(adr) nohead=$(res 'No heading') missing=$(res 'Missing file')"
+[[ "$(res 'Bad word')" == unchecked && "$(res Escape)" == unchecked ]] && pass "(adr) malformed arguments unchecked" || fail "(adr) bad=$(res 'Bad word') esc=$(res Escape)"
+
+# --- 10. external calls ----------------------------------------------------------------------
+echo "TEST: gh cannot read the roadmap's remaining rows"
+reset_marks
+touch "$SB/gh_eat"
+run_rm "$(direction '| First gh | gh-issue 5 closed |' '| After gh | file-exists docs/notes.md |')"
+rm -f "$SB/gh_eat"
+[[ "$(res 'First gh')" == true && "$(res 'After gh')" == true ]] \
+    && pass "(stdin) rows after a gh check are still read" || fail "(stdin) '$OUT'"
+
+echo "TEST: gh-issue slug must not start with -"
+reset_marks
+run_rm "$(direction '| Dash | gh-issue -x/y#5 closed |' '| Dot repo | gh-issue acme/.github#3 closed |')"
+[[ "$(res Dash)" == unchecked && "$(res 'Dot repo')" == true ]] \
+    && pass "(slug) -x/y unchecked, owner/.github accepted" || fail "(slug) dash=$(res Dash) dot=$(res 'Dot repo')"
+[[ "$(grep -c -- '-R -x' "$MARK/gh" 2>/dev/null || true)" == 0 || ! -e "$MARK/gh" ]] \
+    && pass "(slug) gh never got -R -x" || fail "(slug) gh args: $(cat "$MARK/gh")"
+
+echo "TEST: a check that ignores TERM is killed after the grace period"
+reset_marks
+cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
+#!/usr/bin/env bash
+trap '' TERM
+sleep 30
+EOF
+start=$SECONDS
+OUT="$(cd "$SB/elsewhere" && printf '%s' "$(direction '| Slow | script check_design_anchors.sh |')" > "$SB/root/docs/roadmap.md" \
+    && SITREP_TIMEOUT=1 SITREP_KILL_AFTER=1 bash "$SITREP" --root "$SB/root" 2>/dev/null)"
+took=$((SECONDS - start))
+[[ "$(res Slow)" == unknown && $took -lt 8 ]] && pass "(timeout) unknown after ${took}s" || fail "(timeout) took ${took}s: '$OUT'"
+cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s %s\n' "\$PWD" "\$*" >> "$MARK/check_design_anchors.sh"
+exit "\$(cat "$RCD/check_design_anchors.sh" 2>/dev/null || echo 0)"
+EOF
+
+# --- 11. one run, summary from saved rows --------------------------------------------------
+echo "TEST: --summary-from counts saved rows and runs no check"
+reset_marks
+run_rm "$body_shape"
+printf '%s\n' "$OUT" > "$SB/rows.tsv"
+reset_marks
+OUT2="$(bash "$SITREP" --summary-from "$SB/rows.tsv" 2>/dev/null)"
+run_rm "$body_shape" --summary
+[[ -n "$OUT2" && "$OUT2" == "$OUT" ]] && pass "(summary-from) matches --summary on the same roadmap" || fail "(summary-from) '$OUT2' vs '$OUT'"
+printf 'line\tA\ttrue\tgh-issue 5 closed\t2026-01-01\nline\tB\tfalse\tx\t2026-01-01\ndeferral\tC\ttrue\ty\t2026-01-01\n' > "$SB/rows2.tsv"
+reset_marks
+OUT2="$(bash "$SITREP" --summary-from "$SB/rows2.tsv" 2>/dev/null)"
+[[ "$OUT2" == "lines 1/2 deferrals 1/1" && ! -e "$MARK/gh" ]] && pass "(summary-from) hand-written rows, gh not called" || fail "(summary-from) '$OUT2'"
+RC=0; bash "$SITREP" --summary-from "$SB/nosuch.tsv" >/dev/null 2>&1 || RC=$?
+[[ $RC -eq 2 ]] && pass "(summary-from) unreadable file exits 2" || fail "(summary-from) rc=$RC"
+
+# --- 12. run through the scripts/ symlink ----------------------------------------------------
+echo "TEST: run through a scripts/ symlink, the default root is the checkout"
+WS="$SB/ws"
+mkdir -p "$WS/.agent/scripts" "$WS/docs"
+for f in sitrep_checks.sh _issue_helpers.sh _project_registry.sh; do cp "$SCRIPT_DIR/../$f" "$WS/.agent/scripts/"; done
+ln -s .agent/scripts "$WS/scripts"
+printf '## Direction\n\n| Line | Check |\n|---|---|\n| Self | file-exists docs/roadmap.md |\n' > "$WS/docs/roadmap.md"
+OUT="$(cd "$SB/elsewhere" && bash "$WS/scripts/sitrep_checks.sh" --summary 2>/dev/null)"
+[[ "$OUT" == "lines 1/1 deferrals 0/0" ]] && pass "(symlink) default root read through scripts/" || fail "(symlink) '$OUT'"
+
+# --- 13. the sit-rep skill's own commands -----------------------------------------------------
+# The skill's steps are shell blocks the session runs as written; these run
+# them (first ```bash block under "### <n>.") against a sandbox workspace.
+SKILL="$SCRIPT_DIR/../../../.claude/skills/sitrep/SKILL.md"
+skill_step() {
+    awk -v n="$1" '
+        $0 ~ "^### " n "\\. " { s = 1; next }
+        s && /^### / { exit }
+        s && !b && /^```bash/ { b = 1; next }
+        b && /^```/ { exit }
+        b { print }' "$SKILL"
+}
+HOMESB="$SB/home"
+mkdir -p "$HOMESB/.claude" "$SB/notes"
+printf '%s' "$WS" > "$HOMESB/.claude/agent-workspace-root"
+cp "$SCRIPT_DIR/../_settings.sh" "$WS/.agent/scripts/"
+printf 'inbox=%s\nrun_record=%s\n' "$SB/notes/inbox.txt" "$SB/notes/runs.txt" > "$WS/.agent/settings.local"
+printf '## Direction\n\n| Line | Check |\n|---|---|\n| Issue | gh-issue acme/widgets#5 closed |\n| Self | file-exists docs/roadmap.md |\n\n| Deferral | Revisit check |\n|---|---|\n| Later | file-exists docs/ghost.md |\n' > "$WS/docs/roadmap.md"
+# run_step <n> [sed expr]: runs step n's block with the sandbox HOME; sets OUT, RC
+run_step() {
+    local blk; blk="$(skill_step "$1")"
+    [ -n "${2:-}" ] && blk="$(sed "$2" <<< "$blk")"
+    RC=0
+    OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+}
+
+echo "TEST: sit-rep step 1 runs the checks once and shows rows and summary"
+reset_marks
+run_step 1
+rows_file="$(sed -n 's/^rows_file=//p' <<< "$OUT")"
+n_gh="$(grep -c . "$MARK/gh" 2>/dev/null || true)"
+[[ "$n_gh" == 1 ]] && pass "(skill 1) gh called once for one gh row" || fail "(skill 1) gh called ${n_gh:-0} times: $OUT"
+[[ "$OUT" == *"lines 2/2 deferrals 0/1"* && -n "$rows_file" && -f "$rows_file" ]] \
+    && pass "(skill 1) summary shown, rows saved" || fail "(skill 1) '$OUT'"
+
+echo "TEST: sit-rep step 4 records the summary of the same rows and the inbox count"
+printf '2026-10-12 10:00 -0400\tworkspace\t-\ta\n2026-10-12 10:00 -0400\tworkspace\t-\tb\n2026-10-12 10:00 -0400\tworkspace\t-\tc\n' > "$SB/notes/inbox.txt"
+reset_marks
+echo OPEN > "$SB/gh_state"   # a re-run would now give lines 1/2
+run_step 4 "s|<rows_file printed in step 1>|$rows_file|"
+last="$(tail -n1 "$SB/notes/runs.txt" 2>/dev/null)"
+[[ "$(cut -f2- <<< "$last")" == $'workspace\tlines 2/2 deferrals 0/1\tinbox 3' && ! -e "$MARK/gh" ]] \
+    && pass "(skill 4) record from the saved rows, no check re-run" || fail "(skill 4) last='$last' out='$OUT'"
+[[ -n "$rows_file" && ! -e "$rows_file" ]] && pass "(skill 4) rows file removed" || fail "(skill 4) rows file left: $rows_file"
+printf 'inbox=%s\nrun_record=%s\n' "$SB/notes/inbox.txt" "$SB/nodir/runs.txt" > "$WS/.agent/settings.local"
+printf 'line\tA\ttrue\tx\t2026-01-01\n' > "$SB/rows3.tsv"
+run_step 4 "s|<rows_file printed in step 1>|$SB/rows3.tsv|"
+[[ $RC -eq 0 && ! -e "$SB/nodir" && "$OUT" == *"not written"* ]] \
+    && pass "(skill 4) missing record directory: not written, said so" || fail "(skill 4) nodir rc=$RC '$OUT'"
+printf 'inbox=%s\nrun_record=%s\n' "$SB/notes/inbox.txt" "$SB/notes/runs.txt" > "$WS/.agent/settings.local"
+
+echo "TEST: sit-rep step 2 counts new inbox lines from the recorded count"
+printf '2026-10-12 10:00 -0400\tworkspace\tlines 1/2 deferrals 0/1\tinbox 2\n' > "$SB/notes/runs.txt"
+run_step 2
+[[ "$OUT" == *"inbox_lines=3"* && "$OUT" == *"inbox_new=1"* ]] \
+    && pass "(skill 2) same-minute capture counted new" || fail "(skill 2) '$OUT'"
+printf '2026-10-12 10:00 -0400\tworkspace\tlines 1/2 deferrals 0/1\tinbox 5\n' > "$SB/notes/runs.txt"
+run_step 2
+[[ "$OUT" == *"inbox_new=unknown"* ]] && pass "(skill 2) fewer lines than recorded: unknown" || fail "(skill 2) shrink '$OUT'"
+
+echo "TEST: sit-rep steps with an empty agent-workspace-root file fall back to the cwd"
+: > "$HOMESB/.claude/agent-workspace-root"
+blk="$(skill_step 2)"
+RC=0; OUT="$(cd "$WS" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ "$OUT" == *"inbox_lines=3"* ]] && pass "(skill root) empty root file: WS_ROOT is the cwd" || fail "(skill root) '$OUT'"
+printf '%s' "$WS" > "$HOMESB/.claude/agent-workspace-root"
+
+echo "TEST: sit-rep step 3 with no GitHub remote does not call gh"
+printf '#!/usr/bin/env bash\necho "[]"\n' > "$WS/.agent/scripts/worktree_list.sh"; chmod +x "$WS/.agent/scripts/worktree_list.sh"
+reset_marks
+run_step 3
+[[ ! -e "$MARK/gh" && "$OUT" == *"no GitHub remote"* ]] && pass "(skill 3) empty repo: gh not called, said so" || fail "(skill 3) '$OUT' gh=$(cat "$MARK/gh" 2>/dev/null)"
 
 echo "TEST: usage"
 RC=0; bash "$SITREP" --bogus >/dev/null 2>&1 || RC=$?

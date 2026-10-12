@@ -5,28 +5,45 @@
 # output; it decides nothing itself.
 #
 # Usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary]
+#        sitrep_checks.sh --summary-from <rows-file>
 #   --root     the roadmap's repository root (default: this script's own
-#              checkout). Relative paths in checks resolve against it, and
-#              gh-issue takes its repo from its `origin` remote.
+#              checkout, resolved through symlinks, so a run through the
+#              repo-root `scripts/` link finds it). Relative paths in checks
+#              resolve against it, and gh-issue takes its repo from its
+#              `origin` remote.
 #   --roadmap  default <root>/docs/roadmap.md
 #   --summary  print one line instead of rows:
 #                lines <true>/<total> deferrals <true>/<total>
 #              (a deferral whose check is true is due). The sit-rep stores
 #              this line in its run record.
+#   --summary-from <rows-file>
+#              the same line, counted from rows saved by an earlier run; no
+#              roadmap is read and no check runs. The sit-rep runs the checks
+#              once, saves the rows, and takes both the summary it shows and
+#              the one it records from them. Exit 2 if the file is unreadable.
 #
-# What is read: only the `## Direction` section (up to the next `## `
-# heading), outside fenced code. Tables are picked by header:
+# What is read: only the `## Direction` section (up to the next `#` or `##`
+# heading; `###` stays inside), outside fenced code. Fences are tracked from
+# the top of the file, so a fenced `## Direction` example is not the
+# section. A fence opens with 3+ backticks or tildes (up to 3 spaces of
+# indent) and closes with a run of the same character at least as long and
+# nothing after it. Tables are picked by header:
 #   | Line | Check |               -> rows of kind `line`
 #   | Deferral | Revisit check |   -> rows of kind `deferral`
-# Any other table in the section is ignored. A checklist item (`- [ ]`,
+# Any other table in the section is ignored. Cells split on `|` as GFM
+# does: `\|` is a literal pipe in the cell (and in the check), and no other
+# backslash is special. A row with more than two cells is `unchecked`, with
+# every cell after the first shown in <check>. A checklist item (`- [ ]`,
 # `- [x]`) in the section prints a `format` row, `unchecked`, so the misuse
 # is visible (update_roadmap.sh would tick it on merge).
 #
 # Output: one TAB-separated row per item:
 #   <kind>  <item>  <result>  <check>  <date>
-# <check> is the cell text, or `none` when the cell is empty. With no
-# Direction section there is one row: section, (no Direction section),
-# unchecked, none, date. Exit 0 whenever rows were printed; 2 on usage.
+# <check> is the cell text, or `none` when the cell is empty. `section` rows,
+# result `unchecked`, say why there is nothing to check: the item is
+# `(roadmap not found: <path>)`, `(no Direction section)`, or `(no Line or
+# Deferral table)` for a section that has neither table (an empty section
+# included). Exit 0 whenever rows were printed; 2 on usage.
 #
 # Check grammar (a cell may join several checks with ` ; `; a check may be
 # wrapped in backticks). Each check is split into words with `read -ra`
@@ -35,6 +52,13 @@
 #   file-contains <relpath> <fixed string>   (the rest of the check;
 #                                              grep -qF; a missing file is
 #                                              false)
+#   adr-status <relpath> <word>              (the first non-blank line after
+#                                              the file's `## Status` heading
+#                                              starts with <word>, bold or
+#                                              not, any case; <word> is
+#                                              letters only; a missing file
+#                                              is false, no Status heading
+#                                              is unknown)
 #   gh-issue <N> <open|closed>               (repo from <root>'s origin)
 #   gh-issue <owner/repo>#<N> <open|closed>
 #   script <form>, where <form> is exactly one of
@@ -46,9 +70,11 @@
 #     run from this script's own .agent/scripts directory (tests point
 #     SITREP_SCRIPTS_DIR at a sandbox copy), with the cwd at that checkout's
 #     root. A project root's .agent/scripts is never consulted.
-# Anything else is `unchecked`: an absolute path or one containing `..`, an
-# unknown kind, any other script form, malformed gh-issue arguments, a bare
-# `#N`, an empty cell.
+# Anything else is `unchecked`: an absolute path or one containing `..`, a
+# path that resolves (through a symlink) outside the root, an unknown kind,
+# any other script form, malformed gh-issue arguments (an owner/repo slug
+# must start with a letter or digit, a repo name may start with `.` or `_`),
+# a bare `#N`, an empty cell.
 #
 # Results: true (exit 0) / false (exit 1) / unknown (could not run: gh or
 # the script missing or failing, an exit above 1, grep error, timeout, no
@@ -58,7 +84,14 @@
 # unchecked -> partial; else all true -> true, all false -> false, mixed ->
 # partial. The five words are a trial.
 #
-# External calls run under `timeout` ($SITREP_TIMEOUT seconds, default 60).
+# `script user_tier_install.sh --check` exits 1 both on drift and when it
+# cannot check (a settings.json that is not valid JSON), so that case reads
+# `false`, not `unknown`; its message is on stderr, which is not read here.
+#
+# External calls and file reads run under `timeout` ($SITREP_TIMEOUT
+# seconds, default 60), with SIGKILL $SITREP_KILL_AFTER seconds later
+# (default 5) for a check that ignores TERM. They never read this script's
+# stdin, which is the roadmap while it is being read.
 #
 # ADR-0010 departure: gh-issue reads the state with `gh -R <repo> issue
 # view` directly, not issue_lookup. A git-bug cache hit is not refreshed, so
@@ -68,9 +101,12 @@
 set -uo pipefail
 set -f
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# -P: through the repo-root `scripts/` symlink, a logical path's `../..`
+# would be the checkout's parent.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 SCRIPTS_DIR="${SITREP_SCRIPTS_DIR:-$SCRIPT_DIR}"
 TIMEOUT_SECS="${SITREP_TIMEOUT:-60}"
+KILL_AFTER="${SITREP_KILL_AFTER:-5}"
 
 # shellcheck source=_issue_helpers.sh
 source "$SCRIPT_DIR/_issue_helpers.sh"
@@ -80,23 +116,53 @@ source "$SCRIPT_DIR/_project_registry.sh" 2>/dev/null || REGISTRY_OK=false
 
 usage() {
     echo "usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary]" >&2
+    echo "       sitrep_checks.sh --summary-from <rows-file>" >&2
     exit 2
 }
 
 ROOT=""
 ROADMAP=""
 SUMMARY=false
+SUMMARY_FROM=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --root) [ $# -ge 2 ] || usage; ROOT="$2"; shift 2 ;;
         --roadmap) [ $# -ge 2 ] || usage; ROADMAP="$2"; shift 2 ;;
         --summary) SUMMARY=true; shift ;;
+        --summary-from) [ $# -ge 2 ] || usage; SUMMARY_FROM="$2"; shift 2 ;;
         -h|--help) usage ;;
         *) echo "unknown argument: $1" >&2; usage ;;
     esac
 done
+
+# summarize: the summary line of the rows in ROWS.
+summarize() {
+    local r k res lt=0 ln=0 dt=0 dn=0
+    for r in "${ROWS[@]}"; do
+        k="${r%%$'\t'*}"
+        res="${r#*$'\t'}"
+        res="${res#*$'\t'}"
+        res="${res%%$'\t'*}"
+        case "$k" in
+            line) ln=$((ln + 1)); [ "$res" = true ] && lt=$((lt + 1)) ;;
+            deferral) dn=$((dn + 1)); [ "$res" = true ] && dt=$((dt + 1)) ;;
+        esac
+    done
+    echo "lines $lt/$ln deferrals $dt/$dn"
+}
+
+ROWS=()
+if [ -n "$SUMMARY_FROM" ]; then
+    [ -f "$SUMMARY_FROM" ] && [ -r "$SUMMARY_FROM" ] || { echo "rows file not readable: $SUMMARY_FROM" >&2; exit 2; }
+    while IFS= read -r r || [ -n "$r" ]; do
+        [ -n "$r" ] && ROWS+=("$r")
+    done < "$SUMMARY_FROM"
+    summarize
+    exit 0
+fi
+
 [ -n "$ROOT" ] || ROOT="$SCRIPT_DIR/../.."
-ROOT="$(cd "$ROOT" 2>/dev/null && pwd)" || { echo "root not found" >&2; exit 2; }
+ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)" || { echo "root not found" >&2; exit 2; }
 [ -n "$ROADMAP" ] || ROADMAP="$ROOT/docs/roadmap.md"
 TODAY="$(date +%Y-%m-%d)"
 
@@ -119,11 +185,46 @@ safe_rel() {
     [ -n "$1" ] && [[ "$1" != /* ]] && [[ "$1" != *..* ]]
 }
 
-# run_bounded <cmd...>: runs under the timeout; returns its exit code, or
-# 125 when there is no timeout command.
+# in_root <relpath>: sets RESOLVED to <root>/<relpath> with every symlink on
+# the way resolved. Returns 0 when that is inside the root (a dangling final
+# link included; it then does not exist), 1 when it leaves the root, 2 when
+# the parent directory does not exist (nothing to look at), 3 when a link
+# could not be resolved.
+in_root() {
+    local p="$ROOT/$1" dir
+    RESOLVED=""
+    dir="$(cd -P -- "$(dirname -- "$p")" 2>/dev/null && pwd -P)" || return 2
+    case "$dir" in "$ROOT"|"$ROOT"/*) ;; *) return 1 ;; esac
+    RESOLVED="$dir/$(basename -- "$p")"
+    if [ -L "$RESOLVED" ] && [ -e "$RESOLVED" ]; then
+        command -v realpath >/dev/null 2>&1 || return 3
+        RESOLVED="$(realpath -- "$RESOLVED" 2>/dev/null)" || return 3
+        case "$RESOLVED" in "$ROOT"|"$ROOT"/*) ;; *) return 1 ;; esac
+    fi
+    return 0
+}
+
+# check_path <relpath>: echoes nothing and returns 0 when the path is usable
+# (RESOLVED set); otherwise echoes the result word for the check and
+# returns 1.
+check_path() {
+    local rc=0
+    safe_rel "$1" || { echo unchecked; return 1; }
+    in_root "$1" || rc=$?
+    case "$rc" in
+        0) return 0 ;;
+        1) echo unchecked ;;
+        2) echo false ;;
+        *) echo unknown ;;
+    esac
+    return 1
+}
+
+# run_bounded <cmd...>: runs under the timeout, stdin from /dev/null;
+# returns its exit code, or 125 when there is no timeout command.
 run_bounded() {
     [ -n "$TIMEOUT_BIN" ] || return 125
-    "$TIMEOUT_BIN" "$TIMEOUT_SECS" "$@"
+    "$TIMEOUT_BIN" -k "$KILL_AFTER" "$TIMEOUT_SECS" "$@" </dev/null
 }
 
 exit_to_result() {
@@ -142,7 +243,7 @@ check_gh_issue() {  # <ref> <state>
         url="$(git -C "$ROOT" remote get-url origin 2>/dev/null)" || { echo unknown; return; }
         slug="$(extract_gh_slug "$url")"
         [ -n "$slug" ] || { echo unknown; return; }
-    elif [[ "$ref" =~ ^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([0-9]+)$ ]]; then
+    elif [[ "$ref" =~ ^([A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.][A-Za-z0-9_.-]*)#([0-9]+)$ ]]; then
         slug="${BASH_REMATCH[1]}"
         n="${BASH_REMATCH[2]}"
     else
@@ -182,6 +283,23 @@ check_script() {  # <words...> (after the `script` kind word)
     exit_to_result "$rc"
 }
 
+check_adr_status() {  # <relpath> <word>
+    local path="$1" want="${2,,}" line word rc=0 out
+    [[ "$want" =~ ^[a-z]+$ ]] || { echo unchecked; return; }
+    check_path "$path" || return
+    [ -e "$RESOLVED" ] || { echo false; return; }
+    out="$(run_bounded awk '
+        f && NF { print; found = 1; exit }
+        /^##[[:space:]]+Status[[:space:]]*$/ { f = 1 }
+        END { if (!found) exit 3 }' "$RESOLVED" 2>/dev/null)" || rc=$?
+    [ "$rc" -eq 0 ] || { echo unknown; return; }
+    line="$(trim "$out")"
+    line="${line#"${line%%[!*_]*}"}"
+    [[ "$line" =~ ^([A-Za-z]+) ]] || { echo unknown; return; }
+    word="${BASH_REMATCH[1],,}"
+    if [ "$word" = "$want" ]; then echo true; else echo false; fi
+}
+
 check_one() {  # <single check text>
     local c="$1" words kind path rest rc=0
     c="$(trim "$c")"
@@ -194,17 +312,22 @@ check_one() {  # <single check text>
     kind="${words[0]}"
     case "$kind" in
         file-exists)
-            [ "${#words[@]}" -eq 2 ] && safe_rel "${words[1]}" || { echo unchecked; return; }
-            if [ -e "$ROOT/${words[1]}" ]; then echo true; else echo false; fi
+            [ "${#words[@]}" -eq 2 ] || { echo unchecked; return; }
+            check_path "${words[1]}" || return
+            if [ -e "$RESOLVED" ]; then echo true; else echo false; fi
             ;;
         file-contains)
             [[ "$c" =~ ^file-contains[[:space:]]+([^[:space:]]+)[[:space:]]+(.*[^[:space:]])$ ]] || { echo unchecked; return; }
             path="${BASH_REMATCH[1]}"
             rest="${BASH_REMATCH[2]}"
-            safe_rel "$path" || { echo unchecked; return; }
-            [ -e "$ROOT/$path" ] || { echo false; return; }
-            run_bounded grep -qF -- "$rest" "$ROOT/$path" 2>/dev/null || rc=$?
+            check_path "$path" || return
+            [ -e "$RESOLVED" ] || { echo false; return; }
+            run_bounded grep -qF -- "$rest" "$RESOLVED" 2>/dev/null || rc=$?
             exit_to_result "$rc"
+            ;;
+        adr-status)
+            [ "${#words[@]}" -eq 3 ] || { echo unchecked; return; }
+            check_adr_status "${words[1]}" "${words[2]}"
             ;;
         gh-issue)
             [ "${#words[@]}" -eq 3 ] || { echo unchecked; return; }
@@ -255,36 +378,62 @@ check_cell() {  # <cell text>
     combine "${results[@]}"
 }
 
-ROWS=()
 emit() {  # <kind> <item> <result> <check>
     local item="${2//$'\t'/ }" check="${4//$'\t'/ }"
     [ -n "$check" ] || check="none"
     ROWS+=("$1"$'\t'"$item"$'\t'"$3"$'\t'"$check"$'\t'"$TODAY")
 }
 
-# split_row <line>: sets CELLS to the trimmed cells of a table row.
+# split_row <line>: sets CELLS to the trimmed cells of a table row, split
+# on unescaped pipes as GFM does; `\|` becomes a literal `|` in its cell.
 split_row() {
-    local inner="$1" cell
-    inner="$(trim "$inner")"
-    inner="${inner#|}"
-    inner="${inner%|}"
+    local s i ch cur="" ended=false parts=()
+    s="$(trim "$1")"
+    for ((i = 0; i < ${#s}; i++)); do
+        ch="${s:i:1}"
+        if [ "$ch" = '\' ] && [ "${s:i+1:1}" = '|' ]; then
+            cur+='|'; i=$((i + 1)); ended=false
+        elif [ "$ch" = '|' ]; then
+            parts+=("$cur"); cur=""; ended=true
+        else
+            cur+="$ch"; ended=false
+        fi
+    done
+    [ "$ended" = true ] || parts+=("$cur")
+    # A leading pipe leaves an empty first piece.
+    [[ "$s" == '|'* ]] && parts=("${parts[@]:1}")
     CELLS=()
-    IFS='|' read -ra _parts <<< "$inner"
-    for cell in "${_parts[@]}"; do
-        CELLS+=("$(trim "$cell")")
+    for cur in "${parts[@]}"; do
+        CELLS+=("$(trim "$cur")")
     done
 }
 
 in_section=false
 seen_section=false
+seen_table=false
 in_fence=false
 fence_char=""
+fence_len=0
 table=none      # none | line | deferral | other
 prev_table_line=false
-FENCE_RE='^ {0,3}(```|~~~)'
+FENCE_RE='^ {0,3}(`{3,}|~{3,})(.*)$'
 if [ -f "$ROADMAP" ]; then
     while IFS= read -r raw || [ -n "$raw" ]; do
         raw="${raw%$'\r'}"
+        # Fences are tracked from the top of the file, so a fenced example
+        # of the section is never taken for it.
+        if [[ "$raw" =~ $FENCE_RE ]]; then
+            run="${BASH_REMATCH[1]}"
+            if [ "$in_fence" = false ]; then
+                in_fence=true; fence_char="${run:0:1}"; fence_len="${#run}"
+            elif [ "${run:0:1}" = "$fence_char" ] && [ "${#run}" -ge "$fence_len" ] \
+                && [ -z "$(trim "${BASH_REMATCH[2]}")" ]; then
+                in_fence=false
+            fi
+            prev_table_line=false; table=none
+            continue
+        fi
+        [ "$in_fence" = true ] && continue
         if [ "$in_section" = false ]; then
             if [[ "$raw" =~ ^##[[:space:]]+Direction[[:space:]]*$ ]]; then
                 in_section=true
@@ -292,18 +441,6 @@ if [ -f "$ROADMAP" ]; then
             fi
             continue
         fi
-        # Fences (``` or ~~~, up to 3 spaces of indent).
-        if [[ "$raw" =~ $FENCE_RE ]]; then
-            ch="${BASH_REMATCH[1]:0:1}"
-            if [ "$in_fence" = false ]; then
-                in_fence=true; fence_char="$ch"
-            elif [ "$ch" = "$fence_char" ]; then
-                in_fence=false
-            fi
-            prev_table_line=false; table=none
-            continue
-        fi
-        [ "$in_fence" = true ] && continue
         if [[ "$raw" =~ ^##?[[:space:]] ]]; then
             break
         fi
@@ -313,8 +450,8 @@ if [ -f "$ROADMAP" ]; then
                 table=other
                 if [ "${#CELLS[@]}" -eq 2 ]; then
                     case "${CELLS[0],,}|${CELLS[1],,}" in
-                        "line|check") table=line ;;
-                        "deferral|revisit check") table=deferral ;;
+                        "line|check") table=line; seen_table=true ;;
+                        "deferral|revisit check") table=deferral; seen_table=true ;;
                     esac
                 fi
                 prev_table_line=true
@@ -327,6 +464,13 @@ if [ -f "$ROADMAP" ]; then
             split_row "$raw"
             item="${CELLS[0]:-}"
             cell="${CELLS[1]:-}"
+            if [ "${#CELLS[@]}" -gt 2 ]; then
+                # Extra cells are shown, never dropped.
+                extra="${CELLS[1]}"
+                for x in "${CELLS[@]:2}"; do extra+=" | $x"; done
+                emit "$table" "$item" unchecked "(${#CELLS[@]} cells) $extra"
+                continue
+            fi
             if [ -z "$(trim "$cell")" ]; then
                 emit "$table" "$item" unchecked ""
             else
@@ -342,23 +486,16 @@ if [ -f "$ROADMAP" ]; then
     done < "$ROADMAP"
 fi
 
-if [ "$seen_section" = false ]; then
+if [ ! -f "$ROADMAP" ]; then
+    emit section "(roadmap not found: $ROADMAP)" unchecked ""
+elif [ "$seen_section" = false ]; then
     emit section "(no Direction section)" unchecked ""
+elif [ "$seen_table" = false ]; then
+    emit section "(no Line or Deferral table)" unchecked ""
 fi
 
 if [ "$SUMMARY" = true ]; then
-    lt=0 ln=0 dt=0 dn=0
-    for r in "${ROWS[@]}"; do
-        k="${r%%$'\t'*}"
-        res="${r#*$'\t'}"
-        res="${res#*$'\t'}"
-        res="${res%%$'\t'*}"
-        case "$k" in
-            line) ln=$((ln + 1)); [ "$res" = true ] && lt=$((lt + 1)) ;;
-            deferral) dn=$((dn + 1)); [ "$res" = true ] && dt=$((dt + 1)) ;;
-        esac
-    done
-    echo "lines $lt/$ln deferrals $dt/$dn"
+    summarize
 else
     printf '%s\n' "${ROWS[@]}"
 fi
