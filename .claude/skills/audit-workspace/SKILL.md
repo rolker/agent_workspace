@@ -56,6 +56,9 @@ is expected after a design change and is not an error. For each ADR in
   `docs/design.md` records the current behaviour; flag the design document
   if it does not, and note the ADR as "superseded in practice, not yet
   superseded on paper" rather than asking for the ADR to be edited
+- When you check an ADR against the code, set that ADR's `Re-examined` cell
+  in the Decision register (`docs/design.md#decision-register`) to
+  `yes <today>`, with today's date as `YYYY-MM-DD`
 
 ### 3. Script reference table
 
@@ -135,7 +138,9 @@ List any worktrees that appear abandoned (no recent commits, merged PRs).
 ## Guidelines
 
 - **Report, don't fix** — this skill identifies issues. Fixing them should
-  be separate issues with their own worktrees.
+  be separate issues with their own worktrees. The one exception is the
+  Decision register's `Re-examined` cell (step 2): the audit sets it and
+  nothing else.
 - **Be specific** — "AGENTS.md script table lists `generate_knowledge.sh`
   but it was removed in #274" is actionable. "Some references may be stale"
   is not.
