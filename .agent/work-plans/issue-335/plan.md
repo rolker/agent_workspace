@@ -1,9 +1,11 @@
 # Plan: Workspace design document, phase 3 (rewrite docs/design.md as the current picture)
 
-Revision 10 (2026-10-09). The owner approved revision 6 on 2026-10-09 (the `## Checkpoint` entry in
-`progress.md`). This revision does not reopen the plan. It applies one owner decision of 2026-10-09
+Revision 11 (2026-10-12). The owner approved revision 6 on 2026-10-09 (the `## Checkpoint` entry in
+`progress.md`). This revision does not reopen the plan. It marks B1 and B2 decided (owner decision
+2026-10-12, before PR C: "B1, keep the default, B2 mark it as history"). Nothing else changes.
+Revision 10 applied one owner decision of 2026-10-09
 about the order in which the document is written: `# How it works` is a stub first and an agent drafts
-it last (process step 2, the PR B commit order, row 1). Nothing else changes.
+it last (process step 2, the PR B commit order, row 1).
 Revision 9 applied the owner's decisions on the A
 group (shape of the document, A1 to A5; owner decision 2026-10-09: "Go for group A", the host's
 recommendations accepted as stated) and cites issue #379, opened the same day for the merge-gate
@@ -16,7 +18,7 @@ four owner decisions of 2026-10-09 (hook scope, label, purpose and anchors, glos
 answered plan review round 4 (needs-work, entry `ffa20fe`), revision 4 answered round 3 (entry
 `e3c3eac`), revision 3 answered round 2 (entry `9cfd1fe`), revision 2 answered round 1 (entry
 `6f8c643`) and the owner's decision on the shape of the document (2026-10-08). What changed is in the
-"Revision 2" to "Revision 10 change log" sections at the end.
+"Revision 2" to "Revision 11 change log" sections at the end.
 
 ## Issue
 
@@ -603,12 +605,18 @@ which design section the planning and review skills cite (headings in the new fi
 
 Grouped by what they change. Stable IDs; ask in group order, each design question on its own.
 
-**Still open (4): B1 and B2 (wire-in; B1 needs an answer before PR C, B2 before PR C marks the
-roadmap section) and C4 and C5 (content that stays open in the document).** Every other question is
-decided, below. As of revision 9 the A group (A1 to A5) is decided; the Q1, B4, Purpose and anchors,
-Label, C1 to C3 and C6 entries are older decisions.
+**Still open (2): C4 and C5 (content that stays open in the document).** Every other question is
+decided, below. As of revision 11 B1 and B2 are decided; as of revision 9 the A group (A1 to A5); the
+Q1, B4, Purpose and anchors, Label, C1 to C3 and C6 entries are older decisions.
 
 **Decided**
+- **B1 (decided 2026-10-12, owner decision: "B1, keep the default").** Accepted ADRs carry no pointer
+  to their design section; the mapping lives only in the Decision register, and no ADR file is edited
+  for it (Wire-in 3).
+- **B2 (decided 2026-10-12, owner decision: "B2 mark it as history").** The roadmap's `## Cross-cutting
+  Decisions` is marked as history with a one-line note pointing at the design sections; "Storage
+  model" and "Progress as lifecycle record" are replaced by a pointer to "Review loop and timeline";
+  the other four subsections stay as dated rationale (Wire-in 4).
 - **Q1 (decided 2026-10-08).** Status marking yes with five values; Now block with sources, Target
   only where it differs; "Proposed:" and "(candidate)" markers; no hard line cap; admission rule
   plus a 60-line prompt plus line count in the change log; no length guide for How it works.
@@ -660,11 +668,6 @@ Label, C1 to C3 and C6 entries are older decisions.
   design text gives no `agent_workspace` example. A colleague's single-repo project is the acceptance
   test. Row 8 and "Records: where they live and whether they are tracked". The gate's lookup gap in
   the project case is tracked as #379 and does not wait for this.
-
-**B. Wire-in**
-- **B1.** Should accepted ADRs carry a pointer to their design section (issue scope item 3)? Needs a
-  scope note on ADR-0008 (or a superseding ADR). Default in this plan: no. Hard to undo once ADRs are edited.
-- **B2.** Roadmap Cross-cutting Decisions: mark as history (this plan), delete, or leave. Marking is easy to reverse.
 
 **C. Content that stays open in the document** (C1, C2, C3 and C6 moved to Decided)
 - **C4.** `onboard-project` as the only registration path (#332), project lifecycle (unregister, one
@@ -839,3 +842,13 @@ logged in the document's own change log from the first section commit.
 | Item | What changed |
 |---|---|
 | 1 | Process step 2 reworded: the first section commit creates `# How it works` as a stub (the heading plus "Written last; see the change log.") so the anchor exists; the other sections are written in table order; an agent drafts How it works last from the fact list and the owner's recorded phrasings only, with no new ideas, for the owner to edit when he has bandwidth. The PR B commit order gains the skeleton commit (stub, `# The design` opening and Status key, change log) and a last commit for the draft; row 1 and Estimated Scope follow. PR B is written in two dispatches: part 1 rows 1 to 9 as far as Review loop and timeline, part 2 rows 10 to 16 and the draft |
+
+## Revision 11 change log
+
+Applies the owner's answers to B1 and B2 of 2026-10-12, recorded in the `## Checkpoint` entry before
+PR C ("B1, keep the default, B2 mark it as history"). Both pick the plan's own defaults, so no review
+round in between and the plan approved at revision 6 is not reopened.
+
+| Item | What changed |
+|---|---|
+| 1 | Open Questions: B1 and B2 moved to Decided; the B group heading is gone; the "Still open" line lists C4 and C5 only. The revision line at the top says so. Wire-in 3 and 4 already describe the chosen defaults and are unchanged |
