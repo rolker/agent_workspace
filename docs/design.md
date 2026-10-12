@@ -664,8 +664,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Review loop and timeline | Review fix: a `merge` entry that no worktree on the pull request's branch can commit and push is posted as a comment on the pull request (`_gate_record` in `merge_pr.sh`) | #335 | 713 |
 | 2026-10-12 | Worktrees | Review fix: the Records bullet says an issue in a package repository has no timeline, since a package worktree is a folder of several repositories and `merge_pr.sh` posts its gate record on the pull request | #335 | 717 |
 | 2026-10-12 | Glossary | "progress timeline" says the loop records each step and decision, not that every phase writes an entry, which the Review loop section no longer holds (`publish` writes none); owner decision 2026-10-12, revising his C6 wording | #335 | 718 |
-| 2026-10-12 | Decision register | `/audit-workspace` step 2 now sets the `Re-examined` cell when it checks an ADR against the code, so the paragraph says it does instead of "is meant to" | #335 | 719 |
-| 2026-10-12 | Decision register | Review fix: `/audit-workspace` reports the `Re-examined` cells to change and offers a small pull request that applies them, instead of editing the table itself, so the paragraph says so | #335 | 721 |
+| 2026-10-12 | Decision register | `/audit-workspace` reports the `Re-examined` and `Standing` cells to change when it checks an ADR against the code, whenever the standing it finds differs from the cell, and offers a small pull request that applies them; it does not edit the table, and the paragraph says so | #335 | 720 |
 
 ## Glossary
 
