@@ -259,3 +259,17 @@ Pre-push review round 1 (49c614f) approved, one suggestion (test comment names "
 - [ ] (cross-confirmed, suggestion) The test comment calls it "the line-685 guard"; the guard is at merge_pr.sh:694 after the edit. Name it by symbol (the `_ci_is_main` guard) so it cannot go stale — `.agent/scripts/tests/test_merge_pr_gate.sh`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 13:47 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+The owner already decided this finding at the publish checkpoint (b2cfe2c): the host's recommendation there was "publish now, fix the comment in the post-push round", answered:
+
+> yes
+
+The Integrated Review above holds only that finding (cross-confirmed by Copilot), so it is addressed now.
