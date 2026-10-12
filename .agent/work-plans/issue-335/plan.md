@@ -343,8 +343,10 @@ headers, and it is cut back when #295 is decided.
    `review-issue` and `review-plan` check it and flag work that serves no goal or breaks a stated rule
    (a principle, or a row of `docs/design.md#rules`). A project issue uses the project's own goals and
    design document, or "none", and is not flagged for having none. The design-change question stays
-   separate and conditional: only work that changes how the parts fit names the section that changes. The skill text uses only the two
-   real anchors above and that one angle-bracket placeholder; the checker ignores a placeholder because
+   separate and conditional: only work that changes how the parts fit names the section that changes. The skill text cites the two
+   real anchors above, `docs/design.md#rules` and `$WS_ROOT/README.md#workspace-goals` (the checker reads
+   `docs/design.md` citations only, so the README anchor is outside it; follow-up #381), and that one
+   angle-bracket placeholder; the checker ignores a placeholder because
    its anchor pattern is `[a-z0-9][a-z0-9-]*` and `<` does not match (a fixture proves it, Wire-in 6). Project issues keep the "the project's own design document, or say there is none"
    branch. `audit-workspace` (workspace scope only) keeps plain `docs/design.md` paths. PR C adds
    one line to its step 2 (A4, decided, owner decision 2026-10-09): when the audit checks an ADR
@@ -903,3 +905,4 @@ reopened.
 | 1 | Wire-in 2: the "Serves" line is unconditional. `plan-task` writes it in every plan (`## Serves`, before `## Design Picture`); `review-issue` (Scope Assessment, a Principle Alignment row when flagged) and `review-plan` (Issue alignment, a finding when flagged) check it. Project issues use the project's own goals and design document, or "none". The design-change question is unchanged |
 | 2 | The goal source is `$WS_ROOT/README.md#workspace-goals`, as `docs/design.md#purpose` says, not `#how-it-works` (Wire-in 2, Files to Change, Decided list) |
 | 3 | `/audit-workspace` Register updates: for `superseded` the Standing line names the ADR that replaced it; "what the code does instead" is for `superseded in practice` |
+| 4 | Wire-in 2: the skill text cites `docs/design.md#rules` and `$WS_ROOT/README.md#workspace-goals` besides the two design anchors, so "only the two real anchors" is corrected; "breaks a stated rule" reads as the workspace principles and Rules table for workspace work and the project's own rules for project work |
