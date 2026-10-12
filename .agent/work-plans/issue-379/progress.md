@@ -256,7 +256,7 @@ Pre-push review round 1 (49c614f) approved, one suggestion (test comment names "
 **CI**: pending
 
 ### Findings
-- [ ] (cross-confirmed, suggestion) The test comment calls it "the line-685 guard"; the guard is at merge_pr.sh:694 after the edit. Name it by symbol (the `_ci_is_main` guard) so it cannot go stale — `.agent/scripts/tests/test_merge_pr_gate.sh`
+- [x] (cross-confirmed, suggestion) The test comment calls it "the line-685 guard"; the guard is at merge_pr.sh:694 after the edit. Name it by symbol (the `_ci_is_main` guard) so it cannot go stale — `.agent/scripts/tests/test_merge_pr_gate.sh`
 
 ### False positives
 

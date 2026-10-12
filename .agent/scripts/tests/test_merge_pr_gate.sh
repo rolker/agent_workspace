@@ -624,7 +624,7 @@ fi
 sb="$(make_registered_sandbox "" main)"
 pj_before=$(git -C "$sb/projects/proj_x" rev-parse HEAD)
 out="$(run_merge_registered "$sb" 2>&1)" || true
-# The CI-target line is the line-685 guard's witness: with the registered
+# The CI-target line is the `_ci_is_main` guard's witness: with the registered
 # main checkout taken as the PR's worktree, Step 2 fetches there, sees the
 # real branch tip (not the fixture's head) and prints "CI target: new head".
 if [[ "$(git -C "$sb/projects/proj_x" rev-parse HEAD)" == "$pj_before" ]] \
