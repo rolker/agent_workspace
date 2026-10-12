@@ -1272,3 +1272,20 @@ PR C (wire-in), review round 8 addressed. Checks: `check_design_anchors.sh` exit
 - [ ] (suggestion) "what the code does instead" fits `superseded in practice` but not plain `superseded` (a later ADR replaced it, per design.md register paragraph); optionally say "or the ADR that replaced it" — `.claude/skills/audit-workspace/SKILL.md:63`
 
 Cross-model reviewers: none dispatched (Light override requested by host; skipped).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 11:32 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #382 at `0cdc94c`
+**Sources**: 4 (Copilot R1 @ `b2d9cfa` 3 inline, Copilot R2 @ `0cdc94c` overview, Local Review light @ `302094d` recorded at `0cdc94c`, CI rollup)
+**Cross-source confirmations**: 1 (audit Standing line: Local Review light suggestion + Copilot R2 overview)
+**CI**: all-pass
+
+### Findings
+- [ ] (cross-confirmed, suggestion) The audit's Standing line says "what the code does instead", which fits `superseded in practice` but not `superseded` (a later ADR replaced it); add "or the ADR that replaced it" — `.claude/skills/audit-workspace/SKILL.md`
+- [ ] (should-fix, Copilot) Issue #335 scope item 3: review-issue and review-plan "cite the goal and design section an issue serves and flag one that serves none or breaks a stated rule". The skills ask only when the work changes the design picture, so ordinary work passes with no alignment check; plan-task records a section only then. The approved plan (Wire-in 2) did not record this as a departure. Owner decision needed: unconditional "Serves" check, or record a departure — `.claude/skills/review-issue/SKILL.md`, `.claude/skills/review-plan/SKILL.md`, `.claude/skills/plan-task/SKILL.md`
+- [ ] (should-fix, Copilot) review-issue names `#how-it-works` as where the goals are; `docs/design.md` (Purpose, lines 82-84) says the goals are in `README.md` under `## Workspace goals`. Point the goal at `$WS_ROOT/README.md#workspace-goals` — `.claude/skills/review-issue/SKILL.md`
+
+### False positives
