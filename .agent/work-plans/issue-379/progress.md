@@ -63,3 +63,15 @@ Verified against current `merge_pr.sh` (issue line numbers are slightly stale):
 - [ ] Extend the main-tree guard at merge_pr.sh ~816 to include `PJ_REPO_ROOT` so the Step 1.5 timeline commit never lands in a registered project's main checkout.
 - [ ] Add a test_merge_pr_gate.sh case with the project registered at a non-`project/` root: the gate finds the timeline (no "no progress.md" reason), the covering-review check passes, the PR stays report-only, and the Step 1.5 record is committed to the worktree timeline; keep the package-worktree case green.
 - [ ] Update docs/design.md (Worktrees Records bullet, Merge gate text, merge_pr.sh consequences row) in the same PR.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 13:00 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Issue Review (48b1052) recorded six actions: one registry-aware root for the gate lookup and cleanup; the same root in the main-tree guard (~816); a test with the project registered outside project/ (gate finds the timeline, PR stays report-only, merge record lands in the worktree timeline); design.md Records, Merge gate text and the cited line numbers updated in the same PR; the two principle rows that point at these. Host recommendation: proceed, all six go into the plan.
+
+> yes
