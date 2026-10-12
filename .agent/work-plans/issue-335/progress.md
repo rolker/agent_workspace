@@ -1131,3 +1131,19 @@ PR C (wire-in) open questions B1 and B2 from the plan's Open Questions, answered
 > B1, keep the default, B2 mark it as history
 
 B1: ADRs carry no pointer to their design section; the mapping stays in the Decision register only (Wire-in 3). B2: the roadmap's "Cross-cutting Decisions" section is marked as history with a one-line note pointing at the design sections, "Storage model" and "Progress as lifecycle record" replaced by a pointer to "Review loop and timeline", the rest kept as dated rationale (Wire-in 4).
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 10:42 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-335 at `33da086`
+
+PR C (wire-in), implemented from the plan at revision 11.
+
+- `cde0bec` Skills: review-issue cites `$WS_ROOT/docs/design.md#how-it-works` for the goal an issue serves; plan-task and review-plan cite `$WS_ROOT/docs/design.md#the-design` for the section list and Status key; all three cite the section as `docs/design.md#<section>` and keep the project branch (Wire-in 2)
+- `f0f37ca` audit-workspace step 2 sets the register's `Re-examined` cell (`docs/design.md#decision-register`) to `yes <today>`; the "Report, don't fix" bullet names that one exception (A4). design.md's register paragraph now says the audit does this instead of "is meant to"; change-log row added (719 lines)
+- `dc4d627` Roadmap: 12 of the 34 open rows get a "design section:" note (Registry and adapters 7, Sessions and roots 2, Review loop and timeline 2, Worktrees 1); 22 open rows and every done row untouched (Wire-in 4)
+- `3c363f7` Roadmap: Cross-cutting Decisions marked as history with a pointer to `design.md#the-design`; Storage model and Progress as lifecycle record replaced by a pointer to Review loop and timeline; the other four kept (B2)
+- `c53d958` README: one closing sentence under Workspace goals pointing at `docs/design.md#how-it-works`
+- `33da086` Plan revision 11: B1 and B2 moved to Decided, change log added
+- Already done, not redone: the review guide's work-plan row (Wire-in 5, PR B) and the ADR-0017 link fix (PR A). No ADR edited (B1), no label edited, `brainstorm` untouched
