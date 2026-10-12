@@ -1355,3 +1355,15 @@ Serves line (Option A) meets issue #335 scope item 3: review-issue and review-pl
 
 ### False positives
 - (Copilot PR bot) plan-task:134 and review-plan:238 "Serves only when the design changes" — these are Copilot's R1 comments (original commit b2d9cfa) carried forward to the new head; 8fb5990 added the unconditional Serves line in both skills (plan-task step 3 and `## Serves` template; review-plan "Serves (every plan)" under Issue alignment), confirmed by the Local Review at 003c668.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 12:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Integrated Review at 0b04393: S1 (project issues use their own rules), S2 (audit reports any Standing change), S3 (fold change-log rows 667/668), S4 (plan Wire-in 2 anchor count); the host updates the stale PR description; the unchecked README anchor went to #381. Host recommendation: fix S1-S4, quick check, update the description, then the merge decision.
+
+> fix first
