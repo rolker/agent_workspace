@@ -1101,3 +1101,19 @@ Specialists: static (pre-commit `check-design-anchors` and `yamllint` --all-file
 - [x] Regex anchored and escaped correctly: `\.agent/scripts/check_design_anchors\.sh$` matches the checker, not `.sh.bak`, a nested copy, or `tests/test_design_anchors.sh` (the last is deliberate: tests are covered by validate-script-tests) — `.pre-commit-config.yaml:67`
 - [x] The `# yamllint disable-line rule:line-length` comment sits on the line directly above and still applies; yamllint passes — `.pre-commit-config.yaml:66`
 - [x] No doc lists the hook's trigger files; `docs/design.md:152` names the hook and script only, so nothing disagrees
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 10:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `fbe11ea`
+**Sources**: 3 (Local Review light @ `1d54c8e` approved, recorded at `fbe11ea`; Copilot R4 @ `1d54c8e` with no comments; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+
+No open findings. The only change since the Integrated Review at `a4dd163` is `be04425` (the checker added to its hook's `files:` filter, owner-approved), reviewed light and approved; `review_progress.sh sources` lists no open local finding and no GitHub comment at this head.
+
+### False positives
