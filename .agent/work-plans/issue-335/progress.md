@@ -1169,7 +1169,7 @@ PR C (wire-in). Specialists: static (pre-commit on the 9 changed files: all pass
 - [x] (suggestion) The design.md register-paragraph edit is correct and required (ADR-0017: "is meant to refresh it" became untrue), but plan Files to Change has no PR C design.md row; add it or say so in the PR description — `.agent/work-plans/issue-335/plan.md:519`
 - [x] (suggestion) Storage model pointer drops the rejected git-refs (`refs/agent-state`) alternative, which now appears in no tracked doc; owner call whether one line stays under the pointer or goes to Decided Against — `docs/roadmap.md:411`
 - [ ] (suggestion) Auto-triggering skills (#26) re-shapes the Skill layer named in Instruction layers; candidate for a "design section:" note (the other omissions, coordinator agent included, hold under the rule) — `docs/roadmap.md:190`
-- [ ] (suggestion) review-issue sends the agent to `#how-it-works` "for the goal the issue serves" and then asks it to name a design section; goals live in README per Documentation layers, and How it works does not link every section; consider adding the section list at `#the-design` — `.claude/skills/review-issue/SKILL.md:132`
+- [x] (suggestion) review-issue sends the agent to `#how-it-works` "for the goal the issue serves" and then asks it to name a design section; goals live in README per Documentation layers, and How it works does not link every section; consider adding the section list at `#the-design` — `.claude/skills/review-issue/SKILL.md:132`
 
 ## Checkpoint
 **Status**: complete
