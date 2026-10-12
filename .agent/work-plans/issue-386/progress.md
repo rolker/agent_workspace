@@ -68,3 +68,15 @@ issue: 386
 - [ ] Keep the gz4d lines to the workspace's own acceptance case for ADR-0016 (design OQ-2), with gz4d named as the run's target as `docs/roadmap.md` already does in the Workspace Redesign row. Facts that belong to the project (its conventions file, its untracked skill, its issue tracker) wait for its own Direction after the footprint question, since `docs/principles.md` asks that a project carry only what it chose. Checks stay ones the workspace can run from the registry.
 - [ ] `what-next` overlap: today it ranks roadmap rows by issue state; the sit-rep answers the same question from checked facts, so the owner will have two skills for "what's next". Do not retire it here, but add a one-line pointer in `what-next` and open the fold-or-retire follow-up now, with the decision it needs, instead of leaving it as "later" in the out-of-scope list.
 - [ ] Replace the second Serves anchor as above, or say what in `progress.md` the sit-rep reads.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 18:14 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Issue Review (2a4ccef) actions all accepted: A1 testable check rule (fixed check grammar; a script prints one row per line; skill formats only; tests for unchecked / unknown / exit-status), A2 read-only check kinds only, A3 one new git-ignored key=value settings file read without sourcing; capture fails with instructions when unset. Trim accepted: drop "sweep due?", tooling-vs-project share and resume cards from this PR, file each as a follow-up. Also: update_roadmap.sh fixture for Direction cells; what-next gets a pointer, fold-or-retire issue later; gz4d lines limited to the workspace's own acceptance case; second Serves anchor becomes #registry-and-adapters; the AGENTS.md script-table row stays out (Ask First, asked separately).
+
+> yes, proceed with all three and the trim
