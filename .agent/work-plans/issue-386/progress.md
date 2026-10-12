@@ -204,3 +204,15 @@ Revision 2 resolves every round-1 finding, including the high one: the script al
 - [ ] Make an all-`unchecked` cell give `unchecked`; add the pair to the tests.
 - [ ] Target the skill's open-PR read at the workspace repo with `-R`.
 - [ ] Validate `gh-issue` arguments (numeric N, open/closed, slug pattern), case-insensitive state compare, one malformed-argument test.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 18:40 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Plan revision 2 (13eea94), Plan Review round 2 (45113b4) verdict ready. Four items go to the implementer without another plan round: (medium) script checks run from the runner's own checkout root with a registry lookup first, so an outside cwd, an unregistered name or a malformed registry give unknown, not false, with a test from an outside directory; (low) an all-unchecked multi-check cell stays unchecked; (low) gh pr list passes -R with the workspace repo from its own remote; (low) gh-issue arguments validated (number, open/closed, owner/repo), else unchecked, case-insensitive state; text slip "Revision log is below". Host recommendation: proceed.
+
+> yes
