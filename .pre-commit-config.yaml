@@ -64,7 +64,7 @@ repos:
         language: system
         pass_filenames: false
         # yamllint disable-line rule:line-length
-        files: ^(docs/design\.md$|README\.md$|docs/roadmap\.md$|\.agent/AGENT_ONBOARDING\.md$|docs/decisions/|\.agent/knowledge/|\.claude/skills/|\.pre-commit-config\.yaml$)
+        files: ^(docs/design\.md$|README\.md$|docs/roadmap\.md$|\.agent/AGENT_ONBOARDING\.md$|docs/decisions/|\.agent/knowledge/|\.claude/skills/|\.pre-commit-config\.yaml$|\.agent/scripts/check_design_anchors\.sh$)
 
       - id: validate-script-tests
         name: Run .agent/scripts/tests/ suite (progress.md vocabulary + issue #269 checkpoint gate)

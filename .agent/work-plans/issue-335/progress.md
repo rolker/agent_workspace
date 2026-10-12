@@ -1058,7 +1058,7 @@ Tests: `test_design_anchors.sh` 46 passed (was 33; the new cases fail against th
 **CI**: pending (pull_request Lint run failed on the known flaky h17/h18 fixture, #361; the push run on the same SHA passed; failed job re-run)
 
 ### Findings
-- [ ] (should-fix, owner-approved 2026-10-12) Add `.agent/scripts/check_design_anchors.sh` to the `check-design-anchors` hook's `files:` filter, so a checker-only commit runs the checker on the real tree (raised by the fixer and Gemini) — `.pre-commit-config.yaml`
+- [x] (should-fix, owner-approved 2026-10-12) Add `.agent/scripts/check_design_anchors.sh` to the `check-design-anchors` hook's `files:` filter, so a checker-only commit runs the checker on the real tree (raised by the fixer and Gemini) — `.pre-commit-config.yaml`
 - [x] (cross-confirmed, suggestion) A fence opened on a list-marker line is not recognised (false "never closed"; fails loudly) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
 - [x] (suggestion, Local Review) Backtick opener with a backtick in its info string read as a fence (fails loudly) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
 - [x] (suggestion, Local Review) Fence closer with a trailing tab; closer indented less than the item's content column (fails loudly / rare) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
