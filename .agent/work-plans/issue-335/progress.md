@@ -1192,3 +1192,23 @@ Q2 (the rejected git-refs storage alternative dropped by the Storage model point
 > Q2, move to decided against. We should note that it doesn't mean we can't reconsider stuff in that list later if things change.
 
 Host-decided small items: S1 (plan B1/B2 stale mentions) fix; S2 (plan Files to Change row for the design.md register edit) fix; S5 (review-issue also cites #the-design) fix; S4 (auto-triggering skills roadmap note) skip, its section is all proposed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 11:12 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-335 at `e2a6c5b`
+**Addressed**: Local Review (Pre-Push) at `eb10efd` (2026-10-12 10:56 -04:00), with the decisions of Checkpoint `413d259`
+**Commits**: 8e32b3c, dea968b, 2d197b8, 9ca4361, e2a6c5b
+
+PR C (wire-in), review round 7 addressed. Checks: `check_design_anchors.sh` exit 0; `test_design_anchors.sh` 46/46; `test_skill_paths.sh` 51/51; pre-commit passed on every commit.
+
+### Actions
+- [x] M1 (R1): `/audit-workspace` step 2 no longer edits the register; its report lists each `Re-examined` cell change under a new Register updates part (cited via `docs/design.md#decision-register`) and asks the user whether to open a small PR through the normal issue and worktree flow — `.claude/skills/audit-workspace/SKILL.md:59` (8e32b3c)
+- [x] M2 (R1): that PR adds the design.md change-log row like any other change; "Report, don't fix" has no exception and says the register dates are reported, not written; design.md's register paragraph states the R1 flow, change-log row added (721 lines) — `.claude/skills/audit-workspace/SKILL.md:150`, `docs/design.md:573` (8e32b3c). Plan agrees: Wire-in 2, section-dates paragraph, Files to Change, Self-Check, Consequences, Decided A4, Estimated Scope, Revision 12 change log (dea968b)
+- [x] S1: B1/B2 no longer read as open in the plan (Issue section, Wire-in 3 and 4, Consequences row) — `.agent/work-plans/issue-335/plan.md` (dea968b)
+- [x] S2: Files to Change gains a PR C row for the design.md register paragraph — `.agent/work-plans/issue-335/plan.md` (dea968b)
+- [x] S3 (owner Q2): git-refs storage alternative added to Decided Against (2026-03-22, wording from the old Storage model text); section intro says an item can be reconsidered if things change — `docs/roadmap.md:256` (2d197b8)
+- [x] S4 — `docs/roadmap.md:190` (deferred: dismissed at Checkpoint 413d259, the Instruction layers section is all proposed)
+- [x] S5: review-issue also cites `$WS_ROOT/docs/design.md#the-design` for the section list — `.claude/skills/review-issue/SKILL.md:132` (9ca4361)
