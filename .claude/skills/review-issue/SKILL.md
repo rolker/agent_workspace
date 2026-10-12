@@ -129,11 +129,15 @@ If the issue targets a project repo, also check:
 - **Design picture?** Does the proposal change how the parts fit, or is it
   not covered by the current design? If so, name the design section it
   touches and bring the question to the user on its own ("Ask about what
-  matters, and show how much"). Record it as a "Keep one current design"
-  row with Status `Action needed` in the Principle Alignment table (step 4),
-  so it reaches the posted comment and the `### Actions` list. If the issue
-  already records the user's decision and names the design update, record
-  the row as `OK` with a pointer and do not re-ask.
+  matters, and show how much"). For a workspace issue, the goal the issue
+  serves is in `$WS_ROOT/docs/design.md#how-it-works`; cite the section by
+  its anchor, as `docs/design.md#<section>`. For a project issue, name the
+  section of the project's own design document, or say there is none.
+  Record it as a "Keep one current design" row with Status `Action needed`
+  in the Principle Alignment table (step 4), so it reaches the posted
+  comment and the `### Actions` list. If the issue already records the
+  user's decision and names the design update, record the row as `OK` with
+  a pointer and do not re-ask.
 - **Dependencies?** Does this depend on other open issues? Will other issues
   need to wait for this one?
 

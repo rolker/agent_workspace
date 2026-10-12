@@ -123,8 +123,10 @@ Read relevant files to understand the current state:
   what was found and what was taken or rejected; the plan records it
 - Ask whether the change alters the design picture (how the parts fit
   today) and, if so, which section of the owning repo's design document
-  changes in the same change (`docs/design.md` for the workspace; a
-  project's own design document, if it keeps one)
+  changes in the same change. For the workspace, the section list and the
+  Status key are in `$WS_ROOT/docs/design.md#the-design`; cite the section
+  by its anchor, as `docs/design.md#<section>`. For a project, name the
+  section of the project's own design document, or say there is none
 
 ### 4. Ensure correct worktree (hard check)
 
@@ -210,9 +212,10 @@ answer when true.>
 ## Design Picture
 
 <Does this change alter how the parts fit? If yes, which section of the
-owning repo's design document changes, in this PR (`docs/design.md` for the
-workspace; a project's own design document, if it keeps one; if the project
-has none, say so). If no, say "No change to the design picture".>
+owning repo's design document changes, in this PR (for the workspace, cite it
+by its anchor, as `docs/design.md#<section>`; a project's own design
+document, if it keeps one; if the project has none, say so). If no, say "No
+change to the design picture".>
 
 ## Principles Self-Check
 

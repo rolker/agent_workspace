@@ -219,7 +219,11 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
   - "Test what breaks" — does each fix come with a test that fails without
     it? (A docs- or skill-only change says so instead of planning one)
   - "Keep one current design" — does the plan say whether the change alters
-    the design picture, and which design section changes?
+    the design picture, and which design section changes? For the
+    workspace, the section list and the Status key are in
+    `$WS_ROOT/docs/design.md#the-design`, and the plan cites the section by
+    its anchor, as `docs/design.md#<section>`. For a project, it names the
+    section of the project's own design document, or says there is none
   - "Look for prior art before building" — does the plan say what was looked
     at and what was taken or rejected?
 
