@@ -1289,3 +1289,15 @@ Cross-model reviewers: none dispatched (Light override requested by host; skippe
 - [ ] (should-fix, Copilot) review-issue names `#how-it-works` as where the goals are; `docs/design.md` (Purpose, lines 82-84) says the goals are in `README.md` under `## Workspace goals`. Point the goal at `$WS_ROOT/README.md#workspace-goals` — `.claude/skills/review-issue/SKILL.md`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 11:40 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Q3 from the Integrated Review at 0cdc94c: issue #335 scope item 3 asks review-issue / review-plan to cite the goal and design section an issue serves and flag one that serves none or breaks a stated rule; the skills asked only when the design picture changes. Option A: add an unconditional, light "Serves" line (goal in README Workspace goals, design section by anchor; flag none or a broken rule) to review-issue and review-plan, and plan-task records it in every plan; the design-change question stays separate; project issues use the project's own goals and design doc, or "none", without forcing a convention. Option B: record a departure instead.
+
+> A
