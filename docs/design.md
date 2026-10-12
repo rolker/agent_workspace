@@ -662,6 +662,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Rules | Review fix: the project-names row credits work plans as history to the owner's decision of 2026-10-12, not to the 2026-10-09 boundary, which does not name them | #335 | 709 |
 | 2026-10-12 | Review loop and timeline | Review fix: a `merge` entry that no worktree on the pull request's branch can commit and push is posted as a comment on the pull request (`_gate_record` in `merge_pr.sh`) | #335 | 713 |
 | 2026-10-12 | Worktrees | Review fix: the Records bullet says an issue in a package repository has no timeline, since a package worktree is a folder of several repositories and `merge_pr.sh` posts its gate record on the pull request | #335 | 717 |
+| 2026-10-12 | Glossary | "progress timeline" says the loop records each step and decision, not that every phase writes an entry, which the Review loop section no longer holds (`publish` writes none); owner decision 2026-10-12, revising his C6 wording | #335 | 718 |
 
 ## Glossary
 
@@ -684,8 +685,8 @@ Our own terms:
   converging the loop steps back.
 - **checkpoint**: a point where the loop stops and asks the owner (after the plan, before publish,
   before merge).
-- **progress timeline**: the per-issue file where every phase writes an entry, so a new session can see
-  what happened without re-reading the chat.
+- **progress timeline**: the per-issue file where the loop records each step and decision, so a new
+  session can see what happened without re-reading the chat.
 - **Integrated Review**: the entry `triage-reviews` writes, with all review sources combined into one
   list of findings and a verdict on each.
 - **must-fix / suggestion**: a review finding that blocks the next phase, versus one the implementer may
