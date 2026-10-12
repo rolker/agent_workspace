@@ -134,8 +134,9 @@ If the issue targets a project repo, also check:
   `$WS_ROOT/docs/design.md#the-design`). For a project issue, use the
   project's own goals and design document, or write "none"; a project is
   not asked to keep either. Flag an issue that serves no goal, or that
-  breaks a stated rule (a principle, or a row of
-  `$WS_ROOT/docs/design.md#rules`), as a Principle Alignment row with
+  breaks a stated rule (for a workspace issue, a principle or a row of
+  `$WS_ROOT/docs/design.md#rules`; for a project issue, the project's own
+  stated rules, if it has any), as a Principle Alignment row with
   Status `Action needed` (step 4): "Only what's needed" for no goal, the
   principle or ADR the rule cites for a broken rule. A project with no
   goals written down is not flagged for that.

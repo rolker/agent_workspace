@@ -201,8 +201,9 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
   own goals and design document, or "none" (a project is not asked to
   keep either). Copy the line, as checked, into this row's Notes. A
   missing line, work that serves no goal, or work that breaks a stated
-  rule (a principle, or a row of `$WS_ROOT/docs/design.md#rules`) is a
-  finding. A project with no goals written down is not flagged for that.
+  rule (for a workspace plan, a principle or a row of
+  `$WS_ROOT/docs/design.md#rules`; for a project plan, the project's own
+  stated rules, if it has any) is a finding. A project with no goals written down is not flagged for that.
   This is separate from the "Keep one current design" question below,
   which asks only whether the design picture changes
 

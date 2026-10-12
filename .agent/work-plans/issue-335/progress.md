@@ -1346,7 +1346,7 @@ Serves line (Option A) meets issue #335 scope item 3: review-issue and review-pl
 **CI**: pending
 
 ### Findings
-- [ ] (suggestion, Local Review) "Breaks a stated rule (a principle, or a row of docs/design.md#rules)" is not scoped to workspace issues; for a project issue use the project's own rules — `.claude/skills/review-issue/SKILL.md`, `.claude/skills/review-plan/SKILL.md`
+- [x] (suggestion, Local Review) "Breaks a stated rule (a principle, or a row of docs/design.md#rules)" is not scoped to workspace issues; for a project issue use the project's own rules — `.claude/skills/review-issue/SKILL.md`, `.claude/skills/review-plan/SKILL.md`
 - [ ] (suggestion, Codex + Gemini via Local Review) audit Register updates lists a Standing change only when an ADR is no longer `in force`; report it whenever the checked standing differs from the cell (e.g. Provisional to in force) — `.claude/skills/audit-workspace/SKILL.md`
 - [ ] (cross-confirmed, suggestion) design.md change-log row 667 says the audit "now sets" the Re-examined cell, never true on main (row 668 corrects it); both rows are unmerged in this PR, so fold them into one true row — `docs/design.md`
 - [ ] (suggestion, Local Review) plan Wire-in 2 says "the skill text uses only the two real anchors above"; the skills now also cite `docs/design.md#rules` and `README.md#workspace-goals` — `.agent/work-plans/issue-335/plan.md`
