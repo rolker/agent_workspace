@@ -216,3 +216,19 @@ Revision 2 resolves every round-1 finding, including the high one: the script al
 Plan revision 2 (13eea94), Plan Review round 2 (45113b4) verdict ready. Four items go to the implementer without another plan round: (medium) script checks run from the runner's own checkout root with a registry lookup first, so an outside cwd, an unregistered name or a malformed registry give unknown, not false, with a test from an outside directory; (low) an all-unchecked multi-check cell stays unchecked; (low) gh pr list passes -R with the workspace repo from its own remote; (low) gh-issue arguments validated (number, open/closed, owner/repo), else unchecked, case-insensitive state; text slip "Revision log is below". Host recommendation: proceed.
 
 > yes
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 19:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-386 at `6c6e73a1`
+
+Five commits in the plan's order (revision 2, 13eea94), with the four checkpoint items (b6b7ac2) folded in:
+
+- 89782ce8: `_settings.sh` (read, never sourced; worktree falls back to the main checkout's `settings.local`), `capture.sh`, `.agent/settings.local.example` (placeholder paths only), `.gitignore` entry; `test_capture.sh` 27 pass (before the code: 2 vacuous passes, 27 failures).
+- 49327f7c: `sitrep_checks.sh` and `test_sitrep_checks.sh` 49 pass (before: 4 vacuous, 46 failures). Checkpoint items: script checks run with the cwd at the runner's checkout root and the adapter name is looked up in the registry first, so an outside cwd, an unregistered name or a malformed registry give `unknown` (tested from `/`); an all-`unchecked` cell stays `unchecked`; `gh-issue` arguments validated (number or `owner/repo#N`, `open`/`closed` case-insensitive), else `unchecked`. Mutation checks: dropping the cd or the registry lookup fails the suite.
+- 8b62395d: Direction section at the top of `docs/roadmap.md` (ADR-0016 acceptance case, format rules, six Line rows, four Deferral rows), roadmap row for #386, scenario 4 pointer; Direction fixture in `test_update_roadmap.sh` (15 pass); `what-next` skips Direction.
+- 49480229: `.claude/skills/sitrep/SKILL.md` (`session_scope: both`, `$WS_ROOT` paths, `gh pr list -R` from the workspace's own remote); `what-next` pointer.
+- 6c6e73a1: `docs/design.md` Documentation layers (Direction and Measures rows, gaps paragraph, Target), `settings.local` sentence in Registry and adapters, OQ-3 partly answered, change-log row (729 lines).
+
+Deviation: `file-contains` on a missing file gives `false` (an unreadable file stays `unknown`). Tests run: `check_design_anchors.sh` clean; `test_capture`, `test_sitrep_checks`, `test_update_roadmap`, `test_skill_paths` (54) pass; `run_script_tests.sh` all 33 suites passed; `make lint` clean. Not done here: `AGENTS.md` Script Reference rows (Ask First) and the plan's follow-ups.
