@@ -1030,3 +1030,19 @@ Recorded late: this answer was given before the Implementation entry at 49064bd.
 - [x] (suggestion) Relative `design.md#x` and `./design.md#x` citations from files directly in `docs/` (docs/roadmap.md) are checked; tests for broken, valid, no double report, and `../design.md#` left alone — `.agent/scripts/check_design_anchors.sh:291`
 
 Tests: `test_design_anchors.sh` 46 passed (was 33; the new cases fail against the checker at `a88a4df`), also passing with `mawk` as `awk`; `run_script_tests.sh` all 31 suites passed; the checker passes on the real tree. Boxes in the source entry were ticked by hand: `review_progress.sh check` only takes an Integrated Review or Local Review (Pre-Push) as source. Not done: the `check-design-anchors` hook's `files:` filter does not include the checker script itself, so a checker-only commit skips the hook (it ran by hand here); changing `.pre-commit-config.yaml` is left to the owner.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 09:57 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #380 at `a4dd163`
+**Depth**: Deep (reason: 2720 lines over 10 files, governance doc plus a new pre-commit gate; fix round a88a4df..a4dd163 reviewed in focus)
+**Must-fix**: 0 | **Suggestions**: 4
+
+### Findings
+- [ ] (suggestion) A fence on a list-marker line (`- ```text`) is not recognised: its contents are scanned as live headings/links and its closer reads as an opener, giving a false "never closed" finding; test the rest of the marker line for an opener with the item's column as base (Codex, rated must-fix; Claude adversarial) — `.agent/scripts/check_design_anchors.sh:171`
+- [ ] (suggestion) A backtick opener whose info string holds a backtick is inline code, not a fence (CommonMark): a line starting ```` ```x``` is code ```` gives a false "never closed" finding (Claude adversarial, lead reproduced) — `.agent/scripts/check_design_anchors.sh:180`
+- [ ] (suggestion) Fence closer edge cases: a trailing tab (`[ \t]*$` allowed by CommonMark) keeps the fence open to EOF (false finding); a closer indented less than the item's content column still closes a list-item fence (rare) — `.agent/scripts/check_design_anchors.sh:157`
+- [ ] (suggestion) Headings inside an HTML comment (`<!--` ... `-->`) are registered as anchors, so a link to a commented-out heading passes silently; outside the fix range (unchanged heading scan), none in design.md today (Codex) — `.agent/scripts/check_design_anchors.sh:191`
