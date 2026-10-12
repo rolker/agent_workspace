@@ -963,3 +963,21 @@ Change log: two rows of 2026-10-12 appended (706 and 707 lines). Pre-commit hook
 - [x] (must-fix) `merge` writes an entry only when the gate finds a gap and does not refuse it (a relaxing flag, or a project pull request); checked against `merge_pr.sh` Step 1.5 (lines 909-931, comment at 642); change-log row added (708 lines); the earlier 2026-10-12 row is left as history — `docs/design.md:414`
 - [x] (suggestion) Rules row credits work plans as history to the owner's 2026-10-12 decision; change-log row added (709 lines) — `docs/design.md:154`
 - [x] (suggestion) `mission_manager` kept in the review-plan example — `.claude/skills/review-plan/SKILL.md:359` (deferred: owner decision 2026-10-12, an existing mention of a public repository's package, which the rule allows)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 09:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Recorded late: this answer was given before the Implementation entry at 3dc4de5, and the host did not write it then. Answers to the triage of Copilot's review at be87238 (Integrated Review, six findings F1-F6).
+
+On F5 (real project names), after the host proposed the Rules row text "history (ADRs, roadmap, work plans), code-origin comments, test fixtures, tools/ros-manifest/ prose", synthetic names for marine_msgs in WORKTREE_GUIDE.md and review-plan SKILL.md, and keeping the documentation_verification.md origin link:
+
+> It's all fine except going forward, only reference projects if they are public.
+
+To "start the six fixes (address-findings in a background agent, re-review, back to the owner before any push)?" and "add the public-only clause to the review guide row 'Put each thing at the level it applies to'?":
+
+> yes to both.
