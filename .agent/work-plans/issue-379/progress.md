@@ -140,3 +140,11 @@ The fix itself is right and minimal. One test-design error blocks it: the planne
 Plan Review (4de93b8) verdict needs-work: must-fix 1 (split the test into an all-good scenario and a real-gap scenario), should-fix 2 (refresh every design.md merge_pr.sh line citation) and 3 (guard scenario asserts the specific reason and an unchanged HEAD), minor 5 (reuse the projects.local echo line) and 6 (comment at merge_pr.sh 250-251). Host recommendation: revise, then a quick second plan review.
 
 > revise
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-12 13:12 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-379/plan.md` at `63b11d7f`
+
+Revision 2: the test is split into an all-good, a real-gap and a main-checkout-guard scenario (each failing on the current script); every design.md merge_pr.sh line citation is refreshed after the edit; one-line project registration; stale comment at merge_pr.sh ~250 repointed.
