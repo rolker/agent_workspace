@@ -204,3 +204,14 @@ Revision 2 resolves every round-1 item. Reading the script confirms that each of
 Plan revision 2 (63b11d7), Plan Review round 2 (5675527) verdict ready. Two follow-ups go to the implementer without another plan review: scenario (c) also asserts no "CI target: new head" line (pins the guard at line 685); line 555 is the Step 1 roadmap worktree lookup, not cleanup, in the new comment and design.md text. Host recommendation: proceed.
 
 > yes
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 13:29 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-379 at `0b55f774`
+
+- `merge_pr.sh` (e9b28bca): new `PJ_ROOT_EFFECTIVE` (line 280, `${PJ_REPO_ROOT:-$ROOT_DIR/project}`) feeds the Step 1 roadmap worktree lookup (563) and the gate's timeline lookup (678); both main-tree guards (694, the gate's ancestry and CI-target worktree; 829, the Step 1.5 record) include it. Comments at 250-255, 684-688 and 824-827 updated.
+- `test_merge_pr_gate.sh` (e9b28bca): new group with the project registered at `$sb/projects/proj_x` and no `$sb/project`: (reg-a) all good, gate passes, no record; (reg-b) no decision summary, reason names it, record committed in the registered worktree's `progress.md` and pushed, no PR comment; (reg-c) PR branch in the registered main checkout, HEAD unchanged, record posted as a comment, no "CI target: new head" line.
+- Before the fix all three failed (each reported "no progress.md ... <no worktree found for feature/issue-9>"; (b) and (c) posted the record as a comment with "no open worktree for the PR's repo"). With the lookup fix alone, (reg-c) failed (record committed in the main checkout); with the line-829 guard but not 694, (reg-c) still failed on "CI target: new head". After the full fix: test_merge_pr_gate.sh 106 passed, 0 failed; test_merge_pr.sh 91 passed, 0 failed; run_script_tests.sh all 31 suites passed.
+- `docs/design.md` (0b55f774): #379 gap text dropped from the Records bullet, Target items 1 and 2, the Merge gate bullets, the `merge_pr.sh` row and the change-log rule; `merge_pr.sh` citations refreshed (row: 236-280, 387-426, 563, 678, 694 and 829, 926 and 939, 1622-1638; Records: 810 and 853, 280, 563 and 678, 694 and 829, 926 and 939; Target 1: 673-684, 793-863); change-log row added (718 lines).
