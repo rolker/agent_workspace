@@ -8,10 +8,11 @@ day-to-day harness around each piece of work, and a long view of where each proj
 principles in [`docs/principles.md`](principles.md) connect them.
 
 **The day-to-day harness.** Work happens in an isolated worktree, never in the main tree
-([Worktrees](#worktrees)). An issue passes through eight phases, each run by a fresh sub-agent (a repeat of a
-phase may resume the earlier one), and each
-phase leaves one entry in the issue's progress timeline, which is the only record of where the issue
-stands ([Review loop and timeline](#review-loop-and-timeline)). The loop stops at checkpoints and asks the
+([Worktrees](#worktrees)). An issue passes through eight phases. The host does two of them itself, the
+push (`publish`) and the merge; each of the others is run by a fresh sub-agent (a repeat of a phase may
+resume the earlier one, and the owner may have the host take over a failed one) and leaves one entry in
+the issue's progress timeline, which is the only record of where the issue stands
+([Review loop and timeline](#review-loop-and-timeline)). The loop stops at checkpoints and asks the
 owner. The owner decides every merge, and no phase moves on by its own judgment
 ([Merge gate](#merge-gate)).
 
@@ -23,9 +24,10 @@ fails when it is broken, and [Rules](#rules) shows which rules have one.
 
 **Projects.** The workspace is project-agnostic. What differs per kind of project sits behind adapters,
 and a project's own remote is its URL ([Registry and adapters](#registry-and-adapters)). Each project
-chooses how much footprint the workspace leaves in it: agent instructions and records go into a project
-only if the user chose that, and a project can be developed without the agents. How far that is built is
-described under [Worktrees](#worktrees). A session starts in the workspace or in a project's own root,
+is meant to choose how much footprint the workspace leaves in it: agent instructions and records go into a
+project only if the user chose that, and a project can be developed without the agents. Today an issue's
+records are always committed in the repository that owns the issue; the choice is proposed under
+[Worktrees](#worktrees). A session starts in the workspace or in a project's own root,
 and a user tier gives a project session the workspace's skills and rules; that is built and not yet
 proven ([Sessions and roots](#sessions-and-roots)).
 
@@ -161,8 +163,9 @@ only.
 
 Status: `decided, not proven`
 
-A session runs in one of three places: the workspace checkout, a project's own root, or (for the layer
-that reaches project sessions) the user tier in `~/.claude`. The mechanisms below are built and tested
+A session runs in one of two places, the workspace checkout or a project's own root; the user tier in
+`~/.claude` is the layer injected into those sessions, not a place a session runs (ADR-0016 decisions 1
+and 3). The mechanisms below are built and tested
 hermetically. [ADR-0016](decisions/0016-session-roots-and-the-user-tier.md) is Provisional until a
 `/run-issue` run started from a project root passes through the merge checkpoint (the acceptance test
 named in #317), so none of this is marked `decided` yet. [Open questions](#open-questions) OQ-2 asks
@@ -325,8 +328,9 @@ Status: `decided`
   request, which `worktree_create.sh --plan-file` opens, and an agent checks for one before starting
   (`WORKFORCE_PROTOCOL.md` sections 1 to 3). `make lock` is an advisory note shown by the dashboard and
   stops nothing (`lock.sh` header).
-- **Records.** An issue's work plan and progress timeline are committed in the project repository on
-  the issue's feature branch, under `.agent/work-plans/issue-N/` (owner decision 2026-10-09, C3).
+- **Records.** An issue's work plan and progress timeline are committed in the repository that owns the
+  issue (the workspace repository for a workspace issue, the project's repository for a project issue),
+  on the issue's feature branch, under `.agent/work-plans/issue-N/` (owner decision 2026-10-09, C3).
   `progress_append.sh` line 87 writes `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013
   names that path. One gap shows in the project case: `merge_pr.sh` looks up the gate's timeline at
   `$ROOT_DIR/project` (line 670), the legacy checkout, and the gate is report-only for project pull
@@ -405,8 +409,10 @@ sessions walk the same order by hand, one `SKILL.md` at a time
 | `triage-reviews` | An `## Integrated Review` entry: every review source combined into one list of findings with a verdict on each | Open findings go to the owner at `findings`; with none open the owner is asked at `merge` |
 | `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged, after the run recorded a merge entry, goes to `merge-refused` |
 
-- **One entry per phase, in `progress.md`.** `.agent/work-plans/issue-<N>/progress.md` is the only place
-  loop state lives: not the conversation, not a lock file. The directory sits in the repository that
+- **One entry per dispatched phase, in `progress.md`.** `.agent/work-plans/issue-<N>/progress.md` is the
+  only place loop state lives: not the conversation, not a lock file. `publish` writes no entry, and
+  `merge` writes one only when the gate is relaxed (`--report-only`, `--force-unreviewed`); a gate that
+  passes records nothing (`run-issue/SKILL.md` step 11). The directory sits in the repository that
   owns the issue, on the issue's feature branch ([Worktrees](#worktrees), Records). Entries have a fixed
   vocabulary and header (`**Status**`, `**When**`, `**By**`, a correlation to an issue, a plan or a
   commit; ADR-0013), are written by `progress_append.sh`, checked by `_progress_entry.sh` and read by
@@ -417,8 +423,10 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   entry belongs to `address-findings` (`skill_for`); it makes no `gh` call and returns one action from a
   28-row table (`dispatch_phase.sh` header). A partial or failed newest entry is always a `phase-failed`
   checkpoint, never a silent retry.
-- **Each phase runs in a fresh sub-agent**, except that a repeat of a phase in the same drive may resume
-  the earlier agent (`run-issue/SKILL.md` 4a). `dispatch_phase.sh --issue <N> --skill <phase>` prints the
+- **Each phase but `publish` and `merge` runs in a fresh sub-agent**, except that a repeat of a phase in
+  the same drive may resume the earlier agent (`run-issue/SKILL.md` 4a), and a failed phase the owner
+  hands to the host runs in the host (`mode=inline`, step 5). The host does the push and the merge
+  itself (steps 7 and 11). `dispatch_phase.sh --issue <N> --skill <phase>` prints the
   handoff, and the host pastes it into a new Agent call, in this process only. The sub-agent fetches its
   own inputs with `gh` and never pushes (ADR-0014; `dispatch_phase.sh` exit contract). Reviewers outside
   Claude run in parallel and synchronously through `cross_model_review.sh` (ADR-0015).
@@ -642,6 +650,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-09 | How it works | Agent draft from the fact list and the owner's recorded phrasings, no new ideas, replacing the stub; owner to edit | #335 | 688 |
 | 2026-10-09 | How it works, Registry and adapters, Review loop and timeline, Merge gate, Decision register | Review fixes: the next-step routing wording (newest entry, earlier entries for round count and failed-Implementation skill), the repeat-phase resume exception, the `setup` row's stamps, the `merge-refused` condition, the gate flags step 11 lists, the progress.md line count, gate (a) with `External Review`, the worktree_list second path, the `adapter:73` default, the ADR-0011 and ADR-0012 register rows, the register section length; three Review-loop proposals accepted by the owner 2026-10-09 ("candidate" marker dropped) | #335 | 695 |
 | 2026-10-09 | Rules, Review loop and timeline | Rules table gains the row for the owner deciding every merge (`review only`; `merge_pr.sh` has no owner check), making 15 rules; the Target's `progress.md` size is stated as more than 800 lines, so it does not go stale with each entry | #335 | 697 |
+| 2026-10-12 | How it works, Sessions and roots, Worktrees, Review loop and timeline | Review fixes: `publish` and `merge` are host steps, `publish` writes no entry and `merge` one only when its gate is relaxed, and the owner may have the host take over a failed phase; the per-project footprint is a proposal, and records today sit in the repository that owns the issue; two session roots, with the user tier as the layer injected into them | #335 | 706 |
 
 ## Glossary
 
