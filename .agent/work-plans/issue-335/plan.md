@@ -159,7 +159,7 @@ where the part has none.
 Section dates (decided, owner decision 2026-10-09, A4: yes, register rows only). Sections carry no
 `Checked: <date>`. The register's `Re-examined: yes <date>` column (row 13) is the checked-date. PR C
 adds one line to `/audit-workspace` step 2 telling it to report the cells of that column to refresh when
-it checks an ADR against the code; a separate small PR applies them (Wire-in 2, revision 12). Checked in this revision: step 2 of the skill today checks the Status
+it checks an ADR against the code; a separate small PR applies them (Wire-in 2, revision 12). Checked in revision 9: step 2 of the skill then checks the Status
 line, the listed consequences and whether `docs/design.md` records the current behaviour; it says
 nothing about a register or a date.
 

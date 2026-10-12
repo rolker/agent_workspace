@@ -1229,7 +1229,7 @@ PR C (wire-in), re-review after the round 7 fixes (8e32b3c..d3d3afc). Every Chec
 
 ### Findings
 - [x] (suggestion) Register updates lists only the `Re-examined` cell; when the audit finds an ADR newly superseded in practice, applying the listed cells would record `in force | yes <today>` for a drifted ADR; also list the `Standing` cell change in that case — `.claude/skills/audit-workspace/SKILL.md:59`
-- [ ] (suggestion) "Checked in this revision: step 2 ... says nothing about a register or a date" now sits under the revision 12 header and is untrue after PR C; say "Checked in revision 9" — `.agent/work-plans/issue-335/plan.md:162`
+- [x] (suggestion) "Checked in this revision: step 2 ... says nothing about a register or a date" now sits under the revision 12 header and is untrue after PR C; say "Checked in revision 9" — `.agent/work-plans/issue-335/plan.md:162`
 
 ## Checkpoint
 **Status**: complete
