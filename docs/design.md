@@ -263,7 +263,7 @@ probe, not a description to keep current.
 |---|---|---|
 | `worktree_create.sh` | `--type` derived from the cwd when omitted; `--layer` and `--package-repos` project only; project fetches its PR slug from the project's `origin`; the repo manifest comes from the adapter's `worktree_repos` for a project only, and the workspace case never calls the adapter; worktree base is `wt_project_base` (the registry entry's own root) or the legacy glob versus `wt_workspace_base` (`worktrees/workspace`); the draft PR targets `$PROJECT_GH_SLUG` versus the workspace remote | 248-260, 298-304, 452-457, 541-553, 575-587, 1028-1034 |
 | `worktree_enter.sh`, `worktree_remove.sh` | The same `--type` derivation and check; `--project` is valid only with `--type project` | enter 143-174, remove 130-157 |
-| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the roadmap-commit worktree lookup uses `PJ_REPO_ROOT`; the gate's timeline lookup is anchored at `$ROOT_DIR/project`, the legacy checkout, not `PJ_REPO_ROOT` (tracked as #379); the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 236-270, 379-418, 555, 670, 916 and 929, 1612-1628 |
+| `merge_pr.sh` | A project PR needs a resolved project root with an `origin` remote; PR-owner auto-detect queries both remotes; the Step 1 roadmap worktree lookup and the gate's timeline lookup both use `PJ_ROOT_EFFECTIVE` (`PJ_REPO_ROOT`, else the legacy `project/`), and both main-tree guards include it; the gate enforces on workspace PRs only and is report-only for project PRs "until #265 settles project timelines"; cleanup deletes the branch in `PJ_REPO_ROOT` and pulls the project too | 236-280, 387-426, 563, 678, 694 and 829, 926 and 939, 1622-1638 |
 | `dispatch_phase.sh` | `resolve_worktree`: workspace uses `wt_workspace_base`; project uses `derive_project_name` (from `--project` or the cwd) and then `wt_project_base`; `--type` is validated in all three modes | 122, 183-208, 302, 369, 461 |
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug or the slug of the legacy `project/` checkout; registered projects are not consulted | 205-232 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` or `*/.workspace-worktrees/*` | 149-150 |
@@ -333,14 +333,14 @@ Status: `decided`
   on the issue's feature branch, under `.agent/work-plans/issue-N/` (owner decision 2026-10-09, C3).
   An issue in a package repository (`--issue owner/repo#N`, worked in a package worktree) has no
   timeline: a package worktree is a folder of several repositories, not one repository, so `merge_pr.sh`
-  posts its gate record on the pull request (lines 801 and 843). `progress_append.sh` line 87 writes
-  `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. One gap shows in
-  the project case: `merge_pr.sh` looks up the gate's timeline at `$ROOT_DIR/project` (line 670), the
-  legacy checkout, and the gate is report-only for project pull requests (lines 916 and 929). That is
-  tracked as #379 ("merge_pr.sh review gate looks up a project PR's timeline at the legacy project/
-  path, not the registry root"). Its fix is one line, using the registry-aware root that line 555
-  already uses (`${PJ_REPO_ROOT:-$ROOT_DIR/project}`), and it does not wait for the Target below. The
-  change that fixes #379 edits this paragraph in the same change.
+  posts its gate record on the pull request (lines 810 and 853). `progress_append.sh` line 87 writes
+  `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. For a project
+  pull request, `merge_pr.sh` looks up the gate's timeline in the project's own repository: its
+  registry-aware root (`PJ_ROOT_EFFECTIVE`, line 280: the resolved project root, else the legacy
+  `project/` checkout) is what both the Step 1 roadmap worktree lookup and the gate use (lines 563 and
+  678), and the main-tree guards include it, so the project's main checkout never takes the record
+  commit (lines 694 and 829). The gate is still report-only for project pull requests (lines 926 and
+  939).
 
 **Target**
 
@@ -370,14 +370,13 @@ built. Three mechanisms would do it, each a later build:
 1. One lookup, "where are the records for this project and issue", fed by the registry entry and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
    342, 344, 387, 479: the exit contract, `--check-exit` and `next`, which is what a resumed session
-   reads), `merge_pr.sh` (674-675, 829-837: the gate and its `Merge` entry), `review_progress.sh` (112,
-   268, 290) and `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is the nearest lookup that
-   exists, and `cross_model_review.sh --work-plans-dir` already feeds it an override. The seven skills
-   that cite the path follow it. The gate's lookup at `merge_pr.sh` line 670 is the first to be wrong
-   for a registered project (#379).
+   reads), `merge_pr.sh` (673-684, 793-863: the gate's lookup and its `Merge` entry),
+   `review_progress.sh` (112, 268, 290) and `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is
+   the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
+   override. The seven skills that cite the path follow it.
 2. The merge gate's "same reviewed state" rule (`_bookkeeping.sh`, shared with `review_progress.sh
    sources`) reads the record from where it lives and checks the project commit the entry names, so the
-   walk changes repository. Finding the record at all is #379, which comes before this.
+   walk changes repository.
 3. Untracked records are per machine and per clone. A second machine or a fresh clone starts with no
    timeline, and losing the directory loses the history. That is the cost of the combination.
 
@@ -498,8 +497,6 @@ Status: `decided`
 - The gate is local only. A Merge click on GitHub bypasses it, and the server-side complement, a required
   status check, is not built; building it changes CI and branch protection, which is Ask First
   (`merge_pr.sh`, Step 1.5 comment; [Rules](#rules)).
-- For a project pull request the gate's timeline lookup is anchored at the legacy `project/` checkout.
-  That is #379, described under [Worktrees](#worktrees).
 
 ## Identity
 
@@ -633,8 +630,8 @@ Status: `decided`
 One row per change to this file, appended in the same change that alters a section: date, section, one
 line, issue, and the line count of the document after the change. The line count is how growth shows up
 as a number (principle "Know whether it works"); a section past about 60 lines says in its row whether
-its detail should move next to the code. A change that fixes #379 or builds a Target also edits the
-sentence it makes untrue in the same change (ADR-0017).
+its detail should move next to the code. A change that builds a Target also edits the sentence it
+makes untrue in the same change (ADR-0017).
 
 | Date | Section | Change | Issue | Lines |
 |---|---|---|---|---|
@@ -665,6 +662,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Worktrees | Review fix: the Records bullet says an issue in a package repository has no timeline, since a package worktree is a folder of several repositories and `merge_pr.sh` posts its gate record on the pull request | #335 | 717 |
 | 2026-10-12 | Glossary | "progress timeline" says the loop records each step and decision, not that every phase writes an entry, which the Review loop section no longer holds (`publish` writes none); owner decision 2026-10-12, revising his C6 wording | #335 | 718 |
 | 2026-10-12 | Decision register | `/audit-workspace` reports the `Re-examined` and `Standing` cells to change when it checks an ADR against the code, whenever the standing it finds differs from the cell, and offers a small pull request that applies them; it does not edit the table, and the paragraph says so | #335 | 720 |
+| 2026-10-12 | Registry and adapters, Worktrees, Merge gate, Change log | `merge_pr.sh` looks up a project pull request's timeline at the registry-aware project root, the same one the Step 1 roadmap lookup uses, and its main-tree guards include it; the #379 gap text is gone from the Records bullet, Target items 1 and 2, the Merge gate bullets, the `merge_pr.sh` row and the change-log rule, and every `merge_pr.sh` line number is refreshed | #379 | 718 |
 
 ## Glossary
 
