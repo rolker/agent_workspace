@@ -75,3 +75,11 @@ Verified against current `merge_pr.sh` (issue line numbers are slightly stale):
 Issue Review (48b1052) recorded six actions: one registry-aware root for the gate lookup and cleanup; the same root in the main-tree guard (~816); a test with the project registered outside project/ (gate finds the timeline, PR stays report-only, merge record lands in the worktree timeline); design.md Records, Merge gate text and the cited line numbers updated in the same PR; the two principle rows that point at these. Host recommendation: proceed, all six go into the plan.
 
 > yes
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-12 13:01 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-379/plan.md` at `9a5833a2`
+
+One shared registry-aware project root (PJ_REPO_ROOT with the legacy fallback) for the gate lookup, cleanup and the Step 1.5 main-tree guards, a sandbox test with the project registered outside project/, and design.md updated in the same PR.
