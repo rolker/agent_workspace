@@ -80,3 +80,11 @@ issue: 386
 Issue Review (2a4ccef) actions all accepted: A1 testable check rule (fixed check grammar; a script prints one row per line; skill formats only; tests for unchecked / unknown / exit-status), A2 read-only check kinds only, A3 one new git-ignored key=value settings file read without sourcing; capture fails with instructions when unset. Trim accepted: drop "sweep due?", tooling-vs-project share and resume cards from this PR, file each as a follow-up. Also: update_roadmap.sh fixture for Direction cells; what-next gets a pointer, fold-or-retire issue later; gz4d lines limited to the workspace's own acceptance case; second Serves anchor becomes #registry-and-adapters; the AGENTS.md script-table row stays out (Ask First, asked separately).
 
 > yes, proceed with all three and the trim
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-12 18:16 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-386/plan.md` at `64c24a41`
+
+Five commits in one PR, splittable after the first: the machine-local settings file and `capture.sh` with tests; then a read-only check runner (`sitrep_checks.sh`) with a fixed grammar, the Direction section in `docs/roadmap.md` with an `update_roadmap.sh` fixture, the `sitrep` skill (first mode) with a `what-next` pointer, and the `docs/design.md` update. Six trimmed items are listed as follow-ups.
