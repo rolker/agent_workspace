@@ -1082,3 +1082,22 @@ Rule applied (consistent with this timeline's earlier deferral of checker edge c
 
 ### Actions
 - [x] Add `.agent/scripts/check_design_anchors.sh` to the `check-design-anchors` hook's `files:` filter — `.pre-commit-config.yaml`
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 10:04 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: approved
+
+**PR**: #380 at `1d54c8e`
+**Base**: origin/main
+**Depth**: Light (reason: re-review of a4dd163..1d54c8e only; one regex alternative in a pre-commit `files:` filter; the whole PR was approved at Deep depth at `a4dd163`)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: ready
+
+Specialists: static (pre-commit `check-design-anchors` and `yamllint` --all-files passed; checker exit 0). Cross-model reviewers: skipped (Light depth; a one-alternative filter change that cannot alter checker behaviour).
+
+### Findings
+- [x] Regex anchored and escaped correctly: `\.agent/scripts/check_design_anchors\.sh$` matches the checker, not `.sh.bak`, a nested copy, or `tests/test_design_anchors.sh` (the last is deliberate: tests are covered by validate-script-tests) — `.pre-commit-config.yaml:67`
+- [x] The `# yamllint disable-line rule:line-length` comment sits on the line directly above and still applies; yamllint passes — `.pre-commit-config.yaml:66`
+- [x] No doc lists the hook's trigger files; `docs/design.md:152` names the hook and script only, so nothing disagrees
