@@ -1212,3 +1212,21 @@ PR C (wire-in), review round 7 addressed. Checks: `check_design_anchors.sh` exit
 - [x] S3 (owner Q2): git-refs storage alternative added to Decided Against (2026-03-22, wording from the old Storage model text); section intro says an item can be reconsidered if things change — `docs/roadmap.md:256` (2d197b8)
 - [x] S4 — `docs/roadmap.md:190` (deferred: dismissed at Checkpoint 413d259, the Instruction layers section is all proposed)
 - [x] S5: review-issue also cites `$WS_ROOT/docs/design.md#the-design` for the section list — `.claude/skills/review-issue/SKILL.md:132` (9ca4361)
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-12 11:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-335 at `d3d3afc`
+**Base**: main
+**Depth**: Standard (reason: governance files — four skills, docs/design.md, roadmap, README; whole PR C diff re-classified per fix-round rule)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 8 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+PR C (wire-in), re-review after the round 7 fixes (8e32b3c..d3d3afc). Every Checkpoint `413d259` decision verified: R1 (audit reports the cells, offers a small PR, does not write the register) reads the same in `audit-workspace` step 2 and Guidelines, the design.md register paragraph and plan revision 12 (Wire-in 2, Files to Change, A4, Consequences, Self-Check, Estimated Scope); Q2 git-refs row in Decided Against, date 2026-03-22 traced to `d253141a`, intro sentence added; S1, S2, S5 fixed; S4 dismissed as recorded. Specialists: static (pre-commit on the 9 changed files exit 0; `check_design_anchors.sh` exit 0; `test_design_anchors.sh` 46/46; `test_skill_paths.sh` 51/51; design.md 721 lines matches the last change-log row), governance, plan drift, Claude adversarial (fresh Sonnet sub-agent), cross-model Gemini, Codex, Copilot (all EXIT=0). Dismissed: Gemini "Design picture nested under project-repo block" (it is in step 3, not step 2's project list), Gemini "remove change-log row 719" (rows are append-only per commit; PR B's 708 row corrects 706 the same way), Gemini `$WS_ROOT` unset (each skill defines the idiom; skill-path test passes), Gemini review-plan anchor wording (applies only when a section changes), Claude adversarial "2026-03-22 unsourced" (commit `d253141a`), Claude adversarial push-policy note (judgment within the Wire-in 4 rule, passed round 7).
+
+### Findings
+- [ ] (suggestion) Register updates lists only the `Re-examined` cell; when the audit finds an ADR newly superseded in practice, applying the listed cells would record `in force | yes <today>` for a drifted ADR; also list the `Standing` cell change in that case — `.claude/skills/audit-workspace/SKILL.md:59`
+- [ ] (suggestion) "Checked in this revision: step 2 ... says nothing about a register or a date" now sits under the revision 12 header and is untrue after PR C; say "Checked in revision 9" — `.agent/work-plans/issue-335/plan.md:162`
