@@ -324,6 +324,30 @@ expect "b: a 4-space-indented closer does not close a top-level fence; the real 
     "docs/design.md:9:" "nope"
 if grep -qF "hidden" <<<"$OUT"; then fail "b: a link inside the fence was checked"; else pass "b: the link inside the fence stays hidden"; fi
 
+# repeated slugs follow GitHub's slugger
+R="$(new_root b14)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## A
+
+## A
+
+## A-1
+
+## B-1
+
+## B
+
+## B
+DOC
+printf 'docs/design.md#a docs/design.md#a-1 docs/design.md#a-1-1 docs/design.md#b-1 docs/design.md#b docs/design.md#b-2\n' > "$R/README.md"
+run_checker "$R"
+expect "b: a repeated slug takes the first free -N (A, A, A-1 give a, a-1, a-1-1; B-1, B, B give b-1, b, b-2)" 0
+printf 'docs/design.md#a-2\n' > "$R/README.md"
+run_checker "$R"
+expect "b: no a-2 is made when A-1 is a heading of its own" 1 "a-2"
+
 # headings: closing #s, links in headings, empty slug, underscore
 R="$(new_root b7)"
 cat > "$R/docs/design.md" <<'DOC'

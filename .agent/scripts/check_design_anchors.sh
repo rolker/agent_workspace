@@ -35,9 +35,11 @@
 # GitHub style. Take the ATX heading text (`#` to `######`, up to 3 leading
 # spaces, optional closing #s dropped); replace `[text](url)` by `text`;
 # lowercase ASCII; drop every character that is not a letter, digit, space,
-# '_' or '-'; turn each space into '-'. A repeated slug gets '-1', '-2', ...
-# (`# How it works` is `how-it-works`). A heading whose slug is empty (`## !!!`)
-# has no anchor and is skipped. Headings inside fenced code are not headings.
+# '_' or '-'; turn each space into '-' (`# How it works` is `how-it-works`).
+# A slug already taken gets '-1', '-2', ..., the first whose result is not
+# taken either, as GitHub's slugger does: headings `A`, `A`, `A-1` are `a`,
+# `a-1`, `a-1-1`. A heading whose slug is empty (`## !!!`) has no anchor and
+# is skipped. Headings inside fenced code are not headings.
 # A fence opens on ``` or ~~~ (3+, optional info string) indented at most 3
 # spaces past the content column of the list item it sits in (0 outside a
 # list; an item's column is its marker's indent, the marker and the spaces
@@ -194,8 +196,13 @@ design_records() {
                     sl = slug(rest)
                     if (reg_level > 0 && level <= reg_level) reg_level = 0
                     if (sl != "") {          # an empty slug has no anchor
-                        seen[sl]++
-                        if (seen[sl] > 1) sl = sl "-" (seen[sl] - 1)
+                        # GitHub slugger: a taken slug gets the next -N
+                        # whose result is not taken either.
+                        if (sl in used) {
+                            base_sl = sl
+                            do { cnt[base_sl]++; sl = base_sl "-" cnt[base_sl] } while (sl in used)
+                        }
+                        used[sl] = 1
                         print "HEAD", NR, level, sl
                         if (sl == "decision-register") reg_level = level
                     }
