@@ -1350,7 +1350,7 @@ Serves line (Option A) meets issue #335 scope item 3: review-issue and review-pl
 - [x] (suggestion, Codex + Gemini via Local Review) audit Register updates lists a Standing change only when an ADR is no longer `in force`; report it whenever the checked standing differs from the cell (e.g. Provisional to in force) — `.claude/skills/audit-workspace/SKILL.md`
 - [x] (cross-confirmed, suggestion) design.md change-log row 667 says the audit "now sets" the Re-examined cell, never true on main (row 668 corrects it); both rows are unmerged in this PR, so fold them into one true row — `docs/design.md`
 - [x] (suggestion, Local Review) plan Wire-in 2 says "the skill text uses only the two real anchors above"; the skills now also cite `docs/design.md#rules` and `README.md#workspace-goals` — `.agent/work-plans/issue-335/plan.md`
-- [ ] (should-fix, Copilot PR bot) PR description stale: goal source, Standing wording, revisions 11-12 only (host updates the PR body) — PR #382 description
+- [x] (should-fix, Copilot PR bot) PR description stale: goal source, Standing wording, revisions 11-12 only (host updates the PR body) — PR #382 description
 - [x] (suggestion, Local Review) No check covers the `README.md#workspace-goals` anchor the three skills cite (renaming the heading breaks them silently); deferred to #381 with a comment there (the checker's scope widening is already a follow-up in the plan) — `.agent/scripts/check_design_anchors.sh`
 
 ### False positives
