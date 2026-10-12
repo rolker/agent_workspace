@@ -56,9 +56,14 @@ is expected after a design change and is not an error. For each ADR in
   `docs/design.md` records the current behaviour; flag the design document
   if it does not, and note the ADR as "superseded in practice, not yet
   superseded on paper" rather than asking for the ADR to be edited
-- When you check an ADR against the code, set that ADR's `Re-examined` cell
-  in the Decision register (`docs/design.md#decision-register`) to
-  `yes <today>`, with today's date as `YYYY-MM-DD`
+- When you check an ADR against the code, list under Register updates in
+  the report the cell that changes: that ADR's `Re-examined` cell in the
+  Decision register (`docs/design.md#decision-register`) becomes
+  `yes <today>`, with today's date as `YYYY-MM-DD` (for example
+  "ADR-0002 Re-examined: yes 2026-10-12"). Do not edit the register. After
+  the report, ask the user whether to open a small PR that applies the
+  listed cells through the normal issue and worktree flow; that PR adds the
+  `docs/design.md` change-log row like any other change
 
 ### 3. Script reference table
 
@@ -130,6 +135,10 @@ List any worktrees that appear abandoned (no recent commits, merged PRs).
 |---|---|---|
 | ... | OK / Issue | ... |
 
+### Register updates
+
+- ADR-NNNN Re-examined: yes YYYY-MM-DD
+
 ### Recommended Actions
 
 - [ ] <specific action items>
@@ -138,9 +147,9 @@ List any worktrees that appear abandoned (no recent commits, merged PRs).
 ## Guidelines
 
 - **Report, don't fix** — this skill identifies issues. Fixing them should
-  be separate issues with their own worktrees. The one exception is the
-  Decision register's `Re-examined` cell (step 2): the audit sets it and
-  nothing else.
+  be separate issues with their own worktrees. That includes the Decision
+  register's `Re-examined` dates (step 2): the audit reports them, and a
+  separate PR writes them.
 - **Be specific** — "AGENTS.md script table lists `generate_knowledge.sh`
   but it was removed in #274" is actionable. "Some references may be stale"
   is not.
