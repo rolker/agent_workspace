@@ -1334,3 +1334,24 @@ Serves line (Option A) meets issue #335 scope item 3: review-issue and review-pl
 - [ ] (suggestion) Change-log row says /audit-workspace "now sets" the Re-examined cell, which never held on main; the next row corrects it — fold the two rows into one (copilot rated must-fix; gemini) — `docs/design.md:667`
 - [ ] (suggestion) Wire-in 2 still says "The skill text uses only the two real anchors above"; the skills now also cite `docs/design.md#rules` and `README.md#workspace-goals` — `.agent/work-plans/issue-335/plan.md:346`
 - [ ] (suggestion) The skills' goal source `README.md#workspace-goals` is outside check_design_anchors.sh's scope (docs/design.md citations only), so renaming that heading breaks three skills silently; note it or extend the check — `.claude/skills/review-issue/SKILL.md:131`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 12:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #382 at `0b04393`
+**Sources**: 3 (Local Review @ `003c668` recorded at `0b04393`, approved with 5 suggestions incl. Codex/Gemini/Copilot CLI; Copilot PR bot R3 @ `003c668`; CI rollup pending at triage)
+**Cross-source confirmations**: 1 (stale change-log row: Copilot CLI inside the Local Review + Local Review lead)
+**CI**: pending
+
+### Findings
+- [ ] (suggestion, Local Review) "Breaks a stated rule (a principle, or a row of docs/design.md#rules)" is not scoped to workspace issues; for a project issue use the project's own rules — `.claude/skills/review-issue/SKILL.md`, `.claude/skills/review-plan/SKILL.md`
+- [ ] (suggestion, Codex + Gemini via Local Review) audit Register updates lists a Standing change only when an ADR is no longer `in force`; report it whenever the checked standing differs from the cell (e.g. Provisional to in force) — `.claude/skills/audit-workspace/SKILL.md`
+- [ ] (cross-confirmed, suggestion) design.md change-log row 667 says the audit "now sets" the Re-examined cell, never true on main (row 668 corrects it); both rows are unmerged in this PR, so fold them into one true row — `docs/design.md`
+- [ ] (suggestion, Local Review) plan Wire-in 2 says "the skill text uses only the two real anchors above"; the skills now also cite `docs/design.md#rules` and `README.md#workspace-goals` — `.agent/work-plans/issue-335/plan.md`
+- [ ] (should-fix, Copilot PR bot) PR description stale: goal source, Standing wording, revisions 11-12 only (host updates the PR body) — PR #382 description
+- [x] (suggestion, Local Review) No check covers the `README.md#workspace-goals` anchor the three skills cite (renaming the heading breaks them silently); deferred to #381 with a comment there (the checker's scope widening is already a follow-up in the plan) — `.agent/scripts/check_design_anchors.sh`
+
+### False positives
+- (Copilot PR bot) plan-task:134 and review-plan:238 "Serves only when the design changes" — these are Copilot's R1 comments (original commit b2d9cfa) carried forward to the new head; 8fb5990 added the unconditional Serves line in both skills (plan-task step 3 and `## Serves` template; review-plan "Serves (every plan)" under Issue alignment), confirmed by the Local Review at 003c668.
