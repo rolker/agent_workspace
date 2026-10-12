@@ -913,3 +913,22 @@ The last checkbox of the round-5 review entry (Review-loop Target bullets 2 and 
 - [x] (minor, Copilot) Process step 1 says "this is revision 9" under a revision 10 header (line 56) — `.agent/work-plans/issue-335/plan.md`
 
 ### False positives
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 09:05 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `9e67ca6`
+**Addressed**: Integrated Review at `be87238` (2026-10-12 08:42 -04:00)
+**Commits**: `978bbd5`, `bdc2006`, `9e67ca6`
+
+### Actions
+- [x] F1: `publish` and `merge` are host steps; `publish` writes no entry, `merge` one only when its gate is relaxed; a failed phase can run in the host (`mode=inline`). How it works paragraph and the Review loop bullets "One entry per dispatched phase" and "Each phase but `publish` and `merge` runs in a fresh sub-agent" — `docs/design.md:10`, `docs/design.md:412`, `docs/design.md:426`
+- [x] F2: the per-project footprint is stated as meant, with records today always in the owning repository and the choice proposed under Worktrees — `docs/design.md:24`
+- [x] F3: two session roots; the user tier is the layer injected into them (ADR-0016 decisions 1 and 3) — `docs/design.md:166`
+- [x] F4: records committed in the repository that owns the issue — `docs/design.md:331`
+- [x] F5: Rules row states the 2026-10-09 boundary and the owner's rule of 2026-10-12 (a real name only for a public repository); same clause added to the review guide row "Put each thing at the level it applies to"; `marine_msgs` replaced by synthetic `sonar_msgs` (with `acme/` owner) in the worktree guide and review-plan; `documentation_verification.md` line 5 kept — `docs/design.md:155`, `.agent/knowledge/principles_review_guide.md:22`, `.agent/WORKTREE_GUIDE.md:183`, `.claude/skills/review-plan/SKILL.md:358`
+- [x] F6: process step 1 says revision 10 — `.agent/work-plans/issue-335/plan.md:56`
+
+Change log: two rows of 2026-10-12 appended (706 and 707 lines). Pre-commit hooks passed on each commit, including check-design-anchors and the script-tests suite.
