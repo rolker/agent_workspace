@@ -981,3 +981,15 @@ On F5 (real project names), after the host proposed the Rules row text "history 
 To "start the six fixes (address-findings in a background agent, re-review, back to the owner before any push)?" and "add the public-only clause to the review guide row 'Put each thing at the level it applies to'?":
 
 > yes to both.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 09:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Recorded late: this answer was given before the Implementation entry at 49064bd. Pre-push round 6 (at 4079641) reached MAX_ROUNDS with one must-fix (M1, merge-entry wording) and two suggestions. Host recommendation: fix M1 and S1, leave S2 (mission_manager, a public repository's package), then push and let the PR-mode review replace another local round.
+
+> go ahead with your recommendation
