@@ -129,8 +129,8 @@ If the issue targets a project repo, also check:
 - **Design picture?** Does the proposal change how the parts fit, or is it
   not covered by the current design? If so, name the design section it
   touches and bring the question to the user on its own ("Ask about what
-  matters, and show how much"). For a workspace issue, the goal the issue
-  serves is in `$WS_ROOT/docs/design.md#how-it-works`, and the section
+  matters, and show how much"). For a workspace issue, the goals are the
+  sections under `$WS_ROOT/README.md#workspace-goals`, and the section
   list is in `$WS_ROOT/docs/design.md#the-design`; cite the section by its
   anchor, as `docs/design.md#<section>`. For a project issue, name the
   section of the project's own design document, or say there is none.
