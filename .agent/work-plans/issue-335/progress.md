@@ -1242,3 +1242,18 @@ PR C (wire-in), re-review after the round 7 fixes (8e32b3c..d3d3afc). Every Chec
 Pre-push round 8 at 0d68805 approved with two suggestions: S1 (audit-workspace Register updates should also list a Standing cell change when an ADR is found superseded in practice) and S2 (plan.md:162 "Checked in this revision" should read "Checked in revision 9"). Host recommendation: fix both, a quick check, then publish.
 
 > fix then publish
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 11:32 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-335 at `302094d`
+**Addressed**: Local Review (Pre-Push) at `0d68805` (2026-10-12 11:19 -04:00), round 8
+**Commits**: 6f188fd, 302094d
+
+PR C (wire-in), review round 8 addressed. Checks: `check_design_anchors.sh` exit 0; `test_skill_paths.sh` run; pre-commit passed on both commits. design.md left alone (its register paragraph says the report "lists the cells to change", still true).
+
+### Actions
+- [x] S1: `/audit-workspace` step 2 and the Register updates format now also list the `Standing` cell change and one line on what the code does instead when an ADR is no longer `in force`; plan Revision 12 change log gains item 4 — `.claude/skills/audit-workspace/SKILL.md:59` (6f188fd)
+- [x] S2: "Checked in this revision" reads "Checked in revision 9" — `.agent/work-plans/issue-335/plan.md:162` (302094d)
