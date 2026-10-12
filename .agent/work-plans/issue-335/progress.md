@@ -1400,3 +1400,19 @@ All four fixes are correct and consistent. S1: review-issue and review-plan use 
 - [ ] (suggestion) the review-plan edit leaves a long line (the rewrapped "is a finding. A project with no goals written down is not flagged for that." runs past the file's wrap width); rewrap for consistency — `.claude/skills/review-plan/SKILL.md:206`
 
 Cross-model reviewers: none dispatched (Light; skipped, no risk rule requires them).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 12:45 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #382 at `e35f80b`
+**Sources**: 3 (Local Review light @ `b494c56` recorded at `726352f`, approved; Copilot PR bot R4 @ `726352f`, one comment; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass (at `726352f`; `e35f80b` changes only the plan, a bookkeeping path)
+
+### Findings
+- [x] (suggestion, Copilot PR bot) plan Revision 12 item 4 still says Standing changes are listed only when an ADR is "no longer in force" — that line is the record of revision 12 and stays; Revision 13 gains item 5 recording the wider rule (`e35f80b`) — `.agent/work-plans/issue-335/plan.md`
+
+### False positives
+- (Local Review light) one long unwrapped line at `.claude/skills/review-plan/SKILL.md:206` — cosmetic only; Markdown renders it the same and no hook enforces wrapping in skill files.
