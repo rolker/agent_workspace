@@ -406,21 +406,11 @@ Candidates for `.agent/knowledge/research_digest.md`, separate from roadmap item
 
 Decisions that apply across multiple items.
 
+History, kept as dated rationale and not kept current. How the parts fit today is in the sections of [`docs/design.md`](design.md#the-design).
+
 ### Storage model
 
-Two files per issue in `.agent/work-plans/issue-N/`:
-- `plan.md` — what we're going to do (reference document, stable after approval)
-- `progress.md` — what actually happened (append-only log, updated by skills)
-
-Previously (#83), review-code appended summaries to plan.md. Going forward,
-all lifecycle tracking moves to progress.md. Plan.md stays clean as a
-reference. Review summaries in plan.md continue to work until skills are
-updated to write to progress.md instead.
-
-JSONL (#51) remains a future option for machine-queryable cross-issue queries.
-
-Git refs (`refs/agent-state/issue-N/reviews`) explored in depth — crash-safe,
-worktree-shared, per-issue scoped — but deferred as premature complexity.
+Now in [Review loop and timeline](design.md#review-loop-and-timeline).
 
 ### Review architecture (5-layer model)
 
@@ -450,11 +440,7 @@ Layer 5: Continual learning (#42 -> #69)
 
 ### Progress as lifecycle record
 
-progress.md replaces the plan-as-accumulator pattern. All lifecycle steps
-(brainstorm, plan, implement, review, test) append to progress.md rather
-than to plan.md. The plan stays a stable reference; progress tells the
-full story. Workflow templates (`.agent/workflows/`) define the available
-steps and human involvement level per workflow type.
+Now in [Review loop and timeline](design.md#review-loop-and-timeline).
 
 ### Roadmap over issues for planning
 
