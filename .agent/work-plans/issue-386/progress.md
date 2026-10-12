@@ -154,3 +154,11 @@ The structure, split point and trim are right, and the `update_roadmap.sh` colli
 Plan Review (c103ef0) needs-work: F1 high (script allowlist checks name only; exact argument forms, run from the runner's own directory, no glob expansion, marker-file tests), F2 (Deferrals table format collides with update_roadmap.sh; fix format, fixture covers a Deferrals row and a checklist line), F3 (deferral revisit conditions get a check in the same grammar; runner prints deferral rows), F4 (gh-issue defaults to the roadmap root's remote; ADR-0010 row), F5-F9 low (capture edge cases incl. echo the text back on write failure; "what moved" as a follow-up or counts in the run record; unchecked in multi-check cells; F8 move the every-root loop and paused branches to follow-ups; test paths under .agent/scripts/tests/). Host recommendation: revise, then a second review, with F8's two items taken out for tonight.
 
 > revise
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-12 18:29 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-386/plan.md` at `13eea944`
+
+Revision 2, same five commits. The sit-rep check runner now accepts only three exact script forms run from its own directory, the Deferrals table has a fixed format with checks so `update_roadmap.sh` cannot hit it, `gh-issue` uses the roadmap root's own remote, and the run record keeps true-of-total counts so "what moved" is built. The every-root loop and paused branches moved to follow-ups.
