@@ -1383,3 +1383,20 @@ Integrated Review at 0b04393: S1 (project issues use their own rules), S2 (audit
 - [x] change-log rows folded into one true row, line count 720 — `docs/design.md`
 - [x] plan Wire-in 2 names the anchors the skills cite; Revision 13 item 4 — `.agent/work-plans/issue-335/plan.md`
 - [ ] PR description stale — left open for the host (PR #382 description)
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 12:40 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: approved
+
+**PR**: #382 at `b494c568`
+**Depth**: Light (reason: user-requested; scope 003c668..b494c56, the four triage fix commits 00f0654, 4891a61, a85cf0b, edf565d)
+**Must-fix**: 0 | **Suggestions**: 1
+
+All four fixes are correct and consistent. S1: review-issue and review-plan use the same scoping (workspace principles + Rules table for workspace work, the project's own stated rules "if it has any" for project work), so projects are not forced to keep rules. S2: audit-workspace step 2 and the Register updates template both say the Standing cell is reported whenever the found standing differs from the cell (including Provisional back to `in force`). S3: the two change-log rows are folded into one row; it says 720 and `wc -l docs/design.md` is 720. S4: plan Wire-in 2 names `docs/design.md#rules` and `$WS_ROOT/README.md#workspace-goals`, notes the checker covers design.md citations only (follow-up #381), and adds decision row 4. Anchors `README.md#workspace-goals` and `docs/design.md#rules` exist.
+
+### Findings
+- [ ] (suggestion) the review-plan edit leaves a long line (the rewrapped "is a finding. A project with no goals written down is not flagged for that." runs past the file's wrap width); rewrap for consistency — `.claude/skills/review-plan/SKILL.md:206`
+
+Cross-model reviewers: none dispatched (Light; skipped, no risk rule requires them).
