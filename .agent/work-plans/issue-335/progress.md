@@ -1170,3 +1170,25 @@ PR C (wire-in). Specialists: static (pre-commit on the 9 changed files: all pass
 - [ ] (suggestion) Storage model pointer drops the rejected git-refs (`refs/agent-state`) alternative, which now appears in no tracked doc; owner call whether one line stays under the pointer or goes to Decided Against — `docs/roadmap.md:411`
 - [ ] (suggestion) Auto-triggering skills (#26) re-shapes the Skill layer named in Instruction layers; candidate for a "design section:" note (the other omissions, coordinator agent included, hold under the rule) — `docs/roadmap.md:190`
 - [ ] (suggestion) review-issue sends the agent to `#how-it-works` "for the goal the issue serves" and then asks it to name a design section; goals live in README per Documentation layers, and How it works does not link every section; consider adding the section list at `#the-design` — `.claude/skills/review-issue/SKILL.md:132`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 11:02 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 7 on PR C (wire-in) at 20cff9d: must-fix M1/M2 (audit-workspace register edit has no landing path; conflicts with the design.md change-log rule), suggestions S1-S5. Round count includes PR B's rounds on the same branch name.
+
+Q1 (how the audit's Re-examined dates land; R1 = audit reports the exact cell changes and offers a one-line PR through the normal issue/worktree flow, R2 = audit commits them itself from a skill worktree, needing an AGENTS.md allowlist change and a change-log exemption):
+
+> Q1, I'm not sure I have the context needed to understand this. Is it consequential enough that I need to look at it closer or are you confident in your recomendation?
+
+Host answer: low consequence (only how a date column is refreshed; worst case under R1 is stale dates; easy to undo); host decides R1 within its limits and records it here.
+
+Q2 (the rejected git-refs storage alternative dropped by the Storage model pointer):
+
+> Q2, move to decided against. We should note that it doesn't mean we can't reconsider stuff in that list later if things change.
+
+Host-decided small items: S1 (plan B1/B2 stale mentions) fix; S2 (plan Files to Change row for the design.md register edit) fix; S5 (review-issue also cites #the-design) fix; S4 (auto-triggering skills roadmap note) skip, its section is all proposed.
