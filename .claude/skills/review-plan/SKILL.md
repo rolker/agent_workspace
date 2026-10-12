@@ -355,7 +355,7 @@ not an error.
 - **Plans are guides, not contracts** — minor deviations during implementation
   are expected. Focus on structural issues: missing files, missing consequences,
   scope problems, principle violations.
-- **Be specific** — "Consequence missing: changing `marine_msgs` requires
+- **Be specific** — "Consequence missing: changing `sonar_msgs` requires
   updating `mission_manager` subscriber" is useful. "Consider consequences" is
   not.
 - **Skip N/A dimensions** — if the plan doesn't touch project repos, skip ROS

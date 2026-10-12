@@ -180,7 +180,7 @@ package repos, and issue are all explicit:
 ```bash
 .agent/scripts/worktree_create.sh --type project --project shore_tools-jazzy \
     --issue acme/sonar_driver#111 \
-    --layer platforms --package-repos sonar_driver,marine_msgs
+    --layer platforms --package-repos sonar_driver,sonar_msgs
 ```
 
 - `--issue` **must** be the qualified `owner/repo#N` form for a package
@@ -193,7 +193,7 @@ package repos, and issue are all explicit:
   qualified `--issue owner/repo#N --type project --project <name>` form only.
 - Branch names: the repo that owns the issue gets `feature/issue-<N>`; every
   other named repo gets `feature/<repo>-issue-<N>` (e.g.
-  `feature/sonar_driver-issue-111` in `marine_msgs`).
+  `feature/sonar_driver-issue-111` in `sonar_msgs`).
 - Directory: `<project root>/worktrees/issue-<project>-<owner>-<repo>-<N>/`
   (under the instance's own worktree dir, issue #265) — cosmetic only. Every
   script that needs project/issue/layer reads the `.worktree-repos` manifest
@@ -229,13 +229,13 @@ numbers are repo-local, and a package repo is never the workspace or the
 registered project's own remote):
 
 ```bash
-.agent/scripts/merge_pr.sh --pr owner/marine_msgs#57
+.agent/scripts/merge_pr.sh --pr acme/sonar_msgs#57
 # equivalently:
-.agent/scripts/merge_pr.sh --pr 57 --repo owner/marine_msgs
+.agent/scripts/merge_pr.sh --pr 57 --repo acme/sonar_msgs
 
-make merge-pr PR=owner/marine_msgs#57
+make merge-pr PR=acme/sonar_msgs#57
 # equivalently:
-make merge-pr PR=57 REPO=owner/marine_msgs
+make merge-pr PR=57 REPO=acme/sonar_msgs
 ```
 
 - `--repo owner/repo` (or the equivalent qualified `--pr owner/repo#N`) skips
