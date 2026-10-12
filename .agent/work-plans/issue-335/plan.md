@@ -1,5 +1,8 @@
 # Plan: Workspace design document, phase 3 (rewrite docs/design.md as the current picture)
 
+Revision 13 (2026-10-12). Applies the owner's decision on the PR C triage (the `## Checkpoint` entry
+`f8d593a`, Option A): `review-issue` and `review-plan` check a "Serves" line on every issue and plan,
+and `plan-task` writes one; the goal source moves to the README. It does not reopen the plan.
 Revision 12 (2026-10-12). Applies the pre-push review round 7 decisions on PR C (the `## Checkpoint`
 entry `413d259`): `/audit-workspace` reports the register's `Re-examined` cells instead of writing them
 (R1), and stale B1/B2 wording is fixed. It does not reopen the plan.
@@ -21,7 +24,7 @@ four owner decisions of 2026-10-09 (hook scope, label, purpose and anchors, glos
 answered plan review round 4 (needs-work, entry `ffa20fe`), revision 4 answered round 3 (entry
 `e3c3eac`), revision 3 answered round 2 (entry `9cfd1fe`), revision 2 answered round 1 (entry
 `6f8c643`) and the owner's decision on the shape of the document (2026-10-08). What changed is in the
-"Revision 2" to "Revision 12 change log" sections at the end.
+"Revision 2" to "Revision 13 change log" sections at the end.
 
 ## Issue
 
@@ -330,10 +333,17 @@ headers, and it is cut back when #295 is decided.
    "which design section" to "name the section by its anchor in `$WS_ROOT/docs/design.md`", with
    `$WS_ROOT` resolved by the skills' existing idiom. The skills cite by anchor, not by heading in
    prose, so the anchor test reaches them (the two anchors are accepted, owner decision 2026-10-09:
-   "Accept both."): `review-issue` cites `$WS_ROOT/docs/design.md#how-it-works`
-   for the goal an issue serves; `plan-task` and `review-plan` cite `$WS_ROOT/docs/design.md#the-design`
-   for the Status key and the section list, and tell the agent to cite the matching section by its
-   anchor, written in the skill text as `docs/design.md#<section>`. The skill text uses only the two
+   "Accept both."; the goal source changed in revision 13): the three skills cite
+   `$WS_ROOT/docs/design.md#the-design` for the Status key and the section list, and tell the agent
+   to cite the matching section by its anchor, written in the skill text as `docs/design.md#<section>`.
+   A "Serves" line is unconditional (revision 13, owner decision 2026-10-12, Option A): every issue
+   review and every plan names the goal the work serves, by its section name under
+   `$WS_ROOT/README.md#workspace-goals` (where `docs/design.md#purpose` says the goals are), and the
+   design section it falls under by anchor; `plan-task` writes it as the plan's `## Serves` line, and
+   `review-issue` and `review-plan` check it and flag work that serves no goal or breaks a stated rule
+   (a principle, or a row of `docs/design.md#rules`). A project issue uses the project's own goals and
+   design document, or "none", and is not flagged for having none. The design-change question stays
+   separate and conditional: only work that changes how the parts fit names the section that changes. The skill text uses only the two
    real anchors above and that one angle-bracket placeholder; the checker ignores a placeholder because
    its anchor pattern is `[a-z0-9][a-z0-9-]*` and `<` does not match (a fixture proves it, Wire-in 6). Project issues keep the "the project's own design document, or say there is none"
    branch. `audit-workspace` (workspace scope only) keeps plain `docs/design.md` paths. PR C adds
@@ -528,7 +538,7 @@ split says what landed.
 | `.agent/scripts/check_design_anchors.sh` (new, `chmod +x`) | The anchor checker: citation form, scope and register count as in Wire-in 6; grep and awk only | B |
 | `.pre-commit-config.yaml` | New local hook `check-design-anchors` (files: the eight paths in Wire-in 6, `docs/decisions/` among them), placed before `validate-script-tests`. Ask First (CI-like config), approved by the owner 2026-10-09 (B4) | B |
 | `.agent/scripts/tests/test_design_anchors.sh` (new, `chmod +x`) | Tests the checker with fixtures only (negative, positive, placeholder and issue-ref, uppercase citation, `#glossary` anchor, guards before and after the register exists, a new ADR file without a register row); reads no real docs | B |
-| `.claude/skills/{review-issue,review-plan,plan-task}/SKILL.md` | Section wording cites the real anchors `$WS_ROOT/docs/design.md#how-it-works` and `#the-design`, plus the `#<section>` placeholder (Wire-in 2) | C |
+| `.claude/skills/{review-issue,review-plan,plan-task}/SKILL.md` | Section wording cites the real anchor `#the-design` and the `#<section>` placeholder; the unconditional "Serves" line, with the goal from `$WS_ROOT/README.md#workspace-goals` (Wire-in 2, revision 13) | C |
 | `.claude/skills/audit-workspace/SKILL.md` | Step 2 gains one line: when an ADR is checked against the code, the report lists its Decision register `Re-examined` cell change (cited as `docs/design.md#decision-register`) and the audit offers a small PR that applies the listed cells; the report format gains a Register updates part; the Guidelines "Report, don't fix" bullet says the register dates are reported, not written (A4, owner decision 2026-10-09; R1, revision 12). No per-section dates | C |
 | `docs/design.md` (Decision register paragraph) | Says how `Re-examined` cells change after the rewrite: `/audit-workspace` reports them and a small PR applies them, replacing "`/audit-workspace` is meant to refresh it"; a change-log row per change (ADR-0017) | C |
 | `docs/roadmap.md` | Open and planned items name the design section; Cross-cutting Decisions note and pointers | C |
@@ -633,7 +643,8 @@ Q1, B4, Purpose and anchors, Label, C1 to C3 and C6 entries are older decisions.
 - **B4 (decided 2026-10-09).** The `check-design-anchors` pre-commit hook is approved (owner: "Yes, and
   watch the ADR directory too."), with `docs/decisions/` in its `files:` (Wire-in 6).
 - **Purpose section and anchors (decided 2026-10-09).** The `## Purpose` row and the skills' anchors
-  `#how-it-works` and `#the-design` are accepted (owner: "Accept both.").
+  `#how-it-works` and `#the-design` are accepted (owner: "Accept both."). Revision 13 points the goal
+  at `README.md#workspace-goals` instead of `#how-it-works` (owner decision 2026-10-12, Option A).
 - **Label (decided 2026-10-09).** "System design" stays everywhere; no label edits in this plan.
 - **A1 (decided 2026-10-09, owner decision: "Go for group A").** Every `##` section carries the label
   `Now`, also when it has no Target. The Status key says so. `# How it works` and the opening paragraph
@@ -877,3 +888,18 @@ approved at revision 6 is not reopened.
 | 2 | Files to Change gains a PR C row for the `docs/design.md` register paragraph (review S2) |
 | 3 | B1 and B2 no longer read as open in the Issue section, Wire-in 3 and 4, and the Consequences row (review S1) |
 | 4 | Wire-in 2 (Register updates content): the audit also lists the `Standing` cell change and a one-line statement of what the code does instead when an ADR is found no longer `in force` (pre-push review round 8 S1); the section-dates paragraph reads "Checked in revision 9" (S2) |
+
+## Revision 13 change log
+
+Applies the owner's decision on the PR C triage (Integrated Review at `0cdc94c`), recorded in the
+`## Checkpoint` entry `f8d593a`: Option A. Issue #335 scope item 3 asks `review-issue` and
+`review-plan` to "cite the goal and design section an issue serves and flag one that serves none or
+breaks a stated rule"; the plan had carried that only as the conditional design-change question, and
+did not record it as a departure. No review round in between; the plan approved at revision 6 is not
+reopened.
+
+| Item | What changed |
+|---|---|
+| 1 | Wire-in 2: the "Serves" line is unconditional. `plan-task` writes it in every plan (`## Serves`, before `## Design Picture`); `review-issue` (Scope Assessment, a Principle Alignment row when flagged) and `review-plan` (Issue alignment, a finding when flagged) check it. Project issues use the project's own goals and design document, or "none". The design-change question is unchanged |
+| 2 | The goal source is `$WS_ROOT/README.md#workspace-goals`, as `docs/design.md#purpose` says, not `#how-it-works` (Wire-in 2, Files to Change, Decided list) |
+| 3 | `/audit-workspace` Register updates: for `superseded` the Standing line names the ADR that replaced it; "what the code does instead" is for `superseded in practice` |

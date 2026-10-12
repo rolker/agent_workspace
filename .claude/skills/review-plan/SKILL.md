@@ -193,6 +193,18 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 - Does the plan address the issue's requirements?
 - If `review-issue` was run, does the plan address its findings?
 - Are there issue requirements not covered by the plan?
+- **Serves** (every plan): does the plan's `## Serves` line name the goal
+  the work serves and the design section it falls under? For the
+  workspace, the goal is a section name under
+  `$WS_ROOT/README.md#workspace-goals` and the design section is cited by
+  its anchor, as `docs/design.md#<section>`; for a project, the project's
+  own goals and design document, or "none" (a project is not asked to
+  keep either). Copy the line, as checked, into this row's Notes. A
+  missing line, work that serves no goal, or work that breaks a stated
+  rule (a principle, or a row of `$WS_ROOT/docs/design.md#rules`) is a
+  finding. A project with no goals written down is not flagged for that.
+  This is separate from the "Keep one current design" question below,
+  which asks only whether the design picture changes
 
 #### File targeting
 
@@ -323,6 +335,7 @@ If no findings, output:
 
 **PR**: <url> — <title>
 **Plan**: `$WS_ROOT/.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
+**Serves**: <the plan's Serves line, as checked>
 Plan looks solid. Ready for implementation.
 ```
 
