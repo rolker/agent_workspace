@@ -18,6 +18,9 @@ Without flags, checks both workspace and project roadmaps.
 
 **Lifecycle position**: Utility — run when choosing what to work on next.
 
+For where the acceptance case stands, checked this run, plus the inbox and
+work in flight, use `/sitrep`.
+
 Reads the roadmap from the workspace and project repos, cross-references
 checklist items against GitHub issues, and surfaces:
 - Completed items not yet checked off (staleness)
