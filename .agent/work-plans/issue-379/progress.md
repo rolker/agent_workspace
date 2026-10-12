@@ -232,3 +232,15 @@ Verified: test_merge_pr_gate.sh 106/0 and test_merge_pr.sh 91/0 at the head; thr
 
 ### Findings
 - [ ] (suggestion) test comment cites "the line-685 guard"; it is at merge_pr.sh:694 after the edit, so name it the `_ci_is_main` guard instead of a line number — `.agent/scripts/tests/test_merge_pr_gate.sh:627`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 13:44 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Pre-push review round 1 (49c614f) approved, one suggestion (test comment names "the line-685 guard"; the guard is now at 694, name it `_ci_is_main`). Host recommendation: publish now, fix the comment in the post-push round.
+
+> yes
