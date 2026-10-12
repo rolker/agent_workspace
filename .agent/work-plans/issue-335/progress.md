@@ -1367,3 +1367,19 @@ Serves line (Option A) meets issue #335 scope item 3: review-issue and review-pl
 Integrated Review at 0b04393: S1 (project issues use their own rules), S2 (audit reports any Standing change), S3 (fold change-log rows 667/668), S4 (plan Wire-in 2 anchor count); the host updates the stale PR description; the unchecked README anchor went to #381. Host recommendation: fix S1-S4, quick check, update the description, then the merge decision.
 
 > fix first
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 12:38 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #382 at `edf565d`
+**Addressed**: Integrated Review at `0b04393` (2026-10-12 12:11 -04:00)
+**Commits**: 00f0654, 4891a61, a85cf0b, edf565d
+
+### Actions
+- [x] project issues and plans use the project's own rules, not the workspace Rules table — `.claude/skills/review-issue/SKILL.md`, `.claude/skills/review-plan/SKILL.md`
+- [x] audit reports any Standing change, including back to in force — `.claude/skills/audit-workspace/SKILL.md`
+- [x] change-log rows folded into one true row, line count 720 — `docs/design.md`
+- [x] plan Wire-in 2 names the anchors the skills cite; Revision 13 item 4 — `.agent/work-plans/issue-335/plan.md`
+- [ ] PR description stale — left open for the host (PR #382 description)
