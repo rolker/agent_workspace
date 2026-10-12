@@ -1315,3 +1315,22 @@ Q3 from the Integrated Review at 0cdc94c: issue #335 scope item 3 asks review-is
 - [x] Audit Standing line: for `superseded` it names the ADR that replaced it; "what the code does instead" is for `superseded in practice` (step 2 and the report's Register updates line) — `.claude/skills/audit-workspace/SKILL.md:63`
 - [x] Unconditional "Serves" line (Option A): plan-task writes `## Serves` in every plan; review-issue adds `**Serves**` to the Scope Assessment and flags no goal or a broken rule as an Action-needed Principle Alignment row; review-plan checks it under Issue alignment and makes a missing line, no goal or a broken rule a finding; project issues use their own goals and design document or "none"; design-change question unchanged; plan revision 13 records it in Wire-in 2. `docs/design.md` not touched: it does not describe what these skills check — `.claude/skills/review-issue/SKILL.md:128`, `.claude/skills/review-plan/SKILL.md:194`, `.claude/skills/plan-task/SKILL.md:124`, `.agent/work-plans/issue-335/plan.md`
 - [x] Goal source points at `$WS_ROOT/README.md#workspace-goals` (anchor checked by hand: `## Workspace goals`, README line 26), not `#how-it-works` — `.claude/skills/review-issue/SKILL.md:130`
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 12:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #382 at `003c668`
+**Depth**: Standard (reason: skill files are governance triggers; scope 0cdc94c..003c668, earlier commits approved in pre-push round 8)
+**Must-fix**: 0 | **Suggestions**: 5
+
+Serves line (Option A) meets issue #335 scope item 3: review-issue and review-plan cite the goal and design section and flag no goal or a broken rule; it reaches the issue comment (Scope Assessment template), the Issue Review entry (verbatim copy) and its Actions (Action-needed row), the Plan Review (Issue alignment Notes; no-findings header) and the plan (`## Serves`). Light and consistent across the three skills; the design-change question stays separate. docs/design.md needs no change (its Review loop table lists what each phase produces, not what it checks). Anchors `README.md#workspace-goals`, `docs/design.md#rules`, `#the-design` resolve; check-design-anchors passes. Cross-model: gemini, codex, copilot all completed.
+
+### Findings
+- [ ] (suggestion) "breaks a stated rule (a principle, or a row of docs/design.md#rules)" is not scoped to workspace issues; for a project issue say the project's own rules (plus the workspace principles already applied), so the project branch stays non-forcing — `.claude/skills/review-issue/SKILL.md:136`, `.claude/skills/review-plan/SKILL.md:203`
+- [ ] (suggestion) Standing change is listed only when an ADR is "no longer in force"; a move back to `in force` (ADR-0016 Provisional to Accepted, drift resolved) is not reported — list it whenever the checked standing differs from the cell (codex, gemini) — `.claude/skills/audit-workspace/SKILL.md:63`
+- [ ] (suggestion) Change-log row says /audit-workspace "now sets" the Re-examined cell, which never held on main; the next row corrects it — fold the two rows into one (copilot rated must-fix; gemini) — `docs/design.md:667`
+- [ ] (suggestion) Wire-in 2 still says "The skill text uses only the two real anchors above"; the skills now also cite `docs/design.md#rules` and `README.md#workspace-goals` — `.agent/work-plans/issue-335/plan.md:346`
+- [ ] (suggestion) The skills' goal source `README.md#workspace-goals` is outside check_design_anchors.sh's scope (docs/design.md citations only), so renaming that heading breaks three skills silently; note it or extend the check — `.claude/skills/review-issue/SKILL.md:131`
