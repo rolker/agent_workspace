@@ -88,3 +88,57 @@ Issue Review (2a4ccef) actions all accepted: A1 testable check rule (fixed check
 **Plan**: `.agent/work-plans/issue-386/plan.md` at `64c24a41`
 
 Five commits in one PR, splittable after the first: the machine-local settings file and `capture.sh` with tests; then a read-only check runner (`sitrep_checks.sh`) with a fixed grammar, the Direction section in `docs/roadmap.md` with an `update_roadmap.sh` fixture, the `sitrep` skill (first mode) with a `what-next` pointer, and the `docs/design.md` update. Six trimmed items are listed as follow-ups.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-12 18:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #386 — Direction section in the roadmap, a one-line inbox, and a sit-rep skill that answers what's next from checked facts
+**Plan**: `.agent/work-plans/issue-386/plan.md` at `64c24a41`
+**Branch**: `feature/issue-386`
+
+Needs-work means plan-text amendments only; nothing here rescopes the five commits or reopens an owner decision.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Five commits, split point after commit 1, trim applied. Two items could move to follow-ups to keep it to tonight (finding 8). |
+| Issue alignment | Needs work | All Issue Review actions are carried. Gaps: deferrals' "revisit condition holds" is left to agent judgment (finding 3), and "what moved and what did not" from the issue's read-out is neither built nor listed as dropped (finding 6). Serves, as checked: "Goals "Easy to use" (work is easy to come back to) and "The long view" (day-to-day work stays connected to direction); `docs/design.md#documentation-layers`, `docs/design.md#registry-and-adapters`." Both goals are `README.md#workspace-goals` subsections; both anchors exist in `docs/design.md`. No rule broken: the one roadmap mention of gz4d is allowed (roadmap is in the history exception; `rolker/geozui4d` is public, checked with `gh repo view`). |
+| File targeting | Good | Test paths are written `tests/...` in the Approach; the suite runner only picks up `.agent/scripts/tests/test_*.sh` (there is no root `tests/`). Spell the full path (finding 9). |
+| Consequences | Needs work | `update_roadmap.sh` collision is covered for the Line/Check table only; the Deferrals part is not (finding 2, reproduced). |
+| Principle alignment | Needs work | "Enforce what matters, as simply as possible": a name-only script allowlist is not read-only (finding 1). "Test what breaks": runner tests need the not-executed proofs below. |
+| ADR compliance | Good | ADR-0016 (`session_scope: both`, `$WS_ROOT`), ADR-0017 (commit 5), ADR-0011 (registry helper, no type branching), ADR-0013 not triggered. ADR-0010 (git-bug-first issue reads) is triggered by `gh-issue` and not in the table (finding 4). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment] High** — The `script` allowlist is by name only, and two of the three named scripts are not read-only with other arguments. `user_tier_install.sh` with no arguments installs into `~/.claude` and `--uninstall` removes it (its header, "Modes"); `adapter --project <name> build|test|install|setup|sync` runs the project's commands. So a roadmap cell `script user_tier_install.sh --uninstall` or `script adapter --project x install` passes the plan's grammar. Also, scripts resolve under `$root/.agent/scripts/`; for a registered project root that is a file in the project's repo, i.e. project-controlled code. Fix: allowlist exact argument shapes (`adapter --project <registry-name> validate`, `user_tier_install.sh --check [--require]`, `check_design_anchors.sh` with no argument) and resolve scripts under the runner's own `$SCRIPT_DIR` only. Parse the cell with `read -ra` (or `set -f`) so a `*` is not globbed, and take `file-contains`'s string as the rest of the cell, run as `grep -qF -- "$s"`. Tests: a stub script that touches a marker file proves `script user_tier_install.sh`, `script adapter --project x build` and a project-root `.agent/scripts/adapter` are `unchecked` and never run.
+2. **[Consequences] Medium** — Reproduced in a scratch fixture with the current `update_roadmap.sh --issue 379`: a Line/Check row with `gh-issue 379 closed` and a Line cell mentioning `(#379)` stay byte-identical (good); a bare `#379` check cell is matched and only warns "replacement did not take effect"; but a Deferrals table shaped `| Item | #379 | Revisit when |` has its revisit condition overwritten with `done`, and a deferral written `- [ ] ... (#379)` is checked off. The plan never fixes the Deferrals format. Fix: state it in the section header (for example `| Deferral | Revisit when | Check |`, issue numbers only inside prose or a `gh-issue` check, no checklist items) and extend the `test_update_roadmap.sh` fixture to a Deferrals row and a Deferrals checklist line.
+3. **[Issue alignment] Medium** — "Deferrals whose revisit condition holds" has no checked source: a prose revisit condition is judged by the agent, which breaks the plan's own rule (states nothing it did not check; skill formats only). Fix: give each deferral a check cell in the same grammar and have `sitrep_checks.sh` print deferral rows too (a `kind` column: `line` / `deferral`); a deferral with no check is listed as `unchecked`, never as due. The same section-scoped parser must then pick tables by header, so add a test that a second table inside Direction is not read as Line rows. "Paused branches named in Deferrals" needs a column for the branch, or drop it (finding 8).
+4. **[ADR compliance] Medium** — `gh-issue <N> <state> [owner/repo]` with the repo omitted resolves against the cwd's remote, so the workspace roadmap's `gh-issue 379 closed` asked from a project session queries the project's #379. Default the repo to the roadmap root's own remote (`git -C "$root" remote get-url origin`), and test it. Add ADR-0010 to the ADR table: either use `issue_lookup --repo` (git-bug first) or record why a direct `gh` read is chosen (a cached state is not "checked this run").
+5. **[Issue alignment] Low** — `capture.sh` edge cases not stated: an inbox path that is relative (resolves against each caller's cwd, so lines scatter; reject it or resolve it against the workspace root), an inbox whose directory is missing or unwritable (exit non-zero and echo the text back so the thought is not lost), and CRLF/trailing space in `settings.local` (the registry tolerates CRLF). Also say that the settings file is read from the script's own checkout: run from a workspace worktree copy it sees no `settings.local` (gitignored, like `projects.local`), so the skill and docs should call the main checkout's copy through `$WS_ROOT`. The `unknown` path is sound: `registry_derive_type_from_dir` returns 2 on a parse error, 1 outside every root (`none`).
+6. **[Issue alignment] Low** — The issue's read-out includes "what moved and what did not"; the four sections drop it without saying so, and a run record of "one dated line" holds nothing to compare against next time, which makes it a thin first form of Measures. Either write each root's `true of total` counts into the run-record line (then "what moved" is one diff, and the Measures row is honest), or add "what moved" to the follow-ups.
+7. **[Principle alignment] Low** — Multi-check aggregation does not say what `unchecked` inside a ` ; ` cell does (`true ; unchecked`). Pick one (for example: any `unchecked` part makes the line `unchecked`) and test it.
+8. **[Scope] Low** — Could be follow-ups to finish tonight: the per-registered-root loop (no registered root has a Direction section today, so it prints only "no direction record"; the first cut can read the workspace root and list the others in one line, which also avoids the skill needing a way to enumerate roots that the plan does not give it), and paused branches from Deferrals (in-flight already comes from `worktree_list.sh --json` and `gh pr list`).
+9. **[File targeting] Low** — Write the new tests' paths in full (`.agent/scripts/tests/test_capture.sh`, `.agent/scripts/tests/test_sitrep_checks.sh`); create sandboxes with `mktemp -d` under `TMPDIR` (`run_script_tests.sh` fails a suite that names `/tmp` or leaves files behind).
+
+Defaults checked (handoff item 5): `.agent/settings.local` is sound (matches `projects.local`, gitignored, `.example` beside it); `partial` only from multi-check lines is sound given finding 7; the allowlist is not sound as names only (finding 1). Inputs checked (item 4): `worktree_list.sh --json` and `gh pr list` exist and are real sources; Deferrals is a source only after findings 2 and 3; nothing in the plan reads memory notes. Project session (item 3): the skill reaches the scripts through `$WS_ROOT`; `sitrep_checks.sh` is not in `.agent/user_tier_scripts.txt`, so from a project session it prompts, the same as `review_progress.sh` does for the other `both` skills today; not a blocker.
+
+### Summary
+
+The structure, split point and trim are right, and the `update_roadmap.sh` collision for the Line/Check table is real and handled. Before implementation, the check grammar needs argument-level allowlisting and workspace-only script resolution to be read-only in fact, and the Deferrals part needs a fixed format with checks so it neither collides with `update_roadmap.sh` nor relies on agent judgment.
+
+### Recommended Actions
+
+- [ ] Allowlist `script` checks by exact argument shape (`adapter --project <registry-name> validate`, `user_tier_install.sh --check [--require]`, `check_design_anchors.sh`), resolve scripts under the runner's own directory only, parse with `read -ra` and `grep -qF --`, and add marker-file tests proving non-allowlisted forms never run.
+- [ ] Fix the Deferrals format in the Direction header (table with a Check column, no bare `#N` second cell, no checklist items) and extend the `test_update_roadmap.sh` fixture to a Deferrals row and a checklist line.
+- [ ] Have `sitrep_checks.sh` check deferrals with the same grammar and print them with a kind column; test that a second table in Direction is not read as Line rows.
+- [ ] Default `gh-issue`'s repo to the roadmap root's remote, test it, and add ADR-0010 to the ADR table with the chosen read path.
+- [ ] State `capture.sh` behaviour for a relative inbox path, a missing or unwritable inbox directory, and CRLF settings lines; note that settings are read from the main checkout via `$WS_ROOT`.
+- [ ] Either record per-root `true of total` counts in the run record or list "what moved" as a follow-up.
+- [ ] Define how `unchecked` combines in a multi-check cell.
+- [ ] Consider moving the per-registered-root loop and paused branches to follow-ups.
+- [ ] Write the new test paths in full under `.agent/scripts/tests/`.
