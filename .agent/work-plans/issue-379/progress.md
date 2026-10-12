@@ -148,3 +148,47 @@ Plan Review (4de93b8) verdict needs-work: must-fix 1 (split the test into an all
 **Plan**: `.agent/work-plans/issue-379/plan.md` at `63b11d7f`
 
 Revision 2: the test is split into an all-good, a real-gap and a main-checkout-guard scenario (each failing on the current script); every design.md merge_pr.sh line citation is refreshed after the edit; one-line project registration; stale comment at merge_pr.sh ~250 repointed.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-12 13:14 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #379 — merge_pr.sh review gate looks up a project PR's timeline at the legacy project/ path, not the registry root
+**Plan**: `.agent/work-plans/issue-379/plan.md` at `63b11d7f`
+**Branch**: `feature/issue-379`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Same three files as revision 1; one PR. |
+| Issue alignment | Good | All six checkpoint actions still covered. Serves, as checked: "Quality of the work (a merge gate whose review check sees the timeline) under `docs/design.md#merge-gate`, with `docs/design.md#worktrees` (Records text cites this issue)". |
+| File targeting | Good | Re-verified: `$ROOT_DIR/project` appears at 251 (comment), 555, 670, 685, 819 only. |
+| Consequences | Good | Round-1 finding 2 resolved: step 6 now greps every `merge_pr.sh` citation in design.md and re-reads each from the edited file (today: 149, 150, 266, 271, 335, 338, 340, 373, 376, 413, 418, 421, 483, 486, 500, 625, 659, 664, 665; not all carry line numbers). |
+| Principle alignment | Needs work | "Test what breaks": scenarios (a), (b), (c) each fail today and pass after the fix (traced below), but the line-685 guard change has no assertion that fails without it (finding 1). |
+| ADR compliance | Good | ADR-0011, ADR-0013, ADR-0017 unchanged from round 1. |
+| ROS conventions | N/A | Workspace plan. |
+
+Round-1 items: must-fix 1 (split pass/gap) resolved as scenarios (a) and (b); should-fix 2 (citation refresh) resolved in step 6; should-fix 3 (guard reason and HEAD) resolved in scenario (c); minor 5 (one-line `projects.local` registration) resolved in step 3; minor 6 (comment at 250-251) resolved in step 1.
+
+Scenario trace against the current `merge_pr.sh` (read, not run):
+- Setup: no `$sb/project`, one registered project, so `wt_resolve_project_repo_root` returns `$sb/projects/proj_x` (`_worktree_helpers.sh` 167-178), `PJ_REMOTE` is its bare origin and the PR fixture is keyed on that. Today `find_worktree_for_branch "$sb/project"` (670-671) gets nothing from the missing dir, so `_gate_progress` is empty.
+- (a) Today: reason "no progress.md", report-only, record posted as a comment, so the line-910 approved line never prints. After: the progress.md in the feature worktree, `abc1234` matches `_gate_head_short` (at_head), summary present, so there are no reasons, the approved line prints, and `_gate_record` never runs. Fails before, passes after.
+- (b) Today: comment path with "no open worktree for the PR's repo". After: wt_top is the feature worktree, none of `$sb`, `$sb/project`, `$PJ_ROOT_EFFECTIVE` match, `AGENT_NAME`/`AGENT_EMAIL` are exported (test line 32-33), `progress_append.sh -C` commits, the push to origin succeeds, no comment is posted. Fails before, passes after.
+- (c) Today: "no open worktree". With A1 alone: the record commits in the main checkout. With A1+A2: "checked out in the main tree", comment, HEAD unchanged. The assertion pins A2 at 819.
+
+### Findings
+
+1. **[Principle alignment — Test what breaks] should-fix** — Of A2's two loops, only the one at 819 is pinned by a test. With A1 applied but 685 left unchanged, scenario (c) still passes: `_ci_wt` becomes the registered main checkout, and the gate's (a) check never consults it, because `abc1234` is at head. Step 2 does read it. It fetches there, gets a real `origin/feature/issue-9` SHA that differs from the fake `HEAD_REVIEWED`, and prints "CI target: new head ... —". With the 685 fix, `_ci_wt` is empty, Step 2 falls back to `gh pr view` (HEAD_NOW == HEAD_REVIEWED) and prints no CI-target line. In (c), assert that the output has no "CI target: new head" line. Alternatively, add a `$STALE` variant of (c) that asserts the reason "no local worktree to verify ancestry" rather than "does not resolve to one commit in".
+2. **[File targeting] minor** — The plan calls line 555 the "cleanup" lookup. It is the Step 1 roadmap worktree lookup (`Checking roadmap for #...`, 547-557). Cleanup proper uses `PJ_REPO_ROOT` directly (1609-1628). Name it correctly in the new variable's comment and in the design.md row text, so the doc does not repeat the mislabel.
+
+### Summary
+
+Revision 2 resolves every round-1 item. Reading the script confirms that each of the three scenarios fails on the current code and passes after the fix. One assertion is still missing: the line-685 guard is fixed but not pinned. Add that assertion during implementation; the plan does not need another review.
+
+### Recommended Actions
+
+- [ ] In scenario (c), add an assertion that fails without the line-685 guard, e.g. no "CI target: new head" line, or a `$STALE` variant asserting "no local worktree to verify ancestry"
+- [ ] Call line 555 the Step 1 roadmap lookup, not cleanup, in the new comment and the design.md text
