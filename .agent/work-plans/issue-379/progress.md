@@ -273,3 +273,15 @@ The owner already decided this finding at the publish checkpoint (b2cfe2c): the 
 > yes
 
 The Integrated Review above holds only that finding (cross-confirmed by Copilot), so it is addressed now.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 13:52 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-379 at `6cfb84f`
+**Addressed**: Integrated Review at `b2cfe2c` (2026-10-12 13:47 -04:00)
+**Commits**: 6cfb84f
+
+### Actions
+- [x] (cross-confirmed, suggestion) test comment named "the line-685 guard"; now names the `_ci_is_main` guard by symbol — `.agent/scripts/tests/test_merge_pr_gate.sh`. No other hard-coded line numbers found in the new test comments or merge_pr.sh changes.
