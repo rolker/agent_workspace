@@ -151,6 +151,25 @@ printf 'docs/design.md#no-such-section\n' > "$R/CHANGELOG.md"
 run_checker "$R"
 expect "b: a citation in a file outside the scope is not checked" 0
 
+# a citer in docs/ also cites design.md by a relative path
+R="$(new_root b2r)"
+plain_design "$R/docs/design.md"
+printf 'See [x](design.md#no-such-section) and [y](./design.md#also-missing).\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "b: relative design.md# and ./design.md# citations in docs/roadmap.md are checked" 1 \
+    "docs/roadmap.md:1:" "no-such-section" "also-missing"
+printf '[x](design.md#glossary) [y](./design.md#how-it-works)\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "b: valid relative citations in docs/roadmap.md pass" 0
+printf 'See docs/design.md#gone here.\n' > "$R/docs/roadmap.md"
+run_checker "$R"
+expect "b: a docs/design.md# citation in docs/roadmap.md is reported once, not again as relative" 1 \
+    "check_design_anchors: 1 finding(s)"
+printf '[x](../design.md#elsewhere) [y](other-design.md#elsewhere)\n' > "$R/docs/roadmap.md"
+printf 'design.md#elsewhere\n' > "$R/README.md"
+run_checker "$R"
+expect "b: ../design.md#, other-design.md# and a bare design.md# outside docs/ name other files and are not checked" 0
+
 # slug rules
 R="$(new_root b3)"
 cat > "$R/docs/design.md" <<'DOC'

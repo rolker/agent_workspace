@@ -15,7 +15,9 @@
 #
 # Citation forms (one form each way):
 #   * From outside design.md: `docs/design.md#<fragment>`; any prefix counts,
-#     so `$WS_ROOT/docs/design.md#<fragment>` is a citation. The fragment is
+#     so `$WS_ROOT/docs/design.md#<fragment>` is a citation. A citing file in
+#     docs/ itself (docs/roadmap.md) also cites by the relative
+#     `design.md#<fragment>` or `./design.md#<fragment>`. The fragment is
 #     the run of [A-Za-z0-9_-] after the '#'.
 #       - an empty run (the literal `docs/design.md#<section>` placeholder) is
 #         not a citation and is ignored;
@@ -286,12 +288,24 @@ for f in README.md .agent/AGENT_ONBOARDING.md docs/roadmap.md \
 done
 shopt -u nullglob
 
+# A citer that sits in docs/ (docs/roadmap.md) may also cite design.md by a
+# relative path, `design.md#x` or `./design.md#x`.
+DOCS_CITERS=()
+for f in ${CITERS[@]+"${CITERS[@]}"}; do
+    [[ "$f" == docs/* && "$f" != docs/*/* ]] && DOCS_CITERS+=("$f")
+done
+
 if [[ ${#CITERS[@]} -gt 0 ]]; then
     while IFS=: read -r file line match; do
         frag="${match#*design.md#}"
         [[ -z "$frag" ]] && continue
         check_fragment "$file" "$line" "$frag"
-    done < <(grep -HnoE -- 'docs/design\.md#[A-Za-z0-9_-]*' "${CITERS[@]}" 2>/dev/null)
+    done < <(
+        grep -HnoE -- 'docs/design\.md#[A-Za-z0-9_-]*' "${CITERS[@]}" 2>/dev/null
+        if [[ ${#DOCS_CITERS[@]} -gt 0 ]]; then
+            grep -HnoE -- '(^|[^A-Za-z0-9_./-])(\./)?design\.md#[A-Za-z0-9_-]*' "${DOCS_CITERS[@]}" 2>/dev/null
+        fi
+    )
 fi
 
 # Anti-vacuity guards, live only once the register heading exists and
