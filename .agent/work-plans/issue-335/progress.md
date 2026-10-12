@@ -893,3 +893,23 @@ Owner decisions 2026-10-09 for PR B (pre-push review round 5, approved, reviewed
 - Stopping point for the weekend: the PR is open and unmerged; the merge decision stays with the owner.
 
 The last checkbox of the round-5 review entry (Review-loop Target bullets 2 and 3 as pointers) is unverified filler per the reviewer and is not a finding.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 08:42 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `be87238`
+**Sources**: 2 (Copilot R1 @ `be87238`, CI rollup); no local review entry covers this head (round 5 approval and earlier rounds are stale by code changes since)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [ ] (should-fix, Copilot) "How it works" says each of the eight phases runs in a fresh sub-agent and leaves one entry; `publish` and `merge` are host steps (`run-issue/SKILL.md` steps 7 and 11; `dispatch_phase.sh` dispatches only review-issue, plan-task, review-plan, implement, review-code, triage-reviews, address-findings), `mode=inline` runs a phase in the host (step 5), `publish` has no entry type and a passing merge gate records nothing. Same overstatement in the Review loop bullet heading "One entry per phase" (line 408) and "Each phase runs in a fresh sub-agent" (line 420) — `docs/design.md`
+- [ ] (should-fix, Copilot) "How it works" Projects paragraph states per-project footprint choice ("records go into a project only if the user chose that") as current; Worktrees Now says records are always committed in the owning repository and the choice is a proposed Target (line 28) — `docs/design.md`
+- [ ] (should-fix, Copilot) Sessions and roots Now says a session runs in one of three places including the user tier in `~/.claude`; ADR-0016 decision 1 and the next bullet name two session roots, the user tier is the layer injected into them (line 165) — `docs/design.md`
+- [ ] (should-fix, Copilot) Worktrees Records says plan and timeline are committed in the project repository; for a workspace issue (this one) they are in the workspace repository; line 403 already states the owning-repository rule (line 330) — `docs/design.md`
+- [ ] (minor, Copilot) Rules row "Nothing committed to the workspace names a particular project" is broader than the boundary decided 2026-10-09 (plan lines 468-472: real names stay in code-origin comments, test fixtures, ADRs and roadmap as history, `tools/ros-manifest/` prose); design.md states that boundary nowhere. Qualify the row with the boundary; the guide row it cites says the same broad thing (line 152) — `docs/design.md`
+- [ ] (minor, Copilot) Process step 1 says "this is revision 9" under a revision 10 header (line 56) — `.agent/work-plans/issue-335/plan.md`
+
+### False positives
