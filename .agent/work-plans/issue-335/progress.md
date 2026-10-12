@@ -1117,3 +1117,17 @@ Specialists: static (pre-commit `check-design-anchors` and `yamllint` --all-file
 No open findings. The only change since the Integrated Review at `a4dd163` is `be04425` (the checker added to its hook's `files:` filter, owner-approved), reviewed light and approved; `review_progress.sh sources` lists no open local finding and no GitHub comment at this head.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 10:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+PR C (wire-in) open questions B1 and B2 from the plan's Open Questions, answered before PR C starts. The plan was approved at revision 6 (2026-10-09); these answers pick the plan's own defaults, so no plan text other than marking them decided changes.
+
+> B1, keep the default, B2 mark it as history
+
+B1: ADRs carry no pointer to their design section; the mapping stays in the Decision register only (Wire-in 3). B2: the roadmap's "Cross-cutting Decisions" section is marked as history with a one-line note pointing at the design sections, "Storage model" and "Progress as lifecycle record" replaced by a pointer to "Review loop and timeline", the rest kept as dated rationale (Wire-in 4).
