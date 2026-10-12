@@ -232,3 +232,34 @@ Five commits in the plan's order (revision 2, 13eea94), with the four checkpoint
 - 6c6e73a1: `docs/design.md` Documentation layers (Direction and Measures rows, gaps paragraph, Target), `settings.local` sentence in Registry and adapters, OQ-3 partly answered, change-log row (729 lines).
 
 Deviation: `file-contains` on a missing file gives `false` (an unreadable file stays `unknown`). Tests run: `check_design_anchors.sh` clean; `test_capture`, `test_sitrep_checks`, `test_update_roadmap`, `test_skill_paths` (54) pass; `run_script_tests.sh` all 33 suites passed; `make lint` clean. Not done here: `AGENTS.md` Script Reference rows (Ask First) and the plan's follow-ups.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-12 19:28 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-386 at `942bb2a`
+**Base**: main
+**Depth**: Deep (reason: 1828 changed lines across 14 files; new scripts and a skill)
+**Must-fix**: 5 | **Suggestions**: 10
+**Round**: 1 | **Ship**: continue — round 1: 5 must-fix; first round always re-reviews after fixes
+
+Reviewers: Claude adversarial ran; Codex ran (4 findings); Copilot ran (3 findings); Gemini failed (agy headless auto-denied a RunCommand tool call, empty response). Static: shellcheck clean on all 6 changed .sh; test_sitrep_checks 49/0, test_capture 27/0, test_update_roadmap 15/0, test_skill_paths 54/0; check_design_anchors rc 0; update_roadmap.sh on a copy of the branch roadmap for #379, #265, #295 leaves it byte-identical.
+
+### Findings
+- [ ] (must-fix) Run through the `scripts/` symlink, SCRIPT_DIR stays logical and `../..` lands on the checkout's parent: sitrep_checks.sh default root reads no roadmap and prints `lines 0/0` silently; capture.sh looks for settings in the wrong place (text is echoed back, not lost). Use `pwd -P` — `.agent/scripts/sitrep_checks.sh:71`, `.agent/scripts/capture.sh:126`
+- [ ] (must-fix) Fences are tracked only after the section starts: a fenced `## Direction` example before the real section is read as the section and the real one is dropped (reproduced) — `.agent/scripts/sitrep_checks.sh:288`
+- [ ] (must-fix) Rows split on every `|`, so a GFM `\|` truncates the check and can print `true` (`file-contains f a\|b` ran as `a\` and read true); extra cells are dropped silently. Honour `\|` or mark a row that is not exactly 2 cells `unchecked`; add tests — `.agent/scripts/sitrep_checks.sh:272`
+- [ ] (must-fix) The skill runs every check three times (rows, `--summary`, run-record step), so the recorded summary can differ from the rows shown; derive the summary from one run — `.claude/skills/sitrep/SKILL.md:63`, `.claude/skills/sitrep/SKILL.md:132`
+- [ ] (must-fix) `inbox_new` compares minute-resolution timestamp strings with `>`: captures in the same minute as the last run are never counted new, and offset changes compare wrong. Use the `inbox <n>` count the run record already stores — `.claude/skills/sitrep/SKILL.md:93`
+- [ ] (suggestion) `file-exists`/`file-contains` follow symlinks out of the root (true/false oracle on any readable file); resolve with `realpath -e` and require the root prefix — `.agent/scripts/sitrep_checks.sh:198`
+- [ ] (suggestion) `gh` runs inside the `while read < roadmap` loop without `</dev/null`; a stdin-reading child would eat the remaining rows silently (script checks already redirect) — `.agent/scripts/sitrep_checks.sh:152`
+- [ ] (suggestion) `timeout` without `-k`: a check that traps TERM runs past the limit (8 s against 1 s in a repro); use `timeout -k 5` — `.agent/scripts/sitrep_checks.sh:126`
+- [ ] (suggestion) A Direction section with no recognised table prints a blank line and `lines 0/0`, the same as an empty valid section; emit a `section`/`format` row — `.agent/scripts/sitrep_checks.sh:361`
+- [ ] (suggestion) The "single O_APPEND write" claim holds only up to 4096 bytes (strace: a 10 kB line went out as 4096+4096+1809); cap the text or take a lock, and fix the comment — `.agent/scripts/capture.sh:189`
+- [ ] (suggestion) Empty `WS_REPO` reaches `gh pr list -R ""`; step 4 does not check the run-record directory it says it checks; an empty agent-workspace-root file gives `WS_ROOT=""` — `.claude/skills/sitrep/SKILL.md:108`, `.claude/skills/sitrep/SKILL.md:131`
+- [ ] (suggestion) The three `**Accepted.**` checks depend on ADR-0016 keeping bold `**Accepted.**` (other ADRs write plain `Accepted.`) and match anywhere in the file — `docs/roadmap.md:47`
+- [ ] (suggestion) `user_tier_install.sh --check` exits 1 for "cannot check" (unparseable settings.json) too, which the runner reports as `false`, not `unknown`; note it or special-case it — `.agent/scripts/sitrep_checks.sh:170`
+- [ ] (suggestion) The explicit-repo `gh-issue` regex lets a slug start with `-` (`-x/y#5` reaches `gh -R -x/y`); require an alphanumeric first character — `.agent/scripts/sitrep_checks.sh:145`
+- [ ] (suggestion) Test gaps: CRLF roadmap, `~~~` fences, `###` subheadings, escaped pipes, symlink escape, timeout expiry, an empty section; capture text starting with `-` or holding `%`, an inbox that is a directory, a line over 4 KB — `.agent/scripts/tests/test_sitrep_checks.sh`, `.agent/scripts/tests/test_capture.sh`
