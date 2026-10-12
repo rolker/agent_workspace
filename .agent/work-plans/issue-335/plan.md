@@ -876,3 +876,4 @@ approved at revision 6 is not reopened.
 | 1 | Wire-in 2, the section-dates paragraph, Files to Change (audit-workspace row), Self-Check, Consequences, Decided A4 and Estimated Scope: the audit reports the `Re-examined` cell changes and offers a small PR that applies them, instead of editing the register; "Report, don't fix" keeps no exception (R1) |
 | 2 | Files to Change gains a PR C row for the `docs/design.md` register paragraph (review S2) |
 | 3 | B1 and B2 no longer read as open in the Issue section, Wire-in 3 and 4, and the Consequences row (review S1) |
+| 4 | Wire-in 2 (Register updates content): the audit also lists the `Standing` cell change and a one-line statement of what the code does instead when an ADR is found no longer `in force` (pre-push review round 8 S1); the section-dates paragraph reads "Checked in revision 9" (S2) |
