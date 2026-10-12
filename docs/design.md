@@ -570,10 +570,11 @@ decision 2026-10-09, C1-c); this table is the only place the standing below is r
 Standing takes one of four values. `in force`: the ADR's Status line says Accepted and nothing found
 contradicts it. `superseded`: a later ADR replaced it, as its Status line says. `superseded in
 practice`: the ADR is Accepted but the code does something else, stated in the cell. `Provisional`: the
-ADR's own Status line. Re-examined is `yes <date>` when the ADR was checked against the code while
-this document was rewritten, and `not yet` when it was not; the date is the checked-date, and
-`/audit-workspace` is meant to refresh it. A section link of `#decision-register` means no section of
-this file carries that ADR.
+ADR's own Status line. Re-examined is `yes <date>` when the ADR was checked against the code, while
+this document was rewritten or since by `/audit-workspace`, and `not yet` when it was not; the date is
+the checked-date. The audit does not edit this table: its report lists the cells to change, and a small
+pull request applies them, with its own change-log row. A section link of `#decision-register` means
+no section of this file carries that ADR.
 
 | ADR | Decision | Standing | Section | Re-examined |
 |---|---|---|---|---|
@@ -663,6 +664,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Review loop and timeline | Review fix: a `merge` entry that no worktree on the pull request's branch can commit and push is posted as a comment on the pull request (`_gate_record` in `merge_pr.sh`) | #335 | 713 |
 | 2026-10-12 | Worktrees | Review fix: the Records bullet says an issue in a package repository has no timeline, since a package worktree is a folder of several repositories and `merge_pr.sh` posts its gate record on the pull request | #335 | 717 |
 | 2026-10-12 | Glossary | "progress timeline" says the loop records each step and decision, not that every phase writes an entry, which the Review loop section no longer holds (`publish` writes none); owner decision 2026-10-12, revising his C6 wording | #335 | 718 |
+| 2026-10-12 | Decision register | `/audit-workspace` reports the `Re-examined` and `Standing` cells to change when it checks an ADR against the code, whenever the standing it finds differs from the cell, and offers a small pull request that applies them; it does not edit the table, and the paragraph says so | #335 | 720 |
 
 ## Glossary
 

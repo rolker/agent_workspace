@@ -56,6 +56,19 @@ is expected after a design change and is not an error. For each ADR in
   `docs/design.md` records the current behaviour; flag the design document
   if it does not, and note the ADR as "superseded in practice, not yet
   superseded on paper" rather than asking for the ADR to be edited
+- When you check an ADR against the code, list under Register updates in
+  the report the cell that changes: that ADR's `Re-examined` cell in the
+  Decision register (`docs/design.md#decision-register`) becomes
+  `yes <today>`, with today's date as `YYYY-MM-DD` (for example
+  "ADR-0002 Re-examined: yes 2026-10-12"). If the standing the check finds
+  differs from the ADR's `Standing` cell, whether it moves away from
+  `in force` or back to it (Provisional to `in force`), also list that
+  cell change with one line: for `superseded`, the ADR that replaced it;
+  for `superseded in practice`, what the code does instead. Do not edit
+  the register. After
+  the report, ask the user whether to open a small PR that applies the
+  listed cells through the normal issue and worktree flow; that PR adds the
+  `docs/design.md` change-log row like any other change
 
 ### 3. Script reference table
 
@@ -127,6 +140,11 @@ List any worktrees that appear abandoned (no recent commits, merged PRs).
 |---|---|---|
 | ... | OK / Issue | ... |
 
+### Register updates
+
+- ADR-NNNN Re-examined: yes YYYY-MM-DD
+- ADR-NNNN Standing: <new value>: <the ADR that replaced it, or what the code does instead> (only when the standing found differs from the register cell)
+
 ### Recommended Actions
 
 - [ ] <specific action items>
@@ -135,7 +153,9 @@ List any worktrees that appear abandoned (no recent commits, merged PRs).
 ## Guidelines
 
 - **Report, don't fix** — this skill identifies issues. Fixing them should
-  be separate issues with their own worktrees.
+  be separate issues with their own worktrees. That includes the Decision
+  register's `Re-examined` dates (step 2): the audit reports them, and a
+  separate PR writes them.
 - **Be specific** — "AGENTS.md script table lists `generate_knowledge.sh`
   but it was removed in #274" is actionable. "Some references may be stale"
   is not.

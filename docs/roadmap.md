@@ -80,11 +80,11 @@ this table tracks the seven migration steps.
 |------|------|-------|--------|-------|
 | 1 | Adapter contract + `single_project` adapter | #210 | done | 10-verb contract (ADR-0011); pure facade over the pre-adapter scripts (PR #226) |
 | 2 | Multi-tenant hosting: `projects/<name>/` + registry | #227 | done | `.agent/projects.local`, `--project`/cwd discovery, worktree `--project` wiring (was `--repo`, #255) (PR #232) |
-| 3 | `multi_repo` adapter | — | deferred | Re-sequenced 2026-07-24 (see #172 comment): waits for a sibling-repos project to materialize |
-| 4 | Manifest support | #267 | planned | `.project_config` schema + `agent project add --manifest-repo/--manifest-ref`; standalone manifest repos first, embedded branches later. Role variants (dev/operator/robot) designed here with step 7 #267 milestone 1 (plan + own-resolver prototype, 45 tests, acceptance against the real p11 manifest) landed on PR #268; west variant + role-model comparison is the next milestone |
-| 5 | Hosted projects anywhere, project-rooted sessions via the user tier (design B) | #265 | in progress | Plan revision 2 on PR #266 (reviewed 2026-09-16). Projects live anywhere; registry is the only link; separate session roots; worktrees under each root; registry-gated user-tier SessionStart hook injects workspace + project layers. PR 1 (registry fields, parent roots, worktree dirs, root guard) landed with the plan; PRs 2–4: worktrees under roots, user tier, retire `project/`/`projects/`. Acceptance: real `gz4d` issues + project11 port-to-rolling under `~/project11-ng` before cutover |
-| 6 | Port `ros2_colcon` adapter | #235, #237, #248, #252 | in progress | Pulled forward (target: host project11 with multi-distro). Phase 1 adapter core done (#235, PR #236). Phase 2 real-project smoke done (#237, PR #238): `setup` bootstraps a fresh hosting dir; `p11-jazzy` built end to end. Phase 4 isolation smoke done (#248): `p11-rolling` registered beside `p11-jazzy` from the project's `rolling` manifest branch (uma#384); setup/validate/env/discovery isolate per instance, no adapter changes needed; no Rolling build until the project is ported. Phase 3 (layer/package worktrees) complete as of PR 2 of #252: PR 1 landed the `worktree_repos`/`worktree_env` adapter verbs (ADR-0012), `.worktree-repos` manifest, manifest-driven `worktree_create`/`enter`/`remove`/`list`/`dashboard`, hermetic tests, no-symlink structural guarantee, and the real `p11-jazzy` smoke test; PR 2 adds `merge_pr.sh` repo-qualified PR resolution (`--repo`/qualified `owner/repo#N`), manifest-driven package-worktree lookup, and the sibling-PR cleanup rule. #252 closed; next up: steps 4 + 7 and retiring `ros2_agent_workspace` |
-| 7 | Variant-branch refinement | — | planned | `agent/manifest/base` + per-machine variant branches; builds on step 4 |
+| 3 | `multi_repo` adapter | — | deferred | Re-sequenced 2026-07-24 (see #172 comment): waits for a sibling-repos project to materialize; design section: [Registry and adapters](design.md#registry-and-adapters) |
+| 4 | Manifest support | #267 | planned | `.project_config` schema + `agent project add --manifest-repo/--manifest-ref`; standalone manifest repos first, embedded branches later. Role variants (dev/operator/robot) designed here with step 7 #267 milestone 1 (plan + own-resolver prototype, 45 tests, acceptance against the real p11 manifest) landed on PR #268; west variant + role-model comparison is the next milestone; design section: [Registry and adapters](design.md#registry-and-adapters) |
+| 5 | Hosted projects anywhere, project-rooted sessions via the user tier (design B) | #265 | in progress | Plan revision 2 on PR #266 (reviewed 2026-09-16). Projects live anywhere; registry is the only link; separate session roots; worktrees under each root; registry-gated user-tier SessionStart hook injects workspace + project layers. PR 1 (registry fields, parent roots, worktree dirs, root guard) landed with the plan; PRs 2–4: worktrees under roots, user tier, retire `project/`/`projects/`. Acceptance: real `gz4d` issues + project11 port-to-rolling under `~/project11-ng` before cutover; design section: [Sessions and roots](design.md#sessions-and-roots) |
+| 6 | Port `ros2_colcon` adapter | #235, #237, #248, #252 | in progress | Pulled forward (target: host project11 with multi-distro). Phase 1 adapter core done (#235, PR #236). Phase 2 real-project smoke done (#237, PR #238): `setup` bootstraps a fresh hosting dir; `p11-jazzy` built end to end. Phase 4 isolation smoke done (#248): `p11-rolling` registered beside `p11-jazzy` from the project's `rolling` manifest branch (uma#384); setup/validate/env/discovery isolate per instance, no adapter changes needed; no Rolling build until the project is ported. Phase 3 (layer/package worktrees) complete as of PR 2 of #252: PR 1 landed the `worktree_repos`/`worktree_env` adapter verbs (ADR-0012), `.worktree-repos` manifest, manifest-driven `worktree_create`/`enter`/`remove`/`list`/`dashboard`, hermetic tests, no-symlink structural guarantee, and the real `p11-jazzy` smoke test; PR 2 adds `merge_pr.sh` repo-qualified PR resolution (`--repo`/qualified `owner/repo#N`), manifest-driven package-worktree lookup, and the sibling-PR cleanup rule. #252 closed; next up: steps 4 + 7 and retiring `ros2_agent_workspace`; design section: [Registry and adapters](design.md#registry-and-adapters) |
+| 7 | Variant-branch refinement | — | planned | `agent/manifest/base` + per-machine variant branches; builds on step 4; design section: [Registry and adapters](design.md#registry-and-adapters) |
 
 ### Cutover sequence: project11 moves to this workspace
 
@@ -98,14 +98,14 @@ ROS-only fixes.
 | Order | Item | Issue | Status | Notes |
 |-------|------|-------|--------|-------|
 | 1 | Package worktrees, PR 2 (`merge_pr.sh`) | #252 | done | PR 1 (#254) and PR 2 (#264) merged |
-| 2 | Hosted projects anywhere (step 5, design B) | #265 | in progress | See step 5 above. project11 test instances register under `~/project11-ng/<distro>` (renamed to `~/project11` at cutover; auto-memory deliberately left behind) |
-| 3 | Manifest support (step 4) | #267 | planned | Re-scoped: a general ROS 2 manifest resolver (temporary home in this repo, built for extraction) that the ros2_colcon adapter calls; dual prototype (own resolver vs west) decides the tool; vcs2l replaces vcstool for fetching. #267 milestone 1 (plan + own-resolver prototype, 45 tests, acceptance against the real p11 manifest) landed on PR #268; west variant + role-model comparison is the next milestone |
+| 2 | Hosted projects anywhere (step 5, design B) | #265 | in progress | See step 5 above. project11 test instances register under `~/project11-ng/<distro>` (renamed to `~/project11` at cutover; auto-memory deliberately left behind); design section: [Sessions and roots](design.md#sessions-and-roots) |
+| 3 | Manifest support (step 4) | #267 | planned | Re-scoped: a general ROS 2 manifest resolver (temporary home in this repo, built for extraction) that the ros2_colcon adapter calls; dual prototype (own resolver vs west) decides the tool; vcs2l replaces vcstool for fetching. #267 milestone 1 (plan + own-resolver prototype, 45 tests, acceptance against the real p11 manifest) landed on PR #268; west variant + role-model comparison is the next milestone; design section: [Registry and adapters](design.md#registry-and-adapters) |
 | 4 | Parity audit of the fork | #253 | planned | Feature by feature against the fork's tree, including its `.agent/knowledge`, work plans and work artifacts, not just scripts. Closed-since-fork issues are accounted for here, as features |
 | 5 | Triage and transfer the fork's open issues | #260 | planned | Four buckets: transfer, close as covered, move to a project11 product repo, close as obsolete. Sonnet classifies, owner adjudicates proposals |
 | 6 | Migrate and triage fork memories | #261 | planned | Auto-memory is path-keyed; copy, then verify each memory against this tree |
 | 7 | Acceptance test: project11 simulator runs on ROS 2 Rolling from this workspace | rolker/unh_marine_autonomy#396 | in progress | Near-term goal (owner, 2026-09-21): port enough of project11 to Rolling that the simulation bring-up launches from the `rolling` manifest and a basic mission runs. The porting itself is project work tracked in that issue (milestones: size → builds → simulator → switch trunk); here it is the proof that the multi-project, multi-distro design holds. Runs alongside rows 2–3 on the `p11-rolling` instance (registered from uma#384; step 5 relocates it). It does not reorder or skip rows 2–6 — cleanup and retirement land as we go |
 | 8 | Cutover | #262 | planned | ROS machine runs this workspace; fork archived read-only with a pointer here |
-| 9 | Variant-branch refinement (step 7) | — | planned | After cutover, on the live instance |
+| 9 | Variant-branch refinement (step 7) | — | planned | After cutover, on the live instance; design section: [Registry and adapters](design.md#registry-and-adapters) |
 
 ## Priority: Improve Local Reviews
 
@@ -121,7 +121,7 @@ would flag, PRs pass on first try.
 | Spec compliance vs quality split | #27 | done | superpowers | Separate "does it meet spec" from "is it good" |
 | Adversarial self-review | #55 | done | gstack | Agent challenges its own work |
 | Review summary in plan files | #83 | done | brainstorm | Append review findings to plan file; lighter alternative to JSONL |
-| JSONL review tracking | #51 | deferred | gstack | Machine-queryable layer; reconsider if plan-file approach (#83) isn't sufficient |
+| JSONL review tracking | #51 | deferred | gstack | Machine-queryable layer; reconsider if plan-file approach (#83) isn't sufficient; design section: [Review loop and timeline](design.md#review-loop-and-timeline) |
 | Plan status tracking in reviews | #49 | subsumed by #88 | gstack | Reviews update progress.md instead of tracking in plan file |
 | Continual learning from reviews | #42 | done | microsoft/skills | Misses feed back into local review patterns |
 | JS/web static analysis profile | #81 | done | review session | JS/TS added to linter tables (PR #94); no-match fallback message added (PR #100) |
@@ -129,7 +129,7 @@ would flag, PRs pass on first try.
 | Anti-sycophancy patterns | #48 | done | gstack | Banned phrases, worked pushback examples; general patterns applied to AGENTS.md |
 | AI slop detection in design review | #61 | done | gstack | Check for generic AI patterns (hero sections, card grids, stock imagery) |
 | Diff-aware test targeting | #53 | done | gstack | Map git diff to affected test targets, focus QA on what changed |
-| Two-mode push policy | — | planned | 2026-04-19 session | Mode 1 push-early vs Mode 2 push-when-ready; doc change + `unpushed_branches.sh` helper |
+| Two-mode push policy | — | planned | 2026-04-19 session | Mode 1 push-early vs Mode 2 push-when-ready; doc change + `unpushed_branches.sh` helper; design section: [Review loop and timeline](design.md#review-loop-and-timeline) |
 | Add branch mode to /review-code | #3 | done | 2026-04-19 session | Pre-push local review via `/review-code --branch <ref>`; `cross_model_review.sh --branch` too. Subsumes prior "review-branch skill" scope of #3. Must work for workspace AND project from day one |
 | Feed shell-surface misses back into /review-code | — | planned | 2026-04-19 session | Specific patterns: echo-concat (bash -n accepts), `set -u` + `$1` before check, flag-as-value parsing, gh-failure fall-through. Formalize the Copilot-miss capture loop |
 | Flag script/skill changes without tests | #136 | planned | — | review-code enhancement |
@@ -159,7 +159,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | Workflow modes | #67 | done | ros2_agent_workspace | Autonomous / collaborative / pair per-session, with permission implications |
 | Port tmux session management | #2 | declined | ros2_agent_workspace | Closed 2026-04-19: wholesale port declined — the ATC protocol solves multi-machine visibility this single-machine workspace doesn't have (see #2 and the Decided Against entry) |
 | Draft zones | #87 | planned | — | Human-edited paths with agent-driven PR incorporation |
-| Local integration branches | — | planned | 2026-04-19 session | Per-type dedicated worktrees (`worktrees/workspace/integration/`, `worktrees/project/<repo>/integration/`), declarative config per type, local-only branches, `integration_rebuild.sh --type workspace\|project\|both`. Lets multi-feature integration testing happen without merging to main or pushing prematurely. Unlocks Mode 2 |
+| Local integration branches | — | planned | 2026-04-19 session | Per-type dedicated worktrees (`worktrees/workspace/integration/`, `worktrees/project/<repo>/integration/`), declarative config per type, local-only branches, `integration_rebuild.sh --type workspace\|project\|both`. Lets multi-feature integration testing happen without merging to main or pushing prematurely. Unlocks Mode 2; design section: [Worktrees](design.md#worktrees) |
 | Coordinator agent (simmering) | — | deferred | 2026-04-19 session | Question triage + context restoration across parallel agents. **Hard constraints**: additive-only (never a filter — Roland debugs by watching terminals); cannot handle permission prompts (per-session). Scope = design/scope/confirmation questions (~1/3 of interrupts). Not implementing yet. MVP mechanism: shared question file → coordinator skill → ranked summary. Revisit after other items land |
 
 ## Priority: Improve How Agents Think
@@ -248,12 +248,12 @@ Small fixes that can be done anytime.
 | worktree_list.sh stray local_porcelain | #134 | done | Bug: command-not-found error |
 | cross_model_review.sh outside worktree | #133 | done | Bug: fails when invoked outside target repo worktree |
 | Git-bug fallback warnings + smoke test | — | planned | Lesson from ros2 #418 silent-fallback trap. `_issue_helpers.sh` falls through to `gh` silently; add visible warning on miss. Smoke-test `git bug bug --format json` in `make validate` |
-| Workspace/project parity audit | — | planned | Generalize workspace-only tooling: `dashboard.sh`, `update_roadmap.sh`, `validate_workspace.py`. Per 2026-04-19 session principle: every practical tool works with both types |
+| Workspace/project parity audit | — | planned | Generalize workspace-only tooling: `dashboard.sh`, `update_roadmap.sh`, `validate_workspace.py`. Per 2026-04-19 session principle: every practical tool works with both types; design section: [Registry and adapters](design.md#registry-and-adapters) |
 | Port ros2 #436 behavioral-patterns knowledge | — | planned | From 2026-04-19 reflection on ros2 field work. New knowledge docs: agent behavioral patterns (time blindness, spec rigidity, unauthorized policy decisions), autonomous logging, discuss-before-editing, approval scope discipline. Port concept-not-mechanism: coordinator role, research-agent-as-shared-resource |
 
 ## Decided Against
 
-Items considered and rejected, with reasons.
+Items considered and rejected, with reasons. An item here can be reconsidered if things change.
 
 | Item | Considered | Reason |
 |------|-----------|--------|
@@ -261,6 +261,7 @@ Items considered and rejected, with reasons.
 | Coordinator-intermediated mode | 2026-04-19 session | Would require the coordinator to sit between Roland and sub-agents. Incompatible with direct terminal visibility that Roland uses for debugging (watch agents in action, scroll back to see process). Any coordinator must be additive-only |
 | Ros2 tmux ATC protocol (verbatim port) | 2026-04-19 session | Solves multi-machine/remote-agent visibility problem. this workspace is single-machine local — agents don't drive each other's tmux panes. Protocol would add overhead without fitting the actual failure mode |
 | Mandatory commit squashing before push | 2026-04-19 session | We merge with `--merge` (not `--squash`), so branch history = PR history. Squashing would hide useful intermediate state. Commits are cheap; keep them honest. `fixup!` autosquash remains optional per-developer |
+| Git refs for per-issue review state (`refs/agent-state/issue-N/reviews`) | 2026-03-22 brainstorm (Storage model) | Explored in depth: crash-safe, shared across worktrees, scoped per issue. Deferred as premature complexity; review state lives in `.agent/work-plans/issue-N/progress.md` (design section: [Review loop and timeline](design.md#review-loop-and-timeline)) |
 
 ## To Consider
 
@@ -406,21 +407,11 @@ Candidates for `.agent/knowledge/research_digest.md`, separate from roadmap item
 
 Decisions that apply across multiple items.
 
+History, kept as dated rationale and not kept current. How the parts fit today is in the sections of [`docs/design.md`](design.md#the-design).
+
 ### Storage model
 
-Two files per issue in `.agent/work-plans/issue-N/`:
-- `plan.md` — what we're going to do (reference document, stable after approval)
-- `progress.md` — what actually happened (append-only log, updated by skills)
-
-Previously (#83), review-code appended summaries to plan.md. Going forward,
-all lifecycle tracking moves to progress.md. Plan.md stays clean as a
-reference. Review summaries in plan.md continue to work until skills are
-updated to write to progress.md instead.
-
-JSONL (#51) remains a future option for machine-queryable cross-issue queries.
-
-Git refs (`refs/agent-state/issue-N/reviews`) explored in depth — crash-safe,
-worktree-shared, per-issue scoped — but deferred as premature complexity.
+Now in [Review loop and timeline](design.md#review-loop-and-timeline).
 
 ### Review architecture (5-layer model)
 
@@ -450,11 +441,7 @@ Layer 5: Continual learning (#42 -> #69)
 
 ### Progress as lifecycle record
 
-progress.md replaces the plan-as-accumulator pattern. All lifecycle steps
-(brainstorm, plan, implement, review, test) append to progress.md rather
-than to plan.md. The plan stays a stable reference; progress tells the
-full story. Workflow templates (`.agent/workflows/`) define the available
-steps and human involvement level per workflow type.
+Now in [Review loop and timeline](design.md#review-loop-and-timeline).
 
 ### Roadmap over issues for planning
 

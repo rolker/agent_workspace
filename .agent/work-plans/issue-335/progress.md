@@ -1117,3 +1117,302 @@ Specialists: static (pre-commit `check-design-anchors` and `yamllint` --all-file
 No open findings. The only change since the Integrated Review at `a4dd163` is `be04425` (the checker added to its hook's `files:` filter, owner-approved), reviewed light and approved; `review_progress.sh sources` lists no open local finding and no GitHub comment at this head.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 10:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+PR C (wire-in) open questions B1 and B2 from the plan's Open Questions, answered before PR C starts. The plan was approved at revision 6 (2026-10-09); these answers pick the plan's own defaults, so no plan text other than marking them decided changes.
+
+> B1, keep the default, B2 mark it as history
+
+B1: ADRs carry no pointer to their design section; the mapping stays in the Decision register only (Wire-in 3). B2: the roadmap's "Cross-cutting Decisions" section is marked as history with a one-line note pointing at the design sections, "Storage model" and "Progress as lifecycle record" replaced by a pointer to "Review loop and timeline", the rest kept as dated rationale (Wire-in 4).
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 10:42 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-335 at `33da086`
+
+PR C (wire-in), implemented from the plan at revision 11.
+
+- `cde0bec` Skills: review-issue cites `$WS_ROOT/docs/design.md#how-it-works` for the goal an issue serves; plan-task and review-plan cite `$WS_ROOT/docs/design.md#the-design` for the section list and Status key; all three cite the section as `docs/design.md#<section>` and keep the project branch (Wire-in 2)
+- `f0f37ca` audit-workspace step 2 sets the register's `Re-examined` cell (`docs/design.md#decision-register`) to `yes <today>`; the "Report, don't fix" bullet names that one exception (A4). design.md's register paragraph now says the audit does this instead of "is meant to"; change-log row added (719 lines)
+- `dc4d627` Roadmap: 12 of the 34 open rows get a "design section:" note (Registry and adapters 7, Sessions and roots 2, Review loop and timeline 2, Worktrees 1); 22 open rows and every done row untouched (Wire-in 4)
+- `3c363f7` Roadmap: Cross-cutting Decisions marked as history with a pointer to `design.md#the-design`; Storage model and Progress as lifecycle record replaced by a pointer to Review loop and timeline; the other four kept (B2)
+- `c53d958` README: one closing sentence under Workspace goals pointing at `docs/design.md#how-it-works`
+- `33da086` Plan revision 11: B1 and B2 moved to Decided, change log added
+- Already done, not redone: the review guide's work-plan row (Wire-in 5, PR B) and the ADR-0017 link fix (PR A). No ADR edited (B1), no label edited, `brainstorm` untouched
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-12 10:56 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-335 at `eb10efd`
+**Base**: main
+**Depth**: Standard (reason: governance files — four skills, docs/design.md, roadmap, README; ~166 lines)
+**Must-fix**: 2 | **Suggestions**: 5
+**Round**: 7 | **Ship**: continue — 2 must-fix include a design/correctness concern (not mechanical)
+
+PR C (wire-in). Specialists: static (pre-commit on the 9 changed files: all passed; `check_design_anchors.sh` exit 0; `test_design_anchors.sh` 46/46; `test_skill_paths.sh` 51/51), governance, plan drift, Claude adversarial (fresh Sonnet sub-agent), cross-model Gemini, Codex, Copilot (all EXIT=0). Both must-fix items are one owner decision on how the audit's register write lands; cross-confirmed by Codex, Gemini and the Claude adversarial.
+
+### Findings
+- [x] (must-fix) audit-workspace now edits a tracked file (`Re-examined` cell) but says nothing about where: no worktree, issue, commit or PR; the skill is not on the skill-worktree allowlist, so run from the main tree it edits main — `.claude/skills/audit-workspace/SKILL.md:59`
+- [x] (must-fix) "the audit sets it and nothing else" conflicts with design.md's Change log rule (one row per change to the file, in the same change); either exempt date-only `Re-examined` refreshes there or let the audit append the row — `.claude/skills/audit-workspace/SKILL.md:141` / `docs/design.md:632`
+- [x] (suggestion) Plan text still frames B1/B2 as open after revision 11: Consequences row "Yes (PR C; B2 open)" and the closing "is **B1**" / "is **B2**" sentences of Wire-in 3 and 4 — `.agent/work-plans/issue-335/plan.md:594`, `:349`, `:364`
+- [x] (suggestion) The design.md register-paragraph edit is correct and required (ADR-0017: "is meant to refresh it" became untrue), but plan Files to Change has no PR C design.md row; add it or say so in the PR description — `.agent/work-plans/issue-335/plan.md:519`
+- [x] (suggestion) Storage model pointer drops the rejected git-refs (`refs/agent-state`) alternative, which now appears in no tracked doc; owner call whether one line stays under the pointer or goes to Decided Against — `docs/roadmap.md:411`
+- [x] (suggestion) Auto-triggering skills (#26) re-shapes the Skill layer named in Instruction layers; candidate for a "design section:" note (the other omissions, coordinator agent included, hold under the rule) — `docs/roadmap.md:190` (deferred: dismissed at Checkpoint 413d259: the Instruction layers section is all proposed, so no design-section note yet)
+- [x] (suggestion) review-issue sends the agent to `#how-it-works` "for the goal the issue serves" and then asks it to name a design section; goals live in README per Documentation layers, and How it works does not link every section; consider adding the section list at `#the-design` — `.claude/skills/review-issue/SKILL.md:132`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 11:02 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 7 on PR C (wire-in) at 20cff9d: must-fix M1/M2 (audit-workspace register edit has no landing path; conflicts with the design.md change-log rule), suggestions S1-S5. Round count includes PR B's rounds on the same branch name.
+
+Q1 (how the audit's Re-examined dates land; R1 = audit reports the exact cell changes and offers a one-line PR through the normal issue/worktree flow, R2 = audit commits them itself from a skill worktree, needing an AGENTS.md allowlist change and a change-log exemption):
+
+> Q1, I'm not sure I have the context needed to understand this. Is it consequential enough that I need to look at it closer or are you confident in your recomendation?
+
+Host answer: low consequence (only how a date column is refreshed; worst case under R1 is stale dates; easy to undo); host decides R1 within its limits and records it here.
+
+Q2 (the rejected git-refs storage alternative dropped by the Storage model pointer):
+
+> Q2, move to decided against. We should note that it doesn't mean we can't reconsider stuff in that list later if things change.
+
+Host-decided small items: S1 (plan B1/B2 stale mentions) fix; S2 (plan Files to Change row for the design.md register edit) fix; S5 (review-issue also cites #the-design) fix; S4 (auto-triggering skills roadmap note) skip, its section is all proposed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 11:12 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-335 at `e2a6c5b`
+**Addressed**: Local Review (Pre-Push) at `eb10efd` (2026-10-12 10:56 -04:00), with the decisions of Checkpoint `413d259`
+**Commits**: 8e32b3c, dea968b, 2d197b8, 9ca4361, e2a6c5b
+
+PR C (wire-in), review round 7 addressed. Checks: `check_design_anchors.sh` exit 0; `test_design_anchors.sh` 46/46; `test_skill_paths.sh` 51/51; pre-commit passed on every commit.
+
+### Actions
+- [x] M1 (R1): `/audit-workspace` step 2 no longer edits the register; its report lists each `Re-examined` cell change under a new Register updates part (cited via `docs/design.md#decision-register`) and asks the user whether to open a small PR through the normal issue and worktree flow — `.claude/skills/audit-workspace/SKILL.md:59` (8e32b3c)
+- [x] M2 (R1): that PR adds the design.md change-log row like any other change; "Report, don't fix" has no exception and says the register dates are reported, not written; design.md's register paragraph states the R1 flow, change-log row added (721 lines) — `.claude/skills/audit-workspace/SKILL.md:150`, `docs/design.md:573` (8e32b3c). Plan agrees: Wire-in 2, section-dates paragraph, Files to Change, Self-Check, Consequences, Decided A4, Estimated Scope, Revision 12 change log (dea968b)
+- [x] S1: B1/B2 no longer read as open in the plan (Issue section, Wire-in 3 and 4, Consequences row) — `.agent/work-plans/issue-335/plan.md` (dea968b)
+- [x] S2: Files to Change gains a PR C row for the design.md register paragraph — `.agent/work-plans/issue-335/plan.md` (dea968b)
+- [x] S3 (owner Q2): git-refs storage alternative added to Decided Against (2026-03-22, wording from the old Storage model text); section intro says an item can be reconsidered if things change — `docs/roadmap.md:256` (2d197b8)
+- [x] S4 — `docs/roadmap.md:190` (deferred: dismissed at Checkpoint 413d259, the Instruction layers section is all proposed)
+- [x] S5: review-issue also cites `$WS_ROOT/docs/design.md#the-design` for the section list — `.claude/skills/review-issue/SKILL.md:132` (9ca4361)
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-12 11:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-335 at `d3d3afc`
+**Base**: main
+**Depth**: Standard (reason: governance files — four skills, docs/design.md, roadmap, README; whole PR C diff re-classified per fix-round rule)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 8 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+PR C (wire-in), re-review after the round 7 fixes (8e32b3c..d3d3afc). Every Checkpoint `413d259` decision verified: R1 (audit reports the cells, offers a small PR, does not write the register) reads the same in `audit-workspace` step 2 and Guidelines, the design.md register paragraph and plan revision 12 (Wire-in 2, Files to Change, A4, Consequences, Self-Check, Estimated Scope); Q2 git-refs row in Decided Against, date 2026-03-22 traced to `d253141a`, intro sentence added; S1, S2, S5 fixed; S4 dismissed as recorded. Specialists: static (pre-commit on the 9 changed files exit 0; `check_design_anchors.sh` exit 0; `test_design_anchors.sh` 46/46; `test_skill_paths.sh` 51/51; design.md 721 lines matches the last change-log row), governance, plan drift, Claude adversarial (fresh Sonnet sub-agent), cross-model Gemini, Codex, Copilot (all EXIT=0). Dismissed: Gemini "Design picture nested under project-repo block" (it is in step 3, not step 2's project list), Gemini "remove change-log row 719" (rows are append-only per commit; PR B's 708 row corrects 706 the same way), Gemini `$WS_ROOT` unset (each skill defines the idiom; skill-path test passes), Gemini review-plan anchor wording (applies only when a section changes), Claude adversarial "2026-03-22 unsourced" (commit `d253141a`), Claude adversarial push-policy note (judgment within the Wire-in 4 rule, passed round 7).
+
+### Findings
+- [x] (suggestion) Register updates lists only the `Re-examined` cell; when the audit finds an ADR newly superseded in practice, applying the listed cells would record `in force | yes <today>` for a drifted ADR; also list the `Standing` cell change in that case — `.claude/skills/audit-workspace/SKILL.md:59`
+- [x] (suggestion) "Checked in this revision: step 2 ... says nothing about a register or a date" now sits under the revision 12 header and is untrue after PR C; say "Checked in revision 9" — `.agent/work-plans/issue-335/plan.md:162`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 11:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Pre-push round 8 at 0d68805 approved with two suggestions: S1 (audit-workspace Register updates should also list a Standing cell change when an ADR is found superseded in practice) and S2 (plan.md:162 "Checked in this revision" should read "Checked in revision 9"). Host recommendation: fix both, a quick check, then publish.
+
+> fix then publish
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 11:32 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-335 at `302094d`
+**Addressed**: Local Review (Pre-Push) at `0d68805` (2026-10-12 11:19 -04:00), round 8
+**Commits**: 6f188fd, 302094d
+
+PR C (wire-in), review round 8 addressed. Checks: `check_design_anchors.sh` exit 0; `test_skill_paths.sh` run; pre-commit passed on both commits. design.md left alone (its register paragraph says the report "lists the cells to change", still true).
+
+### Actions
+- [x] S1: `/audit-workspace` step 2 and the Register updates format now also list the `Standing` cell change and one line on what the code does instead when an ADR is no longer `in force`; plan Revision 12 change log gains item 4 — `.claude/skills/audit-workspace/SKILL.md:59` (6f188fd)
+- [x] S2: "Checked in this revision" reads "Checked in revision 9" — `.agent/work-plans/issue-335/plan.md:162` (302094d)
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 11:26 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: approved
+
+**PR**: #382 at `b2d9cfaa`
+**Depth**: Light (reason: user-requested override; scope limited to 6f188fd9 and 302094d5 since the round 8 approval at 0d68805; SKILL.md would otherwise classify Standard)
+**Must-fix**: 0 | **Suggestions**: 1
+
+### Findings
+- [ ] (suggestion) "what the code does instead" fits `superseded in practice` but not plain `superseded` (a later ADR replaced it, per design.md register paragraph); optionally say "or the ADR that replaced it" — `.claude/skills/audit-workspace/SKILL.md:63`
+
+Cross-model reviewers: none dispatched (Light override requested by host; skipped).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 11:32 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #382 at `0cdc94c`
+**Sources**: 4 (Copilot R1 @ `b2d9cfa` 3 inline, Copilot R2 @ `0cdc94c` overview, Local Review light @ `302094d` recorded at `0cdc94c`, CI rollup)
+**Cross-source confirmations**: 1 (audit Standing line: Local Review light suggestion + Copilot R2 overview)
+**CI**: all-pass
+
+### Findings
+- [x] (cross-confirmed, suggestion) The audit's Standing line says "what the code does instead", which fits `superseded in practice` but not `superseded` (a later ADR replaced it); add "or the ADR that replaced it" — `.claude/skills/audit-workspace/SKILL.md`
+- [x] (should-fix, Copilot) Issue #335 scope item 3: review-issue and review-plan "cite the goal and design section an issue serves and flag one that serves none or breaks a stated rule". The skills ask only when the work changes the design picture, so ordinary work passes with no alignment check; plan-task records a section only then. The approved plan (Wire-in 2) did not record this as a departure. Owner decision needed: unconditional "Serves" check, or record a departure — `.claude/skills/review-issue/SKILL.md`, `.claude/skills/review-plan/SKILL.md`, `.claude/skills/plan-task/SKILL.md`
+- [x] (should-fix, Copilot) review-issue names `#how-it-works` as where the goals are; `docs/design.md` (Purpose, lines 82-84) says the goals are in `README.md` under `## Workspace goals`. Point the goal at `$WS_ROOT/README.md#workspace-goals` — `.claude/skills/review-issue/SKILL.md`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 11:40 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Q3 from the Integrated Review at 0cdc94c: issue #335 scope item 3 asks review-issue / review-plan to cite the goal and design section an issue serves and flag one that serves none or breaks a stated rule; the skills asked only when the design picture changes. Option A: add an unconditional, light "Serves" line (goal in README Workspace goals, design section by anchor; flag none or a broken rule) to review-issue and review-plan, and plan-task records it in every plan; the design-change question stays separate; project issues use the project's own goals and design doc, or "none", without forcing a convention. Option B: record a departure instead.
+
+> A
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 12:02 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #382 at `8fb5990`
+**Addressed**: Integrated Review at `0cdc94c` (2026-10-12 11:32 -04:00), with the owner's decision in Checkpoint `f8d593a` (Option A)
+**Commits**: de5baee, 0db388c, 8fb5990
+
+### Actions
+- [x] Audit Standing line: for `superseded` it names the ADR that replaced it; "what the code does instead" is for `superseded in practice` (step 2 and the report's Register updates line) — `.claude/skills/audit-workspace/SKILL.md:63`
+- [x] Unconditional "Serves" line (Option A): plan-task writes `## Serves` in every plan; review-issue adds `**Serves**` to the Scope Assessment and flags no goal or a broken rule as an Action-needed Principle Alignment row; review-plan checks it under Issue alignment and makes a missing line, no goal or a broken rule a finding; project issues use their own goals and design document or "none"; design-change question unchanged; plan revision 13 records it in Wire-in 2. `docs/design.md` not touched: it does not describe what these skills check — `.claude/skills/review-issue/SKILL.md:128`, `.claude/skills/review-plan/SKILL.md:194`, `.claude/skills/plan-task/SKILL.md:124`, `.agent/work-plans/issue-335/plan.md`
+- [x] Goal source points at `$WS_ROOT/README.md#workspace-goals` (anchor checked by hand: `## Workspace goals`, README line 26), not `#how-it-works` — `.claude/skills/review-issue/SKILL.md:130`
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 12:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #382 at `003c668`
+**Depth**: Standard (reason: skill files are governance triggers; scope 0cdc94c..003c668, earlier commits approved in pre-push round 8)
+**Must-fix**: 0 | **Suggestions**: 5
+
+Serves line (Option A) meets issue #335 scope item 3: review-issue and review-plan cite the goal and design section and flag no goal or a broken rule; it reaches the issue comment (Scope Assessment template), the Issue Review entry (verbatim copy) and its Actions (Action-needed row), the Plan Review (Issue alignment Notes; no-findings header) and the plan (`## Serves`). Light and consistent across the three skills; the design-change question stays separate. docs/design.md needs no change (its Review loop table lists what each phase produces, not what it checks). Anchors `README.md#workspace-goals`, `docs/design.md#rules`, `#the-design` resolve; check-design-anchors passes. Cross-model: gemini, codex, copilot all completed.
+
+### Findings
+- [ ] (suggestion) "breaks a stated rule (a principle, or a row of docs/design.md#rules)" is not scoped to workspace issues; for a project issue say the project's own rules (plus the workspace principles already applied), so the project branch stays non-forcing — `.claude/skills/review-issue/SKILL.md:136`, `.claude/skills/review-plan/SKILL.md:203`
+- [ ] (suggestion) Standing change is listed only when an ADR is "no longer in force"; a move back to `in force` (ADR-0016 Provisional to Accepted, drift resolved) is not reported — list it whenever the checked standing differs from the cell (codex, gemini) — `.claude/skills/audit-workspace/SKILL.md:63`
+- [ ] (suggestion) Change-log row says /audit-workspace "now sets" the Re-examined cell, which never held on main; the next row corrects it — fold the two rows into one (copilot rated must-fix; gemini) — `docs/design.md:667`
+- [ ] (suggestion) Wire-in 2 still says "The skill text uses only the two real anchors above"; the skills now also cite `docs/design.md#rules` and `README.md#workspace-goals` — `.agent/work-plans/issue-335/plan.md:346`
+- [ ] (suggestion) The skills' goal source `README.md#workspace-goals` is outside check_design_anchors.sh's scope (docs/design.md citations only), so renaming that heading breaks three skills silently; note it or extend the check — `.claude/skills/review-issue/SKILL.md:131`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 12:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #382 at `0b04393`
+**Sources**: 3 (Local Review @ `003c668` recorded at `0b04393`, approved with 5 suggestions incl. Codex/Gemini/Copilot CLI; Copilot PR bot R3 @ `003c668`; CI rollup pending at triage)
+**Cross-source confirmations**: 1 (stale change-log row: Copilot CLI inside the Local Review + Local Review lead)
+**CI**: pending
+
+### Findings
+- [x] (suggestion, Local Review) "Breaks a stated rule (a principle, or a row of docs/design.md#rules)" is not scoped to workspace issues; for a project issue use the project's own rules — `.claude/skills/review-issue/SKILL.md`, `.claude/skills/review-plan/SKILL.md`
+- [x] (suggestion, Codex + Gemini via Local Review) audit Register updates lists a Standing change only when an ADR is no longer `in force`; report it whenever the checked standing differs from the cell (e.g. Provisional to in force) — `.claude/skills/audit-workspace/SKILL.md`
+- [x] (cross-confirmed, suggestion) design.md change-log row 667 says the audit "now sets" the Re-examined cell, never true on main (row 668 corrects it); both rows are unmerged in this PR, so fold them into one true row — `docs/design.md`
+- [x] (suggestion, Local Review) plan Wire-in 2 says "the skill text uses only the two real anchors above"; the skills now also cite `docs/design.md#rules` and `README.md#workspace-goals` — `.agent/work-plans/issue-335/plan.md`
+- [x] (should-fix, Copilot PR bot) PR description stale: goal source, Standing wording, revisions 11-12 only (host updates the PR body) — PR #382 description
+- [x] (suggestion, Local Review) No check covers the `README.md#workspace-goals` anchor the three skills cite (renaming the heading breaks them silently); deferred to #381 with a comment there (the checker's scope widening is already a follow-up in the plan) — `.agent/scripts/check_design_anchors.sh`
+
+### False positives
+- (Copilot PR bot) plan-task:134 and review-plan:238 "Serves only when the design changes" — these are Copilot's R1 comments (original commit b2d9cfa) carried forward to the new head; 8fb5990 added the unconditional Serves line in both skills (plan-task step 3 and `## Serves` template; review-plan "Serves (every plan)" under Issue alignment), confirmed by the Local Review at 003c668.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 12:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Integrated Review at 0b04393: S1 (project issues use their own rules), S2 (audit reports any Standing change), S3 (fold change-log rows 667/668), S4 (plan Wire-in 2 anchor count); the host updates the stale PR description; the unchecked README anchor went to #381. Host recommendation: fix S1-S4, quick check, update the description, then the merge decision.
+
+> fix first
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 12:38 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #382 at `edf565d`
+**Addressed**: Integrated Review at `0b04393` (2026-10-12 12:11 -04:00)
+**Commits**: 00f0654, 4891a61, a85cf0b, edf565d
+
+### Actions
+- [x] project issues and plans use the project's own rules, not the workspace Rules table — `.claude/skills/review-issue/SKILL.md`, `.claude/skills/review-plan/SKILL.md`
+- [x] audit reports any Standing change, including back to in force — `.claude/skills/audit-workspace/SKILL.md`
+- [x] change-log rows folded into one true row, line count 720 — `docs/design.md`
+- [x] plan Wire-in 2 names the anchors the skills cite; Revision 13 item 4 — `.agent/work-plans/issue-335/plan.md`
+- [ ] PR description stale — left open for the host (PR #382 description)
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 12:40 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: approved
+
+**PR**: #382 at `b494c568`
+**Depth**: Light (reason: user-requested; scope 003c668..b494c56, the four triage fix commits 00f0654, 4891a61, a85cf0b, edf565d)
+**Must-fix**: 0 | **Suggestions**: 1
+
+All four fixes are correct and consistent. S1: review-issue and review-plan use the same scoping (workspace principles + Rules table for workspace work, the project's own stated rules "if it has any" for project work), so projects are not forced to keep rules. S2: audit-workspace step 2 and the Register updates template both say the Standing cell is reported whenever the found standing differs from the cell (including Provisional back to `in force`). S3: the two change-log rows are folded into one row; it says 720 and `wc -l docs/design.md` is 720. S4: plan Wire-in 2 names `docs/design.md#rules` and `$WS_ROOT/README.md#workspace-goals`, notes the checker covers design.md citations only (follow-up #381), and adds decision row 4. Anchors `README.md#workspace-goals` and `docs/design.md#rules` exist.
+
+### Findings
+- [ ] (suggestion) the review-plan edit leaves a long line (the rewrapped "is a finding. A project with no goals written down is not flagged for that." runs past the file's wrap width); rewrap for consistency — `.claude/skills/review-plan/SKILL.md:206`
+
+Cross-model reviewers: none dispatched (Light; skipped, no risk rule requires them).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 12:45 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #382 at `e35f80b`
+**Sources**: 3 (Local Review light @ `b494c56` recorded at `726352f`, approved; Copilot PR bot R4 @ `726352f`, one comment; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass (at `726352f`; `e35f80b` changes only the plan, a bookkeeping path)
+
+### Findings
+- [x] (suggestion, Copilot PR bot) plan Revision 12 item 4 still says Standing changes are listed only when an ADR is "no longer in force" — that line is the record of revision 12 and stays; Revision 13 gains item 5 recording the wider rule (`e35f80b`) — `.agent/work-plans/issue-335/plan.md`
+
+### False positives
+- (Local Review light) one long unwrapped line at `.claude/skills/review-plan/SKILL.md:206` — cosmetic only; Markdown renders it the same and no hook enforces wrapping in skill files.

@@ -126,14 +126,30 @@ If the issue targets a project repo, also check:
   be broken into sub-issues?
 - **Right repo?** Does this change belong in the workspace repo or a project
   repo? Check the "Put each thing at the level it applies to" principle.
+- **Serves?** For every issue, in one line: the goal it serves and the
+  design section it falls under. For a workspace issue, name the goal by
+  its section name under `$WS_ROOT/README.md#workspace-goals` (as the
+  Serves lines in `docs/principles.md` do), and cite the design section by
+  its anchor, as `docs/design.md#<section>` (the section list is in
+  `$WS_ROOT/docs/design.md#the-design`). For a project issue, use the
+  project's own goals and design document, or write "none"; a project is
+  not asked to keep either. Flag an issue that serves no goal, or that
+  breaks a stated rule (for a workspace issue, a principle or a row of
+  `$WS_ROOT/docs/design.md#rules`; for a project issue, the project's own
+  stated rules, if it has any), as a Principle Alignment row with
+  Status `Action needed` (step 4): "Only what's needed" for no goal, the
+  principle or ADR the rule cites for a broken rule. A project with no
+  goals written down is not flagged for that.
 - **Design picture?** Does the proposal change how the parts fit, or is it
   not covered by the current design? If so, name the design section it
   touches and bring the question to the user on its own ("Ask about what
-  matters, and show how much"). Record it as a "Keep one current design"
-  row with Status `Action needed` in the Principle Alignment table (step 4),
-  so it reaches the posted comment and the `### Actions` list. If the issue
-  already records the user's decision and names the design update, record
-  the row as `OK` with a pointer and do not re-ask.
+  matters, and show how much"). Cite the section as in **Serves?**; for a
+  project issue, name the section of the project's own design document,
+  or say there is none. Record it as a "Keep one current design" row
+  with Status `Action needed` in the Principle Alignment table (step 4),
+  so it reaches the posted comment and the `### Actions` list. If the issue already records the
+  user's decision and names the design update, record the row as `OK` with
+  a pointer and do not re-ask.
 - **Dependencies?** Does this depend on other open issues? Will other issues
   need to wait for this one?
 
@@ -177,6 +193,7 @@ Post the review as a comment on the issue. **Do not modify the issue body.**
 
 **Well-scoped?** Yes/No — [explanation]
 **Right repo?** Yes/No — [explanation]
+**Serves**: [goal] — `docs/design.md#<section>` (or the project's own; "none")
 **Design picture?** No change / Changes [section] — [explanation]
 **Dependencies**: [list or "none identified"]
 

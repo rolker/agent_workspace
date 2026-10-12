@@ -112,6 +112,8 @@ as we improve the workspace.
 - They move toward their goals without carrying extra baggage.
 - It is known whether a change helped.
 
+How the workspace works toward these goals is in [How it works](docs/design.md#how-it-works).
+
 ## History
 
 Before 2026 I had been dismissing "vibe coding" without having tried it. Towards
