@@ -162,3 +162,45 @@ Plan Review (c103ef0) needs-work: F1 high (script allowlist checks name only; ex
 **Plan**: `.agent/work-plans/issue-386/plan.md` at `13eea944`
 
 Revision 2, same five commits. The sit-rep check runner now accepts only three exact script forms run from its own directory, the Deferrals table has a fixed format with checks so `update_roadmap.sh` cannot hit it, `gh-issue` uses the roadmap root's own remote, and the run record keeps true-of-total counts so "what moved" is built. The every-root loop and paused branches moved to follow-ups.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-12 18:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #386 — Direction section in the roadmap, a one-line inbox, and a sit-rep skill that answers what's next from checked facts
+**Plan**: `.agent/work-plans/issue-386/plan.md` at `13eea944`
+**Branch**: `feature/issue-386`
+
+Round 2. All nine round-1 findings (c103ef0) are resolved in the plan text. One new medium finding and three low ones remain; each is a few lines of implementation and a test, so they are carried into implementation rather than sent back for a third plan round.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | 12 files (7 new, 5 changed), three parts (capture, check runner, skill) plus docs; above the 10-file guide, but half are tests and docs. Fits one PR tonight; nothing further needs to move out. Keep the split after commit 1 as the fallback if review-code needs more than one round on both halves. |
+| Issue alignment | Good | Trim, Issue Review actions and round-1 findings all carried. Serves, as checked: "Goals "Easy to use" (work is easy to come back to) and "The long view" (day-to-day work stays connected to direction); `docs/design.md#documentation-layers`, `docs/design.md#registry-and-adapters`." Both anchors exist; no rule broken. F6 built as `--summary` counts in the run record: sound and cheap; counts show net change only (one line going true and another going false shows as no change), which is acceptable for a first form of Measures. |
+| File targeting | Good | Test paths in full under `.agent/scripts/tests/`; sandboxes via `mktemp -d` under `TMPDIR`. |
+| Consequences | Good | `update_roadmap.sh` only matches a table row whose second cell is exactly `#N` (line 130) or any line with `#N` for the checklist form (line 161); the fixed `| Line | Check |` and `| Deferral | Revisit check |` formats keep both tables out of reach, and the fixture pins the checklist line as flipped. `what-next` skip list, design.md rows (existing Direction/Measures rows at lines 104-105, gaps paragraph line 107, OQ-3 line 620) all named. |
+| Principle alignment | Good | F1 resolved: three exact argument vectors, resolved under the runner's own scripts dir, `read -ra` under `set -f`, `grep -qF --`, marker-file tests for every disallowed form and for a project-root `adapter`. Verified the three forms are read-only: `user_tier_install.sh --check [--require]` only reports (exit 0/1, 2 usage, 3 no jq); `check_design_anchors.sh` with no argument checks its own repo (exit 0/1, 2 error); `adapter_validate` in both types only inspects the checkout. See finding 1 for exit-1 meaning. |
+| ADR compliance | Good | ADR-0016, 0017, 0011 as in round 1. ADR-0010 departure for `gh-issue` accepted: ADR-0010's own rationale says a cache hit is not refreshed (pull only on miss), so a cached state is not "checked this run"; a `gh` failure gives `unknown`, which is honest offline. Recording it in the script header is enough. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment] Medium** — For `script adapter --project <name> validate`, exit 1 does not only mean "does not validate". `adapter` exits 1 when its user-tier guard refuses the cwd (`registry_require_root "$WORKSPACE_ROOT" "$PWD"`, `.agent/scripts/adapter` line 145), when the name is not registered (line 191) and on a malformed registry (also 1). The skill is `session_scope: both`, so it can run from any cwd; a session outside every root would show the line as `false`, not `unknown`. Fix: run each `script` check with its cwd set to the runner's checkout root (a subshell `cd "$SCRIPT_DIR/../.."`; the plan's "run from" should say cwd as well as path), look the name up first with `registry_lookup` (rc 2 gives `unknown`; rc 1 gives `false`, documented as "not registered on this machine"), and add a test that runs the adapter form from a cwd outside the sandbox and gets a result other than a guard-caused `false`.
+2. **[Principle alignment] Low** — The combination rule as written gives `partial` when every part is `unchecked` ("any unchecked gives partial", no all-unchecked case), and `false ; unchecked` also reads `partial`, which suggests something is true. Make all-unchecked give `unchecked`, and add `unchecked+unchecked` to the pair tests.
+3. **[Issue alignment] Low** — The skill's "open PRs" read has the same cwd problem round-1 F4 fixed for `gh-issue`: from a project session `gh pr list` lists the project's PRs. Use `gh pr list -R <slug from $WS_ROOT's origin>` (the same `extract_gh_slug` path).
+4. **[Principle alignment] Low** — `gh-issue` argument checks are not stated: `<N>` numeric, state `open` or `closed`, `owner/repo` matching a slug pattern, anything else `unchecked`; compare against `gh`'s `OPEN`/`CLOSED` case-insensitively. Add one malformed-argument case to the tests. (Text nit: the Approach says the Revision log is "below"; it is above.)
+
+### Summary
+
+Revision 2 resolves every round-1 finding, including the high one: the script allowlist is now exact argument vectors run from the runner's own directory, and the three allowed forms were verified read-only. The ADR-0010 departure and building "what moved" as summary counts are both sound. Ready for implementation, with the four items below done as part of it; the scope fits one PR tonight.
+
+### Recommended Actions
+
+- [ ] Run `script` checks with cwd at the runner's checkout root; pre-check the adapter name with `registry_lookup` (rc 2 gives `unknown`); test the adapter form from an outside cwd.
+- [ ] Make an all-`unchecked` cell give `unchecked`; add the pair to the tests.
+- [ ] Target the skill's open-PR read at the workspace repo with `-R`.
+- [ ] Validate `gh-issue` arguments (numeric N, open/closed, slug pattern), case-insensitive state compare, one malformed-argument test.
