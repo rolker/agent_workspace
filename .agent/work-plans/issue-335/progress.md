@@ -910,6 +910,6 @@ The last checkbox of the round-5 review entry (Review-loop Target bullets 2 and 
 - [x] (should-fix, Copilot) Sessions and roots Now says a session runs in one of three places including the user tier in `~/.claude`; ADR-0016 decision 1 and the next bullet name two session roots, the user tier is the layer injected into them (line 165) — `docs/design.md`
 - [x] (should-fix, Copilot) Worktrees Records says plan and timeline are committed in the project repository; for a workspace issue (this one) they are in the workspace repository; line 403 already states the owning-repository rule (line 330) — `docs/design.md`
 - [x] (minor, Copilot) Rules row "Nothing committed to the workspace names a particular project" is broader than the boundary decided 2026-10-09 (plan lines 468-472: real names stay in code-origin comments, test fixtures, ADRs and roadmap as history, `tools/ros-manifest/` prose); design.md states that boundary nowhere. Qualify the row with the boundary; the guide row it cites says the same broad thing (line 152) — `docs/design.md`
-- [ ] (minor, Copilot) Process step 1 says "this is revision 9" under a revision 10 header (line 56) — `.agent/work-plans/issue-335/plan.md`
+- [x] (minor, Copilot) Process step 1 says "this is revision 9" under a revision 10 header (line 56) — `.agent/work-plans/issue-335/plan.md`
 
 ### False positives

@@ -53,7 +53,7 @@ served by the Direction role (G2). The owner writes plain prose and wants text h
 ### Process (how the document gets written)
 
 1. Plan reviewed (rounds 1 to 5 done) and approved by the owner at revision 6 on 2026-10-09; this is
-   revision 9, which applies decisions made after that approval. Worktree for #335 exists. PR A is
+   revision 10, which applies decisions made after that approval. Worktree for #335 exists. PR A is
    merged (#377). No PR B section is written before the owner's say-so on the plan. The new pre-commit hook in PR B is CI-like config (CI runs
    `make lint`, which runs every hook), so it is Ask First; the owner approved it on 2026-10-09 (owner
    decision 2026-10-09: "Yes, and watch the ADR directory too."), which settles question **B4**.
