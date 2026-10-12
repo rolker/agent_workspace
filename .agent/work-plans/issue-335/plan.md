@@ -1,5 +1,8 @@
 # Plan: Workspace design document, phase 3 (rewrite docs/design.md as the current picture)
 
+Revision 12 (2026-10-12). Applies the pre-push review round 7 decisions on PR C (the `## Checkpoint`
+entry `413d259`): `/audit-workspace` reports the register's `Re-examined` cells instead of writing them
+(R1), and stale B1/B2 wording is fixed. It does not reopen the plan.
 Revision 11 (2026-10-12). The owner approved revision 6 on 2026-10-09 (the `## Checkpoint` entry in
 `progress.md`). This revision does not reopen the plan. It marks B1 and B2 decided (owner decision
 2026-10-12, before PR C: "B1, keep the default, B2 mark it as history"). Nothing else changes.
@@ -18,7 +21,7 @@ four owner decisions of 2026-10-09 (hook scope, label, purpose and anchors, glos
 answered plan review round 4 (needs-work, entry `ffa20fe`), revision 4 answered round 3 (entry
 `e3c3eac`), revision 3 answered round 2 (entry `9cfd1fe`), revision 2 answered round 1 (entry
 `6f8c643`) and the owner's decision on the shape of the document (2026-10-08). What changed is in the
-"Revision 2" to "Revision 11 change log" sections at the end.
+"Revision 2" to "Revision 12 change log" sections at the end.
 
 ## Issue
 
@@ -32,7 +35,7 @@ get a one-line pointer to their design section". This plan does not do that: the
 the Decision register. Reason: ADR-0008 permits a Status-line note of a related ADR, a References
 list and link or typo fixes, and a pointer line is none of those; an accepted ADR that gains one can
 read as a restated decision, and ADR-0017 makes ADRs history. Whether to widen ADR-0008 so ADRs can
-carry a pointer is open question **B1**. The departure is recorded in a comment on the issue once the
+carry a pointer was open question **B1**, decided 2026-10-12: no, keep the default. The departure is recorded in a comment on the issue once the
 owner approves this plan. The issue's "Rules that must stay true" part is headed `Rules` (reason
 under "Why `Rules`"), and its "Purpose" part has its own row in the section table (accepted, owner
 decision 2026-10-09: "Accept both.").
@@ -155,8 +158,8 @@ where the part has none.
 
 Section dates (decided, owner decision 2026-10-09, A4: yes, register rows only). Sections carry no
 `Checked: <date>`. The register's `Re-examined: yes <date>` column (row 13) is the checked-date. PR C
-adds one line to `/audit-workspace` step 2 telling it to refresh that column when it checks an ADR
-against the code (Wire-in 2). Checked in this revision: step 2 of the skill today checks the Status
+adds one line to `/audit-workspace` step 2 telling it to report the cells of that column to refresh when
+it checks an ADR against the code; a separate small PR applies them (Wire-in 2, revision 12). Checked in this revision: step 2 of the skill today checks the Status
 line, the listed consequences and whether `docs/design.md` records the current behaviour; it says
 nothing about a register or a date.
 
@@ -335,10 +338,14 @@ headers, and it is cut back when #295 is decided.
    its anchor pattern is `[a-z0-9][a-z0-9-]*` and `<` does not match (a fixture proves it, Wire-in 6). Project issues keep the "the project's own design document, or say there is none"
    branch. `audit-workspace` (workspace scope only) keeps plain `docs/design.md` paths. PR C adds
    one line to its step 2 (A4, decided, owner decision 2026-10-09): when the audit checks an ADR
-   against the code, it sets that ADR's `Re-examined` cell in the Decision register
-   (`docs/design.md#decision-register`, cited by anchor so the checker reaches it) to `yes <today>`.
-   The skill's Guidelines say "Report, don't fix"; this line is the one exception, a register cell and
-   nothing else, and PR C words that Guidelines bullet to say so. No other date is added anywhere.
+   against the code, its report lists, under Register updates, the exact cell change for that ADR's
+   `Re-examined` cell in the Decision register (`docs/design.md#decision-register`, cited by anchor so
+   the checker reaches it), for example "ADR-0002 Re-examined: yes 2026-10-12". The audit does not edit
+   the register: after the report it asks the user whether to open a small PR that applies the listed
+   cells through the normal issue and worktree flow, and that PR adds the `docs/design.md` change-log
+   row like any other change (R1, review round 7, Checkpoint `413d259`). The Guidelines "Report,
+   don't fix" bullet keeps no exception and says the register dates are reported, not written. PR C's
+   register paragraph in `docs/design.md` says the same. No other date is added anywhere.
 3. **ADRs: register only (a departure from issue scope item 3, see Issue).** ADR-0008 permits a Status-line note of a related ADR, a References list
    of related ADRs, and link or typo fixes; a "Current description: design.md#..." line is none of
    those, and an ADR that gains one can read as restated decision. The mapping from ADR to design
@@ -346,7 +353,8 @@ headers, and it is cut back when #295 is decided.
    One edit is allowed and included: ADR-0017 line 27 links ADR-0008 as
    `0008-permit-cross-reference-addendums-in-accepted-adrs.md`; the file is
    `0008-permit-cross-reference-addendums-in-adrs.md` (a broken-link fix, ADR-0008 "Permitted").
-   Whether ADRs should also carry a pointer, with an ADR-0008 scope note allowing it, is **B1**.
+   Whether ADRs should also carry a pointer, with an ADR-0008 scope note allowing it, was **B1**,
+   decided 2026-10-12: no (the default above).
 4. **Roadmap, only rows that change the design picture.** `docs/roadmap.md` has 34 rows in `planned`
    (27), `in progress` (4) or `deferred` (3) status (recounted from the file; many sit under "To
    Consider"). Only a row whose issue adds, removes or re-shapes a part named in a design.md section
@@ -361,7 +369,8 @@ headers, and it is cut back when #295 is decided.
    and already stale (it says review summaries "continue to work" in plan.md). PR C marks the section
    as history with a one-line note pointing at the design sections, and replaces "Storage model" and
    "Progress as lifecycle record" with a pointer to "Review loop and timeline", since design.md will hold
-   those facts. The rest stays as dated rationale. Mark-as-history versus delete versus leave is **B2**.
+   those facts. The rest stays as dated rationale. Mark-as-history versus delete versus leave was
+   **B2**, decided 2026-10-12: mark as history.
 5. **Review guide.** `.agent/knowledge/principles_review_guide.md` Consequences Map row "Work-plan
    directory convention" lists "`docs/design.md` directory tree" as a dependent. The tree goes in PR B,
    so the same change rewrites that cell to "the work-plans description in `docs/design.md` (Review
@@ -520,7 +529,8 @@ split says what landed.
 | `.pre-commit-config.yaml` | New local hook `check-design-anchors` (files: the eight paths in Wire-in 6, `docs/decisions/` among them), placed before `validate-script-tests`. Ask First (CI-like config), approved by the owner 2026-10-09 (B4) | B |
 | `.agent/scripts/tests/test_design_anchors.sh` (new, `chmod +x`) | Tests the checker with fixtures only (negative, positive, placeholder and issue-ref, uppercase citation, `#glossary` anchor, guards before and after the register exists, a new ADR file without a register row); reads no real docs | B |
 | `.claude/skills/{review-issue,review-plan,plan-task}/SKILL.md` | Section wording cites the real anchors `$WS_ROOT/docs/design.md#how-it-works` and `#the-design`, plus the `#<section>` placeholder (Wire-in 2) | C |
-| `.claude/skills/audit-workspace/SKILL.md` | Step 2 gains one line: refresh the Decision register's `Re-examined` cell (cited as `docs/design.md#decision-register`) when an ADR is checked against the code; the Guidelines "Report, don't fix" bullet notes that one exception (A4, owner decision 2026-10-09). No per-section dates | C |
+| `.claude/skills/audit-workspace/SKILL.md` | Step 2 gains one line: when an ADR is checked against the code, the report lists its Decision register `Re-examined` cell change (cited as `docs/design.md#decision-register`) and the audit offers a small PR that applies the listed cells; the report format gains a Register updates part; the Guidelines "Report, don't fix" bullet says the register dates are reported, not written (A4, owner decision 2026-10-09; R1, revision 12). No per-section dates | C |
+| `docs/design.md` (Decision register paragraph) | Says how `Re-examined` cells change after the rewrite: `/audit-workspace` reports them and a small PR applies them, replacing "`/audit-workspace` is meant to refresh it"; a change-log row per change (ADR-0017) | C |
 | `docs/roadmap.md` | Open and planned items name the design section; Cross-cutting Decisions note and pointers | C |
 | `README.md` | Under `## Workspace goals`, a closing pointer to `docs/design.md#how-it-works` | C |
 | Not touched | `.agent/scripts/merge_pr.sh` and `test_merge_pr_gate.sh` (the gate-lookup fix is #379, its own change); `.agent/scripts/tests/test_script_tests_hook_scope.sh` (its assertions at lines 454-455 and the `validate-script-tests` hook's `files:` stay as they are), every "System design" label (`README.md` line 22, `.agent/AGENT_ONBOARDING.md` line 91, `.claude/skills/brainstorm/SKILL.md` line 34, `AGENTS.md` line 436, `CLAUDE.md` line 36; owner decision 2026-10-09: keep "System design"), `docs/principles.md` (principle wording is a separate change), accepted ADRs other than the link fix | |
@@ -557,7 +567,7 @@ which design section the planning and review skills cite (headings in the new fi
 | Leave a trail; start limits strict | Decision register and change log with line counts; each section its own commit |
 | Ask about what matters, and show how much | Design questions asked one at a time with what each changes (list below) |
 | Verify before claiming | Every "Now" line cites its source and is spot-checked; revision 2 rechecked every "already lives" claim and found three wrong |
-| Know whether it works | With/without test; line count in the change log; the register's `Re-examined` column is the checked-date and `/audit-workspace` refreshes it (A4); Measures role shown honestly as "none yet" |
+| Know whether it works | With/without test; line count in the change log; the register's `Re-examined` column is the checked-date and `/audit-workspace` reports the cells to refresh (A4); Measures role shown honestly as "none yet" |
 | Put each thing at the level it applies to | Script detail to script headers; per-project mapping is project-level, the workspace's own mapping is here |
 | Leave in a project only what it chose to carry | Footprint is Target, not described as built; the records settings (C3, row 8) make it a per-project choice, with the in-repo default unchanged |
 | Look for prior art before building | Prior Art section above |
@@ -591,14 +601,14 @@ which design section the planning and review skills cite (headings in the new fi
 | Detail removed from design.md | Its destination file | Yes (PR A, landed #377, verified first) |
 | Registry or adapter text | `adapter` and registry headers | Yes (verified; no gap found) |
 | Lock text removed | `lock.sh` header (nothing else documents it) | Yes (PR A, landed #377) |
-| Roadmap Cross-cutting Decisions | The design sections that now hold the facts | Yes (PR C; B2 open) |
+| Roadmap Cross-cutting Decisions | The design sections that now hold the facts | Yes (PR C; B2 decided) |
 | Registry inventory in `docs/design.md` | Re-grep the `--type` branches when the Registry commit is written; cut the inventory back once #295 is decided | Yes (PR B writes it; the cut-back follows the #295 decision) |
 | Where records live (C3 Target) | Every reader and writer of `.agent/work-plans/issue-N/`: `dispatch_phase.sh`, `merge_pr.sh`, `review_progress.sh`, `progress_append.sh`, `_bookkeeping.sh`, `cross_model_review.sh`, and the seven skills that cite the path | No. A later build; PR B writes only the Target text, status `proposed` |
 | Roadmap rows that change the design picture | A "design section:" note on those rows only; the other open rows stay as they are | Yes (PR C) |
 | `AGENTS.md` (the instruction budget proposed in `## Instruction layers`) | Framework adapters | No, Ask First |
 | Status key (`Now` label on every `##` section, A1) | The opening paragraph of `# The design`; each section's block; the skills that cite `#the-design` for the key | Yes (PR B writes the key and the blocks; PR C's skill wording cites the anchor) |
 | A rule's check added or removed | Its row in the Rules enforced-by column (A3) | Yes (PR B writes the column; later upkeep is the change that adds or removes the check, per "A change includes its consequences") |
-| `/audit-workspace` step 2 (A4) | `.claude/skills/audit-workspace/SKILL.md` (one line, plus the Guidelines exception); the register's `Re-examined` cells | Yes (PR C) |
+| `/audit-workspace` step 2 (A4) | `.claude/skills/audit-workspace/SKILL.md` (one line, the Register updates part of the report, and the Guidelines bullet); the register paragraph in `docs/design.md`; the `Re-examined` cells themselves change only through the small PR the audit offers | Yes (PR C) |
 | The merge gate's timeline lookup (#379) | `merge_pr.sh` line 670, `test_merge_pr_gate.sh`; the Worktrees Now sentence that cites the gap in `docs/design.md` | No. #379 is its own change; the change that fixes it edits the design sentence in the same change (ADR-0017). The roadmap needs no row (Wire-in 4) |
 
 ## Open Questions
@@ -635,11 +645,11 @@ Q1, B4, Purpose and anchors, Label, C1 to C3 and C6 entries are older decisions.
   values hook, script, CI, review only, nothing. The "review only" and "nothing" rows are in from the
   start; row 5's clause that waited on A3 is gone.
 - **A4 (decided 2026-10-09, owner decision: yes, register rows only).** No `Checked: <date>` per
-  section. The register's `Re-examined: yes <date>` column is the checked-date, and PR C adds one line
-  to `/audit-workspace` step 2 to refresh it when an ADR is checked against the code. The skill file is
-  in Files to Change (PR C). One wrinkle for PR C, found by reading the skill: its Guidelines say
-  "Report, don't fix", so the line is worded as the one exception (a register cell only) and the
-  bullet says so (Wire-in 2).
+  section. The register's `Re-examined: yes <date>` column is the checked-date, and the audit is what
+  produces it: PR C adds one line to `/audit-workspace` step 2 so that, when an ADR is checked against
+  the code, the report lists the cell to refresh. The skill file is in Files to Change (PR C). Its
+  Guidelines say "Report, don't fix", so the audit does not write the cell: it offers a small PR that
+  applies the listed cells through the normal issue and worktree flow (R1, revision 12; Wire-in 2).
 - **A5 (decided 2026-10-09, owner decision: keep the section, drop the tree line).** `## Instruction
   layers` is a real section (row 12), `Now` block status `proposed`, with the four layers and a budget
   for the always-loaded layer; sources in row 12. The one-line directory-tree pointer in How it works
@@ -705,7 +715,7 @@ branches, written as a table of 8 rows plus a 12-row verb table (seeded in this 
 the Registry commit). The records Target (C3) is about 30 lines of Target text in Worktrees and no code. Revision 9 adds
 no code: the `Now` label on each section, the enforced-by column (one value per rule row), the
 Instruction layers section (about 15 lines, all `proposed`) and, in PR C, one line in
-`/audit-workspace` step 2 with a matching exception in its Guidelines. The tree pointer and
+`/audit-workspace` step 2 that reports the register cells to refresh (revision 12). The tree pointer and
 per-section dates are gone.
 
 ## Revision 2 change log
@@ -852,3 +862,17 @@ round in between and the plan approved at revision 6 is not reopened.
 | Item | What changed |
 |---|---|
 | 1 | Open Questions: B1 and B2 moved to Decided; the B group heading is gone; the "Still open" line lists C4 and C5 only. The revision line at the top says so. Wire-in 3 and 4 already describe the chosen defaults and are unchanged |
+
+## Revision 12 change log
+
+Applies the decisions on pre-push review round 7 of PR C (entry `20cff9d`), recorded in the
+`## Checkpoint` entry `413d259`. M1 and M2 found that the audit's register write had no landing path
+(no worktree, issue or PR) and skipped the `docs/design.md` change-log rule; the host chose R1 within
+its limits after the owner asked whether it was consequential. No review round in between; the plan
+approved at revision 6 is not reopened.
+
+| Item | What changed |
+|---|---|
+| 1 | Wire-in 2, the section-dates paragraph, Files to Change (audit-workspace row), Self-Check, Consequences, Decided A4 and Estimated Scope: the audit reports the `Re-examined` cell changes and offers a small PR that applies them, instead of editing the register; "Report, don't fix" keeps no exception (R1) |
+| 2 | Files to Change gains a PR C row for the `docs/design.md` register paragraph (review S2) |
+| 3 | B1 and B2 no longer read as open in the Issue section, Wire-in 3 and 4, and the Consequences row (review S1) |
