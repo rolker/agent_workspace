@@ -1257,3 +1257,18 @@ PR C (wire-in), review round 8 addressed. Checks: `check_design_anchors.sh` exit
 ### Actions
 - [x] S1: `/audit-workspace` step 2 and the Register updates format now also list the `Standing` cell change and one line on what the code does instead when an ADR is no longer `in force`; plan Revision 12 change log gains item 4 — `.claude/skills/audit-workspace/SKILL.md:59` (6f188fd)
 - [x] S2: "Checked in this revision" reads "Checked in revision 9" — `.agent/work-plans/issue-335/plan.md:162` (302094d)
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 11:26 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: approved
+
+**PR**: #382 at `b2d9cfaa`
+**Depth**: Light (reason: user-requested override; scope limited to 6f188fd9 and 302094d5 since the round 8 approval at 0d68805; SKILL.md would otherwise classify Standard)
+**Must-fix**: 0 | **Suggestions**: 1
+
+### Findings
+- [ ] (suggestion) "what the code does instead" fits `superseded in practice` but not plain `superseded` (a later ADR replaced it, per design.md register paragraph); optionally say "or the ADR that replaced it" — `.claude/skills/audit-workspace/SKILL.md:63`
+
+Cross-model reviewers: none dispatched (Light override requested by host; skipped).
