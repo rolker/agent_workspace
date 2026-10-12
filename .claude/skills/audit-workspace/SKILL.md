@@ -61,9 +61,9 @@ is expected after a design change and is not an error. For each ADR in
   Decision register (`docs/design.md#decision-register`) becomes
   `yes <today>`, with today's date as `YYYY-MM-DD` (for example
   "ADR-0002 Re-examined: yes 2026-10-12"). If the check finds the ADR no
-  longer `in force`, also list its `Standing` cell change (`superseded` or
-  `superseded in practice`) with the one line saying what the code does
-  instead. Do not edit the register. After
+  longer `in force`, also list its `Standing` cell change with one line:
+  for `superseded`, the ADR that replaced it; for `superseded in
+  practice`, what the code does instead. Do not edit the register. After
   the report, ask the user whether to open a small PR that applies the
   listed cells through the normal issue and worktree flow; that PR adds the
   `docs/design.md` change-log row like any other change
@@ -141,7 +141,7 @@ List any worktrees that appear abandoned (no recent commits, merged PRs).
 ### Register updates
 
 - ADR-NNNN Re-examined: yes YYYY-MM-DD
-- ADR-NNNN Standing: <new value>: <what the code does instead> (only when no longer `in force`)
+- ADR-NNNN Standing: <new value>: <the ADR that replaced it, or what the code does instead> (only when no longer `in force`)
 
 ### Recommended Actions
 
