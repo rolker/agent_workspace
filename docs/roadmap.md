@@ -6,6 +6,57 @@ Maintained through `/brainstorm` sessions; fed by `/inspiration-tracker` finding
 **Guiding goal** (from initial brainstorm on #63): "How I interact with the system
 and keep track of what's relevant while not needing to micromanage."
 
+## Direction
+
+What must be true for the workspace's current acceptance case, each line with
+the check that says whether it is true today, and what was set aside on
+purpose. The sit-rep (`/sitrep`) reads this section through
+`.agent/scripts/sitrep_checks.sh` and runs every check each time; this
+section holds no status and no dates, and results stay on the machine that
+ran them.
+
+**Acceptance case.** ADR-0016 stays Provisional until a `/run-issue` run
+started from a project root passes through the merge checkpoint
+([Sessions and roots](design.md#sessions-and-roots)). Design question OQ-2
+([Open questions](design.md#open-questions)) asks where that run is tracked:
+here. The run's target is the `gz4d` project, as step 5 of the Workspace
+Redesign table below says.
+
+**Format.** `sitrep_checks.sh` has the full grammar in its header.
+
+- Two tables, picked by their header: `| Line | Check |` and
+  `| Deferral | Revisit check |`. Any other table here is ignored.
+- A check starts with its kind: `file-exists <path>`,
+  `file-contains <path> <text>`, `gh-issue <N> <open|closed>` (or
+  `gh-issue <owner/repo>#<N> <state>`), or `script` followed by exactly one of
+  `adapter --project <name> validate`, `user_tier_install.sh --check`,
+  `user_tier_install.sh --check --require`, `check_design_anchors.sh`. Paths
+  are relative to the repository root. Several checks in one cell are joined
+  with ` ; `. An empty cell is reported as `unchecked`.
+- A check cell is never just an issue number, and deferrals are never
+  checklist items: `update_roadmap.sh` marks both done when that issue
+  merges. Put issue numbers in the prose instead, written `(#N)`.
+- A deferral's check says when to look at it again; while the check is true
+  the sit-rep lists the deferral as due.
+
+| Line | Check |
+|------|-------|
+| The acceptance project is registered on this machine and its checkout validates | `script adapter --project gz4d validate` |
+| The user tier is installed from this checkout, with no drift | `script user_tier_install.sh --check --require` |
+| `/run-issue` can run in a project session | `file-contains .claude/skills/run-issue/SKILL.md session_scope: both` |
+| The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
+| A `/run-issue` run started from the project root reaches the merge checkpoint | |
+| ADR-0016 is promoted from Provisional to Accepted | `file-contains docs/decisions/0016-session-roots-and-the-user-tier.md **Accepted.**` |
+
+| Deferral | Revisit check |
+|----------|---------------|
+| The registration script and retiring `project/` and `projects/` (#265, PR 4): after the acceptance run | `file-contains docs/decisions/0016-session-roots-and-the-user-tier.md **Accepted.**` |
+| The workspace as a registered project (#295): settled once ADR-0016 is | `file-contains docs/decisions/0016-session-roots-and-the-user-tier.md **Accepted.**` |
+| A Direction section in the acceptance project's own repository: waits until onboarding asks a project what it carries | |
+| The sit-rep over every registered root with a Direction section (this first form reads the workspace root only) | |
+
+Things set aside for good are under [Decided Against](#decided-against).
+
 ## User Scenarios
 
 These scenarios describe the target experience. Roadmap items are prioritized
@@ -38,6 +89,10 @@ checking PRs, reviews, issues, worktree state, and uncommitted changes across
 repos. A morning status skill gathers all state, surfaces pending decisions
 (PRs needing review response, stale worktrees, ready-to-start issues), and
 suggests a prioritized work plan for the day.
+
+First form: the sit-rep (#386), which reports the [Direction](#direction)
+lines as checked that run, the inbox, work in flight and deferrals that are
+due.
 
 ### Pain points (ranked by severity)
 
@@ -151,6 +206,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | Structured agent handoffs | #40 | done | microsoft/skills | Tool scoping per agent role |
 | Permission prompt reduction | #110 | done | brainstorm | Share workspace-level rules and automate analysis; #1 friction point |
 | Morning status / standup skill | — | planned | brainstorm | Gather PR, review, issue, worktree state; suggest prioritized work plan (scenario 4) |
+| Sit-rep, Direction section and one-line inbox | #386 | in progress | — | First form of scenario 4: `/sitrep` reports the Direction lines checked that run, the inbox, work in flight and due deferrals; `capture.sh` writes the inbox; design section: [Documentation layers](design.md#documentation-layers) |
 | Post-PR merge/cleanup/sync | #38 | done | session friction | `merge_pr.sh` + `make merge-pr PR=<N>` automates merge, worktree removal, branch cleanup, and sync |
 | Crash recovery skill | #70 | done | brainstorm | Session-specific scratchpad subdirs |
 | Agent friction self-reporting | #58 | done | gstack | Agent rates experience 0-10 after workflow steps, files field reports when not 10 |

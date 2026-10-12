@@ -170,6 +170,56 @@ else
     fail "(empty-helper) rc=$rc stdout='$stdout' file=$(tr '\n' '|' < "$root/docs/ROADMAP.md")"
 fi
 
+echo "TEST: Direction rows survive an update for an issue they mention (#386)"
+# The Direction section's formats keep its rows out of update_roadmap.sh's
+# reach: a Line row and a Deferral row mention the issue only in prose,
+# `(#7)`, and their check cells start with a kind word, never a bare `#7`.
+# A control row elsewhere is still flipped. A checklist item is NOT safe:
+# it is pinned here as flipped, which is why the Direction header forbids
+# that form and sitrep_checks.sh prints a `format` row for one.
+root="$(mktemp -d "$TMP_ROOT/root.XXXXXX")"
+mkdir -p "$root/docs"
+line_row='| The gate finds the records (#7) | `gh-issue 7 closed` |'
+deferral_row='| Paused thing (#7): after the run | gh-issue 7 closed |'
+cat > "$root/docs/roadmap.md" <<EOF
+# Roadmap
+
+## Direction
+
+| Line | Check |
+|------|-------|
+$line_row
+
+| Deferral | Revisit check |
+|----------|---------------|
+$deferral_row
+
+- [ ] A checklist deferral (#7)
+
+## Work
+
+| Item | Issue | Status | Notes |
+|------|-------|--------|-------|
+| Control row | #7 | planned | flips |
+EOF
+"$UPDATE" --issue 7 --root "$root" >/dev/null 2>&1
+f="$root/docs/roadmap.md"
+if grep -qxF -- "$line_row" "$f" && grep -qxF -- "$deferral_row" "$f"; then
+    pass "(direction) Line and Deferral rows byte-identical"
+else
+    fail "(direction) rows changed: $(sed -n '/## Direction/,/## Work/p' "$f" | tr '\n' '|')"
+fi
+if grep -qxF -- '| Control row | #7 | done | flips |' "$f"; then
+    pass "(direction) control row elsewhere flipped to done"
+else
+    fail "(direction) control row: $(grep 'Control row' "$f")"
+fi
+if grep -qxF -- '- [x] A checklist deferral (#7)' "$f"; then
+    pass "(direction) checklist line is flipped (pinned: the reason the form is forbidden)"
+else
+    fail "(direction) checklist line: $(grep 'checklist deferral' "$f")"
+fi
+
 echo ""
 echo "test_update_roadmap:${PASS} passed, ${FAIL} failed"
 [[ $FAIL -eq 0 ]]
