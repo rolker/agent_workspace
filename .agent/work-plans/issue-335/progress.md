@@ -1070,3 +1070,15 @@ Rule applied (consistent with this timeline's earlier deferral of checker edge c
 ### False positives
 - (Copilot) Unquoted array expansion at `check_design_anchors.sh:273` — `${LINKS[@]+"${LINKS[@]}"}` quotes each element inside the alternate expansion; no word splitting occurs.
 - (Copilot) ADR guard counts register rows instead of matching each ADR — the planned design (plan Wire-in 6), approved in plan review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 10:03 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #380 at `be04425`
+**Addressed**: Integrated Review at `a4dd163` (2026-10-12 09:59 -04:00)
+**Commits**: be04425
+
+### Actions
+- [x] Add `.agent/scripts/check_design_anchors.sh` to the `check-design-anchors` hook's `files:` filter — `.pre-commit-config.yaml`
