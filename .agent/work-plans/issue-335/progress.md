@@ -1011,3 +1011,22 @@ Recorded late: this answer was given before the Implementation entry at 49064bd.
 - [x] (suggestion) `merge` "writes one" entry in progress.md, but `_gate_record` falls back to a PR comment when no worktree can take the commit (merge_pr.sh 834-850); a short qualifier would make it exact — `docs/design.md:413`
 - [x] (suggestion) Records parenthetical names workspace and project issues only; package-repo issues (`--issue owner/repo#N`) are a third owner, and merge_pr.sh says package worktrees carry no issue timeline (~line 843) — `docs/design.md:332`
 - [x] (suggestion) Citations are matched only as `docs/design\.md#`; a relative `design.md#x` from `docs/roadmap.md` (a listed citer) is skipped silently; none exist today (Gemini) — `.agent/scripts/check_design_anchors.sh:259`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 09:49 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `6e2d16c`
+**Addressed**: Local Review at `306564b` (2026-10-12 09:28 -04:00)
+**Commits**: `046f567`, `4d8d15c`, `e8337f3`, `b7fc22f`, `6bd9c80`, `6e2d16c`
+
+### Actions
+- [x] (must-fix) A backtick or tilde line indented more than 3 spaces past its list item's content column (0 outside a list) is indented code, not a fence; a closer sits no deeper than its opener could; a fence still open at end of file is a finding. Tests: indented code before a broken link, an unclosed fence, fences in bullet, wide ordered and nested list items, an indented code line under an item, an indented closer in a top-level fence — `.agent/scripts/check_design_anchors.sh:150`
+- [x] (suggestion) Repeated slugs follow GitHub's slugger (first free `-N`): `A`, `A`, `A-1` give `a`, `a-1`, `a-1-1`; test also covers `B-1`, `B`, `B` — `.agent/scripts/check_design_anchors.sh:186`
+- [x] (suggestion) Glossary "progress timeline" now reads "the loop records each step and decision": owner decision 2026-10-12 (option B), revising his C6 wording; change-log row added — `docs/design.md:687`
+- [x] (suggestion) `merge` entry that no worktree on the branch can commit and push is posted on the pull request (`_gate_record`, `merge_pr.sh` 784-850); change-log row added — `docs/design.md:416`
+- [x] (suggestion) Records names the package-repository case: no timeline, gate record on the pull request (`merge_pr.sh` 801, 843); change-log row added — `docs/design.md:334`
+- [x] (suggestion) Relative `design.md#x` and `./design.md#x` citations from files directly in `docs/` (docs/roadmap.md) are checked; tests for broken, valid, no double report, and `../design.md#` left alone — `.agent/scripts/check_design_anchors.sh:291`
+
+Tests: `test_design_anchors.sh` 46 passed (was 33; the new cases fail against the checker at `a88a4df`), also passing with `mawk` as `awk`; `run_script_tests.sh` all 31 suites passed; the checker passes on the real tree. Boxes in the source entry were ticked by hand: `review_progress.sh check` only takes an Integrated Review or Local Review (Pre-Push) as source. Not done: the `check-design-anchors` hook's `files:` filter does not include the checker script itself, so a checker-only commit skips the hook (it ran by hand here); changing `.pre-commit-config.yaml` is left to the owner.
