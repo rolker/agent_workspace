@@ -948,4 +948,18 @@ Change log: two rows of 2026-10-12 appended (706 and 707 lines). Pre-commit hook
 ### Findings
 - [x] (must-fix) `merge` entry rule is incomplete: a project PR with a gap and no flag also records `## Merge (report-only)` (gate report-only by default there, `merge_pr.sh:916-931`); a relaxed flag with no gap records nothing. Contradicts design.md's own Records bullet (gate report-only for project PRs). Cross-confirmed: Copilot, Claude adversarial, lead — `docs/design.md:414`
 - [x] (suggestion) Rules row lists "work plans" as a history exception and attributes all exceptions to the 2026-10-09 owner decision; the plan's boundary (`plan.md:468-472`) names code-origin comments, fixtures, ADRs, roadmap and `tools/ros-manifest/` prose, not work plans — label work plans as the 2026-10-12 addition or drop them — `docs/design.md:154`
-- [ ] (suggestion) The edited example keeps `mission_manager` beside synthetic `sonar_msgs`; it is an existing mention of a public repository's package, so allowed, but a synthetic name would match "examples use synthetic names" (optional) — `.claude/skills/review-plan/SKILL.md:359`
+- [x] (suggestion) The edited example keeps `mission_manager` beside synthetic `sonar_msgs`; it is an existing mention of a public repository's package, so allowed, but a synthetic name would match "examples use synthetic names" (optional) — `.claude/skills/review-plan/SKILL.md:359` (deferred: owner decision 2026-10-12: keep mission_manager, an existing mention of a public repository's package, which the rule allows)
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 09:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-335 at `b84762a`
+**Addressed**: Local Review (Pre-Push) at `3dc4de5` (2026-10-12 09:12 -04:00)
+**Commits**: 57919ba, b84762a
+
+### Actions
+- [x] (must-fix) `merge` writes an entry only when the gate finds a gap and does not refuse it (a relaxing flag, or a project pull request); checked against `merge_pr.sh` Step 1.5 (lines 909-931, comment at 642); change-log row added (708 lines); the earlier 2026-10-12 row is left as history — `docs/design.md:414`
+- [x] (suggestion) Rules row credits work plans as history to the owner's 2026-10-12 decision; change-log row added (709 lines) — `docs/design.md:154`
+- [x] (suggestion) `mission_manager` kept in the review-plan example — `.claude/skills/review-plan/SKILL.md:359` (deferred: owner decision 2026-10-12, an existing mention of a public repository's package, which the rule allows)
