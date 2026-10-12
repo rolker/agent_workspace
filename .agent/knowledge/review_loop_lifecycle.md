@@ -47,9 +47,13 @@ via `.agent/scripts/progress_append.sh` and read back via
 
 ## What `run-issue` reads to move on
 
-`.agent/scripts/dispatch_phase.sh next --issue <N> --pr <state>` reads only
+`.agent/scripts/dispatch_phase.sh next --issue <N> --pr <state>` routes on
 the newest `progress.md` entry (plus `--pr`, the one non-timeline input)
-and prints an `action=` token. The routing key is the entry's `base_type`
+and prints an `action=` token. It reads earlier entries for two things
+only: `round_count()` counts the completed `## Local Review (Pre-Push)`
+entries on the branch, and `skill_for()` looks for an earlier complete
+`## Implementation` to tell a failed address-findings pass from a failed
+implement pass. The routing key is the entry's `base_type`
 and its fields — never adjacency to the entry before it. Two routing rules
 worth remembering because they read as exceptions:
 

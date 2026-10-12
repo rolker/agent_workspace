@@ -671,3 +671,449 @@ Carried forward, not re-listed: `tools/ros-manifest/` real-name prose is owner-d
 
 ### Findings
 - [ ] No issues found. LGTM. (Copilot's two PR findings are resolved at fcafa3c and bdab476; external reviewers' round findings were checked against dispatch_phase.sh and lock.sh and are false positives.)
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 12:56 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `1b561b8`
+
+Revision 7 of the phase-3 plan, applying owner decisions of 2026-10-09 after the revision 6 approval: PR A is recorded as merged (#377, 249a8d0) with what it landed; C1 is decided (register only in PR B, a drifted ADR gets standing "superseded in practice", no ADR file edited, supersession later one at a time); C6 is decided (the eight phase names are not glossary entries, the settled list of 15 terms with the owner's definitions sits in row 16, WIP limit and appetite left out). The two accepted round-5 suggestions are folded in (register rows for ADRs with no section link to the register itself; sections link only to already-committed sections, the register last). The plan's closing section lists what changed per item.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 13:59 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `0d7ea07`
+
+Revision 8 of the phase-3 plan, applying two owner decisions of 2026-10-09 after the revision 6 approval. C2 (workspace as a registered project, #295): stays open as a pointer; row 7 gains an inventory of where the workspace path differs from the registered-project path (8 script rows) and a classification of the 12 adapter verbs (3 no-op, 5 thin wrapper, 4 real), so #295 is decided by reading it after the ADR-0016 acceptance run. C3 (where an issue's work plan and progress timeline live): lands in row 8 (Worktrees); Now is records committed in the project repo on the feature branch; Target is two per-project registry settings, location and tracking, with derived defaults, three mechanisms and one source-of-truth rule, tested against a colleague's single-repo project. The Now block also shows a gap found while checking: merge_pr.sh anchors the gate's timeline lookup at the legacy project/ checkout. Both questions move to Decided; the plan's closing section lists what changed per item.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 14:52 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `16283cc`
+
+Revision 9 of the phase-3 plan, applying the owner's A-group decisions of 2026-10-09 ("Go for group A") and citing issue #379. A1: every section carries the label Now, also with no Target. A2: the admission rule is the opening paragraph of "The design"; How it works stays first and unencumbered. A3: the Rules table gets the enforced-by column (hook, script, CI, review only, nothing). A4: no per-section dates; the register's Re-examined column is the checked-date and PR C adds one line to audit-workspace step 2 (the skill's "Report, don't fix" guideline gets a one-cell exception). A5: Instruction layers is a real section with status proposed; the tree pointer is dropped. #379 is cited as the tracker of the merge gate's legacy-path timeline lookup (its one-line fix does not wait for the records resolver); the roadmap gets no row for it. Only B1, B2, C4 and C5 remain open. The plan's closing section lists what changed per item.
+
+## Implementation
+**Status**: partial
+**When**: 2026-10-09 15:40 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `16283cc`
+**Branch**: feature/issue-335 at `46794b3`
+
+### Summary
+PR B, commit 1 of the phase-3 plan (revision 9): the design-anchor checker, its pre-commit hook and its script-tests suite. Tooling only: `docs/design.md`, `AGENTS.md`, `CLAUDE.md` and every section are untouched. Remaining PR B commits (sections, register, glossary, deletions, guide row) are not started; no push.
+
+### Commits
+- 46794b3 `check_design_anchors.sh`, the `check-design-anchors` hook (placed before `validate-script-tests`, `files:` the eight paths of Wire-in 6 including `docs/decisions/`; hook approved by the owner 2026-10-09, B4) and `test_design_anchors.sh`
+
+### Tests
+`run_script_tests.sh`: all 31 suites passed (also through the `validate-script-tests` hook on the commit); `test_design_anchors.sh` has 26 cases (fixtures (a) to (g) plus slug, fence, scope, usage and `DESIGN_ANCHORS_ROOT` cases) and passes with gawk and mawk; `test_script_tests_hook_scope.sh` passes with no ROOT_READERS entry. The checker exits 0 on this repo (no `docs/design.md#` citation and no register heading exist yet). shellcheck (style severity) clean on both scripts.
+
+### Deviations from the plan
+- Guard (a) and guard (b) are both live only when the register heading AND `docs/decisions/` exist, as Wire-in 6 words it; a register heading with no ADR directory leaves both off.
+- In-file `](#...)` links are matched up to the closing `)`; an all-digit fragment or one containing `<` is ignored (not only the empty `#<section>` form), so `[y](#<slug>)` placeholders do not fail. Links inside fenced code in design.md are not links; citations in fenced code of the citing files still count.
+- The hook's `files:` line exceeds yamllint's 120 characters, so it carries a `yamllint disable-line` comment rather than being split.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-09 15:21 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `aa5765f`
+
+Revision 10 of the phase-3 plan, applying one owner decision of 2026-10-09 about writing order. The owner does not write "How it works" first: the first section commit creates `# How it works` as a stub (heading plus "Written last; see the change log.") so the anchor exists, the other sections are written in table order, and an agent drafts How it works last from the fact list and the owner's recorded phrasings only, with no new ideas, for the owner to edit when he has bandwidth. Process step 2, the PR B commit order, row 1 and Estimated Scope are reworded; PR B is written in two dispatches (rows 1 to 9, then rows 10 to 16 and the draft). Nothing else changes.
+
+## Implementation
+**Status**: partial
+**When**: 2026-10-09 15:34 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `aa5765f`
+**Branch**: feature/issue-335 at `b9d689a`
+
+### Summary
+PR B part 1: the skeleton and rows 3 to 9 of the section table in `docs/design.md` (Purpose, Documentation layers, Rules, Sessions and roots, Registry and adapters, Worktrees, Review loop and timeline), one commit per section, after plan revision 10 (How it works is a stub first and drafted last). The document is 446 lines. Rows 10 to 16 (Merge gate, Identity, Instruction layers, Decision register, Open questions content, Change log content, Glossary) and the How it works draft are part 2. No push.
+
+### Commits
+- aa5765f plan revision 10; f413beb its Plan Authored entry
+- 5007c8d skeleton (stub, The design opening and Status key, change log)
+- 2edd550 Purpose; fe8ef6d Documentation layers; bf0f050 Rules
+- 73e7472 Open questions, started (OQ-1)
+- b884c28 Sessions and roots (OQ-2); d128f0a Registry and adapters (C4)
+- e5217b9 Worktrees; b9d689a Review loop and timeline (C5; review guide work-plan row now names this section)
+
+### Deviations from the plan
+- The Open questions section was started early (own commit, before Sessions) so gaps found while writing had a place; new sections are inserted before `## Open questions`, so part 2's rows 10 to 13 go in the same place. New IDs OQ-1 and OQ-2; the plan's C4 and C5 keep their IDs.
+- Rules: the plan listed "issue number matches the branch" as a hook. `verify-issue-branch.py` only prints the issue and always returns 0, so the row says `nothing`. Four hooks that read local state are skipped in CI (`SKIP` in validate.yml); the column's check cell says so. Added rows: hooks not skipped (CI), adapter contract (hook), design anchors (hook), no project names, Ask First (review only), PR signature (script), secrets (nothing).
+- Sessions and roots has two Target blocks, `decided, not built` (registry-only discovery, register_project.sh, workspace hosts no project, memory) and `open` (#295 pointer), because one block may hold one status.
+- The review guide's work-plan row edit (plan line 71) went into the Review loop commit, the section it now names.
+- Review loop and timeline keeps three `(candidate)` Target lines for the owner to accept or drop; the Status key does not mention the marker.
+- The Change log section has no Now block yet (its content is part 2). Sections over 60 lines (Sessions 63, Registry 83, Worktrees 80, Review loop 70) carry the plan's question answered in their change-log row.
+- Local commits for Purpose, Rules, Open questions, Sessions and Registry were amended before the checker ran at the next commit (unpushed, wording only).
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-09 15:43 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-335/plan.md` at `aa5765f`
+**Branch**: feature/issue-335 at `5ac0fc5`
+
+### Summary
+PR B part 2: rows 10 to 16 of the section table and the How it works draft, finishing the content of `docs/design.md` (688 lines). With part 1 (5420953) the PR B content is complete. Not done, by design: PR C (skills, roadmap, README pointer), the with/without test of process step 4, and the owner's edit of the How it works draft. No push.
+
+### Commits
+- 3cbffa5 Merge gate; eceeb89 Identity; d91ea1e Instruction layers (all `proposed`)
+- fc74627 Decision register (17 rows; both checker guards live from here, checked by deleting a row in a scratch copy: exit 1)
+- 9281306 Open questions table finished (OQ-1 to OQ-5, C4, C5); c92402d Change log Now block
+- d07b25a Glossary (15 entries); 5ac0fc5 How it works, agent draft from the fact list, marked in the change log
+
+### Checks
+`check_design_anchors.sh` exit 0 at every commit and at HEAD; `make lint` exit 0 (all 20 hooks passed, including the anchors hook and the script-tests suite); no private project name in `docs/design.md`; no `docs/design.md#` self-citation.
+
+### Superseded in practice (register rows, for the owner one at a time, C1-c)
+ADR-0002 (project worktree location), ADR-0011 (discovery order; 12 verbs), ADR-0013 (the dispatched implement pass writes `## Implementation`, there is no implement skill), ADR-0014 (`implement` is dispatched since #314, not inline). No ADR file was edited. The coordinator named three; ADR-0014 is a fourth found while checking the register.
+
+### Deviations from the plan
+- Instruction layers: the four layers are one `proposed` block with the sizes as citations; no budget number is set.
+- Register: carrying sections for ADRs the plan does not list: 0004 and 0005 link Rules, 0008 links Documentation layers, 0017 links The design. Standing `in force` for the `not yet` rows is read from each ADR's Status line, not re-examined, and the register says so.
+- Open questions gains OQ-3 (home for "healthy" and measures), OQ-4 (instruction budget) and OQ-5 (server-side merge gate). B1 and B2 stay out as wire-in questions.
+- Identity text stays on ephemeral identity; the persistent (container) identity of AI_IDENTITY_STRATEGY.md is not described.
+- Seen and not acted on: ADR-0007's examples describe ROS layer setup that this workspace's Makefile does not have (register says `not yet`).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-09 16:05 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-335 at `5500dc0`
+**Base**: 071a03f (PR B scope: checker commit 46794b3 through 5500dc0)
+**Depth**: Standard (reason: governance docs, .pre-commit-config.yaml, scripts and tests)
+**Must-fix**: 10 | **Suggestions**: 14
+**Round**: 4 | **Ship**: continue — round 4: 10 must-fix is high; another independent read warranted
+
+### Findings
+- [x] (must-fix) "`dispatch_phase.sh next` reads only the newest entry" is false: `round_count()` reads every earlier pre-push review and `skill_for()` earlier Implementation entries; say it routes on the newest entry (same wrong sentence is in review_loop_lifecycle.md) — `docs/design.md:411`
+- [x] (must-fix) Table 2 `setup` row cites "`setup-dev` and `git-bug` stamps (`Makefile` header, line 98)"; line 98 is `setup: $(STAMP)/project.done $(STAMP)/git-bug.done`, the header lists setup-dev.done, git-bug.done, project.done — `docs/design.md:277`
+- [x] (must-fix) "each run by a fresh sub-agent" / "Each phase runs in a fresh sub-agent" omits that a repeat phase may resume the earlier agent (review_loop_lifecycle.md line 77, run-issue step 4a, ADR-0014 #314) — `docs/design.md:11` and `docs/design.md:415`
+- [x] (must-fix) "a merge that does not end merged goes to `merge-refused`" is too broad: only a run that recorded a merge entry re-routes (run-issue step 11); line 475-476 says it correctly — `docs/design.md:403`
+- [x] (must-fix) All four gate flags are said to be passed only on the owner's answer per run-issue step 11, which lists only `--report-only`, `--no-wait` and `--allow-pending-review` — `docs/design.md:458`
+- [x] (must-fix) "`progress.md` is 726 lines (`wc -l`, 2026-10-09)"; the file is 782 lines at the reviewed head — `docs/design.md:442`
+- [x] (must-fix) Checker closes a fence on any line starting with the fence characters, even with an info string; probe: "```md / ```bash / more / ``` / [x](#nope)" exits 0 with the broken link unseen — `.agent/scripts/check_design_anchors.sh:140`
+- [x] (must-fix) A punctuation-only heading (`## !!!`) gives an empty slug, `SLUGS[""]` fails with "bad array subscript" and the checker still exits 0; handle empty slugs and test it — `.agent/scripts/check_design_anchors.sh:183`
+- [x] (must-fix) Heading lines `next` before link extraction, so `## [See](#gone)` is never checked; probe exits 0 — `.agent/scripts/check_design_anchors.sh:157`
+- [x] (must-fix) Three `Proposed (candidate)` bullets remain; the plan says each is accepted or dropped by the owner and no marker survives into the final text (owner call) — `docs/design.md:437`
+- [ ] (suggestion) Register guard (b) compares only a row count to the ADR file count; duplicate or non-ADR linked rows can satisfy it; match each docs/decisions/NNNN to a row — `.agent/scripts/check_design_anchors.sh:242`
+- [ ] (suggestion) Guards are off whenever no heading slugs to `decision-register`; now that the register exists, a rename switches them off silently — `.agent/scripts/check_design_anchors.sh:231`
+- [ ] (suggestion) `slug()` keeps `_` but `ANCHOR_RE` rejects it, so such a heading can never be cited; link titles (`](#x "t")`) and inline-code links give false positives; GitHub `#L42` permalinks fail as malformed — `.agent/scripts/check_design_anchors.sh:130`
+- [ ] (suggestion) Test gaps: tilde fences, closing #s, info-string closer, link in heading, empty slug, underscore heading, `\|` cell — `.agent/scripts/tests/test_design_anchors.sh`
+- [x] (suggestion) ADR-0011 register row cites "12 verbs, not 10" as drift, but ADR-0011's own Status already says "now 12 verbs"; only the resolution order is real drift — `docs/design.md:569`
+- [x] (suggestion) ADR-0012 row links `#worktrees`, which never cites ADR-0012 or the two verbs (they are under Registry and adapters) — `docs/design.md:570`
+- [ ] (suggestion) Instruction layers cites `prior-art-comparison-2026-10-08/summary.md` and `prior-art-alignment-agent-frameworks.md`, which exist only under the gitignored `.agent/scratchpad/` (.gitignore:38) — `docs/design.md:535`
+- [ ] (suggestion) Glossary "convergence" ("each finds fewer must-fix items than the last") differs from the `review_progress.sh verdict` rule (zero, or round >= 2, <= 2, not rising, mechanical); owner-settled wording, so flag only — `docs/design.md:654`
+- [x] (suggestion) Gate (a) names `Local Review` or `Integrated Review`; `merge_pr.sh:718` also takes `External Review` as newest — `docs/design.md:462`
+- [x] (suggestion) Table 1 `worktree_list.sh` row omits the second recognised path `*/.workspace-worktrees/*` (worktree_list.sh:149) — `docs/design.md:263`
+- [x] (suggestion) "grep finds only help text and docstrings" also hits the `single_project` default at `.agent/scripts/adapter:73` — `docs/design.md:235`
+- [ ] (suggestion) The `open` rule says an open block holds no question text, but the Open questions section is itself an `open` block holding the table; add the exception to the Status key — `docs/design.md:68`
+- [x] (suggestion) Change-log row says the Decision register section is 40 lines; it is 46 (539-584) — `docs/design.md:631`
+- [ ] (suggestion) "Plan-level decisions that never got an ADR: none are listed" departs from plan row 13 without a recorded reason — `docs/design.md:577`
+
+## Implementation
+**Status**: partial
+**When**: 2026-10-09 16:12 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-335 at `625c987`
+**Addressed**: Local Review (Pre-Push) at `5500dc0` (2026-10-09 16:05 -04:00)
+**Commits**: 1e852db, ec38c57, 625c987
+
+### Actions
+- [x] Routing wording (newest entry; earlier entries for round count and failed-Implementation skill) — `docs/design.md:413`, `.agent/knowledge/review_loop_lifecycle.md:50`
+- [x] `setup` row: line 98 is `setup: $(STAMP)/project.done $(STAMP)/git-bug.done`, header lists three stamps — `docs/design.md:279`
+- [x] Repeat-phase resume exception (run-issue 4a) — `docs/design.md:11`, `docs/design.md:419`
+- [x] `merge-refused` only after the run recorded a merge entry — `docs/design.md:405`
+- [x] Gate flags: the three step 11 lists; `--force-unreviewed` described as the fourth bypass — `docs/design.md:463`
+- [x] progress.md line count recomputed, 820 at 57cfca4 (`wc -l`, 2026-10-09) — `docs/design.md:447`
+- [x] Checker: a fence closes only on a bare fence line; suite cases for a bash-tagged line and tilde fences — `.agent/scripts/check_design_anchors.sh:142`
+- [x] Checker: an empty slug is skipped, awk failure exits 2, `${LINKS[@]}` is set -u safe; suite case — `.agent/scripts/check_design_anchors.sh:165`
+- [x] Checker: heading lines keep link extraction; suite case — `.agent/scripts/check_design_anchors.sh:165`
+- [x] ADR-0011 register row: only the resolution order is drift — `docs/design.md:575`
+- [x] ADR-0012 row now links Registry and adapters — `docs/design.md:576`
+- [x] Gate (a) names `External Review` — `docs/design.md:468`
+- [x] Table 1 `worktree_list.sh` row names `*/.workspace-worktrees/*` — `docs/design.md:265`
+- [x] `adapter:73` default named — `docs/design.md:238`
+- [x] Register section length 46 — `docs/design.md:637`
+- [ ] Three Review-loop proposals (owner decision pending in this entry's commits): the owner's decision to keep all three as plain `Proposed:` lines was relayed mid-pass; the edit is made in the working tree but not committed because the commit was denied by the permission classifier — `docs/design.md:442`
+- [ ] Partly done: `slug()`/`ANCHOR_RE` now agree on `_` and the suite covers closing #s, link in heading, empty slug, underscore heading; link titles, inline-code links, `#L42` permalinks and the `\|` cell case are not addressed — `.agent/scripts/check_design_anchors.sh:130`, `.agent/scripts/tests/test_design_anchors.sh`
+- [ ] Not addressed (outside the brief): register guard (b) row-to-ADR matching, guards switching off on a renamed register heading — `.agent/scripts/check_design_anchors.sh:231`, `:242`
+- [ ] Not addressed (left for the owner): scratchpad citations, glossary "convergence" wording, open-block rule vs Open questions, plan-level decisions line — `docs/design.md:535`, `:654`, `:68`, `:577`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-09 16:40 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-335 at `5691639`
+**Base**: 071a03f (PR B scope: checker commit 46794b3 through 5691639)
+**Depth**: Standard (reason: governance docs, .pre-commit-config.yaml, scripts and tests; whole-branch classification)
+**Must-fix**: 0 | **Suggestions**: 14
+**Round**: 5 | **Ship**: recommended — no must-fix findings
+
+### Findings
+- [ ] (suggestion) Rules table lacks the owner's standing rule that the owner decides every merge; it is written only in a `merge_pr.sh` comment, not in `docs/principles.md` or the Rules section; add a Rules row (enforced by: `review only` or `nothing`) — `docs/design.md:139`
+- [ ] (suggestion) "`progress.md` is 820 lines" was true when written and is 850 now; the file grows with each entry, so say "more than 800" — `docs/design.md:447`
+- [ ] (suggestion) Fence opener accepts any indentation (a 4-space-indented fence is code in CommonMark, but a fence nested in a list item is valid); Codex and Copilot flagged it, so decide the rule and test it — `.agent/scripts/check_design_anchors.sh:143`
+- [ ] (suggestion) An empty ATX heading (`##`) does not reset the register-section boundary, so later anchored rows can count toward guard (b) — `.agent/scripts/check_design_anchors.sh:162`
+- [ ] (suggestion) Duplicate slugs: headings `A`, `A`, `A-1` give `a`, `a-1`, `a-1`; GitHub gives the third `a-1-1` — `.agent/scripts/check_design_anchors.sh:166`
+- [ ] (suggestion) The external-citation `grep` discards its exit status and stderr, so an unreadable citer passes silently — `.agent/scripts/check_design_anchors.sh:253`
+- [ ] (suggestion) Open, known: register guard (b) counts rows, not one row per ADR number — `.agent/scripts/check_design_anchors.sh:242`
+- [ ] (suggestion) Open, known: guards switch off if the `decision-register` heading is renamed — `.agent/scripts/check_design_anchors.sh:231`
+- [ ] (suggestion) Open, known: link titles, inline-code links and `#L42` permalinks give false positives; test gaps for tilde fences, closing #s, `\|` cells — `.agent/scripts/check_design_anchors.sh:130`
+- [ ] (suggestion) Open, known: Instruction layers cites two prior-art notes that exist only in the gitignored scratchpad — `docs/design.md:540`
+- [ ] (suggestion) Open, known: "Plan-level decisions that never got an ADR: none are listed" departs from plan row 13 without a recorded reason — `docs/design.md:582`
+- [ ] (suggestion) Open, known: the `open` block rule says no question text, but the Open questions section is itself an `open` block holding the table — `docs/design.md:68`
+- [ ] (suggestion) Open, known: glossary "convergence" wording differs from the `review_progress.sh verdict` rule (owner-settled wording) — `docs/design.md:659`
+- [ ] (suggestion) Open, known: the ADR-0011 and register wording otherwise fine; Review-loop Target bullets 2 and 3 repeat the Worktrees Target (lookup) and could shrink to pointers — `docs/design.md:445`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-09 17:05 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Owner decisions 2026-10-09 for PR B (pre-push review round 5, approved, reviewed at `5691639`, entry recorded in `d0d7dcc`).
+
+- Publish PR B now (Part of #335; PR C follows).
+- Two suggestions folded in before publishing: the Rules row for the owner deciding every merge (`803ae39`), and the `progress.md` size stated as "more than 800 lines" (`fb422b8`).
+- The checker edge cases from Codex and Copilot (fence indentation, empty heading and register boundary, duplicate-slug numbering, citation grep exit status) go to a follow-up issue, not this PR.
+- Stopping point for the weekend: the PR is open and unmerged; the merge decision stays with the owner.
+
+The last checkbox of the round-5 review entry (Review-loop Target bullets 2 and 3 as pointers) is unverified filler per the reviewer and is not a finding.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 08:42 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `be87238`
+**Sources**: 2 (Copilot R1 @ `be87238`, CI rollup); no local review entry covers this head (round 5 approval and earlier rounds are stale by code changes since)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [x] (should-fix, Copilot) "How it works" says each of the eight phases runs in a fresh sub-agent and leaves one entry; `publish` and `merge` are host steps (`run-issue/SKILL.md` steps 7 and 11; `dispatch_phase.sh` dispatches only review-issue, plan-task, review-plan, implement, review-code, triage-reviews, address-findings), `mode=inline` runs a phase in the host (step 5), `publish` has no entry type and a passing merge gate records nothing. Same overstatement in the Review loop bullet heading "One entry per phase" (line 408) and "Each phase runs in a fresh sub-agent" (line 420) — `docs/design.md`
+- [x] (should-fix, Copilot) "How it works" Projects paragraph states per-project footprint choice ("records go into a project only if the user chose that") as current; Worktrees Now says records are always committed in the owning repository and the choice is a proposed Target (line 28) — `docs/design.md`
+- [x] (should-fix, Copilot) Sessions and roots Now says a session runs in one of three places including the user tier in `~/.claude`; ADR-0016 decision 1 and the next bullet name two session roots, the user tier is the layer injected into them (line 165) — `docs/design.md`
+- [x] (should-fix, Copilot) Worktrees Records says plan and timeline are committed in the project repository; for a workspace issue (this one) they are in the workspace repository; line 403 already states the owning-repository rule (line 330) — `docs/design.md`
+- [x] (minor, Copilot) Rules row "Nothing committed to the workspace names a particular project" is broader than the boundary decided 2026-10-09 (plan lines 468-472: real names stay in code-origin comments, test fixtures, ADRs and roadmap as history, `tools/ros-manifest/` prose); design.md states that boundary nowhere. Qualify the row with the boundary; the guide row it cites says the same broad thing (line 152) — `docs/design.md`
+- [x] (minor, Copilot) Process step 1 says "this is revision 9" under a revision 10 header (line 56) — `.agent/work-plans/issue-335/plan.md`
+
+### False positives
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 09:05 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `9e67ca6`
+**Addressed**: Integrated Review at `be87238` (2026-10-12 08:42 -04:00)
+**Commits**: `978bbd5`, `bdc2006`, `9e67ca6`
+
+### Actions
+- [x] F1: `publish` and `merge` are host steps; `publish` writes no entry, `merge` one only when its gate is relaxed; a failed phase can run in the host (`mode=inline`). How it works paragraph and the Review loop bullets "One entry per dispatched phase" and "Each phase but `publish` and `merge` runs in a fresh sub-agent" — `docs/design.md:10`, `docs/design.md:412`, `docs/design.md:426`
+- [x] F2: the per-project footprint is stated as meant, with records today always in the owning repository and the choice proposed under Worktrees — `docs/design.md:24`
+- [x] F3: two session roots; the user tier is the layer injected into them (ADR-0016 decisions 1 and 3) — `docs/design.md:166`
+- [x] F4: records committed in the repository that owns the issue — `docs/design.md:331`
+- [x] F5: Rules row states the 2026-10-09 boundary and the owner's rule of 2026-10-12 (a real name only for a public repository); same clause added to the review guide row "Put each thing at the level it applies to"; `marine_msgs` replaced by synthetic `sonar_msgs` (with `acme/` owner) in the worktree guide and review-plan; `documentation_verification.md` line 5 kept — `docs/design.md:155`, `.agent/knowledge/principles_review_guide.md:22`, `.agent/WORKTREE_GUIDE.md:183`, `.claude/skills/review-plan/SKILL.md:358`
+- [x] F6: process step 1 says revision 10 — `.agent/work-plans/issue-335/plan.md:56`
+
+Change log: two rows of 2026-10-12 appended (706 and 707 lines). Pre-commit hooks passed on each commit, including check-design-anchors and the script-tests suite.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-12 09:12 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-335 at `3dc4de5`
+**Base**: be87238
+**Depth**: Standard (reason: governance-file triggers — principles_review_guide.md, review-plan SKILL.md; 6 files, ~99 lines since be87238)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 6 | **Ship**: continue — round 6: must-fix rising (0 -> 1); the one must-fix is a mechanical wording fix
+
+### Findings
+- [x] (must-fix) `merge` entry rule is incomplete: a project PR with a gap and no flag also records `## Merge (report-only)` (gate report-only by default there, `merge_pr.sh:916-931`); a relaxed flag with no gap records nothing. Contradicts design.md's own Records bullet (gate report-only for project PRs). Cross-confirmed: Copilot, Claude adversarial, lead — `docs/design.md:414`
+- [x] (suggestion) Rules row lists "work plans" as a history exception and attributes all exceptions to the 2026-10-09 owner decision; the plan's boundary (`plan.md:468-472`) names code-origin comments, fixtures, ADRs, roadmap and `tools/ros-manifest/` prose, not work plans — label work plans as the 2026-10-12 addition or drop them — `docs/design.md:154`
+- [x] (suggestion) The edited example keeps `mission_manager` beside synthetic `sonar_msgs`; it is an existing mention of a public repository's package, so allowed, but a synthetic name would match "examples use synthetic names" (optional) — `.claude/skills/review-plan/SKILL.md:359` (deferred: owner decision 2026-10-12: keep mission_manager, an existing mention of a public repository's package, which the rule allows)
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 09:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-335 at `b84762a`
+**Addressed**: Local Review (Pre-Push) at `3dc4de5` (2026-10-12 09:12 -04:00)
+**Commits**: 57919ba, b84762a
+
+### Actions
+- [x] (must-fix) `merge` writes an entry only when the gate finds a gap and does not refuse it (a relaxing flag, or a project pull request); checked against `merge_pr.sh` Step 1.5 (lines 909-931, comment at 642); change-log row added (708 lines); the earlier 2026-10-12 row is left as history — `docs/design.md:414`
+- [x] (suggestion) Rules row credits work plans as history to the owner's 2026-10-12 decision; change-log row added (709 lines) — `docs/design.md:154`
+- [x] (suggestion) `mission_manager` kept in the review-plan example — `.claude/skills/review-plan/SKILL.md:359` (deferred: owner decision 2026-10-12, an existing mention of a public repository's package, which the rule allows)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 09:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Recorded late: this answer was given before the Implementation entry at 3dc4de5, and the host did not write it then. Answers to the triage of Copilot's review at be87238 (Integrated Review, six findings F1-F6).
+
+On F5 (real project names), after the host proposed the Rules row text "history (ADRs, roadmap, work plans), code-origin comments, test fixtures, tools/ros-manifest/ prose", synthetic names for marine_msgs in WORKTREE_GUIDE.md and review-plan SKILL.md, and keeping the documentation_verification.md origin link:
+
+> It's all fine except going forward, only reference projects if they are public.
+
+To "start the six fixes (address-findings in a background agent, re-review, back to the owner before any push)?" and "add the public-only clause to the review guide row 'Put each thing at the level it applies to'?":
+
+> yes to both.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 09:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Recorded late: this answer was given before the Implementation entry at 49064bd. Pre-push round 6 (at 4079641) reached MAX_ROUNDS with one must-fix (M1, merge-entry wording) and two suggestions. Host recommendation: fix M1 and S1, leave S2 (mission_manager, a public repository's package), then push and let the PR-mode review replace another local round.
+
+> go ahead with your recommendation
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 09:28 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #380 at `306564b`
+**Depth**: Deep (reason: whole-PR diff +2138/-344 over 10 files, governance files touched; focus be87238..306564b)
+**Must-fix**: 1 | **Suggestions**: 5
+
+### Findings
+- [x] (must-fix) Anchor checker fence rule accepts any indentation: a 4+-space-indented ``` line (indented code, not a fence) opens a fence that never closes, so every later heading, link and the register guards are skipped and the hook passes silently; cap the opener at 3 spaces and/or report a fence still open at EOF, with a regression test (Codex + Copilot, cross-confirmed) — `.agent/scripts/check_design_anchors.sh:143`
+- [x] (suggestion) Duplicate-heading suffixes are counted per raw slug, not against generated ones: `A`, `A`, `A-1` gives `a`, `a-1`, `a-1`, so a valid `#a-1-1` is rejected (fails loud); reserve every emitted slug (Codex + Copilot + Gemini) — `.agent/scripts/check_design_anchors.sh:166`
+- [x] (suggestion) Glossary "progress timeline: the per-issue file where every phase writes an entry" now contradicts the fixed sentences (`publish` writes none, `merge` only when its gate is relaxed); the definition is the owner's C6 wording, so his call — e.g. "each dispatched phase" — `docs/design.md:679`
+- [x] (suggestion) `merge` "writes one" entry in progress.md, but `_gate_record` falls back to a PR comment when no worktree can take the commit (merge_pr.sh 834-850); a short qualifier would make it exact — `docs/design.md:413`
+- [x] (suggestion) Records parenthetical names workspace and project issues only; package-repo issues (`--issue owner/repo#N`) are a third owner, and merge_pr.sh says package worktrees carry no issue timeline (~line 843) — `docs/design.md:332`
+- [x] (suggestion) Citations are matched only as `docs/design\.md#`; a relative `design.md#x` from `docs/roadmap.md` (a listed citer) is skipped silently; none exist today (Gemini) — `.agent/scripts/check_design_anchors.sh:259`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 09:49 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `6e2d16c`
+**Addressed**: Local Review at `306564b` (2026-10-12 09:28 -04:00)
+**Commits**: `046f567`, `4d8d15c`, `e8337f3`, `b7fc22f`, `6bd9c80`, `6e2d16c`
+
+### Actions
+- [x] (must-fix) A backtick or tilde line indented more than 3 spaces past its list item's content column (0 outside a list) is indented code, not a fence; a closer sits no deeper than its opener could; a fence still open at end of file is a finding. Tests: indented code before a broken link, an unclosed fence, fences in bullet, wide ordered and nested list items, an indented code line under an item, an indented closer in a top-level fence — `.agent/scripts/check_design_anchors.sh:151`
+- [x] (suggestion) Repeated slugs follow GitHub's slugger (first free `-N`): `A`, `A`, `A-1` give `a`, `a-1`, `a-1-1`; test also covers `B-1`, `B`, `B` — `.agent/scripts/check_design_anchors.sh:201`
+- [x] (suggestion) Glossary "progress timeline" now reads "the loop records each step and decision": owner decision 2026-10-12 (option B), revising his C6 wording; change-log row added — `docs/design.md:688`
+- [x] (suggestion) `merge` entry that no worktree on the branch can commit and push is posted on the pull request (`_gate_record`, `merge_pr.sh` 784-850); change-log row added — `docs/design.md:419`
+- [x] (suggestion) Records names the package-repository case: no timeline, gate record on the pull request (`merge_pr.sh` 801, 843); change-log row added — `docs/design.md:334`
+- [x] (suggestion) Relative `design.md#x` and `./design.md#x` citations from files directly in `docs/` (docs/roadmap.md) are checked; tests for broken, valid, no double report, and `../design.md#` left alone — `.agent/scripts/check_design_anchors.sh:291`
+
+Tests: `test_design_anchors.sh` 46 passed (was 33; the new cases fail against the checker at `a88a4df`), also passing with `mawk` as `awk`; `run_script_tests.sh` all 31 suites passed; the checker passes on the real tree. Boxes in the source entry were ticked by hand: `review_progress.sh check` only takes an Integrated Review or Local Review (Pre-Push) as source. Not done: the `check-design-anchors` hook's `files:` filter does not include the checker script itself, so a checker-only commit skips the hook (it ran by hand here); changing `.pre-commit-config.yaml` is left to the owner.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 09:57 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #380 at `a4dd163`
+**Depth**: Deep (reason: 2720 lines over 10 files, governance doc plus a new pre-commit gate; fix round a88a4df..a4dd163 reviewed in focus)
+**Must-fix**: 0 | **Suggestions**: 4
+
+### Findings
+- [ ] (suggestion) A fence on a list-marker line (`- ```text`) is not recognised: its contents are scanned as live headings/links and its closer reads as an opener, giving a false "never closed" finding; test the rest of the marker line for an opener with the item's column as base (Codex, rated must-fix; Claude adversarial) — `.agent/scripts/check_design_anchors.sh:171`
+- [ ] (suggestion) A backtick opener whose info string holds a backtick is inline code, not a fence (CommonMark): a line starting ```` ```x``` is code ```` gives a false "never closed" finding (Claude adversarial, lead reproduced) — `.agent/scripts/check_design_anchors.sh:180`
+- [ ] (suggestion) Fence closer edge cases: a trailing tab (`[ \t]*$` allowed by CommonMark) keeps the fence open to EOF (false finding); a closer indented less than the item's content column still closes a list-item fence (rare) — `.agent/scripts/check_design_anchors.sh:157`
+- [ ] (suggestion) Headings inside an HTML comment (`<!--` ... `-->`) are registered as anchors, so a link to a commented-out heading passes silently; outside the fix range (unchanged heading scan), none in design.md today (Codex) — `.agent/scripts/check_design_anchors.sh:191`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 09:59 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `a4dd163`
+**Sources**: 4 (Local Review @ `a4dd163` covering via bookkeeping at `70cc024`, Copilot R2 @ `306564b` and R3 @ `a4dd163` with no comments, CI rollup)
+**Cross-source confirmations**: 1 (list-marker fence opener: Codex and the Claude adversarial reviewer inside the Local Review)
+**CI**: pending (pull_request Lint run failed on the known flaky h17/h18 fixture, #361; the push run on the same SHA passed; failed job re-run)
+
+### Findings
+- [x] (should-fix, owner-approved 2026-10-12) Add `.agent/scripts/check_design_anchors.sh` to the `check-design-anchors` hook's `files:` filter, so a checker-only commit runs the checker on the real tree (raised by the fixer and Gemini) — `.pre-commit-config.yaml`
+- [x] (cross-confirmed, suggestion) A fence opened on a list-marker line is not recognised (false "never closed"; fails loudly) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+- [x] (suggestion, Local Review) Backtick opener with a backtick in its info string read as a fence (fails loudly) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+- [x] (suggestion, Local Review) Fence closer with a trailing tab; closer indented less than the item's content column (fails loudly / rare) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+- [x] (suggestion, Codex) Headings inside HTML comments registered as anchors (silent, but design.md has no HTML comments) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+- [x] (note, Claude adversarial) `## _Italic_ title` slug mismatch with GitHub (fails loudly, unchanged slug()) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+
+Rule applied (consistent with this timeline's earlier deferral of checker edge cases to a follow-up issue): a checker gap that lets a broken link pass silently in today's files is fixed in this PR; one that fails loudly, or cannot occur in today's files, goes to #381.
+
+### False positives
+- (Copilot) Unquoted array expansion at `check_design_anchors.sh:273` — `${LINKS[@]+"${LINKS[@]}"}` quotes each element inside the alternate expansion; no word splitting occurs.
+- (Copilot) ADR guard counts register rows instead of matching each ADR — the planned design (plan Wire-in 6), approved in plan review.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 10:03 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #380 at `be04425`
+**Addressed**: Integrated Review at `a4dd163` (2026-10-12 09:59 -04:00)
+**Commits**: be04425
+
+### Actions
+- [x] Add `.agent/scripts/check_design_anchors.sh` to the `check-design-anchors` hook's `files:` filter — `.pre-commit-config.yaml`
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 10:04 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Verdict**: approved
+
+**PR**: #380 at `1d54c8e`
+**Base**: origin/main
+**Depth**: Light (reason: re-review of a4dd163..1d54c8e only; one regex alternative in a pre-commit `files:` filter; the whole PR was approved at Deep depth at `a4dd163`)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: ready
+
+Specialists: static (pre-commit `check-design-anchors` and `yamllint` --all-files passed; checker exit 0). Cross-model reviewers: skipped (Light depth; a one-alternative filter change that cannot alter checker behaviour).
+
+### Findings
+- [x] Regex anchored and escaped correctly: `\.agent/scripts/check_design_anchors\.sh$` matches the checker, not `.sh.bak`, a nested copy, or `tests/test_design_anchors.sh` (the last is deliberate: tests are covered by validate-script-tests) — `.pre-commit-config.yaml:67`
+- [x] The `# yamllint disable-line rule:line-length` comment sits on the line directly above and still applies; yamllint passes — `.pre-commit-config.yaml:66`
+- [x] No doc lists the hook's trigger files; `docs/design.md:152` names the hook and script only, so nothing disagrees
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 10:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `fbe11ea`
+**Sources**: 3 (Local Review light @ `1d54c8e` approved, recorded at `fbe11ea`; Copilot R4 @ `1d54c8e` with no comments; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+
+No open findings. The only change since the Integrated Review at `a4dd163` is `be04425` (the checker added to its hook's `files:` filter, owner-approved), reviewed light and approved; `review_progress.sh sources` lists no open local finding and no GitHub comment at this head.
+
+### False positives
