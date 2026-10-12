@@ -413,10 +413,13 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   only place loop state lives: not the conversation, not a lock file. `publish` writes no entry, and
   `merge` writes one only when the gate finds a gap and does not refuse it (a relaxing flag, or a project
   pull request); a gate that passes records nothing (`merge_pr.sh`, Step 1.5; `run-issue/SKILL.md` step
-  11). The directory sits in the repository that owns the issue, on the issue's feature branch
-  ([Worktrees](#worktrees), Records). Entries have a fixed vocabulary and header (`**Status**`,
-  `**When**`, `**By**`, a correlation to an issue, a plan or a commit; ADR-0013), are written by
-  `progress_append.sh`, checked by `_progress_entry.sh` and read by `progress_read.py`.
+  11). When no worktree on the pull request's branch can commit and push that entry (none open, a
+  package worktree, the main tree, no agent identity, the commit or push refused), it is posted as a
+  comment on the pull request instead (`_gate_record` in `merge_pr.sh`). The directory sits in the
+  repository that owns the issue, on the issue's feature branch ([Worktrees](#worktrees), Records).
+  Entries have a fixed vocabulary and header (`**Status**`, `**When**`, `**By**`, a correlation to an
+  issue, a plan or a commit; ADR-0013), are written by `progress_append.sh`, checked by
+  `_progress_entry.sh` and read by `progress_read.py`.
 - **The next step is routed on the newest entry.** `dispatch_phase.sh next` routes on the newest entry
   and, as its one other input, the pull request state; it reads earlier entries for two things only, the
   count of completed pre-push reviews on the branch (`round_count`) and whether a failed `Implementation`
@@ -654,6 +657,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Rules | The project-names row states the 2026-10-09 boundary (history, code-origin comments, test fixtures, `tools/ros-manifest/` prose keep real names; examples and guidance use synthetic ones) and the owner's rule of 2026-10-12, a real name only for a public repository; the review guide row it cites gains the same clause, and the worktree guide and review-plan examples drop a real package name | #335 | 707 |
 | 2026-10-12 | Review loop and timeline | Review fix: `merge` writes an entry when its gate finds a gap and does not refuse it (a relaxing flag, or a project pull request), not whenever a flag is passed, as the first 2026-10-12 row put it | #335 | 708 |
 | 2026-10-12 | Rules | Review fix: the project-names row credits work plans as history to the owner's decision of 2026-10-12, not to the 2026-10-09 boundary, which does not name them | #335 | 709 |
+| 2026-10-12 | Review loop and timeline | Review fix: a `merge` entry that no worktree on the pull request's branch can commit and push is posted as a comment on the pull request (`_gate_record` in `merge_pr.sh`) | #335 | 713 |
 
 ## Glossary
 
