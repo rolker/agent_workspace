@@ -1022,10 +1022,10 @@ Recorded late: this answer was given before the Implementation entry at 49064bd.
 **Commits**: `046f567`, `4d8d15c`, `e8337f3`, `b7fc22f`, `6bd9c80`, `6e2d16c`
 
 ### Actions
-- [x] (must-fix) A backtick or tilde line indented more than 3 spaces past its list item's content column (0 outside a list) is indented code, not a fence; a closer sits no deeper than its opener could; a fence still open at end of file is a finding. Tests: indented code before a broken link, an unclosed fence, fences in bullet, wide ordered and nested list items, an indented code line under an item, an indented closer in a top-level fence — `.agent/scripts/check_design_anchors.sh:150`
-- [x] (suggestion) Repeated slugs follow GitHub's slugger (first free `-N`): `A`, `A`, `A-1` give `a`, `a-1`, `a-1-1`; test also covers `B-1`, `B`, `B` — `.agent/scripts/check_design_anchors.sh:186`
-- [x] (suggestion) Glossary "progress timeline" now reads "the loop records each step and decision": owner decision 2026-10-12 (option B), revising his C6 wording; change-log row added — `docs/design.md:687`
-- [x] (suggestion) `merge` entry that no worktree on the branch can commit and push is posted on the pull request (`_gate_record`, `merge_pr.sh` 784-850); change-log row added — `docs/design.md:416`
+- [x] (must-fix) A backtick or tilde line indented more than 3 spaces past its list item's content column (0 outside a list) is indented code, not a fence; a closer sits no deeper than its opener could; a fence still open at end of file is a finding. Tests: indented code before a broken link, an unclosed fence, fences in bullet, wide ordered and nested list items, an indented code line under an item, an indented closer in a top-level fence — `.agent/scripts/check_design_anchors.sh:151`
+- [x] (suggestion) Repeated slugs follow GitHub's slugger (first free `-N`): `A`, `A`, `A-1` give `a`, `a-1`, `a-1-1`; test also covers `B-1`, `B`, `B` — `.agent/scripts/check_design_anchors.sh:201`
+- [x] (suggestion) Glossary "progress timeline" now reads "the loop records each step and decision": owner decision 2026-10-12 (option B), revising his C6 wording; change-log row added — `docs/design.md:688`
+- [x] (suggestion) `merge` entry that no worktree on the branch can commit and push is posted on the pull request (`_gate_record`, `merge_pr.sh` 784-850); change-log row added — `docs/design.md:419`
 - [x] (suggestion) Records names the package-repository case: no timeline, gate record on the pull request (`merge_pr.sh` 801, 843); change-log row added — `docs/design.md:334`
 - [x] (suggestion) Relative `design.md#x` and `./design.md#x` citations from files directly in `docs/` (docs/roadmap.md) are checked; tests for broken, valid, no double report, and `../design.md#` left alone — `.agent/scripts/check_design_anchors.sh:291`
 
