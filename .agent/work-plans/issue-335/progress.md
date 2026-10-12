@@ -993,3 +993,21 @@ To "start the six fixes (address-findings in a background agent, re-review, back
 Recorded late: this answer was given before the Implementation entry at 49064bd. Pre-push round 6 (at 4079641) reached MAX_ROUNDS with one must-fix (M1, merge-entry wording) and two suggestions. Host recommendation: fix M1 and S1, leave S2 (mission_manager, a public repository's package), then push and let the PR-mode review replace another local round.
 
 > go ahead with your recommendation
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-12 09:28 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #380 at `306564b`
+**Depth**: Deep (reason: whole-PR diff +2138/-344 over 10 files, governance files touched; focus be87238..306564b)
+**Must-fix**: 1 | **Suggestions**: 5
+
+### Findings
+- [ ] (must-fix) Anchor checker fence rule accepts any indentation: a 4+-space-indented ``` line (indented code, not a fence) opens a fence that never closes, so every later heading, link and the register guards are skipped and the hook passes silently; cap the opener at 3 spaces and/or report a fence still open at EOF, with a regression test (Codex + Copilot, cross-confirmed) — `.agent/scripts/check_design_anchors.sh:143`
+- [ ] (suggestion) Duplicate-heading suffixes are counted per raw slug, not against generated ones: `A`, `A`, `A-1` gives `a`, `a-1`, `a-1`, so a valid `#a-1-1` is rejected (fails loud); reserve every emitted slug (Codex + Copilot + Gemini) — `.agent/scripts/check_design_anchors.sh:166`
+- [ ] (suggestion) Glossary "progress timeline: the per-issue file where every phase writes an entry" now contradicts the fixed sentences (`publish` writes none, `merge` only when its gate is relaxed); the definition is the owner's C6 wording, so his call — e.g. "each dispatched phase" — `docs/design.md:679`
+- [ ] (suggestion) `merge` "writes one" entry in progress.md, but `_gate_record` falls back to a PR comment when no worktree can take the commit (merge_pr.sh 834-850); a short qualifier would make it exact — `docs/design.md:413`
+- [ ] (suggestion) Records parenthetical names workspace and project issues only; package-repo issues (`--issue owner/repo#N`) are a third owner, and merge_pr.sh says package worktrees carry no issue timeline (~line 843) — `docs/design.md:332`
+- [ ] (suggestion) Citations are matched only as `docs/design\.md#`; a relative `design.md#x` from `docs/roadmap.md` (a listed citer) is skipped silently; none exist today (Gemini) — `.agent/scripts/check_design_anchors.sh:259`
