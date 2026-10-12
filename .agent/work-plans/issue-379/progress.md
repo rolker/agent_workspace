@@ -244,3 +244,18 @@ Verified: test_merge_pr_gate.sh 106/0 and test_merge_pr.sh 91/0 at the head; thr
 Pre-push review round 1 (49c614f) approved, one suggestion (test comment names "the line-685 guard"; the guard is now at 694, name it `_ci_is_main`). Host recommendation: publish now, fix the comment in the post-push round.
 
 > yes
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 13:47 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #383 at `b2cfe2c`
+**Sources**: 3 (Local Review (Pre-Push) @ `49c614f` covering via bookkeeping; Copilot R1 @ `b2cfe2c`, 1 comment; CI rollup)
+**Cross-source confirmations**: 1
+**CI**: pending
+
+### Findings
+- [ ] (cross-confirmed, suggestion) The test comment calls it "the line-685 guard"; the guard is at merge_pr.sh:694 after the edit. Name it by symbol (the `_ci_is_main` guard) so it cannot go stale — `.agent/scripts/tests/test_merge_pr_gate.sh`
+
+### False positives
