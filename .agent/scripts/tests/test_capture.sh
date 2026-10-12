@@ -174,6 +174,53 @@ run_cap "$WS" "crlf"
 v="$(source "$WS/.agent/scripts/_settings.sh" && settings_get "$WS" run_record)"
 [[ "$v" == "$SB/inbox/runs.txt" ]] && pass "(crlf) run_record key read" || fail "(crlf) run_record='$v'"
 
+# --- 4b. text, link, inbox shapes ---------------------------------------------------------
+printf 'inbox=%s\n' "$INBOX" > "$SETTINGS"
+
+echo "TEST: run through a scripts/ symlink finds the checkout's settings"
+ln -s .agent/scripts "$WS/scripts"
+RC=0
+OUT="$(cd "$SB/outside" && HOME="$SB/home" bash "$WS/scripts/capture.sh" "via link" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(field 4)" == "via link" ]] && pass "(symlink) saved through scripts/" || fail "(symlink) rc=$RC out='$OUT'"
+
+echo "TEST: text starting with - or holding % is written as is"
+run_cap "$WS" -n "100% done %s"
+[[ $RC -eq 0 && "$(field 4)" == "-n 100% done %s" ]] && pass "(text) - and % kept" || fail "(text) rc=$RC field='$(field 4)'"
+
+echo "TEST: an inbox that is a directory is not saved"
+mkdir -p "$SB/inbox/isdir"
+printf 'inbox=%s\n' "$SB/inbox/isdir" > "$SETTINGS"
+run_cap "$WS" "dir thought"
+[[ $RC -eq 1 && "$OUT" == *"not saved: dir thought"* ]] && pass "(dir) exit 1, text printed" || fail "(dir) rc=$RC out='$OUT' err='$ERR'"
+printf 'inbox=%s\n' "$INBOX" > "$SETTINGS"
+
+echo "TEST: lines over 4 KB from parallel callers stay whole"
+big_a="$(head -c 20000 /dev/zero | tr '\0' 'a')"
+big_b="$(head -c 20000 /dev/zero | tr '\0' 'b')"
+before="$(lines_of "$INBOX")"
+for _ in 1 2 3 4; do
+    ( cd "$WS" && HOME="$SB/home" bash "$CAP" "$big_a" >/dev/null 2>&1 ) &
+    ( cd "$WS" && HOME="$SB/home" bash "$CAP" "$big_b" >/dev/null 2>&1 ) &
+done
+wait
+after="$(lines_of "$INBOX")"
+bad="$(tail -n 8 "$INBOX" | awk -F'\t' '$4 !~ /^(a{20000}|b{20000})$/' | wc -l | tr -d ' ')"
+[[ $after -eq $((before + 8)) && "$bad" -eq 0 ]] && pass "(big) eight 20 kB lines intact" || fail "(big) lines $before->$after, $bad mixed"
+
+echo "TEST: a capture waits for another writer's lock"
+if command -v flock >/dev/null 2>&1; then
+    flock -x "$INBOX" sleep 2 &
+    holder=$!
+    sleep 0.3
+    start=$SECONDS
+    run_cap "$WS" "after lock"
+    took=$((SECONDS - start))
+    wait "$holder"
+    [[ $RC -eq 0 && $took -ge 1 && "$(field 4)" == "after lock" ]] && pass "(lock) waited ${took}s, then saved" || fail "(lock) rc=$RC took=${took}s"
+else
+    pass "(lock) skipped: no flock on this machine"
+fi
+
 # --- 5. worktree fallback -------------------------------------------------------------
 echo "TEST: a linked worktree without settings.local reads the main checkout's"
 REPO="$SB/repo"
@@ -192,6 +239,28 @@ OUT="$(cd "$SB/repo-wt" && HOME="$SB/home" bash "$SB/repo-wt/.agent/scripts/capt
 [[ $RC -eq 1 && "$OUT" == *"$SB/repo-wt/.agent/settings.local"* && "$OUT" == *"$REPO/.agent/settings.local"* \
     && "$OUT" == *"not saved: wt thought"* ]] \
     && pass "(worktree) neither found: both paths named" || fail "(worktree) rc=$RC out='$OUT'"
+
+echo "TEST: a worktree copy tags the main checkout, itself and a project correctly"
+# The registry and settings live in the main checkout only, as on a real
+# machine; the linked worktree sits outside the main checkout's directory.
+mkdir -p "$REPO/.agent/project_types/single_project"
+printf 'demo  single_project  %s\n' "$SB/demo" > "$REPO/.agent/projects.local"
+printf 'inbox=%s\n' "$SB/inbox/wt.txt" > "$REPO/.agent/settings.local"
+WT_CAP="$SB/repo-wt/.agent/scripts/capture.sh"
+wt_field() { tail -n1 "$SB/inbox/wt.txt" 2>/dev/null | cut -f2; }
+for case in "$REPO:workspace:main checkout" "$SB/repo-wt:workspace:worktree" \
+            "$SB/demo/sub:demo:project" "$SB/outside:none:outside"; do
+    IFS=: read -r cwd want label <<< "$case"
+    RC=0
+    OUT="$(cd "$cwd" && HOME="$SB/home" bash "$WT_CAP" "wt $label" 2>&1)" || RC=$?
+    [[ $RC -eq 0 && "$(wt_field)" == "$want" ]] \
+        && pass "(worktree copy) cwd $label gives $want" || fail "(worktree copy) cwd $label: rc=$RC got '$(wt_field)' out='$OUT'"
+done
+RC=0
+OUT="$(cd "$SB/repo-wt" && HOME="$SB/home" bash "$REPO/.agent/scripts/capture.sh" "main copy in wt" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(wt_field)" == workspace ]] \
+    && pass "(main copy) cwd in a worktree outside the main directory gives workspace" || fail "(main copy) rc=$RC got '$(wt_field)' out='$OUT'"
+rm -f "$REPO/.agent/settings.local"
 
 # --- 6. settings reader ------------------------------------------------------------------
 echo "TEST: settings reader"

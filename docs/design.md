@@ -240,7 +240,8 @@ Status: `decided`
   the header of `_project_registry.sh` and in `.agent/projects.local.example`. Beside it,
   `.agent/settings.local` (per machine, gitignored, read and never sourced by `_settings.sh`) names
   the machine's inbox and sit-rep run record; a script run from a worktree falls back to the main
-  checkout's copy, which the registry does not do.
+  checkout's copy. The registry has no such fallback, except in `capture.sh`, which reads the main
+  checkout's registry the same way so a thought captured from a worktree copy is tagged with its project.
 - Registration is by hand. No script writes the registry, and `onboard-project` does not mention it
   (grep of `.agent/scripts/` and `.claude/skills/*/SKILL.md`, 2026-10-09).
 - Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
