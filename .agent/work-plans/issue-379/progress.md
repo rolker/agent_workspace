@@ -215,3 +215,20 @@ Plan revision 2 (63b11d7), Plan Review round 2 (5675527) verdict ready. Two foll
 - `test_merge_pr_gate.sh` (e9b28bca): new group with the project registered at `$sb/projects/proj_x` and no `$sb/project`: (reg-a) all good, gate passes, no record; (reg-b) no decision summary, reason names it, record committed in the registered worktree's `progress.md` and pushed, no PR comment; (reg-c) PR branch in the registered main checkout, HEAD unchanged, record posted as a comment, no "CI target: new head" line.
 - Before the fix all three failed (each reported "no progress.md ... <no worktree found for feature/issue-9>"; (b) and (c) posted the record as a comment with "no open worktree for the PR's repo"). With the lookup fix alone, (reg-c) failed (record committed in the main checkout); with the line-829 guard but not 694, (reg-c) still failed on "CI target: new head". After the full fix: test_merge_pr_gate.sh 106 passed, 0 failed; test_merge_pr.sh 91 passed, 0 failed; run_script_tests.sh all 31 suites passed.
 - `docs/design.md` (0b55f774): #379 gap text dropped from the Records bullet, Target items 1 and 2, the Merge gate bullets, the `merge_pr.sh` row and the change-log rule; `merge_pr.sh` citations refreshed (row: 236-280, 387-426, 563, 678, 694 and 829, 926 and 939, 1622-1638; Records: 810 and 853, 280, 563 and 678, 694 and 829, 926 and 939; Target 1: 673-684, 793-863); change-log row added (718 lines).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-12 13:37 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-379 at `dec9fa69`
+**Base**: main
+**Depth**: Standard (reason: merge_pr.sh is the merge gate script; ~167 code/test/doc lines in 3 files)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Verified: test_merge_pr_gate.sh 106/0 and test_merge_pr.sh 91/0 at the head; three mutants, each reverting one change, fail the new tests (gate lookup at 678 reverted: reg-a, reg-b, reg-c fail; guard at 694 dropped: reg-c fails on "CI target: new head"; guard at 829 dropped: reg-c fails with the main checkout's HEAD moved); the legacy project/ case and the package-worktree case still pass; every design.md merge_pr.sh line citation matches the edited file; shellcheck clean; no real hosted project named. Cross-model: Gemini, Codex and Copilot completed (Codex read-only, ran no tests). Copilot's suggestion to test the Step 1 lookup at 563 was dropped: that line is a pure refactor of the same expression (`${PJ_REPO_ROOT:-$ROOT_DIR/project}`), so there is no behaviour to pin.
+
+### Findings
+- [ ] (suggestion) test comment cites "the line-685 guard"; it is at merge_pr.sh:694 after the edit, so name it the `_ci_is_main` guard instead of a line number — `.agent/scripts/tests/test_merge_pr_gate.sh:627`
