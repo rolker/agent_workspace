@@ -142,3 +142,15 @@ The structure, split point and trim are right, and the `update_roadmap.sh` colli
 - [ ] Define how `unchecked` combines in a multi-check cell.
 - [ ] Consider moving the per-registered-root loop and paused branches to follow-ups.
 - [ ] Write the new test paths in full under `.agent/scripts/tests/`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 18:27 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Plan Review (c103ef0) needs-work: F1 high (script allowlist checks name only; exact argument forms, run from the runner's own directory, no glob expansion, marker-file tests), F2 (Deferrals table format collides with update_roadmap.sh; fix format, fixture covers a Deferrals row and a checklist line), F3 (deferral revisit conditions get a check in the same grammar; runner prints deferral rows), F4 (gh-issue defaults to the roadmap root's remote; ADR-0010 row), F5-F9 low (capture edge cases incl. echo the text back on write failure; "what moved" as a follow-up or counts in the run record; unchecked in multi-check cells; F8 move the every-root loop and paused branches to follow-ups; test paths under .agent/scripts/tests/). Host recommendation: revise, then a second review, with F8's two items taken out for tonight.
+
+> revise
