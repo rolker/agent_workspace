@@ -11,6 +11,9 @@
 #   --force-unreviewed — bypasses with the banner and a `## Merge (unreviewed)`
 #     entry, in both modes
 #   no open worktree — the record is posted as a PR comment
+#   a project registered outside project/ — the gate reads, and Step 1.5
+#     writes, the timeline in that repo's worktree; its main checkout on the
+#     PR branch is never used (#379)
 # The gh stub answers `pr view` from fixture files, logs every call, and
 # `pr merge` exits GH_MERGE_EXIT (set to 1 so a report-only run stops right
 # after reaching Step 3 and the worktree survives for assertions).
@@ -542,6 +545,96 @@ if merged_called "$sb" && [[ "$out" == *"would have refused"* ]] && [[ "$out" ==
     pass "project scope under enforce: report-only line names the scoping rule, not a flag the caller may not have passed"
 else
     fail "project scope enforce (out=${out:0:400})"
+fi
+
+# ============================== project registered outside project/ (#379) =====
+# The case above cannot catch a gate that looks in the wrong place: it builds
+# a legacy $sb/project checkout, so the registry-aware root and the hard-coded
+# $ROOT_DIR/project are the same directory, and its PR has no timeline at all.
+# Here nothing exists at $sb/project; the one project is registered at
+# $sb/projects/proj_x, and the PR's timeline lives in that repo's worktree.
+# Before #379 the gate looked in $sb/project, found no worktree and reported
+# "no progress.md" in every scenario below.
+make_registered_sandbox() {  # <with_summary|""> <worktree|main>
+    local sb pj bare wt
+    sb="$(make_sandbox "" "")"
+    pj="$sb/projects/proj_x"
+    mkdir -p "$sb/fake_remotes/github.com/owner"
+    bare="$sb/fake_remotes/github.com/owner/proj_x.git"
+    git init --bare --quiet "$bare"; git -C "$bare" symbolic-ref HEAD refs/heads/main
+    mkdir -p "$pj"; git -C "$pj" init --quiet -b main
+    git -C "$pj" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m init
+    git -C "$pj" remote add origin "$bare"
+    git -C "$pj" push --quiet -u origin main
+    echo "proj_x single_project $pj" >> "$sb/.agent/projects.local"
+    if [[ "$2" == main ]]; then
+        # the forbidden shape: the PR branch checked out in the registered
+        # project's main checkout
+        wt="$pj"; git -C "$pj" checkout --quiet -b feature/issue-9
+    else
+        wt="$sb/worktrees/project/issue-proj_x-9"
+        mkdir -p "$(dirname "$wt")"
+        git -C "$pj" worktree add --quiet "$wt" -b feature/issue-9 >/dev/null 2>&1
+    fi
+    mkdir -p "$wt/.agent/work-plans/issue-9"
+    printf -- '---\nissue: 9\n---\n\n# Issue #9\n\n%s\n' "${APPROVED_AT_HEAD/\#70/#9}" > "$wt/.agent/work-plans/issue-9/progress.md"
+    git -C "$wt" add -A
+    git -C "$wt" -c user.name=t -c user.email=t@t commit --quiet -m "progress"
+    git -C "$wt" push --quiet -u origin feature/issue-9
+    local comments='[]'
+    [[ "$1" == with_summary ]] && comments='[{"body":"## Decision summary\n\n**What changed**: x\n\n**Recommendation**: merge"}]'
+    printf '{"state":"OPEN","headRefName":"feature/issue-9","title":"Proj PR","headRefOid":"%s","comments":%s,"body":"plain body"}\n' "$HEAD_SHA" "$comments" \
+        > "$sb/gh_fixtures/pr_view_$(printf '%s' "$bare" | tr '/' '_')_9.json"
+    echo "$sb"
+}
+run_merge_registered() {  # <sb>
+    (cd "$1" && PATH="$1/stubbin:$PATH" GH_FIXTURES_DIR="$1/gh_fixtures" GH_CALL_LOG="$1/gh_calls.log" GH_MERGE_EXIT=1 \
+        GH_MERGEABLE_DEFAULT=MERGEABLE MERGE_PR_CI_POLL_SECONDS=0 \
+        "$1/.agent/scripts/merge_pr.sh" --pr 9 --type project --no-wait --no-roadmap-update)
+}
+registered_progress() { cat "$1/worktrees/project/issue-proj_x-9/.agent/work-plans/issue-9/progress.md" 2>/dev/null; }
+
+echo "TEST: a project registered outside project/ — the gate finds the PR's timeline in that repo's worktree (#379)"
+sb="$(make_registered_sandbox with_summary worktree)"
+out="$(run_merge_registered "$sb" 2>&1)" || true
+if [[ "$out" == *"Review gate: approved review at head \`abc1234\` and a decision summary are present"* ]] \
+    && [[ "$out" != *"no progress.md"* ]] && [[ "$out" != *"would have refused"* ]] \
+    && merged_called "$sb" \
+    && ! registered_progress "$sb" | grep -q '^## Merge' \
+    && [[ ! -s "$sb/gh_fixtures/comments_posted.md" ]]; then
+    pass "(reg-a) all good: covering review found, gate passes, no record written"
+else
+    fail "(reg-a) (merged=$(merged_called "$sb" && echo y || echo n) out=${out:0:500})"
+fi
+
+sb="$(make_registered_sandbox "" worktree)"
+out="$(run_merge_registered "$sb" 2>&1)" || true
+pushed="$(git -C "$sb/fake_remotes/github.com/owner/proj_x.git" show feature/issue-9:.agent/work-plans/issue-9/progress.md 2>/dev/null)"
+if [[ "$out" == *"would have refused"*"no \"## Decision summary\" heading"* ]] && [[ "$out" != *"no progress.md"* ]] \
+    && [[ "$out" == *"entry recorded in $sb/worktrees/project/issue-proj_x-9/"*"and pushed"* ]] \
+    && registered_progress "$sb" | grep -q '^## Merge (report-only)$' \
+    && grep -q '^## Merge (report-only)$' <<< "$pushed" \
+    && merged_called "$sb" \
+    && ! grep -q '^## Merge' "$sb/gh_fixtures/comments_posted.md" 2>/dev/null; then
+    pass "(reg-b) missing decision summary: reason names it, record committed in the registered worktree's timeline and pushed, no PR comment"
+else
+    fail "(reg-b) (merged=$(merged_called "$sb" && echo y || echo n) out=${out:0:500})"
+fi
+
+sb="$(make_registered_sandbox "" main)"
+pj_before=$(git -C "$sb/projects/proj_x" rev-parse HEAD)
+out="$(run_merge_registered "$sb" 2>&1)" || true
+# The CI-target line is the line-685 guard's witness: with the registered
+# main checkout taken as the PR's worktree, Step 2 fetches there, sees the
+# real branch tip (not the fixture's head) and prints "CI target: new head".
+if [[ "$(git -C "$sb/projects/proj_x" rev-parse HEAD)" == "$pj_before" ]] \
+    && [[ "$out" == *"would have refused"*"no \"## Decision summary\" heading"* ]] \
+    && [[ "$out" == *"checked out in the main tree"*"posted as a comment"* ]] \
+    && [[ "$out" != *"CI target: new head"* ]] \
+    && [[ "$(grep -c '^## Merge (report-only)$' "$sb/gh_fixtures/comments_posted.md" 2>/dev/null)" -eq 1 ]]; then
+    pass "(reg-c) PR branch in the registered main checkout: no commit there, not used for the CI target, record posted as a PR comment"
+else
+    fail "(reg-c) (head_moved=$([[ "$(git -C "$sb/projects/proj_x" rev-parse HEAD)" == "$pj_before" ]] && echo n || echo y) out=${out:0:600})"
 fi
 
 # ================================================= idempotent record (issue #284) =====

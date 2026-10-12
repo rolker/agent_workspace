@@ -248,10 +248,11 @@ if [[ -z "$REPO_ARG" ]]; then
         if [[ "$WORKTREE_TYPE" == "project" ]]; then
             # --type project was explicit, so a project root is required —
             # falling through with PJ_REPO_ROOT empty would let later code
-            # default to $ROOT_DIR/project (line ~485) regardless of why
-            # resolution failed (ambiguous registration, no --project given,
-            # or nothing configured at all), silently operating on the
-            # wrong (or a nonexistent) checkout instead of failing fast.
+            # default to $ROOT_DIR/project (PJ_ROOT_EFFECTIVE, below)
+            # regardless of why resolution failed (ambiguous registration,
+            # no --project given, or nothing configured at all), silently
+            # operating on the wrong (or a nonexistent) checkout instead of
+            # failing fast.
             cat "$_pj_root_err" >&2
             rm -f "$_pj_root_err"
             unset _pj_root_err
@@ -270,6 +271,13 @@ if [[ -n "$PJ_REPO_ROOT" ]] && [[ -e "$PJ_REPO_ROOT/.git" ]]; then
         exit 1
     fi
 fi
+# The one project root every later lookup uses (#379): the Step 1 roadmap
+# worktree lookup, the review gate's timeline lookup, and the main-tree
+# guards in front of the gate's ancestry check and its Step 1.5 record
+# commit. One variable, so these can never disagree about where a project
+# PR's worktree lives; the legacy project/ fallback covers runs where
+# nothing resolved (no project configured, or --repo given).
+PJ_ROOT_EFFECTIVE="${PJ_REPO_ROOT:-$ROOT_DIR/project}"
 
 # --- Resolve which repo owns the PR (collision-safe) ---
 # PR numbers are repo-local: workspace #84 ≠ project #84. Trying repos
@@ -552,7 +560,7 @@ if [[ "$NO_ROADMAP_UPDATE" == false ]]; then
         # conventions here. For project worktrees, list against the project
         # repo since project worktrees are tracked there.
         _WT_REPO="$ROOT_DIR"
-        [[ "$WORKTREE_TYPE" == "project" ]] && _WT_REPO="${PJ_REPO_ROOT:-$ROOT_DIR/project}"
+        [[ "$WORKTREE_TYPE" == "project" ]] && _WT_REPO="$PJ_ROOT_EFFECTIVE"
         _WT_ROOT=$(find_worktree_for_branch "$_WT_REPO" "$PR_BRANCH")
 
         if [[ -z "$_WT_ROOT" ]]; then
@@ -667,22 +675,23 @@ if [[ -n "$PKG_WT_DIR" ]]; then
     _gate_wt="$PKG_WT_DIR"
 else
     _gate_wt_repo="$ROOT_DIR"
-    [[ "$WORKTREE_TYPE" == "project" ]] && _gate_wt_repo="$ROOT_DIR/project"
+    [[ "$WORKTREE_TYPE" == "project" ]] && _gate_wt_repo="$PJ_ROOT_EFFECTIVE"
     _gate_wt=$(find_worktree_for_branch "$_gate_wt_repo" "$PR_BRANCH" || true)
 fi
 _gate_progress=""
 [[ -n "$_gate_wt" && -f "$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md" ]] \
     && _gate_progress="$_gate_wt/.agent/work-plans/issue-${ISSUE_NUM}/progress.md"
 # The git repo the ancestry/paths checks run in (gate condition (a) and the
-# Step 2 CI target): the PR's own worktree, and never the main tree even if
-# it happens to have the branch checked out (AGENTS.md forbids feature
-# commits there). Empty means "no local history to verify against".
+# Step 2 CI target): the PR's own worktree, and never a main tree (the
+# workspace's or the project's checkout root) even if it happens to have the
+# branch checked out (AGENTS.md forbids feature commits there). Empty means
+# "no local history to verify against".
 _ci_wt=""
 if [[ -z "$PKG_WT_DIR" && -n "$_gate_wt" ]]; then
     _ci_wt_top=$(git -C "$_gate_wt" rev-parse --show-toplevel 2>/dev/null || true)
     if [[ -n "$_ci_wt_top" ]]; then
         _ci_is_main=false
-        for _mt in "$ROOT_DIR" "$ROOT_DIR/project"; do
+        for _mt in "$ROOT_DIR" "$ROOT_DIR/project" "$PJ_ROOT_EFFECTIVE"; do
             if [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$_ci_wt_top" && pwd -P)" ]]; then
                 _ci_is_main=true
             fi
@@ -812,11 +821,12 @@ _gate_record() {  # <entry type> <one-line why>
         if [[ -z "$wt_top" || "$(cd "$_gate_wt" && pwd -P)" != "$(cd "$wt_top" && pwd -P)" ]]; then
             wt_top=""
         fi
-        # Never the main tree (or the legacy project/ checkout), even when it
-        # happens to have the PR branch checked out: AGENTS.md forbids
-        # feature commits there (round-3 review). The record goes on the PR.
+        # Never a main tree (the workspace's or the project's checkout root,
+        # #379), even when it happens to have the PR branch checked out:
+        # AGENTS.md forbids feature commits there (round-3 review). The
+        # record goes on the PR.
         if [[ -n "$wt_top" ]]; then
-            for _mt in "$ROOT_DIR" "$ROOT_DIR/project"; do
+            for _mt in "$ROOT_DIR" "$ROOT_DIR/project" "$PJ_ROOT_EFFECTIVE"; do
                 [[ -d "$_mt" ]] && [[ "$(cd "$_mt" && pwd -P)" == "$(cd "$wt_top" && pwd -P)" ]] && { wt_top=""; why_comment="the PR branch is checked out in the main tree, which never takes feature commits"; break; }
             done
         fi
