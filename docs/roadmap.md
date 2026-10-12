@@ -253,7 +253,7 @@ Small fixes that can be done anytime.
 
 ## Decided Against
 
-Items considered and rejected, with reasons.
+Items considered and rejected, with reasons. An item here can be reconsidered if things change.
 
 | Item | Considered | Reason |
 |------|-----------|--------|
@@ -261,6 +261,7 @@ Items considered and rejected, with reasons.
 | Coordinator-intermediated mode | 2026-04-19 session | Would require the coordinator to sit between Roland and sub-agents. Incompatible with direct terminal visibility that Roland uses for debugging (watch agents in action, scroll back to see process). Any coordinator must be additive-only |
 | Ros2 tmux ATC protocol (verbatim port) | 2026-04-19 session | Solves multi-machine/remote-agent visibility problem. this workspace is single-machine local — agents don't drive each other's tmux panes. Protocol would add overhead without fitting the actual failure mode |
 | Mandatory commit squashing before push | 2026-04-19 session | We merge with `--merge` (not `--squash`), so branch history = PR history. Squashing would hide useful intermediate state. Commits are cheap; keep them honest. `fixup!` autosquash remains optional per-developer |
+| Git refs for per-issue review state (`refs/agent-state/issue-N/reviews`) | 2026-03-22 brainstorm (Storage model) | Explored in depth: crash-safe, shared across worktrees, scoped per issue. Deferred as premature complexity; review state lives in `.agent/work-plans/issue-N/progress.md` (design section: [Review loop and timeline](design.md#review-loop-and-timeline)) |
 
 ## To Consider
 
