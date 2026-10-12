@@ -1046,3 +1046,27 @@ Tests: `test_design_anchors.sh` 46 passed (was 33; the new cases fail against th
 - [ ] (suggestion) A backtick opener whose info string holds a backtick is inline code, not a fence (CommonMark): a line starting ```` ```x``` is code ```` gives a false "never closed" finding (Claude adversarial, lead reproduced) — `.agent/scripts/check_design_anchors.sh:180`
 - [ ] (suggestion) Fence closer edge cases: a trailing tab (`[ \t]*$` allowed by CommonMark) keeps the fence open to EOF (false finding); a closer indented less than the item's content column still closes a list-item fence (rare) — `.agent/scripts/check_design_anchors.sh:157`
 - [ ] (suggestion) Headings inside an HTML comment (`<!--` ... `-->`) are registered as anchors, so a link to a commented-out heading passes silently; outside the fix range (unchanged heading scan), none in design.md today (Codex) — `.agent/scripts/check_design_anchors.sh:191`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-12 09:59 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #380 at `a4dd163`
+**Sources**: 4 (Local Review @ `a4dd163` covering via bookkeeping at `70cc024`, Copilot R2 @ `306564b` and R3 @ `a4dd163` with no comments, CI rollup)
+**Cross-source confirmations**: 1 (list-marker fence opener: Codex and the Claude adversarial reviewer inside the Local Review)
+**CI**: pending (pull_request Lint run failed on the known flaky h17/h18 fixture, #361; the push run on the same SHA passed; failed job re-run)
+
+### Findings
+- [ ] (should-fix, owner-approved 2026-10-12) Add `.agent/scripts/check_design_anchors.sh` to the `check-design-anchors` hook's `files:` filter, so a checker-only commit runs the checker on the real tree (raised by the fixer and Gemini) — `.pre-commit-config.yaml`
+- [x] (cross-confirmed, suggestion) A fence opened on a list-marker line is not recognised (false "never closed"; fails loudly) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+- [x] (suggestion, Local Review) Backtick opener with a backtick in its info string read as a fence (fails loudly) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+- [x] (suggestion, Local Review) Fence closer with a trailing tab; closer indented less than the item's content column (fails loudly / rare) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+- [x] (suggestion, Codex) Headings inside HTML comments registered as anchors (silent, but design.md has no HTML comments) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+- [x] (note, Claude adversarial) `## _Italic_ title` slug mismatch with GitHub (fails loudly, unchanged slug()) — deferred to #381 — `.agent/scripts/check_design_anchors.sh`
+
+Rule applied (consistent with this timeline's earlier deferral of checker edge cases to a follow-up issue): a checker gap that lets a broken link pass silently in today's files is fixed in this PR; one that fails loudly, or cannot occur in today's files, goes to #381.
+
+### False positives
+- (Copilot) Unquoted array expansion at `check_design_anchors.sh:273` — `${LINKS[@]+"${LINKS[@]}"}` quotes each element inside the alternate expansion; no word splitting occurs.
+- (Copilot) ADR guard counts register rows instead of matching each ADR — the planned design (plan Wire-in 6), approved in plan review.
