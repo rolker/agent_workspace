@@ -331,13 +331,16 @@ Status: `decided`
 - **Records.** An issue's work plan and progress timeline are committed in the repository that owns the
   issue (the workspace repository for a workspace issue, the project's repository for a project issue),
   on the issue's feature branch, under `.agent/work-plans/issue-N/` (owner decision 2026-10-09, C3).
-  `progress_append.sh` line 87 writes `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013
-  names that path. One gap shows in the project case: `merge_pr.sh` looks up the gate's timeline at
-  `$ROOT_DIR/project` (line 670), the legacy checkout, and the gate is report-only for project pull
-  requests (lines 916 and 929). That is tracked as #379 ("merge_pr.sh review gate looks up a project
-  PR's timeline at the legacy project/ path, not the registry root"). Its fix is one line, using the
-  registry-aware root that line 555 already uses (`${PJ_REPO_ROOT:-$ROOT_DIR/project}`), and it does not
-  wait for the Target below. The change that fixes #379 edits this paragraph in the same change.
+  An issue in a package repository (`--issue owner/repo#N`, worked in a package worktree) has no
+  timeline: a package worktree is a folder of several repositories, not one repository, so `merge_pr.sh`
+  posts its gate record on the pull request (lines 801 and 843). `progress_append.sh` line 87 writes
+  `<repo-root>/.agent/work-plans/issue-<N>/progress.md`, and ADR-0013 names that path. One gap shows in
+  the project case: `merge_pr.sh` looks up the gate's timeline at `$ROOT_DIR/project` (line 670), the
+  legacy checkout, and the gate is report-only for project pull requests (lines 916 and 929). That is
+  tracked as #379 ("merge_pr.sh review gate looks up a project PR's timeline at the legacy project/
+  path, not the registry root"). Its fix is one line, using the registry-aware root that line 555
+  already uses (`${PJ_REPO_ROOT:-$ROOT_DIR/project}`), and it does not wait for the Target below. The
+  change that fixes #379 edits this paragraph in the same change.
 
 **Target**
 
@@ -658,6 +661,7 @@ sentence it makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Review loop and timeline | Review fix: `merge` writes an entry when its gate finds a gap and does not refuse it (a relaxing flag, or a project pull request), not whenever a flag is passed, as the first 2026-10-12 row put it | #335 | 708 |
 | 2026-10-12 | Rules | Review fix: the project-names row credits work plans as history to the owner's decision of 2026-10-12, not to the 2026-10-09 boundary, which does not name them | #335 | 709 |
 | 2026-10-12 | Review loop and timeline | Review fix: a `merge` entry that no worktree on the pull request's branch can commit and push is posted as a comment on the pull request (`_gate_record` in `merge_pr.sh`) | #335 | 713 |
+| 2026-10-12 | Worktrees | Review fix: the Records bullet says an issue in a package repository has no timeline, since a package worktree is a folder of several repositories and `merge_pr.sh` posts its gate record on the pull request | #335 | 717 |
 
 ## Glossary
 
