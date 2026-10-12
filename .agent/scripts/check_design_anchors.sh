@@ -38,11 +38,17 @@
 # '_' or '-'; turn each space into '-'. A repeated slug gets '-1', '-2', ...
 # (`# How it works` is `how-it-works`). A heading whose slug is empty (`## !!!`)
 # has no anchor and is skipped. Headings inside fenced code are not headings.
-# A fence opens on ``` or ~~~ (3+, optional info string) and closes only on a
-# line of the same character, at least as long, with nothing after it but
-# spaces; a line such as ```bash inside an open fence does not close it. Setext (underlined) headings are not recognised. Non-ASCII
-# characters are dropped, which can differ from GitHub, but no anchor with
-# such a character can match the citation pattern anyway.
+# A fence opens on ``` or ~~~ (3+, optional info string) indented at most 3
+# spaces past the content column of the list item it sits in (0 outside a
+# list; an item's column is its marker's indent, the marker and the spaces
+# after it, and a non-blank line indented less ends the item). Deeper is
+# indented code, not a fence. It closes only on a line of the same character,
+# at least as long, indented no deeper than the opener could be, with nothing
+# after it but spaces; a line such as ```bash inside an open fence does not
+# close it. A fence still open at end of file is a finding: it would hide
+# every later heading and link. Setext (underlined) headings are not
+# recognised. Non-ASCII characters are dropped, which can differ from GitHub,
+# but no anchor with such a character can match the citation pattern anyway.
 #
 # Scope: every citation in README.md, .agent/AGENT_ONBOARDING.md,
 # .claude/skills/*/SKILL.md, .agent/knowledge/*.md and docs/roadmap.md (those
@@ -117,6 +123,7 @@ finding() {  # <file> <line> <message>
 #   HEAD <line> <level> <slug>   every heading outside fenced code
 #   LINK <line> <fragment>       every `](#fragment)` outside fenced code
 #   ROW  <line>                  every anchored table row inside the register
+#   OPEN <line>                  a fence still open at end of file (its opener)
 # slug() is the single definition of the slug rule (see the header).
 design_records() {
     awk '
@@ -134,23 +141,47 @@ design_records() {
         gsub(/ /, "-", s)
         return s
     }
-    BEGIN { fence = ""; reg_level = 0; OFS = "\t" }
+    BEGIN { fence = ""; reg_level = 0; depth = 0; OFS = "\t" }
     {
         line = $0
-        # fenced code: ``` or ~~~ (3+). It closes only on the same char, at
-        # least as long, with nothing after it but spaces (no info string).
-        if (fence == "") {
-            if (match(line, /^ *(```+|~~~+)/)) {
-                m = substr(line, 1, RLENGTH); gsub(/ /, "", m)
-                fence = substr(m, 1, 1); fence_len = length(m)
-                next
-            }
-        } else {
+        # fenced code: ``` or ~~~ (3+), indented at most 3 spaces past the
+        # content column of the list item it sits in (0 outside a list); more
+        # is indented code, not a fence. It closes only on the same char, at
+        # least as long, indented no deeper than the opener could be, with
+        # nothing after it but spaces (no info string).
+        if (fence != "") {
             if (match(line, /^ *(```+|~~~+) *$/)) {
                 m = line; gsub(/ /, "", m)
-                if (substr(m, 1, 1) == fence && length(m) >= fence_len) fence = ""
+                match(line, /^ */); ind = RLENGTH
+                if (substr(m, 1, 1) == fence && length(m) >= fence_len && ind <= fence_max) fence = ""
             }
             next
+        }
+
+        # list context: a stack of the content columns of the open list items.
+        # A non-blank line indented less than the content column of an item
+        # ends that item; a list marker line opens a new one.
+        if (line !~ /^[ \t]*$/) {
+            match(line, /^ */); ind = RLENGTH
+            while (depth > 0 && col[depth] > ind) depth--
+            if (match(line, /^ *([-*+]|[0-9]+[.)])( +|$)/)) {
+                mlen = RLENGTH
+                mk = substr(line, ind + 1, mlen - ind); sub(/ +$/, "", mk)
+                sp = mlen - ind - length(mk)
+                if (sp < 1 || sp > 4) sp = 1
+                col[++depth] = ind + length(mk) + sp
+            }
+        }
+
+        if (match(line, /^ *(```+|~~~+)/)) {
+            match(line, /^ */); ind = RLENGTH
+            base = (depth > 0) ? col[depth] : 0
+            if (ind <= base + 3) {
+                m = line; sub(/^ */, "", m); match(m, /^(```+|~~~+)/); m = substr(m, 1, RLENGTH)
+                fence = substr(m, 1, 1); fence_len = length(m)
+                fence_max = base + 3; fence_line = NR
+                next
+            }
         }
 
         if (match(line, /^ *#+/)) {
@@ -183,6 +214,7 @@ design_records() {
         }
         if (has_link && reg_level > 0 && line ~ /^ *\|/) print "ROW", NR
     }
+    END { if (fence != "") print "OPEN", fence_line }
     ' "$DESIGN"
 }
 
@@ -211,6 +243,9 @@ while IFS=$'\t' read -r kind a b c; do
             ;;
         ROW)
             ROWS=$((ROWS + 1))
+            ;;
+        OPEN)
+            finding "$DESIGN" "$a" "fenced code opened here is never closed, so no heading or link after it is checked"
             ;;
     esac
 done <<<"$RECORDS"

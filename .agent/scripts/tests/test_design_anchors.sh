@@ -231,6 +231,99 @@ run_checker "$R"
 expect "b: a backtick line does not close a tilde fence; the tilde closer does" 1 \
     "docs/design.md:9:" "nope2"
 
+# fences: indentation and end of file
+R="$(new_root b9)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## A
+
+Indented code, not a fence:
+
+    ```
+[x](#nope)
+DOC
+run_checker "$R"
+expect "b: a 4-space-indented backtick line outside a list is not a fence, so the link after it is checked" 1 \
+    "docs/design.md:8:" "nope"
+if grep -qF "never closed" <<<"$OUT"; then fail "b: indented code was taken for an unclosed fence"; else pass "b: indented code is not reported as an unclosed fence"; fi
+
+R="$(new_root b10)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## A
+
+```bash
+echo never closed
+DOC
+run_checker "$R"
+expect "b: a fence still open at end of file fails and names its opening line" 1 \
+    "docs/design.md:5:" "never closed"
+
+R="$(new_root b11)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## A
+
+- An item with a fence:
+
+  ```bash
+  ## Hidden in the item
+  [x](#item-inside)
+  ```
+
+10. An ordered item, content at column 4:
+
+    ```
+    [y](#ordered-inside)
+    ```
+
+- Outer
+  - Inner, content at column 4:
+
+    ~~~
+    [z](#nested-inside)
+    ~~~
+
+[w](#a)
+DOC
+run_checker "$R"
+expect "b: fences nested in list items (bullet, wide ordered marker, nested list) still hide their links" 0
+
+R="$(new_root b12)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## A
+
+- An item:
+
+      ```
+[x](#nope)
+DOC
+run_checker "$R"
+expect "b: a backtick line 4 spaces past an item's content column is indented code, so the link after it is checked" 1 \
+    "docs/design.md:8:" "nope"
+
+R="$(new_root b13)"
+cat > "$R/docs/design.md" <<'DOC'
+# The design
+
+## A
+
+```
+    ```
+[x](#hidden)
+```
+[y](#nope)
+DOC
+run_checker "$R"
+expect "b: a 4-space-indented closer does not close a top-level fence; the real closer does" 1 \
+    "docs/design.md:9:" "nope"
+if grep -qF "hidden" <<<"$OUT"; then fail "b: a link inside the fence was checked"; else pass "b: the link inside the fence stays hidden"; fi
+
 # headings: closing #s, links in headings, empty slug, underscore
 R="$(new_root b7)"
 cat > "$R/docs/design.md" <<'DOC'
