@@ -1,0 +1,20 @@
+# .agent/settings.local — machine-local settings (issue #386)
+#
+# Copy this file to .agent/settings.local (git-ignored) in the main
+# checkout and fill in the paths. Nothing here is published; the repo
+# never names a path on your machine.
+#
+# One `key=value` per line. Lines starting with `#` are ignored. The file
+# is read, never sourced. A value starting with `~/` is under your home
+# directory; a relative value is taken relative to this file's directory
+# (.agent/), so prefer an absolute or `~/` path for files outside the repo.
+# Scripts run from a workspace worktree fall back to the main checkout's
+# copy of this file.
+#
+# inbox       one file, for this machine, that capture.sh appends one-line
+#             thoughts to. The directory must already exist.
+# run_record  one file the sit-rep appends a dated line to on each run, so
+#             the next run can say what moved.
+#
+#inbox=~/<notes-dir>/inbox.txt
+#run_record=~/<notes-dir>/sitrep-runs.txt

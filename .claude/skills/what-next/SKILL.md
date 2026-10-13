@@ -18,6 +18,9 @@ Without flags, checks both workspace and project roadmaps.
 
 **Lifecycle position**: Utility — run when choosing what to work on next.
 
+For where the acceptance case stands, checked this run, plus the inbox and
+work in flight, use `/sitrep`.
+
 Reads the roadmap from the workspace and project repos, cross-references
 checklist items against GitHub issues, and surfaces:
 - Completed items not yet checked off (staleness)
@@ -74,7 +77,9 @@ Extract: `{section, item, issue_ref, status}` where status is the value in
 the `Status` column. Treat an empty `Issue` cell or an em dash (`—`) as
 "no issue" — only actual `#<N>` references count as issue refs.
 
-**Sections to skip**: `Decided Against` (rejected items) and `To Consider`
+**Sections to skip**: `Direction` (lines and deferrals with checks, read by
+`/sitrep` through `sitrep_checks.sh`; its tables have no Issue or Status
+column), `Decided Against` (rejected items) and `To Consider`
 (unvetted inspiration-tracker findings, bullet-point format, not actionable
 roadmap entries). Only parse sections that contain checklist or table items.
 

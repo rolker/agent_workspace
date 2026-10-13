@@ -101,12 +101,17 @@ root and `.agent/knowledge/`).
 | Principles | How work is judged | [`docs/principles.md`](principles.md), applied through [`.agent/knowledge/principles_review_guide.md`](../.agent/knowledge/principles_review_guide.md) |
 | Design | How the parts fit today | This file, from `# The design` on |
 | Decisions | What was decided, why, and when | [`docs/decisions/`](decisions/) (ADRs), plus each issue's `progress.md`; history, never rewritten |
-| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). What "healthy" means for the workspace has no home yet |
-| Measures | How anyone tells whether a change helped | None yet |
+| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh` |
+| Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run with the counts of lines true and deferrals due, so the next run says what moved |
 
-Two of the seven are gaps, and the table shows them: the README's long-view goal says each project,
-and the workspace, says what healthy and the right direction mean and that it is known whether a change
-helped (`README.md`, "The long view"). The roadmap covers direction only, and no file holds a measure.
+Two of the seven were gaps (`README.md`, "The long view": each project, and the workspace, says what
+healthy and the right direction mean and that it is known whether a change helped). Both are narrower
+now (#386), neither is closed. The Direction section says what must be true for one acceptance case
+(ADR-0016's), not what healthy means for the workspace in general. The run record counts lines true from
+run to run, which shows net change only (one line going true while another goes false reads as no
+change) and says nothing about whether a change helped beyond that case. Status and dates are measured
+by each run and stay on the machine; the roadmap holds no status column. The result words (`true`,
+`false`, `partial`, `unknown`, `unchecked`) are a trial.
 
 `.agent/scripts/discover_governance.sh` lists the governance files it finds in the workspace root and in
 the legacy `project/` checkout, under six types: `principles`, `architecture`, `agents-config`,
@@ -120,7 +125,9 @@ Status: `proposed`
 Proposed: a project records its own mapping of the seven roles, seeded from the types that
 `discover_governance.sh` already finds, and never forced on it: a convention is encouraged where a
 project has no documentation (owner goal of 2026-09-23, issue #335), and a project may leave a role
-unmapped. Where that mapping is kept is not decided.
+unmapped. Where that mapping is kept is not decided. A project's roadmap may carry a `## Direction`
+section in the workspace's format, by its own choice; the sit-rep reads only the workspace root so
+far, and reading every registered root with such a section is a follow-up to #386.
 
 ## Rules
 
@@ -230,7 +237,11 @@ Status: `decided`
 - The registry, `.agent/projects.local` (per machine, gitignored), maps a project name to a hosting
   directory and a project type, plus optional `key=value` fields. A parent root (pseudo-type `project`)
   groups the instances of one project, such as one per ROS distro, and has no adapter. The syntax is in
-  the header of `_project_registry.sh` and in `.agent/projects.local.example`.
+  the header of `_project_registry.sh` and in `.agent/projects.local.example`. Beside it,
+  `.agent/settings.local` (per machine, gitignored, read and never sourced by `_settings.sh`) names
+  the machine's inbox and sit-rep run record; a script run from a worktree falls back to the main
+  checkout's copy. The registry has no such fallback, except in `capture.sh`, which reads the main
+  checkout's registry the same way so a thought captured from a worktree copy is tagged with its project.
 - Registration is by hand. No script writes the registry, and `onboard-project` does not mention it
   (grep of `.agent/scripts/` and `.claude/skills/*/SKILL.md`, 2026-10-09).
 - Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
@@ -617,7 +628,7 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 | OQ-2 | ADR-0016 stays Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? | Owner | When the [Sessions and roots](#sessions-and-roots) Now block becomes `decided`, and when the Registry inventory is read to settle #295 |
 | C4 | Is `onboard-project` the only path that registers and adapts a project (#332) and is hand registration retired? What does unregistering do to a project's plans, timelines and memory, and how does one project live on two machines? How are mixed-flavour projects (#310) described? | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on it yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
-| OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
+| OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? Partly answered (#386): the roadmap's Direction section and the sit-rep run record. Still open: what healthy means beyond the acceptance case, and a measure beyond counts of lines true | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
 | OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file; `AGENTS.md` is 442)? | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First |
 | OQ-5 | Should the merge gate get a server-side complement, a required status check asserting the same two conditions? | Owner | [Merge gate](#merge-gate); it changes CI and branch protection, which is Ask First (`merge_pr.sh`, Step 1.5 comment) |
 
@@ -663,6 +674,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Glossary | "progress timeline" says the loop records each step and decision, not that every phase writes an entry, which the Review loop section no longer holds (`publish` writes none); owner decision 2026-10-12, revising his C6 wording | #335 | 718 |
 | 2026-10-12 | Decision register | `/audit-workspace` reports the `Re-examined` and `Standing` cells to change when it checks an ADR against the code, whenever the standing it finds differs from the cell, and offers a small pull request that applies them; it does not edit the table, and the paragraph says so | #335 | 720 |
 | 2026-10-12 | Registry and adapters, Worktrees, Merge gate, Change log | `merge_pr.sh` looks up a project pull request's timeline at the registry-aware project root, the same one the Step 1 roadmap lookup uses, and its main-tree guards include it; the #379 gap text is gone from the Records bullet, Target items 1 and 2, the Merge gate bullets, the `merge_pr.sh` row and the change-log rule, and every `merge_pr.sh` line number is refreshed | #379 | 718 |
+| 2026-10-12 | Documentation layers, Registry and adapters, Open questions | Direction row: the roadmap's `## Direction` section, read by the sit-rep; Measures row: the sit-rep run record, a first form; the gaps paragraph says both gaps narrowed and neither closed, status stays machine-local and the five result words are a trial; the Target sentence notes a project may carry the same section; `settings.local` beside the registry; OQ-3 partly answered | #386 | 730 |
 
 ## Glossary
 

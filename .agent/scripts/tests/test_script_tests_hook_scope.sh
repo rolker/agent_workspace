@@ -184,6 +184,8 @@ declare -A ROOT_READERS=(
     [test_resolve_work_plans_dir.sh]=""
     [test_ros2_colcon.sh]=".agent/scripts .agent/project_types"
     [test_session_start_layer.sh]=".claude/hooks AGENTS.md .agent/scripts .agent/project_types"
+    # Runs the sit-rep skill's own shell steps, read from its SKILL.md.
+    [test_sitrep_checks.sh]=".claude/skills"
     [test_skill_paths.sh]=".claude/skills"
     [test_sync_gitbug.sh]=".agent/project_types"
     # Reads are manifest-driven (.agent/user_tier_scripts.txt), which
