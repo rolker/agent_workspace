@@ -199,8 +199,15 @@ elif [ ! -d "$(dirname "$record")" ]; then
 elif ! [[ "$n" =~ ^[0-9]+$ ]]; then
     echo "run record: not written (inbox count is not a number: $n)"
 elif summary="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows")"; then
-    printf '%s\tworkspace\t%s\tinbox %s\n' "$(date '+%Y-%m-%d %H:%M %z')" \
-        "$summary" "$n" >> "$record" && echo "run record: written to $record"
+    # A record whose last line has no newline (a hand edit) gets one
+    # first, so the new line is not glued to it.
+    if { [ ! -s "$record" ] || [ -z "$(tail -c1 "$record")" ] || printf '\n' >> "$record"; } \
+        && printf '%s\tworkspace\t%s\tinbox %s\n' "$(date '+%Y-%m-%d %H:%M %z')" \
+            "$summary" "$n" >> "$record"; then
+        echo "run record: written to $record"
+    else
+        echo "run record: not written (could not append to $record)"
+    fi
 else
     echo "run record: not written (no usable rows file: ${rows:-none})"
 fi

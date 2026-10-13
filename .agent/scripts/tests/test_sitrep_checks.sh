@@ -886,6 +886,29 @@ run_step 4 "s|<rows_file printed in step 1>|$SB/rows3.tsv|"
 [[ $RC -eq 0 && "$(wc -l < "$SB/notes/runs.txt")" -eq $before && "$OUT" == *"not written"* ]] \
     && pass "(skill 4) inbox count left as the placeholder: not written" || fail "(skill 4) placeholder: rc=$RC '$OUT'"
 
+echo "TEST: sit-rep step 4 keeps a record without a final newline apart, and says when it cannot append"
+printf '2026-10-12 09:00 -0400\tworkspace\tlines 0/2 deferrals 0/1\tinbox 1' > "$SB/notes/runs.txt"
+printf 'line\tA\ttrue\tx\t2026-01-01\n' > "$SB/rows4.tsv"
+run_step 4 "s|<rows_file printed in step 1>|$SB/rows4.tsv|; s|<inbox_lines printed in step 2>|2|"
+[[ "$(wc -l < "$SB/notes/runs.txt" | tr -d ' ')" -eq 2 \
+    && "$(sed -n 1p "$SB/notes/runs.txt")" == *$'\tinbox 1' \
+    && "$(sed -n 2p "$SB/notes/runs.txt" | cut -f2-4)" == $'workspace\tlines 1/1 deferrals 0/0\tinbox 2' \
+    && "$OUT" == *"written to"* ]] \
+    && pass "(skill 4) a glued last line gets its newline first" || fail "(skill 4) glued: '$(cat -A "$SB/notes/runs.txt")' out='$OUT'"
+if [[ "$(id -u)" -eq 0 ]]; then
+    pass "(skill 4) read-only record skipped: running as root"
+else
+    cp "$SB/notes/runs.txt" "$SB/runs.before"
+    chmod 444 "$SB/notes/runs.txt"
+    printf 'line\tA\ttrue\tx\t2026-01-01\n' > "$SB/rows4.tsv"
+    run_step 4 "s|<rows_file printed in step 1>|$SB/rows4.tsv|; s|<inbox_lines printed in step 2>|2|"
+    chmod 644 "$SB/notes/runs.txt"
+    [[ "$OUT" == *"not written (could not append to $SB/notes/runs.txt)"* && "$OUT" != *"written to"* ]] \
+        && cmp -s "$SB/runs.before" "$SB/notes/runs.txt" \
+        && pass "(skill 4) an append that fails says not written" || fail "(skill 4) read-only: '$OUT'"
+    rm -f "$SB/runs.before"
+fi
+
 echo "TEST: sit-rep step 2 counts new inbox lines from the recorded count"
 printf '2026-10-12 10:00 -0400\tworkspace\tlines 1/2 deferrals 0/1\tinbox 2\n' > "$SB/notes/runs.txt"
 run_step 2
