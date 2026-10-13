@@ -441,3 +441,18 @@ Owner: "Do the first" — of the three options offered at the round-3 limit (add
 **Decision**: publish
 
 Second half of the owner's "Do the first" at the round-3 limit: "address, then publish without another local round". The address pass closed all 9 round-3 findings (3 must-fix, 6 suggestions) at 80bbe65; the host re-ran test_sitrep_checks (141/0), test_capture (41/0), check_design_anchors (0) and check_branch_updates (up to date). No fourth pre-push review; the post-push review and triage cover what is left.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-13 00:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #387 at `e1cc6f9`
+**Sources**: 3 (Copilot @ `e1cc6f9` (1 inline comment), Local Review (Pre-Push) timeline: rounds 1-3, no open findings covering the head, CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [ ] (low, Copilot @ `e1cc6f9`) Sit-rep step 2 reads the inbox in four separate unlocked passes (count, oldest, new-since-last, listing) while `capture.sh` appends under an exclusive `flock`. A capture landing between passes makes one report disagree with itself (e.g. `inbox_lines=5` with `inbox_new=6` when the last run saw an empty inbox), and a capture over 4 KB caught mid-write can be listed truncated. Fix: at the top of step 2 copy the inbox once to a temporary snapshot under `flock -s` (when `flock` exists; same 10 s wait as `capture.sh`), derive every step-2 value from the snapshot, print `inbox_snapshot=`, and have step 4 take the n-th line from that snapshot and remove it (the `rows_file` pattern), with a test in `test_sitrep_checks.sh` that appends a line between the passes. Copilot's stated consequence, a corrupted run-record anchor, is overstated: step 4 reads the n-th line later, and appends never move it, so it is wrong only if a writer stalls mid-line across two tool calls — but the in-report inconsistency is real and reachable — `.claude/skills/sitrep/SKILL.md`
+
+### False positives
