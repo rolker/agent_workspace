@@ -10,13 +10,15 @@
 # progress.md). See #193 for the recursive-bloat failure mode that
 # motivated this.
 #
-# Supported agents: gemini, codex, claude, copilot
+# Supported agents: gemini, codex, claude
 # (the gemini agent runs via the `agy` binary — see AGENT_BINS — through
 # the _agy_review.sh helper, which feeds the prompt over stdin and
-# validates agy's result event; issues #274, #288)
+# validates agy's result event; issues #274, #288). The Copilot CLI is not
+# a reviewer: dropped by owner decision (#344), so `--agent copilot` and
+# `--agents ...,copilot` are rejected as unknown agents (exit 2).
 #
 # No agent CLI is invoked from this script directly. Gemini goes through
-# _agy_review.sh; codex, claude and copilot go through _cli_review.sh
+# _agy_review.sh; codex and claude go through _cli_review.sh
 # (issue #313, folding in #212). Each helper owns its findings file:
 # it truncates the file first, runs its CLI with the prompt on stdin,
 # and writes either the review text or a failure reason — so an empty
@@ -35,8 +37,8 @@
 # sequential runs get parallelism back. `--sync` (the old opt-out) is
 # rejected as removed. Live observation: `tail -f <findings-file>`.
 #
-# Every agent is bounded so one hung CLI cannot hang the call. Codex,
-# claude and copilot run under `timeout "$AGENT_TIMEOUT"` (coreutils
+# Every agent is bounded so one hung CLI cannot hang the call. Codex and
+# claude run under `timeout "$AGENT_TIMEOUT"` (coreutils
 # duration, env-overridable, default 1800), applied to _cli_review.sh,
 # which forwards the signal to its CLI child. Gemini's primary bound stays
 # _agy_review.sh's own --print-timeout (`AGY_PRINT_TIMEOUT`), because that
@@ -51,7 +53,7 @@
 # Usage:
 #   .agent/scripts/cross_model_review.sh --pr <N>                              # gemini (default)
 #   .agent/scripts/cross_model_review.sh --pr <N> --agent codex                # one specific agent
-#   .agent/scripts/cross_model_review.sh --pr <N> --agents gemini,codex,copilot # several, in parallel
+#   .agent/scripts/cross_model_review.sh --pr <N> --agents gemini,codex,claude # several, in parallel
 #   .agent/scripts/cross_model_review.sh --branch --agents gemini,codex        # local pre-push review
 #   .agent/scripts/cross_model_review.sh --pr <N> --repo owner/repo            # explicit repo target
 #   .agent/scripts/cross_model_review.sh --pr <N> --work-dir /path/to/worktree # explicit artifact dir
@@ -182,8 +184,19 @@ declare -A AGENT_BINS=(
     ["gemini"]="agy"
     ["codex"]="codex"
     ["claude"]="claude"
-    ["copilot"]="copilot"
 )
+
+# The supported agent keys, sorted (LC_ALL=C) and comma-joined, for the
+# "Supported agents:" line. Bash lists associative-array keys in hash
+# order (neither declaration nor sorted order: bash 5.2 printed
+# "codex gemini claude copilot"), so the list is sorted here.
+supported_agents() {
+    local key out=""
+    while IFS= read -r key; do
+        out+="${out:+, }${key}"
+    done < <(printf '%s\n' "${!AGENT_BINS[@]}" | LC_ALL=C sort)
+    printf '%s\n' "$out"
+}
 
 # Timeout for agy print mode (Go duration format). agy's own default is
 # 0s = wait until the turn completes; the explicit cap keeps a hung
@@ -192,7 +205,7 @@ declare -A AGENT_BINS=(
 # Env-overridable so tests can inject a small value.
 AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-30m}"
 
-# Outer per-agent bound for codex/claude/copilot (coreutils `timeout`
+# Outer per-agent bound for codex/claude (coreutils `timeout`
 # duration: a number of seconds, or with an s/m/h suffix). Env-overridable
 # so tests can inject a small value. 124 is timeout's own "expired"
 # status and counts as that agent's failure. A CLI that ignores the
@@ -321,7 +334,7 @@ run_agent_sync() {
         # CROSS_MODEL_REVIEW_JOB marks every process of this job, so
         # kill_tree can find one that has been re-parented away (#363).
         gemini)  exec env CROSS_MODEL_REVIEW_JOB="${AGENT_TMP_ROOT}:${agent}" TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
-        # codex, claude and copilot (and anything that somehow reaches
+        # codex and claude (and anything that somehow reaches
         # here — _cli_review.sh rejects an unknown agent with a readable
         # reason in the findings file rather than running a CLI blind).
         # AGENT_TIMEOUT is passed through as an informational label so
@@ -494,7 +507,7 @@ if [[ -n "$AGENTS_LIST" ]]; then
         fi
         if [[ -z "${AGENT_BINS[$entry]+x}" ]]; then
             echo "ERROR: Unknown agent '${entry}' in --agents" >&2
-            echo "Supported agents: ${!AGENT_BINS[*]}" >&2
+            echo "Supported agents: $(supported_agents)" >&2
             exit 2
         fi
         # Exact duplicates collapse to one run: two jobs for the same
@@ -510,7 +523,7 @@ else
     SINGLE_AGENT="${SINGLE_AGENT:-gemini}"
     if [[ -z "${AGENT_BINS[$SINGLE_AGENT]+x}" ]]; then
         echo "ERROR: Unknown agent '${SINGLE_AGENT}'" >&2
-        echo "Supported agents: ${!AGENT_BINS[*]}" >&2
+        echo "Supported agents: $(supported_agents)" >&2
         exit 2
     fi
     AGENTS_TO_RUN=("$SINGLE_AGENT")
@@ -599,8 +612,8 @@ for agent in "${AGENTS_TO_RUN[@]}"; do
         # without jq this agent cannot produce a validated review at all
         # — name that here rather than letting every claude run fail.
         AGENT_UNAVAILABLE_REASON["$agent"]="jq is required to parse claude's JSON result and is not installed (see bootstrap.sh)"
-    elif [[ "$agent" == "codex" || "$agent" == "claude" || "$agent" == "copilot" ]] && [[ ! -x "$CLI_REVIEW_HELPER" ]]; then
-        # Scoped to the three agents that helper serves, the way the
+    elif [[ "$agent" == "codex" || "$agent" == "claude" ]] && [[ ! -x "$CLI_REVIEW_HELPER" ]]; then
+        # Scoped to the two agents that helper serves, the way the
         # gemini check above is scoped: a missing _cli_review.sh must not
         # mark a gemini-only run unavailable.
         AGENT_UNAVAILABLE_REASON["$agent"]="${CLI_REVIEW_HELPER} is missing or not executable"
@@ -1441,7 +1454,7 @@ PROMPT_FOOTER
 # at all and to work from the embedded diff and Plan Context alone, and to
 # keep its answer short: large Deep-tier prompts otherwise draw a reply
 # that hits agy's output-token limit (#336). Not added for
-# codex/claude/copilot — codex reads files through the shell, so the
+# codex/claude — codex reads files through the shell, so the
 # restriction would cost it context.
 for agent in "${AGENTS_TO_RUN[@]}"; do
     prompt_file=$(prompt_file_for "$agent")
