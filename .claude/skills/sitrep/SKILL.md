@@ -62,19 +62,28 @@ line per sit-rep run, so the next run can say what moved).
 
 The checks run once per sit-rep. Their rows are saved to a temporary file,
 and both the summary shown here and the one recorded in step 4 are counted
-from that file, so the report and the record cannot disagree.
+from that file, so the report and the record cannot disagree. A run that
+fails or is interrupted keeps no rows file and prints no `rows_file=`, so
+nothing from it can be recorded.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 rows="$(mktemp -t sitrep-rows.XXXXXX)" || rows=""
-if [ -n "$rows" ]; then
-    "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT" > "$rows"
+if [ -z "$rows" ]; then
+    echo "could not create a temporary file; checks not run"
+elif "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT" > "$rows"; then
     cat "$rows"
     echo "---"
-    "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows"
-    echo "rows_file=$rows"
+    if "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows"; then
+        echo "rows_file=$rows"
+    else
+        rm -f -- "$rows"
+        echo "checks: the rows could not be counted; nothing will be recorded"
+    fi
 else
-    echo "could not create a temporary file; checks not run"
+    rc=$?
+    rm -f -- "$rows"
+    echo "checks failed or were interrupted (exit $rc); no rows, nothing will be recorded"
 fi
 ```
 
@@ -83,7 +92,10 @@ Rows are `kind`, `item`, `result`, `check`, `date`, TAB-separated. Kinds:
 the section's rules; report it), `section` (nothing to check, and why: no
 roadmap file, no Direction section, or a section with neither table). After
 `---` comes the summary, `lines <true>/<total> deferrals <true>/<total>`,
-then `rows_file=`, which step 4 needs.
+then `rows_file=`, which step 4 needs. When the block prints `checks
+failed` or `could not be counted` instead, report that the Direction lines
+were not checked this run and that the run record was not written, and
+skip step 4.
 
 ### 2. Read the inbox and the last run record
 
@@ -151,31 +163,34 @@ git -C "<worktree path>" log -1 --format='%cr: %s'
 
 ### 4. Write the run record
 
-Only when `run_record` is set and its directory exists; the repository is
-never written to. One line, appended, with the summary counted from the rows
-step 1 saved (the checks are not run again) and the inbox line count, which
-the next run's `inbox_new` is measured from. Put step 1's `rows_file` value
-in place of the placeholder. The rows file is removed either way.
+Only when step 1 printed `rows_file=`, `run_record` is set and its
+directory exists; the repository is never written to. One line, appended,
+with the summary counted from the rows step 1 saved (the checks are not run
+again) and the inbox line count step 2 printed (not counted again, so a
+thought captured since is reported as new next time). The next run's
+`inbox_new` is measured from that count. Put step 1's `rows_file` value and
+step 2's `inbox_lines` value (`0` when step 2 printed none) in place of the
+placeholders. The rows file is removed either way.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
-source "$WS_ROOT/.agent/scripts/_settings.sh"
 rows="<rows_file printed in step 1>"
+n="<inbox_lines printed in step 2>"
+source "$WS_ROOT/.agent/scripts/_settings.sh"
 record="$(settings_path "$WS_ROOT" run_record)" || record=""
-inbox="$(settings_path "$WS_ROOT" inbox)" || inbox=""
-n=0
-if [ -n "$inbox" ] && [ -f "$inbox" ]; then n="$(grep -c . "$inbox")"; fi
 if [ -z "$record" ]; then
     echo "run record: not written (run_record not set)"
 elif [ ! -d "$(dirname "$record")" ]; then
     echo "run record: not written (directory missing: $(dirname "$record"))"
+elif ! [[ "$n" =~ ^[0-9]+$ ]]; then
+    echo "run record: not written (inbox count is not a number: $n)"
 elif summary="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows")"; then
     printf '%s\tworkspace\t%s\tinbox %s\n' "$(date '+%Y-%m-%d %H:%M %z')" \
         "$summary" "$n" >> "$record" && echo "run record: written to $record"
 else
-    echo "run record: not written (rows file unreadable: $rows)"
+    echo "run record: not written (no usable rows file: ${rows:-none})"
 fi
-rm -f -- "$rows"
+[ -z "$rows" ] || rm -f -- "$rows"
 ```
 
 When the record is not written, say so in the report, with the reason

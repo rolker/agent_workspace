@@ -246,6 +246,11 @@ for pair in TU:unknown FU:unknown TC:partial FC:partial TF:partial TT:true FF:fa
     [[ "$(res "$i")" == "$want" ]] && pass "(combine) $i gives $want" || fail "(combine) $i: $(row "$i")"
 done
 
+echo "TEST: a whole cell in backticks with ; inside is split after the backticks go"
+run_rm "$(direction "| Wrapped pair | \`$T ; $T\` |" "| Wrapped mixed | \`$T ; $F\` |")"
+[[ "$(res 'Wrapped pair')" == true && "$(res 'Wrapped mixed')" == partial ]] \
+    && pass "(combine) wrapped cell reads as its checks" || fail "(combine) wrapped pair=$(res 'Wrapped pair') mixed=$(res 'Wrapped mixed')"
+
 # --- 5. section and table shape ---------------------------------------------------------
 echo "TEST: tables picked by header, deferrals, checklist items, section bounds"
 reset_marks
@@ -314,6 +319,12 @@ OUT="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --roadmap "$SB/roo
 [[ "$(cut -f1 <<< "$OUT")" == section && "$(cut -f2 <<< "$OUT")" == "(roadmap not found: $SB/root/docs/nosuch.md)" ]] \
     && pass "(section) a missing roadmap file is named, not read as no section" || fail "(section) missing roadmap: '$OUT'"
 
+echo "TEST: a Line or Deferral table with a header and no rows prints a section row"
+run_rm $'## Direction\n\n| Line | Check |\n|---|---|\n\n| Deferral | Revisit check |\n|---|---|\n\n## Next\n'
+[[ $RC -eq 0 && "$OUT" == $'section\t(no rows in the Line or Deferral tables)\tunchecked\tnone\t'* \
+    && "$(wc -l <<< "$OUT" | tr -d ' ')" -eq 1 ]] \
+    && pass "(section) header-only tables give one section row, no blank line" || fail "(section) header only: '$OUT'"
+
 # --- 6. fences, headings, line endings ------------------------------------------------------
 echo "TEST: a fenced ## Direction before the real section is skipped"
 for fence in '```' '~~~'; do
@@ -360,6 +371,25 @@ still fenced
 run_rm "$body"
 [[ -z "$(row Inner)" && "$(res 'After fences')" == true ]] \
     && pass "(fence) a backtick fence inside ~~~ does not close it; a longer fence needs a long close" || fail "(fence nested) '$OUT'"
+
+echo "TEST: a backtick line with a backtick after it is not a fence"
+body='## Direction
+
+```x``` is inline code, not a fence
+
+| Line | Check |
+|------|-------|
+| After inline | file-exists docs/notes.md |
+
+~~~ info with `backticks`
+| Line | Check |
+|------|-------|
+| Tilde fenced | file-exists docs/notes.md |
+~~~
+'
+run_rm "$body"
+[[ "$(res 'After inline')" == true && -z "$(row 'Tilde fenced')" ]] \
+    && pass "(fence) backtick opener needs an info string without backticks; a tilde opener does not" || fail "(fence info) '$OUT'"
 
 echo "TEST: ### subheadings stay in the section; CRLF roadmap"
 run_rm $'## Direction\n\n### Lines\n\n| Line | Check |\n|---|---|\n| Under sub | file-exists docs/notes.md |\n\n## Next\n'
@@ -423,6 +453,20 @@ run_rm "$(direction \
 [[ "$(res 'No heading')" == unknown && "$(res 'Missing file')" == false ]] && pass "(adr) no Status heading unknown, missing file false" || fail "(adr) nohead=$(res 'No heading') missing=$(res 'Missing file')"
 [[ "$(res 'Bad word')" == unchecked && "$(res Escape)" == unchecked ]] && pass "(adr) malformed arguments unchecked" || fail "(adr) bad=$(res 'Bad word') esc=$(res Escape)"
 
+echo "TEST: adr-status reads CRLF files and skips fenced examples"
+printf '# ADR\r\n\r\n## Status\r\n\r\nAccepted.\r\n' > "$SB/root/docs/decisions/e.md"
+printf '# ADR\n\n```markdown\n## Status\n\nAccepted.\n```\n\n## Status\n\nProposed.\n' > "$SB/root/docs/decisions/f.md"
+printf '# ADR\n\n~~~\n## Status\n```\nAccepted.\n~~~\n\n```x``` inline\n\n## Status\n\nProposed.\n' > "$SB/root/docs/decisions/g.md"
+run_rm "$(direction \
+    '| Crlf adr | adr-status docs/decisions/e.md accepted |' \
+    '| Fenced accepted | adr-status docs/decisions/f.md accepted |' \
+    '| Real proposed | adr-status docs/decisions/f.md proposed |' \
+    '| Nested fence | adr-status docs/decisions/g.md proposed |')"
+[[ "$(res 'Crlf adr')" == true ]] && pass "(adr) CRLF status read" || fail "(adr) crlf=$(res 'Crlf adr')"
+[[ "$(res 'Fenced accepted')" == false && "$(res 'Real proposed')" == true ]] \
+    && pass "(adr) a fenced Status example is skipped" || fail "(adr) fenced=$(res 'Fenced accepted') real=$(res 'Real proposed')"
+[[ "$(res 'Nested fence')" == true ]] && pass "(adr) fence closes only on its own character; inline backticks are not a fence" || fail "(adr) nested=$(res 'Nested fence')"
+
 # --- 10. external calls ----------------------------------------------------------------------
 echo "TEST: gh cannot read the roadmap's remaining rows"
 reset_marks
@@ -474,6 +518,52 @@ OUT2="$(bash "$SITREP" --summary-from "$SB/rows2.tsv" 2>/dev/null)"
 RC=0; bash "$SITREP" --summary-from "$SB/nosuch.tsv" >/dev/null 2>&1 || RC=$?
 [[ $RC -eq 2 ]] && pass "(summary-from) unreadable file exits 2" || fail "(summary-from) rc=$RC"
 
+echo "TEST: --summary-from refuses an empty argument, an empty file and rows it cannot read"
+reset_marks
+RC=0; OUT2="$(bash "$SITREP" --summary-from "" 2>"$SB/err")" || RC=$?
+[[ $RC -ne 0 && -z "$OUT2" && -s "$SB/err" ]] && pass "(summary-from) empty argument refused, nothing run" || fail "(summary-from) '' rc=$RC out='$OUT2'"
+: > "$SB/empty.tsv"
+printf 'hello world\n' > "$SB/garbage.tsv"
+printf 'line\tA\ttrue\tx\t2026-01-01\nline\tB\ttr' > "$SB/cut.tsv"
+printf 'line\tA\tmaybe\tx\t2026-01-01\n' > "$SB/badword.tsv"
+for f in empty garbage cut badword; do
+    RC=0; OUT2="$(bash "$SITREP" --summary-from "$SB/$f.tsv" 2>"$SB/err")" || RC=$?
+    [[ $RC -ne 0 && -z "$OUT2" && -s "$SB/err" ]] && pass "(summary-from) $f rows file refused with a message" || fail "(summary-from) $f rc=$RC out='$OUT2'"
+done
+printf 'section\t(no Direction section)\tunchecked\tnone\t2026-01-01\n' > "$SB/section.tsv"
+OUT2="$(bash "$SITREP" --summary-from "$SB/section.tsv" 2>/dev/null)"
+[[ "$OUT2" == "lines 0/0 deferrals 0/0" ]] && pass "(summary-from) a section row alone is a real run" || fail "(summary-from) section '$OUT2'"
+
+echo "TEST: an interrupted run exits non-zero and prints no rows"
+cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
+#!/usr/bin/env bash
+sleep 1
+EOF
+printf '%s' "$(direction '| Before | file-exists docs/notes.md |' '| Slow | script check_design_anchors.sh |')" > "$SB/root/docs/roadmap.md"
+# Job control gives the background run its own process group, so SIGINT
+# is not ignored in it, as it is for a plain `&` job. A run started with
+# SIGINT already ignored cannot see one at all; the probe skips that case.
+for sig in INT TERM; do
+    RC=0
+    ( set -m
+      bash -c 'kill -'"$sig"' $$; exit 0' & wait $! && exit 99
+      bash "$SITREP" --root "$SB/root" > "$SB/int.out" 2>/dev/null &
+      pid=$!
+      sleep 0.3
+      kill -"$sig" "$pid"
+      wait "$pid" ) 2>/dev/null || RC=$?
+    if [[ $RC -eq 99 ]]; then
+        pass "(interrupt $sig) skipped: $sig is ignored in this environment"
+    else
+        [[ $RC -ne 0 && ! -s "$SB/int.out" ]] && pass "(interrupt $sig) exit $RC, no rows" || fail "(interrupt $sig) rc=$RC out='$(cat "$SB/int.out")'"
+    fi
+done
+cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s %s\n' "\$PWD" "\$*" >> "$MARK/check_design_anchors.sh"
+exit "\$(cat "$RCD/check_design_anchors.sh" 2>/dev/null || echo 0)"
+EOF
+
 # --- 12. run through the scripts/ symlink ----------------------------------------------------
 echo "TEST: run through a scripts/ symlink, the default root is the checkout"
 WS="$SB/ws"
@@ -519,21 +609,43 @@ n_gh="$(grep -c . "$MARK/gh" 2>/dev/null || true)"
 [[ "$OUT" == *"lines 2/2 deferrals 0/1"* && -n "$rows_file" && -f "$rows_file" ]] \
     && pass "(skill 1) summary shown, rows saved" || fail "(skill 1) '$OUT'"
 
+echo "TEST: sit-rep step 1 with a failed run keeps no rows file and says so"
+mv "$WS/.agent/scripts/sitrep_checks.sh" "$SB/sitrep_checks.real"
+printf '#!/usr/bin/env bash\nprintf "line\\tA\\ttrue\\tx\\t2026-01-01\\n"\nexit 130\n' > "$WS/.agent/scripts/sitrep_checks.sh"
+chmod +x "$WS/.agent/scripts/sitrep_checks.sh"
+mkdir -p "$SB/t1"
+TMPDIR="$SB/t1" run_step 1
+[[ "$OUT" != *rows_file=* && "$OUT" == *"exit 130"* && -z "$(ls -A "$SB/t1")" ]] \
+    && pass "(skill 1) failed run: no rows_file, file removed, exit named" || fail "(skill 1) failed run: '$OUT' left: $(ls -A "$SB/t1")"
+mv "$SB/sitrep_checks.real" "$WS/.agent/scripts/sitrep_checks.sh"
+
 echo "TEST: sit-rep step 4 records the summary of the same rows and the inbox count"
 printf '2026-10-12 10:00 -0400\tworkspace\t-\ta\n2026-10-12 10:00 -0400\tworkspace\t-\tb\n2026-10-12 10:00 -0400\tworkspace\t-\tc\n' > "$SB/notes/inbox.txt"
 reset_marks
 echo OPEN > "$SB/gh_state"   # a re-run would now give lines 1/2
-run_step 4 "s|<rows_file printed in step 1>|$rows_file|"
+# Step 2 counted 2 lines; a capture made since must not be in the record.
+run_step 4 "s|<rows_file printed in step 1>|$rows_file|; s|<inbox_lines printed in step 2>|2|"
 last="$(tail -n1 "$SB/notes/runs.txt" 2>/dev/null)"
-[[ "$(cut -f2- <<< "$last")" == $'workspace\tlines 2/2 deferrals 0/1\tinbox 3' && ! -e "$MARK/gh" ]] \
-    && pass "(skill 4) record from the saved rows, no check re-run" || fail "(skill 4) last='$last' out='$OUT'"
+[[ "$(cut -f2- <<< "$last")" == $'workspace\tlines 2/2 deferrals 0/1\tinbox 2' && ! -e "$MARK/gh" ]] \
+    && pass "(skill 4) record from the saved rows and step 2's count, nothing re-run" || fail "(skill 4) last='$last' out='$OUT'"
 [[ -n "$rows_file" && ! -e "$rows_file" ]] && pass "(skill 4) rows file removed" || fail "(skill 4) rows file left: $rows_file"
 printf 'inbox=%s\nrun_record=%s\n' "$SB/notes/inbox.txt" "$SB/nodir/runs.txt" > "$WS/.agent/settings.local"
 printf 'line\tA\ttrue\tx\t2026-01-01\n' > "$SB/rows3.tsv"
-run_step 4 "s|<rows_file printed in step 1>|$SB/rows3.tsv|"
+run_step 4 "s|<rows_file printed in step 1>|$SB/rows3.tsv|; s|<inbox_lines printed in step 2>|3|"
 [[ $RC -eq 0 && ! -e "$SB/nodir" && "$OUT" == *"not written"* ]] \
     && pass "(skill 4) missing record directory: not written, said so" || fail "(skill 4) nodir rc=$RC '$OUT'"
 printf 'inbox=%s\nrun_record=%s\n' "$SB/notes/inbox.txt" "$SB/notes/runs.txt" > "$WS/.agent/settings.local"
+before="$(wc -l < "$SB/notes/runs.txt")"
+for case in "no rows file:" "empty rows file:$SB/empty.tsv"; do
+    label="${case%%:*}"; f="${case#*:}"
+    run_step 4 "s|<rows_file printed in step 1>|$f|; s|<inbox_lines printed in step 2>|3|"
+    [[ $RC -eq 0 && "$(wc -l < "$SB/notes/runs.txt")" -eq $before && "$OUT" == *"not written"* ]] \
+        && pass "(skill 4) $label: not written, said so" || fail "(skill 4) $label: rc=$RC '$OUT'"
+done
+printf 'line\tA\ttrue\tx\t2026-01-01\n' > "$SB/rows3.tsv"
+run_step 4 "s|<rows_file printed in step 1>|$SB/rows3.tsv|"
+[[ $RC -eq 0 && "$(wc -l < "$SB/notes/runs.txt")" -eq $before && "$OUT" == *"not written"* ]] \
+    && pass "(skill 4) inbox count left as the placeholder: not written" || fail "(skill 4) placeholder: rc=$RC '$OUT'"
 
 echo "TEST: sit-rep step 2 counts new inbox lines from the recorded count"
 printf '2026-10-12 10:00 -0400\tworkspace\tlines 1/2 deferrals 0/1\tinbox 2\n' > "$SB/notes/runs.txt"

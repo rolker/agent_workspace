@@ -20,14 +20,19 @@
 #              the same line, counted from rows saved by an earlier run; no
 #              roadmap is read and no check runs. The sit-rep runs the checks
 #              once, saves the rows, and takes both the summary it shows and
-#              the one it records from them. Exit 2 if the file is unreadable.
+#              the one it records from them. Exit 2, with a message and no
+#              summary, for an empty argument, an unreadable or empty file,
+#              or a line that is not a whole row (five TAB-separated fields,
+#              a known kind and result word, a date): a cut-off or failed
+#              run is never counted. Blank lines are skipped.
 #
 # What is read: only the `## Direction` section (up to the next `#` or `##`
 # heading; `###` stays inside), outside fenced code. Fences are tracked from
 # the top of the file, so a fenced `## Direction` example is not the
 # section. A fence opens with 3+ backticks or tildes (up to 3 spaces of
-# indent) and closes with a run of the same character at least as long and
-# nothing after it. Tables are picked by header:
+# indent; after backticks, no further backtick on the line, as in
+# CommonMark) and closes with a run of the same character at least as long
+# and nothing after it. Tables are picked by header:
 #   | Line | Check |               -> rows of kind `line`
 #   | Deferral | Revisit check |   -> rows of kind `deferral`
 # Any other table in the section is ignored. Cells split on `|` as GFM
@@ -41,19 +46,25 @@
 #   <kind>  <item>  <result>  <check>  <date>
 # <check> is the cell text, or `none` when the cell is empty. `section` rows,
 # result `unchecked`, say why there is nothing to check: the item is
-# `(roadmap not found: <path>)`, `(no Direction section)`, or `(no Line or
+# `(roadmap not found: <path>)`, `(no Direction section)`, `(no Line or
 # Deferral table)` for a section that has neither table (an empty section
-# included). Exit 0 whenever rows were printed; 2 on usage.
+# included), or `(no rows in the Line or Deferral tables)` for tables with
+# a header and nothing under it. Every run prints at least one row. Rows
+# are printed only at the end, so a run that is interrupted prints none and
+# exits non-zero (128 + the signal). Exit 0 when the rows were printed; 1
+# when they could not be written; 2 on usage.
 #
 # Check grammar (a cell may join several checks with ` ; `; a check may be
-# wrapped in backticks). Each check is split into words with `read -ra`
+# wrapped in backticks, and so may a whole cell, which is unwrapped before
+# it is split). Each check is split into words with `read -ra`
 # under `set -f`: nothing is globbed, nothing is eval'd.
 #   file-exists <relpath>
 #   file-contains <relpath> <fixed string>   (the rest of the check;
 #                                              grep -qF; a missing file is
 #                                              false)
 #   adr-status <relpath> <word>              (the first non-blank line after
-#                                              the file's `## Status` heading
+#                                              the file's first `## Status`
+#                                              heading outside fenced code
 #                                              starts with <word>, bold or
 #                                              not, any case; <word> is
 #                                              letters only; a missing file
@@ -129,7 +140,10 @@ while [ $# -gt 0 ]; do
         --root) [ $# -ge 2 ] || usage; ROOT="$2"; shift 2 ;;
         --roadmap) [ $# -ge 2 ] || usage; ROADMAP="$2"; shift 2 ;;
         --summary) SUMMARY=true; shift ;;
-        --summary-from) [ $# -ge 2 ] || usage; SUMMARY_FROM="$2"; shift 2 ;;
+        --summary-from)
+            [ $# -ge 2 ] || usage
+            [ -n "$2" ] || { echo "--summary-from needs a rows file; got an empty argument" >&2; exit 2; }
+            SUMMARY_FROM="$2"; shift 2 ;;
         -h|--help) usage ;;
         *) echo "unknown argument: $1" >&2; usage ;;
     esac
@@ -154,9 +168,15 @@ summarize() {
 ROWS=()
 if [ -n "$SUMMARY_FROM" ]; then
     [ -f "$SUMMARY_FROM" ] && [ -r "$SUMMARY_FROM" ] || { echo "rows file not readable: $SUMMARY_FROM" >&2; exit 2; }
+    ROW_RE=$'^(line|deferral|format|section)\t[^\t]*\t(true|false|unknown|unchecked|partial)\t[^\t]+\t[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    n=0
     while IFS= read -r r || [ -n "$r" ]; do
-        [ -n "$r" ] && ROWS+=("$r")
+        n=$((n + 1))
+        [ -n "$r" ] || continue
+        [[ "$r" =~ $ROW_RE ]] || { echo "rows file line $n is not a whole row: $SUMMARY_FROM" >&2; exit 2; }
+        ROWS+=("$r")
     done < "$SUMMARY_FROM"
+    [ "${#ROWS[@]}" -gt 0 ] || { echo "rows file has no rows: $SUMMARY_FROM" >&2; exit 2; }
     summarize
     exit 0
 fi
@@ -288,7 +308,24 @@ check_adr_status() {  # <relpath> <word>
     [[ "$want" =~ ^[a-z]+$ ]] || { echo unchecked; return; }
     check_path "$path" || return
     [ -e "$RESOLVED" ] || { echo false; return; }
+    # Fences as in the roadmap reader; CRs dropped first.
     out="$(run_bounded awk '
+        { sub(/\r$/, "") }
+        {
+            l = $0; sub(/^ ? ? ?/, "", l)
+            if (match(l, /^(```+|~~~+)/)) {
+                run = substr(l, 1, RLENGTH); rest = substr(l, RLENGTH + 1)
+                if (!fence) {
+                    if (substr(run, 1, 1) != "`" || index(rest, "`") == 0) {
+                        fence = substr(run, 1, 1); flen = length(run); next
+                    }
+                } else {
+                    if (substr(run, 1, 1) == fence && length(run) >= flen && rest ~ /^[ \t]*$/) fence = ""
+                    next
+                }
+            }
+            if (fence) next
+        }
         f && NF { print; found = 1; exit }
         /^##[[:space:]]+Status[[:space:]]*$/ { f = 1 }
         END { if (!found) exit 3 }' "$RESOLVED" 2>/dev/null)" || rc=$?
@@ -362,7 +399,12 @@ combine() {  # <results...>
 }
 
 check_cell() {  # <cell text>
-    local cell="$1" part results=() rest
+    local cell part results=() rest
+    # A whole cell in one pair of backticks is unwrapped before the split.
+    cell="$(trim "$1")"
+    if [[ "$cell" =~ ^\`([^\`]*)\`$ ]]; then
+        cell="${BASH_REMATCH[1]}"
+    fi
     rest="$cell"
     while :; do
         if [[ "$rest" == *" ; "* ]]; then
@@ -422,7 +464,10 @@ if [ -f "$ROADMAP" ]; then
         raw="${raw%$'\r'}"
         # Fences are tracked from the top of the file, so a fenced example
         # of the section is never taken for it.
-        if [[ "$raw" =~ $FENCE_RE ]]; then
+        # A backtick opener with a backtick after it is inline code, not a
+        # fence (CommonMark); inside a fence such a line closes nothing.
+        if [[ "$raw" =~ $FENCE_RE ]] && { [ "$in_fence" = true ] \
+            || [ "${BASH_REMATCH[1]:0:1}" = '~' ] || [[ "${BASH_REMATCH[2]}" != *'`'* ]]; }; then
             run="${BASH_REMATCH[1]}"
             if [ "$in_fence" = false ]; then
                 in_fence=true; fence_char="${run:0:1}"; fence_len="${#run}"
@@ -492,11 +537,13 @@ elif [ "$seen_section" = false ]; then
     emit section "(no Direction section)" unchecked ""
 elif [ "$seen_table" = false ]; then
     emit section "(no Line or Deferral table)" unchecked ""
+elif [ "${#ROWS[@]}" -eq 0 ]; then
+    emit section "(no rows in the Line or Deferral tables)" unchecked ""
 fi
 
 if [ "$SUMMARY" = true ]; then
-    summarize
+    summarize || exit 1
 else
-    printf '%s\n' "${ROWS[@]}"
+    printf '%s\n' "${ROWS[@]}" || exit 1
 fi
 exit 0
