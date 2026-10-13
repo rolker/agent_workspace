@@ -90,3 +90,49 @@ Action 3 (fold stale-row / needs-ticket detection into the sit-rep): owner answe
 **Plan**: `.agent/work-plans/issue-389/plan.md` at `1dcd8551`
 
 Delete the what-next skill, make sitrep trigger on "what's next?" with a Suggested next line, add guards in test_skill_paths.sh, update roadmap and digest note. Stale-row detection declined by the owner.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-13 09:05 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #389 — Delete the what-next skill; the sit-rep answers "what's next?"
+**Plan**: `.agent/work-plans/issue-389/plan.md` at `1dcd8551`
+**Branch**: `feature/issue-389`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, five files plus the one the plan misses (finding 2). |
+| Issue alignment | Good | Covers the acceptance list and issue-review actions A1, A2, A4, A5, A6; A3 dropped per the owner. Serves, as checked: Easy to use ("Work is easy to come back to"), `docs/design.md#documentation-layers` — README has the "Easy to use" goal and that bullet; the anchor exists. |
+| File targeting | Needs work | `.agent/scripts/tests/test_script_tests_hook_scope.sh` is missing (finding 2); `test_skill_paths.sh` header says "Scope: SKILL.md files ONLY" and needs rewording once it carries repo-wide guards. |
+| Consequences | Needs work | The "no live file names what-next" guard fails on text the plan itself writes (finding 1); the sit-rep's "Four sections" and "it decides nothing" sentences change with the new line (finding 3). |
+| Principle alignment | Needs work | "Enforce what matters, as simply as possible": guard (c) checks the word, not a live pointer to the skill, so it forbids legitimate history prose. "Test what breaks": fine otherwise; the manual trigger check is recorded. |
+| ADR compliance | Good | ADR-0016: verified `sync_skills` removes a stale link (`user_tier_install.sh` ~line 347–368) and `--check` notes "no longer selected" (~line 562–568). ADR-0013 normal entries. ADR-0003 watch as stated. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences] must-fix** — Guard (c) (`git grep -l what-next`, excluding work plans and the digest) fails on the plan's own edits: step 2 makes the sit-rep "What it is" say it replaces `what-next`, step 6 makes the roadmap say it "replaced `what-next` (#389)", and the guard's own literal in `test_skill_paths.sh` matches itself. A future design change-log row or ADR noting the deletion would fail it too. Match live pointers, not the word: `/what-next` (slash invocation) and `skills/what-next` (path), built so the test file does not match itself (or excluded by name); then prose history passes and only the digest's path mention needs its exemption. State the exemptions as a rule (work plans; inspiration digests), not one file.
+2. **[File targeting] must-fix** — `test_script_tests_hook_scope.sh` declares `test_skill_paths.sh` reads only `.claude/skills`. Guard (c) reads the whole tracked tree, including `docs/` and `README.md`, which the `validate-script-tests` hook's `files:` regex does not cover, so a local docs-only commit would not run the guard (CI's `make lint` runs all files, so CI would). The plan must update that allowlist entry honestly and either limit guard (c)'s pathspec to hook-covered prefixes (`.agent/` minus work plans, `.claude/`, `AGENTS.md`, `Makefile`) or say why docs are left to CI. Add the file to Files to Change.
+3. **[Principle alignment] must-fix** — Step 3 contradicts itself and the Open Question: Suggested next is "the last line" and also "the single question stays allowed after it", while the Open Question says the suggestion is "last-but-one". Pick one: Suggested next, then at most one question (recommended — the suggestion proposes an action, the question asks the owner to decide; they do different jobs). In the same edit: change "Four sections, one screen" in step 5 of the sit-rep; reword "The skill formats; it decides nothing" so the suggestion is a proposal like the inbox sort; require the line to name the fact it comes from, and to say "nothing from this run's facts" when no source has an item.
+4. **[Issue alignment] suggestion** — Description: put the trigger phrases at the start, as when-to-use ("Use when asked 'what's next?', 'what should I work on?' or 'where are we?'"), since the start is what a picker scanning many skills weighs most; keep the frontmatter valid YAML (no `: ` inside the plain scalar, or quote the whole value — a broken frontmatter drops the skill entirely); guard (a) should read the frontmatter `description` line only, not the body.
+5. **[Issue alignment] suggestion** — The manual acceptance can be won by something other than the description: `~/CLAUDE.md` (loaded in any session under the home directory, including the workspace root) tells agents to read `~/Documents/workplan/NOW.md` "when asked about priorities, the day, or the week". Record which one answered "what's next?"; if NOW.md wins, report it to the owner rather than edit his file (instruction files are Ask First).
+6. **[Principle alignment] suggestion** — Suggested next draws partly from the inbox "now" bin, which is the sit-rep's own proposed sort, not a checked fact. Give a fixed order of sources (due deferral, then false Direction line, then in-flight work, then proposed inbox "now") so the line is mechanical and says when it rests on a proposal.
+7. **[Consequences] suggestion** — Roadmap "Morning status / standup skill" row: say what goes in its Issue column (#386 or #389) when it becomes done, so `update_roadmap.sh` and readers can tie it to the work; and add to the PR note that typing `/what-next` now does nothing.
+
+### Summary
+
+Sound plan, right size, owner decisions respected. Three things to fix before implementing: the what-next guard as written fails on the plan's own text and itself, its repo-wide read is not declared to the hook-scope test, and the report's ending order is stated two ways.
+
+### Recommended Actions
+
+- [ ] Narrow guard (c) to live pointers (`/what-next`, `skills/what-next`), stop it matching its own source, and state the history exemptions as a rule.
+- [ ] Update `test_script_tests_hook_scope.sh`'s entry for `test_skill_paths.sh` to what guard (c) reads, and limit its pathspec to hook-covered prefixes or say why docs are left to CI; add the file to Files to Change; reword the `test_skill_paths.sh` header.
+- [ ] Settle the ending: Suggested next, then at most one question; update "Four sections" and "decides nothing" in the sit-rep; require the source fact and an empty case.
+- [ ] Put trigger phrases first in a valid-YAML description; guard (a) reads the frontmatter description only.
+- [ ] In the manual acceptance, record whether `~/CLAUDE.md`'s NOW.md instruction answered instead of /sitrep.
+- [ ] Fix an order of sources for Suggested next and mark when it rests on the proposed inbox sort.
+- [ ] Fill the morning-status row's Issue column; note in the PR that `/what-next` no longer exists.
