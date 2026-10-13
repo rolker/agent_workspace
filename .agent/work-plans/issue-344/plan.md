@@ -20,7 +20,10 @@ source) is untouched. Nothing new is built.
 
 Four commits on this branch, each reviewable alone. Line numbers are from the
 Issue Review grep and re-checked while planning; the implementer re-greps
-`copilot` in each file before editing.
+`copilot` in each file before editing. Amended after the Plan Review
+(06246fa0): test (d)'s findings-file assertion, the stand-in copilot
+marker, the corrected test-rework list, the ADR-0015 note's placement and
+wording, and the exact "Supported agents" format.
 
 1. **Scripts** — `_cli_review.sh`: delete the `copilot)` arm (including the
    PENDING-LIVE-CONFIRMATION note), narrow the agent whitelist to
@@ -30,25 +33,60 @@ Issue Review grep and re-checked while planning; the implementer re-greps
    helper-availability condition (line ~602) and from the comments/usage text
    (13, 19, 39, 54, 195, 324, 1444). With the key gone, `--agents copilot` and
    `--agent copilot` already reach the existing "Unknown agent" exit-2 path.
-   Make the "Supported agents:" line deterministic: print the keys sorted
-   (`printf '%s\n' "${!AGENT_BINS[@]}" | sort | paste -sd,` style) at both
-   call sites (lines ~497 and ~513) instead of associative-array order.
+   Make the "Supported agents:" line deterministic: one helper prints the
+   keys sorted under `LC_ALL=C`, joined with ", ", and both call sites
+   (lines ~497 and ~513) use it instead of associative-array order. The
+   exact line is `Supported agents: claude, codex, gemini`.
+   Also reword `_cli_review.sh`'s header count ("these three ... a fourth
+   case" → two / third) and `cross_model_review.sh`'s "the three agents
+   that helper serves" (line ~603).
 2. **Tests** (`.agent/scripts/tests/test_cross_model_review.sh`, ~73 mentions)
    — delete the `copilot)` mock (2803-2823), `test_copilot_stdin_contract`
-   (4110) and its call (5568), `copilot` from `CLI_AGENTS` (3300), the
-   copilot error-marker/empty cases (3465-3495), and the copilot-only
-   assertions in the argv/EXIT/findings tests (2868-2915). Rework, not delete,
-   the tests that pair `codex,copilot` so they keep a two-agent case with
-   `codex,claude`: timeout (2944), concurrency (2966, three agents become
-   `codex,claude` plus gemini only if the mock exists, otherwise two), missing
-   CLI (3153-3169), interrupted-run signal test (3236-3263), partial failure
-   (4219-4228). Add regression tests: (a) `--agents copilot` exits 2 and the
-   message names `claude, codex, gemini` (sorted); (b) `--agents codex,copilot`
-   exits 2 before any agent runs; (c) `--agent copilot` exits 2 with the same
-   list; (d) `_cli_review.sh copilot <bin> <prompt> <findings>` is rejected as
-   an unsupported agent (run the helper directly; check its usage-failure exit
-   code in the script before asserting). Each new test must also assert no
-   findings file was written and no copilot mock was invoked.
+   (4110) and its call (5568), `copilot` from `CLI_AGENTS` (3300) and from
+   the mock setup of `test_cli_no_prompt_size_ceiling` (4136). Rework, not
+   delete, every test that names copilot as a second or third agent, so
+   each keeps its multi-agent case:
+   - all-succeed (2865-2918): `gemini,codex,copilot` → `gemini,codex,claude`;
+     the copilot argv assertions become claude's (`-p --output-format json
+     --permission-prompts none`, prompt not on argv), triplet order and
+     findings checks name claude;
+   - one-agent-fails (2921-2938): `gemini,codex,copilot` →
+     `gemini,codex,claude`;
+   - timeout (2941-2960): `codex,copilot` → `codex,claude`;
+   - concurrency (2963-2987): two agents, `codex,claude` (the agy mock
+     writes `agy.pid`/`agy.end` but no `.start`, so gemini cannot join the
+     overlap check); its PASS text becomes "both agents started before the
+     first finished";
+   - missing CLI and none-usable (3149-3173): the hidden agent is claude,
+     `codex,claude`;
+   - interrupted-run signal test (3231-3271): `codex,claude`;
+   - review-text-never-reclassified (3460-3497): the same four cases run
+     against codex (its `-o` final message) instead of copilot, so the
+     "text never fails a run" coverage survives;
+   - `test_cli_no_temp_leak` (4216-4231): `codex,claude` with the empty and
+     non-zero-exit failure modes; its label "success + three failure
+     modes" was already wrong after #313 (copilot's ERRMARK case is passed
+     through, not failed) and becomes "success + two failure modes";
+   - `test_cli_helper_missing_is_unavailable` (4233): its title names
+     codex/claude only.
+
+   Add regression tests, each with a stand-in `copilot` script in
+   `MOCK_BIN` that only touches a marker file, so "copilot was never
+   invoked" is asserted as the marker's absence:
+   (a) `--agents copilot` exits 2, stderr names `Unknown agent 'copilot'`
+   and the exact line `Supported agents: claude, codex, gemini`;
+   (b) `--agents codex,copilot` exits 2 before any agent runs (no codex
+   `.start`/`.argv` file either);
+   (c) `--agent copilot` exits 2 with the same exact supported line (the
+   second print site);
+   (a)–(c) exit during argument parsing, so each also asserts no findings
+   file was written.
+   (d) `_cli_review.sh copilot <bin> <prompt> <findings>` run directly exits
+   2 and its findings file holds `unsupported agent 'copilot'` with the
+   new "(codex and claude run here; ...)" text: the helper truncates the
+   findings file first (line 136) and `usage_fail` writes the reason into
+   it before exiting 2 (lines 155-165), so (d) asserts the reason rather
+   than an absent file.
 3. **Skill** (`.claude/skills/review-code/SKILL.md`) — agent list at 93 drops
    Copilot; the "Not ported" note (97-98) is reworded so the Copilot-CLI
    specialist is "not ported, and dropped by owner decision (#344)"; remove the
@@ -61,11 +99,13 @@ Issue Review grep and re-checked while planning; the implementer re-greps
    triage-reviews and onboard-project Copilot text alone (hosted review).
 4. **Docs** — AGENTS.md, the two approved rows only: `_cli_review.sh` for
    codex/claude (drop `/copilot`); `Codex / Claude turn` and remove
-   "copilot's `-s` response". ADR-0015: add a Status-line note (ADR-0008
-   cross-reference addendum), "Copilot CLI dropped as a reviewer by owner
-   decision 2026-10-13 (#344); the dispatch structure is unchanged", leaving
-   Context, Decision item 3 and the Consequences as the record of what was
-   true then.
+   "copilot's `-s` response". ADR-0015: append one sentence to the existing
+   Status paragraph, after the #363 sentence (ADR-0008 cross-reference
+   addendum): the Copilot CLI was dropped as a reviewer by owner decision
+   2026-10-13 (#344), the dispatch structure is unchanged, and the Copilot
+   mentions in Context, Decision item 3 and the first and last Consequences
+   bullets record what was true when the decision was made. The body stays
+   as written.
 5. **Verify** — `grep -rIi copilot` outside `work-plans/` and the
    inspiration digests and classify every remaining hit as framework identity,
    hosted review, or history; run `.agent/scripts/tests/run_script_tests.sh`
@@ -146,8 +186,9 @@ No change to the design picture. `docs/design.md` names no Copilot CLI reviewer
 
 ## Open Questions
 
-- None blocking. The helper's exit code for an unsupported agent is read from
-  `_cli_review.sh` at implementation time and asserted as found.
+- None. The helper's exit code for an unsupported agent is 2, with the
+  reason written into the findings file (`usage_fail`, lines 155-165);
+  test (d) asserts both.
 
 ## Estimated Scope
 
