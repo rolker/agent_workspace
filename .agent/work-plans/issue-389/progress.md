@@ -294,3 +294,18 @@ Round-1 findings verified fixed in 545af354, 393e01b9, 4ab547d1. The fixer also 
 **Decision**: publish
 
 Publish after pre-push round 2 (411fb0fc, approved, 0 must-fix). The one open suggestion (merge worktrees and open PRs by branch under "work in flight"; say whether a PR waiting on the owner comes first) is noted in the PR body and picked up at triage with the bot findings.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-13 10:38 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**PR**: #390 at `bff4f95`
+**Sources**: 3 (Copilot R1 @ `bff4f95`, Local Review (Pre-Push) @ `2592374` (covers `bff4f95` via bookkeeping), CI rollup)
+**Cross-source confirmations**: 1
+**CI**: pending
+
+### Findings
+- [ ] (cross-confirmed, suggestion; Copilot R1 @ `bff4f95` + Local Review (Pre-Push) @ `2592374`) Under "work in flight", "take the first as listed" picks a worktree over any open pull request, because the report lists worktrees before pull requests, and a pull request whose branch has a worktree appears twice. Fix: merge worktrees and open pull requests into one line per branch (match on `headRefName`), and say whether a pull request waiting on the owner comes before a branch with no pull request — `.claude/skills/sitrep/SKILL.md`
+
+### False positives
