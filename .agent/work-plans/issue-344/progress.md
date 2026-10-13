@@ -211,3 +211,13 @@ No findings.
 ### False positives
 
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 11:57 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge PR #391 after a clean Integrated Review (04462f36) and all-pass CI. Known at the decision: the hosted Copilot review did not run (quota exhausted; its check-run failed and is excluded from the gate since #300) — the local pre-push review (552e4ba1; Gemini, Codex, Claude adversarial) is the PR's only review. After merge: retitle #342.
