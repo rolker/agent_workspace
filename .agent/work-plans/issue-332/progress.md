@@ -157,3 +157,12 @@ The plan builds on the Worktrees Target as required, honours A2 without building
 Owner answers folded in:
 - Defaults are OPEN (owner, during the review: "where the defaults should be is not settled even in my mind"): the mechanism (design.md Worktrees Target: `location`/`tracking`, four combinations, one lookup) is settled; the default combination and the outside-path layout are provisional — one function in the registry helper, overridable at onboarding, marked provisional in design text and onboarding wording (M1).
 - Records in the workspace repository: REFUSE (owner answer "Refuse" to the question "May a project's loop records be committed to the agent_workspace repository (any clone of it)?", with the fork/PR scenario: records would ride along with every fork and come back in PRs past the merge gate's bookkeeping exemption). The check is by the named repository's remote URL, not by path; untracked records under the workspace's ignored scratchpad stay allowed. This supersedes the Target's "I don't want to prohibit it, but I also don't want to encourage it" — the PR 1 design edit rewrites that sentence and says why (M2).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-13 14:06 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a0a1c30f33fc0db7c, resume 1 of 3)
+**Plan**: `.agent/work-plans/issue-332/plan.md` at `754f8675`
+
+Revision 1, after plan review round 1 (dc77392d) and the owner's checkpoint (b9ab8403). Still builds on the Worktrees Target (location/tracking). Records defaults are provisional and held in one function (project_records_default); tracking in the workspace repository is refused by remote URL; both session-root bends are named; the installer runs only after build and test pass; registration_verify.sh is read-only; follow-up issue text is complete; an acceptance-to-test table with a synthetic fixture shaped like the hand-registered gz4d is added. Every finding and its resolution is in the plan's "Plan Review Resolution" section.
