@@ -208,7 +208,7 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | Structured agent handoffs | #40 | done | microsoft/skills | Tool scoping per agent role |
 | Permission prompt reduction | #110 | done | brainstorm | Share workspace-level rules and automate analysis; #1 friction point |
 | Morning status / standup skill | — | planned | brainstorm | Gather PR, review, issue, worktree state; suggest prioritized work plan (scenario 4) |
-| Sit-rep, Direction section and one-line inbox | #386 | in progress | — | First form of scenario 4: `/sitrep` reports the Direction lines checked that run, the inbox, work in flight and due deferrals; `capture.sh` writes the inbox; design section: [Documentation layers](design.md#documentation-layers) |
+| Sit-rep, Direction section and one-line inbox | #386 | done | — | First form of scenario 4: `/sitrep` reports the Direction lines checked that run, the inbox, work in flight and due deferrals; `capture.sh` writes the inbox; design section: [Documentation layers](design.md#documentation-layers) |
 | Post-PR merge/cleanup/sync | #38 | done | session friction | `merge_pr.sh` + `make merge-pr PR=<N>` automates merge, worktree removal, branch cleanup, and sync |
 | Crash recovery skill | #70 | done | brainstorm | Session-specific scratchpad subdirs |
 | Agent friction self-reporting | #58 | done | gstack | Agent rates experience 0-10 after workflow steps, files field reports when not 10 |
