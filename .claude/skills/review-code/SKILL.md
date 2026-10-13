@@ -90,15 +90,17 @@ unchanged: static analysis only, no cross-model dispatch.
 - **Governance** — evaluates against principles, ADRs, and consequences
 - **Plan Drift** — compares implementation against the work plan (if one exists)
 - **Claude Adversarial** — fresh subagent, independent review for missed issues (Standard + Deep)
-- **Cross-model Adversarial** — independent reviews by the non-caller CLI agents (Gemini via agy, Codex, Copilot), run in parallel by `cross_model_review.sh` (Standard + Deep)
+- **Cross-model Adversarial** — independent reviews by the non-caller CLI agents (Gemini via agy, Codex, Claude), run in parallel by `cross_model_review.sh` (Standard + Deep)
 
 **Not ported from ros2_agent_workspace** (issue #269 PR B, documented so
 nobody looks for them): the Ollama `local_review.sh` / `--local`
 specialist (no local-model serving story here), the Copilot-CLI
-`--copilot` specialist and its untrusted-PR gate (no `copilot` CLI
-integration), and the container dispatcher (`dispatch_subagent.sh --mode
-container`). This skill is invoked directly; nothing dispatches it. Each
-would need its own issue if wanted.
+`--copilot` specialist and its untrusted-PR gate (the Copilot CLI is no
+reviewer at all here: dropped by owner decision, #344, because it runs
+the same models as the other reviewers; Copilot's hosted PR review is
+still read by `triage-reviews`), and the container dispatcher
+(`dispatch_subagent.sh --mode container`). This skill is invoked
+directly; nothing dispatches it. Each would need its own issue if wanted.
 
 ## Steps
 
@@ -361,8 +363,10 @@ agents. Use `$AGENT_FRAMEWORK` if set; fall back to
 `source $WS_ROOT/.agent/scripts/detect_cli_env.sh || true` if unset or "unknown". Normalize
 the framework key (lowercase) and apply explicit aliases to match the agent
 keys used by the script: `claude-code` → `claude`, `gemini-cli` → `gemini`,
-`codex-cli` → `codex`, `copilot-cli` → `copilot`. The canonical keys are:
-`gemini`, `codex`, `claude`, `copilot`.
+`codex-cli` → `codex`. The canonical keys are: `gemini`, `codex`,
+`claude`. A Copilot CLI session as the caller (`copilot` / `copilot-cli`)
+maps to no reviewer key, so there is nothing to exclude: it dispatches all
+three.
 
 Launch the cross-model review script **once**, passing every non-caller
 agent in `--agents`; the script runs them in parallel and blocks until
@@ -372,17 +376,17 @@ hard error).
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-# PR mode — example: Claude is the caller, dispatch gemini, codex, copilot
-$WS_ROOT/.agent/scripts/cross_model_review.sh --pr <N> --agents gemini,codex,copilot --repo owner/repo
+# PR mode — example: Claude is the caller, dispatch gemini, codex
+$WS_ROOT/.agent/scripts/cross_model_review.sh --pr <N> --agents gemini,codex --repo owner/repo
 
 # Branch mode — runs locally, no --repo needed in most cases
-$WS_ROOT/.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,copilot
+$WS_ROOT/.agent/scripts/cross_model_review.sh --branch --agents gemini,codex
 $WS_ROOT/.agent/scripts/cross_model_review.sh --branch <base> --agents gemini,codex
-$WS_ROOT/.agent/scripts/cross_model_review.sh --branch --agents gemini,codex,copilot --no-progress  # skill worktrees
+$WS_ROOT/.agent/scripts/cross_model_review.sh --branch --agents gemini,codex --no-progress  # skill worktrees
 ```
 
 Omit an agent from the list when its CLI is known to be unavailable
-(e.g. Copilot while its quota is exhausted); a listed agent whose CLI is
+(e.g. Codex while its quota is exhausted); a listed agent whose CLI is
 missing fails only itself, not the run.
 
 Pass `--repo <owner/repo>` (PR mode) when the PR lives in a different repo
@@ -422,7 +426,7 @@ and answers with a quota or auth message is reported as a *completed*
 review holding that message — text is never used to fail a run (#313),
 so read a suspiciously short "review" before trusting it. `EXIT=` is the agent *job's* status: every agent runs through
 a helper that validates its result (`_agy_review.sh` for gemini,
-`_cli_review.sh` for codex/claude/copilot), so a failed review is
+`_cli_review.sh` for codex/claude), so a failed review is
 `EXIT=1` with the CLI's own status and the reason written into the
 findings file, and `EXIT=124` means the outer timeout cut it off. One agent's failure does not
 block the others and does not fail the review. Exit 3 with **no**

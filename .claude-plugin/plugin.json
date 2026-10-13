@@ -17,7 +17,6 @@
     "./.claude/skills/sitrep",
     "./.claude/skills/start-task",
     "./.claude/skills/test-engineering",
-    "./.claude/skills/triage-reviews",
-    "./.claude/skills/what-next"
+    "./.claude/skills/triage-reviews"
   ]
 }

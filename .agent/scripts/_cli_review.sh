@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
-# Run one headless codex / claude / copilot review turn and validate it.
+# Run one headless codex / claude review turn and validate it.
 #
 # Usage:
 #   _cli_review.sh <agent> <bin> <prompt-file> <findings-file> [<timeout-label>]
 #
-# <agent> is codex, claude or copilot. Gemini has its own helper
+# <agent> is codex or claude. Gemini has its own helper
 # (_agy_review.sh): its stream-json prompt encoding and result-event
-# parsing share no shape with these three, so folding it in here would
-# add a fourth case with nothing in common but the trap block.
+# parsing share no shape with these two, so folding it in here would
+# add a third case with nothing in common but the trap block. (A copilot
+# arm was dropped by owner decision, #344: the Copilot CLI runs the same
+# models as the other reviewers; Copilot's hosted PR review stays a
+# triage source.)
 #
 # <timeout-label> is informational only — the bound itself is the caller's
 # outer `timeout -k` (cross_model_review.sh: AGENT_TIMEOUT). It is quoted
 # in failure reasons so a reader knows which bound the run was under.
 #
 # Why this exists (issue #313, folding in #212):
-#   Before this helper the codex/claude/copilot arms of
-#   cross_model_review.sh were bare `timeout ... "$bin" -p < prompt >
-#   findings 2>&1` calls, gated on the CLI's exit code alone. Every
-#   failure mode that does not move the exit code therefore landed in the
-#   findings file as if it were a review:
+#   Before this helper the CLI arms of cross_model_review.sh were bare
+#   `timeout ... "$bin" -p < prompt > findings 2>&1` calls, gated on the
+#   CLI's exit code alone. Every failure mode that does not move the exit
+#   code therefore landed in the findings file as if it were a review:
 #     * an empty response (the #288 class: a headless permission denial or
 #       an aborted turn that still exits 0);
 #     * a quota / rate-limit / auth error printed as ordinary output;
@@ -99,23 +101,20 @@
 #     `CLI_PID=$!` that records it is not lost: the handler adopts `$!`
 #     when a launch is in flight and `$!` has moved since it began.
 #
-# Verified against codex-cli 0.156.1 (2026-09-25), claude 2.x and copilot
-# 1.0.61 help output on this host: `codex -s read-only -a never exec
+# Verified against codex-cli 0.156.1 (2026-09-25) and claude 2.x help
+# output on this host: `codex -s read-only -a never exec
 # [PROMPT]` reads stdin when no prompt argument is given and
 # `-o/--output-last-message <FILE>` writes only the final message; `-s`
 # and `-a` are top-level flags (`codex exec -a never` is a parse error)
 # and `codex debug prompt-input` confirms they reach the subcommand's
 # sandbox/approval config; `claude -p --output-format json` emits a single
 # result object and `--permission-prompts none` auto-denies anything that
-# would prompt; `copilot -p <text> -s` prints only the agent response,
-# with `--available-tools`, `--disable-builtin-mcps` and `--no-ask-user`
-# available to strip a headless run down to no tools at all, and the
-# `-p ""` + stdin form is the one verified in #212.
+# would prompt.
 
 set -uo pipefail
 
 usage() {
-    echo "Usage: $0 <agent: codex|claude|copilot> <bin> <prompt-file> <findings-file> [<timeout-label>]" >&2
+    echo "Usage: $0 <agent: codex|claude> <bin> <prompt-file> <findings-file> [<timeout-label>]" >&2
 }
 
 if [[ $# -lt 4 || $# -gt 5 ]]; then
@@ -166,8 +165,8 @@ usage_fail() {
 }
 
 case "$AGENT" in
-    codex|claude|copilot) ;;
-    *) usage_fail "unsupported agent '${AGENT}' (codex, claude and copilot run here; gemini runs through _agy_review.sh)" ;;
+    codex|claude) ;;
+    *) usage_fail "unsupported agent '${AGENT}' (codex and claude run here; gemini runs through _agy_review.sh)" ;;
 esac
 
 if [[ ! -r "$PROMPT_FILE" ]]; then
@@ -565,52 +564,6 @@ case "$AGENT" in
         if [[ "$CLI_EXIT" -ne 0 ]]; then
             fail "claude exited ${CLI_EXIT} despite a successful-looking JSON result$(bound_note)$(marker_note "$STDERR_FILE")$(log_excerpt 'claude stderr' "$STDERR_FILE")"
         fi
-        ;;
-    copilot)
-        # #212/#274: the prompt goes over STDIN, never argv — a single
-        # argv string is capped at MAX_ARG_STRLEN (128 KiB on Linux)
-        # regardless of ARG_MAX, and Deep-tier prompts pass that. There is
-        # deliberately NO prompt-size guard here: stdin has no such limit,
-        # so a bound could only reject large reviews that would otherwise
-        # work, re-imposing the ceiling the stdin path removed. The
-        # channel is enforced by the stdin-contract test in
-        # test_cross_model_review.sh, which asserts the prompt is absent
-        # from argv and present on stdin.
-        #
-        # Least privilege: a reviewer needs no tools at all — the diff is
-        # in the prompt — and the diff is untrusted input, so
-        # --allow-all-tools would be a privilege escalation driven by
-        # whatever the PR contains. --available-tools='' removes the tool
-        # set, --disable-builtin-mcps removes the built-in MCP servers,
-        # and --no-ask-user stops the agent blocking on a question no one
-        # can answer headlessly. -p "" keeps print mode without putting
-        # the prompt on argv; -s prints only the agent response (no stats
-        # footer), so the output is used as-is — no second strip, which
-        # could truncate a review body containing a footer-looking line.
-        #
-        # PENDING ONE LIVE CONFIRMATION when Copilot quota returns
-        # (#313). Two parts of this invocation rest on `copilot --help`
-        # for 1.0.61 plus #212's run on 1.0.48, not on a live 1.0.61 run:
-        #   * `--available-tools=''` — if the argument validator rejects
-        #     an empty list, drop it and deny the dangerous tools instead
-        #     (`--deny-tool='shell' --deny-tool='write'`), keeping
-        #     --disable-builtin-mcps and --no-ask-user;
-        #   * `-p ""` — the empty print-mode prompt that keeps the real
-        #     prompt on stdin. #212 verified this form on 1.0.48; if a
-        #     later version rejects an empty prompt string, the fix is a
-        #     placeholder like `-p "Review the input on stdin."`, NEVER
-        #     the prompt itself on argv (#274: MAX_ARG_STRLEN).
-        DIAG_LABEL='copilot stderr'
-        DIAG_FILE="$STDERR_FILE"
-        run_cli "$STDOUT_FILE" "$STDERR_FILE" \
-            "$CLI_BIN_RESOLVED" -p "" -s --available-tools='' --disable-builtin-mcps --no-ask-user
-        # Exit status and an empty `-s` output are the only failures
-        # (the header rule); a transient "[WARN] overloaded, retrying" on
-        # stderr is not one, and the text of a real review never is.
-        if [[ "$CLI_EXIT" -ne 0 ]]; then
-            fail "copilot exited ${CLI_EXIT}$(bound_note)$(marker_note "$STDERR_FILE")$(log_excerpt 'copilot stderr' "$STDERR_FILE")"
-        fi
-        RESULT=$(cat "$STDOUT_FILE")
         ;;
 esac
 

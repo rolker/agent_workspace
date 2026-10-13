@@ -191,7 +191,10 @@ declare -A ROOT_READERS=(
     [test_session_start_layer.sh]=".claude/hooks AGENTS.md .agent/scripts .agent/project_types"
     # Runs the sit-rep skill's own shell steps, read from its SKILL.md.
     [test_sitrep_checks.sh]=".claude/skills"
-    [test_skill_paths.sh]=".claude/skills"
+    # SKILL.md scan, plus the #389 git grep for live pointers to the old
+    # what-next skill over these hook-covered prefixes (docs/ and README.md
+    # are deliberately not read: the hook's files: regex does not cover them).
+    [test_skill_paths.sh]=".agent/ .claude/ AGENTS.md Makefile"
     # Whole-tree `cp -r $WS_ROOT/.agent` into its sandbox workspace.
     [test_skill_prefix.sh]=".agent/"
     [test_sync_gitbug.sh]=".agent/project_types"

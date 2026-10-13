@@ -8,7 +8,10 @@ dispatch mechanics unchanged. The `AGENT_KILL_AFTER=0` exception recorded
 below was withdrawn by #363; the current job-lifecycle behaviour (kill
 grace, process-group kill, launch window, one run per artifact directory)
 is described in the headers of `cross_model_review.sh`, `_cli_review.sh`
-and `_agy_review.sh`.
+and `_agy_review.sh`. The Copilot CLI was dropped as a reviewer by owner
+decision on 2026-10-13 (#344); the dispatch structure is unchanged, and
+the Copilot mentions in Context, Decision item 3 and the first and last
+Consequences bullets record the reviewer set when they were written.
 
 ## Context
 
