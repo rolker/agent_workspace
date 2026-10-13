@@ -82,3 +82,11 @@ What `what-next` did that the sit-rep does not: (1) stale-row detection (roadmap
 
 Proceed with actions A1, A2, A4, A5, A6 as proposed (A5: the old "Morning status / standup skill" roadmap row is closed as covered by the sit-rep).
 Action 3 (fold stale-row / needs-ticket detection into the sit-rep): owner answered "Drop it" — the check is not carried over; the PR records that the owner declined it.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-13 09:02 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Plan**: `.agent/work-plans/issue-389/plan.md` at `1dcd8551`
+
+Delete the what-next skill, make sitrep trigger on "what's next?" with a Suggested next line, add guards in test_skill_paths.sh, update roadmap and digest note. Stale-row detection declined by the owner.
