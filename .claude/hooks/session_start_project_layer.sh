@@ -107,7 +107,10 @@ echo ""
 # skills, for a root inside the workspace tree, has not been checked, so
 # the note says no rule applies rather than that neither form reaches it.
 _sp_script="$WS_ROOT/.agent/scripts/skill_prefix.sh"
-if _sp="$(bash "$_sp_script" --dir "$CWD" 2>/dev/null)"; then
+# One run: stdout carries the verdict on success, stderr the reason on
+# failure, and the script writes nothing else.
+_sp="$(bash "$_sp_script" --dir "$CWD" 2>&1)"; _sp_rc=$?
+if [[ "$_sp_rc" -eq 0 && ( "$_sp" == "skill_prefix=" || "$_sp" == "skill_prefix=agent-workspace:" ) ]]; then
     if [[ "$_sp" == "skill_prefix=" ]]; then
         echo "Workspace skills: this session is in the workspace checkout's repository,"
         echo "so they load under their bare names (/review-code, /run-issue, ...)."
@@ -122,7 +125,7 @@ if _sp="$(bash "$_sp_script" --dir "$CWD" 2>/dev/null)"; then
     fi
 else
     echo "Workspace skills: no rule says how they are named in this session."
-    echo "$(bash "$_sp_script" --dir "$CWD" 2>&1 >/dev/null | sed 's/^skill_prefix: //')"
+    echo "${_sp#skill_prefix: }"
 fi
 echo ""
 

@@ -661,7 +661,7 @@ enclosing_repo() {  # <dir>
 # Every such instance shares its parent's repository (same_project): it is
 # a plain directory in it, where local scope lands on the repository's
 # toplevel (live case K) -- the parent's working enable -- or a linked
-# worktree of it, where where local scope writes has not been established.
+# worktree of it, where local scope writes has not been established.
 # Either way a local-scope remove could strip the parent's enable, so the
 # instance's own declaration is reported, never removed.
 instance_cli_reason() {  # <instance>

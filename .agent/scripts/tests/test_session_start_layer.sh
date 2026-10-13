@@ -268,6 +268,18 @@ nested_out=$(run_hook "$PROOT/src/pkg")
       && "$nested_out" != *"namespaced /agent-workspace:<skill>"* ]] \
     && pass "a session in a git repo nested in a root is told no naming rule applies, and why" \
     || fail "nested repo got the wrong skill-naming note (out=$(grep -A1 '^Workspace skills' <<< "$nested_out"))"
+# The failure path runs skill_prefix.sh once, taking the reason from that
+# same run (it used to run the script a second time for its stderr).
+SPS="$WSC/.agent/scripts/skill_prefix.sh"
+mv "$SPS" "$WSC/.agent/scripts/skill_prefix.real.sh"
+printf '#!/usr/bin/env bash\necho x >> "%s"\nexec bash "$(dirname "$0")/skill_prefix.real.sh" "$@"\n' "$SANDBOX/sp-calls" > "$SPS"
+: > "$SANDBOX/sp-calls"
+nested_out=$(run_hook "$PROOT/src/pkg")
+[[ "$(wc -l < "$SANDBOX/sp-calls")" -eq 1 && "$nested_out" == *"lies under the registered root demo"* ]] \
+    && pass "the hook runs skill_prefix.sh once on its failure path and still prints the reason" \
+    || fail "skill_prefix.sh ran $(wc -l < "$SANDBOX/sp-calls") times on the failure path (out=$(grep -A1 '^Workspace skills' <<< "$nested_out"))"
+mv "$WSC/.agent/scripts/skill_prefix.real.sh" "$SPS"
+rm -f "$SANDBOX/sp-calls"
 rm -rf "${PROOT:?}/src"
 note_at=$(grep -n "^Workspace skills:" <<< "$out" | head -n1 | cut -d: -f1)
 rules_at=$(grep -n "Workspace rules (rendered from AGENTS.md)" <<< "$out" | head -n1 | cut -d: -f1)
