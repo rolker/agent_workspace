@@ -89,3 +89,11 @@ Stays, deliberately: `.github/copilot-instructions.md` and the Copilot rows in `
 **Decision**: proceed
 
 "Proceed, AGENTS.md rows included": all eight Issue Review actions (90b4d026) proceed to the plan. The owner's answer is the Ask-First approval for the two AGENTS.md Script Reference rows (`cross_model_review.sh` and `_cli_review.sh`) — those two rows only — to be edited in the same PR. Owner's direction on the issue, verbatim (2026-10-13): "It uses the same models under the hood as we already use, so let's stop using copilot cli and only use copilot on github."
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-13 11:04 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-344/plan.md` at `cc659563`
+
+Remove the copilot arm from the helper and dispatcher, rework the tests (adding rejection regression tests for both flags and the helper), then update review-code, the two approved AGENTS.md rows and an ADR-0015 status note, in four commits. Hosted Copilot review wiring is untouched.
