@@ -228,3 +228,13 @@ All five round-1 must-fixes and the five suggestions are resolved in the plan te
 - [ ] Match local-path and `file://` remotes against the workspace's git dir; put Q5 (root-commit comparison, `gh` parent check, or neither) to the owner (finding 2)
 - [ ] Place `ros2_colcon` `setup` in the registration order and state what happens on rollback (finding 3)
 - [ ] Name in the acceptance table the gz4d findings not reproduced by the script, and where each is covered (finding 4)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 14:12 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+"Proceed; fold D6, Q5 and the suggestions into the plan first" after Plan Review round 2 (2bf12b40, ready, 0 must-fix, 4 suggestions): implementation of PR 1 starts; its first commit amends the plan with (a) D6 — owner: onboarding work is queued in the project's roadmap when the user approves, "so that it can get tackled maybe as other issues are resolved": the audit's findings and the accepted offers become rows of an "Onboarding" section in the project's roadmap table (docs/roadmap.md or ROADMAP.md; kept with the records for a zero-footprint project), an issue per row when the project uses issues, picked up like any other open row; a pace rule is a later item; PR 3's offers and PR 4's audit outcome gain "queue in the roadmap" beside fix / issue / skip; (b) the four round-2 suggestions (absent records pair resolves to project/project with a test; a local-path or file:// remote pointing at the workspace checkout or a worktree is refused too; where ros2_colcon setup sits in the registration order and what a failure keeps; the acceptance table says where the three gz4d findings are covered); (c) Q5 (fork detection for the records-repo refusal): the owner's answer is being taken separately and the host supplies it in the implement handoff. No third plan review; the pre-push code review sees both.
