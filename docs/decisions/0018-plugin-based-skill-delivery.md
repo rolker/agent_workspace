@@ -105,7 +105,7 @@ registered session root. It skips:
   plugin.
 
   A declaration in a skipped instance, from this checkout or another, can
-  shadow the parent's. `--check` reports it and install exits 1 naming the
+  shadow the parent's. `--check` reports it, and install and `--uninstall` exit 1 naming the
   file to edit by hand. The installer does not run the CLI there. A
   skipped instance always shares its parent's repository. When it is a
   plain directory in that repository, local scope from there writes the

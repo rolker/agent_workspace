@@ -811,6 +811,22 @@ uninstall_plugin_from() {  # <root>
     esac
 }
 
+# A root where the installer never runs the CLI (a skipped parent= instance):
+# its own declaration from this checkout is reported for removal by hand,
+# exactly as install and --check report it, because a local-scope remove
+# there could strip its parent's enable (instance_cli_reason). Sets
+# uninstall_rc=1 when something is left.
+uninstall_refused_root() {  # <name> <root> <why the CLI does not run there>
+    local name="$1" root="$2" why="$3"
+    case "$(plugin_state "$root")" in
+        enabled|stale)
+            echo "  ERROR: the $PLUGIN_NAME plugin is declared in $name itself ($root); --uninstall does not run the claude CLI there ($why) -- remove the $PLUGIN_ID and $MARKETPLACE_NAME entries from $root/.claude/settings.local.json by hand" >&2
+            uninstall_rc=1 ;;
+        foreign) echo "  NOTE: the $PLUGIN_NAME plugin in $root is declared from another checkout ($(plugin_source "$root")) -- left for that checkout's --uninstall" ;;
+        unparseable) unparseable_root "$root" "cannot tell whether the plugin is there; not removing it"; uninstall_rc=1 ;;
+    esac
+}
+
 # Does any registered root, or this checkout, hold a plugin declaration or
 # enable (or a file that cannot be read)? --uninstall's "nothing installed"
 # must mean the plugin too: the user-tier files can be gone while roots
@@ -842,15 +858,20 @@ if [[ "$MODE" == "uninstall" ]]; then
         echo "  removed legacy skill symlink: $(basename "$link")"
     done
     # The plugin, from every registered root that has it enabled or
-    # declared -- skipped roots included, so a stale enable goes too.
+    # declared -- skipped workspace-toplevel roots included, so a stale
+    # enable goes too. A skipped parent= instance is the exception: the CLI
+    # never runs there (install and --check refuse it the same way).
     uninstall_rc=0
-    while IFS=$'\t' read -r _name root _verdict; do
+    while IFS=$'\t' read -r name root verdict _detail; do
         [[ -z "$root" ]] && continue
         if [[ ! -d "$root" ]]; then
             echo "  NOTE: registered root $root is not on disk -- nothing to remove there"
             continue
         fi
-        uninstall_plugin_from "$root"
+        case "$verdict" in
+            skip-instance) uninstall_refused_root "parent= instance $name" "$root" "$(instance_cli_reason "$root")" ;;
+            *) uninstall_plugin_from "$root" ;;
+        esac
     done < <(plugin_roots)
     uninstall_plugin_from "$WS_ROOT"
     if [[ -f "$SETTINGS" ]]; then

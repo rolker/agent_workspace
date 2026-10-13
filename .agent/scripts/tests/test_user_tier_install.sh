@@ -977,6 +977,28 @@ out="$(run --check)"; rc=$?
 enabled_in "$ROOTS/famg/repo-inst" && [[ "$out" == *"famg-r is a parent= instance that is a git repository of its own ($ROOTS/famg/repo-inst), not a worktree of its parent's"* ]] \
     && pass "an instance that is its own git repository inside a git-repo parent is enabled as a root of its own" \
     || fail "the repo instance was not enabled as its own root ($(cat "$ROOTS/famg/repo-inst/$SLJ"); out=${out:0:400})"
+# --uninstall refuses that instance the same way: it reports the
+# declaration for removal by hand, exits 1, and runs no CLI there, while
+# the parent and the repository instance are still uninstalled.
+inst_before="$(cat "$ROOTS/famg/inst/$SLJ")"
+: > "$STUB_LOG"
+out="$(run --uninstall 2>&1)"; rc=$?
+if [[ "$rc" -eq 1 && "$out" == *"declared in parent= instance famg-i itself ($ROOTS/famg/inst); --uninstall does not run the claude CLI there (it is a plain directory inside the git repository $ROOTS/famg"*"by hand"* \
+      && "$(cat "$ROOTS/famg/inst/$SLJ")" == "$inst_before" ]] \
+   && ! grep -q "^$ROOTS/famg/inst|" "$STUB_LOG" && ! enabled_in "$ROOTS/famg" && ! enabled_in "$ROOTS/famg/repo-inst"; then
+    pass "--uninstall reports a skipped instance's own declaration, runs no CLI there, and still uninstalls the other roots"
+else
+    fail "--uninstall over a skipped instance's declaration (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
+fi
+# A declaration from another checkout there is left alone with a note.
+foreign_enable "$ROOTS/famg/inst"
+: > "$STUB_LOG"
+out="$(run --uninstall 2>&1)"; rc=$?
+[[ "$out" == *"plugin in $ROOTS/famg/inst is declared from another checkout ($SANDBOX/elsewhere) -- left for that checkout's --uninstall"* ]] \
+      && ! grep -q "^$ROOTS/famg/inst|" "$STUB_LOG" \
+    && pass "--uninstall leaves another checkout's declaration in a skipped instance, running no CLI there" \
+    || fail "--uninstall over a foreign declaration in a skipped instance (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
+rm -f "$ROOTS/famg/inst/$SLJ"
 mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
 rm -rf "${ROOTS:?}/famg"
 run >/dev/null
