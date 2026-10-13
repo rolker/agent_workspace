@@ -71,3 +71,14 @@ What `what-next` did that the sit-rep does not: (1) stale-row detection (roadmap
 - [ ] In the PR description, list what was dropped (project-roadmap probe, `--workspace-only`/`--project-only`, ranking) and the one-time `user_tier_install.sh --check` drift on machines that had `what-next` linked; verify with a reinstall in a scratch HOME rather than assuming.
 - [ ] Rewrite roadmap line 95 and the sit-rep row in `docs/roadmap.md` to name `/sitrep` as the answer to "What's next?", and repoint or close the line-210 morning-status row.
 - [ ] Add a dated note to the inspiration digest A5 entry that `what-next` was deleted (owner decision 2026-10-13, #389) instead of editing its history text.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 09:02 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed with actions A1, A2, A4, A5, A6 as proposed (A5: the old "Morning status / standup skill" roadmap row is closed as covered by the sit-rep).
+Action 3 (fold stale-row / needs-ticket detection into the sit-rep): owner answered "Drop it" — the check is not carried over; the PR records that the owner declined it.
