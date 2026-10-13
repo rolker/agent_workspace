@@ -193,6 +193,19 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 - Does the plan address the issue's requirements?
 - If `review-issue` was run, does the plan address its findings?
 - Are there issue requirements not covered by the plan?
+- **Serves** (every plan): does the plan's `## Serves` line name the goal
+  the work serves and the design section it falls under? For the
+  workspace, the goal is a section name under
+  `$WS_ROOT/README.md#workspace-goals` and the design section is cited by
+  its anchor, as `docs/design.md#<section>`; for a project, the project's
+  own goals and design document, or "none" (a project is not asked to
+  keep either). Copy the line, as checked, into this row's Notes. A
+  missing line, work that serves no goal, or work that breaks a stated
+  rule (for a workspace plan, a principle or a row of
+  `$WS_ROOT/docs/design.md#rules`; for a project plan, the project's own
+  stated rules, if it has any) is a finding. A project with no goals written down is not flagged for that.
+  This is separate from the "Keep one current design" question below,
+  which asks only whether the design picture changes
 
 #### File targeting
 
@@ -214,8 +227,18 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
 - Focus on principles most likely to be violated:
   - "A change includes its consequences" — is the plan complete?
   - "Only what's needed" — is the plan minimal?
-  - "Enforcement over documentation" — does a new rule have enforcement?
-  - "Test what breaks" — are tests planned for risky logic?
+  - "Enforce what matters, as simply as possible" — does a rule that matters
+    have the simplest check that fails when it is broken?
+  - "Test what breaks" — does each fix come with a test that fails without
+    it? (A docs- or skill-only change says so instead of planning one)
+  - "Keep one current design" — does the plan say whether the change alters
+    the design picture, and which design section changes? For the
+    workspace, the section list and the Status key are in
+    `$WS_ROOT/docs/design.md#the-design`, and the plan cites the section by
+    its anchor, as `docs/design.md#<section>`. For a project, it names the
+    section of the project's own design document, or says there is none
+  - "Look for prior art before building" — does the plan say what was looked
+    at and what was taken or rejected?
 
 #### ADR compliance
 
@@ -313,6 +336,7 @@ If no findings, output:
 
 **PR**: <url> — <title>
 **Plan**: `$WS_ROOT/.agent/work-plans/issue-<issue>/plan.md` at `<plan-commit-sha>`
+**Serves**: <the plan's Serves line, as checked>
 Plan looks solid. Ready for implementation.
 ```
 
@@ -349,7 +373,7 @@ not an error.
 - **Plans are guides, not contracts** — minor deviations during implementation
   are expected. Focus on structural issues: missing files, missing consequences,
   scope problems, principle violations.
-- **Be specific** — "Consequence missing: changing `marine_msgs` requires
+- **Be specific** — "Consequence missing: changing `sonar_msgs` requires
   updating `mission_manager` subscriber" is useful. "Consider consequences" is
   not.
 - **Skip N/A dimensions** — if the plan doesn't touch project repos, skip ROS

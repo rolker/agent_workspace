@@ -118,6 +118,20 @@ Read relevant files to understand the current state:
 - Tests that exist for those files
 - Documentation that references them
 - Use the consequences map to identify what else may be affected
+- Look for prior art before designing something new: existing code in the
+  project, features of the tools already in use, and outside practice. Note
+  what was found and what was taken or rejected; the plan records it
+- Name the goal the work serves and the design section it falls under,
+  for every plan (the plan's `## Serves` line, step 5). For the workspace,
+  the goal is a section name under `$WS_ROOT/README.md#workspace-goals`
+  and the section is cited by its anchor, as `docs/design.md#<section>`.
+  For a project, use its own goals and design document, or write "none"
+- Ask whether the change alters the design picture (how the parts fit
+  today) and, if so, which section of the owning repo's design document
+  changes in the same change. For the workspace, the section list and the
+  Status key are in `$WS_ROOT/docs/design.md#the-design`; cite the section
+  by its anchor, as `docs/design.md#<section>`. For a project, name the
+  section of the project's own design document, or say there is none
 
 ### 4. Ensure correct worktree (hard check)
 
@@ -193,6 +207,28 @@ prompts/findings) alongside the plan:
 | File | Change |
 |------|--------|
 | `path/to/file` | Description of change |
+
+## Prior Art
+
+<What was looked at (existing code, tools already in use, outside practice)
+and what was taken or rejected. "Nothing new is being built" is a valid
+answer when true.>
+
+## Serves
+
+<One line: the goal this work serves and the design section it falls
+under. For the workspace, the goal by its section name under `## Workspace
+goals` in `README.md`, and the section by its anchor, as
+`docs/design.md#<section>`. For a project, its own goals and design
+document, or "none".>
+
+## Design Picture
+
+<Does this change alter how the parts fit? If yes, which section of the
+owning repo's design document changes, in this PR (for the workspace, cite it
+by its anchor, as `docs/design.md#<section>`; a project's own design
+document, if it keeps one; if the project has none, say so). If no, say "No
+change to the design picture".>
 
 ## Principles Self-Check
 

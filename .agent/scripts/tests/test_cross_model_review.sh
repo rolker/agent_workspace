@@ -71,6 +71,21 @@ setup() {
 # MOCK_AGY_IGNORE_TERM=1: an agy that ignores SIGTERM, so only the
 # helper's escalation to SIGKILL can end it (#313).
 [[ -n "${MOCK_AGY_IGNORE_TERM:-}" ]] && trap '' TERM HUP
+# MOCK_AGY_ORPHAN_PIDFILE=<f>: start a child that ignores SIGTERM and
+# outlives this mock unless its whole process group is killed; its pid
+# goes to <f> (#363). A plain background subshell, so it stays in this
+# mock's process group (a setsid here would prove nothing). Its fds are
+# detached so it holds no caller pipe; it ends on its own after 30s.
+if [[ -n "${MOCK_AGY_ORPHAN_PIDFILE:-}" ]]; then
+    ( trap '' TERM HUP; echo "$BASHPID" > "${MOCK_AGY_ORPHAN_PIDFILE}"
+      for ((j = 0; j < 300; j++)); do sleep 0.1; done ) </dev/null >/dev/null 2>&1 &
+    for ((j = 0; j < 50; j++)); do [[ -s "${MOCK_AGY_ORPHAN_PIDFILE}" ]] && break; sleep 0.05; done
+fi
+# MOCK_AGY_FD9_PROBE=<f>: record whether fd 9 (the review lock) is open
+# in agy (#363). An existence test: the lock fd is a read-only dir fd.
+if [[ -n "${MOCK_AGY_FD9_PROBE:-}" ]]; then
+    if [[ -e /dev/fd/9 ]]; then echo open; else echo closed; fi > "${MOCK_AGY_FD9_PROBE}"
+fi
 # Sleep in 0.1s slices so a SIGKILLed mock leaves no long-lived orphan
 # sleep behind. Whole seconds only.
 mock_sleep() { local n="$1" i; for ((i = 0; i < n * 10; i++)); do sleep 0.1; done; }
@@ -2717,6 +2732,22 @@ done
 # MOCK_CODEX_IGNORE_TERM=1: a CLI that ignores SIGTERM, so only an
 # escalation to SIGKILL can end it. Armed before the sleep.
 [[ -n "${MOCK_CODEX_IGNORE_TERM:-}" ]] && trap '' TERM HUP
+# MOCK_CODEX_ORPHAN_PIDFILE=<f>: start a child that ignores SIGTERM and
+# outlives this mock unless its whole process group is killed; its pid
+# goes to <f> (#363). A plain background subshell, so it stays in this
+# mock's process group (a setsid here would prove nothing). Its fds are
+# detached so it holds no caller pipe; it ends on its own after 30s.
+if [[ -n "${MOCK_CODEX_ORPHAN_PIDFILE:-}" ]]; then
+    ( trap '' TERM HUP; echo "$BASHPID" > "${MOCK_CODEX_ORPHAN_PIDFILE}"
+      for ((j = 0; j < 300; j++)); do sleep 0.1; done ) </dev/null >/dev/null 2>&1 &
+    for ((j = 0; j < 50; j++)); do [[ -s "${MOCK_CODEX_ORPHAN_PIDFILE}" ]] && break; sleep 0.05; done
+fi
+# MOCK_CODEX_FD9_PROBE=<f>: record whether fd 9 (the review lock) is
+# open in the CLI (#363). An existence test, not a write: the lock fd is
+# a read-only directory fd.
+if [[ -n "${MOCK_CODEX_FD9_PROBE:-}" ]]; then
+    if [[ -e /dev/fd/9 ]]; then echo open; else echo closed; fi > "${MOCK_CODEX_FD9_PROBE}"
+fi
 [[ -n "${MOCK_CODEX_SLEEP:-}" ]] && mock_sleep "${MOCK_CODEX_SLEEP}"
 echo "codex-cli 0.155.1 (mock banner)"
 echo "MOCK TRANSCRIPT: prompt was ${#prompt} bytes"
@@ -3041,14 +3072,39 @@ test_duration_knobs_validated() {
     assert_exit_code "AGY_PRINT_TIMEOUT=0s exits 2" "2" "${result%%|*}"
     assert_contains "AGY_PRINT_TIMEOUT=0s message demands a positive value" \
         "AGY_PRINT_TIMEOUT value '0s' must be greater than zero" "${result#*|}"
-    # AGENT_KILL_AFTER=0 is legitimate: SIGKILL immediately after
-    # SIGTERM. Since #313 round 2 it must be paired with
-    # REVIEW_KILL_ESCALATION=0 — the helpers refuse a grace they cannot
-    # fit their own escalation inside (both zero = no grace anywhere).
-    local out="${TMPDIR_BASE}/out.txt"
+    # AGENT_KILL_AFTER=0 is refused too (#363): `timeout -k 0` DISABLES
+    # the SIGKILL escalation rather than sending it at once, so zero would
+    # remove the backstop for a CLI that ignores SIGTERM. Refused whatever
+    # REVIEW_KILL_ESCALATION says (the helpers' old both-zero carve-out).
+    local assignment
+    for assignment in "AGENT_KILL_AFTER=0" "AGENT_KILL_AFTER=0s"; do
+        result=$(run_with_knob "$assignment")
+        assert_exit_code "${assignment} exits 2" "2" "${result%%|*}"
+        assert_contains "${assignment} message demands a positive value" \
+            "AGENT_KILL_AFTER value '${assignment#*=}' must be greater than zero" "${result#*|}"
+        assert_contains "${assignment} message names the disabled escalation" \
+            "DISABLES the SIGKILL escalation" "${result#*|}"
+    done
+    result=$(REVIEW_KILL_ESCALATION=0 run_with_knob "AGENT_KILL_AFTER=0")
+    assert_exit_code "AGENT_KILL_AFTER=0 with REVIEW_KILL_ESCALATION=0 exits 2" "2" "${result%%|*}"
+    # The helpers refuse it on their own too, for a direct invocation:
+    # the both-zero pair was the one equal case they used to accept.
+    local prompt="${TMPDIR_BASE}/prompt.md" hfind="${TMPDIR_BASE}/helper-findings.md"
+    mkdir -p "${TMPDIR_BASE}/helper-tmp"
+    echo "review this" > "$prompt"
     make_mock_agent codex
-    ec=$(AGENT_KILL_AFTER=0 REVIEW_KILL_ESCALATION=0 run_agents "$out" "codex")
-    assert_exit_code "AGENT_KILL_AFTER=0 with a matching escalation is accepted" "0" "$ec"
+    ec=$(AGENT_KILL_AFTER=0 REVIEW_KILL_ESCALATION=0 run_cli_helper codex "$prompt" "$hfind")
+    assert_exit_code "_cli_review.sh refuses AGENT_KILL_AFTER=0 (both zero)" "2" "$ec"
+    assert_contains "_cli_review.sh names the knobs" \
+        "AGENT_KILL_AFTER \(0\) must be greater than REVIEW_KILL_ESCALATION \(0\)" "$(cat "$hfind")"
+    ec=0
+    AGENT_KILL_AFTER=0 REVIEW_KILL_ESCALATION=0 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$hfind" 30m \
+        >/dev/null 2>&1 || ec=$?
+    assert_exit_code "_agy_review.sh refuses AGENT_KILL_AFTER=0 (both zero)" "2" "$ec"
+    assert_contains "_agy_review.sh names the knobs" \
+        "AGENT_KILL_AFTER \(0\) must be greater than REVIEW_KILL_ESCALATION \(0\)" "$(cat "$hfind")"
+    local out="${TMPDIR_BASE}/out.txt"
     # A grace the helper cannot fit its escalation inside is refused by
     # the helper (exit 2) rather than silently orphaning the CLI.
     ec=$(AGENT_KILL_AFTER=1 REVIEW_KILL_ESCALATION=5 run_agents "$out" "codex")
@@ -3056,6 +3112,19 @@ test_duration_knobs_validated() {
     assert_contains "reason names both knobs" \
         "AGENT_KILL_AFTER \(1\) must be greater than REVIEW_KILL_ESCALATION \(5\)" "$(findings_of codex)"
     assert_contains "the refused run is marked failed" "Review failed" "$(findings_of codex)"
+    # Compared unrounded (#363 review): 2.6 against 2.9 is a real margin
+    # (both rounded to 3 and were refused), and equal values are refused.
+    local pair grace esc want
+    for pair in 2.9:2.6:0 2.5:2.5:2 2.5:2.51:2 0.5s:0.4:0; do
+        IFS=: read -r grace esc want <<< "$pair"
+        ec=$(AGENT_KILL_AFTER="$grace" REVIEW_KILL_ESCALATION="$esc" run_cli_helper codex "$prompt" "$hfind")
+        assert_exit_code "_cli_review.sh: grace ${grace} against escalation ${esc}" "$want" "$ec"
+        ec=0
+        AGENT_KILL_AFTER="$grace" REVIEW_KILL_ESCALATION="$esc" TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+            bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$hfind" 30m \
+            >/dev/null 2>&1 || ec=$?
+        assert_exit_code "_agy_review.sh: grace ${grace} against escalation ${esc}" "$want" "$ec"
+    done
 
     # Go-duration subset: AGY_PRINT_TIMEOUT reaches agy's --print-timeout,
     # which needs an explicit s/m/h unit and has no `d`. Both shapes below
@@ -3622,22 +3691,45 @@ test_cli_claude_non_object_json_is_a_reported_failure() {
     teardown
 }
 
-test_cli_helper_returns_promptly_on_term() {
-    echo "TEST: TERM to the helper returns at once when the CLI exits cleanly (#313 round 2, gemini 4)"
-    setup
-    make_mock_agent codex
-    local times="${TMPDIR_BASE}/times"; mkdir -p "$times" "${TMPDIR_BASE}/helper-tmp"
-    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md"
-    echo "review this" > "$prompt"
-    # A fast-exiting mock (no TERM trap): the escalation window is 5s, so
-    # anything close to that means the handler waited on its watchdog.
-    MOCK_CODEX_SLEEP=30 MOCK_TIMES_DIR="$times" REVIEW_KILL_ESCALATION=5 \
-        TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
-        bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800 \
-        >/dev/null 2>&1 &
+# The escalation watchdog is a subshell forked while the helper's
+# terminate handler has INT/TERM/HUP ignored; an ignored disposition is
+# inherited, so a TERM cannot cancel it. Before #363 the cancel was a
+# TERM: after every clean CLI exit the watchdog outlived the helper by
+# the whole escalation window and then `kill -9`'d whatever process held
+# the dead CLI's PID by then. The forked subshell keeps the helper's
+# argv, so the per-test findings path identifies it; the watchdog's own
+# `sleep` is identified by a per-suite escalation value nothing else on
+# the host uses (a plain `sleep 5` would also match another suite's).
+assert_watchdog_cancelled() {
+    local label="$1" findings="$2" sleep_arg="$3" i
+    for ((i = 0; i < 10; i++)); do
+        pgrep -f -- "$findings" >/dev/null || break
+        sleep 0.1
+    done
+    if pgrep -f -- "$findings" >/dev/null; then
+        echo "  FAIL: ${label}: escalation watchdog still running after a clean CLI exit"; FAIL=$((FAIL + 1))
+        pkill -KILL -f -- "$findings" 2>/dev/null || true
+    else
+        echo "  PASS: ${label}: escalation watchdog cancelled with the helper"; PASS=$((PASS + 1))
+    fi
+    if pgrep -fx -- "sleep ${sleep_arg}" >/dev/null; then
+        echo "  FAIL: ${label}: the watchdog's sleep was left running"; FAIL=$((FAIL + 1))
+        pkill -KILL -fx -- "sleep ${sleep_arg}" 2>/dev/null || true
+    else
+        echo "  PASS: ${label}: no orphan watchdog sleep"; PASS=$((PASS + 1))
+    fi
+}
+
+# TERM a helper whose CLI exits cleanly on TERM; assert it returns well
+# inside the escalation window and leaves no watchdog behind.
+# Args: <label> <pidfile the mock writes> <findings> <command...>
+assert_prompt_clean_term() {
+    local label="$1" pidfile="$2" findings="$3" err="${TMPDIR_BASE}/clean-term.err"
+    shift 3
+    "$@" >/dev/null 2>"$err" &
     local helper_pid=$! i
     for ((i = 0; i < 60; i++)); do
-        [[ -f "$times/codex.pid" ]] && break
+        [[ -f "$pidfile" ]] && break
         sleep 0.1
     done
     local t0 t1 ec=0
@@ -3645,12 +3737,40 @@ test_cli_helper_returns_promptly_on_term() {
     kill -TERM "$helper_pid" 2>/dev/null || true
     wait "$helper_pid" || ec=$?
     t1=$(date +%s.%N)
-    assert_exit_code "helper exits 143" "143" "$ec"
+    assert_exit_code "${label}: helper exits 143" "143" "$ec"
     if awk -v a="$t0" -v b="$t1" 'BEGIN{exit !((b - a) < 3)}'; then
-        echo "  PASS: helper returned well inside the 5s escalation window"; PASS=$((PASS + 1))
+        echo "  PASS: ${label}: helper returned well inside the 5s escalation window"; PASS=$((PASS + 1))
     else
-        echo "  FAIL: helper waited out the escalation window after a clean CLI exit"; FAIL=$((FAIL + 1))
+        echo "  FAIL: ${label}: helper waited out the escalation window after a clean CLI exit"; FAIL=$((FAIL + 1))
     fi
+    assert_watchdog_cancelled "$label" "$findings" "$WATCHDOG_ESCALATION"
+    # The cancelled watchdog is reaped, not left for bash to report as a
+    # "Killed ( sleep ... )" job notice on the caller's stderr (#363).
+    assert_not_contains "${label}: no job notice for the cancelled watchdog" "Killed" "$(cat "$err")"
+}
+
+# 5 s for the to_seconds check, with a fraction unique to this suite run
+# so the orphan-sleep check matches only this run's watchdog.
+WATCHDOG_ESCALATION="5.0$$s"
+
+test_cli_helper_returns_promptly_on_term() {
+    echo "TEST: TERM to a helper returns at once and cancels its watchdog when the CLI exits cleanly (#313 round 2, #363)"
+    setup
+    make_mock_agent codex
+    local times="${TMPDIR_BASE}/times"; mkdir -p "$times" "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md"
+    echo "review this" > "$prompt"
+    # Fast-exiting mocks (no TERM trap): the escalation window is 5s, so
+    # anything close to that means the handler waited on its watchdog.
+    assert_prompt_clean_term "cli helper" "$times/codex.pid" "$findings" \
+        env MOCK_CODEX_SLEEP=30 MOCK_TIMES_DIR="$times" REVIEW_KILL_ESCALATION="$WATCHDOG_ESCALATION" \
+        TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800
+    local agy_findings="${TMPDIR_BASE}/agy-findings.md"
+    assert_prompt_clean_term "agy helper" "$times/agy.pid" "$agy_findings" \
+        env MOCK_AGY_SLEEP=30 MOCK_TIMES_DIR="$times" REVIEW_KILL_ESCALATION="$WATCHDOG_ESCALATION" \
+        TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$agy_findings" 30m
     teardown
 }
 
@@ -3755,9 +3875,11 @@ WEDGED_EOF
         echo "  FAIL: exit path took ${elapsed}s — the wedged job blocked it"; FAIL=$((FAIL + 1))
     fi
     assert_eq "the shared temp root was removed anyway" "0" "$(ls -A "$scratch" | wc -l)"
-    # Tidy up the deliberately unkillable stub (SIGKILL is not trappable).
+    # SIGKILL is not trappable: cleanup kills the stub with its job's
+    # whole tree (#363), and kills it here whatever the outcome.
     local pid; pid=$(cat "${times}/wedge.pid" 2>/dev/null || echo "")
-    [[ -n "$pid" ]] && kill -9 "$pid" 2>/dev/null
+    assert_eq "the wedged helper was killed with its job" "dead" "$(running_state "$pid")"
+    [[ -z "$pid" ]] || kill -9 "$pid" 2>/dev/null || true
     teardown
 }
 
@@ -4136,6 +4258,1212 @@ test_cli_helper_missing_is_unavailable() {
 echo "=== cross_model_review.sh tests ==="
 echo ""
 
+# ---- Process-group kill (#363; rolker/ros2_agent_workspace 69a6907) ----
+#
+# A child the CLI started that ignores SIGTERM must not outlive the
+# helper: the helpers signal the CLI's whole process group, not its PID.
+
+# Wait for <pidfile>'s process to go; FAIL (and kill it, so a failure
+# leaks nothing) if it survives. A missing pidfile is a FAIL: these tests
+# are deterministic, and the mock writes it before the helper is touched.
+assert_orphan_gone() {
+    local label="$1" pidfile="$2" i pid
+    pid=$(cat "$pidfile" 2>/dev/null || echo "")
+    if [[ -z "$pid" ]]; then
+        echo "  FAIL: ${label}: the mock never started its child"; FAIL=$((FAIL + 1)); return
+    fi
+    # running_state, not `kill -0`: an exited child that nothing has
+    # reaped yet (a container's PID 1 may never) is gone, not a survivor.
+    for ((i = 0; i < 20; i++)); do [[ "$(running_state "$pid")" == dead ]] && break; sleep 0.1; done
+    if [[ "$(running_state "$pid")" != dead ]]; then
+        kill -9 "$pid" 2>/dev/null || true
+        echo "  FAIL: ${label}: the CLI's TERM-ignoring child survived the helper"; FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: ${label}: the CLI's TERM-ignoring child is gone"; PASS=$((PASS + 1))
+    fi
+}
+
+# Start <command...> in the background, wait for <pidfile>, TERM it and
+# echo its exit status.
+term_helper_when_ready() {
+    local pidfile="$1" i ec=0
+    shift
+    "$@" >/dev/null 2>&1 &
+    local helper_pid=$!
+    for ((i = 0; i < 50; i++)); do [[ -s "$pidfile" ]] && break; sleep 0.1; done
+    kill -TERM "$helper_pid" 2>/dev/null || true
+    wait "$helper_pid" || ec=$?
+    echo "$ec"
+}
+
+test_local_helpers_kill_the_cli_process_group() {
+    echo "TEST: the helpers kill a CLI's TERM-ignoring child, on TERM and on a normal exit (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    make_mock_agent codex
+    mkdir -p "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md" ec orphan
+    echo "review this" > "$prompt"
+
+    # TERM path, codex: the CLI dies on TERM, its child does not.
+    orphan="${TMPDIR_BASE}/codex-orphan.pid"
+    ec=$(term_helper_when_ready "$orphan" env MOCK_CODEX_ORPHAN_PIDFILE="$orphan" MOCK_CODEX_SLEEP=30 \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800)
+    assert_exit_code "codex helper exits 143 on TERM" "143" "$ec"
+    assert_orphan_gone "codex, TERM" "$orphan"
+
+    # Normal exit, codex: the review finished, its leftovers must not run on.
+    orphan="${TMPDIR_BASE}/codex-orphan2.pid"
+    ec=$(MOCK_CODEX_ORPHAN_PIDFILE="$orphan" run_cli_helper codex "$prompt" "$findings" 1800)
+    assert_exit_code "codex review with a leftover child still succeeds" "0" "$ec"
+    assert_orphan_gone "codex, normal exit" "$orphan"
+
+    # TERM path, agy.
+    orphan="${TMPDIR_BASE}/agy-orphan.pid"
+    ec=$(term_helper_when_ready "$orphan" env MOCK_AGY_ORPHAN_PIDFILE="$orphan" MOCK_AGY_SLEEP=30 \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m)
+    assert_exit_code "agy helper exits 143 on TERM" "143" "$ec"
+    assert_orphan_gone "agy, TERM" "$orphan"
+
+    # Normal exit, agy.
+    orphan="${TMPDIR_BASE}/agy-orphan2.pid"
+    ec=0
+    MOCK_AGY_ORPHAN_PIDFILE="$orphan" TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+        bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m \
+        >/dev/null 2>&1 || ec=$?
+    assert_exit_code "agy review with a leftover child still succeeds" "0" "$ec"
+    assert_orphan_gone "agy, normal exit" "$orphan"
+    teardown
+}
+
+# signal_cli / signal_agy, extracted and run as written: group mode
+# signals `-PID`, PID mode signals the PID alone.
+test_signal_helpers_both_modes() {
+    echo "TEST: signal_cli / signal_agy target the group in group mode and the PID otherwise (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    local helper fn probe out
+    for helper in _cli_review.sh:signal_cli:CLI _agy_review.sh:signal_agy:AGY; do
+        fn=$(cut -d: -f2 <<< "$helper")
+        probe="${TMPDIR_BASE}/probe-${fn}.sh"
+        {
+            echo 'set -u'
+            sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${helper%%:*}"
+            echo "fn=${fn}; flag=$(cut -d: -f3 <<< "$helper")_GROUP_KILL"
+            cat << 'PROBE_EOF'
+# Group mode: a group leader with a child that ignores TERM; KILL to the
+# group takes both, and TERM to the leader's PID alone would not.
+setsid bash -c 'trap "" TERM; sleep 30 & echo $! > "$1"; wait' _ "$PWD/child.pid" </dev/null >/dev/null 2>&1 &
+leader=$!
+for _ in $(seq 50); do [[ -s child.pid ]] && break; sleep 0.1; done
+child=$(< child.pid)
+printf -v "$flag" true
+"$fn" 0 "$leader" && echo "group: live" || echo "GROUP-NOT-SEEN"
+"$fn" KILL "$leader"
+wait "$leader" 2>/dev/null
+sleep 0.2
+kill -0 "$child" 2>/dev/null && { echo "GROUP-CHILD-SURVIVED"; kill -9 "$child"; } || echo "group: child gone"
+# PID mode: a plain background sleep is not a group leader, so group
+# mode cannot reach it and PID mode must.
+sleep 30 </dev/null >/dev/null 2>&1 &
+plain=$!
+"$fn" 0 "$plain" && echo "GROUP-MODE-HIT-A-NON-LEADER" || echo "group: non-leader not addressed"
+printf -v "$flag" false
+"$fn" TERM "$plain"
+wait "$plain" 2>/dev/null
+kill -0 "$plain" 2>/dev/null && { echo "PID-MODE-MISSED"; kill -9 "$plain"; } || echo "pid: gone"
+PROBE_EOF
+        } > "$probe"
+        out=$(cd "$TMPDIR_BASE" && bash "$probe" 2>&1)
+        assert_contains "${fn}: group mode sees the group" "group: live" "$out"
+        assert_contains "${fn}: group KILL takes a TERM-ignoring member" "group: child gone" "$out"
+        assert_contains "${fn}: group mode does not address a bare PID" "group: non-leader not addressed" "$out"
+        assert_contains "${fn}: PID mode signals the PID" "pid: gone" "$out"
+        rm -f "${TMPDIR_BASE}/child.pid"
+    done
+    teardown
+}
+
+# Without setsid the helpers fall back to PID-only signalling. Run each
+# helper end to end with PATH limited to symlinks of the tools it and the
+# mocks use, minus setsid. This also exercises the `set -u`-safe
+# expansion of the empty setsid array.
+test_helpers_work_without_setsid() {
+    echo "TEST: without setsid the helpers still review and still stop on TERM (#363)"
+    setup
+    make_mock_agent codex
+    local shim="${TMPDIR_BASE}/no-setsid-bin" tool path missing=""
+    mkdir -p "$shim" "${TMPDIR_BASE}/helper-tmp"
+    for tool in bash env jq mktemp awk sleep pkill tail grep cat rm head sed date wc; do
+        if path=$(command -v "$tool" 2>/dev/null) && [[ "$path" == /* ]]; then
+            ln -s "$path" "${shim}/${tool}"
+        else
+            missing="${missing} ${tool}"
+        fi
+    done
+    if [[ -n "$missing" ]]; then
+        echo "  FAIL: tools missing on this host for the no-setsid shim:${missing}"; FAIL=$((FAIL + 1))
+        teardown; return
+    fi
+    local bash_bin; bash_bin=$(command -v bash)
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md" ec times="${TMPDIR_BASE}/times"
+    mkdir -p "$times"
+    echo "review this" > "$prompt"
+    if PATH="${MOCK_BIN}:${shim}" "$bash_bin" -c 'command -v setsid' >/dev/null 2>&1; then
+        echo "  FAIL: setsid is still reachable through the shim PATH"; FAIL=$((FAIL + 1))
+        teardown; return
+    fi
+
+    ec=0
+    TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${shim}" \
+        "$bash_bin" "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800 \
+        >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+    assert_exit_code "codex review completes without setsid" "0" "$ec"
+    assert_contains "codex findings written" "reviewed by codex" "$(cat "$findings")"
+    assert_not_contains "no unbound-variable error" "unbound variable" "$(cat "${TMPDIR_BASE}/err")"
+    ec=$(term_helper_when_ready "${times}/codex.pid" env MOCK_CODEX_SLEEP=30 MOCK_TIMES_DIR="$times" \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${shim}" \
+        "$bash_bin" "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800)
+    assert_exit_code "codex helper still exits 143 on TERM without setsid" "143" "$ec"
+
+    ec=0
+    TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${shim}" \
+        "$bash_bin" "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m \
+        >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+    assert_exit_code "agy review completes without setsid" "0" "$ec"
+    assert_contains "agy findings written" "review this" "$(cat "$findings")"
+    assert_not_contains "no unbound-variable error (agy)" "unbound variable" "$(cat "${TMPDIR_BASE}/err")"
+    ec=$(term_helper_when_ready "${times}/agy.pid" env MOCK_AGY_SLEEP=30 MOCK_TIMES_DIR="$times" \
+        REVIEW_KILL_ESCALATION=1 TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${shim}" \
+        "$bash_bin" "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m)
+    assert_exit_code "agy helper still exits 143 on TERM without setsid" "143" "$ec"
+    teardown
+}
+
+# ---- Launch-window adoption (#363; rolker/ros2_agent_workspace 5818535) ----
+#
+# A signal landing between `cmd &` and `PID=$!` used to find no PID to
+# signal. Each handler now adopts `$!` when a launch is in flight and `$!`
+# has moved since it began. The window itself is microseconds wide and
+# cannot be hit by timing, so each adoption branch is tested by running
+# the REAL handler code (extracted from the script) in the state it would
+# see inside that window, plus the guard cases where it must NOT adopt.
+# Every background sleep a probe starts is recorded and killed by the
+# test whatever the outcome, so a failure leaks nothing.
+
+# Kill and forget every pid listed in the given files.
+kill_recorded() {
+    local f
+    for f in "$@"; do
+        if [[ -s "$f" ]]; then kill -9 "$(cat "$f")" 2>/dev/null || true; fi
+        rm -f "$f"
+    done
+    return 0
+}
+
+# Is the pid in <file> alive? Prints alive / gone / missing.
+pid_state() {
+    local pid
+    pid=$(cat "$1" 2>/dev/null || echo "")
+    if [[ -z "$pid" ]]; then echo missing
+    elif kill -0 "$pid" 2>/dev/null; then echo alive
+    else echo gone
+    fi
+}
+
+test_helper_terminate_adopts_launch_window() {
+    echo "TEST: the helpers' terminate_child adopts a CLI launched but not yet recorded (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    local spec file P fn probe ec case_name
+    for spec in _cli_review.sh:CLI:signal_cli _agy_review.sh:AGY:signal_agy; do
+        file="${spec%%:*}"; P=$(cut -d: -f2 <<< "$spec"); fn=$(cut -d: -f3 <<< "$spec")
+        for case_name in adopt stale-pid not-launching; do
+            probe="${TMPDIR_BASE}/probe-${P}-${case_name}.sh"
+            {
+                echo 'set -u'
+                sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n "/^signal_live_${fn#signal_}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
+                echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=5"
+                echo "${P}_PID=''; ${P}_GROUP=''"
+                case "$case_name" in
+                    adopt)
+                        # Inside the window: launching, `$!` has moved.
+                        echo "${P}_LAUNCH_PREV=\"\${!:-}\"; ${P}_LAUNCHING=true"
+                        echo 'setsid sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid' ;;
+                    stale-pid)
+                        # `$!` names an earlier, unrelated job: not ours.
+                        echo 'setsid sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid'
+                        echo "${P}_LAUNCH_PREV=\"\${!:-}\"; ${P}_LAUNCHING=true" ;;
+                    not-launching)
+                        # `$!` moved, but no launch is in flight.
+                        echo "${P}_LAUNCH_PREV=\"\${!:-}\"; ${P}_LAUNCHING=false"
+                        echo 'setsid sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid' ;;
+                esac
+                echo 'terminate_child 143'
+            } > "$probe"
+            ec=0; (cd "$TMPDIR_BASE" && timeout 20 bash "$probe" >/dev/null 2>"${TMPDIR_BASE}/probe.err") || ec=$?
+            assert_exit_code "${file} ${case_name}: handler exits 143" "143" "$ec"
+            # An extraction that missed a function would fail quietly into
+            # the PID-only fallback, so a shell error here is a test bug.
+            # (bash's own "Killed" job notice for the watchdog is not one.)
+            assert_not_contains "${file} ${case_name}: probe ran without shell errors" \
+                "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/probe.err")"
+            sleep 0.2
+            if [[ "$case_name" == adopt ]]; then
+                assert_eq "${file}: a CLI launched but not yet recorded is killed" "gone" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")"
+            else
+                assert_eq "${file} ${case_name}: an unrelated job is left alone" "alive" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")"
+            fi
+            kill_recorded "${TMPDIR_BASE}/target.pid"
+        done
+    done
+    teardown
+}
+
+test_run_agent_job_trap_adopts_launch_window() {
+    echo "TEST: run_agent_job's TERM trap adopts a helper launched but not yet recorded (#363)"
+    setup
+    local trap_line probe ec case_name
+    trap_line=$(grep -m1 -E "^    trap 'if \[\[ -z \"\\\$child\"" "${SCRIPT_DIR}/../cross_model_review.sh" || true)
+    if [[ -z "$trap_line" ]]; then
+        echo "  FAIL: run_agent_job's adopting TERM trap not found"; FAIL=$((FAIL + 1))
+        teardown; return
+    fi
+    for case_name in adopt stale-pid; do
+        probe="${TMPDIR_BASE}/probe-job-${case_name}.sh"
+        {
+            echo 'set -u'
+            echo 'job() {'
+            echo '    local child=""'
+            if [[ "$case_name" == adopt ]]; then
+                echo '    local launch_prev="${!:-}"'
+                echo "$trap_line"
+                echo '    sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid'
+            else
+                echo '    sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid'
+                echo '    local launch_prev="${!:-}"'
+                echo "$trap_line"
+            fi
+            # Signal ourselves before `child=$!` would have run.
+            echo '    kill -TERM $$'
+            echo '    sleep 5; exit 7'
+            echo '}'
+            echo 'job'
+        } > "$probe"
+        ec=0; (cd "$TMPDIR_BASE" && timeout 20 bash "$probe" >/dev/null 2>&1) || ec=$?
+        assert_exit_code "run_agent_job ${case_name}: trap exits 143" "143" "$ec"
+        sleep 0.2
+        if [[ "$case_name" == adopt ]]; then
+            assert_eq "run_agent_job: a helper launched but not yet recorded is killed" "gone" \
+                "$(pid_state "${TMPDIR_BASE}/target.pid")"
+        else
+            assert_eq "run_agent_job stale-pid: an unrelated job is left alone" "alive" \
+                "$(pid_state "${TMPDIR_BASE}/target.pid")"
+        fi
+        kill_recorded "${TMPDIR_BASE}/target.pid"
+    done
+    teardown
+}
+
+test_cleanup_jobs_adopts_launch_window() {
+    echo "TEST: cleanup_jobs adopts an agent job launched but not yet recorded (#363)"
+    setup
+    local probe out case_name
+    for case_name in adopt stale-pid recorded; do
+        probe="${TMPDIR_BASE}/probe-cleanup-${case_name}.sh"
+        {
+            echo 'set -u'
+            sed -n '/^proc_state() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
+            sed -n '/^job_finished() {$/,/^}$/p' "${SCRIPT_DIR}/../cross_model_review.sh"
+            for fn in group_running kill_tree await_killed cleanup_jobs; do
+                sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../cross_model_review.sh"
+            done
+            echo 'KILLED_ROOTS=(); KILLED_PIDS=(); KILLED_GROUPS=()'
+            echo 'declare -A AGENT_PID=()'
+            echo 'CLEANUP_REAP_SECONDS=2; CLEANUP_REAP_TIMEOUT=2'
+            echo 'SHARED_PROMPT=""; SHARED_DIFF=""; AGENT_TMP_ROOT=""'
+            case "$case_name" in
+                adopt)
+                    echo 'LAUNCH_PREV="${!:-}"; LAUNCHING_AGENT=codex'
+                    echo 'sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid' ;;
+                stale-pid)
+                    echo 'sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid'
+                    echo 'LAUNCH_PREV="${!:-}"; LAUNCHING_AGENT=codex' ;;
+                recorded)
+                    # The job was recorded just before the signal; a later
+                    # unrelated `$!` must not overwrite that record.
+                    echo 'sleep 30 </dev/null >/dev/null 2>&1 & echo $! > recorded.pid'
+                    echo 'LAUNCH_PREV="${!:-}"; LAUNCHING_AGENT=codex; AGENT_PID[codex]=$(< recorded.pid)'
+                    echo 'sleep 30 </dev/null >/dev/null 2>&1 & echo $! > target.pid' ;;
+            esac
+            echo 'cleanup_jobs'
+            echo 'echo "codex=${AGENT_PID[codex]:-none}"'
+        } > "$probe"
+        out=$(cd "$TMPDIR_BASE" && timeout 20 bash "$probe" 2>&1)
+        sleep 0.2
+        case "$case_name" in
+            adopt)
+                assert_eq "cleanup_jobs: a job launched but not yet recorded is stopped" "gone" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")" ;;
+            stale-pid)
+                assert_eq "cleanup_jobs stale-pid: an unrelated job is left alone" "alive" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")"
+                assert_contains "cleanup_jobs stale-pid: nothing adopted" "codex=none" "$out" ;;
+            recorded)
+                assert_eq "cleanup_jobs recorded: the recorded job is stopped" "gone" \
+                    "$(pid_state "${TMPDIR_BASE}/recorded.pid")"
+                assert_eq "cleanup_jobs recorded: the later job is not adopted over it" "alive" \
+                    "$(pid_state "${TMPDIR_BASE}/target.pid")"
+                assert_contains "cleanup_jobs recorded: the record is kept" \
+                    "codex=$(cat "${TMPDIR_BASE}/recorded.pid")" "$out" ;;
+        esac
+        kill_recorded "${TMPDIR_BASE}/target.pid" "${TMPDIR_BASE}/recorded.pid"
+    done
+    teardown
+}
+
+# ---- One run per artifact dir (#363) ----
+test_local_concurrent_runs_refused() {
+    echo "TEST: a second run into the same artifact dir is refused before it writes (#363)"
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "  SKIP: no flock on this host"; return
+    fi
+    setup
+    make_mock_agent codex
+    local dir="${MOCK_REPO}/.agent/work-plans/issue-42" ec=0 err i
+    mkdir -p "$dir"
+    echo "first run's findings" > "${dir}/review-codex-findings.md"
+    # Stand in for a first run holding the directory lock. `exec sleep`
+    # so the recorded pid is the only holder of the fd: killing it
+    # releases the lock.
+    ( exec 8< "$dir"; flock -n 8 || exit 1; echo ready > "${TMPDIR_BASE}/held"; exec sleep 30 ) \
+        </dev/null >/dev/null 2>&1 &
+    local holder=$!
+    for ((i = 0; i < 50; i++)); do [[ -s "${TMPDIR_BASE}/held" ]] && break; sleep 0.1; done
+    cd "${MOCK_REPO}"
+    err=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+    kill "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    assert_eq "the stand-in first run held the lock" "ready" "$(cat "${TMPDIR_BASE}/held" 2>/dev/null)"
+    assert_exit_code "second run exits 5" "5" "$ec"
+    assert_contains "names the other run and the dir" "already reviewing into ${dir}" "$err"
+    assert_eq "first run's findings untouched" "first run's findings" \
+        "$(cat "${dir}/review-codex-findings.md")"
+    if [[ -e "${dir}/review-codex-prompt.md" ]]; then
+        echo "  FAIL: the refused run wrote a prompt file"; FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: the refused run wrote no prompt file"; PASS=$((PASS + 1))
+    fi
+    # Nothing beside the findings file: the lock is on the directory, so
+    # no lock file is left behind (zero footprint in project worktrees).
+    assert_eq "no lock file in the artifact dir" "review-codex-findings.md" "$(ls -A "$dir")"
+
+    # Released: the next run proceeds, and the agent jobs do not inherit
+    # the lock (anything they left behind would otherwise hold it and
+    # refuse every later run).
+    local probe="${TMPDIR_BASE}/fd9" agy_probe="${TMPDIR_BASE}/fd9-agy"
+    ec=$(MOCK_CODEX_FD9_PROBE="$probe" MOCK_AGY_FD9_PROBE="$agy_probe" run_agents "${TMPDIR_BASE}/out.txt" "codex,gemini")
+    assert_exit_code "a run after the lock is released completes" "0" "$ec"
+    assert_eq "the CLI does not hold the review lock" "closed" "$(cat "$probe" 2>/dev/null)"
+    assert_eq "agy does not hold the review lock" "closed" "$(cat "$agy_probe" 2>/dev/null)"
+
+    # flock exit codes (#363 review). util-linux reports a conflict with
+    # the -E code and real errors with sysexits 65/71: only those warn and
+    # proceed. Everything else must end in exit 5, never in an
+    # unserialized run. The mock answers --version as the given flock, and
+    # exits <with -E> when called with -E, <plain> otherwise.
+    local real_bin="${TMPDIR_BASE}/flock-bin" spec version with_e plain want
+    mkdir -p "$real_bin"
+    for spec in "util-linux 2.39.3:65:0:0" "util-linux 2.39.3:71:0:0" \
+                "util-linux 2.39.3:1:0:5" "util-linux 2.39.3:66:0:5" \
+                "util-linux 2.20.1:64:1:5" "util-linux 2.20.1:64:0:0" \
+                "flock 0.4.0:0:1:5"; do
+        IFS=: read -r version with_e plain want <<< "$spec"
+        printf '%s\n' '#!/usr/bin/env bash' \
+            "[[ \"\$1\" == --version ]] && { echo 'flock from ${version}'; exit 0; }" \
+            "for a in \"\$@\"; do [[ \"\$a\" == -E ]] && exit ${with_e}; done" \
+            "exit ${plain}" > "${real_bin}/flock"
+        chmod +x "${real_bin}/flock"
+        ec=0; err=$(PATH="${real_bin}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+            --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+        assert_exit_code "flock '${version}', -E exit ${with_e}, plain exit ${plain}" "$want" "$ec"
+        case "${with_e}:${want}" in
+            65:0|71:0) assert_contains "  ... warns that the run is unserialized" "not a conflict.*not serialized" "$err" ;;
+            64:0) assert_not_contains "  ... an uncontended lock without -E needs no warning" "WARNING: could not lock" "$err" ;;
+            1:5|66:5) assert_contains "  ... names the unexplained code" "flock exit ${with_e}, neither a conflict nor a known error" "$err" ;;
+        esac
+    done
+
+    # --no-progress runs each get their own temp dir and never contend.
+    # TMPDIR keeps those dirs under this test's base, which teardown drops.
+    local ec1=0 ec2=0 p1 p2
+    MOCK_CODEX_SLEEP=2 TMPDIR="$TMPDIR_BASE" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex --no-progress </dev/null >/dev/null 2>&1 &
+    p1=$!
+    MOCK_CODEX_SLEEP=2 TMPDIR="$TMPDIR_BASE" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex --no-progress </dev/null >/dev/null 2>&1 &
+    p2=$!
+    wait "$p1" || ec1=$?
+    wait "$p2" || ec2=$?
+    assert_exit_code "first concurrent --no-progress run completes" "0" "$ec1"
+    assert_exit_code "second concurrent --no-progress run completes" "0" "$ec2"
+    teardown
+}
+
+# A run killed with SIGKILL runs no cleanup: its agent jobs carry on and
+# still write their findings. They hold the review lock until they end
+# (#363 review), so a second run into the directory is refused for as
+# long as any helper of the first is alive, instead of starting and
+# having its findings overwritten. Only the CLI (out of `timeout`'s
+# reach) is launched without the lock.
+test_lock_held_by_jobs_after_the_parent_is_killed() {
+    echo "TEST: a SIGKILLed run's jobs keep the directory locked until they end (#363)"
+    if ! command -v flock >/dev/null 2>&1 || ! command -v pgrep >/dev/null 2>&1; then
+        echo "  SKIP: needs flock and pgrep"; return
+    fi
+    setup
+    make_mock_agent codex
+    local dir="${MOCK_REPO}/.agent/work-plans/issue-42" times="${TMPDIR_BASE}/times"
+    local pattern parent i ec err violations=0 freed=false helper_seen
+    mkdir -p "$dir" "$times"
+    pattern="_cli_review.sh codex .*${dir}/review-codex-findings.md"
+    cd "${MOCK_REPO}"
+    # TMPDIR in the sandbox: a SIGKILLed run cannot remove its temp files.
+    mkdir -p "${TMPDIR_BASE}/killed-tmp"
+    # A 10 s review: the second run has to reach its flock while the
+    # first run's job is alive, on a loaded machine too.
+    MOCK_CODEX_SLEEP=10 MOCK_TIMES_DIR="$times" TMPDIR="${TMPDIR_BASE}/killed-tmp" \
+        PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex </dev/null >/dev/null 2>&1 &
+    parent=$!
+    for ((i = 0; i < 100; i++)); do [[ -s "${times}/codex.pid" ]] && break; sleep 0.05; done
+    kill -9 "$parent" 2>/dev/null || true
+    wait "$parent" 2>/dev/null || true
+    helper_seen=$(pgrep -f -- "$pattern" >/dev/null && echo alive || echo gone)
+    assert_eq "the first run's helper outlives its SIGKILLed parent" "alive" "$helper_seen"
+    ec=0; err=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+    assert_exit_code "a second run while the first run's jobs live is refused" "5" "$ec"
+    assert_contains "the refusal explains a killed run's jobs and their bound" \
+        "a run that was killed \(SIGKILL\) leaves its agent jobs finishing.*1810s with these settings" "$err"
+    assert_contains "and names how to see the holder" "fuser -v ${dir} .*lsof \+d ${dir}" "$err"
+    # The lock may come free only once no helper of the first run is left
+    # (lock first, helper second: a helper alive after a successful
+    # flock was alive during it).
+    for ((i = 0; i < 600; i++)); do
+        if ( exec 8< "$dir"; flock -n 8 ); then
+            if pgrep -f -- "$pattern" >/dev/null; then violations=$((violations + 1)); else freed=true; break; fi
+        fi
+        sleep 0.05
+    done
+    assert_eq "the lock never came free while a helper of the first run was alive" "0" "$violations"
+    assert_eq "the lock comes free once the first run's job has ended" "true" "$freed"
+    assert_contains "the first run's job still finished its findings" "Review complete" "$(cat "${dir}/review-codex-findings.md")"
+    pkill -KILL -f -- "$pattern" 2>/dev/null || true
+    teardown
+}
+
+# Without flock the run is not serialized, but it still runs, and says
+# so (#363 review: this path had no test). PATH is the mocks plus a copy
+# of /usr/bin and /bin as symlinks, minus flock.
+test_no_flock_warns_and_runs() {
+    echo "TEST: without flock a review still runs and warns that it is not serialized (#363)"
+    setup
+    make_mock_agent codex
+    local shim="${TMPDIR_BASE}/no-flock-bin" d ec err
+    mkdir -p "$shim"
+    for d in /usr/bin /bin; do
+        # A name already linked (merged /usr) is refused; that is fine.
+        [[ -d "$d" ]] && { cp -s "$d"/* "$shim/" 2>/dev/null || true; }
+    done
+    rm -f "${shim}/flock"
+    if PATH="${MOCK_BIN}:${shim}" bash -c 'command -v flock' >/dev/null 2>&1; then
+        echo "  FAIL: flock is still reachable through the shim PATH"; FAIL=$((FAIL + 1))
+        teardown; return
+    fi
+    cd "${MOCK_REPO}"
+    ec=0; err=$(PATH="${MOCK_BIN}:${shim}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex 2>&1 >/dev/null </dev/null) || ec=$?
+    assert_exit_code "the review completes without flock" "0" "$ec"
+    assert_contains "and warns that it is not serialized" \
+        "flock is not installed; concurrent reviews into .* are not serialized" "$err"
+    assert_contains "codex findings written" "Review complete" "$(findings_of codex)"
+    teardown
+}
+
+# The review lock (fd 9) must not reach git or gh: a process either
+# leaves running (git's fsmonitor daemon) would hold the lock and refuse
+# every later run with exit 5 (#363 review). Shims first on PATH record
+# whether fd 9 is open, then exec the real git / the mock gh.
+test_lock_fd_not_inherited_by_git_or_gh() {
+    echo "TEST: git and gh run without the review lock's fd (#363)"
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "  SKIP: no flock on this host"; return
+    fi
+    setup
+    make_mock_agent codex
+    local shim="${TMPDIR_BASE}/fd9-shim" log="${TMPDIR_BASE}/fd9" tool base ec
+    mkdir -p "$shim" "$log"
+    for tool in git gh; do
+        printf '%s\n' '#!/usr/bin/env bash' \
+            "if [[ -e /dev/fd/9 ]]; then echo open; else echo closed; fi >> '${log}/${tool}'" \
+            'PATH="${PATH#*:}" exec '"${tool}"' "$@"' > "${shim}/${tool}"
+        chmod +x "${shim}/${tool}"
+    done
+    base=$(git -C "${MOCK_REPO}" branch --show-current)
+    git -C "${MOCK_REPO}" checkout -q -b feature/issue-42
+    mkdir -p "${MOCK_REPO}/src"
+    echo "BRANCH CODE" > "${MOCK_REPO}/src/code.py"
+    git -C "${MOCK_REPO}" add -A
+    git -C "${MOCK_REPO}" -c user.name="Test" -c user.email="test@test" commit -q -m "feature"
+    cd "${MOCK_REPO}"
+    ec=0
+    PATH="${shim}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --branch "$base" --agents codex < /dev/null >/dev/null 2>&1 || ec=$?
+    assert_exit_code "branch review completes" "0" "$ec"
+    ec=0
+    PATH="${shim}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents codex < /dev/null >/dev/null 2>&1 || ec=$?
+    assert_exit_code "PR review completes" "0" "$ec"
+    for tool in git gh; do
+        if [[ ! -s "${log}/${tool}" ]]; then
+            echo "  FAIL: ${tool} was never run through the shim"; FAIL=$((FAIL + 1))
+        else
+            assert_not_contains "${tool} never sees the lock fd" "open" "$(cat "${log}/${tool}")"
+        fi
+    done
+    teardown
+}
+
+# When an interrupted run's reap budget runs out, cleanup used to SIGKILL
+# only the job shell: `timeout`, the helper and the CLI (its own process
+# group since setsid) ran on after the script exited and released the
+# review lock, so a second run could start into the same directory while
+# the first one's CLI was still writing there (#363 review;
+# rolker/ros2_agent_workspace PR #662). The helper here is a wedged stub
+# that ignores TERM and starts a TERM-ignoring "CLI" as a group leader,
+# as the real helper does, plus a child of that CLI already re-parented
+# away from it (only its group still finds it) and a plain child of its
+# own. The test polls the directory lock during cleanup: at the first
+# moment it can be taken, nothing of the job may still be running.
+test_cleanup_kills_the_whole_job_when_the_budget_runs_out() {
+    echo "TEST: an over-budget job is killed whole (helper, CLI, CLI's group) before the lock is released (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || ! command -v flock >/dev/null 2>&1 \
+        || ! command -v pgrep >/dev/null 2>&1; then
+        echo "  SKIP: needs setsid, flock and pgrep"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids"
+    local dir="${MOCK_REPO}/.agent/work-plans/issue-42" name i ec states
+    mkdir -p "$fake_dir" "$piddir" "$dir"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    # cli: a live group leader. orphan: its child, already re-parented.
+    # own-session: its descendant that ran setsid itself. group-orphan: the
+    # child of a second CLI that has exited and been reaped (the stub's
+    # `wait` loop reaps it), so no live process leads that group. Like the
+    # real helper, the stub launches its CLIs without the lock fd.
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+trap '' TERM HUP INT
+setsid bash -c '
+    trap "" TERM HUP
+    ( ( trap "" TERM HUP; echo $BASHPID > "$1/orphan.pid"; exec sleep 60 ) & ) </dev/null >/dev/null 2>&1
+    ( setsid bash -c "trap \"\" TERM HUP; echo \$\$ > \"\$1/own-session.pid\"; exec sleep 60" _ "$1" & ) </dev/null >/dev/null 2>&1
+    echo $$ > "$1/cli.pid"
+    exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+setsid bash -c '
+    trap "" TERM HUP
+    ( trap "" TERM HUP; echo $BASHPID > "$1/group-orphan.pid"; exec sleep 60 ) </dev/null >/dev/null 2>&1 &
+    for i in $(seq 50); do [[ -s "$1/group-orphan.pid" ]] && break; sleep 0.05; done
+    exit 0' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+( trap '' TERM HUP; echo $BASHPID > "$STUB_PIDDIR/helper-child.pid"; exec sleep 60 ) </dev/null >/dev/null 2>&1 &
+echo $$ > "$STUB_PIDDIR/helper.pid"
+while :; do wait; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    cd "${MOCK_REPO}"
+    STUB_PIDDIR="$piddir" REVIEW_KILL_ESCALATION=1 CLEANUP_REAP_TIMEOUT=2 AGENT_KILL_AFTER=60 \
+        PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null >/dev/null 2>"${TMPDIR_BASE}/err" &
+    local script_pid=$!
+    for ((i = 0; i < 100; i++)); do
+        [[ -s "${piddir}/helper.pid" && -s "${piddir}/cli.pid" && -s "${piddir}/orphan.pid" \
+            && -s "${piddir}/helper-child.pid" && -s "${piddir}/own-session.pid" \
+            && -s "${piddir}/group-orphan.pid" ]] && break
+        sleep 0.05
+    done
+    kill -TERM "$script_pid" 2>/dev/null || true
+    # The first moment the lock is free, record what of the job still runs.
+    states=""
+    for ((i = 0; i < 400; i++)); do
+        if ( exec 8< "$dir"; flock -n 8 ); then
+            for name in helper helper-child cli orphan own-session group-orphan; do
+                states+="${name}=$(running_state "$(cat "${piddir}/${name}.pid" 2>/dev/null)") "
+            done
+            break
+        fi
+        sleep 0.025
+    done
+    ec=0; wait "$script_pid" || ec=$?
+    assert_exit_code "interrupted run exits 143" "143" "$ec"
+    assert_contains "cleanup says it killed the job" "did not finish within CLEANUP_REAP_TIMEOUT" "$(cat "${TMPDIR_BASE}/err")"
+    for name in helper helper-child cli orphan own-session group-orphan; do
+        assert_contains "${name} is dead by the time the lock is free" "${name}=dead" "$states"
+    done
+    # Whatever the outcome, nothing of the stub may outlive the test.
+    for name in helper helper-child cli orphan own-session group-orphan; do
+        kill -9 "$(cat "${piddir}/${name}.pid" 2>/dev/null)" 2>/dev/null || true
+    done
+    teardown
+}
+
+# Processes that kill_tree finds can exit before it looks them up. The
+# cleanup is an EXIT trap under `set -euo pipefail`, and a failed pgid
+# lookup there aborted it before any kill: the CLI and helper ran on, the
+# temp root was left and the run exited 1, not 143 (#363 round 3). Here
+# the wedged helper's CLI spawns a stream of short-lived children, so
+# the tree kill_tree collects is full of processes that are already gone.
+test_cleanup_survives_processes_exiting_under_it() {
+    echo "TEST: interrupt cleanup still kills everything when found processes exit mid-way (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || ! command -v pgrep >/dev/null 2>&1; then
+        echo "  SKIP: needs setsid and pgrep"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids" scratch="${TMPDIR_BASE}/scratch"
+    local name i ec run
+    mkdir -p "$fake_dir" "$piddir" "$scratch"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+trap '' TERM HUP INT
+setsid bash -c '
+    trap "" TERM HUP
+    echo $$ > "$1/cli.pid"
+    while :; do sleep 0.02; done' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+echo $$ > "$STUB_PIDDIR/helper.pid"
+while :; do wait; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    cd "${MOCK_REPO}"
+    for run in 1 2 3; do
+        rm -f "${piddir}"/*.pid
+        STUB_PIDDIR="$piddir" REVIEW_KILL_ESCALATION=1 CLEANUP_REAP_TIMEOUT=2 AGENT_KILL_AFTER=60 \
+            TMPDIR="$scratch" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+            bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null >/dev/null 2>&1 &
+        local script_pid=$!
+        for ((i = 0; i < 100; i++)); do
+            [[ -s "${piddir}/helper.pid" && -s "${piddir}/cli.pid" ]] && break
+            sleep 0.05
+        done
+        kill -TERM "$script_pid" 2>/dev/null || true
+        ec=0; wait "$script_pid" || ec=$?
+        assert_exit_code "run ${run}: interrupted run exits 143" "143" "$ec"
+        for name in helper cli; do
+            assert_eq "run ${run}: ${name} is dead after cleanup" "dead" \
+                "$(running_state "$(cat "${piddir}/${name}.pid" 2>/dev/null)")"
+            kill -9 "$(cat "${piddir}/${name}.pid" 2>/dev/null)" 2>/dev/null || true
+        done
+        assert_eq "run ${run}: the shared temp root was removed" "0" "$(ls -A "$scratch" | wc -l)"
+    done
+    teardown
+}
+
+# The marker scan reads every process's /proc/<pid>/environ, which can
+# block on a process stuck on a hung mount, on the exit path, with the
+# review lock held. It is cut off after 5 s (#363 round 3). A `grep` shim
+# hangs on exactly that scan; cleanup must still finish well inside the
+# hang, and the wedged job must still be killed through its tree.
+test_cleanup_bounds_a_hanging_marker_scan() {
+    echo "TEST: a hanging environ scan cannot hold up interrupt cleanup (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || ! command -v pgrep >/dev/null 2>&1 \
+        || [[ ! -r /proc/self/environ ]]; then
+        echo "  SKIP: needs setsid, pgrep and /proc"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids" shim="${TMPDIR_BASE}/grep-shim"
+    local name i ec t0 t1 real_grep
+    mkdir -p "$fake_dir" "$piddir" "$shim"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+trap '' TERM HUP INT
+setsid bash -c 'trap "" TERM HUP; echo $$ > "$1/cli.pid"; exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+echo $$ > "$STUB_PIDDIR/helper.pid"
+while :; do wait; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    real_grep=$(command -v grep)
+    # The hang records its pid so the test can end it.
+    printf '%s\n' '#!/usr/bin/env bash' \
+        "for a in \"\$@\"; do [[ \"\$a\" == /proc/*/environ ]] && { echo \$\$ >> '${TMPDIR_BASE}/hang.pids'; exec sleep 30; }; done" \
+        "exec '${real_grep}' \"\$@\"" > "${shim}/grep"
+    chmod +x "${shim}/grep"
+    cd "${MOCK_REPO}"
+    STUB_PIDDIR="$piddir" REVIEW_KILL_ESCALATION=1 CLEANUP_REAP_TIMEOUT=2 AGENT_KILL_AFTER=60 \
+        PATH="${shim}:${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null >/dev/null 2>&1 &
+    local script_pid=$!
+    for ((i = 0; i < 100; i++)); do
+        [[ -s "${piddir}/helper.pid" && -s "${piddir}/cli.pid" ]] && break
+        sleep 0.05
+    done
+    t0=$(date +%s.%N)
+    kill -TERM "$script_pid" 2>/dev/null || true
+    ec=0; wait "$script_pid" || ec=$?
+    t1=$(date +%s.%N)
+    assert_exit_code "interrupted run exits 143" "143" "$ec"
+    if [[ -s "${TMPDIR_BASE}/hang.pids" ]]; then
+        echo "  PASS: the environ scan did hang"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: the grep shim never saw the environ scan"; FAIL=$((FAIL + 1))
+    fi
+    if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 15) }'; then
+        echo "  PASS: cleanup finished in $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s despite a 30s scan hang"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: cleanup took $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s: the hanging scan held it"; FAIL=$((FAIL + 1))
+    fi
+    for name in helper cli; do
+        assert_eq "${name} is dead after cleanup" "dead" "$(running_state "$(cat "${piddir}/${name}.pid" 2>/dev/null)")"
+        kill -9 "$(cat "${piddir}/${name}.pid" 2>/dev/null)" 2>/dev/null || true
+    done
+    while read -r i; do kill -9 "$i" 2>/dev/null || true; done < "${TMPDIR_BASE}/hang.pids" 2>/dev/null || true
+    teardown
+}
+
+# kill_tree must never signal group 0 or 1 (`kill -- -1` is every process
+# the user may signal), and must not kill a marker-found PID that no
+# longer carries the marker: it exited after the scan and the PID was
+# reused (#363 round 3). The real kill_tree runs with `kill` replaced by
+# a logger, so nothing is signalled; marked_pids is stubbed to report a
+# live process that never had the marker, and pgid_of to report group 1
+# or 0 for everything but the script itself.
+test_kill_tree_guards_its_kills() {
+    echo "TEST: kill_tree never signals group 0/1 or a PID that lost the job marker (#363)"
+    if [[ ! -r /proc/self/environ ]]; then
+        echo "  SKIP: needs /proc"; return
+    fi
+    setup
+    local probe="${TMPDIR_BASE}/probe-guards.sh" log="${TMPDIR_BASE}/kills" stranger bad out
+    sleep 30 >/dev/null 2>&1 &
+    stranger=$!
+    for bad in 1 0; do
+        : > "$log"
+        {
+            echo 'set -u'
+            for fn in pgid_of marked_pids still_marked kill_tree; do
+                sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_UNDER_TEST}"
+            done
+            echo 'KILLED_ROOTS=(); KILLED_PIDS=(); KILLED_GROUPS=()'
+            echo "kill() { printf '%s\\n' \"\$*\" >> '${log}'; }"
+            echo "marked_pids() { echo ${stranger}; }"
+            echo "pgid_of() { if [[ \"\$1\" == \"\$\$\" ]]; then echo 999999; else echo ${bad}; fi; }"
+            echo "kill_tree 999998 'job-marker-nobody-has'"
+        } > "$probe"
+        out=$(bash "$probe" 2>&1)
+        assert_not_contains "group ${bad}: probe ran without shell errors" \
+            "command not found|unbound variable|syntax error" "$out"
+        assert_not_contains "group ${bad} is never signalled" "[-]- -${bad}\$" "$(cat "$log")"
+        assert_not_contains "a PID without the marker is never signalled (group ${bad} case)" \
+            "(^| )${stranger}\$" "$(cat "$log")"
+    done
+    kill -9 "$stranger" 2>/dev/null || true; wait "$stranger" 2>/dev/null || true
+    # A group is still killed when the first process it was found through
+    # has gone, as long as another found member is still in it (live-run
+    # Gemini review). Process 111111 reports group 4242 once, then has
+    # gone; 222222 stays in it.
+    : > "$log"
+    {
+        echo 'set -u'
+        for fn in pgid_of marked_pids still_marked kill_tree; do
+            sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_UNDER_TEST}"
+        done
+        echo 'KILLED_ROOTS=(); KILLED_PIDS=(); KILLED_GROUPS=()'
+        echo "kill() { printf '%s\\n' \"\$*\" >> '${log}'; }"
+        echo "marked_pids() { echo 111111; echo 222222; }"
+        echo "still_marked() { return 0; }"
+        echo "pgid_of() { case \"\$1\" in \"\$BASHPID\") echo 999999 ;; 111111) if [[ -e '${TMPDIR_BASE}/first-gone' ]]; then :; else touch '${TMPDIR_BASE}/first-gone'; echo 4242; fi ;; 222222) echo 4242 ;; esac; }"
+        echo "kill_tree '' 'job-marker'"
+    } > "$probe"
+    out=$(bash "$probe" 2>&1)
+    assert_not_contains "group via a later member: probe ran without shell errors" \
+        "command not found|unbound variable|syntax error" "$out"
+    assert_contains "the group is killed through a member that is still in it" "[-]- -4242\$" "$(cat "$log")"
+    teardown
+}
+
+# When `timeout` cuts a job off (124), or its SIGKILL takes the helper
+# before the helper's own escalation ran (137), the CLI, a process group
+# of its own, is out of `timeout`'s reach. The job sweeps whatever still
+# carries its marker (#363 round 3). The stub helper starts a
+# TERM-ignoring CLI with setsid, as the real one does, and then either
+# dies on timeout's TERM (124) or ignores it until the SIGKILL (137).
+test_timed_out_job_sweeps_its_cli() {
+    echo "TEST: a job cut off by its timeout (124 or 137) leaves no CLI behind (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || [[ ! -r /proc/self/environ ]]; then
+        echo "  SKIP: needs setsid and /proc"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids" mode ec i cli
+    mkdir -p "$fake_dir" "$piddir"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+[[ "$STUB_MODE" == deaf ]] && trap '' TERM HUP INT
+setsid bash -c 'trap "" TERM HUP; echo $$ > "$1/cli.pid"; exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+while :; do sleep 0.1; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    cd "${MOCK_REPO}"
+    for mode in polite deaf; do
+        rm -f "${piddir}/cli.pid"
+        ec=0
+        STUB_MODE="$mode" STUB_PIDDIR="$piddir" AGENT_TIMEOUT=1 AGENT_KILL_AFTER=1 REVIEW_KILL_ESCALATION=0.5 \
+            PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+            timeout -k 1 30 bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null \
+            > "${TMPDIR_BASE}/out" 2>/dev/null || ec=$?
+        cli=$(cat "${piddir}/cli.pid" 2>/dev/null)
+        assert_exit_code "${mode}: the cut-off agent fails the run" "3" "$ec"
+        assert_contains "${mode}: the job reports $([[ $mode == polite ]] && echo 124 || echo 137)" \
+            "EXIT=$([[ $mode == polite ]] && echo 124 || echo 137)" "$(cat "${TMPDIR_BASE}/out")"
+        for ((i = 0; i < 10; i++)); do [[ "$(running_state "$cli")" == dead ]] && break; sleep 0.1; done
+        assert_eq "${mode}: the CLI does not outlive its job" "dead" "$(running_state "$cli")"
+        [[ -z "$cli" ]] || kill -9 "$cli" 2>/dev/null || true
+    done
+    teardown
+}
+
+# On an interrupt the job shell TERMs its `timeout`. If the helper is
+# wedged, `timeout -k` SIGKILLs it (137) and the helper's escalation never
+# reaches its CLI, a process group of its own. When the parent's reap
+# budget outlasts AGENT_KILL_AFTER the parent sees the job finish in time
+# and never runs kill_tree for it, so the job's TERM trap has to sweep the
+# job's marked processes itself (#363, found by the live-run Codex review).
+test_interrupted_job_sweeps_its_cli() {
+    echo "TEST: an interrupted job whose helper timeout SIGKILLed leaves no CLI behind (#363)"
+    if ! command -v setsid >/dev/null 2>&1 || [[ ! -r /proc/self/environ ]]; then
+        echo "  SKIP: needs setsid and /proc"; return
+    fi
+    setup
+    make_mock_agent codex
+    local fake_dir="${TMPDIR_BASE}/fakescripts" piddir="${TMPDIR_BASE}/pids" ec i cli
+    mkdir -p "$fake_dir" "$piddir"
+    cp "${SCRIPT_DIR}/.."/*.sh "$fake_dir/"
+    cat > "${fake_dir}/_cli_review.sh" << 'STUB_EOF'
+#!/usr/bin/env bash
+trap '' TERM HUP INT
+setsid bash -c 'trap "" TERM HUP; echo $$ > "$1/cli.pid"; exec sleep 60' _ "$STUB_PIDDIR" </dev/null >/dev/null 2>&1 9<&- &
+while :; do sleep 0.1; done
+STUB_EOF
+    chmod +x "${fake_dir}/_cli_review.sh"
+    cd "${MOCK_REPO}"
+    STUB_PIDDIR="$piddir" REVIEW_KILL_ESCALATION=0.5 AGENT_KILL_AFTER=1 CLEANUP_REAP_TIMEOUT=6 \
+        PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${fake_dir}/cross_model_review.sh" --pr 99 --agents codex </dev/null >/dev/null 2>"${TMPDIR_BASE}/err" &
+    local script_pid=$!
+    for ((i = 0; i < 100; i++)); do [[ -s "${piddir}/cli.pid" ]] && break; sleep 0.05; done
+    kill -TERM "$script_pid" 2>/dev/null || true
+    ec=0; wait "$script_pid" || ec=$?
+    cli=$(cat "${piddir}/cli.pid" 2>/dev/null)
+    assert_exit_code "interrupted run exits 143" "143" "$ec"
+    assert_not_contains "the parent's budget did not run out (its kill_tree is not what helps)" \
+        "did not finish within" "$(cat "${TMPDIR_BASE}/err")"
+    for ((i = 0; i < 10; i++)); do [[ "$(running_state "$cli")" == dead ]] && break; sleep 0.1; done
+    assert_eq "the CLI does not outlive its interrupted job" "dead" "$(running_state "$cli")"
+    [[ -z "$cli" ]] || kill -9 "$cli" 2>/dev/null || true
+    teardown
+}
+
+# await_killed waits once, for every job kill_tree killed, against one
+# deadline (at least 5 s, at most 6), and its warning says so (#363
+# review: the bound was 5 s per job, so several wedged jobs added up).
+# Real functions, extracted; a live `sleep` stands in for a process that
+# survived its SIGKILL, listed under three killed jobs.
+await_killed_probe() {
+    local probe="${TMPDIR_BASE}/probe-await.sh"
+    {
+        echo 'set -u'
+        for fn in proc_state job_finished group_running await_killed; do
+            sed -n "/^${fn}() {\$/,/^}\$/p" "${SCRIPT_UNDER_TEST}"
+        done
+        printf '%s\n' "$@"
+        echo 'await_killed'
+    } > "$probe"
+    (cd "$TMPDIR_BASE" && timeout -k 1 20 bash "$probe" 2>&1)
+}
+test_await_killed_shares_one_deadline() {
+    echo "TEST: await_killed waits once, at least 5s and at most 6s, for every killed job, and not on unreaped ones (#363)"
+    setup
+    local out t0 t1 survivor
+    sleep 30 >/dev/null 2>&1 &
+    survivor=$!
+    t0=$(date +%s.%N)
+    out=$(await_killed_probe "KILLED_ROOTS=(999999 999998 999997)" "KILLED_PIDS=(${survivor})" "KILLED_GROUPS=()")
+    t1=$(date +%s.%N)
+    kill -9 "$survivor" 2>/dev/null || true; wait "$survivor" 2>/dev/null || true
+    if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) >= 5 && (b - a) < 7) }'; then
+        echo "  PASS: one 5-6s wait for three killed jobs"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: waited $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s for three killed jobs"; FAIL=$((FAIL + 1))
+    fi
+    assert_contains "the warning names the bound it waited" "still running at least 5s after SIGKILL" "$out"
+    # A job shell's sweep (kill_tree with no root) records no root: it
+    # must be waited for all the same.
+    sleep 30 >/dev/null 2>&1 &
+    survivor=$!
+    t0=$(date +%s.%N)
+    out=$(await_killed_probe "KILLED_ROOTS=()" "KILLED_PIDS=(${survivor})" "KILLED_GROUPS=()")
+    t1=$(date +%s.%N)
+    kill -9 "$survivor" 2>/dev/null || true; wait "$survivor" 2>/dev/null || true
+    if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) >= 5 && (b - a) < 7) }'; then
+        echo "  PASS: a sweep with no root is waited for too"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: a sweep with no root was waited for $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s"; FAIL=$((FAIL + 1))
+    fi
+    t0=$(date +%s.%N)
+    out=$(await_killed_probe "KILLED_ROOTS=(999999)" "KILLED_PIDS=()" "KILLED_GROUPS=()")
+    t1=$(date +%s.%N)
+    if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 1.5) }'; then
+        echo "  PASS: nothing left running: no wait"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: waited with nothing left running"; FAIL=$((FAIL + 1))
+    fi
+    assert_not_contains "and no warning" "WARNING" "$out"
+    # A killed group whose only member has exited but is never reaped (a
+    # container's PID 1 that does not reap) is not running: `kill -0`
+    # alone counted it, for the full wait and a false warning.
+    if command -v python3 >/dev/null 2>&1 && [[ -r /proc/self/stat ]]; then
+        local zpid
+        python3 -c 'import os, sys, time
+pid = os.fork()
+if pid == 0:
+    os.setsid(); os._exit(0)
+print(pid, flush=True); sys.stdout.close(); time.sleep(30)' > "${TMPDIR_BASE}/zombie.pid" 2>/dev/null &
+        local holder=$! i
+        for ((i = 0; i < 50; i++)); do [[ -s "${TMPDIR_BASE}/zombie.pid" ]] && break; sleep 0.05; done
+        zpid=$(cat "${TMPDIR_BASE}/zombie.pid")
+        t0=$(date +%s.%N)
+        out=$(await_killed_probe "KILLED_ROOTS=(999999)" "KILLED_PIDS=()" "KILLED_GROUPS=(${zpid})")
+        t1=$(date +%s.%N)
+        kill -9 "$holder" 2>/dev/null || true; wait "$holder" 2>/dev/null || true
+        if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 1.5) }'; then
+            echo "  PASS: a group of unreaped exited members is not waited on"; PASS=$((PASS + 1))
+        else
+            echo "  FAIL: waited $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s on a group of unreaped exited members"; FAIL=$((FAIL + 1))
+        fi
+        assert_not_contains "and no warning for it" "WARNING" "$out"
+    else
+        echo "  SKIP: zombie-group case needs python3 and /proc"
+    fi
+    teardown
+}
+
+# running / dead for a pid (an exited, unreaped process is dead).
+running_state() {
+    local pid="$1" stat
+    if [[ -z "$pid" ]] || ! kill -0 "$pid" 2>/dev/null; then echo dead; return; fi
+    if [[ -r "/proc/${pid}/stat" ]] && IFS= read -r stat < "/proc/${pid}/stat" 2>/dev/null; then
+        stat=${stat##*) }
+        [[ "${stat%% *}" == Z ]] && { echo dead; return; }
+    fi
+    echo running
+}
+
+# A TERM that lands after the fork but before setsid's setsid() call finds
+# no process group to signal yet. Found by the Codex reviews of #363, in
+# three steps: missing the group left the handler waiting on a CLI
+# nothing had signalled; waiting for the group outside the window let
+# the caller's `timeout -k` SIGKILL the helper first; and waiting for it
+# inside the window still lost the race at the boundary, where the
+# watchdog fired, found no group and did nothing, and the group appeared
+# just after. The handler now signals the PID as well as the group, and
+# the watchdog SIGKILLs both at the deadline without checking first.
+# Each case runs the real handler (extracted) on a child that reaches
+# setsid after <delay>; the handler must return inside <limit> with the
+# child dead.
+#   kind — coop: the pre-setsid stage dies on TERM (the real setsid does);
+#          deaf: it and the CLI ignore TERM, so only the deadline SIGKILL
+#          ends them, and delays around the 0.4 s window probe the
+#          boundary; dead: the child exited before setsid ran.
+test_helper_terminate_reaches_a_cli_before_setsid() {
+    echo "TEST: terminate_child kills a CLI signalled before setsid has made its group, at any delay (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    local spec file P fn probe ec t0 t1 c kind delay esc limit label launch
+    for spec in _cli_review.sh:CLI:cli _agy_review.sh:AGY:agy; do
+        file="${spec%%:*}"; P=$(cut -d: -f2 <<< "$spec"); fn=$(cut -d: -f3 <<< "$spec")
+        for c in coop:0.3:5:2 coop:1.5:0.4:1 coop:0.5:0:1 \
+                 deaf:0.3:0.4:1.5 deaf:0.38:0.4:1.5 deaf:0.41:0.4:1.5 deaf:0.42:0.4:1.5 \
+                 deaf:0.43:0.4:1.5 deaf:0.45:0.4:1.5 deaf:0.6:0.4:1.5 dead:0:5:1; do
+            IFS=: read -r kind delay esc limit <<< "$c"
+            label="${file} ${kind}, setsid after ${delay}s, escalation ${esc}s"
+            case "$kind" in
+                coop) launch="bash -c 'sleep ${delay}; exec setsid sleep 30'" ;;
+                # Ignored from birth (an ignored disposition survives exec),
+                # so even the earliest TERM is lost on it.
+                deaf) launch="( trap '' TERM HUP; exec bash -c 'sleep ${delay}; exec setsid sleep 30' )" ;;
+                dead) launch="bash -c 'exit 0'" ;;
+            esac
+            probe="${TMPDIR_BASE}/probe-${P}-presetsid.sh"
+            {
+                echo 'set -u'
+                sed -n "/^signal_${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n "/^signal_live_${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+                sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
+                echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=${esc}"
+                echo "${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''; ${P}_GROUP=''"
+                echo "${launch} </dev/null >/dev/null 2>&1 &"
+                echo "${P}_PID=\$!; echo \$! > target.pid"
+                # dead: let it exit (bash reaps it; the PID stays recorded).
+                [[ "$kind" == dead ]] && echo 'sleep 0.3'
+                echo 'terminate_child 143'
+            } > "$probe"
+            ec=0; t0=$(date +%s.%N)
+            (cd "$TMPDIR_BASE" && timeout -k 1 8 bash "$probe" >/dev/null 2>"${TMPDIR_BASE}/probe.err") || ec=$?
+            t1=$(date +%s.%N)
+            [[ "$kind" == dead ]] && t0=$(awk -v a="$t0" 'BEGIN { printf "%.3f", a + 0.3 }')
+            assert_exit_code "${label}: handler exits 143" "143" "$ec"
+            assert_not_contains "${label}: probe ran without shell errors" \
+                "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/probe.err")"
+            if awk -v a="$t0" -v b="$t1" -v l="$limit" 'BEGIN { exit !((b - a) < l) }'; then
+                echo "  PASS: ${label}: handler returned inside ${limit}s"; PASS=$((PASS + 1))
+            else
+                echo "  FAIL: ${label}: handler took $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s, over ${limit}s"; FAIL=$((FAIL + 1))
+            fi
+            sleep 0.2
+            assert_eq "${label}: the CLI is killed" "gone" "$(pid_state "${TMPDIR_BASE}/target.pid")"
+            kill_recorded "${TMPDIR_BASE}/target.pid"
+        done
+    done
+    teardown
+}
+
+# A signal that lands after a helper has reaped its CLI and cleared the
+# PID, but before the post-exit sweep of the CLI's group has run, must
+# still get the sweep (exit would skip it) and must never signal the bare,
+# reaped PID (#363 round 1 S3, round 2 S5). BASH_ENV puts a DEBUG trap
+# into the helper alone (the mocks are bash too, so it checks $0): it
+# TERMs the helper right before the sweep's `[[ -n "$<P>_GROUP" ]]` test
+# runs, i.e. with the PID cleared and the sweep pending, and a `kill`
+# wrapper logs every signal the helper sends. The CLI mock leaves a
+# TERM-ignoring child in its group, which only the sweep kills.
+test_helper_term_with_the_sweep_pending() {
+    echo "TEST: a TERM after the helper reaped its CLI still sweeps the group and never signals the reaped PID (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    make_mock_agent codex
+    mkdir -p "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md" inject times log
+    local spec label P ec cli orphan
+    echo "review this" > "$prompt"
+    times="${TMPDIR_BASE}/times"; log="${TMPDIR_BASE}/kill.log"
+    mkdir -p "$times"
+    inject="${TMPDIR_BASE}/inject-term.sh"
+    cat > "$inject" << 'INJECT_EOF'
+if [[ "$0" == *_review.sh ]]; then
+    set -T
+    trap 'if [[ -z "${INJECTED_TERM:-}" && "$BASH_COMMAND" == "[[ -n \"\$${INJECT_PREFIX}_GROUP\" ]]" ]]; then INJECTED_TERM=1; builtin kill -TERM "$$"; fi' DEBUG
+    kill() { printf '%s\n' "$*" >> "$KILL_LOG"; builtin kill "$@"; }
+fi
+INJECT_EOF
+    for spec in _cli_review.sh:CLI _agy_review.sh:AGY; do
+        label="${spec%%:*}"; P="${spec#*:}"
+        rm -f "$log" "${times}"/*.pid
+        orphan="${TMPDIR_BASE}/${P}-orphan.pid"
+        ec=0
+        if [[ "$P" == CLI ]]; then
+            BASH_ENV="$inject" INJECT_PREFIX="$P" KILL_LOG="$log" MOCK_TIMES_DIR="$times" \
+                MOCK_CODEX_ORPHAN_PIDFILE="$orphan" REVIEW_KILL_ESCALATION=5 \
+                TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+                timeout -k 1 15 bash "$CLI_HELPER_UNDER_TEST" codex "${MOCK_BIN}/codex" "$prompt" "$findings" 1800 \
+                >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+            cli=$(cat "${times}/codex.pid" 2>/dev/null)
+        else
+            BASH_ENV="$inject" INJECT_PREFIX="$P" KILL_LOG="$log" MOCK_TIMES_DIR="$times" \
+                MOCK_AGY_ORPHAN_PIDFILE="$orphan" REVIEW_KILL_ESCALATION=5 \
+                TMPDIR="${TMPDIR_BASE}/helper-tmp" PATH="${MOCK_BIN}:${PATH}" \
+                timeout -k 1 15 bash "${SCRIPT_DIR}/../_agy_review.sh" "${MOCK_BIN}/agy" "$prompt" "$findings" 30m \
+                >/dev/null 2>"${TMPDIR_BASE}/err" || ec=$?
+            cli=$(cat "${times}/agy.pid" 2>/dev/null)
+        fi
+        assert_exit_code "${label}: the TERM, sent with the sweep pending, ends the helper" "143" "$ec"
+        assert_not_contains "${label}: no shell errors" \
+            "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/err")"
+        assert_orphan_gone "${label}: the pending sweep still ran" "$orphan"
+        if [[ -n "$cli" ]] && grep -qE "(^| )${cli}\$" "$log" 2>/dev/null; then
+            echo "  FAIL: ${label}: signalled the reaped CLI's bare PID: $(grep -E "(^| )${cli}\$" "$log" | head -1)"; FAIL=$((FAIL + 1))
+        else
+            echo "  PASS: ${label}: never signalled the reaped CLI's bare PID"; PASS=$((PASS + 1))
+        fi
+    done
+    teardown
+}
+
+# The other half of that window: the PID is already cleared, the
+# post-exit sweep has not run, and a signal arrives. The handler must run
+# the sweep itself (exit would skip it), so a TERM-ignoring child the CLI
+# left behind is killed. Real handler code, extracted, in that state.
+test_helper_terminate_sweeps_after_the_cli_exited() {
+    echo "TEST: terminate_child runs the post-exit group sweep when the CLI was already reaped (#363)"
+    if ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: no setsid on this host"; return
+    fi
+    setup
+    local spec file P fn probe ec t0 t1
+    for spec in _cli_review.sh:CLI:cli _agy_review.sh:AGY:agy; do
+        file="${spec%%:*}"; P=$(cut -d: -f2 <<< "$spec"); fn=$(cut -d: -f3 <<< "$spec")
+        probe="${TMPDIR_BASE}/probe-${P}-sweep.sh"
+        {
+            echo 'set -u'
+            sed -n "/^signal_${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+            sed -n "/^signal_live_${fn}() {\$/,/^}\$/p" "${SCRIPT_DIR}/../${file}"
+            sed -n '/^terminate_child() {$/,/^}$/p' "${SCRIPT_DIR}/../${file}"
+            echo "${P}_GROUP_KILL=true; REVIEW_KILL_ESCALATION=5"
+            echo "${P}_PID=''; ${P}_LAUNCHING=false; ${P}_LAUNCH_PREV=''"
+            # The CLI's leftover: a TERM-ignoring group leader.
+            echo "setsid bash -c 'trap \"\" TERM; sleep 30' </dev/null >/dev/null 2>&1 &"
+            echo "${P}_GROUP=\$!; echo \$! > target.pid"
+            echo 'for _ in $(seq 50); do kill -0 -- -"$(< target.pid)" 2>/dev/null && break; sleep 0.05; done'
+            echo 'terminate_child 143'
+        } > "$probe"
+        ec=0; t0=$(date +%s.%N)
+        (cd "$TMPDIR_BASE" && timeout -k 1 10 bash "$probe" >/dev/null 2>"${TMPDIR_BASE}/probe.err") || ec=$?
+        t1=$(date +%s.%N)
+        assert_exit_code "${file}: handler exits 143" "143" "$ec"
+        assert_not_contains "${file}: probe ran without shell errors" \
+            "command not found|unbound variable|syntax error" "$(cat "${TMPDIR_BASE}/probe.err")"
+        if awk -v a="$t0" -v b="$t1" 'BEGIN { exit !((b - a) < 3) }'; then
+            echo "  PASS: ${file}: the sweep is a SIGKILL, not a wait"; PASS=$((PASS + 1))
+        else
+            echo "  FAIL: ${file}: handler took $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s"; FAIL=$((FAIL + 1))
+        fi
+        sleep 0.2
+        assert_eq "${file}: the CLI's leftover group is killed" "gone" "$(pid_state "${TMPDIR_BASE}/target.pid")"
+        kill_recorded "${TMPDIR_BASE}/target.pid"
+    done
+    teardown
+}
+
 test_missing_pr_flag
 test_unknown_argument
 test_invalid_repo_slug
@@ -4243,6 +5571,26 @@ test_cli_helper_forwards_term
 test_cli_findings_truncated_and_usage_errors
 test_cli_no_temp_leak
 test_cli_helper_missing_is_unavailable
+test_local_helpers_kill_the_cli_process_group
+test_signal_helpers_both_modes
+test_helpers_work_without_setsid
+test_helper_terminate_adopts_launch_window
+test_run_agent_job_trap_adopts_launch_window
+test_cleanup_jobs_adopts_launch_window
+test_local_concurrent_runs_refused
+test_lock_held_by_jobs_after_the_parent_is_killed
+test_no_flock_warns_and_runs
+test_lock_fd_not_inherited_by_git_or_gh
+test_cleanup_kills_the_whole_job_when_the_budget_runs_out
+test_cleanup_survives_processes_exiting_under_it
+test_cleanup_bounds_a_hanging_marker_scan
+test_kill_tree_guards_its_kills
+test_timed_out_job_sweeps_its_cli
+test_interrupted_job_sweeps_its_cli
+test_await_killed_shares_one_deadline
+test_helper_terminate_reaches_a_cli_before_setsid
+test_helper_term_with_the_sweep_pending
+test_helper_terminate_sweeps_after_the_cli_exited
 
 echo ""
 echo "=== Results: ${PASS} passed, ${FAIL} failed ==="

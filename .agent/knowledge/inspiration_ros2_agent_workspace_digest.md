@@ -1,9 +1,260 @@
 # Inspiration Digest: ros2_agent_workspace
 
 Type: fork
-Last checked: 2026-09-14
-Repo: rolker/ros2_agent_workspace @ 3b365a53bcdf47892f8b76425650ac40454d00bf
-Previously checked: 2026-07-14 @ b64640f14f05799796164dd7fe07cd8b583541dc
+Last checked: 2026-09-29
+Repo: rolker/ros2_agent_workspace @ 323306a823ac6ae76bbd54a621612b8ed45e86f3 (origin/main)
+Previously checked: 2026-09-14 @ 3b365a53bcdf47892f8b76425650ac40454d00bf
+
+## Changelog (2026-09-14 → 2026-09-29): absorption triage
+
+494 commits (about 15 merged PRs; most commits are review-round fixes and
+plan/progress bookkeeping). Framing for this round: `ros2_agent_workspace`
+is being **absorbed** here (#253 parity audit, #262 cutover). Workspace
+improvements upstream are winding down, so the question per change is not
+"is this interesting" but "is it already here, does it need porting, or does
+the registry/adapter design remove the problem". Every "already here" and
+"not fixed here" claim below was checked against this repo's source on
+2026-09-29. This table is the input #253 asks for.
+
+Upstream state: 93 open issues, 2 open PRs (#663 a dependency bump, #657 a
+parked merge-verification change). Merged this period: #625 root resolution
+(covered last round), #638/#641 planning-document vocabulary, #644 planning
+doc probe, #645 push-gateway deletion, #646 redaction/lock hardening, #647
+janitor split/publish, #650, #655 audit coverage, #656 local rosdep keys,
+#658 janitor local-first, #661 worktree rosdep discovery, #662 cross-model
+reviewer port. Buckets: already-here 5, port-candidate 7 groups (16
+sub-items), ROS-only 4, obsolete-here 4.
+
+One directional fact worth stating: this round the flow ran **from us to
+them**. Upstream's #662 ported `cross_model_review.sh`, its two helpers and
+the `_resolve_*` / `_plan_approach.py` support scripts from this repo, then
+fixed defects in its copy that are not fixed in ours. Those fixes are the
+top port candidates (P1, P2).
+
+### Already here (A)
+
+- **A1. Cross-model reviewer scripts** — `cross_model_review.sh`,
+  `_agy_review.sh`, `_cli_review.sh`, `_resolve_work_plans_dir.sh`,
+  `_resolve_default_branch.sh`, `_plan_approach.py` were ported *from* this
+  repo (upstream #660, "Re-sync ... to agent_workspace main @ 97a87fa").
+  Nothing to port back except the later fixes in P1/P2.
+- **A2. Cross-model specialist default-on at Standard/Deep** — upstream's
+  `review_depth_classification.md` now matches ours (review-code 5e,
+  Standard and Deep only, never Light; our #320, `.claude/skills/review-code/SKILL.md`).
+- **A3. Drop the Copilot cross-model arm** — upstream removed the Copilot
+  specialist (same Claude/GPT models, spends Premium quota). Same direction as
+  our open #344; nothing new to take.
+- **A4. Provisional ADR status** (upstream #620, closed) — `docs/decisions/0016-session-roots-and-the-user-tier.md`
+  already uses it, with a status-line-only promotion rule. Upstream's
+  `adr_template.md` did not gain a Provisional line either.
+- **A5. what-next** — upstream's #653 is "port what-next here" (from this
+  repo); the skill exists in `.claude/skills/what-next/`. Their design-draft-first
+  add-ons (health-report refresh trigger, per-area ranking for parallel
+  agents) are worth reading when we do P6, not before.
+
+### Port candidates (P) — non-ROS workspace tooling
+
+**P1. Reviewer-helper hardening from upstream PR #662** (seven fixes; none in
+our source; no agent_workspace issue covers them — #342 is the broader
+"external reviewer contract" umbrella and does not name them). Verified
+against `.agent/scripts/{_cli_review,_agy_review,cross_model_review}.sh`:
+
+- **P1a. Refuse `AGENT_KILL_AFTER=0`** (upstream 5af570f). `timeout -k 0`
+  *disables* the SIGKILL escalation rather than sending it at once, so a CLI
+  that ignores SIGTERM outlives its bound. Ours still declares 0 legal:
+  `cross_model_review.sh:165,191` (`allow_zero` true for `AGENT_KILL_AFTER`) and the
+  "both zero" carve-outs at `_cli_review.sh:180` and `_agy_review.sh:133`.
+  Size: small (three call sites plus their tests).
+- **P1b. Kill the CLI's whole process group, not just its PID** (69a6907).
+  Ours has no `setsid` and no group signalling anywhere in the three scripts;
+  a TERM-ignoring child of the CLI survives the helper. Upstream launches each CLI
+  under `setsid`, sends TERM, the SIGKILL escalation and a post-exit sweep to
+  the group, with a PID-only fallback where `setsid` is missing. Size:
+  medium (about 50 lines per helper plus mock CLIs that start a TERM-ignoring
+  child). Do P1a and P1b together; P1c and P1d build on P1b.
+- **P1c. Close the launch window** (5818535). A TERM between a background
+  launch and the `$!` assignment finds no PID and leaves the child running;
+  fix records `$!` before launch and the handler adopts it. Absent here.
+  Size: small-medium; not deterministically testable (upstream says so).
+- **P1d. One run per issue directory, plus the lock-leak fix** (b5f080a,
+  5818535). Findings/prompt filenames are fixed per agent, so two concurrent
+  runs into one issue dir overwrite each other; upstream takes a non-blocking
+  `flock` (exit 5) and launches agent jobs with `9>&-` so they cannot inherit
+  the lock fd and refuse every later run. We have **no lock at all**
+  (`grep flock` finds nothing), so the leak bug does not exist here, but the
+  clobbering it guards against does. Port lock and fd fix as one unit. Size:
+  small-medium.
+- **P1e. `--work-dir` + `--no-progress` is a usage error, checked before CLI
+  discovery** (51b8770). Ours has no such check: that combination silently
+  writes `.agent/work-plans/issue-noprogress/` into the target repo, and a
+  host missing a CLI would report exit 1 instead. Size: small.
+- **P1f. Accept GitHub's full closing-keyword set** (67d7bce). Ours
+  (`cross_model_review.sh:613`) matches only `closes|fixes|resolves`;
+  `Close #N`, `Fixed #N`, `Resolved #N` and `Closes: #N` are refused as
+  "no closure keyword". Upstream extracted `extract_closing_issue` so the test
+  runs the real function. Size: small.
+- **P1g. Pipefail-safe `assert_contains` / `assert_not_contains`** (1e5f9e7).
+  Our suite uses `echo "$text" | grep -qE` under `set -euo pipefail`
+  (`tests/test_cross_model_review.sh:9,192`), which can fail spuriously when
+  `grep -q` exits early on large text. Size: tiny.
+
+**P2. Retry a tool-denied empty Gemini turn once** (upstream f4632de). Three
+live Gemini reviews in a row ended empty after the model called a tool that
+headless mode denied; agy has no switch removing its built-in tools. Upstream
+resumes the same conversation once (`--conversation <id>`, "that was denied,
+answer in text only"), inside the same print-timeout budget, only when at
+least 30s remain, and annotates the findings file. Ours reports the denial as
+a failed review (`_agy_review.sh:246-272`) with no retry. Size: medium (about
+90 lines plus tests). **Relation to open #347**: #347 is the *output-token
+cutoff* on large prompts, a different failure. It is not fixed by f4632de,
+but the `--conversation` resume plumbing is exactly option 3 in #347
+("resume the session with continue, shorter"). Take f4632de first, then extend
+the same resume path to the cutoff case. Caveat: upstream verified
+`--conversation` on agy 1.2.11; re-verify on the version installed here.
+
+**P3. Sync reports success after per-repo failures** (upstream #609/#611;
+already roadmapped 2026-09-14, **still unfixed here**). Verified: `ros2_colcon`
+`adapter_sync` prints `pull failed (continuing)` / `fetch failed (continuing)`
+then `Sync complete.` (`.agent/project_types/ros2_colcon/adapter.sh:555-564`),
+and `single_project/sync.py:182` prints `Sync complete.` unconditionally,
+ignoring `sync_repo`'s result. Upstream's fix is per-repo outcome
+classification (updated / skipped / FAILED with cause), "no repos enumerated"
+is not all-clear, and a documented exit-code contract. Size: small-medium,
+tests in the existing adapter suites. No agent_workspace issue yet (roadmap
+entry only).
+
+**P4. issue-triage silently truncates at 100 issues per repo** (upstream #627,
+open there; **same bug here**: `.claude/skills/issue-triage/SKILL.md:48` uses
+`--limit 100`). A repo with more open issues has the excess hidden and reads
+as clean. Also take upstream's rule that a triage report states how many
+repos it scanned and that a repo whose `gh issue list` errors makes the run
+FAILED, never an all-clear over the repos that answered (our skill has no
+such rule). Size: small. No issue.
+
+**P5. Planning-document vocabulary design draft** (upstream #628 ->
+`docs/design/planning_document_vocabulary.md`, `.agent/templates/roadmap.md`,
+README Vision, `ROADMAP.md`; promotion to an ADR is upstream #637, open).
+Content: four core kinds (vision, roadmap, decision, health) plus supporting
+kinds (reference, contract, design draft, architecture); a **two-root rule**
+(workspace tooling may assume the workspace root and the project root, and
+below that "a roadmap names the roadmaps beneath it" instead of enumerating
+repos); a published expected-location table probed by convention, with
+absence never a finding; a roadmap template with a named forcing function, a
+generated `Last reviewed` stamp and a mandatory `#<N>` token per row. The
+draft ties directly to this workspace's project-agnosticism rule (ADR-0003)
+and to the registry design. Things to change when porting: it names specific
+project repos as worked examples (drop them), it puts the roadmap at root
+`ROADMAP.md` while this repo settled on `docs/roadmap.md` in #334 (the
+location row needs our own decision), and its trigger/publish sections
+assume the ROS multi-repo layout. Size: medium (a design doc plus a template).
+Best folded into open **#335** (README Goals + living `docs/design.md`), which
+already covers the README-goals half; the vocabulary/expected-location table and the
+roadmap template are not covered there. Upstream also wants (#643) discovery
+fallbacks for externally hosted planning docs and (#642, ROS deployment) a
+decisions list at wrap-up; skip both here.
+
+**P6. Janitor sweep and its supporting pieces** (upstream #569, #635, #649,
+#651, #652, #634; already roadmapped here 2026-09-14 as "Janitor sweep", no
+issue). Upstream's skill grew to 2274 lines, most of it ROS layer
+enumeration, manifest cloning and PR publish machinery that the registry
+makes unnecessary. Portable pieces, smallest first:
+- **P6d. `redact.sh`** (104 lines): strip absolute paths and URL userinfo
+  from diagnostics before they land in a report. Needed only if reports leave
+  the host. Small.
+- **P6b. `planning_doc_probe.sh`** (282 lines + tests, wired into
+  audit-project as a "Planning Documents" section): probes the expected-location
+  table (P5), with symlink-stays-inside-repo and permission-denied handling.
+  Depends on P5's table. Small-medium.
+- **P6a. Audit coverage as data** (#651, in `audit-workspace` / `audit-project`):
+  each section reports completed / partial / not re-examined, so a run-over-run
+  diff never renders "Resolved" for a section that was not looked at. Useful
+  even without the janitor. Medium.
+- **P6c. The janitor skill itself**: local-first (report under the scratchpad
+  by default, `--publish` opt-in to commit `docs/health.md` by PR), finding
+  tiers, run-over-run diff, retention of the last 20 reports. Build a leaner
+  version on the registry rather than porting the file. Large; trigger
+  (upstream picked a weekly cloud Routine, #636 open) is a separate decision.
+
+**P7. inspiration-tracker step 8 hardening** (upstream 5ae0e2f..e1dd936).
+When a finding goes to the roadmap: insert the row into the table (never
+`>>` after the footer), stage it in the same Bash call (agent Bash calls run
+in fresh subshells), refuse to run when the roadmap file is missing, and ask
+what condition would bring the item back (a "Deferred because" column). Ours
+still appends to a "To Consider" heading. Size: tiny-small; the reason column
+depends on our roadmap's shape.
+
+### ROS-only (R) — belongs in the `ros2_colcon` adapter / project type later
+
+- **R1. Local rosdep keys** (upstream #654 / #656): `rosdep_local_sources.sh`
+  (574 lines), `rosdep_local_staleness_check.sh`, `rosdep_yaml_validate.sh`,
+  `stage_rosdep_manifests.sh` changes, `ROSDEP_SOURCE_PATH` export in
+  `setup.bash`, ci_local overlay, agent image baking, `dependency_policy.md`
+  (266 lines), and ADR-0018's `+rosdep-local` attestation extension.
+- **R2. Worktree-aware rosdep discovery and regeneration on removal**
+  (#659 / #661): layer-worktree `rosdep.yaml` discovery, key-conflict exit 6,
+  `worktree_remove.sh` regenerating the published list, and the
+  `wt_is_registered` identity check in `_worktree_helpers.sh` (dir is a linked
+  worktree of *that* repo). Note for step 6 phase 3 (#252 is closed):
+  `wt_is_registered`'s two-part test (shared `--git-common-dir` and the main
+  repo's own `worktree list`) is the reference if the adapter needs a
+  registration check.
+- **R3. ci_local attestation and merge verification** (#657 parked;
+  ADR-0018): already Deferred here as an adapter-verb candidate; no change.
+- **R4. Deployment/field skills and `field_mode.sh` changes**: covered by the
+  2026-07-14 and 2026-09-14 rounds; nothing new this round.
+
+### Obsolete here (O) — registry/adapter design removes the problem
+
+- **O1. Push-gateway deletion** (#493 / #645: `push_gateway.sh`,
+  `push_request.sh`, `issue_request.sh`, container post-exit publish flow).
+  We never ported any of it.
+- **O2. Root/manifest resolution hardening** (#569 follow-ups, #626 / #646:
+  `workspace_root.sh` normalisation, lock-fd closed for git children,
+  path-free lock-open failures, `redact.sh` label parsing). Registry entries
+  hold absolute paths; there is no `layers/` tree to guess. The one leftover
+  guess is the Makefile's worktree-root detection, already open as #239.
+- **O3. Local Ollama adversarial specialist** (#605 closed: a 35b model does not
+  fit 8GB VRAM and diffs exceed the context window). We never ported it.
+- **O4. Scratchpad clone-cache retention notes** (`.agent/scratchpad/README.md`,
+  `janitor-repos/`, `manifest-repo/`): only exist because upstream clones repos
+  for the janitor; registry-hosted checkouts need no clone cache.
+
+### Upstream open issues worth watching (workspace-generic)
+
+- **#601** review-code record lane for `.agent/work-plans/**` diffs (still open;
+  our Deferred `review-code-record-lane` stands).
+- **#639** specified check for GitHub closing-keyword tokens in plan text and
+  commit messages (relates to P1f; and to fork issue #632, new ADRs surfaced at
+  plan review and merge).
+- **#631** plans declare the precedent they match and the ADRs they create;
+  **#633** run-issue implements the post-publish review wait;
+  **#629** one-line-per-finding checkpoint shape (already our standing
+  practice per the readable-checkpoint-dialog rule; upstream is encoding it
+  in a check).
+- **#564** slim AGENTS.md; **#562** `merge_pr.sh --skill` cleanup (this digest
+  PR's worktree again needs manual cleanup).
+
+### Bidirectional note
+
+Upstream's digest of this repo (`inspiration_agent_workspace_digest.md`)
+recorded the Gemini + Codex adoption on 2026-09-24 (upstream e85f777). The
+P1/P2 fixes should flow back here rather than staying in the fork.
+
+## Decisions (2026-09-29 round)
+
+Owner chose "file + publish" on 2026-09-29. Issues opened in
+rolker/agent_workspace; nothing merged.
+
+- P1a-P1g reviewer-helper hardening: filed as #363 (checklist of the seven sub-fixes; adjacent to #342)
+- P2 Gemini denied-turn retry: filed as #364 (supplies the resume mechanism for #347 option 3; re-verify `--conversation` on the installed agy, 1.2.13)
+- P3 sync false-green: filed as #365 (also on docs/roadmap.md)
+- P4 issue-triage 100-issue truncation and partial-scan rules: filed as #366
+- P5 planning-document vocabulary: recorded as a comment on #335 (no separate issue)
+- P6a-P6d janitor sweep pieces: left roadmapped, no issue
+- P7 inspiration-tracker step 8 hardening: filed as #367
+
+Skipped this round (classified R/O above, recorded for the record): R1-R4,
+O1-O4.
 
 ## Changelog (2026-07-14 → 2026-09-14)
 

@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted. Trigger and the role of accepted ADRs scoped by
+[ADR-0017](0017-design-document-is-the-current-picture.md).
 
 ## Context
 

@@ -97,6 +97,58 @@
 # Interrupting the script (SIGINT/SIGTERM) or any early exit kills every
 # agent job it started; nothing is left running in the background.
 #
+# Job lifecycle (#363; ADR-0015's Status line points here and to the two
+# helpers' headers, which cover the CLI's process group):
+#   * Kill grace. Each agent runs under `timeout -k AGENT_KILL_AFTER`.
+#     AGENT_KILL_AFTER must be positive (exit 2): `timeout -k 0` does not
+#     kill at once, it disables the SIGKILL. The helpers refuse (exit 2, a
+#     failed review) a REVIEW_KILL_ESCALATION that is not strictly below
+#     it, compared unrounded.
+#   * Interrupt. Cleanup TERMs every job, then waits up to
+#     CLEANUP_REAP_TIMEOUT (which must exceed REVIEW_KILL_ESCALATION) for
+#     the helpers to finish their own escalation. A job still running
+#     after that is SIGKILLed with everything that can be found of it:
+#     its process tree, every process group a member of it belongs to
+#     (`timeout`'s, the CLI's), and on Linux every process still carrying
+#     the job's CROSS_MODEL_REVIEW_JOB environment marker (a child of an
+#     already-reaped CLI, a descendant with a session of its own). Not
+#     found: a descendant that left those groups and changed its
+#     environment, or, without /proc, one re-parented outside the CLI's
+#     group. Each kill is guarded: no group 0 or 1, never this script's
+#     group, and a process found only by the marker still has to carry
+#     it. The environ scan gives up after 5 s (a process on a hung mount
+#     can block it). Cleanup then waits until nothing it killed is
+#     running, for up to 5-6 s in total, so the script's exit, which
+#     releases the lock below, comes after. Cleanup is best effort: a
+#     process that exits mid-way never aborts it.
+#   * Timeout. A job that its `timeout` cut off (124, or 137 when the
+#     `-k` SIGKILL took the helper before its own escalation ran) kills
+#     whatever still carries its marker: the CLI is in a process group of
+#     its own, out of `timeout`'s reach.
+#   * Launch window. A signal that lands between a background launch and
+#     the line recording its PID (agent job here, helper in the job, CLI
+#     in the helper) is not lost: each handler adopts `$!` when a launch
+#     is in flight and `$!` has moved since it began.
+#   * One run per artifact directory. A non-blocking `flock` on the
+#     directory itself (no lock file, so nothing appears in a project
+#     worktree), taken before anything is written; a second run exits 5.
+#     `--no-progress` runs get their own directory and never contend.
+#     Without flock, or when util-linux flock reports a real error (65 or
+#     71, not a conflict), the run warns and proceeds unserialized; every
+#     other flock failure counts as a conflict. On NFS expect the 65 path
+#     on every run: the Linux NFS client emulates flock with POSIX locks,
+#     and an exclusive one needs a writable fd, which a directory fd
+#     cannot be (util-linux's flock.c calls this EBADF "probably NFSv4").
+#     The lock fd is held by this script and by each agent job's shell,
+#     `timeout` and helper, so a run killed with SIGKILL keeps its
+#     directory locked until its jobs have ended: at the latest
+#     AGENT_TIMEOUT + AGENT_KILL_AFTER after launch (gemini:
+#     GEMINI_BACKSTOP + AGENT_KILL_AFTER), when `timeout -k` SIGKILLs its
+#     group. It is closed for the CLIs (the helpers launch them with fd 9
+#     closed; a CLI runs in its own process group, which `timeout` does
+#     not reach) and for git, gh and python, so nothing that can outlive
+#     that bound holds it.
+#
 # Exit codes:
 #   0 — every selected agent completed successfully
 #   1 — missing dependencies: gh (PR mode), or no selected agent has a
@@ -108,7 +160,16 @@
 #       selected findings file carries the `--- Review error: ... ---`
 #       marker), OR at least one agent failed (triplets printed — read
 #       EXIT= per agent). The presence of triplets is the disambiguator.
-#   4 — wrong worktree / invalid environment (see _resolve_work_plans_dir.sh)
+#   4 — wrong worktree / invalid environment (see _resolve_work_plans_dir.sh),
+#       or the artifact dir could not be opened to take its run lock
+#       (check that it is a readable directory); nothing was written
+#   5 — another run is already reviewing into the same artifact dir;
+#       nothing was written (wait for it to finish, do not start a second).
+#       After a run killed with SIGKILL no run is visible, but its agent
+#       jobs still hold the lock until they end (at most AGENT_TIMEOUT +
+#       AGENT_KILL_AFTER; gemini GEMINI_BACKSTOP + AGENT_KILL_AFTER):
+#       `fuser -v <dir>` or `lsof +d <dir>` shows the holders. Also any
+#       flock failure that cannot be told apart from a conflict.
 
 set -euo pipefail
 
@@ -136,7 +197,8 @@ AGY_PRINT_TIMEOUT="${AGY_PRINT_TIMEOUT:-30m}"
 # so tests can inject a small value. 124 is timeout's own "expired"
 # status and counts as that agent's failure. A CLI that ignores the
 # SIGTERM gets SIGKILL after AGENT_KILL_AFTER, so a stuck process cannot
-# outlive the bound.
+# outlive the bound. AGENT_KILL_AFTER must be positive: `timeout -k 0`
+# does not kill at once, it DISABLES the SIGKILL (#363).
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-1800}"
 AGENT_KILL_AFTER="${AGENT_KILL_AFTER:-10}"
 
@@ -162,8 +224,9 @@ duration_to_seconds() {
 # rejects surfaces as a bare exit 125 from every agent job (reads as "the
 # CLI failed"), and a zero silently removes a bound rather than setting a
 # short one.
-#   $3 allow_zero  — true only for AGENT_KILL_AFTER, where 0 legitimately
-#                    means "send SIGKILL immediately after the SIGTERM"
+#   $3 allow_zero  — true to accept 0; no knob does today (for
+#                    `timeout -k`, 0 disables the SIGKILL rather than
+#                    sending it at once, #363)
 #   $4 go_shape    — true for a value handed to agy's --print-timeout
 #   $5 zero_reason — why zero is wrong for this particular knob
 validate_duration_knob() {
@@ -188,7 +251,8 @@ validate_duration_knob() {
 
 validate_duration_knob AGENT_TIMEOUT "$AGENT_TIMEOUT" false false \
     "coreutils 'timeout 0' imposes no limit at all, which would leave the agent unbounded — the opposite of what ADR-0015 §3 guarantees."
-validate_duration_knob AGENT_KILL_AFTER "$AGENT_KILL_AFTER" true false ""
+validate_duration_knob AGENT_KILL_AFTER "$AGENT_KILL_AFTER" false false \
+    "coreutils 'timeout -k 0' does not kill at once — a zero duration DISABLES the SIGKILL escalation, so a CLI that ignores SIGTERM would outlive its bound."
 validate_duration_knob AGY_PRINT_TIMEOUT "$AGY_PRINT_TIMEOUT" false true \
     "agy reads 0 as 'wait until the turn completes', which is the unbounded review this cap exists to prevent."
 validate_duration_knob GEMINI_BACKSTOP_MARGIN "$GEMINI_BACKSTOP_MARGIN" false false \
@@ -254,13 +318,15 @@ run_agent_sync() {
         # print-timeout, not a replacement for it.
         # AGENT_KILL_AFTER is exported so the helper can check that its
         # own SIGKILL escalation fits inside this grace (#313 round 2).
-        gemini)  exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
+        # CROSS_MODEL_REVIEW_JOB marks every process of this job, so
+        # kill_tree can find one that has been re-parented away (#363).
+        gemini)  exec env CROSS_MODEL_REVIEW_JOB="${AGENT_TMP_ROOT}:${agent}" TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$GEMINI_BACKSTOP" "$AGY_REVIEW_HELPER" "$bin" "$prompt" "$findings" "$AGY_PRINT_TIMEOUT" ;;
         # codex, claude and copilot (and anything that somehow reaches
         # here — _cli_review.sh rejects an unknown agent with a readable
         # reason in the findings file rather than running a CLI blind).
         # AGENT_TIMEOUT is passed through as an informational label so
         # the helper's failure reasons can name the bound they ran under.
-        *)       exec env TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
+        *)       exec env CROSS_MODEL_REVIEW_JOB="${AGENT_TMP_ROOT}:${agent}" TMPDIR="$AGENT_TMP_ROOT" AGENT_KILL_AFTER="$AGENT_KILL_AFTER" timeout -k "$AGENT_KILL_AFTER" "$AGENT_TIMEOUT" "$CLI_REVIEW_HELPER" "$agent" "$bin" "$prompt" "$findings" "$AGENT_TIMEOUT" ;;
     esac
 }
 
@@ -672,6 +738,75 @@ fi
 WORK_PLANS_DIR=$(resolve_work_plans_dir "$ISSUE_NUMBER") || exit 4
 mkdir -p "$WORK_PLANS_DIR"
 
+# One run per artifact dir at a time (#363). The prompt and findings
+# filenames are fixed per agent, so a second run into the same dir would
+# overwrite the first's prompt, truncate its findings, or append its
+# success marker to the other's failure. The second run is refused before
+# it writes anything. The lock is held on fd 9 by this script and by each
+# agent job's shell, `timeout` and helper (see the job launch below).
+# --no-progress runs get a fresh temp dir each and never contend.
+#
+# The lock is taken on the directory itself, not on a lock file in it:
+# this script also writes into project worktrees, where the workspace
+# .gitignore does not apply and a lock file would show up untracked. There
+# is deliberately no lock-file fallback: a contended lock must always end
+# in exit 5, never in an unserialized run, and a fallback chosen on a
+# failed `flock -n` would do exactly that when the failure was a conflict.
+if command -v flock >/dev/null 2>&1; then
+    if ! exec 9< "$WORK_PLANS_DIR"; then
+        echo "ERROR: cannot open ${WORK_PLANS_DIR} to lock it against a concurrent review" >&2
+        exit 4
+    fi
+    # util-linux flock reports a conflict with the code given to -E and
+    # uses sysexits codes for real errors: 65 (EX_DATAERR) and 71
+    # (EX_OSERR) when flock(2) itself fails, e.g. on a filesystem that
+    # cannot lock a directory. Only those warn and proceed unserialized,
+    # like a missing flock. Every other failure counts as a conflict, so a
+    # contended lock always ends in exit 5 and never in an unserialized
+    # run (#363 review):
+    #   * 64 (EX_USAGE) from `-E` is an older util-linux without that
+    #     option. Its conflict is exit 1, like any failure, so it is asked
+    #     again without -E and every failure counts as a conflict.
+    #   * Other flock ports cannot tell a conflict from an error at all.
+    #   * An exit code none of the above explains.
+    lock_rc=0
+    if flock --version 2>&1 | grep -q util-linux; then
+        flock -n -E 75 9 || lock_rc=$?
+        if [[ "$lock_rc" -eq 64 ]]; then
+            lock_rc=0
+            flock -n 9 || lock_rc=75
+        fi
+    else
+        flock -n 9 || lock_rc=75
+    fi
+    case "$lock_rc" in
+        0) ;;
+        65|71)
+            echo "WARNING: could not lock ${WORK_PLANS_DIR} (flock exit ${lock_rc}: an error, not a conflict); concurrent reviews into it are not serialized" >&2
+            ;;
+        75)
+            echo "ERROR: another cross_model_review.sh run is already reviewing into ${WORK_PLANS_DIR}; nothing was written. Wait for it to finish instead of starting a second run (its prompt and findings files would be overwritten). If no run is visible: a run that was killed (SIGKILL) leaves its agent jobs finishing, and they hold the lock until they end, at most AGENT_TIMEOUT + AGENT_KILL_AFTER after they started ($(( $(duration_to_seconds "$AGENT_TIMEOUT") + $(duration_to_seconds "$AGENT_KILL_AFTER") ))s with these settings; gemini $(( GEMINI_BACKSTOP + $(duration_to_seconds "$AGENT_KILL_AFTER") ))s). To see what holds it: fuser -v ${WORK_PLANS_DIR} (access f) or lsof +d ${WORK_PLANS_DIR} (FD 9r)." >&2
+            exit 5
+            ;;
+        *)
+            echo "ERROR: could not lock ${WORK_PLANS_DIR} (flock exit ${lock_rc}, neither a conflict nor a known error); treating it as a conflict, so nothing was written. If no other cross_model_review.sh run is reviewing into it, check the flock installation." >&2
+            exit 5
+            ;;
+    esac
+else
+    echo "WARNING: flock is not installed; concurrent reviews into ${WORK_PLANS_DIR} are not serialized" >&2
+fi
+
+# The lock fd stays open in this shell until it exits, and every command
+# started from here inherits it. git, gh and python can leave a process
+# running after they return (git's fsmonitor daemon, for one); holding
+# fd 9, that process would keep the lock and refuse every later run with
+# exit 5. So they run with fd 9 closed: git and gh through these
+# wrappers, python at its one call site. The helpers close it where they
+# launch the CLI.
+git() { command git "$@" 9<&-; }
+gh() { command gh "$@" 9<&-; }
+
 prompt_file_for()   { echo "${WORK_PLANS_DIR}/review-$1-prompt.md"; }
 findings_file_for() { echo "${WORK_PLANS_DIR}/review-$1-findings.md"; }
 
@@ -746,6 +881,10 @@ AGENT_TMP_ROOT=""
 # — otherwise an interrupted run would leave the CLIs running for up to
 # AGENT_TIMEOUT, burning quota on an abandoned review.
 declare -A AGENT_PID=()
+# Set around each job launch below, so cleanup_jobs can find a job whose
+# signal landed between its `&` and the AGENT_PID assignment (#363).
+LAUNCHING_AGENT=""
+LAUNCH_PREV=""
 
 # Is this job over? A dead-but-unreaped child still answers `kill -0`,
 # so that alone would report every finished job as alive and burn the
@@ -780,9 +919,193 @@ job_finished() {
     return 1
 }
 
+# SIGKILL an agent job and everything that can be found of it. A job is
+# shell -> `timeout` -> helper -> CLI, and SIGKILL cannot be trapped:
+# killing only the job shell left that chain running (and writing
+# findings) after this script exited and released the review lock, so a
+# second run could start into the same directory (#363;
+# rolker/ros2_agent_workspace PR #662). Found, before anything is killed
+# (a killed parent's children are re-parented and no longer found under
+# it):
+#   * the process tree under the job shell (`pgrep -P`);
+#   * on Linux, every process whose environment still carries this job's
+#     CROSS_MODEL_REVIEW_JOB marker (set by run_agent_sync), wherever it
+#     was re-parented: a child of a CLI that has already been reaped, or a
+#     descendant that started a session of its own;
+#   * every process group any of those belongs to, except this script's:
+#     `timeout`'s own group (the helper and its children) and the CLI's
+#     (setsid), which also holds whatever the CLI left behind.
+# Not found: a descendant that both left those groups and changed its
+# environment, and, without /proc, anything re-parented outside the CLI's
+# group; without `pgrep` only the job shell and its group.
+# What was killed is recorded for await_killed, which waits for all of it
+# at once.
+KILLED_ROOTS=()
+KILLED_PIDS=()
+KILLED_GROUPS=()
+# pgid_of <pid>: <pid>'s process group id, or nothing (status 0) when the
+# process has already gone. /proc first (field 5, after the parenthesised
+# comm), else `ps`. Never fails: kill_tree runs in the EXIT trap, under
+# `set -e`, on processes that may exit at any moment (#363 round 3).
+pgid_of() {
+    local stat
+    if IFS= read -r stat < "/proc/$1/stat" 2>/dev/null; then
+        stat=${stat##*) }
+        read -r _ _ stat _ <<< "$stat"
+        printf '%s' "$stat"
+    else
+        ps -o pgid= -p "$1" 2>/dev/null | tr -d ' ' || true
+    fi
+}
+# marked_pids <marker>: the PIDs whose environment carries this job's
+# CROSS_MODEL_REVIEW_JOB marker (Linux /proc; nothing elsewhere). Reading
+# another process's environ can block on that process's memory, e.g. one
+# stuck on a hung NFS or FUSE mount, and this runs on the exit path while
+# the review lock is held, so the scan is cut off after 5 s; what it
+# found by then is still used (#363 round 3). The paths go through xargs,
+# not onto one command line, which a host with very many processes could
+# push past ARG_MAX.
+marked_pids() {
+    local f
+    [[ -r /proc/self/environ ]] || return 0
+    while read -r f; do
+        f=${f#/proc/}
+        printf '%s\n' "${f%/environ}"
+    done < <(printf '%s\0' /proc/[0-9]*/environ \
+        | timeout -k 1 5 xargs -0 grep -l -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=$1" 2>/dev/null || true)
+}
+# still_marked <pid> <marker>: does <pid> still carry the marker? Checked
+# again right before each kill of a marker-found process, so a PID that
+# exited after the scan and was reused is never hit (bounded like the
+# scan).
+still_marked() {
+    timeout -k 1 2 grep -q -s -z -x -F -- "CROSS_MODEL_REVIEW_JOB=$2" "/proc/$1/environ" 2>/dev/null
+}
+kill_tree() {
+    local root="$1" marker="${2:-}" pids=() groups=() i=0 child p g own_group
+    local -A marked=()
+    # No <root>: only the marker scan (a job that `timeout` has already cut
+    # off, see run_agent_job).
+    if [[ -n "$root" ]]; then pids=("$root"); fi
+    if command -v pgrep >/dev/null 2>&1; then
+        while (( i < ${#pids[@]} )); do
+            while read -r child; do
+                if [[ -n "$child" ]]; then pids+=("$child"); fi
+            done < <(pgrep -P "${pids[i]}" 2>/dev/null || true)
+            i=$((i + 1))
+        done
+    fi
+    if [[ -n "$marker" ]]; then
+        while read -r p; do
+            if [[ "$p" =~ ^[0-9]+$ && "$p" != "$$" && "$p" != "$BASHPID" ]]; then
+                pids+=("$p")
+                marked[$p]=1
+            fi
+        done < <(marked_pids "$marker")
+    fi
+    # Without our own group id there is no telling which group is ours,
+    # so no group is killed at all. Group 0 or 1 is never a job's own (and
+    # `kill -- -1` would mean every process this user may signal).
+    own_group=$(pgid_of "$BASHPID")
+    if [[ -n "$own_group" ]]; then
+        for p in ${pids[@]+"${pids[@]}"}; do
+            g=$(pgid_of "$p")
+            if [[ "$g" =~ ^[0-9]+$ ]] && (( g > 1 )) && [[ "$g" != "$own_group" && " ${groups[*]} " != *" $g "* ]]; then
+                groups+=("$g")
+            fi
+        done
+    fi
+    # Groups first: each is killed only while some process it was found
+    # through is still in it (and, if found by the marker, still carries
+    # it), so its id cannot be anyone else's yet; a group could otherwise
+    # empty out (and its id be reused) before a kill sent after its
+    # members'. A daemon the CLI started on this run carries the marker
+    # and is killed with the job.
+    for g in ${groups[@]+"${groups[@]}"}; do
+        for p in "${pids[@]}"; do
+            [[ "$(pgid_of "$p")" == "$g" ]] || continue
+            if [[ -n "${marked[$p]+x}" ]] && ! still_marked "$p" "$marker"; then continue; fi
+            kill -9 -- -"$g" 2>/dev/null || true
+            break
+        done
+    done
+    # Then every PID, deepest first, so nothing is re-parented out from
+    # under the kill; a marker-found one only if it still carries the
+    # marker.
+    for (( i = ${#pids[@]} - 1; i >= 0; i-- )); do
+        p=${pids[i]}
+        if [[ -n "${marked[$p]+x}" ]] && ! still_marked "$p" "$marker"; then continue; fi
+        kill -9 "$p" 2>/dev/null || true
+    done
+    if [[ -n "$root" ]]; then
+        KILLED_ROOTS+=("$root")
+        KILLED_PIDS+=("${pids[@]:1}")
+    else
+        KILLED_PIDS+=(${pids[@]+"${pids[@]}"})
+    fi
+    KILLED_GROUPS+=(${groups[@]+"${groups[@]}"})
+}
+
+# Is anything in process group <pgid> still running? A group of nothing
+# but exited, unreaped members still answers `kill -0`, and under a PID 1
+# that does not reap (a container's) it stays that way, so each member's
+# state is read. Without /proc a member counts as running.
+group_running() {
+    local g="$1" m
+    kill -0 -- -"$g" 2>/dev/null || return 1
+    command -v pgrep >/dev/null 2>&1 || return 0
+    while read -r m; do
+        [[ -n "$m" ]] || continue
+        [[ "$(proc_state "$m" 2>/dev/null || true)" == Z ]] || return 0
+    done < <(pgrep -g "$g" 2>/dev/null || true)
+    return 1
+}
+
+# SIGKILL takes effect asynchronously. Return only once nothing kill_tree
+# killed is still running (an exited, unreaped process is not), so this
+# script's exit, which releases the review lock, comes after. It gives
+# up after 5-6 s in total (one shared deadline for every killed job;
+# SECONDS counts whole seconds), so a process stuck in uninterruptible
+# sleep cannot hang the exit path however many jobs were killed.
+await_killed() {
+    (( ${#KILLED_ROOTS[@]} + ${#KILLED_PIDS[@]} + ${#KILLED_GROUPS[@]} > 0 )) || return 0
+    local deadline=$(( SECONDS + 6 )) p alive
+    while :; do
+        alive=false
+        for p in "${KILLED_ROOTS[@]}"; do
+            job_finished "$p" || alive=true
+        done
+        for p in ${KILLED_PIDS[@]+"${KILLED_PIDS[@]}"}; do
+            if kill -0 "$p" 2>/dev/null && [[ "$(proc_state "$p" 2>/dev/null || true)" != Z ]]; then
+                alive=true
+            fi
+        done
+        for p in ${KILLED_GROUPS[@]+"${KILLED_GROUPS[@]}"}; do
+            if group_running "$p"; then alive=true; fi
+        done
+        [[ "$alive" == true ]] || return 0
+        (( SECONDS < deadline )) || break
+        sleep 0.1
+    done
+    echo "WARNING: parts of the killed agent job(s) ${KILLED_ROOTS[*]:-(swept by marker)} were still running at least 5s after SIGKILL" >&2
+}
+
 cleanup_jobs() {
-    local pid waited=0 finished
-    for pid in "${AGENT_PID[@]}"; do
+    local agent pid waited=0 finished
+    # Best effort from here on: this is the EXIT trap, and under `set -e`
+    # any command that fails because a process vanished mid-way (a lookup
+    # on a PID that has just exited) aborted the whole cleanup before a
+    # single kill, leaving the CLI running and the temp root behind
+    # (#363 round 3). Every step below tolerates failure on its own too.
+    set +e
+    # A job launched but not yet recorded (a signal between its `&` and
+    # the AGENT_PID assignment) is still ours to stop: `$!` names it iff
+    # it moved since that launch began.
+    if [[ -n "$LAUNCHING_AGENT" && "${!:-}" != "$LAUNCH_PREV" \
+          && -z "${AGENT_PID[$LAUNCHING_AGENT]+x}" ]]; then
+        AGENT_PID["$LAUNCHING_AGENT"]=$!
+    fi
+    for pid in ${AGENT_PID[@]+"${AGENT_PID[@]}"}; do
         kill "$pid" 2>/dev/null || true
     done
     # Reap BEFORE removing AGENT_TMP_ROOT (#313 round 2). Each helper may
@@ -790,7 +1113,8 @@ cleanup_jobs() {
     # CLI that ignored SIGTERM, and that CLI is still writing into a temp
     # dir under this root: removing it here would pull the ground out
     # from under a live process.
-    for pid in "${AGENT_PID[@]}"; do
+    for agent in ${AGENT_PID[@]+"${!AGENT_PID[@]}"}; do
+        pid=${AGENT_PID[$agent]}
         finished=false
         while (( waited < CLEANUP_REAP_SECONDS * 10 )); do
             if job_finished "$pid"; then
@@ -808,13 +1132,15 @@ cleanup_jobs() {
             # past the bound and hang the exit path forever (#313 round 3).
             wait "$pid" 2>/dev/null || true
         else
-            # Budget spent and the job is still alive. SIGKILL it and do
-            # NOT wait: cleaning up beats blocking, and the job's CLI was
+            # Budget spent and the job is still alive. SIGKILL it with its
+            # whole tree (helper, CLI, the CLI's group) rather than wait
+            # on it: cleaning up beats blocking, and the job's CLI was
             # already signalled twice over by this point.
-            echo "WARNING: agent job ${pid} did not finish within CLEANUP_REAP_TIMEOUT=${CLEANUP_REAP_TIMEOUT}s; killing it and removing the shared temp root anyway" >&2
-            kill -9 "$pid" 2>/dev/null || true
+            echo "WARNING: agent job ${pid} did not finish within CLEANUP_REAP_TIMEOUT=${CLEANUP_REAP_TIMEOUT}s; killing it, its helper and its CLI, and removing the shared temp root anyway" >&2
+            kill_tree "$pid" "${AGENT_TMP_ROOT}:${agent}"
         fi
     done
+    await_killed
     # Any of these may still be empty: an early exit or signal can land
     # before (or between) the mktemp calls below, and `rm ""` is an error.
     [[ -z "$SHARED_PROMPT" ]] || rm -f "$SHARED_PROMPT"
@@ -1025,7 +1351,7 @@ if [[ "$NO_PROGRESS" != true && -f "$PLAN_CONTEXT_FILE" ]]; then
     for plan_python in "${PLAN_APPROACH_PYTHONS[@]}"; do
         PLAN_APPROACH_RC=0
         PLAN_APPROACH=$("$plan_python" "${SCRIPT_SELF_DIR}/_plan_approach.py" \
-            "$PLAN_CONTEXT_FILE" 2> "$PLAN_APPROACH_ERR") || PLAN_APPROACH_RC=$?
+            "$PLAN_CONTEXT_FILE" 2> "$PLAN_APPROACH_ERR" 9<&-) || PLAN_APPROACH_RC=$?
         (( PLAN_APPROACH_RC == 4 )) || break
     done
     case "$PLAN_APPROACH_RC" in
@@ -1149,6 +1475,16 @@ done
 # itself, so a slow agent never delays a fast agent's marker and the
 # parent only has to collect exit statuses. Jobs write nothing to stdout,
 # keeping the machine-parseable block contiguous.
+# sweep_job <agent>: in a job shell, SIGKILL whatever of that agent's job
+# still carries its marker (kill_tree with no root) and wait, bounded,
+# until it has stopped, so the job's exit (which releases its hold on the
+# review lock) comes after. Best effort, never fails.
+sweep_job() {
+    [[ -n "${1:-}" && -n "$AGENT_TMP_ROOT" ]] || return 0
+    kill_tree "" "${AGENT_TMP_ROOT}:$1" || true
+    await_killed || true
+}
+
 run_agent_job() {
     local agent="$1"
     local prompt_file findings_file rc child
@@ -1183,12 +1519,30 @@ run_agent_job() {
     # the parent's cleanup that this job is finished, and the temp root
     # would be removed under a live CLI. The parent's reap is bounded, so
     # a helper that never returns still cannot hang the exit path.
+    # A TERM between the `&` and `child=$!` would find `child` empty and
+    # leave the helper running unrecorded; `$!` names it iff it moved
+    # since the launch began (#363). `|| true`: the job inherits `set -e`,
+    # and a child that has just gone must not make the trap exit 1 before
+    # its `wait` instead of 143.
     child=""
-    trap 'if [[ -n "$child" ]]; then kill "$child" 2>/dev/null; wait "$child" 2>/dev/null; fi; exit 143' TERM
+    local launch_prev="${!:-}"
+    # After the child is gone the trap sweeps the job's marked processes
+    # too: if `timeout -k` SIGKILLed a wedged helper meanwhile (137), the
+    # helper's escalation never reached the CLI, and a parent whose reap
+    # budget outlasts AGENT_KILL_AFTER sees this job finish and never
+    # runs kill_tree for it (#363, live-run Codex review).
+    trap 'if [[ -z "$child" && "${!:-}" != "$launch_prev" ]]; then child=$!; fi; if [[ -n "$child" ]]; then kill "$child" 2>/dev/null || true; wait "$child" 2>/dev/null || true; fi; sweep_job "${agent:-}" || true; exit 143' TERM
     run_agent_sync "$agent" "${AGENT_BIN_FOR[$agent]}" "$prompt_file" "$findings_file" &
     child=$!
     rc=0
     wait "$child" || rc=$?
+    # 124/137: `timeout` cut the job off; 137 means its SIGKILL took the
+    # helper, whose own escalation then never reached the CLI (a process
+    # group of its own). Kill whatever of the job still carries its marker
+    # (#363 round 3).
+    if [[ "$rc" -eq 124 || "$rc" -eq 137 ]]; then
+        sweep_job "$agent" || true
+    fi
     if [[ "$rc" -eq 124 ]]; then
         if [[ "$agent" == "gemini" ]]; then
             # The backstop firing means the helper never reported its own
@@ -1230,9 +1584,23 @@ else
     echo "  Results: $(findings_file_for "${AGENTS_TO_RUN[0]}")"
 fi
 
+# LAUNCH_* let cleanup_jobs find a job whose TERM landed between its `&`
+# and the AGENT_PID assignment (#363).
+# The jobs inherit the review lock (fd 9), and so do their `timeout` and
+# helper. If this script is SIGKILLed (no cleanup runs), the jobs keep
+# running and keep writing their findings; holding the lock, they keep a
+# second run out until they end. That hold is bounded: `timeout -k`
+# SIGKILLs the helper's whole group by AGENT_TIMEOUT + AGENT_KILL_AFTER
+# (gemini: GEMINI_BACKSTOP + AGENT_KILL_AFTER), and the job shell exits
+# right after. The CLI, the one process that can outlive that (its own
+# process group, out of `timeout`'s reach), is launched by the helper
+# with fd 9 closed, so nothing it leaves behind can hold the lock (#363).
 for agent in "${AGENTS_TO_RUN[@]}"; do
+    LAUNCH_PREV="${!:-}"
+    LAUNCHING_AGENT="$agent"
     run_agent_job "$agent" &
     AGENT_PID["$agent"]=$!
+    LAUNCHING_AGENT=""
 done
 
 # Collect in selection order. `wait` returns the job's own status; the

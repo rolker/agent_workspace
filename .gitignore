@@ -44,6 +44,10 @@ worktrees/
 # Project config (per-developer, per-project — not committed)
 .agent/project_config.sh
 
+# Machine-local settings: inbox and sit-rep run-record paths (issue #386;
+# template at .agent/settings.local.example)
+.agent/settings.local
+
 .env
 
 # Python cache files

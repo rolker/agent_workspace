@@ -1,72 +1,102 @@
 # Guiding Principles
 
-These principles inform every change to the workspace — not just the current effort.
-They serve as review criteria for PRs and design decisions.
+These principles inform every change to the workspace, not just the current effort.
+They serve as review criteria for PRs and design decisions. Each one has a rule, the
+failure it prevents (Why), and the README goal sections it serves (Serves). How a
+reviewer checks each one is in `.agent/knowledge/principles_review_guide.md`.
 
-## Human control and transparency
+## Leave a trail; start limits strict
 
-The user must be able to understand what an agent is doing, how it is doing it, and
-why it chose that approach. This transparency is the foundation for trust — and trust
-is what earns agents greater autonomy. Design controls to be configurable: tight by
-default, relaxable as confidence grows.
+An agent records what it did and why where the user can find it later, and puts in front of the user only what a decision needs. It keeps the record as light as checking the work allows. Limits on what agents do on their own start strict, and only the user relaxes them.
 
-## Enforcement over documentation
+*Why: the user can only extend trust to work they can check, and every record costs time to write, keep and read. Serves: Trust, control and information; Easy to use.*
 
-Rules that matter must be enforced mechanically — CI, hooks, branch protection — not
-just written down. Documentation tells you what to do; enforcement ensures it happens.
+## Enforce what matters, as simply as possible
 
-## Capture decisions, not just implementations
+When breaking a rule would cost more than checking it, back the rule with the simplest check that fails when it is broken. Put the check in a project only if that project has chosen to carry it; otherwise run it from the workspace.
 
-Use ADRs or equivalent so future agents and humans know *why*, not just *what*. Design
-decisions buried in issue comments or commit history get accidentally reverted.
+*Why: a written rule only works while the agent remembers it, and a check is code someone has to keep working. Serves: Trust, control and information; Light touch on projects; Easy to use.*
+
+## Keep one current design
+
+The design document says how the parts fit today and why, and it is the authority. A change that alters the picture updates it in the same change.
+
+*Why: decisions recorded one at a time lose the overall view. Serves: Quality of the work; Light touch on projects; The long view.*
 
 ## A change includes its consequences
 
-Modifying code, configuration, or interfaces isn't done until tests, documentation,
-and dependent references reflect the change. Stale docs and broken tests fail quietly —
-treat them as part of the same work, not a follow-up task.
+A change that alters behaviour also updates what depends on it: tests, documents and references. It deletes what it makes untrue.
+
+*Why: stale text fails quietly, and agents trust what is written. Serves: Quality of the work.*
 
 ## Only what's needed
 
-Resist adding process, files, or tools unless the pain they solve is concrete.
-Context windows, token budgets, and build times are finite — load only what's
-relevant, build only what changed, summarize rather than duplicate. The right amount
-of complexity is the minimum needed for the current situation.
+Before adding code, process or documents, name the concrete problem it solves. Remove what no longer solves one.
 
-## Improve incrementally
+*Why: everything kept has to be read, checked and maintained, by agents and by the user. Serves: Quality of the work; Trust, control and information; The long view.*
 
-Deliver small, reviewed changes rather than large rework efforts. Each change
-should leave the workspace better than it found it without requiring a
-comprehensive redesign.
+## Small steps; step back when they stop converging
+
+Deliver work in small changes that can each be reviewed. If the work keeps growing and each fix needs another, stop and propose the simplest design that covers what was learned: the cases and the tests.
+
+*Why: small changes are easy to check, but a pile of patches can hide that the approach is wrong. Serves: Quality of the work; Trust, control and information.*
 
 ## Test what breaks
 
-Test logic and interfaces, not framework glue. Prioritize tests that catch
-regressions which matter. Don't chase coverage targets; focus on failure modes that
-are hard to find in production.
+A fix comes with a test that fails without it. Test the failures that would matter if they returned; don't write tests to raise coverage.
 
-## Workspace vs. project separation
+*Why: a test that cannot fail for a real reason protects nothing and still has to be maintained. Serves: Quality of the work.*
 
-Workspace infrastructure is generic tooling; project-specific content belongs in the
-project repo. The workspace should be useful to any project, not coupled to a single one.
+## Put each thing at the level it applies to
 
-## Workspace improvements cascade to projects
+Code and knowledge go at the widest level where they hold: every project, one kind of project (a module), or a single project. Before treating something as general, try it somewhere other than where it was built.
 
-When we invest in improving workflow quality — PR templates, CI patterns, hooks,
-documentation standards — the benefit shouldn't stop at the workspace repo boundary.
-Design improvements to be portable across repos from the start.
+*Why: kept too narrow, a thing gets rebuilt elsewhere; placed too wide, it breaks what it wasn't built for. Serves: Modular; Light touch on projects.*
 
-## Primary framework first, portability where free
+## Use the main tool fully; keep the work tool-neutral
 
-Use the full capabilities of the active framework (currently Claude Code). Where rules
-are naturally framework-agnostic — build commands, coding conventions, architecture —
-express them portably.
+Use what the main agent tool does well. Keep plans, reviews and progress in plain files any tool can read, and for each part that depends on one tool, say how the work continues without it.
 
-## The workspace serves the product
+*Why: the main tool can be down, out of quota or replaced, and the work has to continue. Serves: Flexibility.*
 
-Infrastructure investment pays off when it makes the next product change faster, safer,
-or more reliable. When workspace work consistently outpaces product delivery, treat that
-as a signal — the tooling may be solving problems the product doesn't have, or solving
-them at a scale that isn't justified yet. Operational friction (reactive fixes,
-workarounds, repeated mistakes) is a valid input to workspace improvement, but the
-measure of success is product shipped, not infrastructure built.
+## Ask about what matters, and show how much
+
+An agent decides small things itself, within its limits, and records them. A decision it puts to the user says what it changes and how hard it is to undo, and a question that changes the design is asked on its own.
+
+*Why: many small questions hide the important one, and a design decision asked among routine ones gets a routine yes. Serves: Trust, control and information; Easy to use.*
+
+## Verify before claiming
+
+Check before saying that something is done, works or is true, and say how it was checked. Report a skipped or failed step as skipped or failed, never as done.
+
+*Why: an unchecked claim gets trusted like a checked one, and the user can't recheck everything. Serves: Trust, control and information; Quality of the work.*
+
+## Look for prior art before building
+
+Look for existing answers before designing something new: in the project, in the tools already in use, and in the field. Say what was found and how it shaped the design.
+
+*Why: a design built from scratch repeats solved problems and misses what others learned the hard way. Serves: Quality of the work.*
+
+## Leave in a project only what it chose to carry
+
+Commit only project work to a project. Agent instructions, plans and other workspace records go into it only if the user has chosen that for this project.
+
+*Why: an external project may not welcome supporting files, and files it didn't choose become clutter it has to maintain. Serves: Light touch on projects.*
+
+## Name the rule before bending it
+
+Agents follow the rules. Asked to do something that bends one, an agent says which rule and what bending it risks, then goes along if that is harmless and pushes back if it is not.
+
+*Why: a short instruction can be read as permission for something the user didn't mean. Serves: Flexibility; Trust, control and information.*
+
+## Give the user what they need now
+
+Lead with what the work is and what is needed from the user, in plain words. Give as much context as their time away calls for, and more when they ask.
+
+*Why: what the user needs changes with how long they have been away and what else they are doing, and repeated text costs as much as missing text. Serves: Easy to use; Trust, control and information.*
+
+## Know whether it works
+
+When adding a mechanism, say how anyone will tell whether it helped, and look again once it has been in use. Keep, change or remove it based on what that shows.
+
+*Why: a mechanism nobody checks stays forever, whether it helps or not. Serves: The long view; Quality of the work.*

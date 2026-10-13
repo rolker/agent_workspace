@@ -8,10 +8,10 @@
 # trailing key=value fields:
 #
 #   # <name>  <project_type>  [<path>]  [key=value ...]
-#   gz4d         single_project  /home/me/src/gz4d
-#   p11          project         /home/me/project11-ng   default_instance=p11-rolling
-#   p11-jazzy    ros2_colcon     /home/me/project11-ng/jazzy    parent=p11 distro=jazzy
-#   p11-rolling  ros2_colcon     /home/me/project11-ng/rolling  parent=p11 distro=rolling
+#   boat_sim            single_project  /home/me/src/boat_sim
+#   shore_tools         project         /home/me/shore_tools   default_instance=shore_tools-rolling
+#   shore_tools-jazzy   ros2_colcon     /home/me/shore_tools/jazzy    parent=shore_tools distro=jazzy
+#   shore_tools-rolling ros2_colcon     /home/me/shore_tools/rolling  parent=shore_tools distro=rolling
 #
 # - name: [A-Za-z0-9][A-Za-z0-9._-]* — also the default hosting dir name
 #   (projects/<name>/) and the worktree repo key

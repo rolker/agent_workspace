@@ -14,6 +14,7 @@
     "./.claude/skills/review-issue",
     "./.claude/skills/review-plan",
     "./.claude/skills/run-issue",
+    "./.claude/skills/sitrep",
     "./.claude/skills/start-task",
     "./.claude/skills/test-engineering",
     "./.claude/skills/triage-reviews",
