@@ -865,9 +865,11 @@ echo OPEN > "$SB/gh_state"   # a re-run would now give lines 1/2
 # Step 2 counted 2 lines; a capture made since must not be in the record.
 run_step 4 "s|<rows_file printed in step 1>|$rows_file|; s|<inbox_lines printed in step 2>|2|"
 last="$(tail -n1 "$SB/notes/runs.txt" 2>/dev/null)"
-[[ "$(cut -f2- <<< "$last")" == $'workspace\tlines 2/2 deferrals 0/1\tinbox 2' && ! -e "$MARK/gh" ]] \
+[[ "$(cut -f2-4 <<< "$last")" == $'workspace\tlines 2/2 deferrals 0/1\tinbox 2' && ! -e "$MARK/gh" ]] \
     && pass "(skill 4) record from the saved rows and step 2's count, nothing re-run" || fail "(skill 4) last='$last' out='$OUT'"
 [[ -n "$rows_file" && ! -e "$rows_file" ]] && pass "(skill 4) rows file removed" || fail "(skill 4) rows file left: $rows_file"
+[[ "$(cut -f5- <<< "$last")" == $'2026-10-12 10:00 -0400\tworkspace\t-\tb' ]] \
+    && pass "(skill 4) the record keeps the last inbox line step 2 counted" || fail "(skill 4) seen line: '$(cut -f5- <<< "$last")'"
 printf 'inbox=%s\nrun_record=%s\n' "$SB/notes/inbox.txt" "$SB/nodir/runs.txt" > "$WS/.agent/settings.local"
 printf 'line\tA\ttrue\tx\t2026-01-01\n' > "$SB/rows3.tsv"
 run_step 4 "s|<rows_file printed in step 1>|$SB/rows3.tsv|; s|<inbox_lines printed in step 2>|3|"
@@ -909,14 +911,65 @@ else
     rm -f "$SB/runs.before"
 fi
 
-echo "TEST: sit-rep step 2 counts new inbox lines from the recorded count"
-printf '2026-10-12 10:00 -0400\tworkspace\tlines 1/2 deferrals 0/1\tinbox 2\n' > "$SB/notes/runs.txt"
+echo "TEST: sit-rep step 2 counts the inbox lines after the last one the previous run saw"
+printf '2026-10-12 10:00 -0400\tworkspace\t-\ta\n2026-10-12 10:00 -0400\tworkspace\t-\tb\n2026-10-12 10:00 -0400\tworkspace\t-\tc\n' > "$SB/notes/inbox.txt"
+rec() {  # <count> [<seen inbox line>]: one workspace record line
+    printf '2026-10-12 10:00 -0400\tworkspace\tlines 1/2 deferrals 0/1\tinbox %s\t%s\n' "$1" "${2:-}" > "$SB/notes/runs.txt"
+}
+ib() { printf '2026-10-12 10:00 -0400\tworkspace\t-\t%s' "$1"; }
+rec 2 "$(ib b)"
 run_step 2
 [[ "$OUT" == *"inbox_lines=3"* && "$OUT" == *"inbox_new=1"* ]] \
     && pass "(skill 2) same-minute capture counted new" || fail "(skill 2) '$OUT'"
-printf '2026-10-12 10:00 -0400\tworkspace\tlines 1/2 deferrals 0/1\tinbox 5\n' > "$SB/notes/runs.txt"
+rec 0
 run_step 2
-[[ "$OUT" == *"inbox_new=unknown"* ]] && pass "(skill 2) fewer lines than recorded: unknown" || fail "(skill 2) shrink '$OUT'"
+[[ "$OUT" == *"inbox_new=3"* ]] && pass "(skill 2) a run that saw an empty inbox: every line is new" || fail "(skill 2) from zero '$OUT'"
+# Six lines seen; three removed from the top, five captured: 5 new, not 8 - 6 = 2.
+: > "$SB/notes/inbox.txt"
+for t in d e f g h i; do ib "$t" >> "$SB/notes/inbox.txt"; echo >> "$SB/notes/inbox.txt"; done
+rec 6 "$(ib i)"
+sed -i '1,3d' "$SB/notes/inbox.txt"
+for t in n1 n2 n3 n4 n5; do ib "$t" >> "$SB/notes/inbox.txt"; echo >> "$SB/notes/inbox.txt"; done
+run_step 2
+[[ "$OUT" == *"inbox_lines=8"* && "$OUT" == *"inbox_new=5"* ]] \
+    && pass "(skill 2) lines removed above the last one seen: new lines still counted right" || fail "(skill 2) removed+added '$OUT'"
+rec 6 "$(ib gone)"
+run_step 2
+[[ "$OUT" == *"inbox_new=unknown (the line the last run saw last is gone)"* ]] \
+    && pass "(skill 2) the last line seen was removed: unknown, with the reason" || fail "(skill 2) gone '$OUT'"
+ib n2 >> "$SB/notes/inbox.txt"; echo >> "$SB/notes/inbox.txt"
+rec 3 "$(ib n2)"
+run_step 2
+[[ "$OUT" == *"inbox_new=unknown (the line the last run saw last appears more than once)"* ]] \
+    && pass "(skill 2) the last line seen now appears twice, not at its place: unknown" || fail "(skill 2) twice '$OUT'"
+rec 5 "$(ib n2)"
+run_step 2
+[[ "$OUT" == *"inbox_new=4"* ]] && pass "(skill 2) a duplicate is fine when the line is still at its place" || fail "(skill 2) twice at place '$OUT'"
+printf '2026-10-12 10:00 -0400\tworkspace\tlines 1/2 deferrals 0/1\n' > "$SB/notes/runs.txt"
+run_step 2
+[[ "$OUT" == *"inbox_new=unknown (the last record has no inbox count)"* ]] && pass "(skill 2) no count in the record: unknown" || fail "(skill 2) no count '$OUT'"
+
+echo "TEST: sit-rep step 2 skips blank lines in the count, the oldest and the list"
+printf '\n  \n%s\n\n%s\n \n' "$(ib x)" "$(ib y)" > "$SB/notes/inbox.txt"
+sed -i '1s/^/\r/' "$SB/notes/inbox.txt"
+rec 1 "$(ib x)"
+run_step 2
+listed="$(sed -n '/^---$/,$p' <<< "$OUT" | sed 1d)"
+[[ "$OUT" == *"inbox_lines=2"* && "$OUT" == *"inbox_oldest=2026-10-12 10:00 -0400"* && "$OUT" == *"inbox_new=1"* \
+    && "$(grep -c . <<< "$listed")" -eq 2 && "$(grep -c '^[[:space:]]*$' <<< "$listed")" -eq 0 ]] \
+    && pass "(skill 2) blank lines skipped everywhere" || fail "(skill 2) blanks '$OUT'"
+
+echo "TEST: sit-rep step 4 then step 2: the record's last line anchors the next count"
+printf '%s\n%s\n' "$(ib p)" "$(ib q)" > "$SB/notes/inbox.txt"
+: > "$SB/notes/runs.txt"
+printf 'line\tA\ttrue\tx\t2026-01-01\n' > "$SB/rows5.tsv"
+run_step 4 "s|<rows_file printed in step 1>|$SB/rows5.tsv|; s|<inbox_lines printed in step 2>|2|"
+sed -i '1d' "$SB/notes/inbox.txt"
+printf '%s\n%s\n' "$(ib r)" "$(ib s)" >> "$SB/notes/inbox.txt"
+run_step 2
+[[ "$OUT" == *"inbox_lines=3"* && "$OUT" == *"inbox_new=2"* ]] \
+    && pass "(skill 4+2) one removed, two captured: two new" || fail "(skill 4+2) '$OUT' record='$(cat "$SB/notes/runs.txt")'"
+printf '%s\n%s\n%s\n' "$(ib a)" "$(ib b)" "$(ib c)" > "$SB/notes/inbox.txt"
 
 echo "TEST: sit-rep steps with an empty agent-workspace-root file fall back to the cwd"
 : > "$HOMESB/.claude/agent-workspace-root"

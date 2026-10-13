@@ -126,29 +126,41 @@ echo "record_file=${record:-unset}"
 echo "last_record=${last:-none}"
 echo "inbox_file=${inbox:-unset}"
 if [ -n "$inbox" ] && [ -f "$inbox" ]; then
-    lines="$(grep -c . "$inbox")"
+    # Blank lines (a hand edit) are skipped everywhere: count, oldest, list.
+    lines="$(awk '!/^[[:space:]]*$/ { n++ } END { print n + 0 }' "$inbox")"
     echo "inbox_lines=$lines"
-    echo "inbox_oldest=$(head -n1 "$inbox" | cut -f1)"
+    echo "inbox_oldest=$(awk '!/^[[:space:]]*$/ { print; exit }' "$inbox" | cut -f1)"
     if [ -n "$last" ]; then
         seen="$(printf '%s\n' "$last" | cut -f4)"
         seen="${seen#inbox }"
-        if [[ "$seen" =~ ^[0-9]+$ ]] && [ "$lines" -ge "$seen" ]; then
-            echo "inbox_new=$((lines - seen))"
+        if [[ "$seen" =~ ^[0-9]+$ ]]; then
+            SEEN="$seen" SEEN_LINE="$(printf '%s\n' "$last" | cut -f5-)" awk '
+                /^[[:space:]]*$/ { next }
+                { i++ }
+                $0 == ENVIRON["SEEN_LINE"] { c++; at = i; if (i == ENVIRON["SEEN"] + 0) exact = i }
+                END {
+                    if (ENVIRON["SEEN"] + 0 == 0) print "inbox_new=" (i + 0)
+                    else if (exact) print "inbox_new=" (i - exact)
+                    else if (c == 1) print "inbox_new=" (i - at)
+                    else if (c == 0) print "inbox_new=unknown (the line the last run saw last is gone)"
+                    else print "inbox_new=unknown (the line the last run saw last appears more than once)"
+                }' "$inbox"
         else
-            echo "inbox_new=unknown"
+            echo "inbox_new=unknown (the last record has no inbox count)"
         fi
     fi
     echo "---"
-    head -n 20 "$inbox"
+    awk '!/^[[:space:]]*$/' "$inbox" | head -n 20
 fi
 ```
 
 Inbox lines are `date`, `project`, `issue`, `text`. The first 20 (oldest)
-are shown; say how many more there are. `inbox_new` is the line count now
-minus the count the last run recorded: new lines are appended at the end,
-so they are the last `inbox_new` lines. It is `unknown` when the inbox has
-fewer lines than then (lines were removed, so a count cannot say which are
-new) or the last record has no count.
+are shown; say how many more there are. New lines are appended at the end,
+so the new ones are those after the last line the previous run saw, which
+its record keeps (step 4). `inbox_new` counts the lines after that line,
+found at the position recorded or, when lines above it were removed, as
+the one line equal to it. It is `unknown`, with the reason, when that line
+is gone or appears more than once, or the last record has no count.
 
 ### 3. Read what is in flight
 
@@ -180,11 +192,15 @@ git -C "<worktree path>" log -1 --format='%cr: %s'
 Only when step 1 printed `rows_file=`, `run_record` is set and its
 directory exists; the repository is never written to. One line, appended,
 with the summary counted from the rows step 1 saved (the checks are not run
-again) and the inbox line count step 2 printed (not counted again, so a
-thought captured since is reported as new next time). The next run's
-`inbox_new` is measured from that count. Put step 1's `rows_file` value and
-step 2's `inbox_lines` value (`0` when step 2 printed none) in place of the
-placeholders. The rows file is removed either way.
+again), the inbox line count step 2 printed (not counted again, so a
+thought captured since is reported as new next time), and the last inbox
+line step 2 counted, which the next run's `inbox_new` is measured from.
+Put step 1's `rows_file` value and step 2's `inbox_lines` value (`0` when
+step 2 printed none) in place of the placeholders. The rows file is removed
+either way.
+
+The record line is `<when>`, `workspace`, `<summary>`, `inbox <n>`, then
+that inbox line's own four fields, TAB-separated.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
@@ -192,6 +208,7 @@ rows="<rows_file printed in step 1>"
 n="<inbox_lines printed in step 2>"
 source "$WS_ROOT/.agent/scripts/_settings.sh"
 record="$(settings_path "$WS_ROOT" run_record)" || record=""
+inbox="$(settings_path "$WS_ROOT" inbox)" || inbox=""
 if [ -z "$record" ]; then
     echo "run record: not written (run_record not set)"
 elif [ ! -d "$(dirname "$record")" ]; then
@@ -199,11 +216,16 @@ elif [ ! -d "$(dirname "$record")" ]; then
 elif ! [[ "$n" =~ ^[0-9]+$ ]]; then
     echo "run record: not written (inbox count is not a number: $n)"
 elif summary="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows")"; then
+    # The n-th non-blank inbox line: the last one step 2 counted.
+    seen_line=""
+    if [ "$n" -gt 0 ] && [ -n "$inbox" ] && [ -f "$inbox" ]; then
+        seen_line="$(N="$n" awk '!/^[[:space:]]*$/ && ++i == ENVIRON["N"] + 0 { print; exit }' "$inbox")"
+    fi
     # A record whose last line has no newline (a hand edit) gets one
     # first, so the new line is not glued to it.
     if { [ ! -s "$record" ] || [ -z "$(tail -c1 "$record")" ] || printf '\n' >> "$record"; } \
-        && printf '%s\tworkspace\t%s\tinbox %s\n' "$(date '+%Y-%m-%d %H:%M %z')" \
-            "$summary" "$n" >> "$record"; then
+        && printf '%s\tworkspace\t%s\tinbox %s\t%s\n' "$(date '+%Y-%m-%d %H:%M %z')" \
+            "$summary" "$n" "$seen_line" >> "$record"; then
         echo "run record: written to $record"
     else
         echo "run record: not written (could not append to $record)"
