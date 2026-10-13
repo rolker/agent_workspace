@@ -166,3 +166,65 @@ Owner answers folded in:
 **Plan**: `.agent/work-plans/issue-332/plan.md` at `754f8675`
 
 Revision 1, after plan review round 1 (dc77392d) and the owner's checkpoint (b9ab8403). Still builds on the Worktrees Target (location/tracking). Records defaults are provisional and held in one function (project_records_default); tracking in the workspace repository is refused by remote URL; both session-root bends are named; the installer runs only after build and test pass; registration_verify.sh is read-only; follow-up issue text is complete; an acceptance-to-test table with a synthetic fixture shaped like the hand-registered gz4d is added. Every finding and its resolution is in the plan's "Plan Review Resolution" section.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-13 14:07 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a98d6c53c11e1c1af, resume 1 of 3)
+**Verdict**: ready
+
+**Issue**: #332 — onboard-project registers projects and audits workspace integration
+**Plan**: `.agent/work-plans/issue-332/plan.md` at `754f8675`
+**Branch**: `feature/issue-332`
+
+Round 2, after the owner's Checkpoint (b9ab8403) and the revised plan's "Plan Review Resolution" table. Each round-1 finding was checked against the plan text, not the table.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: four PRs in the owner's order; the follow-up issue is now opened as PR 1's first step |
+| Issue alignment | Good | Serves, as checked: "Light touch on projects and Easy to use (`README.md#workspace-goals`); `docs/design.md#registry-and-adapters`, with `docs/design.md#sessions-and-roots` and `docs/design.md#worktrees`". Owner decisions of b9ab8403 folded in: defaults open (one function, provisional), workspace repository refused by remote URL, scratchpad untracked allowed, Target sentence rewritten with the fork and PR reason. "Acceptance to test" table added (finding 4 is a gap in it) |
+| File targeting | Good | `validate_adapter.sh` and its suite, `--disable-root` in `test_user_tier_install.sh`, AGENTS.md rows in each of PR 1 to PR 3 added |
+| Consequences | Good | Registration order now leaves no plugin enable on failure; one open case for `ros2_colcon` `setup` (finding 3) |
+| Principle alignment | Good | Both session-root bends named (PR 3 design edit; follow-up text); defaults no longer written as decided |
+| ADR compliance | Good | ADR-0016 decision 6: `registration_verify.sh` has no build/test mode, so its inert marker is true |
+| ROS conventions | N/A | Workspace plan |
+
+### Round-1 findings, checked in the plan text
+
+- M1 defaults: resolved. `project_records_default` is the one place (PR 1 item 4, Files table); the `location_path` row names both layouts as undecided candidates; Q1 withdrawn with the root kept as the clone; tests assert through the function. See finding 1 for one ambiguity it introduced.
+- M2 workspace repository: resolved as the owner decided. `project_records_check` compares remotes, no path rule, scratchpad untracked validates, PR 1 item 9 rewrites the Target sentence with the reason.
+- M3 session-root bends: resolved. PR 3 item 3 names the projects.d write; the follow-up's "Rules carried" names the outside-records bend.
+- M4 rollback: resolved. Installer is step 4, after the static gate, build and test; an installer failure calls `--disable-root`; the "failing check" acceptance row asserts an empty stub-claude log.
+- M5 inert marker: resolved. `registration_verify.sh` is read-only (`--user-tier` only reads); `register_project.sh` runs build and test.
+- S6 to S10: resolved (follow-up text has both acceptance halves, the one rule, the unsettled points; `registration.conf` checked by `validate_adapter.sh`; PR 1 AGENTS.md row; acceptance table and fixture; offers gated on `instructions=tracked`).
+
+### Findings
+
+1. **[Issue alignment] (suggestion)** — `project_records_default` takes `accepts-footprint|zero-footprint`, and item 4 says the validator calls it "to fill omitted keys", but nothing stored says which mode a project is in. Then a project file with no records keys means different things depending on an input that is not in the file. State that an absent pair always resolves with the accepts-footprint mode, (project, project) (the Target's default and what every reader does today), and that the zero-footprint mode only feeds onboarding's proposal. Add a `test_project_file.sh` case for it.
+2. **[Principle alignment: Enforce what matters] (suggestion)** — Normalising URLs to host and `owner/repo` misses two cases. (a) A remote that is a local path or `file://` URL to the workspace checkout or one of its worktrees, such as `git clone ~/agent_workspace records`. Resolve such a remote and compare it with the workspace's git common dir. (b) The Q5 fork case: facts below; the owner decides.
+3. **[Consequences] (suggestion)** — For `ros2_colcon`, `setup` creates the hosting directory when it is missing. The plan does not say where `setup` falls in the four-step order, or whether a directory it created is removed or kept and reported when a later step fails. Say which, and add the case to `test_register_project.sh`.
+4. **[Issue alignment: Test what breaks] (suggestion)** — The fixture omits pre-commit and CI, and the table asserts seven audit finding ids. Three of the issue's listed gz4d findings are not reproduced by the script, so name where each is covered:
+   - no pre-commit or CI: the `audit-project` checklist in PR 4, which is skill text and not script-tested;
+   - `validate` failing because of unrelated projects: fixed by #330;
+   - `research` missing in project sessions: category 7 on #331.
+
+   Then "reproduces every finding" claims only what is tested.
+
+### Q5 facts (owner decides)
+
+- A fork keeps the workspace's history, so a clone of any fork shares the workspace's root commit (`git rev-list --max-parents=0 HEAD` gives `c286e7ba` here). Comparing root commits catches forks offline, on any host, with no `gh` call. It misses only a fork whose history was rewritten, and a records repository started fresh never matches. `gh repo view --json parent` sees only GitHub forks and needs network and auth.
+- The no-project-names rule is `review only` (design.md Rules) and covers what is committed to the workspace repository. It would catch fork-carried records only when a PR comes back, which is the very path the owner gave as the reason to refuse. It is weak cover for that case, and nothing covers the fork itself.
+
+### Summary
+
+All five round-1 must-fixes and the five suggestions are resolved in the plan text, and the revision follows the owner's checkpoint without reopening it. Four suggestions remain, none blocking. The plan is ready for implementation once the owner answers Q5.
+
+### Recommended Actions
+
+- [ ] State that omitted records keys resolve in accepts-footprint mode, and test it (finding 1)
+- [ ] Match local-path and `file://` remotes against the workspace's git dir; put Q5 (root-commit comparison, `gh` parent check, or neither) to the owner (finding 2)
+- [ ] Place `ros2_colcon` `setup` in the registration order and state what happens on rollback (finding 3)
+- [ ] Name in the acceptance table the gz4d findings not reproduced by the script, and where each is covered (finding 4)
