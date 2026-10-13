@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/test_skill_paths.sh
-# Keeps project-capable skills free of workspace-relative paths (#317).
+# Keeps project-capable skills free of workspace-relative paths (#317), and
+# guards the skill set itself: the declared session_scope list, and the
+# replacement of the old what-next skill by the sit-rep (#389).
 #
 # A skill whose SKILL.md declares `session_scope: project` or `both` can run
 # in a session started in a project checkout. There, a bare
@@ -11,14 +13,33 @@
 #
 # This test fails on any such reference introduced after this PR.
 #
-# Scope: SKILL.md files ONLY. The tracked .claude/settings.json keeps its two
+# Path scan scope: SKILL.md files ONLY. The tracked .claude/settings.json keeps its two
 # existing relative hook commands as-is -- it is Ask-First and this PR does
 # not edit it; the user tier gets its own generated copy with absolute paths
 # (user_tier_install.sh). Workspace-scoped skills (no session_scope field --
 # `workspace` is the documented default) keep relative paths, which are
 # correct for them: they only ever run in the workspace checkout.
 #
-# Hermetic: reads tracked files only. No HOME access, no network, no gh.
+# The what-next guards at the end (#389) read more than SKILL.md files:
+#  (a) the sitrep frontmatter `description` line names the trigger phrases
+#      ("what's next?", "what should I work on?", "where are we?");
+#  (b) the .claude/skills directory of the old skill does not exist;
+#  (c) no live pointer to the old skill -- its slash command or its skills
+#      path -- in tracked files under .agent/, .claude/, AGENTS.md or
+#      Makefile. Prose that only names the skill passes. History records are
+#      exempt by rule: work plans (.agent/work-plans/) and inspiration
+#      digests (.agent/knowledge/inspiration_*).
+#      NOT guarded: docs/, README.md, CODEX.md, CLAUDE.md and
+#      .github/copilot-instructions.md. CI runs `make lint`, i.e.
+#      `pre-commit run --all-files`, which runs this same hook over the same
+#      pathspec, so CI does not read them either; and widening the pathspec
+#      would need the hook-scope declaration (test_script_tests_hook_scope.sh)
+#      to name docs/, which the validate-script-tests hook's `files:` regex
+#      does not cover, so that test would fail. Those files were checked by
+#      hand in #389.
+#
+# Hermetic: reads tracked files only (git grep for guard (c)). No HOME
+# access, no network, no gh.
 #
 # Run: bash .agent/scripts/tests/test_skill_paths.sh
 
@@ -133,7 +154,7 @@ fi
 # The frontmatter set itself: the scoped skills are a deliberate list, and a
 # typo in the field name would silently drop a skill from the user tier.
 for name in start-task plan-task review-plan review-code triage-reviews \
-            test-engineering what-next run-issue review-issue address-findings; do
+            test-engineering sitrep run-issue review-issue address-findings; do
     f="$SKILLS/$name/SKILL.md"
     [[ -f "$f" ]] || { fail "expected skill is missing: $name"; continue; }
     [[ "$(scope_of "$f")" == "both" ]] \
@@ -147,6 +168,52 @@ for name in document-project audit-project onboard-project; do
         && pass "$name declares session_scope: project" \
         || fail "$name should declare session_scope: project (got '$(scope_of "$f")')"
 done
+
+# --- The old what-next skill is gone; the sit-rep answers "what's next?" (#389)
+# The old name is built from pieces so this file never matches guard (c).
+OLD="what""-next"
+
+# (a) Trigger phrases, read from the frontmatter description line only.
+desc="$(awk '
+    NR == 1 && $0 == "---" { fm = 1; next }
+    fm && $0 == "---" { exit }
+    fm && /^description:/ { print; exit }
+' "$SKILLS/sitrep/SKILL.md" 2>/dev/null)"
+if [[ -z "$desc" ]]; then
+    fail "sitrep: no frontmatter description line"
+else
+    for phrase in "what's next?" "what should I work on?" "where are we?"; do
+        if grep -qiF -- "$phrase" <<< "$desc"; then
+            pass "sitrep description names the trigger \"$phrase\""
+        else
+            fail "sitrep description does not name the trigger \"$phrase\""
+        fi
+    done
+fi
+
+# (b) The skill directory is gone.
+if [[ -e "$SKILLS/$OLD" ]]; then
+    fail ".claude/skills/$OLD still exists -- the sit-rep replaced it (#389)"
+else
+    pass "the old $OLD skill directory does not exist"
+fi
+
+# (c) No live pointer in hook-covered tracked files (see the header for what
+# is not guarded, and why). git grep exits 0 on a match, 1 on none, >1 on error.
+hits="$(git -C "$WS_ROOT" grep -nF -e "/$OLD" -e "skills/$OLD" -- \
+    .agent/ .claude/ AGENTS.md Makefile \
+    ':(exclude).agent/work-plans/' \
+    ':(exclude,glob).agent/knowledge/inspiration_*' 2>&1)"
+rc=$?
+if [[ $rc -eq 1 ]]; then
+    pass "no live pointer to the old $OLD skill under .agent/, .claude/, AGENTS.md, Makefile"
+elif [[ $rc -eq 0 ]]; then
+    n=$(grep -c . <<< "$hits")
+    fail "$n live pointer(s) to the old $OLD skill (name it without the slash or path):"
+    head -n5 <<< "$hits" | sed 's/^/        /'
+else
+    fail "could not run git grep for live pointers (exit $rc): $hits"
+fi
 
 echo ""
 echo "test_skill_paths: $PASS passed, $FAIL failed"

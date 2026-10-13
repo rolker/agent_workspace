@@ -1,6 +1,6 @@
 ---
 name: sitrep
-description: Situation report from checked facts — where the workspace's acceptance case stands (Direction lines checked this run), the inbox with a proposed sort, work in flight, and deferrals that are due. Reads only; writes one line to a machine-local run record.
+description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report from checked facts — where the workspace's acceptance case stands (Direction lines checked this run), the inbox with a proposed sort, work in flight and deferrals that are due — ending with one suggested next step and the fact it rests on. Reads only; writes one line to a machine-local run record."
 session_scope: both
 ---
 
@@ -38,9 +38,12 @@ No arguments. This first mode reads the workspace root only.
 
 ## What it is
 
-A read-out that answers "what's next" from facts checked this run. The
-skill formats; it decides nothing. Every statement in the report comes from
-a command run in this invocation: the check runner's rows, the inbox file,
+A read-out that answers "what's next?" from facts checked this run. It
+replaces the old what-next skill, which ranked roadmap rows; this one
+answers from checked facts instead. The skill formats and proposes; it
+decides nothing. The inbox sort and the closing "Suggested next" line are
+proposals for the owner to accept or change. Every statement in the report
+comes from a command run in this invocation: the check runner's rows, the inbox file,
 the worktree list, the open pull requests. Memory notes, earlier
 conversation and earlier reports are not sources. If something could not
 be checked, say so; never fill the gap.
@@ -172,7 +175,7 @@ WS_REPO="$(source "$WS_ROOT/.agent/scripts/_issue_helpers.sh" \
 echo "---"
 if [ -n "$WS_REPO" ]; then
     gh pr list -R "$WS_REPO" --state open \
-        --json number,title,headRefName,isDraft,reviewDecision,updatedAt
+        --json number,title,headRefName,isCrossRepository,isDraft,reviewDecision,updatedAt
 else
     echo "pull requests: not checked (no GitHub remote for $WS_ROOT)"
 fi
@@ -180,12 +183,32 @@ fi
 
 `-R` names the workspace repository from its own remote, so a project
 session does not list the project's pull requests by mistake. With no
-GitHub remote the pull requests are reported as not checked. For each
-worktree, its last commit stands in for a resume note:
+GitHub remote the pull requests are reported as not checked. The list
+always includes the main checkout (`type: "main"`); it is not work in
+flight and is left out of the report. For each other worktree, its last
+commit stands in for a resume note:
 
 ```bash
 git -C "<worktree path>" log -1 --format='%cr: %s'
 ```
+
+The report gives one line per branch. The pull requests listed are the
+workspace's, so only a workspace worktree (`type: "workspace"`) is matched
+to one: when its `branch` equals the pull request's `headRefName` and the
+pull request's `isCrossRepository` is false, they are the same work and
+share that line. A pull request from a fork (`isCrossRepository` true)
+can reuse a local branch name, so it is never joined: it gets its own
+line, with "from a fork" after its title and no worktree part. A project
+worktree (`type: "project"`) gets its own line, named with its project
+(`repo`), and no pull request: project branches use the same `feature/issue-<N>`
+names with their own numbers, so a name match would join unrelated work.
+Branches with a ready pull request (open and not a draft; every one needs
+the owner's merge) come first; then the rest (a draft pull request, or a
+worktree with no pull request). `reviewDecision` does not change the
+order; it is printed as the review state when set, and nothing is printed
+for it when it is empty. Within each group, branches with a worktree come
+first, in the worktree list's order, then branches with only a pull
+request, in the order `gh pr list` printed them.
 
 ### 4. Write the run record
 
@@ -241,8 +264,8 @@ printed.
 
 ### 5. Print the report
 
-Four sections, one screen. Plain words, no issue or pull request number
-without its title beside it.
+Four sections and a closing "Suggested next" line, one screen. Plain
+words, no issue or pull request number without its title beside it.
 
 ```markdown
 ## Sit-rep, <date>
@@ -263,11 +286,13 @@ Proposed sort, to answer in batches:
 - decided against, revisit when <condition>: <items>
 - delete: <items>
 
-**In flight**: <each worktree: branch, last commit age and subject>;
-<each open pull request: title, draft or review state>.
+**In flight**: one line per branch, in the order step 3 gives:
+- <name>: <pull request part>; <worktree part>
 
 **Deferrals due**: <deferrals whose check is true>.
 Unchecked (no revisit check): <deferrals whose result is unchecked>.
+
+**Suggested next**: <one item> — <the fact it rests on>.
 ```
 
 Rules for the report:
@@ -277,10 +302,41 @@ Rules for the report:
   reads as a line that failed.
 - A deferral is due only when its result is `true`. An `unchecked`
   deferral is listed as unchecked, never as due.
+- An In flight line is filled in part by part, and a part the branch does
+  not have is left out:
+  - `<name>` is the branch, or for a project worktree its project
+    (`repo`), a slash and the branch, e.g. `myproject/feature/issue-12`.
+  - The pull request part is the title, then "from a fork" if
+    `isCrossRepository` is true, then "draft" if it is one, then the
+    review state if `reviewDecision` is set.
+  - The worktree part is the last commit's age and subject.
+  - "; " goes only between the two parts, so a line with only a pull
+    request or only a worktree has none.
 - The inbox sort is a proposal. Use only the five bins above; never
   "never" — "decided against" always carries the condition that would
   reopen it. Do not edit the inbox; filing issues or editing the roadmap
   from the answers is a separate step the owner asks for.
 - `format` rows are reported as a problem in the Direction section, not as
   lines.
-- End with at most one question, the one whose answer changes the most.
+- "Suggested next" names one item, taken from the first of these sources
+  that has one, in this order: a due deferral; a `false` Direction line;
+  work in flight (a branch line from "In flight"); the proposed inbox
+  "now" bin. It names the fact it rests on (the deferral and its check,
+  the line and its check, the branch or pull request title, the inbox
+  line). When it comes from the inbox "now" bin, it says "this rests on
+  the proposed inbox sort", since that bin is this run's proposal, not a
+  checked fact. When no source has an item, it reads "Suggested next:
+  nothing from this run's facts."
+  - The main checkout is not work in flight: the worktree list always
+    includes it (`type: "main"`), so it is never a candidate. The
+    worktree this session runs in counts like any other.
+  - When a source has several items, take the first as listed in the
+    report. For work in flight that is a branch with a ready pull
+    request, if there is one (step 3's order).
+  - From the Direction section only a due deferral and a `false` line are
+    sources. A `format` problem and an `unknown`, `partial` or `unchecked`
+    line are deliberately not: they say a check could not decide, not
+    that work is due. The closing question may ask about them.
+- After "Suggested next", end with at most one question, the one whose
+  answer changes the most. The suggestion proposes an action; the question
+  asks the owner to decide something.
