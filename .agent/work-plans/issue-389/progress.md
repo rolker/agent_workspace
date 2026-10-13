@@ -396,3 +396,25 @@ Tooling note for triage (not a finding in this PR): the fixer ticked the previou
 
 ### Findings
 - [ ] (suggestion) The In flight template line is loose for an agent filling it in: "draft" or its review state reads as either/or although step 3 prints `reviewDecision` whenever set, the "(for a project worktree, <project>/<branch>)" aside may be copied literally, and the fixed ";" leaves a dangling separator when a line has only a pull request or only a worktree; write it as alternatives (`<branch>` or `<project>/<branch>`; "draft, and its review state if set"; each part only when present) — `.claude/skills/sitrep/SKILL.md:287-289`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-13 11:32 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a94fcb5751a90f309, resume 1 of 3)
+
+**PR**: #390 at `ec271dc`
+**Sources**: 5 (Copilot R1 @ `bff4f95`, Copilot R2 @ `7e183de`, Copilot R3 @ `ec271dc`, Local Review @ `ec271dc`, CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+Verdict: approved; 0 must-fix, 3 open suggestions. Already addressed, not re-listed: Copilot R1 @ `bff4f95` (one In flight line per branch, ready pull requests first) by 152b9d96, which also closes the Integrated Review at `bff4f95` and the stale pre-push suggestion at `2592374`; Copilot R2 @ `7e183de` (a project worktree joined to a workspace pull request by branch name) by 1ce50fc6, which matches only `type: "workspace"` worktrees. CI at `ec271dc`: Lint (pre-commit), Validate Documentation, Validate Adapter Contract and the ros-manifest tests all pass.
+
+Tooling notes for the host, not findings on this PR; they belong with the open `review_progress.sh` issues #357 / #360: `review_progress.sh findings` does not treat a post-PR `## Local Review` as a fix source (the fixer ticked its boxes by hand); `review_progress.sh sources` extracts no file from a backticked `path:lines` reference, so the round-1 cross-source match was found by reading, not by `candidates`.
+
+### Findings
+- [ ] (suggestion, Local Review @ `ec271dc`) The In flight template line is loose for an agent filling it in: "draft" or its review state reads as either/or although step 3 prints `reviewDecision` whenever set; the "(for a project worktree, <project>/<branch>)" aside may be copied literally; the fixed ";" leaves a dangling separator on a line with only a pull request or only a worktree. Write it as alternatives (`<branch>` or `<project>/<branch>`; "draft, and its review state if set"; each part only when present) — `.claude/skills/sitrep/SKILL.md`
+- [ ] (suggestion, Copilot R3 @ `ec271dc`, review body) `headRefName` is not tied to a repository: a pull request from a fork can reuse a local workspace branch name and be joined to that worktree's line. The repository is public, so this can happen, although it has 0 forks and has never had a cross-repository pull request. Fix: add `isCrossRepository` to the `gh pr list --json` fields and join only pull requests where it is false; a cross-repository pull request gets its own line — `.claude/skills/sitrep/SKILL.md`
+- [ ] (suggestion, Copilot R3 @ `ec271dc`, review body) The PR body still carries "Open suggestion, for triage" (merge worktrees and pull requests by branch, owner-waiting first), which 152b9d96 resolved. Fix: the host removes that paragraph or marks it resolved when it next edits the PR body — PR #390 description
+
+### False positives
