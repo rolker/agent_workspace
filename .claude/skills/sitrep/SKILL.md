@@ -175,7 +175,7 @@ WS_REPO="$(source "$WS_ROOT/.agent/scripts/_issue_helpers.sh" \
 echo "---"
 if [ -n "$WS_REPO" ]; then
     gh pr list -R "$WS_REPO" --state open \
-        --json number,title,headRefName,isDraft,reviewDecision,updatedAt
+        --json number,title,headRefName,isCrossRepository,isDraft,reviewDecision,updatedAt
 else
     echo "pull requests: not checked (no GitHub remote for $WS_ROOT)"
 fi
@@ -194,10 +194,13 @@ git -C "<worktree path>" log -1 --format='%cr: %s'
 
 The report gives one line per branch. The pull requests listed are the
 workspace's, so only a workspace worktree (`type: "workspace"`) is matched
-to one: when its `branch` equals the pull request's `headRefName`, they
-are the same work and share that line. A project worktree
-(`type: "project"`) gets its own line, named with its project (`repo`),
-and no pull request: project branches use the same `feature/issue-<N>`
+to one: when its `branch` equals the pull request's `headRefName` and the
+pull request's `isCrossRepository` is false, they are the same work and
+share that line. A pull request from a fork (`isCrossRepository` true)
+can reuse a local branch name, so it is never joined: it gets its own
+line, with "from a fork" after its title and no worktree part. A project
+worktree (`type: "project"`) gets its own line, named with its project
+(`repo`), and no pull request: project branches use the same `feature/issue-<N>`
 names with their own numbers, so a name match would join unrelated work.
 Branches with a ready pull request (open and not a draft; every one needs
 the owner's merge) come first; then the rest (a draft pull request, or a
@@ -303,8 +306,9 @@ Rules for the report:
   not have is left out:
   - `<name>` is the branch, or for a project worktree its project
     (`repo`), a slash and the branch, e.g. `myproject/feature/issue-12`.
-  - The pull request part is the title, then "draft" if it is one, then
-    the review state if `reviewDecision` is set.
+  - The pull request part is the title, then "from a fork" if
+    `isCrossRepository` is true, then "draft" if it is one, then the
+    review state if `reviewDecision` is set.
   - The worktree part is the last commit's age and subject.
   - "; " goes only between the two parts, so a line with only a pull
     request or only a worktree has none.
