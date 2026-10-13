@@ -57,7 +57,10 @@ fi
 # shellcheck source=../../.agent/scripts/_project_registry.sh
 source "$WS_ROOT/.agent/scripts/_project_registry.sh" 2>/dev/null || exit 0
 
-ENTRY="$(registry_resolve_from_dir "$WS_ROOT" "$CWD" 2>/dev/null)" || exit 0
+# The root that owns the cwd, including a worktree in a root's worktrees=
+# directory outside its hosting dir -- the same resolution session_root.sh
+# uses (registry_resolve_session_dir).
+ENTRY="$(registry_resolve_session_dir "$WS_ROOT" "$CWD" 2>/dev/null)" || exit 0
 [[ -n "$ENTRY" ]] || exit 0
 
 IFS=$'\t' read -r P_NAME P_TYPE P_PATH <<< "$ENTRY"

@@ -26,7 +26,8 @@
 # such as a colcon package under src/). Live case G observed that such a
 # repository does not see the root's plugin; whether the workspace's bare
 # skills reach one under a root inside the workspace tree (directory
-# walk-up) has not been checked. A caller stops there rather than guess. Exits 2 on a usage error.
+# walk-up) has not been checked. A caller stops there rather than guess.
+# session_root.sh refuses the same directories, with the same advice. Exits 2 on a usage error.
 #
 # Which directories read a root's local settings follows what the live
 # suite observed (tests/live/plugin_acceptance.sh case G, claude 2.1.282):

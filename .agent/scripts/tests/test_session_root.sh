@@ -35,14 +35,19 @@ g -C "$WSC" commit -q --allow-empty -m init
 SR="$WSC/.agent/scripts/session_root.sh"
 
 R="$SANDBOX/roots"
-mkdir -p "$WSC/projects/p11/sub" "$WSC/docs" "$WSC/worktrees/workspace/issue-workspace-1" "$WSC/worktrees/project/wtroot/issue-wtroot-1"
+mkdir -p "$WSC/projects/p11/sub" "$WSC/docs" "$WSC/worktrees/workspace/issue-workspace-1" "$WSC/worktrees/project/wtroot"
 mkdir -p "$R/gitroot/src/deeper" "$R/gitroot/worktrees/issue-gitroot-1" "$R/wtroot" \
-    "$R/par/inst1/sub" "$R/par/inst2" "$R/other" "$R/unreg" \
+    "$R/par/inst1/sub" "$R/par/inst2" "$R/other/sub" "$R/unreg" \
     "$R/foo" "$R/foobar" "$R/trail/sub" "$R/x" "$R/dots/sub" "$R/real/sub" \
     "$WSC/worktrees/project/gitroot/issue-gitroot-2"
 ln -s "$R/real" "$SANDBOX/link-to-real"
 g -C "$R/gitroot" init -q
 mkdir -p "$R/gitroot/src/pkg" && g -C "$R/gitroot/src/pkg" init -q   # nested package repo
+# Git roots, so a session in a subdirectory reads the root's settings. A
+# root's worktree is a real git worktree of it, here in its worktrees= dir.
+for d in par trail dots real wtroot; do g -C "$R/$d" init -q; done
+g -C "$R/wtroot" commit -q --allow-empty -m init
+g -C "$R/wtroot" worktree add -q "$WSC/worktrees/project/wtroot/issue-wtroot-1" 2>/dev/null
 REGFILE="$WSC/.agent/projects.local"
 # The instances are listed before their parent, so only a longest match
 # (not the last or first match) resolves a directory inside one of them.
@@ -90,7 +95,11 @@ root "a directory of the workspace checkout" "$WSC/docs" "$WSC" workspace ""
 root "a workspace worktree directory" "$WSC/worktrees/workspace/issue-workspace-1" "$WSC" workspace ""
 root "a registered root inside the workspace tree is its own root" "$WSC/projects/p11/sub" "$WSC/projects/p11" project p11
 root "a registered git root" "$R/gitroot" "$R/gitroot" project gitroot
-root "a package repo nested in a root: the hosting dir, not the nested repo" "$R/gitroot/src/pkg" "$R/gitroot" project gitroot
+check "a package repo nested in a root is refused, naming the hosting dir to start at" "$R/gitroot/src/pkg" refuse \
+    "lies under the root $R/gitroot, but a session there does not read that root's local settings" --
+check "a subdirectory of a root in no git repository is refused the same way" "$R/other/sub" refuse \
+    "start the session at $R/other or a worktree of it" --
+root "a root in no git repository, at the root itself" "$R/other" "$R/other" project other
 root "a worktree under a root's own worktrees/" "$R/gitroot/worktrees/issue-gitroot-1" "$R/gitroot" project gitroot
 root "a worktree in a root's worktrees= directory inside the workspace tree: that root, not the workspace" \
     "$WSC/worktrees/project/wtroot/issue-wtroot-1" "$R/wtroot" project wtroot
@@ -121,6 +130,17 @@ out="$(cd "$R/other" && bash "$SR")"; rc=$?
 [[ "$rc" -eq 0 && "$out" == "root=$R/other"* ]] && pass "without --dir, the current directory is used" \
     || fail "default directory (rc=$rc out=$out)"
 
+echo "== the same directories pass here as in skill_prefix.sh =="
+SPX="$WSC/.agent/scripts/skill_prefix.sh"
+for d in "$WSC" "$WSC/docs" "$WSC/projects/p11/sub" "$R/gitroot" "$R/gitroot/src/deeper" "$R/gitroot/src/pkg" \
+         "$R/other" "$R/other/sub" "$R/par/inst1/sub" "$R/unreg" "$WSC/worktrees/project/wtroot/issue-wtroot-1" \
+         "$SANDBOX/link-to-real/sub"; do
+    bash "$SR" --dir "$d" >/dev/null 2>&1; a=$?
+    bash "$SPX" --dir "$d" >/dev/null 2>&1; b=$?
+    [[ "$a" -eq "$b" ]] && pass "session_root.sh and skill_prefix.sh agree on ${d#"$SANDBOX"/} (exit $a)" \
+        || fail "session_root.sh exits $a but skill_prefix.sh exits $b for ${d#"$SANDBOX"/}"
+done
+
 echo "== a copy in a worktree of the workspace reads the main checkout's registry =="
 g -C "$WSC" worktree add -q "$SANDBOX/ws-wt" 2>/dev/null
 mkdir -p "$SANDBOX/ws-wt/.agent" && cp -r "$WSC/.agent/scripts" "$SANDBOX/ws-wt/.agent/"
@@ -141,7 +161,8 @@ out="$(bash "$WTSR" --dir "$SANDBOX/ws-wt" 2>&1)"; rc=$?
 echo "== an issue of the session's own root passes =="
 check "workspace session, workspace issue" "$WSC/docs" ok "" -- --type workspace
 check "project session, its own project" "$R/gitroot" ok "" -- --type project --project gitroot
-check "nested package repo, the hosting root's project" "$R/gitroot/src/pkg" ok "" -- --type project --project gitroot
+check "nested package repo, even for the hosting root's project" "$R/gitroot/src/pkg" refuse \
+    "start the session at $R/gitroot" -- --type project --project gitroot
 check "p11-shape root, its own project" "$WSC/projects/p11" ok "" -- --type project --project p11
 check "parent root, the parent's default instance" "$R/par" ok "" -- --type project --project par
 check "parent root, another instance it owns" "$R/par" ok "" -- --type project --project inst2
@@ -170,7 +191,8 @@ echo "== --type project without --project =="
 cp "$REGFILE" "$SANDBOX/reg.full"
 printf 'gitroot  single_project  %s\n' "$R/gitroot" > "$REGFILE"
 check "the single registered project: its own session passes" "$R/gitroot" ok "" -- --type project
-check "the single registered project: a session in its nested package repo passes" "$R/gitroot/src/pkg" ok "" -- --type project
+check "the single registered project: a session in its nested package repo is still refused" "$R/gitroot/src/pkg" refuse \
+    "start the session at $R/gitroot" -- --type project
 check "the single registered project: a workspace session is refused" "$WSC" refuse \
     "start a session in $R/gitroot" -- --type project
 mkdir -p "$R/legacy-src" && g -C "$R/legacy-src" init -q

@@ -256,11 +256,14 @@ worktree of it, or a root such as `p11-jazzy` inside its tree), the names
 are bare. In a registered project root, they take the `agent-workspace:`
 prefix. Anywhere else, including a repository nested in a root whose
 sessions do not read the root's local settings, the script fails with a
-message and `run-issue` stops rather than guess. The current directory is
-the right input because of the root rule: worktrees live under their root,
-and a session never moves into another root, so the directory at any point
-of a run gives the same answer as the one the session was launched in. No
-start directory is recorded per session. The rule holds because the
+message and `run-issue` stops rather than guess. `session_root.sh` refuses
+the same directories, with the same advice: a session in them reads
+neither the root's plugin nor its local settings. The directory before step
+1 is the right input because of the root rule: the session was launched
+there, or has stayed under the same root, and the value is kept for the
+run, so a worktree entered later (which, for a root in no git repository,
+may answer differently) never changes it. No start directory is recorded
+per session. The rule holds because the
 installer never enables the plugin in the workspace: the plugin's source
 is the workspace's own `.claude/skills`, so enabling it there would load
 every shipped skill twice. An earlier version asked the model to copy

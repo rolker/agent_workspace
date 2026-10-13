@@ -28,7 +28,11 @@
 # instance beats its parent; registered roots before the workspace, so a
 # root inside the workspace tree is its own root), or one whose
 # worktrees= directory contains it, else the workspace checkout when <dir>
-# is inside it. Anywhere else: exit 1.
+# is inside it or in its repository. Anywhere else: exit 1. A session
+# there must also read that root's local settings -- be in the root's git
+# repository, or be the root itself when it is in no git repository --
+# or it exits 1 too: skill_prefix.sh refuses the same directories (a
+# package repository nested in a root, a subdirectory of a no-git root).
 #
 # The issue's root, for --type project: --project <name> (a parent root
 # becomes its default or only instance). Without --project, in a project
@@ -40,8 +44,9 @@
 # a session started at the parent root. An unregistered legacy project/
 # lives in the workspace tree, so its root is the workspace.
 #
-# Worktrees live under their root, so a session that keeps to this rule is
-# always somewhere under its root; skill_prefix.sh relies on that.
+# Worktrees live under their root, so a session that keeps to this rule
+# stays under its root. Callers read this, and skill_prefix.sh, once,
+# before the run enters any worktree.
 #
 # Exits 1 with the reason on stderr; 2 on a usage or registry parse error.
 
@@ -114,25 +119,12 @@ ENTRIES="$(registry_entries_full "$WS_ROOT")" || {
 # that owns <dir>, or returns 1.
 US=$'\x1f'
 root_of() {
-    local d="$1" name _type path fields rp wt best="" best_len=0
-    while IFS=$'\t' read -r name _type path fields; do
-        [[ -n "$name" ]] || continue
-        rp="$(phys "$path")" || continue
-        if [[ "$d" == "$rp" || "$d" == "$rp"/* ]] && (( ${#rp} > best_len )); then
-            best="project${US}${name}${US}${rp}"; best_len=${#rp}
-        fi
-    done <<< "$ENTRIES"
-    if [[ -z "$best" ]]; then
-        # A root's worktrees= directory may lie outside its hosting dir.
-        while IFS=$'\t' read -r name _type path fields; do
-            [[ -n "$name" ]] || continue
-            wt="$(_registry_field_of "$fields" worktrees)" || continue
-            wt="$(phys "$wt")" || continue
-            rp="$(phys "$path")" || continue
-            if [[ "$d" == "$wt" || "$d" == "$wt"/* ]] && (( ${#wt} > best_len )); then
-                best="project${US}${name}${US}${rp}"; best_len=${#wt}
-            fi
-        done <<< "$ENTRIES"
+    local d="$1" entry rc=0 name _type path rp best=""
+    entry="$(registry_resolve_session_dir "$WS_ROOT" "$d")" || rc=$?
+    [[ $rc -eq 2 ]] && return 2
+    if [[ $rc -eq 0 ]]; then
+        IFS=$'\t' read -r name _type path <<< "$entry"
+        rp="$(phys "$path")" && best="project${US}${name}${US}${rp}"
     fi
     if [[ -z "$best" ]] && { [[ "$d" == "$WS_ROOT" || "$d" == "$WS_ROOT"/* ]] \
             || [[ -n "$WS_REPO" && "$(common_dir "$d")" == "$WS_REPO" ]]; }; then
@@ -147,6 +139,20 @@ if ! SESSION="$(root_of "$DIR_PHYS")"; then
     exit 1
 fi
 IFS="$US" read -r S_TYPE S_NAME S_ROOT <<< "$SESSION"
+
+# A session reads the local settings of its own project root: its git
+# repository (the main one, for a worktree), or its own directory outside
+# git. Unless that is the root's, neither the root's plugin nor its layer
+# reaches the session, so it is no place to work from -- the same
+# directories skill_prefix.sh refuses (a package repository nested in a
+# root, a subdirectory of a root in no git repository), with the same
+# advice.
+S_REPO="$(common_dir "$S_ROOT")"
+if [[ -n "$S_REPO" && "$(common_dir "$DIR_PHYS")" != "$S_REPO" ]] \
+        || [[ -z "$S_REPO" && "$DIR_PHYS" != "$S_ROOT" ]]; then
+    echo "session_root: $DIR_PHYS lies under the root $S_ROOT, but a session there does not read that root's local settings (its project root is its own git repository, or its own directory) -- start the session at $S_ROOT or a worktree of it" >&2
+    exit 1
+fi
 
 report() {
     echo "root=$S_ROOT"

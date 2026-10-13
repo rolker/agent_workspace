@@ -268,6 +268,20 @@ nested_out=$(run_hook "$PROOT/src/pkg")
       && "$nested_out" != *"namespaced /agent-workspace:<skill>"* ]] \
     && pass "a session in a git repo nested in a root is told no naming rule applies, and why" \
     || fail "nested repo got the wrong skill-naming note (out=$(grep -A1 '^Workspace skills' <<< "$nested_out"))"
+# A worktree in a root's worktrees= directory outside its hosting dir (here
+# under the workspace) is that root's: the hook gives it the project layer,
+# not silence.
+WTD="$WSC/worktrees/project/demo"
+mkdir -p "$WTD/issue-demo-1"
+cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
+echo "demo single_project $PROOT worktrees=$WTD" > "$WSC/.agent/projects.local"
+wt_out=$(run_hook "$WTD/issue-demo-1")
+[[ "$wt_out" == *"Project: demo (type: single_project)"* && "$wt_out" == *"Project root: $PROOT"* ]] \
+    && pass "a session in a root's worktrees= directory outside its hosting dir gets that root's layer" \
+    || fail "worktrees= session got no project layer (out=${wt_out:0:300})"
+mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
+rm -rf "${WSC:?}/worktrees"
+
 # The failure path runs skill_prefix.sh once, taking the reason from that
 # same run (it used to run the script a second time for its stderr).
 SPS="$WSC/.agent/scripts/skill_prefix.sh"

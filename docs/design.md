@@ -189,8 +189,11 @@ where that run is tracked.
   hosting directory, never a package repository nested in it. `session_root.sh` prints a directory's
   root and refuses an issue of another root, naming the directory to start in; `run-issue` and
   `/start-task` run it before anything is created. Worktrees live under their root (a root's
-  `worktrees=` directory counts as its own), so a session's current directory always names its root,
-  and nothing records where a session started (ADR-0018 decision 6).
+  `worktrees=` directory counts as its own, for the `SessionStart` hook too), so the directory a run
+  starts from names its root, and nothing records where a session started. A directory whose sessions
+  do not read the root's local settings (a package repository nested in it, a subdirectory of a root
+  in no git repository) is refused by `session_root.sh` and `skill_prefix.sh` alike (ADR-0018
+  decision 6).
 - When `--type` is omitted, the worktree scripts and `dispatch_phase.sh` take the type and project
   from the cwd the same way (`registry_derive_type_from_dir`; ADR-0016, "Multi-project machines need
   disambiguation").
@@ -694,6 +697,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Documentation layers, Registry and adapters, Open questions | Direction row: the roadmap's `## Direction` section, read by the sit-rep; Measures row: the sit-rep run record, a first form; the gaps paragraph says both gaps narrowed and neither closed, status stays machine-local and the five result words are a trial; the Target sentence notes a project may carry the same section; `settings.local` beside the registry; OQ-3 partly answered | #386 | 730 |
 | 2026-10-13 | Decision register | Row for ADR-0018 (workspace skills reach project sessions through the `agent-workspace` plugin; Provisional, not yet re-examined), making 18 rows | #345 | 732 |
 | 2026-10-13 | Sessions and roots | The root rule (owner, 2026-10-13): a session works only under the root it was launched in, cross-root work is an issue or an inbox line, and `run-issue` and `/start-task` refuse an issue of another root through `session_root.sh`; the user-tier bullet drops the `~/.claude/skills/` symlinks and a new bullet describes plugin skill delivery (ADR-0018). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the two new bullets are the interface between the installer, the hook, `run-issue`, `/start-task` and the two location scripts, which no one script header shows, so they stay | #345 | 748 |
+| 2026-10-13 | Sessions and roots | Review fixes: the installer refuses a root that is a plain directory inside another repository (its sessions read that repository's settings); the directory a run starts from names its root, rather than the current directory at any point; the `SessionStart` hook counts a root's `worktrees=` directory as the root's; `session_root.sh` and `skill_prefix.sh` refuse the same directories | #345 | 753 |
 
 ## Glossary
 

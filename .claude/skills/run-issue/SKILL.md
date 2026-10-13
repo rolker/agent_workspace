@@ -62,10 +62,11 @@ In a project session the workspace skills arrive through the
 `/agent-workspace:<skill>`; the bare `/<skill>` there may be the project's
 own skill of the same name (ADR-0018). In a workspace session they are
 bare. Every dispatched task line must use the name *this* session has.
-`--type` does not say which; the location does. Because the session stays
-under its root (above), and worktrees live under their root, the current
-directory gives the same answer at any point of the run as the directory
-the session was launched in.
+`--type` does not say which; the location does: the directory this
+session was launched in, which is where it still is before step 1 (and the
+session never leaves its root, above). Read it then, once, and keep the
+value for the run; a worktree entered later (a package worktree of a root
+in no git repository, say) can give a different answer.
 
 Find out **once, before step 1**, by running:
 
