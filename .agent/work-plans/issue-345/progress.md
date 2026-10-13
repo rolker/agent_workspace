@@ -767,3 +767,13 @@ Merge of main (`bcb66ab7`, parents 0b679964 + ebb01997 = current origin/main): `
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 12:54 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Merge PR #392 after a clean Integrated Review (1317fe37) and all-pass CI. Known at the decision: hosted Copilot did not review (quota notice; its check-run is excluded from the gate); the live user-tier suite was not run and live cases F and K are unverified in their new form. After merge the host runs `user_tier_install.sh --check` from main and reports; the install itself waits for the owner's word.
