@@ -715,6 +715,12 @@ for sig in INT TERM; do
         [[ $RC -ne 0 && ! -s "$SB/int.out" ]] && pass "(interrupt $sig) exit $RC, no rows" || fail "(interrupt $sig) rc=$RC out='$(cat "$SB/int.out")'"
     fi
 done
+# running <pid>: the process exists and is not a zombie (a killed check
+# re-parented to a slow reaper still answers kill -0).
+running() {
+    [[ -n "$1" ]] && kill -0 "$1" 2>/dev/null || return 1
+    [[ "$(ps -o stat= -p "$1" 2>/dev/null)" != Z* ]]
+}
 echo "TEST: an interrupted run kills the running check at once"
 # The check records its pid and sleeps far past the test's patience; a
 # signal must end the run and the check within a few seconds, not when the
@@ -741,7 +747,7 @@ for how in "TERM pid" "INT pid" "INT group"; do
     slow="$(cat "$SB/slow.pid" 2>/dev/null)"
     alive=no
     sleep 0.2
-    [[ -n "$slow" ]] && kill -0 "$slow" 2>/dev/null && alive=yes
+    running "$slow" && alive=yes
     if [[ $RC -eq 99 ]]; then
         pass "(interrupt now) $how skipped: $sig is ignored in this environment"
     else
@@ -835,7 +841,7 @@ RC=0
 took=$((SECONDS - start))
 sleep 0.2
 slow="$(cat "$SB/slow.pid" 2>/dev/null)"
-alive=no; [[ -n "$slow" ]] && kill -0 "$slow" 2>/dev/null && alive=yes
+alive=no; running "$slow" && alive=yes
 [[ $RC -eq 143 && -n "$slow" && $alive == no && $took -lt 8 && -z "$(ls -A "$SB/t1c")" \
     && "$(cat "$SB/step1.out")" != *rows_file=* ]] \
     && pass "(skill 1) TERM: exit 143 in ${took}s, check gone, rows file removed" \
