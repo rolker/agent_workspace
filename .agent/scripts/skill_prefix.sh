@@ -38,7 +38,15 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# The main checkout, resolved the way dispatch_phase.sh resolves it (#146),
+# not $SCRIPT_DIR/../..: a copy of this script in a worktree of the
+# workspace (the `|| echo .` fallback in a session launched in one) would
+# otherwise read that worktree's registry, which does not exist
+# (projects.local is gitignored). Outside any git repository, the
+# script's own checkout.
+WS_ROOT="$({ git -C "$SCRIPT_DIR" worktree list --porcelain 2>/dev/null | head -n1 | sed 's/^worktree //'; } || true)"
+[[ -n "$WS_ROOT" ]] || WS_ROOT="$SCRIPT_DIR/../.."
+WS_ROOT="$(cd "$WS_ROOT" && pwd)"
 # shellcheck source=_project_registry.sh
 source "$SCRIPT_DIR/_project_registry.sh"
 

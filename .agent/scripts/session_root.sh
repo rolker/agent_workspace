@@ -48,7 +48,15 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+# The main checkout, resolved the way dispatch_phase.sh resolves it (#146),
+# not $SCRIPT_DIR/../..: a copy of this script in a worktree of the
+# workspace (the `|| echo .` fallback in a session launched in one) would
+# otherwise read that worktree's registry, which does not exist
+# (projects.local is gitignored). Outside any git repository, the
+# script's own checkout.
+WS_ROOT="$({ git -C "$SCRIPT_DIR" worktree list --porcelain 2>/dev/null | head -n1 | sed 's/^worktree //'; } || true)"
+[[ -n "$WS_ROOT" ]] || WS_ROOT="$SCRIPT_DIR/../.."
+WS_ROOT="$(cd "$WS_ROOT" && pwd -P)"
 # shellcheck source=_project_registry.sh
 source "$SCRIPT_DIR/_project_registry.sh"
 
@@ -78,6 +86,18 @@ esac
 [[ -n "$PROJECT" && "$TYPE" != "project" ]] && usage
 
 phys() { (cd "$1" 2>/dev/null && pwd -P); }
+
+# The pwd -P form of the git common dir <dir> belongs to (shared by a
+# repository's main worktree, its linked worktrees and every plain
+# directory in it); empty when <dir> is in no git repository.
+common_dir() {  # <dir>
+    local c
+    c="$(cd "$1" 2>/dev/null && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 0
+    [[ -n "$c" ]] || return 0
+    phys "$c"
+}
+# A linked worktree of the workspace is the workspace's, wherever it lives.
+WS_REPO="$(common_dir "$WS_ROOT")"
 
 if ! DIR_PHYS="$(phys "$DIR")"; then
     echo "session_root: $DIR is not a directory" >&2
@@ -114,7 +134,8 @@ root_of() {
             fi
         done <<< "$ENTRIES"
     fi
-    if [[ -z "$best" && ( "$d" == "$WS_ROOT" || "$d" == "$WS_ROOT"/* ) ]]; then
+    if [[ -z "$best" ]] && { [[ "$d" == "$WS_ROOT" || "$d" == "$WS_ROOT"/* ]] \
+            || [[ -n "$WS_REPO" && "$(common_dir "$d")" == "$WS_REPO" ]]; }; then
         best="workspace${US}${US}${WS_ROOT}"
     fi
     [[ -n "$best" ]] || return 1

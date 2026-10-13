@@ -97,6 +97,23 @@ out="$(cd "$R/other" && bash "$SR")"; rc=$?
 [[ "$rc" -eq 0 && "$out" == "root=$R/other"* ]] && pass "without --dir, the current directory is used" \
     || fail "default directory (rc=$rc out=$out)"
 
+echo "== a copy in a worktree of the workspace reads the main checkout's registry =="
+g -C "$WSC" worktree add -q "$SANDBOX/ws-wt" 2>/dev/null
+mkdir -p "$SANDBOX/ws-wt/.agent" && cp -r "$WSC/.agent/scripts" "$SANDBOX/ws-wt/.agent/"
+WTSR="$SANDBOX/ws-wt/.agent/scripts/session_root.sh"
+out="$(bash "$WTSR" --dir "$R/gitroot" 2>&1)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == "root=$R/gitroot"$'\n'"type=project"$'\n'"project=gitroot" ]] \
+    && pass "the worktree copy finds a registered root through the main checkout's registry" \
+    || fail "worktree copy, registered root (rc=$rc out=$out)"
+out="$(bash "$WTSR" --dir "$SANDBOX/ws-wt" --type project --project gitroot 2>&1)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"start a session in $R/gitroot"* && "$out" != *"not registered"* ]] \
+    && pass "the worktree copy refuses another root's issue, naming it, not 'not registered'" \
+    || fail "worktree copy, cross-root refusal (rc=$rc out=$out)"
+out="$(bash "$WTSR" --dir "$SANDBOX/ws-wt" 2>&1)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == "root=$WSC"$'\n'"type=workspace"* ]] \
+    && pass "a linked worktree of the workspace outside its tree is the workspace's" \
+    || fail "worktree of the workspace outside its tree (rc=$rc out=$out)"
+
 echo "== an issue of the session's own root passes =="
 check "workspace session, workspace issue" "$WSC/docs" ok "" -- --type workspace
 check "project session, its own project" "$R/gitroot" ok "" -- --type project --project gitroot

@@ -85,6 +85,18 @@ expect "an unregistered directory: fails, saying there is no rule" "$R/other" fa
     "is neither in the workspace checkout ($WSC) nor in any registered project root"
 expect "a path that is not a directory: fails" "$R/no-such-dir" fail "is not a directory"
 
+# A copy in a worktree of the workspace reads the main checkout's registry
+# (the worktree has none: projects.local is gitignored).
+mkdir -p "$SANDBOX/ws-wt/.agent" && cp -r "$WSC/.agent/scripts" "$SANDBOX/ws-wt/.agent/"
+out="$(bash "$SANDBOX/ws-wt/.agent/scripts/skill_prefix.sh" --dir "$R/gitroot" 2>&1)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == "skill_prefix=agent-workspace:" ]] \
+    && pass "a copy in a worktree of the workspace finds a registered root through the main checkout" \
+    || fail "worktree copy (rc=$rc out=$out)"
+out="$(bash "$SANDBOX/ws-wt/.agent/scripts/skill_prefix.sh" --dir "$SANDBOX/ws-wt" 2>&1)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == "skill_prefix=" ]] \
+    && pass "the worktree copy calls the worktree itself bare" \
+    || fail "worktree copy on itself (rc=$rc out=$out)"
+
 # The default is the current directory.
 out="$(cd "$R/gitroot" && bash "$SP")"; rc=$?
 [[ "$rc" -eq 0 && "$out" == "skill_prefix=agent-workspace:" ]] \
