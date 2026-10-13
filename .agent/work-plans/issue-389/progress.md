@@ -209,3 +209,22 @@ The revision fixes all three round-1 must-fix items and all four suggestions. Tw
 **Decision**: proceed
 
 "Proceed; fix in plan first": implementation starts; its first commit amends the plan with the round-2 Plan Review (1b27b385) findings N1 (docs/, README.md, CODEX.md, CLAUDE.md, .github/copilot-instructions.md are not guarded — say so and why in the plan, test header and PR; grep them once by hand in this change), N2 (run the manual "what's next?" check in the #389 worktree before the PR, recording the directory) and the suggestion (name the old skill without the slash in text under .claude/ and .agent/), then builds. No third plan review; the pre-push code review sees both.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 09:46 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-389 at `3df7851b`
+
+- `81dccfb6` plan amended with the round-2 Plan Review (`1b27b385`) findings N1, N2 and the no-slash suggestion, per the owner's "Proceed; fix in plan first".
+- `9598a406` sitrep: quoted-YAML description leads with the triggers ("what's next?", "what should I work on?", "where are we?"); "What it is" says it replaces the old what-next skill and that the inbox sort and Suggested next are proposals; report ends with "Suggested next" (fixed order: due deferral, false Direction line, work in flight, proposed inbox "now" — marked "this rests on the proposed inbox sort"; empty case "nothing from this run's facts"), then at most one question; "Four sections" updated.
+- `14f70e63` `.claude/skills/what-next/` deleted; `test_skill_paths.sh` lists sitrep instead and adds guards (a) description triggers, (b) directory gone, (c) no slash-command or skills-path pointer under `.agent/`, `.claude/`, `AGENTS.md`, `Makefile`, with work plans and inspiration digests exempt; header says `docs/`, `README.md`, `CODEX.md`, `CLAUDE.md`, `.github/copilot-instructions.md` are not guarded and why. Hook-scope entry now `.agent/ .claude/ AGENTS.md Makefile`. Guards checked failing on a planted pointer and a removed trigger, then restored.
+- `3df7851b` roadmap scenario 4 paragraph, sit-rep row and morning-status row (done, `#386`); dated A5 note in the inspiration digest.
+- Hand grep of the unguarded files (`docs/`, `README.md`, `CODEX.md`, `CLAUDE.md`, `.github/copilot-instructions.md`): no what-next reference at all.
+
+Verification:
+- `.agent/scripts/tests/run_script_tests.sh`: all 33 suites passed (234 s).
+- Scratch HOME (session scratchpad clone): install at `9598a406` linked what-next; after checkout of `14f70e63`, `--check` reported DRIFT "skill symlink is no longer selected: what-next" (exit 1); reinstall printed "removed stale skill symlink: what-next"; `--check` then "installed and current" (exit 0). Scratch removed.
+- Manual "what's next?": `claude -p "what's next?" --output-format stream-json --verbose --max-turns 2`, cwd `/home/roland/agent_workspace/worktrees/workspace/issue-workspace-389`. Init listed `sitrep` and no what-next; the first tool call was `Skill {"skill":"sitrep"}`; no read of `~/Documents/workplan/NOW.md`. Its later Bash calls (status line, steps 1–3) were all denied by headless permissions, so no report was produced and nothing was written; the run stopped at max turns.
+
+PR notes for publish: dropped — project-roadmap probe, `--workspace-only`/`--project-only`, ranking, stale-row and needs-ticket detection (declined by the owner); typing `/what-next` now does nothing; machines that had it linked see one `user_tier_install.sh --check` drift until the installer is rerun; guard (c) does not read `docs/`, `README.md`, `CODEX.md`, `CLAUDE.md` or `.github/copilot-instructions.md` (CI runs the same hook over the same pathspec; widening would fail the hook-scope test).
