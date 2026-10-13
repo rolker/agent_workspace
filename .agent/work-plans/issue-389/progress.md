@@ -136,3 +136,14 @@ Sound plan, right size, owner decisions respected. Three things to fix before im
 - [ ] In the manual acceptance, record whether `~/CLAUDE.md`'s NOW.md instruction answered instead of /sitrep.
 - [ ] Fix an order of sources for Suggested next and mark when it rests on the proposed inbox sort.
 - [ ] Fill the morning-status row's Issue column; note in the PR that `/what-next` no longer exists.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 09:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Revise the plan with must-fix M1–M3 and the four suggestions from the Plan Review (265c533f), then re-review.
+Open question answered: "Suggestion, then a question" — the report ends with the "Suggested next" line, then at most one question.
