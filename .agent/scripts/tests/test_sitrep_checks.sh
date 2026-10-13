@@ -482,6 +482,26 @@ run_rm "$(direction \
 [[ "$(res 'In-root link')" == true ]] && pass "(contain) a link inside the root is followed" || fail "(contain) in-root $(row 'In-root link')"
 rm -f "$SB/root/docs/esc" "$SB/root/linkdir" "$SB/root/docs/alias"
 
+echo "TEST: a trailing slash is tested as written"
+mkdir -p "$SB/root/docs/decisions"
+printf '# ADR\n\n## Status\n\nAccepted.\n' > "$SB/root/docs/decisions/slash.md"
+ln -s notes.md "$SB/root/docs/alias"
+run_rm "$(direction \
+    '| File slash | file-exists docs/notes.md/ |' \
+    '| File slash contains | file-contains docs/notes.md/ hello |' \
+    '| ADR slash | adr-status docs/decisions/slash.md/ accepted |' \
+    '| Link to file slash | file-exists docs/alias/ |' \
+    '| Dir slash | file-exists docs/ |' \
+    '| Dir no slash | file-exists docs |' \
+    '| File no slash | file-exists docs/notes.md |')"
+ok=true
+for i in 'File slash' 'File slash contains' 'ADR slash' 'Link to file slash'; do [[ "$(res "$i")" == false ]] || ok=false; done
+[[ $ok == true ]] && pass "(slash) a regular file named with a trailing / is false" \
+    || fail "(slash) file=$(res 'File slash') contains=$(res 'File slash contains') adr=$(res 'ADR slash') link=$(res 'Link to file slash')"
+[[ "$(res 'Dir slash')" == true && "$(res 'Dir no slash')" == true && "$(res 'File no slash')" == true ]] \
+    && pass "(slash) a directory with or without /, a file without /, still true" || fail "(slash) dir=$(res 'Dir slash') dirno=$(res 'Dir no slash') file=$(res 'File no slash')"
+rm -f "$SB/root/docs/alias" "$SB/root/docs/decisions/slash.md"
+
 # --- 9. ADR status --------------------------------------------------------------------------
 echo "TEST: adr-status reads the status line of that file only"
 mkdir -p "$SB/root/docs/decisions"

@@ -91,6 +91,8 @@
 #     run from this script's own .agent/scripts directory (tests point
 #     SITREP_SCRIPTS_DIR at a sandbox copy), with the cwd at that checkout's
 #     root. A project root's .agent/scripts is never consulted.
+# A path is tested as written: a trailing `/` names a directory, so
+# `file-exists f.txt/` is false for a regular file f.txt.
 # Anything else is `unchecked`: an absolute path or one containing `..`, a
 # path that resolves (through a symlink) outside the root, an unknown kind,
 # any other script form, malformed gh-issue arguments (an owner/repo slug
@@ -239,6 +241,10 @@ in_root() {
         RESOLVED="$(realpath -- "$RESOLVED" 2>/dev/null)" || return 3
         case "$RESOLVED" in "$ROOT"|"$ROOT"/*) ;; *) return 1 ;; esac
     fi
+    # dirname and basename drop a trailing slash; put it back so the path
+    # is tested as written: `f.txt/` names a directory, and a regular file
+    # there does not exist.
+    [[ "$1" != */ ]] || RESOLVED="$RESOLVED/"
     return 0
 }
 
