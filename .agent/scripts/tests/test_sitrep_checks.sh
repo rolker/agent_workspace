@@ -142,6 +142,56 @@ else
     chmod 644 "$SB/root/docs/locked.md"
 fi
 
+echo "TEST: a path under a directory that cannot be entered is unknown, a missing parent false"
+if [[ "$(id -u)" -eq 0 ]]; then
+    pass "(no-enter) skipped: running as root"
+else
+    mkdir -p "$SB/root/docs/shut/inner"
+    printf 'x\n' > "$SB/root/docs/shut/inner/f.md"
+    chmod 000 "$SB/root/docs/shut"
+    run_rm "$(direction \
+        '| Shut contains | file-contains docs/shut/inner/f.md x |' \
+        '| Shut exists | file-exists docs/shut/inner/f.md |' \
+        '| Shut direct | file-exists docs/shut/f.md |' \
+        '| Shut adr | adr-status docs/shut/inner/f.md accepted |' \
+        '| No parent | file-exists docs/nodir/deeper/f.md |' \
+        '| File as parent | file-exists docs/notes.md/f.md |')"
+    chmod 755 "$SB/root/docs/shut"
+    ok=true
+    for i in 'Shut contains' 'Shut exists' 'Shut direct' 'Shut adr'; do [[ "$(res "$i")" == unknown ]] || ok=false; done
+    [[ $ok == true ]] && pass "(no-enter) every check under it is unknown, not false" \
+        || fail "(no-enter) contains=$(res 'Shut contains') exists=$(res 'Shut exists') direct=$(res 'Shut direct') adr=$(res 'Shut adr')"
+    [[ "$(res 'No parent')" == false && "$(res 'File as parent')" == false ]] \
+        && pass "(no-enter) a missing parent or a file as parent is still false" || fail "(no-enter) noparent=$(res 'No parent') fileparent=$(res 'File as parent')"
+    rm -rf "$SB/root/docs/shut"
+fi
+
+echo "TEST: a roadmap that cannot be read is not read as one without the section"
+if [[ "$(id -u)" -eq 0 ]]; then
+    pass "(roadmap unreadable) skipped: running as root"
+else
+    printf '%s' "$(direction '| L | file-exists docs/notes.md |')" > "$SB/root/docs/locked-roadmap.md"
+    chmod 000 "$SB/root/docs/locked-roadmap.md"
+    RC=0; OUT="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --roadmap "$SB/root/docs/locked-roadmap.md" 2>/dev/null)" || RC=$?
+    chmod 644 "$SB/root/docs/locked-roadmap.md"
+    [[ $RC -eq 0 && "$(wc -l <<< "$OUT" | tr -d ' ')" -eq 1 \
+        && "$(cut -f1-3 <<< "$OUT")" == $'section\t(roadmap not readable: '"$SB/root/docs/locked-roadmap.md"$')\tunknown' ]] \
+        && pass "(roadmap unreadable) no read permission: one unknown section row" || fail "(roadmap unreadable) rc=$RC '$OUT'"
+    mkdir -p "$SB/hidden/sub"
+    printf '%s' "$(direction '| L | file-exists docs/notes.md |')" > "$SB/hidden/sub/roadmap.md"
+    chmod 000 "$SB/hidden"
+    OUT="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --roadmap "$SB/hidden/sub/roadmap.md" 2>/dev/null)"
+    chmod 755 "$SB/hidden"
+    [[ "$(cut -f2-3 <<< "$OUT")" == "(roadmap not readable: $SB/hidden/sub/roadmap.md)"$'\tunknown' ]] \
+        && pass "(roadmap unreadable) under a directory that cannot be entered: not readable, not missing" || fail "(roadmap unreadable) hidden '$OUT'"
+    rm -rf "$SB/hidden" "$SB/root/docs/locked-roadmap.md"
+fi
+mkdir -p "$SB/root/docs/dir-roadmap.md"
+OUT="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --roadmap "$SB/root/docs/dir-roadmap.md" 2>/dev/null)"
+[[ "$(cut -f2-3 <<< "$OUT")" == "(roadmap not readable: $SB/root/docs/dir-roadmap.md)"$'\tunknown' ]] \
+    && pass "(roadmap unreadable) a directory in its place: not readable" || fail "(roadmap unreadable) dir '$OUT'"
+rmdir "$SB/root/docs/dir-roadmap.md"
+
 # --- 2. gh-issue ---------------------------------------------------------------------
 echo "TEST: gh-issue"
 reset_marks

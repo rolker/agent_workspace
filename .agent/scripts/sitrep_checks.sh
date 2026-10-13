@@ -49,7 +49,10 @@
 # `(roadmap not found: <path>)`, `(no Direction section)`, `(no Line or
 # Deferral table)` for a section that has neither table (an empty section
 # included), or `(no rows in the Line or Deferral tables)` for tables with
-# a header and nothing under it. Every run prints at least one row. Rows
+# a header and nothing under it. A roadmap that exists but cannot be read
+# (no permission, not a regular file, under a directory that cannot be
+# entered) gives `(roadmap not readable: <path>)`, result `unknown`, never
+# a "no Direction section". Every run prints at least one row. Rows
 # are printed only at the end, so a run that is interrupted prints none and
 # exits non-zero (128 + the signal). Exit 0 when the rows were printed; 1
 # when they could not be written; 2 on usage.
@@ -89,7 +92,8 @@
 #
 # Results: true (exit 0) / false (exit 1) / unknown (could not run: gh or
 # the script missing or failing, an exit above 1, grep error, timeout, no
-# timeout command, an unregistered adapter name, a malformed registry) /
+# timeout command, an unregistered adapter name, a malformed registry, a
+# directory on the path that cannot be entered) /
 # unchecked (no check) / partial (a mixed cell). Several checks combine:
 # any unknown -> unknown; else all unchecked -> unchecked; else any
 # unchecked -> partial; else all true -> true, all false -> false, mixed ->
@@ -208,12 +212,13 @@ safe_rel() {
 # in_root <relpath>: sets RESOLVED to <root>/<relpath> with every symlink on
 # the way resolved. Returns 0 when that is inside the root (a dangling final
 # link included; it then does not exist), 1 when it leaves the root, 2 when
-# the parent directory does not exist (nothing to look at), 3 when a link
+# the parent directory does not exist (nothing to look at), 3 when it cannot
+# be told: a directory on the way that cannot be entered, or a link that
 # could not be resolved.
 in_root() {
     local p="$ROOT/$1" dir
     RESOLVED=""
-    dir="$(cd -P -- "$(dirname -- "$p")" 2>/dev/null && pwd -P)" || return 2
+    dir="$(cd -P -- "$(dirname -- "$p")" 2>/dev/null && pwd -P)" || { why_no_parent "$1"; return; }
     case "$dir" in "$ROOT"|"$ROOT"/*) ;; *) return 1 ;; esac
     RESOLVED="$dir/$(basename -- "$p")"
     if [ -L "$RESOLVED" ] && [ -e "$RESOLVED" ]; then
@@ -222,6 +227,25 @@ in_root() {
         case "$RESOLVED" in "$ROOT"|"$ROOT"/*) ;; *) return 1 ;; esac
     fi
     return 0
+}
+
+# why_no_parent <relpath>: the parent of <relpath> could not be entered.
+# Walks down from the root: a component that is missing or not a directory
+# means the path does not exist (2); a directory that cannot be entered
+# means it cannot be told (3), since what is under it cannot be seen.
+why_no_parent() {
+    local cur="$ROOT" comp comps
+    IFS=/ read -ra comps <<< "$(dirname -- "$1")"
+    for comp in "${comps[@]}"; do
+        [ -n "$comp" ] && [ "$comp" != . ] || continue
+        cur="$cur/$comp"
+        if [ -d "$cur" ]; then
+            [ -x "$cur" ] || return 3
+        else
+            return 2
+        fi
+    done
+    return 3
 }
 
 # check_path <relpath>: echoes nothing and returns 0 when the path is usable
@@ -459,7 +483,21 @@ fence_len=0
 table=none      # none | line | deferral | other
 prev_table_line=false
 FENCE_RE='^ {0,3}(`{3,}|~{3,})(.*)$'
-if [ -f "$ROADMAP" ]; then
+# found | missing | unreadable. A file that exists but cannot be opened (no
+# read permission, a directory) is not read as a roadmap without the
+# section: that would be a false "no Direction section".
+ROADMAP_STATE=found
+if [ ! -e "$ROADMAP" ]; then
+    # Missing, unless the nearest directory above it that can be seen
+    # cannot be entered: then what is under it cannot be told.
+    ROADMAP_STATE=missing
+    d="$(dirname -- "$ROADMAP")"
+    while [ ! -e "$d" ] && [ "$d" != / ] && [ "$d" != . ]; do d="$(dirname -- "$d")"; done
+    if [ -d "$d" ] && [ ! -x "$d" ]; then ROADMAP_STATE=unreadable; fi
+elif [ ! -f "$ROADMAP" ] || ! { : < "$ROADMAP"; } 2>/dev/null; then
+    ROADMAP_STATE=unreadable
+fi
+if [ "$ROADMAP_STATE" = found ]; then
     while IFS= read -r raw || [ -n "$raw" ]; do
         raw="${raw%$'\r'}"
         # Fences are tracked from the top of the file, so a fenced example
@@ -531,8 +569,10 @@ if [ -f "$ROADMAP" ]; then
     done < "$ROADMAP"
 fi
 
-if [ ! -f "$ROADMAP" ]; then
+if [ "$ROADMAP_STATE" = missing ]; then
     emit section "(roadmap not found: $ROADMAP)" unchecked ""
+elif [ "$ROADMAP_STATE" = unreadable ]; then
+    emit section "(roadmap not readable: $ROADMAP)" unknown ""
 elif [ "$seen_section" = false ]; then
     emit section "(no Direction section)" unchecked ""
 elif [ "$seen_table" = false ]; then
