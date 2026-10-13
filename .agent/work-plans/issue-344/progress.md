@@ -149,3 +149,18 @@ The removal map is complete and the hosted-review, identity and history hits are
 **Decision**: proceed
 
 "Proceed; fix in plan first": implementation starts; its first commit amends the plan with the Plan Review (06246fa0) must-fix (test (d), `_cli_review.sh copilot` run directly, asserts exit 2 and the "unsupported agent" reason in the findings file; "no findings file" only for (a)–(c)) and the four suggestions (stand-in copilot mock leaving a marker; corrected test-rework list incl. the one-agent-fails test, the `test_cli_no_temp_leak` relabel, the concurrency test at two agents, the `test_cli_helper_missing_is_unavailable` title; ADR-0015 note after the #363 sentence naming the passages it qualifies; one exact sorted "Supported agents" format asserted at both print sites), then builds. No third plan review; the pre-push code review sees both.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 11:35 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Branch**: feature/issue-344 at `79b9d949`
+
+- `41a0816c` plan amended with the Plan Review (06246fa0) findings, per the owner's "Proceed; fix in plan first": test (d) asserts exit 2 and the unsupported-agent reason in the findings file; stand-in copilot marker; corrected test-rework list; ADR-0015 note placement; one sorted "Supported agents" format.
+- `3d2187d1` scripts: `_cli_review.sh` loses the copilot arm (and its unconfirmed invocation), whitelist, usage and header now codex/claude; `cross_model_review.sh` drops the `AGENT_BINS` key, so `--agent copilot` / `--agents ...,copilot` exit 2 as unknown agents; "Supported agents: claude, codex, gemini" (LC_ALL=C sorted) at both print sites. Committed with `SKIP=validate-script-tests` because the suite's copilot tests fail until the next commit; shellcheck and the other hooks ran.
+- `9e020396` tests: copilot mock and `test_copilot_stdin_contract` removed; multi-agent tests reworked to claude (all-succeed now asserts claude's argv, one-fails, timeout, two-agent concurrency, missing CLI / none usable, interrupt, temp-leak relabelled "two failure modes"); review-text-never-reclassified moved to codex; four new rejection tests with a copilot marker stub.
+- `8fc60065` review-code skill: agent list, canonical keys (Copilot CLI caller excludes nothing), examples, not-ported note, helper description.
+- `79b9d949` docs: the two owner-approved AGENTS.md Script Reference rows only; ADR-0015 Status sentence after the #363 one naming the passages it qualifies.
+- Hosted Copilot PR review wiring (merge_pr.sh, run-issue wait, triage-reviews, fetch_pr_reviews.sh) untouched.
+- Tests: `run_script_tests.sh` — all 33 suites passed (233 s); `test_cross_model_review.sh` 920 passed, 0 failed.
+- Follow-up for the PR description: #342's title still lists Copilot (retitle after merge).
