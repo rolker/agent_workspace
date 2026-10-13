@@ -144,3 +144,16 @@ The plan builds on the Worktrees Target as required, honours A2 without building
 - [ ] Make `registration_verify.sh` truly read-only or guard it (finding 5)
 - [ ] Complete the follow-up issue text and open it before PR 1 (finding 6)
 - [ ] Check `registration.conf` exists per type (finding 7); add PR 1's AGENTS.md row (finding 8); add the acceptance-to-test table and the gz4d-shaped fixture (finding 9); gate the offers on `instructions` (finding 10)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 14:03 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+"Revise and re-review": the plan author fixes Plan Review (dc77392d) must-fix M1–M5 and the five suggestions, then a fresh plan review.
+Owner answers folded in:
+- Defaults are OPEN (owner, during the review: "where the defaults should be is not settled even in my mind"): the mechanism (design.md Worktrees Target: `location`/`tracking`, four combinations, one lookup) is settled; the default combination and the outside-path layout are provisional — one function in the registry helper, overridable at onboarding, marked provisional in design text and onboarding wording (M1).
+- Records in the workspace repository: REFUSE (owner answer "Refuse" to the question "May a project's loop records be committed to the agent_workspace repository (any clone of it)?", with the fork/PR scenario: records would ride along with every fork and come back in PRs past the merge gate's bookkeeping exemption). The check is by the named repository's remote URL, not by path; untracked records under the workspace's ignored scratchpad stay allowed. This supersedes the Target's "I don't want to prohibit it, but I also don't want to encourage it" — the PR 1 design edit rewrites that sentence and says why (M2).
