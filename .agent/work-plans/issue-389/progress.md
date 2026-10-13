@@ -199,3 +199,13 @@ The revision fixes all three round-1 must-fix items and all four suggestions. Tw
 - [ ] Step 5: replace "left to CI" with a statement that guard (c) does not read `docs/`, `README.md` or the other root instruction files, and why; carry the same wording into the test header and the PR text.
 - [ ] Step 9: run the manual acceptance in a fresh session in this worktree (or at the main root after merge), and record the directory with the prompt and which answered.
 - [ ] Step 2: name the old skill without the slash in live text under `.claude/` and `.agent/`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 09:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+"Proceed; fix in plan first": implementation starts; its first commit amends the plan with the round-2 Plan Review (1b27b385) findings N1 (docs/, README.md, CODEX.md, CLAUDE.md, .github/copilot-instructions.md are not guarded — say so and why in the plan, test header and PR; grep them once by hand in this change), N2 (run the manual "what's next?" check in the #389 worktree before the PR, recording the directory) and the suggestion (name the old skill without the slash in text under .claude/ and .agent/), then builds. No third plan review; the pre-push code review sees both.
