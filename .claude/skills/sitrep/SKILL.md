@@ -1,6 +1,6 @@
 ---
 name: sitrep
-description: Situation report from checked facts — where the workspace's acceptance case stands (Direction lines checked this run), the inbox with a proposed sort, work in flight, and deferrals that are due. Reads only; writes one line to a machine-local run record.
+description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report from checked facts — where the workspace's acceptance case stands (Direction lines checked this run), the inbox with a proposed sort, work in flight and deferrals that are due — ending with one suggested next step and the fact it rests on. Reads only; writes one line to a machine-local run record."
 session_scope: both
 ---
 
@@ -38,9 +38,12 @@ No arguments. This first mode reads the workspace root only.
 
 ## What it is
 
-A read-out that answers "what's next" from facts checked this run. The
-skill formats; it decides nothing. Every statement in the report comes from
-a command run in this invocation: the check runner's rows, the inbox file,
+A read-out that answers "what's next?" from facts checked this run. It
+replaces the old what-next skill, which ranked roadmap rows; this one
+answers from checked facts instead. The skill formats and proposes; it
+decides nothing. The inbox sort and the closing "Suggested next" line are
+proposals for the owner to accept or change. Every statement in the report
+comes from a command run in this invocation: the check runner's rows, the inbox file,
 the worktree list, the open pull requests. Memory notes, earlier
 conversation and earlier reports are not sources. If something could not
 be checked, say so; never fill the gap.
@@ -241,8 +244,8 @@ printed.
 
 ### 5. Print the report
 
-Four sections, one screen. Plain words, no issue or pull request number
-without its title beside it.
+Four sections and a closing "Suggested next" line, one screen. Plain
+words, no issue or pull request number without its title beside it.
 
 ```markdown
 ## Sit-rep, <date>
@@ -268,6 +271,8 @@ Proposed sort, to answer in batches:
 
 **Deferrals due**: <deferrals whose check is true>.
 Unchecked (no revisit check): <deferrals whose result is unchecked>.
+
+**Suggested next**: <one item> — <the fact it rests on>.
 ```
 
 Rules for the report:
@@ -283,4 +288,15 @@ Rules for the report:
   from the answers is a separate step the owner asks for.
 - `format` rows are reported as a problem in the Direction section, not as
   lines.
-- End with at most one question, the one whose answer changes the most.
+- "Suggested next" names one item, taken from the first of these sources
+  that has one, in this order: a due deferral; a `false` Direction line;
+  work in flight (a worktree or open pull request); the proposed inbox
+  "now" bin. It names the fact it rests on (the deferral and its check,
+  the line and its check, the branch or pull request title, the inbox
+  line). When it comes from the inbox "now" bin, it says "this rests on
+  the proposed inbox sort", since that bin is this run's proposal, not a
+  checked fact. When no source has an item, it reads "Suggested next:
+  nothing from this run's facts."
+- After "Suggested next", end with at most one question, the one whose
+  answer changes the most. The suggestion proposes an action; the question
+  asks the owner to decide something.
