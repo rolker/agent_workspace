@@ -405,6 +405,7 @@ Scripts marked **(source)** must be sourced; all others should be executed.
 | `.agent/scripts/dashboard.sh` | Unified workspace status (supports `--quick`) |
 | `.agent/scripts/adapter` | Project-type adapter dispatcher: `adapter [--from <dir>] <verb>` (ADR-0011) |
 | `.agent/scripts/validate_adapter.sh` | Verify every project type implements the full adapter contract |
+| `.agent/scripts/project_setting.sh` | Read and write a registered project's settings file `.agent/projects.d/<name>` (issue #332): `get`, `set`, `unset`, `list`, `check <name>`; keys `build`, `test`, `install` (a command run without a shell, or `none`), `bootstrap_url`, `location`/`location_path`/`tracking` (records) and `instructions`, grammar in the `_project_registry.sh` header; `set` validates the whole resulting file and refuses any records combination but (project, project) until the records lookup lands (#393); `check` exits 0 valid, 2 invalid (malformed, or a records repository that is a workspace), 3 valid but not yet honoured; from a linked worktree it reads the main checkout's files and refuses to write |
 | `.agent/scripts/build.sh` | Run BUILD_CMD from project_config.sh (dispatches via adapter) |
 | `.agent/scripts/test.sh` | Run TEST_CMD from project_config.sh (dispatches via adapter) |
 | `.agent/scripts/setup_project.sh` | Configure project/ directory (dispatches via adapter) |
