@@ -79,3 +79,13 @@ Stays, deliberately: `.github/copilot-instructions.md` and the Copilot rows in `
 - [ ] List the two AGENTS.md Script Reference row edits in the PR description for the owner's approval; do not edit them before that.
 - [ ] Keep the hosted Copilot PR review wiring untouched (`merge_pr.sh` check-run handling, `run-issue` step, `triage-reviews` bot-source text) and say so in the PR so a reviewer does not mistake it for a missed removal.
 - [ ] Rework (not just delete) tests that pair `codex,copilot` so they keep a two-agent case using `codex,claude`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 11:03 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+"Proceed, AGENTS.md rows included": all eight Issue Review actions (90b4d026) proceed to the plan. The owner's answer is the Ask-First approval for the two AGENTS.md Script Reference rows (`cross_model_review.sh` and `_cli_review.sh`) — those two rows only — to be edited in the same PR. Owner's direction on the issue, verbatim (2026-10-13): "It uses the same models under the hood as we already use, so let's stop using copilot cli and only use copilot on github."
