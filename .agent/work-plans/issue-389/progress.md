@@ -487,3 +487,13 @@ Already addressed, not re-listed: the three findings of the Integrated Review at
 - [ ] (suggestion, Local Review @ `6b29b39`) In flight wording: "one line per branch" (step 3, and the template's "one line per branch") does not say that a fork's pull request and a worktree with the same branch name each get a line, so an agent may drop one as a duplicate. The pull request part's pieces (title, "from a fork", "draft", review state) also have no separator and can run on. Fix: state the fork exception where "one line per branch" is stated, and give the qualifiers a fixed form, e.g. comma-separated in parentheses after the title — `.claude/skills/sitrep/SKILL.md`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 12:19 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge, defer the wording note" on the third Integrated Review (f8fa6cd2): the open suggestion (state the fork exception where "one line per branch" appears; a fixed form for the labels after a PR title) is deferred to the first real sit-rep run that shows such a line — the repository has no forks. Hosted Copilot did not review the head (quota notice; its check-run is excluded from the gate since #300); CI all-pass at 6b29b395.
