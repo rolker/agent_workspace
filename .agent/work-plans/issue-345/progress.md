@@ -749,3 +749,21 @@ Tests: `run_script_tests.sh` all 37 suites passed (user_tier_install 200, sessio
 **Decision**: publish
 
 Second half of the owner's round-7 answer "Address, then publish" (60449ac6): the fix pass is complete (0b679964; all 7 findings fixed, 37 suites green), main merged in by the host (bcb66ab7: one conflict in test_script_tests_hook_scope.sh resolved keeping both allowlist entries; plugin.json regenerated because main deleted the what-next skill). Publish without another local round; the bot reviews and triage catch what is left.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-13 12:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**PR**: #392 at `c434a6bd`
+**Sources**: 3 (Copilot @ `c434a6bd` — quota notice, not a review: missing source; local timeline — Local Review (Pre-Push) round 7 @ `6d888b85`, all 7 findings fixed at `f4414742` and ticked, nothing open covering the head; CI rollup) plus a triage check of the host's merge of main (`bcb66ab7`), which no reviewer has seen
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+No open findings. GitHub side: one review, Copilot's, reading "unable to review this pull request because the user who requested the review has reached their quota limit" — no inline or conversation comments; its check-run reports failure, which `merge_pr.sh` excludes from CI (#300). Local side: `review_progress.sh sources` at the head returns no local findings, no dropped entries and no candidates; round 7's two must-fix and five suggestions are all `[x]` in the 0b679964 Implementation entry, and the owner chose to publish without another local round (checkpoint c434a6bd).
+
+Merge of main (`bcb66ab7`, parents 0b679964 + ebb01997 = current origin/main): `git diff origin/main HEAD` touches only the branch's 30 files; AGENTS.md differs from main only by the dispatch_phase.sh row and the two new script rows (main's #344 `_cli_review.sh` row taken unchanged); the one conflict, `test_script_tests_hook_scope.sh`, keeps main's re-commented `test_skill_paths.sh` entry and the branch's `test_skill_prefix.sh` entry (alphabetical, with `test_plugin_manifest.sh` and `test_session_root.sh`); `plugin.json` drops only `what-next` and its 13 skills equal the 13 SKILL.md files declaring `session_scope` project or both; no branch-added line names what-next, Copilot or `_cli_review.sh`. `run_script_tests.sh` at c434a6bd: all 37 suites passed (346 s). CI at c434a6bd: Lint (pre-commit), Validate Documentation, Validate Adapter Contract and ros-manifest tests pass on both workflow runs. Live user-tier suite not run. The PR body carries a `## Decision summary`.
+
+### Findings
+
+### False positives
