@@ -302,3 +302,31 @@ Reviewers: Claude adversarial ran; Codex ran (4 findings); Copilot ran (3 findin
 - The `WS_ROOT` idiom in every other project-capable skill still yields an empty root from an empty agent-workspace-root file; only the sit-rep guards it
 - Other scripts that read the registry from a worktree root (no main-checkout fallback) behave as before; only capture.sh falls back
 - `split_row` treats only `\|` as an escape; `\\|` reads as a backslash and a literal pipe, not GFM's escaped backslash then a cell break
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-12 20:16 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-386 at `b38242b`
+**Base**: main
+**Depth**: Deep (reason: 2459 changed lines across 15 files; new scripts and a skill)
+**Must-fix**: 3 | **Suggestions**: 7
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; all three are mechanical
+
+Round-1 must-fixes re-checked and closed: `scripts/` symlink run from cwd `/` (default root finds the roadmap); fenced ``` and `~~~` `## Direction` examples above the real section are skipped; `a\|b` reads as `a|b`; SKILL.md runs the checks once (steps 1 and 4 use `--summary-from`); `inbox_new` is count minus the record's `inbox <n>`. `adr-status` is read-only (awk over a root-checked path) and reads the first non-blank line after `## Status` (`### Status` does not match). flock is on the inbox itself, no lock file left, 10 s timeout gives exit 1 with the text echoed.
+
+Reviewers: Claude adversarial ran (3 must-fix, 5 suggestions); Codex ran (2 findings); Copilot ran (4 notes, no defects, all dropped); Gemini failed (agy output exceeded its token limit, no review). Static: shellcheck (workspace .venv, --severity=warning) clean on the 6 changed .sh; test_sitrep_checks 83/0, test_capture 37/0, test_script_tests_hook_scope 104/0, test_update_roadmap 15/0.
+
+### Findings
+- [ ] (must-fix) The extglob trims are super-linear: one 10 kB capture takes 19 s, 20 kB about 77 s, and the eight-20 kB parallel test runs for minutes in the pre-commit suite. Trim with a regex or `${t%"${t##*[![:space:]]}"}` — `.agent/scripts/capture.sh:52`
+- [ ] (must-fix) An inbox without a final newline (an editor that does not add one) gets the new line glued onto the last one (`old2026-10-12 20:15 -0400<TAB>none...`): two thoughts become one and every line count is off by one. Under the lock, add a leading newline when the last byte is not one — `.agent/scripts/capture.sh:137`
+- [ ] (must-fix) A failed or interrupted check run is summarized and recorded as a real run: the runner prints rows only at the end, so an interrupted step 1 leaves an empty rows file, and `--summary-from` on an empty or garbage file prints `lines 0/0 deferrals 0/0` with exit 0; `--summary-from ""` runs every check and prints rows, which step 4 would write into the record. Step 1 should check the runner's exit and not print `rows_file` on failure; `--summary-from` should refuse an empty argument and a file with no known-kind row (a header-only table must then still print a row) — `.claude/skills/sitrep/SKILL.md:71`, `.agent/scripts/sitrep_checks.sh:155`
+- [ ] (suggestion) `adr-status` on a CRLF ADR reads `unknown`: the blank `\r` line after `## Status` has NF=1. Strip `\r` in the awk first — `.agent/scripts/sitrep_checks.sh:292`
+- [ ] (suggestion) `adr-status` does not skip fences: a fenced `## Status` example above the real one is read instead (fenced Accepted above a real Proposed gave `true`). No current ADR has one; the roadmap reader already tracks fences — `.agent/scripts/sitrep_checks.sh:291`
+- [ ] (suggestion) A whole cell wrapped in backticks with ` ; ` inside is split before the backticks are stripped and reads `partial` (unwrapped: `true`); strip a fully wrapped cell before splitting — `.agent/scripts/sitrep_checks.sh:366`
+- [ ] (suggestion) Step 4 counts the inbox again instead of recording step 2's count; a capture made between the steps is never reported as new. Record the `inbox_lines` value step 2 printed — `.claude/skills/sitrep/SKILL.md:167`
+- [ ] (suggestion) A section with a Line/Deferral header and no data rows prints one blank line (`printf` of an empty array); guard it or emit a `section` row — `.agent/scripts/sitrep_checks.sh:500`
+- [ ] (suggestion) Fence detection departs from CommonMark: a backtick line with backticks in the info string (```` ```x``` text ````) opens a fence and swallows the rest of the file (the section then reads as missing); a backtick fence's info string may not contain a backtick — `.agent/scripts/sitrep_checks.sh:419`
+- [ ] (suggestion) Grew beyond the plan, all from review fixes: a fifth check kind `adr-status`, `--summary-from`, the flock (plan said one O_APPEND write), and capture.sh reading the main checkout's registry from a worktree. Each is tested and documented; name them in the PR description so the owner sees them — `.agent/work-plans/issue-386/plan.md`
