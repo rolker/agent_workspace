@@ -266,3 +266,21 @@ Reviewers: Claude adversarial ran (0 must-fix); Gemini ran; Codex ran (raised th
 - `test_sitrep_checks.sh`: 141 passed, 0 failed
 - `test_skill_paths.sh`: 58 passed, 0 failed
 - pre-commit hooks passed on all three commits
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-13 10:31 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+**Dispatch**: resumed (agent a20fc3d5a00a4467c, resume 1 of 3)
+
+**Branch**: feature/issue-389 at `25923749`
+**Base**: main
+**Depth**: Standard (reason: override-trigger file `.claude/skills/*/SKILL.md`; whole-diff classification)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round-1 findings verified fixed in 545af354, 393e01b9, 4ab547d1. The fixer also left the main checkout out of the report's In flight section and step 3's per-worktree note: confirmed — the main checkout is not work in flight, and "first as listed in the report" only holds if the listed items and the candidates agree. Reviewers: Claude adversarial ran (0 must-fix; suggestions on pre-existing sitrep behaviour, untested template text and a long line, not carried); Codex ran (no issues); Copilot ran (no issues; its shell was denied, so it ran no tests); Gemini failed first ("stream was interrupted"), retried once and ran (5 suggestions: 1 carried, the rest not carried — no `set -e` in the suite, wording equivalent to the plan, cosmetic).
+
+### Findings
+- [ ] (suggestion) Within "work in flight", "first as listed" always picks a worktree over an open pull request, and a pull request whose branch has a worktree appears twice; consider one line merging the two by branch and saying whether a pull request awaiting the owner comes first — `.claude/skills/sitrep/SKILL.md:269-273, 303-307`
