@@ -398,3 +398,36 @@ Reviewers: Claude adversarial ran (3 must-fix, 6 suggestions; injection probes i
 **Decision**: address
 
 Owner: "Do the first" — of the three options offered at the round-3 limit (address then publish without another local round; publish now with the three open; stop). So: one address-findings pass on the three must-fixes (and the six suggestions where cheap), the host re-runs the suites, then publish straight away; the post-push review and triage catch anything left.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 23:58 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-386 at `88caa4b`
+**Addressed**: Local Review (Pre-Push) at `dc934ff` (2026-10-12 20:45 -04:00)
+**Commits**: f8ce769, 602a96b, 6f24c71, e63ff79, 19ccb4d, 2b986e1, ec8bda2, bc75b83, 54f9190, 88caa4b
+
+### Actions
+- [x] (must-fix) an unreadable source read as absent: a roadmap that exists but cannot be opened (no permission, a directory, under a directory that cannot be entered) now prints one `section` row `(roadmap not readable: <path>)`, result `unknown`; a check under a directory that cannot be entered is `unknown` (in_root walks down from the root: an unenterable directory is 3, a missing component or a file in a directory's place is still 2/false) — `.agent/scripts/sitrep_checks.sh:213`, `.agent/scripts/sitrep_checks.sh:462`
+- [x] (must-fix) a run that read no roadmap recorded as 0/0: `--summary-from` (and `--summary`) exit 3 with a message when the rows say the roadmap was not found or not readable; step 1 shows the rows, prints `no summary` and keeps no rows file; a read roadmap with no section or rows still counts as 0/0 — `.agent/scripts/sitrep_checks.sh:179`, `.claude/skills/sitrep/SKILL.md:61`
+- [x] (must-fix) trailing slash on a regular file read true: the resolved path gets its trailing `/` back, so `f.txt/` names a directory (false for a file; a directory with or without `/` is true) — `.agent/scripts/sitrep_checks.sh:213`
+- [x] (suggestion) section end: `#`/`##` with up to 3 spaces of indent, a bare `##`, and a setext underline (`===`/`---`) under paragraph text end the section; a thematic break after a blank line or under a table row, and an indented code line, do not; the start takes the same indent and closing `#`s — `.agent/scripts/sitrep_checks.sh:489`
+- [x] (suggestion) `inbox_new`: step 4 records the last inbox line step 2 counted (its four fields after `inbox <n>`); step 2 counts the lines after it, at the recorded position or as the one equal line when lines above were removed, else `unknown` with the reason; blank lines are skipped in the count, the oldest date and the listing — `.claude/skills/sitrep/SKILL.md:115`
+- [x] (suggestion) prompt interruption: each cell's checks are read through a process substitution, which a trapped INT/TERM interrupts; the trap kills the reader and everything under it (`pgrep -P`) and dies of the same signal. Step 1 runs the runner in the background with an INT/TERM trap that stops it and removes the rows file — `.agent/scripts/sitrep_checks.sh:245`, `.claude/skills/sitrep/SKILL.md:61`
+- [x] (suggestion) run record: a newline is written first when the record's last byte is not one; a failed append prints `run record: not written (could not append to <file>)` — `.claude/skills/sitrep/SKILL.md:189`
+- [x] (suggestion) a data row of only empty cells, dashes or colons below the delimiter row prints a `format` row `(empty row in the Line table: <row>)`, not counted; only the row right under the header is the delimiter — `.agent/scripts/sitrep_checks.sh:507`
+- [x] (suggestion) the #386 change-log row records 730 lines, the file's `wc -l` — `docs/design.md:677`
+
+### Tests
+- Each fix's new tests were run against the code before the fix and failed there (39 failing checks in all, across the nine), then passed after.
+- `test_sitrep_checks.sh`: 101 passed before the round; 141 passed, 0 failed after (7 s); ten back-to-back runs all 141/0.
+- `test_capture.sh` 41/0; `test_update_roadmap.sh` 15/0; `test_script_tests_hook_scope.sh` 104/0.
+- shellcheck (workspace .venv, `--severity=warning`) clean on the 7 changed .sh files and on the skill's step 1, 2 and 4 blocks extracted to files; `check_design_anchors.sh` rc 0.
+- `run_script_tests.sh` (all 33 suites) passed in the pre-commit hook on all ten commits and in three direct runs. One earlier hook run, on the first attempt at the interruption commit (same content as the one that then passed), failed; its output was filtered away and the failing suite is not known. In case it was the new liveness checks, they now treat a zombie as gone (`54f9190`); it did not recur in 12 later full runs.
+
+### Notes
+- The run-record line gains fields: `<when>`, `workspace`, `<summary>`, `inbox <n>`, then the last inbox line seen (four fields). Machine-local and new on this branch, so no older records exist to migrate.
+- Without `pgrep`, an interrupted run kills only the cell's reader; the check runs on until its timeout (stated in the script header).
+- Setext detection is a close reading of CommonMark, not a parser: paragraph text is any non-blank line that is not a table row, heading, list item, blockquote or thematic break, so a `---` under a list item's continuation line would end the section.
+- No follow-ups left from this round. Per the owner's direction this was the last local pass: publish next, no further local review.
