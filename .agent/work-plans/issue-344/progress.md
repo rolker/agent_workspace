@@ -97,3 +97,45 @@ Stays, deliberately: `.github/copilot-instructions.md` and the Copilot rows in `
 **Plan**: `.agent/work-plans/issue-344/plan.md` at `cc659563`
 
 Remove the copilot arm from the helper and dispatcher, rework the tests (adding rejection regression tests for both flags and the helper), then update review-code, the two approved AGENTS.md rows and an ADR-0015 status note, in four commits. Hosted Copilot review wiring is untouched.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-13 11:07 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: needs-work
+
+**Issue**: #344 — Drop the Copilot CLI as a cross-model reviewer (keep the hosted Copilot PR review as a triage source)
+**Plan**: `.agent/work-plans/issue-344/plan.md` at `cc659563`
+**Branch**: `feature/issue-344`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, six files, four commits; nothing new built. |
+| Issue alignment | Good | Covers all three acceptance items and all eight Issue Review actions; the issue's `--copilot` flag bullet is moot (no such flag in `cross_model_review.sh`). Serves: "Quality of the work (reviewers that add independent signal, not same-model repeats) — `docs/design.md#review-loop-and-timeline`" — goal exists (README `### Quality of the work`), anchor exists (design.md line 402). |
+| File targeting | Good | Independent `grep -rIi copilot` (excluding work-plans and inspiration digests) gives 55 files; every hit outside the six planned files is framework identity (`detect_*`, `framework_config.sh`, `set_git_identity_env.sh`, `configure_git_identity.sh`, `check-commit-identity.py`, adapter-path rows), hosted review (`merge_pr.sh`, `test_merge_pr_gate.sh`, `run-issue`, `triage-reviews`, `onboard-project`, `test_triage_reviews_integration.sh`, design.md:501) or history (ADR-0004/0006/0013/0014, roadmap prose, test fixtures quoting "(Copilot R2)"). The removal map is complete. |
+| Consequences | Good | `docs/design.md` names no Copilot CLI reviewer (line 448 says "Reviewers outside Claude"); the ADR-0015 register row stays "in force" because the dispatch decision is unchanged. `docs/roadmap.md` has no #344 or Copilot-CLI-reviewer row. No design change-log row is due. |
+| Principle alignment | Needs work | Test what breaks: one planned assertion contradicts the helper's contract (finding 1); one is vacuous as written (finding 2). |
+| ADR compliance | Good | ADR-0015 Status-line note matches house practice: the #320 and #363 notes already sit in that Status paragraph, and the body stays as the record. ADR-0008 lists ADR pointers as the example; an issue-pointer note is the precedent ADR-0015 itself set (finding 4 is wording only). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment — must-fix]** Step 2 says "Each new test must also assert no findings file was written", but test (d) runs `_cli_review.sh` directly, and the helper truncates the findings file first (`: > "$FINDINGS_FILE"`, line 136) and `usage_fail` then writes "copilot review could not be started. / Reason: unsupported agent 'copilot' ..." into it before exiting 2 (lines 155-165). The existing `grok` case (test file ~4198-4205) asserts exactly that reason is in the file. Amend the plan: for (d), assert exit 2 and that the findings file names `unsupported agent 'copilot'`; keep "no findings file" only for (a)-(c), where `cross_model_review.sh` exits at argument parsing.
+2. **[Principle alignment — suggestion]** "assert ... no copilot mock was invoked" is vacuous once the `copilot)` mock is deleted: with no `copilot` binary in `MOCK_BIN` nothing could record an invocation. Put a sentinel `copilot` stub in `MOCK_BIN` for the four new tests that touches a marker file, and assert the marker is absent; for (b) also assert the codex mock left no `codex.start`/argv file.
+3. **[File targeting — suggestion]** The test rework list mislabels and misses cases: 2924-2937 (one agent fails, others complete, `gemini,codex,copilot`) is not listed; 4219-4228 is `test_cli_no_temp_leak`, not partial failure, and its "success + three failure modes" label must change (copilot's ERRMARK case was never a failure mode after #313); the concurrency test's conditional resolves to two agents, because the agy mock writes `agy.pid`/`agy.end` but no `.start` file, so `codex,claude` it is and the "all three agents" PASS text changes; `test_cli_helper_missing_is_unavailable`'s title names copilot. Settle these in the plan rather than at implementation time.
+4. **[ADR compliance — suggestion]** Write the ADR-0015 note as a sentence appended to the existing Status paragraph after the #363 sentence, and name the passages it qualifies (Context, Decision item 3, the first and last Consequences bullets) so a reader of the body knows which mentions are history.
+5. **[Principle alignment — suggestion]** Pin the "Supported agents" format: `paste -sd,` gives `claude,codex,gemini`, while the plan's test text says `claude, codex, gemini` and today's message is space-separated. Choose one, sort under `LC_ALL=C`, and assert the exact string at both call sites.
+
+### Summary
+
+The removal map is complete and the hosted-review, identity and history hits are correctly left alone; design.md and the roadmap need no change. One test instruction contradicts `_cli_review.sh`'s usage-error contract and must be corrected before implementation; the rest are precision fixes to the test rework list.
+
+### Recommended Actions
+
+- [ ] Amend step 2: for the `_cli_review.sh copilot` test, assert exit 2 and the `unsupported agent 'copilot'` reason in the findings file; limit "no findings file" to the three `cross_model_review.sh` rejection tests.
+- [ ] Add a sentinel `copilot` stub to `MOCK_BIN` in the new rejection tests so "no copilot invocation" is a real assertion.
+- [ ] List the 2924-2937 one-fails test, relabel 4219-4228 as `test_cli_no_temp_leak` (fix its "three failure modes" label), fix the concurrency test to two agents with its PASS text, and retitle `test_cli_helper_missing_is_unavailable`.
+- [ ] Append the ADR-0015 note to the existing Status paragraph and name the body passages it qualifies.
+- [ ] Fix the "Supported agents" separator and sort locale, and assert the exact string.
