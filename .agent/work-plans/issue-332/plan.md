@@ -16,6 +16,12 @@ records exist in two places, the setting names the source of truth) and the acce
 footprint choice is stored in those two settings, not in a parallel `records=` word list. The Target said
 they live "in its registry entry"; D2 moves them to the per-project file.
 
+Revision 1 (after plan review round 1, see "Plan Review Resolution"): the mechanism is settled (two settings,
+four combinations, one lookup) but **the default combination and the default layout of an outside path are
+open by owner decision** (issue note, 2026-10-13): they are provisional, held in one function, and chosen
+when this is built. Records in the workspace repository are **refused** by owner decision (checked by the
+named repository's remote URL).
+
 Today: registration is by hand (a `projects.local` line, an optional `projects.d/<name>.sh` the adapters
 `source`, a clone). `single_project` runs `exec $BUILD_CMD "$@"` (word-split, no shell), so a value like
 `cmake -S . -B build && cmake --build build` never worked as a command: `&&` arrives as an argument. The
@@ -33,6 +39,9 @@ change-log row.
 
 `.agent/projects.d/<name>` (no extension; gitignored already via `.agent/projects.d/`).
 
+0. **First step: open the records-lookup follow-up issue** (full text in "Follow-up issues" below), so
+   `project_setting.sh`'s refusal message and the Worktrees Target edit cite its real number.
+
 1. **Grammar** — one `key=value` per line; split at the first `=`; blank lines and lines starting `#`
    ignored (no trailing comments, a command may contain `#`); CRLF tolerated. A key not in the list,
    a duplicate key and an empty value are errors naming the file, line and the known keys, like the
@@ -47,8 +56,8 @@ change-log row.
    | `build`, `test`, `install` | a command, or `none` | `none` is a recorded "this project has none" |
    | `bootstrap_url` | http(s) URL | replaces `MANIFEST_BOOTSTRAP_URL` for `ros2_colcon` |
    | `location` | `project` (default) or `outside` | where the records live (Target) |
-   | `location_path` | absolute path | only with `outside`; default the sibling `<project clone>-records` in the clone's parent directory (D2a layout: a hosting directory holding the project clone and the records clone as sibling children) |
-   | `tracking` | `project` (default when location is `project`), `untracked`, `repo` | Target's tracking choices; `repo` means the outside directory is a clone of a repository the user names |
+   | `location_path` | any absolute path | only with `outside`; when omitted the **provisional** default comes from `project_records_default` (item 4). Candidates for that default, none decided: a sibling `<clone>-records` (the Target's wording) or a hosting directory holding the project clone and the records clone as children. Either is just another `location_path` value later; the registered root stays the project clone |
+   | `tracking` | `project`, `untracked`, `repo` | Target's tracking choices (default: provisional, item 4); `repo` means the outside directory is a clone of a repository the user names, never the workspace's own (item 4) |
    | `instructions` | `none` or `tracked` | recorded answer to "may the workspace offer agent instructions in tracked files"; readers key off the files, never this key |
 
    `ROS_ROOT_DIR` and any other variable stay in the legacy `.sh`.
@@ -58,16 +67,33 @@ change-log row.
    or `build=./scripts/build.sh` (relative to the project root, where every adapter already `cd`s).
    No separate pointer syntax: a script is a command whose first word is a path. A zero-footprint
    project keeps its script anywhere on the machine, by absolute path.
-4. **Records combinations** — valid: (project, project) committed in the project; (project, untracked)
-   in the project, ignored through `.git/info/exclude`; (outside, repo) a separate records
-   repository; (outside, untracked) untracked on this machine. Refused by the validator, and the
-   Target said to decide this when built: (outside, project), (project, repo), `location_path` without
-   `outside`, a `location_path` inside the workspace checkout (D2a: records never go into the workspace
-   repository; supersedes the Target's "don't prohibit" sentence).
-   Mapping to D2a's four places and defaults: committed = (project, project), the default when the
-   project accepts footprint; in-project-ignored = (project, untracked); records repo = (outside, repo),
-   the opt-in that adds tracking; untracked on this machine = (outside, untracked), the default for zero
-   footprint.
+4. **Records combinations and the provisional default** — valid: (project, project) committed in the
+   project; (project, untracked) in the project, ignored through `.git/info/exclude`; (outside, repo) a
+   separate records repository; (outside, untracked) untracked on this machine (D2a's four places).
+   Refused by the validator (the Target left this to be decided when built): (outside, project),
+   (project, repo), `location_path` without `outside`.
+   - **Workspace repository refused (owner, 2026-10-13: a fork of the workspace would carry other
+     projects' records, and a PR sent back would bring them past the merge gate's bookkeeping
+     exemption).** `tracking=repo` is refused when the named records repository's remote URL is the
+     workspace's: `project_records_check` reads `git remote get-url` for every remote of the records clone
+     and of the workspace checkout, normalises host and `owner/repo` (https and scp forms, trailing `.git`,
+     case) and refuses on a match, with a message that points at a separate records repository or the
+     machine-local option. The check is by remote, never by path; there is no path rule, so
+     untracked records under the workspace's ignored scratchpad (`.agent/scratchpad/`, where the inbox and
+     sit-rep record already live) validate. A records directory not yet cloned is "unverifiable until
+     cloned", reported by `check`, not refused. Known limit, stated not hidden: a clone of a *fork* of the
+     workspace under another owner has a different URL and passes; the check cannot see fork lineage offline.
+   - **Defaults are provisional and live in one place.** `project_records_default <root> <name>
+     [accepts-footprint|zero-footprint]` in `_project_registry.sh` returns the default combination and the
+     outside-path layout for a project. The validator (to fill omitted keys), the audit (to compare what
+     a project does with what the default would be) and the later lookup all call it; no other file
+     writes a default or a layout. For this issue it returns (project, project) for a project that accepts
+     footprint and nothing else is claimed: the zero-footprint combination and the outside layout are
+     returned as marked-provisional values (their initial values are chosen when this is built, with the
+     owner), and changing them touches that function and its test only. Tests assert
+     through the function, never a literal path or combination. The design text, onboarding wording and
+     `projects.local.example` call every default "provisional"; they may be revised after the first real
+     onboarding.
 5. **What this issue writes (A2)** — the validator accepts all four combinations; the only
    combination any script of this issue writes is (project, project), i.e. nothing, the defaults.
    `project_setting.sh set` refuses a write that would store any other combination, naming the
@@ -75,7 +101,8 @@ change-log row.
    builds `<worktree>/.agent/work-plans/issue-N/`"). A hand-written file with another combination
    validates but `project_setting.sh check` and `register_project.sh --verify` flag it "not yet
    honoured". Settings are set in pairs, `set <name> location=outside tracking=untracked`, validated
-   as the resulting whole file.
+   as the resulting whole file. The refusal message names the follow-up issue, which is opened as PR 1's first
+   step so the number exists to cite.
 6. **Readers and precedence** — functions in `_project_registry.sh` (`project_file_path`,
    `project_file_entries`, `project_file_get`, `project_file_set`, `project_file_unset`), one writer
    (atomic temp file and rename, comments kept) and a thin CLI `project_setting.sh get|set|unset|list|check <name>`.
@@ -91,11 +118,15 @@ change-log row.
    the file alone; deleting the `.sh` reading belongs with #265 PR 4's p11 migration (see Consequences).
 7. **Registry parser** — a name ending in `.sh` is refused (the project `x.sh` file would collide with
    project `x`'s legacy `.sh`).
-8. **Design doc** — Registry and adapters Now gains the project file bullet; the Worktrees Target is
+8. **AGENTS.md** — a Script Reference row for `project_setting.sh` in its own commit (Ask First; owner
+   approval on the PR), as PR 2 and PR 3 do for theirs.
+9. **Design doc** — Registry and adapters Now gains the project file bullet; the Worktrees Target is
    rewritten: `location`/`tracking` move from "its registry entry" to the per-project file, a
    "built in #332 / built by the records lookup" marking per item (settings, validation, refusal to
-   write: this issue; mechanisms 1 to 3 and honouring the values: the follow-up), the D2a layout
-   sentence, the sentence on the named repository updated to D2a, and the mechanism-1 line numbers
+   write: this issue; mechanisms 1 to 3 and honouring the values: the follow-up), every default and layout marked provisional (naming `project_records_default`), the
+   Target's "I don't want to prohibit it, but I also don't want to encourage it" sentence rewritten:
+   the workspace repository is refused as a records repository (by remote URL), with the fork and PR
+   reason, and the mechanism-1 line numbers
    refreshed (the design text cites 342/344/387/479 for `dispatch_phase.sh`; the current ones are
    362, 364, 407, 499). The one rule and the acceptance test by shape stay.
 
@@ -125,18 +156,30 @@ is edited). It never writes into the project, never relies on the `projects/<nam
     never `setup` (the clone is the user's; the checkout is verified: a git repo at the root; a missing
     remote is a warning, since a project without GitHub is supported). `ros2_colcon`: `setup` when the
     hosting directory is missing (needs `bootstrap_url`), `validate` only.
-  - **Gate** (`registration_verify.sh <name> [--run]`, a new read-only script marked
-    `# user-tier: inert`, also called by PR 3's audit): entry parses; project file valid; every required
-    command is the project's own or declared `none` (the shared-fallback or missing is a refusal: a
-    missing test command is refused); scoped `adapter --project N validate`; with `--run`, `adapter build`
-    and `test`. A newly added entry that fails the gate is rolled back (line and file, restored on
-    interrupt by a trap); an adopted one is reported NOT READY and kept. `--skip-run` ends in
-    status `registered, build and test not run`.
-  - **User tier**: if `~/.claude/agent-workspace-root` names this checkout, re-run
-    `user_tier_install.sh` (ADR-0018: registration reuses the installer) and `--check`; a failure
-    fails the gate. If the tier is not installed, a warning and the next-step line, not a failure, unless
-    `--install-user-tier`. Last output lines are stable `STATUS=`, `NAME=`, `ROOT=`, `NEXT=` (D1 step 2:
-    start a session at the root and run `/agent-workspace:onboard-project`).
+    `register_project.sh` refuses a type that has no `registration.conf`; `validate_adapter.sh` checks
+    that every type has one with the required keys (so it runs in pre-commit and CI, with a case in its
+    test); the Registry and adapters Now bullet names the file beside the 12-verb contract.
+  - **Order (so a failed registration leaves nothing behind)**: (1) write the registry line and the
+    project file; (2) static gate `registration_verify.sh <name>`; (3) `register_project.sh` itself
+    runs `adapter --project N build` and `test` (the verbs `registration.conf` names; skipped with
+    `--skip-run`); (4) only then the user-tier installer and `registration_verify.sh <name> --user-tier`.
+    Build or test fail in (2) or (3): the line and file are removed (restored on interrupt by a trap) and
+    the installer never ran, so no plugin enable exists in the root. The installer fails in (4):
+    the rollback also calls `user_tier_install.sh --disable-root <name>` before removing the line (the
+    installer can fail after a partial enable). An adopted (already registered) project is reported NOT
+    READY and kept, never rolled back. `--skip-run` ends in status `registered, build and test not run`.
+  - **Static gate** `registration_verify.sh <name> [--user-tier]` is **read-only** (M5): it never runs the
+    project's build or test, so it keeps the `# user-tier: inert` marker and is promoted in PR 3 for the
+    audit's category 6. It checks: entry parses; project file valid (and a records combination other than
+    the default flagged "not yet honoured"); every command the type requires is the project's own or
+    declared `none` (the shared-fallback or missing is a refusal: a missing test command is refused);
+    `registration.conf` exists; scoped `adapter --project N validate` (read-only); with `--user-tier`,
+    `user_tier_install.sh --check` and `session_root.sh --dir <root>` naming the project.
+  - **User tier**: if `~/.claude/agent-workspace-root` names this checkout, run `user_tier_install.sh`
+    (ADR-0018: registration reuses the installer; step 4 above). If the tier is not installed, a warning
+    and the next-step line, not a failure, unless `--install-user-tier`. Last output lines are stable
+    `STATUS=`, `NAME=`, `ROOT=`, `NEXT=` (D1 step 2: start a session at the root and run
+    `/agent-workspace:onboard-project`).
   - `--dry-run` prints every step it would take, including the installer call, and writes nothing.
 - `register_project.sh --remove <name> [--keep-settings] [--dry-run]`: refuses while the root has live
   worktrees (listed) or is a parent with instances; first disables the plugin in the root
@@ -160,9 +203,9 @@ is edited). It never writes into the project, never relies on the `projects/<nam
 ### PR 3 — the `onboard-project` rewrite (project side, D1 step 2, D3, D5)
 
 1. **`project_integration_audit.sh [--dir D | --project N] [--format tsv|text]`** (read-only; promoted
-   to the user tier with `project_setting.sh` and `registration_verify.sh`, each with the guard marker
-   and a `test_user_tier_guard.sh` row; the writer `project_setting.sh set` carries the
-   `registry_require_root` guard and writes only the file of the project whose root contains the cwd).
+   to the user tier with `project_setting.sh` and the read-only `registration_verify.sh`, each with its
+   guard or inert marker and a `test_user_tier_guard.sh` row; the writer `project_setting.sh set` carries
+   the `registry_require_root` guard and writes only the file of the project whose root contains the cwd).
    Output: `category<TAB>id<TAB>severity<TAB>subject<TAB>detail`; it reports, never exits non-zero for
    findings. Categories 1 to 6 (7, skills with no `session_scope`, is not a per-project check):
    1. Project config overriding workspace config: same-named project skills/commands (identical or
@@ -180,21 +223,29 @@ is edited). It never writes into the project, never relies on the `projects/<nam
       would add (the `build/` rule that hid `.claude/skills/build/SKILL.md`).
    5. Conventions where workspace tools do not read them: rules in skills/instruction files with no
       `.agents/README.md` or `.agents/review-context.yaml`.
-   6. Registration that does not work: `registration_verify.sh` (no `--run`), `session_root.sh --dir`
+   6. Registration that does not work: `registration_verify.sh --user-tier` (read-only), `session_root.sh --dir`
       names the project, user tier `--check`.
    Findings that would offer tracked files are `info` when `instructions=none`.
 2. **Skill** (`session_scope: project` already; no manifest change): `/agent-workspace:onboard-project
    [--dry-run] [--reask <key>]`, no repo argument. Steps: resolve through `session_root.sh` (a workspace
    session, or an unregistered root, is told to run `register_project.sh` first); show the recorded
    choices and the audit summary; ask the footprint questions only for keys not yet set
-   (`instructions`; records with the four D2a places, their defaults, and which are not yet
+   (`instructions`; records with the four D2a places and the **provisional** default from
+   `project_records_default`, saying it is provisional and overridable, and which places are not yet
    available: until the lookup lands only (project, project) is stored and a zero-footprint answer is
    told plainly that records still land on feature branches); run the script; the judgement
-   categories; offers (agent guide from the template, Direction section in the project's own roadmap,
-   run `audit-project`), each a yes/no, "fix now" items batched into one project PR as today (for a
+   categories; offers, **only when `instructions=tracked`** (when unset the question is asked first;
+   `none` means no offers): agent guide from the template, Direction section in the project's own roadmap
+   (an existing `docs/roadmap.md` or `ROADMAP.md`, else a new `docs/roadmap.md`; design.md already says a
+   project's roadmap may carry `## Direction` by its own choice), and run `audit-project` (always
+   offered, it writes nothing), each a yes/no, "fix now" items batched into one project PR as today (for a
    project with no GitHub: edits left on a branch, nothing pushed); every write waits for a yes (D5).
    The hygiene checklist is kept in a labelled section until PR 4 moves it, so no merge leaves it homeless.
-3. Design doc: Registry Target ("one way a project is registered and adapted" becomes register
+3. Design doc: **Sessions and roots Now names the exception to "a session works only under its root"**:
+   a project session writes `.agent/projects.d/<name>` in the workspace checkout (through
+   `project_setting.sh set`, guarded to the session's own project) because that file is per-machine,
+   gitignored workspace configuration the project's onboarding owns, not a tracked change to the
+   workspace; nothing else a project session does leaves its root. Registry Target ("one way a project is registered and adapted" becomes register
    (workspace) plus onboard (project)); Sessions and roots Now gains the onboarding bullet; Documentation
    layers/roadmap line (`docs/roadmap.md`: "waits until onboarding asks") edited: the Direction section
    is an offer. `skill_workflows.md` rows and the AGENTS.md Script Reference rows (separate commit, Ask First).
@@ -215,15 +266,31 @@ is edited). It never writes into the project, never relies on the `projects/<nam
 
 ### Follow-up issues to open (not in this issue)
 
-1. **The records lookup** (Target mechanism 1, with 2 and 3): one function answering "where are the
-   records for this project and issue", fed by the project file and used by every reader and writer:
-   `progress_append.sh:87`, `review_progress.sh:112,268,290`, `dispatch_phase.sh:362,364,407,499`,
-   `merge_pr.sh:682-683,839-847`, `_resolve_work_plans_dir.sh:66,90,97`, and the skills that cite the
-   path; the gate's same-reviewed-state walk (`_bookkeeping.sh`) changing repository; untracked records as
-   per machine and per clone; losing the history when `merge_pr.sh` removes the worktree. Its acceptance
-   is the Target's: a single-repository web app with no GitHub issues or pull requests, records where its
-   developer chooses; it exercises the lookup and tracking, not the merge gate. When it lands, onboarding
-   and `project_setting.sh` accept the other combinations.
+1. **The records lookup — opened as PR 1's first step.** Text (the issue body):
+   - *Mechanism 1, one lookup*: "where are the records for this project and issue", fed by the project
+     file (`location`, `location_path`, `tracking`, defaults from `project_records_default`) and used by
+     every reader and writer: `progress_append.sh:87`, `review_progress.sh:112,268,290`,
+     `dispatch_phase.sh:362,364,407,499`, `merge_pr.sh:682-683,839-847`,
+     `_resolve_work_plans_dir.sh:66,90,97`, and the skills that cite the path.
+   - *Mechanism 2*: the merge gate's same-reviewed-state rule (`_bookkeeping.sh`, shared with
+     `review_progress.sh sources`) reads the record from where it lives and checks the project commit the
+     entry names, so the walk changes repository.
+   - *Mechanism 3*: untracked records are per machine and per clone; a second machine or a fresh clone
+     starts with no timeline; `merge_pr.sh` removing the issue worktree must not lose a timeline that lives
+     in the worktree (the `.git/info/exclude` case).
+   - *The one rule*: when records exist in two places, the setting names the source of truth.
+   - *Acceptance by shape* (the Target's, both halves): a colleague's single-repository web app with no
+     GitHub issues or pull requests, records where its developer chooses; it exercises the lookup and
+     tracking, **not the merge gate (mechanism 2), which a project with pull requests has to exercise**.
+   - *Unsettled, to decide there*: for `tracking=repo`, who commits to the records repository, on which
+     branch, and when it is pushed; `cross_model_review.sh --work-plans-dir` as an existing override of
+     `_resolve_work_plans_dir.sh`; package-repository issues (`owner/repo#N`), which have no timeline today
+     and stay so; the default combination and outside layout (provisional, one function, owner undecided).
+   - *Rules carried*: the records location counts as the root's own, as a `worktrees=` override already does
+     (`registry_worktree_dir`, `session_root.sh`), so a session writing records there keeps "works only
+     under its root" (named as a bend of that rule); `tracking=repo` is refused when the named repository's
+     remote is the workspace's (owner, 2026-10-13); until it lands only (project, project) is written.
+   - *When it lands*: onboarding and `project_setting.sh` accept the other combinations.
 2. **Category 7 to #331** (comment on it, not a new issue): a test or `--check` for skills that touch
    project work but declare no `session_scope` (9 of 22 have none today, several by intent).
 
@@ -231,12 +298,13 @@ is edited). It never writes into the project, never relies on the `projects/<nam
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/_project_registry.sh` | project-file reader/writer/validator; `.sh` name refusal; header |
+| `.agent/scripts/_project_registry.sh` | project-file reader/writer/validator; `project_records_default` (the one provisional-default function) and `project_records_check` (combinations, workspace-remote refusal); `.sh` name refusal; header |
 | `.agent/scripts/project_setting.sh` (new, +x) | get/set/unset/list/check; the A2 refusal |
 | `.agent/scripts/adapter` | parse project file once, `ACTIVE_PROJECT_*` variables; stop on malformed |
 | `.agent/project_types/{single_project,ros2_colcon}/adapter.sh` | read the variables first; fallback note |
 | `.agent/project_types/<type>/registration.conf` (new, 2) | per-type registration facts (PR 2) |
-| `.agent/scripts/register_project.sh`, `registration_verify.sh` (new, +x) | PR 2 |
+| `.agent/scripts/register_project.sh`, `registration_verify.sh` (new, +x) | PR 2; `registration_verify.sh` read-only |
+| `.agent/scripts/validate_adapter.sh` | every type has a `registration.conf` with the required keys (PR 2) |
 | `.agent/scripts/user_tier_install.sh` | `--disable-root <name>` (PR 2) |
 | `.agent/scripts/project_integration_audit.sh` (new, +x) | PR 3, `--facts` in PR 4 |
 | `.agent/user_tier_scripts.txt` | `project_setting.sh`, `registration_verify.sh`, audit script (PR 3); comment fixed (PR 2) |
@@ -244,8 +312,8 @@ is edited). It never writes into the project, never relies on the `projects/<nam
 | `.agent/projects.local.example` | the project file, keys, precedence, `.sh` as legacy |
 | `.claude/skills/onboard-project/SKILL.md`, `audit-project/SKILL.md` | rewrite (PR 3), checklist move (PR 4) |
 | `docs/design.md`, `docs/roadmap.md`, `.agent/knowledge/skill_workflows.md`, `.agent/work-plans/issue-265/plan.md`, ADR-0016 decision 5 pointer | per PR, as above |
-| `AGENTS.md` | Script Reference rows (Ask First; own commit in PR 2 and PR 3) |
-| `.agent/scripts/tests/` | `test_project_file.sh`, `test_register_project.sh`, `test_integration_audit.sh` (all new, `chmod +x`); extend `test_user_tier_guard.sh`, `test_user_tier_install.sh`, `test_project_registry.sh`, `test_skill_paths.sh` |
+| `AGENTS.md` | Script Reference rows (Ask First; own commit in each of PR 1, PR 2, PR 3) |
+| `.agent/scripts/tests/` | `test_project_file.sh`, `test_register_project.sh`, `test_integration_audit.sh` (all new, `chmod +x`); extend `test_user_tier_guard.sh`, `test_user_tier_install.sh` (`--disable-root`), `test_project_registry.sh`, `test_skill_paths.sh`, the `validate_adapter.sh` suite. See "Acceptance to test" |
 
 ## Prior Art
 
@@ -271,11 +339,12 @@ follow-up marked), Open questions C4 (narrowed, not closed: two machines and #31
 
 | Principle | Consideration |
 |---|---|
-| Leave in a project only what it chose to carry | `register_project.sh` writes nothing in a project; D3 minimum is nothing; footprint is asked, defaults derived |
+| Leave in a project only what it chose to carry | `register_project.sh` writes nothing in a project; D3 minimum is nothing; footprint is asked, the records default is provisional and overridable |
 | Enforce what matters, as simply as possible | one grammar, validated key list, unknown keys fail; the gate is a script; scripts not prose |
 | Only what's needed | six keys; `ROS_ROOT_DIR`, `role`, `distro`, `worktrees` untouched |
 | Put each thing at the level it applies to | per-type facts in `registration.conf`; machine settings per machine; the audit shared by two skills |
-| Keep one current design / A change includes its consequences | per-PR design edits, #265 plan, ADR pointer, user tier, tests |
+| Keep one current design / A change includes its consequences | per-PR design edits, #265 plan, ADR pointer, user tier, tests; defaults marked provisional, not recorded as decided |
+| Name the rule before bending it | two bends of "a session works only under its root" named: a project session writing `.agent/projects.d/<name>` (PR 3 design edit), and an outside records path counting as the root's own like `worktrees=` (follow-up issue text) |
 | Test what breaks | synthetic sandbox projects and a stub `claude` only; never a real checkout |
 | Small steps | four PRs, then a separate lookup issue |
 | Verify before claiming | line numbers re-grepped for this plan; design text's stale ones refreshed |
@@ -286,7 +355,7 @@ follow-up marked), Open questions C4 (narrowed, not closed: two machines and #31
 |---|---|---|
 | 0011 adapter contract | Yes | verbs unchanged; `validate_adapter.sh` passes; `registration.conf` is data, not a verb |
 | 0013 progress.md | Yes | shape unchanged; location is the follow-up |
-| 0016 session roots, user tier | Yes | decision 5 built; new promoted scripts guarded and inert outside roots |
+| 0016 session roots, user tier | Yes | decision 5 built; decision 6: `project_setting.sh` and the audit carry a `registry_require_root` guard or the inert marker, `registration_verify.sh` is read-only so its inert marker is true |
 | 0017 design document | Yes | per-PR edits |
 | 0018 plugin delivery | Yes | registration re-runs the installer; onboarding runs at the project root |
 
@@ -299,21 +368,65 @@ follow-up marked), Open questions C4 (narrowed, not closed: two machines and #31
 | Skill rewrites | `skill_workflows.md`, `test_skill_paths.sh`, `make generate-user-tier-skills` (no scope change) | Yes (PR 3, 4) |
 | Reading `.sh` and the shared fallback | removal after p11 migrates | No: #265 PR 4 (edited in PR 2) |
 | `role`/`distro`/`worktrees` into the project file | | No: later cleanup (owner) |
-| Records lookup, `sitrep` over every root with a Direction section | | No: follow-up / existing roadmap row |
+| Records lookup | follow-up issue, opened as PR 1's first step | No: follow-up |
+| `sitrep` over every root with a Direction section | existing roadmap row; the row notes a project's roadmap may be `ROADMAP.md` | No: existing row, edited in PR 3 |
+
+## Acceptance to test
+
+Every fixture is synthetic and built in a sandbox workspace with a stub `claude` (never a real checkout).
+The "hand-registered fixture" is a synthetic project shaped like gz4d on 2026-09-23: a one-line registry
+entry and no project file or `.sh`; a CMake layout; four project skills sharing names with workspace
+skills; an instruction file that says feature branches and "issue when one exists"; a `.gitignore` with
+an unanchored `build/` that hides a committed-looking `.claude/skills/build/SKILL.md`; no ignore rule for the
+worktrees directory; a `docs/work-plans/`; no `.agents/`, pre-commit or CI.
+
+| Issue acceptance item | Test |
+|---|---|
+| Registering a new `single_project` needs no hand edits to `projects.local` or `projects.d/` | `test_register_project.sh`: one call produces the registry line and project file; the files are asserted, nothing hand-written |
+| Run against the 2026-09-23 gz4d shape reproduces every listed finding without being told | `test_integration_audit.sh` on the hand-registered fixture: one asserted finding id per category (duplicate skills, process disagreement, unignored worktrees dir, `build/` hiding agent files, rules not in `.agents/`, `docs/work-plans/`, fallback commands / no test command); a clean fixture yields none |
+| Idempotent re-run | `test_register_project.sh`: second identical call changes no byte and says so; adopting the hand-registered fixture is the same path |
+| Dry-run makes no changes | `test_register_project.sh`: `--dry-run` for register and remove; registry, project file, stub-claude log and `~/.claude` all unchanged |
+| Missing test command refused | `test_register_project.sh`: no `test=` and no detection means refusal; `test=none` accepted; the CMake fixture is refused until `build=` names a script |
+| A failing check blocks "registered" | `test_register_project.sh`: failing `validate`, failing build, failing test each leave no registry line, no project file and no plugin enable (stub-claude log empty); installer failure after a passing build triggers `--disable-root` and the same cleanup |
+| Works from a project-rooted session for a project registered outside the workspace | `test_integration_audit.sh` and `test_user_tier_guard.sh`: audit, `project_setting.sh`, `registration_verify.sh` run with the cwd in a sandbox project outside the sandbox workspace; refuse from an unregistered directory |
+| Records settings (acceptance by shape: single repository, no GitHub issues or PRs) | `test_project_file.sh`: a no-remote web-app-shaped fixture validates with every combination; `tracking=repo` whose clone's remote is the sandbox workspace's is refused; untracked records under the sandbox scratchpad validate; defaults asserted through `project_records_default` |
+| The first real use (gz4d onboarding run) | not a test: the separate run you named, after PR 3 |
 
 ## Open Questions
 
-- **Q1 — which directory is registered when records sit beside the project (D2a layout).** I assume the
-  project clone stays the registered root and the records clone is its sibling `<clone>-records` in the
-  clone's parent; no change to session roots. The alternative, registering the hosting directory that
-  holds both, needs `single_project` to support a nested checkout. Confirm the first.
-- **Q2 — `registration.conf` per type** instead of a type branch inside `register_project.sh`. Say if you prefer the branch.
-- **Q3 — `audit-project` after D4** stays report-only by default and offers the old fix now / open issue /
-  skip flow at the end, so hygiene fixes still have an owner. Confirm.
-- **Q4 — where a project's Direction section lives** (offer in PR 3): I propose asking, defaulting to
-  an existing `docs/roadmap.md` or `ROADMAP.md`, else creating `docs/roadmap.md`; `sitrep` over project roots is a separate roadmap row.
+- **Q1 — withdrawn.** The project clone stays the registered root (the review found no reason that forces
+  a change); a hosting-directory layout is just another `location_path` value later, and the layout default
+  is provisional and open (owner note).
+- **Q2 — `registration.conf` per type: confirmed** by plan review (consistent with "workflow scripts do not
+  branch on the project type"); now checked to exist (`register_project.sh`, `validate_adapter.sh`).
+- **Q3 — `audit-project` report-only by default, fix flow at the end: confirmed** by plan review.
+- **Q4 — Direction section location: kept** (existing `docs/roadmap.md` or `ROADMAP.md`, else a new
+  `docs/roadmap.md`), and offered only when `instructions=tracked`.
+- **Q5 — one accepted limit to confirm.** The workspace-repository refusal compares remote URLs, so a records
+  clone of a *fork* of the workspace under another owner passes (fork lineage is not visible offline). Say if
+  you want the check to be stricter (for instance `gh repo view --json parent` when online).
+- **Open by the owner, not a question to him now:** the provisional default combination and outside layout;
+  chosen when this is built, revisable after the first real onboarding.
+
+## Plan Review Resolution
+
+Round 1 (`dc77392d`) and the owner's checkpoint (`b9ab8403`).
+
+| Finding | Resolution |
+|---|---|
+| M1 defaults decided | Mechanism kept; one function `project_records_default` in `_project_registry.sh` returns the provisional default combination and outside layout, called by validator, audit and later the lookup; tests assert through it; design text, onboarding wording and example file say "provisional"; every sentence presenting the sibling layout or (outside, untracked) as decided is gone; Q1 withdrawn |
+| M2 workspace repository | Refused by remote URL (`project_records_check`), not by path; scratchpad-untracked allowed; the old path check and "supersedes" sentence are gone; PR 1's design edit rewrites the Target's "don't prohibit" sentence with the fork and PR reason; known fork limit stated (Q5) |
+| M3 unnamed bends of the session-root rule | PR 3's design edit names the `.agent/projects.d/<name>` write from a project session; the follow-up issue text states outside records paths count as the root's own like `worktrees=` |
+| M4 rollback leaves the plugin enabled | Installer runs only after static gate, build and test pass; rollback after an installer failure also calls `--disable-root`; tests for both paths |
+| M5 promoted script not inert | `registration_verify.sh` is read-only (no `--run`; `--user-tier` only reads); `register_project.sh` runs build and test itself; the inert marker stays true |
+| S6 follow-up text | Full text in "Follow-up issues" (both halves of the acceptance, the one rule, the unsettled points, the override and package-repo cases); opened as PR 1's first step so PR 1 cites its number |
+| S7 `registration.conf` unchecked | `register_project.sh` refuses a type without it; `validate_adapter.sh` checks it; Registry and adapters Now names it beside the verb contract |
+| S8 AGENTS.md row in PR 1 | PR 1 item 8, own commit |
+| S9 acceptance mapping | "Acceptance to test" table and the hand-registered synthetic fixture |
+| S10 offers gated | Offers only when `instructions=tracked`; sit-rep follow-up row notes `ROADMAP.md` |
 
 ## Estimated Scope
 
-Four PRs (about: PR 1 medium, PR 2 large, PR 3 large, PR 4 small), plus two follow-ups. Gate for each: its
-own suite and `run_script_tests.sh` green, `make validate`, `check_design_anchors.sh`.
+Four PRs (about: PR 1 medium, PR 2 large, PR 3 large, PR 4 small), plus the records-lookup follow-up
+(opened first) and the #331 comment. Gate for each: its own suite and `run_script_tests.sh` green,
+`make validate`, `check_design_anchors.sh`.
