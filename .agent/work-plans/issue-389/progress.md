@@ -228,3 +228,22 @@ Verification:
 - Manual "what's next?": `claude -p "what's next?" --output-format stream-json --verbose --max-turns 2`, cwd `/home/roland/agent_workspace/worktrees/workspace/issue-workspace-389`. Init listed `sitrep` and no what-next; the first tool call was `Skill {"skill":"sitrep"}`; no read of `~/Documents/workplan/NOW.md`. Its later Bash calls (status line, steps 1–3) were all denied by headless permissions, so no report was produced and nothing was written; the run stopped at max turns.
 
 PR notes for publish: dropped — project-roadmap probe, `--workspace-only`/`--project-only`, ranking, stale-row and needs-ticket detection (declined by the owner); typing `/what-next` now does nothing; machines that had it linked see one `user_tier_install.sh --check` drift until the installer is rerun; guard (c) does not read `docs/`, `README.md`, `CODEX.md`, `CLAUDE.md` or `.github/copilot-instructions.md` (CI runs the same hook over the same pathspec; widening would fail the hook-scope test).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-13 09:55 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-389 at `5123b139`
+**Base**: main
+**Depth**: Standard (reason: override-trigger file `.claude/skills/*/SKILL.md`; 520+/240-)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Reviewers: Claude adversarial ran (0 must-fix); Gemini ran; Codex ran (raised the must-fix, confirmed: `worktree_list.sh --json` lists the main checkout as `type: "main"`); Copilot ran. Not carried: roadmap morning-status row "done" (Copilot, adversarial) — owner closed it as covered (A5); project-session scope (Gemini, adversarial) — owner decision, already printed in the report and PR notes; design.md update (Gemini) — design.md does not name the old skill and the parts do not change.
+
+### Findings
+- [ ] (must-fix) "Suggested next" counts every worktree as work in flight, but `worktree_list.sh --json` always lists the main checkout (`type: "main"`), so an idle main checkout outranks the inbox "now" bin and "nothing from this run's facts" can never be reached; exclude `type: "main"` from the candidates — `.claude/skills/sitrep/SKILL.md:291-293`
+- [ ] (suggestion) No pick within a source when several qualify (due deferrals, false lines, worktrees, open PRs), and the session's own worktree will nearly always win "work in flight"; state the tie-break (e.g. first as listed in the report) and whether the current worktree counts — `.claude/skills/sitrep/SKILL.md:291-294`
+- [ ] (suggestion) Only `false` Direction lines feed "Suggested next"; a `format` problem (broken Direction section) or all-`unknown`/`partial` lines fall through to in-flight work or "nothing"; say whether a format problem is a source, or that it is deliberately not — `.claude/skills/sitrep/SKILL.md:292`
