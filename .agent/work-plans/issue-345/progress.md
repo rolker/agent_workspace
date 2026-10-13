@@ -707,3 +707,14 @@ Whole branch reviewed cold against main (merge-base = main at da4b62bc). Merge o
 - [ ] (suggestion) test_session_root.sh lacks cases the adversarial reviewer ran by hand and found correct: prefix collision (/r/foo vs /r/foobar), trailing slash and `..` in --dir and registry paths, a symlinked registered root, and a worktree in the workspace's worktrees/project/<registered-name>/ transition location (root = workspace, so --project <name> is refused there) (Claude adversarial; caused by a round-7 fix: yes) — `.agent/scripts/tests/test_session_root.sh`
 - [ ] (suggestion) location-rule wording and consistency: run-issue says the cwd "gives the same answer at any point of the run", untrue for a non-git root once inside a package worktree (it holds only because the prefix is read once before step 1); session_root.sh accepts a nested package repo that skill_prefix.sh refuses; the SessionStart hook resolves via registry_resolve_from_dir, which does not know worktrees= dirs, so it is silent where session_root.sh names a root (Claude adversarial; caused by a round-7 fix: yes) — `.claude/skills/run-issue/SKILL.md` "Skill names in this session", `.claude/hooks/session_start_project_layer.sh`
 - [ ] (suggestion) session_root.sh and skill_prefix.sh, which run-issue runs first in every project session, are not in .agent/user_tier_scripts.txt, so a project session gets a permission prompt for each; both are read-only and could be promoted with the inert/guard marker test_user_tier_guard.sh accepts (own review; known since the round-7 implementation) — `.agent/user_tier_scripts.txt`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 11:28 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Round 7 (f8551741): "Address, then publish" — one fix pass for the 2 must-fix (uninstall refuses skipped parent= instances like install/--check, with a test; a registered root inside an unrelated git repository gets a new refusing verdict honoured by install, --check and --uninstall, with a test) and the 5 suggestions (registry parse errors not swallowed; session_root.sh / skill_prefix.sh resolve the main checkout as dispatch_phase.sh does; test_session_root.sh cases for prefix collision, trailing slash / .., symlinked root, worktrees/project/<name>; the location rule worded the same in run-issue, session_root.sh / skill_prefix.sh and the SessionStart hook; both read-only scripts added to .agent/user_tier_scripts.txt), then publish without another local round — the bot reviews and triage catch what is left.
+Ask-First, answered "Keep both" earlier this round: the AGENTS.md Script Reference change (dispatch_phase.sh row modified; skill_prefix.sh and session_root.sh rows new) and the .pre-commit-config.yaml files-pattern widening to .claude-plugin/ stay on the branch and are listed in the PR body.
