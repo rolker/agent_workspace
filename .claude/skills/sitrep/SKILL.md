@@ -203,8 +203,9 @@ Branches with a ready pull request (open and not a draft; every one needs
 the owner's merge) come first; then the rest (a draft pull request, or a
 worktree with no pull request). `reviewDecision` does not change the
 order; it is printed as the review state when set, and nothing is printed
-for it when it is empty. Within each group keep the
-order the commands above printed.
+for it when it is empty. Within each group, branches with a worktree come
+first, in the worktree list's order, then branches with only a pull
+request, in the order `gh pr list` printed them.
 
 ### 4. Write the run record
 
