@@ -191,3 +191,23 @@ Verified: `run_script_tests.sh` all 33 suites passed (`test_cross_model_review.s
 **Decision**: publish
 
 Publish after pre-push round 1 (552e4ba1, approved, 0 must-fix, 0 suggestions). PR body lists the two approved AGENTS.md row edits, states the hosted Copilot review wiring is untouched, and notes that #342's title still lists Copilot (retitle after merge).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-13 11:51 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**PR**: #391 at `5caf2923`
+**Sources**: 3 (Copilot hosted review @ `5caf2923` — did not run, quota limit; Local Review (Pre-Push) @ `4517fc8f` (covers `5caf2923` via bookkeeping); CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Copilot's hosted review at the head posted no comments; its only text is "Copilot was unable to review this pull request because the user who requested the review has reached their quota limit.", and its `copilot-pull-request-reviewer` check-run concluded failure. That is a missing source, not a clean review: the only review signal on this PR is the pre-push local review (Gemini, Codex and Claude adversarial all ran, approved, 0 must-fix, 0 suggestions). `merge_pr.sh` excludes that check-run from CI (`MERGE_PR_CI_EXCLUDE_CHECK_RUN`, #300), so it does not block the merge. The pre-push entry's open box "No issues found. LGTM." is the empty-findings placeholder, not a finding. CI: Validate Adapter Contract, Validate Documentation and ros-manifest tests pass on both runs; Lint (pre-commit) still pending on both.
+
+### Findings
+
+No findings.
+
+### False positives
+
+None.
