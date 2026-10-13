@@ -284,9 +284,7 @@ Proposed sort, to answer in batches:
 - delete: <items>
 
 **In flight**: one line per branch, in the order step 3 gives:
-- <branch> (for a project worktree, <project>/<branch>): <pull request
-  title, and "draft" or its review state if set, when it has one>; <last
-  commit age and subject, when it has a worktree>.
+- <name>: <pull request part>; <worktree part>
 
 **Deferrals due**: <deferrals whose check is true>.
 Unchecked (no revisit check): <deferrals whose result is unchecked>.
@@ -301,6 +299,15 @@ Rules for the report:
   reads as a line that failed.
 - A deferral is due only when its result is `true`. An `unchecked`
   deferral is listed as unchecked, never as due.
+- An In flight line is filled in part by part, and a part the branch does
+  not have is left out:
+  - `<name>` is the branch, or for a project worktree its project
+    (`repo`), a slash and the branch, e.g. `myproject/feature/issue-12`.
+  - The pull request part is the title, then "draft" if it is one, then
+    the review state if `reviewDecision` is set.
+  - The worktree part is the last commit's age and subject.
+  - "; " goes only between the two parts, so a line with only a pull
+    request or only a worktree has none.
 - The inbox sort is a proposal. Use only the five bins above; never
   "never" — "decided against" always carries the condition that would
   reopen it. Do not edit the inbox; filing issues or editing the roadmap
