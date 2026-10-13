@@ -456,3 +456,13 @@ Second half of the owner's "Do the first" at the round-3 limit: "address, then p
 - [ ] (low, Copilot @ `e1cc6f9`) Sit-rep step 2 reads the inbox in four separate unlocked passes (count, oldest, new-since-last, listing) while `capture.sh` appends under an exclusive `flock`. A capture landing between passes makes one report disagree with itself (e.g. `inbox_lines=5` with `inbox_new=6` when the last run saw an empty inbox), and a capture over 4 KB caught mid-write can be listed truncated. Fix: at the top of step 2 copy the inbox once to a temporary snapshot under `flock -s` (when `flock` exists; same 10 s wait as `capture.sh`), derive every step-2 value from the snapshot, print `inbox_snapshot=`, and have step 4 take the n-th line from that snapshot and remove it (the `rows_file` pattern), with a test in `test_sitrep_checks.sh` that appends a line between the passes. Copilot's stated consequence, a corrupted run-record anchor, is overstated: step 4 reads the n-th line later, and appends never move it, so it is wrong only if a writer stalls mid-line across two tool calls — but the in-report inconsistency is real and reachable — `.claude/skills/sitrep/SKILL.md`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 00:16 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Owner: "merge" — choosing "merge now, defer the finding" from the three options offered (address now ~30–40 min; merge and defer; stop). The one open low finding (sit-rep step 2 reads the inbox in four passes without the shared lock capture.sh holds, so a concurrent capture can make one report contradict itself) is deferred to its own issue; it only shows when a capture lands while a sit-rep is running.
