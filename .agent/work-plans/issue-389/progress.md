@@ -378,3 +378,21 @@ Re-review after the post-triage fix 152b9d96 (one In flight line per branch, own
 - `test_sitrep_checks.sh`: 141 passed, 0 failed
 - `test_skill_paths.sh`: 58 passed, 0 failed
 - pre-commit hooks passed on all three fix commits
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-13 11:29 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+**Dispatch**: resumed (agent a20fc3d5a00a4467c, resume 3 of 3)
+
+**PR**: #390 at `ec271dcf`
+**Depth**: Standard (reason: override-trigger file `.claude/skills/*/SKILL.md`; whole-PR classification)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Re-review after fixes 1ce50fc6, 17a6f40f, 018b79b1 to the Local Review at `7e183de5`: all three verified in `.claude/skills/sitrep/SKILL.md` step 3, the In flight template and the step-5 tie-break (only `type: "workspace"` worktrees matched to workspace pull requests; project worktrees get their own line; "ready pull request" = open and not a draft, `reviewDecision` printed when set and not used for order; worktree-list order, then pull-request-only branches in `gh` order). The Copilot comment at `7e183de5` (cross-repo branch-name match) is answered by 1ce50fc6. CI at `ec271dcf`: all checks pass (Lint, Validate Documentation, Validate Adapter Contract, ros-manifest tests). Reviewers: Claude adversarial ran (0 must-fix; it checked `worktree_list.sh --json` and `gh pr list` live; its suggestions on package/legacy project-worktree fields, `type: "main"` covering worktrees outside the standard paths, `gh pr list` default limit of 30 and issue numbers inside branch names concern behaviour that predates this PR and are not carried); Codex ran (no issues); Copilot ran (no issues); Gemini ran (6 suggestions; 2 merged into the one below; not carried: `set -e` and empty `WS_ROOT` in the test — the suite runs `set -uo pipefail` without `-e` and sets `WS_ROOT` from its own path; dangling-symlink check; multi-line YAML description).
+
+Tooling note for triage (not a finding in this PR): the fixer ticked the previous Local Review's three boxes by hand, because `review_progress.sh findings` does not treat a post-PR `## Local Review` entry as a source.
+
+### Findings
+- [ ] (suggestion) The In flight template line is loose for an agent filling it in: "draft" or its review state reads as either/or although step 3 prints `reviewDecision` whenever set, the "(for a project worktree, <project>/<branch>)" aside may be copied literally, and the fixed ";" leaves a dangling separator when a line has only a pull request or only a worktree; write it as alternatives (`<branch>` or `<project>/<branch>`; "draft, and its review state if set"; each part only when present) — `.claude/skills/sitrep/SKILL.md:287-289`
