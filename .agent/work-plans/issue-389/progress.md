@@ -319,3 +319,21 @@ Publish after pre-push round 2 (411fb0fc, approved, 0 must-fix). The one open su
 **Decision**: address
 
 "Address, then merge": fix the one open suggestion from the Integrated Review (0a5a87ea) — under "work in flight", one line per branch (match worktrees and open PRs on headRefName) and say whether a PR waiting on the owner comes before a branch with no PR — then re-review and return to the merge decision.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 10:55 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a4c953679901c53f2, resume 1 of 3)
+
+**PR**: #390 at `152b9d96`
+**Addressed**: Integrated Review at `bff4f95` (2026-10-13 10:38 -04:00)
+**Commits**: 152b9d96
+
+### Actions
+- [x] (cross-confirmed, suggestion) In flight is one line per branch (worktree `branch` matched to pull request `headRefName`); branches whose pull request waits on the owner (open, not a draft) come first, then drafts and worktree-only branches, in printed order; Suggested next's "work in flight" source is a branch line, so its first pick is an owner-waiting pull request when there is one — `.claude/skills/sitrep/SKILL.md` step 3, report template, step 5 rules
+
+### Checks
+- `test_sitrep_checks.sh`: 141 passed, 0 failed
+- `test_skill_paths.sh`: 58 passed, 0 failed
+- pre-commit hooks passed on the fix commit
