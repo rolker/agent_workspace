@@ -180,7 +180,26 @@ if [ -n "$REGISTRY_ENTRIES" ]; then
         else
             check_warn "project '$_name' registered but not checked out at $_path"
         fi
+        # Its settings file, .agent/projects.d/<name> (issue #332): a
+        # malformed or refused file stops every adapter verb for the project.
+        _PF_RC=0
+        project_records_check "${MAIN_ROOT:-$ROOT_DIR}" "$_name" >/dev/null 2>&1 || _PF_RC=$?
+        if [ "$_PF_RC" -eq 2 ]; then
+            check_fail "project '$_name': settings file .agent/projects.d/$_name is invalid (run: .agent/scripts/project_setting.sh check $_name)"
+            ((FAILED_CHECKS++))
+        elif [ "$_PF_RC" -eq 3 ]; then
+            check_warn "project '$_name': records settings in .agent/projects.d/$_name are valid but not yet honoured ($PROJECT_RECORDS_LOOKUP_ISSUE)"
+        fi
     done <<< "$REGISTRY_ENTRIES"
+    # A settings file whose project is not registered is read by nothing.
+    for _pf in "${MAIN_ROOT:-$ROOT_DIR}"/.agent/projects.d/*; do
+        [ -f "$_pf" ] || continue
+        _pfname="$(basename "$_pf")"
+        [[ "$_pfname" == *.sh ]] && _pfname="${_pfname%.sh}"
+        if ! grep -qx "$_pfname" <<< "$(cut -f1 <<< "$REGISTRY_ENTRIES")"; then
+            check_warn "settings file .agent/projects.d/$(basename "$_pf") belongs to no registered project"
+        fi
+    done
 fi
 
 # Configuration validation

@@ -38,9 +38,15 @@
 # shims can forward them after the verb (no contract verb takes flags with
 # these names). The resolved project is exposed to the sourced adapter as
 # shell variables (not exported): ACTIVE_PROJECT_NAME (empty for legacy),
-# ACTIVE_PROJECT_ROOT, and ACTIVE_PROJECT_CONFIG (per-project command
-# config at .agent/projects.d/<name>.sh; adapters fall back to
-# .agent/project_config.sh when it doesn't exist).
+# ACTIVE_PROJECT_ROOT, ACTIVE_PROJECT_FILE (the per-project settings file
+# .agent/projects.d/<name>, issue #332; grammar in _project_registry.sh),
+# ACTIVE_PROJECT_BUILD / _TEST / _INSTALL / _BOOTSTRAP_URL (its keys; empty
+# when unset), and ACTIVE_PROJECT_CONFIG (the legacy per-project config
+# .agent/projects.d/<name>.sh). Per setting, adapters read the settings-file
+# variable first, then the legacy file's variable, then the shared
+# .agent/project_config.sh, and say so on stderr when a registered project
+# falls through to the shared file. A malformed settings file stops every
+# verb.
 #
 # Contract requirements for .agent/project_types/<type>/adapter.sh:
 #   - Silent at source time: nothing written to stdout while being sourced
@@ -247,6 +253,67 @@ if [ -n "$ACTIVE_PROJECT_NAME" ]; then
     # shellcheck disable=SC2034
     ACTIVE_PROJECT_DISTRO="$(registry_field "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" distro 2>/dev/null || true)"
 fi
+
+# --- Per-project settings file (issue #332) ---
+# .agent/projects.d/<name>, parsed once here. A malformed file, or records
+# settings that are refused (a records repository that is a workspace),
+# stop every verb: never resolve silently. Records settings that are valid
+# but not yet honoured (#393) are reported by project_setting.sh check, not
+# here. Adapters read the command and URL keys as these variables and fall
+# back, per setting, to the legacy ACTIVE_PROJECT_CONFIG variable, then the
+# shared .agent/project_config.sh. Empty means "not set in the file"; the
+# value 'none' is a recorded "this project has none".
+ACTIVE_PROJECT_FILE=""
+# shellcheck disable=SC2034
+ACTIVE_PROJECT_BUILD=""
+# shellcheck disable=SC2034
+ACTIVE_PROJECT_TEST=""
+# shellcheck disable=SC2034
+ACTIVE_PROJECT_INSTALL=""
+# shellcheck disable=SC2034
+ACTIVE_PROJECT_BOOTSTRAP_URL=""
+if [ -n "$ACTIVE_PROJECT_NAME" ]; then
+    ACTIVE_PROJECT_FILE="$(project_file_path "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME")"
+    if ! _PF_ENTRIES="$(project_file_entries "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME")"; then
+        echo "ERROR: project '$ACTIVE_PROJECT_NAME': its settings file $ACTIVE_PROJECT_FILE is invalid (errors above); fix it, then check it with .agent/scripts/project_setting.sh check $ACTIVE_PROJECT_NAME" >&2
+        exit 1
+    fi
+    _PF_RC=0
+    _PF_MSG="$(_project_records_check_entries "$WORKSPACE_ROOT" "$ACTIVE_PROJECT_NAME" "$_PF_ENTRIES" 2>&1 >/dev/null)" || _PF_RC=$?
+    if [ "$_PF_RC" -eq 2 ]; then
+        printf '%s\n' "$_PF_MSG" >&2
+        echo "ERROR: project '$ACTIVE_PROJECT_NAME': records settings in $ACTIVE_PROJECT_FILE are refused (above)" >&2
+        exit 1
+    fi
+    # shellcheck disable=SC2034
+    ACTIVE_PROJECT_BUILD="$(_project_file_value_of "$_PF_ENTRIES" build || true)"
+    # shellcheck disable=SC2034
+    ACTIVE_PROJECT_TEST="$(_project_file_value_of "$_PF_ENTRIES" test || true)"
+    # shellcheck disable=SC2034
+    ACTIVE_PROJECT_INSTALL="$(_project_file_value_of "$_PF_ENTRIES" install || true)"
+    # shellcheck disable=SC2034
+    ACTIVE_PROJECT_BOOTSTRAP_URL="$(_project_file_value_of "$_PF_ENTRIES" bootstrap_url || true)"
+fi
+
+# Run a command value from the project file: split on blanks into argv and
+# exec it without a shell and without globbing (the parser has already
+# refused quotes and shell operators). Extra arguments are appended.
+# Usage: active_project_exec "$ACTIVE_PROJECT_BUILD" "$@"
+active_project_exec() {
+    local -a _argv=()
+    read -r -a _argv <<< "$1"
+    shift
+    exec "${_argv[@]}" "$@"
+}
+
+# The note printed when a registered project's command comes from the
+# shared .agent/project_config.sh rather than its own settings: that
+# fallback used to be silent (issue #332).
+# Usage: active_project_fallback_note build
+active_project_fallback_note() {
+    [ -n "${ACTIVE_PROJECT_NAME:-}" ] || return 0
+    echo "NOTE: project '$ACTIVE_PROJECT_NAME' has no $1 command of its own; using the shared .agent/project_config.sh (set it with: .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME $1=<command>, or $1=none)" >&2
+}
 
 ADAPTER_TYPE_DIR="$WORKSPACE_ROOT/.agent/project_types/$PROJECT_TYPE_NAME"
 
