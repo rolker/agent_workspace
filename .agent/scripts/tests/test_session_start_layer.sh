@@ -248,7 +248,7 @@ out=$(run_hook "$PROOT")
     || fail "the layer's idiom omits the fallback"
 
 # ------------------------------------ how workspace skills are named ---
-# ADR-0017 (#345): the header tells the model which name to invoke. A root
+# ADR-0018 (#345): the header tells the model which name to invoke. A root
 # outside the workspace checkout gets the plugin's namespaced names; a root
 # whose git toplevel IS the workspace checkout (the p11-* shape) loads the
 # bare skills by walk-up and must be told so, not sent to agent-workspace:.

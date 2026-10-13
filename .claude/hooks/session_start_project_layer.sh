@@ -21,7 +21,7 @@
 #
 # This hook does not deliver the workspace SKILLS. In a project session they
 # come from the agent-workspace Claude Code plugin, which user_tier_install.sh
-# enables per registered root (ADR-0017), and are namespaced
+# enables per registered root (ADR-0018), and are namespaced
 # /agent-workspace:<skill> so a project's own same-named skill keeps its
 # bare name. The skills' own text still names each other by bare slash
 # command, so the header says which form to invoke -- that line is for the
@@ -99,7 +99,7 @@ echo "Project root: $P_PATH"
 echo "Session cwd: $CWD"
 echo ""
 
-# --- how workspace skills are named here (ADR-0017) ---------------------
+# --- how workspace skills are named here (ADR-0018) ---------------------
 # The same location rule run-issue uses (skill_prefix.sh), applied to the
 # session's cwd, not the registered root's: a git repository nested in a
 # root (a package repo under src/) is its own project root and sees neither

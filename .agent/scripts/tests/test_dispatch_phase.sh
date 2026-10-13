@@ -465,7 +465,7 @@ echo "TEST: --skill-prefix -- the host's skill set, independent of the issue's -
 # The four host/issue combinations. The host is expressed ONLY by
 # --skill-prefix (empty = a workspace-hosted or Codex session with bare
 # skills; agent-workspace: = a project session whose workspace skills came
-# from the plugin, ADR-0017); the issue by --type. Neither may leak into the
+# from the plugin, ADR-0018); the issue by --type. Neither may leak into the
 # other: round 1 of the #345 plan keyed the prefix on --type, which broke a
 # workspace host driving a project issue.
 run_prefixed() {  # <dir> [args...]

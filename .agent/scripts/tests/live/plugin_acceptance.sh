@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/live/plugin_acceptance.sh
-# Live acceptance for the agent-workspace plugin (ADR-0017, #345), ported
+# Live acceptance for the agent-workspace plugin (ADR-0018, #345), ported
 # from the 2026-09-24 plugin spike. OPT-IN: it starts real headless Claude
 # Code sessions (`claude -p`, auth and a few cents each), so it lives
 # outside tests/test_*.sh and run_script_tests.sh never collects it.

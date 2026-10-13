@@ -20,14 +20,14 @@
 #      retired by #328; --check reports a leftover entry for it as drift.)
 #   4. Permission allow-rules for the promoted scripts in
 #      .agent/user_tier_scripts.txt, by absolute path.
-#   5. The agent-workspace Claude Code plugin (ADR-0017), enabled at local
+#   5. The agent-workspace Claude Code plugin (ADR-0018), enabled at local
 #      scope in every registered session root: the workspace skills whose
 #      SKILL.md declares `session_scope: project` or `both`, namespaced as
 #      /agent-workspace:<skill> so a project's own same-named skill keeps its
 #      bare name (#345). Enabling runs `claude plugin marketplace add` and
 #      `claude plugin install --scope local` from the root, which writes the
 #      root's gitignored .claude/settings.local.json -- the one scoped
-#      exception to ADR-0016 section 2 that ADR-0017 records. Skipped:
+#      exception to ADR-0016 section 2 that ADR-0018 records. Skipped:
 #        - a root whose git toplevel IS this workspace checkout (compared as
 #          `pwd -P` forms): a session there already sees the bare skills by
 #          directory walk-up, and enabling would double every skill and write
@@ -54,7 +54,7 @@
 #      over with one `marketplace add` from a throwaway directory, reads it
 #      back, and on failure stops with exit 1 before touching any project
 #      root. The per-root step never touches the machine record.
-#   (Before ADR-0017, item 5 was a symlink per skill in ~/.claude/skills/.
+#   (Before ADR-0018, item 5 was a symlink per skill in ~/.claude/skills/.
 #   Those links were global to the machine and shadowed a project's own
 #   same-named skills. Install removes any left behind; --check reports them.)
 #
@@ -120,7 +120,7 @@ ROOT_FILE="$CLAUDE_DIR/agent-workspace-root"
 RULES_FILE="$CLAUDE_DIR/agent-workspace-rules.json"
 HOOKS_DIR="$CLAUDE_DIR/hooks"
 SKILLS_DIR="$CLAUDE_DIR/skills"
-# The claude CLI's own machine-level marketplace records (ADR-0017). Read
+# The claude CLI's own machine-level marketplace records (ADR-0018). Read
 # only, never written here; install's one takeover `marketplace add`
 # (claim_machine_record) is what repoints it. They live under the CLI's
 # configuration home: CLAUDE_CONFIG_DIR when set, else ~/.claude. (Observed
@@ -408,7 +408,7 @@ if [[ "$MODE" == "generate-plugin-manifest" ]]; then
 fi
 
 # ------------------------------------------------- legacy skill symlinks ---
-# Before ADR-0017 the user tier shipped skills as symlinks in
+# Before ADR-0018 the user tier shipped skills as symlinks in
 # ~/.claude/skills/. They are global to the machine and shadow a project's
 # own same-named skills (#345), so the mechanism is retired: install removes
 # every such link, --check reports any left behind, and nothing creates them.
@@ -560,7 +560,7 @@ is_this_checkout() {  # <path>
 #                but not enabled, or declared from a source no longer on
 #                disk (no checkout is left to remove it, so this one may;
 #                a checkout that is only unmounted looks the same, and is
-#                out of scope -- ADR-0017)
+#                out of scope -- ADR-0018)
 #   absent       neither
 #   unparseable  the file exists and is not JSON
 plugin_state() {  # <root>
@@ -678,7 +678,7 @@ instance_cli_reason() {  # <instance>
 }
 
 # Take the machine-level record over for this checkout (last install wins,
-# ADR-0017). Called BEFORE any project root is touched when the record is
+# ADR-0018). Called BEFORE any project root is touched when the record is
 # not this checkout's (another checkout's, or no entry), and once more
 # after the per-root step if that step lost it. The record is
 # global, so it is handled as one machine-level step, never per root: a
@@ -1013,10 +1013,10 @@ if [[ "$MODE" == "check" ]]; then
 
     # Legacy skill symlinks: any link left in ~/.claude/skills/ that resolves
     # into an agent_workspace checkout (this one or another) is drift -- the
-    # mechanism ADR-0017 retired, which shadows a project's own skills.
+    # mechanism ADR-0018 retired, which shadows a project's own skills.
     while IFS= read -r link; do
         [[ -z "$link" ]] && continue
-        note "legacy skill symlink (retired by ADR-0017; re-run the installer to remove it): $link -> $(readlink "$link")"
+        note "legacy skill symlink (retired by ADR-0018; re-run the installer to remove it): $link -> $(readlink "$link")"
     done < <(legacy_skill_links)
 
     # The plugin, per registered root. JSON reads only -- no CLI call.
@@ -1215,7 +1215,7 @@ read_settings | jq \
 ' | write_settings || { echo "ERROR: failed to write $SETTINGS" >&2; exit 1; }
 echo "  merged hook entries and $(allow_rules_json | jq 'length') allow-rules into $SETTINGS"
 
-# 5. retire legacy skill symlinks (ADR-0017), this checkout's or another's
+# 5. retire legacy skill symlinks (ADR-0018), this checkout's or another's
 while IFS= read -r link; do
     [[ -z "$link" ]] && continue
     rm -f "$link"

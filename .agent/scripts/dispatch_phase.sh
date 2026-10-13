@@ -19,7 +19,7 @@
 #     conventions, and prompt_file (only when --prompt-file was given).
 #     --skill-prefix (default empty) namespaces every slash command in the
 #     task line, e.g. `agent-workspace:` gives `/agent-workspace:review-code`
-#     -- for a host whose workspace skills came from the plugin (ADR-0017).
+#     -- for a host whose workspace skills came from the plugin (ADR-0018).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--project <name>]
@@ -238,7 +238,7 @@ resolve_worktree() {
 # <prefix> (the --skill-prefix value, default empty) goes between the `/` and
 # the skill name of every slash command: `agent-workspace:` when the HOST
 # session loaded its workspace skills through the agent-workspace plugin
-# (ADR-0017), where the bare name may be a project's own same-named skill.
+# (ADR-0018), where the bare name may be a project's own same-named skill.
 # It is deliberately a caller-supplied string, not derived from --type or
 # $PWD: the issue type says nothing about which skill set the host loaded
 # (a workspace-hosted session driving a project issue has bare skills only).

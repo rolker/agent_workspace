@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # .agent/scripts/skill_prefix.sh
 # How workspace skills are named in a Claude Code session started in <dir>
-# (ADR-0017 decision 6). A location rule, decided from the filesystem and
+# (ADR-0018 decision 6). A location rule, decided from the filesystem and
 # the registry alone -- never from a placeholder the model has to copy.
 #
 #   skill_prefix.sh [--dir <dir>]      (default: the current directory)

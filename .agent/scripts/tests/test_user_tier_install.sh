@@ -5,7 +5,7 @@
 # (foreign entry, missing entry, stale symlink, retired hook entry, legacy
 # skill symlink), skill selection from session_scope frontmatter, the
 # plugin manifest generator, per-registered-root plugin enable / --check /
-# --uninstall (ADR-0017), and uninstall.
+# --uninstall (ADR-0018), and uninstall.
 #
 # Hermetic: HOME is redirected to a sandbox for every invocation, so the
 # real ~/.claude is never read or written. The installer is run against a
@@ -208,7 +208,7 @@ jq -e --arg c "$WSC/.agent/scripts/worktree_create.sh" \
     && pass "absolute-path allow-rule generated from the manifest" \
     || fail "no allow-rule for a manifest script"
 
-# ADR-0017: skills are no longer delivered as ~/.claude/skills/ symlinks.
+# ADR-0018: skills are no longer delivered as ~/.claude/skills/ symlinks.
 n_links=$(find "$SKILLS_DIR" -maxdepth 1 -type l 2>/dev/null | wc -l)
 [[ "$n_links" -eq 0 ]] \
     && pass "install creates no ~/.claude/skills/ symlinks (the plugin delivers skills)" \
@@ -283,7 +283,7 @@ out="$(run --check)"; rc=$?
     || fail "missing-rule drift not detected (rc=$rc out=$out)"
 run >/dev/null
 
-# (e) a legacy skill symlink into this checkout (pre-ADR-0017 delivery),
+# (e) a legacy skill symlink into this checkout (pre-ADR-0018 delivery),
 # including a dangling one whose skill was since deleted
 mkdir -p "$SKILLS_DIR"
 ln -s "$WSC/.claude/skills/zz-fixture-proj" "$SKILLS_DIR/zz-fixture-proj"
@@ -705,7 +705,7 @@ else
 fi
 
 # ------------------------------------------- plugin, per registered root ---
-# ADR-0017. A sandboxed registry with one root of every verdict: a git repo
+# ADR-0018. A sandboxed registry with one root of every verdict: a git repo
 # (enable), a directory in no git repo (enable), a root inside the
 # workspace copy's own git tree (skip -- it sees the bare skills), the same
 # reached through a symlinked path (still skip: pwd -P on both sides), a

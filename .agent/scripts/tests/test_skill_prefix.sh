@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/test_skill_prefix.sh
-# Tests for .agent/scripts/skill_prefix.sh (ADR-0017 decision 6, #345): the
+# Tests for .agent/scripts/skill_prefix.sh (ADR-0018 decision 6, #345): the
 # location rule that says whether workspace skills are bare or
 # agent-workspace:-prefixed in a session started in a given directory, and
 # that fails, rather than guesses, where neither holds.

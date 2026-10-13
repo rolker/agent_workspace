@@ -1,4 +1,4 @@
-# ADR-0017: Workspace Skills Reach Project Sessions Through a Claude Code Plugin
+# ADR-0018: Workspace Skills Reach Project Sessions Through a Claude Code Plugin
 
 ## Status
 

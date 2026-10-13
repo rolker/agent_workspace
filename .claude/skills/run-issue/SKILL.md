@@ -32,7 +32,7 @@ never reaches a tool call's shell (ADR-0016).
 In a project session the workspace skills arrive through the
 `agent-workspace` Claude Code plugin and are named
 `/agent-workspace:<skill>`; the bare `/<skill>` there may be the project's
-own skill of the same name (ADR-0017). In a workspace session they are
+own skill of the same name (ADR-0018). In a workspace session they are
 bare. Every dispatched task line must use the name *this* session has, and
 neither `--type` nor the cwd says which: a workspace session driving a
 project issue still has bare names, and `/start-task` moves the cwd.

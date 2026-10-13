@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/test_plugin_manifest.sh
 # Mechanical check of the agent-workspace Claude Code plugin manifest
-# (ADR-0017, #345):
+# (ADR-0018, #345):
 #   - .claude-plugin/plugin.json and marketplace.json are valid JSON, carry
 #     the names user_tier_install.sh enables (agent-workspace@agent-workspace),
 #     and the marketplace's one plugin is sourced from the checkout root;

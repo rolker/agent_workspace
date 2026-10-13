@@ -603,7 +603,7 @@ no section of this file carries that ADR.
 | [0015](decisions/0015-parallel-sync-is-the-only-review-dispatch-mode.md) | Cross-model reviewers run in parallel and synchronously; there is no tmux mode | in force | [Review loop and timeline](#review-loop-and-timeline) | yes 2026-10-09 |
 | [0016](decisions/0016-session-roots-and-the-user-tier.md) | The workspace and each project are separate session roots, and a user tier carries the workspace layer to project sessions | Provisional | [Sessions and roots](#sessions-and-roots) | yes 2026-10-09 |
 | [0017](decisions/0017-design-document-is-the-current-picture.md) | This file is the current picture and the authority; an ADR is written only when two parts could otherwise choose incompatibly | in force | [The design](#the-design) | yes 2026-10-09 |
-| [0017](decisions/0017-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, enabled at local scope per registered root, not `~/.claude/skills/` symlinks | Provisional | [Sessions and roots](#sessions-and-roots) | not yet |
+| [0018](decisions/0018-plugin-based-skill-delivery.md) | Workspace skills reach project sessions through the `agent-workspace` Claude Code plugin, enabled at local scope per registered root, not `~/.claude/skills/` symlinks | Provisional | [Sessions and roots](#sessions-and-roots) | not yet |
 
 Plan-level decisions that never got an ADR: none are listed. The plan for this rewrite names none that
 is not already stated in a section above with its issue.
@@ -676,6 +676,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Decision register | `/audit-workspace` reports the `Re-examined` and `Standing` cells to change when it checks an ADR against the code, whenever the standing it finds differs from the cell, and offers a small pull request that applies them; it does not edit the table, and the paragraph says so | #335 | 720 |
 | 2026-10-12 | Registry and adapters, Worktrees, Merge gate, Change log | `merge_pr.sh` looks up a project pull request's timeline at the registry-aware project root, the same one the Step 1 roadmap lookup uses, and its main-tree guards include it; the #379 gap text is gone from the Records bullet, Target items 1 and 2, the Merge gate bullets, the `merge_pr.sh` row and the change-log rule, and every `merge_pr.sh` line number is refreshed | #379 | 718 |
 | 2026-10-12 | Documentation layers, Registry and adapters, Open questions | Direction row: the roadmap's `## Direction` section, read by the sit-rep; Measures row: the sit-rep run record, a first form; the gaps paragraph says both gaps narrowed and neither closed, status stays machine-local and the five result words are a trial; the Target sentence notes a project may carry the same section; `settings.local` beside the registry; OQ-3 partly answered | #386 | 730 |
+| 2026-10-13 | Decision register | Row for ADR-0018 (workspace skills reach project sessions through the `agent-workspace` plugin; Provisional, not yet re-examined), making 18 rows | #345 | 732 |
 
 ## Glossary
 
