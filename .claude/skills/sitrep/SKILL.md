@@ -199,9 +199,11 @@ are the same work and share that line. A project worktree
 (`type: "project"`) gets its own line, named with its project (`repo`),
 and no pull request: project branches use the same `feature/issue-<N>`
 names with their own numbers, so a name match would join unrelated work.
-Branches whose pull request waits on
-the owner (open and not a draft) come first; then the rest (a draft pull
-request, or a worktree with no pull request). Within each group keep the
+Branches with a ready pull request (open and not a draft; every one needs
+the owner's merge) come first; then the rest (a draft pull request, or a
+worktree with no pull request). `reviewDecision` does not change the
+order; it is printed as the review state when set, and nothing is printed
+for it when it is empty. Within each group keep the
 order the commands above printed.
 
 ### 4. Write the run record
@@ -282,8 +284,8 @@ Proposed sort, to answer in batches:
 
 **In flight**: one line per branch, in the order step 3 gives:
 - <branch> (for a project worktree, <project>/<branch>): <pull request
-  title, draft or review state, when it has one>; <last commit age and
-  subject, when it has a worktree>.
+  title, and "draft" or its review state if set, when it has one>; <last
+  commit age and subject, when it has a worktree>.
 
 **Deferrals due**: <deferrals whose check is true>.
 Unchecked (no revisit check): <deferrals whose result is unchecked>.
@@ -317,8 +319,8 @@ Rules for the report:
     includes it (`type: "main"`), so it is never a candidate. The
     worktree this session runs in counts like any other.
   - When a source has several items, take the first as listed in the
-    report. For work in flight that is a branch whose pull request waits
-    on the owner, if there is one (step 3's order).
+    report. For work in flight that is a branch with a ready pull
+    request, if there is one (step 3's order).
   - From the Direction section only a due deferral and a `false` line are
     sources. A `format` problem and an `unknown`, `partial` or `unchecked`
     line are deliberately not: they say a check could not decide, not
