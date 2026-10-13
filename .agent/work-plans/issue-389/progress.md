@@ -418,3 +418,13 @@ Tooling notes for the host, not findings on this PR; they belong with the open `
 - [ ] (suggestion, Copilot R3 @ `ec271dc`, review body) The PR body still carries "Open suggestion, for triage" (merge worktrees and pull requests by branch, owner-waiting first), which 152b9d96 resolved. Fix: the host removes that paragraph or marks it resolved when it next edits the PR body — PR #390 description
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 11:41 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+"Fix 1–2, then merge" on the second Integrated Review (1ca9bd79): rewrite the "In flight" template line (alternatives, each part shown only when present); add `isCrossRepository` to the `gh pr list` fields and join a PR to a worktree only when it is false. Finding 3 (stale "Open suggestion, for triage" paragraph in the PR description) is the host's edit, done directly. Then re-review and the merge decision.
