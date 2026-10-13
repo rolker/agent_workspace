@@ -244,6 +244,32 @@ rm -f "$FAKE_HOME/.claude/tool-use-log.jsonl"
     && pass "log hook fails closed (no log line) when the registry cannot be resolved" \
     || fail "log hook wrote a line with an unresolvable registry"
 
+# ------------------------------------------- read-only location scripts ---
+# session_root.sh and skill_prefix.sh carry the inert marker although they
+# are executed, not sourced: they only read and print. Hold them to that --
+# no repo-changing call in the source, and from an unregistered repo they
+# exit 1 with their own message, leaving the repo and HOME untouched.
+for rel in .agent/scripts/session_root.sh .agent/scripts/skill_prefix.sh; do
+    in_manifest=false
+    for e in "${ENTRIES[@]}"; do [[ "$e" == "$rel" ]] && in_manifest=true; done
+    [[ "$in_manifest" == true ]] && pass "manifest lists the read-only $rel" \
+        || fail "the read-only $rel is not in the manifest"
+    if grep -nE '(^|[^[:alnum:]_.-])(gh[[:space:]]+(pr|issue|api|repo|run|release|label|auth)|git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(push|commit|merge|rebase|fetch|pull|checkout|switch|branch|tag|clone|init|add|rm|mv|reset|worktree[[:space:]]+(add|remove)))[[:space:]]' "$WS_ROOT/$rel" \
+        | grep -vE ':[[:space:]]*#' | grep -q .; then
+        fail "$rel makes a gh or repo-changing git call, so it is not read-only"
+    else
+        pass "$rel makes no gh or repo-changing git call"
+    fi
+    home_before="$(find "$FAKE_HOME" | sort)"
+    out=$(cd "$OUTSIDE" && HOME="$FAKE_HOME" timeout 30 bash "$WSC/$rel" 2>&1); rc=$?
+    if [[ "$rc" -eq 1 && "$out" == *"neither in the workspace checkout"* \
+          && -z "$(git -C "$OUTSIDE" status --porcelain --ignored)" && "$(find "$FAKE_HOME" | sort)" == "$home_before" ]]; then
+        pass "$rel says it is outside every root, changing nothing, from an unregistered repo"
+    else
+        fail "$rel from an unregistered repo (rc=$rc out=${out:0:200})"
+    fi
+done
+
 # ------------------------------------------- guarded-by: shims exercised ---
 # Round 1 suggestion: both loops above iterate NONINERT, which excludes the
 # shims, so build.sh / test.sh and their probe_args cases were dead code.

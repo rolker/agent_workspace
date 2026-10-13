@@ -35,6 +35,12 @@
 # toplevel (the main repository's, for a worktree), or its own directory
 # when it is in no git repository. The installer's same_project() is the
 # same rule.
+#
+# user-tier: inert -- read-only: prints a verdict on stdout (or the reason
+# on stderr) and writes nothing; no gh call and no repo-changing git call.
+# Outside the workspace and every registered root it exits 1 saying so,
+# which is its job, so a registry_require_root guard would only replace
+# that message with a less useful one (test_user_tier_guard.sh checks it).
 
 set -uo pipefail
 
