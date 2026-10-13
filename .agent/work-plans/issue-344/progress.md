@@ -181,3 +181,13 @@ Verified: `run_script_tests.sh` all 33 suites passed (`test_cross_model_review.s
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 11:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish after pre-push round 1 (552e4ba1, approved, 0 must-fix, 0 suggestions). PR body lists the two approved AGENTS.md row edits, states the hosted Copilot review wiring is untouched, and notes that #342's title still lists Copilot (retitle after merge).
