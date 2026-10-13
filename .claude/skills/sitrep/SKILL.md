@@ -294,16 +294,21 @@ Rules for the report:
 - "Suggested next" names one item, taken from the first of these sources
   that has one, in this order: a due deferral; a `false` Direction line;
   work in flight (a worktree or open pull request); the proposed inbox
-  "now" bin. The main checkout is not work in flight: the worktree list
-  always includes it (`type: "main"`), so it is never a candidate. The
-  worktree this session runs in counts like any other. When a source has
-  several items, take the first as listed in the report. It names the
-  fact it rests on (the deferral and its check,
+  "now" bin. It names the fact it rests on (the deferral and its check,
   the line and its check, the branch or pull request title, the inbox
   line). When it comes from the inbox "now" bin, it says "this rests on
   the proposed inbox sort", since that bin is this run's proposal, not a
   checked fact. When no source has an item, it reads "Suggested next:
   nothing from this run's facts."
+  - The main checkout is not work in flight: the worktree list always
+    includes it (`type: "main"`), so it is never a candidate. The
+    worktree this session runs in counts like any other.
+  - When a source has several items, take the first as listed in the
+    report.
+  - From the Direction section only a due deferral and a `false` line are
+    sources. A `format` problem and an `unknown`, `partial` or `unchecked`
+    line are deliberately not: they say a check could not decide, not
+    that work is due. The closing question may ask about them.
 - After "Suggested next", end with at most one question, the one whose
   answer changes the most. The suggestion proposes an action; the question
   asks the owner to decide something.
