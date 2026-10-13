@@ -718,3 +718,24 @@ Whole branch reviewed cold against main (merge-base = main at da4b62bc). Merge o
 
 Round 7 (f8551741): "Address, then publish" — one fix pass for the 2 must-fix (uninstall refuses skipped parent= instances like install/--check, with a test; a registered root inside an unrelated git repository gets a new refusing verdict honoured by install, --check and --uninstall, with a test) and the 5 suggestions (registry parse errors not swallowed; session_root.sh / skill_prefix.sh resolve the main checkout as dispatch_phase.sh does; test_session_root.sh cases for prefix collision, trailing slash / .., symlinked root, worktrees/project/<name>; the location rule worded the same in run-issue, session_root.sh / skill_prefix.sh and the SessionStart hook; both read-only scripts added to .agent/user_tier_scripts.txt), then publish without another local round — the bot reviews and triage catch what is left.
 Ask-First, answered "Keep both" earlier this round: the AGENTS.md Script Reference change (dispatch_phase.sh row modified; skill_prefix.sh and session_root.sh rows new) and the .pre-commit-config.yaml files-pattern widening to .claude-plugin/ stay on the branch and are listed in the PR body.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 12:29 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent afb8c682cfbaca02c, resume 1 of 3)
+
+**Branch**: feature/issue-345 at `f4414742`
+**Addressed**: Local Review (Pre-Push) at `6d888b85` (2026-10-13 11:24 -04:00)
+**Commits**: 376c74e1, a7873768, 1a296f49, 867340ee, 4b789f89, 0e6b07d4, f4414742
+
+### Actions
+- [x] (must-fix) `--uninstall` refuses a skipped parent= instance as install and `--check` do: this checkout's declaration there is reported for removal by hand (exit 1, no CLI), another checkout's left with a note, other roots still uninstalled; ADR-0018 decision 3 updated; 2 tests — `.agent/scripts/user_tier_install.sh` (376c74e1)
+- [x] (must-fix) New refusing verdict `skip-enclosed` for a registered root that is a plain directory inside another git repository: install exits 1 naming the toplevel to register instead, `--check` flags it (and a declaration there), `--uninstall` reports a declaration for removal by hand; no CLI call there from any mode; ADR-0018 decision 3 and design.md updated; 4 tests — `.agent/scripts/user_tier_install.sh` `plugin_roots` (a7873768)
+- [x] (suggestion) `plugin_roots` returns the registry parser's status; the verdicts are read once before every mode, and a malformed line fails install, `--check` and `--uninstall` with the parser's ERROR and the installer's own, changing nothing; 3 tests — `.agent/scripts/user_tier_install.sh` (1a296f49)
+- [x] (suggestion) `session_root.sh` and `skill_prefix.sh` resolve the main checkout with `git worktree list` as `dispatch_phase.sh` does; a linked workspace worktree anywhere is the workspace's; worktree-copy tests in both suites — `.agent/scripts/session_root.sh`, `.agent/scripts/skill_prefix.sh` (867340ee)
+- [x] (suggestion) `test_session_root.sh` gains 14 path edge cases: prefix collision, trailing slash and `..` in `--dir` and registry paths, a symlinked registered root (both ways in), and `worktrees/project/<registered-name>/` resolving to the workspace — `.agent/scripts/tests/test_session_root.sh` (4b789f89)
+- [x] (suggestion) One wording and one answer: run-issue, ADR-0018 decision 6 and design.md say the prefix is read once before step 1 (no "same answer at any point"); `session_root.sh` now refuses what `skill_prefix.sh` refuses (nested package repo, subdirectory of a no-git root), with a 12-directory agreement test; the SessionStart hook and `session_root.sh` share the new `registry_resolve_session_dir` (knows `worktrees=` dirs), with a hook test; design.md change-log row — `.claude/skills/run-issue/SKILL.md`, `.claude/hooks/session_start_project_layer.sh`, `.agent/scripts/_project_registry.sh` (0e6b07d4)
+- [x] (suggestion) Both scripts in `.agent/user_tier_scripts.txt` with the `# user-tier: inert` marker (read-only); `test_user_tier_guard.sh` checks the manifest rows, no gh or repo-changing git call, and exit 1 with nothing changed from an unregistered repo — `.agent/user_tier_scripts.txt` (f4414742)
+
+Tests: `run_script_tests.sh` all 37 suites passed (user_tier_install 200, session_root 69, skill_prefix 22, session_start_layer 49, user_tier_guard 50, script_tests_hook_scope 117, project_registry 258). New tests were mutation-checked. Live user-tier suite not run. No AGENTS.md or `~/CLAUDE.md` edit; the AGENTS.md `session_root.sh` row does not mention that it now also refuses a nested package repo (left as is: AGENTS.md edits were not authorised this round).
