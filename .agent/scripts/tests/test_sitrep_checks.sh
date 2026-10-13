@@ -584,6 +584,18 @@ printf 'section\t(no Direction section)\tunchecked\tnone\t2026-01-01\n' > "$SB/s
 OUT2="$(bash "$SITREP" --summary-from "$SB/section.tsv" 2>/dev/null)"
 [[ "$OUT2" == "lines 0/0 deferrals 0/0" ]] && pass "(summary-from) a section row alone is a real run" || fail "(summary-from) section '$OUT2'"
 
+echo "TEST: a run that did not read the roadmap has no summary to record"
+printf 'section\t(roadmap not found: /x/roadmap.md)\tunchecked\tnone\t2026-01-01\n' > "$SB/notfound.tsv"
+printf 'section\t(roadmap not readable: /x/roadmap.md)\tunknown\tnone\t2026-01-01\n' > "$SB/notreadable.tsv"
+for f in notfound notreadable; do
+    RC=0; OUT2="$(bash "$SITREP" --summary-from "$SB/$f.tsv" 2>"$SB/err")" || RC=$?
+    [[ $RC -eq 3 && -z "$OUT2" && "$(cat "$SB/err")" == *"roadmap was not read"*"/x/roadmap.md"* ]] \
+        && pass "(not read) --summary-from refuses $f rows: exit 3, no summary" || fail "(not read) $f rc=$RC out='$OUT2' err=$(cat "$SB/err")"
+done
+RC=0; OUT2="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --roadmap "$SB/root/docs/nosuch.md" --summary 2>"$SB/err")" || RC=$?
+[[ $RC -eq 3 && -z "$OUT2" && "$(cat "$SB/err")" == *"roadmap not found: $SB/root/docs/nosuch.md"* ]] \
+    && pass "(not read) --summary on a missing roadmap: exit 3, no 0/0" || fail "(not read) --summary rc=$RC out='$OUT2' err=$(cat "$SB/err")"
+
 echo "TEST: an interrupted run exits non-zero and prints no rows"
 cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
 #!/usr/bin/env bash
@@ -669,6 +681,15 @@ TMPDIR="$SB/t1" run_step 1
     && pass "(skill 1) failed run: no rows_file, file removed, exit named" || fail "(skill 1) failed run: '$OUT' left: $(ls -A "$SB/t1")"
 mv "$SB/sitrep_checks.real" "$WS/.agent/scripts/sitrep_checks.sh"
 
+echo "TEST: sit-rep step 1 with no roadmap shows why and keeps nothing to record"
+mv "$WS/docs/roadmap.md" "$SB/roadmap.saved"
+mkdir -p "$SB/t1b"
+TMPDIR="$SB/t1b" run_step 1
+mv "$SB/roadmap.saved" "$WS/docs/roadmap.md"
+[[ "$OUT" == *"(roadmap not found: "* && "$OUT" == *"no summary"* && "$OUT" != *rows_file=* \
+    && "$OUT" != *"lines 0/0"* && -z "$(ls -A "$SB/t1b")" ]] \
+    && pass "(skill 1) roadmap not found: row shown, no rows_file, file removed" || fail "(skill 1) no roadmap: '$OUT' left: $(ls -A "$SB/t1b")"
+
 echo "TEST: sit-rep step 4 records the summary of the same rows and the inbox count"
 printf '2026-10-12 10:00 -0400\tworkspace\t-\ta\n2026-10-12 10:00 -0400\tworkspace\t-\tb\n2026-10-12 10:00 -0400\tworkspace\t-\tc\n' > "$SB/notes/inbox.txt"
 reset_marks
@@ -686,7 +707,7 @@ run_step 4 "s|<rows_file printed in step 1>|$SB/rows3.tsv|; s|<inbox_lines print
     && pass "(skill 4) missing record directory: not written, said so" || fail "(skill 4) nodir rc=$RC '$OUT'"
 printf 'inbox=%s\nrun_record=%s\n' "$SB/notes/inbox.txt" "$SB/notes/runs.txt" > "$WS/.agent/settings.local"
 before="$(wc -l < "$SB/notes/runs.txt")"
-for case in "no rows file:" "empty rows file:$SB/empty.tsv"; do
+for case in "no rows file:" "empty rows file:$SB/empty.tsv" "roadmap not read:$SB/notfound.tsv"; do
     label="${case%%:*}"; f="${case#*:}"
     run_step 4 "s|<rows_file printed in step 1>|$f|; s|<inbox_lines printed in step 2>|3|"
     [[ $RC -eq 0 && "$(wc -l < "$SB/notes/runs.txt")" -eq $before && "$OUT" == *"not written"* ]] \

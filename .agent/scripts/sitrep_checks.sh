@@ -24,7 +24,13 @@
 #              summary, for an empty argument, an unreadable or empty file,
 #              or a line that is not a whole row (five TAB-separated fields,
 #              a known kind and result word, a date): a cut-off or failed
-#              run is never counted. Blank lines are skipped.
+#              run is never counted. Blank lines are skipped. Exit 3, with
+#              a message and no summary, when the rows say the roadmap was
+#              not read (`(roadmap not found: ...)` or `(roadmap not
+#              readable: ...)`): no Direction line was looked at, so there
+#              is no 0/0 to record. A roadmap that was read and has no
+#              section or no rows still counts, as 0/0. `--summary` exits
+#              3 the same way.
 #
 # What is read: only the `## Direction` section (up to the next `#` or `##`
 # heading; `###` stays inside), outside fenced code. Fences are tracked from
@@ -55,7 +61,8 @@
 # a "no Direction section". Every run prints at least one row. Rows
 # are printed only at the end, so a run that is interrupted prints none and
 # exits non-zero (128 + the signal). Exit 0 when the rows were printed; 1
-# when they could not be written; 2 on usage.
+# when they could not be written; 2 on usage; 3 under `--summary` (and
+# `--summary-from`) when the roadmap was not read.
 #
 # Check grammar (a cell may join several checks with ` ; `; a check may be
 # wrapped in backticks, and so may a whole cell, which is unwrapped before
@@ -174,13 +181,19 @@ if [ -n "$SUMMARY_FROM" ]; then
     [ -f "$SUMMARY_FROM" ] && [ -r "$SUMMARY_FROM" ] || { echo "rows file not readable: $SUMMARY_FROM" >&2; exit 2; }
     ROW_RE=$'^(line|deferral|format|section)\t[^\t]*\t(true|false|unknown|unchecked|partial)\t[^\t]+\t[0-9]{4}-[0-9]{2}-[0-9]{2}$'
     n=0
+    not_read=""
     while IFS= read -r r || [ -n "$r" ]; do
         n=$((n + 1))
         [ -n "$r" ] || continue
         [[ "$r" =~ $ROW_RE ]] || { echo "rows file line $n is not a whole row: $SUMMARY_FROM" >&2; exit 2; }
+        case "$r" in
+            section$'\t(roadmap not found: '* | section$'\t(roadmap not readable: '*)
+                not_read="${r#section$'\t'}"; not_read="${not_read%%$'\t'*}" ;;
+        esac
         ROWS+=("$r")
     done < "$SUMMARY_FROM"
     [ "${#ROWS[@]}" -gt 0 ] || { echo "rows file has no rows: $SUMMARY_FROM" >&2; exit 2; }
+    [ -z "$not_read" ] || { echo "the roadmap was not read $not_read; nothing to count" >&2; exit 3; }
     summarize
     exit 0
 fi
@@ -582,6 +595,11 @@ elif [ "${#ROWS[@]}" -eq 0 ]; then
 fi
 
 if [ "$SUMMARY" = true ]; then
+    if [ "$ROADMAP_STATE" != found ]; then
+        item="${ROWS[0]#*$'\t'}"
+        echo "the roadmap was not read ${item%%$'\t'*}; nothing to count" >&2
+        exit 3
+    fi
     summarize || exit 1
 else
     printf '%s\n' "${ROWS[@]}" || exit 1

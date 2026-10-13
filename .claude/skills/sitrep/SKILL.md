@@ -64,7 +64,9 @@ The checks run once per sit-rep. Their rows are saved to a temporary file,
 and both the summary shown here and the one recorded in step 4 are counted
 from that file, so the report and the record cannot disagree. A run that
 fails or is interrupted keeps no rows file and prints no `rows_file=`, so
-nothing from it can be recorded.
+nothing from it can be recorded. Neither does a run that could not read
+the roadmap (not found, or not readable): its rows are shown, but there is
+no count to record, since no Direction line was looked at.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
@@ -78,7 +80,7 @@ elif "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT" > "$rows"; the
         echo "rows_file=$rows"
     else
         rm -f -- "$rows"
-        echo "checks: the rows could not be counted; nothing will be recorded"
+        echo "checks: no summary (reason above); nothing will be recorded"
     fi
 else
     rc=$?
@@ -90,12 +92,12 @@ fi
 Rows are `kind`, `item`, `result`, `check`, `date`, TAB-separated. Kinds:
 `line`, `deferral`, `format` (a checklist item in the section, which breaks
 the section's rules; report it), `section` (nothing to check, and why: no
-roadmap file, no Direction section, or a section with neither table). After
-`---` comes the summary, `lines <true>/<total> deferrals <true>/<total>`,
-then `rows_file=`, which step 4 needs. When the block prints `checks
-failed` or `could not be counted` instead, report that the Direction lines
-were not checked this run and that the run record was not written, and
-skip step 4.
+roadmap file, a roadmap that could not be read, no Direction section, or a
+section with neither table). After `---` comes the summary, `lines
+<true>/<total> deferrals <true>/<total>`, then `rows_file=`, which step 4
+needs. When the block prints `checks failed` or `no summary` instead,
+report that the Direction lines were not checked this run, with the reason
+printed, and that the run record was not written, and skip step 4.
 
 ### 2. Read the inbox and the last run record
 
