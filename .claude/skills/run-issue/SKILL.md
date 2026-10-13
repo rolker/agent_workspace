@@ -27,6 +27,71 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 variable and not `SessionStart` hook output — hook stdout is context text and
 never reaches a tool call's shell (ADR-0016).
 
+## This session's root
+
+A session works only under the root it was launched in: the workspace
+checkout, or a registered project root (ADR-0018 decision 6; `docs/design.md`,
+"Sessions and roots"). An issue of another root is not driven from here; it
+is driven by a session started in that root, and this session may open an
+issue there (or add an inbox line) instead. Reading across roots is fine.
+
+Check this **once, before step 1**:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/session_root.sh" [--type <type>]
+```
+
+Pass `--type` only when the user gave it. The script prints `root=`,
+`type=` and `project=` for this session's root. If it exits non-zero,
+**stop and report its message**: it names the directory to start a session
+in for this issue, or says why this directory is no session's root. Do not
+work around it with `cd`.
+
+For the rest of the run, `<type>` below is the user's `--type`, or the
+printed `type=` when none was given. When `<type>` is `project` and the
+printed `project=` is not empty, pass `--project <project>` wherever this
+skill passes `--type <type>` (start-task's arguments, every
+`dispatch_phase.sh` call and `merge_pr.sh`), so every script resolves the
+same project the check did.
+
+## Skill names in this session
+
+In a project session the workspace skills arrive through the
+`agent-workspace` Claude Code plugin and are named
+`/agent-workspace:<skill>`; the bare `/<skill>` there may be the project's
+own skill of the same name (ADR-0018). In a workspace session they are
+bare. Every dispatched task line must use the name *this* session has.
+`--type` does not say which; the location does: the directory this
+session was launched in, which is where it still is before step 1 (and the
+session never leaves its root, above). Read it then, once, and keep the
+value for the run; a worktree entered later (a package worktree of a root
+in no git repository, say) can give a different answer.
+
+Find out **once, before step 1**, by running:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/skill_prefix.sh"
+```
+
+It decides by location, not by anything this session has to copy or
+interpret: `skill_prefix=` (bare) when the session is in the workspace
+checkout's git repository (the checkout, a worktree of it, or a root like
+`p11-jazzy` inside it), `skill_prefix=agent-workspace:` when it is in a
+registered project root. The installer never enables the plugin in the
+workspace, because the plugin's source is the workspace's own
+`.claude/skills`: enabling it there would load every shipped skill twice.
+Remember the printed value for the whole run and pass it on every handoff
+call in step 4 as `--skill-prefix agent-workspace:` (omit the flag when it
+printed empty). Where this skill's text names another workspace skill by
+its bare slash command, invoke the prefixed form in a plugin session too.
+
+If it exits non-zero (an unregistered location, or a repository nested in
+a root, which the root's plugin does not reach), **stop and report its
+message**.
+Do not guess a prefix.
+
 **The `|| echo .` fallback is required, not decoration.** The user tier is
 optional — `--check` and ADR-0016 both say so — and on a machine without it
 the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
@@ -48,10 +113,12 @@ script, not here — see "Action tokens" below for where to read it.
 ```
 
 - `<issue-number>` — the GitHub issue driving the loop.
-- `--type` — `workspace` (default) or `project`, exactly the value
-  `/start-task` and `dispatch_phase.sh` take. Threaded to every
-  `dispatch_phase.sh` call, `worktree_create.sh` at entry,
-  `gh_create_pr.sh` targeting at publish, and `merge_pr.sh --type` at merge.
+- `--type` — `workspace` or `project`, exactly the value `/start-task` and
+  `dispatch_phase.sh` take; default: the type of this session's root
+  ("This session's root" above). It must name this session's root, or the
+  run stops before step 1. Threaded to every `dispatch_phase.sh` call,
+  `worktree_create.sh` at entry, `gh_create_pr.sh` targeting at publish,
+  and `merge_pr.sh --type` at merge, with `--project` for a project root.
 - `--resume` — re-asks the newest `## Checkpoint` entry when it answered
   `stop` (see "Resume" below). Without it, a `stop` checkpoint ends the run.
 
@@ -189,10 +256,11 @@ then:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>] [--type <type>]
+$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill <phase> [--pr <M>] [--type <type>] [--skill-prefix agent-workspace:]
 ```
 
-prints the handoff block: `worktree=`, `task=`, `agent_name=`,
+(`--skill-prefix` exactly as "Skill names in this session" decided.)
+It prints the handoff block: `worktree=`, `task=`, `agent_name=`,
 `agent_email=`, `model=`, `entry_type=`, `exit_contract=`, `conventions=`.
 Paste the task line, the worktree, the exit contract, and the
 `conventions=` line (the `**When**` format and scratch-file hygiene every

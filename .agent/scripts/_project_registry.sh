@@ -471,6 +471,40 @@ registry_resolve_from_dir() {
     return 1
 }
 
+# Resolve the root a SESSION in <dir> belongs to (ADR-0018 decision 6):
+# registry_resolve_from_dir, else the entry whose worktrees= directory
+# contains <dir> -- that directory may lie outside the hosting dir (under
+# the workspace's worktrees/project/, say), and a session in one of its
+# worktrees is still that root's. Longest worktrees= match wins.
+# Prints "<name>\t<type>\t<abs_path>" (the hosting dir, as registered).
+# Return 1 if no entry owns <dir>, 2 on registry parse errors.
+# Usage: entry=$(registry_resolve_session_dir "$root" "$dir")
+registry_resolve_session_dir() {
+    local root="$1" dir="$2" out rc=0 abs entries name type path fields wt wabs
+    local best="" best_len=0
+    out="$(registry_resolve_from_dir "$root" "$dir")" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        printf '%s\n' "$out"
+        return 0
+    fi
+    [ "$rc" -eq 2 ] && return 2
+    abs="$(cd "$dir" 2>/dev/null && pwd -P)" || return 1
+    entries="$(registry_entries_full "$root")" || return 2
+    while IFS=$'\t' read -r name type path fields; do
+        [ -z "$name" ] && continue
+        wt="$(_registry_field_of "$fields" worktrees)" || continue
+        wabs="$(cd "$wt" 2>/dev/null && pwd -P)" || continue
+        if [ "$abs" = "$wabs" ] || [[ "$abs" == "$wabs/"* ]]; then
+            if [ "${#wabs}" -gt "$best_len" ]; then
+                best="$(printf '%s\t%s\t%s' "$name" "$type" "$path")"
+                best_len=${#wabs}
+            fi
+        fi
+    done <<< "$entries"
+    [ -n "$best" ] || return 1
+    printf '%s\n' "$best"
+}
+
 # Derive the worktree type (and project name) a directory implies (#317,
 # #265 PR 3), for scripts whose --type is optional when the cwd already
 # says which checkout you are in.

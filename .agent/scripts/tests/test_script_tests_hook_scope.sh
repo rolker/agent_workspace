@@ -179,10 +179,15 @@ declare -A ROOT_READERS=(
     [test_merge_pr_root_resolution.sh]=""
     [test_merge_pr.sh]=".agent/scripts"
     [test_precommit_hook_path.sh]="Makefile .agent/scripts"
+    # Reads the real plugin manifests and every skill's frontmatter
+    # (`claude plugin validate` runs on the checkout root too).
+    [test_plugin_manifest.sh]=".claude-plugin .claude/skills"
     [test_progress_read.py]=".agent/scripts"
     [test_project_registry.sh]=".agent/scripts .agent/project_types"
     [test_resolve_work_plans_dir.sh]=""
     [test_ros2_colcon.sh]=".agent/scripts .agent/project_types"
+    # Whole-tree `cp -r $WS_ROOT/.agent` into its sandbox workspace.
+    [test_session_root.sh]=".agent/"
     [test_session_start_layer.sh]=".claude/hooks AGENTS.md .agent/scripts .agent/project_types"
     # Runs the sit-rep skill's own shell steps, read from its SKILL.md.
     [test_sitrep_checks.sh]=".claude/skills"
@@ -190,6 +195,8 @@ declare -A ROOT_READERS=(
     # what-next skill over these hook-covered prefixes (docs/ and README.md
     # are deliberately not read: the hook's files: regex does not cover them).
     [test_skill_paths.sh]=".agent/ .claude/ AGENTS.md Makefile"
+    # Whole-tree `cp -r $WS_ROOT/.agent` into its sandbox workspace.
+    [test_skill_prefix.sh]=".agent/"
     [test_sync_gitbug.sh]=".agent/project_types"
     # Reads are manifest-driven (.agent/user_tier_scripts.txt), which
     # includes .claude/hooks/log-tool-use.sh -- a static prefix list can't

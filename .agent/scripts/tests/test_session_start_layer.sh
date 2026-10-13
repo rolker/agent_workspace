@@ -114,7 +114,7 @@ fi
 WSC="$SANDBOX/ws"
 mkdir -p "$WSC/.claude/hooks" "$WSC/.agent/scripts"
 cp "$HOOK" "$WSC/.claude/hooks/"
-cp "$WS_ROOT/.agent/scripts/_project_registry.sh" "$WSC/.agent/scripts/"
+cp "$WS_ROOT/.agent/scripts/_project_registry.sh" "$WS_ROOT/.agent/scripts/skill_prefix.sh" "$WSC/.agent/scripts/"
 cp -r "$WS_ROOT/.agent/project_types" "$WSC/.agent/"
 cp "$AGENTS_MD" "$WSC/AGENTS.md"
 
@@ -246,6 +246,76 @@ out=$(run_hook "$PROOT")
 [[ "$out" == *"2>/dev/null || echo ."* ]] \
     && pass "the layer's idiom carries the || echo . fallback" \
     || fail "the layer's idiom omits the fallback"
+
+# ------------------------------------ how workspace skills are named ---
+# ADR-0018 (#345): the header tells the model which name to invoke. A root
+# outside the workspace checkout gets the plugin's namespaced names; a root
+# whose git toplevel IS the workspace checkout (the p11-* shape) loads the
+# bare skills by walk-up and must be told so, not sent to agent-workspace:.
+out=$(run_hook "$PROOT")
+[[ "$out" == *"namespaced /agent-workspace:<skill>"* && "$out" == *"invoke"*"the agent-workspace: form"* ]] \
+    && pass "a project root outside the workspace is told workspace skills are /agent-workspace:<skill>" \
+    || fail "the namespaced-skills note is missing for a project root outside the workspace"
+# The rule is applied to the session's cwd, not the registered root: a git
+# repository nested in the root (a package repo) is its own project root
+# and does not see the root's plugin (live case G), so the header says no
+# rule applies instead of sending the model to agent-workspace: and the
+# installer.
+mkdir -p "$PROOT/src/pkg"
+git -C "$PROOT/src/pkg" init -q
+nested_out=$(run_hook "$PROOT/src/pkg")
+[[ "$nested_out" == *"Workspace skills: no rule says how they are named in this session."*"lies under the registered root demo"*"does not reach it (observed, live case G)"* \
+      && "$nested_out" != *"namespaced /agent-workspace:<skill>"* ]] \
+    && pass "a session in a git repo nested in a root is told no naming rule applies, and why" \
+    || fail "nested repo got the wrong skill-naming note (out=$(grep -A1 '^Workspace skills' <<< "$nested_out"))"
+# A worktree in a root's worktrees= directory outside its hosting dir (here
+# under the workspace) is that root's: the hook gives it the project layer,
+# not silence.
+WTD="$WSC/worktrees/project/demo"
+mkdir -p "$WTD/issue-demo-1"
+cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
+echo "demo single_project $PROOT worktrees=$WTD" > "$WSC/.agent/projects.local"
+wt_out=$(run_hook "$WTD/issue-demo-1")
+[[ "$wt_out" == *"Project: demo (type: single_project)"* && "$wt_out" == *"Project root: $PROOT"* ]] \
+    && pass "a session in a root's worktrees= directory outside its hosting dir gets that root's layer" \
+    || fail "worktrees= session got no project layer (out=${wt_out:0:300})"
+mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
+rm -rf "${WSC:?}/worktrees"
+
+# The failure path runs skill_prefix.sh once, taking the reason from that
+# same run (it used to run the script a second time for its stderr).
+SPS="$WSC/.agent/scripts/skill_prefix.sh"
+mv "$SPS" "$WSC/.agent/scripts/skill_prefix.real.sh"
+printf '#!/usr/bin/env bash\necho x >> "%s"\nexec bash "$(dirname "$0")/skill_prefix.real.sh" "$@"\n' "$SANDBOX/sp-calls" > "$SPS"
+: > "$SANDBOX/sp-calls"
+nested_out=$(run_hook "$PROOT/src/pkg")
+[[ "$(wc -l < "$SANDBOX/sp-calls")" -eq 1 && "$nested_out" == *"lies under the registered root demo"* ]] \
+    && pass "the hook runs skill_prefix.sh once on its failure path and still prints the reason" \
+    || fail "skill_prefix.sh ran $(wc -l < "$SANDBOX/sp-calls") times on the failure path (out=$(grep -A1 '^Workspace skills' <<< "$nested_out"))"
+mv "$WSC/.agent/scripts/skill_prefix.real.sh" "$SPS"
+rm -f "$SANDBOX/sp-calls"
+rm -rf "${PROOT:?}/src"
+note_at=$(grep -n "^Workspace skills:" <<< "$out" | head -n1 | cut -d: -f1)
+rules_at=$(grep -n "Workspace rules (rendered from AGENTS.md)" <<< "$out" | head -n1 | cut -d: -f1)
+[[ -n "$note_at" && -n "$rules_at" && "$note_at" -lt "$rules_at" ]] \
+    && pass "the skill-naming note is in the header, before the rendered rules" \
+    || fail "the skill-naming note is not in the header (note=$note_at rules=$rules_at)"
+
+git -C "$WSC" init -q
+mkdir -p "$WSC/projects/inner"
+printf 'demo single_project %s\ninner single_project %s\n' "$PROOT" "$WSC/projects/inner" > "$WSC/.agent/projects.local"
+out=$(run_hook "$WSC/projects/inner")
+[[ "$out" == *"Project: inner"* && "$out" == *"load under their bare names"* && "$out" != *"/agent-workspace:"* ]] \
+    && pass "a root inside the workspace checkout's own git tree is told the skills are bare" \
+    || fail "a workspace-toplevel root got the wrong skill-naming note (out=$(grep '^Workspace skills' <<< "$out"))"
+
+# Through a symlinked path the toplevel comparison still holds (pwd -P).
+ln -s "$WSC" "$SANDBOX/ws-link"
+printf 'inner single_project %s\n' "$SANDBOX/ws-link/projects/inner" > "$WSC/.agent/projects.local"
+out=$(run_hook "$SANDBOX/ws-link/projects/inner")
+[[ "$out" == *"load under their bare names"* ]] \
+    && pass "a workspace-toplevel root registered through a symlinked path is still recognised" \
+    || fail "the symlinked workspace-toplevel root got the namespaced note"
 
 echo ""
 echo "test_session_start_layer: $PASS passed, $FAIL failed"

@@ -14,9 +14,18 @@
 #   - cwd outside the workspace checkout and outside every registered root:
 #     exit 0 with no output. Silence is the contract -- an unrelated repo's
 #     session must look exactly as it does today.
-#   - cwd under a registered root: print the header, the workspace-root
-#     idiom, the workspace layer (rendered from AGENTS.md by a pinned
-#     heading list) and the project layer.
+#   - cwd under a registered root: print the header, how workspace skills
+#     are named in this session, the workspace-root idiom, the workspace
+#     layer (rendered from AGENTS.md by a pinned heading list) and the
+#     project layer.
+#
+# This hook does not deliver the workspace SKILLS. In a project session they
+# come from the agent-workspace Claude Code plugin, which user_tier_install.sh
+# enables per registered root (ADR-0018), and are namespaced
+# /agent-workspace:<skill> so a project's own same-named skill keeps its
+# bare name. The skills' own text still names each other by bare slash
+# command, so the header says which form to invoke -- that line is for the
+# model, which never sees this comment.
 #
 # What this hook deliberately does NOT print: any `KEY=value` line meant for
 # a script to parse. SessionStart stdout is context text for the model; it
@@ -48,7 +57,10 @@ fi
 # shellcheck source=../../.agent/scripts/_project_registry.sh
 source "$WS_ROOT/.agent/scripts/_project_registry.sh" 2>/dev/null || exit 0
 
-ENTRY="$(registry_resolve_from_dir "$WS_ROOT" "$CWD" 2>/dev/null)" || exit 0
+# The root that owns the cwd, including a worktree in a root's worktrees=
+# directory outside its hosting dir -- the same resolution session_root.sh
+# uses (registry_resolve_session_dir).
+ENTRY="$(registry_resolve_session_dir "$WS_ROOT" "$CWD" 2>/dev/null)" || exit 0
 [[ -n "$ENTRY" ]] || exit 0
 
 IFS=$'\t' read -r P_NAME P_TYPE P_PATH <<< "$ENTRY"
@@ -88,6 +100,36 @@ echo "=== agent_workspace session layer ==="
 echo "Project: $P_NAME (type: $P_TYPE)"
 echo "Project root: $P_PATH"
 echo "Session cwd: $CWD"
+echo ""
+
+# --- how workspace skills are named here (ADR-0018) ---------------------
+# The same location rule run-issue uses (skill_prefix.sh), applied to the
+# session's cwd, not the registered root's: a git repository nested in a
+# root (a package repo under src/) is its own project root and does not see
+# the root's plugin (live case G). Whether it sees the workspace's bare
+# skills, for a root inside the workspace tree, has not been checked, so
+# the note says no rule applies rather than that neither form reaches it.
+_sp_script="$WS_ROOT/.agent/scripts/skill_prefix.sh"
+# One run: stdout carries the verdict on success, stderr the reason on
+# failure, and the script writes nothing else.
+_sp="$(bash "$_sp_script" --dir "$CWD" 2>&1)"; _sp_rc=$?
+if [[ "$_sp_rc" -eq 0 && ( "$_sp" == "skill_prefix=" || "$_sp" == "skill_prefix=agent-workspace:" ) ]]; then
+    if [[ "$_sp" == "skill_prefix=" ]]; then
+        echo "Workspace skills: this session is in the workspace checkout's repository,"
+        echo "so they load under their bare names (/review-code, /run-issue, ...)."
+    else
+        echo "Workspace skills: they reach this session through the agent-workspace"
+        echo "plugin, namespaced /agent-workspace:<skill> (e.g. /agent-workspace:review-code)."
+        echo "Where a skill's text names another skill by its bare slash command, invoke"
+        echo "the agent-workspace: form -- a bare /<skill> here may be this project's own"
+        echo "skill of the same name. If no agent-workspace: skills are listed, the"
+        echo "plugin is not enabled for this root: run the workspace's"
+        echo ".agent/scripts/user_tier_install.sh."
+    fi
+else
+    echo "Workspace skills: no rule says how they are named in this session."
+    echo "${_sp#skill_prefix: }"
+fi
 echo ""
 
 # --- the workspace-root idiom -------------------------------------------

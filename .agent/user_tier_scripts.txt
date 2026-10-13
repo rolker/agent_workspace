@@ -12,7 +12,9 @@
 # inert outside the workspace checkout and outside every registered project
 # root. In practice each entry either calls `registry_require_root` before
 # any repo-affecting action, or carries a `# user-tier: inert` marker
-# because it only sets variables and defines functions, or carries a
+# because it only sets variables and defines functions, or only reads and
+# prints (the location scripts below, whose job outside a root is to say
+# so), or carries a
 # `# user-tier: guarded-by:<script>` marker because it is a shim that
 # execs an entry that is itself guarded.
 #
@@ -40,6 +42,13 @@
 .agent/scripts/test.sh
 .agent/scripts/adapter
 .claude/hooks/log-tool-use.sh
+
+# Read-only location scripts: /run-issue and /start-task run them first in
+# every session, project sessions included. They print a verdict and write
+# nothing; outside every root they exit 1 saying so, which is their job, so
+# they carry the inert marker rather than a guard.
+.agent/scripts/session_root.sh
+.agent/scripts/skill_prefix.sh
 
 # Inert helpers: sourced by the above, never invoked for effect.
 .agent/scripts/set_git_identity_env.sh
