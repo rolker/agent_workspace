@@ -431,3 +431,13 @@ Owner: "Do the first" — of the three options offered at the round-3 limit (add
 - Without `pgrep`, an interrupted run kills only the cell's reader; the check runs on until its timeout (stated in the script header).
 - Setext detection is a close reading of CommonMark, not a parser: paragraph text is any non-blank line that is not a table row, heading, list item, blockquote or thematic break, so a `---` under a list item's continuation line would end the section.
 - No follow-ups left from this round. Per the owner's direction this was the last local pass: publish next, no further local review.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 00:00 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: publish
+
+Second half of the owner's "Do the first" at the round-3 limit: "address, then publish without another local round". The address pass closed all 9 round-3 findings (3 must-fix, 6 suggestions) at 80bbe65; the host re-ran test_sitrep_checks (141/0), test_capture (41/0), check_design_anchors (0) and check_branch_updates (up to date). No fourth pre-push review; the post-push review and triage cover what is left.
