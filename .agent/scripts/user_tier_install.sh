@@ -506,13 +506,16 @@ same_project() {  # <instance> <parent>
 #                   refuses it: no CLI call there from install, --check or
 #                   --uninstall
 #   missing         the path does not exist on disk
-# A malformed registry line is reported by the registry parser on stderr and
-# dropped; the valid lines are still returned.
+# A malformed registry line is reported by the registry parser on stderr;
+# the valid lines are still printed, but the function returns 2, and the
+# caller (PLUGIN_ROOTS below) stops: acting on the remaining roots would
+# report success while the dropped root kept, or lacked, the plugin.
 plugin_roots() {
     local entries name _type path fields top top_phys parent parent_path
     local outside detail
-    entries="$(registry_entries_full "$WS_ROOT")" || true
-    [[ -n "$entries" ]] || return 0
+    local parse_rc=0
+    entries="$(registry_entries_full "$WS_ROOT")" || parse_rc=$?
+    [[ -n "$entries" ]] || return "$parse_rc"
     while IFS=$'\t' read -r name _type path fields; do
         [[ -z "$name" ]] && continue
         outside=false
@@ -551,6 +554,7 @@ plugin_roots() {
             printf '%s\t%s\t%s\n' "$name" "$path" enable
         fi
     done <<< "$entries"
+    return "$parse_rc"
 }
 
 # Is <path> this checkout, lexically or as its `pwd -P` form?
@@ -844,6 +848,15 @@ uninstall_refused_root() {  # <name> <root> <why the CLI does not run there>
     esac
 }
 
+# The registered roots and their verdicts, read once for every mode below
+# (--uninstall, --check, install). A registry that does not parse stops all
+# three here, before anything is read or changed: the parser has already
+# named the bad line on stderr.
+if ! PLUGIN_ROOTS="$(plugin_roots)"; then
+    echo "ERROR: $(registry_file "$WS_ROOT") does not parse (the line is named above) -- fix it and re-run; nothing was changed" >&2
+    exit 1
+fi
+
 # Does any registered root, or this checkout, hold a plugin declaration or
 # enable (or a file that cannot be read)? --uninstall's "nothing installed"
 # must mean the plugin too: the user-tier files can be gone while roots
@@ -853,7 +866,7 @@ plugin_anywhere() {
     while IFS=$'\t' read -r _name root _verdict; do
         [[ -n "$root" && -d "$root" ]] || continue
         [[ "$(plugin_state "$root")" != absent ]] && return 0
-    done < <(plugin_roots)
+    done <<< "$PLUGIN_ROOTS"
     [[ "$(plugin_state "$WS_ROOT")" != absent ]]
 }
 
@@ -891,7 +904,7 @@ if [[ "$MODE" == "uninstall" ]]; then
             skip-enclosed) uninstall_refused_root "registered root $name" "$root" "$(enclosed_reason "$detail")" ;;
             *) uninstall_plugin_from "$root" ;;
         esac
-    done < <(plugin_roots)
+    done <<< "$PLUGIN_ROOTS"
     uninstall_plugin_from "$WS_ROOT"
     if [[ -f "$SETTINGS" ]]; then
         require_parseable_settings || exit 1
@@ -1111,7 +1124,7 @@ if [[ "$MODE" == "check" ]]; then
             missing)
                 echo "  note: registered root $name is not on disk ($root) -- plugin not checked there" ;;
         esac
-    done < <(plugin_roots)
+    done <<< "$PLUGIN_ROOTS"
 
     # The workspace checkout itself: its sessions see the bare skills by
     # directory walk-up, so the plugin there doubles every one of them. The
@@ -1269,7 +1282,6 @@ while IFS= read -r link; do
 done < <(legacy_skill_links)
 
 # 6. the plugin. The registry is read once, for both steps below.
-PLUGIN_ROOTS="$(plugin_roots)"
 
 # 6a. the machine-level marketplace record, before any project root:
 # claimed whenever it is not this checkout's -- another checkout's, or no

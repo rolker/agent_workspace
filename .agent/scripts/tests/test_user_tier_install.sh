@@ -1045,6 +1045,27 @@ mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
 rm -rf "${ROOTS:?}/mono"
 run >/dev/null
 
+# A registry line that does not parse stops install, --check and
+# --uninstall before anything is read or changed, with the parser's ERROR
+# and the installer's own visible: acting on the remaining roots would
+# report success while the dropped root kept (or lacked) the plugin.
+cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
+printf 'a single_project %s\nbad!name single_project %s\n' "$ROOTS/a" "$ROOTS/b" > "$WSC/.agent/projects.local"
+a_before="$(cat "$ROOTS/a/$SLJ")"
+for mode in install --check --uninstall; do
+    : > "$STUB_LOG"
+    if [[ "$mode" == install ]]; then out="$(run 2>&1)"; else out="$(run "$mode" 2>&1)"; fi; rc=$?
+    if [[ "$rc" -eq 1 && "$out" == *"invalid project name 'bad!name'"* && "$out" == *"ERROR: $WSC/.agent/projects.local does not parse"* \
+          && "$out" != *"installed and current"* && "$out" != *"removed"* && "$(cat "$ROOTS/a/$SLJ")" == "$a_before" && -f "$ROOT_FILE" ]] \
+       && [[ ! -s "$STUB_LOG" ]]; then
+        pass "a malformed registry line fails $mode with the parser's ERROR shown, changing nothing"
+    else
+        fail "$mode over a malformed registry (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
+    fi
+done
+mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
+run >/dev/null
+
 # The plugin enabled at the workspace checkout itself.
 stale_enable "$WSC"
 out="$(run --check)"; rc=$?
