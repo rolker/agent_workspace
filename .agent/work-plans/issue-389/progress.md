@@ -155,3 +155,47 @@ Open question answered: "Suggestion, then a question" — the report ends with t
 **Plan**: `.agent/work-plans/issue-389/plan.md` at `8ddf55d5`
 
 Revision: guard (c) narrowed to live pointers with a rule-based history exemption, hook-scope declaration added, report ends with Suggested next then at most one question (fixed source order), and the manual check records whether ~/CLAUDE.md answered. Resolutions are listed in the plan.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-13 09:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #389 — Delete the what-next skill; the sit-rep answers "what's next?"
+**Plan**: `.agent/work-plans/issue-389/plan.md` at `8ddf55d5`
+**Branch**: `feature/issue-389`
+
+Round 2, after the revision. Round-1 findings, checked against the plan text and the source:
+- M1 resolved: guard (c) now matches `/what-next` and `skills/what-next` only, built from pieces, with the history exemption as a rule. `git grep -E '/what-next|skills/what-next'` outside work plans today hits only the skill itself (deleted) and the digest line 51 (exempt), so the guard passes after the change.
+- M2 resolved for the hook-scope entry (step 6): `.agent/ .claude/` directory prefixes plus `AGENTS.md` and `Makefile` (both in `LITERAL_FILE_PREFIXES`) fit the existing `ROOT_READERS` format, and `test_user_tier_install.sh` already declares `.agent/ .claude/`, so the coverage check passes. The CI half is wrong (finding 1).
+- M3 resolved: Suggested next, then at most one question; "Four sections" (sitrep SKILL.md line 244), "it decides nothing" (line 42) and the question rule (line 286) are all named; source fact and empty case required.
+- S4, S5, S6, S7 resolved (steps 2, 5, 9, 3, 7, 10).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, six files. |
+| Issue alignment | Good | Acceptance list and A1, A2, A4, A5, A6 covered; A3 dropped per the owner. Serves, as checked: Easy to use ("Work is easy to come back to"), `docs/design.md#documentation-layers` (README line 88/98, design.md line 86). The manual acceptance step observes the wrong tree (finding 2). |
+| File targeting | Good | `test_script_tests_hook_scope.sh` added; `test_sitrep_checks.sh` only runs the `bash` blocks under steps 1–4 of the sitrep skill, so the step-5 text change does not touch it. |
+| Consequences | Good | Roadmap lines 95, 210, 211 and digest line 50 match the plan's line numbers. |
+| Principle alignment | Needs work | "Verify before claiming": the plan says CI checks `docs/` and `README.md` for live pointers, which the guard as specified will not do (finding 1). |
+| ADR compliance | Good | ADR-0016, ADR-0013, ADR-0003 as before. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment] must-fix** — Step 5 limits guard (c)'s pathspec to `.agent/`, `.claude/`, `AGENTS.md`, `Makefile`, then says `docs/` and `README.md` "are left to CI's `make lint` (all files)". CI runs `make lint` = `pre-commit run --all-files` (`.github/workflows/validate.yml:25`, Makefile line 116), which runs the same guard with the same pathspec, so CI never reads `docs/` or `README.md` either. As planned, a `/what-next` pointer in `docs/`, `README.md`, `CODEX.md`, `CLAUDE.md` or `.github/copilot-instructions.md` is caught nowhere. Widening the pathspec is not an option (step 6 would have to declare `docs/`, which the hook's `files:` regex does not cover, and the hook-scope test fails). Fix the text: say these files are not guarded and why, in the plan, the test header and the PR, instead of saying CI covers them.
+2. **[Issue alignment] must-fix** — Step 9's manual acceptance runs "in a fresh session at the workspace root". The workspace root is the main checkout (`~/.claude/agent-workspace-root` = `/home/roland/agent_workspace`), whose `.claude/skills/` still has `what-next` and the old sitrep description until this PR merges, so the check would observe the old skills and report a result that says nothing about this change. Say where it runs: a fresh session in this worktree before the PR (its `.claude/skills/` is the branch), or at the main root after merge. Either way, record the directory with the prompt. On this machine `~/.claude/skills/` links only `start-task`, so no user-tier copy of `what-next` interferes.
+3. **[Consequences] suggestion** — Step 2's "What it is" text (and any other text under `.claude/` or `.agent/`) should name the old skill without the slash (`what-next`, not `/what-next`), or guard (c) fails on it. The test catches it, but saying it in step 2 saves a round.
+
+### Summary
+
+The revision fixes all three round-1 must-fix items and all four suggestions. Two new statements are wrong: CI does not check `docs/` for live pointers, and the manual acceptance as written runs against the main checkout instead of the branch. Both are one-sentence fixes to the plan text, and the approach does not change.
+
+### Recommended Actions
+
+- [ ] Step 5: replace "left to CI" with a statement that guard (c) does not read `docs/`, `README.md` or the other root instruction files, and why; carry the same wording into the test header and the PR text.
+- [ ] Step 9: run the manual acceptance in a fresh session in this worktree (or at the main root after merge), and record the directory with the prompt and which answered.
+- [ ] Step 2: name the old skill without the slash in live text under `.claude/` and `.agent/`.
