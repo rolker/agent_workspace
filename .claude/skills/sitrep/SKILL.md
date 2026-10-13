@@ -192,9 +192,14 @@ commit stands in for a resume note:
 git -C "<worktree path>" log -1 --format='%cr: %s'
 ```
 
-The report gives one line per branch: a worktree and an open pull request
-are the same work when the worktree's `branch` equals the pull request's
-`headRefName`, and share that line. Branches whose pull request waits on
+The report gives one line per branch. The pull requests listed are the
+workspace's, so only a workspace worktree (`type: "workspace"`) is matched
+to one: when its `branch` equals the pull request's `headRefName`, they
+are the same work and share that line. A project worktree
+(`type: "project"`) gets its own line, named with its project (`repo`),
+and no pull request: project branches use the same `feature/issue-<N>`
+names with their own numbers, so a name match would join unrelated work.
+Branches whose pull request waits on
 the owner (open and not a draft) come first; then the rest (a draft pull
 request, or a worktree with no pull request). Within each group keep the
 order the commands above printed.
@@ -276,8 +281,9 @@ Proposed sort, to answer in batches:
 - delete: <items>
 
 **In flight**: one line per branch, in the order step 3 gives:
-- <branch>: <pull request title, draft or review state, when it has one>;
-  <last commit age and subject, when it has a worktree>.
+- <branch> (for a project worktree, <project>/<branch>): <pull request
+  title, draft or review state, when it has one>; <last commit age and
+  subject, when it has a worktree>.
 
 **Deferrals due**: <deferrals whose check is true>.
 Unchecked (no revisit check): <deferrals whose result is unchecked>.
