@@ -192,6 +192,13 @@ commit stands in for a resume note:
 git -C "<worktree path>" log -1 --format='%cr: %s'
 ```
 
+The report gives one line per branch: a worktree and an open pull request
+are the same work when the worktree's `branch` equals the pull request's
+`headRefName`, and share that line. Branches whose pull request waits on
+the owner (open and not a draft) come first; then the rest (a draft pull
+request, or a worktree with no pull request). Within each group keep the
+order the commands above printed.
+
 ### 4. Write the run record
 
 Only when step 1 printed `rows_file=`, `run_record` is set and its
@@ -268,9 +275,9 @@ Proposed sort, to answer in batches:
 - decided against, revisit when <condition>: <items>
 - delete: <items>
 
-**In flight**: <each worktree except the main checkout: branch, last
-commit age and subject>;
-<each open pull request: title, draft or review state>.
+**In flight**: one line per branch, in the order step 3 gives:
+- <branch>: <pull request title, draft or review state, when it has one>;
+  <last commit age and subject, when it has a worktree>.
 
 **Deferrals due**: <deferrals whose check is true>.
 Unchecked (no revisit check): <deferrals whose result is unchecked>.
@@ -293,7 +300,7 @@ Rules for the report:
   lines.
 - "Suggested next" names one item, taken from the first of these sources
   that has one, in this order: a due deferral; a `false` Direction line;
-  work in flight (a worktree or open pull request); the proposed inbox
+  work in flight (a branch line from "In flight"); the proposed inbox
   "now" bin. It names the fact it rests on (the deferral and its check,
   the line and its check, the branch or pull request title, the inbox
   line). When it comes from the inbox "now" bin, it says "this rests on
@@ -304,7 +311,8 @@ Rules for the report:
     includes it (`type: "main"`), so it is never a candidate. The
     worktree this session runs in counts like any other.
   - When a source has several items, take the first as listed in the
-    report.
+    report. For work in flight that is a branch whose pull request waits
+    on the owner, if there is one (step 3's order).
   - From the Direction section only a due deferral and a `false` line are
     sources. A `format` problem and an `unknown`, `partial` or `unchecked`
     line are deliberately not: they say a check could not decide, not

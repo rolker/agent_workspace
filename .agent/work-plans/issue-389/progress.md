@@ -306,7 +306,7 @@ Publish after pre-push round 2 (411fb0fc, approved, 0 must-fix). The one open su
 **CI**: pending
 
 ### Findings
-- [ ] (cross-confirmed, suggestion; Copilot R1 @ `bff4f95` + Local Review (Pre-Push) @ `2592374`) Under "work in flight", "take the first as listed" picks a worktree over any open pull request, because the report lists worktrees before pull requests, and a pull request whose branch has a worktree appears twice. Fix: merge worktrees and open pull requests into one line per branch (match on `headRefName`), and say whether a pull request waiting on the owner comes before a branch with no pull request — `.claude/skills/sitrep/SKILL.md`
+- [x] (cross-confirmed, suggestion; Copilot R1 @ `bff4f95` + Local Review (Pre-Push) @ `2592374`) Under "work in flight", "take the first as listed" picks a worktree over any open pull request, because the report lists worktrees before pull requests, and a pull request whose branch has a worktree appears twice. Fix: merge worktrees and open pull requests into one line per branch (match on `headRefName`), and say whether a pull request waiting on the owner comes before a branch with no pull request — `.claude/skills/sitrep/SKILL.md`
 
 ### False positives
 
