@@ -420,7 +420,7 @@ Owner: "Do the first" — of the three options offered at the round-3 limit (add
 - [x] (suggestion) the #386 change-log row records 730 lines, the file's `wc -l` — `docs/design.md:677`
 
 ### Tests
-- Each fix's new tests were run against the code before the fix and failed there (39 failing checks in all, across the nine), then passed after.
+- Each fix's new tests were run against the code before the fix and failed there (32 failing checks across the eight code fixes; the design.md count has no test), then passed after.
 - `test_sitrep_checks.sh`: 101 passed before the round; 141 passed, 0 failed after (7 s); ten back-to-back runs all 141/0.
 - `test_capture.sh` 41/0; `test_update_roadmap.sh` 15/0; `test_script_tests_hook_scope.sh` 104/0.
 - shellcheck (workspace .venv, `--severity=warning`) clean on the 7 changed .sh files and on the skill's step 1, 2 and 4 blocks extracted to files; `check_design_anchors.sh` rc 0.
