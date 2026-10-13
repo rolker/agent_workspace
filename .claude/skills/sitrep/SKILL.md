@@ -66,27 +66,39 @@ from that file, so the report and the record cannot disagree. A run that
 fails or is interrupted keeps no rows file and prints no `rows_file=`, so
 nothing from it can be recorded. Neither does a run that could not read
 the roadmap (not found, or not readable): its rows are shown, but there is
-no count to record, since no Direction line was looked at.
+no count to record, since no Direction line was looked at. If this block
+itself is interrupted (INT or TERM), it stops the check runner and removes
+the rows file before it exits.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 rows="$(mktemp -t sitrep-rows.XXXXXX)" || rows=""
+pid=""
+stop() { [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null; [ -z "$rows" ] || rm -f -- "$rows"; trap - INT TERM; exit "$1"; }
+trap 'stop 130' INT
+trap 'stop 143' TERM
 if [ -z "$rows" ]; then
     echo "could not create a temporary file; checks not run"
-elif "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT" > "$rows"; then
-    cat "$rows"
-    echo "---"
-    if "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows"; then
-        echo "rows_file=$rows"
+else
+    "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WS_ROOT" > "$rows" &
+    pid=$!
+    rc=0; wait "$pid" || rc=$?
+    pid=""
+    if [ "$rc" -eq 0 ]; then
+        cat "$rows"
+        echo "---"
+        if "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --summary-from "$rows"; then
+            echo "rows_file=$rows"
+        else
+            rm -f -- "$rows"
+            echo "checks: no summary (reason above); nothing will be recorded"
+        fi
     else
         rm -f -- "$rows"
-        echo "checks: no summary (reason above); nothing will be recorded"
+        echo "checks failed or were interrupted (exit $rc); no rows, nothing will be recorded"
     fi
-else
-    rc=$?
-    rm -f -- "$rows"
-    echo "checks failed or were interrupted (exit $rc); no rows, nothing will be recorded"
 fi
+trap - INT TERM
 ```
 
 Rows are `kind`, `item`, `result`, `check`, `date`, TAB-separated. Kinds:

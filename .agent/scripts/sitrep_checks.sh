@@ -287,6 +287,33 @@ check_path() {
     return 1
 }
 
+# Interruption. Each cell's checks run in a process substitution that the
+# main loop reads with `read`, which a trapped signal interrupts at once
+# (a foreground wait would hold the trap until the check ended, and
+# `timeout` runs the check in its own process group, out of reach of a
+# Ctrl-C). On INT or TERM the trap stops that reader, kills everything
+# under it (the subshells, `timeout`, the check and its children, found
+# with `pgrep -P`), then dies of the same signal: no rows, exit 128 + the
+# signal. Without pgrep only the reader is killed and the check runs on
+# until its timeout. A run started with INT ignored cannot trap it.
+CHILD=""
+kill_tree() {  # <pid>: stop it so it forks no more, kill what is under it, then it
+    local c
+    kill -STOP "$1" 2>/dev/null || return 0
+    if command -v pgrep >/dev/null 2>&1; then
+        for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done
+    fi
+    kill -KILL "$1" 2>/dev/null
+}
+on_signal() {  # <INT|TERM>
+    trap '' INT TERM
+    [ -z "$CHILD" ] || kill_tree "$CHILD"
+    trap - INT TERM
+    kill -s "$1" "$$"
+}
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
+
 # run_bounded <cmd...>: runs under the timeout, stdin from /dev/null;
 # returns its exit code, or 125 when there is no timeout command.
 run_bounded() {
@@ -602,7 +629,15 @@ if [ "$ROADMAP_STATE" = found ]; then
             if [ -z "$(trim "$cell")" ]; then
                 emit "$table" "$item" unchecked ""
             else
-                emit "$table" "$item" "$(check_cell "$cell")" "$cell"
+                # Read through a pipe, not $(...), so a signal is handled
+                # while the check runs (see Interruption above).
+                exec 4< <(check_cell "$cell")
+                CHILD=$!
+                result=""
+                IFS= read -r result <&4 || true
+                exec 4<&-
+                CHILD=""
+                emit "$table" "$item" "${result:-unknown}" "$cell"
             fi
             continue
         fi

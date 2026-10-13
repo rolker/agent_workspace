@@ -715,6 +715,43 @@ for sig in INT TERM; do
         [[ $RC -ne 0 && ! -s "$SB/int.out" ]] && pass "(interrupt $sig) exit $RC, no rows" || fail "(interrupt $sig) rc=$RC out='$(cat "$SB/int.out")'"
     fi
 done
+echo "TEST: an interrupted run kills the running check at once"
+# The check records its pid and sleeps far past the test's patience; a
+# signal must end the run and the check within a few seconds, not when the
+# sleep or the timeout ends.
+cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
+#!/usr/bin/env bash
+echo \$\$ > "$SB/slow.pid"
+exec sleep 30
+EOF
+printf '%s' "$(direction '| Slow | script check_design_anchors.sh |' '| After | file-exists docs/notes.md |')" > "$SB/root/docs/roadmap.md"
+for how in "TERM pid" "INT pid" "INT group"; do
+    sig="${how% *}"; to="${how#* }"
+    rm -f "$SB/slow.pid"
+    RC=0
+    start=$SECONDS
+    ( set -m
+      bash -c 'kill -'"$sig"' $$; exit 0' & wait $! && exit 99
+      SITREP_TIMEOUT=60 bash "$SITREP" --root "$SB/root" > "$SB/int.out" 2>/dev/null &
+      pid=$!
+      for _ in $(seq 50); do [ -s "$SB/slow.pid" ] && break; sleep 0.1; done
+      if [ "$to" = group ]; then kill -"$sig" -- "-$pid"; else kill -"$sig" "$pid"; fi
+      wait "$pid" ) 2>/dev/null || RC=$?
+    took=$((SECONDS - start))
+    slow="$(cat "$SB/slow.pid" 2>/dev/null)"
+    alive=no
+    sleep 0.2
+    [[ -n "$slow" ]] && kill -0 "$slow" 2>/dev/null && alive=yes
+    if [[ $RC -eq 99 ]]; then
+        pass "(interrupt now) $how skipped: $sig is ignored in this environment"
+    else
+        [[ $RC -ne 0 && $RC -ne 99 && ! -s "$SB/int.out" && -n "$slow" && $alive == no && $took -lt 8 ]] \
+            && pass "(interrupt now) $how: exit $RC in ${took}s, no rows, the check is gone" \
+            || fail "(interrupt now) $how: rc=$RC took=${took}s pid=${slow:-none} alive=$alive out='$(cat "$SB/int.out")'"
+    fi
+    [[ -n "$slow" ]] && kill -KILL "$slow" 2>/dev/null
+done
+rm -f "$SB/slow.pid"
 cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
 #!/usr/bin/env bash
 printf '%s %s\n' "\$PWD" "\$*" >> "$MARK/check_design_anchors.sh"
@@ -775,6 +812,42 @@ TMPDIR="$SB/t1" run_step 1
 [[ "$OUT" != *rows_file=* && "$OUT" == *"exit 130"* && -z "$(ls -A "$SB/t1")" ]] \
     && pass "(skill 1) failed run: no rows_file, file removed, exit named" || fail "(skill 1) failed run: '$OUT' left: $(ls -A "$SB/t1")"
 mv "$SB/sitrep_checks.real" "$WS/.agent/scripts/sitrep_checks.sh"
+
+echo "TEST: sit-rep step 1 killed while the checks run stops them and removes the rows file"
+cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
+#!/usr/bin/env bash
+echo \$\$ > "$SB/slow.pid"
+exec sleep 30
+EOF
+cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"
+printf '## Direction\n\n| Line | Check |\n|---|---|\n| Slow | script check_design_anchors.sh |\n' > "$WS/docs/roadmap.md"
+mkdir -p "$SB/t1c"
+rm -f "$SB/slow.pid"
+blk="$(skill_step 1)"
+start=$SECONDS
+RC=0
+( cd "$SB/elsewhere" || exit 98
+  HOME="$HOMESB" TMPDIR="$SB/t1c" bash -c "$blk" > "$SB/step1.out" 2>&1 &
+  bpid=$!
+  for _ in $(seq 50); do [ -s "$SB/slow.pid" ] && break; sleep 0.1; done
+  kill -TERM "$bpid"
+  wait "$bpid" ) || RC=$?
+took=$((SECONDS - start))
+sleep 0.2
+slow="$(cat "$SB/slow.pid" 2>/dev/null)"
+alive=no; [[ -n "$slow" ]] && kill -0 "$slow" 2>/dev/null && alive=yes
+[[ $RC -eq 143 && -n "$slow" && $alive == no && $took -lt 8 && -z "$(ls -A "$SB/t1c")" \
+    && "$(cat "$SB/step1.out")" != *rows_file=* ]] \
+    && pass "(skill 1) TERM: exit 143 in ${took}s, check gone, rows file removed" \
+    || fail "(skill 1) TERM: rc=$RC took=${took}s alive=$alive left: $(ls -A "$SB/t1c") out='$(cat "$SB/step1.out")'"
+[[ -n "$slow" ]] && kill -KILL "$slow" 2>/dev/null
+rm -f "$SB/slow.pid"
+mv "$SB/roadmap.saved" "$WS/docs/roadmap.md"
+cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s %s\n' "\$PWD" "\$*" >> "$MARK/check_design_anchors.sh"
+exit "\$(cat "$RCD/check_design_anchors.sh" 2>/dev/null || echo 0)"
+EOF
 
 echo "TEST: sit-rep step 1 with no roadmap shows why and keeps nothing to record"
 mv "$WS/docs/roadmap.md" "$SB/roadmap.saved"
