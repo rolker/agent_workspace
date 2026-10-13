@@ -428,3 +428,27 @@ Tooling notes for the host, not findings on this PR; they belong with the open `
 **Decision**: address
 
 "Fix 1–2, then merge" on the second Integrated Review (1ca9bd79): rewrite the "In flight" template line (alternatives, each part shown only when present); add `isCrossRepository` to the `gh pr list` fields and join a PR to a worktree only when it is false. Finding 3 (stale "Open suggestion, for triage" paragraph in the PR description) is the host's edit, done directly. Then re-review and the merge decision.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 11:53 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a4c953679901c53f2, resume 3 of 3)
+
+**PR**: #390 at `9baa4548`
+**Addressed**: Integrated Review at `ec271dc` (2026-10-13 11:32 -04:00)
+**Commits**: 4487bb0f, 9baa4548 (fixes); 6c44e30d (tick for the host's finding)
+
+### Actions
+- [x] (suggestion) In flight template is now `<name>: <pull request part>; <worktree part>`, with a report rule naming what each part holds (name: branch, or project/branch for a project worktree; pull request: title, then "draft" if one, then review state if set) and that a missing part and its "; " are left out — `.claude/skills/sitrep/SKILL.md` report template and rules
+- [x] (suggestion) `gh pr list` now fetches `isCrossRepository`; a pull request joins a workspace worktree only when it is false; a fork's pull request gets its own line, "from a fork" after its title, no worktree part — `.claude/skills/sitrep/SKILL.md` step 3 and report rules
+- [x] (suggestion) PR description still carried the resolved "Open suggestion" paragraph — PR #390 description (deferred: host edited the PR description)
+
+### Notes
+- `review_progress.sh check` saw this Integrated Review's boxes, so all three were ticked by the script, not by hand.
+- `isCrossRepository` checked as a valid `gh pr list --json` field against this repository.
+
+### Checks
+- `test_sitrep_checks.sh`: 141 passed, 0 failed
+- `test_skill_paths.sh`: 58 passed, 0 failed
+- pre-commit hooks passed on all three commits
