@@ -498,6 +498,13 @@ same_project() {  # <instance> <parent>
 #   skip-instance   a parent= instance in its parent's project (same git
 #                   toplevel, or a worktree of its repository): the parent
 #                   root's enable reaches it, and is what gets enabled
+#   skip-enclosed   a plain directory inside some other git repository
+#                   (<detail> is that repository's toplevel): a session
+#                   there reads the repository's local settings, and the
+#                   CLI's local scope from there writes them (live case K)
+#                   -- outside every registered root -- so the installer
+#                   refuses it: no CLI call there from install, --check or
+#                   --uninstall
 #   missing         the path does not exist on disk
 # A malformed registry line is reported by the registry parser on stderr and
 # dropped; the valid lines are still returned.
@@ -534,6 +541,8 @@ plugin_roots() {
              && top_phys="$(cd "$top" 2>/dev/null && pwd -P)" \
              && [[ "$top_phys" == "$WS_PHYS" ]]; then
             printf '%s\t%s\t%s\n' "$name" "$path" skip-workspace
+        elif top="$(enclosing_repo "$path")"; then
+            printf '%s\t%s\t%s\t%s\n' "$name" "$path" skip-enclosed "$top"
         elif [[ "$outside" == true ]]; then
             printf '%s\t%s\t%s\t%s\n' "$name" "$path" enable-instance "$detail"
         else
@@ -655,6 +664,14 @@ enclosing_repo() {  # <dir>
     dir_phys="$(cd "$1" 2>/dev/null && pwd -P)" || return 1
     [[ "$top_phys" != "$dir_phys" ]] || return 1
     printf '%s\n' "$top"
+}
+
+# Why the installer does not run the CLI in a skip-enclosed root.
+enclosed_reason() {  # <enclosing toplevel>
+    echo "it is a plain directory inside the git repository $1, so its sessions read that repository's local settings and the claude CLI's local scope from there writes $1/.claude/settings.local.json, outside every registered root"
+}
+enclosed_advice() {  # <enclosing toplevel>
+    echo "register the repository's toplevel ($1) as the root instead, or move the root out of that repository"
 }
 
 # Why the installer does not run the CLI from a skipped parent= instance.
@@ -859,10 +876,11 @@ if [[ "$MODE" == "uninstall" ]]; then
     done
     # The plugin, from every registered root that has it enabled or
     # declared -- skipped workspace-toplevel roots included, so a stale
-    # enable goes too. A skipped parent= instance is the exception: the CLI
-    # never runs there (install and --check refuse it the same way).
+    # enable goes too. A skipped parent= instance and a root inside another
+    # git repository are the exceptions: the CLI never runs there (install
+    # and --check refuse them the same way).
     uninstall_rc=0
-    while IFS=$'\t' read -r name root verdict _detail; do
+    while IFS=$'\t' read -r name root verdict detail; do
         [[ -z "$root" ]] && continue
         if [[ ! -d "$root" ]]; then
             echo "  NOTE: registered root $root is not on disk -- nothing to remove there"
@@ -870,6 +888,7 @@ if [[ "$MODE" == "uninstall" ]]; then
         fi
         case "$verdict" in
             skip-instance) uninstall_refused_root "parent= instance $name" "$root" "$(instance_cli_reason "$root")" ;;
+            skip-enclosed) uninstall_refused_root "registered root $name" "$root" "$(enclosed_reason "$detail")" ;;
             *) uninstall_plugin_from "$root" ;;
         esac
     done < <(plugin_roots)
@@ -1082,6 +1101,12 @@ if [[ "$MODE" == "check" ]]; then
                         note "$PLUGIN_NAME plugin is declared in parent= instance $name ($root) itself$(src="$(plugin_source "$root")"; [[ -n "$src" ]] && printf ', from %s' "$src") -- its parent root provides the plugin, and a declaration here can shadow the parent's (remove it from $root/.claude/settings.local.json by hand: the installer does not run the CLI there, because $(instance_cli_reason "$root"))" ;;
                     unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin in parent= instance $name" ;;
                     absent) plugin_disabled_flag "$root" && local_disable_note "$name" "$root" ;;
+                esac ;;
+            skip-enclosed)
+                note "$PLUGIN_NAME plugin cannot be enabled in registered root $name ($root): $(enclosed_reason "$detail") ($(enclosed_advice "$detail"))"
+                case "$state" in
+                    enabled|stale|foreign) note "$PLUGIN_NAME plugin is declared in $root/.claude/settings.local.json itself -- remove it by hand: the installer does not run the CLI there" ;;
+                    unparseable) note "$root/.claude/settings.local.json is not valid JSON -- cannot check the $PLUGIN_NAME plugin there" ;;
                 esac ;;
             missing)
                 echo "  note: registered root $name is not on disk ($root) -- plugin not checked there" ;;
@@ -1302,6 +1327,14 @@ while IFS=$'\t' read -r name root verdict detail; do
                 absent)
                     plugin_disabled_flag "$root" && local_disable_note "$name" "$root" ;;
             esac ;;
+        skip-enclosed)
+            echo "  ERROR: not enabling the $PLUGIN_NAME plugin in registered root $name ($root): $(enclosed_reason "$detail") -- $(enclosed_advice "$detail")" >&2
+            case "$(plugin_state "$root")" in
+                enabled|stale|foreign)
+                    echo "  ERROR: the $PLUGIN_NAME plugin is declared in $root/.claude/settings.local.json itself -- remove the $PLUGIN_ID and $MARKETPLACE_NAME entries there by hand" >&2 ;;
+                unparseable) unparseable_root "$root" "cannot tell whether the plugin is there" ;;
+            esac
+            plugin_rc=1 ;;
         missing)
             echo "  NOTE: registered root $name is not on disk ($root) -- plugin not enabled there" ;;
     esac

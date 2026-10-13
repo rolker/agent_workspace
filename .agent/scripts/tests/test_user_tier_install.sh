@@ -1003,6 +1003,48 @@ mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
 rm -rf "${ROOTS:?}/famg"
 run >/dev/null
 
+# A registered root that is a plain directory inside some other git
+# repository: its sessions read that repository's local settings, and the
+# CLI's local scope from there writes them (live case K) -- outside every
+# registered root. Install, --check and --uninstall refuse it, never
+# running the CLI there; the other roots are unaffected.
+cp "$WSC/.agent/projects.local" "$SANDBOX/projects.local.saved"
+mkdir -p "$ROOTS/mono/sub"
+git -C "$ROOTS/mono" init -q
+printf 'encl single_project %s\na single_project %s\n' "$ROOTS/mono/sub" "$ROOTS/a" > "$WSC/.agent/projects.local"
+: > "$STUB_LOG"
+out="$(run 2>&1)"; rc=$?
+if [[ "$rc" -eq 1 && "$out" == *"ERROR: not enabling the agent-workspace plugin in registered root encl ($ROOTS/mono/sub): it is a plain directory inside the git repository $ROOTS/mono"*"register the repository's toplevel ($ROOTS/mono) as the root instead"* \
+      && ! -e "$ROOTS/mono/.claude/settings.local.json" && ! -e "$ROOTS/mono/sub/.claude/settings.local.json" ]] \
+   && ! grep -q "^$ROOTS/mono" "$STUB_LOG" && enabled_in "$ROOTS/a"; then
+    pass "install refuses a root inside an unrelated git repository, runs no CLI there, and still enables the other roots"
+else
+    fail "install over a root inside an unrelated repo (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
+fi
+: > "$STUB_LOG"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"DRIFT: agent-workspace plugin cannot be enabled in registered root encl ($ROOTS/mono/sub): it is a plain directory inside the git repository $ROOTS/mono"* && ! -s "$STUB_LOG" ]] \
+    && pass "--check flags a root inside an unrelated git repository" \
+    || fail "--check over a root inside an unrelated repo (rc=$rc out=${out:0:500})"
+stale_enable "$ROOTS/mono/sub"
+before="$(cat "$ROOTS/mono/sub/$SLJ")"
+out="$(run --check)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"plugin is declared in $ROOTS/mono/sub/.claude/settings.local.json itself -- remove it by hand"* ]] \
+    && pass "--check also reports that root's own declaration for removal by hand" \
+    || fail "--check over a declaration in an enclosed root (rc=$rc out=${out:0:500})"
+: > "$STUB_LOG"
+out="$(run --uninstall 2>&1)"; rc=$?
+if [[ "$rc" -eq 1 && "$out" == *"declared in registered root encl itself ($ROOTS/mono/sub); --uninstall does not run the claude CLI there (it is a plain directory inside the git repository $ROOTS/mono"* \
+      && "$(cat "$ROOTS/mono/sub/$SLJ")" == "$before" ]] \
+   && ! grep -q "^$ROOTS/mono" "$STUB_LOG" && ! enabled_in "$ROOTS/a"; then
+    pass "--uninstall refuses a root inside an unrelated git repository, and still uninstalls the other roots"
+else
+    fail "--uninstall over a root inside an unrelated repo (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:500})"
+fi
+mv "$SANDBOX/projects.local.saved" "$WSC/.agent/projects.local"
+rm -rf "${ROOTS:?}/mono"
+run >/dev/null
+
 # The plugin enabled at the workspace checkout itself.
 stale_enable "$WSC"
 out="$(run --check)"; rc=$?

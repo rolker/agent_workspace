@@ -202,8 +202,9 @@ where that run is tracked.
   the workspace checkout (`.claude-plugin/`). It ships every skill that declares
   `session_scope: project` or `session_scope: both` (`make generate-user-tier-skills`, checked by
   `test_plugin_manifest.sh`). The installer enables it at local scope in each registered root, never in
-  the workspace's own repository, so a project session names them `/agent-workspace:<skill>` and a
-  workspace session keeps the bare names; `skill_prefix.sh` says which for a directory, and the
+  the workspace's own repository, and refuses a root that is a plain directory inside another
+  repository, whose settings that would write. A project session names the skills
+  `/agent-workspace:<skill>` and a workspace session keeps the bare names; `skill_prefix.sh` says which for a directory, and the
   `SessionStart` header states it. The old `~/.claude/skills/` symlinks are removed by install and
   reported by `--check` (ADR-0018).
 - The `SessionStart` hook (`.claude/hooks/session_start_project_layer.sh`) gives a session under a

@@ -123,6 +123,13 @@ registered session root. It skips:
   registry does not list it, so the installer cannot enable it there.
 - **A root not on disk.** The installer prints a note. This is not an
   error.
+- **A root that is a plain directory inside another git repository** (not
+  the workspace's, and not its own). Its sessions read that repository's
+  local settings, and local scope from there writes them (case K): outside
+  every registered root. Install exits 1 naming the repository's toplevel
+  as the root to register instead, `--check` flags it, and `--uninstall`
+  reports a declaration there for removal by hand. None of them runs the
+  CLI there.
 
 A root that is in no git repository at all is enabled.
 
