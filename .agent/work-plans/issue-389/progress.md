@@ -355,3 +355,26 @@ Re-review after the post-triage fix 152b9d96 (one In flight line per branch, own
 - [x] (must-fix) The per-branch merge matches any worktree's `branch` to a workspace pull request's `headRefName`, but `worktree_list.sh --json` also emits `type: "project"` entries whose branches follow the same `feature/issue-<N>` naming with per-repo numbers, so a project worktree and an unrelated workspace pull request would share one line (and could become "Suggested next"); match only `type: "workspace"` worktrees and give project worktrees their own line with no pull request — `.claude/skills/sitrep/SKILL.md:195-200, 278-280`
 - [x] (suggestion) "Waits on the owner" is inferred from open-and-not-draft while the fetched `reviewDecision` is unused (empty on this repo); either describe the group by what was checked ("open, not a draft") or say how `reviewDecision` (e.g. CHANGES_REQUESTED) affects it, and what to print when it is empty — `.claude/skills/sitrep/SKILL.md:197-198, 279`
 - [x] (suggestion) "Keep the order the commands above printed" is ambiguous for a line built from both commands; state it, e.g. worktree-list order first, then pull-request-only branches in `gh` order — `.claude/skills/sitrep/SKILL.md:199-200`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 11:18 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a4c953679901c53f2, resume 2 of 3)
+
+**PR**: #390 at `018b79b1`
+**Addressed**: Local Review at `7e183de5` (2026-10-13 11:03 -04:00)
+**Commits**: 1ce50fc6, 17a6f40f, 018b79b1
+
+### Actions
+- [x] (must-fix) Only workspace worktrees (`type: "workspace"`) are matched to the workspace pull requests by `headRefName`; a project worktree gets its own line, named `<project>/<branch>`, with no pull request — `.claude/skills/sitrep/SKILL.md` step 3 and the In flight template
+- [x] (suggestion) The first group is named by what is checked, a ready pull request (open, not a draft; each needs the owner's merge); `reviewDecision` does not change the order, is printed as the review state when set and omitted when empty — `.claude/skills/sitrep/SKILL.md` step 3, In flight template, Suggested next sub-rule
+- [x] (suggestion) Order within each group stated: branches with a worktree first in worktree-list order, then pull-request-only branches in `gh pr list` order — `.claude/skills/sitrep/SKILL.md` step 3
+
+### Notes
+- `review_progress.sh findings`/`check` do not treat a post-PR `## Local Review` as a source (they still select the Integrated Review at `bff4f95`, which has no open boxes), so the three boxes were checked by hand in each fix commit.
+
+### Checks
+- `test_sitrep_checks.sh`: 141 passed, 0 failed
+- `test_skill_paths.sh`: 58 passed, 0 failed
+- pre-commit hooks passed on all three fix commits
