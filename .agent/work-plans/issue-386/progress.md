@@ -361,3 +361,30 @@ Reviewers: Claude adversarial ran (3 must-fix, 5 suggestions); Codex ran (2 find
 - An interrupted runner already exited 128 + signal with no rows (rows print at the end), so no trap was added; the fix is that the skill acts on that exit status.
 - The roadmap's Format bullets were not changed; the script header carries the full grammar, including the cell unwrapping and fence rules.
 - No follow-ups left from this round.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-12 20:45 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-386 at `dc934ff`
+**Base**: main
+**Depth**: Deep (reason: 2739 changed lines across 15 files; new scripts and a skill)
+**Must-fix**: 3 | **Suggestions**: 6
+**Round**: 3 | **Ship**: continue — round 3: 3 must-fix is high (verdict script); all three are mechanical; MAX_ROUNDS reached, so the owner decides
+
+Round-2 must-fixes re-run and closed: a 104 kB capture with tabs/CRs/newlines takes 0.02 s (was 19 s for 10 kB); an inbox without a final newline, an empty inbox and a missing inbox each get a whole new line; `--summary-from ""` exits 2 with a message, as do an empty, blank-only, garbage and cut-off rows file; a runner killed with INT or TERM (to the pid and to the process group) exits 130/143 with no rows, and the step-1 block then prints no `rows_file=`. Round-2 suggestions spot-checked: CRLF and fenced `## Status`, a backtick-wrapped cell with ` ; `, a ```` ```x``` ```` line, a header-only table. The fixer's interruption choice (no trap, rows only at the end, the skill acts on the exit status) is sound for correctness; promptness is a suggestion below.
+
+Reviewers: Claude adversarial ran (3 must-fix, 6 suggestions; injection probes inert); Codex ran (2 findings, both kept, one as must-fix 1, one as a suggestion); Copilot ran (2 must-fix claims, both false positives: the adapter `case` pattern matches — the real run reaches the registry and reads `unknown`; ADR-0016's bold `**Provisional.**` reads `true` for `provisional`); Gemini failed (agy output exceeded its token limit, no review). Static: shellcheck (workspace .venv, --severity=warning) clean on the 7 changed .sh; test_capture 41/0 (3 s), test_sitrep_checks 101/0 (5 s), test_update_roadmap 15/0, test_script_tests_hook_scope 104/0, test_skill_paths 54/0; check_design_anchors rc 0; merges clean with origin/main.
+
+### Findings
+- [ ] (must-fix) A source that cannot be read is reported as absent: a roadmap with no read permission passes `-f`, the loop's redirect fails, and the run prints `(no Direction section)` with exit 0 (reproduced); a check under a directory that cannot be entered reads `false`, not `unknown`, because `in_root` returns 2 for any `cd` failure (reproduced with `file-contains`). Test `-r` (exit 1 or an `unknown` section row) and tell a missing parent from an inaccessible one — `.agent/scripts/sitrep_checks.sh:462`, `.agent/scripts/sitrep_checks.sh:213`
+- [ ] (must-fix) A run that read no Direction lines because the roadmap was not found (or could not be read) is recorded as `lines 0/0 deferrals 0/0`: `--summary-from` accepts section-only rows and step 4 appends, so the next run reports a move to 0/0. Refuse to record when the roadmap was not found or not readable; a readable section with no rows may still record 0/0 — `.agent/scripts/sitrep_checks.sh:179`, `.claude/skills/sitrep/SKILL.md:189`
+- [ ] (must-fix) A trailing slash on a regular file reads `true`: `file-exists f.txt/` and `file-contains f.txt/ x` both print `true` (dirname/basename drop the slash; reproduced). Reject a trailing `/` unless the target is a directory, or test the path as written — `.agent/scripts/sitrep_checks.sh:213`
+- [ ] (suggestion) The section ends only at `#`/`##` in column 0: an ATX heading indented 1–3 spaces (or a setext heading) does not end it, and a later section's `| Line | Check |` table is run and counted (reproduced; Codex and Claude) — `.agent/scripts/sitrep_checks.sh:489`
+- [ ] (suggestion) `inbox_new` is a count: deleting 3 lines and capturing 5 reports 2 new; `grep -c .` skips blank lines that `head` and `inbox_oldest` do not. Record the last line's date and text instead, or state the limit — `.claude/skills/sitrep/SKILL.md:115`
+- [ ] (suggestion) Interruption is correct but not prompt: SIGINT takes effect only when the running check ends (`timeout` puts it in its own process group), SIGTERM leaves the `timeout`/check running until `SITREP_TIMEOUT`, and the step-1 rows temp file stays behind when the whole block is killed. A trap that kills the current child would fix the first two — `.agent/scripts/sitrep_checks.sh:245`
+- [ ] (suggestion) The run-record append has no final-newline guard (a hand-edited record glues the next line, which step 2's `$2 == "workspace"` then skips) and a failed append prints no "not written" line — `.claude/skills/sitrep/SKILL.md:189`
+- [ ] (suggestion) A data row of only empty cells or dashes (`|  |  |`, `| - | |`) matches the separator regex and is dropped without a row — `.agent/scripts/sitrep_checks.sh:507`
+- [ ] (suggestion) The change-log row records 729 lines; `docs/design.md` has 730 — `docs/design.md:677`
