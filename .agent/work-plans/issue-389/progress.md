@@ -247,3 +247,22 @@ Reviewers: Claude adversarial ran (0 must-fix); Gemini ran; Codex ran (raised th
 - [x] (must-fix) "Suggested next" counts every worktree as work in flight, but `worktree_list.sh --json` always lists the main checkout (`type: "main"`), so an idle main checkout outranks the inbox "now" bin and "nothing from this run's facts" can never be reached; exclude `type: "main"` from the candidates — `.claude/skills/sitrep/SKILL.md:291-293`
 - [x] (suggestion) No pick within a source when several qualify (due deferrals, false lines, worktrees, open PRs), and the session's own worktree will nearly always win "work in flight"; state the tie-break (e.g. first as listed in the report) and whether the current worktree counts — `.claude/skills/sitrep/SKILL.md:291-294`
 - [x] (suggestion) Only `false` Direction lines feed "Suggested next"; a `format` problem (broken Direction section) or all-`unknown`/`partial` lines fall through to in-flight work or "nothing"; say whether a format problem is a source, or that it is deliberately not — `.claude/skills/sitrep/SKILL.md:292`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 10:11 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**Branch**: feature/issue-389 at `4ab547d1`
+**Addressed**: Local Review (Pre-Push) at `5123b139` (2026-10-13 09:55 -04:00)
+**Commits**: 545af354, 393e01b9, 4ab547d1
+
+### Actions
+- [x] (must-fix) The main checkout (`type: "main"`, always in the worktree list) is not work in flight: left out of the In flight section and never a Suggested next candidate — `.claude/skills/sitrep/SKILL.md` step 3 and step 5 rules
+- [x] (suggestion) Pick within a source: the first as listed in the report; the session's own worktree counts like any other — `.claude/skills/sitrep/SKILL.md` step 5 rules
+- [x] (suggestion) From the Direction section only a due deferral and a `false` line are sources; a `format` problem and `unknown`/`partial`/`unchecked` lines deliberately are not (a check could not decide); the closing question may ask about them — `.claude/skills/sitrep/SKILL.md` step 5 rules
+
+### Checks
+- `test_sitrep_checks.sh`: 141 passed, 0 failed
+- `test_skill_paths.sh`: 58 passed, 0 failed
+- pre-commit hooks passed on all three commits
