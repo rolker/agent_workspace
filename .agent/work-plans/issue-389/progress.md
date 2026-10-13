@@ -309,3 +309,13 @@ Publish after pre-push round 2 (411fb0fc, approved, 0 must-fix). The one open su
 - [ ] (cross-confirmed, suggestion; Copilot R1 @ `bff4f95` + Local Review (Pre-Push) @ `2592374`) Under "work in flight", "take the first as listed" picks a worktree over any open pull request, because the report lists worktrees before pull requests, and a pull request whose branch has a worktree appears twice. Fix: merge worktrees and open pull requests into one line per branch (match on `headRefName`), and say whether a pull request waiting on the owner comes before a branch with no pull request — `.claude/skills/sitrep/SKILL.md`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 10:50 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+"Address, then merge": fix the one open suggestion from the Integrated Review (0a5a87ea) — under "work in flight", one line per branch (match worktrees and open PRs on headRefName) and say whether a PR waiting on the owner comes before a branch with no PR — then re-review and return to the merge decision.
