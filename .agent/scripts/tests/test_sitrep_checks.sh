@@ -447,6 +447,56 @@ run_rm $'## Direction\n\n### Lines\n\n| Line | Check |\n|---|---|\n| Under sub |
 run_rm $'## Direction\r\n\r\n| Line | Check |\r\n|---|---|\r\n| Crlf | file-contains docs/notes.md hello |\r\n\r\n## Next\r\n'
 [[ "$(res Crlf)" == true ]] && pass "(crlf) CRLF roadmap read" || fail "(crlf) '$OUT'"
 
+echo "TEST: indented ATX and setext headings end the section; a thematic break does not"
+for heading in '  ## Later' '   # Later' '##' $'Later\n=====' $'Later\n-----' $'Later\n  ---'; do
+    body="## Direction
+
+| Line | Check |
+|---|---|
+| Inside | file-exists docs/notes.md |
+
+${heading}
+
+| Line | Check |
+|---|---|
+| Outside | file-exists docs/notes.md |
+"
+    run_rm "$body"
+    [[ "$(res Inside)" == true && -z "$(row Outside)" ]] \
+        && pass "(heading) '${heading//$'\n'/\\n}' ends the section" || fail "(heading) '${heading//$'\n'/\\n}': '$OUT'"
+done
+for brk in '---' '***' '- - -' '    ## indented code'; do
+    body="## Direction
+
+| Line | Check |
+|---|---|
+| Inside | file-exists docs/notes.md |
+
+${brk}
+
+| Line | Check |
+|---|---|
+| Still inside | file-exists docs/notes.md |
+"
+    run_rm "$body"
+    [[ "$(res Inside)" == true && "$(res 'Still inside')" == true ]] \
+        && pass "(heading) '$brk' after a blank line does not end the section" || fail "(heading) '$brk': '$OUT'"
+done
+body="## Direction
+
+| Line | Check |
+|---|---|
+| Inside | file-exists docs/notes.md |
+---
+| Line | Check |
+|---|---|
+| After rule | file-exists docs/notes.md |
+"
+run_rm "$body"
+[[ "$(res 'After rule')" == true ]] && pass "(heading) --- right under a table row is not a setext underline" || fail "(heading) table rule: '$OUT'"
+run_rm $'  ## Direction ##\n\n| Line | Check |\n|---|---|\n| Indented start | file-exists docs/notes.md |\n'
+[[ "$(res 'Indented start')" == true ]] && pass "(heading) an indented ## Direction with closing #s starts the section" || fail "(heading) start: '$OUT'"
+
 # --- 7. cells: escaped pipes, extra cells --------------------------------------------------
 echo "TEST: GFM escaped pipes and rows with extra cells"
 printf 'a|b here\nx\\ only\n' > "$SB/root/docs/pipes.md"

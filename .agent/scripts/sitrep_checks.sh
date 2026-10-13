@@ -32,8 +32,10 @@
 #              section or no rows still counts, as 0/0. `--summary` exits
 #              3 the same way.
 #
-# What is read: only the `## Direction` section (up to the next `#` or `##`
-# heading; `###` stays inside), outside fenced code. Fences are tracked from
+# What is read: only the `## Direction` section (up to the next level-1 or
+# level-2 heading: `#` or `##` with up to 3 spaces of indent, or a setext
+# `===`/`---` underline under paragraph text; `###` stays inside), outside
+# fenced code. Fences are tracked from
 # the top of the file, so a fenced `## Direction` example is not the
 # section. A fence opens with 3+ backticks or tildes (up to 3 spaces of
 # indent; after backticks, no further backtick on the line, as in
@@ -501,6 +503,12 @@ fence_char=""
 fence_len=0
 table=none      # none | line | deferral | other
 prev_table_line=false
+prev_para=false # the line before was paragraph text (a setext underline may follow)
+START_RE='^ {0,3}##[[:space:]]+Direction([[:space:]]+#+)?[[:space:]]*$'
+END_RE='^ {0,3}##?([[:space:]]|$)'
+SETEXT_RE='^ {0,3}(=+|-+)[[:space:]]*$'
+NOT_PARA_RE='^[[:space:]]*$|^ {0,3}(#|>|[-*+]([[:space:]]|$)|[0-9]+[.)]([[:space:]]|$))'
+THEMATIC_RE='^ {0,3}([*_][[:space:]]*){3,}$'
 FENCE_RE='^ {0,3}(`{3,}|~{3,})(.*)$'
 # found | missing | unreadable. A file that exists but cannot be opened (no
 # read permission, a directory) is not read as a roadmap without the
@@ -532,21 +540,25 @@ if [ "$ROADMAP_STATE" = found ]; then
                 && [ -z "$(trim "${BASH_REMATCH[2]}")" ]; then
                 in_fence=false
             fi
-            prev_table_line=false; table=none
+            prev_table_line=false; table=none; prev_para=false
             continue
         fi
         [ "$in_fence" = true ] && continue
         if [ "$in_section" = false ]; then
-            if [[ "$raw" =~ ^##[[:space:]]+Direction[[:space:]]*$ ]]; then
+            if [[ "$raw" =~ $START_RE ]]; then
                 in_section=true
                 seen_section=true
             fi
             continue
         fi
-        if [[ "$raw" =~ ^##?[[:space:]] ]]; then
+        # A level-1 or level-2 heading ends the section: ATX (`#`, `##`,
+        # up to 3 spaces of indent) or setext (a `===` or `---` line under
+        # paragraph text).
+        if [[ "$raw" =~ $END_RE ]] || { [ "$prev_para" = true ] && [[ "$raw" =~ $SETEXT_RE ]]; }; then
             break
         fi
         if [[ "$raw" =~ ^[[:space:]]*\| ]]; then
+            prev_para=false
             if [ "$prev_table_line" = false ]; then
                 split_row "$raw"
                 table=other
@@ -582,6 +594,12 @@ if [ "$ROADMAP_STATE" = found ]; then
         fi
         prev_table_line=false
         table=none
+        # A thematic break (`---`, `***`) is not paragraph text either.
+        if [[ "$raw" =~ $NOT_PARA_RE ]] || [[ "$raw" =~ $SETEXT_RE ]] || [[ "$raw" =~ $THEMATIC_RE ]]; then
+            prev_para=false
+        else
+            prev_para=true
+        fi
         if [[ "$raw" =~ ^[[:space:]]*[-*+][[:space:]]+\[[[:space:]xX]\][[:space:]]*(.*)$ ]]; then
             emit format "${BASH_REMATCH[1]}" unchecked ""
         fi
