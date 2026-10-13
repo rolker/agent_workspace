@@ -284,3 +284,13 @@ Round-1 findings verified fixed in 545af354, 393e01b9, 4ab547d1. The fixer also 
 
 ### Findings
 - [ ] (suggestion) Within "work in flight", "first as listed" always picks a worktree over an open pull request, and a pull request whose branch has a worktree appears twice; consider one line merging the two by branch and saying whether a pull request awaiting the owner comes first — `.claude/skills/sitrep/SKILL.md:269-273, 303-307`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 10:34 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Publish after pre-push round 2 (411fb0fc, approved, 0 must-fix). The one open suggestion (merge worktrees and open PRs by branch under "work in flight"; say whether a PR waiting on the owner comes first) is noted in the PR body and picked up at triage with the bot findings.
