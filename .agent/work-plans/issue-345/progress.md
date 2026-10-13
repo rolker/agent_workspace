@@ -663,3 +663,23 @@ Paused: "Let's pause here for now until I have time to focus more on understandi
 Resumed 2026-10-13 (/run-issue 345). Owner, on the round-6 must-fix (skill_prefix.sh decides from the current directory, not the session's start directory): "I lost track of what question I am actually answering for 345, but I think let's go with the simpler design where an agent works on stuff in the directory where it was launched." Earlier in the same conversation: "having all the projects outside the workspace makes it so that starting a session in the workspace means one wants to work on the workspace itself, and starting it in a project means work on the project. So, an agent working, in let's say src/gz4d, could open an issue for agent_workspace if a workspace bug was found, but probably not fix it. An agent started in ~/agent_workspace could pickup the issue and fix it."
 
 Rule adopted: a session's root is the directory it was launched in (the workspace checkout, or a registered project root), and a session only changes things under that root; cross-root work is an issue (or an inbox line), not a fix. Worktrees live under their root, so deciding the skill form by location is correct and the start-directory record is not needed; run-issue / start-task refuse an issue whose root is not the session's root and name the directory to start in. Address the round-6 must-fix this way, plus the three round-6 suggestions; merge main into the branch first (360 commits behind) and renumber the plugin ADR to 0018 (main has a 0017 now).
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 11:15 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: fresh
+
+**Branch**: feature/issue-345 at `137ed94e`
+**Addressed**: Local Review (Pre-Push) at `6c2f733` (2026-09-25 13:15 -04:00)
+**Commits**: 5d41d6fe (merge of main), 38ed1010, d3a328cf, f8554a0a, a18b495d, 137ed94e
+
+Before the findings, per the 2026-10-13 checkpoint: main merged in (360 commits; conflicts in `docs/design.md`, taken from main, and `.agent/knowledge/principles_review_guide.md`, both sides kept; the merge also regenerated `plugin.json` for main's `sitrep` skill, declared two suites' root reads in `test_script_tests_hook_scope.sh`, and added `.claude-plugin/` to the `validate-script-tests` hook's `files:` in `.pre-commit-config.yaml`), then the plugin ADR renumbered 0017 -> 0018 with its decision-register row (38ed1010).
+
+### Actions
+- [x] (must-fix) Owner's rule adopted instead of a start-directory record: a session works only under the root it was launched in. New `.agent/scripts/session_root.sh` prints a directory's root and refuses an issue of another root, naming the directory to start in; `run-issue` runs it before step 1 (default `--type` now the session root's, `--project` threaded for a project root) and `/start-task` gains step 2a. `skill_prefix.sh` on the cwd stays, justified by the rule. ADR-0018 decision 6, `docs/design.md` "Sessions and roots" (+ change-log row), review-guide 0018 row, AGENTS.md script row; `test_session_root.sh` 41 cases, mutation-checked — `.agent/scripts/session_root.sh`, `.claude/skills/run-issue/SKILL.md`, `.claude/skills/start-task/SKILL.md` (d3a328cf)
+- [x] (suggestion) Nested-repo claim softened (no live run): `skill_prefix.sh`, the hook's note and run-issue now say only that the root's plugin does not reach a nested repo (case G) and that bare skills there are unchecked; `test_skill_prefix.sh` asserts the message — `.agent/scripts/skill_prefix.sh`, `.claude/hooks/session_start_project_layer.sh` (f8554a0a)
+- [x] (suggestion) No-CLI + absent-record tests (no entry, no file) for install's 6a NOTE and `--check`'s note, mutation-checked — `.agent/scripts/tests/test_user_tier_install.sh` (a18b495d)
+- [x] (suggestion) Typo fixed; the hook runs `skill_prefix.sh` once and takes the reason from that run, with a call-counting test — `.agent/scripts/user_tier_install.sh`, `.claude/hooks/session_start_project_layer.sh` (137ed94e)
+
+Tests: `run_script_tests.sh` all 37 suites passed (session_root 41, skill_prefix 20, session_start_layer 48, user_tier_install 191, script_tests_hook_scope 115, plugin_manifest 12, dispatch_phase 112). Live user-tier suite not run. `session_root.sh` is not in `.agent/user_tier_scripts.txt` (nor is `skill_prefix.sh`), so a project session may get a permission prompt for it.
