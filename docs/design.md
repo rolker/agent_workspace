@@ -183,14 +183,29 @@ where that run is tracked.
   the workspace checkout, so a project registered inside the workspace tree is still a project
   (`registry_resolve_from_dir` and `registry_derive_type_from_dir` in `_project_registry.sh`;
   ADR-0016 decision 1).
+- A session works only under its root, the directory it was launched in (owner, 2026-10-13). Work
+  that belongs to another root becomes an issue there, or an inbox line, and a session started in that
+  root picks it up; reading across roots is allowed. A multi-repo project's root is its registered
+  hosting directory, never a package repository nested in it. `session_root.sh` prints a directory's
+  root and refuses an issue of another root, naming the directory to start in; `run-issue` and
+  `/start-task` run it before anything is created. Worktrees live under their root (a root's
+  `worktrees=` directory counts as its own), so a session's current directory always names its root,
+  and nothing records where a session started (ADR-0018 decision 6).
 - When `--type` is omitted, the worktree scripts and `dispatch_phase.sh` take the type and project
   from the cwd the same way (`registry_derive_type_from_dir`; ADR-0016, "Multi-project machines need
   disambiguation").
 - The user tier is installed from a workspace checkout by `.agent/scripts/user_tier_install.sh`: a
-  `SessionStart` hook, a `PreToolUse` hook, permission rules for the promoted scripts, and a symlink in
-  `~/.claude/skills/` for every skill that declares `session_scope: project` or `session_scope: both`.
-  Everything it writes is tagged with the checkout, so install is repeatable and `--uninstall` removes
-  only its own entries (`user_tier_install.sh` header).
+  `SessionStart` hook, a `PreToolUse` hook and permission rules for the promoted scripts. Everything it
+  writes is tagged with the checkout, so install is repeatable and `--uninstall` removes only its own
+  entries (`user_tier_install.sh` header).
+- Skills reach project sessions through the `agent-workspace` Claude Code plugin, whose marketplace is
+  the workspace checkout (`.claude-plugin/`). It ships every skill that declares
+  `session_scope: project` or `session_scope: both` (`make generate-user-tier-skills`, checked by
+  `test_plugin_manifest.sh`). The installer enables it at local scope in each registered root, never in
+  the workspace's own repository, so a project session names them `/agent-workspace:<skill>` and a
+  workspace session keeps the bare names; `skill_prefix.sh` says which for a directory, and the
+  `SessionStart` header states it. The old `~/.claude/skills/` symlinks are removed by install and
+  reported by `--check` (ADR-0018).
 - The `SessionStart` hook (`.claude/hooks/session_start_project_layer.sh`) gives a session under a
   registered root the workspace layer, rendered from nine pinned `AGENTS.md` headings, and the project
   layer, built from the registry entry and the project's own agent guide. Outside every registered root
@@ -677,6 +692,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-12 | Registry and adapters, Worktrees, Merge gate, Change log | `merge_pr.sh` looks up a project pull request's timeline at the registry-aware project root, the same one the Step 1 roadmap lookup uses, and its main-tree guards include it; the #379 gap text is gone from the Records bullet, Target items 1 and 2, the Merge gate bullets, the `merge_pr.sh` row and the change-log rule, and every `merge_pr.sh` line number is refreshed | #379 | 718 |
 | 2026-10-12 | Documentation layers, Registry and adapters, Open questions | Direction row: the roadmap's `## Direction` section, read by the sit-rep; Measures row: the sit-rep run record, a first form; the gaps paragraph says both gaps narrowed and neither closed, status stays machine-local and the five result words are a trial; the Target sentence notes a project may carry the same section; `settings.local` beside the registry; OQ-3 partly answered | #386 | 730 |
 | 2026-10-13 | Decision register | Row for ADR-0018 (workspace skills reach project sessions through the `agent-workspace` plugin; Provisional, not yet re-examined), making 18 rows | #345 | 732 |
+| 2026-10-13 | Sessions and roots | The root rule (owner, 2026-10-13): a session works only under the root it was launched in, cross-root work is an issue or an inbox line, and `run-issue` and `/start-task` refuse an issue of another root through `session_root.sh`; the user-tier bullet drops the `~/.claude/skills/` symlinks and a new bullet describes plugin skill delivery (ADR-0018). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the two new bullets are the interface between the installer, the hook, `run-issue`, `/start-task` and the two location scripts, which no one script header shows, so they stay | #345 | 748 |
 
 ## Glossary
 

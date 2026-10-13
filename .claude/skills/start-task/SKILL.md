@@ -101,6 +101,38 @@ An explicit `--type` / `--project` in `$ARGUMENTS` always wins over the
 derivation, so passing them is still correct and unambiguous — omit them only
 when the session is already inside the checkout you mean.
 
+### 2a. Refuse an issue of another root
+
+A session works only under the root it was launched in: the workspace
+checkout, or a registered project root (ADR-0018 decision 6;
+`docs/design.md`, "Sessions and roots"). A worktree of another root is
+created by a session started there, never from here. Check before anything
+is created:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+set -f; set -- $ARGUMENTS; set +f
+T=""; P=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --type) T="${2:-}" ;;
+        --project|--repo) P="${2:-}" ;;
+    esac
+    shift
+done
+[ -n "$P" ] && [ -z "$T" ] && T=project
+"$WS_ROOT/.agent/scripts/session_root.sh" ${T:+--type "$T"} ${P:+--project "$P"}
+```
+
+If it exits non-zero, surface its message verbatim and **STOP**: it names
+the directory to start a session in for this issue (or says why this
+directory is no session's root). Do not `cd` elsewhere to get round it.
+
+If it passes with `--type project` and no `--project`, and it printed a
+non-empty `project=<name>`, append `--project <name>` to `$ARGUMENTS` in
+step 3, so `worktree_create.sh` resolves this session's project rather than
+its legacy `project/` or single-registered fallback.
+
 ### 3. Resolve the worktree path (existing → create-new fallback)
 
 Exit-code-checked idiom — error text from `worktree_enter.sh`'s failure paths goes to stderr, so `2>/dev/null` suppresses it and `$WT` never captures error or usage text (enforced by `$WS_ROOT/.agent/scripts/tests/test_worktree_enter_stderr.sh`).

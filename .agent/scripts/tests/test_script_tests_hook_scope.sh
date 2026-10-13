@@ -186,6 +186,8 @@ declare -A ROOT_READERS=(
     [test_project_registry.sh]=".agent/scripts .agent/project_types"
     [test_resolve_work_plans_dir.sh]=""
     [test_ros2_colcon.sh]=".agent/scripts .agent/project_types"
+    # Whole-tree `cp -r $WS_ROOT/.agent` into its sandbox workspace.
+    [test_session_root.sh]=".agent/"
     [test_session_start_layer.sh]=".claude/hooks AGENTS.md .agent/scripts .agent/project_types"
     # Runs the sit-rep skill's own shell steps, read from its SKILL.md.
     [test_sitrep_checks.sh]=".claude/skills"

@@ -27,18 +27,47 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 variable and not `SessionStart` hook output — hook stdout is context text and
 never reaches a tool call's shell (ADR-0016).
 
+## This session's root
+
+A session works only under the root it was launched in: the workspace
+checkout, or a registered project root (ADR-0018 decision 6; `docs/design.md`,
+"Sessions and roots"). An issue of another root is not driven from here; it
+is driven by a session started in that root, and this session may open an
+issue there (or add an inbox line) instead. Reading across roots is fine.
+
+Check this **once, before step 1**:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/session_root.sh" [--type <type>]
+```
+
+Pass `--type` only when the user gave it. The script prints `root=`,
+`type=` and `project=` for this session's root. If it exits non-zero,
+**stop and report its message**: it names the directory to start a session
+in for this issue, or says why this directory is no session's root. Do not
+work around it with `cd`.
+
+For the rest of the run, `<type>` below is the user's `--type`, or the
+printed `type=` when none was given. When `<type>` is `project` and the
+printed `project=` is not empty, pass `--project <project>` wherever this
+skill passes `--type <type>` (start-task's arguments, every
+`dispatch_phase.sh` call and `merge_pr.sh`), so every script resolves the
+same project the check did.
+
 ## Skill names in this session
 
 In a project session the workspace skills arrive through the
 `agent-workspace` Claude Code plugin and are named
 `/agent-workspace:<skill>`; the bare `/<skill>` there may be the project's
 own skill of the same name (ADR-0018). In a workspace session they are
-bare. Every dispatched task line must use the name *this* session has, and
-neither `--type` nor the cwd says which: a workspace session driving a
-project issue still has bare names, and `/start-task` moves the cwd.
+bare. Every dispatched task line must use the name *this* session has.
+`--type` does not say which; the location does. Because the session stays
+under its root (above), and worktrees live under their root, the current
+directory gives the same answer at any point of the run as the directory
+the session was launched in.
 
-Find out **once, before step 1**, from the directory this session started
-in, by running:
+Find out **once, before step 1**, by running:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -82,10 +111,12 @@ script, not here — see "Action tokens" below for where to read it.
 ```
 
 - `<issue-number>` — the GitHub issue driving the loop.
-- `--type` — `workspace` (default) or `project`, exactly the value
-  `/start-task` and `dispatch_phase.sh` take. Threaded to every
-  `dispatch_phase.sh` call, `worktree_create.sh` at entry,
-  `gh_create_pr.sh` targeting at publish, and `merge_pr.sh --type` at merge.
+- `--type` — `workspace` or `project`, exactly the value `/start-task` and
+  `dispatch_phase.sh` take; default: the type of this session's root
+  ("This session's root" above). It must name this session's root, or the
+  run stops before step 1. Threaded to every `dispatch_phase.sh` call,
+  `worktree_create.sh` at entry, `gh_create_pr.sh` targeting at publish,
+  and `merge_pr.sh --type` at merge, with `--project` for a project root.
 - `--resume` — re-asks the newest `## Checkpoint` entry when it answered
   `stop` (see "Resume" below). Without it, a `stop` checkpoint ends the run.
 

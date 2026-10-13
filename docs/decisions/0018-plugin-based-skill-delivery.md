@@ -214,23 +214,46 @@ install still learns about them. `--uninstall` removes this checkout's
 links. A symlink the user made into a directory that is not a workspace
 checkout is left alone.
 
-### 6. Handoffs name the host session's form of each skill
+### 6. A session works under its own root, and handoffs name its form of each skill
 
-`dispatch_phase.sh --skill-prefix <name>:` puts the prefix on every slash
-command in a handoff's task line. The default is empty, which is correct
-for a workspace session and for Codex, which never has the plugin. The
-prefix is a caller-supplied string and is never derived from `--type`. A
-workspace session driving a project issue has bare skills, and
-`/start-task` moves the cwd mid-run.
+**The root rule** (owner, 2026-10-13: "an agent works on stuff in the
+directory where it was launched"). A session's root is the directory it was
+launched in: the workspace checkout, or a registered project root. The
+session changes things only under that root. Work that belongs to another
+root becomes an issue there (or an inbox line), not a fix from here; a
+session started in that root picks it up. Reading across roots is allowed.
+A multi-repo project's root is its registered hosting directory, never a
+package repository nested in it.
+
+`.agent/scripts/session_root.sh` applies the rule. Given a directory, it
+prints that session's root: the registered root that contains it (longest
+match, registered roots before the workspace checkout), or the one whose
+`worktrees=` directory contains it, else the workspace checkout. Given an
+issue's `--type` (and `--project`), it resolves the issue's root the way
+`worktree_create.sh` does and exits 1, naming the directory to start a
+session in, when that is not the session's root. `run-issue` and
+`/start-task` run it before anything is created and stop on a refusal. A
+parent root owns its instances, and the legacy unregistered `project/` is
+hosted by the workspace, so its issues belong to the workspace's root.
+
+**Skill names.** `dispatch_phase.sh --skill-prefix <name>:` puts the prefix
+on every slash command in a handoff's task line. The default is empty,
+which is correct for a workspace session and for Codex, which never has
+the plugin. The prefix is a caller-supplied string and is never derived
+from `--type`.
 
 `run-issue` decides the prefix once per run, before step 1, with
-`.agent/scripts/skill_prefix.sh`. The script applies a location rule to
-the directory the session started in. In the workspace checkout's git
-repository (the checkout, a worktree of it, or a root such as `p11-jazzy`
-inside its tree), the names are bare. In a registered project root, they
-take the `agent-workspace:` prefix. Anywhere else, including a repository
-nested in a root whose sessions read neither, the script fails with a
-message and `run-issue` stops rather than guess. The rule holds because the
+`.agent/scripts/skill_prefix.sh`, a location rule applied to the current
+directory. In the workspace checkout's git repository (the checkout, a
+worktree of it, or a root such as `p11-jazzy` inside its tree), the names
+are bare. In a registered project root, they take the `agent-workspace:`
+prefix. Anywhere else, including a repository nested in a root whose
+sessions do not read the root's local settings, the script fails with a
+message and `run-issue` stops rather than guess. The current directory is
+the right input because of the root rule: worktrees live under their root,
+and a session never moves into another root, so the directory at any point
+of a run gives the same answer as the one the session was launched in. No
+start directory is recorded per session. The rule holds because the
 installer never enables the plugin in the workspace: the plugin's source
 is the workspace's own `.claude/skills`, so enabling it there would load
 every shipped skill twice. An earlier version asked the model to copy
@@ -239,14 +262,20 @@ replacing that placeholder with its cwd, so the decision no longer passes
 through anything the model has to transcribe.
 
 For the model, the project session's `SessionStart` header states which
-form applies, from the same script run on the session's cwd. That header is output, not a source comment, because the
-model reads the output. Skills still name each other by bare slash command
-in their prose.
+form applies, from the same script run on the session's cwd. That header
+is output, not a source comment, because the model reads the output.
+Skills still name each other by bare slash command in their prose.
 
 ## Consequences
 
 - **Project sessions invoke `/agent-workspace:<skill>`.** Workspace sessions
   keep the bare names.
+- **A session drives only its own root's issues.** A workspace session no
+  longer creates a project worktree or runs a project issue's loop
+  (`run-issue` and `/start-task` refuse it and name the project root to
+  start in), except the legacy unregistered `project/`, which the
+  workspace hosts. A project session likewise opens a workspace issue
+  rather than fixing the workspace.
 - **`gz4d` gets its workspace skills back on the next install**, with its
   own four same-named skills unshadowed. `p11-jazzy` and `p11-rolling` do
   not need the plugin and do not get it.
@@ -327,9 +356,12 @@ then, the opt-in `.agent/scripts/tests/live/plugin_acceptance.sh` covers:
   the per-machine `/make_*` skills.
 - **Enable the plugin at user scope.** Rejected: it has the same global
   reach as the symlinks.
-- **Derive the handoff prefix from `--type` or the current cwd.**
-  Rejected: `--type` says nothing about the host, and the cwd moves during
-  a run (decision 6 uses the session's starting directory, once).
+- **Derive the handoff prefix from `--type`.** Rejected: `--type` says
+  nothing about the host.
+- **Record each session's start directory (by session id) from the
+  `SessionStart` hook, and look it up.** Not needed: under the root rule
+  (decision 6) a session stays under the root it was launched in, so its
+  current directory decides the same way.
 - **Detect the prefix from `${CLAUDE_PLUGIN_ROOT}` substitution.**
   Replaced: it depended on the model copying a placeholder literally
   (decision 6).
