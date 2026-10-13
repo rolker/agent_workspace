@@ -452,3 +452,18 @@ Tooling notes for the host, not findings on this PR; they belong with the open `
 - `test_sitrep_checks.sh`: 141 passed, 0 failed
 - `test_skill_paths.sh`: 58 passed, 0 failed
 - pre-commit hooks passed on all three commits
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-13 12:01 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**PR**: #390 at `6b29b395`
+**Depth**: Standard (reason: override-trigger file `.claude/skills/*/SKILL.md`; whole-PR classification)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Fresh reviewer (the previous one reached its resume limit). Re-review after fixes 4487bb0f (In flight line as `<name>: <pull request part>; <worktree part>`, parts omitted when absent) and 9baa4548 (`isCrossRepository` fetched; a fork pull request never joins a worktree, gets its own line "from a fork"): both verified in `.claude/skills/sitrep/SKILL.md` step 3, the template and the step-5 rules, and consistent with the Suggested next ordering. Checks: `test_skill_paths.sh` 58 passed, `test_script_tests_hook_scope.sh` 108 passed, `test_sitrep_checks.sh` 141 passed (adversarial run); shellcheck (workspace .venv) clean on both edited tests; `git grep` finds no live what-next pointer outside work plans and the digest. CI at `6b29b395`: Lint (pre-commit) pending at review time, the other checks pass. Reviewers: Claude adversarial ran (0 must-fix, 3 suggestions: 2 merged into the one below; not carried: a ready fork pull request as a Suggested next source — the rules give it, and the repository has no forks); Codex ran (no issues); Gemini ran (3 suggestions, not carried: pull request number in the line — titles are what the report shows; `CHANGES_REQUESTED` ordering — decided in the previous round, `reviewDecision` does not change order; multi-line YAML description — the test would fail loudly, not silently); Copilot CLI failed (monthly quota exceeded); the Copilot hosted review at `6b29b395` is a quota notice, not a review.
+
+### Findings
+- [ ] (suggestion) In flight line wording: "one line per branch" does not say that a fork pull request and a worktree with the same branch name both get lines (an agent may drop one as a duplicate), and the pull request part's pieces (title, "from a fork", "draft", review state) have no separator, so it can render as a run-on; say the fork exception where "one line per branch" is stated and give the qualifiers a fixed form, e.g. in parentheses after the title — `.claude/skills/sitrep/SKILL.md:195, 289, 309-311`
