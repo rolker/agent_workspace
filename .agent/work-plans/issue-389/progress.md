@@ -467,3 +467,23 @@ Fresh reviewer (the previous one reached its resume limit). Re-review after fixe
 
 ### Findings
 - [ ] (suggestion) In flight line wording: "one line per branch" does not say that a fork pull request and a worktree with the same branch name both get lines (an agent may drop one as a duplicate), and the pull request part's pieces (title, "from a fork", "draft", review state) have no separator, so it can render as a run-on; say the fork exception where "one line per branch" is stated and give the qualifiers a fixed form, e.g. in parentheses after the title — `.claude/skills/sitrep/SKILL.md:195, 289, 309-311`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-13 12:01 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a94fcb5751a90f309, resume 2 of 3)
+
+**PR**: #390 at `6b29b39`
+**Sources**: 2 (Local Review @ `6b29b39`, CI rollup); missing: Copilot @ `6b29b39`
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+Verdict: approved; 0 must-fix, 1 open suggestion. Missing source: Copilot's review at `6b29b39` is a quota notice ("Copilot was unable to review this pull request because the user who requested the review has reached their quota limit"), not a review, so Copilot did not review this head. Its `copilot-pull-request-reviewer` check-run reads `failure` for the same reason; `merge_pr.sh` excludes that check-run from CI (#300), so it is not counted as a CI failure. CI at `6b29b39`: Lint (pre-commit), Validate Documentation, Validate Adapter Contract and the ros-manifest tests all pass, on both runs.
+
+Already addressed, not re-listed: the three findings of the Integrated Review at `ec271dc` are ticked. 4487bb0f spells out the In flight line part by part (this also closes the Local Review at `ec271dc`, now stale). 9baa4548 adds `isCrossRepository` to `gh pr list` and never joins a fork's pull request to a worktree. The host edited the PR description. Checked against `.claude/skills/sitrep/SKILL.md` step 3 and the In flight report rules.
+
+### Findings
+- [ ] (suggestion, Local Review @ `6b29b39`) In flight wording: "one line per branch" (step 3, and the template's "one line per branch") does not say that a fork's pull request and a worktree with the same branch name each get a line, so an agent may drop one as a duplicate. The pull request part's pieces (title, "from a fork", "draft", review state) also have no separator and can run on. Fix: state the fork exception where "one line per branch" is stated, and give the qualifiers a fixed form, e.g. comma-separated in parentheses after the title — `.claude/skills/sitrep/SKILL.md`
+
+### False positives
