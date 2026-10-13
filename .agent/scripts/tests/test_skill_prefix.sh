@@ -77,6 +77,10 @@ expect "a subdirectory of a no-git root (its own project root): fails, naming th
     "lies under the registered root plain ($R/plain), but a session there does not read that root's local settings"
 expect "a git repo nested in a registered root (a package repo): fails, naming the root" "$R/gitroot/src/pkg" fail \
     "lies under the registered root gitroot ($R/gitroot)"
+# Only the plugin half was observed live (case G); the message must not
+# claim the bare skills are out of reach too.
+expect "the nested-repo message claims only what case G observed" "$R/gitroot/src/pkg" fail \
+    "does not reach it (observed, live case G); whether the workspace's bare skills do has not been checked"
 expect "an unregistered directory: fails, saying there is no rule" "$R/other" fail \
     "is neither in the workspace checkout ($WSC) nor in any registered project root"
 expect "a path that is not a directory: fails" "$R/no-such-dir" fail "is not a directory"

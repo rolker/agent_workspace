@@ -102,8 +102,10 @@ echo ""
 # --- how workspace skills are named here (ADR-0018) ---------------------
 # The same location rule run-issue uses (skill_prefix.sh), applied to the
 # session's cwd, not the registered root's: a git repository nested in a
-# root (a package repo under src/) is its own project root and sees neither
-# the root's plugin nor the bare skills (live case G).
+# root (a package repo under src/) is its own project root and does not see
+# the root's plugin (live case G). Whether it sees the workspace's bare
+# skills, for a root inside the workspace tree, has not been checked, so
+# the note says no rule applies rather than that neither form reaches it.
 _sp_script="$WS_ROOT/.agent/scripts/skill_prefix.sh"
 if _sp="$(bash "$_sp_script" --dir "$CWD" 2>/dev/null)"; then
     if [[ "$_sp" == "skill_prefix=" ]]; then
@@ -119,8 +121,8 @@ if _sp="$(bash "$_sp_script" --dir "$CWD" 2>/dev/null)"; then
         echo ".agent/scripts/user_tier_install.sh."
     fi
 else
-    echo "Workspace skills: neither the bare names nor the agent-workspace: plugin"
-    echo "reach this session. $(bash "$_sp_script" --dir "$CWD" 2>&1 >/dev/null | sed 's/^skill_prefix: //')"
+    echo "Workspace skills: no rule says how they are named in this session."
+    echo "$(bash "$_sp_script" --dir "$CWD" 2>&1 >/dev/null | sed 's/^skill_prefix: //')"
 fi
 echo ""
 

@@ -87,7 +87,8 @@ printed empty). Where this skill's text names another workspace skill by
 its bare slash command, invoke the prefixed form in a plugin session too.
 
 If it exits non-zero (an unregistered location, or a repository nested in
-a root whose sessions see neither form), **stop and report its message**.
+a root, which the root's plugin does not reach), **stop and report its
+message**.
 Do not guess a prefix.
 
 **The `|| echo .` fallback is required, not decoration.** The user tier is

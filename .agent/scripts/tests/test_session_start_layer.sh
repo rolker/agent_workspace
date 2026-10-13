@@ -258,14 +258,15 @@ out=$(run_hook "$PROOT")
     || fail "the namespaced-skills note is missing for a project root outside the workspace"
 # The rule is applied to the session's cwd, not the registered root: a git
 # repository nested in the root (a package repo) is its own project root
-# and sees neither form (live case G), so the header says so instead of
-# sending the model to agent-workspace: and the installer.
+# and does not see the root's plugin (live case G), so the header says no
+# rule applies instead of sending the model to agent-workspace: and the
+# installer.
 mkdir -p "$PROOT/src/pkg"
 git -C "$PROOT/src/pkg" init -q
 nested_out=$(run_hook "$PROOT/src/pkg")
-[[ "$nested_out" == *"Workspace skills: neither the bare names nor the agent-workspace: plugin"*"lies under the registered root demo"* \
+[[ "$nested_out" == *"Workspace skills: no rule says how they are named in this session."*"lies under the registered root demo"*"does not reach it (observed, live case G)"* \
       && "$nested_out" != *"namespaced /agent-workspace:<skill>"* ]] \
-    && pass "a session in a git repo nested in a root is told neither skill form reaches it, and why" \
+    && pass "a session in a git repo nested in a root is told no naming rule applies, and why" \
     || fail "nested repo got the wrong skill-naming note (out=$(grep -A1 '^Workspace skills' <<< "$nested_out"))"
 rm -rf "${PROOT:?}/src"
 note_at=$(grep -n "^Workspace skills:" <<< "$out" | head -n1 | cut -d: -f1)

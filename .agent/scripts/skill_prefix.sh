@@ -23,8 +23,10 @@
 # Exits 1 with the reason on stderr, printing nothing on stdout, when
 # neither holds: <dir> is under no registered root, or its sessions read no
 # registered root's local settings (e.g. a git repository nested in a root,
-# such as a colcon package under src/). A caller stops there rather than
-# guess. Exits 2 on a usage error.
+# such as a colcon package under src/). Live case G observed that such a
+# repository does not see the root's plugin; whether the workspace's bare
+# skills reach one under a root inside the workspace tree (directory
+# walk-up) has not been checked. A caller stops there rather than guess. Exits 2 on a usage error.
 #
 # Which directories read a root's local settings follows what the live
 # suite observed (tests/live/plugin_acceptance.sh case G, claude 2.1.282):
@@ -102,7 +104,7 @@ while IFS=$'\t' read -r name _type path _fields; do
 done <<< "$entries"
 
 if [[ -n "$under" ]]; then
-    echo "skill_prefix: $DIR_PHYS lies under the registered root $under, but a session there does not read that root's local settings (its project root is its own git repository, or its own directory), so neither the plugin nor the workspace's bare skills reach it -- start the session at a registered root or a worktree of one" >&2
+    echo "skill_prefix: $DIR_PHYS lies under the registered root $under, but a session there does not read that root's local settings (its project root is its own git repository, or its own directory), so the plugin enabled at that root does not reach it (observed, live case G); whether the workspace's bare skills do has not been checked -- start the session at a registered root or a worktree of one" >&2
 else
     echo "skill_prefix: $DIR_PHYS is neither in the workspace checkout ($WS_ROOT) nor in any registered project root, so there is no rule for how workspace skills are named there -- register the project (.agent/projects.local) or start the session in a registered root" >&2
 fi
