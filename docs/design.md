@@ -263,6 +263,16 @@ Status: `decided`
   checkout's registry the same way so a thought captured from a worktree copy is tagged with its project.
 - Registration is by hand. No script writes the registry, and `onboard-project` does not mention it
   (grep of `.agent/scripts/` and `.claude/skills/*/SKILL.md`, 2026-10-09).
+- A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
+  read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`, the
+  records settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
+  and `instructions`. A command is split into words and run without a shell, or is `none` for "this
+  project has none"; anything that needs a shell is a script the key points at. The grammar and keys
+  are in the header of `_project_registry.sh`, `project_setting.sh` reads and writes the file, and a
+  malformed file stops every adapter verb and fails `make validate`. Per setting, the adapters read the
+  file, then the legacy `projects.d/<name>.sh` (a sourced shell file, which also keeps variables such
+  as `ROS_ROOT_DIR`), then the shared `.agent/project_config.sh`, and say on stderr when a registered
+  project falls through to the shared file.
 - Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
   type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12).
   `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
@@ -376,16 +386,25 @@ Status: `decided`
 
 Status: `proposed`
 
-Proposed: a project carries its records by choice, through two settings in its registry entry, each with
-a default derived when the entry omits it.
+Proposed: a project carries its records by choice, through two settings in its settings file
+`.agent/projects.d/<name>` (not its registry entry, #332). Built in #332: the settings, their validation,
+and the refusal to store any combination but the default, so until the records lookup (#393) lands only
+(project, project) is honoured and `project_setting.sh check` flags a hand-written other one. Built by
+#393: mechanisms 1 to 3 below, and honouring the other combinations.
 
-- `location`: in the project repository (the default), or an outside path. The default outside path is
-  a fixed derived one, such as a sibling directory of the project root; the exact path is chosen when
-  this is built.
-- `tracking`: untracked; tracked in the project repository (the default when the location is in the
-  project repository); or tracked in a repository the user names. This document gives no example of
-  that repository being `agent_workspace` (owner: "I don't want to prohibit it, but I also don't want to
-  encourage it").
+- `location`: `project`, in the project repository, or `outside`, at `location_path`; when that is
+  omitted, a provisional default from `project_records_default` in `_project_registry.sh` (a sibling
+  `<clone>-records` of the clone, or a hosting directory holding both clones), chosen when #393 is built
+  (owner, 2026-10-13: where the defaults should be is not settled).
+- `tracking`: `untracked`; `project`, tracked in the project repository (the default when the location
+  is in the project repository); or `repo`, tracked in a separate records repository the user names. A
+  records repository must not be a workspace (owner, 2026-10-13): a fork of the workspace would carry
+  other projects' records, and a pull request sent back would bring them past the merge gate's
+  bookkeeping exemption. `project_records_check` refuses one by its remote URL, by a local-path or
+  `file://` remote at the workspace checkout or one of its worktrees, and by its contents (the
+  workspace's marker files, `.claude-plugin/plugin.json` naming the plugin and
+  `.agent/user_tier_scripts.txt`), so a clone of a fork under any owner is caught offline. Untracked
+  records under the workspace's ignored scratchpad are allowed.
 
 | location | tracking | What it is |
 |---|---|---|
@@ -394,12 +413,15 @@ a default derived when the entry omits it.
 | outside | tracked in a named repository | No footprint in the project; portable |
 | in the project repository | untracked, through the clone's `.git/info/exclude` | Behaves like outside and untracked |
 
-Other combinations are not named as working; whether the registry rejects them is decided when this is
-built. Three mechanisms would do it, each a later build:
+The settings validator refuses every other combination: `outside` with `tracking=project`, `project`
+with `tracking=repo`, `location_path` without `outside`, and `outside` without `tracking`. Every default
+is provisional and comes from `project_records_default`: (project, project) for a project whose file
+says nothing, which is what every reader does today, and the zero-footprint proposal onboarding makes.
+Three mechanisms would do it, each built by #393:
 
-1. One lookup, "where are the records for this project and issue", fed by the registry entry and used
+1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   342, 344, 387, 479: the exit contract, `--check-exit` and `next`, which is what a resumed session
+   362, 364, 407, 499: the exit contract, `--check-exit` and `next`, which is what a resumed session
    reads), `merge_pr.sh` (673-684, 793-863: the gate's lookup and its `Merge` entry),
    `review_progress.sh` (112, 268, 290) and `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
@@ -410,7 +432,7 @@ built. Three mechanisms would do it, each a later build:
 3. Untracked records are per machine and per clone. A second machine or a fresh clone starts with no
    timeline, and losing the directory loses the history. That is the cost of the combination.
 
-One rule: when records exist in two places, the registry setting names the source of truth.
+One rule: when records exist in two places, the setting names the source of truth.
 
 Acceptance test for this Target: a colleague's project, by shape only: a single-repository web app
 developed in a different style, with no GitHub issues or pull requests, and records where its developer
@@ -698,6 +720,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-13 | Decision register | Row for ADR-0018 (workspace skills reach project sessions through the `agent-workspace` plugin; Provisional, not yet re-examined), making 18 rows | #345 | 732 |
 | 2026-10-13 | Sessions and roots | The root rule (owner, 2026-10-13): a session works only under the root it was launched in, cross-root work is an issue or an inbox line, and `run-issue` and `/start-task` refuse an issue of another root through `session_root.sh`; the user-tier bullet drops the `~/.claude/skills/` symlinks and a new bullet describes plugin skill delivery (ADR-0018). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the two new bullets are the interface between the installer, the hook, `run-issue`, `/start-task` and the two location scripts, which no one script header shows, so they stay | #345 | 748 |
 | 2026-10-13 | Sessions and roots | Review fixes: the installer refuses a root that is a plain directory inside another repository (its sessions read that repository's settings); the directory a run starts from names its root, rather than the current directory at any point; the `SessionStart` hook counts a root's `worktrees=` directory as the root's; `session_root.sh` and `skill_prefix.sh` refuse the same directories | #345 | 753 |
+| 2026-10-13 | Registry and adapters, Worktrees | The per-project settings file `.agent/projects.d/<name>` (commands, `bootstrap_url`, the records settings, `instructions`), read before the legacy `.sh` and the shared config, with a fall-through to the shared config reported; the Worktrees Target's `location` and `tracking` move from the registry entry to that file, what #332 builds and what the records lookup (#393) builds are marked, every default is provisional and held by `project_records_default`, the refused combinations are named, the "don't prohibit" sentence is replaced by the owner's refusal (a records repository must not be a workspace: remote URL, local path, contents) with its fork-and-pull-request reason, and the mechanism-1 `dispatch_phase.sh` line numbers are refreshed. Registry and adapters is 98 lines, past the 60-line prompt: the new bullet is one paragraph that points at the `_project_registry.sh` header, where the grammar and keys live, so it stays. Worktrees is 95 lines and its Target 57, under the 60-line split point set on 2026-10-09, so it stays one section | #332 | 776 |
 
 ## Glossary
 
