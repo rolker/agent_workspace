@@ -51,6 +51,9 @@ top port candidates (P1, P2).
   repo); the skill exists in `.claude/skills/what-next/`. Their design-draft-first
   add-ons (health-report refresh trigger, per-area ranking for parallel
   agents) are worth reading when we do P6, not before.
+  *Note 2026-10-13:* the what-next skill was deleted here (owner decision,
+  #389); the sit-rep now answers "what's next?". The text above is kept as
+  written.
 
 ### Port candidates (P) — non-ROS workspace tooling
 

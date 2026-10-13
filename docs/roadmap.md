@@ -94,7 +94,9 @@ suggests a prioritized work plan for the day.
 
 First form: the sit-rep (#386), which reports the [Direction](#direction)
 lines as checked that run, the inbox, work in flight and deferrals that are
-due.
+due. It is also what answers "What's next?": it replaced the `what-next`
+skill (#389) and ends with one suggested next step and the fact it rests
+on.
 
 ### Pain points (ranked by severity)
 
@@ -207,8 +209,8 @@ for Copilot status, telling agents to cleanup/sync, permission prompts.
 | Inter-agent messaging | #35 | done | gastown | Structured communication between agents |
 | Structured agent handoffs | #40 | done | microsoft/skills | Tool scoping per agent role |
 | Permission prompt reduction | #110 | done | brainstorm | Share workspace-level rules and automate analysis; #1 friction point |
-| Morning status / standup skill | — | planned | brainstorm | Gather PR, review, issue, worktree state; suggest prioritized work plan (scenario 4) |
-| Sit-rep, Direction section and one-line inbox | #386 | done | — | First form of scenario 4: `/sitrep` reports the Direction lines checked that run, the inbox, work in flight and due deferrals; `capture.sh` writes the inbox; design section: [Documentation layers](design.md#documentation-layers) |
+| Morning status / standup skill | #386 | done | brainstorm | Gather PR, review, issue, worktree state; suggest prioritized work plan (scenario 4). Covered by the sit-rep (next row); #389 made it answer "What's next?" |
+| Sit-rep, Direction section and one-line inbox | #386 | done | — | First form of scenario 4: `/sitrep` reports the Direction lines checked that run, the inbox, work in flight and due deferrals, and (#389) answers "What's next?" with one suggested next step, replacing the `what-next` skill; `capture.sh` writes the inbox; design section: [Documentation layers](design.md#documentation-layers) |
 | Post-PR merge/cleanup/sync | #38 | done | session friction | `merge_pr.sh` + `make merge-pr PR=<N>` automates merge, worktree removal, branch cleanup, and sync |
 | Crash recovery skill | #70 | done | brainstorm | Session-specific scratchpad subdirs |
 | Agent friction self-reporting | #58 | done | gstack | Agent rates experience 0-10 after workflow steps, files field reports when not 10 |
