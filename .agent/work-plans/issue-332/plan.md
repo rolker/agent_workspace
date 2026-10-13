@@ -22,6 +22,15 @@ open by owner decision** (issue note, 2026-10-13): they are provisional, held in
 when this is built. Records in the workspace repository are **refused** by owner decision (checked by the
 named repository's remote URL).
 
+Revision 2 (owner's checkpoint `21c8e15f`, "Proceed; fold D6, Q5 and the suggestions into the plan first"; no
+third plan review, the pre-push code review sees it): **D6**, onboarding work is queued in the project's
+roadmap when the user approves (PR 3 offers, PR 4 audit outcome); **Q5**, the records-repository refusal
+also recognises a copy of the workspace by its contents (a records repository must not be a workspace);
+and plan review round 2's four suggestions (an absent records pair resolves to (project, project); a
+local-path or `file://` remote at the workspace is refused; where `ros2_colcon` `setup` sits in
+registration and what a failure keeps; where each of the three gz4d findings the audit script does not
+reproduce is covered).
+
 Today: registration is by hand (a `projects.local` line, an optional `projects.d/<name>.sh` the adapters
 `source`, a clone). `single_project` runs `exec $BUILD_CMD "$@"` (word-split, no shell), so a value like
 `cmake -S . -B build && cmake --build build` never worked as a command: `&&` arrives as an argument. The
@@ -74,15 +83,25 @@ change-log row.
    (project, repo), `location_path` without `outside`.
    - **Workspace repository refused (owner, 2026-10-13: a fork of the workspace would carry other
      projects' records, and a PR sent back would bring them past the merge gate's bookkeeping
-     exemption).** `tracking=repo` is refused when the named records repository's remote URL is the
-     workspace's: `project_records_check` reads `git remote get-url` for every remote of the records clone
-     and of the workspace checkout, normalises host and `owner/repo` (https and scp forms, trailing `.git`,
-     case) and refuses on a match, with a message that points at a separate records repository or the
-     machine-local option. The check is by remote, never by path; there is no path rule, so
-     untracked records under the workspace's ignored scratchpad (`.agent/scratchpad/`, where the inbox and
-     sit-rep record already live) validate. A records directory not yet cloned is "unverifiable until
-     cloned", reported by `check`, not refused. Known limit, stated not hidden: a clone of a *fork* of the
-     workspace under another owner has a different URL and passes; the check cannot see fork lineage offline.
+     exemption). The plain rule: a records repository must not be a workspace.** `project_records_check`
+     refuses `tracking=repo` when the records clone at `location_path` is recognised as the workspace or
+     a copy of it, by any of three checks, with a message that names the check and points at a separate
+     records repository or the machine-local option:
+     1. *Remote URL*: `git remote get-url` for every remote of the records clone and of the workspace
+        checkout, normalised to host and `owner/repo` (https, ssh and scp forms, trailing `.git`, case);
+        a match refuses.
+     2. *Local path* (round-2 suggestion): a records remote that is a local path or a `file://` URL is
+        resolved, and its git common directory compared with the workspace checkout's; a remote pointing
+        at the workspace checkout or one of its worktrees refuses (`git clone ~/agent_workspace records`).
+     3. *Contents* (owner answer to Q5, "Contents: it IS a workspace"): the records repository contains the
+        workspace's marker files, `.claude-plugin/plugin.json` naming the `agent-workspace` plugin or
+        `.agent/user_tier_scripts.txt`, in its working tree or its `HEAD` commit. Either marker refuses.
+        This catches a clone of a fork under any owner or host, offline. No root-commit or `gh` lineage
+        check (owner).
+     The checks are about the records repository, never a path rule on `location_path`, so untracked
+     records under the workspace's ignored scratchpad (`.agent/scratchpad/`, where the inbox and sit-rep
+     record already live) validate. A records directory not yet cloned is "unverifiable until cloned",
+     reported by `check`, not refused.
    - **Defaults are provisional and live in one place.** `project_records_default <root> <name>
      [accepts-footprint|zero-footprint]` in `_project_registry.sh` returns the default combination and the
      outside-path layout for a project. The validator (to fill omitted keys), the audit (to compare what
@@ -90,7 +109,12 @@ change-log row.
      writes a default or a layout. For this issue it returns (project, project) for a project that accepts
      footprint and nothing else is claimed: the zero-footprint combination and the outside layout are
      returned as marked-provisional values (their initial values are chosen when this is built, with the
-     owner), and changing them touches that function and its test only. Tests assert
+     owner), and changing them touches that function and its test only. **An absent `location`/`tracking`
+     pair always resolves to (project, project)** (round-2 suggestion): the validator and every reader
+     fill omitted keys in accepts-footprint mode, which is the Target's default and what every reader
+     does today; nothing stored says a project is zero-footprint, so the zero-footprint mode only feeds
+     onboarding's proposal (PR 3) and is never used to resolve a file. `test_project_file.sh` asserts it
+     (a file with neither key reads back (project, project) through the resolver). Tests assert
      through the function, never a literal path or combination. The design text, onboarding wording and
      `projects.local.example` call every default "provisional"; they may be revised after the first real
      onboarding.
@@ -125,8 +149,8 @@ change-log row.
    "built in #332 / built by the records lookup" marking per item (settings, validation, refusal to
    write: this issue; mechanisms 1 to 3 and honouring the values: the follow-up), every default and layout marked provisional (naming `project_records_default`), the
    Target's "I don't want to prohibit it, but I also don't want to encourage it" sentence rewritten:
-   the workspace repository is refused as a records repository (by remote URL), with the fork and PR
-   reason, and the mechanism-1 line numbers
+   a records repository must not be a workspace (refused by remote URL, local path and contents), with the
+   fork and PR reason, and the mechanism-1 line numbers
    refreshed (the design text cites 342/344/387/479 for `dispatch_phase.sh`; the current ones are
    362, 364, 407, 499). The one rule and the acceptance test by shape stay.
 
@@ -164,7 +188,16 @@ is edited). It never writes into the project, never relies on the `projects/<nam
     runs `adapter --project N build` and `test` (the verbs `registration.conf` names; skipped with
     `--skip-run`); (4) only then the user-tier installer and `registration_verify.sh <name> --user-tier`.
     Build or test fail in (2) or (3): the line and file are removed (restored on interrupt by a trap) and
-    the installer never ran, so no plugin enable exists in the root. The installer fails in (4):
+    the installer never ran, so no plugin enable exists in the root.
+    **`ros2_colcon` `setup`** (round-2 suggestion) runs between (1) and (2), when `registration.conf` says
+    the type runs `setup` and the hosting directory is missing: the adapter needs the registry line to
+    resolve `--project`, and the static gate's `validate` needs the checkout. A later failure removes the
+    line and file as above, but **keeps a hosting directory that `setup` created** and reports it on the
+    last lines (`KEPT=<dir>`, "created by setup; remove it, or re-run register_project.sh to reuse it"):
+    its clones are slow to redo, removing a tree is not undoable, and a re-run adopts it because `setup`
+    is a no-op on an existing manifest. A directory that existed before the run is never touched.
+    `test_register_project.sh` covers it with a stub `setup` that creates the directory and a failing
+    `validate`: no registry line, no project file, the directory present and named. The installer fails in (4):
     the rollback also calls `user_tier_install.sh --disable-root <name>` before removing the line (the
     installer can fail after a partial enable). An adopted (already registered) project is reported NOT
     READY and kept, never rolled back. `--skip-run` ends in status `registered, build and test not run`.
@@ -240,6 +273,17 @@ is edited). It never writes into the project, never relies on the `projects/<nam
    project's roadmap may carry `## Direction` by its own choice), and run `audit-project` (always
    offered, it writes nothing), each a yes/no, "fix now" items batched into one project PR as today (for a
    project with no GitHub: edits left on a branch, nothing pushed); every write waits for a yes (D5).
+   **Queue in the roadmap (D6)** — owner, verbatim: "all that work should be cued up in the roadmap, if the
+   user approves, so that it can get tackled maybe as other issues are resolved". Every audit finding
+   and every accepted offer is answered with one of **fix now / open issue / queue in the roadmap /
+   skip**. Queued items become rows of an `## Onboarding` section in the project's roadmap table (an
+   existing `docs/roadmap.md` or `ROADMAP.md`, else a new `docs/roadmap.md`; for a zero-footprint
+   project, the roadmap is kept with the records, so until the records lookup lands that choice is not
+   offered to a zero-footprint project and the skill says so), with an issue per row when the project
+   uses issues (the `--facts` `issues` fact once PR 4 adds it; until then the skill asks). Rows are picked
+   up like any other open roadmap row. Writing the section is itself a write, so it waits for the same
+   yes and rides in the same batched project PR. A pace rule (how many queued rows to take on alongside
+   other work) is a later item, not this issue.
    The hygiene checklist is kept in a labelled section until PR 4 moves it, so no merge leaves it homeless.
 3. Design doc: **Sessions and roots Now names the exception to "a session works only under its root"**:
    a project session writes `.agent/projects.d/<name>` in the workspace checkout (through
@@ -261,7 +305,8 @@ is edited). It never writes into the project, never relies on the `projects/<nam
   they make moot (no GitHub: protection, Copilot, labels, bridge; no issues/PRs: labels, Copilot, bridge;
   Windows: git-bug and shell-hook items). Each skipped item is reported "skipped: <reason>", never dropped.
 - Default stays report-only; the old fix now / open issue / skip flow moves with the checklist as the
-  optional final step. Onboarding ends by offering this skill (D4).
+  optional final step and gains **queue in the roadmap** (D6): the same `## Onboarding` roadmap section
+  and issue-per-row rule as PR 3, each queued row a yes. Onboarding ends by offering this skill (D4).
 - Design doc and `skill_workflows.md`: audit-project's job; change-log row.
 
 ### Follow-up issues to open (not in this issue)
@@ -288,8 +333,11 @@ is edited). It never writes into the project, never relies on the `projects/<nam
      and stay so; the default combination and outside layout (provisional, one function, owner undecided).
    - *Rules carried*: the records location counts as the root's own, as a `worktrees=` override already does
      (`registry_worktree_dir`, `session_root.sh`), so a session writing records there keeps "works only
-     under its root" (named as a bend of that rule); `tracking=repo` is refused when the named repository's
-     remote is the workspace's (owner, 2026-10-13); until it lands only (project, project) is written.
+     under its root" (named as a bend of that rule); a records repository must not be a workspace
+     (owner, 2026-10-13; refused by remote URL, local path and contents, built in #332 PR 1); until it lands
+     only (project, project) is written.
+   - *Zero-footprint roadmap (D6)*: a zero-footprint project's `## Onboarding` roadmap rows live with its
+     records, so onboarding offers "queue in the roadmap" to such a project only once this lands.
    - *When it lands*: onboarding and `project_setting.sh` accept the other combinations.
 2. **Category 7 to #331** (comment on it, not a new issue): a test or `--check` for skills that touch
    project work but declare no `session_scope` (9 of 22 have none today, several by intent).
@@ -298,7 +346,7 @@ is edited). It never writes into the project, never relies on the `projects/<nam
 
 | File | Change |
 |------|--------|
-| `.agent/scripts/_project_registry.sh` | project-file reader/writer/validator; `project_records_default` (the one provisional-default function) and `project_records_check` (combinations, workspace-remote refusal); `.sh` name refusal; header |
+| `.agent/scripts/_project_registry.sh` | project-file reader/writer/validator; `project_records_default` (the one provisional-default function) and `project_records_check` (combinations; a records repository that is a workspace refused by remote URL, local path or contents); `.sh` name refusal; header |
 | `.agent/scripts/project_setting.sh` (new, +x) | get/set/unset/list/check; the A2 refusal |
 | `.agent/scripts/adapter` | parse project file once, `ACTIVE_PROJECT_*` variables; stop on malformed |
 | `.agent/project_types/{single_project,ros2_colcon}/adapter.sh` | read the variables first; fallback note |
@@ -384,12 +432,14 @@ worktrees directory; a `docs/work-plans/`; no `.agents/`, pre-commit or CI.
 |---|---|
 | Registering a new `single_project` needs no hand edits to `projects.local` or `projects.d/` | `test_register_project.sh`: one call produces the registry line and project file; the files are asserted, nothing hand-written |
 | Run against the 2026-09-23 gz4d shape reproduces every listed finding without being told | `test_integration_audit.sh` on the hand-registered fixture: one asserted finding id per category (duplicate skills, process disagreement, unignored worktrees dir, `build/` hiding agent files, rules not in `.agents/`, `docs/work-plans/`, fallback commands / no test command); a clean fixture yields none |
+| The three listed gz4d findings the audit script does not reproduce (round-2 suggestion; "reproduces every finding" claims only what is tested) | not script-tested here, each covered elsewhere: **no pre-commit or CI** → the hygiene checklist `audit-project` takes in PR 4 (skill text, not a script test); **`validate` failing on unrelated projects** → fixed by #330 (scoped `adapter validate`, already merged); **`research` missing in project sessions** → audit category 7, carried by #331 |
 | Idempotent re-run | `test_register_project.sh`: second identical call changes no byte and says so; adopting the hand-registered fixture is the same path |
 | Dry-run makes no changes | `test_register_project.sh`: `--dry-run` for register and remove; registry, project file, stub-claude log and `~/.claude` all unchanged |
 | Missing test command refused | `test_register_project.sh`: no `test=` and no detection means refusal; `test=none` accepted; the CMake fixture is refused until `build=` names a script |
 | A failing check blocks "registered" | `test_register_project.sh`: failing `validate`, failing build, failing test each leave no registry line, no project file and no plugin enable (stub-claude log empty); installer failure after a passing build triggers `--disable-root` and the same cleanup |
 | Works from a project-rooted session for a project registered outside the workspace | `test_integration_audit.sh` and `test_user_tier_guard.sh`: audit, `project_setting.sh`, `registration_verify.sh` run with the cwd in a sandbox project outside the sandbox workspace; refuse from an unregistered directory |
-| Records settings (acceptance by shape: single repository, no GitHub issues or PRs) | `test_project_file.sh`: a no-remote web-app-shaped fixture validates with every combination; `tracking=repo` whose clone's remote is the sandbox workspace's is refused; untracked records under the sandbox scratchpad validate; defaults asserted through `project_records_default` |
+| Records settings (acceptance by shape: single repository, no GitHub issues or PRs) | `test_project_file.sh`: a no-remote web-app-shaped fixture validates with every combination; a records repository that is a workspace is refused three ways (its remote URL is the sandbox workspace's; its remote is a local path or `file://` URL to the sandbox workspace or one of its worktrees; it contains the workspace marker files, with an unrelated remote); untracked records under the sandbox scratchpad validate; a file with no `location`/`tracking` resolves to (project, project); defaults asserted through `project_records_default` |
+| `ros2_colcon` `setup` kept on a later failure (PR 2) | `test_register_project.sh`: stub `setup` creates the hosting directory, `validate` fails; no registry line or project file, the directory kept and named on `KEPT=` |
 | The first real use (gz4d onboarding run) | not a test: the separate run you named, after PR 3 |
 
 ## Open Questions
@@ -402,9 +452,9 @@ worktrees directory; a `docs/work-plans/`; no `.agents/`, pre-commit or CI.
 - **Q3 — `audit-project` report-only by default, fix flow at the end: confirmed** by plan review.
 - **Q4 — Direction section location: kept** (existing `docs/roadmap.md` or `ROADMAP.md`, else a new
   `docs/roadmap.md`), and offered only when `instructions=tracked`.
-- **Q5 — one accepted limit to confirm.** The workspace-repository refusal compares remote URLs, so a records
-  clone of a *fork* of the workspace under another owner passes (fork lineage is not visible offline). Say if
-  you want the check to be stricter (for instance `gh repo view --json parent` when online).
+- **Q5 — answered** (owner, "Contents: it IS a workspace"): a records repository must not be a workspace,
+  recognised by its contents (the workspace's marker files) beside the remote-URL and local-path checks;
+  no root-commit or `gh` lineage check. See PR 1 item 4.
 - **Open by the owner, not a question to him now:** the provisional default combination and outside layout;
   chosen when this is built, revisable after the first real onboarding.
 
@@ -424,6 +474,16 @@ Round 1 (`dc77392d`) and the owner's checkpoint (`b9ab8403`).
 | S8 AGENTS.md row in PR 1 | PR 1 item 8, own commit |
 | S9 acceptance mapping | "Acceptance to test" table and the hand-registered synthetic fixture |
 | S10 offers gated | Offers only when `instructions=tracked`; sit-rep follow-up row notes `ROADMAP.md` |
+
+Round 2 (`2bf12b40`, ready, four suggestions) and the owner's checkpoint (`21c8e15f`).
+
+| Finding | Resolution |
+|---|---|
+| R2-1 absent records pair | Always (project, project); zero-footprint mode feeds only onboarding's proposal; `test_project_file.sh` case (PR 1 item 4) |
+| R2-2 local-path remotes; Q5 | Local-path and `file://` remotes resolved and compared with the workspace's git common directory; Q5 answered by the owner: contents check on the marker files; no lineage check (PR 1 item 4) |
+| R2-3 `ros2_colcon` `setup` | Runs between registration steps (1) and (2); a directory it created is kept and reported on `KEPT=`; test (PR 2) |
+| R2-4 gz4d findings not reproduced | Acceptance table row naming PR 4, #330 and #331 |
+| D6 (owner) | "Queue in the roadmap" beside fix / issue / skip in PR 3 and PR 4; `## Onboarding` roadmap section, issue per row when the project uses issues; pace rule later |
 
 ## Estimated Scope
 
