@@ -93,3 +93,54 @@ Action 3 answered alone (D2a), owner verbatim: "I'm leaning 2. It makes no sense
 **Plan**: `.agent/work-plans/issue-332/plan.md` at `8b6d7a41`
 
 Four-PR plan: (1) per-project file `.agent/projects.d/<name>` with a validated key list (build/test/install/bootstrap_url, location/location_path/tracking, instructions); (2) register_project.sh with registration_verify.sh, unregister and adoption; (3) onboard-project rewrite with a shared integration-audit script; (4) audit-project takes the hygiene checklist. Builds on the Worktrees Target in docs/design.md (location/tracking, moved to the per-project file); the records lookup is a separate follow-up issue and category 7 rides with #331.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-13 13:59 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: needs-work
+
+**Issue**: #332 — onboard-project registers projects and audits workspace integration
+**Plan**: `.agent/work-plans/issue-332/plan.md` at `8b6d7a41`
+**Branch**: `feature/issue-332`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Four PRs in the owner's order (A1), lookup as a separate issue (A2). PR 2 and PR 3 are large but each is one job; the owner fixed the split, not reopened here |
+| Issue alignment | Needs work | Serves, as checked: "Light touch on projects and Easy to use (`README.md#workspace-goals`); `docs/design.md#registry-and-adapters`, with `docs/design.md#sessions-and-roots` and `docs/design.md#worktrees`" (both goal headings exist in README.md). Issue Review actions A1 to A4 are each answered. Gaps: the default records place and layout are written as decided (finding 1, owner note 2026-10-13: "where the defaults should be is not settled even in my mind"); the plan supersedes a recorded owner stance on its own (finding 2); the issue's gz4d acceptance item has no test mapping (finding 9) |
+| File targeting | Good | Every cited helper exists (`uninstall_plugin_from` line 826, `registry_require_root` 542, `registry_entries_full` 71, `wt_ensure_exclusion`, `_settings.sh`, `check_design_anchors.sh`, the four test suites, `make generate-user-tier-skills`, `.agent/work-plans/issue-265/plan.md`). PR 1's new `project_setting.sh` has no AGENTS.md row planned (finding 8) |
+| Consequences | Needs work | The gate's rollback leaves the plugin enabled in the root (finding 4); `registration_verify.sh --run` breaks the inert marker's contract (finding 5) |
+| Principle alignment | Needs work | Name the rule before bending it: the session-root rule is bent twice without being named (finding 3); Keep one current design: defaults recorded as decided (finding 1) |
+| ADR compliance | Good | ADR-0011 (verbs unchanged), 0013, 0016 decision 5 and 6, 0017, 0018 addressed; 0016 decision 6 needs finding 5 |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[Issue alignment / Keep one current design] (must-fix)** — The plan writes the default records layout and the zero-footprint default as decided: the `location_path` row ("default the sibling `<project clone>-records` in the clone's parent directory (D2a layout: ...)"), Approach 4 ("(outside, untracked), the default for zero footprint"), PR 1 step 8 ("the D2a layout sentence" in the Target) and Q1 ("Confirm the first"). Owner, 2026-10-13: the defaults are not settled. Also the parenthetical misattributes: D2a's words describe a hosting directory holding both clones, not the clone's parent. Resolution: keep the mechanism (two settings, four combinations, `location_path` any absolute path) and hold the derived default in one function in `_project_registry.sh` that the validator, the audit and the later lookup all call; tests assert through that function, not a literal path; the design text and onboarding wording mark the default place and layout as provisional and overridable. Keep the registered root the project clone (no reason found that forces a change; see finding 3 for the one pressure toward the hosting directory).
+2. **[Issue alignment] (must-fix, owner decides)** — Approach 4 refuses a `location_path` inside the workspace checkout and says this "supersedes the Target's 'don't prohibit' sentence". A plan cannot supersede a recorded owner stance; the owner's D2a words ("It makes no sense to commit with the workspace") are about committing, and the checkpoint recorded "records never go into the workspace repository". A directory check is a proxy for that and misses both ways: it refuses an untracked records directory under the workspace's ignored area (not a commit), and it passes `tracking=repo` with a separate clone of the workspace repository elsewhere (a commit into the workspace repository). Put to the owner: hard refusal of tracking in the workspace repository (checked by the remote, not the directory), or default plus warning.
+3. **[Principle alignment: Name the rule before bending it] (must-fix)** — "A session works only under its root" (Sessions and roots Now; `session_root.sh` header) is bent in two places the plan does not name: `project_setting.sh set` from a project session writes `.agent/projects.d/<name>` in the workspace checkout (PR 3's onboarding answers), and any `location=outside` records path is outside the project-clone root by definition. Resolution: PR 3's design edit states the first as a named exception (per-machine, gitignored workspace config the project session owns); the follow-up issue text states that the records location counts as the root's own, as a `worktrees=` override already does (`registry_worktree_dir`, `session_root.sh`), or names the alternative.
+4. **[Consequences] (must-fix)** — PR 2's gate runs `user_tier_install.sh` (which enables the plugin in the root's `.claude/settings.local.json`) and then, with `--run`, build and test; a newly added entry that fails is rolled back "line and file" only, leaving the plugin enabled in an unregistered directory. Resolution: run the installer only after build and test pass, or have the rollback call the new `--disable-root`; add the case to `test_register_project.sh`.
+5. **[ADR compliance: ADR-0016 decision 6] (must-fix)** — `registration_verify.sh` is planned as `# user-tier: inert` and promoted in PR 3, but `--run` executes the project's build and test, which is not "only reads and prints" (`user_tier_scripts.txt` header). Resolution: keep `registration_verify.sh` read-only (no `--run`) and let `register_project.sh` run `adapter build`/`test` itself, or give it a real `registry_require_root` guard and drop the inert marker.
+6. **[Consequences] (suggestion)** — The follow-up issue text carries mechanisms 1 to 3 and the acceptance test by shape, but drops the Target's second half ("which a project with pull requests has to exercise"), the one rule, and two unsettled points: for `tracking=repo`, who commits to the records repository, on which branch and when it is pushed; and `cross_model_review.sh --work-plans-dir` and package-repo issues as existing override and no-timeline cases. Add them, and open the issue before PR 1 so `project_setting.sh`'s refusal and the Target edit cite its number.
+7. **[Principle alignment: Put each thing at the level it applies to] (suggestion)** — `registration.conf` is consistent with "workflow scripts do not branch on the project type" (Q2 confirmed), but nothing checks it exists: say `register_project.sh` refuses a type without one, add the check to `validate_adapter.sh` or a test, and name the file in the Registry and adapters Now bullet beside the verb contract.
+8. **[File targeting] (suggestion)** — PR 1 adds `project_setting.sh` but the AGENTS.md Script Reference rows are planned only in PR 2 and PR 3; add PR 1's row in its own commit (Ask First), or say why it waits.
+9. **[Issue alignment: Test what breaks] (suggestion)** — Add a table mapping each issue acceptance item to its test, and make `test_integration_audit.sh`'s fixture a synthetic project shaped like gz4d on 2026-09-23 (same-named skills, branch-not-worktree instruction, unignored `worktrees/`, unanchored `build/` hiding `.claude/skills/build/SKILL.md`, no `.agents/`, a `docs/work-plans/`), so "reproduces every finding" is a test, not the first real run.
+10. **[Issue alignment: Q4] (suggestion)** — Q4's default (an existing `docs/roadmap.md` or `ROADMAP.md`, else create `docs/roadmap.md`) fits design.md line 127 ("A project's roadmap may carry a `## Direction` section ... by its own choice"). State that the agent-guide and Direction offers are made only when `instructions=tracked` (Approach says only audit findings become `info`), and note in the sit-rep follow-up row that a project's roadmap may be `ROADMAP.md`.
+
+Q3 confirmed: `audit-project` is report-only today and D5 says nothing changes without a yes, so report-only with the fix flow offered at the end keeps the hygiene fixes owned.
+
+### Summary
+
+The plan builds on the Worktrees Target as required, honours A2 without building the lookup (the dispatcher reads only command and URL keys; only (project, project) is written), and its line numbers and helpers check out. Five must-fixes before implementation: defaults written as decided, a recorded owner stance superseded by the plan, the session-root rule bent without being named, an incomplete rollback, and a promoted script that is not inert.
+
+### Recommended Actions
+
+- [ ] Hold the default records place and layout in one function, mark them provisional in the design text and onboarding wording, and describe D2a's layout accurately (finding 1)
+- [ ] Put the workspace-location question to the owner: refusal checked by the remote, or default plus warning; drop "supersedes" until he answers (finding 2)
+- [ ] Name both session-root exceptions in the design edits and the follow-up text (finding 3)
+- [ ] Order the installer after build/test or roll back the plugin enable; test it (finding 4)
+- [ ] Make `registration_verify.sh` truly read-only or guard it (finding 5)
+- [ ] Complete the follow-up issue text and open it before PR 1 (finding 6)
+- [ ] Check `registration.conf` exists per type (finding 7); add PR 1's AGENTS.md row (finding 8); add the acceptance-to-test table and the gz4d-shaped fixture (finding 9); gate the offers on `instructions` (finding 10)
