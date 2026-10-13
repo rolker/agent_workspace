@@ -651,3 +651,15 @@ All seven round-5 findings are closed in code and tests: an absent machine recor
 **Decision**: stop
 
 Paused: "Let's pause here for now until I have time to focus more on understanding the big picture." Open at pause: round-6 must-fix (skill_prefix.sh decides from the current directory, not the session's start directory; host-proposed fix = SessionStart hook records session id -> start dir/prefix in the user tier, run-issue looks it up and stops if missing — NOT yet approved), plus 3 suggestions (nested-repo-in-p11 claim unverified live; missing no-CLI + no-entry test; typo + double script run in the hook). Branch unpushed at 9e07ac0.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 10:05 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Resumed 2026-10-13 (/run-issue 345). Owner, on the round-6 must-fix (skill_prefix.sh decides from the current directory, not the session's start directory): "I lost track of what question I am actually answering for 345, but I think let's go with the simpler design where an agent works on stuff in the directory where it was launched." Earlier in the same conversation: "having all the projects outside the workspace makes it so that starting a session in the workspace means one wants to work on the workspace itself, and starting it in a project means work on the project. So, an agent working, in let's say src/gz4d, could open an issue for agent_workspace if a workspace bug was found, but probably not fix it. An agent started in ~/agent_workspace could pickup the issue and fix it."
+
+Rule adopted: a session's root is the directory it was launched in (the workspace checkout, or a registered project root), and a session only changes things under that root; cross-root work is an issue (or an inbox line), not a fix. Worktrees live under their root, so deciding the skill form by location is correct and the start-directory record is not needed; run-issue / start-task refuse an issue whose root is not the session's root and name the directory to start in. Address the round-6 must-fix this way, plus the three round-6 suggestions; merge main into the branch first (360 commits behind) and renumber the plugin ADR to 0018 (main has a 0017 now).
