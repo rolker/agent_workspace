@@ -388,3 +388,13 @@ Reviewers: Claude adversarial ran (3 must-fix, 6 suggestions; injection probes i
 - [ ] (suggestion) The run-record append has no final-newline guard (a hand-edited record glues the next line, which step 2's `$2 == "workspace"` then skips) and a failed append prints no "not written" line — `.claude/skills/sitrep/SKILL.md:189`
 - [ ] (suggestion) A data row of only empty cells or dashes (`|  |  |`, `| - | |`) matches the separator regex and is dropped without a row — `.agent/scripts/sitrep_checks.sh:507`
 - [ ] (suggestion) The change-log row records 729 lines; `docs/design.md` has 730 — `docs/design.md:677`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-12 22:46 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Owner: "Do the first" — of the three options offered at the round-3 limit (address then publish without another local round; publish now with the three open; stop). So: one address-findings pass on the three must-fixes (and the six suggestions where cheap), the host re-runs the suites, then publish straight away; the post-push review and triage catch anything left.
