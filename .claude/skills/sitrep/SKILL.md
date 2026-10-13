@@ -183,8 +183,10 @@ fi
 
 `-R` names the workspace repository from its own remote, so a project
 session does not list the project's pull requests by mistake. With no
-GitHub remote the pull requests are reported as not checked. For each
-worktree, its last commit stands in for a resume note:
+GitHub remote the pull requests are reported as not checked. The list
+always includes the main checkout (`type: "main"`); it is not work in
+flight and is left out of the report. For each other worktree, its last
+commit stands in for a resume note:
 
 ```bash
 git -C "<worktree path>" log -1 --format='%cr: %s'
@@ -266,7 +268,8 @@ Proposed sort, to answer in batches:
 - decided against, revisit when <condition>: <items>
 - delete: <items>
 
-**In flight**: <each worktree: branch, last commit age and subject>;
+**In flight**: <each worktree except the main checkout: branch, last
+commit age and subject>;
 <each open pull request: title, draft or review state>.
 
 **Deferrals due**: <deferrals whose check is true>.
@@ -291,7 +294,9 @@ Rules for the report:
 - "Suggested next" names one item, taken from the first of these sources
   that has one, in this order: a due deferral; a `false` Direction line;
   work in flight (a worktree or open pull request); the proposed inbox
-  "now" bin. It names the fact it rests on (the deferral and its check,
+  "now" bin. The main checkout is not work in flight: the worktree list
+  always includes it (`type: "main"`), so it is never a candidate. It
+  names the fact it rests on (the deferral and its check,
   the line and its check, the branch or pull request title, the inbox
   line). When it comes from the inbox "now" bin, it says "this rests on
   the proposed inbox sort", since that bin is this run's proposal, not a
