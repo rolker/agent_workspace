@@ -147,3 +147,11 @@ Sound plan, right size, owner decisions respected. Three things to fix before im
 
 Revise the plan with must-fix M1–M3 and the four suggestions from the Plan Review (265c533f), then re-review.
 Open question answered: "Suggestion, then a question" — the report ends with the "Suggested next" line, then at most one question.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-13 09:09 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Plan**: `.agent/work-plans/issue-389/plan.md` at `8ddf55d5`
+
+Revision: guard (c) narrowed to live pointers with a rule-based history exemption, hook-scope declaration added, report ends with Suggested next then at most one question (fixed source order), and the manual check records whether ~/CLAUDE.md answered. Resolutions are listed in the plan.
