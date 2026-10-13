@@ -739,3 +739,13 @@ Ask-First, answered "Keep both" earlier this round: the AGENTS.md Script Referen
 - [x] (suggestion) Both scripts in `.agent/user_tier_scripts.txt` with the `# user-tier: inert` marker (read-only); `test_user_tier_guard.sh` checks the manifest rows, no gh or repo-changing git call, and exit 1 with nothing changed from an unregistered repo — `.agent/user_tier_scripts.txt` (f4414742)
 
 Tests: `run_script_tests.sh` all 37 suites passed (user_tier_install 200, session_root 69, skill_prefix 22, session_start_layer 49, user_tier_guard 50, script_tests_hook_scope 117, project_registry 258). New tests were mutation-checked. Live user-tier suite not run. No AGENTS.md or `~/CLAUDE.md` edit; the AGENTS.md `session_root.sh` row does not mention that it now also refuses a nested package repo (left as is: AGENTS.md edits were not authorised this round).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 12:40 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: publish
+
+Second half of the owner's round-7 answer "Address, then publish" (60449ac6): the fix pass is complete (0b679964; all 7 findings fixed, 37 suites green), main merged in by the host (bcb66ab7: one conflict in test_script_tests_hook_scope.sh resolved keeping both allowlist entries; plugin.json regenerated because main deleted the what-next skill). Publish without another local round; the bot reviews and triage catch what is left.
