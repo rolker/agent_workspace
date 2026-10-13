@@ -1404,6 +1404,27 @@ out="$(run_nocli --check)"; rc=$?
       && "$out" != *"DRIFT"* ]] \
     && pass "without the claude CLI, --check notes the foreign machine-level record with advice that says the CLI is needed" \
     || fail "no-CLI --check over a foreign machine-level record (rc=$rc out=${out:0:500})"
+# The same without the CLI when the record has NO entry for it (no entry,
+# or no file): install's 6a NOTE and --check's note name the absent entry,
+# not another checkout, and both stay green like the foreign case.
+for shape in entry file; do
+    case "$shape" in
+        entry) km "" ;;
+        file)  rm -f "$KM" ;;
+    esac
+    out="$(run_nocli)"; rc=$?
+    [[ "$rc" -eq 0 && "$out" == *"NOTE: the claude CLI's machine-level record of the agent-workspace marketplace has no entry for it, not this checkout -- taking it over needs the claude CLI, which is not on PATH"* \
+          && "$out" != *"names another checkout"* && "$out" == *"plugin already enabled: $ROOTS/a"* ]] \
+        && pass "without the claude CLI, install notes an absent machine-level record (no $shape) and that the takeover needs the CLI" \
+        || fail "no-CLI install over an absent machine-level record, no $shape (rc=$rc out=${out:0:500})"
+    out="$(run_nocli --check)"; rc=$?
+    [[ "$rc" -eq 0 && "$out" == *"note: the claude CLI's machine-level record of the agent-workspace marketplace ($KM) has no entry for it"*"taking it over needs the claude CLI, which is not on PATH"* \
+          && "$out" != *"DRIFT"* ]] \
+        && pass "without the claude CLI, --check notes an absent machine-level record (no $shape) with advice that says the CLI is needed" \
+        || fail "no-CLI --check over an absent machine-level record, no $shape (rc=$rc out=${out:0:500})"
+done
+mkdir -p "$(dirname "$KM")"
+km "$SANDBOX/elsewhere"
 run >/dev/null
 # CLAUDE_CONFIG_DIR moves the CLI's records: with it set, the record read
 # (and taken over) is the one under it, and a stale one in ~/.claude is
