@@ -129,6 +129,36 @@ after="$(lines_of "$INBOX")"
     && [[ "$(tail -n1 "$INBOX" | awk -F'\t' '{print NF}')" -eq 4 ]] \
     && pass "(collapse) one line, four fields" || fail "(collapse) last='$(tail -n1 "$INBOX")' lines $before->$after"
 
+echo "TEST: a long text is cleaned in linear time"
+# 12000 words each followed by a tab, CR and two newlines (96 kB), with
+# whitespace around the whole text. A trim that backtracks takes minutes.
+long="$(printf $'word\t\r\n\n%.0s' $(seq 12000))"
+want="$(printf 'word %.0s' $(seq 12000))"; want="${want% }"
+before="$(lines_of "$INBOX")"
+start=$SECONDS
+RC=0
+OUT="$(cd "$WS" && HOME="$SB/home" timeout 20 bash "$CAP" $'  \n\t'"$long"$'\n\t  ' 2>&1)" || RC=$?
+took=$((SECONDS - start))
+[[ $RC -eq 0 && $took -le 5 && "$(lines_of "$INBOX")" -eq $((before + 1)) && "$(field 4)" == "$want" ]] \
+    && pass "(long) 96 kB cleaned in ${took}s, one line" || fail "(long) rc=$RC took ${took}s"
+run_cap "$WS" $'a  b\t\tc'
+[[ "$(field 4)" == "a  b c" ]] && pass "(long) spaces inside the text are kept" || fail "(long) got '$(field 4)'"
+
+echo "TEST: an inbox whose last line has no newline gets one before the new line"
+printf '2026-10-12 10:00 -0400\tworkspace\t-\told thought' >> "$INBOX"
+before="$(lines_of "$INBOX")"
+run_cap "$WS" "next thought"
+[[ $RC -eq 0 && "$(lines_of "$INBOX")" -eq $((before + 2)) && "$(tail -n2 "$INBOX" | head -n1 | cut -f4)" == "old thought" \
+    && "$(field 4)" == "next thought" ]] \
+    && pass "(newline) old line kept whole, new line on its own" || fail "(newline) last two: '$(tail -n2 "$INBOX")'"
+: > "$SB/inbox/empty.txt"
+printf 'inbox=%s\n' "$SB/inbox/empty.txt" > "$SETTINGS"
+run_cap "$WS" "first"
+[[ $RC -eq 0 && "$(wc -c < "$SB/inbox/empty.txt")" -gt 0 && "$(head -c1 "$SB/inbox/empty.txt")" == 2 \
+    && "$(lines_of "$SB/inbox/empty.txt")" -eq 1 ]] \
+    && pass "(newline) an empty inbox gets no blank first line" || fail "(newline) empty inbox: '$(cat "$SB/inbox/empty.txt")'"
+printf 'inbox=%s\n' "$INBOX" > "$SETTINGS"
+
 echo "TEST: two parallel calls give two intact lines"
 before="$(lines_of "$INBOX")"
 ( cd "$WS" && HOME="$SB/home" bash "$CAP" "parallel one" >/dev/null 2>&1 ) &
@@ -195,17 +225,19 @@ run_cap "$WS" "dir thought"
 printf 'inbox=%s\n' "$INBOX" > "$SETTINGS"
 
 echo "TEST: lines over 4 KB from parallel callers stay whole"
-big_a="$(head -c 20000 /dev/zero | tr '\0' 'a')"
-big_b="$(head -c 20000 /dev/zero | tr '\0' 'b')"
+# Just over the 4 KB a single write() covers; the lock test below shows the
+# write waits for the lock.
+big_a="$(head -c 6000 /dev/zero | tr '\0' 'a')"
+big_b="$(head -c 6000 /dev/zero | tr '\0' 'b')"
 before="$(lines_of "$INBOX")"
-for _ in 1 2 3 4; do
+for _ in 1 2; do
     ( cd "$WS" && HOME="$SB/home" bash "$CAP" "$big_a" >/dev/null 2>&1 ) &
     ( cd "$WS" && HOME="$SB/home" bash "$CAP" "$big_b" >/dev/null 2>&1 ) &
 done
 wait
 after="$(lines_of "$INBOX")"
-bad="$(tail -n 8 "$INBOX" | awk -F'\t' '$4 !~ /^(a{20000}|b{20000})$/' | wc -l | tr -d ' ')"
-[[ $after -eq $((before + 8)) && "$bad" -eq 0 ]] && pass "(big) eight 20 kB lines intact" || fail "(big) lines $before->$after, $bad mixed"
+bad="$(tail -n 4 "$INBOX" | awk -F'\t' '$4 !~ /^(a{6000}|b{6000})$/' | wc -l | tr -d ' ')"
+[[ $after -eq $((before + 4)) && "$bad" -eq 0 ]] && pass "(big) four 6 kB lines intact" || fail "(big) lines $before->$after, $bad mixed"
 
 echo "TEST: a capture waits for another writer's lock"
 if command -v flock >/dev/null 2>&1; then

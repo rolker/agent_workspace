@@ -17,7 +17,8 @@
 #            settings file).
 #   issue    $WORKTREE_ISSUE, else N from a `feature/issue-N` or
 #            `feature/ISSUE-N-...` branch at the cwd, else `-`
-#   text     tabs, CRs and newlines collapsed to single spaces
+#   text     each run of tabs, CRs and newlines collapsed to one space,
+#            whitespace trimmed from both ends
 #
 # The inbox path is the `inbox` key of .agent/settings.local (see
 # _settings.sh and .agent/settings.local.example). The script creates the
@@ -46,11 +47,11 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 # shellcheck source=_settings.sh
 source "$SCRIPT_DIR/_settings.sh"
 
-shopt -s extglob
-text="$*"
-text="${text//+([$'\t\r\n'])/ }"
-text="${text##+([[:space:]])}"
-text="${text%%+([[:space:]])}"
+# Each run of tabs, CRs and newlines becomes one space, then whitespace is
+# trimmed from both ends. tr and sed keep this linear; bash's extglob
+# patterns backtrack, and took seconds on a few kB.
+text="$(printf '%s' "$*" | tr -s '\t\r\n' '\n\n\n' | tr '\n' ' ' \
+    | LC_ALL=C sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 if [ -z "$text" ]; then
     echo "usage: capture.sh \"<text>\"" >&2
     exit 2
@@ -129,12 +130,16 @@ line="$(date '+%Y-%m-%d %H:%M %z')"$'\t'"$project"$'\t'"$issue"$'\t'"$text"
 [ ! -d "$inbox" ] || not_saved "the inbox is a directory: $inbox"
 
 # write_line: called with fd 9 open for append on the inbox. Holds the
-# lock (see the header) for the one printf.
+# lock (see the header) for the one printf. An inbox whose last byte is not
+# a newline (an editor that leaves none) gets one first, so the new line is
+# never glued onto the last.
 write_line() {
+    local sep=""
     if command -v flock >/dev/null 2>&1; then
         flock -x -w 10 9 || { echo "inbox is locked by another writer: $inbox" >&2; return 3; }
     fi
-    printf '%s\n' "$line" >&9
+    [ -z "$(tail -c 1 -- "$inbox" 2>/dev/null)" ] || sep=$'\n'
+    printf '%s%s\n' "$sep" "$line" >&9
 }
 rc=0
 { write_line 9>>"$inbox"; } 2>/dev/null || rc=$?
