@@ -23,6 +23,9 @@ sit-rep) was declined by the owner ("Drop it") and is not carried over.
    'where are we?'. ..."), then still stating it reads and writes one
    run-record line. Keep the frontmatter valid YAML: quote the whole value and
    put no `: ` inside it. Adjust "What it is" to say it replaces `what-next`.
+   Any text under `.claude/` or `.agent/` names the old skill without the
+   slash or path (`what-next`, never `/what-next` or `skills/what-next`), so
+   guard (c) passes on it.
 3. **Suggested next line** — add a fifth report item, "Suggested next", as the
    closing line, then at most one question (the suggestion proposes an action;
    the question asks the owner to decide). Source order is fixed: due
@@ -48,9 +51,15 @@ sit-rep) was declined by the owner ("Drop it") and is not carried over.
    match itself. Prose that merely names the skill passes. Exemptions are a
    rule, not a file: `.agent/work-plans/` and `.agent/knowledge/inspiration_*`
    digests (history records). Pathspec is limited to hook-covered prefixes
-   (`.agent/`, `.claude/`, `AGENTS.md`, `Makefile`); `docs/` and `README.md`
-   are left to CI's `make lint` (all files), because the
-   `validate-script-tests` hook's `files:` regex does not cover them.
+   (`.agent/`, `.claude/`, `AGENTS.md`, `Makefile`). `docs/`, `README.md`,
+   `CODEX.md`, `CLAUDE.md` and `.github/copilot-instructions.md` are **not
+   guarded**: CI runs `make lint` = `pre-commit run --all-files`, which runs
+   the same hook with the same pathspec, so CI does not read them either; and
+   widening the pathspec would need the hook-scope entry (step 6) to declare
+   `docs/`, which the `validate-script-tests` hook's `files:` regex does not
+   cover, so the hook-scope test would fail. This is said in the test header
+   and the PR text, and those files are grepped once by hand in this change
+   (any live pointer found is fixed).
 6. **Hook-scope declaration** — update the `test_skill_paths.sh` entry in
    `test_script_tests_hook_scope.sh` (line ~189, now `.claude/skills`) to the
    prefixes guard (c) reads, in that file's existing format; run that test.
@@ -65,15 +74,21 @@ sit-rep) was declined by the owner ("Drop it") and is not carried over.
 9. **Verify** — run `.agent/scripts/tests/run_script_tests.sh`; in a scratch
    HOME, install the user tier with `what-next` linked, rerun, and confirm
    the symlink is removed and `--check` is clean (A4). Manual acceptance: in a
-   fresh session at the workspace root ask "what's next?" and record the
-   prompt and which answered: the sit-rep skill, or the `~/CLAUDE.md`
-   instruction to read `~/Documents/workplan/NOW.md`. Report the result to the
-   owner. If NOW.md answered, do not edit `~/CLAUDE.md` or any instruction
+   fresh session in this worktree (not the main checkout, whose
+   `.claude/skills/` keeps the old skills until merge) ask "what's next?" and
+   record the prompt, the directory and which answered: the sit-rep skill, or
+   the `~/CLAUDE.md` instruction to read `~/Documents/workplan/NOW.md`. If it
+   can be observed headlessly (`claude -p "what's next?" --output-format
+   stream-json --verbose` with cwd = the worktree, looking for the Skill call
+   or the NOW.md read), do so with a short run; if it cannot run, record "not
+   run" and why. Report the result to the owner. If NOW.md answered, do not edit `~/CLAUDE.md` or any instruction
    file (Ask First); the owner decides.
 10. **PR text** — list what was dropped (project-roadmap probe,
     `--workspace-only`/`--project-only`, ranking, stale-row and needs-ticket
     detection, declined by the owner), that typing `/what-next` now does
-    nothing, and the one-time `--check` drift on machines that had it linked.
+    nothing, the one-time `--check` drift on machines that had it linked, and
+    that guard (c) does not read `docs/`, `README.md`, `CODEX.md`, `CLAUDE.md`
+    or `.github/copilot-instructions.md` (and why, step 5).
 
 ## Files to Change
 
@@ -154,3 +169,16 @@ Revision after the Plan Review of 2026-10-13 (verdict needs-work).
 - S6: fixed source order; line marks a basis in the proposed inbox sort (step 3).
 - S7: morning-status row gets `#386` in Issue; PR note that `/what-next` no
   longer exists (steps 7, 10).
+
+Amendment after the round-2 Plan Review of 2026-10-13 (`1b27b385`, verdict
+needs-work); owner: "Proceed; fix in plan first", no third review.
+
+- N1 (CI does not read `docs/`): step 5 now says `docs/`, `README.md`,
+  `CODEX.md`, `CLAUDE.md` and `.github/copilot-instructions.md` are not
+  guarded and why; carried into the test header and PR text (step 10); those
+  files are grepped once by hand in this change.
+- N2 (manual check ran against the main checkout): step 9 runs it in this
+  worktree and records the directory; headless observation if possible,
+  otherwise "not run" and why.
+- Suggestion: step 2 names the old skill without the slash or path in text
+  under `.claude/` and `.agent/`.
