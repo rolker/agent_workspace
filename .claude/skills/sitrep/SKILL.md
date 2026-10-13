@@ -295,8 +295,10 @@ Rules for the report:
   that has one, in this order: a due deferral; a `false` Direction line;
   work in flight (a worktree or open pull request); the proposed inbox
   "now" bin. The main checkout is not work in flight: the worktree list
-  always includes it (`type: "main"`), so it is never a candidate. It
-  names the fact it rests on (the deferral and its check,
+  always includes it (`type: "main"`), so it is never a candidate. The
+  worktree this session runs in counts like any other. When a source has
+  several items, take the first as listed in the report. It names the
+  fact it rests on (the deferral and its check,
   the line and its check, the branch or pull request title, the inbox
   line). When it comes from the inbox "now" bin, it says "this rests on
   the proposed inbox sort", since that bin is this run's proposal, not a
