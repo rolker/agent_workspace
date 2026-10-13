@@ -238,3 +238,19 @@ All five round-1 must-fixes and the five suggestions are resolved in the plan te
 **Decision**: proceed
 
 "Proceed; fold D6, Q5 and the suggestions into the plan first" after Plan Review round 2 (2bf12b40, ready, 0 must-fix, 4 suggestions): implementation of PR 1 starts; its first commit amends the plan with (a) D6 — owner: onboarding work is queued in the project's roadmap when the user approves, "so that it can get tackled maybe as other issues are resolved": the audit's findings and the accepted offers become rows of an "Onboarding" section in the project's roadmap table (docs/roadmap.md or ROADMAP.md; kept with the records for a zero-footprint project), an issue per row when the project uses issues, picked up like any other open row; a pace rule is a later item; PR 3's offers and PR 4's audit outcome gain "queue in the roadmap" beside fix / issue / skip; (b) the four round-2 suggestions (absent records pair resolves to project/project with a test; a local-path or file:// remote pointing at the workspace checkout or a worktree is refused too; where ros2_colcon setup sits in the registration order and what a failure keeps; the acceptance table says where the three gz4d findings are covered); (c) Q5 (fork detection for the records-repo refusal): the owner's answer is being taken separately and the host supplies it in the implement handoff. No third plan review; the pre-push code review sees both.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 14:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Branch**: feature/issue-332 at `4df7317b`
+
+PR 1 of four (the per-project settings file and its keys), after the owner's checkpoint `21c8e15f`.
+
+- `15005ad8` plan amended first: D6 (queue in the roadmap, `## Onboarding` section, issue per row; PR 3 offers and PR 4 audit outcome), Q5 (a records repository must not be a workspace, recognised by its contents beside the remote URL; no lineage check), round-2 suggestions (absent pair is (project, project); local-path and `file://` remotes refused; `ros2_colcon` `setup` between registration steps 1 and 2 with a created hosting directory kept and reported on `KEPT=`; acceptance table names where the three unreproduced gz4d findings are covered).
+- Follow-up issue for the records lookup opened first: #393, cited in the refusal message, the design Target and `PROJECT_RECORDS_LOOKUP_ISSUE`.
+- `b1612865` `.agent/projects.d/<name>`: parser, validator, one writer and `project_records_default` / `project_records_check` in `_project_registry.sh`; new `project_setting.sh get|set|unset|list|check`; the dispatcher parses the file once and stops on a malformed or refused one; `single_project` and `ros2_colcon` read the keys first and note a fall-through to the shared config; dashboard and `make validate` report a bad file; registry names ending in `.sh` refused; `projects.local.example` documents it; new `test_project_file.sh` (157 assertions, synthetic sandbox projects only).
+- `24b14c06` design: Registry and adapters Now bullet; Worktrees Target rewritten (settings in the project file, built in #332 versus #393, defaults provisional, refused combinations, the workspace refusal with its reason, line numbers refreshed); change-log row.
+- `4df7317b` AGENTS.md Script Reference row for `project_setting.sh`, its own commit (Ask First, owner approval on the PR).
+- Deviations from the plan text, for review: `bootstrap_url` also accepts `file://` (the legacy variable and the tests use it); the legacy `projects.d/<name>.sh`, when present, stays the whole legacy layer (the shared config is consulted only when it is absent), as before #332, rather than falling through per variable.
+- Tests: `run_script_tests.sh` all 38 suites passed; shellcheck clean on the changed scripts; design-anchor hook passed.
