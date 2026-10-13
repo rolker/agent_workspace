@@ -164,3 +164,20 @@ The removal map is complete and the hosted-review, identity and history hits are
 - Hosted Copilot PR review wiring (merge_pr.sh, run-issue wait, triage-reviews, fetch_pr_reviews.sh) untouched.
 - Tests: `run_script_tests.sh` — all 33 suites passed (233 s); `test_cross_model_review.sh` 920 passed, 0 failed.
 - Follow-up for the PR description: #342's title still lists Copilot (retitle after merge).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-13 11:47 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: approved
+
+**Branch**: feature/issue-344 at `4517fc8f`
+**Base**: main
+**Depth**: Deep (reason: 200+ changed lines)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 1 | **Ship**: recommended — no must-fix findings
+
+Verified: `run_script_tests.sh` all 33 suites passed (`test_cross_model_review.sh` 920 passed, 0 failed) at the branch head; pre-commit (incl. shellcheck) clean on the changed files; repo-wide grep leaves no reviewer-role Copilot CLI mention (rest is framework identity, hosted review, history); "Supported agents: claude, codex, gemini" asserted at both print sites; ADR-0015 body unchanged and the note names exactly the Copilot passages (Context, Decision 3, first and last Consequences bullets). Reviewers: Gemini ran (no issues), Codex ran (no issues; did not run the suite, read-only sandbox), Claude adversarial ran (4 candidates, all dropped: claude error-text/empty cases covered by the per-CLI loops, dropped temp-leak case was a success path, header order cosmetic, hash-order comment reproduces).
+
+### Findings
+- [ ] No issues found. LGTM.
