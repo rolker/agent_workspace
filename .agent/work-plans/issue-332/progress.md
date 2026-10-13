@@ -73,3 +73,15 @@ issue: 332
 - [ ] Open a separate issue for the one records lookup (`records=` for every reader and writer, including the merge gate and `_bookkeeping.sh`) and cite it from the design Target; until it lands, onboarding offers and records only `records=project` and says so rather than writing a value nothing reads.
 - [ ] Treat audit category 7 (skills with no `session_scope`; 9 of the 22 skills have none today, several by intent) as a test or `--check` item that rides with #331, not a per-project audit line, as the original issue already suggests.
 - [ ] Test with synthetic sandbox projects registered in a temporary workspace root; do not depend on gz4d or any real project checkout. The gz4d onboarding run stays the separate first real use.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 13:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+"Proceed" with the Issue Review (20cbbd3c) actions A1 (four PRs: project file + keys; register_project.sh; onboard-project rewrite; audit-project takes the hygiene checklist; design-doc edits travel with the PR that makes each true), A2 (the records lookup becomes its own issue; this issue validates every records= value but writes only `project` until it lands), A3 (the plan settles command keys: names, quoting or script pointer, precedence over existing projects.d/<name>.sh), A4 (#332 owns register_project.sh incl. unregister and adopting a hand-registered project; #265 PR 4 shrinks to retiring project/ and projects/), and the recommendations (audit categories in a script both skills call; category 7 folds into #331; tests on synthetic projects only; both skills stop looking under project/<name>).
+
+Action 3 answered alone (D2a), owner verbatim: "I'm leaning 2. It makes no sense to commit with the workspace. I think I had discussed the possibility of a separate repo as well. This would allow tracking for a zero footprint repo. It could be setup so the project dir holds the clone as a child dir, and the clone of the repo for records as a sibling for instance. All of this should be flexible at onboard time, but provide reasonable defaults." Recorded as: records never go into the workspace repository. Places: committed in the project; in the project but ignored; a separate records repository (tracked; default layout a hosting directory holding the project clone and the records clone as sibling children); untracked on this machine. Chosen at onboarding with defaults: `project` when the project accepts footprint, machine-local for zero footprint, the records repo as the opt-in that adds tracking. The plan proposes the exact key values and the layout.
