@@ -329,4 +329,35 @@ Reviewers: Claude adversarial ran (3 must-fix, 5 suggestions); Codex ran (2 find
 - [x] (suggestion) Step 4 counts the inbox again instead of recording step 2's count; a capture made between the steps is never reported as new. Record the `inbox_lines` value step 2 printed — `.claude/skills/sitrep/SKILL.md:167`
 - [x] (suggestion) A section with a Line/Deferral header and no data rows prints one blank line (`printf` of an empty array); guard it or emit a `section` row — `.agent/scripts/sitrep_checks.sh:500`
 - [x] (suggestion) Fence detection departs from CommonMark: a backtick line with backticks in the info string (```` ```x``` text ````) opens a fence and swallows the rest of the file (the section then reads as missing); a backtick fence's info string may not contain a backtick — `.agent/scripts/sitrep_checks.sh:419`
-- [ ] (suggestion) Grew beyond the plan, all from review fixes: a fifth check kind `adr-status`, `--summary-from`, the flock (plan said one O_APPEND write), and capture.sh reading the main checkout's registry from a worktree. Each is tested and documented; name them in the PR description so the owner sees them — `.agent/work-plans/issue-386/plan.md`
+- [x] (suggestion) Grew beyond the plan, all from review fixes: a fifth check kind `adr-status`, `--summary-from`, the flock (plan said one O_APPEND write), and capture.sh reading the main checkout's registry from a worktree. Each is tested and documented; name them in the PR description so the owner sees them — `.agent/work-plans/issue-386/plan.md`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-12 20:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-386 at `103b8b8`
+**Addressed**: Local Review (Pre-Push) at `b38242b` (2026-10-12 20:16 -04:00)
+**Commits**: ca1279e, 103b8b8
+
+### Actions
+- [x] (must-fix) capture.sh cleaning was super-linear: tr and sed now collapse and trim in linear time; a 96 kB capture finishes within 5 s (test); the parallel test uses four 6 kB lines — `.agent/scripts/capture.sh:49`
+- [x] (must-fix) an inbox without a final newline: under the lock, a newline is written first when the last byte is not one; tests for a glued last line and an empty inbox — `.agent/scripts/capture.sh:133`
+- [x] (must-fix) a failed or interrupted run recorded as real: step 1 keeps the rows file and prints `rows_file=` only when the runner exits 0 and the rows count; `--summary-from` refuses `""`, an empty file and any line that is not a whole row (exit 2, message, no summary); tests for each, for an interrupted run (INT and TERM exit non-zero with no rows) and for step 1 and step 4 refusing — `.claude/skills/sitrep/SKILL.md:61`, `.agent/scripts/sitrep_checks.sh:155`
+- [x] (suggestion) `adr-status` drops CRs before reading — `.agent/scripts/sitrep_checks.sh:296`
+- [x] (suggestion) `adr-status` skips fenced code, with the roadmap reader's fence rules — `.agent/scripts/sitrep_checks.sh:296`
+- [x] (suggestion) a whole cell in one pair of backticks is unwrapped before the ` ; ` split — `.agent/scripts/sitrep_checks.sh:385`
+- [x] (suggestion) step 4 records step 2's `inbox_lines` (placeholder) and refuses a non-number — `.claude/skills/sitrep/SKILL.md:170`
+- [x] (suggestion) header-only Line/Deferral tables print a `section` row `(no rows in the Line or Deferral tables)`; every run prints at least one row — `.agent/scripts/sitrep_checks.sh:520`
+- [x] (suggestion) a backtick fence opener with a backtick after the run is not a fence (CommonMark), in both readers — `.agent/scripts/sitrep_checks.sh:446`
+- [x] (suggestion) grew beyond the plan, for the PR description: a fifth check kind `adr-status`; `--summary-from` (one check run per sit-rep, summary counted from saved rows); the `flock` around the inbox write (the plan said one O_APPEND write; bash splits lines over 4 KB); capture.sh reading the main checkout's registry when run from a linked worktree — `.agent/work-plans/issue-386/plan.md`
+
+### Tests
+- `test_capture.sh`: 37 passed before the round (1 min 59 s, the parallel 20 kB test); new tests failed on the old code (long text timed out at 20 s; glued line); after: 41 passed in 2.9 s.
+- `test_sitrep_checks.sh`: 83 passed before; 16 new checks failed on the old code (the two interrupt checks already passed and stay as guards); after: 101 passed in 5.0 s.
+- `run_script_tests.sh`: all 33 suites passed (208 s, other suites).
+
+### Notes
+- An interrupted runner already exited 128 + signal with no rows (rows print at the end), so no trap was added; the fix is that the skill acts on that exit status.
+- The roadmap's Format bullets were not changed; the script header carries the full grammar, including the cell unwrapping and fence rules.
+- No follow-ups left from this round.
