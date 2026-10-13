@@ -139,3 +139,13 @@ The removal map is complete and the hosted-review, identity and history hits are
 - [ ] List the 2924-2937 one-fails test, relabel 4219-4228 as `test_cli_no_temp_leak` (fix its "three failure modes" label), fix the concurrency test to two agents with its PASS text, and retitle `test_cli_helper_missing_is_unavailable`.
 - [ ] Append the ADR-0015 note to the existing Status paragraph and name the body passages it qualifies.
 - [ ] Fix the "Supported agents" separator and sort locale, and assert the exact string.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 11:09 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+"Proceed; fix in plan first": implementation starts; its first commit amends the plan with the Plan Review (06246fa0) must-fix (test (d), `_cli_review.sh copilot` run directly, asserts exit 2 and the "unsupported agent" reason in the findings file; "no findings file" only for (a)–(c)) and the four suggestions (stand-in copilot mock leaving a marker; corrected test-rework list incl. the one-agent-fails test, the `test_cli_no_temp_leak` relabel, the concurrency test at two agents, the `test_cli_helper_missing_is_unavailable` title; ADR-0015 note after the #363 sentence naming the passages it qualifies; one exact sorted "Supported agents" format asserted at both print sites), then builds. No third plan review; the pre-push code review sees both.
