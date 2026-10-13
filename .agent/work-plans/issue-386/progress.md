@@ -424,7 +424,7 @@ Owner: "Do the first" — of the three options offered at the round-3 limit (add
 - `test_sitrep_checks.sh`: 101 passed before the round; 141 passed, 0 failed after (7 s); ten back-to-back runs all 141/0.
 - `test_capture.sh` 41/0; `test_update_roadmap.sh` 15/0; `test_script_tests_hook_scope.sh` 104/0.
 - shellcheck (workspace .venv, `--severity=warning`) clean on the 7 changed .sh files and on the skill's step 1, 2 and 4 blocks extracted to files; `check_design_anchors.sh` rc 0.
-- `run_script_tests.sh` (all 33 suites) passed in the pre-commit hook on all ten commits and in three direct runs. One earlier hook run, on the first attempt at the interruption commit (same content as the one that then passed), failed; its output was filtered away and the failing suite is not known. In case it was the new liveness checks, they now treat a zombie as gone (`54f9190`); it did not recur in 12 later full runs.
+- `run_script_tests.sh` (all 33 suites) passed in the pre-commit hook on the nine commits that touch scripts or the skill (the design.md commit does not trigger it) and in three direct runs. One hook run, on the first attempt at the interruption commit (same content as the retry that passed), failed; its output was filtered away and the failing suite is not known. In case it was the new liveness checks, they now treat a zombie as gone (`54f9190`); it did not recur in the 7 full runs after it (4 in the hook, 3 direct).
 
 ### Notes
 - The run-record line gains fields: `<when>`, `workspace`, `<summary>`, `inbox <n>`, then the last inbox line seen (four fields). Machine-local and new on this branch, so no older records exist to migrate.
