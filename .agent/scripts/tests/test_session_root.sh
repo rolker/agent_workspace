@@ -37,7 +37,10 @@ SR="$WSC/.agent/scripts/session_root.sh"
 R="$SANDBOX/roots"
 mkdir -p "$WSC/projects/p11/sub" "$WSC/docs" "$WSC/worktrees/workspace/issue-workspace-1" "$WSC/worktrees/project/wtroot/issue-wtroot-1"
 mkdir -p "$R/gitroot/src/deeper" "$R/gitroot/worktrees/issue-gitroot-1" "$R/wtroot" \
-    "$R/par/inst1/sub" "$R/par/inst2" "$R/other" "$R/unreg"
+    "$R/par/inst1/sub" "$R/par/inst2" "$R/other" "$R/unreg" \
+    "$R/foo" "$R/foobar" "$R/trail/sub" "$R/x" "$R/dots/sub" "$R/real/sub" \
+    "$WSC/worktrees/project/gitroot/issue-gitroot-2"
+ln -s "$R/real" "$SANDBOX/link-to-real"
 g -C "$R/gitroot" init -q
 mkdir -p "$R/gitroot/src/pkg" && g -C "$R/gitroot/src/pkg" init -q   # nested package repo
 REGFILE="$WSC/.agent/projects.local"
@@ -51,6 +54,10 @@ inst1    single_project  $R/par/inst1  parent=par
 inst2    single_project  $R/par/inst2  parent=par
 par      project         $R/par     default_instance=inst1
 other    single_project  $R/other
+foo      single_project  $R/foo
+trail    single_project  $R/trail/
+dots     single_project  $R/x/../dots
+linked   single_project  $SANDBOX/link-to-real
 REG
 
 # root <label> <dir> <root> <type> <project>
@@ -90,6 +97,23 @@ root "a worktree in a root's worktrees= directory inside the workspace tree: tha
 root "an instance inside its parent: the instance" "$R/par/inst1/sub" "$R/par/inst1" project inst1
 root "a parent root itself" "$R/par" "$R/par" project par
 root "a symlinked path resolves to the physical root" "$(ln -s "$R/gitroot" "$SANDBOX/gr-link" && echo "$SANDBOX/gr-link/src")" "$R/gitroot" project gitroot
+echo "== path edge cases =="
+check "a registered root's name is no prefix match: /r/foobar is not under /r/foo" "$R/foobar" refuse \
+    "is neither in the workspace checkout ($WSC) nor under a registered project root" --
+check "...so a session there cannot take foo's issue either" "$R/foobar" refuse \
+    "is neither in the workspace checkout" -- --type project --project foo
+root "--dir with a trailing slash" "$R/gitroot/" "$R/gitroot" project gitroot
+root "--dir with '..' in it" "$R/gitroot/src/../worktrees/issue-gitroot-1" "$R/gitroot" project gitroot
+root "a registry path with a trailing slash" "$R/trail/sub" "$R/trail" project trail
+root "a registry path with '..' in it" "$R/dots/sub" "$R/dots" project dots
+root "a registered root given as a symlink, entered by its real path" "$R/real/sub" "$R/real" project linked
+root "a registered root given as a symlink, entered through the link" "$SANDBOX/link-to-real/sub" "$R/real" project linked
+check "a symlinked root's own issue passes from its real path" "$R/real" ok "" -- --type project --project linked
+root "a worktree in the workspace's worktrees/project/<registered-name>/ belongs to the workspace" \
+    "$WSC/worktrees/project/gitroot/issue-gitroot-2" "$WSC" workspace ""
+check "...so that registered project's issue is refused there, naming its root" \
+    "$WSC/worktrees/project/gitroot/issue-gitroot-2" refuse "start a session in $R/gitroot" -- --type project --project gitroot
+
 check "an unregistered directory is no session's root" "$R/unreg" refuse \
     "is neither in the workspace checkout ($WSC) nor under a registered project root" --
 check "a path that is not a directory" "$R/no-such" refuse "is not a directory" --
