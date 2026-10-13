@@ -2666,16 +2666,16 @@ HIDDEN APPROACH BODY'
 # tmux is gone: every agent runs in its own background job, all in
 # parallel, bounded by AGENT_TIMEOUT (non-gemini).
 #
-# Since #313 the codex/claude/copilot arms no longer exec their CLI
+# Since #313 the codex/claude arms no longer exec their CLI
 # directly: they exec _cli_review.sh, which owns the findings file and
 # validates the result. The mocks below therefore reproduce each CLI's
 # real output shape rather than "write the review to stdout" — a generic
 # mock would pass a gate that the real CLIs would not:
 #   * codex writes its transcript (banner, echoed prompt, chatter) to
 #     stdout and only the final message to the `-o` file;
-#   * claude prints one JSON result object;
-#   * copilot reads the prompt from stdin (`-p ""` + `-s`) and prints
-#     only the response.
+#   * claude prints one JSON result object.
+# (The Copilot CLI reviewer was dropped in #344; a stand-in `copilot`
+# script appears only in the rejection tests, to prove it is never run.)
 #
 # Shared knobs (env, per agent, NAME upper-cased):
 #   MOCK_<NAME>_SLEEP=<s>    sleep before answering
@@ -2800,28 +2800,6 @@ exit "${MOCK_CLAUDE_EXIT:-0}"
 CLAUDE_EOF
             } > "${MOCK_BIN}/claude"
             ;;
-        copilot)
-            {
-                echo '#!/usr/bin/env bash'
-                echo "$MOCK_PREAMBLE"
-                cat << 'COPILOT_EOF'
-# copilot -p "" -s --available-tools='' ...: prompt on stdin (#212), response
-# only (no stats footer) on stdout. A prompt smuggled onto argv would
-# show up in <name>.argv and fail the stdin-contract test.
-[[ -n "${MOCK_COPILOT_SLEEP:-}" ]] && mock_sleep "${MOCK_COPILOT_SLEEP}"
-[[ -n "${MOCK_COPILOT_STDERR:-}" ]] && echo "${MOCK_COPILOT_STDERR}" >&2
-if [[ -n "${MOCK_COPILOT_EMPTY:-}" ]]; then
-    :
-elif [[ -n "${MOCK_COPILOT_ERRMARK:-}" ]]; then
-    printf '%s\n' "${MOCK_COPILOT_ERRMARK}"
-else
-    printf '### Findings\nreviewed by copilot\n'
-fi
-[[ -n "${MOCK_TIMES_DIR:-}" ]] && date +%s.%N > "${MOCK_TIMES_DIR}/copilot.end"
-exit "${MOCK_COPILOT_EXIT:-0}"
-COPILOT_EOF
-            } > "${MOCK_BIN}/copilot"
-            ;;
         *)
             echo "make_mock_agent: unknown agent '${name}'" >&2
             return 1
@@ -2865,30 +2843,28 @@ test_sync_flag_rejected() {
 test_agents_all_succeed() {
     echo "TEST: --agents runs every agent, prints one triplet each, exits 0 (#206)"
     setup
-    make_mock_agent codex; make_mock_agent copilot
+    make_mock_agent codex; make_mock_agent claude
     local argv="${TMPDIR_BASE}/argv"; mkdir -p "$argv"
     local out="${TMPDIR_BASE}/out.txt" exit_code
-    exit_code=$(MOCK_ARGV_DIR="$argv" run_agents "$out" "gemini,codex,copilot")
+    exit_code=$(MOCK_ARGV_DIR="$argv" run_agents "$out" "gemini,codex,claude")
     assert_exit_code "all-succeed exits 0" "0" "$exit_code"
     # Per-agent invocation contract, now owned by _cli_review.sh (#313):
-    # codex takes `exec` plus a final-message file, copilot takes an empty
-    # -p with -s and the least-privilege tool flags. Both read the
-    # prompt from stdin, so
-    # neither may carry the prompt in argv (#212, #274).
-    local codex_argv copilot_argv
+    # codex takes `exec` plus a final-message file, claude takes -p with
+    # a JSON result and no permission prompts. Both read the prompt from
+    # stdin, so neither may carry the prompt in argv (#212, #274).
+    local codex_argv claude_argv
     codex_argv=$(cat "$argv/codex.argv")
-    copilot_argv=$(cat "$argv/copilot.argv")
+    claude_argv=$(cat "$argv/claude.argv")
     # Exact leading argv: fails if -s/-a are missing, reordered, or placed
     # after `exec` (where codex-cli 0.156.1 rejects them).
     assert_eq "codex invoked as 'codex -s read-only -a never exec'" \
         $'-s\nread-only\n-a\nnever\nexec' "$(head -n 5 "$argv/codex.argv")"
     assert_contains "codex asked for a final-message file" "^-o$" "$codex_argv"
-    assert_eq "copilot argv is the least-privilege print form" \
-        "$(printf -- '-p\n\n-s\n--available-tools=\n--disable-builtin-mcps\n--no-ask-user')" \
-        "$copilot_argv"
-    assert_not_contains "copilot is never given --allow-all-tools" "allow-all-tools" "$copilot_argv"
+    assert_eq "claude argv is the JSON print form with no permission prompts" \
+        "$(printf -- '-p\n--output-format\njson\n--permission-prompts\nnone')" \
+        "$claude_argv"
     assert_not_contains "codex prompt is not on argv" "Adversarial Code Review" "$codex_argv"
-    assert_not_contains "copilot prompt is not on argv" "Adversarial Code Review" "$copilot_argv"
+    assert_not_contains "claude prompt is not on argv" "Adversarial Code Review" "$claude_argv"
     local stdout; stdout=$(cat "$out")
     assert_contains "MODE=parallel-sync printed once" "^MODE=parallel-sync$" "$stdout"
     assert_eq "exactly one MODE line" "1" "$(grep -c '^MODE=' "$out")"
@@ -2908,11 +2884,12 @@ test_agents_all_succeed() {
     # Triplet order follows the --agents order; EXIT immediately follows FINDINGS_FILE.
     local block; block=$(grep -E '^(AGENT|FINDINGS_FILE|EXIT)=' "$out" | tr '\n' ' ')
     assert_contains "triplets in selection order" \
-        "AGENT=gemini FINDINGS_FILE=[^ ]*review-gemini-findings.md EXIT=0 AGENT=codex FINDINGS_FILE=[^ ]*review-codex-findings.md EXIT=0 AGENT=copilot" "$block"
+        "AGENT=gemini FINDINGS_FILE=[^ ]*review-gemini-findings.md EXIT=0 AGENT=codex FINDINGS_FILE=[^ ]*review-codex-findings.md EXIT=0 AGENT=claude" "$block"
     assert_contains "gemini findings complete" "Review complete" "$(findings_of gemini)"
     assert_contains "codex findings hold its output" "reviewed by codex" "$(findings_of codex)"
     assert_contains "codex findings complete" "Review complete" "$(findings_of codex)"
-    assert_contains "copilot findings complete" "Review complete" "$(findings_of copilot)"
+    assert_contains "claude findings hold its .result" "reviewed by claude" "$(findings_of claude)"
+    assert_contains "claude findings complete" "Review complete" "$(findings_of claude)"
     assert_contains "each agent got its own prompt" "Adversarial Code Review" \
         "$(cat "${MOCK_REPO}/.agent/work-plans/issue-42/review-codex-prompt.md")"
     teardown
@@ -2921,9 +2898,9 @@ test_agents_all_succeed() {
 test_agents_partial_failure() {
     echo "TEST: one failing agent does not disturb the others; exit 3 with per-agent EXIT= (#206)"
     setup
-    make_mock_agent codex; make_mock_agent copilot
+    make_mock_agent codex; make_mock_agent claude
     local out="${TMPDIR_BASE}/out.txt" exit_code
-    exit_code=$(MOCK_CODEX_EXIT=7 run_agents "$out" "gemini,codex,copilot")
+    exit_code=$(MOCK_CODEX_EXIT=7 run_agents "$out" "gemini,codex,claude")
     assert_exit_code "partial failure exits 3" "3" "$exit_code"
     # EXIT= is the job's status. Since #313 that is _cli_review.sh's own
     # exit 1 ("no usable result"); the CLI's status is in the findings
@@ -2934,22 +2911,22 @@ test_agents_partial_failure() {
     assert_contains "codex findings marked failed" "Review failed" "$(findings_of codex)"
     assert_not_contains "codex findings not marked complete" "Review complete" "$(findings_of codex)"
     assert_contains "gemini findings still complete" "Review complete" "$(findings_of gemini)"
-    assert_contains "copilot findings still complete" "Review complete" "$(findings_of copilot)"
+    assert_contains "claude findings still complete" "Review complete" "$(findings_of claude)"
     teardown
 }
 
 test_agents_timeout() {
     echo "TEST: a hung agent is cut off by AGENT_TIMEOUT; the fast agent's marker is not delayed (#206)"
     setup
-    make_mock_agent codex; make_mock_agent copilot
+    make_mock_agent codex; make_mock_agent claude
     local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
     local out="${TMPDIR_BASE}/out.txt" exit_code
-    exit_code=$(AGENT_TIMEOUT=1 MOCK_CODEX_SLEEP=6 MOCK_TIMES_DIR="$times" run_agents "$out" "codex,copilot")
+    exit_code=$(AGENT_TIMEOUT=1 MOCK_CODEX_SLEEP=6 MOCK_TIMES_DIR="$times" run_agents "$out" "codex,claude")
     assert_exit_code "timeout run exits 3" "3" "$exit_code"
     assert_contains "codex EXIT=124 (timeout)" "^EXIT=124$" "$(cat "$out")"
     assert_contains "codex findings name the timeout" "timed out \(AGENT_TIMEOUT=1\)" "$(findings_of codex)"
     assert_contains "codex findings marked failed" "Review failed" "$(findings_of codex)"
-    assert_contains "copilot findings complete" "Review complete" "$(findings_of copilot)"
+    assert_contains "claude findings complete" "Review complete" "$(findings_of claude)"
     # codex must have been killed: its mock only writes .end when it ran
     # to completion, which AGENT_TIMEOUT=1 forbids.
     if [[ -f "$times/codex.end" ]]; then
@@ -2963,11 +2940,14 @@ test_agents_timeout() {
 test_agents_concurrency() {
     echo "TEST: agents run concurrently, not one after another (#206)"
     setup
-    make_mock_agent codex; make_mock_agent copilot; make_mock_agent claude
+    # Two agents: the agy mock writes no .start file, so gemini cannot
+    # join the overlap check, and codex and claude are the only CLI
+    # reviewers since #344.
+    make_mock_agent codex; make_mock_agent claude
     local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
     local out="${TMPDIR_BASE}/out.txt" exit_code
-    exit_code=$(MOCK_CODEX_SLEEP=2 MOCK_COPILOT_SLEEP=2 MOCK_CLAUDE_SLEEP=2 MOCK_TIMES_DIR="$times" \
-        run_agents "$out" "codex,copilot,claude")
+    exit_code=$(MOCK_CODEX_SLEEP=2 MOCK_CLAUDE_SLEEP=2 MOCK_TIMES_DIR="$times" \
+        run_agents "$out" "codex,claude")
     assert_exit_code "concurrent run exits 0" "0" "$exit_code"
     # Interval overlap is the whole assertion: every agent started before
     # the first one ended, which sequential dispatch cannot produce. A
@@ -2976,11 +2956,11 @@ test_agents_concurrency() {
     # actually regressed.
     local first_end; first_end=$(sort -n "$times"/*.end | head -n 1)
     local overlap=true a
-    for a in codex copilot claude; do
+    for a in codex claude; do
         if ! awk -v s="$(cat "$times/$a.start")" -v e="$first_end" 'BEGIN{exit !(s < e)}'; then overlap=false; fi
     done
     if [[ "$overlap" == true ]]; then
-        echo "  PASS: all three agents started before the first finished (intervals overlap)"; PASS=$((PASS + 1))
+        echo "  PASS: both agents started before the first finished (intervals overlap)"; PASS=$((PASS + 1))
     else
         echo "  FAIL: agent intervals did not overlap"; FAIL=$((FAIL + 1))
     fi
@@ -3150,14 +3130,14 @@ test_agents_missing_binary() {
     echo "TEST: a missing CLI fails only that agent (#206)"
     setup
     make_mock_agent codex
-    # copilot deliberately not mocked and hidden from PATH fallbacks.
+    # claude deliberately not mocked and hidden from PATH fallbacks.
     local out="${TMPDIR_BASE}/out.txt" exit_code
-    exit_code=$(HOME="${TMPDIR_BASE}/nohome" RUN_AGENTS_PATH="$(HIDDEN_CLI_PATH)" run_agents "$out" "codex,copilot")
+    exit_code=$(HOME="${TMPDIR_BASE}/nohome" RUN_AGENTS_PATH="$(HIDDEN_CLI_PATH)" run_agents "$out" "codex,claude")
     assert_exit_code "missing-binary run exits 3" "3" "$exit_code"
     assert_contains "codex EXIT=0" "^EXIT=0$" "$(cat "$out")"
-    assert_contains "copilot EXIT=1" "^EXIT=1$" "$(cat "$out")"
-    assert_contains "copilot findings name the missing CLI" "copilot CLI not found" "$(findings_of copilot)"
-    assert_contains "copilot findings marked failed" "Review failed" "$(findings_of copilot)"
+    assert_contains "claude EXIT=1" "^EXIT=1$" "$(cat "$out")"
+    assert_contains "claude findings name the missing CLI" "claude CLI not found" "$(findings_of claude)"
+    assert_contains "claude findings marked failed" "Review failed" "$(findings_of claude)"
     assert_contains "codex findings complete" "Review complete" "$(findings_of codex)"
     teardown
 }
@@ -3166,7 +3146,7 @@ test_agents_none_usable() {
     echo "TEST: no usable CLI at all is a dependency error, exit 1 (#206)"
     setup
     local out="${TMPDIR_BASE}/out.txt" exit_code
-    exit_code=$(HOME="${TMPDIR_BASE}/nohome" RUN_AGENTS_PATH="$(HIDDEN_CLI_PATH)" run_agents "$out" "codex,copilot")
+    exit_code=$(HOME="${TMPDIR_BASE}/nohome" RUN_AGENTS_PATH="$(HIDDEN_CLI_PATH)" run_agents "$out" "codex,claude")
     assert_exit_code "none usable exits 1" "1" "$exit_code"
     assert_not_contains "no triplets printed" "^AGENT=" "$(cat "$out")"
     teardown
@@ -3233,20 +3213,20 @@ GH_EOF
 test_agents_interrupt_kills_jobs() {
     echo "TEST: terminating the script stops the running agents promptly (#206)"
     setup
-    make_mock_agent codex; make_mock_agent copilot
+    make_mock_agent codex; make_mock_agent claude
     local times="${TMPDIR_BASE}/times"; mkdir -p "$times"
     cd "${MOCK_REPO}"
     # SIGTERM, not SIGINT: bash ignores INT in background children of a
     # non-interactive shell, so a test-sent INT would never arrive. TERM
     # is what timeouts and callers send.
     local t0; t0=$(date +%s)
-    MOCK_CODEX_SLEEP=30 MOCK_COPILOT_SLEEP=30 MOCK_TIMES_DIR="$times" \
+    MOCK_CODEX_SLEEP=30 MOCK_CLAUDE_SLEEP=30 MOCK_TIMES_DIR="$times" \
         PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
-        --pr 99 --agents codex,copilot < /dev/null > /dev/null 2>&1 &
+        --pr 99 --agents codex,claude < /dev/null > /dev/null 2>&1 &
     local script_pid=$!
     local i
     for ((i = 0; i < 50; i++)); do
-        [[ -f "$times/codex.pid" && -f "$times/copilot.pid" ]] && break
+        [[ -f "$times/codex.pid" && -f "$times/claude.pid" ]] && break
         sleep 0.1
     done
     kill -TERM "$script_pid" 2>/dev/null || true
@@ -3260,7 +3240,7 @@ test_agents_interrupt_kills_jobs() {
     fi
     sleep 0.3
     local alive=0 p
-    for p in codex copilot; do
+    for p in codex claude; do
         if [[ -f "$times/$p.pid" ]] && kill -0 "$(cat "$times/$p.pid")" 2>/dev/null; then
             alive=$((alive + 1))
             kill "$(cat "$times/$p.pid")" 2>/dev/null || true
@@ -3291,13 +3271,13 @@ test_single_agent_output_unchanged() {
 
 # ---- _cli_review.sh result validation (#313, folding in #212) ----
 #
-# The codex/claude/copilot arms used to be gated on the CLI's exit code
-# alone, so an empty response, a quota error printed as output, or (for
-# codex) the raw stdout transcript all landed in the findings file as if
-# they were a review. Each case below is one of those failure modes.
+# The CLI arms used to be gated on the CLI's exit code alone, so an empty
+# response, a quota error printed as output, or (for codex) the raw stdout
+# transcript all landed in the findings file as if they were a review.
+# Each case below is one of those failure modes.
 
 CLI_HELPER_UNDER_TEST="${SCRIPT_DIR}/../_cli_review.sh"
-CLI_AGENTS=(codex claude copilot)
+CLI_AGENTS=(codex claude)
 
 # Invoke _cli_review.sh directly (no cross_model_review.sh around it).
 # Echoes the exit code; the findings file is the caller's to inspect.
@@ -3334,8 +3314,8 @@ test_cli_prompt_reaches_every_cli_on_stdin() {
         make_mock_agent "$agent"
     done
     out="${TMPDIR_BASE}/out.txt"
-    exit_code=$(MOCK_STDIN_DIR="$stdin_dir" run_agents "$out" "codex,claude,copilot")
-    assert_exit_code "all three exit 0" "0" "$exit_code"
+    exit_code=$(MOCK_STDIN_DIR="$stdin_dir" run_agents "$out" "codex,claude")
+    assert_exit_code "both exit 0" "0" "$exit_code"
     for agent in "${CLI_AGENTS[@]}"; do
         assert_contains "${agent} read the whole prompt from stdin" "Adversarial Code Review" \
             "$(cat "${stdin_dir}/${agent}.stdin" 2>/dev/null || echo "")"
@@ -3462,7 +3442,7 @@ test_cli_codex_transcript_marker_does_not_fail_the_review() {
 test_cli_review_text_is_never_reclassified() {
     echo "TEST: no review is discarded for how its text reads (#313 round 2, gemini must-fix 1-2)"
     setup
-    make_mock_agent copilot
+    make_mock_agent codex
     local out="${TMPDIR_BASE}/out.txt" ec
 
     # A review that OPENS like an error: an adversarial review of auth
@@ -3473,26 +3453,26 @@ test_cli_review_text_is_never_reclassified() {
 The retry path ignores the rate limit header, so an unauthorized
 response is retried forever; an overloaded backend then sees the same
 request repeatedly. Recommend honouring Retry-After."
-    ec=$(MOCK_COPILOT_ERRMARK="$error_headed_review" run_agents "$out" "copilot")
+    ec=$(MOCK_CODEX_ERRMARK="$error_headed_review" run_agents "$out" "codex")
     assert_exit_code "a review headed 'Error Handling' is accepted" "0" "$ec"
-    assert_contains "the review body is kept" "ignores the rate limit header" "$(findings_of copilot)"
+    assert_contains "the review body is kept" "ignores the rate limit header" "$(findings_of codex)"
 
     # Concise, list-formatted findings whose every line names a marker.
     local concise_review="- The retry path ignores the rate limit header.
 - Unauthorized responses are retried forever."
-    ec=$(MOCK_COPILOT_ERRMARK="$concise_review" run_agents "$out" "copilot")
+    ec=$(MOCK_CODEX_ERRMARK="$concise_review" run_agents "$out" "codex")
     assert_exit_code "concise list findings are accepted" "0" "$ec"
-    assert_contains "the findings are kept verbatim" "retry path ignores the rate limit" "$(findings_of copilot)"
+    assert_contains "the findings are kept verbatim" "retry path ignores the rate limit" "$(findings_of codex)"
 
     # A one-line review that happens to name a marker.
-    ec=$(MOCK_COPILOT_ERRMARK="No blocking issues; the rate limit handling is correct." \
-        run_agents "$out" "copilot")
+    ec=$(MOCK_CODEX_ERRMARK="No blocking issues; the rate limit handling is correct." \
+        run_agents "$out" "codex")
     assert_exit_code "a one-line clean review is accepted" "0" "$ec"
 
     # An EMPTY result still fails — that is machine state, not text.
-    ec=$(MOCK_COPILOT_EMPTY=1 run_agents "$out" "copilot")
+    ec=$(MOCK_CODEX_EMPTY=1 run_agents "$out" "codex")
     assert_exit_code "an empty result still fails" "3" "$ec"
-    assert_contains "reason names the empty response" "empty response" "$(findings_of copilot)"
+    assert_contains "reason names the empty response" "empty response" "$(findings_of codex)"
     teardown
 }
 
@@ -4107,33 +4087,10 @@ test_cli_claude_json_contract() {
     teardown
 }
 
-test_copilot_stdin_contract() {
-    echo "TEST: copilot's prompt goes over stdin, never argv (#212, #274)"
-    setup
-    make_mock_agent copilot
-    local argv="${TMPDIR_BASE}/argv" stdin="${TMPDIR_BASE}/stdin"
-    mkdir -p "$argv" "$stdin"
-    local out="${TMPDIR_BASE}/out.txt" ec
-    ec=$(MOCK_ARGV_DIR="$argv" MOCK_STDIN_DIR="$stdin" run_agents "$out" "copilot")
-    assert_exit_code "copilot run exits 0" "0" "$ec"
-    local argv_text stdin_text
-    argv_text=$(cat "$argv/copilot.argv")
-    stdin_text=$(cat "$stdin/copilot.stdin")
-    assert_not_contains "prompt content is NOT on argv" "Adversarial Code Review" "$argv_text"
-    assert_contains "argv is the empty-prompt print form" "^-p$" "$argv_text"
-    assert_contains "argv carries -s (response only)" "^-s$" "$argv_text"
-    assert_contains "argv carries the empty tool set" "^--available-tools=$" "$argv_text"
-    assert_contains "argv disables the built-in MCPs" "^--disable-builtin-mcps$" "$argv_text"
-    assert_contains "argv disables the ask_user tool" "^--no-ask-user$" "$argv_text"
-    assert_not_contains "argv never carries --allow-all-tools" "allow-all-tools" "$argv_text"
-    assert_contains "the prompt arrived on stdin" "Adversarial Code Review" "$stdin_text"
-    teardown
-}
-
 test_cli_no_prompt_size_ceiling() {
     echo "TEST: a >128 KiB prompt is reviewed, not rejected — stdin has no argv limit (#313, #212)"
     setup
-    make_mock_agent copilot; make_mock_agent codex; make_mock_agent claude
+    make_mock_agent codex; make_mock_agent claude
     mkdir -p "${TMPDIR_BASE}/helper-tmp"
     # 128 KiB + 1: past MAX_ARG_STRLEN, where an argv form would
     # exec-fail. On the stdin path it must simply work — a size guard
@@ -4216,23 +4173,23 @@ test_cli_findings_truncated_and_usage_errors() {
 test_cli_no_temp_leak() {
     echo "TEST: _cli_review.sh leaves no temp files on success or failure (#313)"
     setup
-    make_mock_agent codex; make_mock_agent claude; make_mock_agent copilot
+    make_mock_agent codex; make_mock_agent claude
     local leak_dir="${TMPDIR_BASE}/leakcheck"; mkdir -p "$leak_dir"
     local out="${TMPDIR_BASE}/out.txt"
     cd "${MOCK_REPO}"
     TMPDIR="$leak_dir" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
-        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex,claude,copilot \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex,claude \
         < /dev/null > "$out" 2>/dev/null || true
-    MOCK_CODEX_EMPTY=1 MOCK_CLAUDE_EXIT=4 MOCK_COPILOT_ERRMARK="Error: rate limit reached" \
+    MOCK_CODEX_EMPTY=1 MOCK_CLAUDE_EXIT=4 \
         TMPDIR="$leak_dir" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
-        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex,claude,copilot \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex,claude \
         < /dev/null > "$out" 2>/dev/null || true
-    assert_eq "no temp files left after success + three failure modes" "" "$(ls -A "$leak_dir")"
+    assert_eq "no temp files left after success + two failure modes" "" "$(ls -A "$leak_dir")"
     teardown
 }
 
 test_cli_helper_missing_is_unavailable() {
-    echo "TEST: a missing _cli_review.sh makes only codex/claude/copilot unavailable (#313)"
+    echo "TEST: a missing _cli_review.sh makes only codex/claude unavailable (#313)"
     setup
     make_mock_agent codex
     # A copy of the scripts dir with _cli_review.sh removed: the precheck
@@ -4251,6 +4208,122 @@ test_cli_helper_missing_is_unavailable() {
     assert_contains "codex findings name the missing helper" "_cli_review.sh is missing or not executable" \
         "$(findings_of codex)"
     assert_contains "gemini still completed" "Review complete" "$(findings_of gemini)"
+    teardown
+}
+
+# ---- The Copilot CLI is not a reviewer (#344) ----
+#
+# Owner decision 2026-10-13: the Copilot CLI runs the same models as the
+# other reviewers, so it was dropped; only Copilot's hosted PR review
+# remains (a triage source, not this script). `copilot` is now an
+# unknown agent at both entry points and in the helper. Each test puts a
+# stand-in `copilot` script on PATH that only leaves a marker, so "never
+# invoked" is the marker's absence rather than a vacuous check.
+
+SUPPORTED_AGENTS_LINE='^Supported agents: claude, codex, gemini$'
+
+# Stand-in copilot CLI: touches $1 if anything runs it.
+make_copilot_marker_stub() {
+    local marker="$1"
+    cat > "${MOCK_BIN}/copilot" << STUB_EOF
+#!/usr/bin/env bash
+touch "${marker}"
+exit 0
+STUB_EOF
+    chmod +x "${MOCK_BIN}/copilot"
+}
+
+assert_copilot_never_ran() {
+    local marker="$1"
+    if [[ -e "$marker" ]]; then
+        echo "  FAIL: the copilot stand-in was invoked"; FAIL=$((FAIL + 1))
+    else
+        echo "  PASS: the copilot stand-in was never invoked"; PASS=$((PASS + 1))
+    fi
+}
+
+test_copilot_agents_rejected() {
+    echo "TEST: --agents copilot is an unknown agent, exit 2, sorted supported list (#344)"
+    setup
+    local marker="${TMPDIR_BASE}/copilot-ran"
+    make_copilot_marker_stub "$marker"
+    cd "${MOCK_REPO}"
+    local ec=0 stderr
+    stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agents copilot 2>&1 >/dev/null) || ec=$?
+    assert_exit_code "--agents copilot exits 2" "2" "$ec"
+    assert_contains "copilot named as an unknown agent" "Unknown agent 'copilot' in --agents" "$stderr"
+    assert_contains "supported agents listed sorted, comma-joined" "$SUPPORTED_AGENTS_LINE" "$stderr"
+    assert_copilot_never_ran "$marker"
+    assert_eq "no copilot findings file written" "absent" \
+        "$([[ -e "${MOCK_REPO}/.agent/work-plans/issue-42/review-copilot-findings.md" ]] && echo present || echo absent)"
+    teardown
+}
+
+test_copilot_in_agent_list_rejects_whole_run() {
+    echo "TEST: --agents codex,copilot exits 2 before any agent runs (#344)"
+    setup
+    make_mock_agent codex
+    local marker="${TMPDIR_BASE}/copilot-ran"
+    make_copilot_marker_stub "$marker"
+    local times="${TMPDIR_BASE}/times" argv="${TMPDIR_BASE}/argv"
+    mkdir -p "$times" "$argv"
+    cd "${MOCK_REPO}"
+    local ec=0 stderr
+    stderr=$(MOCK_TIMES_DIR="$times" MOCK_ARGV_DIR="$argv" PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 \
+        bash "${SCRIPT_UNDER_TEST}" --pr 99 --agents codex,copilot 2>&1 >/dev/null) || ec=$?
+    assert_exit_code "--agents codex,copilot exits 2" "2" "$ec"
+    assert_contains "copilot named as an unknown agent" "Unknown agent 'copilot' in --agents" "$stderr"
+    assert_copilot_never_ran "$marker"
+    assert_eq "codex never started either (no .start/.pid/.argv file)" "0" \
+        "$(find "$times" "$argv" -type f | wc -l | tr -d ' ')"
+    local f
+    for f in codex copilot; do
+        assert_eq "no ${f} findings file written" "absent" \
+            "$([[ -e "${MOCK_REPO}/.agent/work-plans/issue-42/review-${f}-findings.md" ]] && echo present || echo absent)"
+    done
+    teardown
+}
+
+test_copilot_single_agent_rejected() {
+    echo "TEST: --agent copilot is an unknown agent, exit 2, same sorted list (#344)"
+    setup
+    local marker="${TMPDIR_BASE}/copilot-ran"
+    make_copilot_marker_stub "$marker"
+    cd "${MOCK_REPO}"
+    local ec=0 stderr
+    stderr=$(PATH="${MOCK_BIN}:${PATH}" WORKTREE_ISSUE=42 bash "${SCRIPT_UNDER_TEST}" \
+        --pr 99 --agent copilot 2>&1 >/dev/null) || ec=$?
+    assert_exit_code "--agent copilot exits 2" "2" "$ec"
+    assert_contains "copilot named as an unknown agent" "^ERROR: Unknown agent 'copilot'$" "$stderr"
+    assert_contains "supported agents listed sorted, comma-joined" "$SUPPORTED_AGENTS_LINE" "$stderr"
+    assert_copilot_never_ran "$marker"
+    assert_eq "no copilot findings file written" "absent" \
+        "$([[ -e "${MOCK_REPO}/.agent/work-plans/issue-42/review-copilot-findings.md" ]] && echo present || echo absent)"
+    teardown
+}
+
+test_cli_helper_rejects_copilot() {
+    echo "TEST: _cli_review.sh rejects copilot as an unsupported agent, reason in the findings file (#344)"
+    setup
+    local marker="${TMPDIR_BASE}/copilot-ran"
+    make_copilot_marker_stub "$marker"
+    mkdir -p "${TMPDIR_BASE}/helper-tmp"
+    local prompt="${TMPDIR_BASE}/prompt.md" findings="${TMPDIR_BASE}/findings.md"
+    echo "review this" > "$prompt"
+    echo "STALE FINDINGS FROM LAST RUN" > "$findings"
+    # run_cli_helper passes ${MOCK_BIN}/copilot, the stand-in, as <bin>.
+    local ec; ec=$(run_cli_helper copilot "$prompt" "$findings" 1800)
+    assert_exit_code "copilot is a usage error" "2" "$ec"
+    # The helper truncates the findings file first and usage_fail writes
+    # the reason into it, so the file exists and holds only the reason.
+    local content; content=$(cat "$findings")
+    assert_contains "reason names the unsupported agent" "unsupported agent 'copilot'" "$content"
+    assert_contains "reason names the agents the helper serves" \
+        "\(codex and claude run here; gemini runs through _agy_review.sh\)" "$content"
+    assert_not_contains "stale findings are gone" "STALE FINDINGS" "$content"
+    assert_copilot_never_ran "$marker"
+    assert_eq "no helper temp files left behind" "0" "$(ls -A "${TMPDIR_BASE}/helper-tmp" | wc -l)"
     teardown
 }
 
@@ -5565,12 +5638,15 @@ test_cli_helper_escalates_to_sigkill
 test_agy_helper_escalates_to_sigkill
 test_cli_timeout_kills_the_cli
 test_cli_claude_json_contract
-test_copilot_stdin_contract
 test_cli_no_prompt_size_ceiling
 test_cli_helper_forwards_term
 test_cli_findings_truncated_and_usage_errors
 test_cli_no_temp_leak
 test_cli_helper_missing_is_unavailable
+test_copilot_agents_rejected
+test_copilot_in_agent_list_rejects_whole_run
+test_copilot_single_agent_rejected
+test_cli_helper_rejects_copilot
 test_local_helpers_kill_the_cli_process_group
 test_signal_helpers_both_modes
 test_helpers_work_without_setsid
