@@ -48,7 +48,9 @@
 # backslash is special. A row with more than two cells is `unchecked`, with
 # every cell after the first shown in <check>. A checklist item (`- [ ]`,
 # `- [x]`) in the section prints a `format` row, `unchecked`, so the misuse
-# is visible (update_roadmap.sh would tick it on merge).
+# is visible (update_roadmap.sh would tick it on merge). So does a row
+# below the delimiter row with only empty cells, dashes or colons
+# (`|  |  |`, `| - | |`): item `(empty row in the Line table: <row>)`.
 #
 # Output: one TAB-separated row per item:
 #   <kind>  <item>  <result>  <check>  <date>
@@ -503,6 +505,7 @@ fence_char=""
 fence_len=0
 table=none      # none | line | deferral | other
 prev_table_line=false
+after_header=false   # the last table line was a header (the delimiter row is next)
 prev_para=false # the line before was paragraph text (a setext underline may follow)
 START_RE='^ {0,3}##[[:space:]]+Direction([[:space:]]+#+)?[[:space:]]*$'
 END_RE='^ {0,3}##?([[:space:]]|$)'
@@ -569,12 +572,23 @@ if [ "$ROADMAP_STATE" = found ]; then
                     esac
                 fi
                 prev_table_line=true
+                after_header=true
                 continue
             fi
             prev_table_line=true
-            [ "$table" = line ] || [ "$table" = deferral ] || continue
-            # Separator row.
-            [[ "$raw" =~ ^[[:space:]|:-]+$ ]] && continue
+            [ "$table" = line ] || [ "$table" = deferral ] || { after_header=false; continue; }
+            # The delimiter row is the one right under the header. Further
+            # down, a row of only empty cells, dashes and colons is a data
+            # row with nothing in it: shown as a format problem, not dropped.
+            if [[ "$raw" =~ ^[[:space:]|:-]+$ ]]; then
+                if [ "$after_header" = true ]; then
+                    after_header=false
+                else
+                    emit format "(empty row in the ${table^} table: $(trim "$raw"))" unchecked ""
+                fi
+                continue
+            fi
+            after_header=false
             split_row "$raw"
             item="${CELLS[0]:-}"
             cell="${CELLS[1]:-}"

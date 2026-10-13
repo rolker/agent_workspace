@@ -513,6 +513,31 @@ run_rm "$(direction \
 [[ "$(res Extra)" == unchecked && "$(row Extra | cut -f4)" == *stray* ]] \
     && pass "(pipes) a row with extra cells is unchecked and shows them" || fail "(pipes) extra '$(row Extra)'"
 
+echo "TEST: a data row with only empty cells or dashes prints a format row"
+body='## Direction
+
+| Line | Check |
+|:-----|------:|
+| Real | file-exists docs/notes.md |
+|  |  |
+| - | |
+|---|---|
+
+| Deferral | Revisit check |
+|---|---|
+| | - |
+'
+run_rm "$body"
+fmt="$(awk -F'\t' '$1 == "format" { print $2 "=" $3 }' <<< "$OUT")"
+[[ "$(res Real)" == true && "$(grep -c . <<< "$fmt")" -eq 4 \
+    && "$fmt" == *"(empty row in the Line table: |  |  |)=unchecked"* \
+    && "$fmt" == *"(empty row in the Line table: | - | |)=unchecked"* \
+    && "$fmt" == *"(empty row in the Line table: |---|---|)=unchecked"* \
+    && "$fmt" == *"(empty row in the Deferral table: | | - |)=unchecked"* ]] \
+    && pass "(empty row) each one shown as a format row; the delimiter rows are not" || fail "(empty row) '$OUT'"
+run_rm "$body" --summary
+[[ "$OUT" == "lines 1/1 deferrals 0/0" ]] && pass "(empty row) format rows are not counted as lines" || fail "(empty row) summary '$OUT'"
+
 # --- 8. path containment ---------------------------------------------------------------------
 echo "TEST: symlinks that leave the root are refused"
 printf 's3cret\n' > "$SB/secret.txt"

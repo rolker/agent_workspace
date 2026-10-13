@@ -386,7 +386,7 @@ Reviewers: Claude adversarial ran (3 must-fix, 6 suggestions; injection probes i
 - [ ] (suggestion) `inbox_new` is a count: deleting 3 lines and capturing 5 reports 2 new; `grep -c .` skips blank lines that `head` and `inbox_oldest` do not. Record the last line's date and text instead, or state the limit — `.claude/skills/sitrep/SKILL.md:115`
 - [ ] (suggestion) Interruption is correct but not prompt: SIGINT takes effect only when the running check ends (`timeout` puts it in its own process group), SIGTERM leaves the `timeout`/check running until `SITREP_TIMEOUT`, and the step-1 rows temp file stays behind when the whole block is killed. A trap that kills the current child would fix the first two — `.agent/scripts/sitrep_checks.sh:245`
 - [ ] (suggestion) The run-record append has no final-newline guard (a hand-edited record glues the next line, which step 2's `$2 == "workspace"` then skips) and a failed append prints no "not written" line — `.claude/skills/sitrep/SKILL.md:189`
-- [ ] (suggestion) A data row of only empty cells or dashes (`|  |  |`, `| - | |`) matches the separator regex and is dropped without a row — `.agent/scripts/sitrep_checks.sh:507`
+- [x] (suggestion) A data row of only empty cells or dashes (`|  |  |`, `| - | |`) matches the separator regex and is dropped without a row — `.agent/scripts/sitrep_checks.sh:507`
 - [ ] (suggestion) The change-log row records 729 lines; `docs/design.md` has 730 — `docs/design.md:677`
 
 ## Checkpoint
