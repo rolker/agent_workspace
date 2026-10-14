@@ -157,3 +157,60 @@ Owner: "The eight findings all seem like small details to me, so let's go with y
 **Plan**: `.agent/work-plans/issue-395/plan.md` at `e4390723`
 
 Revision after the Plan Review: all eight findings fixed in the plan text (--last contract and last_results hand-off, regressed is true to false/partial only, reword and duplicate-text behaviour, the four changing test assertions, design gaps-paragraph sentence, step table picked by header alone, content below the eight-line block, draft wording), open questions closed.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-14 13:06 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #395 — sit-rep: open with a composed orientation (repo, step in progress, proof, path), one source per slot; inbox to one line
+**Plan**: `.agent/work-plans/issue-395/plan.md` at `e4390723`
+**Branch**: `feature/issue-395`
+
+Second review, after the revision that answered the first Plan Review's eight findings (checkpoint: revise, all eight accepted). Each finding was checked against `sitrep_checks.sh`, `test_sitrep_checks.sh`, `SKILL.md`, `docs/roadmap.md` and `docs/design.md`, not against the plan's own claims.
+
+### Prior findings
+
+| # | Finding | State | Checked against |
+|---|---|---|---|
+| 1 | Existing test assertions break | Resolved in substance; the named list misses two (new finding 3) | Test file lines 133, 177, 356, 363, 366, 374-375; runner lines 658-668 (unreadable roadmap emits only the `section` row, so 177 holds) |
+| 2 | `--last` contract fails the first run | Resolved: `-` is an empty list, `--last` omitted for no record or an older one, step 2 prints `last_results=`, all three tested. One gap left (new finding 4) | SKILL.md step 2 (`cut -f4`, `cut -f5-`) |
+| 3 | Regressed group shows unchecked lines as failed | Resolved: true -> false/partial only, true -> unknown/unchecked is `not-yet` / `changed`, result word in every group, tested | SKILL.md rule "a line that could not be checked never reads as a line that failed" |
+| 4 | Reworded and duplicate lines | Resolved: stated (`new` + `gone`, "perhaps reworded"), occurrence-numbered keys, tested | — |
+| 5 | Design gaps paragraph goes stale | Resolved: the "net change only" sentence (design.md 110-112) is edited; OQ-3's reason is off (new finding 5) | design.md lines 105, 110-113, 651 |
+| 6 | Hard-coded section heading | Resolved: table picked by its `Step`/`Item` header anywhere outside fences; the Format bullet says so. `Step \| Item` heads exactly one roadmap table (line 138; Cutover is `Order \| Item`, line 157) | roadmap.md |
+| 7 | What sits outside the eight lines | Resolved: format rows, root-only caveat, flight, inbox, Suggested next below; roadmap-problem line 1 keeps the slug; unchecked deferrals stay `unchecked` | — |
+| 8 | Draft wording | Resolved: "first after We are, the second after Also in progress:"; ADR-0016 carries its title. The lowercase start is handled by a new transform (new finding 1) | roadmap.md line 18 (label `**Acceptance case.**` exists today) |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Five files, one PR; unchanged. |
+| Issue alignment | Needs work | Serves: "Easy to use ("Work is easy to come back to"), principle "Give the user what they need now", The long view ("Know whether it works"); design section `docs/design.md#documentation-layers`" — unchanged from the first review's check. The issue says the acceptance paragraph is "printed as written"; the new lowercasing rule changes owner text in a way that is wrong for some starts (finding 1). |
+| File targeting | Good | Unchanged; no reader of the step-table Item cells besides the new runner pass (`update_roadmap.sh` changes the Status column of a `#N` row). |
+| Consequences | Needs work | Two more test assertions break than the plan names (finding 3); one design-doc sentence becomes misleading (finding 5). |
+| Principle alignment | Needs work | Test what breaks: the lowercasing rule fails one of its own listed test cases (finding 1). |
+| ADR compliance | Good | ADR-0017: design doc in the same change. ADR-0016: workspace remote via `git -C "$WS_ROOT"`. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Approach / Test what breaks]** (Medium) The lowercasing rule contradicts its own test and mangles some starts. Item 1: "first letter lowercased when it is an ASCII capital not followed by a capital or digit". The test list says `I/O` is left alone, but under that rule `I` is followed by `/`, so it becomes `i/O`. The same rule turns a paragraph that starts with a proper noun or "I" ("GeoZui4D ...", "Roland ...", "I ...") into "geoZui4D", "roland", "i", in a slot the issue says is "printed as written". The Format bullet then tells the owner to start with a capital, which invites exactly those starts. It is sound for today's draft ("A run" -> "a run") and for acronyms. The plan's "as the owner decided" (line 238) is not in the record: the checkpoint says "The proof is" stands and that the owner edits the drafts later, not that the paragraph starts with a capital. Fix one way and test it: lowercase only a leading article from a closed list (`A`, `An`, `The`), stated in the Format bullet; or take finding 8's colon label (`**Acceptance case:** a ...`) and drop the transform. Correct the `I/O` test case to match.
+2. **[Approach]** (Low) The template `The proof is <proof row>.` appends a period to a paragraph that ends in one (the draft ends "...roots))."), giving "(Sessions and roots).."; the plan's own "Printed by the sit-rep as" shows one. Say the period is added only when the row does not end in `.`, and test it.
+3. **[Consequences]** (Low) Test lines 363 and 366 (prose-only and empty Direction section: `cut -f1-3 <<< "$OUT"` compared to one `section` row) also break: the roadmap was read, so `(no step table)` and `(no acceptance case paragraph)` rows follow. The catch-all sentence in item 9 covers them, but the Files to Change and Consequences rows list only 133, 356 and 374-375. Add 363 and 366.
+4. **[Approach]** (Low) A malformed `--last` makes `--path-from` exit 2 "with no rows", so the whole path (lines 5-8) is lost, not only the "since" sentence that item 5 words as "not comparable: <reason>". Say step 3 reruns `--path-from` without `--last` on exit 2, so the path still prints with since `none`, and test it.
+5. **[Consequences / ADR-0017]** (Low) design.md line 113, "the roadmap holds no status column", reads wrong once the sit-rep reads the step table's `in progress` status; narrow it to the Direction section. The design draft names "each Workspace Redesign step marked in progress" while the runner picks the table by header; say "the step table (header `Step | Item`)". The plan's reason for keeping OQ-3 ("not a measure beyond the acceptance case") answers a different phrase than OQ-3's ("a measure beyond counts of lines true"); per-line results are literally beyond counts, so either reword OQ-3's tail (for example "beyond which lines are true") or give the reason that fits its words.
+
+### Summary
+
+All eight first-round findings are fixed in the plan text; finding 1 is fixed in substance with two assertions left off its named list. The one transform the revision added, lowercasing the proof's first letter, is not sound as written: it fails its own `I/O` case and lowercases proper nouns. Each finding is a sentence-level plan edit; none changes the structure.
+
+### Recommended Actions
+
+- [ ] Replace the lowercasing rule with a closed-list article rule (A/An/The) or a colon label with no transform; fix the `I/O` test case; drop "as the owner decided" or cite where it was decided.
+- [ ] Add the period to "The proof is ..." only when the row does not already end in one; test it.
+- [ ] Add test lines 363 and 366 to the named list of assertions that change.
+- [ ] On `--path-from` exit 2 with `--last`, rerun without it so the path still prints; test it.
+- [ ] Narrow design.md "the roadmap holds no status column" to the Direction section; name the step table by its header in the design draft; fix the OQ-3 reasoning or wording.
