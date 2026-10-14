@@ -139,3 +139,13 @@ The plan carries every checkpoint resolution and the composed sentences read wel
 - [ ] Add the Documentation layers gaps-paragraph sentence ("net change only ...") to the design-doc edits; note OQ-3's wording either way.
 - [ ] Say where `format` rows, the "Workspace root only" caveat and the roadmap-problem line sit relative to the eight-line block, and that unchecked deferrals show `unchecked`.
 - [ ] Mention in the roadmap Format bullet that the step table is read under the `Priority: Workspace Redesign` heading (or let the roadmap name it); fix "after We are" wording for the second step.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-14 13:01 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Owner: "The eight findings all seem like small details to me, so let's go with your recommendation." Revise the plan with all eight Plan Review findings accepted. The plan's three open questions are closed as the review said: the inbox "now" bin feeds Suggested next only on an explicit inbox ask; the path shows names and result words without check text; "The proof is" stands. No owner edits to the two roadmap drafts at this point; the owner edits them when the implementation lands.
