@@ -53,15 +53,14 @@ them. All logic that can be wrong lives in `sitrep_checks.sh` and is tested.
      false  none  <date>`. When no such table exists:
      `step  (no step table)  unchecked  none  <date>`.
    - one `proof` row: the Direction section's paragraph that starts
-     `**Acceptance case.**`, label removed, lines joined with single spaces,
-     markdown link targets dropped (`[text](url)` becomes `text`) and the first
-     letter lowercased when it is an ASCII capital not followed by a capital
-     or digit (so `A run` reads `a run` after "The proof is", and an acronym
-     such as `ADR-0016` is left alone); those two are the only transforms.
+     `**Acceptance case.**`, label removed, lines joined with single spaces
+     and markdown link targets dropped (`[text](url)` becomes `text`, as the
+     paragraph reads rendered). Nothing else is changed: no letter's case,
+     no punctuation added or removed (checkpoint of 2026-10-14 14:46, N1).
      Result `true`; absent: `proof  (no acceptance case
-     paragraph)  unchecked  none  <date>`. The text after the label starts
-     with a capital in the roadmap ("**Acceptance case.** A `/run-issue`
-     run ..."), hence the lowercasing above.
+     paragraph)  unchecked  none  <date>`. The report prints it after a
+     colon label, `The proof: <paragraph as written>`, so a paragraph that
+     starts with a capital reads right there.
    - **When the roadmap was not read** (file missing or unreadable, exit 3
      path), no `step` or `proof` rows are emitted: the output stays the one
      `section` row, so the existing unreadable-roadmap test (line 177) holds.
@@ -99,7 +98,11 @@ them. All logic that can be wrong lives in `sitrep_checks.sh` and is tested.
      `[0-9]+\.[0-9]+:<result word>` pairs, comma-joined. Anything else exits 2
      with a message and no rows (a hand-edited record is never half-compared).
      "No record" and "older record without the field" have no field: the
-     caller omits `--last`, and every `since` is `none`.
+     caller omits `--last`, and every `since` is `none`. When `--path-from`
+     exits 2 on a malformed `--last`, the skill's step reruns it without
+     `--last` (N4), so the path still prints with every `since` `none` and
+     only the "since last time" sentence is lost (it reads `not comparable:
+     <the message>`).
    - **Reworded and duplicate lines.** A reworded Direction line has a new
      key, so it reads as one `new` line plus one `gone`; a line that was true,
      is reworded and is now false is therefore not reported as regressed, and
@@ -125,7 +128,9 @@ them. All logic that can be wrong lives in `sitrep_checks.sh` and is tested.
    inbox step and the in-flight step; in-flight, record and report become
    steps 4, 5, 6, and the tests' `run_step` numbers move with them). It runs
    `sitrep_checks.sh --path-from "$rows"`, adding `--last "<field>"` only when
-   step 2 printed one, and prints the `step` and `proof` rows from the saved
+   step 2 printed one (on exit 2 with `--last`, it prints the message as
+   `since=not comparable: <message>` and reruns without `--last`), and
+   prints the `step` and `proof` rows from the saved
    rows file (so every slot is a command's output), plus the workspace repo
    slug from `git -C "$WS_ROOT" remote get-url origin` through
    `extract_gh_slug` (the workspace's remote, not the cwd's; keeps the
@@ -142,7 +147,8 @@ them. All logic that can be wrong lives in `sitrep_checks.sh` and is tested.
      both) Zero or more than two: one line instead,
      `Roadmap problem: <the step row's text>; the orientation cannot say what
      we are doing until the step table is fixed.`
-   - Line 3: `The proof is <proof row>.` (printed as written).
+   - Line 3: `The proof: <proof row>` (printed as written; no period is
+     appended, since the paragraph carries its own, N2).
    - Line 4: since last time, in words from the `since` column: names each
      line that went true, regressed or changed (with its result word, so
      `true -> unknown` reads as could not be checked, not as failed), says
@@ -181,7 +187,7 @@ them. All logic that can be wrong lives in `sitrep_checks.sh` and is tested.
    leave the report (the path line replaces them).
 7. **Roadmap rewrites** (drafts below; the owner edits). Direction header
    paragraph: one bullet added to the Format list saying the Acceptance case
-   paragraph is printed after "The proof is", and that the sit-rep reads the
+   paragraph is printed after "The proof:", and that the sit-rep reads the
    table whose header is `| Step | Item | ... | Status |` (today the Workspace
    Redesign step table; the Cutover table is not it) and prints the Item cell
    of each row marked in progress after "We are" (the second after "Also in
@@ -196,17 +202,26 @@ them. All logic that can be wrong lives in `sitrep_checks.sh` and is tested.
    helped beyond that case" (line 110-112) is edited in the same change: the
    record now keeps each line's result, so a line going true while another
    goes false is visible; what stays true is that it says nothing about
-   whether a change helped beyond the acceptance case. OQ-3's row ("a measure
-   beyond counts of lines true", line 651) still reads right: per-line results
-   are the same measure at finer grain, not a measure beyond the acceptance
-   case, so its wording stays, checked in this change; one Change log row dated for the merge (same table as the others).
+   whether a change helped beyond the acceptance case. The next sentence,
+   "the roadmap holds no status column" (line 113), is untrue once the
+   sit-rep reads the step table's Status column; it is narrowed to the
+   Direction section, which still holds no status, and says the sit-rep
+   reads the step table's Status only to name what is in progress (N5).
+   OQ-3's row (line 651) asks for "a measure beyond counts of lines true";
+   per-line results are literally beyond counts, so that phrase would read
+   as answered when it is not. Its tail is reworded to "a measure beyond
+   which lines are true from run to run" (what is still open: whether a
+   change helped), checked against OQ-3's own words (N5). One Change log row
+   dated for the merge (same table as the others).
 9. **Tests** (`test_sitrep_checks.sh`, same file, same style): see the list
-   under "Test cases", including the four existing assertions that change
+   under "Test cases", including the existing assertions that change
    (line numbers in the current file): line 133 (kind set is exactly `line`)
    filters to `line` rows, since `step` and `proof` rows now follow; line 356
-   (no Direction section: exactly one row) and lines 374-375 (header-only
-   tables: exactly one row) count and compare only `section` rows, because
-   the roadmap was read and `step`/`proof` rows follow; line 177 (roadmap
+   (no Direction section: exactly one row), lines 363 and 366 (prose-only and
+   empty Direction section: the whole output compared to one `section` row,
+   N3) and lines 374-375 (header-only tables: exactly one row) count and
+   compare only `section` rows, because the roadmap was read and
+   `step`/`proof` rows follow; line 177 (roadmap
    unreadable: exactly one row) stays as is, since no `step`/`proof` rows are
    emitted when the roadmap was not read. Any other whole-output assertion
    the suite shows failing is changed the same way. Run `bash .agent/scripts/tests/test_sitrep_checks.sh`,
@@ -232,12 +247,11 @@ is not the acceptance case so the sit-rep does not print it):
 > that run is tracked: here. Step 5 of the Workspace Redesign table below
 > names the project.
 
-Printed by the sit-rep as: "The proof is a `/run-issue` run, started from a
+Printed by the sit-rep as: "The proof: A `/run-issue` run, started from a
 project root on the `gz4d` project, that gets through the merge checkpoint.
 Until one does, ADR-0016 (Session roots and the user tier) stays Provisional
-(Sessions and roots)." (The roadmap paragraph starts with a capital after its
-label, as the owner decided; the runner lowercases that one first letter,
-item 1.)
+(Sessions and roots)." (The paragraph as written, link targets dropped; no
+case change and no period added, N1 and N2.)
 
 Workspace Redesign step table, Item cells of the rows marked in progress only
 (Notes cells, statuses and every other row untouched):
@@ -256,8 +270,7 @@ the project's own root, through the user tier. Also in progress: porting the
 Format list, one added bullet (draft):
 
 > - The sit-rep opens by reading two things here aloud: the acceptance case
->   paragraph, after "The proof is" (write it as a sentence with a capital; the
->   first letter is lowercased there), and the Item cell of each row marked
+>   paragraph, after "The proof:", as written, and the Item cell of each row marked
 >   in progress in the table headed `| Step | Item | ... | Status |`, the
 >   first after "We are", the second after "Also in progress:". Write the
 >   cells as activity phrases so they read in both places. If the opening
@@ -267,7 +280,8 @@ Design doc, Documentation layers, Direction row, added paragraph (draft):
 
 > The sit-rep opens with an orientation composed on each run from named
 > sources, one per slot: the workspace's git remote (which repo), the Item
-> cell of each Workspace Redesign step marked in progress (what we are doing;
+> cell of each row marked in progress in the roadmap's step table (the table
+> headed `| Step | Item |`; what we are doing;
 > one or two such steps, otherwise the sit-rep reports a roadmap problem), the
 > Direction section's acceptance-case paragraph (the proof), and the Direction
 > lines with this run's results set against the last run record's (the path
@@ -289,7 +303,7 @@ Design doc, Documentation layers, Direction row, added paragraph (draft):
   `\|` in an Item cell; the Direction rows and the summary are unchanged by
   the step rows (existing tests stay green).
 - Proof row: label removed, wrapped lines joined, link targets dropped, the
-  first capital lowercased (`A run` yes; `ADR-0016 ...` and `I/O` no), a
+  text otherwise as written (a leading capital and the final period kept), a
   second paragraph not included, absent paragraph gives `unchecked`; a
   `**Acceptance case.**` paragraph outside the Direction section is ignored.
 - `--summary-from` accepts `step` and `proof` rows and still rejects an
@@ -305,7 +319,8 @@ Design doc, Documentation layers, Direction row, added paragraph (draft):
   `gone`; `after` rows with a due deferral and with an `unchecked` one (shown
   `unchecked`); no `--last` gives all `none`; `--last -` (empty list) is
   accepted and gives all `new`; a malformed `--last` exits 2 with a message
-  and no rows; roadmap-not-read exits 3.
+  and no rows, and the skill's step then still prints the path (rerun
+  without `--last`) with `not comparable`; roadmap-not-read exits 3.
 - Skill steps: step 2 prints `last_results=` as the field, `none` (no record)
   and `older-record` (no field), and step 3 omits `--last` for the last two;
   step 3 prints the slug from the workspace remote (not the
@@ -323,10 +338,10 @@ Design doc, Documentation layers, Direction row, added paragraph (draft):
 | File | Change |
 |------|--------|
 | `.agent/scripts/sitrep_checks.sh` | `step` and `proof` rows (only when the roadmap was read; no section heading hard-coded); shared rows loader; `--results-from`, `--path-from`; `ROW_RE` kinds; header comment (grammar, kinds, modes, exit codes) |
-| `.agent/scripts/tests/test_sitrep_checks.sh` | cases above; assertions at lines 133, 356 and 374-375 change (filter by kind), line 177 stays; step numbers moved for the renumbered skill steps; record fixtures gain the `results` field and one older-shape record |
+| `.agent/scripts/tests/test_sitrep_checks.sh` | cases above; assertions at lines 133, 356, 363, 366 and 374-375 change (filter by kind), line 177 stays; step numbers moved for the renumbered skill steps; record fixtures gain the `results` field and one older-shape record |
 | `.claude/skills/sitrep/SKILL.md` | description line; usage (`/sitrep inbox`); "What it is"; step 2 reads the new record shape; new step 3; steps renumbered; record step writes `results`; report template and rules (top block, path groups, one-line inbox, Suggested next source 4 on ask) |
 | `docs/roadmap.md` | acceptance-case paragraph, Item cells of steps 5 and 6, Format-list bullet (drafts above) |
-| `docs/design.md` | Documentation layers Direction row paragraph, Measures row (run record keeps per-line results), the gaps-paragraph "net change only" sentence, Change log row; OQ-3 wording checked, unchanged |
+| `docs/design.md` | Documentation layers Direction row paragraph, Measures row (run record keeps per-line results), the gaps-paragraph "net change only" and "no status column" sentences, OQ-3's tail ("beyond which lines are true from run to run"), Change log row |
 
 No `AGENTS.md` script-table entry mentions the sit-rep scripts; none to add.
 
@@ -390,8 +405,8 @@ Nothing else in the design changes.
 | Rows grammar (`step`, `proof`) | `ROW_RE`, header comment, `--summary-from` tests, skill step 1's kind list | Yes |
 | Run record shape | Skill steps 2 and 5, test fixtures, design Measures row | Yes |
 | Skill step numbers | `skill_step`/`run_step` calls in the tests; any "step N" cross-reference inside the skill | Yes |
-| Existing test assertions on row counts and kinds | Lines 133, 356, 374-375 change; line 177 holds | Yes |
-| Run record per-line results | Design gaps paragraph ("net change only"), OQ-3 wording (checked) | Yes |
+| Existing test assertions on row counts and kinds | Lines 133, 356, 363, 366, 374-375 change; line 177 holds | Yes |
+| Run record per-line results | Design gaps paragraph ("net change only", "no status column"), OQ-3's tail reworded | Yes |
 | Roadmap Item cells and acceptance paragraph | Format bullet; nothing else reads those cells (`update_roadmap.sh` keys on issue number and the Status column; grepped) | Yes |
 | Skill description / usage | `test_skill_paths.sh` trigger-phrase check | Yes |
 
@@ -411,8 +426,9 @@ workspace remote (item 4); roadmap Format paragraph updated (item 7).
 
 None. Closed at the checkpoint: the inbox "now" bin feeds Suggested next only
 on an explicit `/sitrep inbox` (item 6); the path shows names and result words
-without check text (item 5); "The proof is" stands, with the acceptance
-paragraph starting with a capital after its label (item 1 lowercases it).
+without check text (item 5). The proof slot is "The proof:" followed by the
+paragraph as written, no case change and no period added (checkpoint of
+2026-10-14 14:46, N1 and N2; it replaced "The proof is").
 
 ## Estimated Scope
 
