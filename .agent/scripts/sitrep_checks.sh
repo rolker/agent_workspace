@@ -6,6 +6,8 @@
 #
 # Usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary]
 #        sitrep_checks.sh --summary-from <rows-file>
+#        sitrep_checks.sh --results-from <rows-file>
+#        sitrep_checks.sh --path-from <rows-file> [--last <results field>]
 #   --root     the roadmap's repository root (default: this script's own
 #              checkout, resolved through symlinks, so a run through the
 #              repo-root `scripts/` link finds it). Relative paths in checks
@@ -30,7 +32,38 @@
 #              readable: ...)`): no Direction line was looked at, so there
 #              is no 0/0 to record. A roadmap that was read and has no
 #              section or no rows still counts, as 0/0. `--summary` exits
-#              3 the same way.
+#              3 the same way. `step` and `proof` rows are accepted and not
+#              counted.
+#   --results-from <rows-file>
+#              the per-line results field of the sit-rep's run record, from
+#              saved rows: one `<key>:<result>` per `line` row, in order,
+#              comma-joined; `-` when there are no `line` rows. The key is
+#              `<crc>.<n>`: <crc> is the POSIX `cksum` of the item text
+#              (decimal), <n> counts the earlier `line` rows with the same
+#              text, from 1. Keyed by text, a reordered or extended
+#              Direction table still compares line by line; a reworded line
+#              has a new key. Same rows-file checks and exit codes as
+#              `--summary-from`.
+#   --path-from <rows-file> [--last <results field>]
+#              the path the sit-rep prints, from saved rows, one TAB row
+#              each: per `line` row, in order,
+#                <group>  <item>  <result>  <since>
+#              group: `done` (result true), `regressed` (true in --last and
+#              now false or partial: a check ran and failed) or `not-yet`
+#              (everything else; a line that was true and now cannot be
+#              checked, unknown or unchecked, is not-yet, never regressed).
+#              since: `none` (no --last), `new` (no such key in --last),
+#              `same`, `now-true`, `regressed`, or `changed` (any other
+#              change of result). Then `gone  <count>` when --last has keys
+#              the rows no longer have, then per `deferral` row
+#                after  <item>  <result>
+#              (a deferral is due when its result is true). --last is the
+#              record's field text: `-` is an empty list, otherwise
+#              `<digits>.<digits>:<result word>` pairs joined with commas,
+#              each key once. Anything else exits 2 with a message and no
+#              rows, as does an empty --last; a caller with no record, or a
+#              record without the field, omits --last. Same rows-file
+#              checks and exit codes as `--summary-from`.
 #
 # What is read: only the `## Direction` section (up to the next level-1 or
 # level-2 heading: `#` or `##` with up to 3 spaces of indent, or a setext
@@ -43,7 +76,12 @@
 # and nothing after it. Tables are picked by header:
 #   | Line | Check |               -> rows of kind `line`
 #   | Deferral | Revisit check |   -> rows of kind `deferral`
-# Any other table in the section is ignored. Cells split on `|` as GFM
+# Any other table in the section is ignored. In the same section, the
+# paragraph that starts `**Acceptance case.**` gives one `proof` row: the
+# text after the label, its lines joined with single spaces and markdown
+# link targets dropped (`[text](url)` reads `text`), nothing else changed;
+# it ends at a blank line, a table, a heading, a list item, a quote or a
+# fence. Cells split on `|` as GFM
 # does: `\|` is a literal pipe in the cell (and in the check), and no other
 # backslash is special. A row with more than two cells is `unchecked`, with
 # every cell after the first shown in <check>. A checklist item (`- [ ]`,
@@ -51,6 +89,12 @@
 # is visible (update_roadmap.sh would tick it on merge). So does a row
 # below the delimiter row with only empty cells, dashes or colons
 # (`|  |  |`, `| - | |`): item `(empty row in the Line table: <row>)`.
+#
+# Step table: anywhere in the file outside fenced code, every table whose
+# first two header cells are `Step` and `Item` (any case); its Status column
+# is found by its header name. The sit-rep reads the Item cell of each row
+# whose Status is `in progress`. No section heading is named here: the
+# roadmap says which table it means by giving it that header.
 #
 # Output: one TAB-separated row per item:
 #   <kind>  <item>  <result>  <check>  <date>
@@ -62,11 +106,25 @@
 # a header and nothing under it. A roadmap that exists but cannot be read
 # (no permission, not a regular file, under a directory that cannot be
 # entered) gives `(roadmap not readable: <path>)`, result `unknown`, never
-# a "no Direction section". Every run prints at least one row. Rows
+# a "no Direction section". When the roadmap was read, `step` and `proof`
+# rows follow every other row (they do not depend on the Direction
+# section):
+#   step  <Item cell>  true  Step <n>
+#                      one per row in progress, in table order, when there
+#                      are one or two;
+#   step  (roadmap problem: <k> steps marked in progress; expected 1 or 2)
+#                      false, check `none`, instead, for zero or more than
+#                      two; and the same with `(roadmap problem: step <n> is
+#                      marked in progress with an empty Item cell)` for an
+#                      empty Item cell;
+#   step  (no step table)  unchecked  none
+#   proof <the acceptance case text>  true  none
+#   proof (no acceptance case paragraph)  unchecked  none
+# A roadmap that was not read gets neither. Every run prints at least one row. Rows
 # are printed only at the end, so a run that is interrupted prints none and
 # exits non-zero (128 + the signal). Exit 0 when the rows were printed; 1
 # when they could not be written; 2 on usage; 3 under `--summary` (and
-# `--summary-from`) when the roadmap was not read.
+# the three `--*-from` modes) when the roadmap was not read.
 #
 # Check grammar (a cell may join several checks with ` ; `; a check may be
 # wrapped in backticks, and so may a whole cell, which is unwrapped before
@@ -145,35 +203,51 @@ source "$SCRIPT_DIR/_project_registry.sh" 2>/dev/null || REGISTRY_OK=false
 usage() {
     echo "usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary]" >&2
     echo "       sitrep_checks.sh --summary-from <rows-file>" >&2
+    echo "       sitrep_checks.sh --results-from <rows-file>" >&2
+    echo "       sitrep_checks.sh --path-from <rows-file> [--last <results field>]" >&2
     exit 2
 }
 
 ROOT=""
 ROADMAP=""
 SUMMARY=false
-SUMMARY_FROM=""
+FROM_MODE=""    # summary | results | path: a mode that reads saved rows
+FROM_FILE=""
+LAST_SET=false
+LAST=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --root) [ $# -ge 2 ] || usage; ROOT="$2"; shift 2 ;;
         --roadmap) [ $# -ge 2 ] || usage; ROADMAP="$2"; shift 2 ;;
         --summary) SUMMARY=true; shift ;;
-        --summary-from)
+        --summary-from|--results-from|--path-from)
             [ $# -ge 2 ] || usage
-            [ -n "$2" ] || { echo "--summary-from needs a rows file; got an empty argument" >&2; exit 2; }
-            SUMMARY_FROM="$2"; shift 2 ;;
+            [ -z "$FROM_MODE" ] || { echo "only one of --summary-from, --results-from, --path-from" >&2; exit 2; }
+            [ -n "$2" ] || { echo "$1 needs a rows file; got an empty argument" >&2; exit 2; }
+            FROM_MODE="${1#--}"; FROM_MODE="${FROM_MODE%-from}"
+            FROM_FILE="$2"; shift 2 ;;
+        --last)
+            [ $# -ge 2 ] || usage
+            LAST_SET=true; LAST="$2"; shift 2 ;;
         -h|--help) usage ;;
         *) echo "unknown argument: $1" >&2; usage ;;
     esac
 done
+[ "$LAST_SET" = false ] || [ "$FROM_MODE" = path ] || { echo "--last goes with --path-from only" >&2; exit 2; }
+
+# row_field <row> <n>: the n-th TAB field (1-based) of a row.
+row_field() {
+    local r="$1" i
+    for ((i = 1; i < $2; i++)); do r="${r#*$'\t'}"; done
+    printf '%s' "${r%%$'\t'*}"
+}
 
 # summarize: the summary line of the rows in ROWS.
 summarize() {
     local r k res lt=0 ln=0 dt=0 dn=0
     for r in "${ROWS[@]}"; do
         k="${r%%$'\t'*}"
-        res="${r#*$'\t'}"
-        res="${res#*$'\t'}"
-        res="${res%%$'\t'*}"
+        res="$(row_field "$r" 3)"
         case "$k" in
             line) ln=$((ln + 1)); [ "$res" = true ] && lt=$((lt + 1)) ;;
             deferral) dn=$((dn + 1)); [ "$res" = true ] && dt=$((dt + 1)) ;;
@@ -182,26 +256,121 @@ summarize() {
     echo "lines $lt/$ln deferrals $dt/$dn"
 }
 
-ROWS=()
-if [ -n "$SUMMARY_FROM" ]; then
-    [ -f "$SUMMARY_FROM" ] && [ -r "$SUMMARY_FROM" ] || { echo "rows file not readable: $SUMMARY_FROM" >&2; exit 2; }
-    ROW_RE=$'^(line|deferral|format|section)\t[^\t]*\t(true|false|unknown|unchecked|partial)\t[^\t]+\t[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-    n=0
-    not_read=""
+RESULT_WORD='(true|false|unknown|unchecked|partial)'
+
+# load_rows <file>: fills ROWS from a saved rows file, the one reader behind
+# every --*-from mode. Exits 2 (message, nothing printed) for a file that
+# cannot be read, has no rows, or has a line that is not a whole row; exits
+# 3 when the rows say the roadmap was not read.
+load_rows() {
+    local f="$1" r n=0 not_read=""
+    local row_re=$'^(line|deferral|format|section|step|proof)\t[^\t]*\t'"$RESULT_WORD"$'\t[^\t]+\t[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    [ -f "$f" ] && [ -r "$f" ] || { echo "rows file not readable: $f" >&2; exit 2; }
     while IFS= read -r r || [ -n "$r" ]; do
         n=$((n + 1))
         [ -n "$r" ] || continue
-        [[ "$r" =~ $ROW_RE ]] || { echo "rows file line $n is not a whole row: $SUMMARY_FROM" >&2; exit 2; }
+        [[ "$r" =~ $row_re ]] || { echo "rows file line $n is not a whole row: $f" >&2; exit 2; }
         case "$r" in
             section$'\t(roadmap not found: '* | section$'\t(roadmap not readable: '*)
-                not_read="${r#section$'\t'}"; not_read="${not_read%%$'\t'*}" ;;
+                not_read="$(row_field "$r" 2)" ;;
         esac
         ROWS+=("$r")
-    done < "$SUMMARY_FROM"
-    [ "${#ROWS[@]}" -gt 0 ] || { echo "rows file has no rows: $SUMMARY_FROM" >&2; exit 2; }
+    done < "$f"
+    [ "${#ROWS[@]}" -gt 0 ] || { echo "rows file has no rows: $f" >&2; exit 2; }
     [ -z "$not_read" ] || { echo "the roadmap was not read $not_read; nothing to count" >&2; exit 3; }
-    summarize
-    exit 0
+}
+
+# line_keys: sets KEYS, ITEMS and RESULTS, one entry per `line` row of ROWS
+# in order. A key is `<cksum of the item text>.<n>`, n counting earlier
+# line rows with the same text from 1.
+line_keys() {
+    local r item crc
+    local -A seen=()
+    KEYS=(); ITEMS=(); RESULTS=()
+    for r in "${ROWS[@]}"; do
+        [ "${r%%$'\t'*}" = line ] || continue
+        item="$(row_field "$r" 2)"
+        crc="$(printf '%s' "$item" | cksum)" || { echo "cksum failed" >&2; exit 2; }
+        crc="${crc%% *}"
+        seen[$crc]=$(( ${seen[$crc]:-0} + 1 ))
+        KEYS+=("$crc.${seen[$crc]}")
+        ITEMS+=("$item")
+        RESULTS+=("$(row_field "$r" 3)")
+    done
+}
+
+# results_field: the run record's per-line field for ROWS.
+results_field() {
+    local i out=""
+    line_keys
+    for ((i = 0; i < ${#KEYS[@]}; i++)); do
+        out+="${out:+,}${KEYS[i]}:${RESULTS[i]}"
+    done
+    echo "${out:--}"
+}
+
+# path_rows: the --path-from output for ROWS against LAST.
+path_rows() {
+    local -A was=()
+    local pair key res i group since gone=0 r
+    local pair_re='^[0-9]+\.[0-9]+:'"$RESULT_WORD"'$'
+    if [ "$LAST_SET" = true ]; then
+        [ -n "$LAST" ] || { echo "--last needs a results field; got an empty argument" >&2; exit 2; }
+        if [ "$LAST" != - ]; then
+            # A field ending in a comma would hide an empty last pair.
+            [[ "$LAST" != *, ]] || { echo "--last is not a results field (empty pair): $LAST" >&2; exit 2; }
+            IFS=, read -ra pairs <<< "$LAST"
+            for pair in "${pairs[@]}"; do
+                [[ "$pair" =~ $pair_re ]] || { echo "--last is not a results field (bad pair '$pair'): $LAST" >&2; exit 2; }
+                key="${pair%%:*}"
+                [ -z "${was[$key]:-}" ] || { echo "--last is not a results field (key $key twice): $LAST" >&2; exit 2; }
+                was[$key]="${pair#*:}"
+            done
+        fi
+    fi
+    line_keys
+    for ((i = 0; i < ${#KEYS[@]}; i++)); do
+        key="${KEYS[i]}"; res="${RESULTS[i]}"
+        group=not-yet
+        if [ "$res" = true ]; then
+            group="done"
+        elif [ "${was[$key]:-}" = true ] && { [ "$res" = false ] || [ "$res" = partial ]; }; then
+            group=regressed
+        fi
+        if [ "$LAST_SET" = false ]; then
+            since=none
+        elif [ -z "${was[$key]:-}" ]; then
+            since=new
+        elif [ "${was[$key]}" = "$res" ]; then
+            since=same
+        elif [ "$res" = true ]; then
+            since=now-true
+        elif [ "$group" = regressed ]; then
+            since=regressed
+        else
+            since=changed
+        fi
+        [ -z "${was[$key]:-}" ] || unset 'was[$key]'
+        printf '%s\t%s\t%s\t%s\n' "$group" "${ITEMS[i]}" "$res" "$since"
+    done
+    gone="${#was[@]}"
+    [ "$gone" -eq 0 ] || printf 'gone\t%s\n' "$gone"
+    for r in "${ROWS[@]}"; do
+        [ "${r%%$'\t'*}" = deferral ] || continue
+        printf 'after\t%s\t%s\n' "$(row_field "$r" 2)" "$(row_field "$r" 3)"
+    done
+}
+
+ROWS=()
+if [ -n "$FROM_MODE" ]; then
+    load_rows "$FROM_FILE"
+    case "$FROM_MODE" in
+        summary) summarize ;;
+        results) results_field ;;
+        path) out="$(path_rows)" || exit $?
+              [ -z "$out" ] || printf '%s\n' "$out" ;;
+    esac
+    exit $?
 fi
 
 [ -n "$ROOT" ] || ROOT="$SCRIPT_DIR/../.."
@@ -534,6 +703,9 @@ table=none      # none | line | deferral | other
 prev_table_line=false
 after_header=false   # the last table line was a header (the delimiter row is next)
 prev_para=false # the line before was paragraph text (a setext underline may follow)
+proof=none      # none | open | closed: the Acceptance case paragraph
+PROOF_TEXT=""
+PROOF_RE='^ {0,3}\*\*Acceptance case\.\*\*(.*)$'
 START_RE='^ {0,3}##[[:space:]]+Direction([[:space:]]+#+)?[[:space:]]*$'
 END_RE='^ {0,3}##?([[:space:]]|$)'
 SETEXT_RE='^ {0,3}(=+|-+)[[:space:]]*$'
@@ -571,6 +743,7 @@ if [ "$ROADMAP_STATE" = found ]; then
                 in_fence=false
             fi
             prev_table_line=false; table=none; prev_para=false
+            [ "$proof" != open ] || proof=closed
             continue
         fi
         [ "$in_fence" = true ] && continue
@@ -585,10 +758,14 @@ if [ "$ROADMAP_STATE" = found ]; then
         # up to 3 spaces of indent) or setext (a `===` or `---` line under
         # paragraph text).
         if [[ "$raw" =~ $END_RE ]] || { [ "$prev_para" = true ] && [[ "$raw" =~ $SETEXT_RE ]]; }; then
+            # An underline under the open paragraph makes it a heading, not
+            # the acceptance case.
+            if [ "$proof" = open ] && ! [[ "$raw" =~ $END_RE ]]; then proof=none; PROOF_TEXT=""; fi
             break
         fi
         if [[ "$raw" =~ ^[[:space:]]*\| ]]; then
             prev_para=false
+            [ "$proof" != open ] || proof=closed
             if [ "$prev_table_line" = false ]; then
                 split_row "$raw"
                 table=other
@@ -646,8 +823,15 @@ if [ "$ROADMAP_STATE" = found ]; then
         # A thematic break (`---`, `***`) is not paragraph text either.
         if [[ "$raw" =~ $NOT_PARA_RE ]] || [[ "$raw" =~ $SETEXT_RE ]] || [[ "$raw" =~ $THEMATIC_RE ]]; then
             prev_para=false
+            [ "$proof" != open ] || proof=closed
         else
             prev_para=true
+            if [ "$proof" = open ]; then
+                PROOF_TEXT+="${PROOF_TEXT:+ }$(trim "$raw")"
+            elif [ "$proof" = none ] && [[ "$raw" =~ $PROOF_RE ]]; then
+                proof=open
+                PROOF_TEXT="$(trim "${BASH_REMATCH[1]}")"
+            fi
         fi
         if [[ "$raw" =~ ^[[:space:]]*[-*+][[:space:]]+\[[[:space:]xX]\][[:space:]]*(.*)$ ]]; then
             emit format "${BASH_REMATCH[1]}" unchecked ""
@@ -665,6 +849,92 @@ elif [ "$seen_table" = false ]; then
     emit section "(no Line or Deferral table)" unchecked ""
 elif [ "${#ROWS[@]}" -eq 0 ]; then
     emit section "(no rows in the Line or Deferral tables)" unchecked ""
+fi
+
+# drop_link_targets <text>: `[text](url)` reads `text`, as rendered.
+drop_link_targets() {
+    local t="$1" re='^(.*)\[([^]]*)\]\(([^)]*)\)(.*)$'
+    while [[ "$t" =~ $re ]]; do
+        t="${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[4]}"
+    done
+    printf '%s' "$t"
+}
+
+# Step table pass: the whole file outside fences, tables headed
+# `| Step | Item | ...`, the rows whose Status cell is `in progress`.
+read_step_tables() {
+    local raw run i status in_f=false f_char="" f_len=0 tl=false st=false st_status=-1 hdr=false
+    SEEN_STEP_TABLE=false
+    STEP_NUMS=(); STEP_ITEMS=()
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        raw="${raw%$'\r'}"
+        if [[ "$raw" =~ $FENCE_RE ]] && { [ "$in_f" = true ] \
+            || [ "${BASH_REMATCH[1]:0:1}" = '~' ] || [[ "${BASH_REMATCH[2]}" != *'`'* ]]; }; then
+            run="${BASH_REMATCH[1]}"
+            if [ "$in_f" = false ]; then
+                in_f=true; f_char="${run:0:1}"; f_len="${#run}"
+            elif [ "${run:0:1}" = "$f_char" ] && [ "${#run}" -ge "$f_len" ] \
+                && [ -z "$(trim "${BASH_REMATCH[2]}")" ]; then
+                in_f=false
+            fi
+            tl=false; st=false
+            continue
+        fi
+        [ "$in_f" = true ] && continue
+        if ! [[ "$raw" =~ ^[[:space:]]*\| ]]; then
+            tl=false; st=false
+            continue
+        fi
+        if [ "$tl" = false ]; then
+            tl=true; st=false; hdr=true
+            split_row "$raw"
+            if [ "${#CELLS[@]}" -ge 2 ] && [ "${CELLS[0],,}" = step ] && [ "${CELLS[1],,}" = item ]; then
+                st=true; SEEN_STEP_TABLE=true; st_status=-1
+                for i in "${!CELLS[@]}"; do
+                    [ "${CELLS[i],,}" = status ] && { st_status=$i; break; }
+                done
+            fi
+            continue
+        fi
+        [ "$st" = true ] || continue
+        if [ "$hdr" = true ]; then
+            hdr=false
+            [[ "$raw" =~ ^[[:space:]|:-]+$ ]] && continue
+        fi
+        [ "$st_status" -ge 0 ] || continue
+        split_row "$raw"
+        status="${CELLS[st_status]:-}"
+        [ "${status,,}" = "in progress" ] || continue
+        STEP_NUMS+=("${CELLS[0]:-}")
+        STEP_ITEMS+=("${CELLS[1]:-}")
+    done < "$ROADMAP"
+}
+
+if [ "$ROADMAP_STATE" = found ]; then
+    read_step_tables
+    if [ "$SEEN_STEP_TABLE" = false ]; then
+        emit step "(no step table)" unchecked ""
+    elif [ "${#STEP_ITEMS[@]}" -eq 0 ] || [ "${#STEP_ITEMS[@]}" -gt 2 ]; then
+        emit step "(roadmap problem: ${#STEP_ITEMS[@]} steps marked in progress; expected 1 or 2)" false ""
+    else
+        empty_step=""
+        for i in "${!STEP_ITEMS[@]}"; do
+            [ -n "${STEP_ITEMS[i]}" ] || { empty_step="${STEP_NUMS[i]:-?}"; break; }
+        done
+        if [ -n "$empty_step" ]; then
+            emit step "(roadmap problem: step $empty_step is marked in progress with an empty Item cell)" false ""
+        else
+            for i in "${!STEP_ITEMS[@]}"; do
+                emit step "${STEP_ITEMS[i]}" true "Step ${STEP_NUMS[i]:-?}"
+            done
+        fi
+    fi
+    PROOF_TEXT="$(drop_link_targets "$PROOF_TEXT")"
+    if [ "$proof" != none ] && [ -n "$PROOF_TEXT" ]; then
+        emit proof "$PROOF_TEXT" true ""
+    else
+        emit proof "(no acceptance case paragraph)" unchecked ""
+    fi
 fi
 
 if [ "$SUMMARY" = true ]; then
