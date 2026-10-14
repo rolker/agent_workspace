@@ -60,3 +60,13 @@ issue: 395
 - [ ] Make the Item cells grammatical after "We are ...": steps 5 and 6 would compose as "We are Hosted projects anywhere ... and Port `ros2_colcon` adapter". Write the cells as activity phrases ("making hosted projects work anywhere ...") and say so in the roadmap header, since the wrong-sounding-means-stale loop depends on the cell reading as a sentence.
 - [ ] Say what the report shows when exactly two rows are in progress and they are unrelated (today: steps 5 and 6) so the composed "We are" still reads as one direction, or decide one row is marked and the other is not.
 - [ ] State where the `gz4d`-style project name comes from: the acceptance-case paragraph prints as written from the roadmap, and the skill text must name no project (project-agnostic rule).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-14 12:12 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Owner: "Go with your proposed, I think." The proposal accepted all six Issue Review actions with these resolutions: (1) add a per-line result field to the sit-rep run record so "since last time" can be composed in words; (2) the path renders grouped (done / regressed / not yet / after), one line per group, which defines the eight-line top block; (3) scope item 6 reworded: plain-word the step table's Item cells, the notes stay; (4) in-progress Item cells written as activity phrases that read after "We are"; (5) two in-progress steps are listed in table order, "We are X. Also in progress: Y", the table is not changed; (6) the skill names no project; gz4d appears only in the roadmap paragraph printed verbatim. The five watch items go to the plan as written.
