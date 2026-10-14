@@ -214,3 +214,13 @@ All eight first-round findings are fixed in the plan text; finding 1 is fixed in
 - [ ] Add test lines 363 and 366 to the named list of assertions that change.
 - [ ] On `--path-from` exit 2 with `--last`, rerun without it so the path still prints; test it.
 - [ ] Narrow design.md "the roadmap holds no status column" to the Direction section; name the step table by its header in the design draft; fix the OQ-3 reasoning or wording.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-14 14:46 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Owner: "proceed". Proceed to implementation with the second Plan Review's five leftovers folded in: the implementation applies them to plan.md in its first commit and builds from the corrected plan. The five: (N1) drop the lowercasing transform and print the acceptance paragraph after a colon label, "The proof: <paragraph as written>", no transform and no test for one; (N2) no period appended after the proof paragraph; (N3, finding 1 leftover) test lines 363 and 366 named among the assertions that change; (N4) a malformed --last makes step 3 rerun --path-from without --last, so only the since-last-time sentence is lost, not the path; (N5, finding 5 leftover) docs/design.md: reword "the roadmap holds no status column" now that the sit-rep reads the step table's status, drop the "Workspace Redesign" name from the design draft since the table is picked by its header, and recheck the OQ-3 reasoning against OQ-3's own phrase. The review-code plan-drift check verifies the fold-in.
