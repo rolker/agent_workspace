@@ -70,3 +70,11 @@ issue: 395
 **Decision**: proceed
 
 Owner: "Go with your proposed, I think." The proposal accepted all six Issue Review actions with these resolutions: (1) add a per-line result field to the sit-rep run record so "since last time" can be composed in words; (2) the path renders grouped (done / regressed / not yet / after), one line per group, which defines the eight-line top block; (3) scope item 6 reworded: plain-word the step table's Item cells, the notes stay; (4) in-progress Item cells written as activity phrases that read after "We are"; (5) two in-progress steps are listed in table order, "We are X. Also in progress: Y", the table is not changed; (6) the skill names no project; gz4d appears only in the roadmap paragraph printed verbatim. The five watch items go to the plan as written.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-14 12:15 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-395/plan.md` at `55d7dce6`
+
+The runner gains `step` and `proof` rows plus `--results-from` and `--path-from`, the run record gains a per-line `results` field (old records still read), and the skill composes a top block of at most eight lines from those command outputs with the inbox cut to one line. Roadmap drafts, design doc rows and tests are in the plan; three open questions are listed for plan review.
