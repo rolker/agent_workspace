@@ -149,3 +149,11 @@ The plan carries every checkpoint resolution and the composed sentences read wel
 **Decision**: revise
 
 Owner: "The eight findings all seem like small details to me, so let's go with your recommendation." Revise the plan with all eight Plan Review findings accepted. The plan's three open questions are closed as the review said: the inbox "now" bin feeds Suggested next only on an explicit inbox ask; the path shows names and result words without check text; "The proof is" stands. No owner edits to the two roadmap drafts at this point; the owner edits them when the implementation lands.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-14 13:04 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-395/plan.md` at `e4390723`
+
+Revision after the Plan Review: all eight findings fixed in the plan text (--last contract and last_results hand-off, regressed is true to false/partial only, reword and duplicate-text behaviour, the four changing test assertions, design gaps-paragraph sentence, step table picked by header alone, content below the eight-line block, draft wording), open questions closed.
