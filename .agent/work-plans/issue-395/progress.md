@@ -547,3 +547,45 @@ Steps 1, 2, 3, 5 and 6 were run by hand. Step 1 used `--root` set to the main ch
 ### Noticed, not changed
 
 - Step 2 prints `inbox_oldest=# Inbox`: the real inbox file starts with a heading line, which the step counts as an entry. This is existing behaviour and outside this plan.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-15 13:32 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-395 at `c1bb3f26`
+**Base**: main
+**Depth**: Deep (reason: 543 changed lines outside work plans; skill and design.md are governance files)
+**Must-fix**: 4 | **Suggestions**: 8
+**Round**: 1 | **Ship**: continue — round 1: 4 must-fix; first round always re-reviews after fixes
+
+Run in branch mode (not `--pr 396`) so the entry is the Pre-Push type the exit contract names; the diff is the same. Specialists: static (shellcheck not installed, so not run; `test_sitrep_checks.sh` 154/0 and `test_skill_paths.sh` 58/0 run), governance, plan drift, Claude adversarial, cross-model Gemini (complete, EXIT=0) and Codex (complete, EXIT=0). Step 6 was run against the real workspace: audit 18 ADRs / 9 not yet, newest 2026-10-09, 124 commits; research 19/19 past 90 days; design.md 2026-10-13, 17 commits. Revert checked: no diff under `.agent/scripts/` between `69f33366` and `993b018a`, and `sitrep_checks.sh` at HEAD is identical to `69f33366`.
+
+Owner readability (priority 1): all three wants are present and ordered first. The top block repeats the next line's ~150-character issue title up to three times (finding 4). The background-start rule holds: it starts only in a workspace session with the Agent tool. The audit prompt matches the audit skill (report only; its one write is a PR it asks about). The research prompt correctly avoids the writing skill. The skill names no project.
+
+### Findings
+- [ ] (must-fix) Decision-register awk splits on escaped `\|`: the ADR-0002 row (`workspace\|project`) reads `[Worktrees](#worktrees)` as its Re-examined value, so a re-examination date there is silently lost; strip `\|` before splitting (`{ gsub(/\\\|/, "") }`), also skip `| --- |` separators (`$2 !~ /^[ :-]+$/`), and add a test row with `\|` — `.claude/skills/sitrep/SKILL.md:403-407`
+- [ ] (must-fix) Package worktrees (ADR-0012, `.worktree-repos`): the listed path is an aggregate directory, so `git -C "$path" remote get-url origin` gives no remote or an enclosing repo's, and the wrong issue's title is printed; when `$path/.worktree-repos` exists take the repo from its header `issue=<owner/repo>#<N>`, look for progress.md in the manifest entries' checkouts, and add a test — `.claude/skills/sitrep/SKILL.md:208-221`
+- [ ] (must-fix) The git-bug fallback `issue_lookup` runs `git bug bridge pull github` on a cache miss, writing refs, which breaks the skill's "Reads only" claim; use a cache-only read (`_issue_lookup_gitbug "$root" "https://github.com/$slug/issues/$n"`) or drop the fallback, in both places — `.claude/skills/sitrep/SKILL.md:215,348`
+- [ ] (must-fix) The top block is harder to read than it needs to be: the direction sentence, Suggested next and In flight each print the next line's full issue title (dry run: the same ~150-character title three times in lines 2-5). Print each title once, in full, where it first appears, and refer to it later as "issue <N>". The direction sentence gives the count, the line and its result word; Suggested next gives the in-flight state; In flight marks that branch "(the next step, above)" — `.claude/skills/sitrep/SKILL.md:532-538,566-575`
+- [ ] (suggestion) Research survey restarts every session while any entry is stale (today 19/19), a 19-topic web survey per `/sitrep`; cap the background prompt to the 3 oldest entries — `.claude/skills/sitrep/SKILL.md:510-519`
+- [ ] (suggestion) The audit prompt names no root; a background agent whose cwd is a feature worktree audits that branch, so prefix "From <workspace root> (the main checkout), ..." — `.claude/skills/sitrep/SKILL.md:506-509`
+- [ ] (suggestion) The research prompt should say "Last verified (or Added if never verified)" like step 6, and give the research skill's path (`<workspace root>/.claude/skills/research/SKILL.md`) — `.claude/skills/sitrep/SKILL.md:513-516`
+- [ ] (suggestion) jq guard: `(.closingIssuesReferences // [])[]`, and skip refs with no `.repository`; null aborts the pull-request lookup (reproduced, rc=5) — `.claude/skills/sitrep/SKILL.md:358-360`
+- [ ] (suggestion) Step 6 reads local `main`, which can lag `origin/main`; print `main..origin/main` count when the ref exists, or label the facts "as of local main" — `.claude/skills/sitrep/SKILL.md:384-389`
+- [ ] (suggestion) No test exercises step 5's `gh pr list --jq` filter; add a stub `gh` returning JSON (closing refs present, empty, null) and assert the `pull_request` row — `.agent/scripts/tests/test_sitrep_checks.sh`
+- [ ] (suggestion) A due deferral no longer reaches the top block while any line is unmet (it is only in "Deferrals due" at the bottom); list due deferrals under Problems — `.claude/skills/sitrep/SKILL.md:576-583`
+- [ ] (suggestion) The "about 15 lines" budget has no rule for many worktrees; cap In flight at 5 lines then "and <k> more" — `.claude/skills/sitrep/SKILL.md:523-538`
+
+### Dismissed
+- Gemini 3 (`gh-issue N` needs a trailing space): the grammar always has a state word after N (`sitrep_checks.sh:87-88`). Gemini 4 (`Provisional, not yet`): the register cell is `not yet`. Gemini 5 (skill worktrees dropped): block 1's JSON still lists them, as the text says. Gemini 6 (ADR title not on line 1): every ADR's line 1 is `# `. Gemini 8 (trailing slash): the prefix strip still matches. Gemini 7 (gh before git-bug): the recorded, justified deviation, kept.
+- Adversarial 4 (first unmet line is "registered", `unknown`): an artifact of running the worktree's copy of the runner, whose root has no registry; the skill runs `$WS_ROOT`'s.
+
+### Decisions made (owner may veto)
+- Issue titles from gh first, git-bug cache only on failure: departs from ADR-0010; accepted because the cache held a stale title.
+- A long issue title is printed once, in full, then "issue <N>" (finding 4); not shortened, per Plan Review 50ceea68.
+- Background research stays auto-started (the owner's words allow it); the cost is handled by the cap in the suggestion, not by asking.
+- Branch mode used for this review to match the Pre-Push entry type.
+
+No owner-level questions.
