@@ -1116,6 +1116,7 @@ Implementation|failed||implementation failed
 Local Review (Pre-Push)|complete|\n### Findings\n- [ ] (must-fix) a\n- [x] (must-fix) b\n- [ ] (suggestion) c|code reviewed, 2 findings to address
 Local Review (Pre-Push)|complete|\n### Findings\n- [x] (must-fix) a\n- [x] (suggestion) b — x (deferred: y)|code reviewed, nothing open
 Local Review|complete||code reviewed, nothing open
+Local Review (Pre-Push)|complete|**Verdict**: approved\n\n### Findings\n- [ ] No issues found. LGTM.|code reviewed, nothing open
 Local Review|complete|\n### Findings\n- [ ] (must-fix) a|code reviewed, 1 finding to address
 Integrated Review|complete|\n### Fix plan\n- [x] a\n- [x] b\n\n### False positives\n- c|reviews triaged, nothing open
 Integrated Review|complete|\n### Fix plan\n- [ ] a\n- [x] b|reviews triaged, 1 finding to address

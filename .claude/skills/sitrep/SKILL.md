@@ -295,7 +295,9 @@ def words(e):
     if t in STEP and st and st != "complete":
         return "%s %s" % (STEP[t], st)
     if t in REVIEWED:
-        k = sum(1 for x in e.get("findings") or [] if not x.get("checked"))
+        # review-code leaves "- [ ] No issues found. LGTM." open on an approval.
+        k = sum(1 for x in e.get("findings") or [] if not x.get("checked")
+                and not (x.get("text") or "").startswith("No issues found"))
         return "%s, %s" % (REVIEWED[t], "nothing open" if k == 0
                            else "1 finding to address" if k == 1 else "%d findings to address" % k)
     return DONE.get(t) or "latest timeline entry: %s %s" % (t, st or "(no status)")
@@ -316,7 +318,9 @@ report needs no entry names. The entry is looked up by its base type
 (`progress_read.py`'s `base_type`), so an older heading with a suffix,
 such as `External Review (round 2)`, reads as its type. A review entry's
 state counts its open boxes (`- [ ]` under its `###` sections), so it
-never says findings are being addressed when none are open:
+never says findings are being addressed when none are open. The
+placeholder `- [ ] No issues found. LGTM.`, which `review-code` leaves
+unchecked on an approval, is not a finding and is not counted:
 
 | Latest entry | State |
 |---|---|
