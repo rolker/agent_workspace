@@ -474,3 +474,15 @@ All five round-1 must-fixes are resolved by the plan's own text, and on today's 
 - The walk-through is the acceptance evidence for the report order. The long issue title is printed beside each number as written, not shortened.
 
 No owner-level questions: the goal reading matches the issue, no two goals conflict, and nothing outward-facing or hard to undo is planned.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-15 12:37 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (under the issue's contract: no owner-level question arose)
+**After**: plan
+**Decision**: proceed
+
+Plan Review round 2 (50ceea68): all five round-1 must-fixes resolved; the walk-through against today's roadmap and worktrees reads right ("next: the acceptance project is onboarded; in flight on feature/issue-332"). One must-fix left, a single table cell: the new Direction line's check `gh-issue 332 closed` would turn true when the onboard-project work merges, before the acceptance project is actually onboarded. Resolution: the implementer folds it into the plan as its first commit, wording the line "The acceptance project is onboarded through onboard-project (#332)" with an empty check, so it reads `unchecked` until onboarding is recorded somewhere. No third plan review; the pre-push code review sees both.
+
+Decisions made this round (owner may veto): the onboarding line stays unchecked until onboarding is recorded; long issue titles print in full; the host decided the checkpoint itself, since the contract reserves the owner for goal-level questions only and none arose.
