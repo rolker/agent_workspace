@@ -813,3 +813,25 @@ Round 3: narrow convergence check, scoped by the host to round 2's items (entry 
 - The two template-only suggestions (no-PR wording, documentation wording) stand on the dry run with no test, as round 2 accepted for the template items.
 
 No owner-level questions.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-15 15:04 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #396 at `de10171`
+**Sources**: 7 (Local Review (Pre-Push) round 1 @ `c1bb3f26` with Gemini + Codex, entry `ac20b4e9`; round 2 @ `6d836b60` with Gemini + Codex, entry `e70b2d91`; round 3 @ `68ca0e09` (covers `de10171` via bookkeeping), entry `de10171b`; Copilot hosted review x4; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+Rounds 1 and 2 (12 and 8 findings, every box checked) were closed by the Implementation entries at `4837c2c7` and `c8f02bee`, and round 3 verified each one against a named commit and test; nothing from them is re-listed. Round 3 approved with no must-fix and no suggestion; its only open box is the "No issues found. LGTM." placeholder, which is not a finding. The diff `68ca0e09..de10171b` is `progress.md` only, so round 3 covers the head. GitHub side: no inline review comments and no conversation comments. Copilot's hosted review ran on all four heads (`c1bb3f26`, `6d836b60`, `68ca0e09`, `de10171b`) and failed each time with the quota notice, so it contributed nothing; its check run shows as failure for that reason only. Gemini and Codex ran (EXIT=0) in rounds 1 and 2 and their findings are inside those entries (taken or dismissed with reasons there); the host left them out of the round-3 convergence check. CI on `de10171b`: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, ros-manifest tests all pass (two runs each).
+
+### Findings
+
+### False positives
+- (Copilot, x4) check run `copilot-pull-request-reviewer` reports failure — the review body on every head is "unable to review ... quota limit"; it reviewed no code, so there is no defect behind the failure.
+
+### Decisions recorded
+- Owner decision, 2026-10-15: merge ("Let's merge it so we can make progress").
+- Owner feedback on the report wording is carried by issue 321 (interim department-head skill: goal-level runs, standing rules), not by this PR: lead words that say a state apart from a to-do, one item per line, blank lines between sections.
+- Noticed in earlier entries, not changed here and not blocking: the flaky 165/1 `test_sitrep_checks.sh` run (unidentified, did not recur in later runs); step 2 counts the inbox's heading line as an entry (pre-existing); a skill worktree's In flight line has no title.
