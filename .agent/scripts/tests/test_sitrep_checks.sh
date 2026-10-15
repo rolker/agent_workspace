@@ -1097,12 +1097,23 @@ step5 'No number here' '`gh-issue acme/other#5 closed`'
 step5 'ADR-0042 and ADR-0043 are accepted' ''
 [[ "$OUT" == *$'adr\tADR-0042\tADR-0042: A synthetic decision'* && "$OUT" == *$'adr\tADR-0043\tunknown (no ADR file)'* ]] \
     && pass "(skill 5) ADR numbers carry the ADR file's title, or say there is none" || fail "(skill 5) adr '$OUT'"
-printf '## Direction\n\n**Acceptance case.** A synthetic run\nreaches the end.\n\nAfter.\n' > "$SB/roadmap.case"
-cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"; cp "$SB/roadmap.case" "$WS/docs/roadmap.md"
-step5 'x' ''
-mv "$SB/roadmap.saved" "$WS/docs/roadmap.md"
-[[ "$(sed -n '/^---$/,$p' <<< "$OUT" | sed 1d)" == $'**Acceptance case.** A synthetic run\nreaches the end.' ]] \
-    && pass "(skill 5) the acceptance case paragraph is printed as written" || fail "(skill 5) case '$OUT'"
+echo "TEST: sit-rep step 5 reads the acceptance case's first sentence, as written, with a simple command"
+case5() {  # <roadmap text>: step 5's second block against it; sets OUT, RC
+    cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"
+    printf '%b' "$1" > "$WS/docs/roadmap.md"
+    local blk; blk="$(skill_step 5 2)"
+    RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+    mv "$SB/roadmap.saved" "$WS/docs/roadmap.md"
+}
+case5 '# R\n\n**Acceptance case.** Not this one.\n\n## Direction\n\nIntro.\n\n**Acceptance case.** A synthetic `run` started\nfrom a root (see [x](design.md#a-b)) ends. Its target is\n`demo`.\n\nAfter.\n\n## Next\n'
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=A synthetic `run` started from a root (see [x](design.md#a-b)) ends.\nacceptance_rest=Its target is `demo`.' ]] \
+    && pass "(skill 5) first sentence of the Direction section's paragraph, joined, not split at a dot inside a link" || fail "(skill 5) case rc=$RC '$OUT'"
+case5 '## Direction\n\n**Acceptance case.** One sentence only.\n'
+[[ "$OUT" == $'acceptance_first=One sentence only.\nacceptance_rest=' ]] \
+    && pass "(skill 5) a one-sentence paragraph has no rest" || fail "(skill 5) one sentence '$OUT'"
+case5 '## Direction\n\nNo case here.\n\n## Other\n\n**Acceptance case.** Elsewhere.\n'
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=\nacceptance_rest=' ]] \
+    && pass "(skill 5) no paragraph in the Direction section: empty, so the line is left out" || fail "(skill 5) absent rc=$RC '$OUT'"
 
 # A workspace with a GitHub remote, for the steps that call gh and git-bug.
 W5="$SB/ws5"

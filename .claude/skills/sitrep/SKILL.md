@@ -457,10 +457,6 @@ for a in $(grep -oE 'ADR-[0-9]{4}' <<< "$item" | sort -u); do
     t=""; [ -n "$f" ] && t="$(sed -n '1s/^# *//p' "$f")"
     printf 'adr\t%s\t%s\n' "$a" "${t:-unknown (no ADR file)}"
 done
-echo "---"
-# The acceptance case paragraph, printed as written for the counts section.
-awk '/^\*\*Acceptance case\.\*\*/ { s = 1 } s && /^[[:space:]]*$/ { exit } s { print }' \
-    "$WS_ROOT/docs/roadmap.md" 2>/dev/null
 ```
 
 A `branch` row is in-flight work for that line; a `pull_request` row is
@@ -471,6 +467,29 @@ only, through `feature/issue-<N>` worktrees and pull requests that close
 `#<N>` or come from that branch. When the line names no issue, or no
 branch or pull request matches, nothing in flight advances it, and the
 report says that rather than pick other work.
+
+What the next step is for comes from the Direction section's
+`**Acceptance case.**` paragraph, read by this block, which runs even
+when step 1 printed no rows. The paragraph is joined into one line and
+split after its first sentence (the first period followed by a space or
+the end of the paragraph); nothing is reworded.
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
+     d && /^\*\*Acceptance case\.\*\*/ { s = 1 } s && /^[[:space:]]*$/ { exit } s { print }' \
+    "$WS_ROOT/docs/roadmap.md" 2>/dev/null | python3 -c '
+import re, sys
+p = " ".join(l.strip() for l in sys.stdin.read().splitlines()).strip()
+p = re.sub(r"^\*\*Acceptance case\.\*\*\s*", "", p)
+m = re.match(r"(.+?\.)(?:\s+(.*))?$", p)
+print("acceptance_first=" + (m.group(1) if m else p))
+print("acceptance_rest=" + ((m.group(2) or "") if m else ""))'
+```
+
+`acceptance_first` is the report's second line, printed as written; when
+it is empty (no such paragraph), that line is left out. `acceptance_rest`
+is the rest of the paragraph, for the counts section.
 
 ### 6. Read problems
 
