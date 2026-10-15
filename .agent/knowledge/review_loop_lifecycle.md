@@ -17,7 +17,10 @@ review-issue → plan-task → review-plan → implement
 ```
 
 Each arrow is a human or `/run-issue` deciding to move forward — nothing
-in the loop advances a phase on its own judgment (no auto-chaining).
+in the loop advances a phase on its own judgment (no auto-chaining). A
+host running `/orchestrator` may answer a checkpoint itself, only with the
+answers that skill's table allows it (never `merge`, `merge-refused`, or
+`takeover`), and records it `**Decided-by**: host (<reason>)`.
 
 ## Who writes what
 
@@ -32,6 +35,7 @@ in the loop advances a phase on its own judgment (no auto-chaining).
 | `review-code <PR>` | `## Local Review` | `review-code`, PR mode |
 | `triage-reviews` | `## Integrated Review` | `triage-reviews` |
 | a human's answer to an `AskUserQuestion` checkpoint | `## Checkpoint` | `/run-issue`, on the owner's behalf (`**Decided-by**: owner`) |
+| the host's own answer to a checkpoint, within `/orchestrator`'s table | `## Checkpoint` | `/run-issue` (`**Decided-by**: host (<reason>)`) |
 | `merge_pr.sh`'s gate under `--report-only` (or `--force-unreviewed`), when a precondition is unmet — the default (enforce, #300) on a workspace PR refuses with no entry | `## Merge (report-only)` / `## Merge (unreviewed)` | `merge_pr.sh` |
 
 Both `## Implementation` writers are dispatched sub-agents (issue #314);

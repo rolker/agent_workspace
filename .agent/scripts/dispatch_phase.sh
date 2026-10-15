@@ -690,7 +690,7 @@ if base == "Plan Authored":
     emit("review-plan", "plan committed -- independent review next")
 
 if base == "Plan Review":
-    emit("checkpoint:plan", "plan review complete -- owner decides proceed, revise, or stop")
+    emit("checkpoint:plan", "plan review complete -- proceed, revise, or stop")
 
 if base == "Implementation":
     mode_note = "pre-push (--branch)" if PR == "none" else "PR mode"
