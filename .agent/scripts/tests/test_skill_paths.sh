@@ -248,6 +248,13 @@ else
     fail "orchestrator skill is missing: .claude/skills/orchestrator/SKILL.md"
 fi
 
+# --- run-issue: the host may answer a checkpoint, within the orchestrator's table.
+RI="$SKILLS/run-issue/SKILL.md"
+has "$RI" "run-issue documents Decided-by: host and the owner-only answers" \
+    '**Decided-by**: owner | host (<reason>)' \
+    '`merge` and `merge-refused` always wait for the owner, and so do `takeover` at `phase-failed` and `merge` at `findings`' \
+    'never lets the host do a phase'"'"'s work itself' '/orchestrator'
+
 # --- The host's standing rules (#321): every rule carries its reason.
 # Rules with reasons are followed by intent, rules without them only
 # literally (the 2026-10-15 audit the issue cites); an empty Reason cell
