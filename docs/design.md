@@ -101,13 +101,15 @@ root and `.agent/knowledge/`).
 | Principles | How work is judged | [`docs/principles.md`](principles.md), applied through [`.agent/knowledge/principles_review_guide.md`](../.agent/knowledge/principles_review_guide.md) |
 | Design | How the parts fit today | This file, from `# The design` on |
 | Decisions | What was decided, why, and when | [`docs/decisions/`](decisions/) (ADRs), plus each issue's `progress.md`; history, never rewritten |
-| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh` |
+| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background |
 | Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run with the counts of lines true and deferrals due, so the next run says what moved |
 
 Two of the seven were gaps (`README.md`, "The long view": each project, and the workspace, says what
 healthy and the right direction mean and that it is known whether a change helped). Both are narrower
 now (#386), neither is closed. The Direction section says what must be true for one acceptance case
-(ADR-0016's), not what healthy means for the workspace in general. The run record counts lines true from
+(ADR-0016's), not what healthy means for the workspace in general; the sit-rep's Problems section (dates and
+work since for the audit, research and the design document, judged each run with no stored threshold)
+is a first form of health signals. The run record counts lines true from
 run to run, which shows net change only (one line going true while another goes false reads as no
 change) and says nothing about whether a change helped beyond that case. Status and dates are measured
 by each run and stay on the machine; the roadmap holds no status column. The result words (`true`,
@@ -698,6 +700,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-13 | Decision register | Row for ADR-0018 (workspace skills reach project sessions through the `agent-workspace` plugin; Provisional, not yet re-examined), making 18 rows | #345 | 732 |
 | 2026-10-13 | Sessions and roots | The root rule (owner, 2026-10-13): a session works only under the root it was launched in, cross-root work is an issue or an inbox line, and `run-issue` and `/start-task` refuse an issue of another root through `session_root.sh`; the user-tier bullet drops the `~/.claude/skills/` symlinks and a new bullet describes plugin skill delivery (ADR-0018). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the two new bullets are the interface between the installer, the hook, `run-issue`, `/start-task` and the two location scripts, which no one script header shows, so they stay | #345 | 748 |
 | 2026-10-13 | Sessions and roots | Review fixes: the installer refuses a root that is a plain directory inside another repository (its sessions read that repository's settings); the directory a run starts from names its root, rather than the current directory at any point; the `SessionStart` hook counts a root's `worktrees=` directory as the root's; `session_root.sh` and `skill_prefix.sh` refuse the same directories | #345 | 753 |
+| 2026-10-15 | Documentation layers | Direction row: the sit-rep names the first Direction line not yet true as the next step and reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since this file last changed, and may start a due read-only check in the background in a workspace session; the gaps paragraph calls that Problems section a first form of health signals | #395 | 756 |
 
 ## Glossary
 
