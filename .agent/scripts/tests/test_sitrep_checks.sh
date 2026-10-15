@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/test_sitrep_checks.sh
-# Tests for .agent/scripts/sitrep_checks.sh (issues #386, #395): the read-only
+# Tests for .agent/scripts/sitrep_checks.sh (issue #386): the read-only
 # check runner behind the sit-rep skill.
 #
 # Hermetic: a sandbox roadmap root (git repo with a synthetic GitHub remote),
@@ -130,9 +130,7 @@ CWD="$SB/root" run_rm "$(direction \
 [[ "$(res 'Bare ref')" == unchecked && "$(res 'Unknown kind')" == unchecked ]] && pass "(basic) bare #N and unknown kind unchecked" || fail "(basic) bare=$(res 'Bare ref') unknown=$(res 'Unknown kind')"
 bad_rows="$(awk -F'\t' 'NF != 5 || $4 == "" || $1 == "" || $5 !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/' <<< "$OUT")"
 [[ -z "$bad_rows" ]] && pass "(basic) every row has five fields, a check and a date" || fail "(basic) malformed rows: $bad_rows"
-[[ "$(awk -F'\t' '$1 != "step" && $1 != "proof" {print $1}' <<< "$OUT" | sort -u)" == line ]] && pass "(basic) Direction rows print kind line" || fail "(basic) kinds: $(cut -f1 <<< "$OUT" | sort -u | tr '\n' ' ')"
-[[ "$(tail -n2 <<< "$OUT" | cut -f1-3)" == $'step\t(no step table)\tunchecked\nproof\t(no acceptance case paragraph)\tunchecked' ]] \
-    && pass "(basic) a read roadmap ends with one step and one proof row" || fail "(basic) last rows: $(tail -n2 <<< "$OUT")"
+[[ "$(awk -F'\t' '{print $1}' <<< "$OUT" | sort -u)" == line ]] && pass "(basic) rows print kind line" || fail "(basic) kinds: $(cut -f1 <<< "$OUT" | sort -u | tr '\n' ' ')"
 
 echo "TEST: unreadable file for file-contains is unknown"
 if [[ "$(id -u)" -eq 0 ]]; then
@@ -355,31 +353,26 @@ run_rm "$body" --summary
 
 echo "TEST: no Direction section"
 run_rm $'# Roadmap\n\n## Other\n\n| Line | Check |\n|---|---|\n| X | file-exists docs/notes.md |\n'
-sec() { awk -F'\t' '$1 == "section"' <<< "$OUT"; }
-[[ $RC -eq 0 && "$(sec | wc -l | tr -d ' ')" -eq 1 && "$(sec | cut -f1-4)" == $'section\t(no Direction section)\tunchecked\tnone' ]] \
+[[ $RC -eq 0 && "$(wc -l <<< "$OUT" | tr -d ' ')" -eq 1 && "$(cut -f1-4 <<< "$OUT")" == $'section\t(no Direction section)\tunchecked\tnone' ]] \
     && pass "(section) one section row" || fail "(section) rc=$RC '$OUT'"
-[[ "$(awk -F'\t' '$1 != "section" && $1 != "step" && $1 != "proof"' <<< "$OUT")" == "" ]] \
-    && pass "(section) no other rows but step and proof" || fail "(section) other rows: '$OUT'"
 run_rm $'# Roadmap\n' --summary
 [[ "$OUT" == "lines 0/0 deferrals 0/0" ]] && pass "(section) summary of an absent section" || fail "(section) summary '$OUT'"
 
 echo "TEST: a section with no recognised table, an empty section, a missing roadmap"
 run_rm $'## Direction\n\nOnly prose here.\n\n| Item | Notes |\n|---|---|\n| x | y |\n\n## Next\n'
-[[ "$(sec | cut -f1-3)" == $'section\t(no Line or Deferral table)\tunchecked' && -z "$(awk -F'\t' '$1 == "line"' <<< "$OUT")" ]] \
+[[ "$(cut -f1-3 <<< "$OUT")" == $'section\t(no Line or Deferral table)\tunchecked' ]] \
     && pass "(section) prose-only section prints its own row" || fail "(section) no table: '$OUT'"
 run_rm $'## Direction\n\n## Next\n'
-[[ "$(sec | cut -f1-3)" == $'section\t(no Line or Deferral table)\tunchecked' && -z "$(awk -F'\t' '$1 == "line"' <<< "$OUT")" ]] \
+[[ "$(cut -f1-3 <<< "$OUT")" == $'section\t(no Line or Deferral table)\tunchecked' ]] \
     && pass "(section) empty section prints the same row" || fail "(section) empty: '$OUT'"
 OUT="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --roadmap "$SB/root/docs/nosuch.md" 2>/dev/null)"
 [[ "$(cut -f1 <<< "$OUT")" == section && "$(cut -f2 <<< "$OUT")" == "(roadmap not found: $SB/root/docs/nosuch.md)" ]] \
     && pass "(section) a missing roadmap file is named, not read as no section" || fail "(section) missing roadmap: '$OUT'"
-[[ "$(wc -l <<< "$OUT" | tr -d ' ')" -eq 1 ]] && pass "(section) a roadmap not read gets no step or proof rows" || fail "(section) not read: '$OUT'"
 
 echo "TEST: a Line or Deferral table with a header and no rows prints a section row"
 run_rm $'## Direction\n\n| Line | Check |\n|---|---|\n\n| Deferral | Revisit check |\n|---|---|\n\n## Next\n'
 [[ $RC -eq 0 && "$OUT" == $'section\t(no rows in the Line or Deferral tables)\tunchecked\tnone\t'* \
-    && "$(sec | wc -l | tr -d ' ')" -eq 1 && "$(grep -c '^$' <<< "$OUT")" -eq 0 \
-    && "$(cut -f1 <<< "$OUT" | tr '\n' ' ')" == "section step proof " ]] \
+    && "$(wc -l <<< "$OUT" | tr -d ' ')" -eq 1 ]] \
     && pass "(section) header-only tables give one section row, no blank line" || fail "(section) header only: '$OUT'"
 
 # --- 6. fences, headings, line endings ------------------------------------------------------
@@ -697,176 +690,6 @@ done
 RC=0; OUT2="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --roadmap "$SB/root/docs/nosuch.md" --summary 2>"$SB/err")" || RC=$?
 [[ $RC -eq 3 && -z "$OUT2" && "$(cat "$SB/err")" == *"roadmap not found: $SB/root/docs/nosuch.md"* ]] \
     && pass "(not read) --summary on a missing roadmap: exit 3, no 0/0" || fail "(not read) --summary rc=$RC out='$OUT2' err=$(cat "$SB/err")"
-
-# --- 11b. step and proof rows ------------------------------------------------------------
-echo "TEST: step rows come from the Step | Item table's in-progress rows, wherever it is"
-kinds() { cut -f1 <<< "$OUT" | tr '\n' ' '; }
-krows() { awk -F'\t' -v k="$1" '$1 == k { print $2 "=" $3 "=" $4 }' <<< "$OUT"; }
-body_steps='# Roadmap
-
-```
-| Step | Item | Status |
-|---|---|---|
-| 9 | fenced example | in progress |
-```
-
-## Direction
-
-**Acceptance case.** A run, started from a
-project root, gets [through](x.md#y) the merge
-checkpoint.
-
-Second paragraph, not part of it.
-
-| Line | Check |
-|---|---|
-| L1 | file-exists docs/notes.md |
-
-## Priority: Something Else
-
-| Step | Item | Issue | Status | Notes |
-|------|------|-------|--------|-------|
-| 1 | first thing | #1 | done | n |
-| 2 | doing the second \| thing | #2 | in progress | n |
-| 3 | third | — | planned | n |
-| 4 | doing the fourth | #4 | In Progress | n |
-
-### Cutover
-
-| Order | Item | Issue | Status | Notes |
-|---|---|---|---|---|
-| 1 | decoy one | #9 | in progress | |
-| 2 | decoy two | #9 | in progress | |
-'
-run_rm "$body_steps"
-[[ $RC -eq 0 && "$(krows step)" == $'doing the second | thing=true=Step 2\ndoing the fourth=true=Step 4' ]] \
-    && pass "(step) two in-progress rows in table order; \\| kept as a pipe; Cutover and fenced tables not read" || fail "(step) '$(krows step)'"
-[[ "$(kinds)" == "line step step proof " ]] && pass "(step) step and proof rows follow the Direction rows" || fail "(step) kinds: $(kinds)"
-[[ "$(krows proof)" == "A run, started from a project root, gets through the merge checkpoint.=true=none" ]] \
-    && pass "(proof) label removed, lines joined, link target dropped, capital and period kept, next paragraph left out" || fail "(proof) '$(krows proof)'"
-run_rm "$body_steps" --summary
-[[ "$OUT" == "lines 1/1 deferrals 0/0" ]] && pass "(step) the summary counts only Direction lines" || fail "(step) summary '$OUT'"
-
-echo "TEST: zero, three or an empty Item cell in progress is a roadmap problem; no table is unchecked"
-st_table() {  # <status rows...>: a roadmap with a Direction line and a Step table
-    printf '## Direction\n\n| Line | Check |\n|---|---|\n| L1 | file-exists docs/notes.md |\n\n## Plan\n\n| Step | Item | Status |\n|---|---|---|\n'
-    printf '%s\n' "$@"
-}
-run_rm "$(st_table '| 1 | a | done |' '| 2 | b | planned |')"
-[[ "$(krows step)" == "(roadmap problem: 0 steps marked in progress; expected 1 or 2)=false=none" ]] \
-    && pass "(step) none in progress: one problem row, false" || fail "(step) zero '$(krows step)'"
-run_rm "$(st_table '| 1 | a | in progress |' '| 2 | b | in progress |' '| 3 | c | in progress |')"
-[[ "$(krows step)" == "(roadmap problem: 3 steps marked in progress; expected 1 or 2)=false=none" ]] \
-    && pass "(step) three in progress: one problem row" || fail "(step) three '$(krows step)'"
-run_rm "$(st_table '| 1 | a | in progress |' '| 2 |  | in progress |')"
-[[ "$(krows step)" == "(roadmap problem: step 2 is marked in progress with an empty Item cell)=false=none" ]] \
-    && pass "(step) an empty Item cell in progress: problem row" || fail "(step) empty item '$(krows step)'"
-run_rm "$(st_table '| 1 | only one | in progress |')"
-[[ "$(krows step)" == "only one=true=Step 1" ]] && pass "(step) one in progress: one row" || fail "(step) one '$(krows step)'"
-run_rm "$(direction '| L1 | file-exists docs/notes.md |')"
-[[ "$(krows step)" == "(no step table)=unchecked=none" ]] && pass "(step) no Step | Item table: unchecked row" || fail "(step) none '$(krows step)'"
-run_rm $'## Plan\n\n| Step | Item | Notes | Status |\n|---|---|---|---|\n| 7 | moved columns | n | in progress |\n'
-[[ "$(krows step)" == "moved columns=true=Step 7" && "$(sec | cut -f2)" == "(no Direction section)" ]] \
-    && pass "(step) Status found by its header name; read without a Direction section" || fail "(step) moved '$OUT'"
-run_rm $'## Plan\n\n| Step | Item | Issue |\n|---|---|---|\n| 1 | a | in progress |\n'
-[[ "$(krows step)" == "(roadmap problem: 0 steps marked in progress; expected 1 or 2)=false=none" ]] \
-    && pass "(step) a table with no Status column has nothing in progress" || fail "(step) no status '$(krows step)'"
-
-echo "TEST: the proof paragraph is read from the Direction section only"
-run_rm $'# Roadmap\n\n**Acceptance case.** Outside the section.\n\n## Direction\n\n| Line | Check |\n|---|---|\n| L1 | file-exists docs/notes.md |\n\n## Later\n\n**Acceptance case.** After it.\n'
-[[ "$(krows proof)" == "(no acceptance case paragraph)=unchecked=none" ]] \
-    && pass "(proof) a paragraph outside the section is ignored" || fail "(proof) outside '$(krows proof)'"
-run_rm $'## Direction\n\n**Acceptance case.** ADR-0016 is I/O bound.\n| Line | Check |\n|---|---|\n| L1 | file-exists docs/notes.md |\n'
-[[ "$(krows proof)" == "ADR-0016 is I/O bound.=true=none" && "$(res L1)" == true ]] \
-    && pass "(proof) text as written; a table right under it ends it" || fail "(proof) table end '$OUT'"
-run_rm $'## Direction\n\n**Acceptance case.** Text\n- a list item\n'
-[[ "$(krows proof)" == "Text=true=none" ]] && pass "(proof) a list item ends it" || fail "(proof) list '$(krows proof)'"
-run_rm $'## Direction\n\n**Acceptance case.**\n\nNot it.\n'
-[[ "$(krows proof)" == "(no acceptance case paragraph)=unchecked=none" ]] && pass "(proof) a bare label is no paragraph" || fail "(proof) bare '$(krows proof)'"
-run_rm $'## Direction\n\n**Acceptance case.** A setext heading\n---\n'
-[[ "$(krows proof)" == "(no acceptance case paragraph)=unchecked=none" ]] \
-    && pass "(proof) a paragraph made a heading by an underline is not it" || fail "(proof) setext '$(krows proof)'"
-
-echo "TEST: --summary-from accepts step and proof rows and still refuses unknown kinds"
-run_rm "$body_steps"
-printf '%s\n' "$OUT" > "$SB/rows_steps.tsv"
-OUT2="$(bash "$SITREP" --summary-from "$SB/rows_steps.tsv" 2>/dev/null)"
-[[ "$OUT2" == "lines 1/1 deferrals 0/0" ]] && pass "(summary-from) step and proof rows accepted, not counted" || fail "(summary-from) steps '$OUT2'"
-printf 'stepx\tA\ttrue\tStep 1\t2026-01-01\n' > "$SB/badkind.tsv"
-RC=0; OUT2="$(bash "$SITREP" --summary-from "$SB/badkind.tsv" 2>"$SB/err")" || RC=$?
-[[ $RC -eq 2 && -z "$OUT2" ]] && pass "(summary-from) an unknown kind is still refused" || fail "(summary-from) badkind rc=$RC '$OUT2'"
-RC=0; bash "$SITREP" --summary-from "$SB/rows_steps.tsv" --results-from "$SB/rows_steps.tsv" >/dev/null 2>&1 || RC=$?
-[[ $RC -eq 2 ]] && pass "(usage) two --*-from modes refused" || fail "(usage) two modes rc=$RC"
-RC=0; bash "$SITREP" --summary-from "$SB/rows_steps.tsv" --last - >/dev/null 2>&1 || RC=$?
-[[ $RC -eq 2 ]] && pass "(usage) --last without --path-from refused" || fail "(usage) --last rc=$RC"
-
-# --- 11c. results field and path -----------------------------------------------------------
-crc() { printf '%s' "$1" | cksum | cut -d' ' -f1; }
-lrow() { printf 'line\t%s\t%s\tx\t2026-01-01\n' "$1" "$2"; }
-drow() { printf 'deferral\t%s\t%s\tx\t2026-01-01\n' "$1" "$2"; }
-
-echo "TEST: --results-from keys each line by its text and occurrence"
-{ lrow Alpha true; lrow Beta false; lrow Alpha unknown; drow D true; printf 'step\tdoing\ttrue\tStep 1\t2026-01-01\n'; } > "$SB/res1.tsv"
-OUT2="$(bash "$SITREP" --results-from "$SB/res1.tsv" 2>"$SB/err")"
-want="$(crc Alpha).1:true,$(crc Beta).1:false,$(crc Alpha).2:unknown"
-[[ "$OUT2" == "$want" ]] && pass "(results) one key:result per line in order; identical text gets .1 and .2" || fail "(results) '$OUT2' want '$want'"
-{ lrow Beta false; lrow Alpha true; } > "$SB/res2.tsv"
-OUT2="$(bash "$SITREP" --results-from "$SB/res2.tsv" 2>/dev/null)"
-[[ "$OUT2" == "$(crc Beta).1:false,$(crc Alpha).1:true" ]] && pass "(results) a reordered table keeps each line's key" || fail "(results) reorder '$OUT2'"
-{ drow D true; printf 'section\t(no rows in the Line or Deferral tables)\tunchecked\tnone\t2026-01-01\n'; } > "$SB/res3.tsv"
-OUT2="$(bash "$SITREP" --results-from "$SB/res3.tsv" 2>/dev/null)"
-[[ "$OUT2" == "-" ]] && pass "(results) no line rows: -" || fail "(results) empty '$OUT2'"
-for f in empty garbage cut badword; do
-    RC=0; OUT2="$(bash "$SITREP" --results-from "$SB/$f.tsv" 2>"$SB/err")" || RC=$?
-    [[ $RC -eq 2 && -z "$OUT2" && -s "$SB/err" ]] && pass "(results) $f rows file refused" || fail "(results) $f rc=$RC '$OUT2'"
-done
-RC=0; OUT2="$(bash "$SITREP" --results-from "$SB/notfound.tsv" 2>/dev/null)" || RC=$?
-[[ $RC -eq 3 && -z "$OUT2" ]] && pass "(results) roadmap not read: exit 3" || fail "(results) notfound rc=$RC '$OUT2'"
-
-echo "TEST: --path-from groups the lines and says what moved"
-k1() { printf '%s.1' "$(crc "$1")"; }
-{ lrow 'Stays true' true; lrow 'Now true' true; lrow 'Fails' false; lrow 'Goes partial' partial
-  lrow 'Cannot check' unknown; lrow 'No check now' unchecked; lrow 'False to unknown' unknown
-  lrow 'Still false' false; lrow 'Brand new' false; drow 'Due later' true; drow 'Not checked later' unchecked; } > "$SB/path.tsv"
-last="$(k1 'Stays true'):true,$(k1 'Now true'):false,$(k1 'Fails'):true,$(k1 'Goes partial'):true"
-last+=",$(k1 'Cannot check'):true,$(k1 'No check now'):true,$(k1 'False to unknown'):false,$(k1 'Still false'):false,$(k1 'Removed'):true"
-RC=0; OUT2="$(bash "$SITREP" --path-from "$SB/path.tsv" --last "$last" 2>"$SB/err")" || RC=$?
-want=$'done\tStays true\ttrue\tsame
-done\tNow true\ttrue\tnow-true
-regressed\tFails\tfalse\tregressed
-regressed\tGoes partial\tpartial\tregressed
-not-yet\tCannot check\tunknown\tchanged
-not-yet\tNo check now\tunchecked\tchanged
-not-yet\tFalse to unknown\tunknown\tchanged
-not-yet\tStill false\tfalse\tsame
-not-yet\tBrand new\tfalse\tnew
-gone\t1
-after\tDue later\ttrue
-after\tNot checked later\tunchecked'
-[[ $RC -eq 0 && "$OUT2" == "$want" ]] \
-    && pass "(path) groups and since words; true -> unknown/unchecked is not-yet, never regressed; gone counted; deferrals after" \
-    || fail "(path) rc=$RC err=$(cat "$SB/err") got:"$'\n'"$OUT2"
-{ lrow 'Still false' false; lrow 'Stays true' true; } > "$SB/path2.tsv"
-OUT2="$(bash "$SITREP" --path-from "$SB/path2.tsv" --last "$(k1 'Stays true'):true,$(k1 'Still false'):false" 2>/dev/null)"
-[[ "$OUT2" == $'not-yet\tStill false\tfalse\tsame\ndone\tStays true\ttrue\tsame' ]] && pass "(path) a reordered roadmap compares by item" || fail "(path) reorder '$OUT2'"
-{ lrow 'New wording' false; } > "$SB/path3.tsv"
-OUT2="$(bash "$SITREP" --path-from "$SB/path3.tsv" --last "$(k1 'Old wording'):true" 2>/dev/null)"
-[[ "$OUT2" == $'not-yet\tNew wording\tfalse\tnew\ngone\t1' ]] && pass "(path) a reworded true line now false reads as new plus gone, not regressed" || fail "(path) reword '$OUT2'"
-{ lrow 'Dup' false; } > "$SB/path4.tsv"
-OUT2="$(bash "$SITREP" --path-from "$SB/path4.tsv" --last "$(crc Dup).1:false,$(crc Dup).2:true" 2>/dev/null)"
-[[ "$OUT2" == $'not-yet\tDup\tfalse\tsame\ngone\t1' ]] && pass "(path) identical lines compare pairwise; deleting one reads as the second gone" || fail "(path) dup '$OUT2'"
-OUT2="$(bash "$SITREP" --path-from "$SB/path2.tsv" 2>/dev/null)"
-[[ "$OUT2" == $'not-yet\tStill false\tfalse\tnone\ndone\tStays true\ttrue\tnone' ]] && pass "(path) no --last: every since is none" || fail "(path) none '$OUT2'"
-OUT2="$(bash "$SITREP" --path-from "$SB/path2.tsv" --last - 2>/dev/null)"
-[[ "$OUT2" == $'not-yet\tStill false\tfalse\tnew\ndone\tStays true\ttrue\tnew' ]] && pass "(path) --last - is an empty list: every line new, nothing gone" || fail "(path) dash '$OUT2'"
-for bad in "x" "1.1:maybe" "1.1:true," ",1.1:true" "1.1:true,1.1:false" "1:true" ""; do
-    RC=0; OUT2="$(bash "$SITREP" --path-from "$SB/path2.tsv" --last "$bad" 2>"$SB/err")" || RC=$?
-    [[ $RC -eq 2 && -z "$OUT2" && -s "$SB/err" ]] && pass "(path) malformed --last '$bad': exit 2, message, no rows" || fail "(path) bad '$bad' rc=$RC '$OUT2'"
-done
-RC=0; OUT2="$(bash "$SITREP" --path-from "$SB/notfound.tsv" 2>/dev/null)" || RC=$?
-[[ $RC -eq 3 && -z "$OUT2" ]] && pass "(path) roadmap not read: exit 3" || fail "(path) notfound rc=$RC '$OUT2'"
-RC=0; OUT2="$(bash "$SITREP" --path-from "$SB/garbage.tsv" 2>/dev/null)" || RC=$?
-[[ $RC -eq 2 && -z "$OUT2" ]] && pass "(path) a bad rows file: exit 2" || fail "(path) garbage rc=$RC '$OUT2'"
 
 echo "TEST: an interrupted run exits non-zero and prints no rows"
 cat > "$RUNNER/.agent/scripts/check_design_anchors.sh" <<EOF
