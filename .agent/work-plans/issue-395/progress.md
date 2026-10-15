@@ -710,3 +710,66 @@ Round 2: convergence check on round 1 (`c1bb3f26`) plus the fix pass `c1bb3f26..
 - Cross-model re-ran in round 2, because the skill classifies fix rounds on the whole diff (#320).
 
 No owner-level questions.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-15 14:47 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-395 at `c8f02bee`
+**Addressed**: Local Review (Pre-Push) at `6d836b60` (2026-10-15 14:27 -04:00)
+**Commits**: 13d13937 0998d239 0f57a603 e441fbd9 84c6b175 f82ff94f 6ba42c52 35020d44 cb821906 c8f02bee
+
+Address-findings pass on round 2: four must-fix and four suggestions, all actioned, none deferred.
+
+### Actions
+- [x] (must-fix) Report line 2: the roadmap's acceptance paragraph replaced with the host's text from the owner's words (`13d13937`); the OQ-2 note is now its own paragraph, unchanged. Step 5's acceptance block renders every piece of roadmap text the report prints (acceptance case, plus Direction lines and deferrals pasted between `TEXT` markers): a markdown link as its text, an ADR number with its file's title unless a parenthesis follows; tests for links, titles, no doubling, `(#N)` after an ADR, a missing ADR file, the placeholder (`0998d239`) — `docs/roadmap.md:18`, `.claude/skills/sitrep/SKILL.md` step 5
+- [x] (must-fix) Step 3 reads each worktree field by name with jq; no branch reads `(no branch)`; test with a null branch, an empty branch and no repo beside a complete worktree, confirmed failing on the old `read` (`0f57a603`) — step 3
+- [x] (must-fix) Package worktrees: title cache and timeline only from checkouts whose remote is the issue's repository; with a bare `issue=<N>`, a checkout with no GitHub remote disagrees; unknown repository gives unknown title and state; tests for a same-numbered timeline in another repository (listed first, and alone), a no-remote checkout, a bare header all in one repository, confirmed failing on the old code (`e441fbd9`) — step 3
+- [x] (must-fix) State words from base type plus open boxes: "code reviewed" / "reviews triaged", then "<k> findings to address" or "nothing open"; `Merge (report-only)` reads "merged although the merge check found problems"; suffixed headings such as `External Review (round 2)` map; the full mapping is step 3's table; tests for each case, confirmed failing on the old code (`84c6b175`). Follow-up: review-code's unchecked "No issues found. LGTM." placeholder is not counted, with a test (`f82ff94f`) — step 3
+- [x] (suggestion) "implemented, no pull request yet" only for workspace worktrees (`35020d44`) — step 8
+- [x] (suggestion) Checkpoint phase-failed retry/takeover and merge-refused retriage get state words, with tests; there is no `restart` decision in the run-issue vocabulary, so none is mapped (`6ba42c52`) — step 3
+- [x] (suggestion) Step 3 cache-only git-bug test: gh failing, cached title, a miss, no `bridge` call (`c8f02bee`) — `test_sitrep_checks.sh`
+- [x] (suggestion) The documentation problem line says "the design document" and "the workspace's scripts, skills or docs", not paths (`cb821906`) — steps 6 and 8
+
+### Verification
+- `bash .agent/scripts/tests/run_script_tests.sh`: all 37 suites passed (272 s); `test_sitrep_checks` 175 passed, 0 failed; `test_skill_paths` 58 passed, 0 failed.
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0.
+- `pre-commit run --all-files` (the main checkout's `.venv`): exit 0.
+- Commits used `SKIP=validate-script-tests`; `test_sitrep_checks.sh` ran before each, and the full suite ran on `c8f02bee`.
+
+### Dry run (real workspace, 2026-10-15)
+
+Steps 1, 2, 3, 5 and 6 by hand from this branch's skill, `$WS_ROOT` the main checkout, steps 1 and 5 with this branch's roadmap. Step 4 not run; no background check started. First twelve non-blank lines:
+
+```
+## Sit-rep, 2026-10-15
+A bare project that was never onboarded is made ready and used: GeoZui4D (`gz4d`) is registered, onboarded, and an issue there runs through the loop with the workspace's goals and principles visibly driving the work.
+4 of 7 steps done; next: GeoZui4D (`gz4d`) is onboarded through onboard-project (issue 332) — not yet done (no automatic check).
+**Suggested next**: Onboard GeoZui4D (`gz4d`) through onboard-project (issue 332). In flight on feature/issue-332: implemented, no pull request yet.
+**In flight**:
+- feature/issue-395: sit-rep: when I ask "what's next?", say what to work on towards the goals, where in-progress work stands, and what problems I should know about (issue 395): code reviewed, nothing open; pull request 396: ready
+- skill/research-20261015-142112-924701598; pull request 397: ready
+- feature/issue-332: onboard-project registers projects and audits workspace integration (overrides, conflicting instructions, ignore rules, misplaced conventions, unverified registration) (issue 332), the next step: implemented, no pull request yet
+**Problems**:
+- Audit: last design-decision review 2026-10-09, 6 days and 124 commits ago; 9 of 18 design decisions not yet reviewed — probably due; would start in the background (not started: dry run).
+- Research: 19 of 19 research topics last checked more than 30 days ago (19 more than 90); last full refresh 2026-04-19 — probably due; the 3 oldest would start in the background (not started: dry run).
+- Documentation: the design document last changed 2026-10-13, 2 days ago; 17 commits since changed the workspace's scripts, skills or docs — recent.
+```
+
+Facts behind it: rows `lines 4/7 deferrals 0/4`; step 5 `acceptance_rest` = "Until that run passes the merge checkpoint, ADR-0016 (Session roots and the user tier) stays Provisional (Sessions and roots)." and `text=ADR-0016 (Session Roots and the User Tier) is promoted from Provisional to Accepted`; step 3 states "implemented" (332) and "code reviewed, nothing open" (395, whose boxes this pass checked); PRs 396 and 397 ready; `main_behind_origin=0`; no deferral due.
+
+### Decisions made (owner may veto)
+- The acceptance paragraph is the host's text as given. The OQ-2 sentences, which were in the same paragraph, are kept word for word as a second paragraph, including "The run's target is the `gz4d` project", which now repeats the first paragraph.
+- One renderer for all roadmap text, in step 5's acceptance block; the session pastes the lines and deferrals it prints. Step 5's per-line ADR lookup is removed.
+- An ADR's title comes from its file, in the file's capitals ("Session Roots and the User Tier"); a number already followed by a parenthesis is left alone, so the roadmap's own lower-case title stands. An ADR with no file stays bare.
+- Review state words are mine: "code reviewed" / "reviews triaged", then the open count or "nothing open". The LGTM placeholder is excluded, found while fixing (review-code leaves it unchecked on an approval).
+- A package worktree's aggregate root is no longer searched for a timeline unless it is itself a listed checkout of the issue's repository: work plans are written at the checkout's top level.
+- A worktree with no branch prints "(no branch)". Step 3 uses jq, already needed by `sitrep_checks.sh`.
+- All four suggestions were actioned rather than deferred; `restart` is not mapped because the run-issue vocabulary has no such decision.
+
+### Noticed, not changed
+- A skill worktree's In flight line has no title, so pull request 397 reads as a bare branch name; a pull request joined to a skill worktree could carry its own title.
+- Step 2 still prints `inbox_oldest=# Inbox` (pre-existing).
+
+No owner-level questions.
