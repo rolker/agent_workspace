@@ -4,7 +4,7 @@
 
 https://github.com/rolker/agent_workspace/issues/395
 
-Revision of 2026-10-15, revised again after Plan Review 92b16637. The issue was restated at goal level that day (checkpoint decision: restart). This plan replaces the one for the 2026-10-14 scope (composed orientation slots), which is history in the issue body and the timeline.
+Revision of 2026-10-15, revised again after Plan Review 92b16637, with Plan Review 50ceea68's one must-fix folded in (the onboarding line has no check yet). The issue was restated at goal level that day (checkpoint decision: restart). This plan replaces the one for the 2026-10-14 scope (composed orientation slots), which is history in the issue body and the timeline.
 
 ## Context
 
@@ -17,7 +17,7 @@ Where the report needs something not written down (a cadence), the issue says as
 All changes are in the skill's text and commands, plus one roadmap line; the check runner gains nothing.
 
 1. **Revert `f293a4bb`** (the old-scope implementation: `sitrep_checks.sh` step and proof rows, per-line results, path modes, and their additions to `test_sitrep_checks.sh`). This is the first implementation commit, made with `git revert`; the commit stays in history. Run `test_sitrep_checks.sh` after to confirm the runner is back to its prior state.
-2. **Roadmap: add one Direction line**, placed before the project-root run line: "The acceptance project is onboarded (#332)" with check `gh-issue 332 closed`. It is stage 2 of the owner's own three-stage test (register, onboard, run an issue), stated today; issue 332's body records onboarding as held before the acceptance run. The goal does not change, only the chain's wording. Then run `sitrep_checks.sh` to confirm the new row parses and reads `false` while 332 is open.
+2. **Roadmap: add one Direction line**, placed before the project-root run line: "The acceptance project is onboarded through onboard-project (#332)" with an **empty check cell**. It is stage 2 of the owner's own three-stage test (register, onboard, run an issue), stated today; issue 332's body records onboarding as held before the acceptance run. `gh-issue 332 closed` would prove only that the onboard-project work merged, not that the acceptance project was onboarded (issue 332's plan lists the onboarding run as a separate step after it), and nothing on disk records "onboarded" yet. So the line reads `unchecked`, which the Suggested-next rule (step 4) counts as unmet and does not skip. The goal does not change, only the chain's wording. Then run `sitrep_checks.sh` to confirm the new row parses and reads `unchecked`.
 3. **Reorder the report in SKILL.md step 5** to: (a) one direction sentence; (b) Suggested next; (c) In flight; (d) Problems; (e) then Acceptance-case counts (with the acceptance-case paragraph), Inbox and Deferrals. The top (a to d) targets about 15 lines. The direction sentence is built from the Direction lines, not the acceptance paragraph: "<t> lines of <n> true; next: <first unmet line's text>". Every number has its label, so a line like "3 of 6 Direction lines true" never appears bare. The inbox is one line (count, new since last run) with the five-bin sort only on `/sitrep inbox`.
 4. **New "Suggested next" rule**: unmet means any result other than `true`, in roadmap order; an `unchecked` line counts as unmet and is not skipped (this resolves the old contradiction), and an `unknown` first line reads "check could not run" and is not skipped either, since the chain is ordered. The result word is printed. The in-flight branch is matched only on the line's own cell: `(#N)` or `gh-issue N` there, then a worktree branch `feature/issue-N` or a pull request closing `#N`. No matching in the Direction prose (it would hit the Format paragraph's literal `(#N)` and the deferral rows). If no in-flight branch matches, say "nothing in flight advances it" and name the line. Fall back to the previous order (due deferral, then in-flight, then inbox "now") only when every Direction line is `true`. Any `#N` or ADR number printed from roadmap text carries its title (issue title as in step 6; ADR title from the ADR file's H1).
 5. **Add step "Read problems"**, read-only commands run once per sit-rep, each printing facts then one judgment word ("probably due", "recent", "cannot tell"). Commit counts exclude work-plan commits and merge commits, always on `main` in `$WS_ROOT` (a worktree session's `.` is a feature branch):
@@ -35,14 +35,14 @@ All changes are in the skill's text and commands, plus one roadmap line; the che
    Anything that writes to a repo or GitHub is offered, never done.
 8. **Run record**: unchanged. "Since last time" is the existing counts comparison, one clause.
 9. **Update SKILL.md frontmatter description, the Rules, and the "Reads only" claim** to say it may start a read-only background check. Update `docs/design.md` Documentation layers: the Direction row (one sentence: the sit-rep also reports problems from the Decision register, the research digest's entry dates and the commit counts, and may start due read-only checks), the gap paragraph that says the Direction section says "not what healthy means" (one clause: the Problems section is a first form of health signals), plus a change-log row (ADR-0017, same change).
-10. **Acceptance**: after merge, run `/sitrep` for real. Confirm: the top is within about 15 lines; the direction sentence reads, on today's roadmap, "<t> lines of 7 true; next: The acceptance project is onboarded (#332)" with 332's title beside the number; Suggested next names that line plus the `feature/issue-332` branch with its title and the latest progress entry type and status; the Problems section prints audit, research and documentation facts from commands, with commit counts that exclude work-plan and merge commits; and the owner can name his next step from the first screen. Look again after a week of use (record in the issue).
+10. **Acceptance**: after merge, run `/sitrep` for real. Confirm: the top is within about 15 lines; the direction sentence reads, on today's roadmap, "<t> lines of 7 true; next: The acceptance project is onboarded through onboard-project (#332) — unchecked" with 332's title beside the number; Suggested next names that line plus the `feature/issue-332` branch with its title and the latest progress entry type and status; the Problems section prints audit, research and documentation facts from commands, with commit counts that exclude work-plan and merge commits; and the owner can name his next step from the first screen. Look again after a week of use (record in the issue).
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
 | `.agent/scripts/sitrep_checks.sh`, `.agent/scripts/tests/test_sitrep_checks.sh` | Reverted to before `f293a4bb` (first commit) |
-| `docs/roadmap.md` | One Direction line: the acceptance project is onboarded (#332), check `gh-issue 332 closed`, before the project-root run line |
+| `docs/roadmap.md` | One Direction line: the acceptance project is onboarded through onboard-project (#332), empty check cell (reads `unchecked`), before the project-root run line |
 | `.claude/skills/sitrep/SKILL.md` | New report order, direction sentence, Suggested-next rule, In flight lookups, Problems step, background-start rule and prompts, description and Rules |
 | `docs/design.md` | Direction row sentence and gap-paragraph clause in Documentation layers; change-log row |
 
@@ -69,7 +69,7 @@ Small change: the Direction row of `docs/design.md#documentation-layers` gains o
 | Know whether it works | Cuts a parser unit-test as the proof; the test is a real `/sitrep` after merge plus a look after a week. Runner tests only to confirm the revert. |
 | A change includes its consequences | Adds to the plan: description line, Rules, "Reads only" wording, design.md row and change log; removal of the old tests (revert). |
 | Leave in a project only what it chose to carry | Changes: in a project session Problems reads only the workspace and says so; nothing is written to the project, and due checks are offered with where to run them, never started there. |
-| Enforce what matters, as simply as possible | Cuts new check kinds in the runner; the facts are read by commands in the skill, as step 3 does for pull requests. The one new roadmap line uses an existing check kind (`gh-issue`). |
+| Enforce what matters, as simply as possible | Cuts new check kinds in the runner; the facts are read by commands in the skill, as step 3 does for pull requests. The one new roadmap line has no check until onboarding leaves a record; no check kind or marker file is invented for it. |
 
 ## ADR Compliance
 
@@ -86,7 +86,8 @@ Small change: the Direction row of `docs/design.md#documentation-layers` gains o
 | Report template | Skill description, Rules, "Reads only" claim | Yes |
 | Sit-rep behaviour | design.md Direction row and change log | Yes |
 | Revert `f293a4bb` | `test_sitrep_checks.sh` goes back with it | Yes |
-| New Direction line | `sitrep_checks.sh` parses it (run to confirm); written like the existing `(#379)` line (issue number in prose as `(#N)`, check cell `gh-issue 332 closed`) | Yes (step 2) |
+| New Direction line | `sitrep_checks.sh` parses it (run to confirm it reads `unchecked`); written like the existing `(#379)` line (issue number in prose as `(#N)`), with an empty check cell | Yes (step 2) |
+| Onboarding gets recorded (issue 332 lands a record of a project onboarded) | The new line's check cell gets a check for that record: a roadmap edit, which the sit-rep prompts by naming the line `unchecked` | No: belongs to issue 332 or the roadmap edit after it |
 | Problems section is a first health signal | design.md gap paragraph ("not what healthy means") | Yes (step 9) |
 | Skill may start background agents | Nothing else reads the skill's "writes one line" claim except the description | Yes (description) |
 
@@ -98,7 +99,7 @@ None for the owner. No goal is unclear, no two goals are in tension, nothing out
 
 - Audit has no stored cadence or threshold; the report gives days and commits since (work-plan and merge commits excluded) and a judgment. Research "due" follows the research skill's written 30-day rule. A veto becomes a standing rule.
 - The audit fact is the newest `Re-examined` date in the Decision register, labelled "newest ADR re-examination", not "last audit".
-- A Direction line "The acceptance project is onboarded (#332)" is added to the roadmap before the project-root run line: stage 2 of the owner's own three-stage test, with `gh-issue 332 closed` as its check.
+- A Direction line "The acceptance project is onboarded through onboard-project (#332)" is added to the roadmap before the project-root run line: stage 2 of the owner's own three-stage test. Its check cell is empty, so it reads `unchecked` until onboarding is recorded somewhere (Plan Review 50ceea68: `gh-issue 332 closed` would turn it true before the project is onboarded).
 - The direction sentence is "<t> lines of <n> true; next: <first unmet line>", built from the Direction lines; the acceptance paragraph moves to the counts section.
 - An `unchecked` or `unknown` Direction line counts as unmet and is the Suggested next; not skipped.
 - The design-anchor check prints only on failure.
