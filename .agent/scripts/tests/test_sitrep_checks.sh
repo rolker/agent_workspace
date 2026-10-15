@@ -1003,8 +1003,8 @@ EOF
 reset_marks
 blk="$(skill_step 3 2)"
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\tImplementation partial\nworkspace\tworkspace\tfeature/issue-8\tissue 8\tunknown (no GitHub remote)\tno progress.md' && ! -e "$MARK/gh" ]] \
-    && pass "(skill 3) latest entry type and status; no row for main or a skill worktree; no remote, no gh" || fail "(skill 3) flight rc=$RC '$OUT'"
+[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial\nworkspace\tworkspace\tfeature/issue-8\tissue 8\tunknown (no GitHub remote)\tno timeline yet' && ! -e "$MARK/gh" ]] \
+    && pass "(skill 3) latest entry in state words; no row for main or a skill worktree; no remote, no gh" || fail "(skill 3) flight rc=$RC '$OUT'"
 
 echo "TEST: sit-rep step 3 reads a package worktree's repository and timeline through its manifest"
 # Two ADR-0012 package worktrees: aggregate directories (not checkouts)
@@ -1026,12 +1026,44 @@ EOF
 reset_marks
 echo "Package title" > "$SB/gh_state"
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT")" == $'project\tp\tfeature/issue-12,feature/issue-12\tissue 12\tPackage title\tImplementation partial' ]] \
+[[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT")" == $'project\tp\tfeature/issue-12,feature/issue-12\tissue 12\tPackage title\timplementation partial' ]] \
     && pass "(skill 3) package worktree: title from the header's repository, timeline found in a listed checkout" || fail "(skill 3) package rc=$RC '$OUT'"
 [[ "$(cat "$MARK/gh" 2>/dev/null)" == "issue view 12 -R acme/pkg_b --json title --jq .title" ]] \
     && pass "(skill 3) package worktree: gh asked the header's repository only" || fail "(skill 3) package gh: $(cat "$MARK/gh" 2>/dev/null)"
-[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are in different repositories)\tno progress.md' ]] \
+[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are in different repositories)\tno timeline yet' ]] \
     && pass "(skill 3) package worktree with a bare issue number and two repositories: no guess" || fail "(skill 3) package bare '$OUT'"
+
+echo "TEST: sit-rep step 3 names the latest timeline entry in state words"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"}]}'
+EOF
+state_of() {  # <entry heading> <status> [extra field lines]: step 3's state for a one-entry timeline
+    printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n## %s\n**Status**: %s\n**When**: 2026-10-01 10:00 -04:00\n**By**: t\n%b\n**Branch**: feature/issue-7 at `abc1234`\n' \
+        "$1" "$2" "${3:-}" > "$SB/wt7/.agent/work-plans/issue-7/progress.md"
+    (cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1) | cut -f6
+}
+st_ok=true
+while IFS='|' read -r heading status extra want; do
+    got="$(state_of "$heading" "$status" "$extra")"
+    [[ "$got" == "$want" ]] || { st_ok=false; echo "    $heading/$status/$extra: got '$got', want '$want'"; }
+done <<'CASES'
+Issue Review|complete||issue reviewed, not yet planned
+Plan Authored|complete||plan written, not yet reviewed
+Plan Review|complete||plan reviewed, not yet implemented
+Checkpoint|complete|**After**: plan\n**Decision**: proceed|plan approved, implementing
+Checkpoint|complete|**After**: plan\n**Decision**: revise|plan being revised
+Checkpoint|complete|**After**: findings\n**Decision**: address|review findings being addressed
+Checkpoint|complete|**After**: merge\n**Decision**: merge|approved to merge
+Checkpoint|complete|**After**: phase-failed\n**Decision**: retry|checkpoint after phase-failed: retry
+Implementation|complete||implemented
+Implementation|failed||implementation failed
+Local Review (Pre-Push)|complete||in code review
+Local Review|complete||in code review
+Integrated Review|complete||review findings being addressed
+Merge (unreviewed)|complete||merged without review
+CASES
+$st_ok && pass "(skill 3) every timeline state reads as the mapping table says" || fail "(skill 3) state words (cases above)"
 
 echo "TEST: sit-rep step 5 takes issue numbers from the line's own cells only, text kept as written"
 cat > "$WS/.agent/scripts/worktree_list.sh" <<'EOF'

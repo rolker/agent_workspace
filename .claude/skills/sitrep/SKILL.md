@@ -243,7 +243,7 @@ while IFS=$'\t' read -r type repo branch issue path; do
             title="${title:-unknown (lookup failed)}"
         fi
     fi
-    latest="no progress.md"
+    latest="no timeline yet"
     f=""
     while IFS= read -r d; do
         [ -f "$d/.agent/work-plans/issue-$issue/progress.md" ] && { f="$d/.agent/work-plans/issue-$issue/progress.md"; break; }
@@ -251,18 +251,73 @@ while IFS=$'\t' read -r type repo branch issue path; do
     if [ -n "$f" ]; then
         latest="$(python3 "$WS_ROOT/.agent/scripts/progress_read.py" "$f" 2>/dev/null | python3 -c '
 import json, sys
+# The latest timeline entry, in state words (the table below the block).
+DONE = {"Issue Review": "issue reviewed, not yet planned",
+        "Plan Authored": "plan written, not yet reviewed",
+        "Plan Review": "plan reviewed, not yet implemented",
+        "Implementation": "implemented",
+        "Local Review": "in code review",
+        "Local Review (Pre-Push)": "in code review",
+        "Integrated Review": "review findings being addressed",
+        "External Review": "review findings being addressed",
+        "Merge (report-only)": "merge held: the merge check found problems",
+        "Merge (unreviewed)": "merged without review"}
+STEP = {"Issue Review": "issue review", "Plan Authored": "plan writing",
+        "Plan Review": "plan review", "Implementation": "implementation",
+        "Local Review": "code review", "Local Review (Pre-Push)": "code review",
+        "Integrated Review": "review triage", "External Review": "review triage"}
+CHECKPOINT = {("plan", "proceed"): "plan approved, implementing",
+              ("plan", "approve"): "plan approved, implementing",
+              ("plan", "revise"): "plan being revised",
+              ("issue-actions", "proceed"): "issue review accepted, planning",
+              ("issue-actions", "revise"): "issue being revised"}
+BY_DECISION = {"address": "review findings being addressed",
+               "publish": "approved to publish", "merge": "approved to merge",
+               "stop": "stopped at a checkpoint"}
+def words(e):
+    t, st = e.get("type") or "", e.get("status") or ""
+    f = e.get("fields") or {}
+    if t == "Checkpoint":
+        after, dec = (f.get("After") or "").strip(), (f.get("Decision") or "").strip()
+        return CHECKPOINT.get((after, dec)) or BY_DECISION.get(dec) \
+            or "checkpoint after %s: %s" % (after or "?", dec or "?")
+    if t in STEP and st and st != "complete":
+        return "%s %s" % (STEP[t], st)
+    return DONE.get(t) or "latest timeline entry: %s %s" % (t, st or "(no status)")
 try:
     e = json.load(sys.stdin).get("entries", [])
-    print("%s %s" % (e[-1].get("type"), e[-1].get("status") or "(no status)") if e else "no entries")
+    print(words(e[-1]) if e else "no timeline entries yet")
 except ValueError:
-    print("unreadable")')"
+    print("timeline unreadable")')"
     fi
     printf '%s\t%s\t%s\tissue %s\t%s\t%s\n' "$type" "${repo:-workspace}" "$branch" "$issue" "$title" "$latest"
 done
 ```
 
-Rows are `type`, `repo`, `branch`, `issue <N>`, title, latest entry
-(`<type> <status>`, e.g. `Implementation complete`), TAB-separated. A
+Rows are `type`, `repo`, `branch`, `issue <N>`, title, state,
+TAB-separated. The state is the latest timeline entry in words, so the
+report needs no entry names:
+
+| Latest entry | State |
+|---|---|
+| Issue Review | issue reviewed, not yet planned |
+| Plan Authored | plan written, not yet reviewed |
+| Plan Review | plan reviewed, not yet implemented |
+| Checkpoint after plan, proceed (or approve) | plan approved, implementing |
+| Checkpoint after plan, revise | plan being revised |
+| Checkpoint after issue-actions, proceed / revise | issue review accepted, planning / issue being revised |
+| Checkpoint, any other step: address / publish / merge / stop | review findings being addressed / approved to publish / approved to merge / stopped at a checkpoint |
+| Implementation | implemented (the report adds "no pull request yet" when there is none) |
+| Local Review, Local Review (Pre-Push) | in code review |
+| Integrated Review (or the older External Review) | review findings being addressed |
+| Merge (report-only) | merge held: the merge check found problems |
+| Merge (unreviewed) | merged without review |
+
+A status other than `complete` reads as the step and its status instead,
+e.g. "implementation partial", "code review failed". Anything else is
+printed as "latest timeline entry: <type> <status>", or "checkpoint after
+<step>: <decision>", so a new entry type shows up rather than being
+guessed at. No timeline reads "no timeline yet". A
 worktree with no issue (a skill worktree) gets no row; its line names the
 branch only. A package worktree's `branch` is its checkouts' branches,
 comma-separated, as the worktree list gives it. Reading across roots is allowed (`session_root.sh`); nothing
