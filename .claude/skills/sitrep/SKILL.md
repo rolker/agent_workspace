@@ -211,9 +211,11 @@ while IFS=$'\t' read -r type repo branch issue path; do
         # gh first: the git-bug cache can hold a title the issue no longer has.
         title="$(gh issue view "$issue" -R "$slug" --json title --jq .title 2>/dev/null)" || title=""
         if [ -z "$title" ]; then
-            title="unknown (lookup failed)"
-            issue_lookup "$issue" --repo "$slug" --root "$path" >/dev/null 2>&1 && [ -n "$ISSUE_TITLE" ] \
-                && title="$ISSUE_TITLE (offline: git-bug cache)"
+            # The cache only: issue_lookup pulls from GitHub on a miss, a write.
+            ISSUE_TITLE=""
+            _issue_lookup_gitbug "$path" "https://github.com/$slug/issues/$issue" >/dev/null 2>&1
+            title="${ISSUE_TITLE:+$ISSUE_TITLE (offline: git-bug cache)}"
+            title="${title:-unknown (lookup failed)}"
         fi
     fi
     latest="no progress.md"
@@ -345,8 +347,12 @@ echo "issues_named=$(echo ${nums:-none})"
 for n in $nums; do
     t=""
     [ -n "$WS_REPO" ] && t="$(gh issue view "$n" -R "$WS_REPO" --json title --jq .title 2>/dev/null)"
-    if [ -z "$t" ] && [ -n "$WS_REPO" ] && issue_lookup "$n" --repo "$WS_REPO" --root "$WS_ROOT" >/dev/null 2>&1 \
-        && [ -n "$ISSUE_TITLE" ]; then t="$ISSUE_TITLE (offline: git-bug cache)"; fi
+    if [ -z "$t" ] && [ -n "$WS_REPO" ]; then
+        # The cache only: issue_lookup pulls from GitHub on a miss, a write.
+        ISSUE_TITLE=""
+        _issue_lookup_gitbug "$WS_ROOT" "https://github.com/$WS_REPO/issues/$n" >/dev/null 2>&1
+        t="${ISSUE_TITLE:+$ISSUE_TITLE (offline: git-bug cache)}"
+    fi
     printf 'issue\t%s\t%s\n' "$n" "${t:-unknown (lookup failed)}"
     "$WS_ROOT/.agent/scripts/worktree_list.sh" --json | N="$n" python3 -c '
 import json, os, sys

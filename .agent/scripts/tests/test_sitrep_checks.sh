@@ -1045,6 +1045,38 @@ mv "$SB/roadmap.saved" "$WS/docs/roadmap.md"
 [[ "$(sed -n '/^---$/,$p' <<< "$OUT" | sed 1d)" == $'**Acceptance case.** A synthetic run\nreaches the end.' ]] \
     && pass "(skill 5) the acceptance case paragraph is printed as written" || fail "(skill 5) case '$OUT'"
 
+# A workspace with a GitHub remote, for the steps that call gh and git-bug.
+W5="$SB/ws5"
+mkdir -p "$W5/.agent/scripts" "$W5/docs"
+git init -q "$W5"
+git -C "$W5" remote add origin https://github.com/acme/widgets.git
+cp "$SCRIPT_DIR/../_issue_helpers.sh" "$W5/.agent/scripts/"
+cp "$WS/.agent/scripts/worktree_list.sh" "$W5/.agent/scripts/"
+printf '%s' "$W5" > "$HOMESB/.claude/agent-workspace-root"
+
+echo "TEST: sit-rep step 5 with gh failing reads the git-bug cache only, never pulling"
+# git runs `git bug ...` as git-bug from PATH: a stub that records its argv.
+cat > "$SB/bin/git-bug" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$MARK/git-bug"
+case "\$*" in
+    "bug -m github-url=https://github.com/acme/widgets/issues/7 --format json") echo '[{"human_id":"abc1234"}]' ;;
+    "bug show abc1234 --format json") echo '{"title":"Cached title","status":"open","comments":[]}' ;;
+    "bridge") echo "github" ;;
+    *) echo "[]" ;;
+esac
+EOF
+chmod +x "$SB/bin/git-bug"
+reset_marks
+echo 1 > "$RCD/gh"
+step5 'A line (#7) and (#8)' ''
+[[ "$OUT" == *$'issue\t7\tCached title (offline: git-bug cache)'* && "$OUT" == *$'issue\t8\tunknown (lookup failed)'* ]] \
+    && pass "(skill 5) gh failing: the title comes from the git-bug cache, or is unknown" || fail "(skill 5) cache '$OUT'"
+! grep -q "bridge" "$MARK/git-bug" 2>/dev/null && grep -q "^bug -m" "$MARK/git-bug" 2>/dev/null \
+    && pass "(skill 5) a cache miss does not pull from GitHub (no git bug bridge call)" || fail "(skill 5) git-bug calls: $(cat "$MARK/git-bug" 2>/dev/null)"
+rm -f "$SB/bin/git-bug"
+printf '%s' "$WS" > "$HOMESB/.claude/agent-workspace-root"
+
 echo "TEST: sit-rep step 6 reads the problems from main, without merges or work-plan-only commits"
 W6="$SB/ws6"
 mkdir -p "$W6/.agent/scripts" "$W6/.agent/knowledge" "$W6/docs" "$W6/src" "$W6/.agent/work-plans/issue-1"
