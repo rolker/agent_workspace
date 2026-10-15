@@ -203,3 +203,86 @@ No owner-level questions: the goal reading matches the issue and the owner's two
 **Plan**: `.agent/work-plans/issue-321/plan.md` at `cff251c4`
 
 Revision after Plan Review dfd6cd5d: rebased on merged PR 396; checkpoint table limits tokens (findings never merge, phase-failed never takeover); recipes for restart, project naming, owner-text veto, starting a drive, merge; rules sweep; outward line; design.md 469 and 721; Path 1 by Direction cell; issue 398 dogfooding step; sit-rep lead words and spacing. No owner questions.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-15 15:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #321 — Interim department-head skill: run issues with the owner at goal level only, standing rules repo-tracked, two parallel paths in the roadmap
+**Plan**: `.agent/work-plans/issue-321/plan.md` at `cff251c4`
+**Branch**: `feature/issue-321`
+**Serves**: Trust, control and information; Easy to use. `docs/design.md#review-loop-and-timeline` and `docs/design.md#documentation-layers` (checked in round 1; unchanged).
+
+Round 2, convergence check on the revision of round 1 (`dfd6cd5d`; the round had ten findings, eight of them owner-routing must-fixes). Nine are resolved in the plan text. Finding 1 is resolved in the skill but not in run-issue. The walk of today's eight issue-395 decisions lands six where they landed. Two do not land reliably: the third review round, and the research cap. Three one-sentence fixes; each can be folded into the implementation's first plan.md commit, as on issue 395.
+
+### Round-1 findings
+
+| # | Status | Plan text that resolves it |
+|---|---|---|
+| 1 Token-level rights | Partly | Skill: "`findings`: `address`; `merge` (deferring open boxes) is the owner's. `phase-failed`: `retry`; `takeover` is the owner's … A host-answered checkpoint never lets the host do a phase's work itself." Not in run-issue: step 3 says only "No auto-chaining (host answers the non-owner kinds; merge and merge-refused still wait for the owner)". See must-fix 1. |
+| 2 Owner redirect | Resolved | Recipe (a): "`Decision: restart`, his words verbatim; then dispatch `review-issue` … so `next` never reads `restart`. Run-issue step 6 gets one sentence." |
+| 3 Rules sweep | Resolved | Step 2: "each `feedback-*` note applied gets a row with its reason, a pointer … or one line on why it stays private". Names, merge-when-clean as its own row, the three gate flags, quote design, design questions alone, and "the host never edits repository files during a drive" (with his 2026-09-22 reason) are all listed. |
+| 4 Outward boundary | Resolved | "inside the boundary are the loop's own push, PR creation, signed comments on the issue being driven and progress entries. Everything else outward goes to the owner … A standing authorization of his … turns one outward class into a host action". |
+| 5 Goal text | Resolved | Recipe (c): "written only from his quoted words; the host drafts it, shows the sentence with its quote under 'Decisions made (owner may veto)', and only a 'no' changes it." |
+| 6 Starting work | Resolved | Recipe (d): "opening an issue and starting a drive are the owner's … the host never starts one on its own after a merge." |
+| 7 design.md, index | Resolved | Step 3 names lines 469 and 721 and the glossary; step 2 adds the `.agent/knowledge/README.md` entry. After the rebase they sit at lines 472 and 724 (see Decisions). |
+| 8 Issue 398 log | Resolved | Skill bullet "Dogfooding step", four headings, signed `gh issue comment 398 --body-file`; Tests assert issue 398 and the headings. |
+| 9 Sit-rep readability | Resolved | Step 5: lead words, "one item per line, never comma- or semicolon-joined", "a blank line between sections", with `test_sitrep_checks.sh` cases. |
+| 10 Path word | Resolved | Step 4/5: "an issue named in a Direction line's own cell is Path 1; everything else serving a README goal is Path 2 … otherwise `no path`." |
+
+### Walk: today's issue 395 decisions through the plan
+
+| Decision on 395 | Landed today | Plan routes it | Same? |
+|---|---|---|---|
+| Restart (owner restated the goal) | Owner; `Decision: restart`; review-issue dispatched | Recipe (a): owner entry, then review-issue dispatch. `After` becomes `unexpected` instead of today's out-of-vocabulary `implementation`; same route | Yes |
+| "Yes, name GeoZui4D" | Owner (agnostic rule vs a checkable acceptance line) | Kind 2 when first met; now settled by recipe (b), with his reason, "not re-asked" | Yes |
+| Acceptance sentence offered for veto | Host drafted from his 2026-10-14 words, listed for veto | Recipe (c) | Yes |
+| Merge of PR 396 | Owner, after the decision summary | Table: `merge` always the owner's; recipe (e) | Yes |
+| Go-ahead to start issue 321 | Owner | Recipe (d) | Yes |
+| Second review round (round 1 found 4 must-fix) | Host | Mechanical. A pre-push entry not `approved` routes to `address-findings`, then `review-code`, with no checkpoint (`dispatch_phase.sh`, Local Review (Pre-Push) block); rules-file row | Yes |
+| Third round narrow, no externals | Host, in the handoff | Rules-file row, but marked "the host's practice, unverified", and it contradicts review-code's written fix-round rule: "never lower it below the whole-diff classification … A Standard or Deep result dispatches cross-model as usual" (#320). A fresh host follows the written skill and runs Gemini and Codex, or asks the owner | No (must-fix 2) |
+| Research auto-run capped at three topics | Host ("the cost is handled by the cap in the suggestion, not by asking") | Kind 1's trigger "add/drop a user-visible behaviour" reads literally on it: the cap drops 16 of 19 topics from each run. So do 395's other host calls ("long issue titles print in full", the unchecked onboarding line). A literal Sonnet host asks | Not reliably (must-fix 3) |
+
+**"No auto-chaining" vs "host never implements inline"**: not intact as step 3 words it. "Host answers the non-owner kinds" makes `phase-failed` a host answer in run-issue, and `takeover` there emits `mode=inline`. The limit lives only in `/department-head`, but run-issue is the state machine every host reads, with or without that skill.
+
+**Standing-rules file, a reason per rule**: yes in structure ("table of rule / reason"; each swept rule "gets a row with its reason"). The plan spells out reasons for five rows only. "Never pass the gate flags", "quote recorded design", "design questions alone", "wall-clock over tokens" and the review-round rule leave theirs to the implementer. Covered by the test in Decisions.
+
+### Findings
+
+1. **[Leave a trail; start limits strict — run-issue keeps the inline limit]** Step 3, the run-issue "No auto-chaining" edit. Replace "host answers the non-owner kinds; merge and merge-refused still wait for the owner" with: "The host may answer a checkpoint itself, with the tokens `/department-head`'s table allows, written `Decided-by: host (<reason>)`. `merge` and `merge-refused` always wait for the owner, and so do `takeover` at `phase-failed` and `merge` at `findings`. A host-answered checkpoint never lets the host do a phase's work itself." Tests: `test_skill_paths.sh` asserts that run-issue names `takeover` as owner-only.
+2. **[Verify before claiming; Ask about what matters — the round-3 rule]** Step 2's review-round row. Source: the issue 321 body, which any session can read ("Review depth follows the audit's rule: a second code-review round only when the first found a real defect; a third is a narrow convergence check without external reviewers"). The owner's private audit is the background only. Drop "unverified". State the mechanism: the round-3 handoff names its scope (the prior round's items and the fix diff) and says "no cross-model reviewers". It is the owner's standing exception to review-code's fix-round rule (#320) for round 3 only. Reason: each round costs about 20–25 minutes, and a convergence check re-reads only the fixes. Without this, the decision lands with the externals run, or with the owner.
+3. **[Ask about what matters — kind 1 trigger]** Step 1, kind (1). Replace "add/drop a user-visible behaviour" with "add or drop a behaviour his quoted words ask for or rule out. How a behaviour he asked for works (its limits, wording, order, format, defaults) is a host decision listed for veto (395: research auto-start capped at the three oldest topics; long titles printed in full)."
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged; one PR. |
+| Issue alignment | Good | Both 2026-10-15 owner inputs (issue 398 log, sit-rep readability) are in. Serves line above, as checked. |
+| File targeting | Good | design.md line numbers moved by 3 after the rebase (Decisions). |
+| Consequences | Good | Round-1 additions all listed. |
+| Principle alignment | Needs work | Findings 1–3. |
+| ADR compliance | Good | 0013, 0014, 0016/0018, 0017 as in round 1. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Summary
+
+Nine of ten round-1 findings are resolved. The fixes are three sentences: run-issue keeps `takeover` and `findings`→`merge` with the owner; the round-3 rule cites issue 321 and states its exception to #320; kind 1 stops catching tuning of behaviour the owner already asked for. Folded into the implementation's first commit, the plan is ready, with no third plan review.
+
+### Recommended Actions
+
+- [ ] Finding 1: the run-issue "No auto-chaining" text names the owner-only tokens and the no-phase-work sentence; add a test.
+- [ ] Finding 2: the round-3 row cites the issue 321 body, gives the mechanism, the #320 exception and the reason.
+- [ ] Finding 3: narrow kind 1's trigger to behaviour his words ask for or rule out.
+
+### Decisions made (owner may veto)
+
+- The three fixes are folded into the implementation's first plan.md commit, with no third plan review (as on issue 395).
+- design.md edits are placed by quoted text, not line number: "take over or stop" is now line 472, the glossary line 724, "Nine checkpoint kinds" line 476.
+- Drop step 1's duplicate "Decision rights" bullet (the second one restates the first).
+- `test_skill_paths.sh` also asserts that every row of the rules table has a non-empty reason cell. That is the simplest check that keeps "a reason per rule".
+- Recipe (a) waits for any running phase to return before it dispatches review-issue (one agent per worktree).
+
+No owner-level questions: no finding changes what the work is for, no two of his goals conflict, and nothing new is outward-facing.
