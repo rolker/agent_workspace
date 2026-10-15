@@ -408,3 +408,69 @@ No owner-level questions: the goal reading matches the issue, no two goals confl
 **Plan**: `.agent/work-plans/issue-395/plan.md` at `2c1401ab`
 
 Revision after Plan Review 92b16637. Adds a roadmap Direction line (acceptance project onboarded, issue 332) before the run line; Suggested next treats unchecked as unmet; the direction sentence is built from the Direction lines; In flight shows issue title and latest progress entry type and status; research due follows the skill's 30-day rule with a spelled-out read-only background prompt; commit counts exclude work-plan and merge commits (git command in the plan); anchor check prints only on failure; project sessions and no-Agent-tool sessions are offered, not started. No owner-level questions.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-15 12:36 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #395 — sit-rep: when I ask "what's next?", say what to work on towards the goals, where in-progress work stands, and what problems I should know about
+**Plan**: `.agent/work-plans/issue-395/plan.md` at `2c1401ab`
+**Branch**: `feature/issue-395`
+
+Round 2, convergence check on the revision after Plan Review 92b16637. Facts run this review: `sitrep_checks.sh` on main (lines 1–4 `true`, run line `unchecked`, ADR line `false`; no deferral due), `worktree_list.sh --json` (feature/issue-332, feature/issue-395), `gh pr list` (no open pull requests), `gh issue view 332` (open), `progress_read.py` on 332's timeline (last entry "Implementation complete"), issue 332's plan.
+
+### Round-1 must-fixes
+
+1. **Suggested-next rule (round-1 finding 1)**: resolved. Step 4: "unmet means any result other than `true` … an `unchecked` line counts as unmet and is not skipped … an `unknown` first line reads 'check could not run'"; "matched only on the line's own cell … No matching in the Direction prose". Step 2 adds the onboarding line; step 10 writes the expected output; Context now says the old rule "lands on the last link, the ADR promotion". One new defect in the added line's check, below (finding 1).
+2. **Direction sentence (finding 2)**: resolved. Step 3: "built from the Direction lines, not the acceptance paragraph: '<t> lines of <n> true; next: <first unmet line's text>'"; the paragraph moves to the counts section.
+3. **In flight shows where work stands (finding 3)**: resolved. Step 6: issue title (git-bug, then `gh`), latest progress entry type and status from `progress_read.py`, pull request with title; commit subject dropped.
+4. **Research is a writer; written cadence (finding 4)**: resolved. Step 7: "the background run is not that skill", read-only prompt spelled out; step 5 applies the research skill's 30/90-day rule and parses the leading date of `Last full refresh:` only.
+5. **Commit counts (finding 5)**: resolved. Step 5: `git -C "$WS_ROOT" rev-list --count --no-merges <sha>..main -- . ':!.agent/work-plans'`, on `main`, from the dating commit.
+
+Round-1 findings 6–10 (audit label and "not yet" count, anchor check on failure only, project session and no-Agent-tool offer, design.md gap clause, ADR and `#N` labels) are also folded in (steps 4, 5, 7, 9).
+
+### Walk-through on today's facts (plan as written, the new line inserted fifth)
+
+```
+## Sit-rep, 2026-10-15
+4 of 7 Direction lines true; next: The acceptance project is onboarded (#332, onboard-project registers projects and audits workspace integration) — false.
+**Suggested next**: that line — in flight on feature/issue-332, issue 332 (onboard-project registers projects and audits workspace integration): Implementation complete, no pull request yet.
+**In flight**:
+- feature/issue-332: onboard-project registers projects and audits workspace integration (issue 332): Implementation complete, no pull request yet
+- feature/issue-395: sit-rep: when I ask "what's next?"… (issue 395): Plan Review complete, no pull request yet
+```
+
+Today it reads right. It says in plain words that the next step is onboarding the acceptance project and that feature/issue-332 is the work in flight for it. It goes wrong once issue 332 closes (finding 1).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Revert, one skill, one roadmap line, design.md edits. Each piece serves one of the three wants. |
+| Issue alignment | Needs work | All three wants are covered, and every round-1 must-fix is resolved. The new line's check turns it true before the acceptance project is onboarded (finding 1). Serves: Easy to use ("Work is easy to come back to") and The long view ("Know whether it works"); `docs/design.md#documentation-layers`. Checked. |
+| File targeting | Good | `docs/roadmap.md` added. |
+| Consequences | Good | Description, Rules, "Reads only" claim, design.md row, gap clause, change log, revert of the tests. |
+| Principle alignment | Needs work | Verify before claiming: a Direction line has to be true only when its check proves what it says (finding 1). |
+| ADR compliance | Good | ADR-0017 handled in the same change; ADR-0016 `$WS_ROOT` idiom used. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Verify before claiming — the new Direction line's check]** (must-fix) `gh-issue 332 closed` shows that the onboard-project work merged. It does not show that the acceptance project was onboarded. Issue 332's own plan ("Acceptance to test") lists "The first real use (gz4d onboarding run) — not a test: the separate run you named, after PR 3". Once 332 closes, the planned line reads `true` while gz4d has not been onboarded. The report then says "5 of 7 true; next: A `/run-issue` run started from the project root…", which skips the onboarding run. Nothing on disk records "onboarded" yet; 332 is still designing that. Exact change: in plan step 2, step 10, the Files table and the Decisions list, the line becomes "The acceptance project is onboarded through onboard-project (#332)" with an **empty check cell**. It reads `unchecked`, which the new rule counts as unmet and does not skip, and step 2's confirmation becomes "reads `unchecked`". Add a Consequences row: when 332 lands a record of onboarding, its check goes in this cell, a roadmap edit the sit-rep will prompt. Today's output changes only "false" to "unchecked". After 332 merges it reads "next: The acceptance project is onboarded… — unchecked; nothing in flight advances it", which is true: the onboarding run is the next step.
+
+### Summary
+
+All five round-1 must-fixes are resolved by the plan's own text, and on today's roadmap the report puts onboarding first with the 332 branch in flight. One must-fix remains, a one-cell change: the added line's check proves that the tool merged, not that the project was onboarded. With it, the plan is ready. It can be folded into the implementation's first plan.md commit, as on 2026-10-14.
+
+### Recommended Actions
+
+- [ ] Leave the new Direction line's check cell empty and word the line "The acceptance project is onboarded through onboard-project (#332)". Update steps 2 and 10, the Files table and the Decisions to match, and add the Consequences row (332 supplies the check once onboarding is recorded).
+
+### Decisions made (owner may veto)
+
+- The onboarding line is `unchecked` until onboarding leaves a record. No new check kind, and no marker file is invented here.
+- The walk-through is the acceptance evidence for the report order. The long issue title is printed beside each number as written, not shortened.
+
+No owner-level questions: the goal reading matches the issue, no two goals conflict, and nothing outward-facing or hard to undo is planned.
