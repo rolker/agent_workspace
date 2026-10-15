@@ -773,3 +773,43 @@ Facts behind it: rows `lines 4/7 deferrals 0/4`; step 5 `acceptance_rest` = "Unt
 - Step 2 still prints `inbox_oldest=# Inbox` (pre-existing).
 
 No owner-level questions.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-15 14:56 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-395 at `68ca0e09`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 4 files +974 -90 outside work plans; skill and roadmap are governance files; fix rounds classify on the whole diff, #320)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; every round-2 item resolved with a test
+
+Round 3: narrow convergence check, scoped by the host to round 2's items (entry `e70b2d91`), regressions in the fix diff `6d836b60..68ca0e09` (work plans excluded), the suite, and the dry-run report. External reviewers (Gemini, Codex) were not run: the host excluded them for a convergence check. Copilot's hosted review on PR 396 at `68ca0e09` failed again ("the user who requested the review has reached their quota limit"), as on both earlier heads, so it found nothing.
+
+**Round-2 items, all eight resolved**:
+- Must-fix 1, line 2 mechanism vocabulary: roadmap acceptance paragraph now opens with the goal (`13d13937`); step 5 renders all printed roadmap text, links as their text, ADR numbers with the file's title (`0998d239`); test "(skill 5) links print as their text; an ADR number gets its file's title unless a parenthesis follows…", plus the placeholder test.
+- Must-fix 2, empty fields shift: step 3 reads fields by name with jq (`0f57a603`); test "(skill 3) no branch or no repo: the issue and path stay in place, read as (no branch)".
+- Must-fix 3, package worktrees mix repositories: timeline and title cache only from checkouts of the issue's repository; a no-remote checkout disagrees (`e441fbd9`); five "(skill 3) package worktree…" tests (pkg4–pkg7 and the gh-call check).
+- Must-fix 4, state words: base type plus open boxes, report-only reads "merged although…" (`84c6b175`, `f82ff94f`); state table test has 22 cases incl. `External Review (round 2)` and the LGTM placeholder.
+- Suggestion, "no pull request yet" only for workspace worktrees: `35020d44` (template rule; dry run is its evidence, no test).
+- Suggestion, checkpoint retry/takeover/retriage words: `6ba42c52`, three state-table cases. Round 2 also named `restart`; that was my error: `dispatch_phase.sh:678-686` has no such decision (the run-issue "restart" is a host restart).
+- Suggestion, step 3 cache-only git-bug test: `c8f02bee`, tests "(skill 3) gh failing: the title comes from the git-bug cache…" and "(skill 3) a cache miss does not pull from GitHub".
+- Suggestion, documentation line in words: `cb821906` (template wording; no test).
+
+**Regression read of the fix diff**: none found. Checked: jq field reads on null/absent keys; `cut -f2` on manifest lines (always tab-separated, `wt_write_manifest`); a header slug with no matching checkout (title from gh, state "no progress record yet"); the ADR regex on `ADR-0042 (#9)`; the removed step-4 `adr` rows have no remaining reader; `base_type`, `findings[].checked` and `.text` exist in `progress_read.py`; the new checkpoint pairs match `dispatch_phase.sh` row 23/27 vocabulary.
+
+**Suite**: `bash .agent/scripts/tests/run_script_tests.sh` exit 0, "all 37 suites passed in 335s"; `test_sitrep_checks` 175 passed, 0 failed; `test_skill_paths` 58 passed, 0 failed.
+
+**Dry-run report (Implementation at `68ca0e09`) read as the owner**: no wrong or misleading sentence. Checked against facts: issue 332 has a workspace worktree (`feature/issue-332`) and no open pull request, so "implemented, no pull request yet" is true; open pull requests are exactly 396 and 397, both ready; issue 395's latest review entry had all 8 boxes checked when the dry run read it, so "code reviewed, nothing open" is what the record says.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+### Decisions made (owner may veto)
+- The aggregate root of a package worktree is no longer searched for a timeline (round 2 had said "the aggregate root and…"). Accepted: `progress_append.sh` writes at the git top level, and the aggregate root is not a checkout; only `worktree_create.sh --workflow` writes there, an entry-less header the old code would have stopped at.
+- The acceptance sentence is the host's wording, not the one round 2 drafted; both come from the owner's 2026-10-14 statement. Not re-litigated.
+- The two template-only suggestions (no-PR wording, documentation wording) stand on the dry run with no test, as round 2 accepted for the template items.
+
+No owner-level questions.
