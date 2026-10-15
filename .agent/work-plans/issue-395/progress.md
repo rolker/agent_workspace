@@ -238,3 +238,92 @@ The owner restated the issue at goal level on 2026-10-15 (issue body, "What I wa
 This issue is the rehearsal for the loop carrying a goal-level issue without the owner in the details, before the GeoZui4D acceptance run. Contract: the owner answers only goal-level questions (goal meant; two of his goals in tension; outward or hard-to-undo action). Mechanism decisions are made from docs/principles.md and docs/design.md and listed in each hand-back for veto. A mechanism question reaching the owner is logged as a loop defect. Judged against the three things above and "Work is easy to come back to", not the previous scope.
 
 Evidence that led here: this issue's own timeline cited principles 20 times without once testing the plan's scope against the purpose it serves; both plan reviews rated scope "Good" by file count.
+
+## Issue Review
+**Status**: complete
+**When**: 2026-10-15 13:10 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Issue**: #395
+
+### Scope Assessment
+
+**Well-scoped?** Yes, once the previous scope is dropped. The goal is three outputs (what next toward the goals; where in-progress work stands; problems he should know about) in a form that is easy to digest. Today's `/sitrep` already produces the first two from checked facts (Direction lines, deferrals, in-flight branches and PRs, `.claude/skills/sitrep/SKILL.md`). What it lacks is the third (nothing reads staleness, or whether research or an audit is due) and a shape he can take in at a glance (it opens with line counts and an inbox sort). That is a change to one skill file plus, at most, a few read-only commands. The old scope (new runner rows, a per-line run-record field, roadmap cell rewrites) answers a different question: how to compose an orientation paragraph. None of it gives him problems or a due check.
+**Right repo?** Yes, workspace.
+**Serves**: Easy to use ("Work is easy to come back to") and The long view ("Know whether it works") — `docs/design.md#documentation-layers` (Direction and the healthy/measures gap rows).
+**Design picture?** No change if the problems section only reads existing places. It changes Documentation layers only if a new file is added to record a cadence or a last-run date; the decision below avoids that.
+**Dependencies**: none blocking. Commit `f293a4bb` on this branch implements the old scope and the new plan's first commit should revert it (the commit stays in history).
+
+### What the principles cut or change
+
+- Give the user what they need now: cuts the report's opening. The first thing he sees is one sentence of direction (the roadmap's in-progress step, or the next Direction line not yet true), then what to do next, then problems. Counts, the inbox sort and the format rows go below, or behind `/sitrep inbox`. The obvious implementation adds sections; this one moves and removes them.
+- Only what's needed: cuts the composed-orientation slots, the run-record per-line field, the `--path-from`/`--results-from` modes and the roadmap Item rewrites. "Since last time" can say "first run / lines moved: N" from the existing summary counts. Nothing in the three outputs needs line-level history.
+- Verify before claiming: changes how "due" is said. A problem is stated as checked facts ("last audit-workspace re-examination 2026-10-12; 41 commits to main since") and a one-line judgment ("probably due"), never as a bare "due".
+- Ask about what matters: cuts the cadence question. The issue says to ask once where a cadence is not written. A standing cadence is a mechanism choice, so v1 carries none: it reports days and work done since, and the agent judges.
+- Know whether it works: requires one test of the result, not a unit test of a parser. The acceptance is that the first real sit-rep after merge has a "Problems" section with at least the three checks below printed from commands, and the owner can say in one reading what he would do next.
+- A change includes its consequences: changing the skill's report template means its description line, the Rules section, and `docs/design.md` Direction paragraph (ADR-0017), and the old `f293a4bb` tests (`test_sitrep_checks.sh`) go with the revert.
+- Enforce what matters, as simply as possible: no new check kinds in the runner. Staleness facts are read by commands in SKILL.md, the way step 3 already reads PRs.
+
+### Smallest change that satisfies the three things
+
+1. **Next toward the goals**: keep the existing source order for "Suggested next" but open the report with it and with the Direction line it advances.
+2. **State of in-progress work**: keep the In flight section, one line per branch, ready PRs first (already built).
+3. **Problems**: add a Problems section from three checked facts, each a command in SKILL.md: (a) days since the last `/audit-workspace` re-examination (newest `Re-examined` date in the design.md Decision register) and commits to main since; (b) days since the research digest's `Last full refresh` header (`.agent/knowledge/research_digest.md`) and commits since; (c) documentation staleness: `check_design_anchors.sh` result and the number of design-document sections whose files changed since the document's last change-log row (git only). When one looks overdue, the report says so and offers to start `/audit-workspace` or `/research --refresh` in the background; it starts one only when the owner says yes (these write files and use quota; it is an action the owner has not asked for).
+4. **Digestibility**: a fixed shape under about fifteen lines: Direction sentence, Suggested next, In flight, Problems, one closing question; inbox and counts last.
+
+Net effect on code: SKILL.md and its tests of behaviour only; revert `f293a4bb`; no runner change.
+
+### Principle Alignment
+
+| Principle | Status | Notes |
+|---|---|---|
+| Only what's needed | Action needed | Drop the old scope's runner modes, run-record field and roadmap cell rewrites; none of them delivers a "problems" output or a due check. |
+| Give the user what they need now | Action needed | Reorder the report so direction, next step, in-progress work and problems come first, and counts and the inbox sort come last. |
+| Verify before claiming | Action needed | Each problem line prints its facts (dates, commits since) from a command run this invocation, then a judgment; no uncommunicated thresholds. |
+| Ask about what matters, and show how much | OK | No cadence question to the owner; thresholds are the agent's judgment now and become a rule only if he vetoes. |
+| Know whether it works | Watch | Judge by the first real run: does the Problems section print three checked facts, and is the next step one he accepts? Look again after a week of use. |
+| A change includes its consequences | Watch | Description line, Rules, Direction paragraph in design.md, and removal of the old tests. |
+| Leave in a project only what it chose to carry | Watch | In a project session the audit and research facts are the workspace's; the report says the Problems section is the workspace's only, and does not read the project (zero footprint). |
+
+### ADR Applicability
+
+| ADR | Triggered | Notes |
+|---|---|---|
+| 0017 — Design document is the current picture | Yes | One Direction/sit-rep paragraph update in the same change. |
+| 0016 — session roots | Watch | `$WS_ROOT` idiom for every new command. |
+| 0013 — progress.md vocabulary | No | The report is not a progress entry. |
+
+### Consequences
+
+- `.claude/skills/sitrep/SKILL.md`: description, steps 3 and 5, Rules.
+- `docs/design.md` sit-rep/Direction paragraph and change-log row; OQ-3's wording ("a measure beyond counts of lines true") fits unchanged.
+- Revert of `f293a4bb` including its additions to `.agent/scripts/tests/test_sitrep_checks.sh`.
+
+### Recommendations
+
+- Plan first commit reverts `f293a4bb`; the plan states what each principle above cut, not that it is served.
+- Add the Problems section (audit, research, documentation staleness) as read-only commands in SKILL.md; no new runner kinds and no new files.
+- Reorder the report: direction sentence, suggested next, in-progress work, problems, then counts and inbox; target under about fifteen lines for the top.
+- When something looks overdue the report offers to start it in the background and starts it only on a yes.
+- Acceptance: run `/sitrep` for real after merge and confirm the three Problems facts print and the owner can name his next step from the first screen; look again after a week.
+
+### Decisions made (owner may veto)
+
+- **No cadence setting.** The report gives days and work done since and says "probably due"; no stored threshold. A veto ("audit every N days") becomes a standing rule and a one-line roadmap entry.
+- **Last audit is read from the newest `Re-examined` date in the Decision register**, since `/audit-workspace` keeps no run log; the report names this as the source so a wrong date is traceable.
+- **Overdue work is offered, not started**, because it writes files and uses quota.
+- **The old per-line "since last time" and path/regressed grouping are dropped**; "since last time" shrinks to the existing counts.
+- **Roadmap Item cells and acceptance paragraph are not rewritten by this issue.**
+- **No new files or runner check kinds**, so no Documentation layers change.
+
+No owner-level questions: the goal reading (next step, in-progress state, problems, easy to digest) matches the issue text, no two goals conflict, and nothing outward-facing or hard to undo happens.
+
+### Actions
+- [ ] Drop the old scope's runner modes, run-record field and roadmap cell rewrites; none of them delivers a "problems" output or a due check.
+- [ ] Reorder the report so direction, next step, in-progress work and problems come first, and counts and the inbox sort come last.
+- [ ] Each problem line prints its facts (dates, commits since) from a command run this invocation, then a judgment; no uncommunicated thresholds.
+- [ ] Plan first commit reverts `f293a4bb`; the plan states what each principle above cut, not that it is served.
+- [ ] Add the Problems section (audit, research, documentation staleness) as read-only commands in SKILL.md; no new runner kinds and no new files.
+- [ ] Reorder the report: direction sentence, suggested next, in-progress work, problems, then counts and inbox; target under about fifteen lines for the top.
+- [ ] When something looks overdue the report offers to start it in the background and starts it only on a yes.
+- [ ] Acceptance: run `/sitrep` for real after merge and confirm the three Problems facts print and the owner can name his next step from the first screen; look again after a week.
