@@ -1218,6 +1218,26 @@ step5 'A line (#7) and (#8)' ''
     && pass "(skill 5) gh failing: the title comes from the git-bug cache, or is unknown" || fail "(skill 5) cache '$OUT'"
 ! grep -q "bridge" "$MARK/git-bug" 2>/dev/null && grep -q "^bug -m" "$MARK/git-bug" 2>/dev/null \
     && pass "(skill 5) a cache miss does not pull from GitHub (no git bug bridge call)" || fail "(skill 5) git-bug calls: $(cat "$MARK/git-bug" 2>/dev/null)"
+
+echo "TEST: sit-rep step 3 with gh failing reads the git-bug cache only, never pulling"
+for n in 7 8; do
+    git init -q "$SB/wt3gb$n"
+    git -C "$SB/wt3gb$n" remote add origin https://github.com/acme/widgets.git
+done
+cp "$W5/.agent/scripts/worktree_list.sh" "$SB/wl5.saved"
+cat > "$W5/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt3gb7","repo":"workspace"},{"type":"workspace","issue":8,"branch":"feature/issue-8","path":"$SB/wt3gb8","repo":"workspace"}]}'
+EOF
+reset_marks
+echo 1 > "$RCD/gh"
+blk3="$(skill_step 3 2)"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk3" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(cut -f4,5 <<< "$OUT")" == $'issue 7\tCached title (offline: git-bug cache)\nissue 8\tunknown (lookup failed)' ]] \
+    && pass "(skill 3) gh failing: the title comes from the git-bug cache, or is unknown" || fail "(skill 3) cache rc=$RC '$OUT'"
+! grep -q "bridge" "$MARK/git-bug" 2>/dev/null && grep -q "^bug -m github-url=https://github.com/acme/widgets/issues/8" "$MARK/git-bug" 2>/dev/null \
+    && pass "(skill 3) a cache miss does not pull from GitHub (no git bug bridge call)" || fail "(skill 3) git-bug calls: $(cat "$MARK/git-bug" 2>/dev/null)"
+mv "$SB/wl5.saved" "$W5/.agent/scripts/worktree_list.sh"
 rm -f "$SB/bin/git-bug"
 
 echo "TEST: sit-rep step 5 matches open pull requests by branch or closing reference, whatever the references hold"
