@@ -156,7 +156,8 @@ fi
 # The frontmatter set itself: the scoped skills are a deliberate list, and a
 # typo in the field name would silently drop a skill from the user tier.
 for name in start-task plan-task review-plan review-code triage-reviews \
-            test-engineering sitrep run-issue review-issue address-findings; do
+            test-engineering sitrep run-issue review-issue address-findings \
+            orchestrator; do
     f="$SKILLS/$name/SKILL.md"
     [[ -f "$f" ]] || { fail "expected skill is missing: $name"; continue; }
     [[ "$(scope_of "$f")" == "both" ]] \
@@ -215,6 +216,36 @@ elif [[ $rc -eq 0 ]]; then
     head -n5 <<< "$hits" | sed 's/^/        /'
 else
     fail "could not run git grep for live pointers (exit $rc): $hits"
+fi
+
+# --- The orchestrator skill (#321): thin, pointing at run-issue and the
+# rules file; the tokens only the owner answers; the issue 398 log.
+ORCH="$SKILLS/orchestrator/SKILL.md"
+has() {  # <file> <label> <fixed text>...: every text appears in the file,
+          # line breaks and runs of spaces read as one space (prose wraps)
+    local f="$1" label="$2" t flat; shift 2
+    flat="$(tr '\n' ' ' < "$f" 2>/dev/null | tr -s ' ')"
+    for t in "$@"; do
+        grep -qF -- "$t" <<< "$flat" || { fail "$label: does not say '$t'"; return; }
+    done
+    pass "$label"
+}
+if [[ -f "$ORCH" ]]; then
+    has "$ORCH" "orchestrator points at /run-issue and reads the standing rules" \
+        '/run-issue' '$WS_ROOT/.agent/knowledge/host_standing_rules.md'
+    has "$ORCH" "orchestrator: takeover at phase-failed and merge at findings are the owner's only" \
+        '| `phase-failed` | `retry` | `takeover` |' '| `findings` | `address` | `merge`' \
+        '| `merge` | — | every answer |' '| `merge-refused` | — | every answer |' \
+        'never lets the host do a phase'"'"'s work itself'
+    has "$ORCH" "orchestrator: the issue 398 log, signed, with its four headings" \
+        'gh issue comment 398 -R "$WS_REPO" --body-file' \
+        '## What reached the owner, and why' '## Decisions made, and any vetoes' \
+        '## Where the decision-rights table was wrong or silent' \
+        '## What the sit-rep or hand-back got wrong' '**Authored-By**' '**Model**'
+    has "$ORCH" "orchestrator: parked items go to the inbox with capture.sh" \
+        '$WS_ROOT/.agent/scripts/capture.sh'
+else
+    fail "orchestrator skill is missing: .claude/skills/orchestrator/SKILL.md"
 fi
 
 # --- The host's standing rules (#321): every rule carries its reason.
