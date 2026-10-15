@@ -93,12 +93,13 @@ repos. A morning status skill gathers all state, surfaces pending decisions
 (PRs needing review response, stale worktrees, ready-to-start issues), and
 suggests a prioritized work plan for the day.
 
-First form: the sit-rep (#386). It opens with the next step: the first
-[Direction](#direction) line not yet true, checked that run, and the work
-in flight for it. Then where work in flight stands, and problems to know
-about: an audit or research due, documentation that may have fallen
-behind, from dates and the commits since (#395). The counts, the inbox
-and deferrals that are due follow. It is also what answers "What's
+First form: the sit-rep (#386). It opens with the first sentence of the
+acceptance case, then the next step: the first [Direction](#direction)
+line not yet true, checked that run, and the work in flight for it. Then
+where work in flight stands, and problems to know about: an audit or
+research due, documentation that may have fallen behind, from dates and
+the commits since, and deferrals that are due (#395). The counts and the
+inbox follow. It is also what answers "What's
 next?": it replaced the `what-next` skill (#389), and its suggested next
 step names the fact it rests on.
 

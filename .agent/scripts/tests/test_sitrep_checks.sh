@@ -1003,7 +1003,7 @@ EOF
 reset_marks
 blk="$(skill_step 3 2)"
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial\nworkspace\tworkspace\tfeature/issue-8\tissue 8\tunknown (no GitHub remote)\tno timeline yet' && ! -e "$MARK/gh" ]] \
+[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial\nworkspace\tworkspace\tfeature/issue-8\tissue 8\tunknown (no GitHub remote)\tno progress record yet' && ! -e "$MARK/gh" ]] \
     && pass "(skill 3) latest entry in state words; no row for main or a skill worktree; no remote, no gh" || fail "(skill 3) flight rc=$RC '$OUT'"
 
 echo "TEST: sit-rep step 3 reads a package worktree's repository and timeline through its manifest"
@@ -1030,7 +1030,7 @@ RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
     && pass "(skill 3) package worktree: title from the header's repository, timeline found in a listed checkout" || fail "(skill 3) package rc=$RC '$OUT'"
 [[ "$(cat "$MARK/gh" 2>/dev/null)" == "issue view 12 -R acme/pkg_b --json title --jq .title" ]] \
     && pass "(skill 3) package worktree: gh asked the header's repository only" || fail "(skill 3) package gh: $(cat "$MARK/gh" 2>/dev/null)"
-[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are in different repositories)\tno timeline yet' ]] \
+[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are in different repositories)\tno progress record yet' ]] \
     && pass "(skill 3) package worktree with a bare issue number and two repositories: no guess" || fail "(skill 3) package bare '$OUT'"
 
 echo "TEST: sit-rep step 3 names the latest timeline entry in state words"
