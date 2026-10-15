@@ -486,3 +486,64 @@ No owner-level questions: the goal reading matches the issue, no two goals confl
 Plan Review round 2 (50ceea68): all five round-1 must-fixes resolved; the walk-through against today's roadmap and worktrees reads right ("next: the acceptance project is onboarded; in flight on feature/issue-332"). One must-fix left, a single table cell: the new Direction line's check `gh-issue 332 closed` would turn true when the onboard-project work merges, before the acceptance project is actually onboarded. Resolution: the implementer folds it into the plan as its first commit, wording the line "The acceptance project is onboarded through onboard-project (#332)" with an empty check, so it reads `unchecked` until onboarding is recorded somewhere. No third plan review; the pre-push code review sees both.
 
 Decisions made this round (owner may veto): the onboarding line stays unchecked until onboarding is recorded; long issue titles print in full; the host decided the checkpoint itself, since the contract reserves the owner for goal-level questions only and none arose.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-15 13:23 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-395 at `9e433cfe`
+
+Implemented the plan at `2c1401ab`, with Plan Review 50ceea68's must-fix folded in first.
+
+### Commits
+
+- `f886fe85` Fold the round-2 plan review's must-fix into the #395 plan: the onboarding line is "The acceptance project is onboarded through onboard-project (#332)" with an empty check cell (reads `unchecked`); steps 2 and 10, Files, Consequences (new row: 332 supplies the check once onboarding is recorded), Decisions.
+- `993b018a` Revert of `f293a4bb` (old-scope runner modes and their tests). `sitrep_checks.sh` and `test_sitrep_checks.sh` are byte-identical to `69f33366`; `test_sitrep_checks.sh`: 141 passed, 0 failed.
+- `2ee42294` roadmap: the onboarding Direction line, before the project-root run line. `sitrep_checks.sh` reads it `unchecked`.
+- `7220e06c` sitrep skill rewrite plus tests. Report order: direction sentence, Suggested next, In flight, Problems (about 15 lines), then counts with the acceptance-case paragraph, inbox (one line; sort only on `/sitrep inbox`), deferrals. Steps 1-4 keep their numbers and blocks. Step 3 gains a second block (issue title, latest timeline entry via `progress_read.py`). New step 5: the first non-`true` line, with issue and ADR titles and the branch or pull request its own cells name. New step 6: Problems, read from local main, with commit counts by `git -C "$WS_ROOT" rev-list --count --no-merges <sha>..main -- <paths> ':!.agent/work-plans'`. New step 7: start or offer a due check, with both prompts written out. New step 8: the report and its rules. The description, Usage and "What it is" are updated. Tests: `skill_step` takes a block index; new cases for step 3 block 2, step 5 and step 6.
+- `75743968` design.md: Documentation layers Direction row sentence, gaps-paragraph clause (the Problems section is a first form of health signals), change-log row (756 lines).
+- `9e433cfe` roadmap: the scenario 4 "first form" paragraph describes the new order.
+
+### Verification
+
+- `bash .agent/scripts/tests/run_script_tests.sh`: all 37 suites passed (368 s). `test_sitrep_checks.sh`: 154 passed, 0 failed. `test_skill_paths.sh`: 58 passed, 0 failed.
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0, no output.
+- `pre-commit run --all-files` (workspace `.venv`; bare `pre-commit` is not on PATH): exit 0, every hook Passed or Skipped.
+
+### Dry run (real workspace, 2026-10-15)
+
+Steps 1, 2, 3, 5 and 6 were run by hand. Step 1 used `--root` set to the main checkout and `--roadmap` set to this branch's roadmap, so the new line is included. Step 4 was not run, so no run-record line was written, and its rows file was removed. No background check was started. The audit and the research survey would both have been started in the background (workspace session, Agent tool available). The first ten lines:
+
+```
+## Sit-rep, 2026-10-15
+4 of 7 Direction lines true; next: The acceptance project is onboarded through onboard-project (#332, onboard-project registers projects and audits workspace integration (overrides, conflicting instructions, ignore rules, misplaced conventions, unverified registration)) — unchecked (no check yet).
+**Suggested next**: that line — in flight on feature/issue-332, onboard-project registers projects and audits workspace integration (…) (issue 332): Implementation complete, no pull request yet.
+**In flight**:
+- feature/issue-332: onboard-project registers projects and audits workspace integration (…) (issue 332): Implementation complete; no pull request yet
+- feature/issue-395: sit-rep: when I ask "what's next?", say what to work on towards the goals, … (issue 395): Checkpoint complete; no pull request yet
+**Problems**:
+- Audit: newest ADR re-examination (Decision register) 2026-10-09, 6 days and 124 commits ago; 9 of 18 ADRs not yet re-examined — probably due; would start in the background (not started: dry run).
+- Research: 19 of 19 digest entries last verified more than 30 days ago (19 more than 90); last full refresh 2026-04-19 — probably due; would start in the background (not started: dry run).
+- Documentation: docs/design.md last changed 2026-10-13, 2 days ago; 17 commits since touched .agent/, .claude/ or docs/ — recent.
+```
+
+(The "(…)" stands for the full title printed earlier on the line; the real report prints it in full.)
+
+### Deviations
+
+- Issue titles come from `gh issue view` first and from the git-bug cache (`issue_lookup`) only when gh fails, marked "(offline: git-bug cache)". The plan said git-bug first. Checked here: the cache still holds issue 395's old title ("sit-rep: open with a composed orientation …"), and a sit-rep that prints a stale title breaks "Verify before claiming".
+- The research prompt reads `<workspace root>/.agent/knowledge/research_digest.md` instead of the bare relative path. `test_skill_paths.sh` rejects workspace-relative paths in a `session_scope: both` skill. The `show` helper takes `$WS_ROOT/<path>` for the same reason.
+- The plan's Files table did not name two changes made here: `docs/roadmap.md`'s scenario 4 paragraph (it described the old report order, a consequence), and new tests in `test_sitrep_checks.sh`.
+
+### Decisions made (owner may veto)
+
+- Steps 1-4 keep their numbers. The new steps are 5 (next step), 6 (problems), 7 (start or offer) and 8 (report), so the existing step tests keep running unchanged.
+- Step 5 gets the line's text through a quoted here-document (`<<'ROW'`), so an apostrophe or `$` in roadmap text stays as written. A `gh-issue owner/repo#N` check names no workspace branch.
+- Problems are read from committed `main` (`git show main:<path>`), not the working tree, so a worktree session sees what has landed.
+- Added tests for step 3's second block and for steps 5 and 6: number extraction, worktree matching, no-remote behaviour, ADR titles, the acceptance paragraph, commit counts that skip merges and work-plan-only commits, the 30/90-day rule, the anchor check printed only on failure, and "cannot tell" with no history. The plan cut parser tests "as the proof"; these are regression guards for code the skill runs, not the acceptance test.
+- A project worktree's issue title is looked up in that worktree's own remote, and its timeline is read where it exists. `session_root.sh` says reading across roots is allowed; nothing is written.
+- An In flight line puts the worktree part first and the pull request part second. With a matching pull request, its title follows after "; ".
+
+### Noticed, not changed
+
+- Step 2 prints `inbox_oldest=# Inbox`: the real inbox file starts with a heading line, which the step counts as an entry. This is existing behaviour and outside this plan.
