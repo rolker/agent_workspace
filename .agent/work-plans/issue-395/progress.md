@@ -662,3 +662,51 @@ Facts behind it: rows `lines 4/7 deferrals 0/4`; step 3 states "implemented" (33
 ### Noticed, not changed
 - One `test_sitrep_checks.sh` run of eleven reported 165/1; ten reruns, including the full suite, were clean. I could not catch which case; the step 1 kill-timing test is the likely one (pre-existing).
 - Step 2 still prints `inbox_oldest=# Inbox` (heading counted as an entry), as the last entry noted.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-15 14:27 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-395 at `6d836b60`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 4 files +804 -87 outside work plans; skill and design.md are governance files; fix rounds classify on the whole diff, #320)
+**Must-fix**: 4 | **Suggestions**: 4
+**Round**: 2 | **Ship**: continue — round 2: 4 must-fix is high; another independent read warranted
+
+Round 2: convergence check on round 1 (`c1bb3f26`) plus the fix pass `c1bb3f26..6d836b60`. Run in branch mode, not `--pr 396`: PR mode writes `## Local Review`, and the loop expects this Pre-Push entry type with a round counter; the diff is the same. Specialists: governance, plan drift, Claude adversarial (fresh subagent on the fix diff), cross-model Gemini and Codex (the skill's rule: a fix round is classified on the whole diff, so Deep, so cross-model runs again).
+
+**Round-1 findings, all twelve resolved**: escaped pipe `586b42e4` (test "(skill 6) audit", row with `\|` holding the newest date); package worktrees `b16f443d` (three "(skill 3) package worktree" tests; new gaps below); cache-only git-bug `8089eea7` ("(skill 5) a cache miss does not pull from GitHub"); titles once `c2103310` (dry run prints each title once); research cap `115f2930`; audit root `458bc51d`; research prompt wording `3059ce17`; jq guard and gh stub test `55aadb73` ("(skill 5) pull requests: null references…"); behind origin `87ab8c3a` ("(skill 6) no origin/main", "(skill 6) origin/main one commit ahead"); due deferrals under Problems and the In flight cap `c2103310`. The template items (titles once, deferrals, cap) have no test, and the dry run is their evidence.
+
+**Suite**: `bash .agent/scripts/tests/run_script_tests.sh` gave "all 37 suites passed in 319s"; `test_sitrep_checks` 166 passed, 0 failed; `test_skill_paths` 58 passed, 0 failed. Earlier commits skipped the script-test hook (`SKIP=validate-script-tests`); this run on `6d836b60` is the check.
+
+**Flaky run (165/1)**: the implementation entry does not name the test, and its output was not kept. I ran `test_sitrep_checks.sh` four more times concurrently, to load the machine: 166/0 each time. I cannot tell which case it was. The likely candidates are the timing tests that were already on main and that this branch does not change: "(interrupt now) …", "(skill 1) TERM" (each asserts the killed check is gone after a fixed `sleep 0.2`) and "(timeout) unknown after Ns". This looks like a fixture timing margin, not a race in the new skill code. Not pursued in this pull request (decision below).
+
+**Reviewers**: Gemini ran (EXIT=0) with 5 findings: one taken (must-fix 2), the rest dismissed below. Codex ran (EXIT=0) with 3 findings, all taken (must-fix 3 and 4). Copilot's hosted review failed on both heads (`c1bb3f26`, `6d836b60`): "the user who requested the review has reached their quota limit", so it found nothing. Claude adversarial: no must-fix; 4 suggestions (two folded into must-fix 3 and 4).
+
+**Owner readability**: I read the dry-run top block against his three wants. Next step: present, and the next step is right (onboard GeoZui4D, in flight on feature/issue-332). Where in-progress work stands: present, in state words. Problems: present, judged. Line 2 fails "easier to digest" (must-fix 1). It is the first line he reads, and it is all mechanism: "ADR-0016 stays Provisional until a `/run-issue` run started from a project root passes through the merge checkpoint ([Sessions and roots](design.md#sessions-and-roots))", with a bare ADR number and raw markdown link syntax. Everything else in the top block uses his vocabulary. "(issue 332)" in lines 3-4 is labelled by the line's own words, and its title follows in In flight under the round-1 "titles once" rule.
+
+### Findings
+- [ ] (must-fix) Report line 2 is mechanism vocabulary with a bare number. In the roadmap, make the acceptance paragraph's first sentence the goal in the owner's 2026-10-14 words, e.g. "Run an issue in GeoZui4D (`gz4d`) from the project's own directory, all the way to where it is ready to merge." Keep the ADR-0016 sentence second. In the skill, line 2 also gets an ADR's title beside its number and prints a markdown link as its text, as the next-step sentence does. Add a test for the link and the ADR title. — `docs/roadmap.md:21`, `.claude/skills/sitrep/SKILL.md:740`
+- [ ] (must-fix) Step 3's `while IFS=$'\t' read -r type repo branch issue path` loses a field when one is empty. Tab is IFS whitespace, so consecutive tabs collapse. A worktree with no branch (detached HEAD, e.g. mid-rebase) or no repo shifts every later field: the issue number becomes the path, and the title and state are looked up for the wrong thing. Reproduced: `IFS=$'\t' read -r a b c d <<< $'x\t\tz\tw'` gives b=z. Print a placeholder (`-`) for empty fields in the python, or use a non-whitespace separator (`$'\x1f'`), and add a test with an empty branch. — `.claude/skills/sitrep/SKILL.md:206-207`
+- [ ] (must-fix) Package worktree lookups can mix repositories. (a) The timeline search walks every listed checkout and takes the first `issue-<N>/progress.md`, so a checkout of another repository with its own issue N supplies the state beside this issue's title. Search only the aggregate root and the checkouts whose remote is the issue's repository. (b) With a bare `issue=<N>` header, a checkout with no GitHub remote resets the agreement (`[ -z "$agree" ]`), so "no remote, then foo/bar" resolves to foo/bar. Count an empty slug as disagreeing. Add tests for both. — `.claude/skills/sitrep/SKILL.md:216-231,252`
+- [ ] (must-fix) Three state words say the opposite of the record. (1) `Merge (report-only)` is written when the merge check found problems and the merge went ahead (`merge_pr.sh:638-641`), not when it was held; say e.g. "merged past the merge check's findings". (2) A complete `Integrated Review` with no open boxes is not "review findings being addressed"; read the entry's `findings` (`checked`) and say "reviews triaged, nothing open" when none are open. Apply the same to `Local Review`: its Verdict or open boxes give "code review asked for changes" or "code review passed". (3) Look entries up by `base_type`, so the legacy `External Review (round 2)` headings map too. Update step 3's table and the state test. — `.claude/skills/sitrep/SKILL.md:257-268,305-316`
+- [ ] (suggestion) "implemented, no pull request yet" applies to every worktree with no joined pull request. Project worktrees are never joined, so the phrase is wrong for them; limit it to `type: "workspace"`. — `.claude/skills/sitrep/SKILL.md:785-787`
+- [ ] (suggestion) Checkpoint decisions `retry` (after phase-failed) and `restart` (after implementation) fall through to "checkpoint after phase-failed: retry". Map them to words, e.g. "a step failed; retrying" and "implementation restarting". — `.claude/skills/sitrep/SKILL.md:276-279`
+- [ ] (suggestion) Step 3's cache-only git-bug fallback has no test; only step 5's does. Add the same stub-git-bug case for step 3. — `.agent/scripts/tests/test_sitrep_checks.sh`
+- [ ] (suggestion) The Documentation problem line prints paths (".agent/, .claude/ or docs/"). Say "the workspace's scripts, skills or docs" in the report; the paths stay in step 6. — `.claude/skills/sitrep/SKILL.md:690-691`
+
+### Dismissed
+- Gemini 2 (`gh-issue N` needs a trailing space): same as round 1. The grammar always puts a state word after N (`sitrep_checks.sh:87-88`).
+- Gemini 3 (`(#1, #2)` catches only the first): the Direction Format paragraph has each number written `(#N)`, and no line has two.
+- Gemini 4 (`feature/issue-<N>-desc` branches missed): `worktree_create.sh:531` names `feature/issue-<N>`, and the closing-reference match covers custom names.
+- Gemini 5 ("e.g. " splits the acceptance sentence): roadmap text, and the roadmap holds none. A wrong-sounding line 2 is fixed in the roadmap (the design's loop).
+
+### Decisions made (owner may veto)
+- Line 2's goal sentence is drafted from the owner's own 2026-10-14 words ("The next major step is running an issue in GeoZui4D"), not invented, and the ADR-0016 sentence stays as the second sentence.
+- The flaky 165/1 case is not chased in this pull request. It is unidentified, did not recur in five runs (one full suite, four concurrent), and its likely source is the kill-timing tests already on main.
+- Branch mode used instead of `--pr 396`, to write the Pre-Push entry type the loop counts rounds on.
+- Cross-model re-ran in round 2, because the skill classifies fix rounds on the whole diff (#320).
+
+No owner-level questions.
