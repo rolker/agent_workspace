@@ -12,9 +12,10 @@ principles in [`docs/principles.md`](principles.md) connect them.
 push (`publish`) and the merge; each of the others is run by a fresh sub-agent (a repeat of a phase may
 resume the earlier one, and the owner may have the host take over a failed one) and leaves one entry in
 the issue's progress timeline, which is the only record of where the issue stands
-([Review loop and timeline](#review-loop-and-timeline)). The loop stops at checkpoints and asks the
-owner. The owner decides every merge, and no phase moves on by its own judgment
-([Merge gate](#merge-gate)).
+([Review loop and timeline](#review-loop-and-timeline)). The loop stops at checkpoints. The owner
+answers the ones that touch his goals; the host answers the rest under his standing rules, from a fixed
+set of answers, and lists each decision for his veto. The owner decides every merge, and no phase moves
+on by its own judgment ([Merge gate](#merge-gate)).
 
 **What agents may do alone.** Agents decide small things within their limits and record them. Limits
 start strict, and only the user relaxes them. Changing instruction files, CI or branch protection, or the
@@ -101,7 +102,7 @@ root and `.agent/knowledge/`).
 | Principles | How work is judged | [`docs/principles.md`](principles.md), applied through [`.agent/knowledge/principles_review_guide.md`](../.agent/knowledge/principles_review_guide.md) |
 | Design | How the parts fit today | This file, from `# The design` on |
 | Decisions | What was decided, why, and when | [`docs/decisions/`](decisions/) (ADRs), plus each issue's `progress.md`; history, never rewritten |
-| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background |
+| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background. A Paths paragraph names the two paths the owner runs in parallel; the sit-rep marks each piece of work in flight with the path it serves and asks which to focus on, a choice that is not stored |
 | Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run with the counts of lines true and deferrals due, so the next run says what moved |
 
 Two of the seven were gaps (`README.md`, "The long view": each project, and the workspace, says what
@@ -157,6 +158,7 @@ only.
 | A progress entry has the ADR-0013 shape | Leave a trail; start limits strict | `script` | `_progress_entry.sh` validates the heading, the entry type, fences and title in every writer (`progress_append.sh`, `review_progress.sh persist`); editing the file by hand is not checked |
 | Merge only after a current review and a decision summary | Leave a trail; start limits strict | `script` | The gate in `merge_pr.sh` refuses by default on workspace PRs and is report-only for project PRs. It is local only: the script's own comment says a Merge click on GitHub bypasses it, and the server-side complement is not built |
 | The owner decides every merge; the loop pauses at a merge checkpoint and no phase merges on its own judgment | Leave a trail; start limits strict | `review only` | `run-issue/SKILL.md` step 11 stops the loop at the `merge` checkpoint and passes the gate-relaxing flags only on the owner's answer; `merge_pr.sh` does not check who runs it (its gate checks the review and the decision summary, not the person), so a reviewer checks the host against the skill |
+| The host answers a checkpoint only with the answers the `/orchestrator` table allows it, and never does a phase's work | Ask about what matters, and show how much | `review only` | Each `## Checkpoint` entry records `**Decided-by**: owner` or `host (<reason>)`; `dispatch_phase.sh` routes on `**After**` and `**Decision**` only and does not read who decided, so a reviewer checks host answers against the table |
 | Every project type implements every adapter verb | Put each thing at the level it applies to | `hook` | `validate_adapter.sh` (`validate-adapter-contract`), also its own CI job |
 | Design anchors resolve | Keep one current design | `hook` | `check_design_anchors.sh` (`check-design-anchors`); `make lint` and CI run it again |
 | A change that alters how the parts fit updates this file | Keep one current design | `review only` | Review guide rows "Keep one current design" and ADR-0017 |
@@ -434,13 +436,13 @@ sessions walk the same order by hand, one `SKILL.md` at a time
 
 | Phase | What it produces | What follows, and who decides |
 |---|---|---|
-| `review-issue` | An `## Issue Review` entry and a comment on the issue | Open `### Actions` boxes go to the owner at an `issue-actions` checkpoint; with none open the loop moves on to `plan-task` |
+| `review-issue` | An `## Issue Review` entry and a comment on the issue | Open `### Actions` boxes go to an `issue-actions` checkpoint; with none open the loop moves on to `plan-task` |
 | `plan-task` | `plan.md`, committed on the feature branch, and a `## Plan Authored` entry | `review-plan` runs next, no decision |
-| `review-plan` | A `## Plan Review` entry | The owner decides at the `plan` checkpoint after every plan review, whatever its verdict: proceed, revise or stop |
+| `review-plan` | A `## Plan Review` entry | The `plan` checkpoint follows every plan review, whatever its verdict: proceed, revise or stop |
 | `implement` | Commits on the branch and an `## Implementation` entry; it never pushes | `review-code` on the branch runs next, no decision |
-| `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the owner at the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) without approval the owner is asked at `rounds`. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
-| `publish` | The push and the pull request, whose body carries a `## Decision summary` heading | The owner has just decided at `publish`; the host does the push (`run-issue/SKILL.md` step 7) |
-| `triage-reviews` | An `## Integrated Review` entry: every review source combined into one list of findings with a verdict on each | Open findings go to the owner at `findings`; with none open the owner is asked at `merge` |
+| `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) without approval the `rounds` checkpoint is raised. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
+| `publish` | The push and the pull request, whose body carries a `## Decision summary` heading | `publish` has just been answered; the host does the push (`run-issue/SKILL.md` step 7) |
+| `triage-reviews` | An `## Integrated Review` entry: every review source combined into one list of findings with a verdict on each | Open findings go to the `findings` checkpoint, where merging past them is the owner's answer only; with none open, the `merge` checkpoint |
 | `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged, after the run recorded a merge entry, goes to `merge-refused` |
 
 - **One entry per dispatched phase, in `progress.md`.** `.agent/work-plans/issue-<N>/progress.md` is the
@@ -469,15 +471,21 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   Claude run in parallel and synchronously through `cross_model_review.sh` (ADR-0015).
 - **The host checks the exit, not the sub-agent's word.** `dispatch_phase.sh --check-exit` compares the
   count of entries of the phase's type before and after, and returns `OK`, `PARTIAL`, `FAILED` or
-  `MISSING`; anything but `OK` goes to the owner at `phase-failed` to retry, take over or stop. What it
+  `MISSING`; anything but `OK` goes to the `phase-failed` checkpoint: retry or stop, or take over, which
+  only the owner answers. What it
   checks is that an entry of the right type appeared, its `**Status**` and, for an `## Implementation`
   entry, its `**PR**` or `**Branch**` line. It does not check whether a review's findings are right; the
   merge gate reads the `**Verdict**` and the open boxes a reviewer wrote.
-- **Nine checkpoint kinds stop for the owner**: `issue-actions`, `plan`, `publish`, `rounds`,
+- **Nine checkpoint kinds stop the loop**: `issue-actions`, `plan`, `publish`, `rounds`,
   `findings`, `merge`, `merge-refused`, `phase-failed` and `unexpected`. Each answer is recorded as a
-  `## Checkpoint` entry (`**Decided-by**: owner`) before the loop moves on, and an answer outside a
-  checkpoint's fixed vocabulary routes to `unexpected`. No phase advances on its own judgment
-  (`review_loop_lifecycle.md`).
+  `## Checkpoint` entry before the loop moves on: `**Decided-by**: owner` for his answer, or
+  `**Decided-by**: host (<reason>)` when the host answers within the `/orchestrator` skill's checkpoint
+  table, which keeps `merge`, `merge-refused`, `takeover` at `phase-failed` and `merge` at `findings`
+  for the owner (owner decision 2026-10-15, #321; `run-issue/SKILL.md`, "No auto-chaining"). The owner
+  answers what touches his goals; the host decides the rest and lists each decision for his veto, under
+  the standing rules in `.agent/knowledge/host_standing_rules.md`. An answer outside a checkpoint's
+  fixed vocabulary routes to `unexpected`. No phase advances on its own judgment, and a host answer
+  never lets the host do a phase's work (`review_loop_lifecycle.md`).
 - **One driver per issue.** There is no lock; a second driver or a hand edit shows only as an unexpected
   entry at the next check (ADR-0014).
 
@@ -701,6 +709,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-13 | Sessions and roots | The root rule (owner, 2026-10-13): a session works only under the root it was launched in, cross-root work is an issue or an inbox line, and `run-issue` and `/start-task` refuse an issue of another root through `session_root.sh`; the user-tier bullet drops the `~/.claude/skills/` symlinks and a new bullet describes plugin skill delivery (ADR-0018). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the two new bullets are the interface between the installer, the hook, `run-issue`, `/start-task` and the two location scripts, which no one script header shows, so they stay | #345 | 748 |
 | 2026-10-13 | Sessions and roots | Review fixes: the installer refuses a root that is a plain directory inside another repository (its sessions read that repository's settings); the directory a run starts from names its root, rather than the current directory at any point; the `SessionStart` hook counts a root's `worktrees=` directory as the root's; `session_root.sh` and `skill_prefix.sh` refuse the same directories | #345 | 753 |
 | 2026-10-15 | Documentation layers | Direction row: the sit-rep names the first Direction line not yet true as the next step and reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since this file last changed, and may start a due read-only check in the background in a workspace session; the gaps paragraph calls that Problems section a first form of health signals | #395 | 756 |
+| 2026-10-15 | How it works, Documentation layers, Rules, Review loop and timeline, Glossary | Who answers a checkpoint (owner decision 2026-10-15): the owner answers what touches his goals and every merge, the host the rest within `/orchestrator`'s table, recorded `**Decided-by**: host (<reason>)` and listed for veto; the phase table's who-decides wording, the exit-check bullet (take over is the owner's), the checkpoint bullet and the glossary entry follow; a Rules row for host answers (`review only`); the Direction row names the roadmap's two paths and the sit-rep's path word and focus question | #321 | 766 |
 
 ## Glossary
 
@@ -721,8 +730,9 @@ Our own terms:
 - **round**: one pass of a review phase. Round 2 is the re-review after fixes.
 - **convergence**: rounds converge when each finds fewer must-fix items than the last. When they stop
   converging the loop steps back.
-- **checkpoint**: a point where the loop stops and asks the owner (after the plan, before publish,
-  before merge).
+- **checkpoint**: a point where the loop stops for an answer (after the plan, before publish,
+  before merge). The owner answers the ones that touch his goals and every merge; the host answers
+  the rest under his standing rules.
 - **progress timeline**: the per-issue file where the loop records each step and decision, so a new
   session can see what happened without re-reading the chat.
 - **Integrated Review**: the entry `triage-reviews` writes, with all review sources combined into one
