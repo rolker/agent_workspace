@@ -335,3 +335,68 @@ No owner-level questions: the goal reading (next step, in-progress state, proble
 **Plan**: `.agent/work-plans/issue-395/plan.md` at `c853c528`
 
 Replacement plan for the restated goal: first commit reverts f293a4bb; sit-rep report reordered (direction, next, in flight, problems, then counts and inbox); Suggested next is the first unmet Direction line plus the branch its issue names; new Problems step reads audit, research and documentation staleness with read-only commands and starts a due read-only check in the background; writes are only offered. Files: SKILL.md, design.md row.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-15 12:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #395 — sit-rep: when I ask "what's next?", say what to work on towards the goals, where in-progress work stands, and what problems I should know about
+**Plan**: `.agent/work-plans/issue-395/plan.md` at `c853c528`
+**Branch**: `feature/issue-395`
+
+### Evaluation
+
+Tested first against the owner's three wants, by running today's checks (`sitrep_checks.sh` on main, `worktree_list.sh --json`, `gh pr list`) and reading what the planned rules would print.
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | Right shape and small (revert, one skill, one design row), and it adds the missing third want. But on today's facts the planned report gets want 1 wrong (findings 1, 2) and leaves want 2 where it is (finding 3). Smallest fix stays small: one roadmap line, two lookups in In flight, a changed direction line. |
+| Issue alignment | Needs work | Covers all three wants and the issue review's actions, and correctly overrides the review's "offered, not started" with the owner's own words ("you might even launch it in the background"). Misses "where something is not written down, ask": the research cadence IS written (research skill, 30 days per entry) and the plan ignores it (finding 4). Serves: Easy to use ("Work is easy to come back to") and The long view ("Know whether it works"); `docs/design.md#documentation-layers` — checked, the goal and section exist. |
+| File targeting | Needs work | `docs/roadmap.md` Direction table needs one line (finding 1). Otherwise right. |
+| Consequences | Needs work | design.md gap paragraph on "healthy" (finding 9); project-session and non-Claude paths for the background start (finding 8). |
+| Principle alignment | Needs work | See findings; each says what the principle cuts or changes. |
+| ADR compliance | Good | ADR-0017 handled in the same change; ADR-0016 `$WS_ROOT` idiom noted; ADR-0013 not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Issue alignment — want 1, Suggested next]** The rule gives the wrong answer on today's roadmap. Today's rows: lines 1–4 `true`, line 5 "A `/run-issue` run started from the project root reaches the merge checkpoint" `unchecked` (empty check cell), line 6 "ADR-0016 is promoted" `false`. Step 3 contradicts itself: "first unmet (result not `true`)" picks line 5, but "an `unknown`/`unchecked` line is still not a source" skips it to line 6, the last link, which is the very fault the plan sets out to fix. Taking line 5 instead does no better: it names no issue, and issue 332 (onboard-project registers and audits projects) is named nowhere in the roadmap, so the rule prints "nothing in flight advances it" while `feature/issue-332` is the work that serves it. Issue 332's own body records that onboarding is "held before the gz4d acceptance run". The Direction chain is missing that link. Fix: (a) unmet = any result but `true`, with the result word printed (an `unknown` first line says "check could not run", and the rule does not skip past it, because the chain is ordered); (b) match only on the line's own cell (`(#N)` / `gh-issue N`), and drop "a `#N` in the Direction prose", which would match the Format paragraph's literal `(#N)` and the deferral rows' #265/#295; (c) add a Direction line before line 5, "The acceptance project is onboarded through onboard-project (#332)", check `gh-issue 332 closed`; (d) write the expected output on today's roadmap into the plan's acceptance step: "Next: the acceptance project is onboarded — onboard-project registers projects… (issue 332), in flight on feature/issue-332". The plan's Context also misstates the old rule: it picks line 6 (ADR promotion), not the run line, because line 5 is unchecked.
+2. **[Give the user what they need now — direction sentence]** "Acceptance-case paragraph, first sentence, printed as written" prints today: "ADR-0016 stays Provisional until a `/run-issue` run started from a project root passes through the merge checkpoint ([Sessions and roots](design.md#sessions-and-roots))." That is an unlabelled ADR number and a status rule, not a direction, and the project (gz4d) is in the third sentence. Cut the paragraph from the top. The direction line becomes "Acceptance case: <t> of <n> lines true; next on the path: <first unmet line's text>". Direction lines are already plain words, so nothing gets rewritten. The full paragraph moves down to the counts section.
+3. **[Issue alignment — want 2; labels]** In flight is called "already built", but on today's facts its line for issue 332 reads "feature/issue-332; 2 days ago: progress: implementation for #332". The issue number has no title, which breaks the report's own rule, and it does not say where the work stands. `worktree_list.sh --json` gives `issue`, so add the issue title (git-bug first, then `gh`) and the latest `progress.md` entry heading and Status (`progress_read.py`), e.g. "onboard-project registers projects… (issue 332): Implementation complete, not yet reviewed, no pull request". That is two lookups, and they are the whole of want 2.
+4. **[Background-start line; Ask about what matters]** The audit is read-only, as the plan says. `audit-workspace/SKILL.md` "Report, don't fix": it reads files and runs `worktree_list.sh`, and its only write is a PR it asks about afterwards. The anchor checker is read-only too: no temp files, no git writes, exit 0 on main. Research is a writer: every `/research` mode creates a worktree, commits, pushes and opens a pull request. The plan's "proposals only" background run is therefore not `/research --refresh`. SKILL.md must give the prompt's exact read-only subset (`--refresh` steps 2–4: read the digest, find stale entries, survey; no worktree, commit, push or PR) and return the proposed entries. Research also has a written cadence: entries more than 30 days past `Last verified` are stale, and more than 90 days are flagged. So for research, "probably due" applies that rule (today all 19 entries were verified 2026-04-19) instead of the agent's judgment. Parse only the leading date of `Last full refresh:`, since the line carries a parenthetical.
+5. **[Verify before claiming — "work done since"]** The commit counts as planned are mostly bookkeeping. On main since 2026-10-09: 260 commits, of which 106 touch more than `.agent/work-plans`. Since design.md last changed: 5 under `.agent .claude docs`, of which 1 is not a work-plan commit. Count with `git -C "$WS_ROOT" rev-list --count --no-merges <sha>..main -- . ':!.agent/work-plans'`, from the commit that set the date where there is one. Name `main` explicitly, because `$WS_ROOT` falls back to `.`, which in a worktree session is a feature branch.
+6. **[Verify before claiming — audit date]** The newest `Re-examined` date (2026-10-09) comes from the design rewrite, not an audit. The register says "while this document was rewritten or since by `/audit-workspace`". Label it "newest ADR re-examination (Decision register)", never "last audit". Add the fact the column gives for free: 10 of 18 ADRs "not yet". The plan's example date 2026-10-12 is not in the register.
+7. **[Only what's needed — anchor check]** `check_design_anchors.sh` runs in pre-commit and CI, so it passes on main by construction. It is not a staleness measure. Print it only when it fails.
+8. **[Leave in a project only what it chose to carry; Use the main tool fully, keep the work tool-neutral]** `audit-workspace` and `research` have no `session_scope`, so the plugin does not ship them to project sessions. In a project session they cannot be started; the Problems line says "run /audit-workspace from the workspace". Without the Agent tool (Codex, agy), it is offered, not started.
+9. **[A change includes its consequences / Keep one current design]** The Documentation layers gap paragraph says the Direction section "says … not what healthy means". The Problems section is a first form of health signals, so add one clause there as well as the Direction-row sentence.
+10. **[Labels]** The rest of the planned report is labelled, with three exceptions. Unlabelled numbers come in through roadmap text printed as written: "(#379)" in line 4, "(#265, PR 4)" and "(#295)" in deferrals, and "ADR-0016" in line 6. Apply the existing rule ("no issue or pull request number without its title beside it") to them, and extend it to ADR numbers (title from the ADR file's H1).
+
+### Summary
+
+This plan is the first on the issue that targets the three wants, and its size is right. On today's roadmap, though, its Suggested-next rule names the last link or "nothing in flight" instead of the onboarding work. Its direction sentence opens with an unlabelled ADR number, its In flight line still has no title or stage, and its research background run quietly departs from a skill that writes. Revise, then ready.
+
+### Recommended Actions
+
+- [ ] Fix step 3's contradiction (unmet = not `true`; do not skip past an `unknown`); match on the line's own cell only; add the onboarding Direction line (#332, `gh-issue 332 closed`) to `docs/roadmap.md` and the file table; put today's expected Suggested-next output in the acceptance step; correct the Context sentence about the old rule.
+- [ ] Replace the direction sentence with "<t> of <n> lines true; next on the path: <first unmet line>"; move the acceptance paragraph below.
+- [ ] In flight: add the issue title and the latest progress.md entry heading and Status for worktree lines.
+- [ ] Research: spell out the read-only prompt subset; use the research skill's 30/90-day rule for "probably due"; parse the leading date only.
+- [ ] Commit counts: `--no-merges`, exclude `.agent/work-plans`, range from the dating commit, on `main` in `$WS_ROOT`.
+- [ ] Audit fact labelled "newest ADR re-examination", plus the count of "not yet" rows.
+- [ ] Anchor check printed only on failure.
+- [ ] Project session and non-Claude framework: offer only, with where to run it.
+- [ ] design.md: one clause in the "healthy" gap paragraph as well as the Direction row and change-log row.
+- [ ] Label every `#N` and ADR number printed from roadmap text.
+
+### Decisions made (owner may veto)
+
+- Onboarding is a Direction line before the run line. The source is issue 332's own "held before the gz4d acceptance run". It changes the acceptance chain's wording, not its goal.
+- The direction line is built from the Direction lines, not the acceptance paragraph. The paragraph is not rewritten.
+- Research's "due" uses the research skill's written 30-day rule. The audit and documentation facts still carry no threshold.
+- The background research run is read-only and returns proposals. Applying them (worktree, commit, PR) is offered.
+- The anchor check is silent unless it fails.
+- In a project session, or without the Agent tool, due checks are offered and never started.
+
+No owner-level questions: the goal reading matches the issue, no two goals conflict, and nothing outward-facing or hard to undo is planned.
