@@ -1079,6 +1079,7 @@ git init -q "$W5"
 git -C "$W5" remote add origin https://github.com/acme/widgets.git
 cp "$SCRIPT_DIR/../_issue_helpers.sh" "$W5/.agent/scripts/"
 cp "$WS/.agent/scripts/worktree_list.sh" "$W5/.agent/scripts/"
+printf "## Direction\n" > "$W5/docs/roadmap.md"
 printf '%s' "$W5" > "$HOMESB/.claude/agent-workspace-root"
 
 echo "TEST: sit-rep step 5 with gh failing reads the git-bug cache only, never pulling"
@@ -1102,6 +1103,37 @@ step5 'A line (#7) and (#8)' ''
 ! grep -q "bridge" "$MARK/git-bug" 2>/dev/null && grep -q "^bug -m" "$MARK/git-bug" 2>/dev/null \
     && pass "(skill 5) a cache miss does not pull from GitHub (no git bug bridge call)" || fail "(skill 5) git-bug calls: $(cat "$MARK/git-bug" 2>/dev/null)"
 rm -f "$SB/bin/git-bug"
+
+echo "TEST: sit-rep step 5 matches open pull requests by branch or closing reference, whatever the references hold"
+# A gh that applies its --jq filter with jq, as gh does, to a fixed list.
+mv "$SB/bin/gh" "$SB/gh.saved"
+cat > "$SB/bin/gh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$MARK/gh"
+case "\$1 \$2" in
+    "issue view") echo "Live title" ;;
+    "pr list")
+        while [ \$# -gt 0 ]; do [ "\$1" = "--jq" ] && { jq -r "\$2" "$SB/prs.json"; exit; }; shift; done
+        cat "$SB/prs.json" ;;
+esac
+EOF
+chmod +x "$SB/bin/gh"
+cat > "$SB/prs.json" <<'EOF'
+[{"number":20,"title":"Null references, other branch","headRefName":"w","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":null},
+ {"number":21,"title":"Branch match","headRefName":"feature/issue-7","isCrossRepository":false,"isDraft":true,"closingIssuesReferences":null},
+ {"number":22,"title":"Closes it","headRefName":"other","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7,"repository":{"owner":{"login":"acme"},"name":"widgets"}}]},
+ {"number":23,"title":"Closes another repository's 7","headRefName":"x","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7,"repository":{"owner":{"login":"acme"},"name":"other"}}]},
+ {"number":24,"title":"Reference without repository","headRefName":"y","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7}]},
+ {"number":25,"title":"No references","headRefName":"z","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[]},
+ {"number":26,"title":"From a fork","headRefName":"feature/issue-7","isCrossRepository":true,"isDraft":false,"closingIssuesReferences":[]}]
+EOF
+reset_marks
+step5 'A line (#7)' ''
+[[ $RC -eq 0 && "$(grep '^pull_request' <<< "$OUT")" == $'pull_request\t21\tBranch match\tdraft\npull_request\t22\tCloses it\tready' ]] \
+    && pass "(skill 5) pull requests: null references do not stop the lookup; branch match, closing reference here; not another repository's, a bare reference, or a fork" \
+    || fail "(skill 5) pull requests rc=$RC '$OUT'"
+[[ "$OUT" == *$'issue\t7\tLive title'* ]] && pass "(skill 5) gh up: the live title" || fail "(skill 5) live title '$OUT'"
+mv "$SB/gh.saved" "$SB/bin/gh"
 printf '%s' "$WS" > "$HOMESB/.claude/agent-workspace-root"
 
 echo "TEST: sit-rep step 6 reads the problems from main, without merges or work-plan-only commits"

@@ -392,7 +392,8 @@ for w in json.load(sys.stdin).get("worktrees", []):
         --json number,title,headRefName,isCrossRepository,isDraft,closingIssuesReferences \
         --jq ".[] | select(.isCrossRepository | not)
             | select(.headRefName == \"feature/issue-$n\"
-                or ([.closingIssuesReferences[] | select((.repository.owner.login + \"/\" + .repository.name) == \"$WS_REPO\") | .number] | index($n)))
+                or ([(.closingIssuesReferences // [])[] | select(.repository != null)
+                    | select((.repository.owner.login + \"/\" + .repository.name) == \"$WS_REPO\") | .number] | index($n)))
             | \"pull_request\t\(.number)\t\(.title)\t\(if .isDraft then \"draft\" else \"ready\" end)\""
 done
 # ADR numbers in the item, with the ADR file's own title (its first line).
@@ -408,7 +409,9 @@ awk '/^\*\*Acceptance case\.\*\*/ { s = 1 } s && /^[[:space:]]*$/ { exit } s { p
 ```
 
 A `branch` row is in-flight work for that line; a `pull_request` row is
-its open pull request (ready or draft). Matching is by the issue number
+its open pull request (ready or draft). A pull request with no closing
+references (`null` or empty), or a reference without its repository, is
+matched by its branch name only. Matching is by the issue number
 only, through `feature/issue-<N>` worktrees and pull requests that close
 `#<N>` or come from that branch. When the line names no issue, or no
 branch or pull request matches, nothing in flight advances it, and the

@@ -572,9 +572,9 @@ Owner readability (priority 1): all three wants are present and ordered first. T
 - [ ] (suggestion) Research survey restarts every session while any entry is stale (today 19/19), a 19-topic web survey per `/sitrep`; cap the background prompt to the 3 oldest entries — `.claude/skills/sitrep/SKILL.md:510-519`
 - [ ] (suggestion) The audit prompt names no root; a background agent whose cwd is a feature worktree audits that branch, so prefix "From <workspace root> (the main checkout), ..." — `.claude/skills/sitrep/SKILL.md:506-509`
 - [ ] (suggestion) The research prompt should say "Last verified (or Added if never verified)" like step 6, and give the research skill's path (`<workspace root>/.claude/skills/research/SKILL.md`) — `.claude/skills/sitrep/SKILL.md:513-516`
-- [ ] (suggestion) jq guard: `(.closingIssuesReferences // [])[]`, and skip refs with no `.repository`; null aborts the pull-request lookup (reproduced, rc=5) — `.claude/skills/sitrep/SKILL.md:358-360`
+- [x] (suggestion) jq guard: `(.closingIssuesReferences // [])[]`, and skip refs with no `.repository`; null aborts the pull-request lookup (reproduced, rc=5) — `.claude/skills/sitrep/SKILL.md:358-360`
 - [ ] (suggestion) Step 6 reads local `main`, which can lag `origin/main`; print `main..origin/main` count when the ref exists, or label the facts "as of local main" — `.claude/skills/sitrep/SKILL.md:384-389`
-- [ ] (suggestion) No test exercises step 5's `gh pr list --jq` filter; add a stub `gh` returning JSON (closing refs present, empty, null) and assert the `pull_request` row — `.agent/scripts/tests/test_sitrep_checks.sh`
+- [x] (suggestion) No test exercises step 5's `gh pr list --jq` filter; add a stub `gh` returning JSON (closing refs present, empty, null) and assert the `pull_request` row — `.agent/scripts/tests/test_sitrep_checks.sh`
 - [ ] (suggestion) A due deferral no longer reaches the top block while any line is unmet (it is only in "Deferrals due" at the bottom); list due deferrals under Problems — `.claude/skills/sitrep/SKILL.md:576-583`
 - [ ] (suggestion) The "about 15 lines" budget has no rule for many worktrees; cap In flight at 5 lines then "and <k> more" — `.claude/skills/sitrep/SKILL.md:523-538`
 
