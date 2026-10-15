@@ -15,9 +15,14 @@ purpose. The sit-rep (`/sitrep`) reads this section through
 section holds no status and no dates, and results stay on the machine that
 ran them.
 
-**Acceptance case.** ADR-0016 stays Provisional until a `/run-issue` run
-started from a project root passes through the merge checkpoint
-([Sessions and roots](design.md#sessions-and-roots)). Design question OQ-2
+**Acceptance case.** A bare project that was never onboarded is made ready
+and used: GeoZui4D (`gz4d`) is registered, onboarded, and an issue there runs
+through the loop with the workspace's goals and principles visibly driving
+the work. Until that run passes the merge checkpoint, ADR-0016 (Session roots
+and the user tier) stays Provisional
+([Sessions and roots](design.md#sessions-and-roots)).
+
+Design question OQ-2
 ([Open questions](design.md#open-questions)) asks where that run is tracked:
 here. The run's target is the `gz4d` project, as step 5 of the Workspace
 Redesign table below says.
