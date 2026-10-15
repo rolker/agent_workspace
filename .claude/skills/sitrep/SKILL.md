@@ -1,6 +1,6 @@
 ---
 name: sitrep
-description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report from checked facts, easy to take in: what the acceptance case is for, the next step towards it (the first Direction line not yet true, checked this run, and the work in flight for it), where work in flight stands, and problems to know about (an audit or research due, documentation that may have fallen behind, judged by dates and commits since, and deferrals that are due), then the counts and the inbox. Reads only, except one line to a machine-local run record; in a workspace session it may start a due read-only check in the background and says so."
+description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report from checked facts, easy to take in: what the acceptance case is for, the next step towards it (the first Direction line not yet true, checked this run, and the work in flight for it), where work in flight stands, and problems to know about (an audit or research due, documentation that may have fallen behind, judged by dates and commits since, and deferrals that are due), then the counts and the inbox; each piece of work in flight is marked with the path it serves, and the closing question asks which path to focus on. Reads only, except one line to a machine-local run record; in a workspace session it may start a due read-only check in the background and says so."
 session_scope: both
 ---
 
@@ -44,7 +44,7 @@ the order the owner needs them: what to work on next towards the goals,
 where the work in flight stands, and problems he should know about. It
 replaces the old what-next skill, which ranked roadmap rows; this one
 answers from checked facts instead. The skill formats and proposes; it
-decides nothing. The "Suggested next" line and the inbox sort are
+decides nothing. The "Next:" line (Suggested next) and the inbox sort are
 proposals for the owner to accept or change. The one thing it starts on
 its own is a read-only check that is due (step 7), and the report says
 so. Every statement in the report comes from a command run in this
@@ -196,11 +196,28 @@ GitHub remote the pull requests are reported as not checked. The list
 always includes the main checkout (`type: "main"`); it is not work in
 flight and is left out of the report. For each other worktree with an
 issue, where the work stands is the issue's title and the latest entry on
-its timeline (`progress.md`, read by `progress_read.py`):
+its timeline (`progress.md`, read by `progress_read.py`), and which path
+it serves (the roadmap's Paths paragraphs, under `## Direction`). Put step
+1's `rows_file` value in place of the placeholder (leave it as it is when
+step 1 printed none):
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
+rows="<rows_file printed in step 1>"
+# Path 1 is work a Direction line's own cells name: "(#N" in a line's item
+# or "gh-issue N " in its check (this repository's issue N, step 5's
+# match), "gh-issue <owner/repo>#N" (that repository's), and the project
+# an "adapter --project <name>" check names. Read from step 1's rows, over
+# every line row; with no rows the path cannot be told.
+p1=""
+if [ -f "$rows" ]; then
+    p1=" $( { awk -F'\t' '$1 == "line" { print $2 }' "$rows" | grep -oE '\(#[0-9]+[,)]' | grep -oE '[0-9]+'
+              awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE '(^|[;`[:space:]])gh-issue [0-9]+ ' | grep -oE '[0-9]+'
+              awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE 'gh-issue [A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+' | cut -d' ' -f2
+              awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE 'adapter --project [A-Za-z0-9._-]+' | sed 's/^adapter --project /project:/'
+            } | sort -u | tr '\n' ' ')"
+fi
 "$WS_ROOT/.agent/scripts/worktree_list.sh" --json \
     | jq -c '.worktrees[]? | select(.type != "main" and .issue)' |
 while IFS= read -r w; do
@@ -310,14 +327,28 @@ try:
 except ValueError:
     print("progress record unreadable")')"
     fi
-    printf '%s\t%s\t%s\tissue %s\t%s\t%s\n' "$type" "${repo:-workspace}" "${branch:-(no branch)}" "$issue" "$title" "$latest"
+    # Path 2 is any other work with a Serves line on its timeline (every
+    # Issue Review writes one, naming the README goals it serves).
+    if [ ! -f "$rows" ]; then wpath="path unknown (steps not checked)"
+    elif [ "$type" = workspace ] && [[ "$p1" == *" $issue "* ]]; then wpath="Path 1"
+    elif [ -n "$slug" ] && [[ "$p1" == *" $slug#$issue "* ]]; then wpath="Path 1"
+    elif [ "$type" = project ] && [ -n "$repo" ] && [[ "$p1" == *" project:$repo "* ]]; then wpath="Path 1"
+    elif [ -n "$f" ] && grep -qE '^\*\*Serves\*\*:[[:space:]]*[^[:space:]]' "$f"; then wpath="Path 2"
+    else wpath="no path"; fi
+    printf '%s\t%s\t%s\tissue %s\t%s\t%s\t%s\n' "$type" "${repo:-workspace}" "${branch:-(no branch)}" "$issue" "$title" "$latest" "$wpath"
 done
 ```
 
-Rows are `type`, `repo`, `branch`, `issue <N>`, title, state,
+Rows are `type`, `repo`, `branch`, `issue <N>`, title, state, path,
 TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
-reads `(no branch)`. The state is the latest timeline entry in words, so the
-report needs no entry names. The entry is looked up by its base type
+reads `(no branch)`. The path is `Path 1` (a Direction line names the
+issue, in its own cells, or a check names the project the worktree
+belongs to), else `Path 2` (its timeline has a `**Serves**:` line), else
+`no path`, which is itself worth seeing: work that serves neither. It is
+`path unknown (steps not checked)` when step 1 printed no rows.
+
+The state is the latest timeline entry in words, so the report needs no
+entry names. The entry is looked up by its base type
 (`progress_read.py`'s `base_type`), so an older heading with a suffix,
 such as `External Review (round 2)`, reads as its type. A review entry's
 state counts its open boxes (`- [ ]` under its `###` sections), so it
@@ -379,6 +410,29 @@ order; it is printed as the review state when set, and nothing is printed
 for it when it is empty. Within each group, branches with a worktree come
 first, in the worktree list's order, then branches with only a pull
 request, in the order `gh pr list` printed them.
+
+The paths themselves, for the report's closing question: each paragraph of
+the Direction section that opens with `**Path <n>`, printed as its number,
+its bold name and its first sentence, as written.
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
+     d && /^\*\*Path [0-9]+/ { p = 1; s = "" }
+     p && /^[[:space:]]*$/ { print s; p = 0; next }
+     p { s = s (s == "" ? "" : " ") $0 }
+     END { if (p) print s }' "$WS_ROOT/docs/roadmap.md" 2>/dev/null | python3 -c '
+import re, sys
+n = 0
+for l in sys.stdin:
+    m = re.match(r"\*\*(Path \d+)[,.:]?\s*(.*?)\.?\*\*\s*(.*)", l.strip())
+    if m:
+        n += 1
+        first = re.match(r"(.+?\.)(?:\s|$)", m.group(3))
+        print("path\t%s\t%s\t%s" % (m.group(1), m.group(2), first.group(1) if first else m.group(3)))
+if not n:
+    print("paths=none (no **Path <n>** paragraph in the Direction section)")'
+```
 
 ### 4. Write the run record
 
@@ -727,53 +781,81 @@ git -C "$WS_ROOT" worktree list --porcelain | sed -n '1s/^worktree //p'
 ### 8. Print the report
 
 The top part (what the next step is for, the next step, Suggested next,
-In flight, Problems) comes first and fits in about 15 lines; the counts,
-the inbox and the deferrals follow. Plain words: the top part names no
-mechanism (no "Direction lines", "result", "timeline entry" or
-"Decision register"); the facts the steps above print are translated by
-the rules below. No count without what it counts (never a bare "3/6").
+In flight, Problems) comes first and fits in about 20 lines with its blank
+lines; the counts, the inbox and the deferrals follow. Plain words: the
+top part names no mechanism (no "Direction lines", "result", "timeline
+entry" or "Decision register"); the facts the steps above print are
+translated by the rules below. No count without what it counts (never a
+bare "3/6").
+
+The layout is for reading at a glance (owner, 2026-10-15: a sample left him
+unsure "if it was describing the current state, or what we still need to
+do", and asked for "more whitespace to make it easier to read and see the
+structure"):
+
+- **A lead word fixes the tense** of every line that names a step or a
+  piece of work: `Done:` (true now), `Not yet:` (still to become true),
+  `Next:` (the action proposed), `Running:` (work in flight). A Problems
+  line is a fact measured this run and keeps its topic label (`Audit:`,
+  `Research:`, ...).
+- **One item per line.** Steps, branches, inbox items and deferrals are
+  bullets, never joined with commas or semicolons on one line.
+- **A blank line** between sections, and between a section's heading and
+  its bullets.
 
 ```markdown
 ## Sit-rep, <date>
 
 <acceptance_first from step 5>
 
-<t> of <n> steps done; next: <first unmet line, as written> — <its
-result in words>.
-
-**Suggested next**: <the line's text as an action>. In flight on
-<branch>: <its state>.
+Done: <t> of <n> steps.
+Not yet: <first unmet line, as written> — <its result in words>.
+Next: <the line's text as an action>.
+Running: <branch>: <its state>.
 
 **In flight**:
-- <name>: <issue title> (issue <N>)<, the next step>: <state>
-- and <k> more: <their names>
+
+- Running: <name>: <issue title> (issue <N>)<, the next step>: <state>. <path>.
+- And <k> more:
+  - <name>
 
 **Problems**:
+
 - Audit: last design-decision review <date>, <d> days and <c> commits
-  ago; <k> of <n> design decisions not yet reviewed — <judgment>
-  [; started in the background | ; offered: <command, where>].
+  ago. <k> of <n> design decisions not yet reviewed. <Judgment>
+  [, started in the background | , offered: <command, where>].
 - Research: <k> of <n> research topics last checked more than 30 days
-  ago (<m> more than 90); last full refresh <date> — <judgment>
-  [; the 3 oldest started in the background | ; offered: ...].
+  ago (<m> more than 90). Last full refresh <date>. <Judgment>
+  [, the 3 oldest started in the background | , offered: ...].
 - Documentation: the design document last changed <date>, <d> days
-  ago; <c> commits since changed the workspace's scripts, skills or
-  docs — <judgment>.
+  ago. <c> commits since changed the workspace's scripts, skills or
+  docs. <Judgment>.
 - Deferral due: <the deferral, as written>.
 - <only when present: local main behind GitHub, a failed anchor check,
   a malformed Direction section, a step whose check could not run>
 
-**Steps**: <t> of <n> done. Not yet done: <line — result in words>; ...
+**Steps**: <t> of <n> done.
+
+- Done: <line, as written>.
+- Not yet: <line, as written> — <result in words>.
+
 <What moved: compare the summary with the last run record's, in words,
 e.g. "steps done: 3 of 6 on 2026-10-10, 4 of 6 now"; "first run" when
-there is no earlier line.> <acceptance_rest, when not empty>
-Workspace root only; registered project roots are not read in this mode.
+there is no earlier line.>
+
+<acceptance_rest, when not empty>
+
+Workspace root only: registered project roots are not read in this mode,
+so Path 1 work that lives in a project root does not show here.
 
 **Inbox**: <n> lines, <k> new since the last run (or "new since the last
-run: unknown", with the reason)<: the new ones in a few words each, when
-they fit on this line>. `/sitrep inbox` for a proposed sort.
+run: unknown", with the reason). `/sitrep inbox` for a proposed sort.
 
-**Deferrals**: <k> of <n> due (under Problems). No automatic check yet:
-<deferrals whose result is unchecked>.
+- New: <a new line in a few words>
+
+**Deferrals**: <k> of <n> due (under Problems).
+
+- No automatic check yet: <deferral, as written>
 ```
 
 Rules for the report:
@@ -784,8 +866,9 @@ Rules for the report:
   bare ADR number whose ADR file has a title: use step 5's
   `acceptance_first`, `acceptance_rest` and `text=` lines, not step 1's
   rows.
-- **Line 2** is step 5's `acceptance_first`, so the reader sees what the
-  next step is for. When it is empty, the line is left out.
+- **The line after the heading** is step 5's `acceptance_first`, so the
+  reader sees what the next step is for. When it is empty, the line is
+  left out.
 - **Result words** are translated, and always printed, so a step that
   could not be checked never reads as one that failed:
 
@@ -797,21 +880,22 @@ Rules for the report:
   | `partial` | partly done (its checks disagree) |
   | `unknown` | could not be checked |
 
-- **The next-step sentence** gives the count of steps done, the line as
-  written, and its result in words. An issue number in the line,
+- **The `Done:` and `Not yet:` lines** give the count of steps done, then
+  the first unmet line as written, and its result in words. An issue number in the line,
   written `(#<N>`, reads `(issue <N>`.
-- **Suggested next** restates that line as something to do, keeping its
-  own words and names ("X is onboarded through Y" becomes "Onboard X
-  through Y"), then "In flight on <branch>: <state>", with step 3's
-  state for that branch and, when step 5 matched one, "; pull request
-  <M>: <draft or ready>". It does not print the issue's title. When step
-  5 matched nothing: "<action>. Nothing in flight advances it."
+- **Suggested next** is the `Next:` line: it restates that line as
+  something to do, keeping its own words and names ("X is onboarded
+  through Y" becomes "Onboard X through Y"). The `Running:` line under it
+  gives the branch step 5 matched and step 3's state for it, then, when
+  step 5 matched one, "; pull request <M>: <draft or ready>". It does not
+  print the issue's title. When step 5 matched nothing, it reads
+  "Running: nothing advances it."
 - Only when every line is `true` does Suggested next come from
   elsewhere, from the first of these with an item: a due deferral; work
   in flight (a branch with a ready pull request first, step 3's order);
   the proposed inbox "now" bin, which says "this rests on the proposed
   inbox sort", since that bin is this run's proposal, not a checked
-  fact. When none has one: "Suggested next: nothing from this run's
+  fact. When none has one: "Next: nothing from this run's
   facts." When step 1 checked nothing, it says the steps were not
   checked this run, and why.
   - The main checkout is not work in flight: the worktree list always
@@ -824,8 +908,8 @@ Rules for the report:
   labelled by the issue's title; a pull request with no worktree
   carries its own title.
 - **In flight** has one line per branch, in step 3's order, at most
-  five. More than five: the first five, then "and <k> more: <their
-  names>". The next step's branch is always among the five shown (it
+  five. More than five: the first five, then "And <k> more:" with one
+  bullet per name under it. The next step's branch is always among the five shown (it
   takes the fifth place when it would fall below). A line is filled in
   part by part, and a part the branch does not have is left out:
   - `<name>` is the branch, or for a project worktree its project
@@ -843,6 +927,10 @@ Rules for the report:
     not the workspace's), so its line says nothing about one.
   - A pull request with no worktree: its title, "(pull request <M>)",
     then the same draft, fork and review words.
+  - Last, after a period, the path step 3 printed: `Path 1`, `Path 2`,
+    `no path` or "path unknown (steps not checked)". A branch with only a
+    pull request has no timeline here: `no path`, unless its issue is
+    named by a Direction line.
 - **Problems** in words: the Decision register's newest `yes <date>` is
   the "last design-decision review", its `not yet` rows "design
   decisions not yet reviewed"; digest entries are "research topics".
@@ -850,11 +938,13 @@ Rules for the report:
   on every run, whether or not a step is unmet. Step 6's local-main rule
   says when local main lagging GitHub is a line, or "(as of local main)"
   goes on the heading. `format` rows and `unknown` lines go here too.
-- A `false`, `unknown`, `partial` or `unchecked` line goes under "Not yet
-  done" in the Steps section with its result in words.
+- In the Steps section a `true` line is a `Done:` bullet; a `false`,
+  `unknown`, `partial` or `unchecked` line is a `Not yet:` bullet with
+  its result in words.
 - A deferral is due only when its result is `true`. An `unchecked`
   deferral is listed as having no automatic check, never as due.
-- The inbox is one line. The five-bin sort is printed only for
+- The inbox is its line and one `New:` bullet per new line (at most
+  five; "And <k> more new" after them). The five-bin sort is printed only for
   `/sitrep inbox`, after the Inbox line:
   ```markdown
   Proposed sort, to answer in batches:
@@ -870,4 +960,9 @@ Rules for the report:
   answers is a separate step the owner asks for.
 - After the report, end with at most one question, the one whose answer
   changes the most. The suggestion proposes an action; the question asks
-  the owner to decide something.
+  the owner to decide something. By default it is the focus: Path 1, Path
+  2 or both, each named as step 3's last block printed it (its number,
+  name and first sentence). The owner decides the focus when he asks for
+  a sit-rep, and it is never stored. Ask something else only when the
+  owner already named the focus in this session, or when step 3 printed
+  `paths=none`.
