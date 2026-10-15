@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/test_skill_paths.sh
 # Keeps project-capable skills free of workspace-relative paths (#317), and
-# guards the skill set itself: the declared session_scope list, and the
-# replacement of the old what-next skill by the sit-rep (#389).
+# guards the skill set itself: the declared session_scope list, the
+# replacement of the old what-next skill by the sit-rep (#389), and the
+# department-head skill, the host's standing rules and the run-issue
+# checkpoint text they rely on (#321).
 #
 # A skill whose SKILL.md declares `session_scope: project` or `both` can run
 # in a session started in a project checkout. There, a bare
@@ -213,6 +215,57 @@ elif [[ $rc -eq 0 ]]; then
     head -n5 <<< "$hits" | sed 's/^/        /'
 else
     fail "could not run git grep for live pointers (exit $rc): $hits"
+fi
+
+# --- The host's standing rules (#321): every rule carries its reason.
+# Rules with reasons are followed by intent, rules without them only
+# literally (the 2026-10-15 audit the issue cites); an empty Reason cell
+# is the defect this guards. The table is the one under `## Rules`, its
+# header `| Rule | Reason | Source |`.
+RULES="$WS_ROOT/.agent/knowledge/host_standing_rules.md"
+if [[ ! -f "$RULES" ]]; then
+    fail "host standing rules file is missing: .agent/knowledge/host_standing_rules.md"
+else
+    # Cells split on `|` outside backticks, so a code span holding a pipe
+    # does not shift the Reason column.
+    rules_out="$(python3 - "$RULES" <<'PYRULES'
+import re, sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+def cells(row):
+    out, cur, code = [], "", False
+    for ch in row.strip().strip("|"):
+        if ch == "`":
+            code = not code
+        if ch == "|" and not code:
+            out.append(cur.strip()); cur = ""
+        else:
+            cur += ch
+    out.append(cur.strip())
+    return out
+sec = hdr = found = False
+rows = bad = 0
+for l in lines:
+    if l.startswith("## "):
+        sec = l.strip() == "## Rules"; hdr = False; continue
+    if not sec or not l.lstrip().startswith("|"):
+        continue
+    c = cells(l)
+    if not hdr:
+        hdr = c[:2] == ["Rule", "Reason"]; found = found or hdr; continue
+    if set("".join(c)) <= set("-: "):
+        continue
+    rows += 1
+    if len(c) < 2 or not c[0] or not c[1]:
+        bad += 1; print("empty: " + l[:100])
+print("rows=%d bad=%d header=%s" % (rows, bad, found))
+PYRULES
+)"
+    summary="$(tail -n1 <<< "$rules_out")"
+    if [[ "$summary" == *"header=True" && "$summary" == "rows="* && "$summary" != "rows=0 "* && "$summary" == *" bad=0 "* ]]; then
+        pass "host standing rules: every rule row has a reason ($summary)"
+    else
+        fail "host standing rules: a rule without a reason, or no | Rule | Reason | table under ## Rules: $rules_out"
+    fi
 fi
 
 echo ""
