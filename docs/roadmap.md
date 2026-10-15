@@ -47,6 +47,7 @@ Redesign table below says.
 | The user tier is installed from this checkout, with no drift | `script user_tier_install.sh --check --require` |
 | `/run-issue` can run in a project session | `file-contains .claude/skills/run-issue/SKILL.md session_scope: both` |
 | The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
+| The acceptance project is onboarded through onboard-project (#332) | |
 | A `/run-issue` run started from the project root reaches the merge checkpoint | |
 | ADR-0016 is promoted from Provisional to Accepted | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
 
