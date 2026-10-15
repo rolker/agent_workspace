@@ -589,3 +589,76 @@ Owner readability (priority 1): all three wants are present and ordered first. T
 - Branch mode used for this review to match the Pre-Push entry type.
 
 No owner-level questions.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-15 14:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-395 at `4837c2c7`
+**Addressed**: Local Review (Pre-Push) at `c1bb3f26` (2026-10-15 13:32 -04:00)
+**Commits**: 586b42e4 24534642 8089eea7 b16f443d 55aadb73 458bc51d 3059ce17 115f2930 87ab8c3a d1377d7a 853eaf68 c2103310 4837c2c7
+
+Address-findings pass on the pre-push review, with the host's wording fixes and the owner's go-ahead to name the project in the roadmap.
+
+### Actions
+- [x] (must-fix) Decision-register awk drops escaped `\|` before splitting and skips spaced separators; test row with `\|` holding the newest date, confirmed failing on the old awk — `586b42e4`, `.claude/skills/sitrep/SKILL.md` step 6
+- [x] (must-fix) Package worktrees: repository from the `.worktree-repos` header (`issue=<owner/repo>#<N>`); bare `issue=<N>` only when every checkout agrees, else "unknown (its checkouts are in different repositories)"; timeline looked for at the aggregate root, then each listed checkout; tests for both header forms — `b16f443d`, step 3
+- [x] (must-fix) git-bug fallback is cache-only (`_issue_lookup_gitbug`) in steps 3 and 5; stub-git-bug test proves no `bridge` call on a miss, confirmed failing on the old code — `8089eea7`
+- [x] (must-fix) Titles once: an issue's title prints only in its In flight line, which is marked ", the next step"; elsewhere "issue <N>" — `c2103310`, step 8
+- [x] (suggestion) Background research covers the 3 oldest stale entries — `115f2930`, step 7
+- [x] (suggestion) Audit prompt runs "From <workspace root> (the main checkout ...)", the path git names first, since `$WS_ROOT` falls back to the cwd — `458bc51d`, step 7
+- [x] (suggestion) Research prompt says "Last verified (or Added, if never verified)" and gives the research skill's path and section — `3059ce17`, step 7
+- [x] (suggestion) jq guard `(.closingIssuesReferences // [])[]`, refs without a repository skipped — `55aadb73`, step 5
+- [x] (suggestion) `main_behind_origin` printed (no fetch); report says when above 0, or heads Problems "(as of local main)" — `87ab8c3a`, step 6
+- [x] (suggestion) Stub gh applying `--jq` with real jq: null refs (placed first, so the old filter aborts; confirmed), branch match, closing ref here; not another repo, bare ref, empty, or fork — `55aadb73`, `test_sitrep_checks.sh`
+- [x] (suggestion) Due deferrals listed under Problems on every run — `c2103310`, step 8
+- [x] (suggestion) In flight capped at five lines, then "and <k> more: <names>"; the next step's branch always shown — `c2103310`, step 8
+
+### Host wording fixes
+- `c2103310`: "4 of 7 steps done"; result words from a table (done / not yet done / not yet done (no automatic check) / partly done (its checks disagree) / could not be checked); "last design-decision review", "design decisions not yet reviewed", "research topics"; Suggested next restates the line as an action, then "In flight on <branch>: <state>", with no "that line".
+- `853eaf68`: line 2 is the first sentence of the Direction section's `**Acceptance case.**` paragraph, read by an awk + regex block in step 5 that runs even when the checks did not; absent paragraph, line left out; tests (a link with dots, one sentence, a paragraph outside the section).
+- `d1377d7a`: In flight states from a table in step 3 (Plan Review → plan reviewed, not yet implemented; Checkpoint after plan, proceed → plan approved, implementing; Implementation → implemented, plus "no pull request yet" in the report; Local Review → in code review; Integrated Review → review findings being addressed; plus issue review, plan authored, other checkpoint decisions, merge records). Unknown entries print as they are. A test covers every row.
+- `24534642` (owner, via host): the Direction line reads "GeoZui4D (`gz4d`) is onboarded through onboard-project (#332)", check cell still empty; the plan's quotes follow. The skill names no project.
+- `4837c2c7`: plan step 10 (acceptance) expects the reworded top block.
+
+### Verification
+- `bash .agent/scripts/tests/run_script_tests.sh`: all 37 suites passed (379 s); `test_sitrep_checks.sh` 166 passed, 0 failed; `test_skill_paths.sh` 58 passed, 0 failed.
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0.
+- `pre-commit run --all-files` (the main checkout's `.venv`; the worktree has none): exit 0.
+- Intermediate commits used `SKIP=validate-script-tests` (the documented WIP skip); `test_sitrep_checks.sh` ran before each, and the full suite ran on the final tree. The first commit ran every hook.
+
+### Dry run (real workspace, 2026-10-15)
+
+Steps 1, 2, 3, 5 and 6 by hand from this branch's skill, `$WS_ROOT` the main checkout, step 1 with this branch's roadmap. Step 4 not run; no background check started. First twelve non-blank lines:
+
+```
+## Sit-rep, 2026-10-15
+ADR-0016 stays Provisional until a `/run-issue` run started from a project root passes through the merge checkpoint ([Sessions and roots](design.md#sessions-and-roots)).
+4 of 7 steps done; next: GeoZui4D (`gz4d`) is onboarded through onboard-project (issue 332) — not yet done (no automatic check).
+**Suggested next**: Onboard GeoZui4D (`gz4d`) through onboard-project (issue 332). In flight on feature/issue-332: implemented, no pull request yet.
+**In flight**:
+- feature/issue-395: sit-rep: when I ask "what's next?", say what to work on towards the goals, where in-progress work stands, and what problems I should know about (issue 395): in code review; pull request 396: ready
+- feature/issue-332: onboard-project registers projects and audits workspace integration (overrides, conflicting instructions, ignore rules, misplaced conventions, unverified registration) (issue 332), the next step: implemented, no pull request yet
+**Problems**:
+- Audit: last design-decision review 2026-10-09, 6 days and 124 commits ago; 9 of 18 design decisions not yet reviewed — probably due; would start in the background (not started: dry run).
+- Research: 19 of 19 research topics last checked more than 30 days ago (19 more than 90); last full refresh 2026-04-19 — probably due; the 3 oldest would start in the background (not started: dry run).
+- Documentation: docs/design.md last changed 2026-10-13, 2 days ago; 17 commits since touched .agent/, .claude/ or docs/ — recent.
+**Steps**: 4 of 7 done. Not yet done: GeoZui4D (`gz4d`) is onboarded through onboard-project (issue 332) — not yet done (no automatic check); A `/run-issue` run started from the project root reaches the merge checkpoint — not yet done (no automatic check); ADR-0016 (Session roots and the user tier) is promoted from Provisional to Accepted — not yet done.
+```
+
+Facts behind it: rows `lines 4/7 deferrals 0/4`; step 3 states "implemented" (332) and "in code review" (395); PR 396 ready, no review decision; `main_behind_origin=0`; no deferral due.
+
+### Decisions made (owner may veto)
+- Line 2 prints the roadmap's sentence as written, so it carries "ADR-0016", "`/run-issue`" and a markdown link. If it reads wrong, the fix is the roadmap's acceptance paragraph, not the skill.
+- In the next-step sentence `(#<N>` reads `(issue <N>`; otherwise the line is as written.
+- Suggested next is the one place the skill rewords a fact (the line as an action), with the line printed as written just above it; "What it is" says so.
+- A pull request joined to a branch is "pull request <M>" (the issue title labels the line); the PR title prints only for a PR with no worktree.
+- State words for entries the host did not list (issue review, plan written, other checkpoint decisions, merge records, partial/failed status) are mine; an unknown entry prints as it is. "No timeline" reads "no progress record yet".
+- "could not be checked" for `unknown`; "partly done (its checks disagree)" for `partial`.
+- Due deferrals sit under Problems; the bottom Deferrals line gives the count and those with no automatic check.
+- The step 8 rewrite carries must-fix 4 and suggestions 11 and 12 in one commit, since they are one template.
+
+### Noticed, not changed
+- One `test_sitrep_checks.sh` run of eleven reported 165/1; ten reruns, including the full suite, were clean. I could not catch which case; the step 1 kill-timing test is the likely one (pre-existing).
+- Step 2 still prints `inbox_oldest=# Inbox` (heading counted as an entry), as the last entry noted.
