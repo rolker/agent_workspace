@@ -91,3 +91,107 @@ None. All remaining questions are mechanism and are decided above.
 **Plan**: `.agent/work-plans/issue-321/plan.md` at `2d876881`
 
 Skill /department-head plus a rules file; run-issue and design.md changed so the host answering seven of nine checkpoints (merge, merge-refused stay with the owner) is the documented rule; roadmap Paths prose and a path word on each sit-rep In flight line, landed after PR 396 merges. No owner questions.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-15 15:06 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #321 — Interim department-head skill: run issues with the owner at goal level only, standing rules repo-tracked, two parallel paths in the roadmap
+**Plan**: `.agent/work-plans/issue-321/plan.md` at `2d876881`
+**Branch**: `feature/issue-321`
+
+First test, as asked: could a fresh Sonnet or Codex session that loads only `/department-head` and `host_standing_rules.md` run one issue the way issue 395 (the sit-rep rework) was run today? Not yet. The kind-level split of the nine checkpoints matches the host. But it is too coarse at the level of answer tokens. Two host-answered checkpoints carry tokens that merge, or that put the host to work inline. Three of today's five owner interactions fall outside the table, or depend on rules that today live only in the host's private memory.
+
+### Checkpoint-table walk
+
+Nine run-issue checkpoints. Host practice on 395 is from its timeline, restart checkpoint onward. Plan as written.
+
+| Checkpoint | Host on 395 today | Plan | Same? |
+|---|---|---|---|
+| `issue-actions` | Host. Issue Review 13:10 had open Actions; plan dispatched; no `## Checkpoint` written | Host, entry written | Same answerer; plan adds the trail (321's own timeline also skips this entry, Issue Review → Plan Authored) |
+| `plan` | Host, 12:37 `Decided-by: host`, proceed with one must-fix folded in | Host | Yes |
+| `publish` | Host (PR 396 opened; no entry) | Host, entry written | Yes, but kind 3 "anything posted outside the repo" also covers a PR on GitHub: the plan contradicts itself (finding 4) |
+| `rounds` | Host (three pre-push rounds, third narrow) | Host | Yes |
+| `findings` | Host answered `address` | Host, whole checkpoint | No, at token level. `findings` + `merge` routes straight to `merge` (`dispatch_phase.sh` `if after in ("findings", "merge")`), and that skips the merge checkpoint. Owner rule 2026-09-22: "If a review comes back with issues, then don't merge, ask me first" (finding 1) |
+| `phase-failed` | Not reached | Host, whole checkpoint | No, at token level. `takeover` emits `mode=inline`, so the host would choose by itself to do a phase's work. That loosens "host never implements inline" (finding 1) |
+| `unexpected` | Not reached | Host unless unmappable | Yes |
+| `merge` | Owner (PR 396 merge decision) | Owner | Yes |
+| `merge-refused` | Not reached | Owner | Yes |
+
+Five owner interactions on 395 today:
+
+| Interaction | Host classified | Plan classifies | Same? |
+|---|---|---|---|
+| Restart (owner restated the goal mid-drive) | Owner, kind 1; recorded `After: implementation`, `Decision: restart`, then review-issue dispatched by hand | Kind 1 fits, but no checkpoint carries it and no recipe exists. `implementation`/`restart` is outside run-issue step 6's vocabulary ("write within the vocabulary"; row 28 if newest) | Answerer yes, mechanics no (finding 2) |
+| "Yes, name GeoZui4D in the roadmap" | Owner (project-agnostic rule vs a checkable acceptance line); his answer is now the "mechanism vs record" rule | A fresh host would find design.md Rules row 161 (roadmap is history, public names allowed) and decide it. Or it would re-ask, because the owner's 2026-10-15 rule exists only in private memory | No. The answer is not carried, so a settled question gets re-asked or decided without its reason (finding 3) |
+| Acceptance-case sentence, offered for veto | Host drafted it from the owner's 2026-10-14 words and listed it for veto, not asked | Ambiguous. Kind 1 ("would change what the work is for") can read as covering rewording of goal text, so a Sonnet host may ask instead | Not reliably (finding 5) |
+| PR 396 merge decision | Owner | Owner (`merge`) | Yes |
+| 321 go-ahead (open the issue, run it now) | Owner | Silent. No row for starting a drive or opening an issue; the focus choice exists only at sit-rep | No (finding 6) |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Skill, rules file, run-issue/design wording, roadmap Paths prose, one sit-rep change. Each serves the issue's acceptance. Additions below are table rows and template lines, not new parts. |
+| Issue alignment | Needs work | The Issue Review's cuts are all honoured. Missing: owner redirects, starting a drive, the 2026-10-15 dogfooding log on issue 398, and the owner's 2026-10-15 sit-rep readability input (findings 2, 6, 8, 9). Serves, as checked: "Trust, control and information; Easy to use. `docs/design.md#review-loop-and-timeline` and `docs/design.md#documentation-layers`." Both README goals exist (`README.md` lines 48, 88) and both anchors exist. |
+| File targeting | Needs work | `docs/design.md` lines 469 and 721 are not listed (finding 7). `.agent/knowledge/README.md` index needs the rules file. `test_skill_paths.sh` already scans every `session_scope` skill, so "add to the project-capable list" means nothing more to do (verify). Sit-rep path tests belong in `test_sitrep_checks.sh`, which PR 396 owns. |
+| Consequences | Needs work | Finding 7, plus `dispatch_phase.sh:693` reason text "owner decides proceed, revise, or stop" (suggestion). |
+| Principle alignment | Needs work | See findings; each says what the principle cuts or changes. |
+| ADR compliance | Good | ADR-0013 (vocabulary documented in run-issue step 6 and the lifecycle file, no script change), ADR-0014 (References only), ADR-0016/0018 (`session_scope: both`, `$WS_ROOT`), ADR-0017 (design.md in the same change). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Leave a trail; start limits strict: token-level rights]** The plan's table splits checkpoints by kind. Two host-answered kinds carry a token that is not the host's to give. `findings` → `merge` merges past open findings without passing the `merge` checkpoint. `phase-failed` → `takeover` runs the phase inline in the host. The owner relaxed checkpoints, not those two limits. What the principle CHANGES: the table lists allowed tokens per checkpoint, not just an answerer. Exact change in the skill's checkpoint table and in run-issue "No auto-chaining": `findings`: host may answer `address`; `merge` (deferring open boxes) is the owner's. `phase-failed`: host may answer `retry`; `takeover` is the owner's (the one inline exception, granted by his answer). `rounds`/`publish`: host may answer `publish` or `address`. `issue-actions`: `proceed`. `plan`: `proceed` or `revise`. `stop` is open to the host anywhere. Keep "Phases never dispatch each other" and "each `next` call decides exactly one step" verbatim. Add one sentence there: "A host-answered checkpoint never lets the host do a phase's work itself." Test: `test_skill_paths.sh` asserts department-head names `takeover` and the `findings`→`merge` token as owner-only.
+2. **[Leave a trail: owner redirect]** No recipe for the owner restating the goal mid-drive. Today's entry (`After: implementation`, `Decision: restart`) is outside step 6's vocabulary. Exact change, decided from "Only what's needed" (no script change) and "Leave a trail": in the skill, write `## Checkpoint` with `Decided-by: owner`, `After: <the checkpoint pending, else unexpected>`, `Decision: restart`, his words verbatim. Then dispatch `review-issue` with `dispatch_phase.sh --issue <N> --skill review-issue`. Its `## Issue Review` becomes the newest entry and routes as usual, so `next` never reads `restart`. Run-issue step 6 gets one sentence naming `restart` as that host-recorded owner redirect.
+3. **[Verify before claiming / A change includes its consequences: rules carried out of memory]** Step 2 builds its rule list from the Issue Review's (d) list. That list misses rules the 395 run applied, and the plan shrinks memory notes to pointers afterwards, so whatever is not carried is lost. What it CHANGES: step 2 gains a sweep. Each `feedback-*` note the 395 run applied gets a row with its reason, a pointer to where it is already written, or one line saying why it stays private. At minimum these get rows: (a) names in workspace text. Mechanism (skills, scripts, templates, tests) names no project. Record text (roadmap Direction, change log, ADR history, work plans) may name a *public* project, checked with `gh repo view --json visibility`. Reason: an acceptance line is checkable only if it names the real project (owner, 2026-10-15, issue 395). (b) Merge only when everything is clean unless he says skip. Reason: project PRs are gate report-only, design.md Rules row 156. It is its own row; the plan merges it into "owner decides every merge". (c) Never pass `--no-wait`, `--allow-pending-review` or `--force-unreviewed` unless he said so for that merge. (d) Quote recorded design before asking a design question. (e) Design questions are asked alone with what changes and how hard to undo. Also, "takeover as the only inline row" is in the plan's "already enforced" list, but nothing enforces "the host never edits repository files during a drive" (`review only`; the dispatcher only routes). Move it to the rule table with the owner's reason (2026-09-22): "Having you do the work might be faster, but I lose access to my orchestrator."
+4. **[Ask about what matters: kind 3 boundary]** "Anything posted outside the repo" either catches `publish` and phase comments (which contradicts the table and today's practice) or is vague. Exact change: outward-facing means a write outside the loop's own outputs. That covers new issues, comments on other issues, anything in a repository the owner does not own, deleting data or branches not created in this drive, and the AGENTS.md Ask-First list. The loop's own push, PR and phase comments on the issue being driven are inside. A standing authorization from the owner, recorded in the rules file with his words, turns one outward class into a host action (finding 8 is the first).
+5. **[Ask about what matters: goal text]** Add to the decision rights: text that states his goals (README goals, roadmap acceptance case, Direction lines, Paths) is written only from his quoted words, never invented. It goes first under "Decisions made (owner may veto)" with the quote it came from. It is a veto item, not a question. Only when no quote of his covers it is it a kind-1 question. This reproduces today's acceptance-sentence handling and covers step 4's Paths prose.
+6. **[Ask about what matters: starting work]** Add a row: opening an issue and starting a drive are the owner's (AGENTS.md Issue-First: "ask the user: Should I open an issue"; the roadmap Paths focus is his). The hand-back's one question may propose the next drive. The host does not start one after a merge on its own.
+7. **[A change includes its consequences: design.md]** The plan lists How it works (line 15-16), the Review loop bullet (474) and the phase table. Also edit line 469 ("anything but `OK` goes to the owner at `phase-failed` to retry, take over or stop" becomes host retry/stop, owner take over) and the glossary at line 721 ("checkpoint: a point where the loop stops and asks the owner"). Line 463 stays true once finding 1 lands. Add the rules file to `.agent/knowledge/README.md`.
+8. **[Owner input 2026-10-15: dogfooding log]** Not in the plan. The owner wants the skill to report its dogfooding on the design-session issue 398 ("Orchestrator design session: one department head per root … dogfooding log for #321 until then"). Exact change: an end-of-run step in the skill. After each issue it drives, post one comment on issue 398 with `gh issue comment 398 --body-file`, AI signature, covering: what reached the owner and why; decisions made and whether any were vetoed; where the decision-rights table was wrong or silent; what the sit-rep or hand-back shape got wrong. The skill states it is an outward-facing GitHub write under a standing authorization (owner, 2026-10-15), and the rules file records that authorization with his words. Files table and tests: the skill names issue 398 and the four headings.
+9. **[Give the user what they need now: sit-rep readability, owner input 2026-10-15]** Step 5 adds only a path word. After seeing the dry run, the owner said "made me wonder if it was describing the current state, or what we still need to do … a list inline with commas does not read as well as a list with an item per line". Exact template change in `.claude/skills/sitrep/SKILL.md` step 8, after PR 396 merges, same as the path word:
+   - Every line starts with a lead word saying state or to-do: `Done:`, `Not yet:`, `Next:`, `In flight:`, `Problem:`. Never a sentence that could read as either. Split `<t> of <n> steps done; next: …` into `Done: <t> of <n> steps` and `Next: <line>`.
+   - One item per line, never comma- or semicolon-joined. Expand `**Steps**: … Not yet done: <line>; ...`, `and <k> more: <their names>`, the inbox's new items and `No automatic check yet: <deferrals>` into bullets.
+   - A blank line between sections.
+   - Each In flight bullet ends with its path word.
+   - Update the rules text to match and add `test_sitrep_checks.sh` cases: no `; ` join in the template's list lines; each section separated by a blank line.
+10. **[Issue alignment: path word source]** The plan's rule (a Serves line naming a Direction line or the gz4d acceptance means Path 1) misclassifies the main Path 1 item. Issue 332's Serves line is "Light touch on projects … Easy to use … `docs/design.md#registry-and-adapters`" and names neither, yet issue 332 is the Direction line "GeoZui4D (`gz4d`) is onboarded through onboard-project (#332)". Serves lines name README goals by construction, so the rule sends nearly everything to Path 2. Exact change, with no new mechanism: an item whose issue number matches a Direction line's own cell (sit-rep step 5's existing match) is Path 1. Otherwise an item whose Issue Review Serves line names a README goal is Path 2. Otherwise "no path". The roadmap rule text matches. The issue body's Path 2 phrase "acceptance-case sequence" means the cases after GeoZui4D; the current acceptance case (the Direction lines) is Path 1.
+
+### Other checks
+
+- **Roadmap Paths prose**: in his words, no status, no dates, no table, no issue list, so it holds no status. "Any other table here is ignored" is unaffected. OK, given finding 10's wording.
+- **Sequencing against PR 396 (sit-rep)**: workable. PR 396 touches `test_sitrep_checks.sh`, the sitrep skill, design.md, roadmap and its work plans. Steps 1-3 overlap only at design.md, in other sections plus a change-log row, which is a trivial append conflict. Steps 4-5 plus finding 9 wait for the merge, else a follow-up PR without `Closes`.
+- **"No auto-chaining" vs the host never implementing inline**: as worded ("host answers the non-owner kinds"), it loosens the rule through `takeover`. Finding 1 closes that gap.
+- **Standing-rules file**: one reason per rule is planned. Finding 3 moves one review-only rule out of the "enforced" list. The rest of that list (merge gate on workspace PRs, `_bookkeeping.sh`, model tier, orientation template) is enforced or written elsewhere. The review-round rule's source is the owner's 2026-10-15 audit in his private workplan log ("relax round counts … by trial, with an escape rate … as the stop condition"), not repo text. Cite it as such and mark the "second round only after a real defect" wording as the host's practice, unverified.
+- **Suggestion**: `dispatch_phase.sh:693` prints "owner decides proceed, revise, or stop" at every plan checkpoint. Change it to "proceed, revise, or stop" so a host reading the action line is not told the opposite of the skill. No test asserts the string (grep).
+
+### Summary
+
+The shape is right and small. Before implementation, the decision-rights table needs answer tokens, an owner-redirect recipe, a starting-work row, a goal-text rule and a precise outward boundary. The rules file must carry the owner rules 395 actually used, and the plan must take on the two 2026-10-15 owner inputs (dogfooding log on issue 398, sit-rep readability). One revision, then ready.
+
+### Recommended Actions
+
+- [ ] Finding 1: per-checkpoint allowed host tokens. `findings`→`merge` and `phase-failed`→`takeover` are owner-only, in the skill, run-issue "No auto-chaining" and design.md, with a test.
+- [ ] Finding 2: owner-redirect recipe (`Decision: restart` checkpoint, then review-issue dispatch); one sentence in run-issue step 6.
+- [ ] Finding 3: rules-file sweep of the applied memory rules (names in workspace text, merge only when clean, no gate-relaxing flags unasked, quote design before asking, design questions alone). "Host never edits files during a drive" goes into the rule table with its reason.
+- [ ] Finding 4: kind-3 boundary (the loop's own outputs inside; other GitHub writes, other owners' repos and deletes outside; standing authorizations recorded).
+- [ ] Finding 5: goal text from his quoted words, listed first for veto.
+- [ ] Finding 6: opening an issue or starting a drive is the owner's.
+- [ ] Finding 7: design.md lines 469 and 721; `.agent/knowledge/README.md` entry.
+- [ ] Finding 8: end-of-run dogfooding comment on issue 398, marked outward-facing under standing authorization.
+- [ ] Finding 9: sit-rep template lead words, one item per line, blank lines between sections, tests (after PR 396).
+- [ ] Finding 10: path word from the Direction-line cell match first, then Serves, else "no path".
+- [ ] Acceptance test: the Sonnet classification check covers today's five interactions and the two owner-only tokens, recorded in progress.md.
+
+### Decisions made (owner may veto)
+
+- The host may answer `stop` at any checkpoint. `merge` from `findings` and `takeover` from `phase-failed` stay his, because they bypass the merge checkpoint or the host's no-inline rule.
+- The loop's own push, PR and phase comments on the driven issue are not outward-facing. Other GitHub writes are, unless a standing authorization of his is recorded.
+- A restart is recorded as `Decision: restart` and re-entered through a review-issue dispatch, with no dispatcher change.
+- Path 1 means the issue is named in a Direction line's own cell. "Acceptance-case sequence" in the issue body means later acceptance cases, which are Path 2.
+- `dispatch_phase.sh:693`'s reason text is reworded (suggestion; implementer may skip it).
+
+No owner-level questions: the goal reading matches the issue and the owner's two 2026-10-15 inputs, no two goals conflict, and the one outward write (issue 398 comments) is already authorized in his words.
