@@ -1061,7 +1061,9 @@ c6() {  # <date> <message>: commit everything staged, dated <date>
         git -C "$W6" -c user.name=t -c user.email=t@t commit -q -m "$2"
 }
 git init -q -b main "$W6"
-printf '## Decision register\n\n| ADR | Decision | Re-examined |\n|---|---|---|\n| 1 | a | yes %s |\n| 2 | b | yes %s |\n| 3 | c | not yet |\n\n## Change log\n\n| x | yes 2099-01-01 |\n' "$D100" "$D40" > "$W6/docs/design.md"
+# Row 2 has an escaped pipe in a cell (\|), which is not a column break;
+# the separator row has spaces and a colon, which a separator may.
+printf '## Decision register\n\n| ADR | Decision | Re-examined |\n| --- | :-- | --- |\n| 1 | a | yes %s |\n| 2 | b `x\\|y` | yes %s |\n| 3 | c | not yet |\n\n## Change log\n\n| x | yes 2099-01-01 |\n' "$D100" "$D40" > "$W6/docs/design.md"
 printf '<!-- Last full refresh: %s (partial) -->\n\n### A\n**Added**: %s | **Last verified**: %s | **Sources**: x\n\n### B\n**Added**: %s | **Sources**: y\n' "$D100" "$D100" "$D10" "$D100" > "$W6/.agent/knowledge/research_digest.md"
 git -C "$W6" add -A && c6 "$D40" "design and digest"
 echo plan > "$W6/.agent/work-plans/issue-1/plan.md"; git -C "$W6" add -A && c6 "$D10" "work plan only"

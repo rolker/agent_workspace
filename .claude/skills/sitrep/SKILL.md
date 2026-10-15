@@ -400,11 +400,14 @@ st="$("$WS_ROOT/.agent/scripts/session_root.sh" 2>/dev/null | sed -n 's/^type=//
 echo "session_type=${st:-unknown}"
 
 # Audit: the Re-examined column of docs/design.md's Decision register.
+# An escaped pipe (\|) inside a cell is not a column break: drop it before
+# the line is split. Separator rows (| --- | :-: |) are skipped.
 reg="$(show "$WS_ROOT/docs/design.md" | awk -F'|' '
+    { gsub(/\\\|/, "") }
     /^## Decision register/ { s = 1; next }
     s && /^## / { exit }
     s && /^\|/ && col == "" { for (i = 2; i < NF; i++) if ($i ~ /Re-examined/) col = i; next }
-    s && /^\|/ && col != "" && $2 !~ /^-+$/ { gsub(/^ +| +$/, "", $col); print $col }')"
+    s && /^\|/ && col != "" && $2 !~ /^[ :-]+$/ { gsub(/^ +| +$/, "", $col); print $col }')"
 if [ -z "$reg" ]; then
     echo "audit=cannot tell (no Decision register with a Re-examined column on main)"
 else
