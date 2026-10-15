@@ -83,3 +83,11 @@ None. All remaining questions are mechanism and are decided above.
 - [ ] **(d) Standing-rules file.** No rule text (already enforced; list in one pointer line each at most): merge gate with decision summary and current review (workspace PRs, `merge_pr.sh`); bookkeeping-only commits exempt (`_bookkeeping.sh`); "triage may start before CI" (`dispatch_phase.sh next` takes no CI input); host dispatches every phase, `takeover` the sole inline row (decision table row 27); orientation line and Bash description prefix (run-issue step 6); model tier per phase (ADR-0014). Rule text needed, each with its reason: merge only when clean for project PRs (gate is report-only there); owner decides every merge; a review with open issues goes to the owner at merge; wall-clock over tokens; second code-review round only after a real defect, third a narrow convergence check without external reviewers; no new phase that cannot finish before the stated stop; reviewer outcome lines (ran/failed/skipped and why); numbers always carry a plain-words label; veto becomes a rule with its reason. Verify each against its source before copying.
 - [ ] **Name.** Use `/department-head` ("interim" in the description) so the later per-root orchestrator design can take `orchestrate`.
 - [ ] **Acceptance.** Keep the fresh-session run as the test; count owner-level questions and mechanism questions that reached him. State plainly that `gz4d` in-flight items will show only if the sit-rep reads that root; until then the sit-rep shows Path 1 items that live in the workspace and says so.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-15 15:00 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-321/plan.md` at `2d876881`
+
+Skill /department-head plus a rules file; run-issue and design.md changed so the host answering seven of nine checkpoints (merge, merge-refused stay with the owner) is the documented rule; roadmap Paths prose and a path word on each sit-rep In flight line, landed after PR 396 merges. No owner questions.
