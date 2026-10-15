@@ -336,7 +336,7 @@ unchecked on an approval, is not a finding and is not counted:
 | Checkpoint after phase-failed, retry / takeover | a step failed; retrying it / a step failed; the session is doing it by hand |
 | Checkpoint after merge-refused, retriage | merge refused; reviews being triaged again |
 | Checkpoint, any other step: address / publish / merge / stop | review findings being addressed / approved to publish / approved to merge / stopped at a checkpoint |
-| Implementation | implemented (the report adds "no pull request yet" when there is none) |
+| Implementation | implemented (for a workspace worktree with no pull request, the report adds "no pull request yet") |
 | Local Review, Local Review (Pre-Push), with <k> open boxes | code reviewed, <k> findings to address (1: "1 finding to address") |
 | Local Review, Local Review (Pre-Push), no open box | code reviewed, nothing open |
 | Integrated Review (or the older External Review), with <k> open boxes | reviews triaged, <k> findings to address |
@@ -833,9 +833,11 @@ Rules for the report:
   - A branch with a pull request adds "; pull request <M>: <draft or
     ready>", then "from a fork" if `isCrossRepository` is true, then the
     review state in words if `reviewDecision` is set ("approved",
-    "changes requested", "review required"). A branch with a worktree
-    and no pull request whose state is "implemented" reads
-    "implemented, no pull request yet".
+    "changes requested", "review required"). A workspace worktree
+    (`type: "workspace"`) with no pull request whose state is
+    "implemented" reads "implemented, no pull request yet". A project
+    worktree's pull requests are not looked up (they are the project's,
+    not the workspace's), so its line says nothing about one.
   - A pull request with no worktree: its title, "(pull request <M>)",
     then the same draft, fork and review words.
 - **Problems** in words: the Decision register's newest `yes <date>` is
