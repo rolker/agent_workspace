@@ -1110,7 +1110,10 @@ Checkpoint|complete|**After**: plan\n**Decision**: proceed|plan approved, implem
 Checkpoint|complete|**After**: plan\n**Decision**: revise|plan being revised
 Checkpoint|complete|**After**: findings\n**Decision**: address|review findings being addressed
 Checkpoint|complete|**After**: merge\n**Decision**: merge|approved to merge
-Checkpoint|complete|**After**: phase-failed\n**Decision**: retry|checkpoint after phase-failed: retry
+Checkpoint|complete|**After**: phase-failed\n**Decision**: retry\n**Phase**: implement|a step failed; retrying it
+Checkpoint|complete|**After**: phase-failed\n**Decision**: takeover\n**Phase**: implement|a step failed; the session is doing it by hand
+Checkpoint|complete|**After**: merge-refused\n**Decision**: retriage|merge refused; reviews being triaged again
+Checkpoint|complete|**After**: unexpected\n**Decision**: odd|checkpoint after unexpected: odd
 Implementation|complete||implemented
 Implementation|failed||implementation failed
 Local Review (Pre-Push)|complete|\n### Findings\n- [ ] (must-fix) a\n- [x] (must-fix) b\n- [ ] (suggestion) c|code reviewed, 2 findings to address

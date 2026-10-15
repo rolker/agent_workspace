@@ -281,7 +281,10 @@ CHECKPOINT = {("plan", "proceed"): "plan approved, implementing",
               ("plan", "approve"): "plan approved, implementing",
               ("plan", "revise"): "plan being revised",
               ("issue-actions", "proceed"): "issue review accepted, planning",
-              ("issue-actions", "revise"): "issue being revised"}
+              ("issue-actions", "revise"): "issue being revised",
+              ("phase-failed", "retry"): "a step failed; retrying it",
+              ("phase-failed", "takeover"): "a step failed; the session is doing it by hand",
+              ("merge-refused", "retriage"): "merge refused; reviews being triaged again"}
 BY_DECISION = {"address": "review findings being addressed",
                "publish": "approved to publish", "merge": "approved to merge",
                "stop": "stopped at a checkpoint"}
@@ -330,6 +333,8 @@ unchecked on an approval, is not a finding and is not counted:
 | Checkpoint after plan, proceed (or approve) | plan approved, implementing |
 | Checkpoint after plan, revise | plan being revised |
 | Checkpoint after issue-actions, proceed / revise | issue review accepted, planning / issue being revised |
+| Checkpoint after phase-failed, retry / takeover | a step failed; retrying it / a step failed; the session is doing it by hand |
+| Checkpoint after merge-refused, retriage | merge refused; reviews being triaged again |
 | Checkpoint, any other step: address / publish / merge / stop | review findings being addressed / approved to publish / approved to merge / stopped at a checkpoint |
 | Implementation | implemented (the report adds "no pull request yet" when there is none) |
 | Local Review, Local Review (Pre-Push), with <k> open boxes | code reviewed, <k> findings to address (1: "1 finding to address") |
