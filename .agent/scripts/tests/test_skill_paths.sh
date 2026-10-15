@@ -3,7 +3,7 @@
 # Keeps project-capable skills free of workspace-relative paths (#317), and
 # guards the skill set itself: the declared session_scope list, the
 # replacement of the old what-next skill by the sit-rep (#389), and the
-# department-head skill, the host's standing rules and the run-issue
+# orchestrator skill, the host's standing rules and the run-issue
 # checkpoint text they rely on (#321).
 #
 # A skill whose SKILL.md declares `session_scope: project` or `both` can run
