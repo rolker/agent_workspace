@@ -1094,7 +1094,7 @@ cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
 echo '{"worktrees":[{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"}]}'
 EOF
 state_of() {  # <entry heading> <status> [extra field lines]: step 3's state for a one-entry timeline
-    printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n## %s\n**Status**: %s\n**When**: 2026-10-01 10:00 -04:00\n**By**: t\n%b\n**Branch**: feature/issue-7 at `abc1234`\n' \
+    printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n## %s\n**Status**: %s\n**When**: 2026-10-01 10:00 -04:00\n**By**: t\n\n**Branch**: feature/issue-7 at `abc1234`\n%b\n' \
         "$1" "$2" "${3:-}" > "$SB/wt7/.agent/work-plans/issue-7/progress.md"
     (cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1) | cut -f6
 }
@@ -1113,9 +1113,15 @@ Checkpoint|complete|**After**: merge\n**Decision**: merge|approved to merge
 Checkpoint|complete|**After**: phase-failed\n**Decision**: retry|checkpoint after phase-failed: retry
 Implementation|complete||implemented
 Implementation|failed||implementation failed
-Local Review (Pre-Push)|complete||in code review
-Local Review|complete||in code review
-Integrated Review|complete||review findings being addressed
+Local Review (Pre-Push)|complete|\n### Findings\n- [ ] (must-fix) a\n- [x] (must-fix) b\n- [ ] (suggestion) c|code reviewed, 2 findings to address
+Local Review (Pre-Push)|complete|\n### Findings\n- [x] (must-fix) a\n- [x] (suggestion) b — x (deferred: y)|code reviewed, nothing open
+Local Review|complete||code reviewed, nothing open
+Local Review|complete|\n### Findings\n- [ ] (must-fix) a|code reviewed, 1 finding to address
+Integrated Review|complete|\n### Fix plan\n- [x] a\n- [x] b\n\n### False positives\n- c|reviews triaged, nothing open
+Integrated Review|complete|\n### Fix plan\n- [ ] a\n- [x] b|reviews triaged, 1 finding to address
+External Review (round 2)|complete|\n### Findings\n- [ ] a\n- [ ] b|reviews triaged, 2 findings to address
+External Review (Round 5-6)|partial||review triage partial
+Merge (report-only)|complete||merged although the merge check found problems
 Merge (unreviewed)|complete||merged without review
 CASES
 $st_ok && pass "(skill 3) every timeline state reads as the mapping table says" || fail "(skill 3) state words (cases above)"

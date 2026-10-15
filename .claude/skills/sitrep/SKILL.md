@@ -262,17 +262,17 @@ while IFS= read -r w; do
     if [ -n "$f" ]; then
         latest="$(python3 "$WS_ROOT/.agent/scripts/progress_read.py" "$f" 2>/dev/null | python3 -c '
 import json, sys
-# The latest timeline entry, in state words (the table below the block).
+# The latest timeline entry, in state words (the table below the block),
+# looked up by its base type, so "External Review (round 2)" is an
+# External Review. The words for a review come from its open boxes.
 DONE = {"Issue Review": "issue reviewed, not yet planned",
         "Plan Authored": "plan written, not yet reviewed",
         "Plan Review": "plan reviewed, not yet implemented",
         "Implementation": "implemented",
-        "Local Review": "in code review",
-        "Local Review (Pre-Push)": "in code review",
-        "Integrated Review": "review findings being addressed",
-        "External Review": "review findings being addressed",
-        "Merge (report-only)": "merge held: the merge check found problems",
+        "Merge (report-only)": "merged although the merge check found problems",
         "Merge (unreviewed)": "merged without review"}
+REVIEWED = {"Local Review": "code reviewed", "Local Review (Pre-Push)": "code reviewed",
+            "Integrated Review": "reviews triaged", "External Review": "reviews triaged"}
 STEP = {"Issue Review": "issue review", "Plan Authored": "plan writing",
         "Plan Review": "plan review", "Implementation": "implementation",
         "Local Review": "code review", "Local Review (Pre-Push)": "code review",
@@ -286,7 +286,7 @@ BY_DECISION = {"address": "review findings being addressed",
                "publish": "approved to publish", "merge": "approved to merge",
                "stop": "stopped at a checkpoint"}
 def words(e):
-    t, st = e.get("type") or "", e.get("status") or ""
+    t, st = e.get("base_type") or e.get("type") or "", e.get("status") or ""
     f = e.get("fields") or {}
     if t == "Checkpoint":
         after, dec = (f.get("After") or "").strip(), (f.get("Decision") or "").strip()
@@ -294,6 +294,10 @@ def words(e):
             or "checkpoint after %s: %s" % (after or "?", dec or "?")
     if t in STEP and st and st != "complete":
         return "%s %s" % (STEP[t], st)
+    if t in REVIEWED:
+        k = sum(1 for x in e.get("findings") or [] if not x.get("checked"))
+        return "%s, %s" % (REVIEWED[t], "nothing open" if k == 0
+                           else "1 finding to address" if k == 1 else "%d findings to address" % k)
     return DONE.get(t) or "latest timeline entry: %s %s" % (t, st or "(no status)")
 try:
     e = json.load(sys.stdin).get("entries", [])
@@ -308,7 +312,11 @@ done
 Rows are `type`, `repo`, `branch`, `issue <N>`, title, state,
 TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
 reads `(no branch)`. The state is the latest timeline entry in words, so the
-report needs no entry names:
+report needs no entry names. The entry is looked up by its base type
+(`progress_read.py`'s `base_type`), so an older heading with a suffix,
+such as `External Review (round 2)`, reads as its type. A review entry's
+state counts its open boxes (`- [ ]` under its `###` sections), so it
+never says findings are being addressed when none are open:
 
 | Latest entry | State |
 |---|---|
@@ -320,9 +328,11 @@ report needs no entry names:
 | Checkpoint after issue-actions, proceed / revise | issue review accepted, planning / issue being revised |
 | Checkpoint, any other step: address / publish / merge / stop | review findings being addressed / approved to publish / approved to merge / stopped at a checkpoint |
 | Implementation | implemented (the report adds "no pull request yet" when there is none) |
-| Local Review, Local Review (Pre-Push) | in code review |
-| Integrated Review (or the older External Review) | review findings being addressed |
-| Merge (report-only) | merge held: the merge check found problems |
+| Local Review, Local Review (Pre-Push), with <k> open boxes | code reviewed, <k> findings to address (1: "1 finding to address") |
+| Local Review, Local Review (Pre-Push), no open box | code reviewed, nothing open |
+| Integrated Review (or the older External Review), with <k> open boxes | reviews triaged, <k> findings to address |
+| Integrated Review (or the older External Review), no open box | reviews triaged, nothing open |
+| Merge (report-only): the merge check found problems and the merge went ahead | merged although the merge check found problems |
 | Merge (unreviewed) | merged without review |
 
 A status other than `complete` reads as the step and its status instead,
