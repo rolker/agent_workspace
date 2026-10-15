@@ -1094,19 +1094,19 @@ step5 "It's \$HOME and \`x\` (#7), not #8" '`file-exists a` ; `gh-issue 9 closed
 step5 'No number here' '`gh-issue acme/other#5 closed`'
 [[ "$OUT" == *"issues_named=none"* && "$OUT" != *branch* ]] \
     && pass "(skill 5) another repository's gh-issue names no issue here" || fail "(skill 5) other repo '$OUT'"
-step5 'ADR-0042 and ADR-0043 are accepted' ''
-[[ "$OUT" == *$'adr\tADR-0042\tADR-0042: A synthetic decision'* && "$OUT" == *$'adr\tADR-0043\tunknown (no ADR file)'* ]] \
-    && pass "(skill 5) ADR numbers carry the ADR file's title, or say there is none" || fail "(skill 5) adr '$OUT'"
 echo "TEST: sit-rep step 5 reads the acceptance case's first sentence, as written, with a simple command"
-case5() {  # <roadmap text>: step 5's second block against it; sets OUT, RC
+case5() {  # <roadmap text> [<lines for the TEXT markers>]: step 5's second block against it; sets OUT, RC
     cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"
     printf '%b' "$1" > "$WS/docs/roadmap.md"
     local blk; blk="$(skill_step 5 2)"
+    [ -z "${2:-}" ] || blk="$(T="$2" python3 -c '
+import os, sys
+print(sys.stdin.read().replace("<the Direction lines and deferrals the report prints, one per line>", os.environ["T"]))' <<< "$blk")"
     RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
     mv "$SB/roadmap.saved" "$WS/docs/roadmap.md"
 }
 case5 '# R\n\n**Acceptance case.** Not this one.\n\n## Direction\n\nIntro.\n\n**Acceptance case.** A synthetic `run` started\nfrom a root (see [x](design.md#a-b)) ends. Its target is\n`demo`.\n\nAfter.\n\n## Next\n'
-[[ $RC -eq 0 && "$OUT" == $'acceptance_first=A synthetic `run` started from a root (see [x](design.md#a-b)) ends.\nacceptance_rest=Its target is `demo`.' ]] \
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=A synthetic `run` started from a root (see x) ends.\nacceptance_rest=Its target is `demo`.' ]] \
     && pass "(skill 5) first sentence of the Direction section's paragraph, joined, not split at a dot inside a link" || fail "(skill 5) case rc=$RC '$OUT'"
 case5 '## Direction\n\n**Acceptance case.** One sentence only.\n'
 [[ "$OUT" == $'acceptance_first=One sentence only.\nacceptance_rest=' ]] \
@@ -1114,6 +1114,14 @@ case5 '## Direction\n\n**Acceptance case.** One sentence only.\n'
 case5 '## Direction\n\nNo case here.\n\n## Other\n\n**Acceptance case.** Elsewhere.\n'
 [[ $RC -eq 0 && "$OUT" == $'acceptance_first=\nacceptance_rest=' ]] \
     && pass "(skill 5) no paragraph in the Direction section: empty, so the line is left out" || fail "(skill 5) absent rc=$RC '$OUT'"
+echo "TEST: sit-rep step 5 prints roadmap text with link text and ADR titles, never raw links or bare numbers"
+case5 '## Direction\n\n**Acceptance case.** A project is used ([Roots](design.md#roots)). Until then,\nADR-0042 stays put\n([Sessions and roots](design.md#sessions-and-roots)); ADR-0042 (Its own words) is not doubled.\n' \
+    $'ADR-0042 is promoted (#9)\nSee [the guide](docs/guide.md) and ADR-0043\n\nA plain line'
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=A project is used (Roots).\nacceptance_rest=Until then, ADR-0042 (A synthetic decision) stays put (Sessions and roots); ADR-0042 (Its own words) is not doubled.\ntext=ADR-0042 (A synthetic decision) is promoted (#9)\ntext=See the guide and ADR-0043\ntext=A plain line' ]] \
+    && pass "(skill 5) links print as their text; an ADR number gets its file's title unless a parenthesis follows (not an issue's); no file, as written" \
+    || fail "(skill 5) render rc=$RC '$OUT'"
+case5 '## Direction\n\n**Acceptance case.** Short.\n'
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=Short.\nacceptance_rest=' ]] && pass "(skill 5) the TEXT placeholder left in place prints no text lines" || fail "(skill 5) placeholder '$OUT'"
 
 # A workspace with a GitHub remote, for the steps that call gh and git-bug.
 W5="$SB/ws5"

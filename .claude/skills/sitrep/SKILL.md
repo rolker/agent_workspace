@@ -408,8 +408,8 @@ summary`), there is no next line; skip this step and say so in the
 report.
 
 Look up what that line's own cells name: the title of each issue it names,
-the workspace worktree branch and open pull request for that issue, and
-the title of each ADR it names. Paste the row's `item` and `check` fields
+and the workspace worktree branch and open pull request for that issue
+(an ADR it names gets its title from the next block). Paste the row's `item` and `check` fields
 between the `ROW` markers, as step 1 printed them (the check is `none`
 when the cell was empty; leave it empty here). The quoted here-document
 keeps any quote or `$` in the text as written.
@@ -455,12 +455,6 @@ for w in json.load(sys.stdin).get("worktrees", []):
                     | select((.repository.owner.login + \"/\" + .repository.name) == \"$WS_REPO\") | .number] | index($n)))
             | \"pull_request\t\(.number)\t\(.title)\t\(if .isDraft then \"draft\" else \"ready\" end)\""
 done
-# ADR numbers in the item, with the ADR file's own title (its first line).
-for a in $(grep -oE 'ADR-[0-9]{4}' <<< "$item" | sort -u); do
-    f="$(ls "$WS_ROOT/docs/decisions/${a#ADR-}"-*.md 2>/dev/null | head -n1)"
-    t=""; [ -n "$f" ] && t="$(sed -n '1s/^# *//p' "$f")"
-    printf 'adr\t%s\t%s\n' "$a" "${t:-unknown (no ADR file)}"
-done
 ```
 
 A `branch` row is in-flight work for that line; a `pull_request` row is
@@ -478,22 +472,53 @@ when step 1 printed no rows. The paragraph is joined into one line and
 split after its first sentence (the first period followed by a space or
 the end of the paragraph); nothing is reworded.
 
+The same block renders every piece of roadmap text the report prints:
+the acceptance case, and the Direction lines and deferrals pasted
+between the `TEXT` markers, one per line, as step 1 printed them. The
+words stay as written; two things are made readable. A markdown link
+prints as its text, and an ADR number gets its title in parentheses (the
+ADR file's first line, after `ADR-<NNNN>: `), unless a parenthesis
+already follows it. An ADR number with no file stays as written. Each
+pasted line comes back as a `text=` line, in order.
+
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+text="$(cat <<'TEXT'
+<the Direction lines and deferrals the report prints, one per line>
+TEXT
+)"
 awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
      d && /^\*\*Acceptance case\.\*\*/ { s = 1 } s && /^[[:space:]]*$/ { exit } s { print }' \
-    "$WS_ROOT/docs/roadmap.md" 2>/dev/null | python3 -c '
-import re, sys
+    "$WS_ROOT/docs/roadmap.md" 2>/dev/null | WS_ROOT="$WS_ROOT" TEXT="$text" python3 -c '
+import glob, os, re, sys
+def title(n):
+    # The first line of the ADR file: "# ADR-<NNNN>: <title>".
+    for f in sorted(glob.glob(os.path.join(os.environ["WS_ROOT"], "docs", "decisions", n + "-*.md"))):
+        try:
+            with open(f, encoding="utf-8") as fh:
+                return re.sub(r"^#\s*(ADR-\d{4}:\s*)?", "", fh.readline().strip())
+        except (OSError, UnicodeDecodeError):
+            return ""
+    return ""
+def render(t):
+    t = re.sub(r"\[([^\]]+)\]\([^)\s]*\)", r"\1", t)
+    def adr(m):
+        n = title(m.group(1))
+        return "%s (%s)" % (m.group(0), n) if n else m.group(0)
+    return re.sub(r"\bADR-(\d{4})\b(?!\s*\((?!#))", adr, t)
 p = " ".join(l.strip() for l in sys.stdin.read().splitlines()).strip()
 p = re.sub(r"^\*\*Acceptance case\.\*\*\s*", "", p)
 m = re.match(r"(.+?\.)(?:\s+(.*))?$", p)
-print("acceptance_first=" + (m.group(1) if m else p))
-print("acceptance_rest=" + ((m.group(2) or "") if m else ""))'
+print("acceptance_first=" + render(m.group(1) if m else p))
+print("acceptance_rest=" + render((m.group(2) or "") if m else ""))
+for l in os.environ["TEXT"].splitlines():
+    if l.strip() and not l.startswith("<the Direction lines and deferrals"):
+        print("text=" + render(l))'
 ```
 
-`acceptance_first` is the report's second line, printed as written; when
-it is empty (no such paragraph), that line is left out. `acceptance_rest`
-is the rest of the paragraph, for the counts section.
+`acceptance_first` is the report's second line; when it is empty (no
+such paragraph), that line is left out. `acceptance_rest` is the rest of
+the paragraph, for the counts section.
 
 ### 6. Read problems
 
@@ -674,7 +699,7 @@ the rules below. No count without what it counts (never a bare "3/6").
 ```markdown
 ## Sit-rep, <date>
 
-<acceptance_first from step 5, as written>
+<acceptance_first from step 5>
 
 <t> of <n> steps done; next: <first unmet line, as written> — <its
 result in words>.
@@ -715,9 +740,14 @@ they fit on this line>. `/sitrep inbox` for a proposed sort.
 
 Rules for the report:
 
-- **Line 2** is step 5's `acceptance_first`, as written, so the reader
-  sees what the next step is for. When it is empty, the line is left
-  out.
+- **Roadmap text is printed as step 5 rendered it.** The acceptance
+  case, the Direction lines and the deferrals keep their words ("as
+  written" in the template), but never show markdown link syntax or a
+  bare ADR number whose ADR file has a title: use step 5's
+  `acceptance_first`, `acceptance_rest` and `text=` lines, not step 1's
+  rows.
+- **Line 2** is step 5's `acceptance_first`, so the reader sees what the
+  next step is for. When it is empty, the line is left out.
 - **Result words** are translated, and always printed, so a step that
   could not be checked never reads as one that failed:
 
@@ -731,8 +761,7 @@ Rules for the report:
 
 - **The next-step sentence** gives the count of steps done, the line as
   written, and its result in words. An issue number in the line,
-  written `(#<N>`, reads `(issue <N>`; an ADR number gets its title
-  beside it here, once.
+  written `(#<N>`, reads `(issue <N>`.
 - **Suggested next** restates that line as something to do, keeping its
   own words and names ("X is onboarded through Y" becomes "Onboard X
   through Y"), then "In flight on <branch>: <state>", with step 3's
