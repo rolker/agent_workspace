@@ -436,6 +436,13 @@ show() { git -C "$WS_ROOT" show "main:${1#"$WS_ROOT"/}" 2>/dev/null; }
 
 st="$("$WS_ROOT/.agent/scripts/session_root.sh" 2>/dev/null | sed -n 's/^type=//p')"
 echo "session_type=${st:-unknown}"
+# Local main can lag GitHub. Nothing is fetched (a fetch writes refs): this
+# compares with origin/main as last fetched.
+if git -C "$WS_ROOT" rev-parse -q --verify refs/remotes/origin/main >/dev/null 2>&1; then
+    echo "main_behind_origin=$(git -C "$WS_ROOT" rev-list --count main..refs/remotes/origin/main 2>/dev/null || echo unknown)"
+else
+    echo "main_behind_origin=unknown (no origin/main)"
+fi
 
 # Audit: the Re-examined column of docs/design.md's Decision register.
 # An escaped pipe (\|) inside a cell is not a column break: drop it before
@@ -516,6 +523,11 @@ due", "recent" or "cannot tell" (a date or count is missing).
   check is printed with its first lines; a passing one is not mentioned.
 - **Direction**: `format` rows from step 1 and `unknown` lines (a check
   that could not run) are problems too.
+- **Local main**: these facts are from local `main`. When
+  `main_behind_origin` is a number above 0, a Problems line says "local
+  main is <n> commits behind GitHub, as last fetched; the facts above are
+  from local main". When it is `unknown`, the Problems heading reads
+  "Problems (as of local main)". At 0 nothing is said.
 - In a project session (`session_type=project`), the Problems section is
   the workspace's only, and the report says so; nothing is read from the
   project.

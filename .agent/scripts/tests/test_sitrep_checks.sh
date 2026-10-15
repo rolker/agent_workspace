@@ -1182,6 +1182,13 @@ echo 1 > "$RCD/anchors"
 run_step 6
 [[ "$OUT" == *$'design_anchors=failed\nanchor: docs/x.md cites #gone'* ]] \
     && pass "(skill 6) a failing anchor check prints with its output" || fail "(skill 6) anchors fail '$OUT'"
+[[ "$OUT" == *"main_behind_origin=unknown (no origin/main)"* ]] \
+    && pass "(skill 6) no origin/main: how far main lags is unknown" || fail "(skill 6) no origin '$OUT'"
+ahead="$(git -C "$W6" -c user.name=t -c user.email=t@t commit-tree 'main^{tree}' -p main -m ahead)"
+git -C "$W6" update-ref refs/remotes/origin/main "$ahead"
+run_step 6
+[[ "$OUT" == *"main_behind_origin=1"* ]] \
+    && pass "(skill 6) origin/main one commit ahead: main is 1 behind, nothing fetched" || fail "(skill 6) behind '$OUT'"
 printf '%s' "$WS" > "$HOMESB/.claude/agent-workspace-root"
 run_step 6
 [[ "$OUT" == *"audit=cannot tell"* && "$OUT" == *"research=cannot tell"* && "$OUT" == *"design_doc=cannot tell"* ]] \
