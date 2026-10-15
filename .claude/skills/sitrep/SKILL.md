@@ -559,14 +559,18 @@ git -C "$WS_ROOT" worktree list --porcelain | sed -n '1s/^worktree //p'
   pull request), so the background run is not that skill: "Do not run the
   /research skill. Read-only, no worktree, no commit, no push, no pull
   request, no issue, no file edit. Read
-  <workspace root>/.agent/knowledge/research_digest.md and find entries
-  whose Last verified date (or Added date, if never verified) is more
-  than 30 days old. For each, in oldest-first order, do the web survey
+  <workspace root>/.agent/knowledge/research_digest.md and find the three
+  entries with the oldest Last verified date (or Added date, if never
+  verified), among those more than 30 days old. For each of those three,
+  oldest first, do the web survey
   that steps 2 to 4 of "Refreshing" in
   <workspace root>/.claude/skills/research/SKILL.md describe, and return, as text only, the proposed
   new or changed entry content and the new Last verified date. Do not
   write anything to disk." Applying the proposals (worktree, commit, pull
-  request) is offered as a one-line yes/no.
+  request) is offered as a one-line yes/no. Research stays due while
+  any entry is past 30 days, so each new session's sit-rep starts a
+  survey again; three entries keep it small. The Problems line says "the
+  3 oldest started in the background".
 
 ### 8. Print the report
 
