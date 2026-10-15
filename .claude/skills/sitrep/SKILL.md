@@ -541,11 +541,18 @@ issue) is offered as a one-line yes/no, never done. When a background
 check returns, give its findings in a few lines and offer the write as a
 yes/no.
 
-The prompts, as written, with `<workspace root>` replaced by the
-`$WS_ROOT` path:
+The prompts, as written, with `<workspace root>` replaced by the main
+checkout's absolute path, which git names first (with no user tier,
+`$WS_ROOT` is the cwd, which may be a feature worktree):
 
-- **Audit**: "Run the /audit-workspace skill's checks and report findings
-  only. Do not edit any file, create a worktree, commit, push, or open a
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+git -C "$WS_ROOT" worktree list --porcelain | sed -n '1s/^worktree //p'
+```
+
+- **Audit**: "From <workspace root> (the main checkout, not a feature
+  worktree, so what is audited is what has landed), run the
+  /audit-workspace skill's checks and report findings only. Do not edit any file, create a worktree, commit, push, or open a
   pull request or issue. Return the findings and, separately, the
   Decision-register cell changes you would propose."
 - **Research**: `/research` writes in every mode (worktree, commit, push,
