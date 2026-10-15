@@ -400,3 +400,11 @@ This plan is the first on the issue that targets the three wants, and its size i
 - In a project session, or without the Agent tool, due checks are offered and never started.
 
 No owner-level questions: the goal reading matches the issue, no two goals conflict, and nothing outward-facing or hard to undo is planned.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-15 12:34 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-395/plan.md` at `2c1401ab`
+
+Revision after Plan Review 92b16637. Adds a roadmap Direction line (acceptance project onboarded, issue 332) before the run line; Suggested next treats unchecked as unmet; the direction sentence is built from the Direction lines; In flight shows issue title and latest progress entry type and status; research due follows the skill's 30-day rule with a spelled-out read-only background prompt; commit counts exclude work-plan and merge commits (git command in the plan); anchor check prints only on failure; project sessions and no-Agent-tool sessions are offered, not started. No owner-level questions.
