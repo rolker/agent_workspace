@@ -1,6 +1,6 @@
 ---
 name: sitrep
-description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report from checked facts — where the workspace's acceptance case stands (Direction lines checked this run), the inbox with a proposed sort, work in flight and deferrals that are due — ending with one suggested next step and the fact it rests on. Reads only; writes one line to a machine-local run record."
+description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report from checked facts, easy to take in: the next step towards the goals (the first Direction line not yet true, checked this run, and the work in flight for it), where work in flight stands, and problems to know about (an audit or research due, documentation that may have fallen behind, judged by dates and commits since), then the counts, the inbox and deferrals. Reads only, except one line to a machine-local run record; in a workspace session it may start a due read-only check in the background and says so."
 session_scope: both
 ---
 
@@ -31,22 +31,28 @@ which is right in a workspace session.
 ## Usage
 
 ```
-/sitrep
+/sitrep          # the report
+/sitrep inbox    # the report, with a proposed sort of the inbox
 ```
 
-No arguments. This first mode reads the workspace root only.
+This first mode reads the workspace root only.
 
 ## What it is
 
-A read-out that answers "what's next?" from facts checked this run. It
+A read-out that answers "what's next?" from facts checked this run, in
+the order the owner needs them: what to work on next towards the goals,
+where the work in flight stands, and problems he should know about. It
 replaces the old what-next skill, which ranked roadmap rows; this one
 answers from checked facts instead. The skill formats and proposes; it
-decides nothing. The inbox sort and the closing "Suggested next" line are
-proposals for the owner to accept or change. Every statement in the report
-comes from a command run in this invocation: the check runner's rows, the inbox file,
-the worktree list, the open pull requests. Memory notes, earlier
-conversation and earlier reports are not sources. If something could not
-be checked, say so; never fill the gap.
+decides nothing. The "Suggested next" line and the inbox sort are
+proposals for the owner to accept or change. The one thing it starts on
+its own is a read-only check that is due (step 7), and the report says
+so. Every statement in the report comes from a command run in this
+invocation: the check runner's rows, the inbox file, the worktree list,
+the open pull requests, the issue timelines, and the files and history
+of local `main`. Memory notes, earlier conversation and earlier reports
+are not sources. If something could not be checked, say so; never fill
+the gap.
 
 The authored part lives in the `## Direction` section at the top of
 `docs/roadmap.md`: lines that must be true for the acceptance case, each
@@ -185,12 +191,51 @@ fi
 session does not list the project's pull requests by mistake. With no
 GitHub remote the pull requests are reported as not checked. The list
 always includes the main checkout (`type: "main"`); it is not work in
-flight and is left out of the report. For each other worktree, its last
-commit stands in for a resume note:
+flight and is left out of the report. For each other worktree with an
+issue, where the work stands is the issue's title and the latest entry on
+its timeline (`progress.md`, read by `progress_read.py`):
 
 ```bash
-git -C "<worktree path>" log -1 --format='%cr: %s'
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
+"$WS_ROOT/.agent/scripts/worktree_list.sh" --json | python3 -c '
+import json, sys
+for w in json.load(sys.stdin).get("worktrees", []):
+    if w.get("type") != "main" and w.get("issue"):
+        print("\t".join(str(w.get(k) or "") for k in ("type", "repo", "branch", "issue", "path")))' |
+while IFS=$'\t' read -r type repo branch issue path; do
+    # The issue lives in the repository the worktree belongs to.
+    slug="$(extract_gh_slug "$(git -C "$path" remote get-url origin 2>/dev/null)")"
+    title="unknown (no GitHub remote)"
+    if [ -n "$slug" ]; then
+        # gh first: the git-bug cache can hold a title the issue no longer has.
+        title="$(gh issue view "$issue" -R "$slug" --json title --jq .title 2>/dev/null)" || title=""
+        if [ -z "$title" ]; then
+            title="unknown (lookup failed)"
+            issue_lookup "$issue" --repo "$slug" --root "$path" >/dev/null 2>&1 && [ -n "$ISSUE_TITLE" ] \
+                && title="$ISSUE_TITLE (offline: git-bug cache)"
+        fi
+    fi
+    latest="no progress.md"
+    f="$path/.agent/work-plans/issue-$issue/progress.md"
+    if [ -f "$f" ]; then
+        latest="$(python3 "$WS_ROOT/.agent/scripts/progress_read.py" "$f" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    e = json.load(sys.stdin).get("entries", [])
+    print("%s %s" % (e[-1].get("type"), e[-1].get("status") or "(no status)") if e else "no entries")
+except ValueError:
+    print("unreadable")')"
+    fi
+    printf '%s\t%s\t%s\tissue %s\t%s\t%s\n' "$type" "${repo:-workspace}" "$branch" "$issue" "$title" "$latest"
+done
 ```
+
+Rows are `type`, `repo`, `branch`, `issue <N>`, title, latest entry
+(`<type> <status>`, e.g. `Implementation complete`), TAB-separated. A
+worktree with no issue (a skill worktree) gets no row; its line names the
+branch only. Reading across roots is allowed (`session_root.sh`); nothing
+here writes.
 
 The report gives one line per branch. The pull requests listed are the
 workspace's, so only a workspace worktree (`type: "workspace"`) is matched
@@ -262,81 +307,316 @@ fi
 When the record is not written, say so in the report, with the reason
 printed.
 
-### 5. Print the report
+### 5. Find the next step
 
-Four sections and a closing "Suggested next" line, one screen. Plain
-words, no issue or pull request number without its title beside it.
+The next step is the first Direction line that is not `true`, in roadmap
+order: the first `line` row of step 1 whose result is anything else.
+`unchecked` and `unknown` count as not true and are not skipped, because
+the lines are an ordered chain and a line that cannot be checked is
+still in the way. When step 1 printed no rows (`checks failed`, `no
+summary`), there is no next line; skip this step and say so in the
+report.
+
+Look up what that line's own cells name: the title of each issue it names,
+the workspace worktree branch and open pull request for that issue, and
+the title of each ADR it names. Paste the row's `item` and `check` fields
+between the `ROW` markers, as step 1 printed them (the check is `none`
+when the cell was empty; leave it empty here). The quoted here-document
+keeps any quote or `$` in the text as written.
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+item="$(cat <<'ROW'
+<item of the first line row whose result is not true>
+ROW
+)"
+check="$(cat <<'ROW'
+<check of that row, or nothing>
+ROW
+)"
+source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
+WS_REPO="$(extract_gh_slug "$(git -C "$WS_ROOT" remote get-url origin 2>/dev/null)")"
+# Issue numbers from the line's own cells only: "(#N)" or "(#N," in the
+# item, "gh-issue N" (this repository) in the check. Never from the
+# section's prose, which holds the Format paragraph's literal (#N).
+nums="$( { grep -oE '\(#[0-9]+[,)]' <<< "$item"; grep -oE '(^|[;`[:space:]])gh-issue [0-9]+ ' <<< "$check"; } \
+    | grep -oE '[0-9]+' | sort -un)"
+echo "issues_named=$(echo ${nums:-none})"
+for n in $nums; do
+    t=""
+    [ -n "$WS_REPO" ] && t="$(gh issue view "$n" -R "$WS_REPO" --json title --jq .title 2>/dev/null)"
+    if [ -z "$t" ] && [ -n "$WS_REPO" ] && issue_lookup "$n" --repo "$WS_REPO" --root "$WS_ROOT" >/dev/null 2>&1 \
+        && [ -n "$ISSUE_TITLE" ]; then t="$ISSUE_TITLE (offline: git-bug cache)"; fi
+    printf 'issue\t%s\t%s\n' "$n" "${t:-unknown (lookup failed)}"
+    "$WS_ROOT/.agent/scripts/worktree_list.sh" --json | N="$n" python3 -c '
+import json, os, sys
+for w in json.load(sys.stdin).get("worktrees", []):
+    if w.get("type") == "workspace" and str(w.get("issue")) == os.environ["N"]:
+        print("branch\t%s\t%s" % (w.get("branch"), w.get("path")))'
+    [ -z "$WS_REPO" ] || gh pr list -R "$WS_REPO" --state open \
+        --json number,title,headRefName,isCrossRepository,isDraft,closingIssuesReferences \
+        --jq ".[] | select(.isCrossRepository | not)
+            | select(.headRefName == \"feature/issue-$n\"
+                or ([.closingIssuesReferences[] | select((.repository.owner.login + \"/\" + .repository.name) == \"$WS_REPO\") | .number] | index($n)))
+            | \"pull_request\t\(.number)\t\(.title)\t\(if .isDraft then \"draft\" else \"ready\" end)\""
+done
+# ADR numbers in the item, with the ADR file's own title (its first line).
+for a in $(grep -oE 'ADR-[0-9]{4}' <<< "$item" | sort -u); do
+    f="$(ls "$WS_ROOT/docs/decisions/${a#ADR-}"-*.md 2>/dev/null | head -n1)"
+    t=""; [ -n "$f" ] && t="$(sed -n '1s/^# *//p' "$f")"
+    printf 'adr\t%s\t%s\n' "$a" "${t:-unknown (no ADR file)}"
+done
+echo "---"
+# The acceptance case paragraph, printed as written for the counts section.
+awk '/^\*\*Acceptance case\.\*\*/ { s = 1 } s && /^[[:space:]]*$/ { exit } s { print }' \
+    "$WS_ROOT/docs/roadmap.md" 2>/dev/null
+```
+
+A `branch` row is in-flight work for that line; a `pull_request` row is
+its open pull request (ready or draft). Matching is by the issue number
+only, through `feature/issue-<N>` worktrees and pull requests that close
+`#<N>` or come from that branch. When the line names no issue, or no
+branch or pull request matches, nothing in flight advances it, and the
+report says that rather than pick other work.
+
+### 6. Read problems
+
+Read-only facts, once per sit-rep, from local `main` in `$WS_ROOT` (a
+worktree session's own branch is not what has landed). Commit counts
+leave out merge commits and commits that touch only work plans, and are
+counted from the commit that set the date: the last commit on `main` on or
+before that date, or the commit that last changed the file.
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+days_since() { python3 -c 'import datetime, sys; print((datetime.date.today() - datetime.date.fromisoformat(sys.argv[1])).days)' "$1"; }
+# Commits on main after <sha>, under the given paths: no merges, no work-plan-only commits.
+since() { local sha="$1"; shift; git -C "$WS_ROOT" rev-list --count --no-merges "$sha..main" -- "$@" ':!.agent/work-plans'; }
+sha_at() { git -C "$WS_ROOT" log -1 --format=%H --until="$1 23:59:59" main; }
+# show <$WS_ROOT/path>: that file as committed on main.
+show() { git -C "$WS_ROOT" show "main:${1#"$WS_ROOT"/}" 2>/dev/null; }
+
+st="$("$WS_ROOT/.agent/scripts/session_root.sh" 2>/dev/null | sed -n 's/^type=//p')"
+echo "session_type=${st:-unknown}"
+
+# Audit: the Re-examined column of docs/design.md's Decision register.
+reg="$(show "$WS_ROOT/docs/design.md" | awk -F'|' '
+    /^## Decision register/ { s = 1; next }
+    s && /^## / { exit }
+    s && /^\|/ && col == "" { for (i = 2; i < NF; i++) if ($i ~ /Re-examined/) col = i; next }
+    s && /^\|/ && col != "" && $2 !~ /^-+$/ { gsub(/^ +| +$/, "", $col); print $col }')"
+if [ -z "$reg" ]; then
+    echo "audit=cannot tell (no Decision register with a Re-examined column on main)"
+else
+    echo "audit_adrs=$(grep -c . <<< "$reg") not_yet_reexamined=$(grep -c '^not yet' <<< "$reg")"
+    newest="$(grep -oE '^yes [0-9]{4}-[0-9]{2}-[0-9]{2}' <<< "$reg" | cut -d' ' -f2 | sort | tail -n1)"
+    sha=""; [ -z "$newest" ] || sha="$(sha_at "$newest")"
+    if [ -n "$sha" ]; then
+        echo "newest_adr_reexamination=$newest days=$(days_since "$newest") commits_since=$(since "$sha" .)"
+    else
+        echo "newest_adr_reexamination=cannot tell (no 'yes <date>' cell, or no commit on main by then)"
+    fi
+fi
+
+# Research: the research skill's own staleness rule (Last verified, else
+# Added; stale past 30 days, flagged for review past 90).
+show "$WS_ROOT/.agent/knowledge/research_digest.md" | python3 -c '
+import datetime, re, sys
+text = sys.stdin.read()
+if not text:
+    print("research=cannot tell (no research digest on main)"); sys.exit()
+today = datetime.date.today()
+m = re.search(r"Last full refresh: (\d{4}-\d{2}-\d{2})", text)
+print("last_full_refresh=" + (m.group(1) if m else "none"))
+ages, undated = [], 0
+for line in text.splitlines():
+    if not line.startswith("**Added**:"):
+        continue
+    d = re.search(r"Last verified\*\*: (\d{4}-\d{2}-\d{2})", line) or re.search(r"Added\*\*: (\d{4}-\d{2}-\d{2})", line)
+    if d:
+        ages.append((today - datetime.date.fromisoformat(d.group(1))).days)
+    else:
+        undated += 1
+print("digest_entries=%d past_30_days=%d past_90_days=%d oldest_days=%s undated=%d" % (
+    len(ages) + undated, sum(a > 30 for a in ages), sum(a > 90 for a in ages),
+    max(ages) if ages else "none", undated))'
+
+# Documentation: work since docs/design.md last changed on main.
+d="$(git -C "$WS_ROOT" log -1 --format='%H %cs' main -- docs/design.md)"
+if [ -z "$d" ]; then
+    echo "design_doc=cannot tell (docs/design.md has no commit on main)"
+else
+    echo "design_doc_changed=${d#* } days=$(days_since "${d#* }") commits_since_touching_agent_claude_docs=$(since "${d%% *}" .agent .claude docs)"
+fi
+# The anchor check passes in pre-commit and CI; only a failure is news.
+if ! out="$("$WS_ROOT/.agent/scripts/check_design_anchors.sh" "$WS_ROOT" 2>&1)"; then
+    echo "design_anchors=failed"
+    printf '%s\n' "$out" | head -n 10
+fi
+```
+
+Each problem is printed as its facts, then one judgment word: "probably
+due", "recent" or "cannot tell" (a date or count is missing).
+
+- **Audit**: the fact is the newest `yes <date>` in the Decision
+  register's Re-examined column, labelled "newest ADR re-examination
+  (Decision register)", never "last audit" (that column also carries the
+  dates of the design rewrite). Print it with days and commits since and
+  how many ADRs are still `not yet`. There is no stored cadence: judge
+  from days, commits and the `not yet` count, and say which way the facts
+  lean.
+- **Research**: due by the research skill's written rule
+  (the research skill's Staleness rules): any entry past 30
+  days means "probably due"; none means "recent". Print the counts past 30
+  and past 90 days and the `Last full refresh` date.
+- **Documentation**: days since `docs/design.md` last changed and the
+  commits since that touched `.agent/`, `.claude/` or `docs/`: work that
+  may have outrun the design. Judge from the numbers. A failed anchor
+  check is printed with its first lines; a passing one is not mentioned.
+- **Direction**: `format` rows from step 1 and `unknown` lines (a check
+  that could not run) are problems too.
+- In a project session (`session_type=project`), the Problems section is
+  the workspace's only, and the report says so; nothing is read from the
+  project.
+
+### 7. Start a due check, or offer it
+
+When the audit or research fact is "probably due":
+
+- **Start it** when the session is a workspace session
+  (`session_type=workspace`) and the Agent tool is available: launch one
+  agent in the background (`run_in_background: true` where the tool takes
+  it) with the prompt below, and say in its Problems line "started in the
+  background". Do not start the same check twice in one session; say
+  "already started this session" instead.
+- **Offer it** otherwise (a project session, `session_type` unknown, or
+  no Agent tool, as in Codex or agy): name the command and where to run
+  it, e.g. "run /audit-workspace from the workspace". These skills have no
+  `session_scope`, so a project session does not have them.
+
+Only read-only checks start on their own. Anything that writes to a
+repository or GitHub (a digest edit, a Decision-register pull request, an
+issue) is offered as a one-line yes/no, never done. When a background
+check returns, give its findings in a few lines and offer the write as a
+yes/no.
+
+The prompts, as written, with `<workspace root>` replaced by the
+`$WS_ROOT` path:
+
+- **Audit**: "Run the /audit-workspace skill's checks and report findings
+  only. Do not edit any file, create a worktree, commit, push, or open a
+  pull request or issue. Return the findings and, separately, the
+  Decision-register cell changes you would propose."
+- **Research**: `/research` writes in every mode (worktree, commit, push,
+  pull request), so the background run is not that skill: "Do not run the
+  /research skill. Read-only, no worktree, no commit, no push, no pull
+  request, no issue, no file edit. Read
+  <workspace root>/.agent/knowledge/research_digest.md and find entries whose Last verified date is more than 30 days old. For
+  each, in oldest-first order, do the web survey the research skill's
+  --refresh steps 2 to 4 describe, and return, as text only, the proposed
+  new or changed entry content and the new Last verified date. Do not
+  write anything to disk." Applying the proposals (worktree, commit, pull
+  request) is offered as a one-line yes/no.
+
+### 8. Print the report
+
+The top four parts (direction, Suggested next, In flight, Problems) come
+first and fit in about 15 lines; counts, inbox and deferrals follow. Plain
+words. Every number has its label: no issue, pull request or ADR number
+without its title beside it, and no count without what it counts (never
+a bare "3/6").
 
 ```markdown
 ## Sit-rep, <date>
 
-**Acceptance case**: <t> of <n> lines true. <What moved: compare the
-summary with the last run record's, e.g. "lines 3/6 -> 4/6 since
-2026-10-10"; "first run" when there is no earlier line.>
-Not yet true:
-- <line> — <result> (<check>)
-Workspace root only; registered project roots are not read in this mode.
-
-**Inbox**: <n> lines, oldest <date>, <k> new since the last run (or
-"new since the last run: unknown", with the reason).
-Proposed sort, to answer in batches:
-- now: <items>
-- next: <items>
-- someday: <items>
-- decided against, revisit when <condition>: <items>
-- delete: <items>
-
-**In flight**: one line per branch, in the order step 3 gives:
-- <name>: <pull request part>; <worktree part>
-
-**Deferrals due**: <deferrals whose check is true>.
-Unchecked (no revisit check): <deferrals whose result is unchecked>.
+<t> of <n> Direction lines true; next: <first unmet line, as written,
+each number with its title> — <its result word>.
 
 **Suggested next**: <one item> — <the fact it rests on>.
+
+**In flight**: one line per branch, in the order step 3 gives:
+- <name>: <worktree part>; <pull request part>
+
+**Problems**:
+- Audit: newest ADR re-examination (Decision register) <date>, <d> days
+  and <c> commits ago; <k> of <n> ADRs not yet re-examined — <judgment>
+  [; started in the background | ; offered: <command, where>].
+- Research: <k> of <n> digest entries last verified more than 30 days ago
+  (<m> more than 90); last full refresh <date> — <judgment> [...].
+- Documentation: docs/design.md last changed <date>, <d> days ago; <c>
+  commits since touched .agent/, .claude/ or docs/ — <judgment>.
+- <a failed anchor check, format rows, unknown lines: only when present>
+
+**Acceptance case**: <the paragraph step 5 printed, as written>
+Not yet true: <line — result>; ... <What moved: compare the summary with
+the last run record's, in words, e.g. "Direction lines true: 3 of 6 on
+2026-10-10, 4 of 6 now"; "first run" when there is no earlier line.>
+Workspace root only; registered project roots are not read in this mode.
+
+**Inbox**: <n> lines, <k> new since the last run (or "new since the last
+run: unknown", with the reason)<: the new ones in a few words each, when
+they fit on this line>. `/sitrep inbox` for a proposed sort.
+
+**Deferrals due**: <deferrals whose check is true, or "none">.
+Unchecked (no revisit check): <deferrals whose result is unchecked>.
 ```
 
 Rules for the report:
 
+- The direction sentence and "Suggested next" both come from step 5's
+  line. The result word is always printed, so a line that could not be
+  checked never reads as a line that failed: `unknown` reads "check could
+  not run", `unchecked` reads "unchecked (no check yet)".
+- "Suggested next" is that line, and with it the branch and pull request
+  step 5 matched, each with its title and step 3's timeline state, e.g.
+  "The acceptance project is onboarded … — in flight on
+  feature/issue-332, onboard-project registers projects (issue 332):
+  Implementation complete, no pull request yet". When step 5 matched
+  nothing, it reads "<line> — nothing in flight advances it".
+- Only when every Direction line is `true` does "Suggested next" come
+  from elsewhere, from the first of these with an item: a due deferral
+  (with its check); work in flight (a branch with a ready pull request
+  first, step 3's order); the proposed inbox "now" bin, which says "this
+  rests on the proposed inbox sort", since that bin is this run's
+  proposal, not a checked fact. When none has one: "Suggested next:
+  nothing from this run's facts." When step 1 checked nothing, it says
+  the Direction lines were not checked this run, and why.
+  - The main checkout is not work in flight: the worktree list always
+    includes it (`type: "main"`), so it is never a candidate. The
+    worktree this session runs in counts like any other.
 - A `false`, `unknown`, `partial` or `unchecked` line goes under "Not yet
-  true" with its result word, so a line that could not be checked never
-  reads as a line that failed.
+  true" with its result word.
 - A deferral is due only when its result is `true`. An `unchecked`
   deferral is listed as unchecked, never as due.
 - An In flight line is filled in part by part, and a part the branch does
   not have is left out:
   - `<name>` is the branch, or for a project worktree its project
     (`repo`), a slash and the branch, e.g. `myproject/feature/issue-12`.
+  - The worktree part is the issue's title, then "(issue <N>)", then the
+    latest timeline entry's type and status from step 3, e.g.
+    "onboard-project registers projects (issue 332): Implementation
+    complete". A branch with a worktree but no pull request ends with "no
+    pull request yet".
   - The pull request part is the title, then "from a fork" if
     `isCrossRepository` is true, then "draft" if it is one, then the
     review state if `reviewDecision` is set.
-  - The worktree part is the last commit's age and subject.
   - "; " goes only between the two parts, so a line with only a pull
     request or only a worktree has none.
-- The inbox sort is a proposal. Use only the five bins above; never
-  "never" — "decided against" always carries the condition that would
-  reopen it. Do not edit the inbox; filing issues or editing the roadmap
-  from the answers is a separate step the owner asks for.
-- `format` rows are reported as a problem in the Direction section, not as
-  lines.
-- "Suggested next" names one item, taken from the first of these sources
-  that has one, in this order: a due deferral; a `false` Direction line;
-  work in flight (a branch line from "In flight"); the proposed inbox
-  "now" bin. It names the fact it rests on (the deferral and its check,
-  the line and its check, the branch or pull request title, the inbox
-  line). When it comes from the inbox "now" bin, it says "this rests on
-  the proposed inbox sort", since that bin is this run's proposal, not a
-  checked fact. When no source has an item, it reads "Suggested next:
-  nothing from this run's facts."
-  - The main checkout is not work in flight: the worktree list always
-    includes it (`type: "main"`), so it is never a candidate. The
-    worktree this session runs in counts like any other.
-  - When a source has several items, take the first as listed in the
-    report. For work in flight that is a branch with a ready pull
-    request, if there is one (step 3's order).
-  - From the Direction section only a due deferral and a `false` line are
-    sources. A `format` problem and an `unknown`, `partial` or `unchecked`
-    line are deliberately not: they say a check could not decide, not
-    that work is due. The closing question may ask about them.
-- After "Suggested next", end with at most one question, the one whose
-  answer changes the most. The suggestion proposes an action; the question
-  asks the owner to decide something.
+- The inbox is one line. The five-bin sort is printed only for
+  `/sitrep inbox`, after the Inbox line:
+  ```markdown
+  Proposed sort, to answer in batches:
+  - now: <items>
+  - next: <items>
+  - someday: <items>
+  - decided against, revisit when <condition>: <items>
+  - delete: <items>
+  ```
+  The sort is a proposal. Use only these five bins; never "never" —
+  "decided against" always carries the condition that would reopen it.
+  Do not edit the inbox; filing issues or editing the roadmap from the
+  answers is a separate step the owner asks for.
+- `format` rows are reported under Problems, not as lines.
+- After the report, end with at most one question, the one whose answer
+  changes the most. The suggestion proposes an action; the question asks
+  the owner to decide something.
