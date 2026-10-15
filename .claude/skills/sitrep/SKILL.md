@@ -201,12 +201,14 @@ its timeline (`progress.md`, read by `progress_read.py`):
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
-"$WS_ROOT/.agent/scripts/worktree_list.sh" --json | python3 -c '
-import json, sys
-for w in json.load(sys.stdin).get("worktrees", []):
-    if w.get("type") != "main" and w.get("issue"):
-        print("\t".join(str(w.get(k) or "") for k in ("type", "repo", "branch", "issue", "path")))' |
-while IFS=$'\t' read -r type repo branch issue path; do
+"$WS_ROOT/.agent/scripts/worktree_list.sh" --json \
+    | jq -c '.worktrees[]? | select(.type != "main" and .issue)' |
+while IFS= read -r w; do
+    # Each field by its name, never by position: a worktree with no branch
+    # (detached) or no repo keeps its other fields where they belong.
+    field() { jq -r --arg k "$1" '.[$k] // "" | tostring' <<< "$w"; }
+    type="$(field type)"; repo="$(field repo)"; branch="$(field branch)"
+    issue="$(field issue)"; path="$(field path)"
     # The issue lives in the repository the worktree belongs to. A package
     # worktree (ADR-0012, a .worktree-repos manifest) is an aggregate
     # directory, not a checkout: its header names the issue's repository
@@ -293,12 +295,13 @@ try:
 except ValueError:
     print("progress record unreadable")')"
     fi
-    printf '%s\t%s\t%s\tissue %s\t%s\t%s\n' "$type" "${repo:-workspace}" "$branch" "$issue" "$title" "$latest"
+    printf '%s\t%s\t%s\tissue %s\t%s\t%s\n' "$type" "${repo:-workspace}" "${branch:-(no branch)}" "$issue" "$title" "$latest"
 done
 ```
 
 Rows are `type`, `repo`, `branch`, `issue <N>`, title, state,
-TAB-separated. The state is the latest timeline entry in words, so the
+TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
+reads `(no branch)`. The state is the latest timeline entry in words, so the
 report needs no entry names:
 
 | Latest entry | State |

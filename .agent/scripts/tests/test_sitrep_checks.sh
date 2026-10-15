@@ -1006,6 +1006,19 @@ RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial\nworkspace\tworkspace\tfeature/issue-8\tissue 8\tunknown (no GitHub remote)\tno progress record yet' && ! -e "$MARK/gh" ]] \
     && pass "(skill 3) latest entry in state words; no row for main or a skill worktree; no remote, no gh" || fail "(skill 3) flight rc=$RC '$OUT'"
 
+echo "TEST: sit-rep step 3 reads each worktree field by name: an empty branch or repo shifts nothing"
+# Tab is IFS whitespace, so `read` with IFS=TAB folds empty fields: the
+# issue number became the path. Detached (branch null), no repo, and an
+# empty-string branch, each beside a worktree whose fields are all there.
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"workspace","issue":7,"branch":null,"path":"$SB/wt7"},{"type":"workspace","issue":8,"branch":"","path":"$SB/wt8","repo":""},{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"}]}'
+EOF
+reset_marks
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\t(no branch)\tissue 7\tunknown (no GitHub remote)\timplementation partial\nworkspace\tworkspace\t(no branch)\tissue 8\tunknown (no GitHub remote)\tno progress record yet\nworkspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial' ]] \
+    && pass "(skill 3) no branch or no repo: the issue and path stay in place, read as (no branch)" || fail "(skill 3) empty fields rc=$RC '$OUT'"
+
 echo "TEST: sit-rep step 3 reads a package worktree's repository and timeline through its manifest"
 # Two ADR-0012 package worktrees: aggregate directories (not checkouts)
 # holding two checkouts of different repositories each.
