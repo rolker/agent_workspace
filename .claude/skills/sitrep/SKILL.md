@@ -657,8 +657,10 @@ due", "recent" or "cannot tell" (a date or count is missing).
   and past 90 days and the `Last full refresh` date.
 - **Documentation**: days since `docs/design.md` last changed and the
   commits since that touched `.agent/`, `.claude/` or `docs/`: work that
-  may have outrun the design. Judge from the numbers. A failed anchor
-  check is printed with its first lines; a passing one is not mentioned.
+  may have outrun the design. Judge from the numbers. The report names
+  them in words, "the design document" and "the workspace's scripts,
+  skills or docs", not as paths. A failed anchor check is printed with
+  its first lines; a passing one is not mentioned.
 - **Direction**: `format` rows from step 1 and `unknown` lines (a check
   that could not run) are problems too.
 - **Local main**: these facts are from local `main`. When
@@ -753,8 +755,9 @@ result in words>.
 - Research: <k> of <n> research topics last checked more than 30 days
   ago (<m> more than 90); last full refresh <date> — <judgment>
   [; the 3 oldest started in the background | ; offered: ...].
-- Documentation: docs/design.md last changed <date>, <d> days ago; <c>
-  commits since touched .agent/, .claude/ or docs/ — <judgment>.
+- Documentation: the design document last changed <date>, <d> days
+  ago; <c> commits since changed the workspace's scripts, skills or
+  docs — <judgment>.
 - Deferral due: <the deferral, as written>.
 - <only when present: local main behind GitHub, a failed anchor check,
   a malformed Direction section, a step whose check could not run>

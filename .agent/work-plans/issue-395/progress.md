@@ -695,7 +695,7 @@ Round 2: convergence check on round 1 (`c1bb3f26`) plus the fix pass `c1bb3f26..
 - [x] (suggestion) "implemented, no pull request yet" applies to every worktree with no joined pull request. Project worktrees are never joined, so the phrase is wrong for them; limit it to `type: "workspace"`. — `.claude/skills/sitrep/SKILL.md:785-787`
 - [x] (suggestion) Checkpoint decisions `retry` (after phase-failed) and `restart` (after implementation) fall through to "checkpoint after phase-failed: retry". Map them to words, e.g. "a step failed; retrying" and "implementation restarting". — `.claude/skills/sitrep/SKILL.md:276-279`
 - [ ] (suggestion) Step 3's cache-only git-bug fallback has no test; only step 5's does. Add the same stub-git-bug case for step 3. — `.agent/scripts/tests/test_sitrep_checks.sh`
-- [ ] (suggestion) The Documentation problem line prints paths (".agent/, .claude/ or docs/"). Say "the workspace's scripts, skills or docs" in the report; the paths stay in step 6. — `.claude/skills/sitrep/SKILL.md:690-691`
+- [x] (suggestion) The Documentation problem line prints paths (".agent/, .claude/ or docs/"). Say "the workspace's scripts, skills or docs" in the report; the paths stay in step 6. — `.claude/skills/sitrep/SKILL.md:690-691`
 
 ### Dismissed
 - Gemini 2 (`gh-issue N` needs a trailing space): same as round 1. The grammar always puts a state word after N (`sitrep_checks.sh:87-88`).
