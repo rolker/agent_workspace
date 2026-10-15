@@ -224,3 +224,17 @@ All eight first-round findings are fixed in the plan text; finding 1 is fixed in
 **Decision**: proceed
 
 Owner: "proceed". Proceed to implementation with the second Plan Review's five leftovers folded in: the implementation applies them to plan.md in its first commit and builds from the corrected plan. The five: (N1) drop the lowercasing transform and print the acceptance paragraph after a colon label, "The proof: <paragraph as written>", no transform and no test for one; (N2) no period appended after the proof paragraph; (N3, finding 1 leftover) test lines 363 and 366 named among the assertions that change; (N4) a malformed --last makes step 3 rerun --path-from without --last, so only the since-last-time sentence is lost, not the path; (N5, finding 5 leftover) docs/design.md: reword "the roadmap holds no status column" now that the sit-rep reads the step table's status, drop the "Workspace Redesign" name from the design draft since the table is picked by its header, and recheck the OQ-3 reasoning against OQ-3's own phrase. The review-code plan-drift check verifies the fold-in.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-15 12:24 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: implementation
+**Decision**: restart
+
+The owner restated the issue at goal level on 2026-10-15 (issue body, "What I want"): what to work on next towards the goals, where in-progress work stands, and what problems he should know about (stale documentation, research or a health check due, measured by work done since). The 2026-10-14 scope (composed orientation slots, per-line change tracking, run-record field) is superseded and folded into the issue body as history. The implementation commit `f293a4bb` serves that scope and is to be reverted by the new plan's first commit (a hard reset was declined; the commit stays in history).
+
+This issue is the rehearsal for the loop carrying a goal-level issue without the owner in the details, before the GeoZui4D acceptance run. Contract: the owner answers only goal-level questions (goal meant; two of his goals in tension; outward or hard-to-undo action). Mechanism decisions are made from docs/principles.md and docs/design.md and listed in each hand-back for veto. A mechanism question reaching the owner is logged as a loop defect. Judged against the three things above and "Work is easy to come back to", not the previous scope.
+
+Evidence that led here: this issue's own timeline cited principles 20 times without once testing the plan's scope against the purpose it serves; both plan reviews rated scope "Good" by file count.
