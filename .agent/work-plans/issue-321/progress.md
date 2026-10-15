@@ -286,3 +286,15 @@ Nine of ten round-1 findings are resolved. The fixes are three sentences: run-is
 - Recipe (a) waits for any running phase to return before it dispatches review-issue (one agent per worktree).
 
 No owner-level questions: no finding changes what the work is for, no two of his goals conflict, and nothing new is outward-facing.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-15 15:11 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (under the issue's contract: no owner-level question arose)
+**After**: plan
+**Decision**: proceed
+
+Plan Review round 2 (ab5123e3): nine of ten round-1 findings resolved; six of the eight decisions from today's #395 run land where they did. Three one-sentence fixes remain, folded into the implementation's first commit as the reviewer recommends, no third plan review: (1) run-issue's "No auto-chaining" edit names `takeover` at phase-failed and `merge` at findings as the owner's answers, so a host never runs a phase inline or merges past open findings; (2) the review-round rule (second round only after a real defect; third narrow, no externals) is stated as the rule in the standing-rules file and reconciled with review-code's fix-round rule (#320) so a fresh host does not re-run externals on a convergence check; (3) the outward-facing line is worded so a host-made cap on a background read-only run (the research three-topic cap) is a listed decision, not an owner question. Also: every standing-rule row carries its reason, with a test; design.md edits placed by quoted text; the restart recipe waits for any running phase.
+
+Decisions made this round (owner may veto): the host decided the checkpoint; the dogfooding comment on #398 is inside the outward boundary because the owner asked for it.
