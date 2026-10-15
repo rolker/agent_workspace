@@ -195,3 +195,11 @@ The shape is right and small. Before implementation, the decision-rights table n
 - `dispatch_phase.sh:693`'s reason text is reworded (suggestion; implementer may skip it).
 
 No owner-level questions: the goal reading matches the issue and the owner's two 2026-10-15 inputs, no two goals conflict, and the one outward write (issue 398 comments) is already authorized in his words.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-15 15:07 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-321/plan.md` at `cff251c4`
+
+Revision after Plan Review dfd6cd5d: rebased on merged PR 396; checkpoint table limits tokens (findings never merge, phase-failed never takeover); recipes for restart, project naming, owner-text veto, starting a drive, merge; rules sweep; outward line; design.md 469 and 721; Path 1 by Direction cell; issue 398 dogfooding step; sit-rep lead words and spacing. No owner questions.
