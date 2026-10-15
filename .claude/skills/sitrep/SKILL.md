@@ -204,23 +204,51 @@ for w in json.load(sys.stdin).get("worktrees", []):
     if w.get("type") != "main" and w.get("issue"):
         print("\t".join(str(w.get(k) or "") for k in ("type", "repo", "branch", "issue", "path")))' |
 while IFS=$'\t' read -r type repo branch issue path; do
-    # The issue lives in the repository the worktree belongs to.
-    slug="$(extract_gh_slug "$(git -C "$path" remote get-url origin 2>/dev/null)")"
-    title="unknown (no GitHub remote)"
+    # The issue lives in the repository the worktree belongs to. A package
+    # worktree (ADR-0012, a .worktree-repos manifest) is an aggregate
+    # directory, not a checkout: its header names the issue's repository
+    # (issue=<owner/repo>#<N>), and the timeline is at its root or in one
+    # of the checkouts its entries list. A bare issue=<N> header gives the
+    # repository only when every listed checkout has the same one.
+    slug=""; cache="$path"; dirs="$path"; why="no GitHub remote"
+    if [ -f "$path/.worktree-repos" ]; then
+        hdr="$(head -n1 "$path/.worktree-repos" | sed -n 's/.* issue=\([^ ]*\).*/\1/p')"
+        [[ "$hdr" == */*#* ]] && slug="${hdr%#*}"
+        cache=""; agree=""
+        while IFS=$'\t' read -r _origin rel _branch; do
+            [ -n "$rel" ] || continue
+            d="$path"; [ "$rel" = "." ] || d="$path/$rel"
+            dirs="$dirs"$'\n'"$d"
+            s="$(extract_gh_slug "$(git -C "$d" remote get-url origin 2>/dev/null)")"
+            if [[ "$hdr" != */*#* ]]; then
+                if [ -z "$agree" ]; then agree="$s"; elif [ "$agree" != "$s" ]; then agree="-"; fi
+            fi
+            [ -z "$cache" ] && [ -n "$s" ] && { [ "$s" = "$slug" ] || [[ "$hdr" != */*#* ]]; } && cache="$d"
+        done < <(tail -n +2 "$path/.worktree-repos")
+        if [[ "$hdr" != */*#* ]]; then
+            if [ "$agree" = "-" ]; then why="its checkouts are in different repositories"; else slug="$agree"; fi
+        fi
+    else
+        slug="$(extract_gh_slug "$(git -C "$path" remote get-url origin 2>/dev/null)")"
+    fi
+    title="unknown ($why)"
     if [ -n "$slug" ]; then
         # gh first: the git-bug cache can hold a title the issue no longer has.
         title="$(gh issue view "$issue" -R "$slug" --json title --jq .title 2>/dev/null)" || title=""
         if [ -z "$title" ]; then
             # The cache only: issue_lookup pulls from GitHub on a miss, a write.
             ISSUE_TITLE=""
-            _issue_lookup_gitbug "$path" "https://github.com/$slug/issues/$issue" >/dev/null 2>&1
+            [ -z "$cache" ] || _issue_lookup_gitbug "$cache" "https://github.com/$slug/issues/$issue" >/dev/null 2>&1
             title="${ISSUE_TITLE:+$ISSUE_TITLE (offline: git-bug cache)}"
             title="${title:-unknown (lookup failed)}"
         fi
     fi
     latest="no progress.md"
-    f="$path/.agent/work-plans/issue-$issue/progress.md"
-    if [ -f "$f" ]; then
+    f=""
+    while IFS= read -r d; do
+        [ -f "$d/.agent/work-plans/issue-$issue/progress.md" ] && { f="$d/.agent/work-plans/issue-$issue/progress.md"; break; }
+    done <<< "$dirs"
+    if [ -n "$f" ]; then
         latest="$(python3 "$WS_ROOT/.agent/scripts/progress_read.py" "$f" 2>/dev/null | python3 -c '
 import json, sys
 try:
@@ -236,7 +264,8 @@ done
 Rows are `type`, `repo`, `branch`, `issue <N>`, title, latest entry
 (`<type> <status>`, e.g. `Implementation complete`), TAB-separated. A
 worktree with no issue (a skill worktree) gets no row; its line names the
-branch only. Reading across roots is allowed (`session_root.sh`); nothing
+branch only. A package worktree's `branch` is its checkouts' branches,
+comma-separated, as the worktree list gives it. Reading across roots is allowed (`session_root.sh`); nothing
 here writes.
 
 The report gives one line per branch. The pull requests listed are the

@@ -1006,6 +1006,33 @@ RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\tImplementation partial\nworkspace\tworkspace\tfeature/issue-8\tissue 8\tunknown (no GitHub remote)\tno progress.md' && ! -e "$MARK/gh" ]] \
     && pass "(skill 3) latest entry type and status; no row for main or a skill worktree; no remote, no gh" || fail "(skill 3) flight rc=$RC '$OUT'"
 
+echo "TEST: sit-rep step 3 reads a package worktree's repository and timeline through its manifest"
+# Two ADR-0012 package worktrees: aggregate directories (not checkouts)
+# holding two checkouts of different repositories each.
+for p in pkg pkg2; do
+    for r in a b; do
+        git init -q "$SB/$p/src/pkg_$r"
+        git -C "$SB/$p/src/pkg_$r" remote add origin "https://github.com/acme/pkg_$r.git"
+    done
+done
+printf '# project=p issue=acme/pkg_b#12 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-12\n/o/b\tsrc/pkg_b\tfeature/issue-12\n' > "$SB/pkg/.worktree-repos"
+printf '# project=p issue=13 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-13\n/o/b\tsrc/pkg_b\tfeature/issue-13\n' > "$SB/pkg2/.worktree-repos"
+mkdir -p "$SB/pkg/src/pkg_b/.agent/work-plans/issue-12"
+cp "$SB/wt7/.agent/work-plans/issue-7/progress.md" "$SB/pkg/src/pkg_b/.agent/work-plans/issue-12/progress.md"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"project","issue":12,"branch":"feature/issue-12,feature/issue-12","path":"$SB/pkg","repo":"p"},{"type":"project","issue":13,"branch":"feature/issue-13,feature/issue-13","path":"$SB/pkg2","repo":"p"}]}'
+EOF
+reset_marks
+echo "Package title" > "$SB/gh_state"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT")" == $'project\tp\tfeature/issue-12,feature/issue-12\tissue 12\tPackage title\tImplementation partial' ]] \
+    && pass "(skill 3) package worktree: title from the header's repository, timeline found in a listed checkout" || fail "(skill 3) package rc=$RC '$OUT'"
+[[ "$(cat "$MARK/gh" 2>/dev/null)" == "issue view 12 -R acme/pkg_b --json title --jq .title" ]] \
+    && pass "(skill 3) package worktree: gh asked the header's repository only" || fail "(skill 3) package gh: $(cat "$MARK/gh" 2>/dev/null)"
+[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are in different repositories)\tno progress.md' ]] \
+    && pass "(skill 3) package worktree with a bare issue number and two repositories: no guess" || fail "(skill 3) package bare '$OUT'"
+
 echo "TEST: sit-rep step 5 takes issue numbers from the line's own cells only, text kept as written"
 cat > "$WS/.agent/scripts/worktree_list.sh" <<'EOF'
 #!/usr/bin/env bash
