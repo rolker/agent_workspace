@@ -1043,8 +1043,50 @@ RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
     && pass "(skill 3) package worktree: title from the header's repository, timeline found in a listed checkout" || fail "(skill 3) package rc=$RC '$OUT'"
 [[ "$(cat "$MARK/gh" 2>/dev/null)" == "issue view 12 -R acme/pkg_b --json title --jq .title" ]] \
     && pass "(skill 3) package worktree: gh asked the header's repository only" || fail "(skill 3) package gh: $(cat "$MARK/gh" 2>/dev/null)"
-[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are in different repositories)\tno progress record yet' ]] \
+[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are not all in one GitHub repository)\tunknown (no repository to read it from)' ]] \
     && pass "(skill 3) package worktree with a bare issue number and two repositories: no guess" || fail "(skill 3) package bare '$OUT'"
+
+echo "TEST: sit-rep step 3 reads a package worktree's title and timeline from the issue's repository only"
+# pkg4: issue 14 of acme/pkg_b; acme/pkg_a, listed first, has its own
+# issue 14 timeline. pkg5: issue 15 of acme/pkg_b; only acme/pkg_a has a
+# timeline 15. pkg6: bare issue=16, the first checkout has no remote and
+# the second is acme/pkg_b. pkg7: bare issue=17, both checkouts acme/pkg_b.
+for p in pkg4 pkg5 pkg6 pkg7; do
+    for r in a b; do git init -q "$SB/$p/src/pkg_$r"; done
+done
+for p in pkg4 pkg5; do
+    git -C "$SB/$p/src/pkg_a" remote add origin "https://github.com/acme/pkg_a.git"
+    git -C "$SB/$p/src/pkg_b" remote add origin "https://github.com/acme/pkg_b.git"
+done
+git -C "$SB/pkg6/src/pkg_b" remote add origin "https://github.com/acme/pkg_b.git"
+git -C "$SB/pkg7/src/pkg_a" remote add origin "git@github.com:acme/pkg_b.git"
+git -C "$SB/pkg7/src/pkg_b" remote add origin "https://github.com/acme/pkg_b.git"
+printf '# project=p issue=acme/pkg_b#14 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-14\n/o/b\tsrc/pkg_b\tfeature/issue-14\n' > "$SB/pkg4/.worktree-repos"
+printf '# project=p issue=acme/pkg_b#15 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-15\n/o/b\tsrc/pkg_b\tfeature/issue-15\n' > "$SB/pkg5/.worktree-repos"
+printf '# project=p issue=16 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-16\n/o/b\tsrc/pkg_b\tfeature/issue-16\n' > "$SB/pkg6/.worktree-repos"
+printf '# project=p issue=17 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-17\n/o/b\tsrc/pkg_b\tfeature/issue-17\n' > "$SB/pkg7/.worktree-repos"
+reviewed_only=$'---\nissue: 14\n---\n\n# Issue #14\n\n## Issue Review\n**Status**: complete\n**When**: 2026-10-01 10:00 -04:00\n**By**: t\n\n**Issue**: #14\n'
+mkdir -p "$SB/pkg4/src/pkg_a/.agent/work-plans/issue-14" "$SB/pkg4/src/pkg_b/.agent/work-plans/issue-14" "$SB/pkg5/src/pkg_a/.agent/work-plans/issue-15"
+printf '%s' "$reviewed_only" > "$SB/pkg4/src/pkg_a/.agent/work-plans/issue-14/progress.md"
+cp "$SB/wt7/.agent/work-plans/issue-7/progress.md" "$SB/pkg4/src/pkg_b/.agent/work-plans/issue-14/progress.md"
+cp "$SB/wt7/.agent/work-plans/issue-7/progress.md" "$SB/pkg5/src/pkg_a/.agent/work-plans/issue-15/progress.md"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"project","issue":14,"branch":"b14","path":"$SB/pkg4","repo":"p"},{"type":"project","issue":15,"branch":"b15","path":"$SB/pkg5","repo":"p"},{"type":"project","issue":16,"branch":"b16","path":"$SB/pkg6","repo":"p"},{"type":"project","issue":17,"branch":"b17","path":"$SB/pkg7","repo":"p"}]}'
+EOF
+reset_marks
+echo "Package title" > "$SB/gh_state"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT" | cut -f4,6)" == $'issue 14\timplementation partial' ]] \
+    && pass "(skill 3) package worktree: the issue's repository's timeline, not another repository's issue of the same number" || fail "(skill 3) pkg4 '$OUT'"
+[[ "$(sed -n 2p <<< "$OUT" | cut -f4,6)" == $'issue 15\tno progress record yet' ]] \
+    && pass "(skill 3) package worktree: a timeline only in another repository's checkout is not read" || fail "(skill 3) pkg5 '$OUT'"
+[[ "$(sed -n 3p <<< "$OUT" | cut -f4-6)" == $'issue 16\tunknown (its checkouts are not all in one GitHub repository)\tunknown (no repository to read it from)' ]] \
+    && pass "(skill 3) package worktree, bare issue number: a checkout with no remote disagrees" || fail "(skill 3) pkg6 '$OUT'"
+[[ "$(sed -n 4p <<< "$OUT" | cut -f4-5)" == $'issue 17\tPackage title' ]] \
+    && pass "(skill 3) package worktree, bare issue number, one repository: its title" || fail "(skill 3) pkg7 '$OUT'"
+[[ "$(cat "$MARK/gh" 2>/dev/null)" == $'issue view 14 -R acme/pkg_b --json title --jq .title\nissue view 15 -R acme/pkg_b --json title --jq .title\nissue view 17 -R acme/pkg_b --json title --jq .title' ]] \
+    && pass "(skill 3) package worktrees: gh asked the issue's repository only, never for 16" || fail "(skill 3) pkg gh: $(cat "$MARK/gh" 2>/dev/null)"
 
 echo "TEST: sit-rep step 3 names the latest timeline entry in state words"
 cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF

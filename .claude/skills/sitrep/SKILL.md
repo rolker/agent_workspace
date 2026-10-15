@@ -212,27 +212,34 @@ while IFS= read -r w; do
     # The issue lives in the repository the worktree belongs to. A package
     # worktree (ADR-0012, a .worktree-repos manifest) is an aggregate
     # directory, not a checkout: its header names the issue's repository
-    # (issue=<owner/repo>#<N>), and the timeline is at its root or in one
-    # of the checkouts its entries list. A bare issue=<N> header gives the
-    # repository only when every listed checkout has the same one.
-    slug=""; cache="$path"; dirs="$path"; why="no GitHub remote"
+    # (issue=<owner/repo>#<N>). A bare issue=<N> header gives the
+    # repository only when every listed checkout has the same GitHub
+    # remote; one with none disagrees. The title cache and the timeline
+    # come from that repository's checkouts only: work plans are written
+    # at the issue's checkout, and another repository can have its own
+    # issue <N>.
+    slug=""; cache="$path"; dirs="$path"; why="no GitHub remote"; latest="no progress record yet"
     if [ -f "$path/.worktree-repos" ]; then
         hdr="$(head -n1 "$path/.worktree-repos" | sed -n 's/.* issue=\([^ ]*\).*/\1/p')"
         [[ "$hdr" == */*#* ]] && slug="${hdr%#*}"
-        cache=""; agree=""
-        while IFS=$'\t' read -r _origin rel _branch; do
+        listed=""; agree=""
+        # The second column (the checkout's path in the worktree), by
+        # position with cut, which never folds an empty column.
+        while IFS= read -r rel; do
             [ -n "$rel" ] || continue
             d="$path"; [ "$rel" = "." ] || d="$path/$rel"
-            dirs="$dirs"$'\n'"$d"
             s="$(extract_gh_slug "$(git -C "$d" remote get-url origin 2>/dev/null)")"
-            if [[ "$hdr" != */*#* ]]; then
-                if [ -z "$agree" ]; then agree="$s"; elif [ "$agree" != "$s" ]; then agree="-"; fi
-            fi
-            [ -z "$cache" ] && [ -n "$s" ] && { [ "$s" = "$slug" ] || [[ "$hdr" != */*#* ]]; } && cache="$d"
-        done < <(tail -n +2 "$path/.worktree-repos")
-        if [[ "$hdr" != */*#* ]]; then
-            if [ "$agree" = "-" ]; then why="its checkouts are in different repositories"; else slug="$agree"; fi
+            listed="$listed$s"$'\t'"$d"$'\n'
+            if [ -z "$s" ] || { [ -n "$agree" ] && [ "$agree" != "$s" ]; }; then agree="-"
+            elif [ -z "$agree" ]; then agree="$s"; fi
+        done < <(tail -n +2 "$path/.worktree-repos" | cut -f2)
+        if [ -z "$slug" ]; then
+            if [ -n "$agree" ] && [ "$agree" != "-" ]; then slug="$agree"
+            elif [ -n "$listed" ]; then why="its checkouts are not all in one GitHub repository"; fi
         fi
+        dirs="$(S="$slug" awk -F'\t' 'ENVIRON["S"] != "" && $1 == ENVIRON["S"] { print $2 }' <<< "$listed")"
+        cache="$(head -n1 <<< "$dirs")"
+        [ -n "$slug" ] || latest="unknown (no repository to read it from)"
     else
         slug="$(extract_gh_slug "$(git -C "$path" remote get-url origin 2>/dev/null)")"
     fi
@@ -248,10 +255,9 @@ while IFS= read -r w; do
             title="${title:-unknown (lookup failed)}"
         fi
     fi
-    latest="no progress record yet"
     f=""
     while IFS= read -r d; do
-        [ -f "$d/.agent/work-plans/issue-$issue/progress.md" ] && { f="$d/.agent/work-plans/issue-$issue/progress.md"; break; }
+        [ -n "$d" ] && [ -f "$d/.agent/work-plans/issue-$issue/progress.md" ] && { f="$d/.agent/work-plans/issue-$issue/progress.md"; break; }
     done <<< "$dirs"
     if [ -n "$f" ]; then
         latest="$(python3 "$WS_ROOT/.agent/scripts/progress_read.py" "$f" 2>/dev/null | python3 -c '
@@ -327,6 +333,13 @@ guessed at. No `progress.md`, or one with no entries, reads "no
 progress record yet". A worktree with no issue (a skill worktree) gets
 no row; its line names the branch only. A package worktree's `branch` is
 its checkouts' branches, comma-separated, as the worktree list gives it.
+Its title and state come from the issue's repository only, the one its
+header names, or with a bare `issue=<N>` the one every listed checkout
+shares; a checkout of another repository is never read, since that
+repository can have an issue with the same number. When no single
+repository can be told, the title is "unknown (its checkouts are not
+all in one GitHub repository)" and the state "unknown (no repository to
+read it from)".
 Reading across roots is allowed (`session_root.sh`); nothing here
 writes.
 
