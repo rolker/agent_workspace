@@ -327,3 +327,11 @@ No owner-level questions: the goal reading (next step, in-progress state, proble
 - [ ] Reorder the report: direction sentence, suggested next, in-progress work, problems, then counts and inbox; target under about fifteen lines for the top.
 - [ ] When something looks overdue the report offers to start it in the background and starts it only on a yes.
 - [ ] Acceptance: run `/sitrep` for real after merge and confirm the three Problems facts print and the owner can name his next step from the first screen; look again after a week.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-15 12:27 -0400
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-395/plan.md` at `c853c528`
+
+Replacement plan for the restated goal: first commit reverts f293a4bb; sit-rep report reordered (direction, next, in flight, problems, then counts and inbox); Suggested next is the first unmet Direction line plus the branch its issue names; new Problems step reads audit, research and documentation staleness with read-only commands and starts a due read-only check in the background; writes are only offered. Files: SKILL.md, design.md row.
