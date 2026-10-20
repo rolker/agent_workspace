@@ -328,17 +328,20 @@ try:
 except ValueError:
     print("progress record unreadable")')"
     fi
-    # Path 2 is any other work whose newest Issue Review has a Serves line
-    # naming a goal (every Issue Review writes one, naming the README goals
-    # it serves). Only the newest Issue Review counts, so a later "none"
-    # outranks an older goal; "none" means no path. Fenced lines are not
-    # headings or fields.
+    # Path 2 is any other work whose newest complete Issue Review has a
+    # Serves line naming a goal (every Issue Review writes one, naming the
+    # README goals it serves). Only the newest complete Issue Review counts,
+    # so a later "none" outranks an older goal, and a partial or failed one
+    # (which may have stopped before its Serves line) changes nothing;
+    # "none" means no path. Fenced lines are not headings or fields.
     serves=""
-    [ -z "$f" ] || serves="$(awk '/^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    [ -z "$f" ] || serves="$(awk 'function done_ir() { if (ir && tolower(st) ~ /^complete[[:space:]]*$/) s = cs; ir = 0 }
+        /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
         fence { next }
-        /^## / { ir = ($0 ~ /^## Issue Review([[:space:]]|$)/); if (ir) s = ""; next }
-        ir && /^\*\*Serves\*\*:/ { sub(/^\*\*Serves\*\*:[[:space:]]*/, ""); s = $0 }
-        END { if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) s = ""; print s }' "$f")"
+        /^## / { done_ir(); ir = ($0 ~ /^## Issue Review([[:space:]]|$)/); cs = ""; st = ""; next }
+        ir && /^\*\*Status\*\*:/ { sub(/^\*\*Status\*\*:[[:space:]]*/, ""); st = $0 }
+        ir && /^\*\*Serves\*\*:/ { sub(/^\*\*Serves\*\*:[[:space:]]*/, ""); cs = $0 }
+        END { done_ir(); if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) s = ""; print s }' "$f")"
     if [ ! -f "$rows" ]; then wpath="path unknown (steps not checked)"
     elif [ "$type" = workspace ] && [[ "$p1" == *" $issue "* ]]; then wpath="Path 1"
     elif [ -n "$slug" ] && [[ "$p1" == *" $slug#$issue "* ]]; then wpath="Path 1"
@@ -353,12 +356,14 @@ Rows are `type`, `repo`, `branch`, `issue <N>`, title, state, path,
 TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
 reads `(no branch)`. The path is `Path 1` (a Direction line names the
 issue, in its own cells, or a check names the project the worktree
-belongs to), else `Path 2` (the newest Issue Review on its timeline has
-a `**Serves**:` line naming a goal), else `no path`, which is itself worth
-seeing: work that serves neither. Only the newest Issue Review's Serves
-line counts, so a re-review that found the issue serves nothing outranks
-an older one that named a goal, and `**Serves**: none` (the review
-template's word for no goal) is `no path`. It is
+belongs to), else `Path 2` (the newest complete Issue Review on its
+timeline has a `**Serves**:` line naming a goal), else `no path`, which is
+itself worth seeing: work that serves neither. Only the newest complete
+Issue Review's Serves line counts, so a re-review that found the issue
+serves nothing outranks an older one that named a goal, a partial or
+failed Issue Review leaves the older one's Serves in place, and
+`**Serves**: none` (the review template's word for no goal) is
+`no path`. It is
 `path unknown (steps not checked)` when step 1 printed no rows.
 
 The state is the latest timeline entry in words, so the report needs no

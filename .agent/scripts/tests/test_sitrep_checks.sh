@@ -1155,23 +1155,25 @@ RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$(cut -f7 <<< "$OUT" | sort -u)" == "path unknown (steps not checked)" ]] \
     && pass "(skill 3) path: with no rows from step 1 the path is unknown, never guessed" || fail "(skill 3) path no rows '$OUT'"
 
-echo "TEST: sit-rep step 3 reads Path 2 from the newest Issue Review's Serves line only"
+echo "TEST: sit-rep step 3 reads Path 2 from the newest complete Issue Review's Serves line only"
 # A Serves line of "none" (review-issue's word for no goal) is no path; a
 # newer Issue Review's Serves outranks an older one either way; a Serves
 # line outside an Issue Review, or inside a fence, does not count.
-ir() {  # <when> <serves line or empty>
-    printf '## Issue Review\n**Status**: complete\n**When**: %s\n**By**: t\n\n**Issue**: #1\n\n### Scope Assessment\n\n%s\n\n' "$1" "$2"
+ir() {  # <when> <serves line or empty> [status, default complete]
+    printf '## Issue Review\n**Status**: %s\n**When**: %s\n**By**: t\n\n**Issue**: #1\n\n### Scope Assessment\n\n%s\n\n' "${3:-complete}" "$1" "$2"
 }
 hdr=$'---\nissue: 1\n---\n\n# Issue\n\n'
-for n in 21 22 23 24 25 26; do mkdir -p "$SB/wt$n/.agent/work-plans/issue-$n"; done
+for n in 21 22 23 24 25 26 27 28; do mkdir -p "$SB/wt$n/.agent/work-plans/issue-$n"; done
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none'; } > "$SB/wt21/.agent/work-plans/issue-21/progress.md"
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Easy to use'; ir '2026-10-02 10:00 -04:00' '**Serves**: "none" — nothing in the README'; } > "$SB/wt22/.agent/work-plans/issue-22/progress.md"
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none'; ir '2026-10-02 10:00 -04:00' '**Serves**: Easy to use'; } > "$SB/wt23/.agent/work-plans/issue-23/progress.md"
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' ''; printf '## Plan Authored\n**Status**: complete\n\n**Serves**: Easy to use\n\n'; } > "$SB/wt24/.agent/work-plans/issue-24/progress.md"
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' $'```\n## Issue Review\n**Serves**: Easy to use\n```'; } > "$SB/wt25/.agent/work-plans/issue-25/progress.md"
 { printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Nonetheless a goal'; } > "$SB/wt26/.agent/work-plans/issue-26/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Easy to use'; ir '2026-10-02 10:00 -04:00' '' partial; ir '2026-10-03 10:00 -04:00' '' failed; } > "$SB/wt27/.agent/work-plans/issue-27/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none'; ir '2026-10-02 10:00 -04:00' '**Serves**: Easy to use' partial; } > "$SB/wt28/.agent/work-plans/issue-28/progress.md"
 { printf '{"worktrees":['
-  for n in 21 22 23 24 25 26; do
+  for n in 21 22 23 24 25 26 27 28; do
       [ "$n" = 21 ] || printf ','
       printf '{"type":"workspace","issue":%s,"branch":"feature/issue-%s","path":"%s","repo":"workspace"}' "$n" "$n" "$SB/wt$n"
   done
@@ -1179,8 +1181,8 @@ for n in 21 22 23 24 25 26; do mkdir -p "$SB/wt$n/.agent/work-plans/issue-$n"; d
 printf '#!/usr/bin/env bash\ncat %q\n' "$SB/wl-serves.json" > "$WS/.agent/scripts/worktree_list.sh"
 reset_marks
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$(cut -f4,7 <<< "$OUT")" == $'issue 21\tno path\nissue 22\tno path\nissue 23\tPath 2\nissue 24\tno path\nissue 25\tno path\nissue 26\tPath 2' ]] \
-    && pass "(skill 3) path: only the newest Issue Review's Serves counts; \"none\" is no path; Serves elsewhere or fenced does not count" \
+[[ $RC -eq 0 && "$(cut -f4,7 <<< "$OUT")" == $'issue 21\tno path\nissue 22\tno path\nissue 23\tPath 2\nissue 24\tno path\nissue 25\tno path\nissue 26\tPath 2\nissue 27\tPath 2\nissue 28\tno path' ]] \
+    && pass "(skill 3) path: only the newest complete Issue Review's Serves counts (a partial or failed one, with or without Serves, changes nothing); \"none\" is no path; Serves elsewhere or fenced does not count" \
     || fail "(skill 3) path from Serves rc=$RC '$OUT'"
 rm -f "$SB/wl-serves.json"
 
