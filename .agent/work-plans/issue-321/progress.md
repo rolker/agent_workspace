@@ -411,3 +411,21 @@ Specialists: static analysis (shellcheck clean on the 4 changed scripts; pre-com
 
 ### Tests
 Fix commits used `SKIP=validate-script-tests` (host decision for this pass). The full suite ran once at the end of the pass: `.agent/scripts/tests/run_script_tests.sh`, all 37 suites passed (test_dispatch_phase 127/0, test_review_code_convergence 35/0, test_sitrep_checks 185/0, test_skill_paths 71/0). pre-commit on every file changed in this pass passed (script-test hook skipped there, as the suite had just run); this entry's commit runs the hook normally.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-20 14:46 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-321 at `ea2491f1`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole diff 1667 changed lines across 22 files, with skill, knowledge, script and ADR files)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+Scope: round 2's four findings and the fix diff since it (438fb3bf, 360cbad4, 2d822cc7, ebd59aa3). Specialists: static analysis (shellcheck clean on the 6 changed scripts), governance, plan drift (every fix-pass file traces to a round-2 finding), Claude adversarial (1 suggestion, verified with a crafted timeline; the two round counters checked to agree on restart, status, branch and fences); cross-model skipped (round-3 convergence check, per handoff). Round 2's 4 findings are confirmed fixed: complete-only counting and the restart reset live in `review_progress.sh round` and `next`'s round_count alike, the cap covers `address` at `rounds`, and sit-rep reads Serves from the newest complete Issue Review. Tests: test_dispatch_phase 127/0, test_review_code_convergence 35/0, test_sitrep_checks 185/0, test_skill_paths 71/0. A check that the new tests fail on the pre-fix code was not run here (the command was denied by the permission system); the adversarial reviewer judged them discriminating by reading.
+
+### Findings
+- [ ] (must-fix) The design picture still describes `round_count` as the count of completed pre-push reviews on the branch, without the new reset at the newest `**Decision**: restart` checkpoint; add that clause in both places that describe it (ADR-0017) — `docs/design.md:461`, `.agent/knowledge/review_loop_lifecycle.md:57`
+- [ ] (suggestion) The sit-rep awk takes `**Status**:` from anywhere in an Issue Review body, while `progress_read.py` reads Status only from the header; a `**Status**: partial` line under a `###` subsection of a complete review drops its Serves (verified with a crafted timeline); stop the Status match at the first `### ` line — `.claude/skills/sitrep/SKILL.md:338`
