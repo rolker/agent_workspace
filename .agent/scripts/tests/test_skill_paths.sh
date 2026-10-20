@@ -3,8 +3,9 @@
 # Keeps project-capable skills free of workspace-relative paths (#317), and
 # guards the skill set itself: the declared session_scope list, the
 # replacement of the old what-next skill by the sit-rep (#389), and the
-# orchestrator skill, the host's standing rules and the run-issue
-# checkpoint text they rely on (#321).
+# orchestrator skill, the host's standing rules, the run-issue
+# checkpoint text they rely on, and the roadmap's two Paths paragraphs
+# (#321).
 #
 # A skill whose SKILL.md declares `session_scope: project` or `both` can run
 # in a session started in a project checkout. There, a bare
@@ -304,6 +305,26 @@ PYRULES
     else
         fail "host standing rules: a rule without a reason, or no | Rule | Reason | table under ## Rules: $rules_out"
     fi
+fi
+
+# --- The roadmap's two paths (#321): both paragraphs sit in the Direction
+# section, as prose, with no table row between them (a Path column or
+# table there would change sitrep_checks.sh's grammar).
+ROADMAP="$WS_ROOT/docs/roadmap.md"
+paths_out="$(awk '
+    /^## / { sec = ($0 == "## Direction"); next }
+    !sec { next }
+    /^\*\*Path 1,/ { p1 = 1; inpaths = 1 }
+    /^\*\*Path 2,/ { p2 = 1; last = 1 }
+    inpaths && /^[[:space:]]*\|/ { print "table row between the Paths paragraphs: " $0 }
+    last && /^[[:space:]]*$/ { inpaths = 0; last = 0 }
+    END { if (!p1) print "no **Path 1, paragraph in ## Direction"
+          if (!p2) print "no **Path 2, paragraph in ## Direction" }
+' "$ROADMAP" 2>&1)"
+if [[ -f "$ROADMAP" && -z "$paths_out" ]]; then
+    pass "roadmap: Path 1 and Path 2 paragraphs in ## Direction, no table row between them"
+else
+    fail "roadmap paths: ${paths_out:-docs/roadmap.md is missing}"
 fi
 
 echo ""
