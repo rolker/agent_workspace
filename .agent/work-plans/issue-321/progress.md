@@ -313,3 +313,28 @@ Plan Approach items 1 to 6 were already on the branch in nine commits (16bf013d 
 - Tests, dispatched-agent check: a Sonnet agent read only the orchestrator SKILL.md and `host_standing_rules.md` and classified ten situations from issue 395's drive. It matched the intended answer on all ten. Restart: owner, recipe (a). Project name in the roadmap: host, not re-asked, recipe (b). Quoted acceptance-case sentence: host, listed for veto, recipe (c). Starting the next drive: owner, recipe (d). Merge: owner. Merge past open findings: owner only. MISSING exit check: host retry or stop, `takeover` owner only. Research cap on a read-only run: host, listed. Title truncation: host. Plan proceed: host. One real conflict found: the outward boundary's "an edit to his text" also claimed recipe (c)'s quoted drafts; the boundary now excludes text drafted from his quoted words (c6759ef1). Left as is, not this skill's to fix: no retry limit at `phase-failed` (run-issue's), and how far a mid-drive restatement must differ before it counts as a restart.
 - Tests run: `.agent/scripts/tests/run_script_tests.sh` passed as the pre-commit hook on each commit; `test_skill_paths.sh` 69 passed, 0 failed; pre-commit on every file changed on the branch (`git diff --name-only main...HEAD`) passed.
 - The three commits above were first made under the human git identity (identity env not carried into the commit shell) and were re-authored to the agent identity by a rebase before this entry; none had been pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-20 13:15 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-321 at `f8501d77`
+**Base**: main
+**Depth**: Deep (reason: 1243 changed lines across 16 files, with skill, knowledge and ADR files)
+**Must-fix**: 2 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck clean; pre-commit on every changed file passed, including the script test suite), governance, plan drift, Claude adversarial (test_skill_paths 69/0, test_sitrep_checks 183/0), cross-model Gemini (ran, 6 findings: 3 verified false positives dropped — the `; offered` template join is `, offered` and the test passes; `slug` is reset each loop; `SendMessage` exists — 2 dropped as matching the workspace's own idioms, 1 kept) and Codex (ran, 1 finding, kept).
+
+### Findings
+- [ ] (must-fix) Path 2 is any non-empty `**Serves**:` line anywhere on the timeline, so `**Serves**: none` (which review-issue's template allows) reads as Path 2, and an older positive line outranks a newer `none`; read the newest Issue Review's Serves, treat `none` as no path, and add both cases to test_sitrep_checks.sh (Codex) — `.claude/skills/sitrep/SKILL.md:336`
+- [ ] (must-fix) The review-round rule is not reconciled where the rules it overrides live: review_depth_classification.md "Fix-Round Re-Reviews" and review-code step 2 still say a fix round is never lowered (#320, owner) with no round-3 exception, review-code has no way to take "no cross-model reviewers" from a handoff, and "a second round only after a real defect" has no lever (dispatch_phase.sh routes a changes-requested review to address-findings and then review-code with no checkpoint) — `.agent/knowledge/host_standing_rules.md:30`
+- [ ] (suggestion) Roadmap Path 2 lists "a backlog sweep (#321)", which mislabels issue 321 (the orchestrator skill) and is printed verbatim in the sit-rep's closing question, while the sit-rep classifies 321 as Path 1 through its Direction line — `docs/roadmap.md:47`
+- [ ] (suggestion) Recipe (a) has no resume path: if the session ends between the `Decision: restart` checkpoint and the review-issue entry, `next` routes to `unexpected`, which the table sends to the owner as a mechanism question; say the host re-dispatches review-issue in that state — `.claude/skills/orchestrator/SKILL.md:102`
+- [ ] (suggestion) The host may answer `retry` at `phase-failed` and `revise` at `plan` with no cap, so a persistent failure can loop without the owner; add "after N host retries, ask the owner" (Claude adversarial) — `.claude/skills/orchestrator/SKILL.md:81`
+- [ ] (suggestion) "`stop` is open to the host at any checkpoint" contradicts the `merge` and `merge-refused` rows ("—"); state the exception and that a host `stop` is recorded `Decided-by: host` (Claude adversarial) — `.claude/skills/orchestrator/SKILL.md:84`
+- [ ] (suggestion) The issue 398 comment block derives the repo from `$WS_ROOT`'s origin; with the `.` fallback in a project session it would post to the project's repository; abort when `WS_REPO` is empty or not the workspace repo (Claude adversarial) — `.claude/skills/orchestrator/SKILL.md:181`
+- [ ] (suggestion) Path 1's `\(#[0-9]+[,)]` match takes only the first issue of a list like "(#101, #102)"; none in the roadmap today, but the comment promises "(#N" in a line's item (Gemini) — `.claude/skills/sitrep/SKILL.md:213`
+- [ ] (suggestion) Plan drift, for the record: Path 1 also counts a project named by an `adapter --project` check, and the roadmap gained a Direction line for 321 (owner's instruction quoted in 002bd5a9); both beyond the plan's text, both consistent with it — `docs/roadmap.md:75`
