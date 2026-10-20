@@ -36,6 +36,7 @@ Each step is optional — simple issues can skip straight to `plan-task` or impl
 | `issue-triage` | Periodically | Cross-repo issue scanning, categorization, and stale issue detection |
 | `test-engineering` | After audit-project flags test gaps | Test scaffolding, debugging, and coverage analysis |
 | `inspiration-tracker` | Periodically | Track external projects for portable enhancements and patterns |
+| `orchestrator` | When the owner asks to run, drive or orchestrate issues | Interim: runs issues through `/run-issue` with the owner at goal level, answers a checkpoint itself only where its table allows, under [`host_standing_rules.md`](host_standing_rules.md), and lists each decision for his veto |
 
 ### Makefile skills
 
