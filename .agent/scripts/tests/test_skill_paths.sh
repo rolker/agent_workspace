@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/test_skill_paths.sh
 # Keeps project-capable skills free of workspace-relative paths (#317), and
-# guards the skill set itself: the declared session_scope list, and the
-# replacement of the old what-next skill by the sit-rep (#389).
+# guards the skill set itself: the declared session_scope list, the
+# replacement of the old what-next skill by the sit-rep (#389), and the
+# orchestrator skill, the host's standing rules, the run-issue
+# checkpoint text they rely on, and the roadmap's two Paths paragraphs
+# (#321).
 #
 # A skill whose SKILL.md declares `session_scope: project` or `both` can run
 # in a session started in a project checkout. There, a bare
@@ -154,7 +157,8 @@ fi
 # The frontmatter set itself: the scoped skills are a deliberate list, and a
 # typo in the field name would silently drop a skill from the user tier.
 for name in start-task plan-task review-plan review-code triage-reviews \
-            test-engineering sitrep run-issue review-issue address-findings; do
+            test-engineering sitrep run-issue review-issue address-findings \
+            orchestrator; do
     f="$SKILLS/$name/SKILL.md"
     [[ -f "$f" ]] || { fail "expected skill is missing: $name"; continue; }
     [[ "$(scope_of "$f")" == "both" ]] \
@@ -213,6 +217,122 @@ elif [[ $rc -eq 0 ]]; then
     head -n5 <<< "$hits" | sed 's/^/        /'
 else
     fail "could not run git grep for live pointers (exit $rc): $hits"
+fi
+
+# --- The orchestrator skill (#321): thin, pointing at run-issue and the
+# rules file; the tokens only the owner answers; the issue 398 log.
+ORCH="$SKILLS/orchestrator/SKILL.md"
+has() {  # <file> <label> <fixed text>...: every text appears in the file,
+          # line breaks and runs of spaces read as one space (prose wraps)
+    local f="$1" label="$2" t flat; shift 2
+    flat="$(tr '\n' ' ' < "$f" 2>/dev/null | tr -s ' ')"
+    for t in "$@"; do
+        grep -qF -- "$t" <<< "$flat" || { fail "$label: does not say '$t'"; return; }
+    done
+    pass "$label"
+}
+if [[ -f "$ORCH" ]]; then
+    has "$ORCH" "orchestrator points at /run-issue and reads the standing rules" \
+        '/run-issue' '$WS_ROOT/.agent/knowledge/host_standing_rules.md'
+    has "$ORCH" "orchestrator: takeover at phase-failed and merge at findings are the owner's only" \
+        '| `phase-failed` | `retry` | `takeover` |' '| `findings` | `address` | `merge`' \
+        '| `merge` | — | every answer |' '| `merge-refused` | — | every answer |' \
+        'never lets the host do a phase'"'"'s work itself'
+    has "$ORCH" "orchestrator: a repeated host answer is capped at two in a row (retry, revise at plan, address at rounds)" \
+        'two host `retry` answers in a row for the same phase' \
+        'two host `revise` answers at `plan` in a row' \
+        'two host `address` answers at `rounds` in a row' \
+        "that checkpoint's next answer is the owner's"
+    has "$ORCH" "orchestrator: the issue 398 log, signed, with its four headings" \
+        'gh issue comment 398 -R "$WS_REPO" --body-file' \
+        '## What reached the owner, and why' '## Decisions made, and any vetoes' \
+        '## Where the decision-rights table was wrong or silent' \
+        '## What the sit-rep or hand-back got wrong' '**Authored-By**' '**Model**'
+    has "$ORCH" "orchestrator: the issue 398 log is posted only from the workspace checkout's own remote" \
+        'if [ -f "$WS_ROOT/.agent/scripts/dispatch_phase.sh" ]; then' \
+        'if [ -z "$WS_REPO" ]; then echo "not posted:' 'it is never retried against another repository'
+    has "$ORCH" "orchestrator: parked items go to the inbox with capture.sh" \
+        '$WS_ROOT/.agent/scripts/capture.sh'
+else
+    fail "orchestrator skill is missing: .claude/skills/orchestrator/SKILL.md"
+fi
+
+# --- run-issue: the host may answer a checkpoint, within the orchestrator's table.
+RI="$SKILLS/run-issue/SKILL.md"
+has "$RI" "run-issue documents Decided-by: host and the owner-only answers" \
+    '**Decided-by**: owner | host (<reason>)' \
+    '`merge` and `merge-refused` always wait for the owner, and so do `takeover` at `phase-failed` and `merge` at `findings`' \
+    'never lets the host do a phase'"'"'s work itself' '/orchestrator'
+
+# --- The host's standing rules (#321): every rule carries its reason.
+# Rules with reasons are followed by intent, rules without them only
+# literally (the 2026-10-15 audit the issue cites); an empty Reason cell
+# is the defect this guards. The table is the one under `## Rules`, its
+# header `| Rule | Reason | Source |`.
+RULES="$WS_ROOT/.agent/knowledge/host_standing_rules.md"
+if [[ ! -f "$RULES" ]]; then
+    fail "host standing rules file is missing: .agent/knowledge/host_standing_rules.md"
+else
+    # Cells split on `|` outside backticks, so a code span holding a pipe
+    # does not shift the Reason column.
+    rules_out="$(python3 - "$RULES" <<'PYRULES'
+import re, sys
+lines = open(sys.argv[1], encoding="utf-8").read().splitlines()
+def cells(row):
+    out, cur, code = [], "", False
+    for ch in row.strip().strip("|"):
+        if ch == "`":
+            code = not code
+        if ch == "|" and not code:
+            out.append(cur.strip()); cur = ""
+        else:
+            cur += ch
+    out.append(cur.strip())
+    return out
+sec = hdr = found = False
+rows = bad = 0
+for l in lines:
+    if l.startswith("## "):
+        sec = l.strip() == "## Rules"; hdr = False; continue
+    if not sec or not l.lstrip().startswith("|"):
+        continue
+    c = cells(l)
+    if not hdr:
+        hdr = c[:2] == ["Rule", "Reason"]; found = found or hdr; continue
+    if set("".join(c)) <= set("-: "):
+        continue
+    rows += 1
+    if len(c) < 2 or not c[0] or not c[1]:
+        bad += 1; print("empty: " + l[:100])
+print("rows=%d bad=%d header=%s" % (rows, bad, found))
+PYRULES
+)"
+    summary="$(tail -n1 <<< "$rules_out")"
+    if [[ "$summary" == *"header=True" && "$summary" == "rows="* && "$summary" != "rows=0 "* && "$summary" == *" bad=0 "* ]]; then
+        pass "host standing rules: every rule row has a reason ($summary)"
+    else
+        fail "host standing rules: a rule without a reason, or no | Rule | Reason | table under ## Rules: $rules_out"
+    fi
+fi
+
+# --- The roadmap's two paths (#321): both paragraphs sit in the Direction
+# section, as prose, with no table row between them (a Path column or
+# table there would change sitrep_checks.sh's grammar).
+ROADMAP="$WS_ROOT/docs/roadmap.md"
+paths_out="$(awk '
+    /^## / { sec = ($0 == "## Direction"); next }
+    !sec { next }
+    /^\*\*Path 1,/ { p1 = 1; inpaths = 1 }
+    /^\*\*Path 2,/ { p2 = 1; last = 1 }
+    inpaths && /^[[:space:]]*\|/ { print "table row between the Paths paragraphs: " $0 }
+    last && /^[[:space:]]*$/ { inpaths = 0; last = 0 }
+    END { if (!p1) print "no **Path 1, paragraph in ## Direction"
+          if (!p2) print "no **Path 2, paragraph in ## Direction" }
+' "$ROADMAP" 2>&1)"
+if [[ -f "$ROADMAP" && -z "$paths_out" ]]; then
+    pass "roadmap: Path 1 and Path 2 paragraphs in ## Direction, no table row between them"
+else
+    fail "roadmap paths: ${paths_out:-docs/roadmap.md is missing}"
 fi
 
 echo ""

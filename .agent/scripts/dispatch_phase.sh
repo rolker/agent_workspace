@@ -20,6 +20,11 @@
 #     --skill-prefix (default empty) namespaces every slash command in the
 #     task line, e.g. `agent-workspace:` gives `/agent-workspace:review-code`
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
+#     A pre-push review-code task line at round 3 or later (as
+#     `review_progress.sh round` counts it: complete reviews on the branch
+#     after the newest restart checkpoint, the same rule as `next`) ends
+#     with its scope and the words "no cross-model reviewers" (issue 321,
+#     the round-3 exception).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--project <name>]
@@ -342,6 +347,28 @@ cmd_handoff() {
         exit 2
     }
 
+    # A pre-push review at round 3 or later is a narrow convergence check
+    # with no cross-model reviewers: the owner's standing exception to the
+    # fix-round rule (issue 321; review_depth_classification.md, "Round-3
+    # convergence check"). The scope goes on the task line, which every host
+    # pastes into the dispatch, and review-code step 2 looks for it there.
+    # No progress file is round 1. A round that cannot be counted leaves the
+    # task line as it is (a full fix-round review) and says so on stderr.
+    if [[ "$skill" == "review-code" && -z "$pr" ]]; then
+        local progress="$wt/.agent/work-plans/issue-$issue/progress.md" branch="" round_out="" round=""
+        if [[ -f "$progress" ]]; then
+            if branch=$(git -C "$wt" symbolic-ref --short -q HEAD) \
+                && round_out=$("$SCRIPT_DIR/review_progress.sh" round --progress "$progress" --branch "$branch"); then
+                round=$(sed -n 's/^round=//p' <<< "$round_out")
+            else
+                echo "warning: dispatch: could not count the review rounds for issue #$issue (no branch, or an unreadable timeline); the review-code handoff stays a full fix-round review" >&2
+            fi
+        fi
+        if [[ "$round" =~ ^[0-9]+$ && "$round" -ge 3 ]]; then
+            task="$task (round $round: a narrow convergence check on the round $((round - 1)) review's findings and the fix diff since it; no cross-model reviewers)"
+        fi
+    fi
+
     if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then
         echo "error: dispatch: AGENT_NAME/AGENT_EMAIL are not set — source set_git_identity_env.sh first (no fallback to the human's git config)" >&2
         exit 2
@@ -602,10 +629,18 @@ def round_count():
     # newest such entrys branch correlation (hermetic under --progress). Only
     # status == "complete" counts as a round: a partial/failed review that
     # was retried (row 3 already routed it to checkpoint:phase-failed) must
-    # not inflate the round count toward MAX_ROUNDS.
+    # not inflate the round count toward MAX_ROUNDS. Only reviews after the
+    # newest **Decision**: restart checkpoint count (the owner restated the
+    # goal, /orchestrator recipe (a)): the new work starts at round 1. The
+    # same rule as review_progress.sh round, which the round-3 handoff uses.
     branch = (E.get("correlation") or {}).get("branch")
+    start = 0
+    for i, e in enumerate(entries):
+        if e.get("base_type") == "Checkpoint" \
+                and ((e.get("fields") or {}).get("Decision") or "").strip().lower() == "restart":
+            start = i + 1
     n = 0
-    for e in entries:
+    for e in entries[start:]:
         if e.get("base_type") == "Local Review (Pre-Push)":
             c = e.get("correlation") or {}
             if c.get("kind") == "branch" and c.get("branch") == branch \
@@ -690,7 +725,7 @@ if base == "Plan Authored":
     emit("review-plan", "plan committed -- independent review next")
 
 if base == "Plan Review":
-    emit("checkpoint:plan", "plan review complete -- owner decides proceed, revise, or stop")
+    emit("checkpoint:plan", "plan review complete -- proceed, revise, or stop")
 
 if base == "Implementation":
     mode_note = "pre-push (--branch)" if PR == "none" else "PR mode"

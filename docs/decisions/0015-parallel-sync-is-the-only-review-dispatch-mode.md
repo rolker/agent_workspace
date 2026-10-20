@@ -4,7 +4,9 @@
 
 Accepted. Trigger tier for cross-model dispatch is recorded in issue #320
 (Standard + Deep, fix-round re-reviews included at the whole diff's tier);
-dispatch mechanics unchanged. The `AGENT_KILL_AFTER=0` exception recorded
+the one exception, a round 3 or later whose handoff says "no cross-model
+reviewers", is the owner's from issue 321 (`review_depth_classification.md`,
+"Round-3 convergence check"); dispatch mechanics unchanged. The `AGENT_KILL_AFTER=0` exception recorded
 below was withdrawn by #363; the current job-lifecycle behaviour (kill
 grace, process-group kill, launch window, one run per artifact directory)
 is described in the headers of `cross_model_review.sh`, `_cli_review.sh`
