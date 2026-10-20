@@ -20,6 +20,9 @@
 #     --skill-prefix (default empty) namespaces every slash command in the
 #     task line, e.g. `agent-workspace:` gives `/agent-workspace:review-code`
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
+#     A pre-push review-code task line at round 3 or later (as
+#     `review_progress.sh round` counts it) ends with its scope and the
+#     words "no cross-model reviewers" (issue 321, the round-3 exception).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--project <name>]
@@ -341,6 +344,28 @@ cmd_handoff() {
         echo "error: dispatch: no $type worktree found for issue #$issue" >&2
         exit 2
     }
+
+    # A pre-push review at round 3 or later is a narrow convergence check
+    # with no cross-model reviewers: the owner's standing exception to the
+    # fix-round rule (issue 321; review_depth_classification.md, "Round-3
+    # convergence check"). The scope goes on the task line, which every host
+    # pastes into the dispatch, and review-code step 2 looks for it there.
+    # No progress file is round 1. A round that cannot be counted leaves the
+    # task line as it is (a full fix-round review) and says so on stderr.
+    if [[ "$skill" == "review-code" && -z "$pr" ]]; then
+        local progress="$wt/.agent/work-plans/issue-$issue/progress.md" branch="" round_out="" round=""
+        if [[ -f "$progress" ]]; then
+            if branch=$(git -C "$wt" symbolic-ref --short -q HEAD) \
+                && round_out=$("$SCRIPT_DIR/review_progress.sh" round --progress "$progress" --branch "$branch"); then
+                round=$(sed -n 's/^round=//p' <<< "$round_out")
+            else
+                echo "warning: dispatch: could not count the review rounds for issue #$issue (no branch, or an unreadable timeline); the review-code handoff stays a full fix-round review" >&2
+            fi
+        fi
+        if [[ "$round" =~ ^[0-9]+$ && "$round" -ge 3 ]]; then
+            task="$task (round $round: a narrow convergence check on the round $((round - 1)) review's findings and the fix diff since it; no cross-model reviewers)"
+        fi
+    fi
 
     if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then
         echo "error: dispatch: AGENT_NAME/AGENT_EMAIL are not set — source set_git_identity_env.sh first (no fallback to the human's git config)" >&2

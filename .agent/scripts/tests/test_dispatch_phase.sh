@@ -37,7 +37,7 @@ mk_sandbox() {  # <issue-num>
     git -C "$sb" init -q -b main
     git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
     mkdir -p "$sb/.agent/scripts" "$sb/worktrees/workspace"
-    for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+    for f in dispatch_phase.sh progress_read.py review_progress.sh _worktree_helpers.sh _project_registry.sh; do
         cp "$SCRIPT_DIR/../$f" "$sb/.agent/scripts/"
     done
     git -C "$sb" worktree add -q "$sb/worktrees/workspace/issue-workspace-$n" -b "feature/issue-$n" >/dev/null 2>&1
@@ -427,6 +427,45 @@ out=$(run_handoff --issue 9 --skill not-a-real-skill); rc=$?
 [[ "$rc" -eq 2 && "$out" == *"unknown --skill"* ]] && pass "handoff: an unknown --skill is a usage error" || fail "handoff unknown skill (rc=$rc out=$out)"
 out=$(run_handoff --issue 999 --skill review-issue); rc=$?
 [[ "$rc" -eq 2 && "$out" == *"no workspace worktree found"* ]] && pass "handoff: no worktree for --issue is a usage error" || fail "handoff no worktree (rc=$rc out=$out)"
+
+echo ""
+echo "TEST: handoff -- a pre-push review-code at round 3 or later is a narrow convergence check (issue 321)"
+# Round = prior Local Review (Pre-Push) entries for the worktree's branch + 1
+# (review_progress.sh round). Rounds 1 and 2 keep the bare task line; round
+# 3 and later name the scope and "no cross-model reviewers"; a PR-mode
+# handoff is never changed; another branch's reviews do not count.
+WT9="$SB/worktrees/workspace/issue-workspace-9"
+P9="$WT9/.agent/work-plans/issue-9/progress.md"
+mkdir -p "$(dirname "$P9")"
+printf '# Issue 9\n\n' > "$P9"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: round 1 (no prior review) -- bare review-code task line" || fail "handoff round 1 (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: round 2 -- still the bare task line (the fix-round rule applies)" || fail "handoff round 2 (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-other)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: another branch's review does not count toward the round" || fail "handoff other branch (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9 (round 3: a narrow convergence check on the round 2 review\'s findings and the fix diff since it; no cross-model reviewers)\n'* ]] \
+    && pass "handoff: round 3 -- the task line names the scope and \"no cross-model reviewers\"" || fail "handoff round 3 (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *"task=/review-code --branch --issue 9 (round 4: a narrow convergence check on the round 3 review's findings"*"; no cross-model reviewers)"$'\n'* ]] \
+    && pass "handoff: round 4 -- still a convergence check, naming round 3 as the prior one" || fail "handoff round 4 (out=$out)"
+out=$(run_handoff --issue 9 --skill review-code --pr 42)
+[[ "$out" == *$'\ntask=/review-code 42\n'* && "$out" != *"no cross-model reviewers"* ]] \
+    && pass "handoff: PR mode -- the pre-push round count never changes a PR-mode task line" || fail "handoff round PR mode (out=$out)"
+git -C "$WT9" checkout -q --detach
+out=$(run_handoff --issue 9 --skill review-code); rc=$?
+git -C "$WT9" checkout -q feature/issue-9
+[[ "$rc" -eq 0 && "$out" == *$'\ntask=/review-code --branch --issue 9\n'* && "$out" == *"could not count the review rounds"* ]] \
+    && pass "handoff: no branch to count rounds on -- a full fix-round review, with a warning" || fail "handoff round detached (rc=$rc out=$out)"
+rm -rf "$WT9/.agent/work-plans"
 
 echo ""
 echo "TEST: resolve_worktree -- --type project (registry lookup, then the deprecated project/worktrees fallback)"
