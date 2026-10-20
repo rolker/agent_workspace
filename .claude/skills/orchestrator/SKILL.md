@@ -188,9 +188,18 @@ orchestrator design log), in the workspace repository even from a project
 session. Four headings, each a few lines, plus the two counts:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
-WS_REPO="$(extract_gh_slug "$(git -C "$WS_ROOT" remote get-url origin 2>/dev/null)")"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+# The repository is the workspace checkout's own remote. With no user tier,
+# WS_ROOT falls back to "." and in a project session that is the project:
+# its remote is never the log's, so nothing is posted.
+WS_REPO=""
+if [ -f "$WS_ROOT/.agent/scripts/dispatch_phase.sh" ]; then
+    WS_REPO="$(source "$WS_ROOT/.agent/scripts/_issue_helpers.sh" \
+        && extract_gh_slug "$(git -C "$WS_ROOT" remote get-url origin 2>/dev/null)")"
+fi
+if [ -z "$WS_REPO" ]; then
+    echo "not posted: $WS_ROOT is not the workspace checkout, or it has no GitHub remote" >&2
+else
 BODY="$(mktemp -t orchestrator-log.XXXXXX)"
 cat > "$BODY" <<'EOF'
 <issue number and label>, <how it ended>.
@@ -209,7 +218,12 @@ Owner-level questions: <n>. Mechanism questions that reached him: <m>.
 **Model**: `<model id>`
 EOF
 gh issue comment 398 -R "$WS_REPO" --body-file "$BODY"; rm -f "$BODY"
+fi
 ```
+
+"not posted" goes into the hand-back as it is, with the comment's text,
+so it can be posted from a workspace session; it is never retried against
+another repository.
 
 This is how anyone tells whether the skill helps; look again after the
 acceptance-case run.

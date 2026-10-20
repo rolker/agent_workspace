@@ -243,6 +243,9 @@ if [[ -f "$ORCH" ]]; then
         '## What reached the owner, and why' '## Decisions made, and any vetoes' \
         '## Where the decision-rights table was wrong or silent' \
         '## What the sit-rep or hand-back got wrong' '**Authored-By**' '**Model**'
+    has "$ORCH" "orchestrator: the issue 398 log is posted only from the workspace checkout's own remote" \
+        'if [ -f "$WS_ROOT/.agent/scripts/dispatch_phase.sh" ]; then' \
+        'if [ -z "$WS_REPO" ]; then echo "not posted:' 'it is never retried against another repository'
     has "$ORCH" "orchestrator: parked items go to the inbox with capture.sh" \
         '$WS_ROOT/.agent/scripts/capture.sh'
 else
