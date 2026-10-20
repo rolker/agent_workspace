@@ -186,6 +186,21 @@ cross-model as usual. You may raise the tier, never lower it below the
 whole-diff classification — not even because the fix round itself is
 small (issue #320; see the classification doc's *Fix-Round Re-Reviews*).
 
+**Round-3 convergence check** (the owner's standing exception, issue 321;
+the classification doc's *Round-3 convergence check*): look in your task
+text for the words "no cross-model reviewers". `dispatch_phase.sh` puts
+them, with the round and the scope, after a pre-push task line at round 3
+or later, e.g. `/review-code --branch --issue <N> (round 3: a narrow
+convergence check on the round 2 review's findings and the fix diff since
+it; no cross-model reviewers)`; a host may write the same words into a
+PR-mode handoff. When they are there and the round they name is 3 or
+later, review only the prior round's findings and the fix diff since that
+review, and skip 5e (cross-model); the other specialists of the
+whole-diff tier still run. Record `**Depth**: <tier> (reason: round <R>
+convergence check per handoff)` and the cross-model outcome as "skipped
+(round-<R> convergence check, per handoff)". Without those words, the
+fix-round rule above applies.
+
 **User override**: If the `/review-code` invocation includes a depth keyword
 (`light`, `standard`, or `deep`), use that tier instead of the automatic
 classification — for a fix round too.
