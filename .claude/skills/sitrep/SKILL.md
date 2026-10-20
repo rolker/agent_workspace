@@ -205,14 +205,15 @@ step 1 printed none):
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
 rows="<rows_file printed in step 1>"
-# Path 1 is work a Direction line's own cells name: "(#N" in a line's item
-# or "gh-issue N " in its check (this repository's issue N, step 5's
+# Path 1 is work a Direction line's own cells name: "(#N" in a line's item,
+# every number of a list "(#N, #M)", or "gh-issue N " in its check (this
+# repository's issue N, step 5's
 # match), "gh-issue <owner/repo>#N" (that repository's), and the project
 # an "adapter --project <name>" check names. Read from step 1's rows, over
 # every line row; with no rows the path cannot be told.
 p1=""
 if [ -f "$rows" ]; then
-    p1=" $( { awk -F'\t' '$1 == "line" { print $2 }' "$rows" | grep -oE '\(#[0-9]+[,)]' | grep -oE '[0-9]+'
+    p1=" $( { awk -F'\t' '$1 == "line" { print $2 }' "$rows" | grep -oE '\(#[0-9]+(,[[:space:]]*#[0-9]+)*[,)]' | grep -oE '[0-9]+'
               awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE '(^|[;`[:space:]])gh-issue [0-9]+ ' | grep -oE '[0-9]+'
               awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE 'gh-issue [A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+' | cut -d' ' -f2
               awk -F'\t' '$1 == "line" { print $4 }' "$rows" | grep -oE 'adapter --project [A-Za-z0-9._-]+' | sed 's/^adapter --project /project:/'
@@ -528,10 +529,11 @@ ROW
 )"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
 WS_REPO="$(extract_gh_slug "$(git -C "$WS_ROOT" remote get-url origin 2>/dev/null)")"
-# Issue numbers from the line's own cells only: "(#N)" or "(#N," in the
-# item, "gh-issue N" (this repository) in the check. Never from the
+# Issue numbers from the line's own cells only: "(#N)", "(#N," or each of
+# a list "(#N, #M)" in the item, "gh-issue N" (this repository) in the
+# check. Never from the
 # section's prose, which holds the Format paragraph's literal (#N).
-nums="$( { grep -oE '\(#[0-9]+[,)]' <<< "$item"; grep -oE '(^|[;`[:space:]])gh-issue [0-9]+ ' <<< "$check"; } \
+nums="$( { grep -oE '\(#[0-9]+(,[[:space:]]*#[0-9]+)*[,)]' <<< "$item"; grep -oE '(^|[;`[:space:]])gh-issue [0-9]+ ' <<< "$check"; } \
     | grep -oE '[0-9]+' | sort -un)"
 echo "issues_named=$(echo ${nums:-none})"
 for n in $nums; do

@@ -1143,13 +1143,13 @@ cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
 #!/usr/bin/env bash
 echo '{"worktrees":[{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"},{"type":"workspace","issue":8,"branch":"feature/issue-8","path":"$SB/wt8","repo":"workspace"},{"type":"workspace","issue":9,"branch":"feature/issue-9","path":"$SB/wt9","repo":"workspace"},{"type":"project","issue":3,"branch":"feature/issue-3","path":"$SB/pq","repo":"p"},{"type":"project","issue":7,"branch":"feature/issue-7","path":"$SB/pq","repo":"q"}]}'
 EOF
-printf 'line\tA line (#7)\tfalse\tnone\t2026-10-15\nline\tThe project validates\ttrue\tscript adapter --project p validate\t2026-10-15\ndeferral\tLater (#9)\ttrue\tgh-issue 9 closed\t2026-10-15\n' > "$SB/rows3"
+printf 'line\tA line (#5, #7)\tfalse\tnone\t2026-10-15\nline\tThe project validates\ttrue\tscript adapter --project p validate\t2026-10-15\ndeferral\tLater (#9)\ttrue\tgh-issue 9 closed\t2026-10-15\n' > "$SB/rows3"
 blk="$(skill_step 3 2)"
 blkp="${blk//<rows_file printed in step 1>/$SB/rows3}"
 reset_marks
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$(cut -f1,2,4,7 <<< "$OUT")" == $'workspace\tworkspace\tissue 7\tPath 1\nworkspace\tworkspace\tissue 8\tPath 2\nworkspace\tworkspace\tissue 9\tno path\nproject\tp\tissue 3\tPath 1\nproject\tq\tissue 7\tno path' ]] \
-    && pass "(skill 3) path: a Direction line's issue or project is Path 1, a Serves line Path 2, else no path; deferrals and a project's bare number do not count" \
+    && pass "(skill 3) path: a Direction line's issue (second in a list too) or project is Path 1, a Serves line Path 2, else no path; deferrals and a project's bare number do not count" \
     || fail "(skill 3) path rc=$RC '$OUT'"
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$(cut -f7 <<< "$OUT" | sort -u)" == "path unknown (steps not checked)" ]] \
@@ -1250,6 +1250,9 @@ step5 "It's \$HOME and \`x\` (#7), not #8" '`file-exists a` ; `gh-issue 9 closed
 step5 'No number here' '`gh-issue acme/other#5 closed`'
 [[ "$OUT" == *"issues_named=none"* && "$OUT" != *branch* ]] \
     && pass "(skill 5) another repository's gh-issue names no issue here" || fail "(skill 5) other repo '$OUT'"
+step5 'Two at once (#7, #9), then (#11, see below) and #8' ''
+[[ "$OUT" == *"issues_named=7 9 11"* && "$OUT" != *"issue	8"* ]] \
+    && pass "(skill 5) every number of a list (#N, #M) is taken, and (#N, text) still is" || fail "(skill 5) list '$OUT'"
 echo "TEST: sit-rep step 5 reads the acceptance case's first sentence, as written, with a simple command"
 case5() {  # <roadmap text> [<lines for the TEXT markers>]: step 5's second block against it; sets OUT, RC
     cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"
