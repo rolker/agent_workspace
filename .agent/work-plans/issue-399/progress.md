@@ -108,3 +108,12 @@ Placement of the handoff `case`, the run-issue paragraph and the address-finding
 - [ ] Drop the AGENTS.md "Always" line qualifier (step 4a).
 - [ ] Add the `run_script_tests.sh` header clause and the `docs/design.md#rules` note in Design Picture.
 - [ ] Keep the `.pre-commit-config.yaml` comment above the hook's `- id:` line.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-20 14:51 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (plan review verdict needs-work; all seven findings are wording and placement, none goal-level; the owner's mechanism decision of 2026-10-20 stands)
+**After**: plan
+**Decision**: revise
+Revise per the Plan Review's seven findings. Host directions: the safety net is CI (make lint runs the suite on every push; merge_pr.sh waits for it), not the entry commit's hook, which skips work-plans; name CI in every place and change the acceptance check to "one suite run per pass". Run `pre-commit run --files <every file changed in the pass>` once before the entry, with no separate suite run (that run includes the suite), and again after any fix. Drop the AGENTS.md "Always" line edit; the AGENTS.md script-reference row stays in the plan but is flagged for the owner's explicit yes at the PR (Ask First). Move the test cases to between the implement exit-contract case and the --entry-type override case; put the header sentence after line 16; cite the run_script_tests.sh header and the design.md Rules row; keep the hook comment above the id line. The correction to the owner's decision text (entry hook does not run the suite) goes to him in the hand-back.
