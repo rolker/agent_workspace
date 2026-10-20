@@ -21,8 +21,9 @@
 #     task line, e.g. `agent-workspace:` gives `/agent-workspace:review-code`
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
 #     A pre-push review-code task line at round 3 or later (as
-#     `review_progress.sh round` counts it) ends with its scope and the
-#     words "no cross-model reviewers" (issue 321, the round-3 exception).
+#     `review_progress.sh round` counts it: complete reviews on the branch
+#     only, the same rule as `next`) ends with its scope and the words
+#     "no cross-model reviewers" (issue 321, the round-3 exception).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--project <name>]

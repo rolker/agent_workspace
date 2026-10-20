@@ -61,6 +61,16 @@ out=$("$RP" round --branch feature/issue-7 --progress "$FIX/two.md")
 out=$("$RP" round --branch feature/issue-7 --progress "$FIX/ticked.md")
 [[ "$out" == $'round=3\nprev_must_fix=2' ]] && pass "round: a backticked **Branch** entry correlates with a bare one -> round 3, no silent restart" || fail "round: backticked branch (out=$out)"
 
+# a failed and a partial entry for this branch are not rounds: only the
+# complete one counts -> round 2, and prev is the complete entry's count,
+# not the newer partial one's (issue 321)
+{ printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n'
+  prepush_entry feature/issue-7 3 | sed 's/^\*\*Status\*\*: complete/**Status**: failed/'; printf '\n'
+  prepush_entry feature/issue-7 2; printf '\n'
+  prepush_entry feature/issue-7 4 | sed 's/^\*\*Status\*\*: complete/**Status**: partial/'; } > "$FIX/notcomplete.md"
+out=$("$RP" round --branch feature/issue-7 --progress "$FIX/notcomplete.md")
+[[ "$out" == $'round=2\nprev_must_fix=2' ]] && pass "round: a failed and a partial entry are not rounds -> round 2, prev from the complete entry" || fail "round: failed/partial entries (out=$out)"
+
 # malformed file (unterminated fence) -> non-zero, not a silent round 1
 printf '## Implementation\n```\nopen\n' > "$FIX/bad.md"
 "$RP" round --branch feature/issue-7 --progress "$FIX/bad.md" >/dev/null 2>&1; rc=$?

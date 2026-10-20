@@ -226,6 +226,11 @@ $(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
 $(local_review_prepush complete changes-requested feature/issue-9 bbb2222)"
 assert_next "round_count: a partial Pre-Push review on the branch does not count as a round -- 2 complete rounds, round=2, address-findings (not checkpoint:rounds at MAX_ROUNDS=3)" none \
     "$PARTIAL_PLUS_TWO" address-findings "round=2"
+FAILED_PLUS_TWO="$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$(local_review_prepush failed changes-requested feature/issue-9 zzz0000)
+$(local_review_prepush complete changes-requested feature/issue-9 bbb2222)"
+assert_next "round_count: a failed Pre-Push review between two complete ones does not count -- round=2, address-findings" none \
+    "$FAILED_PLUS_TWO" address-findings "round=2"
 
 echo "TEST: next -- rows 16-18 (checkpoint publish/rounds)"
 assert_next "row 16: checkpoint publish answered publish, --pr none -> publish" none \
@@ -430,8 +435,8 @@ out=$(run_handoff --issue 999 --skill review-issue); rc=$?
 
 echo ""
 echo "TEST: handoff -- a pre-push review-code at round 3 or later is a narrow convergence check (issue 321)"
-# Round = prior Local Review (Pre-Push) entries for the worktree's branch + 1
-# (review_progress.sh round). Rounds 1 and 2 keep the bare task line; round
+# Round = prior complete Local Review (Pre-Push) entries for the worktree's
+# branch + 1 (review_progress.sh round). Rounds 1 and 2 keep the bare task line; round
 # 3 and later name the scope and "no cross-model reviewers"; a PR-mode
 # handoff is never changed; another branch's reviews do not count.
 WT9="$SB/worktrees/workspace/issue-workspace-9"
@@ -445,6 +450,11 @@ append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)
 out=$(run_handoff --issue 9 --skill review-code)
 [[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
     && pass "handoff: round 2 -- still the bare task line (the fix-round rule applies)" || fail "handoff round 2 (out=$out)"
+append "$P9" "$(local_review_prepush failed changes-requested feature/issue-9)"
+append "$P9" "$(local_review_prepush partial changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: a failed and a partial review are not rounds -- still round 2, the bare task line" || fail "handoff failed/partial reviews (out=$out)"
 append "$P9" "$(local_review_prepush complete changes-requested feature/issue-other)"
 out=$(run_handoff --issue 9 --skill review-code)
 [[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
