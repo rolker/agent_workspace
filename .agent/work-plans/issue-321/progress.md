@@ -429,3 +429,12 @@ Scope: round 2's four findings and the fix diff since it (438fb3bf, 360cbad4, 2d
 ### Findings
 - [ ] (must-fix) The design picture still describes `round_count` as the count of completed pre-push reviews on the branch, without the new reset at the newest `**Decision**: restart` checkpoint; add that clause in both places that describe it (ADR-0017) — `docs/design.md:461`, `.agent/knowledge/review_loop_lifecycle.md:57`
 - [ ] (suggestion) The sit-rep awk takes `**Status**:` from anywhere in an Issue Review body, while `progress_read.py` reads Status only from the header; a `**Status**: partial` line under a `###` subsection of a complete review drops its Serves (verified with a crafted timeline); stop the Status match at the first `### ` line — `.claude/skills/sitrep/SKILL.md:338`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-20 14:47 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (round 3 convergence check left one must-fix, two missing clauses in design docs, mechanical; its Ship line is "recommended: fix it and ship"; the owner's standing rule is merge only when clean)
+**After**: rounds
+**Decision**: address
+Round 3 reached the round limit with one must-fix open (the restart-reset clause missing from docs/design.md and review_loop_lifecycle.md) and one suggestion (sit-rep Status match stops at the first subsection). Host answers address so the must-fix is closed before publishing; the next rounds checkpoint is expected to be answered publish, per the round-3 Ship line.
