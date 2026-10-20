@@ -438,3 +438,19 @@ Scope: round 2's four findings and the fix diff since it (438fb3bf, 360cbad4, 2d
 **After**: rounds
 **Decision**: address
 Round 3 reached the round limit with one must-fix open (the restart-reset clause missing from docs/design.md and review_loop_lifecycle.md) and one suggestion (sit-rep Status match stops at the first subsection). Host answers address so the must-fix is closed before publishing; the next rounds checkpoint is expected to be answered publish, per the round-3 Ship line.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-20 14:54 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-321 at `cdf2ac39`
+**Addressed**: Local Review (Pre-Push) at `ea2491f1` (2026-10-20 14:46 -04:00)
+**Commits**: 4faec8db, cdf2ac39
+
+### Actions
+- [x] (must-fix) The restart reset added where the round count is described: design.md says `round_count` counts completed pre-push reviews since the newest `**Decision**: restart` checkpoint (a restart begins the new work at round 1), and review_loop_lifecycle.md says the same; the design-anchors pre-commit hook (`check_design_anchors.sh`) passed — `docs/design.md:461`, `.agent/knowledge/review_loop_lifecycle.md:57` (4faec8db)
+- [x] (suggestion) The sit-rep awk reads an Issue Review's `**Status**` only before the first `### ` line; new test case (issue 29) puts a stray `**Status**: partial` under a subsection of a complete review and expects Path 2; it fails on the old awk (184/1) and passes on the new — `.claude/skills/sitrep/SKILL.md:338`, `.agent/scripts/tests/test_sitrep_checks.sh` (cdf2ac39)
+
+### Tests
+Fix commits used `SKIP=validate-script-tests` (host decision for this pass). The suite ran once at the end of the pass: `.agent/scripts/tests/run_script_tests.sh`, all 37 suites passed (268s; test_sitrep_checks 185/0). pre-commit on the four changed files passed (script-test hook skipped there); this entry's commit runs the hook normally.
