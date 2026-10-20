@@ -454,3 +454,12 @@ Round 3 reached the round limit with one must-fix open (the restart-reset clause
 
 ### Tests
 Fix commits used `SKIP=validate-script-tests` (host decision for this pass). The suite ran once at the end of the pass: `.agent/scripts/tests/run_script_tests.sh`, all 37 suites passed (268s; test_sitrep_checks 185/0). pre-commit on the four changed files passed (script-test hook skipped there); this entry's commit runs the hook normally.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-20 14:55 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: publish
+"1 publish" (owner, 2026-10-20, answering: publish the pull request when the final fix pass returns, or hold). The round-3 convergence check's Ship line was "recommended: fix and ship rather than another full round"; the fix pass closed both of its boxes with the full suite green. Loop defect noted for the record: `next` routed to a fourth pre-push review here because it routes on the review's Verdict, not its Ship line (parked as a follow-up, see issue 399's neighbour note in the hand-back).
