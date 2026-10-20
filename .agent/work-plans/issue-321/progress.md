@@ -390,3 +390,24 @@ Specialists: static analysis (shellcheck clean on the 4 changed scripts; pre-com
 - [x] (must-fix) A recipe (a) restart does not reset the round count: after a restart following two reviews, the first review of the new implementation is handed off as a round-3 convergence check on the old work's findings, skipping cross-model, and `next` reaches MAX_ROUNDS on it; count only reviews after the newest `**Decision**: restart` checkpoint (in the handoff and in `next`'s round_count) and test it, including the untested restart -> `checkpoint:unexpected` route (Codex) — `.agent/scripts/dispatch_phase.sh:359`
 - [x] (suggestion) The `rounds` checkpoint (raised when the loop hits MAX_ROUNDS without approval) is host-answerable with `address` with no cap, so rounds 4, 5, ... can run without the owner; extend the two-in-a-row cap to `address` at `rounds` (the plan-approved table otherwise unchanged) (Gemini, lead) — `.claude/skills/orchestrator/SKILL.md:77`
 - [x] (suggestion) A newest Issue Review that is partial or failed and has no `**Serves**:` line erases an older complete review's goal (the worktree reads "no path"); skip non-complete Issue Reviews or keep the last Serves of a complete one, and add the case to test_sitrep_checks.sh (Claude adversarial) — `.claude/skills/sitrep/SKILL.md:340`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-20 14:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-321 at `ebd59aa3`
+**Addressed**: Local Review (Pre-Push) at `02e72bd6` (2026-10-20 14:23 -04:00)
+**Commits**: 438fb3bf, 360cbad4, 2d822cc7, ebd59aa3
+
+### Actions
+- [x] (must-fix) Round count counts only complete pre-push reviews: fixed in `review_progress.sh round` itself, the counter the round-3 handoff calls, so the handoff, review-code's **Round** field and `next` all count one way; tests for a failed and a partial entry in test_review_code_convergence.sh, test_dispatch_phase.sh (handoff and `next`) — `.agent/scripts/review_progress.sh:102`, `.agent/scripts/dispatch_phase.sh:23`
+- [x] (must-fix) A restart checkpoint starts the round count over: `review_progress.sh round` and `next`'s round_count count only reviews after the newest `**Decision**: restart` checkpoint; tests for a restart followed by reviews (round, handoff, `next` incl. reaching MAX_ROUNDS on the new work's own third review) and the previously untested restart -> `checkpoint:unexpected` route; orchestrator recipe (a) says so — `.agent/scripts/dispatch_phase.sh:627`, `.claude/skills/orchestrator/SKILL.md:110`
+- [x] (suggestion) The two-in-a-row cap on host answers now covers `address` at `rounds`; test_skill_paths pins all three capped answers — `.claude/skills/orchestrator/SKILL.md:84`
+- [x] (suggestion) Sit-rep reads Serves from the newest complete Issue Review only; a partial or failed one leaves the older Serves in place; test_sitrep_checks covers partial and failed reviews with and without a Serves line — `.claude/skills/sitrep/SKILL.md:331`
+
+### Decisions made (owner may veto)
+- The complete-only and restart rules went into `review_progress.sh round`, not a second counter in `dispatch_phase.sh`: the handoff already calls it, and review-code records its **Round** from it, so one rule keeps the handoff's round and the review's own Round field equal. Undoing it: revert 438fb3bf and 360cbad4's `review_progress.sh` hunks.
+
+### Tests
+Fix commits used `SKIP=validate-script-tests` (host decision for this pass). The full suite ran once at the end of the pass: `.agent/scripts/tests/run_script_tests.sh`, all 37 suites passed (test_dispatch_phase 127/0, test_review_code_convergence 35/0, test_sitrep_checks 185/0, test_skill_paths 71/0). pre-commit on every file changed in this pass passed (script-test hook skipped there, as the suite had just run); this entry's commit runs the hook normally.
