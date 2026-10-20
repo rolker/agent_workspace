@@ -370,3 +370,23 @@ Specialists: static analysis (shellcheck clean; pre-commit on every changed file
 - The round-3 scope goes on the task line (which every host pastes), not a new handoff key — undoing it: move it to its own key and update run-issue's paste list.
 - PR mode has no round counter, so `dispatch_phase.sh` prints the round-3 words for pre-push only; a host may write them into a PR-mode handoff — undoing it: count PR-mode `## Local Review` rounds in the script.
 - Host retry/revise cap set at two in a row — undoing it: change the number in one sentence.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-20 14:23 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-321 at `02e72bd6`
+**Base**: main
+**Depth**: Deep (reason: whole-diff classification for a fix round: 1399 changed lines across 20 files, with skill, knowledge, script and ADR files)
+**Must-fix**: 2 | **Suggestions**: 2
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Specialists: static analysis (shellcheck clean on the 4 changed scripts; pre-commit on every changed file passed, script-test hook skipped there because the suites ran separately), governance, plan drift (fix-round files beyond the plan all trace to round 1's must-fix and are listed in the Implementation entry), Claude adversarial (test_dispatch_phase 119/0, test_sitrep_checks 185/0, test_skill_paths 70/0), cross-model Gemini (ran, 5 findings: 1 kept merged into a suggestion; dropped: the progress file is under the worktree for every --type, as --check-exit and next read it; handoff is dispatch_phase.sh's default mode; `<...>` placeholders are the skill's fill-in idiom; the trailing space after `gh-issue N` is the check grammar) and Codex (ran, 2 findings, both kept). Round 1's 8 actionable items are confirmed fixed in 87ba79b8..336503c1.
+
+### Findings
+- [ ] (must-fix) The round-3 handoff counts rounds with `review_progress.sh round`, which counts every pre-push review entry on the branch whatever its Status, while `next`'s round_count counts only `complete` ones; one failed attempt makes the second real review a "round 3" with no cross-model reviewers, and two failed attempts give a convergence check before any complete review; count only complete entries here and test a failed and a partial entry (Codex, Claude adversarial, lead) — `.agent/scripts/dispatch_phase.sh:359`
+- [ ] (must-fix) A recipe (a) restart does not reset the round count: after a restart following two reviews, the first review of the new implementation is handed off as a round-3 convergence check on the old work's findings, skipping cross-model, and `next` reaches MAX_ROUNDS on it; count only reviews after the newest `**Decision**: restart` checkpoint (in the handoff and in `next`'s round_count) and test it, including the untested restart -> `checkpoint:unexpected` route (Codex) — `.agent/scripts/dispatch_phase.sh:359`
+- [ ] (suggestion) The `rounds` checkpoint (raised when the loop hits MAX_ROUNDS without approval) is host-answerable with `address` with no cap, so rounds 4, 5, ... can run without the owner; extend the two-in-a-row cap to `address` at `rounds` (the plan-approved table otherwise unchanged) (Gemini, lead) — `.claude/skills/orchestrator/SKILL.md:77`
+- [ ] (suggestion) A newest Issue Review that is partial or failed and has no `**Serves**:` line erases an older complete review's goal (the worktree reads "no path"); skip non-complete Issue Reviews or keep the last Serves of a complete one, and add the case to test_sitrep_checks.sh (Claude adversarial) — `.claude/skills/sitrep/SKILL.md:340`
