@@ -282,8 +282,9 @@ PARTIAL|FAILED|MISSING` → this is always `checkpoint:phase-failed`, never a
 silent retry: surface the phase, the outcome, and the last entry's text (or
 "no entry written") in an `AskUserQuestion` offering re-dispatch, takeover,
 or stop, then write the `## Checkpoint` entry (below) before calling `next`
-again. A host running `/orchestrator` may answer `retry` or `stop` itself;
-`takeover` is always the owner's answer.
+again. A host running `/orchestrator` may answer `retry` or `stop` itself,
+within that skill's limit on repeated host answers; `takeover` is always
+the owner's answer.
 
 **The dispatched implement pass.** `action=implement` has no `SKILL.md` of
 its own — no `/implement` slash command exists, so `skill_task_line()`

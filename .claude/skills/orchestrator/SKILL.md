@@ -81,6 +81,12 @@ else waits for the owner, written `**Decided-by**: owner`.
 | `phase-failed` | `retry` | `takeover` |
 | `unexpected` | only when the state is one of the other checkpoints under a name the table missed: that checkpoint's `**After**` and an allowed token; or the newest entry is a `restart` checkpoint (recipe (a)) | otherwise |
 
+A host answer that repeats does not loop without the owner: after two
+host `retry` answers in a row for the same phase, or two host `revise`
+answers at `plan` in a row, that checkpoint's next answer is the owner's.
+Count the `**Decided-by**: host` checkpoints on the timeline, not from
+memory, so a resumed session counts the same.
+
 `stop` is open to the host at any checkpoint. A host-answered checkpoint
 never lets the host do a phase's work itself. A host answer that hits one
 of the three kinds above goes to the owner instead.
