@@ -79,7 +79,7 @@ else waits for the owner, written `**Decided-by**: owner`.
 | `merge` | — | every answer |
 | `merge-refused` | — | every answer |
 | `phase-failed` | `retry` | `takeover` |
-| `unexpected` | only when the state is one of the other checkpoints under a name the table missed: that checkpoint's `**After**` and an allowed token | otherwise |
+| `unexpected` | only when the state is one of the other checkpoints under a name the table missed: that checkpoint's `**After**` and an allowed token; or the newest entry is a `restart` checkpoint (recipe (a)) | otherwise |
 
 `stop` is open to the host at any checkpoint. A host-answered checkpoint
 never lets the host do a phase's work itself. A host answer that hits one
@@ -104,7 +104,10 @@ moves one class inside; the issue 398 comment is the first.
   `**After**: <the checkpoint pending, else unexpected>`, `**Decision**:
   restart` and his words verbatim; then dispatch `review-issue`
   (`dispatch_phase.sh --issue <N> --skill review-issue`). Its
-  `## Issue Review` is then the newest entry and routes as usual.
+  `## Issue Review` is then the newest entry and routes as usual. If the
+  session ends before that entry is written, the `restart` checkpoint is
+  the newest entry and `next` reports `unexpected`: the host dispatches
+  `review-issue` then, without asking (the owner already decided it).
 - **(b) Project names.** Settled; not re-asked. See the standing rules row
   on names: mechanism text names no project, record text may name a public
   one.

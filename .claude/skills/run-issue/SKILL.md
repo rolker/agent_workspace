@@ -423,8 +423,10 @@ to an `AskUserQuestion`, not a phase's own output. `**Decided-by**: host
 field, it is the record a later reader checks the host against. One owner
 answer outside the vocabulary is recorded by the host: `**Decision**:
 restart`, when he restates the goal mid-drive (`/orchestrator`, recipe
-(a)); it is followed at once by a `review-issue` dispatch, so `next` never
-routes on it.
+(a)); it is followed at once by a `review-issue` dispatch. If the session
+ends before that dispatch writes its entry, `next` routes the `restart`
+entry to row 28, `checkpoint:unexpected`, and the host dispatches
+`review-issue` (recipe (a)) rather than asking again.
 
 **Deferred suggestion-only boxes.** One case needs a second write alongside
 the `## Checkpoint` entry: an `**After**: findings` checkpoint answered
