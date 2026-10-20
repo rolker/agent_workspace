@@ -238,6 +238,11 @@ if [[ -f "$ORCH" ]]; then
         '| `phase-failed` | `retry` | `takeover` |' '| `findings` | `address` | `merge`' \
         '| `merge` | — | every answer |' '| `merge-refused` | — | every answer |' \
         'never lets the host do a phase'"'"'s work itself'
+    has "$ORCH" "orchestrator: a repeated host answer is capped at two in a row (retry, revise at plan, address at rounds)" \
+        'two host `retry` answers in a row for the same phase' \
+        'two host `revise` answers at `plan` in a row' \
+        'two host `address` answers at `rounds` in a row' \
+        "that checkpoint's next answer is the owner's"
     has "$ORCH" "orchestrator: the issue 398 log, signed, with its four headings" \
         'gh issue comment 398 -R "$WS_REPO" --body-file' \
         '## What reached the owner, and why' '## Decisions made, and any vetoes' \
