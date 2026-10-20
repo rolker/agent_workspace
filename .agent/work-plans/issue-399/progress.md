@@ -52,3 +52,11 @@ issue: 399
 - Word the rule as owner-decided and pass-scoped: SKIP only on intermediate atomic commits of a dispatched implement / address-findings pass; full suite plus pre-commit on all changed files before the entry; the entry commit runs the hook; `--no-verify` stays forbidden; a failing run is fixed first.
 - Make the pinned test check that the other five phases' `conventions=` do not carry the rule.
 - Say in the PR how the result is looked at: the next dispatched fix pass shows one suite run, not one per commit.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-20 14:46 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `2281176b`
+
+Once-per-pass rule (owner-decided 2026-10-20) added as a per-skill case feeding the conventions= echo in dispatch_phase.sh for implement and address-findings only, plus address-findings steps 3-5, one run-issue step 4 paragraph, the AGENTS.md hook line and script row, the hook comment, and a pinned test placed mid-file. Placed clear of feature/issue-321's hunks; main merges in after 321 lands.
