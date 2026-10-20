@@ -14,8 +14,9 @@
 # round    Prints two lines: "round=<R>" and "prev_must_fix=<P|->". R is the
 #          count of prior "## Local Review (Pre-Push)" entries whose
 #          **Branch** correlation names <name> and whose **Status** is
-#          complete, plus 1. A partial or failed review was not a round
-#          (issue 321).
+#          complete, plus 1; only entries after the newest "## Checkpoint"
+#          with **Decision**: restart count (a restart starts the rounds
+#          over). A partial or failed review was not a round (issue 321).
 #          P is the must-fix finding count of the most recent counted entry
 #          ("-" when none). dispatch_phase.sh's `next` counts rounds by the
 #          same rule. Reads the file via progress_read.py; a missing file
@@ -121,13 +122,19 @@ cmd_round() {
     local json
     json=$("$PYTHON" "$PROGRESS_READ" "$progress") || {
         echo "error: round: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
-    # Prior COMPLETE entries for THIS branch; the newest is the last in file
-    # order. Keep this rule in step with round_count() in dispatch_phase.sh
-    # `next`.
+    # Prior COMPLETE entries for THIS branch, after the newest restart
+    # checkpoint; the newest is the last in file order. The whole timeline
+    # is read (not --type) because the restart is a Checkpoint entry. Keep
+    # this rule in step with round_count() in dispatch_phase.sh `next`.
     printf '%s' "$json" | BRANCH="$branch" "$PYTHON" -c '
 import json, os, sys
 entries = json.load(sys.stdin)["entries"]
-mine = [e for e in entries
+start = 0
+for i, e in enumerate(entries):
+    if e.get("base_type") == "Checkpoint" \
+            and ((e.get("fields") or {}).get("Decision") or "").strip().lower() == "restart":
+        start = i + 1
+mine = [e for e in entries[start:]
         if e.get("base_type") == "Local Review (Pre-Push)"
         and (e.get("status") or "").strip().lower() == "complete"
         and (e.get("correlation") or {}).get("kind") == "branch"

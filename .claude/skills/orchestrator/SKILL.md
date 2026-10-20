@@ -117,6 +117,8 @@ moves one class inside; the issue 398 comment is the first.
   session ends before that entry is written, the `restart` checkpoint is
   the newest entry and `next` reports `unexpected`: the host dispatches
   `review-issue` then, without asking (the owner already decided it).
+  The restart also starts the pre-push review rounds over: `next` and the
+  round-3 handoff count only reviews after it.
 - **(b) Project names.** Settled; not re-asked. See the standing rules row
   on names: mechanism text names no project, record text may name a public
   one.

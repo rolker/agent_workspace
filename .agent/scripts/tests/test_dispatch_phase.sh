@@ -232,6 +232,28 @@ $(local_review_prepush complete changes-requested feature/issue-9 bbb2222)"
 assert_next "round_count: a failed Pre-Push review between two complete ones does not count -- round=2, address-findings" none \
     "$FAILED_PLUS_TWO" address-findings "round=2"
 
+RESTART_THEN_ONE="$THREE_ROUNDS
+$(checkpoint rounds restart)
+$(issue_review complete 0)
+$(plan_authored complete)
+$(plan_review complete)
+$(checkpoint plan proceed)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)"
+assert_next "round_count: a restart checkpoint starts the rounds over -- three reviews, restart, one review of the new work: round=1, address-findings (not checkpoint:rounds)" none \
+    "$RESTART_THEN_ONE" address-findings "round=1"
+assert_next "round_count: after a restart, the new work reaches MAX_ROUNDS only on its own third review" none \
+    "$RESTART_THEN_ONE
+$(local_review_prepush complete changes-requested feature/issue-9 eee5555)
+$(local_review_prepush complete changes-requested feature/issue-9 fff6666)" checkpoint:rounds "round=3"
+
+echo "TEST: next -- a restart checkpoint as the newest entry (orchestrator recipe (a))"
+assert_next "restart: a restart checkpoint with no entry after it routes to row 28, checkpoint:unexpected (the host then dispatches review-issue)" none \
+    "$TWO_ROUNDS
+$(checkpoint rounds restart)" checkpoint:unexpected
+assert_next "restart: a restart recorded under **After**: unexpected also routes to checkpoint:unexpected" none \
+    "$(checkpoint unexpected restart)" checkpoint:unexpected
+
 echo "TEST: next -- rows 16-18 (checkpoint publish/rounds)"
 assert_next "row 16: checkpoint publish answered publish, --pr none -> publish" none \
     "$(checkpoint publish publish)" publish
@@ -470,6 +492,15 @@ out=$(run_handoff --issue 9 --skill review-code)
 out=$(run_handoff --issue 9 --skill review-code --pr 42)
 [[ "$out" == *$'\ntask=/review-code 42\n'* && "$out" != *"no cross-model reviewers"* ]] \
     && pass "handoff: PR mode -- the pre-push round count never changes a PR-mode task line" || fail "handoff round PR mode (out=$out)"
+append "$P9" "$(checkpoint rounds restart)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: a restart checkpoint starts the rounds over -- after four reviews, the next is round 1, the bare task line" || fail "handoff restart (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *"task=/review-code --branch --issue 9 (round 3: a narrow convergence check on the round 2 review's findings"* ]] \
+    && pass "handoff: two reviews after the restart -- the next is round 3 of the new work" || fail "handoff restart round 3 (out=$out)"
 git -C "$WT9" checkout -q --detach
 out=$(run_handoff --issue 9 --skill review-code); rc=$?
 git -C "$WT9" checkout -q feature/issue-9

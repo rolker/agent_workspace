@@ -22,8 +22,9 @@
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
 #     A pre-push review-code task line at round 3 or later (as
 #     `review_progress.sh round` counts it: complete reviews on the branch
-#     only, the same rule as `next`) ends with its scope and the words
-#     "no cross-model reviewers" (issue 321, the round-3 exception).
+#     after the newest restart checkpoint, the same rule as `next`) ends
+#     with its scope and the words "no cross-model reviewers" (issue 321,
+#     the round-3 exception).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--project <name>]
@@ -628,10 +629,18 @@ def round_count():
     # newest such entrys branch correlation (hermetic under --progress). Only
     # status == "complete" counts as a round: a partial/failed review that
     # was retried (row 3 already routed it to checkpoint:phase-failed) must
-    # not inflate the round count toward MAX_ROUNDS.
+    # not inflate the round count toward MAX_ROUNDS. Only reviews after the
+    # newest **Decision**: restart checkpoint count (the owner restated the
+    # goal, /orchestrator recipe (a)): the new work starts at round 1. The
+    # same rule as review_progress.sh round, which the round-3 handoff uses.
     branch = (E.get("correlation") or {}).get("branch")
+    start = 0
+    for i, e in enumerate(entries):
+        if e.get("base_type") == "Checkpoint" \
+                and ((e.get("fields") or {}).get("Decision") or "").strip().lower() == "restart":
+            start = i + 1
     n = 0
-    for e in entries:
+    for e in entries[start:]:
         if e.get("base_type") == "Local Review (Pre-Push)":
             c = e.get("correlation") or {}
             if c.get("kind") == "branch" and c.get("branch") == branch \

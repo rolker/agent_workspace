@@ -510,7 +510,8 @@ from `$WS_ROOT/.agent/scripts/review_progress.sh` (tested in
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-# Round = prior complete `## Local Review (Pre-Push)` entries for THIS branch + 1;
+# Round = prior complete `## Local Review (Pre-Push)` entries for THIS branch,
+# after the newest `**Decision**: restart` checkpoint, + 1;
 # prev_must_fix = must-fix count of the newest such entry ("-" if none).
 $WS_ROOT/.agent/scripts/review_progress.sh round --issue <N> --branch "$BRANCH"
 
