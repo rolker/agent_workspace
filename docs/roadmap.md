@@ -44,7 +44,7 @@ or work in the project a line's check names.
 pieces to make this workspace reflect the goals we set: the acceptance
 cases after GeoZui4D, audit trials (starting with the escape-rate count
 and the review-round rule), the instruction-file trim, and a backlog
-sweep (#321). Path 2 work is any other work that serves a goal in the
+sweep. Path 2 work is any other work that serves a goal in the
 README.
 
 **Format.** `sitrep_checks.sh` has the full grammar in its header.
