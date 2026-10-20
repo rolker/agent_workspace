@@ -338,8 +338,9 @@ except ValueError:
     [ -z "$f" ] || serves="$(awk 'function done_ir() { if (ir && tolower(st) ~ /^complete[[:space:]]*$/) s = cs; ir = 0 }
         /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
         fence { next }
-        /^## / { done_ir(); ir = ($0 ~ /^## Issue Review([[:space:]]|$)/); cs = ""; st = ""; next }
-        ir && /^\*\*Status\*\*:/ { sub(/^\*\*Status\*\*:[[:space:]]*/, ""); st = $0 }
+        /^## / { done_ir(); ir = ($0 ~ /^## Issue Review([[:space:]]|$)/); cs = ""; st = ""; sub_ = 0; next }
+        /^### / { sub_ = 1 }
+        ir && !sub_ && /^\*\*Status\*\*:/ { sub(/^\*\*Status\*\*:[[:space:]]*/, ""); st = $0 }
         ir && /^\*\*Serves\*\*:/ { sub(/^\*\*Serves\*\*:[[:space:]]*/, ""); cs = $0 }
         END { done_ir(); if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) s = ""; print s }' "$f")"
     if [ ! -f "$rows" ]; then wpath="path unknown (steps not checked)"
