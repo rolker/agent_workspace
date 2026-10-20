@@ -90,9 +90,10 @@ of the three kinds above goes to the owner instead.
 Inside it, done by the host: the loop's own push and pull request, signed
 comments on the issue being driven, progress entries, and limits it sets on
 a read-only background run (listed as decisions). Everything else outward
-goes to the owner: a new issue, a merge, an edit to his text, a message to
-another session, a comment on another issue, deleting data or a branch this
-drive did not create, anything a stranger could read as his word. A
+goes to the owner: a new issue, a merge, an edit to his text that is not
+drafted from his quoted words (recipe (c)), a message to another session, a
+comment on another issue, deleting data or a branch this drive did not
+create, anything a stranger could read as his word. A
 standing authorization of his, recorded in the rules file with his words,
 moves one class inside; the issue 398 comment is the first.
 
