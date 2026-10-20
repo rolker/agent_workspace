@@ -87,7 +87,10 @@ answers at `plan` in a row, that checkpoint's next answer is the owner's.
 Count the `**Decided-by**: host` checkpoints on the timeline, not from
 memory, so a resumed session counts the same.
 
-`stop` is open to the host at any checkpoint. A host-answered checkpoint
+`stop` is open to the host at every checkpoint except `merge` and
+`merge-refused`, where every answer, `stop` included, is the owner's; a
+host `stop` is recorded `**Decided-by**: host (<reason>)` like any other
+host answer. A host-answered checkpoint
 never lets the host do a phase's work itself. A host answer that hits one
 of the three kinds above goes to the owner instead.
 
