@@ -337,4 +337,36 @@ Specialists: static analysis (shellcheck clean; pre-commit on every changed file
 - [x] (suggestion) "`stop` is open to the host at any checkpoint" contradicts the `merge` and `merge-refused` rows ("—"); state the exception and that a host `stop` is recorded `Decided-by: host` (Claude adversarial) — `.claude/skills/orchestrator/SKILL.md:84`
 - [x] (suggestion) The issue 398 comment block derives the repo from `$WS_ROOT`'s origin; with the `.` fallback in a project session it would post to the project's repository; abort when `WS_REPO` is empty or not the workspace repo (Claude adversarial) — `.claude/skills/orchestrator/SKILL.md:181`
 - [x] (suggestion) Path 1's `\(#[0-9]+[,)]` match takes only the first issue of a list like "(#101, #102)"; none in the roadmap today, but the comment promises "(#N" in a line's item (Gemini) — `.claude/skills/sitrep/SKILL.md:213`
-- [ ] (suggestion) Plan drift, for the record: Path 1 also counts a project named by an `adapter --project` check, and the roadmap gained a Direction line for 321 (owner's instruction quoted in 002bd5a9); both beyond the plan's text, both consistent with it — `docs/roadmap.md:75`
+- [x] (suggestion) Plan drift, for the record: Path 1 also counts a project named by an `adapter --project` check, and the roadmap gained a Direction line for 321 (owner's instruction quoted in 002bd5a9); both beyond the plan's text, both consistent with it — `docs/roadmap.md:75` (deferred: a record of plan drift, no change asked: both additions are consistent with the plan and are listed in this round's Implementation entry)
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-20 14:14 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-321 at `336503c1`
+**Addressed**: Local Review (Pre-Push) at `f8501d77` (2026-10-20 13:15 -04:00)
+**Commits**: 87ba79b8, 07524c62, f8d16509, a64c77a6, 816fb1b2, d929eb89, 312a1f2b, 3019b499, 42eb1122, 336503c1
+
+### Actions
+- [x] (must-fix) Sit-rep Path 2 reads only the newest Issue Review's Serves line (fence-aware); `none` (any case, quoted or bold) is no path; tests for a lone `none`, a newer `none` over an older goal, a newer goal over an older `none`, Serves outside an Issue Review, Serves in a fence, and "Nonetheless…" — `.claude/skills/sitrep/SKILL.md:330` (87ba79b8)
+- [x] (must-fix) Review-round rule reconciled per the host's direction: the rules row says its first half is the ship verdict's rule (`review_progress.sh verdict`) and points at where the second half lives; the round-3 exception is in `review_depth_classification.md` ("Round-3 convergence check", with a one-line pointer from the issue 320 text) and review-code step 2 (what to look for in the task text); `dispatch_phase.sh` appends the scope and "no cross-model reviewers" to a pre-push review-code task line at round 3+, tested for rounds 1-4, another branch, PR mode and a detached worktree; ADR-0015's Status points at the exception — `.agent/knowledge/host_standing_rules.md:30` (07524c62, f8d16509, 336503c1)
+- [x] (suggestion) Roadmap Path 2: dropped "(#321)" after "a backlog sweep" (no issue tracks the sweep); his words unchanged — `docs/roadmap.md:47` (a64c77a6)
+- [x] (suggestion) Recipe (a) resume path: a `restart` checkpoint with no Issue Review after it is re-dispatched to review-issue by the host; `unexpected` row and run-issue's note updated — `.claude/skills/orchestrator/SKILL.md:102` (816fb1b2)
+- [x] (suggestion) Host `retry`/`revise` capped at two in a row per checkpoint, counted from the timeline; run-issue points at the limit — `.claude/skills/orchestrator/SKILL.md:84` (d929eb89)
+- [x] (suggestion) Host `stop` excluded at `merge` and `merge-refused`, recorded `Decided-by: host` elsewhere — `.claude/skills/orchestrator/SKILL.md:84` (312a1f2b)
+- [x] (suggestion) Issue 398 log resolves a repository only when `$WS_ROOT` is the workspace checkout (holds `dispatch_phase.sh`), else prints "not posted" for the hand-back; pinned in test_skill_paths — `.claude/skills/orchestrator/SKILL.md:181` (3019b499)
+- [x] (suggestion) "(#N, #M)" lists: one list-aware match in sit-rep steps 3 and 5, tested in both — `.claude/skills/sitrep/SKILL.md:213` (42eb1122)
+- [x] (suggestion) Plan drift record — `docs/roadmap.md:75` (deferred: a record of plan drift, no change asked; both additions are consistent with the plan)
+
+### Checks
+- `run_script_tests.sh`: all 37 suites passed (test_sitrep_checks 185/0, test_dispatch_phase 119/0, test_skill_paths 70/0).
+- pre-commit on every changed file: passed (validate-script-tests skipped in that run only, since the full suite had just run).
+- New tests fail on the old code (checked for the Serves case: 183/1 before the fix).
+- The issue 398 block's guard was not executed end to end: running the extracted block was denied by the permission system; it is covered by reading and the text pin.
+
+### Decisions made (owner may veto)
+- Round 1 with suggestions but no must-fix still gets a round 2 in the loop as it routes today: review-code writes `**Verdict**: changes-requested` whenever any finding survives, and `dispatch_phase.sh next` routes on Verdict (to address-findings, then review-code), not on the `**Ship**` line. The rules row therefore says the first half is the ship verdict's rule, not that the routing enforces it — undoing it: reword the row; making routing follow it is a `next` change the host did not ask for.
+- The round-3 scope goes on the task line (which every host pastes), not a new handoff key — undoing it: move it to its own key and update run-issue's paste list.
+- PR mode has no round counter, so `dispatch_phase.sh` prints the round-3 words for pre-push only; a host may write them into a PR-mode handoff — undoing it: count PR-mode `## Local Review` rounds in the script.
+- Host retry/revise cap set at two in a row — undoing it: change the number in one sentence.
