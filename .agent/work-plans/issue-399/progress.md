@@ -366,3 +366,21 @@ Pre-push round 2 (94903ce5): approved, 0 must-fix, 4 suggestions (skill example'
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` once at b0f6c45c with no SKIP: every hook passed, `validate-script-tests` (the whole script suite) included.
 - `shellcheck -S warning` on dispatch_phase.sh and test_dispatch_phase.sh: clean.
 - test_dispatch_phase 121/0 (one new case), test_skill_paths 58/0 (run during the fixes).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 10:34 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: approved
+**Dispatch**: resumed (agent a4d8c676c1f48ef66, resume 2 of 3)
+
+**Branch**: feature/issue-399 at `067fbcd7`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 633 changed lines with the work-plan files; AGENTS.md and .pre-commit-config.yaml are override triggers; same specialists as Standard)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 2's four suggestions are resolved (4b76fca4, de8ea7f7, 2e238d86, b0f6c45c): the skill example is a text fence with a placeholder note; the suite wording is qualified to a changed, still-present matching file with CI covering deletions; ROOT_DIR is printed through printf %q (an ordinary path prints unchanged and still matches the allowlist entry; a new test runs the printed command for a spaced root against a fake pre-commit and fails without %q); the run-issue paragraph and hook comment are re-wrapped. Specialists: static analysis (shellcheck clean on dispatch_phase.sh and test_dispatch_phase.sh), governance (hook definition unchanged, comment only; the AGENTS.md row edit is owner-approved at the a3fb7b07 checkpoint), plan drift (none beyond the review fixes), Claude adversarial (no must-fix; test sandbox removed by its EXIT trap, real worktree list unchanged), cross-model (Gemini and Codex both "No issues found"; Codex read-only, ran syntax checks only). test_dispatch_phase 121/0, test_skill_paths 58/0. Dropped: the spaced-path test's parse assumes the first backtick ends the command (true for the printed text today).
+
+### Findings
+- [ ] (suggestion) Reflow miss from the deleted-paths edit: one 101-character line ("here; CI's all-files run covers it); run no separate suite. It takes several minutes, longer than the") in a paragraph wrapped at about 75 — `.claude/skills/address-findings/SKILL.md:189`
