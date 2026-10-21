@@ -254,3 +254,24 @@ PR 1 of four (the per-project settings file and its keys), after the owner's che
 - `4df7317b` AGENTS.md Script Reference row for `project_setting.sh`, its own commit (Ask First, owner approval on the PR).
 - Deviations from the plan text, for review: `bootstrap_url` also accepts `file://` (the legacy variable and the tests use it); the legacy `projects.d/<name>.sh`, when present, stays the whole legacy layer (the shared config is consulted only when it is absent), as before #332, rather than falling through per variable.
 - Tests: `run_script_tests.sh` all 38 suites passed; shellcheck clean on the changed scripts; design-anchor hook passed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 08:29 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `5c68e36e`
+**Base**: main
+**Depth**: Deep (reason: 1930 changed lines outside work plans, 200+ threshold; AGENTS.md governance file)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck clean on 8 scripts; test_project_file.sh 157 passed; run_script_tests.sh 38 suites passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial, cross-model (gemini complete, codex complete). Merge resolution 5c68e36e checked: both change-log rows kept, no conflict markers, 779 lines matches the file.
+
+### Findings
+- [ ] (must-fix) Key check matches substrings of the space-separated key list, so `build test=foo` or `location location_path=/x` passes `check` (exit 0) and is then ignored by `get`; `set` writes it too. Compare the whole key exactly in parser and writer, and add a test (codex + Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:788`, `:1055`
+- [ ] (must-fix) Docs say precedence is "the settings file, then the legacy .sh, then the shared config", but the code treats an existing legacy .sh as the whole legacy layer (shared config never consulted, e.g. a legacy file with only BUILD_CMD gets no shared TEST_CMD). The implementation keeps main's behaviour as a declared deviation; state that rule in the docs (or implement per-variable fall-through as the plan said) — `.agent/projects.local.example:86`, `docs/design.md:275`
+- [ ] (suggestion) Orphan-settings check uses `grep -qx "$_pfname"` (regex, no `--`): `.` matches any character and a leading `-` is read as an option; use `grep -qxF --` (gemini + Claude adversarial) — `.agent/scripts/dashboard.sh:199`
+- [ ] (suggestion) The writer forces mode 644 on every rewrite and replaces a symlinked settings file with a regular file; keep the original file's mode (confirmed: 600 became 644 after `set`) — `.agent/scripts/_project_registry.sh:1143`
+- [ ] (suggestion) After the merge the #332 change-log row (dated 2026-10-13) sits below the #395 row (2026-10-15); re-date it to the day this lands so the log's dates run in order — `docs/design.md:726`
