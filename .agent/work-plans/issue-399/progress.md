@@ -257,3 +257,19 @@ All five round 2 items are resolved and verified against the code. The one remai
 **Decision**: proceed
 
 Plan review round 3 (77b370d7): ready, all five round-2 items resolved, one low implementation note (the --type project test case goes after the SBP1 sandbox is created, after test_dispatch_phase.sh line 446). Owner's answer: "Proceed (Recommended)".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 09:59 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Branch**: feature/issue-399 at `d1186db4`
+
+- Step 1, `dispatch_phase.sh` (`46562053`): a `case` on `$skill`, workspace type only, appends the once-per-pass hook rule to `conventions=` for `implement` and `address-findings`; other phases and project handoffs are byte-identical. One header sentence after the output-order sentence.
+- Step 2, `address-findings/SKILL.md` (`5b5d490a`, `d1186db4`): step 3 states the SKIP exemption, applied only when `conventions=` carries it; step 4 makes the one `pre-commit run --files $(git diff --name-only main...HEAD)` run explicit; step 5 names CI, not the entry commit, as the backstop. `d1186db4` rewords a workspace-relative path that `test_skill_paths.sh` rejects.
+- Step 3, `run-issue/SKILL.md` step 4 (`a216a772`): one paragraph after the `## Implementation` shape paragraph.
+- Step 4, `AGENTS.md` `run_script_tests.sh` row (`284eea98`, its own commit): Ask First, needs the owner's explicit yes on the PR.
+- Step 5, `.pre-commit-config.yaml` (`b09c4497`): comment above `- id: validate-script-tests`; hook unchanged.
+- Step 5b, `run_script_tests.sh` header (`7c858c4b`): one clause, comment only.
+- Step 6, `test_dispatch_phase.sh` (`c17ce5dc`): rule present in workspace implement and address-findings, absent in the other five phases and in a `--type project` implement handoff (placed after the `SBP1` registry assertion, per the round-3 reviewer's note); mutation-checked.
+- Step 7: intermediate commits used `SKIP=validate-script-tests`; one branch-wide `pre-commit run --files` failed on `test_skill_paths.sh`, fixed in `d1186db4`, then re-run on the final tree: every hook passed, script suite included. Shellcheck at warning level clean on the three changed scripts.
+- Open for review: `pre-commit` is not on PATH in a dispatched shell (it lives in the main checkout's `.venv/bin`), so the handoff's literal command fails with "command not found" until the agent finds it.
