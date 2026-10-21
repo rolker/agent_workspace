@@ -315,9 +315,13 @@ active_project_exec() {
 # The note printed when a registered project's command comes from the
 # shared .agent/project_config.sh rather than its own settings: that
 # fallback used to be silent (issue #332).
-# Usage: active_project_fallback_note build
+# Usage: active_project_fallback_note build|test|install|bootstrap_url
 active_project_fallback_note() {
     [ -n "${ACTIVE_PROJECT_NAME:-}" ] || return 0
+    if [ "$1" = "bootstrap_url" ]; then
+        echo "NOTE: project '$ACTIVE_PROJECT_NAME' has no bootstrap URL of its own; using MANIFEST_BOOTSTRAP_URL from the shared .agent/project_config.sh (set it with: .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME bootstrap_url=<url>)" >&2
+        return 0
+    fi
     echo "NOTE: project '$ACTIVE_PROJECT_NAME' has no $1 command of its own; using the shared .agent/project_config.sh (set it with: .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME $1=<command>, or $1=none)" >&2
 }
 

@@ -246,6 +246,8 @@ _rc_config_var() {
 # ACTIVE_PROJECT_BOOTSTRAP_URL, issue #332), MANIFEST_BOOTSTRAP_URL in the
 # legacy per-project config (projects.d/<name>.sh, else the shared
 # project_config.sh), then the hosting dir's configs/project_bootstrap.url.
+# A URL taken from the shared project_config.sh is reported on stderr for a
+# registered project, as single_project reports a shared command.
 # Never prompts — the adapter runs under make and in CI.
 _rc_bootstrap_url() {
     local url="" url_file
@@ -254,6 +256,9 @@ _rc_bootstrap_url() {
     if [ -z "$url" ]; then
         url="$(_rc_config_var MANIFEST_BOOTSTRAP_URL)" || return 1
         url="$(printf '%s' "$url" | tr -d '[:space:]')"
+        if [ -n "$url" ] && [ "$(_rc_config_file)" = "$WORKSPACE_ROOT/.agent/project_config.sh" ]; then
+            active_project_fallback_note bootstrap_url
+        fi
     fi
     if [ -z "$url" ]; then
         url_file="$(_rc_root)/configs/project_bootstrap.url"
