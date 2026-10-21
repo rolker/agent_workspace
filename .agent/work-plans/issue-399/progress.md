@@ -334,3 +334,13 @@ Round 1's three findings are resolved (7c3e73ed, 2de136cf, 55cf3c81, 20be868f): 
 - [ ] (suggestion) Codex's must-fix, downgraded: a branch whose only matching change is a deleted script runs no suite in the final check (pre-commit drops deleted paths; the work-plan dir is excluded), yet the rule says "it includes the script test suite, so run no separate suite". Per-commit runs behave the same (pre-commit selects staged files with `--diff-filter=ACMRTUXB`, no D), and CI's all-files run covers it, so this is no regression; qualify the sentence (the suite runs when a changed, still-present file matches the hook) — `.agent/scripts/dispatch_phase.sh:379`
 - [ ] (suggestion) `$ROOT_DIR` is printed unquoted into a command the agent runs verbatim; a checkout path with a space breaks it. `printf %q` on ROOT_DIR leaves an ordinary path unchanged (so the allowlist still matches) and escapes a spaced one — `.agent/scripts/dispatch_phase.sh:379`
 - [ ] (suggestion) Reflow: the run-issue "Hook rule" paragraph has one 117-character line and reads awkwardly after the parenthetical; the new `.pre-commit-config.yaml` comment's last lines are ragged — `.claude/skills/run-issue/SKILL.md:317-320`, `.pre-commit-config.yaml:73-76`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:23 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Pre-push round 2 (94903ce5): approved, 0 must-fix, 4 suggestions (skill example's angle-bracket placeholder in a bash fence; qualify "the suite runs" to a changed, still-present matching file; printf %q on ROOT_DIR; line wrapping in run-issue and the hook comment). Owner's answers: "Fix suggestions, then publish (Recommended)"; and the AGENTS.md script-reference row edit (commits 284eea98, 2de136cf; Ask First): "Yes, approve the row edit".
