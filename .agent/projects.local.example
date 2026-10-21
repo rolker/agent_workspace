@@ -102,7 +102,10 @@
 # TEST_CMD). A registered project that falls through to the shared file gets
 # a note on stderr. Changed with #332: BUILD_CMD, TEST_CMD and INSTALL_CMD
 # set in the environment are no longer honoured; only a config file sets
-# them. A legacy ros2_colcon config looks like:
+# them. A command set in the settings file runs without sourcing the legacy
+# or shared config, so nothing they export (an SDK path, PATH) reaches it:
+# environment setup belongs in the script the key points at. A legacy
+# ros2_colcon config looks like:
 #
 #   # .agent/projects.d/shore_tools-jazzy.sh
 #   MANIFEST_BOOTSTRAP_URL="https://<host>/<manifest-repo>/raw/jazzy/config/bootstrap.yaml"

@@ -1238,6 +1238,30 @@ test_env_inherited_commands_ignored() {
     assert_not_contains "ros2_colcon: the environment's INSTALL_CMD does not run" "STUB_envcmd_RAN_IN" "$out"
 }
 
+test_settings_command_gets_no_config_environment() {
+    echo "TEST: a settings-file command runs without sourcing the legacy or shared config, so their exports do not reach it (as the headers say)"
+    local sb out
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    mkdir -p "$sb/bin"
+    cat > "$sb/bin/showenv" <<'EOF'
+#!/usr/bin/env bash
+echo "SHOWENV SDK_ROOT=[${SDK_ROOT:-}]"
+EOF
+    chmod +x "$sb/bin/showenv"
+    printf 'export SDK_ROOT=/opt/sdk\nBUILD_CMD="%s"\n' "$sb/bin/showenv" > "$sb/.agent/project_config.sh"
+    out="$(cd "$sb" && unset SDK_ROOT && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
+    assert_contains "shared config: its export reaches its own command" "SHOWENV SDK_ROOT=[/opt/sdk]" "$out"
+    mkdir -p "$sb/.agent/projects.d"
+    printf 'export SDK_ROOT=/opt/legacy-sdk\nBUILD_CMD="%s"\n' "$sb/bin/showenv" > "$sb/.agent/projects.d/alpha.sh"
+    out="$(cd "$sb" && unset SDK_ROOT && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
+    assert_contains "legacy .sh: its export reaches its own command" "SHOWENV SDK_ROOT=[/opt/legacy-sdk]" "$out"
+    printf 'build=%s\n' "$sb/bin/showenv" | write_pfile "$sb" alpha
+    out="$(cd "$sb" && unset SDK_ROOT && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
+    assert_contains "settings file: the command runs" "SHOWENV SDK_ROOT=[]" "$out"
+    assert_not_contains "settings file: no config export reaches it" "SDK_ROOT=[/opt" "$out"
+}
+
 test_bootstrap_url_precedence() {
     echo "TEST: ros2_colcon bootstrap URL: env, then bootstrap_url, then legacy MANIFEST_BOOTSTRAP_URL"
     local sb out
@@ -1303,6 +1327,7 @@ test_dashboard_orphans_without_registered_projects
 test_type_unused_settings_refused
 test_unused_settings_list_unreadable_or_crlf
 test_env_inherited_commands_ignored
+test_settings_command_gets_no_config_environment
 test_bootstrap_url_precedence
 
 echo ""

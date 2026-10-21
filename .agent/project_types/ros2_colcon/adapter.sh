@@ -22,7 +22,10 @@
 # Changed from main (issue #332): an INSTALL_CMD inherited from the
 # caller's environment is no longer honoured; adapter_install clears it
 # before sourcing the legacy or shared config, so only a config file (or
-# install= in the settings file) sets it.
+# install= in the settings file) sets it. An install= command runs
+# without sourcing the legacy or shared config, so nothing they export (an
+# SDK path, PATH) reaches it: environment setup belongs in the script the
+# key points at.
 #
 # Distro handling (new capability — the ros2 scripts hardcoded jazzy):
 #   1. `distro:` field in configs/manifest/bootstrap.yaml

@@ -171,6 +171,12 @@ is edited). It never writes into the project, never relies on the `projects/<nam
     existing line is kept as is; a different type or path for a registered name is refused
     (no silent rewrite); a project with no file gets one (`.sh` values copied, detection below).
     Idempotent: a second identical run changes nothing and says so.
+  - Adoption warns when the legacy `.sh` (or the shared `project_config.sh` a registered project falls
+    through to) sets or exports anything beyond the variables the adapters read (`PROJECT_TYPE`,
+    `BUILD_CMD`, `TEST_CMD`, `INSTALL_CMD`, `MANIFEST_BOOTSTRAP_URL`, `ROS_DISTRO`, `ROS_ROOT_DIR`),
+    naming each: a command copied into the project file runs without sourcing either config (PR 1,
+    pre-push round 5), so that environment no longer reaches it and belongs in the script the key
+    points at. Test: a fixture `.sh` exporting `PATH` and `SDK_ROOT` is adopted with both named.
   - Registry line: written to a temp copy, re-parsed with `registry_entries_full`, then renamed.
   - Project file: command keys from `--set`, else from the legacy `.sh`, else `--detect` proposals
     (`register_project.sh --detect <path>`, read-only): only a single correct command is proposed

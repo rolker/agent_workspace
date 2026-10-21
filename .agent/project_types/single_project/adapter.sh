@@ -12,6 +12,9 @@
 # environment are no longer honoured; they are cleared before the legacy or
 # shared config is sourced, so only a config file sets them (a config line
 # such as BUILD_CMD="${BUILD_CMD:-make}" now always gives its default).
+# A command set in the settings file runs without sourcing the legacy or
+# shared config, so nothing they export (an SDK path, PATH) reaches it:
+# environment setup belongs in the script the key points at.
 #
 # Sourced by .agent/scripts/adapter with WORKSPACE_ROOT and ADAPTER_TYPE_DIR
 # set as shell variables (not exported). Not executable on its own; must be
