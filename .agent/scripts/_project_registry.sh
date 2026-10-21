@@ -847,7 +847,10 @@ _project_file_has_line_key() {
 
 # Does project type <type> refuse settings key <key> because it never
 # reads it? Prints the reason and returns 0 when it does; returns 1 when the
-# type reads the key (or <type> is empty or has no list). The list is the
+# type reads the key (or <type> is empty or has no list); prints the reason
+# and returns 2 when the list exists but cannot be read (never read as "no
+# list": that would let a refused key through). CRLF lines are read as LF
+# lines. The list is the
 # type's own data file .agent/project_types/<type>/unused_settings under
 # workspace <root> ("<key> <reason>" lines, '#' comments), so no script
 # here names a type.
@@ -856,8 +859,13 @@ _project_type_unused_setting() {
     local root="$1" type="$2" want="$3" f k reason
     [ -n "$type" ] || return 1
     f="$root/.agent/project_types/$type/unused_settings"
-    [ -f "$f" ] || return 1
+    [ -e "$f" ] || [ -L "$f" ] || return 1
+    if [ ! -f "$f" ] || [ ! -r "$f" ]; then
+        echo "the list of settings project type '$type' never reads, $f, exists but is not a readable file"
+        return 2
+    fi
     while read -r k reason || [ -n "$k" ]; do
+        k="${k%$'\r'}"; reason="${reason%$'\r'}"
         [ -z "$k" ] && continue
         [[ "$k" == \#* ]] && continue
         if [ "$k" = "$want" ]; then
@@ -878,7 +886,7 @@ _project_type_unused_setting() {
 # reads (_project_type_unused_setting) is an error too.
 # Usage: _project_file_parse <file> [<name> [<root> <type>]]
 _project_file_parse() {
-    local file="$1" name="${2:-}" root="${3:-}" ptype="${4:-}" raw line key value lineno=0 rc=0 seen=" " reason known
+    local file="$1" name="${2:-}" root="${3:-}" ptype="${4:-}" raw line key value lineno=0 rc=0 urc seen=" " reason known
     [ -n "$name" ] || name="$(basename "$file")"
     local -a out=()
     if reason="$(_project_file_path_error "$file")"; then
@@ -915,8 +923,13 @@ _project_file_parse() {
             echo "ERROR: ${file}:${lineno}: $reason" >&2
             rc=2; continue
         fi
-        if reason="$(_project_type_unused_setting "$root" "$ptype" "$key")"; then
+        urc=0; reason="$(_project_type_unused_setting "$root" "$ptype" "$key")" || urc=$?
+        if [ "$urc" -eq 0 ]; then
             echo "ERROR: ${file}:${lineno}: '$key' is not read for project '$name' (type $ptype): $reason; remove it with: .agent/scripts/project_setting.sh unset $name $key" >&2
+            rc=2; continue
+        fi
+        if [ "$urc" -eq 2 ]; then
+            echo "ERROR: ${file}:${lineno}: cannot tell whether '$key' applies to project '$name': $reason" >&2
             rc=2; continue
         fi
         out+=("$key"$'\t'"$value")
@@ -1155,7 +1168,7 @@ project_file_set() {
 # lock's file descriptor end with it).
 _project_file_set_locked() {
     local root="$1" name="$2" entry ptype file dest dir tmp arg key value i found line lkey
-    local touches_records=0 reason entries rc=0 combo loc track lpath mode lock
+    local touches_records=0 reason entries rc=0 combo loc track lpath mode lock urc
     local -a keys=() vals=() done_k=()
     shift 2
     if [ $# -eq 0 ]; then
@@ -1202,9 +1215,16 @@ _project_file_set_locked() {
             echo "ERROR: the value for '$key' contains a line break" >&2
             return 1
         fi
-        if [[ "$arg" != -* ]] && reason="$(_project_type_unused_setting "$root" "$ptype" "$key")"; then
-            echo "ERROR: not setting '$key' for project '$name' (type $ptype): $reason" >&2
-            return 1
+        if [[ "$arg" != -* ]]; then
+            urc=0; reason="$(_project_type_unused_setting "$root" "$ptype" "$key")" || urc=$?
+            if [ "$urc" -eq 0 ]; then
+                echo "ERROR: not setting '$key' for project '$name' (type $ptype): $reason" >&2
+                return 1
+            fi
+            if [ "$urc" -eq 2 ]; then
+                echo "ERROR: not setting '$key' for project '$name': $reason" >&2
+                return 1
+            fi
         fi
         for ((i = 0; i < ${#keys[@]}; i++)); do
             if [ "${keys[$i]}" = "$key" ]; then

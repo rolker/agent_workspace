@@ -1174,6 +1174,50 @@ test_type_unused_settings_refused() {
     assert_eq "repaired file checks valid" "0" "$rc"
 }
 
+test_unused_settings_list_unreadable_or_crlf() {
+    echo "TEST: a type's unused_settings list that cannot be read fails closed; a CRLF list still refuses its keys"
+    local sb rc_dir f list out rc
+    sb="$(make_sandbox)"
+    rc_dir="$(mktemp -d -p "$SANDBOX")/rc"
+    mkdir -p "$rc_dir"
+    echo "rc ros2_colcon $rc_dir" >> "$sb/.agent/projects.local"
+    f="$(pfile "$sb" rc)"
+    list="$sb/.agent/project_types/ros2_colcon/unused_settings"
+
+    sed 's/$/\r/' "$list" > "$list.crlf" && mv "$list.crlf" "$list"
+    rc=0; out="$(ps_run "$sb" set rc test=make 2>&1)" || rc=$?
+    assert_eq "CRLF list: set test still refused" "1" "$rc"
+    assert_contains "CRLF list: reason shown without a CR" "colcon owns the tests: \`make test\` runs colcon test over the manifest's layers, so a ros2_colcon project has no test command to set" "$out"
+    assert_not_contains "CRLF list: no CR in the message" $'\r' "$out"
+    printf 'test=make\n' | write_pfile "$sb" rc
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "CRLF list: a hand-written test fails check" "2" "$rc"
+    rm -f "$f"
+    cp "$list" "$list.keep"
+    printf 'install\r\n' > "$list"
+    rc=0; ps_run "$sb" set rc install=make >/dev/null 2>&1 || rc=$?
+    assert_eq "CRLF list, a key alone on its line: still refused" "1" "$rc"
+    mv "$list.keep" "$list"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        chmod 000 "$list"
+        printf 'install=none\n' | write_pfile "$sb" rc
+        rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+        assert_eq "unreadable list: check exits 2" "2" "$rc"
+        assert_contains "unreadable list: says why" "cannot tell whether 'install' applies to project 'rc': the list of settings project type 'ros2_colcon' never reads, $list, exists but is not a readable file" "$out"
+        rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project rc install 2>&1)" || rc=$?
+        assert_eq "unreadable list: the adapter stops" "1" "$rc"
+        rm -f "$f"
+        rc=0; out="$(ps_run "$sb" set rc build=make 2>&1)" || rc=$?
+        assert_eq "unreadable list: set refused" "1" "$rc"
+        assert_contains "unreadable list: set says why" "exists but is not a readable file" "$out"
+        assert_eq "unreadable list: no file written" "no" "$([ -e "$f" ] && echo yes || echo no)"
+        chmod 644 "$list"
+    else
+        echo "  SKIP: unreadable-list case (running as root)"
+    fi
+}
+
 test_bootstrap_url_precedence() {
     echo "TEST: ros2_colcon bootstrap URL: env, then bootstrap_url, then legacy MANIFEST_BOOTSTRAP_URL"
     local sb out
@@ -1237,6 +1281,7 @@ test_validate_reports_malformed_file
 test_dashboard_reports_settings_files
 test_dashboard_orphans_without_registered_projects
 test_type_unused_settings_refused
+test_unused_settings_list_unreadable_or_crlf
 test_bootstrap_url_precedence
 
 echo ""
