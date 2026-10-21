@@ -141,6 +141,14 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
    Never `--no-verify`. One logical fix per commit. The source entry's
    box-check (next step) is the one permitted addition to a finding's
    commit beyond the finding's own files.
+
+   **Dispatched pass** (owner-decided 2026-10-20, issue #399): only when
+   the handoff's `conventions=` line carries the hook rule — a workspace
+   pass dispatched by `/run-issue` — set `SKIP=validate-script-tests` on
+   these intermediate fix commits, so the script suite does not run once
+   per commit. Every other hook still runs, and `--no-verify` is still
+   never allowed. A hand-run session or a project pass has no such line
+   and commits with every hook, as above.
 4. Check the box for that finding so the timeline tracks resolution — in
    the same commit as the fix, or a trailing progress commit:
 
@@ -157,6 +165,17 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 After the last fix, run the relevant quick checks (the linters pre-commit
 already ran, plus any suite the changes touch). This is not a full
 `review-code` — it's a sanity pass before handing to the re-review.
+
+A dispatched pass that skipped `validate-script-tests` (step 3) runs every
+hook once over the whole branch here, with no SKIP:
+
+```bash
+pre-commit run --files $(git diff --name-only main...HEAD)
+```
+
+It includes `validate-script-tests`, so the script suite runs once for the
+pass; run no separate suite. If it fails, fix the failure (a commit of its
+own) and run the same command again on the final tree before step 5.
 
 ### 5. Write the `## Implementation` entry
 
@@ -191,6 +210,12 @@ and correlation SHA so a reader (and the next review's round counter) can
 tie the two together. Every finding from the source entry appears under
 Actions, either fixed-and-checked or deferred-checked-with-reason. Do not
 push here; the calling session decides when to push.
+
+The entry commit is committed as usual, with every hook. It touches only
+`.agent/work-plans/`, which `validate-script-tests` excludes, so it is not
+the backstop for a dispatched pass's skipped commits: CI is. `make lint`
+runs every hook on all files on pushes to `main`, `feature/**` and
+`fix/**` and on PRs to main, and `merge_pr.sh` waits for it.
 
 ### Next step
 
