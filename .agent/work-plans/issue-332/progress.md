@@ -496,3 +496,27 @@ Pre-push round 5 (489cd883, cold review at the merge commit c064fead): 1 mechani
 - [x] (suggestion) The writer resolves the destination before taking the lock and puts the sidecar beside it, `<dir>/.lock.<basename>` (still `projects.d/.lock.<name>` for an ordinary file), so two names linking to one target take one lock; a sidecar file rather than a directory lock, since an exclusive flock needs a writable descriptor on NFS; once the lock is held the link is re-resolved, and a link repointed while waiting is refused. New `test_set_lock_follows_shared_symlink_target` (held lock refuses through either name; three rounds of mixed concurrent writers through both links keep every update; repointed-while-waiting refused, neither target changed; fails 12 checks on the code before the fix, a lost update among them) — `c9ad44df`, `.agent/scripts/_project_registry.sh:1318`
 
 Checks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite (`validate-script-tests`), the adapter contract and the design-anchor check; `test_project_file.sh` 397 passed, 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `-S warning` clean on `_project_registry.sh`, `test_project_file.sh` and both adapters. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 11:44 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a1794adcd75b020c6, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `dcbddea6`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 3,095 changed lines outside work plans, 16 files; AGENTS.md governance file; fix-round re-review keeps the whole-diff tier)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 6 | **Ship**: recommended — 1 mechanical must-fix (prev 1), not rising; fix and ship rather than another full round
+
+Round-5 findings (489cd883) all resolved at c9ad44df, checked in the code: dispatch_phase.sh citations 368, 370, 428, 520 match (grep); Registry and adapters 105 lines and design.md 786 lines match; S1 documented in both adapter headers, the example file and the design bullet, plus the PR 2 adoption warning in the plan; a `~` word refused at set, check and adapter (`HEAD~1` accepted); the lock is taken beside the resolved destination and a link repointed while waiting is refused. No merge from main since round 5; 0 behind origin/main.
+Still open for the owner (not a finding): the AGENTS.md `validate_adapter.sh` row does not mention the `unused_settings` list check (Ask First).
+Specialists: static analysis (shellcheck --severity=warning clean on 11 changed shell files; run_script_tests.sh 38 suites passed at dcbddea6; validate_adapter.sh passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+Dropped: gemini local/file:// remote vs a shared upstream (outside the owner-set three checks, dropped in round 5 too); gemini `set` not running the workspace-repo check on an already hand-written records combination (the file was already failing check; a write of such a combination is refused either way); gemini `-key=value` and untrimmed `set` arguments (refused with a clear error, not silent).
+
+### Findings
+- [ ] (must-fix) The Python registry parser that `validate_workspace.py` uses, which says it mirrors `_project_registry.sh`, does not refuse a project name ending in `.sh`: `read_projects_registry` returns `tools.sh` as a valid entry with no error while `registry_entries` exits 2 (both run); add the rule with the same message and a `.sh` case to `test_validate_python_parser_matches_shell` (gemini, confirmed by execution) — `.agent/scripts/lib/workspace.py:121`
+- [ ] (suggestion) The writer re-checks after taking the lock only that the destination path is unchanged, not that it is still a readable regular file; a settings file replaced by a directory while the writer waits makes `mv -f` put the temporary file inside that directory and report success; re-run `_project_file_path_error` beside the destination re-check, with a test (codex rated must-fix; confirmed by reading; needs a hand replacement inside the lock wait, and the gap predates this round) — `.agent/scripts/_project_registry.sh:1340`
+- [ ] (suggestion) A settings file for a parent root (`type=project`) is read by nothing (the adapter resolves the parent to its instance first, dashboard skips parents and counts the name as registered), yet `project_setting.sh check` and `list` on a parent exit 0 as if it had settings; make `check` fail for a parent that has a file, and have the dashboard warn, as `set` already refuses (gemini, confirmed by reading) — `.agent/scripts/project_setting.sh:73`, `.agent/scripts/dashboard.sh:168`
+- [ ] (suggestion) For a symlinked settings file whose target is in another directory, the lock sidecar `.lock.<basename>` is created beside the target and never removed (removing it would be unsafe); say so in the writer's header and the design bullet so a user who keeps settings in a git checkout knows where the untracked file comes from (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:1328`
