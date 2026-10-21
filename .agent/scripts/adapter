@@ -260,9 +260,11 @@ fi
 # settings that are refused (a records repository that is a workspace),
 # stop every verb: never resolve silently. Records settings that are valid
 # but not yet honoured (#393) are reported by project_setting.sh check, not
-# here. Adapters read the command and URL keys as these variables and fall
-# back, per setting, to the legacy ACTIVE_PROJECT_CONFIG variable, then the
-# shared .agent/project_config.sh. Empty means "not set in the file"; the
+# here. Adapters read the command and URL keys as these variables; for a
+# key the file leaves unset they fall back to the legacy
+# ACTIVE_PROJECT_CONFIG variable when that file exists (it is then the
+# whole legacy layer, as before #332), otherwise to the shared
+# .agent/project_config.sh. Empty means "not set in the file"; the
 # value 'none' is a recorded "this project has none".
 ACTIVE_PROJECT_FILE=""
 # shellcheck disable=SC2034
