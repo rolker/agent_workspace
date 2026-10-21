@@ -428,7 +428,7 @@ Three mechanisms would do it, each built by #393:
 
 1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   362, 364, 407, 499: the exit contract, `--check-exit` and `next`, which is what a resumed session
+   368, 370, 428, 520: the exit contract, `--check-exit` and `next`, which is what a resumed session
    reads), `merge_pr.sh` (673-684, 793-863: the gate's lookup and its `Merge` entry),
    `review_progress.sh` (112, 268, 290) and `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
