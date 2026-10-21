@@ -795,6 +795,86 @@ test_set_lock_and_interrupt_cleanup() {
     rm -f "$marker"
 }
 
+test_set_lock_follows_shared_symlink_target() {
+    echo "TEST: two projects whose settings files link to one target take one lock (named after the target), so their writers serialise; a link repointed while waiting is refused"
+    if ! command -v flock >/dev/null 2>&1 || ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: needs flock and setsid"
+        return 0
+    fi
+    local sb shared target other lock out rc round holder pid marker real_flock stubdir name
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    make_project "$sb" beta >/dev/null
+    shared="$(mktemp -d -p "$SANDBOX")"
+    target="$shared/settings"
+    : > "$target"
+    mkdir -p "$sb/.agent/projects.d"
+    ln -s "$target" "$(pfile "$sb" alpha)"
+    ln -s "$target" "$(pfile "$sb" beta)"
+    lock="$shared/.lock.settings"
+
+    marker="$(mktemp -u -p "$SANDBOX")"
+    setsid flock -x "$lock" -c "touch '$marker'; exec sleep 20" &
+    holder=$!
+    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    for name in alpha beta; do
+        rc=0; out="$(cd "$sb" && PROJECT_FILE_LOCK_WAIT=1 "$sb/.agent/scripts/project_setting.sh" set "$name" build=held 2>&1)" || rc=$?
+        assert_eq "$name: the target's held lock refuses: exit 1" "1" "$rc"
+        assert_contains "$name: names the target's lock" "another writer holds its lock $lock (waited 1 s)" "$out"
+    done
+    assert_eq "target unchanged while held" "" "$(cat "$target")"
+    kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    rm -f "$marker"
+    assert_eq "no per-project lock beside the links" "" "$(find "$sb/.agent/projects.d" -name '.lock.*')"
+
+    for round in 1 2 3; do
+        : > "$target"
+        local -a pids=()
+        ps_run "$sb" set alpha build=make >/dev/null 2>&1 & pids+=($!)
+        ps_run "$sb" set beta "test=make check$round" >/dev/null 2>&1 & pids+=($!)
+        ps_run "$sb" set alpha "install=make install$round" >/dev/null 2>&1 & pids+=($!)
+        ps_run "$sb" set beta instructions=none >/dev/null 2>&1 & pids+=($!)
+        ps_run "$sb" set alpha location=project tracking=project >/dev/null 2>&1 & pids+=($!)
+        rc=0
+        for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
+        assert_eq "round $round: every writer through either link exits 0" "0" "$rc"
+        assert_eq "round $round: every update kept in the shared target" \
+            "build=make install=make install$round instructions=none location=project test=make check$round tracking=project " \
+            "$(sort "$target" | tr '\n' ' ')"
+        assert_eq "round $round: both names still links" "yes" "$([ -L "$(pfile "$sb" alpha)" ] && [ -L "$(pfile "$sb" beta)" ] && echo yes || echo no)"
+    done
+
+    # Repointed while waiting: a flock stub on PATH marks the moment the
+    # writer (destination already resolved) starts to wait, then waits.
+    other="$shared/other"
+    printf 'build=other\n' > "$other"
+    : > "$target"
+    real_flock="$(command -v flock)"
+    stubdir="$(mktemp -d -p "$SANDBOX")"
+    marker="$(mktemp -u -p "$SANDBOX")"
+    printf '#!/usr/bin/env bash\n[ -n "${WAIT_MARK:-}" ] && touch "$WAIT_MARK"\nexec %s "$@"\n' "$real_flock" > "$stubdir/flock"
+    chmod +x "$stubdir/flock"
+    local hold_marker
+    hold_marker="$(mktemp -u -p "$SANDBOX")"
+    setsid "$real_flock" -x "$lock" -c "touch '$hold_marker'; exec sleep 20" &
+    holder=$!
+    for _ in $(seq 1 100); do [ -e "$hold_marker" ] && break; sleep 0.1; done
+    (cd "$sb" && PATH="$stubdir:$PATH" WAIT_MARK="$marker" PROJECT_FILE_LOCK_WAIT=15 \
+        "$sb/.agent/scripts/project_setting.sh" set alpha build=moved > "$shared/out" 2>&1) &
+    pid=$!
+    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    ln -sfn "$other" "$(pfile "$sb" alpha)"
+    kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    rc=0; wait "$pid" || rc=$?
+    assert_eq "repointed while waiting: exit 1" "1" "$rc"
+    assert_contains "repointed while waiting: says so" "it was changed while waiting for the lock $lock (it no longer leads to $target)" "$(cat "$shared/out")"
+    assert_eq "repointed: the old target unchanged" "" "$(cat "$target")"
+    assert_eq "repointed: the new target unchanged" "build=other" "$(cat "$other")"
+    rm -f "$marker" "$hold_marker"
+}
+
 test_set_without_flock_writes_unlocked() {
     echo "TEST: without flock on PATH the writer still writes (unlocked, as its header says) and leaves no lock or temporary file"
     local sb f out rc nolock t
@@ -1335,6 +1415,7 @@ test_symlink_cases
 test_unsearchable_settings_dir_fails_closed
 test_unknown_key_repair
 test_set_lock_and_interrupt_cleanup
+test_set_lock_follows_shared_symlink_target
 test_set_without_flock_writes_unlocked
 test_outside_without_layout_unregistered
 test_malformed_registry_exits_2

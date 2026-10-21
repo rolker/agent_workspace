@@ -1205,13 +1205,34 @@ project_records_check() {
 # removed when nothing is left.
 #
 # Concurrency: the read-modify-rename runs in a subshell holding an
-# exclusive flock on projects.d/.lock.<name> (waits PROJECT_FILE_LOCK_WAIT
-# seconds, default 10, then refuses), so two writers of one project never
-# lose an update. Without flock (macOS by default) the write is unlocked.
+# exclusive flock on a sidecar beside the resolved destination,
+# <dir>/.lock.<basename> (projects.d/.lock.<name> for an ordinary file;
+# waits PROJECT_FILE_LOCK_WAIT seconds, default 10, then refuses), so two
+# writers of one file never lose an update, even through two projects
+# whose settings files are links to one target. A link repointed while
+# the writer waited is refused. Without flock (macOS by default) the write
+# is unlocked.
 # The temporary file is removed on every exit, INT, TERM and HUP included.
 # Usage: project_file_set "$root" "$name" build=./b.sh -install
 project_file_set() {
     ( _project_file_set_locked "$@" )
+}
+
+# The path the writer renames new contents onto: the file itself, or the
+# target of a symlinked one, so the rename never replaces the link. Prints
+# it, or the reason on stderr and returns 1 for a link that cannot be
+# resolved.
+_project_file_dest() {
+    local file="$1" d
+    if [ -L "$file" ]; then
+        if ! d="$(readlink -f -- "$file" 2>/dev/null)" || [ -z "$d" ]; then
+            echo "ERROR: $file is a symlink whose target cannot be resolved" >&2
+            return 1
+        fi
+        printf '%s\n' "$d"
+        return 0
+    fi
+    printf '%s\n' "$file"
 }
 
 # The body of project_file_set, run in its own subshell (its traps and the
@@ -1289,17 +1310,22 @@ _project_file_set_locked() {
     file="$(project_file_path "$root" "$name")"
     # A path that exists but cannot be read as a settings file is never
     # treated as absent: its settings would be lost, or the new file moved
-    # inside a directory. Checked before the lock, whose sidecar lives in
-    # the same directory.
+    # inside a directory. Checked before the lock, whose sidecar lives
+    # beside the file (or beside the target of a symlinked one).
     if reason="$(_project_file_path_error "$file")"; then
         echo "ERROR: not writing: $reason (fix or remove it by hand first)" >&2
         return 1
     fi
-    # Serialize writers of this project's file. The lock is a sidecar, not
-    # the file: the rename replaces the file's inode, so a lock on the file
-    # itself would not exclude the next writer.
-    lock="$(dirname "$file")/.lock.${name}"
     mkdir -p "$(dirname "$file")" || return 1
+    dest="$(_project_file_dest "$file")" || return 1
+    dir="$(dirname "$dest")"
+    mkdir -p "$dir" || return 1
+    # Serialize writers of the destination. The lock is a sidecar, not the
+    # file: the rename replaces the file's inode, so a lock on the file
+    # itself would not exclude the next writer. It is named after the
+    # resolved destination, not the project, so two projects whose files
+    # link to one target take one lock.
+    lock="$dir/.lock.$(basename "$dest")"
     if command -v flock >/dev/null 2>&1; then
         if ! exec 9>>"$lock"; then
             echo "ERROR: cannot open the lock file $lock" >&2
@@ -1309,6 +1335,12 @@ _project_file_set_locked() {
             echo "ERROR: not writing $file: another writer holds its lock $lock (waited ${PROJECT_FILE_LOCK_WAIT:-10} s); try again" >&2
             return 1
         fi
+        # The lock covers the destination resolved before it was taken; a
+        # link repointed meanwhile would be written under the wrong lock.
+        if [ "$(_project_file_dest "$file" 2>/dev/null)" != "$dest" ]; then
+            echo "ERROR: not writing $file: it was changed while waiting for the lock $lock (it no longer leads to $dest); try again" >&2
+            return 1
+        fi
     fi
     # Remove the temporary file however this subshell ends.
     _PF_TMP=""
@@ -1316,17 +1348,6 @@ _project_file_set_locked() {
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    # The path the new contents are renamed onto: the file itself, or the
-    # target of a symlinked one, so the rename never replaces the link.
-    dest="$file"
-    if [ -L "$file" ]; then
-        if ! dest="$(readlink -f -- "$file" 2>/dev/null)" || [ -z "$dest" ]; then
-            echo "ERROR: $file is a symlink whose target cannot be resolved" >&2
-            return 1
-        fi
-    fi
-    dir="$(dirname "$dest")"
-    mkdir -p "$dir" || return 1
     tmp="$(mktemp "$dir/.${name}.XXXXXX")" || return 1
     _PF_TMP="$tmp"
     {
