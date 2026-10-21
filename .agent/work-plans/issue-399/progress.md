@@ -199,3 +199,51 @@ Plan review round 2 (ee17ac4c): needs-work, all seven round-1 must-fixes resolve
 **Plan**: `.agent/work-plans/issue-399/plan.md` at `c6a7701b`
 
 Revised per plan review round 2: the rule is emitted only for workspace handoffs (project handoff test added, address-findings applies it only when the handoff carries it); test pins `SKIP=validate-script-tests`, `pre-commit run --files` and `CI` instead of `run_script_tests.sh`; header sentence moves to after line 19; the pre-entry run names `pre-commit run --files $(git diff --name-only main...HEAD)`; "at most once" with CI's real trigger set.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-21 09:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+**Dispatch**: resumed (agent af232ca02e5cb9d7c, resume 1 of 3)
+
+**Issue**: #399 — Dispatched passes run the script test suite once per pass, not per commit
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `c6a7701b`
+**Branch**: `feature/issue-399`
+**Serves**: Quality of the work (the full suite still runs before the entry and in CI on pushes to `main`, `feature/**` and `fix/**` and PRs to main; only repeats go) — `docs/design.md#review-loop-and-timeline`
+
+Round 3. Scope: the revision (diff `6a1fdc7d..c6a7701b`) against round 2's three must-fixes and two suggestions. The owner's 2026-10-20 decision (hook unchanged) is not re-opened.
+
+### Round 2 findings
+
+| # | Round 2 finding | Resolved? | Checked against |
+|---|---|---|---|
+| 1 | Rule emitted for project handoffs too | Yes | Step 1: `[[ "$type" == workspace ]] && pass_rule=...` inside the `case`; `$type` is in scope in `cmd_handoff` (dispatch_phase.sh:298). The script runs `set -uo pipefail` without `-e` (line 65), so the false `[[ ]]` on a project handoff does not abort. Step 2: address-findings applies the exemption only when `conventions=` carries it. Step 6: a `--type project` implement case. Context bullet names the workspace-only scope |
+| 2 | Test pinned `run_script_tests.sh` | Yes | Step 6 checks `SKIP=validate-script-tests`, `pre-commit run --files`, `CI` in the two phases and the absence of the first two in the other five |
+| 3 | Header sentence split a sentence | Yes | After line 19 ("...only when --prompt-file was given).") ends the sentence begun on line 16; lines 20–22 stay untouched before 321's insertion after line 22 |
+| 4 | Name the file-list command (suggestion) | Yes | `pre-commit run --files $(git diff --name-only main...HEAD)` in the Context rule, steps 2 and 7 |
+| 5 | "At most once"; real CI triggers (suggestion) | Yes | Context, Serves and acceptance now say "at most once" and list pushes to `main`/`feature/**`/`fix/**` plus PRs to main, matching validate.yml |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Seven files, one rule, one test; one PR. |
+| Issue alignment | Good | Covers the issue's Change list; Serves line checked (goal README.md:33, anchor design.md:423). |
+| File targeting | Good | One placement note for the project test case (finding 1). |
+| Consequences | Good | Handoff, both skills, AGENTS.md row (Ask First, flagged), hook comment, `run_script_tests.sh` header, test. |
+| Principle alignment | Good | Workspace-only scope fits "Put each thing at the level it applies to"; CI named as the backstop ("Enforce what matters"); two-in / five-out / project-out pin ("Test what breaks"). |
+| ADR compliance | Good | 0004/0005, 0013, 0014 hold; 0017 not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[File targeting] (implementation note, low)** — Step 6 places all cases between test_dispatch_phase.sh:418 and :420, but the project sandbox `SBP1` it reuses is created later, at line 435 (registered at 443). Put the `--type project` implement case right after the registry-lookup assertion (after line 446, before the "(b) the deprecated project/worktrees fallback" comment). 321's test hunks (line 40, after 228, after 431) do not reach there, so the merge stays clean. The workspace cases stay at 418–420.
+
+### Summary
+
+All five round 2 items are resolved and verified against the code. The one remaining note is where a single test case sits, which the implementer will meet at once; it needs no further plan round. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] During implementation, put the `--type project` handoff case after test_dispatch_phase.sh:446 (where `SBP1` exists), not between 418 and 420.
