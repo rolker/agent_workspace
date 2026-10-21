@@ -520,3 +520,13 @@ Dropped: gemini local/file:// remote vs a shared upstream (outside the owner-set
 - [ ] (suggestion) The writer re-checks after taking the lock only that the destination path is unchanged, not that it is still a readable regular file; a settings file replaced by a directory while the writer waits makes `mv -f` put the temporary file inside that directory and report success; re-run `_project_file_path_error` beside the destination re-check, with a test (codex rated must-fix; confirmed by reading; needs a hand replacement inside the lock wait, and the gap predates this round) — `.agent/scripts/_project_registry.sh:1340`
 - [ ] (suggestion) A settings file for a parent root (`type=project`) is read by nothing (the adapter resolves the parent to its instance first, dashboard skips parents and counts the name as registered), yet `project_setting.sh check` and `list` on a parent exit 0 as if it had settings; make `check` fail for a parent that has a file, and have the dashboard warn, as `set` already refuses (gemini, confirmed by reading) — `.agent/scripts/project_setting.sh:73`, `.agent/scripts/dashboard.sh:168`
 - [ ] (suggestion) For a symlinked settings file whose target is in another directory, the lock sidecar `.lock.<basename>` is created beside the target and never removed (removing it would be unsafe); say so in the writer's header and the design bullet so a user who keeps settings in a git checkout knows where the untracked file comes from (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:1328`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 11:51 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 6 (b9a1cf11, at dcbddea6): 1 mechanical must-fix (the Python registry parser in lib/workspace.py does not refuse a name ending in .sh, unlike the shell parser) and 3 suggestions (re-check the destination is still a regular file after the lock; check fails and the dashboard warns for a parent root's settings file; document the lock file left beside a symlink target). Ship signal "fix and ship". Owner's answer: "Fix, re-review, publish (Recommended)"; if round 7 finds another small must-fix the host asks again rather than loop.
