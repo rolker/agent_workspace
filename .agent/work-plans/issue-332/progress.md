@@ -530,3 +530,21 @@ Dropped: gemini local/file:// remote vs a shared upstream (outside the owner-set
 **Decision**: address
 
 Pre-push round 6 (b9a1cf11, at dcbddea6): 1 mechanical must-fix (the Python registry parser in lib/workspace.py does not refuse a name ending in .sh, unlike the shell parser) and 3 suggestions (re-check the destination is still a regular file after the lock; check fails and the dashboard warns for a parent root's settings file; document the lock file left beside a symlink target). Ship signal "fix and ship". Owner's answer: "Fix, re-review, publish (Recommended)"; if round 7 finds another small must-fix the host asks again rather than loop.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 12:13 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a44f63a2874f8018e, resume 1 of 3)
+
+**Branch**: feature/issue-332 at `4405f1d2`
+**Addressed**: Local Review (Pre-Push) at `dcbddea6` (2026-10-21 11:44 -04:00)
+**Commits**: `cc82f3c7`, `a7b00b6d`, `f1074424`, `4405f1d2`
+
+### Actions
+- [x] (must-fix) `read_projects_registry` refuses a project name ending in `.sh` with the shell parser's message; `test_validate_python_parser_matches_shell` gains a `tools.sh` line and asserts both the error and that neither parser keeps the entry (the parity check fails on the old parser) — `cc82f3c7`, `.agent/scripts/lib/workspace.py:126`
+- [x] (suggestion) Once the lock is held the writer re-runs `_project_file_path_error` beside the destination re-check and refuses with the reason; header updated. New `test_set_rechecks_the_file_after_the_lock_wait` (a flock stub marks the wait, the file is replaced by a directory, the write is refused, nothing lands inside, no temporary file left); on the old code the write reported "updated" and left its temporary file inside the directory (checked by execution) — `a7b00b6d`, `.agent/scripts/_project_registry.sh:1350`
+- [x] (suggestion) `project_setting.sh check` and `list` on a parent root exit 2 when it has a settings file, naming its instances, and print "is a parent root and has no settings file" (exit 0) when not; the dashboard warns about a parent's file. New `test_parent_root_settings_file_is_flagged` (fails 7 checks on the old scripts). Not changed: the AGENTS.md `project_setting.sh` row's exit-code summary does not mention the parent case (Ask First) — `f1074424`, `.agent/scripts/project_setting.sh:85`, `.agent/scripts/dashboard.sh:180`
+- [x] (suggestion) The lock file is never removed, by design; said in the writer's header (with why: removing it would let a third writer lock a new file of the same name) and in the design's Registry and adapters bullet (a linked file leaves an untracked `.lock.<basename>` beside its target); the #332 change-log row names it, with 107 section lines and 788 file lines; no behaviour change — `4405f1d2`, `.agent/scripts/_project_registry.sh:1215`, `docs/design.md:276`
+
+Checks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract, the design-anchor check, shellcheck, black, flake8 and pylint; `test_project_file.sh` 413 passed and `test_project_registry.sh` 260 passed, 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `-S warning` clean on `_project_registry.sh`, `project_setting.sh`, `dashboard.sh`, `test_project_file.sh`, `test_project_registry.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
