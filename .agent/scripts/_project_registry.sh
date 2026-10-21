@@ -1031,11 +1031,14 @@ project_records_check() {
 # touches the records keys and leaves any combination other than the
 # default (project, project). Prints "unchanged <file>" or "updated
 # <file>". Return 0 on success, 1 when refused, 2 when the result would be
-# an invalid file (the existing file is left as it was).
+# an invalid file (the existing file is left as it was). An existing file
+# keeps its mode (a new one is 644), and a symlinked file stays a link:
+# its target is rewritten in place of the link, and emptied rather than
+# removed when nothing is left.
 # Usage: project_file_set "$root" "$name" build=./b.sh -install
 project_file_set() {
-    local root="$1" name="$2" entry ptype file dir tmp arg key value i found line lkey
-    local touches_records=0 reason entries rc=0 combo loc track lpath
+    local root="$1" name="$2" entry ptype file dest dir tmp arg key value i found line lkey
+    local touches_records=0 reason entries rc=0 combo loc track lpath mode
     local -a keys=() vals=() done_k=()
     shift 2
     if [ $# -eq 0 ]; then
@@ -1089,7 +1092,20 @@ project_file_set() {
     done
 
     file="$(project_file_path "$root" "$name")"
-    dir="$(dirname "$file")"
+    # The path the new contents are renamed onto: the file itself, or the
+    # target of a symlinked one, so the rename never replaces the link.
+    dest="$file"
+    if [ -L "$file" ]; then
+        if ! dest="$(readlink -f -- "$file" 2>/dev/null)" || [ -z "$dest" ]; then
+            echo "ERROR: $file is a symlink whose target cannot be resolved" >&2
+            return 1
+        fi
+        if [ -e "$dest" ] && [ ! -f "$dest" ]; then
+            echo "ERROR: $file is a symlink to $dest, which is not a regular file" >&2
+            return 1
+        fi
+    fi
+    dir="$(dirname "$dest")"
     mkdir -p "$dir" || return 1
     tmp="$(mktemp "$dir/.${name}.XXXXXX")" || return 1
     {
@@ -1140,14 +1156,15 @@ project_file_set() {
             return 1
         fi
     fi
-    if [ -f "$file" ] && cmp -s "$tmp" "$file"; then
+    if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then
         rm -f "$tmp"
         echo "unchanged $file"
         return 0
     fi
-    if [ ! -s "$tmp" ]; then
+    if [ ! -s "$tmp" ] && [ ! -L "$file" ]; then
         # Nothing left: no file is the same as an empty one (every setting
-        # at its default), so remove it rather than leave an empty file.
+        # at its default), so remove it rather than leave an empty file. A
+        # symlinked file is emptied instead (below), so the link stays.
         rm -f "$tmp"
         if [ -f "$file" ]; then
             rm -f "$file" || return 1
@@ -1157,8 +1174,18 @@ project_file_set() {
         fi
         return 0
     fi
-    chmod 644 "$tmp"
-    mv -f "$tmp" "$file" || { rm -f "$tmp"; return 1; }
+    # Keep the existing file's mode (it may be 600 on purpose); a new file
+    # is 644 (mktemp creates 600).
+    mode=""
+    if [ -f "$dest" ]; then
+        mode="$(stat -c %a "$dest" 2>/dev/null || stat -f %Lp "$dest" 2>/dev/null)" || mode=""
+    fi
+    if ! chmod "${mode:-644}" "$tmp"; then
+        rm -f "$tmp"
+        echo "ERROR: could not set the mode of the new $file" >&2
+        return 1
+    fi
+    mv -f "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
     echo "updated $file"
 }
 

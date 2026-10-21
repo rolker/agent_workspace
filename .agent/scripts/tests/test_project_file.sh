@@ -513,6 +513,49 @@ test_composite_keys_refused() {
     assert_eq "no temporary file left" "" "$(find "$sb/.agent/projects.d" -name '.alpha.*' 2>/dev/null)"
 }
 
+# A file's permission bits in octal (GNU stat, else BSD stat).
+fmode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"; }
+
+test_set_keeps_mode_and_symlink() {
+    echo "TEST: set keeps an existing file's mode and a symlinked file's link; a new file is 644"
+    local sb f out rc target
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    make_project "$sb" beta >/dev/null
+    f="$(pfile "$sb" alpha)"
+
+    ps_run "$sb" set alpha build=make >/dev/null
+    assert_eq "new file is 644" "644" "$(fmode "$f")"
+    chmod 600 "$f"
+    ps_run "$sb" set alpha "test=make check" >/dev/null
+    assert_eq "mode 600 kept after set" "600" "$(fmode "$f")"
+    ps_run "$sb" unset alpha test >/dev/null
+    assert_eq "mode 600 kept after unset" "600" "$(fmode "$f")"
+    assert_eq "content right" "build=make" "$(cat "$f")"
+
+    target="$(mktemp -d -p "$SANDBOX")/beta.settings"
+    printf '# kept elsewhere\nbuild=make\n' > "$target"
+    chmod 640 "$target"
+    ln -s "$target" "$(pfile "$sb" beta)"
+    rc=0; out="$(ps_run "$sb" set beta "test=make check" 2>&1)" || rc=$?
+    assert_eq "set through a symlink: exit 0" "0" "$rc"
+    assert_eq "still a symlink" "yes" "$([ -L "$(pfile "$sb" beta)" ] && echo yes || echo no)"
+    assert_eq "link still points at the target" "$target" "$(readlink "$(pfile "$sb" beta)")"
+    assert_eq "target rewritten, comment kept" "$(printf '# kept elsewhere\nbuild=make\ntest=make check')" "$(cat "$target")"
+    assert_eq "target mode 640 kept" "640" "$(fmode "$target")"
+    assert_eq "get reads through the link" "make check" "$(ps_run "$sb" get beta test)"
+    assert_eq "no temporary file left beside the target" "" "$(find "$(dirname "$target")" -name '.beta.*')"
+
+    printf 'build=make\n' > "$target"
+    rc=0; out="$(ps_run "$sb" unset beta build 2>&1)" || rc=$?
+    assert_eq "unset of the last key through a symlink: exit 0" "0" "$rc"
+    assert_eq "link kept when nothing is left" "yes" "$([ -L "$(pfile "$sb" beta)" ] && echo yes || echo no)"
+    assert_eq "target emptied" "" "$(cat "$target")"
+    assert_eq "target still exists" "yes" "$([ -f "$target" ] && echo yes || echo no)"
+    rc=0; ps_run "$sb" check beta >/dev/null 2>&1 || rc=$?
+    assert_eq "an empty target checks valid" "0" "$rc"
+}
+
 test_set_refusals() {
     echo "TEST: set refuses invalid results, unknown keys, unregistered names and parent roots, leaving the file as it was"
     local sb f out rc before
@@ -765,6 +808,7 @@ test_dispatcher_refuses_workspace_records_repo
 test_set_get_list_idempotent
 test_set_keeps_comments_and_order
 test_composite_keys_refused
+test_set_keeps_mode_and_symlink
 test_set_refusals
 test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes
