@@ -1218,6 +1218,26 @@ test_unused_settings_list_unreadable_or_crlf() {
     fi
 }
 
+test_env_inherited_commands_ignored() {
+    echo "TEST: BUILD_CMD/INSTALL_CMD inherited from the environment are not honoured (changed with #332, as the headers say)"
+    local sb dir rc_dir out
+    sb="$(make_sandbox)"
+    dir="$(make_project "$sb" alpha)"
+    make_stub "$sb" envcmd >/dev/null
+    make_stub "$sb" sharedcmd >/dev/null
+    echo "BUILD_CMD=\"$sb/bin/sharedcmd\"" > "$sb/.agent/project_config.sh"
+    out="$(cd "$sb" && BUILD_CMD="$sb/bin/envcmd" "$sb/.agent/scripts/adapter" --project alpha build 2>&1)"
+    assert_contains "single_project: the shared config's BUILD_CMD runs" "STUB_sharedcmd_RAN_IN" "$out"
+    assert_not_contains "single_project: the environment's BUILD_CMD does not" "STUB_envcmd_RAN_IN" "$out"
+
+    rc_dir="$(mktemp -d -p "$SANDBOX")/rc"
+    mkdir -p "$rc_dir"
+    echo "rc ros2_colcon $rc_dir" >> "$sb/.agent/projects.local"
+    out="$(cd "$sb" && INSTALL_CMD="$sb/bin/envcmd" "$sb/.agent/scripts/adapter" --project rc install 2>&1)"
+    assert_contains "ros2_colcon: no install configured" "INSTALL_CMD not set — nothing to install" "$out"
+    assert_not_contains "ros2_colcon: the environment's INSTALL_CMD does not run" "STUB_envcmd_RAN_IN" "$out"
+}
+
 test_bootstrap_url_precedence() {
     echo "TEST: ros2_colcon bootstrap URL: env, then bootstrap_url, then legacy MANIFEST_BOOTSTRAP_URL"
     local sb out
@@ -1282,6 +1302,7 @@ test_dashboard_reports_settings_files
 test_dashboard_orphans_without_registered_projects
 test_type_unused_settings_refused
 test_unused_settings_list_unreadable_or_crlf
+test_env_inherited_commands_ignored
 test_bootstrap_url_precedence
 
 echo ""

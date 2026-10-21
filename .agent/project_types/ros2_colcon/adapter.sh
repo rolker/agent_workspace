@@ -19,6 +19,11 @@
 # clone into layers/main/<layer>_ws/src/<repo>; absent = Pattern A —
 # configs/manifest_repo/<repo>); config_path (default "config").
 #
+# Changed from main (issue #332): an INSTALL_CMD inherited from the
+# caller's environment is no longer honoured; adapter_install clears it
+# before sourcing the legacy or shared config, so only a config file (or
+# install= in the settings file) sets it.
+#
 # Distro handling (new capability — the ros2 scripts hardcoded jazzy):
 #   1. `distro:` field in configs/manifest/bootstrap.yaml
 #   2. ROS_DISTRO in the per-project config (.agent/projects.d/<name>.sh,

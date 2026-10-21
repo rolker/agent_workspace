@@ -7,7 +7,11 @@
 # except that a registered project's build/test/install command comes first
 # from its settings file .agent/projects.d/<name> (issue #332; see
 # _single_project_resolve_cmd) and a fall-through to the shared
-# .agent/project_config.sh is reported on stderr.
+# .agent/project_config.sh is reported on stderr. Changed from main (issue
+# #332): BUILD_CMD, TEST_CMD and INSTALL_CMD inherited from the caller's
+# environment are no longer honoured; they are cleared before the legacy or
+# shared config is sourced, so only a config file sets them (a config line
+# such as BUILD_CMD="${BUILD_CMD:-make}" now always gives its default).
 #
 # Sourced by .agent/scripts/adapter with WORKSPACE_ROOT and ADAPTER_TYPE_DIR
 # set as shell variables (not exported). Not executable on its own; must be
