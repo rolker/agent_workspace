@@ -465,6 +465,36 @@ test_records_repo_workspace_by_contents() {
     assert_eq "another plugin's manifest: valid (exit 3)" "3" "$rc"
 }
 
+test_records_path_inside_another_repo_is_unverifiable() {
+    echo "TEST: tracking=repo at a location_path that is not itself a clone but lies inside another repository is unverifiable until cloned, not checked as that repository; one inside a workspace copy is still refused"
+    local sb recs top out rc
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    recs="$(mktemp -d -p "$SANDBOX")"
+    make_records_repo "$recs/dotfiles" "https://example.org/me/dotfiles.git"
+    mkdir -p "$recs/dotfiles/records"
+    top="$(cd "$recs/dotfiles" && pwd -P)"
+    printf 'location=outside\nlocation_path=%s\ntracking=repo\n' "$recs/dotfiles/records" | write_pfile "$sb" alpha
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_eq "inside another repository: valid, not yet honoured (exit 3)" "3" "$rc"
+    assert_contains "inside another repository: unverifiable until cloned, saying why" \
+        "records repository $recs/dotfiles/records is unverifiable until cloned ($recs/dotfiles/records is not the top of a clone: it lies inside the repository at $top)" "$out"
+
+    make_records_repo "$recs/dotfiles/records" "https://example.org/me/records.git"
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_eq "once cloned there: valid, not yet honoured (exit 3)" "3" "$rc"
+    assert_not_contains "once cloned there: verified, no longer unverifiable" "unverifiable until cloned" "$out"
+
+    printf 'location=outside\nlocation_path=%s\ntracking=repo\n' "$recs/absent" | write_pfile "$sb" alpha
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_contains "no directory: unverifiable, saying why" "unverifiable until cloned (no directory there yet)" "$out"
+
+    make_records_repo "$recs/fork" "git@other-host.example:someone/fork.git"
+    mkdir -p "$recs/fork/.agent" "$recs/fork/records"
+    echo "# list" > "$recs/fork/.agent/user_tier_scripts.txt"
+    refuse_case "inside a workspace copy, not itself a clone" "$sb" "$recs/fork/records" ".agent/user_tier_scripts.txt"
+}
+
 test_records_dir_inside_workspace_repo() {
     echo "TEST: tracking=repo inside the workspace's own repository is refused; untracked records under its scratchpad validate"
     local sb out rc=0
@@ -1485,6 +1515,7 @@ test_records_repo_workspace_by_remote_url
 test_records_repo_workspace_by_local_path
 test_records_repo_workspace_by_contents
 test_records_dir_inside_workspace_repo
+test_records_path_inside_another_repo_is_unverifiable
 test_dispatcher_refuses_workspace_records_repo
 test_set_get_list_idempotent
 test_set_keeps_comments_and_order

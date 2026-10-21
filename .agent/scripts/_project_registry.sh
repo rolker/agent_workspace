@@ -1088,7 +1088,11 @@ _records_workspace_marker() {
 # 2026-10-13: a fork would carry other projects' records, and a pull
 # request sent back would bring them past the merge gate's bookkeeping
 # exemption). Prints the reason and returns 0 when it is; returns 1 when it
-# is not; returns 3 when it cannot tell yet (no repository at <dir>).
+# is not; prints why and returns 3 when it cannot tell yet: no repository
+# at <dir>, or <dir> is not the top of a clone but lies inside another
+# repository (a home dotfiles repository, say), which is not the records
+# repository. That enclosing repository is still refused when it is a
+# workspace, since records there would be committed into it.
 # Checks: the same repository as the workspace checkout (any worktree);
 # the workspace's marker files (contents, so a clone of a fork under any
 # owner is caught offline); a local-path or file:// remote at the
@@ -1096,8 +1100,11 @@ _records_workspace_marker() {
 # one of the workspace's.
 _records_repo_workspace_reason() {
     local root="$1" dir="$2" top ws_common rec_common marker r url lpath lcommon norm wurl wnorm
-    [ -d "$dir" ] || return 3
-    top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || return 3
+    local here enclosed=0
+    [ -d "$dir" ] || { echo "no directory there yet"; return 3; }
+    top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || { echo "no git repository there yet"; return 3; }
+    here="$(cd "$dir" 2>/dev/null && pwd -P)" || here="$dir"
+    [ "$(cd "$top" 2>/dev/null && pwd -P)" = "$here" ] || enclosed=1
     ws_common="$(_records_git_common_dir "$root")" || ws_common=""
     rec_common="$(_records_git_common_dir "$top")" || rec_common=""
     if [ -n "$ws_common" ] && [ "$rec_common" = "$ws_common" ]; then
@@ -1129,6 +1136,10 @@ _records_repo_workspace_reason() {
             fi
         done < <(git -C "$root" remote 2>/dev/null)
     done < <(git -C "$top" remote 2>/dev/null)
+    if [ "$enclosed" -eq 1 ]; then
+        echo "$dir is not the top of a clone: it lies inside the repository at $top"
+        return 3
+    fi
     return 1
 }
 
@@ -1170,7 +1181,7 @@ _project_records_check_entries() {
             return 2
         fi
         if [ "$rc" -eq 3 ]; then
-            echo "NOTE: project '$name': records repository $lpath is unverifiable until cloned (no git repository there yet)" >&2
+            echo "NOTE: project '$name': records repository $lpath is unverifiable until cloned ($reason)" >&2
         fi
     fi
     printf '%s\t%s\t%s\n' "$loc" "$track" "$lpath"
