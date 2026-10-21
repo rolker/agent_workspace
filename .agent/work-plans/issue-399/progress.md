@@ -1,0 +1,423 @@
+---
+issue: 399
+---
+
+# Issue #399 — Dispatched passes run the script test suite once per pass, not per commit
+
+## Issue Review
+**Status**: complete
+**When**: 2026-10-20 14:43 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Issue**: #399
+
+### Scope Assessment
+
+**Well-scoped?** Yes. One PR: one rule stated in five places (handoff line, two skill texts, AGENTS.md row, hook comment) plus one test. The decision, the rejected alternative and the acceptance are already in the body.
+**Right repo?** Yes. Workspace (`dispatch_phase.sh`, skills, `AGENTS.md`, `.pre-commit-config.yaml`); nothing names a project.
+**Serves**: Quality of the work (the full suite stays the gate before any push; only repeated runs go, per the owner's wall-clock-over-tokens rule) — `docs/design.md#review-loop-and-timeline`
+**Design picture?** No change. The hook, the phases and the push gate keep their places; the rule is a pass-level convention. `docs/design.md` mentions the hook only as the `test` verb's entry, which stays true. The owner already decided (2026-10-20), so no design question to ask.
+**Dependencies**: Overlaps in-flight `feature/issue-321`, which edits `dispatch_phase.sh` (a new round-3 block in `cmd_handoff` ending just above the `exit_contract`/`conventions=` echoes, plus the `round_count` block), `.claude/skills/run-issue/SKILL.md` (hunks around lines 149, 282, 391, 402, 418, 697) and `test_dispatch_phase.sh`. No functional dependency; merge order only.
+
+### Principle Alignment
+
+| Principle | Status | Notes |
+|---|---|---|
+| Name the rule before bending it | Action needed | The change exempts intermediate commits from a hook, close to the AGENTS.md Never rule on skipping hooks. The body names the rule and keeps `--no-verify` forbidden, but the wording must say the exemption is a standing, owner-decided rule for dispatched passes only (SKIP on intermediate commits, hook still runs on the entry commit), and that a hand-run session or a pass that cannot run the suite does not get it. Record the owner decision date in the AGENTS.md row. |
+| Enforce what matters, as simply as possible | Action needed | The new gate ("run the full suite once before the entry") is prose-only: nothing fails if a pass SKIPs commits and never runs the suite. Name the backstop: the entry commit's own hook run executes the suite regardless, and the pre-push gate is unchanged. State that in the handoff text and the AGENTS.md row so it is not read as an honour system. |
+| A change includes its consequences | Watch | Beyond the listed five, the implement exit contract in `dispatch_phase.sh` and the AGENTS.md "Always" line "Run pre-commit hooks before committing" also describe the pass and are qualified by the new rule. Pre-commit on every changed file, run once, still covers the lint hooks that SKIP does not skip. |
+| Test what breaks | Watch | The pinned test should assert the text for `implement` and `address-findings` and its absence for the other five phases, so a review handoff never tells a reviewer to skip hooks. Add the case to the existing handoff block of `test_dispatch_phase.sh`, not new scaffolding. |
+| Small steps; step back when they stop converging | OK | Small and placeable: the owner's chosen alternative needs no new mechanism. |
+| Know whether it works | Watch | The acceptance says what a pass runs, not how anyone tells later. Cheap check: the next dispatched fix pass should show one suite run plus the entry commit's hook run; say where that is looked at. |
+
+### ADR Applicability
+
+| ADR | Triggered | Notes |
+|---|---|---|
+| 0004 / 0005 — Enforcement layering | Yes | Pre-commit stays local feedback; CI and the pre-push run stay authoritative. The change removes repeats at the local layer only. |
+| 0013 — progress.md vocabulary | Yes | "Before writing its progress entry" only; no new entry type or shape. |
+| 0014 — In-process phase handoff | Yes | Touches the handoff and run-issue step 4; stays on the one dispatch path and the existing `conventions=` field, no new handoff field. |
+| 0017 — Design doc is the current picture | No | No change to how the parts fit; no ADR needed. |
+
+### Consequences
+
+- AGENTS.md "Script Reference" row for `run_script_tests.sh` and the hook comment (both already listed in the issue).
+- Framework adapters: none needed (shared `AGENTS.md` plus Claude-skill text; Codex/Gemini follow `AGENTS.md`).
+- Merge order with the in-flight 321 branch: see Recommendations.
+
+### Recommendations
+
+- Place the `dispatch_phase.sh` change as a small per-skill `case` that sets a variable used by the `conventions=` echo, touching only that line and leaving the `exit_contract` if/else (the nearest text 321 changes) alone, so it merges cleanly after 321.
+- Add the run-issue step 4 text as one short paragraph in the implement-pass section (around line 285), not in the table rows or numbered lists 321 edits; rebase on `main` after 321 lands, re-run `test_dispatch_phase.sh`, and append the new test case at the end of the handoff block.
+- Word the rule as owner-decided and pass-scoped: SKIP only on intermediate atomic commits of a dispatched implement / address-findings pass; full suite plus pre-commit on all changed files before the entry; the entry commit runs the hook; `--no-verify` stays forbidden; a failing run is fixed first.
+- Make the pinned test check that the other five phases' `conventions=` do not carry the rule.
+- Say in the PR how the result is looked at: the next dispatched fix pass shows one suite run, not one per commit.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-20 14:46 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `2281176b`
+
+Once-per-pass rule (owner-decided 2026-10-20) added as a per-skill case feeding the conventions= echo in dispatch_phase.sh for implement and address-findings only, plus address-findings steps 3-5, one run-issue step 4 paragraph, the AGENTS.md hook line and script row, the hook comment, and a pinned test placed mid-file. Placed clear of feature/issue-321's hunks; main merges in after 321 lands.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-20 14:52 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #399 — Dispatched passes run the script test suite once per pass, not per commit
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `2281176b`
+**Branch**: `feature/issue-399`
+
+Scope of this review: placement, wording and consequences. The mechanism (suite once per dispatched pass, hook unchanged) is the owner's 2026-10-20 decision and is not re-opened.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Six files, one rule, one test; one PR. |
+| Issue alignment | Needs work | Covers every item in the issue's Change list and the issue review's recommendations. Serves, as checked: "Quality of the work (the full suite remains the gate before any push; only repeats go) — `docs/design.md#review-loop-and-timeline`" — goal exists in README.md (`### Quality of the work`: "economical, but never at the cost of quality"), anchor resolves (design.md:423). The backstop wording it carries is factually wrong (finding 1). |
+| File targeting | Needs work | Right files. The test insertion point and the header sentence both land on 321 hunks, against the plan's own claim (findings 3, 4). `run_script_tests.sh` header also states the SKIP allowance and is not listed (finding 6). |
+| Consequences | Needs work | Backstop named in five places is not the one that exists; the real one is CI (finding 1). The pre-entry step as worded runs the suite twice (finding 2). |
+| Principle alignment | Needs work | "Verify before claiming" / "Enforce what matters": the "not an honour system" claim rests on the entry commit running the suite, which it does not. "Name the rule before bending it": scoping and `--no-verify` wording are good. "Test what breaks": presence-in-two / absence-in-five test is right. "Only what's needed": the AGENTS.md Always-line qualifier is not needed (finding 5). |
+| ADR compliance | Good | 0004/0005 hold once the backstop is named as CI (the authoritative layer). 0013: no new entry shape. 0014: existing `conventions=` field, no new field. 0017: no design-picture change, but see finding 6 on `docs/design.md#rules`. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences / Verify before claiming] (high)** — The named backstop does not exist. The entry commit (`progress_append.sh` / `review_progress.sh persist`) commits only `.agent/work-plans/issue-<N>/progress.md` (`git commit -- <file>`, progress_append.sh:21), and the hook excludes that path (`exclude: ^\.agent/work-plans/`, .pre-commit-config.yaml:76), so "the entry commit runs the hook normally" executes no suite. There is also no pre-push git hook: only `pre-commit` is installed and every local hook is `stages: [pre-commit]`. The real mechanical backstop is CI: the Lint job runs `make lint` = `pre-commit run --all-files`, which always runs `validate-script-tests` (run_script_tests.sh header; `docs/design.md#rules` row "Hooks are not skipped", enforced by `CI`), and `merge_pr.sh` waits for CI before merging. Resolution: in the handoff text, both skills, the AGENTS.md row and the hook comment, name the backstop as CI on push plus `merge_pr.sh`'s CI wait; drop the claim that the entry commit runs the suite (keeping "the entry commit is not SKIPped" is harmless but checks nothing). Fix the acceptance check to match ("one suite run per pass", not "plus the entry commit's hook run"). The owner's decision text contains the same premise ("the progress-entry commit runs the hook normally"); his decision stands, but the correction should be shown to him with the PR.
+2. **[Consequences] (medium)** — The pre-entry step runs the suite twice. `pre-commit run --files <changed>` without SKIP runs `validate-script-tests` itself whenever any changed file matches its `files:` pattern, so "run `run_script_tests.sh` once and `pre-commit run --files ...`" costs about 10 minutes, not 5. Resolution (listed for veto): one command, `pre-commit run --files <every file changed in the pass>` with no SKIP — it runs the suite exactly when a per-commit hook would have and every lint hook too; or keep the explicit suite run and set `SKIP=validate-script-tests` on the `pre-commit run`. Also say the run is against the final tree: after fixing a failure, run it again.
+3. **[File targeting / merge claim] (medium)** — The test placement collides with 321. 321 inserts 53 lines at main line 431, i.e. between the "handoff: no worktree for --issue" case (test_dispatch_phase.sh:429) and `TEST: resolve_worktree` / `# (a) registry lookup` (433) — exactly where the plan puts its cases. The plan read the hunk header's context text `echo ""` as end-of-file. Resolution: place the new cases after the implement exit-contract case (line 418) and before the `--entry-type` / `--model` override case (line 420); 321 has no hunk there (its hunks: 40, after 228, after 431).
+4. **[File targeting / merge claim] (low)** — `dispatch_phase.sh` header: "the end of the handoff usage text" is the `--skill-prefix` paragraph (lines 20–22), and 321 inserts its round-3 sentence right after line 22, so this is a certain conflict, contradicting "away from the `--skill-prefix` paragraph". Resolution: put the sentence after line 16 ("...every dispatched phase must follow.") or rely on the code comment beside the new `case`. Verified clean: the `case` + `conventions=` echo (321's `cmd_handoff` hunk ends before the `AGENT_NAME` check, ~20 lines above); the run-issue paragraph after the `## Implementation` shape paragraph (~line 310; 321's nearest hunks at 282–286 and 389+); 321 touches none of address-findings, AGENTS.md, `.pre-commit-config.yaml`.
+5. **[Principle: Only what's needed / Ask First] (low)** — Step 4(a), the AGENTS.md "Always" line qualifier, is outside the owner's decided Change list, AGENTS.md is Ask-First, and the line stays literally true (SKIP leaves every other pre-commit hook running). Resolution: drop 4(a); the Script Reference row (in the decided list) carries the rule.
+6. **[Consequences] (low)** — Two more places state the SKIP allowance or the backstop: `run_script_tests.sh` header lines 46–48 ("sanctioned escape for work-in-progress commits") and `docs/design.md#rules` row "Hooks are not skipped (no `--no-verify`)". Resolution: one clause in the script header pointing to the once-per-pass rule (or say why it is left); in Design Picture, say the Rules row stays true because CI is its enforcer, and cite it as the backstop.
+7. **[File targeting] (low)** — `.pre-commit-config.yaml`: keep the new comment above the `- id: validate-script-tests` line. `test_script_tests_hook_scope.sh` extracts the block from that line to the next `- id:` and reads the first `files:` / `exclude:` lines; a comment above the id is outside what it parses.
+
+### Summary
+
+Placement of the handoff `case`, the run-issue paragraph and the address-findings text is sound, and the two-in / five-out test is the right pin. Not ready as written: the backstop it states in five places does not run (the entry commit is excluded from the hook; there is no pre-push hook — CI is the real gate), the pre-entry step doubles the suite run, and the test placement collides with the 321 branch. All fixes are wording and placement; none changes what the work is for.
+
+### Recommended Actions
+
+- [ ] Replace the backstop wording everywhere with CI (`make lint` on push runs the full suite) plus `merge_pr.sh`'s CI wait; drop "the entry commit's hook run executes the suite"; fix the acceptance check to match.
+- [ ] Make the pre-entry step one suite run, not two (single `pre-commit run --files <changed>` with no SKIP, or SKIP on the pre-commit run beside an explicit suite run); re-run after a fix.
+- [ ] Move the test cases to between test_dispatch_phase.sh:418 and :420; correct the 321 merge paragraph (321 inserts at main line 431).
+- [ ] Move the `dispatch_phase.sh` header sentence off the `--skill-prefix` paragraph (after line 16), or drop it in favour of the code comment.
+- [ ] Drop the AGENTS.md "Always" line qualifier (step 4a).
+- [ ] Add the `run_script_tests.sh` header clause and the `docs/design.md#rules` note in Design Picture.
+- [ ] Keep the `.pre-commit-config.yaml` comment above the hook's `- id:` line.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-20 14:51 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (plan review verdict needs-work; all seven findings are wording and placement, none goal-level; the owner's mechanism decision of 2026-10-20 stands)
+**After**: plan
+**Decision**: revise
+Revise per the Plan Review's seven findings. Host directions: the safety net is CI (make lint runs the suite on every push; merge_pr.sh waits for it), not the entry commit's hook, which skips work-plans; name CI in every place and change the acceptance check to "one suite run per pass". Run `pre-commit run --files <every file changed in the pass>` once before the entry, with no separate suite run (that run includes the suite), and again after any fix. Drop the AGENTS.md "Always" line edit; the AGENTS.md script-reference row stays in the plan but is flagged for the owner's explicit yes at the PR (Ask First). Move the test cases to between the implement exit-contract case and the --entry-type override case; put the header sentence after line 16; cite the run_script_tests.sh header and the design.md Rules row; keep the hook comment above the id line. The correction to the owner's decision text (entry hook does not run the suite) goes to him in the hand-back.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-20 14:54 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `6a1fdc7d`
+
+Revised per the seven Plan Review findings: backstop is CI (the entry commit is excluded from the hook), one pre-commit run before the entry, test cases moved between main lines 418 and 420, header sentence after line 16, AGENTS.md Always edit dropped (script row kept, Ask First), run_script_tests.sh header and design.md Rules row cited, hook comment above the id line. Hand-back notes record the owner's wrong premise.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-21 09:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #399 — Dispatched passes run the script test suite once per pass, not per commit
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `6a1fdc7d`
+**Branch**: `feature/issue-399`
+
+Round 2. Scope: the revised plan against round 1's seven findings, the host's Checkpoint directions and the principles. The mechanism (suite once per dispatched pass; the pre-commit hook itself unchanged) is the owner's 2026-10-20 decision and is not re-opened.
+
+### Round 1 findings
+
+| # | Round 1 finding | Resolved? | Checked against |
+|---|---|---|---|
+| 1 | Backstop is CI, not the entry commit | Yes | validate.yml: push to `main`/`feature/**`/`fix/**` and PRs to main; Lint job's SKIP list does not include `validate-script-tests`; `make lint` = `pre-commit run --all-files` (Makefile:116); merge_pr.sh waits for CI (step 2, ~line 997). Acceptance now "one suite run per pass" |
+| 2 | One pre-commit run, not two | Yes, in the rule; the test still pins the old string (finding 2 below) | Hook has `pass_filenames: false` and a `files:` pattern, so `pre-commit run --files` runs the suite once when any changed file matches |
+| 3 | Test placement off 321's hunk | Yes | 321's test hunks: line 40, after 228, after 431; 418–420 is clear |
+| 4 | Header sentence off the `--skill-prefix` paragraph | Partly: clear of 321, but the new spot splits a sentence (finding 3 below) | 321 inserts after header line 22 |
+| 5 | Drop the AGENTS.md "Always" edit | Yes; the Script Reference row is flagged Ask First for the owner at the PR | — |
+| 6 | `run_script_tests.sh` header and design.md Rules row | Yes | Header lines 46–48 match; design.md:155 row, enforcer `CI` |
+| 7 | Hook comment above the `- id:` line | Yes | `test_script_tests_hook_scope.sh` reads `^\s*files:` / `^\s*exclude:` from the id line on; a comment cannot match |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Seven files, one rule, one test; one PR. |
+| Issue alignment | Good | Covers the issue's Change list. Serves, as checked: "Quality of the work (the full suite still runs before the entry and in CI on every push; only repeats go) — `docs/design.md#review-loop-and-timeline`" — goal at README.md:33, anchor at design.md:423. The acceptance is restated without the issue's wrong "plus the entry commit's hook run", and the hand-back notes carry the correction to the owner. |
+| File targeting | Needs work | Right files. `dispatch_phase.sh` header placement splits a sentence (finding 3). |
+| Consequences | Needs work | Project-worktree handoffs would carry workspace-only text (finding 1). |
+| Principle alignment | Needs work | "Put each thing at the level it applies to" / "Verify before claiming": the rule names a workspace hook and workspace CI but would be printed for project worktrees too (finding 1). "Test what breaks": the pin checks a string the revised rule no longer needs (finding 2). "Name the rule before bending it", "Enforce what matters", "Know whether it works", "Look for prior art": good. |
+| ADR compliance | Good | 0004/0005: CI stays the authoritative layer. 0013: no new entry shape. 0014: existing `conventions=` field. 0017: no design-picture change; Rules row cited. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences / Put each thing at the level it applies to] (must-fix, medium)** — The `case` keys only on `$skill`, but `cmd_handoff` also serves `--type project` (dispatch_phase.sh:298, `type` defaults to workspace; run-issue's main use is project issues). In a project worktree the implement / address-findings handoff would tell the agent to SKIP `validate-script-tests` (a workspace-only hook) and name `make lint` CI as the backstop, which a project may not have. Resolution: emit `pass_rule` only when `$type` is `workspace`; add one test case that a `--type project` implement handoff has no rule (the file already builds a project sandbox, `SBP1`, in the `resolve_worktree --type project` block); in address-findings, tie the exemption to the handoff's `conventions=` carrying it, so a project pass or a hand-run session does not apply it.
+2. **[Test what breaks] (must-fix, low)** — Step 6 pins `run_script_tests.sh` in the implement / address-findings `conventions=` lines and checks its absence in the other five. That is round 1's wording: the revised rule's one command is `pre-commit run --files`, and naming `run_script_tests.sh` in the handoff invites the separate second run that round 1 finding 2 removed. Resolution: pin `SKIP=validate-script-tests`, `pre-commit run --files` and `CI` in the two phases; check the other five lack `SKIP=validate-script-tests` and `pre-commit run --files`.
+3. **[File targeting] (must-fix, low)** — "After line 16" splits a sentence: line 16 reads "workspace conventions every dispatched phase must follow. Output is" and that sentence runs to line 19. Resolution: insert after line 19 ("...only when --prompt-file was given)."); lines 20–22 stay untouched between it and 321's insertion after line 22, so the merge stays clean. Or fold a clause into line 16.
+4. **[Consequences] (suggestion, low)** — "Every file changed in the pass" is left for the agent to assemble; a missed file is a missed lint. Name the command, e.g. `pre-commit run --files $(git diff --name-only main...HEAD)` — the whole branch costs no extra suite run, and pre-commit drops deleted paths itself (pre_commit/commands/run.py:75, `os.path.lexists`).
+5. **[Verify before claiming] (suggestion, low)** — "So the suite runs exactly once" holds only when a changed file matches the hook's `files:` pattern; a pass touching only `docs/` runs it zero times, as per-commit would. Say "at most once". Likewise "CI on every push" is push to `main`/`feature/**`/`fix/**` plus PRs to main; dispatched passes are on `feature/issue-<N>`, so it holds for them.
+
+### Summary
+
+All seven round 1 findings are resolved, the header one only partly. Three small must-fixes remain: scope the rule to workspace worktrees, pin the right string in the test, and move the header sentence three lines down. The review is converging; all three are line-level edits to the plan, none changes what the work is for.
+
+### Recommended Actions
+
+- [ ] Emit the rule only for `--type workspace`; add a project-type handoff test case showing no rule; make address-findings' exemption conditional on the handoff carrying it.
+- [ ] Change the test pin from `run_script_tests.sh` to `SKIP=validate-script-tests`, `pre-commit run --files` and `CI`, with the matching absence check in the other five phases.
+- [ ] Put the header sentence after line 19, not line 16.
+- [ ] (suggestion) Name the file-list command for the single pre-commit run.
+- [ ] (suggestion) Say "at most once" for the suite run.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 09:35 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Plan review round 2 (ee17ac4c): needs-work, all seven round-1 must-fixes resolved, three new must-fixes (workspace-only rule emission, test wording, header insertion point) and two suggestions (name the file-list command, "at most once"). Owner's answer: "Revise (Recommended)".
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-21 09:37 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `c6a7701b`
+
+Revised per plan review round 2: the rule is emitted only for workspace handoffs (project handoff test added, address-findings applies it only when the handoff carries it); test pins `SKIP=validate-script-tests`, `pre-commit run --files` and `CI` instead of `run_script_tests.sh`; header sentence moves to after line 19; the pre-entry run names `pre-commit run --files $(git diff --name-only main...HEAD)`; "at most once" with CI's real trigger set.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-21 09:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+**Dispatch**: resumed (agent af232ca02e5cb9d7c, resume 1 of 3)
+
+**Issue**: #399 — Dispatched passes run the script test suite once per pass, not per commit
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `c6a7701b`
+**Branch**: `feature/issue-399`
+**Serves**: Quality of the work (the full suite still runs before the entry and in CI on pushes to `main`, `feature/**` and `fix/**` and PRs to main; only repeats go) — `docs/design.md#review-loop-and-timeline`
+
+Round 3. Scope: the revision (diff `6a1fdc7d..c6a7701b`) against round 2's three must-fixes and two suggestions. The owner's 2026-10-20 decision (hook unchanged) is not re-opened.
+
+### Round 2 findings
+
+| # | Round 2 finding | Resolved? | Checked against |
+|---|---|---|---|
+| 1 | Rule emitted for project handoffs too | Yes | Step 1: `[[ "$type" == workspace ]] && pass_rule=...` inside the `case`; `$type` is in scope in `cmd_handoff` (dispatch_phase.sh:298). The script runs `set -uo pipefail` without `-e` (line 65), so the false `[[ ]]` on a project handoff does not abort. Step 2: address-findings applies the exemption only when `conventions=` carries it. Step 6: a `--type project` implement case. Context bullet names the workspace-only scope |
+| 2 | Test pinned `run_script_tests.sh` | Yes | Step 6 checks `SKIP=validate-script-tests`, `pre-commit run --files`, `CI` in the two phases and the absence of the first two in the other five |
+| 3 | Header sentence split a sentence | Yes | After line 19 ("...only when --prompt-file was given).") ends the sentence begun on line 16; lines 20–22 stay untouched before 321's insertion after line 22 |
+| 4 | Name the file-list command (suggestion) | Yes | `pre-commit run --files $(git diff --name-only main...HEAD)` in the Context rule, steps 2 and 7 |
+| 5 | "At most once"; real CI triggers (suggestion) | Yes | Context, Serves and acceptance now say "at most once" and list pushes to `main`/`feature/**`/`fix/**` plus PRs to main, matching validate.yml |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Seven files, one rule, one test; one PR. |
+| Issue alignment | Good | Covers the issue's Change list; Serves line checked (goal README.md:33, anchor design.md:423). |
+| File targeting | Good | One placement note for the project test case (finding 1). |
+| Consequences | Good | Handoff, both skills, AGENTS.md row (Ask First, flagged), hook comment, `run_script_tests.sh` header, test. |
+| Principle alignment | Good | Workspace-only scope fits "Put each thing at the level it applies to"; CI named as the backstop ("Enforce what matters"); two-in / five-out / project-out pin ("Test what breaks"). |
+| ADR compliance | Good | 0004/0005, 0013, 0014 hold; 0017 not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[File targeting] (implementation note, low)** — Step 6 places all cases between test_dispatch_phase.sh:418 and :420, but the project sandbox `SBP1` it reuses is created later, at line 435 (registered at 443). Put the `--type project` implement case right after the registry-lookup assertion (after line 446, before the "(b) the deprecated project/worktrees fallback" comment). 321's test hunks (line 40, after 228, after 431) do not reach there, so the merge stays clean. The workspace cases stay at 418–420.
+
+### Summary
+
+All five round 2 items are resolved and verified against the code. The one remaining note is where a single test case sits, which the implementer will meet at once; it needs no further plan round. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] During implementation, put the `--type project` handoff case after test_dispatch_phase.sh:446 (where `SBP1` exists), not between 418 and 420.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 09:45 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Plan review round 3 (77b370d7): ready, all five round-2 items resolved, one low implementation note (the --type project test case goes after the SBP1 sandbox is created, after test_dispatch_phase.sh line 446). Owner's answer: "Proceed (Recommended)".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 09:59 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Branch**: feature/issue-399 at `d1186db4`
+
+- Step 1, `dispatch_phase.sh` (`46562053`): a `case` on `$skill`, workspace type only, appends the once-per-pass hook rule to `conventions=` for `implement` and `address-findings`; other phases and project handoffs are byte-identical. One header sentence after the output-order sentence.
+- Step 2, `address-findings/SKILL.md` (`5b5d490a`, `d1186db4`): step 3 states the SKIP exemption, applied only when `conventions=` carries it; step 4 makes the one `pre-commit run --files $(git diff --name-only main...HEAD)` run explicit; step 5 names CI, not the entry commit, as the backstop. `d1186db4` rewords a workspace-relative path that `test_skill_paths.sh` rejects.
+- Step 3, `run-issue/SKILL.md` step 4 (`a216a772`): one paragraph after the `## Implementation` shape paragraph.
+- Step 4, `AGENTS.md` `run_script_tests.sh` row (`284eea98`, its own commit): Ask First, needs the owner's explicit yes on the PR.
+- Step 5, `.pre-commit-config.yaml` (`b09c4497`): comment above `- id: validate-script-tests`; hook unchanged.
+- Step 5b, `run_script_tests.sh` header (`7c858c4b`): one clause, comment only.
+- Step 6, `test_dispatch_phase.sh` (`c17ce5dc`): rule present in workspace implement and address-findings, absent in the other five phases and in a `--type project` implement handoff (placed after the `SBP1` registry assertion, per the round-3 reviewer's note); mutation-checked.
+- Step 7: intermediate commits used `SKIP=validate-script-tests`; one branch-wide `pre-commit run --files` failed on `test_skill_paths.sh`, fixed in `d1186db4`, then re-run on the final tree: every hook passed, script suite included. Shellcheck at warning level clean on the three changed scripts.
+- Open for review: `pre-commit` is not on PATH in a dispatched shell (it lives in the main checkout's `.venv/bin`), so the handoff's literal command fails with "command not found" until the agent finds it.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 10:04 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-399 at `ae892a8c`
+**Base**: main
+**Depth**: Deep (reason: 472 changed lines with the work-plan files; AGENTS.md and .pre-commit-config.yaml are override triggers; Deep dispatches the same specialists as Standard)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck clean on the three scripts; yamllint warnings only on untouched lines), governance, plan drift (all seven planned files changed as planned; the extra commit d1186db4 is a wording fix for test_skill_paths.sh, which passes), Claude adversarial, cross-model (Gemini and Codex both completed, both "No issues found"; Codex ran read-only and did not run tests). test_dispatch_phase 120/0, test_skill_paths 58/0, test_script_tests_hook_scope 121/0. CI backstop verified: validate.yml runs `make lint` (`.venv/bin/pre-commit run --all-files`) and its SKIP list does not include validate-script-tests. Owner decision held: the hook definition is unchanged (comment only).
+
+### Findings
+- [x] (must-fix) The rule's literal `pre-commit run --files ...` fails with "command not found" in a dispatched worktree shell: pre-commit is only at the main checkout's `.venv/bin/pre-commit` (worktrees have no `.venv`; the Makefile resolves it from git's common dir for this reason, issue #272), and the permission allowlist matches only `/home/roland/agent_workspace/.venv/bin/pre-commit run *`. Have `dispatch_phase.sh` print the absolute path (`$ROOT_DIR/.venv/bin/pre-commit`, ROOT_DIR is already the main checkout), make the skill, run-issue and AGENTS.md texts name the main checkout's venv pre-commit, and pin the path in the test — `.agent/scripts/dispatch_phase.sh:379`, `.claude/skills/address-findings/SKILL.md:173`, `.claude/skills/run-issue/SKILL.md:317`, `AGENTS.md:430`
+- [x] (suggestion) The once-per-pass run includes the script suite (about 5 minutes), longer than the Bash tool's 120 s default timeout, so an agent that runs it as written gets it backgrounded and may read it as passed or abandon it; tell the agent to give it a long timeout (up to 600000 ms) or run it in the background and wait for the exit — `.agent/scripts/dispatch_phase.sh:379`, `.claude/skills/address-findings/SKILL.md:172`
+- [x] (suggestion) `main...HEAD` is the wrong base for a sub-issue worktree (`--parent-issue` branches from the parent's feature branch, worktree_create.sh:800-815): the run then also checks the parent's files and can fail on files the pass never touched; say so in the rule or derive the base. Paths are also word-split by the unquoted `$(...)` (no such paths in the repo today) — `.agent/scripts/dispatch_phase.sh:379`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 10:18 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**Branch**: feature/issue-399 at `20be868f`
+**Addressed**: Local Review (Pre-Push) at `ae892a8c` (2026-10-21 10:04 -04:00)
+**Commits**: 7c3e73ed, 2de136cf, 55cf3c81, 20be868f
+
+### Actions
+- [x] (must-fix) The rule now prints the main checkout's venv pre-commit by absolute path (`$ROOT_DIR/.venv/bin/pre-commit`, the form the permission allowlist matches); the address-findings skill, run-issue step 4 and the hook comment say the same (7c3e73ed), the AGENTS.md row in its own commit (2de136cf); the test pins `$SB/.venv/bin/pre-commit run --files` — `.agent/scripts/dispatch_phase.sh:379`, `.claude/skills/address-findings/SKILL.md:169`, `.claude/skills/run-issue/SKILL.md:315`, `.pre-commit-config.yaml:72`, `AGENTS.md:430`, `.agent/scripts/tests/test_dispatch_phase.sh:432`
+- [x] (suggestion) The rule and the skill say the run takes several minutes: give the call a long timeout (up to 600000 ms) and wait for its exit; a backgrounded or cut-off run has not passed; the test pins it (55cf3c81) — `.agent/scripts/dispatch_phase.sh:379`, `.claude/skills/address-findings/SKILL.md:182`
+- [x] (suggestion) The rule and the skill say that in a sub-issue worktree the file list also covers the parent's files, and that the `$(...)` is left unquoted because no repo path has a space (checked: `git ls-files` has none; pre-commit drops deleted paths itself); the test pins the sub-issue clause (20be868f) — `.agent/scripts/dispatch_phase.sh:379`, `.claude/skills/address-findings/SKILL.md:177`
+
+### Checks
+- Intermediate commits used `SKIP=validate-script-tests`; every other hook ran on each.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` once at 20be868f with no SKIP: every hook passed, `validate-script-tests` (the whole script suite) included.
+- `shellcheck -S warning` on dispatch_phase.sh, test_dispatch_phase.sh, run_script_tests.sh: clean.
+- test_dispatch_phase 120/0, test_skill_paths 58/0, test_script_tests_hook_scope 121/0 (run during the fixes).
+- Owner decision held: the hook definition is unchanged (comment text only).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 10:21 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: approved
+**Dispatch**: resumed (agent a4d8c676c1f48ef66, resume 1 of 3)
+
+**Branch**: feature/issue-399 at `bf204420`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 536 changed lines with the work-plan files; AGENTS.md and .pre-commit-config.yaml are override triggers; same specialists as Standard)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 1's three findings are resolved (7c3e73ed, 2de136cf, 55cf3c81, 20be868f): the handoff prints `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` (ROOT_DIR is the main checkout from inside the worktree; the binary exists and is executable; the form matches the local allowlist entry), with the long-timeout and sub-issue clauses; the test pins all three. Specialists: static analysis (shellcheck clean), governance (hook definition unchanged; AGENTS.md row edit in its own commits 284eea98 and 2de136cf, Ask First, needs the owner's yes on the PR), plan drift (none beyond round-1 fixes), Claude adversarial (no must-fix), cross-model (Gemini: no issues; Codex: one must-fix downgraded to suggestion, see below). test_dispatch_phase 120/0, test_skill_paths 58/0. Dropped: committing an allowlist entry to the tracked .claude/settings.json (a permission-config change, out of this issue's scope); a main checkout without `.venv` (`make setup` creates it).
+
+### Findings
+- [x] (suggestion) The address-findings step 4 example is a ```bash fence starting `<main checkout>/.venv/bin/pre-commit ...`; pasted literally, `<` is a redirect and the line is a syntax error. Make it a non-shell fence or prose that says to run the exact line the handoff prints — `.claude/skills/address-findings/SKILL.md:177`
+- [x] (suggestion) Codex's must-fix, downgraded: a branch whose only matching change is a deleted script runs no suite in the final check (pre-commit drops deleted paths; the work-plan dir is excluded), yet the rule says "it includes the script test suite, so run no separate suite". Per-commit runs behave the same (pre-commit selects staged files with `--diff-filter=ACMRTUXB`, no D), and CI's all-files run covers it, so this is no regression; qualify the sentence (the suite runs when a changed, still-present file matches the hook) — `.agent/scripts/dispatch_phase.sh:379`
+- [x] (suggestion) `$ROOT_DIR` is printed unquoted into a command the agent runs verbatim; a checkout path with a space breaks it. `printf %q` on ROOT_DIR leaves an ordinary path unchanged (so the allowlist still matches) and escapes a spaced one — `.agent/scripts/dispatch_phase.sh:379`
+- [x] (suggestion) Reflow: the run-issue "Hook rule" paragraph has one 117-character line and reads awkwardly after the parenthetical; the new `.pre-commit-config.yaml` comment's last lines are ragged — `.claude/skills/run-issue/SKILL.md:317-320`, `.pre-commit-config.yaml:73-76`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:23 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Pre-push round 2 (94903ce5): approved, 0 must-fix, 4 suggestions (skill example's angle-bracket placeholder in a bash fence; qualify "the suite runs" to a changed, still-present matching file; printf %q on ROOT_DIR; line wrapping in run-issue and the hook comment). Owner's answers: "Fix suggestions, then publish (Recommended)"; and the AGENTS.md script-reference row edit (commits 284eea98, 2de136cf; Ask First): "Yes, approve the row edit".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 10:32 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent add5d588ef5ad2dee, resume 1 of 3)
+
+**Branch**: feature/issue-399 at `b0f6c45c`
+**Addressed**: Local Review (Pre-Push) at `bf204420` (2026-10-21 10:21 -04:00)
+**Commits**: 4b76fca4, de8ea7f7, 2e238d86, b0f6c45c
+
+### Actions
+- [x] (suggestion) The step-4 example is now a `text` fence, introduced as the command's shape with a placeholder path (not a command to paste), and the prose says to run the exact line the handoff prints (4b76fca4) — `.claude/skills/address-findings/SKILL.md:169`
+- [x] (suggestion) The rule now says the suite runs when a changed file that still exists matches that hook (pre-commit drops deleted paths) and that CI's all-files run covers the rest; the address-findings skill and run-issue step 4 say the same, and the test pins it (de8ea7f7) — `.agent/scripts/dispatch_phase.sh:384`, `.claude/skills/address-findings/SKILL.md:185`, `.claude/skills/run-issue/SKILL.md:312`
+- [x] (suggestion) The rule prints `ROOT_DIR` through `printf %q`: an ordinary path is unchanged (the existing test still pins `$SB/.venv/bin/pre-commit run --files`), a spaced one is escaped. A new test builds a main checkout at a path with a space and a fake `.venv/bin/pre-commit`, and runs the printed command to check that it reaches the fake; with the `%q` removed the test fails (checked) (2e238d86) — `.agent/scripts/dispatch_phase.sh:376-384`, `.agent/scripts/tests/test_dispatch_phase.sh`
+- [x] (suggestion) The run-issue "Hook rule" paragraph was rewritten around a `text` fence holding the command, all prose lines at most 72 characters (in de8ea7f7, along with the change to the suite sentence); the `.pre-commit-config.yaml` comment was re-wrapped with the command on its own line, comment only, so the hook definition is unchanged (b0f6c45c) — `.claude/skills/run-issue/SKILL.md:312-329`, `.pre-commit-config.yaml:69-77`
+
+### Checks
+- The fix commits used `SKIP=validate-script-tests`; every other hook ran on each.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` once at b0f6c45c with no SKIP: every hook passed, `validate-script-tests` (the whole script suite) included.
+- `shellcheck -S warning` on dispatch_phase.sh and test_dispatch_phase.sh: clean.
+- test_dispatch_phase 121/0 (one new case), test_skill_paths 58/0 (run during the fixes).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 10:34 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: approved
+**Dispatch**: resumed (agent a4d8c676c1f48ef66, resume 2 of 3)
+
+**Branch**: feature/issue-399 at `067fbcd7`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 633 changed lines with the work-plan files; AGENTS.md and .pre-commit-config.yaml are override triggers; same specialists as Standard)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 2's four suggestions are resolved (4b76fca4, de8ea7f7, 2e238d86, b0f6c45c): the skill example is a text fence with a placeholder note; the suite wording is qualified to a changed, still-present matching file with CI covering deletions; ROOT_DIR is printed through printf %q (an ordinary path prints unchanged and still matches the allowlist entry; a new test runs the printed command for a spaced root against a fake pre-commit and fails without %q); the run-issue paragraph and hook comment are re-wrapped. Specialists: static analysis (shellcheck clean on dispatch_phase.sh and test_dispatch_phase.sh), governance (hook definition unchanged, comment only; the AGENTS.md row edit is owner-approved at the a3fb7b07 checkpoint), plan drift (none beyond the review fixes), Claude adversarial (no must-fix; test sandbox removed by its EXIT trap, real worktree list unchanged), cross-model (Gemini and Codex both "No issues found"; Codex read-only, ran syntax checks only). test_dispatch_phase 121/0, test_skill_paths 58/0. Dropped: the spaced-path test's parse assumes the first backtick ends the command (true for the printed text today).
+
+### Findings
+- [x] (suggestion) Reflow miss from the deleted-paths edit: one 101-character line ("here; CI's all-files run covers it); run no separate suite. It takes several minutes, longer than the") in a paragraph wrapped at about 75 — `.claude/skills/address-findings/SKILL.md:189` (deferred: cosmetic reflow; owner chose publish after the round-2 fixes, picked up in post-push triage)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:34 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Pre-push round 3 (ea81e82c): approved, 0 must-fix, 1 cosmetic suggestion (a 101-character line in the address-findings skill). The owner's answer at the round-2 publish checkpoint (a3fb7b07) was "Fix suggestions, then publish (Recommended)"; the suggestions are fixed, so the host applies that answer here and publishes. The cosmetic box is deferred to the post-push triage round.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-21 10:37 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**PR**: #401 at `72cede46`
+**Sources**: 2 (Local Review (Pre-Push) R3 @ `067fbcd7` (covers 72cede46 via bookkeeping), CI rollup); Copilot @ `72cede46` posted no review (requester's quota exhausted, 0 inline comments), so it is not a source; Gemini and Codex ran inside the three pre-push rounds (rounds 1 and 3: both "No issues found"; round 2: Gemini none, Codex one must-fix downgraded to a suggestion and fixed in de8ea7f7); no human reviews or conversation comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+`review_progress.sh sources` returned no open local findings: the one deferred round-3 box was ticked `[x]` with a "(deferred …)" note by the host's 72cede46, so the helper reads it as closed. It is carried forward here as open because no pass fixed it; rounds 1 and 2's seven findings were fixed in 7c3e73ed, 2de136cf, 55cf3c81, 20be868f, 4b76fca4, de8ea7f7, 2e238d86 and b0f6c45c, as round 3 confirmed. CI at triage: Validate Adapter Contract, Validate Documentation and ros-manifest tests passed; Lint (pre-commit) still in progress. The copilot-pull-request-reviewer check-run failed on the quota; `merge_pr.sh` excludes it from CI (#300).
+
+### Findings
+- [x] (suggestion, cosmetic, Local Review (Pre-Push) R3 @ `067fbcd7`) Reflow miss from the deleted-paths edit, still present at the head: line 189 is 101 characters ("here; CI's all-files run covers it); run no separate suite. It takes several minutes, longer than the") in a paragraph wrapped at about 75; re-wrap lines 186-193 of that paragraph, text unchanged — `.claude/skills/address-findings/SKILL.md` (deferred: cosmetic reflow, owner deferred at the findings checkpoint)
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:44 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Integrated Review (28fbc09e) at PR #401 head 72cede46: one open box, cosmetic (a 101-character line in the address-findings skill); Copilot out of quota, no human reviews, CI pending (Lint). Owner's answer: "Merge, defer the reflow (Recommended)".

@@ -45,7 +45,10 @@
 # test_script_tests_hook_scope.sh, which guards the regex against drift).
 # SKIP=validate-script-tests is the sanctioned escape for work-in-progress
 # commits (same SKIP= mechanism this repo's other local hooks already
-# support).
+# support); a dispatched workspace implement or address-findings pass uses
+# it on its intermediate commits and runs the hooks once over the branch
+# before its progress entry (owner-decided 2026-10-20, issue #399), with
+# CI's all-files run as the backstop.
 #
 # Git-hook environment sanitization (found while wiring this into
 # .pre-commit-config.yaml for the first time — none of these suites had

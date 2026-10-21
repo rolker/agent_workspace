@@ -141,6 +141,14 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
    Never `--no-verify`. One logical fix per commit. The source entry's
    box-check (next step) is the one permitted addition to a finding's
    commit beyond the finding's own files.
+
+   **Dispatched pass** (owner-decided 2026-10-20, issue #399): only when
+   the handoff's `conventions=` line carries the hook rule — a workspace
+   pass dispatched by `/run-issue` — set `SKIP=validate-script-tests` on
+   these intermediate fix commits, so the script suite does not run once
+   per commit. Every other hook still runs, and `--no-verify` is still
+   never allowed. A hand-run session or a project pass has no such line
+   and commits with every hook, as above.
 4. Check the box for that finding so the timeline tracks resolution — in
    the same commit as the fix, or a trailing progress commit:
 
@@ -157,6 +165,32 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 After the last fix, run the relevant quick checks (the linters pre-commit
 already ran, plus any suite the changes touch). This is not a full
 `review-code` — it's a sanity pass before handing to the re-review.
+
+A dispatched pass that skipped `validate-script-tests` (step 3) runs every
+hook once over the whole branch here, with no SKIP. Run the exact line
+the handoff's rule prints, copied from the handoff: it names the main
+checkout's venv pre-commit by absolute path, because a worktree has no
+`.venv` (a bare `pre-commit` is not found there) and the absolute form is
+the one the permission allowlist matches. Its shape, with the path shown
+as a placeholder (not a command to paste):
+
+```text
+<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
+```
+
+The file list is left unquoted because no repo path has a space. In a
+sub-issue worktree (branched from the parent's feature branch)
+`main...HEAD` also covers the parent's files, so a failure there may be in
+a file this pass never touched.
+
+It includes `validate-script-tests`, so the script suite runs once for the
+pass whenever a changed file that still exists matches that hook (pre-commit
+drops deleted paths, so a branch that only deletes a script runs no suite
+here; CI's all-files run covers it); run no separate suite. It takes several minutes, longer than the
+Bash tool's 120 s default timeout: give the call a long timeout (up to
+600000 ms) and wait for its exit. A run that was backgrounded or cut off
+by a timeout has not passed. If it fails, fix the failure (a commit of its
+own) and run the same command again on the final tree before step 5.
 
 ### 5. Write the `## Implementation` entry
 
@@ -191,6 +225,13 @@ and correlation SHA so a reader (and the next review's round counter) can
 tie the two together. Every finding from the source entry appears under
 Actions, either fixed-and-checked or deferred-checked-with-reason. Do not
 push here; the calling session decides when to push.
+
+The entry commit is committed as usual, with every hook. It touches only
+the issue's work-plan directory, which `validate-script-tests` excludes,
+so it is not the backstop for a dispatched pass's skipped commits: CI is.
+`make lint` runs every hook on all files on pushes to `main`,
+`feature/**` and `fix/**` and on PRs to main, and `merge_pr.sh` waits for
+it.
 
 ### Next step
 
