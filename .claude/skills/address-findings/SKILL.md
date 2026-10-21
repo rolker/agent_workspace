@@ -167,13 +167,14 @@ already ran, plus any suite the changes touch). This is not a full
 `review-code` — it's a sanity pass before handing to the re-review.
 
 A dispatched pass that skipped `validate-script-tests` (step 3) runs every
-hook once over the whole branch here, with no SKIP. Run the command the
-handoff's rule prints, as printed: it names the main checkout's venv
-pre-commit by absolute path, because a worktree has no `.venv` (a bare
-`pre-commit` is not found there) and the absolute form is the one the
-permission allowlist matches:
+hook once over the whole branch here, with no SKIP. Run the exact line
+the handoff's rule prints, copied from the handoff: it names the main
+checkout's venv pre-commit by absolute path, because a worktree has no
+`.venv` (a bare `pre-commit` is not found there) and the absolute form is
+the one the permission allowlist matches. Its shape, with the path shown
+as a placeholder (not a command to paste):
 
-```bash
+```text
 <main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
 ```
 
