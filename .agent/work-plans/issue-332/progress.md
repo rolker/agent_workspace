@@ -548,3 +548,27 @@ Pre-push round 6 (b9a1cf11, at dcbddea6): 1 mechanical must-fix (the Python regi
 - [x] (suggestion) The lock file is never removed, by design; said in the writer's header (with why: removing it would let a third writer lock a new file of the same name) and in the design's Registry and adapters bullet (a linked file leaves an untracked `.lock.<basename>` beside its target); the #332 change-log row names it, with 107 section lines and 788 file lines; no behaviour change — `4405f1d2`, `.agent/scripts/_project_registry.sh:1215`, `docs/design.md:276`
 
 Checks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract, the design-anchor check, shellcheck, black, flake8 and pylint; `test_project_file.sh` 413 passed and `test_project_registry.sh` 260 passed, 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `-S warning` clean on `_project_registry.sh`, `project_setting.sh`, `dashboard.sh`, `test_project_file.sh`, `test_project_registry.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 12:32 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a1794adcd75b020c6, resume 2 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `56a273a9`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 3,228 changed lines outside work plans, 18 files; AGENTS.md governance file; fix-round re-review keeps the whole-diff tier)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 7 | **Ship**: recommended — 1 mechanical must-fix (prev 1), not rising; every remaining item is mechanical, fix and ship rather than another full round
+
+Round-6 findings (b9a1cf11) all resolved at 4405f1d2, checked in the code: the Python parser refuses a `.sh` name with the shell's exact message, in the same check order; the writer re-runs `_project_file_path_error` after the lock, before any temp file; `check`/`list` exit 2 for a parent root that has a file and the dashboard warns; the lock file left beside a link target is documented. design.md counts verified: Registry and adapters 107 lines, file 788. 0 behind origin/main.
+For the owner (not findings, Ask First): the AGENTS.md `validate_adapter.sh` row does not mention the `unused_settings` list check, and the `project_setting.sh` row's exit codes do not mention the parent-root exit 2.
+Specialists: static analysis (shellcheck --severity=warning clean on the 5 touched scripts and suites; flake8 clean on workspace.py; run_script_tests.sh 38 suites passed at 56a273a9; validate_adapter.sh passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+Dropped: gemini local/file:// remote vs a shared upstream and push URLs (outside the owner-set three checks; dropped in rounds 5 and 6); gemini `-key=value` parsing (refused with a clear error; dropped twice before); gemini unquoted `$tmp` in the error-message substitution (affects message text only); gemini dashboard skipping a dangling orphan link (nothing reads it); adversarial dashboard warning vs `check` exit 2 for a parent's file (a deliberate split: `make validate` stays about what is read).
+
+### Findings
+- [ ] (must-fix) docs/design.md Registry and adapters says "The registry has no such fallback, except in `capture.sh`"; this branch's `project_setting.sh` also reads the main checkout's registry and settings file from a linked worktree (and refuses to write there), so name it in that sentence (gemini, confirmed by reading `project_setting.sh:54-60`) — `docs/design.md:264`
+- [ ] (suggestion) The `.sh` name guard is case-sensitive: on a case-insensitive filesystem (macOS default) a project named `tools.SH` passes and its settings file `.agent/projects.d/tools.SH` is project `tools`'s legacy `tools.sh`; compare the suffix case-insensitively in both parsers, with a mixed-case parity case (codex rated must-fix; confirmed by reading) — `.agent/scripts/_project_registry.sh:154`, `.agent/scripts/lib/workspace.py:126`
+- [ ] (suggestion) `project_setting.sh get <parent> <key>` still reads a file under a parent root's name and prints a value nothing honours, while `check` and `list` now refuse it; give `get` the same parent handling (Claude adversarial, confirmed by reading) — `.agent/scripts/project_setting.sh:105`
+- [ ] (suggestion) For `tracking=repo`, a `location_path` that exists but is not yet a clone is resolved by `git rev-parse --show-toplevel` to whatever repository holds it (a home dotfiles repo, say) and checked as that repo, rather than reported "unverifiable until cloned"; require the toplevel to be `location_path` itself, or record it on the records-lookup issue (#393), where these combinations become honoured (gemini, confirmed by reading) — `.agent/scripts/_project_registry.sh:1099`
