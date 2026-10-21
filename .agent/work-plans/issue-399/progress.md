@@ -191,3 +191,11 @@ All seven round 1 findings are resolved, the header one only partly. Three small
 **Decision**: revise
 
 Plan review round 2 (ee17ac4c): needs-work, all seven round-1 must-fixes resolved, three new must-fixes (workspace-only rule emission, test wording, header insertion point) and two suggestions (name the file-list command, "at most once"). Owner's answer: "Revise (Recommended)".
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-21 09:37 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `c6a7701b`
+
+Revised per plan review round 2: the rule is emitted only for workspace handoffs (project handoff test added, address-findings applies it only when the handoff carries it); test pins `SKIP=validate-script-tests`, `pre-commit run --files` and `CI` instead of `run_script_tests.sh`; header sentence moves to after line 19; the pre-entry run names `pre-commit run --files $(git diff --name-only main...HEAD)`; "at most once" with CI's real trigger set.
