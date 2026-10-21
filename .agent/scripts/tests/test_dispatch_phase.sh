@@ -429,7 +429,10 @@ out=$(run_handoff --issue 9 --skill implement)
 # minutes, past the Bash tool's 120 s default, so the rule asks for a long
 # timeout and a wait for the exit (round 1, suggestion). A sub-issue
 # worktree branches from its parent's feature branch, so main...HEAD also
-# covers the parent's files; the rule says so (round 1, suggestion).
+# covers the parent's files; the rule says so (round 1, suggestion). The
+# suite runs only when a changed file that still exists matches the hook
+# (pre-commit drops deleted paths), so the rule says CI covers the rest
+# (round 2, suggestion).
 for sk in implement address-findings; do
     out=$(run_handoff --issue 9 --skill "$sk")
     conv=$(printf '%s\n' "$out" | grep '^conventions=')
@@ -437,6 +440,7 @@ for sk in implement address-findings; do
         && "$conv" == *'$(git diff --name-only main...HEAD)'* && "$conv" == *"CI"* \
         && "$conv" == *"--no-verify"* && "$conv" != *"run_script_tests.sh"* \
         && "$conv" == *"600000 ms"*"wait for its exit"* \
+        && "$conv" == *"changed file that still exists matches that hook"*"CI's all-files run covers the rest"* \
         && "$conv" == *"sub-issue worktree it also covers the parent's files"* \
         && "$conv" == *"local time with offset"*"scratchpad"* ]] \
         && pass "handoff: $sk (workspace) conventions= carries the once-per-pass hook rule, CI backstop, and the existing conventions" \

@@ -313,12 +313,19 @@ to a takeover, step 5) and no `**Addressed**` field (that one is
 2026-10-20, issue #399). A workspace `implement` or `address-findings`
 handoff's `conventions=` carries it; paste it verbatim. The pass sets
 `SKIP=validate-script-tests` on its intermediate commits only (never
-`--no-verify`), then, before writing the entry, runs
-`<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`
-once with no SKIP (the rule prints the main checkout's venv pre-commit
-by absolute path, since a worktree has no `.venv`), which includes the script suite, so the suite runs once per pass,
-not once per commit. CI (`make lint`, awaited by `merge_pr.sh`) is the
-backstop. Review phases and project handoffs carry no such rule.
+`--no-verify`). Before writing the entry it runs, once and with no SKIP,
+the main checkout's venv pre-commit, which the rule prints by absolute
+path because a worktree has no `.venv`:
+
+```text
+<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
+```
+
+That run includes the script suite whenever a changed file that still
+exists matches the hook, so the suite runs once per pass, not once per
+commit. CI (`make lint`, every hook on all files, awaited by
+`merge_pr.sh`) is the backstop, and covers a branch that only deletes a
+script. Review phases and project handoffs carry no such rule.
 
 ### 4a. Reusing a running sub-agent for a repeat phase
 
