@@ -783,13 +783,27 @@ _project_records_combination() {
 }
 
 # Why the settings-file path <file> cannot be used: prints the reason and
-# returns 0 when the path is a symlink that does not resolve to an existing
+# returns 0 when its directory exists but is not a searchable directory (a
+# regular file, a dangling link, no search permission), when the path is a
+# symlink that does not resolve to an existing
 # file (dangling, a loop, a missing directory on the way), or exists
 # (directly or through a symlink) but is not a readable regular file;
 # returns 1 when it can be used (absent, or a readable regular file, also
 # through a chain of symlinks with absolute or relative targets).
 _project_file_path_error() {
-    local file="$1"
+    local file="$1" dir
+    if [ ! -e "$file" ] && [ ! -L "$file" ]; then
+        # Absent only when the lookup could see: a projects.d that exists
+        # (or is a link) but is not a searchable directory hides the file,
+        # and reading that as "no file" would fall through to the shared
+        # config.
+        dir="$(dirname "$file")"
+        if { [ -e "$dir" ] || [ -L "$dir" ]; } && { [ ! -d "$dir" ] || [ ! -x "$dir" ]; }; then
+            echo "the settings directory $dir exists but is not a searchable directory, so $file cannot be looked up"
+            return 0
+        fi
+        return 1
+    fi
     if [ -L "$file" ] && [ ! -e "$file" ]; then
         echo "$file is a symlink (to '$(readlink -- "$file" 2>/dev/null)') that does not resolve to an existing file: create its target or remove the link"
         return 0
@@ -1194,6 +1208,14 @@ _project_file_set_locked() {
     done
 
     file="$(project_file_path "$root" "$name")"
+    # A path that exists but cannot be read as a settings file is never
+    # treated as absent: its settings would be lost, or the new file moved
+    # inside a directory. Checked before the lock, whose sidecar lives in
+    # the same directory.
+    if reason="$(_project_file_path_error "$file")"; then
+        echo "ERROR: not writing: $reason (fix or remove it by hand first)" >&2
+        return 1
+    fi
     # Serialize writers of this project's file. The lock is a sidecar, not
     # the file: the rename replaces the file's inode, so a lock on the file
     # itself would not exclude the next writer.
@@ -1215,13 +1237,6 @@ _project_file_set_locked() {
     trap 'exit 129' HUP
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    # A path that exists but cannot be read as a settings file is never
-    # treated as absent: its settings would be lost, or the new file moved
-    # inside a directory.
-    if reason="$(_project_file_path_error "$file")"; then
-        echo "ERROR: not writing: $reason (fix or remove it by hand first)" >&2
-        return 1
-    fi
     # The path the new contents are renamed onto: the file itself, or the
     # target of a symlinked one, so the rename never replaces the link.
     dest="$file"

@@ -758,6 +758,54 @@ test_outside_without_layout_unregistered() {
     assert_not_contains "never uses 'provisional' as the path" "provisional default provisional" "$out"
 }
 
+test_unsearchable_settings_dir_fails_closed() {
+    echo "TEST: a projects.d that exists but is not a searchable directory fails closed, never reads as 'no file'"
+    local sb d out rc
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    d="$sb/.agent/projects.d"
+    rm -rf "$d"
+
+    printf 'build=make\n' > "$d"
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_eq "a regular file: check exits 2" "2" "$rc"
+    assert_contains "a regular file: says why" "the settings directory $d exists but is not a searchable directory" "$out"
+    rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha env 2>&1)" || rc=$?
+    assert_eq "a regular file: the adapter stops" "1" "$rc"
+    rc=0; out="$(ps_run "$sb" set alpha build=make 2>&1)" || rc=$?
+    assert_eq "a regular file: set refused" "1" "$rc"
+    assert_contains "a regular file: set says why" "not writing: the settings directory $d exists but is not a searchable directory" "$out"
+    rm -f "$d"
+
+    ln -s "$sb/nowhere" "$d"
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_eq "a dangling link: check exits 2" "2" "$rc"
+    assert_contains "a dangling link: says why" "is not a searchable directory" "$out"
+    rc=0; out="$(ps_run "$sb" set alpha build=make 2>&1)" || rc=$?
+    assert_eq "a dangling link: set refused" "1" "$rc"
+    assert_eq "a dangling link: nothing created at its target" "no" "$([ -e "$sb/nowhere" ] && echo yes || echo no)"
+    rm -f "$d"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        mkdir -p "$d"
+        printf 'build=make\n' > "$d/alpha"
+        chmod 600 "$d"
+        rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+        assert_eq "no search permission: check exits 2" "2" "$rc"
+        assert_contains "no search permission: says why" "is not a searchable directory" "$out"
+        rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha env 2>&1)" || rc=$?
+        assert_eq "no search permission: the adapter stops" "1" "$rc"
+        chmod 755 "$d"
+        assert_eq "no search permission: file untouched" "build=make" "$(cat "$d/alpha")"
+    else
+        echo "  SKIP: no-search-permission case (running as root)"
+    fi
+
+    rm -rf "$d"
+    rc=0; ps_run "$sb" check alpha >/dev/null 2>&1 || rc=$?
+    assert_eq "an absent projects.d is still 'no file'" "0" "$rc"
+}
+
 test_set_refusals() {
     echo "TEST: set refuses invalid results, unknown keys, unregistered names and parent roots, leaving the file as it was"
     local sb f out rc before
@@ -1105,6 +1153,7 @@ test_composite_keys_refused
 test_set_keeps_mode_and_symlink
 test_set_refuses_unusable_path
 test_symlink_cases
+test_unsearchable_settings_dir_fails_closed
 test_unknown_key_repair
 test_set_lock_and_interrupt_cleanup
 test_outside_without_layout_unregistered
