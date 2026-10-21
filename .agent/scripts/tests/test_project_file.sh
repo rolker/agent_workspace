@@ -711,6 +711,20 @@ test_dashboard_reports_settings_files() {
     assert_contains "invalid file fails" "project 'alpha': settings file .agent/projects.d/alpha is invalid" "$out"
     assert_contains "not-yet-honoured warns" "project 'beta': records settings in .agent/projects.d/beta are valid but not yet honoured (#393)" "$out"
     assert_contains "orphan warns" "settings file .agent/projects.d/ghost belongs to no registered project" "$out"
+
+    # A file name is compared as a fixed string: 'web.app' must not match
+    # the registered 'webXapp' (as a regex '.' matches any character), and
+    # a file name starting with '-' is a name, not a grep option.
+    make_project "$sb" webXapp >/dev/null
+    make_project "$sb" dot.name >/dev/null
+    printf 'build=make\n' | write_pfile "$sb" web.app
+    printf 'build=make\n' | write_pfile "$sb" dot.name
+    printf 'build=make\n' | write_pfile "$sb" -x
+    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 || true)"
+    assert_contains "'.' in a file name matches only itself" "settings file .agent/projects.d/web.app belongs to no registered project" "$out"
+    assert_not_contains "a dotted registered name's own file is not an orphan" "projects.d/dot.name belongs to no registered project" "$out"
+    assert_contains "a leading '-' is a name" "settings file .agent/projects.d/-x belongs to no registered project" "$out"
+    assert_not_contains "grep never reads the name as an option" "Usage: grep" "$out"
 }
 
 test_bootstrap_url_precedence() {

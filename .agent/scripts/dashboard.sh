@@ -196,7 +196,9 @@ if [ -n "$REGISTRY_ENTRIES" ]; then
         [ -f "$_pf" ] || continue
         _pfname="$(basename "$_pf")"
         [[ "$_pfname" == *.sh ]] && _pfname="${_pfname%.sh}"
-        if ! grep -qx "$_pfname" <<< "$(cut -f1 <<< "$REGISTRY_ENTRIES")"; then
+        # Fixed-string whole-line match: a name may contain '.', and a
+        # file name may start with '-'.
+        if ! grep -qxF -- "$_pfname" <<< "$(cut -f1 <<< "$REGISTRY_ENTRIES")"; then
             check_warn "settings file .agent/projects.d/$(basename "$_pf") belongs to no registered project"
         fi
     done
