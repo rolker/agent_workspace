@@ -15,9 +15,14 @@ purpose. The sit-rep (`/sitrep`) reads this section through
 section holds no status and no dates, and results stay on the machine that
 ran them.
 
-**Acceptance case.** ADR-0016 stays Provisional until a `/run-issue` run
-started from a project root passes through the merge checkpoint
-([Sessions and roots](design.md#sessions-and-roots)). Design question OQ-2
+**Acceptance case.** A bare project that was never onboarded is made ready
+and used: GeoZui4D (`gz4d`) is registered, onboarded, and an issue there runs
+through the loop with the workspace's goals and principles visibly driving
+the work. Until that run passes the merge checkpoint, ADR-0016 (Session roots
+and the user tier) stays Provisional
+([Sessions and roots](design.md#sessions-and-roots)).
+
+Design question OQ-2
 ([Open questions](design.md#open-questions)) asks where that run is tracked:
 here. The run's target is the `gz4d` project, as step 5 of the Workspace
 Redesign table below says.
@@ -47,6 +52,7 @@ Redesign table below says.
 | The user tier is installed from this checkout, with no drift | `script user_tier_install.sh --check --require` |
 | `/run-issue` can run in a project session | `file-contains .claude/skills/run-issue/SKILL.md session_scope: both` |
 | The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
+| GeoZui4D (`gz4d`) is onboarded through onboard-project (#332) | |
 | A `/run-issue` run started from the project root reaches the merge checkpoint | |
 | ADR-0016 is promoted from Provisional to Accepted | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
 
@@ -92,11 +98,15 @@ repos. A morning status skill gathers all state, surfaces pending decisions
 (PRs needing review response, stale worktrees, ready-to-start issues), and
 suggests a prioritized work plan for the day.
 
-First form: the sit-rep (#386), which reports the [Direction](#direction)
-lines as checked that run, the inbox, work in flight and deferrals that are
-due. It is also what answers "What's next?": it replaced the `what-next`
-skill (#389) and ends with one suggested next step and the fact it rests
-on.
+First form: the sit-rep (#386). It opens with the first sentence of the
+acceptance case, then the next step: the first [Direction](#direction)
+line not yet true, checked that run, and the work in flight for it. Then
+where work in flight stands, and problems to know about: an audit or
+research due, documentation that may have fallen behind, from dates and
+the commits since, and deferrals that are due (#395). The counts and the
+inbox follow. It is also what answers "What's
+next?": it replaced the `what-next` skill (#389), and its suggested next
+step names the fact it rests on.
 
 ### Pain points (ranked by severity)
 

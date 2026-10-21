@@ -776,13 +776,14 @@ OUT="$(cd "$SB/elsewhere" && bash "$WS/scripts/sitrep_checks.sh" --summary 2>/de
 
 # --- 13. the sit-rep skill's own commands -----------------------------------------------------
 # The skill's steps are shell blocks the session runs as written; these run
-# them (first ```bash block under "### <n>.") against a sandbox workspace.
+# them (a ```bash block under "### <n>.", the first unless named) against
+# a sandbox workspace.
 SKILL="$SCRIPT_DIR/../../../.claude/skills/sitrep/SKILL.md"
-skill_step() {
-    awk -v n="$1" '
+skill_step() {  # <n> [k]: the k-th (default first) bash block of step n
+    awk -v n="$1" -v k="${2:-1}" '
         $0 ~ "^### " n "\\. " { s = 1; next }
         s && /^### / { exit }
-        s && !b && /^```bash/ { b = 1; next }
+        s && !b && /^```bash/ { if (++c == k) b = 1; next }
         b && /^```/ { exit }
         b { print }' "$SKILL"
 }
@@ -989,6 +990,345 @@ printf '#!/usr/bin/env bash\necho "[]"\n' > "$WS/.agent/scripts/worktree_list.sh
 reset_marks
 run_step 3
 [[ ! -e "$MARK/gh" && "$OUT" == *"no GitHub remote"* ]] && pass "(skill 3) empty repo: gh not called, said so" || fail "(skill 3) '$OUT' gh=$(cat "$MARK/gh" 2>/dev/null)"
+
+echo "TEST: sit-rep step 3 gives each worktree with an issue its title and latest timeline entry"
+cp "$SCRIPT_DIR/../progress_read.py" "$WS/.agent/scripts/"
+mkdir -p "$SB/wt7/.agent/work-plans/issue-7" "$SB/wt8"
+printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n## Issue Review\n**Status**: complete\n**When**: 2026-10-01 10:00 -04:00\n**By**: t\n\n**Issue**: #7\n\n## Implementation\n**Status**: partial\n**When**: 2026-10-02 10:00 -04:00\n**By**: t\n\n**Issue**: #7\n' \
+    > "$SB/wt7/.agent/work-plans/issue-7/progress.md"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"main","issue":null,"branch":"main","path":"$WS"},{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"},{"type":"workspace","issue":null,"skill":"research","branch":"skill/research-1","path":"$SB/wts"},{"type":"workspace","issue":8,"branch":"feature/issue-8","path":"$SB/wt8","repo":"workspace"}]}'
+EOF
+reset_marks
+blk="$(skill_step 3 2)"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial\nworkspace\tworkspace\tfeature/issue-8\tissue 8\tunknown (no GitHub remote)\tno progress record yet' && ! -e "$MARK/gh" ]] \
+    && pass "(skill 3) latest entry in state words; no row for main or a skill worktree; no remote, no gh" || fail "(skill 3) flight rc=$RC '$OUT'"
+
+echo "TEST: sit-rep step 3 reads each worktree field by name: an empty branch or repo shifts nothing"
+# Tab is IFS whitespace, so `read` with IFS=TAB folds empty fields: the
+# issue number became the path. Detached (branch null), no repo, and an
+# empty-string branch, each beside a worktree whose fields are all there.
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"workspace","issue":7,"branch":null,"path":"$SB/wt7"},{"type":"workspace","issue":8,"branch":"","path":"$SB/wt8","repo":""},{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"}]}'
+EOF
+reset_marks
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\t(no branch)\tissue 7\tunknown (no GitHub remote)\timplementation partial\nworkspace\tworkspace\t(no branch)\tissue 8\tunknown (no GitHub remote)\tno progress record yet\nworkspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial' ]] \
+    && pass "(skill 3) no branch or no repo: the issue and path stay in place, read as (no branch)" || fail "(skill 3) empty fields rc=$RC '$OUT'"
+
+echo "TEST: sit-rep step 3 reads a package worktree's repository and timeline through its manifest"
+# Two ADR-0012 package worktrees: aggregate directories (not checkouts)
+# holding two checkouts of different repositories each.
+for p in pkg pkg2; do
+    for r in a b; do
+        git init -q "$SB/$p/src/pkg_$r"
+        git -C "$SB/$p/src/pkg_$r" remote add origin "https://github.com/acme/pkg_$r.git"
+    done
+done
+printf '# project=p issue=acme/pkg_b#12 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-12\n/o/b\tsrc/pkg_b\tfeature/issue-12\n' > "$SB/pkg/.worktree-repos"
+printf '# project=p issue=13 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-13\n/o/b\tsrc/pkg_b\tfeature/issue-13\n' > "$SB/pkg2/.worktree-repos"
+mkdir -p "$SB/pkg/src/pkg_b/.agent/work-plans/issue-12"
+cp "$SB/wt7/.agent/work-plans/issue-7/progress.md" "$SB/pkg/src/pkg_b/.agent/work-plans/issue-12/progress.md"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"project","issue":12,"branch":"feature/issue-12,feature/issue-12","path":"$SB/pkg","repo":"p"},{"type":"project","issue":13,"branch":"feature/issue-13,feature/issue-13","path":"$SB/pkg2","repo":"p"}]}'
+EOF
+reset_marks
+echo "Package title" > "$SB/gh_state"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT")" == $'project\tp\tfeature/issue-12,feature/issue-12\tissue 12\tPackage title\timplementation partial' ]] \
+    && pass "(skill 3) package worktree: title from the header's repository, timeline found in a listed checkout" || fail "(skill 3) package rc=$RC '$OUT'"
+[[ "$(cat "$MARK/gh" 2>/dev/null)" == "issue view 12 -R acme/pkg_b --json title --jq .title" ]] \
+    && pass "(skill 3) package worktree: gh asked the header's repository only" || fail "(skill 3) package gh: $(cat "$MARK/gh" 2>/dev/null)"
+[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are not all in one GitHub repository)\tunknown (no repository to read it from)' ]] \
+    && pass "(skill 3) package worktree with a bare issue number and two repositories: no guess" || fail "(skill 3) package bare '$OUT'"
+
+echo "TEST: sit-rep step 3 reads a package worktree's title and timeline from the issue's repository only"
+# pkg4: issue 14 of acme/pkg_b; acme/pkg_a, listed first, has its own
+# issue 14 timeline. pkg5: issue 15 of acme/pkg_b; only acme/pkg_a has a
+# timeline 15. pkg6: bare issue=16, the first checkout has no remote and
+# the second is acme/pkg_b. pkg7: bare issue=17, both checkouts acme/pkg_b.
+for p in pkg4 pkg5 pkg6 pkg7; do
+    for r in a b; do git init -q "$SB/$p/src/pkg_$r"; done
+done
+for p in pkg4 pkg5; do
+    git -C "$SB/$p/src/pkg_a" remote add origin "https://github.com/acme/pkg_a.git"
+    git -C "$SB/$p/src/pkg_b" remote add origin "https://github.com/acme/pkg_b.git"
+done
+git -C "$SB/pkg6/src/pkg_b" remote add origin "https://github.com/acme/pkg_b.git"
+git -C "$SB/pkg7/src/pkg_a" remote add origin "git@github.com:acme/pkg_b.git"
+git -C "$SB/pkg7/src/pkg_b" remote add origin "https://github.com/acme/pkg_b.git"
+printf '# project=p issue=acme/pkg_b#14 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-14\n/o/b\tsrc/pkg_b\tfeature/issue-14\n' > "$SB/pkg4/.worktree-repos"
+printf '# project=p issue=acme/pkg_b#15 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-15\n/o/b\tsrc/pkg_b\tfeature/issue-15\n' > "$SB/pkg5/.worktree-repos"
+printf '# project=p issue=16 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-16\n/o/b\tsrc/pkg_b\tfeature/issue-16\n' > "$SB/pkg6/.worktree-repos"
+printf '# project=p issue=17 layer=l1\n/o/a\tsrc/pkg_a\tfeature/issue-17\n/o/b\tsrc/pkg_b\tfeature/issue-17\n' > "$SB/pkg7/.worktree-repos"
+reviewed_only=$'---\nissue: 14\n---\n\n# Issue #14\n\n## Issue Review\n**Status**: complete\n**When**: 2026-10-01 10:00 -04:00\n**By**: t\n\n**Issue**: #14\n'
+mkdir -p "$SB/pkg4/src/pkg_a/.agent/work-plans/issue-14" "$SB/pkg4/src/pkg_b/.agent/work-plans/issue-14" "$SB/pkg5/src/pkg_a/.agent/work-plans/issue-15"
+printf '%s' "$reviewed_only" > "$SB/pkg4/src/pkg_a/.agent/work-plans/issue-14/progress.md"
+cp "$SB/wt7/.agent/work-plans/issue-7/progress.md" "$SB/pkg4/src/pkg_b/.agent/work-plans/issue-14/progress.md"
+cp "$SB/wt7/.agent/work-plans/issue-7/progress.md" "$SB/pkg5/src/pkg_a/.agent/work-plans/issue-15/progress.md"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"project","issue":14,"branch":"b14","path":"$SB/pkg4","repo":"p"},{"type":"project","issue":15,"branch":"b15","path":"$SB/pkg5","repo":"p"},{"type":"project","issue":16,"branch":"b16","path":"$SB/pkg6","repo":"p"},{"type":"project","issue":17,"branch":"b17","path":"$SB/pkg7","repo":"p"}]}'
+EOF
+reset_marks
+echo "Package title" > "$SB/gh_state"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT" | cut -f4,6)" == $'issue 14\timplementation partial' ]] \
+    && pass "(skill 3) package worktree: the issue's repository's timeline, not another repository's issue of the same number" || fail "(skill 3) pkg4 '$OUT'"
+[[ "$(sed -n 2p <<< "$OUT" | cut -f4,6)" == $'issue 15\tno progress record yet' ]] \
+    && pass "(skill 3) package worktree: a timeline only in another repository's checkout is not read" || fail "(skill 3) pkg5 '$OUT'"
+[[ "$(sed -n 3p <<< "$OUT" | cut -f4-6)" == $'issue 16\tunknown (its checkouts are not all in one GitHub repository)\tunknown (no repository to read it from)' ]] \
+    && pass "(skill 3) package worktree, bare issue number: a checkout with no remote disagrees" || fail "(skill 3) pkg6 '$OUT'"
+[[ "$(sed -n 4p <<< "$OUT" | cut -f4-5)" == $'issue 17\tPackage title' ]] \
+    && pass "(skill 3) package worktree, bare issue number, one repository: its title" || fail "(skill 3) pkg7 '$OUT'"
+[[ "$(cat "$MARK/gh" 2>/dev/null)" == $'issue view 14 -R acme/pkg_b --json title --jq .title\nissue view 15 -R acme/pkg_b --json title --jq .title\nissue view 17 -R acme/pkg_b --json title --jq .title' ]] \
+    && pass "(skill 3) package worktrees: gh asked the issue's repository only, never for 16" || fail "(skill 3) pkg gh: $(cat "$MARK/gh" 2>/dev/null)"
+
+echo "TEST: sit-rep step 3 names the latest timeline entry in state words"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"}]}'
+EOF
+state_of() {  # <entry heading> <status> [extra field lines]: step 3's state for a one-entry timeline
+    printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n## %s\n**Status**: %s\n**When**: 2026-10-01 10:00 -04:00\n**By**: t\n\n**Branch**: feature/issue-7 at `abc1234`\n%b\n' \
+        "$1" "$2" "${3:-}" > "$SB/wt7/.agent/work-plans/issue-7/progress.md"
+    (cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1) | cut -f6
+}
+st_ok=true
+while IFS='|' read -r heading status extra want; do
+    got="$(state_of "$heading" "$status" "$extra")"
+    [[ "$got" == "$want" ]] || { st_ok=false; echo "    $heading/$status/$extra: got '$got', want '$want'"; }
+done <<'CASES'
+Issue Review|complete||issue reviewed, not yet planned
+Plan Authored|complete||plan written, not yet reviewed
+Plan Review|complete||plan reviewed, not yet implemented
+Checkpoint|complete|**After**: plan\n**Decision**: proceed|plan approved, implementing
+Checkpoint|complete|**After**: plan\n**Decision**: revise|plan being revised
+Checkpoint|complete|**After**: findings\n**Decision**: address|review findings being addressed
+Checkpoint|complete|**After**: merge\n**Decision**: merge|approved to merge
+Checkpoint|complete|**After**: phase-failed\n**Decision**: retry\n**Phase**: implement|a step failed; retrying it
+Checkpoint|complete|**After**: phase-failed\n**Decision**: takeover\n**Phase**: implement|a step failed; the session is doing it by hand
+Checkpoint|complete|**After**: merge-refused\n**Decision**: retriage|merge refused; reviews being triaged again
+Checkpoint|complete|**After**: unexpected\n**Decision**: odd|checkpoint after unexpected: odd
+Implementation|complete||implemented
+Implementation|failed||implementation failed
+Local Review (Pre-Push)|complete|\n### Findings\n- [ ] (must-fix) a\n- [x] (must-fix) b\n- [ ] (suggestion) c|code reviewed, 2 findings to address
+Local Review (Pre-Push)|complete|\n### Findings\n- [x] (must-fix) a\n- [x] (suggestion) b — x (deferred: y)|code reviewed, nothing open
+Local Review|complete||code reviewed, nothing open
+Local Review (Pre-Push)|complete|**Verdict**: approved\n\n### Findings\n- [ ] No issues found. LGTM.|code reviewed, nothing open
+Local Review|complete|\n### Findings\n- [ ] (must-fix) a|code reviewed, 1 finding to address
+Integrated Review|complete|\n### Fix plan\n- [x] a\n- [x] b\n\n### False positives\n- c|reviews triaged, nothing open
+Integrated Review|complete|\n### Fix plan\n- [ ] a\n- [x] b|reviews triaged, 1 finding to address
+External Review (round 2)|complete|\n### Findings\n- [ ] a\n- [ ] b|reviews triaged, 2 findings to address
+External Review (Round 5-6)|partial||review triage partial
+Merge (report-only)|complete||merged although the merge check found problems
+Merge (unreviewed)|complete||merged without review
+CASES
+$st_ok && pass "(skill 3) every timeline state reads as the mapping table says" || fail "(skill 3) state words (cases above)"
+
+echo "TEST: sit-rep step 5 takes issue numbers from the line's own cells only, text kept as written"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<'EOF'
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"main","issue":null,"branch":"main","path":"/m"},{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"/w7"},{"type":"project","issue":7,"branch":"feature/issue-7","path":"/p7","repo":"p"},{"type":"workspace","issue":8,"branch":"feature/issue-8","path":"/w8"}]}'
+EOF
+chmod +x "$WS/.agent/scripts/worktree_list.sh"
+mkdir -p "$WS/docs/decisions"
+printf '# ADR-0042: A synthetic decision\n\nText.\n' > "$WS/docs/decisions/0042-a-synthetic-decision.md"
+step5() {  # <item> <check>: step 5's block with both placeholders filled
+    local blk; blk="$(skill_step 5)"
+    blk="$(ITEM="$1" CHECK="$2" python3 -c '
+import os, sys
+b = sys.stdin.read()
+b = b.replace("<item of the first line row whose result is not true>", os.environ["ITEM"])
+print(b.replace("<check of that row, or nothing>", os.environ["CHECK"]))' <<< "$blk")"
+    RC=0
+    OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+}
+reset_marks
+step5 "It's \$HOME and \`x\` (#7), not #8" '`file-exists a` ; `gh-issue 9 closed`'
+[[ $RC -eq 0 && "$OUT" == *"issues_named=7 9"* && "$OUT" != *"issue	8"* ]] \
+    && pass "(skill 5) (#N) in the item and gh-issue N in the check; a bare #8 is not taken" || fail "(skill 5) numbers rc=$RC '$OUT'"
+[[ "$(grep -c '^branch' <<< "$OUT")" -eq 1 && "$OUT" == *$'branch\tfeature/issue-7\t/w7'* ]] \
+    && pass "(skill 5) only the workspace worktree of issue 7 matches" || fail "(skill 5) branches '$OUT'"
+[[ ! -e "$MARK/gh" && "$OUT" == *$'issue\t7\tunknown (lookup failed)'* ]] \
+    && pass "(skill 5) no GitHub remote: gh not called, title unknown, said so" || fail "(skill 5) gh=$(cat "$MARK/gh" 2>/dev/null) '$OUT'"
+step5 'No number here' '`gh-issue acme/other#5 closed`'
+[[ "$OUT" == *"issues_named=none"* && "$OUT" != *branch* ]] \
+    && pass "(skill 5) another repository's gh-issue names no issue here" || fail "(skill 5) other repo '$OUT'"
+echo "TEST: sit-rep step 5 reads the acceptance case's first sentence, as written, with a simple command"
+case5() {  # <roadmap text> [<lines for the TEXT markers>]: step 5's second block against it; sets OUT, RC
+    cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"
+    printf '%b' "$1" > "$WS/docs/roadmap.md"
+    local blk; blk="$(skill_step 5 2)"
+    [ -z "${2:-}" ] || blk="$(T="$2" python3 -c '
+import os, sys
+print(sys.stdin.read().replace("<the Direction lines and deferrals the report prints, one per line>", os.environ["T"]))' <<< "$blk")"
+    RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+    mv "$SB/roadmap.saved" "$WS/docs/roadmap.md"
+}
+case5 '# R\n\n**Acceptance case.** Not this one.\n\n## Direction\n\nIntro.\n\n**Acceptance case.** A synthetic `run` started\nfrom a root (see [x](design.md#a-b)) ends. Its target is\n`demo`.\n\nAfter.\n\n## Next\n'
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=A synthetic `run` started from a root (see x) ends.\nacceptance_rest=Its target is `demo`.' ]] \
+    && pass "(skill 5) first sentence of the Direction section's paragraph, joined, not split at a dot inside a link" || fail "(skill 5) case rc=$RC '$OUT'"
+case5 '## Direction\n\n**Acceptance case.** One sentence only.\n'
+[[ "$OUT" == $'acceptance_first=One sentence only.\nacceptance_rest=' ]] \
+    && pass "(skill 5) a one-sentence paragraph has no rest" || fail "(skill 5) one sentence '$OUT'"
+case5 '## Direction\n\nNo case here.\n\n## Other\n\n**Acceptance case.** Elsewhere.\n'
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=\nacceptance_rest=' ]] \
+    && pass "(skill 5) no paragraph in the Direction section: empty, so the line is left out" || fail "(skill 5) absent rc=$RC '$OUT'"
+echo "TEST: sit-rep step 5 prints roadmap text with link text and ADR titles, never raw links or bare numbers"
+case5 '## Direction\n\n**Acceptance case.** A project is used ([Roots](design.md#roots)). Until then,\nADR-0042 stays put\n([Sessions and roots](design.md#sessions-and-roots)); ADR-0042 (Its own words) is not doubled.\n' \
+    $'ADR-0042 is promoted (#9)\nSee [the guide](docs/guide.md) and ADR-0043\n\nA plain line'
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=A project is used (Roots).\nacceptance_rest=Until then, ADR-0042 (A synthetic decision) stays put (Sessions and roots); ADR-0042 (Its own words) is not doubled.\ntext=ADR-0042 (A synthetic decision) is promoted (#9)\ntext=See the guide and ADR-0043\ntext=A plain line' ]] \
+    && pass "(skill 5) links print as their text; an ADR number gets its file's title unless a parenthesis follows (not an issue's); no file, as written" \
+    || fail "(skill 5) render rc=$RC '$OUT'"
+case5 '## Direction\n\n**Acceptance case.** Short.\n'
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=Short.\nacceptance_rest=' ]] && pass "(skill 5) the TEXT placeholder left in place prints no text lines" || fail "(skill 5) placeholder '$OUT'"
+
+# A workspace with a GitHub remote, for the steps that call gh and git-bug.
+W5="$SB/ws5"
+mkdir -p "$W5/.agent/scripts" "$W5/docs"
+git init -q "$W5"
+git -C "$W5" remote add origin https://github.com/acme/widgets.git
+cp "$SCRIPT_DIR/../_issue_helpers.sh" "$W5/.agent/scripts/"
+cp "$WS/.agent/scripts/worktree_list.sh" "$W5/.agent/scripts/"
+printf "## Direction\n" > "$W5/docs/roadmap.md"
+printf '%s' "$W5" > "$HOMESB/.claude/agent-workspace-root"
+
+echo "TEST: sit-rep step 5 with gh failing reads the git-bug cache only, never pulling"
+# git runs `git bug ...` as git-bug from PATH: a stub that records its argv.
+cat > "$SB/bin/git-bug" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$MARK/git-bug"
+case "\$*" in
+    "bug -m github-url=https://github.com/acme/widgets/issues/7 --format json") echo '[{"human_id":"abc1234"}]' ;;
+    "bug show abc1234 --format json") echo '{"title":"Cached title","status":"open","comments":[]}' ;;
+    "bridge") echo "github" ;;
+    *) echo "[]" ;;
+esac
+EOF
+chmod +x "$SB/bin/git-bug"
+reset_marks
+echo 1 > "$RCD/gh"
+step5 'A line (#7) and (#8)' ''
+[[ "$OUT" == *$'issue\t7\tCached title (offline: git-bug cache)'* && "$OUT" == *$'issue\t8\tunknown (lookup failed)'* ]] \
+    && pass "(skill 5) gh failing: the title comes from the git-bug cache, or is unknown" || fail "(skill 5) cache '$OUT'"
+! grep -q "bridge" "$MARK/git-bug" 2>/dev/null && grep -q "^bug -m" "$MARK/git-bug" 2>/dev/null \
+    && pass "(skill 5) a cache miss does not pull from GitHub (no git bug bridge call)" || fail "(skill 5) git-bug calls: $(cat "$MARK/git-bug" 2>/dev/null)"
+
+echo "TEST: sit-rep step 3 with gh failing reads the git-bug cache only, never pulling"
+for n in 7 8; do
+    git init -q "$SB/wt3gb$n"
+    git -C "$SB/wt3gb$n" remote add origin https://github.com/acme/widgets.git
+done
+cp "$W5/.agent/scripts/worktree_list.sh" "$SB/wl5.saved"
+cat > "$W5/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt3gb7","repo":"workspace"},{"type":"workspace","issue":8,"branch":"feature/issue-8","path":"$SB/wt3gb8","repo":"workspace"}]}'
+EOF
+reset_marks
+echo 1 > "$RCD/gh"
+blk3="$(skill_step 3 2)"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk3" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(cut -f4,5 <<< "$OUT")" == $'issue 7\tCached title (offline: git-bug cache)\nissue 8\tunknown (lookup failed)' ]] \
+    && pass "(skill 3) gh failing: the title comes from the git-bug cache, or is unknown" || fail "(skill 3) cache rc=$RC '$OUT'"
+! grep -q "bridge" "$MARK/git-bug" 2>/dev/null && grep -q "^bug -m github-url=https://github.com/acme/widgets/issues/8" "$MARK/git-bug" 2>/dev/null \
+    && pass "(skill 3) a cache miss does not pull from GitHub (no git bug bridge call)" || fail "(skill 3) git-bug calls: $(cat "$MARK/git-bug" 2>/dev/null)"
+mv "$SB/wl5.saved" "$W5/.agent/scripts/worktree_list.sh"
+rm -f "$SB/bin/git-bug"
+
+echo "TEST: sit-rep step 5 matches open pull requests by branch or closing reference, whatever the references hold"
+# A gh that applies its --jq filter with jq, as gh does, to a fixed list.
+mv "$SB/bin/gh" "$SB/gh.saved"
+cat > "$SB/bin/gh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$MARK/gh"
+case "\$1 \$2" in
+    "issue view") echo "Live title" ;;
+    "pr list")
+        while [ \$# -gt 0 ]; do [ "\$1" = "--jq" ] && { jq -r "\$2" "$SB/prs.json"; exit; }; shift; done
+        cat "$SB/prs.json" ;;
+esac
+EOF
+chmod +x "$SB/bin/gh"
+cat > "$SB/prs.json" <<'EOF'
+[{"number":20,"title":"Null references, other branch","headRefName":"w","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":null},
+ {"number":21,"title":"Branch match","headRefName":"feature/issue-7","isCrossRepository":false,"isDraft":true,"closingIssuesReferences":null},
+ {"number":22,"title":"Closes it","headRefName":"other","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7,"repository":{"owner":{"login":"acme"},"name":"widgets"}}]},
+ {"number":23,"title":"Closes another repository's 7","headRefName":"x","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7,"repository":{"owner":{"login":"acme"},"name":"other"}}]},
+ {"number":24,"title":"Reference without repository","headRefName":"y","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[{"number":7}]},
+ {"number":25,"title":"No references","headRefName":"z","isCrossRepository":false,"isDraft":false,"closingIssuesReferences":[]},
+ {"number":26,"title":"From a fork","headRefName":"feature/issue-7","isCrossRepository":true,"isDraft":false,"closingIssuesReferences":[]}]
+EOF
+reset_marks
+step5 'A line (#7)' ''
+[[ $RC -eq 0 && "$(grep '^pull_request' <<< "$OUT")" == $'pull_request\t21\tBranch match\tdraft\npull_request\t22\tCloses it\tready' ]] \
+    && pass "(skill 5) pull requests: null references do not stop the lookup; branch match, closing reference here; not another repository's, a bare reference, or a fork" \
+    || fail "(skill 5) pull requests rc=$RC '$OUT'"
+[[ "$OUT" == *$'issue\t7\tLive title'* ]] && pass "(skill 5) gh up: the live title" || fail "(skill 5) live title '$OUT'"
+mv "$SB/gh.saved" "$SB/bin/gh"
+printf '%s' "$WS" > "$HOMESB/.claude/agent-workspace-root"
+
+echo "TEST: sit-rep step 6 reads the problems from main, without merges or work-plan-only commits"
+W6="$SB/ws6"
+mkdir -p "$W6/.agent/scripts" "$W6/.agent/knowledge" "$W6/docs" "$W6/src" "$W6/.agent/work-plans/issue-1"
+cat > "$W6/.agent/scripts/check_design_anchors.sh" <<EOF
+#!/usr/bin/env bash
+echo "anchor: docs/x.md cites #gone"
+exit "\$(cat "$RCD/anchors" 2>/dev/null || echo 0)"
+EOF
+chmod +x "$W6/.agent/scripts/check_design_anchors.sh"
+ago() { python3 -c 'import datetime, sys; print(datetime.date.today() - datetime.timedelta(days=int(sys.argv[1])))' "$1"; }
+D100="$(ago 100)"; D40="$(ago 40)"; D10="$(ago 10)"
+c6() {  # <date> <message>: commit everything staged, dated <date>
+    GIT_AUTHOR_DATE="$1 12:00:00" GIT_COMMITTER_DATE="$1 12:00:00" \
+        git -C "$W6" -c user.name=t -c user.email=t@t commit -q -m "$2"
+}
+git init -q -b main "$W6"
+# Row 2 has an escaped pipe in a cell (\|), which is not a column break;
+# the separator row has spaces and a colon, which a separator may.
+printf '## Decision register\n\n| ADR | Decision | Re-examined |\n| --- | :-- | --- |\n| 1 | a | yes %s |\n| 2 | b `x\\|y` | yes %s |\n| 3 | c | not yet |\n\n## Change log\n\n| x | yes 2099-01-01 |\n' "$D100" "$D40" > "$W6/docs/design.md"
+printf '<!-- Last full refresh: %s (partial) -->\n\n### A\n**Added**: %s | **Last verified**: %s | **Sources**: x\n\n### B\n**Added**: %s | **Sources**: y\n' "$D100" "$D100" "$D10" "$D100" > "$W6/.agent/knowledge/research_digest.md"
+git -C "$W6" add -A && c6 "$D40" "design and digest"
+echo plan > "$W6/.agent/work-plans/issue-1/plan.md"; git -C "$W6" add -A && c6 "$D10" "work plan only"
+echo doc > "$W6/docs/other.md"; git -C "$W6" add -A && c6 "$D10" "docs change"
+git -C "$W6" checkout -q -b side
+echo x > "$W6/src/x"; git -C "$W6" add -A && c6 "$D10" "side change"
+git -C "$W6" checkout -q main
+GIT_AUTHOR_DATE="$D10 13:00:00" GIT_COMMITTER_DATE="$D10 13:00:00" \
+    git -C "$W6" -c user.name=t -c user.email=t@t merge -q --no-ff -m "merge side" side
+git -C "$W6" checkout -q -b feature   # a worktree session's branch: not read
+printf 'not on main\n' > "$W6/docs/design.md"
+printf '%s' "$W6" > "$HOMESB/.claude/agent-workspace-root"
+reset_marks
+run_step 6
+[[ $RC -eq 0 && "$OUT" == *"audit_adrs=3 not_yet_reexamined=1"* \
+    && "$OUT" == *"newest_adr_reexamination=$D40 days=40 commits_since=2"* ]] \
+    && pass "(skill 6) audit: newest Re-examined date on main, commits since without merge or work-plan-only commits" || fail "(skill 6) audit rc=$RC '$OUT'"
+[[ "$OUT" == *"last_full_refresh=$D100"* && "$OUT" == *"digest_entries=2 past_30_days=1 past_90_days=1 oldest_days=100 undated=0"* ]] \
+    && pass "(skill 6) research: Last verified, else Added, against 30 and 90 days" || fail "(skill 6) research '$OUT'"
+[[ "$OUT" == *"design_doc_changed=$D40 days=40 commits_since_touching_agent_claude_docs=1"* ]] \
+    && pass "(skill 6) documentation: commits since design.md changed, under .agent/.claude/docs only" || fail "(skill 6) docs '$OUT'"
+[[ "$OUT" != *design_anchors* && "$OUT" == *"session_type=unknown"* ]] \
+    && pass "(skill 6) a passing anchor check prints nothing; no session root is unknown" || fail "(skill 6) anchors pass '$OUT'"
+echo 1 > "$RCD/anchors"
+run_step 6
+[[ "$OUT" == *$'design_anchors=failed\nanchor: docs/x.md cites #gone'* ]] \
+    && pass "(skill 6) a failing anchor check prints with its output" || fail "(skill 6) anchors fail '$OUT'"
+[[ "$OUT" == *"main_behind_origin=unknown (no origin/main)"* ]] \
+    && pass "(skill 6) no origin/main: how far main lags is unknown" || fail "(skill 6) no origin '$OUT'"
+ahead="$(git -C "$W6" -c user.name=t -c user.email=t@t commit-tree 'main^{tree}' -p main -m ahead)"
+git -C "$W6" update-ref refs/remotes/origin/main "$ahead"
+run_step 6
+[[ "$OUT" == *"main_behind_origin=1"* ]] \
+    && pass "(skill 6) origin/main one commit ahead: main is 1 behind, nothing fetched" || fail "(skill 6) behind '$OUT'"
+printf '%s' "$WS" > "$HOMESB/.claude/agent-workspace-root"
+run_step 6
+[[ "$OUT" == *"audit=cannot tell"* && "$OUT" == *"research=cannot tell"* && "$OUT" == *"design_doc=cannot tell"* ]] \
+    && pass "(skill 6) no git history: every fact says cannot tell" || fail "(skill 6) no repo '$OUT'"
 
 echo "TEST: usage"
 RC=0; bash "$SITREP" --bogus >/dev/null 2>&1 || RC=$?
