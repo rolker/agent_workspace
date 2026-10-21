@@ -395,3 +395,26 @@ Pre-push round 3 (8370f82b) reached MAX_ROUNDS with 1 must-fix (ros2_colcon stor
 - [x] (suggestion) `project_setting.sh` header: exit 2 also covers a malformed registry; new `test_malformed_registry_exits_2` covers all five commands — `050d22a7`
 
 Checks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract and the design-anchor check; `test_project_file.sh` 338 passed, 0 failed; `test_ros2_colcon.sh` 200 passed, 0 failed; each new test was run against the code before its fix and failed there; shellcheck `--severity=warning` clean on `_project_registry.sh`, `project_setting.sh`, `adapter`, `ros2_colcon/adapter.sh`, `test_project_file.sh`, `test_ros2_colcon.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 10:39 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a0bc444961900f34f, resume 3 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `4a937d4a`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff ~2,730 changed lines outside work plans, 200+ threshold; AGENTS.md governance file)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 4 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round-3 findings (8062f779) all resolved at 050d22a7, checked in the code: per-type `unused_settings` data file read by `_project_type_unused_setting` (no script names a type), applied by every reader through `project_file_entries` (adversarial confirmed a hand-written `bootstrap_url` stops a single_project's `build` and `validate`); shared bootstrap URL fall-through note; `projects.d` that is not a searchable directory fails closed; first word `VAR=value` refused; no-flock path tested; exit-code header. Change-log row 784 matches `wc -l`.
+For the owner (not findings): `install` stays allowed for ros2_colcon because its `adapter_install` reads it; `bootstrap_url` is now refused for single_project, so a hand-written one stops that project's verbs; `unused_settings` is a second per-type data file beside PR 2's planned `registration.conf` (PR 2 may fold one into the other).
+Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; test_project_file.sh 338 passed; test_ros2_colcon.sh 200 passed; run_script_tests.sh 38 suites passed; validate_adapter.sh passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+
+### Findings
+- [ ] (suggestion) `unused_settings` fails open when present but unusable: unreadable (mode 000) gives `check` OK and the adapter runs; a CRLF `test\r` line never matches; treat a present-but-unreadable file as an error and strip `\r`, with tests (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:855`
+- [ ] (suggestion) Nothing validates `unused_settings`: a misspelt key is inert and a line with no reason prints an empty reason; have `validate_adapter.sh` check each line names a known key and has a reason, with a test (Claude adversarial, confirmed by execution) — `.agent/scripts/validate_adapter.sh`
+- [ ] (suggestion) The AGENTS.md Script Reference row for `project_setting.sh` omits that `set` refuses, and `check` fails, a key the project's type never reads (`unused_settings`), which the design, example file and header all state (Claude adversarial) — `AGENTS.md:408`
+- [ ] (suggestion) Legacy compatibility: the adapters now clear `BUILD_CMD`/`TEST_CMD`/`INSTALL_CMD` before sourcing the legacy or shared config, so a value inherited from the environment (or a config using `${BUILD_CMD:-make}`) is no longer honoured as on main; no local config relies on it (checked), so name the change in the PR body or keep the inherited value (codex rated must-fix) — `.agent/project_types/single_project/adapter.sh:44`, `.agent/project_types/ros2_colcon/adapter.sh:645`
