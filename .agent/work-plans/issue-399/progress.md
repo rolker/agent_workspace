@@ -408,7 +408,7 @@ Pre-push round 3 (ea81e82c): approved, 0 must-fix, 1 cosmetic suggestion (a 101-
 `review_progress.sh sources` returned no open local findings: the one deferred round-3 box was ticked `[x]` with a "(deferred …)" note by the host's 72cede46, so the helper reads it as closed. It is carried forward here as open because no pass fixed it; rounds 1 and 2's seven findings were fixed in 7c3e73ed, 2de136cf, 55cf3c81, 20be868f, 4b76fca4, de8ea7f7, 2e238d86 and b0f6c45c, as round 3 confirmed. CI at triage: Validate Adapter Contract, Validate Documentation and ros-manifest tests passed; Lint (pre-commit) still in progress. The copilot-pull-request-reviewer check-run failed on the quota; `merge_pr.sh` excludes it from CI (#300).
 
 ### Findings
-- [ ] (suggestion, cosmetic, Local Review (Pre-Push) R3 @ `067fbcd7`) Reflow miss from the deleted-paths edit, still present at the head: line 189 is 101 characters ("here; CI's all-files run covers it); run no separate suite. It takes several minutes, longer than the") in a paragraph wrapped at about 75; re-wrap lines 186-193 of that paragraph, text unchanged — `.claude/skills/address-findings/SKILL.md`
+- [x] (suggestion, cosmetic, Local Review (Pre-Push) R3 @ `067fbcd7`) Reflow miss from the deleted-paths edit, still present at the head: line 189 is 101 characters ("here; CI's all-files run covers it); run no separate suite. It takes several minutes, longer than the") in a paragraph wrapped at about 75; re-wrap lines 186-193 of that paragraph, text unchanged — `.claude/skills/address-findings/SKILL.md` (deferred: cosmetic reflow, owner deferred at the findings checkpoint)
 
 ### False positives
 
