@@ -344,3 +344,25 @@ Round 1's three findings are resolved (7c3e73ed, 2de136cf, 55cf3c81, 20be868f): 
 **Decision**: address
 
 Pre-push round 2 (94903ce5): approved, 0 must-fix, 4 suggestions (skill example's angle-bracket placeholder in a bash fence; qualify "the suite runs" to a changed, still-present matching file; printf %q on ROOT_DIR; line wrapping in run-issue and the hook comment). Owner's answers: "Fix suggestions, then publish (Recommended)"; and the AGENTS.md script-reference row edit (commits 284eea98, 2de136cf; Ask First): "Yes, approve the row edit".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 10:32 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent add5d588ef5ad2dee, resume 1 of 3)
+
+**Branch**: feature/issue-399 at `b0f6c45c`
+**Addressed**: Local Review (Pre-Push) at `bf204420` (2026-10-21 10:21 -04:00)
+**Commits**: 4b76fca4, de8ea7f7, 2e238d86, b0f6c45c
+
+### Actions
+- [x] (suggestion) The step-4 example is now a `text` fence, introduced as the command's shape with a placeholder path (not a command to paste), and the prose says to run the exact line the handoff prints (4b76fca4) — `.claude/skills/address-findings/SKILL.md:169`
+- [x] (suggestion) The rule now says the suite runs when a changed file that still exists matches that hook (pre-commit drops deleted paths) and that CI's all-files run covers the rest; the address-findings skill and run-issue step 4 say the same, and the test pins it (de8ea7f7) — `.agent/scripts/dispatch_phase.sh:384`, `.claude/skills/address-findings/SKILL.md:185`, `.claude/skills/run-issue/SKILL.md:312`
+- [x] (suggestion) The rule prints `ROOT_DIR` through `printf %q`: an ordinary path is unchanged (the existing test still pins `$SB/.venv/bin/pre-commit run --files`), a spaced one is escaped. A new test builds a main checkout at a path with a space and a fake `.venv/bin/pre-commit`, and runs the printed command to check that it reaches the fake; with the `%q` removed the test fails (checked) (2e238d86) — `.agent/scripts/dispatch_phase.sh:376-384`, `.agent/scripts/tests/test_dispatch_phase.sh`
+- [x] (suggestion) The run-issue "Hook rule" paragraph was rewritten around a `text` fence holding the command, all prose lines at most 72 characters (in de8ea7f7, along with the change to the suite sentence); the `.pre-commit-config.yaml` comment was re-wrapped with the command on its own line, comment only, so the hook definition is unchanged (b0f6c45c) — `.claude/skills/run-issue/SKILL.md:312-329`, `.pre-commit-config.yaml:69-77`
+
+### Checks
+- The fix commits used `SKIP=validate-script-tests`; every other hook ran on each.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` once at b0f6c45c with no SKIP: every hook passed, `validate-script-tests` (the whole script suite) included.
+- `shellcheck -S warning` on dispatch_phase.sh and test_dispatch_phase.sh: clean.
+- test_dispatch_phase 121/0 (one new case), test_skill_paths 58/0 (run during the fixes).
