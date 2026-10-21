@@ -1212,7 +1212,11 @@ project_records_check() {
 # whose settings files are links to one target. A link repointed while
 # the writer waited, or a file that stopped being a readable regular file
 # (replaced by a directory, say), is refused. Without flock (macOS by
-# default) the write is unlocked.
+# default) the write is unlocked. The lock file is never removed: removing
+# it while another writer has it open would let a third lock a new file of
+# the same name and write alongside. So a settings file that is a link into
+# another directory leaves an untracked .lock.<basename> there, beside its
+# target (in a git checkout, ignore it).
 # The temporary file is removed on every exit, INT, TERM and HUP included.
 # Usage: project_file_set "$root" "$name" build=./b.sh -install
 project_file_set() {
