@@ -384,3 +384,13 @@ Round 2's four suggestions are resolved (4b76fca4, de8ea7f7, 2e238d86, b0f6c45c)
 
 ### Findings
 - [ ] (suggestion) Reflow miss from the deleted-paths edit: one 101-character line ("here; CI's all-files run covers it); run no separate suite. It takes several minutes, longer than the") in a paragraph wrapped at about 75 — `.claude/skills/address-findings/SKILL.md:189`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:34 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Pre-push round 3 (ea81e82c): approved, 0 must-fix, 1 cosmetic suggestion (a 101-character line in the address-findings skill). The owner's answer at the round-2 publish checkpoint (a3fb7b07) was "Fix suggestions, then publish (Recommended)"; the suggestions are fixed, so the host applies that answer here and publishes. The cosmetic box is deferred to the post-push triage round.
