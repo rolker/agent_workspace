@@ -178,7 +178,10 @@ permission allowlist matches:
 ```
 
 It includes `validate-script-tests`, so the script suite runs once for the
-pass; run no separate suite. If it fails, fix the failure (a commit of its
+pass; run no separate suite. It takes several minutes, longer than the
+Bash tool's 120 s default timeout: give the call a long timeout (up to
+600000 ms) and wait for its exit. A run that was backgrounded or cut off
+by a timeout has not passed. If it fails, fix the failure (a commit of its
 own) and run the same command again on the final tree before step 5.
 
 ### 5. Write the `## Implementation` entry

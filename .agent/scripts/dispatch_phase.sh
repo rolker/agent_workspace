@@ -376,7 +376,7 @@ cmd_handoff() {
     local pass_rule=""
     case "$skill" in
         implement|address-findings)
-            [[ "$type" == workspace ]] && pass_rule=" Hook rule for this dispatched pass (owner-decided 2026-10-20): set \`SKIP=validate-script-tests\` only on your intermediate atomic commits, never \`--no-verify\`; before writing the entry, run \`$ROOT_DIR/.venv/bin/pre-commit run --files \$(git diff --name-only main...HEAD)\` once with no SKIP (the main checkout's venv pre-commit: a worktree has no \`.venv\`; it includes the script test suite, so run no separate suite), and if it fails, fix it and run the same command again on the final tree. CI (\`make lint\`, every hook on all files) is the backstop."
+            [[ "$type" == workspace ]] && pass_rule=" Hook rule for this dispatched pass (owner-decided 2026-10-20): set \`SKIP=validate-script-tests\` only on your intermediate atomic commits, never \`--no-verify\`; before writing the entry, run \`$ROOT_DIR/.venv/bin/pre-commit run --files \$(git diff --name-only main...HEAD)\` once with no SKIP (the main checkout's venv pre-commit: a worktree has no \`.venv\`). It includes the script test suite, so run no separate suite, and it takes several minutes: give the call a long timeout (up to 600000 ms) and wait for its exit, because a run that was backgrounded or cut off has not passed. If it fails, fix it and run the same command again on the final tree. CI (\`make lint\`, every hook on all files) is the backstop."
             ;;
     esac
     echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create.${pass_rule}"
