@@ -851,6 +851,23 @@ test_unsearchable_settings_dir_fails_closed() {
     assert_eq "an absent projects.d is still 'no file'" "0" "$rc"
 }
 
+test_malformed_registry_exits_2() {
+    echo "TEST: project_setting.sh exits 2 on a malformed registry, for every command, as its header says"
+    local sb out rc cmd
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    ps_run "$sb" set alpha build=make >/dev/null
+    echo "bad entry with too many words here" >> "$sb/.agent/projects.local"
+    for cmd in "get alpha build" "set alpha test=make" "unset alpha build" "list alpha" "check alpha"; do
+        rc=0
+        # shellcheck disable=SC2086  # the command and its arguments, split on purpose
+        out="$(ps_run "$sb" $cmd 2>&1)" || rc=$?
+        assert_eq "malformed registry, '$cmd': exit 2" "2" "$rc"
+        assert_contains "malformed registry, '$cmd': says so" "has errors (above); fix it first" "$out"
+    done
+    assert_eq "malformed registry: the settings file is untouched" "build=make" "$(cat "$(pfile "$sb" alpha)")"
+}
+
 test_set_refusals() {
     echo "TEST: set refuses invalid results, unknown keys, unregistered names and parent roots, leaving the file as it was"
     local sb f out rc before
@@ -1204,6 +1221,7 @@ test_unknown_key_repair
 test_set_lock_and_interrupt_cleanup
 test_set_without_flock_writes_unlocked
 test_outside_without_layout_unregistered
+test_malformed_registry_exits_2
 test_set_refusals
 test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes

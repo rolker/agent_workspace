@@ -31,7 +31,9 @@
 #   0  done; for check: valid, and honoured today
 #   1  usage error, unknown project, absent key (get), or a refused write
 #   2  the settings file is invalid (malformed, or records settings refused:
-#      a records repository must not be a workspace)
+#      a records repository must not be a workspace), or the registry
+#      .agent/projects.local is malformed (every command, before the
+#      project is looked up)
 #   3  check only: valid, but records settings not yet honoured (#393)
 
 set -euo pipefail

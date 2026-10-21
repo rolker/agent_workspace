@@ -365,7 +365,7 @@ Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; 
 - [x] (suggestion) A settings path that cannot be looked up reads as absent: when `projects.d` is a regular file, a dangling link, or not searchable, `[ -e ]` and `[ -L ]` are both false and the parser returns no settings, so the adapter falls through to the shared config (with the note on single_project); fail closed when the parent exists but is not a searchable directory (codex rated must-fix, confirmed by its probes; the legacy `.sh` lookup has the same pre-existing gap) — `.agent/scripts/_project_registry.sh:835`
 - [x] (suggestion) A command whose first word is an environment assignment (`build=CC=gcc make`) validates and is stored, then fails at run time with `exec: CC=gcc: not found` (127); refuse a first word containing `=` with the "point the key at a script" message (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:667`
 - [x] (suggestion) The unlocked path the writer's header documents for a machine without `flock` has no test; cover it with a `PATH` lacking `flock` (Claude adversarial) — `.agent/scripts/tests/test_project_file.sh`
-- [ ] (suggestion) The exit-code header says 2 means the settings file is invalid, but 2 is also returned for a malformed registry; add that case (Claude adversarial) — `.agent/scripts/project_setting.sh:32`
+- [x] (suggestion) The exit-code header says 2 means the settings file is invalid, but 2 is also returned for a malformed registry; add that case (Claude adversarial) — `.agent/scripts/project_setting.sh:32`
 
 ## Checkpoint
 **Status**: complete
