@@ -143,7 +143,9 @@ fi
 
 # Project directory (legacy shape) + registered projects (issue #227)
 PROJECT_DIR="${MAIN_ROOT:-$ROOT_DIR}/project"
+REGISTRY_OK=1
 REGISTRY_ENTRIES="$(registry_entries "${MAIN_ROOT:-$ROOT_DIR}")" || {
+    REGISTRY_OK=0
     check_fail "projects.local has malformed entries (see errors above)"
     ((FAILED_CHECKS++))
     # Fail closed like the adapter dispatcher: don't report/sync/query a
@@ -191,7 +193,11 @@ if [ -n "$REGISTRY_ENTRIES" ]; then
             check_warn "project '$_name': records settings in .agent/projects.d/$_name are valid but not yet honoured ($PROJECT_RECORDS_LOOKUP_ISSUE)"
         fi
     done <<< "$REGISTRY_ENTRIES"
-    # A settings file whose project is not registered is read by nothing.
+fi
+# A settings file whose project is not registered is read by nothing. Also
+# checked with no project registered (then every file is an orphan), but
+# not when the registry is malformed: its names are unknown.
+if [ "$REGISTRY_OK" -eq 1 ]; then
     for _pf in "${MAIN_ROOT:-$ROOT_DIR}"/.agent/projects.d/*; do
         [ -f "$_pf" ] || continue
         _pfname="$(basename "$_pf")"

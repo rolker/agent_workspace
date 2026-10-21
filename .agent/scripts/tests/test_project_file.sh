@@ -1004,6 +1004,19 @@ test_dashboard_reports_settings_files() {
     assert_not_contains "grep never reads the name as an option" "Usage: grep" "$out"
 }
 
+test_dashboard_orphans_without_registered_projects() {
+    echo "TEST: the dashboard reports an orphan settings file with no project registered, and not when the registry is malformed"
+    local sb out
+    sb="$(make_sandbox)"
+    printf 'build=make\n' | write_pfile "$sb" ghost
+    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 || true)"
+    assert_contains "no registry: orphan warns" "settings file .agent/projects.d/ghost belongs to no registered project" "$out"
+    echo "bad entry with too many words here" > "$sb/.agent/projects.local"
+    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 || true)"
+    assert_contains "malformed registry: reported" "projects.local has malformed entries" "$out"
+    assert_not_contains "malformed registry: no orphan guess" "belongs to no registered project" "$out"
+}
+
 test_bootstrap_url_precedence() {
     echo "TEST: ros2_colcon bootstrap URL: env, then bootstrap_url, then legacy MANIFEST_BOOTSTRAP_URL"
     local sb out
@@ -1061,6 +1074,7 @@ test_missing_test_command_names_the_setting
 test_malformed_file_stops_dispatcher
 test_validate_reports_malformed_file
 test_dashboard_reports_settings_files
+test_dashboard_orphans_without_registered_projects
 test_bootstrap_url_precedence
 
 echo ""
