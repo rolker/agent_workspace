@@ -801,14 +801,32 @@ _project_file_path_error() {
     return 1
 }
 
+# Does settings file <file> have a key=value line whose key is exactly
+# <key>, whatever the key (unknown keys included)? Comment lines never
+# count. Return 1 when not, or when the file cannot be read.
+_project_file_has_line_key() {
+    local file="$1" want="$2" raw line
+    [ -f "$file" ] && [ -r "$file" ] || return 1
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        line="$(_project_file_trim "${raw%$'\r'}")"
+        [[ "$line" == \#* ]] && continue
+        [[ "$line" == *=* ]] || continue
+        [ "$(_project_file_trim "${line%%=*}")" = "$want" ] && return 0
+    done < "$file"
+    return 1
+}
+
 # Parse a settings file. Prints "key<TAB>value" per setting. A missing
 # file prints nothing and returns 0 (every setting at its default). Any
 # error (line grammar, unknown or duplicate key, empty or ill-typed value,
 # refused records combination) is reported on stderr naming the file and
 # line, nothing is printed, and the return is 2: a malformed file never
-# resolves.
+# resolves. <name> (default: the file's base name) is the project named in
+# the repair hints.
+# Usage: _project_file_parse <file> [<name>]
 _project_file_parse() {
-    local file="$1" raw line key value lineno=0 rc=0 seen=" " reason known
+    local file="$1" name="${2:-}" raw line key value lineno=0 rc=0 seen=" " reason known
+    [ -n "$name" ] || name="$(basename "$file")"
     local -a out=()
     if reason="$(_project_file_path_error "$file")"; then
         echo "ERROR: $reason" >&2
@@ -828,11 +846,11 @@ _project_file_parse() {
         key="$(_project_file_trim "${line%%=*}")"
         value="$(_project_file_trim "${line#*=}")"
         if ! _project_file_key_in "$key" "$_PROJECT_FILE_KEYS"; then
-            echo "ERROR: ${file}:${lineno}: unknown key '$key' (known keys: $known)" >&2
+            echo "ERROR: ${file}:${lineno}: unknown key '$key' (known keys: $known); remove it with: .agent/scripts/project_setting.sh unset $name '$key', or edit the file by hand" >&2
             rc=2; continue
         fi
         if [[ "$seen" == *" $key "* ]]; then
-            echo "ERROR: ${file}:${lineno}: duplicate key '$key'" >&2
+            echo "ERROR: ${file}:${lineno}: duplicate key '$key' (edit the file by hand to keep one line, or remove both with: .agent/scripts/project_setting.sh unset $name $key)" >&2
             rc=2; continue
         fi
         seen="$seen$key "
@@ -863,7 +881,7 @@ _project_file_parse() {
 # Parse project <name>'s settings file (see _project_file_parse).
 # Usage: entries=$(project_file_entries "$root" "$name") || { ...invalid... }
 project_file_entries() {
-    _project_file_parse "$(project_file_path "$1" "$2")"
+    _project_file_parse "$(project_file_path "$1" "$2")" "$2"
 }
 
 # Print the stored value of <key> for project <name>. Return 1 when the key
@@ -1049,7 +1067,8 @@ project_records_check() {
 }
 
 # The one writer for .agent/projects.d/<name>. Arguments are 'key=value'
-# (set) or '-key' (remove). The result is validated as a whole file before
+# (set) or '-key' (remove; also an unknown key the file holds, so a
+# misspelt key can be repaired). The result is validated as a whole file before
 # an atomic rename; comment lines and the order of untouched lines are
 # kept. Refuses: an unregistered name, a parent root (settings belong to
 # its instances), and, until the records lookup lands (#393), a write that
@@ -1097,7 +1116,11 @@ project_file_set() {
             echo "ERROR: expected key=value or -key, got '$arg'" >&2
             return 1
         fi
-        if ! _project_file_key_in "$key" "$_PROJECT_FILE_KEYS"; then
+        # An unknown key is refused, except that '-key' may remove one
+        # the file holds (a misspelt key is repaired with unset).
+        if ! _project_file_key_in "$key" "$_PROJECT_FILE_KEYS" \
+            && ! { [ -n "$key" ] && [ -z "$value" ] && [[ "$arg" == -* ]] \
+                   && _project_file_has_line_key "$(project_file_path "$root" "$name")" "$key"; }; then
             local known="${_PROJECT_FILE_KEYS# }"; known="${known% }"
             echo "ERROR: unknown key '$key' (known keys: $known)" >&2
             return 1
@@ -1164,14 +1187,14 @@ project_file_set() {
     } > "$tmp"
 
     # Captures the parser's stderr only; its exit status is kept.
-    if ! reason="$(_project_file_parse "$tmp" 2>&1 >/dev/null)"; then
+    if ! reason="$(_project_file_parse "$tmp" "$name" 2>&1 >/dev/null)"; then
         rm -f "$tmp"
         echo "ERROR: not writing $file: the result would be invalid:" >&2
         # Name the real file in the messages, not the temporary one.
         printf '%s\n' "${reason//$tmp/$file}" >&2
         return 2
     fi
-    entries="$(_project_file_parse "$tmp")"
+    entries="$(_project_file_parse "$tmp" "$name")"
     if [ "$touches_records" -eq 1 ]; then
         loc="$(_project_file_value_of "$entries" location)" || loc=""
         lpath="$(_project_file_value_of "$entries" location_path)" || lpath=""

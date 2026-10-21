@@ -8,7 +8,9 @@
 #   project_setting.sh get   <name> <key>          print the stored value
 #   project_setting.sh set   <name> <key=value>... set keys (validated as
 #                                                   the whole resulting file)
-#   project_setting.sh unset <name> <key>...        remove keys
+#   project_setting.sh unset <name> <key>...        remove keys (also an
+#                                                   unknown key the file
+#                                                   holds, e.g. a misspelt one)
 #   project_setting.sh list  <name>                 stored keys, then the
 #                                                   resolved records settings
 #   project_setting.sh check <name>                 validate the file and its

@@ -658,6 +658,35 @@ test_symlink_cases() {
     assert_eq "no temporary file left" "" "$(find "$sb/.agent" "$store" -name '.alpha.*')"
 }
 
+test_unknown_key_repair() {
+    echo "TEST: a misspelt key is named with its repair, and unset removes it; set still refuses an unknown key"
+    local sb f out rc
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    printf '# mine\nbuld=make\nbuild=make\n' | write_pfile "$sb" alpha
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_eq "check exits 2" "2" "$rc"
+    assert_contains "the error names the unset repair" "remove it with: .agent/scripts/project_setting.sh unset alpha 'buld', or edit the file by hand" "$out"
+    rc=0; out="$(ps_run "$sb" set alpha test=make 2>&1)" || rc=$?
+    assert_eq "set on the broken file: exit 2" "2" "$rc"
+    assert_contains "the replayed error names the project, not the temporary file" "unset alpha 'buld'" "$out"
+    rc=0; out="$(ps_run "$sb" set alpha buld=other 2>&1)" || rc=$?
+    assert_eq "set of an unknown key: still exit 1" "1" "$rc"
+    rc=0; out="$(ps_run "$sb" unset alpha nosuch 2>&1)" || rc=$?
+    assert_eq "unset of an unknown key the file lacks: exit 1" "1" "$rc"
+    assert_contains "named as unknown" "unknown key 'nosuch'" "$out"
+    rc=0; out="$(ps_run "$sb" unset alpha buld 2>&1)" || rc=$?
+    assert_eq "unset of the misspelt key: exit 0" "0" "$rc"
+    assert_eq "only that line removed, comment kept" "$(printf '# mine\nbuild=make')" "$(cat "$f")"
+    rc=0; ps_run "$sb" check alpha >/dev/null 2>&1 || rc=$?
+    assert_eq "the repaired file checks valid" "0" "$rc"
+
+    printf 'build=make\nbuild=make all\n' | write_pfile "$sb" alpha
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_contains "a duplicate names the hand edit" "edit the file by hand to keep one line" "$out"
+}
+
 test_set_refusals() {
     echo "TEST: set refuses invalid results, unknown keys, unregistered names and parent roots, leaving the file as it was"
     local sb f out rc before
@@ -928,6 +957,7 @@ test_composite_keys_refused
 test_set_keeps_mode_and_symlink
 test_set_refuses_unusable_path
 test_symlink_cases
+test_unknown_key_repair
 test_set_refusals
 test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes
