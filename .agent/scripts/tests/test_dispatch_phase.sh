@@ -418,6 +418,29 @@ out=$(run_handoff --issue 9 --skill implement)
 [[ "$out" == *"progress_append.sh 9"* && "$out" == *'**Branch**: <name> at <sha>'* && "$out" == *"Commit your work"* ]] \
     && pass "handoff: implement's exit contract names progress_append.sh, the correlation line, and that the agent commits (plan review finding 1)" || fail "handoff implement exit contract (out=$out)"
 
+# The once-per-pass hook rule (issue #399, owner-decided 2026-10-20) rides
+# on conventions=, only for the committing passes of a workspace handoff: a
+# review phase is never told to skip a hook. run_script_tests.sh is not
+# named, so the handoff does not invite a second, separate suite run.
+for sk in implement address-findings; do
+    out=$(run_handoff --issue 9 --skill "$sk")
+    conv=$(printf '%s\n' "$out" | grep '^conventions=')
+    [[ "$conv" == *"SKIP=validate-script-tests"* && "$conv" == *"pre-commit run --files"* \
+        && "$conv" == *'$(git diff --name-only main...HEAD)'* && "$conv" == *"CI"* \
+        && "$conv" == *"--no-verify"* && "$conv" != *"run_script_tests.sh"* \
+        && "$conv" == *"local time with offset"*"scratchpad"* ]] \
+        && pass "handoff: $sk (workspace) conventions= carries the once-per-pass hook rule, CI backstop, and the existing conventions" \
+        || fail "handoff $sk once-per-pass rule (conv=$conv)"
+done
+for sk in review-issue plan-task review-plan review-code triage-reviews; do
+    out=$(run_handoff --issue 9 --skill "$sk" --pr 42)
+    conv=$(printf '%s\n' "$out" | grep '^conventions=')
+    [[ -n "$conv" && "$conv" != *"SKIP=validate-script-tests"* && "$conv" != *"pre-commit run --files"* \
+        && "$conv" == *"local time with offset"*"scratchpad"* ]] \
+        && pass "handoff: $sk conventions= carries no hook-skip rule, keeps the existing conventions" \
+        || fail "handoff $sk must not carry the hook rule (conv=$conv)"
+done
+
 out=$(run_handoff --issue 9 --skill review-issue --entry-type "Custom Type" --model haiku)
 [[ "$out" == *"entry_type=Custom Type"* && "$out" == *"model=haiku"* ]] \
     && pass "handoff: --entry-type / --model override the table" || fail "handoff overrides (out=$out)"
@@ -444,6 +467,14 @@ printf 'myproj\tsingle_project\t%s\n' "$SBP1/myproj" > "$SBP1/.agent/projects.lo
 out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project 2>&1); rc=$?
 [[ "$rc" -eq 0 && "$out" == *"worktree=$SBP1/myproj/worktrees/issue-9"* ]] \
     && pass "resolve_worktree --type project: a single registered project resolves via registry_worktree_dir" || fail "resolve_worktree project registry (rc=$rc out=$out)"
+# The once-per-pass hook rule names a workspace hook and workspace CI, so a
+# --type project implement handoff carries none (issue #399).
+out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill implement --type project 2>&1); rc=$?
+conv=$(printf '%s\n' "$out" | grep '^conventions=')
+[[ "$rc" -eq 0 && -n "$conv" && "$conv" != *"SKIP=validate-script-tests"* && "$conv" != *"pre-commit run --files"* \
+    && "$conv" == *"local time with offset"*"scratchpad"* ]] \
+    && pass "handoff: --type project implement conventions= carries no workspace hook rule" \
+    || fail "handoff project implement must not carry the hook rule (rc=$rc out=$out)"
 
 # (b) the deprecated project/worktrees fallback (wt_legacy_project_base): no
 # registry entry at all, worktree living inside a project/ checkout's own
