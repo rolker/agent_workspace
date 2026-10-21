@@ -1261,6 +1261,38 @@ test_dashboard_reports_settings_files() {
     assert_not_contains "grep never reads the name as an option" "Usage: grep" "$out"
 }
 
+test_parent_root_settings_file_is_flagged() {
+    echo "TEST: a settings file under a parent root's name (read by nothing) fails check and list and is warned by the dashboard; a parent without one is OK"
+    local sb f out rc
+    sb="$(make_sandbox)"
+    mkdir -p "$sb/parent/inst"
+    gitq -C "$sb/parent/inst" init --quiet
+    printf 'fam project %s default_instance=fam-a\nfam-a single_project %s parent=fam\n' \
+        "$sb/parent" "$sb/parent/inst" >> "$sb/.agent/projects.local"
+    f="$(pfile "$sb" fam)"
+
+    rc=0; out="$(ps_run "$sb" check fam 2>&1)" || rc=$?
+    assert_eq "no file: check exits 0" "0" "$rc"
+    assert_contains "no file: says it is a parent root" "OK: 'fam' is a parent root and has no settings file; settings belong to its instances (fam-a)" "$out"
+    rc=0; out="$(ps_run "$sb" list fam 2>&1)" || rc=$?
+    assert_eq "no file: list exits 0" "0" "$rc"
+    assert_not_contains "no file: list reports no records for a parent" "# records:" "$out"
+    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 || true)"
+    assert_not_contains "no file: the dashboard does not warn" "parent root 'fam' has a settings file" "$out"
+
+    printf 'build=make\n' | write_pfile "$sb" fam
+    for cmd in check list; do
+        rc=0; out="$(ps_run "$sb" "$cmd" fam 2>&1)" || rc=$?
+        assert_eq "with a file: $cmd exits 2" "2" "$rc"
+        assert_contains "with a file: $cmd says nothing reads it" "INVALID: $f: 'fam' is a parent root (no adapter of its own), so nothing reads this file; settings belong to its instances (fam-a)" "$out"
+    done
+    out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 || true)"
+    assert_contains "with a file: the dashboard warns" "parent root 'fam' has a settings file .agent/projects.d/fam, which nothing reads: settings belong to its instances (fam-a)" "$out"
+    assert_not_contains "with a file: not also an orphan" "projects.d/fam belongs to no registered project" "$out"
+    rc=0; ps_run "$sb" check fam-a >/dev/null 2>&1 || rc=$?
+    assert_eq "the instance's own check is unaffected" "0" "$rc"
+}
+
 test_dashboard_orphans_without_registered_projects() {
     echo "TEST: the dashboard reports an orphan settings file with no project registered, and not when the registry is malformed"
     local sb out
@@ -1474,6 +1506,7 @@ test_malformed_file_stops_dispatcher
 test_validate_reports_malformed_file
 test_dashboard_reports_settings_files
 test_dashboard_orphans_without_registered_projects
+test_parent_root_settings_file_is_flagged
 test_type_unused_settings_refused
 test_unused_settings_list_unreadable_or_crlf
 test_env_inherited_commands_ignored

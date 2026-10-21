@@ -31,7 +31,9 @@
 #   0  done; for check: valid, and honoured today
 #   1  usage error, unknown project, absent key (get), or a refused write
 #   2  the settings file is invalid (malformed, or records settings refused:
-#      a records repository must not be a workspace), or the registry
+#      a records repository must not be a workspace), or (check, list) the
+#      project is a parent root that has one, which nothing reads; or the
+#      registry
 #      .agent/projects.local is malformed (every command, before the
 #      project is looked up)
 #   3  check only: valid, but records settings not yet honoured (#393)
@@ -72,7 +74,7 @@ shift
 
 # The project must be registered (in the main checkout's registry).
 _RC=0
-registry_lookup "$MAIN_ROOT" "$NAME" >/dev/null || _RC=$?
+ENTRY="$(registry_lookup "$MAIN_ROOT" "$NAME")" || _RC=$?
 if [ "$_RC" -eq 2 ]; then
     echo "ERROR: the registry $(registry_file "$MAIN_ROOT") has errors (above); fix it first" >&2
     exit 2
@@ -82,6 +84,23 @@ if [ "$_RC" -ne 0 ]; then
     exit 1
 fi
 FILE="$(project_file_path "$MAIN_ROOT" "$NAME")"
+
+# A parent root has no adapter of its own: the dispatcher resolves it to an
+# instance first, so nothing reads a settings file under its name (set
+# refuses to write one). check and list say so instead of reporting it as
+# the parent's settings.
+IS_PARENT=0
+[ "$(cut -f1 <<< "$ENTRY")" = "$REGISTRY_PARENT_TYPE" ] && IS_PARENT=1
+parent_note() {
+    local inst
+    inst="$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+    if [ -e "$FILE" ] || [ -L "$FILE" ]; then
+        echo "INVALID: $FILE: '$NAME' is a parent root (no adapter of its own), so nothing reads this file; settings belong to its instances (${inst:-none registered}): set them there and remove this file" >&2
+        return 2
+    fi
+    echo "OK: '$NAME' is a parent root and has no settings file; settings belong to its instances (${inst:-none registered})"
+    return 0
+}
 
 case "$CMD" in
     get)
@@ -117,6 +136,10 @@ case "$CMD" in
         ;;
     list)
         [ $# -eq 0 ] || { echo "ERROR: list takes no arguments" >&2; exit 1; }
+        if [ "$IS_PARENT" -eq 1 ]; then
+            _RC=0; parent_note || _RC=$?
+            exit "$_RC"
+        fi
         ENTRIES="$(project_file_entries "$MAIN_ROOT" "$NAME")" || exit 2
         echo "# $FILE"
         if [ -n "$ENTRIES" ]; then
@@ -139,6 +162,10 @@ case "$CMD" in
         ;;
     check)
         [ $# -eq 0 ] || { echo "ERROR: check takes no arguments" >&2; exit 1; }
+        if [ "$IS_PARENT" -eq 1 ]; then
+            _RC=0; parent_note || _RC=$?
+            exit "$_RC"
+        fi
         ENTRIES="$(project_file_entries "$MAIN_ROOT" "$NAME")" || {
             echo "INVALID: $FILE" >&2
             exit 2

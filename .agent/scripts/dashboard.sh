@@ -175,6 +175,12 @@ if [ -n "$REGISTRY_ENTRIES" ]; then
             else
                 check_pass "parent root '$_name' at $_path ($_INSTANCES)"
             fi
+            # Nothing reads a parent's settings file (issue #332): the
+            # adapter resolves a parent to an instance first.
+            _PF="$(project_file_path "${MAIN_ROOT:-$ROOT_DIR}" "$_name")"
+            if [ -e "$_PF" ] || [ -L "$_PF" ]; then
+                check_warn "parent root '$_name' has a settings file .agent/projects.d/$_name, which nothing reads: settings belong to its instances (${_INSTANCES:-none registered}) (run: .agent/scripts/project_setting.sh check $_name)"
+            fi
             continue
         fi
         if [ -d "$_path" ] && git -C "$_path" rev-parse --git-dir &>/dev/null; then
