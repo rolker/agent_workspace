@@ -275,3 +275,21 @@ Specialists: static analysis (shellcheck clean on 8 scripts; test_project_file.s
 - [x] (suggestion) Orphan-settings check uses `grep -qx "$_pfname"` (regex, no `--`): `.` matches any character and a leading `-` is read as an option; use `grep -qxF --` (gemini + Claude adversarial) — `.agent/scripts/dashboard.sh:199`
 - [x] (suggestion) The writer forces mode 644 on every rewrite and replaces a symlinked settings file with a regular file; keep the original file's mode (confirmed: 600 became 644 after `set`) — `.agent/scripts/_project_registry.sh:1143`
 - [x] (suggestion) After the merge the #332 change-log row (dated 2026-10-13) sits below the #395 row (2026-10-15); re-date it to the day this lands so the log's dates run in order — `docs/design.md:726`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 09:27 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**Branch**: feature/issue-332 at `c5380cf1`
+**Addressed**: Local Review (Pre-Push) at `5c68e36e` (2026-10-21 08:29 -04:00)
+**Commits**: `3b9169fc`, `8b047605`, `d714184a`, `7d7507fb`, `c5380cf1`
+
+### Actions
+- [x] (must-fix) Composite keys such as `build test` or `location location_path` passed the substring key check: new `_project_file_key_in` compares each listed word exactly; the parser, the writer and the records-key test use it; new `test_composite_keys_refused` (four composite keys, parser and writer; fails on the old code) — `3b9169fc`, `.agent/scripts/_project_registry.sh`
+- [x] (must-fix) Precedence docs vs code: the documentation edit, not a code change (host's choice, owner may veto at the publish checkpoint: the whole-layer rule is main's behaviour, the `.sh` reading goes with #265 PR 4, a per-variable fall-through would change legacy behaviour here). `projects.local.example`, `docs/design.md` Registry and adapters, the `adapter` dispatcher header and the `_project_registry.sh` header now say an existing legacy `.sh` is the whole legacy layer; the plan sentence in step 6 is amended to match. Also refreshed the stale `adapter:73` citation of the `single_project` default to `adapter:80` (the PR had moved it) — `8b047605`
+- [x] (suggestion) Orphan check now `grep -qxF --`; dashboard test adds an orphan `web.app` beside a registered `webXapp` (missed before), a `-x` file (was a grep usage error) and a dotted registered name's own file (not an orphan) — `d714184a`, `.agent/scripts/dashboard.sh`
+- [x] (suggestion) Writer keeps the existing file's mode (GNU or BSD stat; a new file is still 644) and renames onto a symlink's resolved target, so the link stays; with nothing left a symlinked file's target is emptied rather than the link removed; an unresolvable link or a link to a non-regular file is refused; new `test_set_keeps_mode_and_symlink` (fails on the old code) — `7d7507fb`, `.agent/scripts/_project_registry.sh`
+- [x] (suggestion) #332 change-log row re-dated 2026-10-21 (now in date order after the #395 row), names the whole-legacy-layer rule and the citation refresh; line count 781, the file's length — `c5380cf1`, `docs/design.md`
+
+Checks: `run_script_tests.sh` all 38 suites passed (472 s); `test_project_file.sh` 206 passed, 0 failed; shellcheck `--severity=warning` (the pre-commit level) clean on `_project_registry.sh`, `dashboard.sh`, `adapter`, `test_project_file.sh`; pre-commit hooks passed on every commit, design-anchor hook included.
