@@ -60,6 +60,12 @@
 #                           (build=./scripts/build.sh, or an absolute path).
 #     bootstrap_url         http(s):// or file:// URL of a ros2_colcon
 #                           bootstrap.yaml (replaces MANIFEST_BOOTSTRAP_URL)
+# - a key the project's type never reads is an error, at `set` and in the
+#   parser (so a hand-written one fails check and stops the adapter): each
+#   type lists such keys with the reason in
+#   .agent/project_types/<type>/unused_settings (_project_type_unused_setting).
+#   Today ros2_colcon lists build and test (colcon owns them; it reads
+#   install), and single_project lists bootstrap_url.
 #     location              project | outside       where the loop's records
 #     location_path         absolute path           (work plans, progress
 #     tracking              project | untracked | repo   timelines) live
@@ -816,16 +822,40 @@ _project_file_has_line_key() {
     return 1
 }
 
+# Does project type <type> refuse settings key <key> because it never
+# reads it? Prints the reason and returns 0 when it does; returns 1 when the
+# type reads the key (or <type> is empty or has no list). The list is the
+# type's own data file .agent/project_types/<type>/unused_settings under
+# workspace <root> ("<key> <reason>" lines, '#' comments), so no script
+# here names a type.
+# Usage: reason=$(_project_type_unused_setting "$root" "$type" build)
+_project_type_unused_setting() {
+    local root="$1" type="$2" want="$3" f k reason
+    [ -n "$type" ] || return 1
+    f="$root/.agent/project_types/$type/unused_settings"
+    [ -f "$f" ] || return 1
+    while read -r k reason || [ -n "$k" ]; do
+        [ -z "$k" ] && continue
+        [[ "$k" == \#* ]] && continue
+        if [ "$k" = "$want" ]; then
+            printf '%s\n' "$reason"
+            return 0
+        fi
+    done < "$f"
+    return 1
+}
+
 # Parse a settings file. Prints "key<TAB>value" per setting. A missing
 # file prints nothing and returns 0 (every setting at its default). Any
 # error (line grammar, unknown or duplicate key, empty or ill-typed value,
 # refused records combination) is reported on stderr naming the file and
 # line, nothing is printed, and the return is 2: a malformed file never
 # resolves. <name> (default: the file's base name) is the project named in
-# the repair hints.
-# Usage: _project_file_parse <file> [<name>]
+# the repair hints. With <root> and <type>, a key that project type never
+# reads (_project_type_unused_setting) is an error too.
+# Usage: _project_file_parse <file> [<name> [<root> <type>]]
 _project_file_parse() {
-    local file="$1" name="${2:-}" raw line key value lineno=0 rc=0 seen=" " reason known
+    local file="$1" name="${2:-}" root="${3:-}" ptype="${4:-}" raw line key value lineno=0 rc=0 seen=" " reason known
     [ -n "$name" ] || name="$(basename "$file")"
     local -a out=()
     if reason="$(_project_file_path_error "$file")"; then
@@ -862,6 +892,10 @@ _project_file_parse() {
             echo "ERROR: ${file}:${lineno}: $reason" >&2
             rc=2; continue
         fi
+        if reason="$(_project_type_unused_setting "$root" "$ptype" "$key")"; then
+            echo "ERROR: ${file}:${lineno}: '$key' is not read for project '$name' (type $ptype): $reason; remove it with: .agent/scripts/project_setting.sh unset $name $key" >&2
+            rc=2; continue
+        fi
         out+=("$key"$'\t'"$value")
     done < "$file"
     [ "$rc" -eq 0 ] || return 2
@@ -881,7 +915,9 @@ _project_file_parse() {
 # Parse project <name>'s settings file (see _project_file_parse).
 # Usage: entries=$(project_file_entries "$root" "$name") || { ...invalid... }
 project_file_entries() {
-    _project_file_parse "$(project_file_path "$1" "$2")" "$2"
+    local entry ptype=""
+    entry="$(registry_lookup "$1" "$2" 2>/dev/null)" && ptype="$(cut -f1 <<< "$entry")"
+    _project_file_parse "$(project_file_path "$1" "$2")" "$2" "$1" "$ptype"
 }
 
 # Print the stored value of <key> for project <name>. Return 1 when the key
@@ -1143,6 +1179,10 @@ _project_file_set_locked() {
             echo "ERROR: the value for '$key' contains a line break" >&2
             return 1
         fi
+        if [[ "$arg" != -* ]] && reason="$(_project_type_unused_setting "$root" "$ptype" "$key")"; then
+            echo "ERROR: not setting '$key' for project '$name' (type $ptype): $reason" >&2
+            return 1
+        fi
         for ((i = 0; i < ${#keys[@]}; i++)); do
             if [ "${keys[$i]}" = "$key" ]; then
                 echo "ERROR: '$key' given twice" >&2
@@ -1223,14 +1263,14 @@ _project_file_set_locked() {
     } > "$tmp"
 
     # Captures the parser's stderr only; its exit status is kept.
-    if ! reason="$(_project_file_parse "$tmp" "$name" 2>&1 >/dev/null)"; then
+    if ! reason="$(_project_file_parse "$tmp" "$name" "$root" "$ptype" 2>&1 >/dev/null)"; then
         rm -f "$tmp"
         echo "ERROR: not writing $file: the result would be invalid:" >&2
         # Name the real file in the messages, not the temporary one.
         printf '%s\n' "${reason//$tmp/$file}" >&2
         return 2
     fi
-    entries="$(_project_file_parse "$tmp" "$name")"
+    entries="$(_project_file_parse "$tmp" "$name" "$root" "$ptype")"
     if [ "$touches_records" -eq 1 ]; then
         loc="$(_project_file_value_of "$entries" location)" || loc=""
         lpath="$(_project_file_value_of "$entries" location_path)" || lpath=""

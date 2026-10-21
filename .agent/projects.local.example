@@ -61,9 +61,16 @@
 #                         blanks and run without a shell (no quotes, & | ;
 #                         < > $ ( ) ` or backslash: anything needing them is
 #                         a script, so point the key at one), or 'none' for
-#                         a recorded "this project has none"
-#   bootstrap_url         ros2_colcon: http(s):// or file:// URL of the
-#                         project's bootstrap.yaml
+#                         a recorded "this project has none". ros2_colcon
+#                         reads install only: colcon owns its build and
+#                         tests, so build and test are refused for it
+#   bootstrap_url         ros2_colcon only: http(s):// or file:// URL of the
+#                         project's bootstrap.yaml (refused for
+#                         single_project, which is cloned by hand)
+#
+# A key the project's type never reads is refused by `set`, and a
+# hand-written one fails `check` and stops the adapter; each type lists
+# such keys in .agent/project_types/<type>/unused_settings.
 #   location              project | outside       where the loop's work
 #   location_path         absolute path           plans and progress
 #   tracking              project | untracked | repo   timelines live

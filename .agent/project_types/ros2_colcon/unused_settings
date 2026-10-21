@@ -1,0 +1,8 @@
+# Settings-file keys this project type never reads (issue #332), one per
+# line: the key, a blank, then the reason shown to the user. A key listed
+# here is refused by `project_setting.sh set`, and a hand-written one fails
+# `project_setting.sh check` and stops the adapter, so a setting is never
+# stored and silently ignored. Read by _project_type_unused_setting in
+# .agent/scripts/_project_registry.sh.
+build colcon owns the build: `make build` runs colcon over the manifest's layers, so a ros2_colcon project has no build command to set (a deploy step after the build goes in install)
+test colcon owns the tests: `make test` runs colcon test over the manifest's layers, so a ros2_colcon project has no test command to set

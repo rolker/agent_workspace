@@ -705,14 +705,14 @@ test_set_lock_and_interrupt_cleanup() {
         local -a pids=()
         ps_run "$sb" set alpha "test=make check$round" >/dev/null 2>&1 & pids+=($!)
         ps_run "$sb" set alpha "install=make install$round" >/dev/null 2>&1 & pids+=($!)
-        ps_run "$sb" set alpha "bootstrap_url=https://example.invalid/b$round.yaml" >/dev/null 2>&1 & pids+=($!)
+        ps_run "$sb" set alpha location=project tracking=project >/dev/null 2>&1 & pids+=($!)
         ps_run "$sb" set alpha instructions=none >/dev/null 2>&1 & pids+=($!)
         ps_run "$sb" unset alpha build >/dev/null 2>&1 & pids+=($!)
         rc=0
         for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
         assert_eq "round $round: every concurrent writer exits 0" "0" "$rc"
         out="$(sort "$f" | tr '\n' ' ')"
-        assert_eq "round $round: every update kept" "bootstrap_url=https://example.invalid/b$round.yaml install=make install$round instructions=none test=make check$round " "$out"
+        assert_eq "round $round: every update kept" "install=make install$round instructions=none location=project test=make check$round tracking=project " "$out"
     done
 
     marker="$(mktemp -u -p "$SANDBOX")"
@@ -1017,6 +1017,53 @@ test_dashboard_orphans_without_registered_projects() {
     assert_not_contains "malformed registry: no orphan guess" "belongs to no registered project" "$out"
 }
 
+test_type_unused_settings_refused() {
+    echo "TEST: a key the project's type never reads is refused by set, fails check and stops the adapter; ros2_colcon reads install"
+    local sb rc_dir f out rc stub real
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    rc_dir="$(mktemp -d -p "$SANDBOX")/rc"
+    mkdir -p "$rc_dir"
+    real="$(cd "$rc_dir" && pwd -P)"
+    echo "rc ros2_colcon $rc_dir" >> "$sb/.agent/projects.local"
+    f="$(pfile "$sb" rc)"
+
+    for k in build test; do
+        rc=0; out="$(ps_run "$sb" set rc "$k=make" 2>&1)" || rc=$?
+        assert_eq "ros2_colcon set $k: exit 1" "1" "$rc"
+        assert_contains "ros2_colcon set $k: says colcon owns it" "not setting '$k' for project 'rc' (type ros2_colcon): colcon owns the" "$out"
+        assert_eq "ros2_colcon set $k: no file written" "no" "$([ -e "$f" ] && echo yes || echo no)"
+    done
+    rc=0; out="$(ps_run "$sb" set alpha bootstrap_url=https://example.invalid/b.yaml 2>&1)" || rc=$?
+    assert_eq "single_project set bootstrap_url: exit 1" "1" "$rc"
+    assert_contains "single_project set bootstrap_url: says why" "a single_project checkout is cloned by hand" "$out"
+    rc=0; ps_run "$sb" set rc bootstrap_url=https://example.invalid/b.yaml >/dev/null 2>&1 || rc=$?
+    assert_eq "ros2_colcon set bootstrap_url: exit 0" "0" "$rc"
+
+    stub="$(make_stub "$sb" deploycmd)"
+    rc=0; ps_run "$sb" set rc "install=$stub --to staging" >/dev/null 2>&1 || rc=$?
+    assert_eq "ros2_colcon set install: exit 0" "0" "$rc"
+    rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project rc install extra 2>&1)" || rc=$?
+    assert_eq "ros2_colcon install from the settings file: exit 0" "0" "$rc"
+    assert_contains "ros2_colcon install runs the settings-file command in the project root" "STUB_deploycmd_RAN_IN:$real args:--to staging extra" "$out"
+    assert_not_contains "no fall-through note" "NOTE:" "$out"
+    ps_run "$sb" set rc install=none >/dev/null
+    out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project rc install 2>&1)"
+    assert_contains "ros2_colcon install=none says so" "install=none: project 'rc' records that it has no install step" "$out"
+
+    printf 'build=make\n' >> "$f"
+    rc=0; out="$(ps_run "$sb" check rc 2>&1)" || rc=$?
+    assert_eq "hand-written build for ros2_colcon: check exits 2" "2" "$rc"
+    assert_contains "named with file:line and the repair" "$f:3: 'build' is not read for project 'rc' (type ros2_colcon): colcon owns the build" "$out"
+    assert_contains "repair named" "remove it with: .agent/scripts/project_setting.sh unset rc build" "$out"
+    rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project rc install 2>&1)" || rc=$?
+    assert_eq "hand-written build for ros2_colcon: the adapter stops" "1" "$rc"
+    rc=0; ps_run "$sb" unset rc build >/dev/null 2>&1 || rc=$?
+    assert_eq "unset repairs it" "0" "$rc"
+    rc=0; ps_run "$sb" check rc >/dev/null 2>&1 || rc=$?
+    assert_eq "repaired file checks valid" "0" "$rc"
+}
+
 test_bootstrap_url_precedence() {
     echo "TEST: ros2_colcon bootstrap URL: env, then bootstrap_url, then legacy MANIFEST_BOOTSTRAP_URL"
     local sb out
@@ -1075,6 +1122,7 @@ test_malformed_file_stops_dispatcher
 test_validate_reports_malformed_file
 test_dashboard_reports_settings_files
 test_dashboard_orphans_without_registered_projects
+test_type_unused_settings_refused
 test_bootstrap_url_precedence
 
 echo ""

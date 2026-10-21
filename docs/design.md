@@ -271,12 +271,15 @@ Status: `decided`
   and `instructions`. A command is split into words and run without a shell, or is `none` for "this
   project has none"; anything that needs a shell is a script the key points at. The grammar and keys
   are in the header of `_project_registry.sh`, `project_setting.sh` reads and writes the file, and a
-  malformed file stops every adapter verb and fails `make validate`. Per setting, the adapters read the
-  file; for a setting it leaves unset, the legacy `projects.d/<name>.sh` (a sourced shell file, which
-  also keeps variables such as `ROS_ROOT_DIR`) when it exists, otherwise the shared
-  `.agent/project_config.sh`. An existing legacy file is the whole legacy layer, as before #332: the
-  shared file is not consulted for a variable it leaves unset. The adapters say on stderr when a
-  registered project falls through to the shared file.
+  malformed file stops every adapter verb and fails `make validate`. A key the project's type never
+  reads is refused the same way: each type lists such keys in
+  `.agent/project_types/<type>/unused_settings` (`ros2_colcon`: `build` and `test`, which colcon
+  owns; `single_project`: `bootstrap_url`), so no setting is stored and silently ignored. Per
+  setting, the adapters read the file; for a setting it leaves unset, the legacy
+  `projects.d/<name>.sh` (a sourced shell file, which also keeps variables such as `ROS_ROOT_DIR`)
+  when it exists, otherwise the shared `.agent/project_config.sh`. An existing legacy file is the
+  whole legacy layer, as before #332: the shared file is not consulted for a variable it leaves
+  unset. The adapters say on stderr when a registered project falls through to the shared file.
 - Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
   type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12).
   `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
@@ -725,7 +728,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-13 | Sessions and roots | The root rule (owner, 2026-10-13): a session works only under the root it was launched in, cross-root work is an issue or an inbox line, and `run-issue` and `/start-task` refuse an issue of another root through `session_root.sh`; the user-tier bullet drops the `~/.claude/skills/` symlinks and a new bullet describes plugin skill delivery (ADR-0018). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the two new bullets are the interface between the installer, the hook, `run-issue`, `/start-task` and the two location scripts, which no one script header shows, so they stay | #345 | 748 |
 | 2026-10-13 | Sessions and roots | Review fixes: the installer refuses a root that is a plain directory inside another repository (its sessions read that repository's settings); the directory a run starts from names its root, rather than the current directory at any point; the `SessionStart` hook counts a root's `worktrees=` directory as the root's; `session_root.sh` and `skill_prefix.sh` refuse the same directories | #345 | 753 |
 | 2026-10-15 | Documentation layers | Direction row: the sit-rep names the first Direction line not yet true as the next step and reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since this file last changed, and may start a due read-only check in the background in a workspace session; the gaps paragraph calls that Problems section a first form of health signals | #395 | 756 |
-| 2026-10-21 | Registry and adapters, Worktrees | The per-project settings file `.agent/projects.d/<name>` (commands, `bootstrap_url`, the records settings, `instructions`), read before the legacy `.sh` and the shared config (an existing legacy `.sh` is the whole legacy layer, as before), with a fall-through to the shared config reported; the Worktrees Target's `location` and `tracking` move from the registry entry to that file, what #332 builds and what the records lookup (#393) builds are marked, every default is provisional and held by `project_records_default`, the refused combinations are named, the "don't prohibit" sentence is replaced by the owner's refusal (a records repository must not be a workspace: remote URL, local path, contents) with its fork-and-pull-request reason, and the mechanism-1 `dispatch_phase.sh` line numbers and the `adapter:73` default citation are refreshed. Registry and adapters is 98 lines, past the 60-line prompt: the new bullet is one paragraph that points at the `_project_registry.sh` header, where the grammar and keys live, so it stays. Worktrees is 95 lines and its Target 57, under the 60-line split point set on 2026-10-09, so it stays one section | #332 | 781 |
+| 2026-10-21 | Registry and adapters, Worktrees | The per-project settings file `.agent/projects.d/<name>` (commands, `bootstrap_url`, the records settings, `instructions`), read before the legacy `.sh` and the shared config (an existing legacy `.sh` is the whole legacy layer, as before), with a fall-through to the shared config reported, and a key the project's type never reads refused (`unused_settings` per type); the Worktrees Target's `location` and `tracking` move from the registry entry to that file, what #332 builds and what the records lookup (#393) builds are marked, every default is provisional and held by `project_records_default`, the refused combinations are named, the "don't prohibit" sentence is replaced by the owner's refusal (a records repository must not be a workspace: remote URL, local path, contents) with its fork-and-pull-request reason, and the mechanism-1 `dispatch_phase.sh` line numbers and the `adapter:73` default citation are refreshed. Registry and adapters is 98 lines, past the 60-line prompt: the new bullet is one paragraph that points at the `_project_registry.sh` header, where the grammar and keys live, so it stays. Worktrees is 95 lines and its Target 57, under the 60-line split point set on 2026-10-09, so it stays one section | #332 | 784 |
 
 ## Glossary
 
