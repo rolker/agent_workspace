@@ -875,6 +875,46 @@ test_set_lock_follows_shared_symlink_target() {
     rm -f "$marker" "$hold_marker"
 }
 
+test_set_rechecks_the_file_after_the_lock_wait() {
+    echo "TEST: a settings file replaced by a directory while the writer waits for the lock is refused, not written inside the directory"
+    if ! command -v flock >/dev/null 2>&1 || ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: needs flock and setsid"
+        return 0
+    fi
+    local sb f lock out rc holder pid marker hold_marker real_flock stubdir
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    printf 'build=make\n' | write_pfile "$sb" alpha
+    lock="$sb/.agent/projects.d/.lock.alpha"
+    # A flock stub on PATH marks the moment the writer (its checks done)
+    # starts to wait for the lock, then runs the real flock.
+    real_flock="$(command -v flock)"
+    stubdir="$(mktemp -d -p "$SANDBOX")"
+    printf '#!/usr/bin/env bash\n[ -n "${WAIT_MARK:-}" ] && touch "$WAIT_MARK"\nexec %s "$@"\n' "$real_flock" > "$stubdir/flock"
+    chmod +x "$stubdir/flock"
+    marker="$(mktemp -u -p "$SANDBOX")"
+    hold_marker="$(mktemp -u -p "$SANDBOX")"
+    setsid "$real_flock" -x "$lock" -c "touch '$hold_marker'; exec sleep 20" &
+    holder=$!
+    for _ in $(seq 1 100); do [ -e "$hold_marker" ] && break; sleep 0.1; done
+    (cd "$sb" && PATH="$stubdir:$PATH" WAIT_MARK="$marker" PROJECT_FILE_LOCK_WAIT=15 \
+        "$sb/.agent/scripts/project_setting.sh" set alpha test=replaced > "$stubdir/out" 2>&1) &
+    pid=$!
+    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    rm -f "$f"
+    mkdir "$f"
+    kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    rc=0; wait "$pid" || rc=$?
+    assert_eq "replaced by a directory while waiting: exit 1" "1" "$rc"
+    assert_contains "says it is no longer a regular file" "$f exists but is not a regular file (changed while waiting for the lock $lock" "$(cat "$stubdir/out")"
+    assert_eq "nothing written inside the directory" "" "$(find "$f" -mindepth 1)"
+    assert_eq "no temporary file left" "" "$(find "$sb/.agent/projects.d" -maxdepth 1 -name '.alpha.*')"
+    rm -rf -- "$f"
+    rm -f "$marker" "$hold_marker"
+}
+
 test_set_without_flock_writes_unlocked() {
     echo "TEST: without flock on PATH the writer still writes (unlocked, as its header says) and leaves no lock or temporary file"
     local sb f out rc nolock t
@@ -1416,6 +1456,7 @@ test_unsearchable_settings_dir_fails_closed
 test_unknown_key_repair
 test_set_lock_and_interrupt_cleanup
 test_set_lock_follows_shared_symlink_target
+test_set_rechecks_the_file_after_the_lock_wait
 test_set_without_flock_writes_unlocked
 test_outside_without_layout_unregistered
 test_malformed_registry_exits_2

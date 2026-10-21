@@ -1210,8 +1210,9 @@ project_records_check() {
 # waits PROJECT_FILE_LOCK_WAIT seconds, default 10, then refuses), so two
 # writers of one file never lose an update, even through two projects
 # whose settings files are links to one target. A link repointed while
-# the writer waited is refused. Without flock (macOS by default) the write
-# is unlocked.
+# the writer waited, or a file that stopped being a readable regular file
+# (replaced by a directory, say), is refused. Without flock (macOS by
+# default) the write is unlocked.
 # The temporary file is removed on every exit, INT, TERM and HUP included.
 # Usage: project_file_set "$root" "$name" build=./b.sh -install
 project_file_set() {
@@ -1339,6 +1340,13 @@ _project_file_set_locked() {
         # link repointed meanwhile would be written under the wrong lock.
         if [ "$(_project_file_dest "$file" 2>/dev/null)" != "$dest" ]; then
             echo "ERROR: not writing $file: it was changed while waiting for the lock $lock (it no longer leads to $dest); try again" >&2
+            return 1
+        fi
+        # The same path may have stopped being a readable regular file
+        # (replaced by a directory, say): mv would then move the new
+        # contents inside it and report success.
+        if reason="$(_project_file_path_error "$file")"; then
+            echo "ERROR: not writing: $reason (changed while waiting for the lock $lock; fix or remove it by hand first)" >&2
             return 1
         fi
     fi
