@@ -869,6 +869,23 @@ test_build_test_install_from_file() {
     assert_contains "install from the file" "STUB_filecmd_RAN_IN:$real args:i" "$out"
 }
 
+test_command_leading_dash_is_the_command() {
+    echo "TEST: a command whose first word starts with '-' is run as that command, never read as an exec option"
+    local sb dir out rc real stub
+    sb="$(make_sandbox)"
+    dir="$(make_project "$sb" alpha)"
+    real="$(cd "$dir" && pwd -P)"
+    make_stub "$sb" -dashcmd >/dev/null
+    stub="$(make_stub "$sb" plaincmd)"
+    printf 'build=-dashcmd x\ntest=-c %s\n' "$stub" | write_pfile "$sb" alpha
+    rc=0; out="$(cd "$sb" && PATH="$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project alpha build 2>&1)" || rc=$?
+    assert_eq "'-dashcmd' runs: exit 0" "0" "$rc"
+    assert_contains "'-dashcmd' ran as the command" "STUB_-dashcmd_RAN_IN:$real args:x" "$out"
+    rc=0; out="$(cd "$sb" && PATH="$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project alpha test 2>&1)" || rc=$?
+    assert_eq "'-c <cmd>': fails, there is no command '-c'" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+    assert_not_contains "'-c <cmd>': the stub never runs with an empty environment" "STUB_plaincmd_RAN_IN" "$out"
+}
+
 test_relative_script_path() {
     echo "TEST: a command whose first word is a relative script path runs from the project root"
     local sb dir out
@@ -1036,6 +1053,7 @@ test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes
 test_run_through_scripts_symlink
 test_build_test_install_from_file
+test_command_leading_dash_is_the_command
 test_relative_script_path
 test_none_values
 test_shared_fallback_is_loud

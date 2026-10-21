@@ -298,13 +298,16 @@ fi
 
 # Run a command value from the project file: split on blanks into argv and
 # exec it without a shell and without globbing (the parser has already
-# refused quotes and shell operators). Extra arguments are appended.
+# refused quotes and shell operators). Extra arguments are appended. The
+# '--' ends exec's own options, so a first word starting with '-' is the
+# command's name (`build=-c make` must not run make with an empty
+# environment through exec -c).
 # Usage: active_project_exec "$ACTIVE_PROJECT_BUILD" "$@"
 active_project_exec() {
     local -a _argv=()
     read -r -a _argv <<< "$1"
     shift
-    exec "${_argv[@]}" "$@"
+    exec -- "${_argv[@]}" "$@"
 }
 
 # The note printed when a registered project's command comes from the
