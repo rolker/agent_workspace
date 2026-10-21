@@ -556,6 +556,54 @@ test_set_keeps_mode_and_symlink() {
     assert_eq "an empty target checks valid" "0" "$rc"
 }
 
+test_set_refuses_unusable_path() {
+    echo "TEST: set refuses a path that exists but is not a readable regular file, directly or through a symlink"
+    local sb f out rc other
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    other="$(mktemp -d -p "$SANDBOX")"
+
+    mkdir -p "$f"
+    rc=0; out="$(ps_run "$sb" set alpha build=make 2>&1)" || rc=$?
+    assert_eq "directory: exit 1" "1" "$rc"
+    assert_contains "directory: says why" "$f exists but is not a regular file" "$out"
+    assert_eq "directory: nothing moved inside it" "" "$(ls -A "$f")"
+    rmdir "$f"
+
+    mkdir -p "$other/dir"
+    ln -s "$other/dir" "$f"
+    rc=0; out="$(ps_run "$sb" set alpha build=make 2>&1)" || rc=$?
+    assert_eq "symlink to a directory: exit 1" "1" "$rc"
+    assert_contains "symlink to a directory: says why" "is not a regular file" "$out"
+    assert_eq "symlink to a directory: nothing moved inside it" "" "$(ls -A "$other/dir")"
+    rm -f "$f"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        printf 'build=make\ntest=make check\n' | write_pfile "$sb" alpha
+        chmod 000 "$f"
+        rc=0; out="$(ps_run "$sb" set alpha install=make 2>&1)" || rc=$?
+        assert_eq "mode 000 file: exit 1" "1" "$rc"
+        assert_contains "mode 000 file: says why" "$f is not readable" "$out"
+        chmod 600 "$f"
+        assert_eq "mode 000 file: settings kept" "$(printf 'build=make\ntest=make check')" "$(cat "$f")"
+        rm -f "$f"
+
+        printf 'build=make\n' > "$other/locked"
+        chmod 000 "$other/locked"
+        ln -s "$other/locked" "$f"
+        rc=0; out="$(ps_run "$sb" set alpha install=make 2>&1)" || rc=$?
+        assert_eq "symlink to a mode 000 file: exit 1" "1" "$rc"
+        assert_contains "symlink to a mode 000 file: says why" "is not readable" "$out"
+        chmod 600 "$other/locked"
+        assert_eq "symlink to a mode 000 file: settings kept" "build=make" "$(cat "$other/locked")"
+        rm -f "$f"
+    else
+        echo "  SKIP: mode 000 cases (running as root, which reads any file)"
+    fi
+    assert_eq "no temporary file left" "" "$(find "$sb/.agent/projects.d" "$other" -name '.alpha.*')"
+}
+
 test_set_refusals() {
     echo "TEST: set refuses invalid results, unknown keys, unregistered names and parent roots, leaving the file as it was"
     local sb f out rc before
@@ -824,6 +872,7 @@ test_set_get_list_idempotent
 test_set_keeps_comments_and_order
 test_composite_keys_refused
 test_set_keeps_mode_and_symlink
+test_set_refuses_unusable_path
 test_set_refusals
 test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes

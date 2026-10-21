@@ -776,6 +776,25 @@ _project_records_combination() {
     esac
 }
 
+# Why the settings-file path <file> cannot be used: prints the reason and
+# returns 0 when the path exists (directly or through a symlink) but is not
+# a readable regular file; returns 1 when it can be used (absent, or a
+# readable regular file).
+_project_file_path_error() {
+    local file="$1"
+    if [ -e "$file" ]; then
+        if [ ! -f "$file" ]; then
+            echo "$file exists but is not a regular file"
+            return 0
+        fi
+        if [ ! -r "$file" ]; then
+            echo "$file is not readable"
+            return 0
+        fi
+    fi
+    return 1
+}
+
 # Parse a settings file. Prints "key<TAB>value" per setting. A missing
 # file prints nothing and returns 0 (every setting at its default). Any
 # error (line grammar, unknown or duplicate key, empty or ill-typed value,
@@ -1092,16 +1111,19 @@ project_file_set() {
     done
 
     file="$(project_file_path "$root" "$name")"
+    # A path that exists but cannot be read as a settings file is never
+    # treated as absent: its settings would be lost, or the new file moved
+    # inside a directory.
+    if reason="$(_project_file_path_error "$file")"; then
+        echo "ERROR: not writing: $reason (fix or remove it by hand first)" >&2
+        return 1
+    fi
     # The path the new contents are renamed onto: the file itself, or the
     # target of a symlinked one, so the rename never replaces the link.
     dest="$file"
     if [ -L "$file" ]; then
         if ! dest="$(readlink -f -- "$file" 2>/dev/null)" || [ -z "$dest" ]; then
             echo "ERROR: $file is a symlink whose target cannot be resolved" >&2
-            return 1
-        fi
-        if [ -e "$dest" ] && [ ! -f "$dest" ]; then
-            echo "ERROR: $file is a symlink to $dest, which is not a regular file" >&2
             return 1
         fi
     fi
