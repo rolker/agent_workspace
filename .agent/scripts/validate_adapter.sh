@@ -6,7 +6,9 @@
 # and asserts every verb in REQUIRED_VERBS (imported from the dispatcher —
 # single source of truth) is defined as an adapter_<verb> function.
 # Also enforces the silent-at-source contract requirement and rejects
-# adapters that call exit at top level.
+# adapters that call exit at top level, and checks each type's optional
+# unused_settings list (the settings-file keys the type never reads, issue
+# #332): every entry a known key, once, with a reason.
 #
 # Usage:
 #   .agent/scripts/validate_adapter.sh
@@ -22,6 +24,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # without dispatching.
 # shellcheck source=adapter
 source "$SCRIPT_DIR/adapter"
+# The settings-file keys and the unused_settings grammar.
+# shellcheck source=_project_registry.sh
+source "$SCRIPT_DIR/_project_registry.sh"
 
 TYPES_DIR="$WORKSPACE_ROOT/.agent/project_types"
 FAILED=0
@@ -47,6 +52,15 @@ for type_dir in "$TYPES_DIR"/*/; do
         FAILED=1
         CHECKED=$((CHECKED + 1))
         continue
+    fi
+
+    # The keys this type never reads: a bad entry would be inert (a
+    # misspelt key refuses nothing) or show the user an empty reason.
+    if ! problems="$(project_type_unused_settings_problems "$type_dir/unused_settings")"; then
+        echo "❌ $type_name: unused_settings is invalid:"
+        # shellcheck disable=SC2001
+        echo "$problems" | sed 's/^/     /'
+        FAILED=1
     fi
 
     # Source in a subshell so one type's functions can't mask another's

@@ -228,6 +228,40 @@ test_validator_flags_missing_adapter_file() {
     assert_contains "flags empty_type" "empty_type: missing adapter.sh" "$out"
 }
 
+test_validator_checks_unused_settings() {
+    echo "TEST: validator checks a type's unused_settings list: known keys, once each, with a reason (#332)"
+    local sb out rc list
+    sb="$(make_sandbox)"
+    list="$sb/.agent/project_types/single_project/unused_settings"
+    printf '# comment\r\n\r\nbootstrap_url cloned by hand\r\n' > "$list"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "a valid list (CRLF, comments, blanks): exit 0" "0" "$rc"
+    assert_not_contains "a valid list: no complaint" "unused_settings is invalid" "$out"
+
+    printf 'bootstrap_url cloned by hand\nbuld a typo\nbootstrap_url again\ntest\n' > "$list"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "a bad list: exit 1" "1" "$rc"
+    assert_contains "a bad list: flagged" "single_project: unused_settings is invalid" "$out"
+    assert_contains "unknown key named with its line" "line 2: unknown settings key 'buld'" "$out"
+    assert_contains "duplicate named" "line 3: 'bootstrap_url' is listed twice" "$out"
+    assert_contains "missing reason named" "line 4: 'test' has no reason" "$out"
+
+    if [ "$(id -u)" -ne 0 ]; then
+        printf 'bootstrap_url cloned by hand\n' > "$list"
+        chmod 000 "$list"
+        rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+        chmod 644 "$list"
+        assert_eq "an unreadable list: exit 1" "1" "$rc"
+        assert_contains "an unreadable list: says why" "unused_settings exists but is not a readable file" "$out"
+    else
+        echo "  SKIP: unreadable-list case (running as root)"
+    fi
+
+    rm -f "$list"
+    rc=0; "$sb/.agent/scripts/validate_adapter.sh" >/dev/null 2>&1 || rc=$?
+    assert_eq "no list at all: exit 0" "0" "$rc"
+}
+
 test_validator_rejects_toplevel_exit() {
     echo "TEST: validator rejects an adapter that exits at top level (any status)"
     local sb out rc=0
@@ -699,6 +733,7 @@ test_project_type_env_not_inherited
 test_validator_passes_complete_adapters
 test_validator_flags_missing_verbs
 test_validator_flags_missing_adapter_file
+test_validator_checks_unused_settings
 test_validator_rejects_toplevel_exit
 test_validator_rejects_noisy_source
 test_validator_empty_types_dir

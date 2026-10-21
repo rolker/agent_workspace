@@ -876,6 +876,44 @@ _project_type_unused_setting() {
     return 1
 }
 
+# Check a type's unused_settings list <file> (the grammar
+# _project_type_unused_setting reads): readable; each line that is not
+# blank or a '#' comment names a known settings key, once, followed by a
+# reason. Prints one problem per line ("line N: ...") and returns 1 when
+# there is any; returns 0 when the list is valid or absent. Used by
+# validate_adapter.sh.
+# Usage: project_type_unused_settings_problems "$file"
+project_type_unused_settings_problems() {
+    local f="$1" raw k reason lineno=0 bad=0 seen=" " known
+    [ -e "$f" ] || [ -L "$f" ] || return 0
+    if [ ! -f "$f" ] || [ ! -r "$f" ]; then
+        echo "$f exists but is not a readable file"
+        return 1
+    fi
+    known="${_PROJECT_FILE_KEYS# }"; known="${known% }"
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        lineno=$((lineno + 1))
+        raw="${raw%$'\r'}"
+        read -r k reason <<< "$raw" || true
+        [ -z "$k" ] && continue
+        [[ "$k" == \#* ]] && continue
+        if ! _project_file_key_in "$k" "$_PROJECT_FILE_KEYS"; then
+            echo "line $lineno: unknown settings key '$k' (known keys: $known)"
+            bad=1; continue
+        fi
+        if [[ "$seen" == *" $k "* ]]; then
+            echo "line $lineno: '$k' is listed twice"
+            bad=1; continue
+        fi
+        seen="$seen$k "
+        if [ -z "$reason" ]; then
+            echo "line $lineno: '$k' has no reason (the reason is what set and check show the user)"
+            bad=1; continue
+        fi
+    done < "$f"
+    return "$bad"
+}
+
 # Parse a settings file. Prints "key<TAB>value" per setting. A missing
 # file prints nothing and returns 0 (every setting at its default). Any
 # error (line grammar, unknown or duplicate key, empty or ill-typed value,
