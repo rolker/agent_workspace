@@ -428,3 +428,21 @@ Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; 
 **Decision**: address
 
 Pre-push round 4 (7b09bc7e): approved, ship recommended, 0 must-fix, 4 suggestions (unused_settings fails open when unreadable or CRLF; nothing validates unused_settings; the AGENTS.md project_setting.sh row omits the per-type refusal; adapters clear env-inherited BUILD_CMD/TEST_CMD/INSTALL_CMD). Owner's answers: "Fix suggestions, then publish"; the three host choices stand (legacy .sh is the whole legacy layer; per-type unused keys refused, install allowed for ros2_colcon; env-inherited commands cleared); and the AGENTS.md Script Reference row for project_setting.sh (Ask First): "Yes, approve the row".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 11:02 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a8f73bec5a88b2c19, resume 3 of 3)
+
+**Branch**: feature/issue-332 at `c00db0c6`
+**Addressed**: Local Review (Pre-Push) at `4a937d4a` (2026-10-21 10:39 -04:00)
+**Commits**: `8fa23a3f`, `be7878c7`, `fb250aae`, `c00db0c6`
+
+### Actions
+- [x] (suggestion) `unused_settings` failing open: `_project_type_unused_setting` returns 2 with the reason when the list exists but is not a readable file, so the parser reports it on the key's line (check fails, the adapter stops) and `set` refuses; CRs are stripped from key and reason; new `test_unused_settings_list_unreadable_or_crlf` (CRLF list still refuses, also a key alone on its line, with a clean message; unreadable list fails check, stops the adapter, refuses set; skips as root) — `8fa23a3f`, `.agent/scripts/_project_registry.sh`
+- [x] (suggestion) `validate_adapter.sh` now checks every type's `unused_settings` through the new `project_type_unused_settings_problems` (readable; each entry a known key, once, with a reason; CRLF, comments, blanks allowed), so the adapter-contract hook and CI catch a bad list; new `test_validator_checks_unused_settings` in `test_adapter.sh` — `be7878c7`
+- [x] (suggestion) AGENTS.md Script Reference row for `project_setting.sh` names the per-type refusal; its own commit, owner-approved at the 2026-10-21 checkpoint. Not changed (no approval asked): the `validate_adapter.sh` row still reads "verify every project type implements the full adapter contract" and does not mention the `unused_settings` check — `fb250aae`
+- [x] (suggestion) Env-inherited `BUILD_CMD`/`TEST_CMD`/`INSTALL_CMD` stay cleared (owner let it stand at the checkpoint); the change is named in one sentence each in the single_project and ros2_colcon adapter headers and `projects.local.example`, for the PR body to cite; a new `test_env_inherited_commands_ignored` pins it; no behaviour change — `c00db0c6`
+
+Checks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract and the design-anchor check; `test_project_file.sh` 353 passed, `test_adapter.sh` 96 passed, `test_ros2_colcon.sh` 200 passed, all 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `--severity=warning` clean on `_project_registry.sh`, `validate_adapter.sh`, both adapters, `test_project_file.sh`, `test_adapter.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
