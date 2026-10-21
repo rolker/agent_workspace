@@ -69,11 +69,12 @@ repos:
       # This hook runs on every commit that matches files: below; it is not
       # skipped by design. Dispatched workspace implement and address-findings
       # passes (owner-decided 2026-10-20, issue #399) set
-      # SKIP=validate-script-tests on intermediate commits only, then run
-      # the main checkout's `.venv/bin/pre-commit run --files
-      # $(git diff --name-only main...HEAD)` once, with no SKIP, before
-      # their progress entry; CI (`make lint`) runs it
-      # on all files as the backstop. --no-verify is never allowed.
+      # SKIP=validate-script-tests on intermediate commits only, then run the
+      # main checkout's .venv/bin/pre-commit once, with no SKIP, before their
+      # progress entry:
+      #   .venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
+      # CI (`make lint`) runs it on all files as the backstop. --no-verify is
+      # never allowed.
       - id: validate-script-tests
         name: Run .agent/scripts/tests/ suite (progress.md vocabulary + issue #269 checkpoint gate)
         entry: bash .agent/scripts/tests/run_script_tests.sh
