@@ -70,8 +70,9 @@ repos:
       # skipped by design. Dispatched workspace implement and address-findings
       # passes (owner-decided 2026-10-20, issue #399) set
       # SKIP=validate-script-tests on intermediate commits only, then run
-      # `pre-commit run --files $(git diff --name-only main...HEAD)` once,
-      # with no SKIP, before their progress entry; CI (`make lint`) runs it
+      # the main checkout's `.venv/bin/pre-commit run --files
+      # $(git diff --name-only main...HEAD)` once, with no SKIP, before
+      # their progress entry; CI (`make lint`) runs it
       # on all files as the backstop. --no-verify is never allowed.
       - id: validate-script-tests
         name: Run .agent/scripts/tests/ suite (progress.md vocabulary + issue #269 checkpoint gate)

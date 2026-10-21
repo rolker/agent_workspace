@@ -314,8 +314,9 @@ to a takeover, step 5) and no `**Addressed**` field (that one is
 handoff's `conventions=` carries it; paste it verbatim. The pass sets
 `SKIP=validate-script-tests` on its intermediate commits only (never
 `--no-verify`), then, before writing the entry, runs
-`pre-commit run --files $(git diff --name-only main...HEAD)` once with no
-SKIP, which includes the script suite, so the suite runs once per pass,
+`<main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`
+once with no SKIP (the rule prints the main checkout's venv pre-commit
+by absolute path, since a worktree has no `.venv`), which includes the script suite, so the suite runs once per pass,
 not once per commit. CI (`make lint`, awaited by `merge_pr.sh`) is the
 backstop. Review phases and project handoffs carry no such rule.
 

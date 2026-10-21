@@ -421,11 +421,15 @@ out=$(run_handoff --issue 9 --skill implement)
 # The once-per-pass hook rule (issue #399, owner-decided 2026-10-20) rides
 # on conventions=, only for the committing passes of a workspace handoff: a
 # review phase is never told to skip a hook. run_script_tests.sh is not
-# named, so the handoff does not invite a second, separate suite run.
+# named, so the handoff does not invite a second, separate suite run. The
+# pre-commit it names is the main checkout's venv one by absolute path (the
+# sandbox root here): a worktree has no .venv, so a bare `pre-commit` is
+# "command not found" there, and the absolute form is what the permission
+# allowlist matches (pre-push review round 1, must-fix).
 for sk in implement address-findings; do
     out=$(run_handoff --issue 9 --skill "$sk")
     conv=$(printf '%s\n' "$out" | grep '^conventions=')
-    [[ "$conv" == *"SKIP=validate-script-tests"* && "$conv" == *"pre-commit run --files"* \
+    [[ "$conv" == *"SKIP=validate-script-tests"* && "$conv" == *"\`$SB/.venv/bin/pre-commit run --files "* \
         && "$conv" == *'$(git diff --name-only main...HEAD)'* && "$conv" == *"CI"* \
         && "$conv" == *"--no-verify"* && "$conv" != *"run_script_tests.sh"* \
         && "$conv" == *"local time with offset"*"scratchpad"* ]] \
