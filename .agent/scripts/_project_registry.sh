@@ -1029,7 +1029,9 @@ _project_records_check_entries() {
     IFS=$'\t' read -r loc track <<< "$combo"
     if [ "$loc" = "outside" ] && [ -z "$lpath" ]; then
         dflt="$(project_records_default "$root" "$name" accepts-footprint)"
-        IFS=$'\t' read -r _ _ layout _ <<< "$dflt"
+        # cut, not read: a tab is IFS whitespace, so read would collapse an
+        # empty layout field and take the next field ("provisional").
+        layout="$(cut -f3 <<< "$dflt")"
         lpath="$layout"
         if [ -z "$lpath" ]; then
             echo "ERROR: project '$name': location=outside without location_path, and no default layout (the project is not registered)" >&2

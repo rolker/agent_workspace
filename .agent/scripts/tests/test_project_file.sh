@@ -748,6 +748,16 @@ test_set_lock_and_interrupt_cleanup() {
     rm -f "$marker"
 }
 
+test_outside_without_layout_unregistered() {
+    echo "TEST: location=outside without location_path for an unregistered name is refused (empty default layout), not given 'provisional' as a path"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    out="$(reg "$sb" _project_records_check_entries "$sb" nobody "$(printf 'location\toutside\ntracking\tuntracked')" 2>&1)" || rc=$?
+    assert_eq "refused: exit 2" "2" "$rc"
+    assert_contains "says there is no default layout" "location=outside without location_path, and no default layout (the project is not registered)" "$out"
+    assert_not_contains "never uses 'provisional' as the path" "provisional default provisional" "$out"
+}
+
 test_set_refusals() {
     echo "TEST: set refuses invalid results, unknown keys, unregistered names and parent roots, leaving the file as it was"
     local sb f out rc before
@@ -1020,6 +1030,7 @@ test_set_refuses_unusable_path
 test_symlink_cases
 test_unknown_key_repair
 test_set_lock_and_interrupt_cleanup
+test_outside_without_layout_unregistered
 test_set_refusals
 test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes
