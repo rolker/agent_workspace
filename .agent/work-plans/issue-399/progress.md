@@ -125,3 +125,59 @@ Revise per the Plan Review's seven findings. Host directions: the safety net is 
 **Plan**: `.agent/work-plans/issue-399/plan.md` at `6a1fdc7d`
 
 Revised per the seven Plan Review findings: backstop is CI (the entry commit is excluded from the hook), one pre-commit run before the entry, test cases moved between main lines 418 and 420, header sentence after line 16, AGENTS.md Always edit dropped (script row kept, Ask First), run_script_tests.sh header and design.md Rules row cited, hook comment above the id line. Hand-back notes record the owner's wrong premise.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-21 09:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #399 — Dispatched passes run the script test suite once per pass, not per commit
+**Plan**: `.agent/work-plans/issue-399/plan.md` at `6a1fdc7d`
+**Branch**: `feature/issue-399`
+
+Round 2. Scope: the revised plan against round 1's seven findings, the host's Checkpoint directions and the principles. The mechanism (suite once per dispatched pass; the pre-commit hook itself unchanged) is the owner's 2026-10-20 decision and is not re-opened.
+
+### Round 1 findings
+
+| # | Round 1 finding | Resolved? | Checked against |
+|---|---|---|---|
+| 1 | Backstop is CI, not the entry commit | Yes | validate.yml: push to `main`/`feature/**`/`fix/**` and PRs to main; Lint job's SKIP list does not include `validate-script-tests`; `make lint` = `pre-commit run --all-files` (Makefile:116); merge_pr.sh waits for CI (step 2, ~line 997). Acceptance now "one suite run per pass" |
+| 2 | One pre-commit run, not two | Yes, in the rule; the test still pins the old string (finding 2 below) | Hook has `pass_filenames: false` and a `files:` pattern, so `pre-commit run --files` runs the suite once when any changed file matches |
+| 3 | Test placement off 321's hunk | Yes | 321's test hunks: line 40, after 228, after 431; 418–420 is clear |
+| 4 | Header sentence off the `--skill-prefix` paragraph | Partly: clear of 321, but the new spot splits a sentence (finding 3 below) | 321 inserts after header line 22 |
+| 5 | Drop the AGENTS.md "Always" edit | Yes; the Script Reference row is flagged Ask First for the owner at the PR | — |
+| 6 | `run_script_tests.sh` header and design.md Rules row | Yes | Header lines 46–48 match; design.md:155 row, enforcer `CI` |
+| 7 | Hook comment above the `- id:` line | Yes | `test_script_tests_hook_scope.sh` reads `^\s*files:` / `^\s*exclude:` from the id line on; a comment cannot match |
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Seven files, one rule, one test; one PR. |
+| Issue alignment | Good | Covers the issue's Change list. Serves, as checked: "Quality of the work (the full suite still runs before the entry and in CI on every push; only repeats go) — `docs/design.md#review-loop-and-timeline`" — goal at README.md:33, anchor at design.md:423. The acceptance is restated without the issue's wrong "plus the entry commit's hook run", and the hand-back notes carry the correction to the owner. |
+| File targeting | Needs work | Right files. `dispatch_phase.sh` header placement splits a sentence (finding 3). |
+| Consequences | Needs work | Project-worktree handoffs would carry workspace-only text (finding 1). |
+| Principle alignment | Needs work | "Put each thing at the level it applies to" / "Verify before claiming": the rule names a workspace hook and workspace CI but would be printed for project worktrees too (finding 1). "Test what breaks": the pin checks a string the revised rule no longer needs (finding 2). "Name the rule before bending it", "Enforce what matters", "Know whether it works", "Look for prior art": good. |
+| ADR compliance | Good | 0004/0005: CI stays the authoritative layer. 0013: no new entry shape. 0014: existing `conventions=` field. 0017: no design-picture change; Rules row cited. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences / Put each thing at the level it applies to] (must-fix, medium)** — The `case` keys only on `$skill`, but `cmd_handoff` also serves `--type project` (dispatch_phase.sh:298, `type` defaults to workspace; run-issue's main use is project issues). In a project worktree the implement / address-findings handoff would tell the agent to SKIP `validate-script-tests` (a workspace-only hook) and name `make lint` CI as the backstop, which a project may not have. Resolution: emit `pass_rule` only when `$type` is `workspace`; add one test case that a `--type project` implement handoff has no rule (the file already builds a project sandbox, `SBP1`, in the `resolve_worktree --type project` block); in address-findings, tie the exemption to the handoff's `conventions=` carrying it, so a project pass or a hand-run session does not apply it.
+2. **[Test what breaks] (must-fix, low)** — Step 6 pins `run_script_tests.sh` in the implement / address-findings `conventions=` lines and checks its absence in the other five. That is round 1's wording: the revised rule's one command is `pre-commit run --files`, and naming `run_script_tests.sh` in the handoff invites the separate second run that round 1 finding 2 removed. Resolution: pin `SKIP=validate-script-tests`, `pre-commit run --files` and `CI` in the two phases; check the other five lack `SKIP=validate-script-tests` and `pre-commit run --files`.
+3. **[File targeting] (must-fix, low)** — "After line 16" splits a sentence: line 16 reads "workspace conventions every dispatched phase must follow. Output is" and that sentence runs to line 19. Resolution: insert after line 19 ("...only when --prompt-file was given)."); lines 20–22 stay untouched between it and 321's insertion after line 22, so the merge stays clean. Or fold a clause into line 16.
+4. **[Consequences] (suggestion, low)** — "Every file changed in the pass" is left for the agent to assemble; a missed file is a missed lint. Name the command, e.g. `pre-commit run --files $(git diff --name-only main...HEAD)` — the whole branch costs no extra suite run, and pre-commit drops deleted paths itself (pre_commit/commands/run.py:75, `os.path.lexists`).
+5. **[Verify before claiming] (suggestion, low)** — "So the suite runs exactly once" holds only when a changed file matches the hook's `files:` pattern; a pass touching only `docs/` runs it zero times, as per-commit would. Say "at most once". Likewise "CI on every push" is push to `main`/`feature/**`/`fix/**` plus PRs to main; dispatched passes are on `feature/issue-<N>`, so it holds for them.
+
+### Summary
+
+All seven round 1 findings are resolved, the header one only partly. Three small must-fixes remain: scope the rule to workspace worktrees, pin the right string in the test, and move the header sentence three lines down. The review is converging; all three are line-level edits to the plan, none changes what the work is for.
+
+### Recommended Actions
+
+- [ ] Emit the rule only for `--type workspace`; add a project-type handoff test case showing no rule; make address-findings' exemption conditional on the handoff carrying it.
+- [ ] Change the test pin from `run_script_tests.sh` to `SKIP=validate-script-tests`, `pre-commit run --files` and `CI`, with the matching absence check in the other five phases.
+- [ ] Put the header sentence after line 19, not line 16.
+- [ ] (suggestion) Name the file-list command for the single pre-commit run.
+- [ ] (suggestion) Say "at most once" for the suite run.
