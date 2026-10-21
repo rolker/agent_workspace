@@ -1079,10 +1079,22 @@ project_records_check() {
 # keeps its mode (a new one is 644), and a symlinked file stays a link:
 # its target is rewritten in place of the link, and emptied rather than
 # removed when nothing is left.
+#
+# Concurrency: the read-modify-rename runs in a subshell holding an
+# exclusive flock on projects.d/.lock.<name> (waits PROJECT_FILE_LOCK_WAIT
+# seconds, default 10, then refuses), so two writers of one project never
+# lose an update. Without flock (macOS by default) the write is unlocked.
+# The temporary file is removed on every exit, INT, TERM and HUP included.
 # Usage: project_file_set "$root" "$name" build=./b.sh -install
 project_file_set() {
+    ( _project_file_set_locked "$@" )
+}
+
+# The body of project_file_set, run in its own subshell (its traps and the
+# lock's file descriptor end with it).
+_project_file_set_locked() {
     local root="$1" name="$2" entry ptype file dest dir tmp arg key value i found line lkey
-    local touches_records=0 reason entries rc=0 combo loc track lpath mode
+    local touches_records=0 reason entries rc=0 combo loc track lpath mode lock
     local -a keys=() vals=() done_k=()
     shift 2
     if [ $# -eq 0 ]; then
@@ -1140,6 +1152,27 @@ project_file_set() {
     done
 
     file="$(project_file_path "$root" "$name")"
+    # Serialize writers of this project's file. The lock is a sidecar, not
+    # the file: the rename replaces the file's inode, so a lock on the file
+    # itself would not exclude the next writer.
+    lock="$(dirname "$file")/.lock.${name}"
+    mkdir -p "$(dirname "$file")" || return 1
+    if command -v flock >/dev/null 2>&1; then
+        if ! exec 9>>"$lock"; then
+            echo "ERROR: cannot open the lock file $lock" >&2
+            return 1
+        fi
+        if ! flock -x -w "${PROJECT_FILE_LOCK_WAIT:-10}" 9; then
+            echo "ERROR: not writing $file: another writer holds its lock $lock (waited ${PROJECT_FILE_LOCK_WAIT:-10} s); try again" >&2
+            return 1
+        fi
+    fi
+    # Remove the temporary file however this subshell ends.
+    _PF_TMP=""
+    trap 'rm -f -- "${_PF_TMP:-}"' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     # A path that exists but cannot be read as a settings file is never
     # treated as absent: its settings would be lost, or the new file moved
     # inside a directory.
@@ -1159,6 +1192,7 @@ project_file_set() {
     dir="$(dirname "$dest")"
     mkdir -p "$dir" || return 1
     tmp="$(mktemp "$dir/.${name}.XXXXXX")" || return 1
+    _PF_TMP="$tmp"
     {
         if [ -f "$file" ]; then
             while IFS= read -r line || [ -n "$line" ]; do
@@ -1237,6 +1271,7 @@ project_file_set() {
         return 1
     fi
     mv -f "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
+    _PF_TMP=""
     echo "updated $file"
 }
 

@@ -687,6 +687,67 @@ test_unknown_key_repair() {
     assert_contains "a duplicate names the hand edit" "edit the file by hand to keep one line" "$out"
 }
 
+test_set_lock_and_interrupt_cleanup() {
+    echo "TEST: concurrent writers of one project lose no update, a held lock refuses after the wait, and TERM removes the temporary file"
+    if ! command -v flock >/dev/null 2>&1 || ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: needs flock and setsid"
+        return 0
+    fi
+    local sb f out rc round lock holder pid pgid marker
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    lock="$sb/.agent/projects.d/.lock.alpha"
+
+    for round in 1 2 3; do
+        rm -f "$f"
+        ps_run "$sb" set alpha build=make >/dev/null
+        local -a pids=()
+        ps_run "$sb" set alpha "test=make check$round" >/dev/null 2>&1 & pids+=($!)
+        ps_run "$sb" set alpha "install=make install$round" >/dev/null 2>&1 & pids+=($!)
+        ps_run "$sb" set alpha "bootstrap_url=https://example.invalid/b$round.yaml" >/dev/null 2>&1 & pids+=($!)
+        ps_run "$sb" set alpha instructions=none >/dev/null 2>&1 & pids+=($!)
+        ps_run "$sb" unset alpha build >/dev/null 2>&1 & pids+=($!)
+        rc=0
+        for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
+        assert_eq "round $round: every concurrent writer exits 0" "0" "$rc"
+        out="$(sort "$f" | tr '\n' ' ')"
+        assert_eq "round $round: every update kept" "bootstrap_url=https://example.invalid/b$round.yaml install=make install$round instructions=none test=make check$round " "$out"
+    done
+
+    marker="$(mktemp -u -p "$SANDBOX")"
+    # The holder runs in its own session so its whole group (flock, sh and
+    # sleep, which all hold the lock's descriptor) can be ended at once.
+    setsid flock -x "$lock" -c "touch '$marker'; exec sleep 20" &
+    holder=$!
+    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    rc=0; out="$(cd "$sb" && PROJECT_FILE_LOCK_WAIT=1 "$sb/.agent/scripts/project_setting.sh" set alpha build=other 2>&1)" || rc=$?
+    assert_eq "held lock: exit 1" "1" "$rc"
+    assert_contains "held lock: says so" "another writer holds its lock $lock (waited 1 s)" "$out"
+    assert_not_contains "held lock: file unchanged" "build=other" "$(cat "$f")"
+    kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    rm -f "$marker"
+
+    # TERM while the temporary file exists: cmp (run after the new file is
+    # written and validated) is replaced by a function that waits.
+    marker="$(mktemp -u -p "$SANDBOX")"
+    setsid bash -c 'source "$1/.agent/scripts/_project_registry.sh"
+        _marker="$2"
+        cmp() { touch "$_marker"; sleep 30; }
+        project_file_set "$1" alpha build=interrupted' _ "$sb" "$marker" >/dev/null 2>&1 &
+    pid=$!
+    for _ in $(seq 1 100); do [ -e "$marker" ] && break; sleep 0.1; done
+    assert_eq "interrupt: the temporary file exists while it runs" "1" "$(find "$sb/.agent/projects.d" -name '.alpha.*' | wc -l | tr -d ' ')"
+    pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')" || pgid=""
+    kill -TERM -- "-${pgid:-$pid}" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+    rc=0; wait "$pid" || rc=$?
+    assert_eq "interrupt: ends by TERM" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+    assert_eq "interrupt: temporary file removed" "" "$(find "$sb/.agent/projects.d" -name '.alpha.*')"
+    assert_not_contains "interrupt: file unchanged" "build=interrupted" "$(cat "$f")"
+    rm -f "$marker"
+}
+
 test_set_refusals() {
     echo "TEST: set refuses invalid results, unknown keys, unregistered names and parent roots, leaving the file as it was"
     local sb f out rc before
@@ -958,6 +1019,7 @@ test_set_keeps_mode_and_symlink
 test_set_refuses_unusable_path
 test_symlink_cases
 test_unknown_key_repair
+test_set_lock_and_interrupt_cleanup
 test_set_refusals
 test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes
