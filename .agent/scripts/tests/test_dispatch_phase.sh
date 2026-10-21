@@ -418,6 +418,67 @@ out=$(run_handoff --issue 9 --skill implement)
 [[ "$out" == *"progress_append.sh 9"* && "$out" == *'**Branch**: <name> at <sha>'* && "$out" == *"Commit your work"* ]] \
     && pass "handoff: implement's exit contract names progress_append.sh, the correlation line, and that the agent commits (plan review finding 1)" || fail "handoff implement exit contract (out=$out)"
 
+# The once-per-pass hook rule (issue #399, owner-decided 2026-10-20) rides
+# on conventions=, only for the committing passes of a workspace handoff: a
+# review phase is never told to skip a hook. run_script_tests.sh is not
+# named, so the handoff does not invite a second, separate suite run. The
+# pre-commit it names is the main checkout's venv one by absolute path (the
+# sandbox root here): a worktree has no .venv, so a bare `pre-commit` is
+# "command not found" there, and the absolute form is what the permission
+# allowlist matches (pre-push review round 1, must-fix). The run takes
+# minutes, past the Bash tool's 120 s default, so the rule asks for a long
+# timeout and a wait for the exit (round 1, suggestion). A sub-issue
+# worktree branches from its parent's feature branch, so main...HEAD also
+# covers the parent's files; the rule says so (round 1, suggestion). The
+# suite runs only when a changed file that still exists matches the hook
+# (pre-commit drops deleted paths), so the rule says CI covers the rest
+# (round 2, suggestion).
+for sk in implement address-findings; do
+    out=$(run_handoff --issue 9 --skill "$sk")
+    conv=$(printf '%s\n' "$out" | grep '^conventions=')
+    [[ "$conv" == *"SKIP=validate-script-tests"* && "$conv" == *"\`$SB/.venv/bin/pre-commit run --files "* \
+        && "$conv" == *'$(git diff --name-only main...HEAD)'* && "$conv" == *"CI"* \
+        && "$conv" == *"--no-verify"* && "$conv" != *"run_script_tests.sh"* \
+        && "$conv" == *"600000 ms"*"wait for its exit"* \
+        && "$conv" == *"changed file that still exists matches that hook"*"CI's all-files run covers the rest"* \
+        && "$conv" == *"sub-issue worktree it also covers the parent's files"* \
+        && "$conv" == *"local time with offset"*"scratchpad"* ]] \
+        && pass "handoff: $sk (workspace) conventions= carries the once-per-pass hook rule, CI backstop, and the existing conventions" \
+        || fail "handoff $sk once-per-pass rule (conv=$conv)"
+done
+# A main checkout whose path has a space: the rule prints ROOT_DIR through
+# printf %q, so the printed command runs as written. The fake pre-commit
+# proves the escaped path resolves to the right executable (round 2,
+# suggestion); the ordinary-path case above pins the unchanged form.
+SBS="$SANDBOX/root with space"
+mkdir -p "$SBS/.agent/scripts" "$SBS/worktrees/workspace" "$SBS/.venv/bin"
+git -C "$SBS" init -q -b main
+git -C "$SBS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+    cp "$SCRIPT_DIR/../$f" "$SBS/.agent/scripts/"
+done
+git -C "$SBS" worktree add -q "$SBS/worktrees/workspace/issue-workspace-9" -b feature/issue-9 >/dev/null 2>&1
+printf '#!/usr/bin/env bash\necho "fake-pre-commit $*"\n' > "$SBS/.venv/bin/pre-commit"
+chmod +x "$SBS/.venv/bin/pre-commit"
+out=$(cd "$SBS" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill address-findings 2>&1); rc=$?
+conv=$(printf '%s\n' "$out" | grep '^conventions=')
+want_prefix="$(printf '%q' "$SBS")/.venv/bin/pre-commit run --files "
+printed="${conv#*\`"$want_prefix"}"
+[[ "$rc" -eq 0 && "$printed" != "$conv" ]] && printed="$want_prefix${printed%%\`*}" || printed=""
+ran=$([[ -n "$printed" ]] && cd "$SBS" && bash -c "$printed" 2>&1)
+[[ -n "$printed" && "$printed" == *'root\ with\ space/.venv/bin/pre-commit'* && "$ran" == "fake-pre-commit run --files"* ]] \
+    && pass "handoff: a main checkout path with a space prints escaped (printf %q) and the printed command runs" \
+    || fail "handoff spaced root (rc=$rc printed=$printed ran=$ran conv=$conv)"
+
+for sk in review-issue plan-task review-plan review-code triage-reviews; do
+    out=$(run_handoff --issue 9 --skill "$sk" --pr 42)
+    conv=$(printf '%s\n' "$out" | grep '^conventions=')
+    [[ -n "$conv" && "$conv" != *"SKIP=validate-script-tests"* && "$conv" != *"pre-commit run --files"* \
+        && "$conv" == *"local time with offset"*"scratchpad"* ]] \
+        && pass "handoff: $sk conventions= carries no hook-skip rule, keeps the existing conventions" \
+        || fail "handoff $sk must not carry the hook rule (conv=$conv)"
+done
+
 out=$(run_handoff --issue 9 --skill review-issue --entry-type "Custom Type" --model haiku)
 [[ "$out" == *"entry_type=Custom Type"* && "$out" == *"model=haiku"* ]] \
     && pass "handoff: --entry-type / --model override the table" || fail "handoff overrides (out=$out)"
@@ -444,6 +505,14 @@ printf 'myproj\tsingle_project\t%s\n' "$SBP1/myproj" > "$SBP1/.agent/projects.lo
 out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill review-issue --type project 2>&1); rc=$?
 [[ "$rc" -eq 0 && "$out" == *"worktree=$SBP1/myproj/worktrees/issue-9"* ]] \
     && pass "resolve_worktree --type project: a single registered project resolves via registry_worktree_dir" || fail "resolve_worktree project registry (rc=$rc out=$out)"
+# The once-per-pass hook rule names a workspace hook and workspace CI, so a
+# --type project implement handoff carries none (issue #399).
+out=$(cd "$SBP1" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill implement --type project 2>&1); rc=$?
+conv=$(printf '%s\n' "$out" | grep '^conventions=')
+[[ "$rc" -eq 0 && -n "$conv" && "$conv" != *"SKIP=validate-script-tests"* && "$conv" != *"pre-commit run --files"* \
+    && "$conv" == *"local time with offset"*"scratchpad"* ]] \
+    && pass "handoff: --type project implement conventions= carries no workspace hook rule" \
+    || fail "handoff project implement must not carry the hook rule (rc=$rc out=$out)"
 
 # (b) the deprecated project/worktrees fallback (wt_legacy_project_base): no
 # registry entry at all, worktree living inside a project/ checkout's own
