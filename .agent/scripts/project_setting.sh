@@ -31,8 +31,8 @@
 #   0  done; for check: valid, and honoured today
 #   1  usage error, unknown project, absent key (get), or a refused write
 #   2  the settings file is invalid (malformed, or records settings refused:
-#      a records repository must not be a workspace), or (check, list) the
-#      project is a parent root that has one, which nothing reads; or the
+#      a records repository must not be a workspace), or (get, check, list)
+#      the project is a parent root that has one, which nothing reads; or the
 #      registry
 #      .agent/projects.local is malformed (every command, before the
 #      project is looked up)
@@ -87,15 +87,22 @@ FILE="$(project_file_path "$MAIN_ROOT" "$NAME")"
 
 # A parent root has no adapter of its own: the dispatcher resolves it to an
 # instance first, so nothing reads a settings file under its name (set
-# refuses to write one). check and list say so instead of reporting it as
-# the parent's settings.
+# refuses to write one). get, check and list say so instead of reporting
+# it as the parent's settings.
 IS_PARENT=0
 [ "$(cut -f1 <<< "$ENTRY")" = "$REGISTRY_PARENT_TYPE" ] && IS_PARENT=1
+parent_instances() {
+    registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'
+}
+parent_has_file() { [ -e "$FILE" ] || [ -L "$FILE" ]; }
+parent_invalid() {
+    echo "INVALID: $FILE: '$NAME' is a parent root (no adapter of its own), so nothing reads this file; settings belong to its instances (${1:-none registered}): set them there and remove this file" >&2
+}
 parent_note() {
     local inst
-    inst="$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
-    if [ -e "$FILE" ] || [ -L "$FILE" ]; then
-        echo "INVALID: $FILE: '$NAME' is a parent root (no adapter of its own), so nothing reads this file; settings belong to its instances (${inst:-none registered}): set them there and remove this file" >&2
+    inst="$(parent_instances)"
+    if parent_has_file; then
+        parent_invalid "$inst"
         return 2
     fi
     echo "OK: '$NAME' is a parent root and has no settings file; settings belong to its instances (${inst:-none registered})"
@@ -105,6 +112,15 @@ parent_note() {
 case "$CMD" in
     get)
         [ $# -eq 1 ] || { echo "ERROR: get takes one key" >&2; exit 1; }
+        if [ "$IS_PARENT" -eq 1 ]; then
+            if parent_has_file; then
+                parent_invalid "$(parent_instances)"
+                exit 2
+            fi
+            _inst="$(parent_instances)"
+            echo "($1 is not set: '$NAME' is a parent root; settings belong to its instances (${_inst:-none registered}))" >&2
+            exit 1
+        fi
         _RC=0
         project_file_get "$MAIN_ROOT" "$NAME" "$1" || _RC=$?
         [ "$_RC" -eq 1 ] && echo "($1 is not set in $FILE)" >&2

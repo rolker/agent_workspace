@@ -1262,7 +1262,7 @@ test_dashboard_reports_settings_files() {
 }
 
 test_parent_root_settings_file_is_flagged() {
-    echo "TEST: a settings file under a parent root's name (read by nothing) fails check and list and is warned by the dashboard; a parent without one is OK"
+    echo "TEST: a settings file under a parent root's name (read by nothing) fails get, check and list and is warned by the dashboard; a parent without one is OK"
     local sb f out rc
     sb="$(make_sandbox)"
     mkdir -p "$sb/parent/inst"
@@ -1276,11 +1276,19 @@ test_parent_root_settings_file_is_flagged() {
     assert_contains "no file: says it is a parent root" "OK: 'fam' is a parent root and has no settings file; settings belong to its instances (fam-a)" "$out"
     rc=0; out="$(ps_run "$sb" list fam 2>&1)" || rc=$?
     assert_eq "no file: list exits 0" "0" "$rc"
+    rc=0; out="$(ps_run "$sb" get fam build 2>&1)" || rc=$?
+    assert_eq "no file: get exits 1 (not set)" "1" "$rc"
+    assert_contains "no file: get says settings belong to the instances" "(build is not set: 'fam' is a parent root; settings belong to its instances (fam-a))" "$out"
     assert_not_contains "no file: list reports no records for a parent" "# records:" "$out"
     out="$(cd "$sb" && PATH="$sb/nogh:$PATH" "$sb/.agent/scripts/dashboard.sh" --quick 2>&1 || true)"
     assert_not_contains "no file: the dashboard does not warn" "parent root 'fam' has a settings file" "$out"
 
     printf 'build=make\n' | write_pfile "$sb" fam
+    rc=0; out="$(ps_run "$sb" get fam build 2>/dev/null)" || rc=$?
+    assert_eq "with a file: get exits 2" "2" "$rc"
+    assert_eq "with a file: get prints no value nothing honours" "" "$out"
+    rc=0; out="$(ps_run "$sb" get fam build 2>&1)" || rc=$?
+    assert_contains "with a file: get says nothing reads it" "INVALID: $f: 'fam' is a parent root (no adapter of its own), so nothing reads this file" "$out"
     for cmd in check list; do
         rc=0; out="$(ps_run "$sb" "$cmd" fam 2>&1)" || rc=$?
         assert_eq "with a file: $cmd exits 2" "2" "$rc"
