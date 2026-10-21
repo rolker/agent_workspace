@@ -446,3 +446,26 @@ Pre-push round 4 (7b09bc7e): approved, ship recommended, 0 must-fix, 4 suggestio
 - [x] (suggestion) Env-inherited `BUILD_CMD`/`TEST_CMD`/`INSTALL_CMD` stay cleared (owner let it stand at the checkpoint); the change is named in one sentence each in the single_project and ros2_colcon adapter headers and `projects.local.example`, for the PR body to cite; a new `test_env_inherited_commands_ignored` pins it; no behaviour change — `c00db0c6`
 
 Checks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract and the design-anchor check; `test_project_file.sh` 353 passed, `test_adapter.sh` 96 passed, `test_ros2_colcon.sh` 200 passed, all 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `--severity=warning` clean on `_project_registry.sh`, `validate_adapter.sh`, both adapters, `test_project_file.sh`, `test_adapter.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 11:12 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `c064fead`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 2,916 changed lines outside work plans, 16 files; AGENTS.md governance file)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 5 | **Ship**: continue — must-fix rising (0 -> 1); the one must-fix is a mechanical four-number doc edit caused by the origin/main merge
+
+Round-4 findings (7b09bc7e) all resolved at c00db0c6, checked in the code: unreadable or CRLF `unused_settings` is an error at set, check and the adapter (return 2); `validate_adapter.sh` checks each list through `project_type_unused_settings_problems`; AGENTS.md `project_setting.sh` row names the per-type refusal; env-inherited commands documented and pinned by a test. The merge c064fead brings only main's #399 content (no conflicts); its `dispatch_phase.sh` edits made the design doc's line citations stale (must-fix below).
+For the owner (not a finding): the AGENTS.md `validate_adapter.sh` row still reads "verify every project type implements the full adapter contract" and does not mention the new `unused_settings` list check; changing it is Ask First.
+Specialists: static analysis (shellcheck --severity=warning clean on 11 changed shell files; run_script_tests.sh 38 suites passed at c064fead; validate_adapter.sh passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+Dropped: gemini "bare repo gives empty --show-toplevel" (git 2.43 exits 128, so the check returns 3 as designed; checked by execution); gemini local-remote vs shared upstream (outside the owner-set three checks); gemini `set -foo=bar` parsed as removal (refused as unknown key, not silent); adversarial empty reason at runtime (validate_adapter.sh, a pre-commit hook and CI, already catches it).
+
+### Findings
+- [ ] (must-fix) docs/design.md Worktrees Target, mechanism 1, cites `dispatch_phase.sh` lines 362, 364, 407, 499; after the origin/main merge (#399 edits to dispatch_phase.sh) the work-plans path lines are 368, 370, 428, 520; refresh them (the change-log row says they were refreshed; line count 784 is unchanged by the edit) (Claude adversarial + lead, confirmed by grep) — `docs/design.md:430`
+- [ ] (suggestion) A command set in the settings file runs without sourcing the legacy `.sh` or shared `project_config.sh`, so anything those files export (SDK paths, PATH) no longer reaches it once a command is moved into the settings file; no local config exports anything today (checked); document it in both adapter headers, `projects.local.example` and the design bullet (environment setup goes in the script the key points at), and note it for PR 2's adoption step (codex rated must-fix; reproduced by codex, confirmed by reading) — `.agent/project_types/single_project/adapter.sh:43`, `.agent/project_types/ros2_colcon/adapter.sh:640`
+- [ ] (suggestion) A leading `~` in a command value (`test=~/x`) is accepted and stored, then fails at run time (127) because nothing expands it; refuse a `~` word with the "point the key at a script or absolute path" hint, or state in the grammar header and `projects.local.example` that `~` and globs are literal (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:675`
+- [ ] (suggestion) The writer's lock is keyed by project name (`.lock.<name>`), but two projects whose settings files are symlinks to one target take different locks, so concurrent writes can lose an update; lock on the resolved destination or refuse a shared target, with a test (codex) — `.agent/scripts/_project_registry.sh:1289`
