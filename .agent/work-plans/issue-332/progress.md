@@ -366,3 +366,13 @@ Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; 
 - [ ] (suggestion) A command whose first word is an environment assignment (`build=CC=gcc make`) validates and is stored, then fails at run time with `exec: CC=gcc: not found` (127); refuse a first word containing `=` with the "point the key at a script" message (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:667`
 - [ ] (suggestion) The unlocked path the writer's header documents for a machine without `flock` has no test; cover it with a `PATH` lacking `flock` (Claude adversarial) — `.agent/scripts/tests/test_project_file.sh`
 - [ ] (suggestion) The exit-code header says 2 means the settings file is invalid, but 2 is also returned for a malformed registry; add that case (Claude adversarial) — `.agent/scripts/project_setting.sh:32`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:08 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 3 (8370f82b) reached MAX_ROUNDS with 1 must-fix (ros2_colcon stores build/test it never reads; silent bootstrap_url fall-through) and 4 suggestions; ship signal "fix and ship". Owner's answer: "Fix then publish (Recommended)": address all five, one more review on the fixed branch, then publish. Host's mechanism choice, open to veto: refuse build/test for a ros2_colcon project at set time rather than document them as ignored.
