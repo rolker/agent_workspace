@@ -212,10 +212,11 @@ Actions, either fixed-and-checked or deferred-checked-with-reason. Do not
 push here; the calling session decides when to push.
 
 The entry commit is committed as usual, with every hook. It touches only
-`.agent/work-plans/`, which `validate-script-tests` excludes, so it is not
-the backstop for a dispatched pass's skipped commits: CI is. `make lint`
-runs every hook on all files on pushes to `main`, `feature/**` and
-`fix/**` and on PRs to main, and `merge_pr.sh` waits for it.
+the issue's work-plan directory, which `validate-script-tests` excludes,
+so it is not the backstop for a dispatched pass's skipped commits: CI is.
+`make lint` runs every hook on all files on pushes to `main`,
+`feature/**` and `fix/**` and on PRs to main, and `merge_pr.sh` waits for
+it.
 
 ### Next step
 
