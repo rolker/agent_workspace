@@ -777,11 +777,17 @@ _project_records_combination() {
 }
 
 # Why the settings-file path <file> cannot be used: prints the reason and
-# returns 0 when the path exists (directly or through a symlink) but is not
-# a readable regular file; returns 1 when it can be used (absent, or a
-# readable regular file).
+# returns 0 when the path is a symlink that does not resolve to an existing
+# file (dangling, a loop, a missing directory on the way), or exists
+# (directly or through a symlink) but is not a readable regular file;
+# returns 1 when it can be used (absent, or a readable regular file, also
+# through a chain of symlinks with absolute or relative targets).
 _project_file_path_error() {
     local file="$1"
+    if [ -L "$file" ] && [ ! -e "$file" ]; then
+        echo "$file is a symlink (to '$(readlink -- "$file" 2>/dev/null)') that does not resolve to an existing file: create its target or remove the link"
+        return 0
+    fi
     if [ -e "$file" ]; then
         if [ ! -f "$file" ]; then
             echo "$file exists but is not a regular file"
@@ -804,11 +810,11 @@ _project_file_path_error() {
 _project_file_parse() {
     local file="$1" raw line key value lineno=0 rc=0 seen=" " reason known
     local -a out=()
-    [ -e "$file" ] || return 0
-    if [ ! -f "$file" ] || [ ! -r "$file" ]; then
-        echo "ERROR: $file: not a readable file" >&2
+    if reason="$(_project_file_path_error "$file")"; then
+        echo "ERROR: $reason" >&2
         return 2
     fi
+    [ -e "$file" ] || return 0
     known="${_PROJECT_FILE_KEYS# }"; known="${known% }"
     while IFS= read -r raw || [ -n "$raw" ]; do
         lineno=$((lineno + 1))

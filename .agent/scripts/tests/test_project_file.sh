@@ -604,6 +604,60 @@ test_set_refuses_unusable_path() {
     assert_eq "no temporary file left" "" "$(find "$sb/.agent/projects.d" "$other" -name '.alpha.*')"
 }
 
+test_symlink_cases() {
+    echo "TEST: symlinked settings files: dangling and unresolvable links are errors everywhere; link to link and relative targets work"
+    local sb f out rc store
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    store="$(mktemp -d -p "$SANDBOX")"
+    mkdir -p "$sb/.agent/projects.d"
+
+    ln -s "$store/missing" "$f"
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_eq "dangling: check exits 2" "2" "$rc"
+    assert_contains "dangling: named" "$f is a symlink (to '$store/missing') that does not resolve to an existing file" "$out"
+    assert_not_contains "dangling: never 'OK'" "OK:" "$out"
+    rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha env 2>&1)" || rc=$?
+    assert_eq "dangling: the adapter stops" "1" "$rc"
+    assert_contains "dangling: the adapter says why" "does not resolve to an existing file" "$out"
+    rc=0; out="$(ps_run "$sb" set alpha build=make 2>&1)" || rc=$?
+    assert_eq "dangling: set refused" "1" "$rc"
+    assert_eq "dangling: no target created" "no" "$([ -e "$store/missing" ] && echo yes || echo no)"
+    rm -f "$f"
+
+    ln -s "$store/loop-b" "$store/loop-a"
+    ln -s "$store/loop-a" "$store/loop-b"
+    ln -s "$store/loop-a" "$f"
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_eq "unresolvable (loop): check exits 2" "2" "$rc"
+    assert_contains "unresolvable (loop): named" "does not resolve to an existing file" "$out"
+    rc=0; out="$(ps_run "$sb" set alpha build=make 2>&1)" || rc=$?
+    assert_eq "unresolvable (loop): set refused" "1" "$rc"
+    rm -f "$f" "$store/loop-a" "$store/loop-b"
+
+    printf 'build=make\n' > "$store/real"
+    ln -s "$store/real" "$store/middle"
+    ln -s "$store/middle" "$f"
+    assert_eq "link to link: get reads the final target" "make" "$(ps_run "$sb" get alpha build)"
+    rc=0; ps_run "$sb" set alpha "test=make check" >/dev/null 2>&1 || rc=$?
+    assert_eq "link to link: set exits 0" "0" "$rc"
+    assert_eq "link to link: final target rewritten" "$(printf 'build=make\ntest=make check')" "$(cat "$store/real")"
+    assert_eq "link to link: first link kept" "$store/middle" "$(readlink "$f")"
+    assert_eq "link to link: second link kept" "$store/real" "$(readlink "$store/middle")"
+    rm -f "$f"
+
+    mkdir -p "$sb/.agent/store"
+    printf 'build=make\n' > "$sb/.agent/store/alpha.cfg"
+    ln -s ../store/alpha.cfg "$f"
+    assert_eq "relative target: get reads it" "make" "$(ps_run "$sb" get alpha build)"
+    rc=0; ps_run "$sb" set alpha install=make >/dev/null 2>&1 || rc=$?
+    assert_eq "relative target: set exits 0" "0" "$rc"
+    assert_eq "relative target: target rewritten" "$(printf 'build=make\ninstall=make')" "$(cat "$sb/.agent/store/alpha.cfg")"
+    assert_eq "relative target: link still relative" "../store/alpha.cfg" "$(readlink "$f")"
+    assert_eq "no temporary file left" "" "$(find "$sb/.agent" "$store" -name '.alpha.*')"
+}
+
 test_set_refusals() {
     echo "TEST: set refuses invalid results, unknown keys, unregistered names and parent roots, leaving the file as it was"
     local sb f out rc before
@@ -873,6 +927,7 @@ test_set_keeps_comments_and_order
 test_composite_keys_refused
 test_set_keeps_mode_and_symlink
 test_set_refuses_unusable_path
+test_symlink_cases
 test_set_refusals
 test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes
