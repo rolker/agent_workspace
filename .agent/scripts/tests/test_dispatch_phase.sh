@@ -427,7 +427,9 @@ out=$(run_handoff --issue 9 --skill implement)
 # "command not found" there, and the absolute form is what the permission
 # allowlist matches (pre-push review round 1, must-fix). The run takes
 # minutes, past the Bash tool's 120 s default, so the rule asks for a long
-# timeout and a wait for the exit (round 1, suggestion).
+# timeout and a wait for the exit (round 1, suggestion). A sub-issue
+# worktree branches from its parent's feature branch, so main...HEAD also
+# covers the parent's files; the rule says so (round 1, suggestion).
 for sk in implement address-findings; do
     out=$(run_handoff --issue 9 --skill "$sk")
     conv=$(printf '%s\n' "$out" | grep '^conventions=')
@@ -435,6 +437,7 @@ for sk in implement address-findings; do
         && "$conv" == *'$(git diff --name-only main...HEAD)'* && "$conv" == *"CI"* \
         && "$conv" == *"--no-verify"* && "$conv" != *"run_script_tests.sh"* \
         && "$conv" == *"600000 ms"*"wait for its exit"* \
+        && "$conv" == *"sub-issue worktree it also covers the parent's files"* \
         && "$conv" == *"local time with offset"*"scratchpad"* ]] \
         && pass "handoff: $sk (workspace) conventions= carries the once-per-pass hook rule, CI backstop, and the existing conventions" \
         || fail "handoff $sk once-per-pass rule (conv=$conv)"

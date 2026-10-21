@@ -177,6 +177,11 @@ permission allowlist matches:
 <main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
 ```
 
+The file list is left unquoted because no repo path has a space. In a
+sub-issue worktree (branched from the parent's feature branch)
+`main...HEAD` also covers the parent's files, so a failure there may be in
+a file this pass never touched.
+
 It includes `validate-script-tests`, so the script suite runs once for the
 pass; run no separate suite. It takes several minutes, longer than the
 Bash tool's 120 s default timeout: give the call a long timeout (up to
