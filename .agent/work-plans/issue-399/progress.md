@@ -313,3 +313,24 @@ Specialists: static analysis (shellcheck clean on the three scripts; yamllint wa
 - `shellcheck -S warning` on dispatch_phase.sh, test_dispatch_phase.sh, run_script_tests.sh: clean.
 - test_dispatch_phase 120/0, test_skill_paths 58/0, test_script_tests_hook_scope 121/0 (run during the fixes).
 - Owner decision held: the hook definition is unchanged (comment text only).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 10:21 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: approved
+**Dispatch**: resumed (agent a4d8c676c1f48ef66, resume 1 of 3)
+
+**Branch**: feature/issue-399 at `bf204420`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 536 changed lines with the work-plan files; AGENTS.md and .pre-commit-config.yaml are override triggers; same specialists as Standard)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 1's three findings are resolved (7c3e73ed, 2de136cf, 55cf3c81, 20be868f): the handoff prints `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` (ROOT_DIR is the main checkout from inside the worktree; the binary exists and is executable; the form matches the local allowlist entry), with the long-timeout and sub-issue clauses; the test pins all three. Specialists: static analysis (shellcheck clean), governance (hook definition unchanged; AGENTS.md row edit in its own commits 284eea98 and 2de136cf, Ask First, needs the owner's yes on the PR), plan drift (none beyond round-1 fixes), Claude adversarial (no must-fix), cross-model (Gemini: no issues; Codex: one must-fix downgraded to suggestion, see below). test_dispatch_phase 120/0, test_skill_paths 58/0. Dropped: committing an allowlist entry to the tracked .claude/settings.json (a permission-config change, out of this issue's scope); a main checkout without `.venv` (`make setup` creates it).
+
+### Findings
+- [ ] (suggestion) The address-findings step 4 example is a ```bash fence starting `<main checkout>/.venv/bin/pre-commit ...`; pasted literally, `<` is a redirect and the line is a syntax error. Make it a non-shell fence or prose that says to run the exact line the handoff prints — `.claude/skills/address-findings/SKILL.md:177`
+- [ ] (suggestion) Codex's must-fix, downgraded: a branch whose only matching change is a deleted script runs no suite in the final check (pre-commit drops deleted paths; the work-plan dir is excluded), yet the rule says "it includes the script test suite, so run no separate suite". Per-commit runs behave the same (pre-commit selects staged files with `--diff-filter=ACMRTUXB`, no D), and CI's all-files run covers it, so this is no regression; qualify the sentence (the suite runs when a changed, still-present file matches the hook) — `.agent/scripts/dispatch_phase.sh:379`
+- [ ] (suggestion) `$ROOT_DIR` is printed unquoted into a command the agent runs verbatim; a checkout path with a space breaks it. `printf %q` on ROOT_DIR leaves an ordinary path unchanged (so the allowlist still matches) and escapes a spaced one — `.agent/scripts/dispatch_phase.sh:379`
+- [ ] (suggestion) Reflow: the run-issue "Hook rule" paragraph has one 117-character line and reads awkwardly after the parenthetical; the new `.pre-commit-config.yaml` comment's last lines are ragged — `.claude/skills/run-issue/SKILL.md:317-320`, `.pre-commit-config.yaml:73-76`
