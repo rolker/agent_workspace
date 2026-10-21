@@ -319,3 +319,27 @@ Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; 
 - [x] (suggestion) A command whose first word starts with `-` reaches `exec` as an option (`build=-c make` runs make with an empty environment); use `exec --` or refuse a leading `-` in the value check (Claude adversarial, confirmed by execution) — `.agent/scripts/adapter:307`
 - [x] (suggestion) The orphan settings-file check sits inside `if [ -n "$REGISTRY_ENTRIES" ]`, so with no registered project no orphan is reported; move the loop out (gemini) — `.agent/scripts/dashboard.sh:163`
 - [x] (suggestion) A file with an unknown or misspelled key cannot be repaired by `set`/`unset` (lines are copied through, `-key` refuses an unknown key); allow `-key` to remove an unknown key or name the hand edit in the error (Claude adversarial) — `.agent/scripts/_project_registry.sh:1075`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 09:55 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a8f73bec5a88b2c19, resume 1 of 3)
+
+**Branch**: feature/issue-332 at `cf393f33`
+**Addressed**: Local Review (Pre-Push) at `3cf5f537` (2026-10-21 09:36 -04:00)
+**Commits**: `fa135945`, `57ad0825`, `664aa88d`, `f70b1cf0`, `bbf97f18`, `80989c7f`, `d5d05a7c`, `1cc8395c`, `cf393f33`
+
+### Actions
+- [x] (must-fix) Writer treated an unreadable or non-regular path as absent: new `_project_file_path_error`; the writer refuses (exit 1, file left as it was) when the path or a symlink's target exists but is not a readable regular file; new `test_set_refuses_unusable_path` (a directory, a symlink to one, a mode 000 file, a symlink to one; mode 000 cases skip as root) — `57ad0825`, `.agent/scripts/_project_registry.sh`
+- [x] (must-fix) `project_setting.sh` `SCRIPT_DIR` and `ROOT` use `pwd -P`; new `test_run_through_scripts_symlink` runs set and get through a root `scripts` symlink — `fa135945`, `.agent/scripts/project_setting.sh`
+- [x] (suggestion) A dangling or unresolvable symlink is an error: the parser reports it (exit 2, so check, the adapter, dashboard and validate stop on it) and the writer refuses it; new `test_symlink_cases` covers dangling, a loop, link to link (final target rewritten, both links kept) and a relative target (kept relative) — `664aa88d`
+- [x] (suggestion) Writer body runs in a subshell holding an exclusive flock on the sidecar `projects.d/.lock.<name>` (a lock on the file itself would not exclude the next writer, since the rename replaces its inode), waiting `PROJECT_FILE_LOCK_WAIT` s (default 10) then refusing; unlocked without flock, as `capture.sh`; EXIT/HUP/INT/TERM traps remove the temporary file; new `test_set_lock_and_interrupt_cleanup` (five concurrent writers over three rounds keep every update, a held lock refuses, TERM removes the temporary file; fails on the old code) — `bbf97f18`
+- [x] (suggestion) The default layout field is read with `cut -f3`, not a tab `read`; new `test_outside_without_layout_unregistered` — `80989c7f`
+- [x] (suggestion) `active_project_exec` uses `exec --`; new `test_command_leading_dash_is_the_command` (a `-dashcmd` command runs; `-c <stub>` fails without running the stub). The legacy/shared path `exec $SP_CMD` is main's code and is unchanged — `d5d05a7c`, `.agent/scripts/adapter`
+- [x] (suggestion) Dashboard orphan loop moved out of the registered-entries branch; it runs whenever the registry parsed and is skipped when the registry is malformed (names unknown); new `test_dashboard_orphans_without_registered_projects` — `1cc8395c`, `.agent/scripts/dashboard.sh`
+- [x] (suggestion) `unset`/`-key` removes an unknown key the file holds (an unknown key it lacks, and any unknown key on `set`, are still refused); the parser's unknown-key error names `project_setting.sh unset <name> '<key>'` or a hand edit, a duplicate names the hand edit, and the writer's replayed error names the project, not its temporary file; usage text updated; new `test_unknown_key_repair` — `f70b1cf0`
+
+Also, not a finding: `cf393f33` fixes the one precedence comment round 1 missed (the dispatcher's settings-file section in `adapter` still read as a per-variable fall-through); comment only.
+
+Checks: `run_script_tests.sh` all 38 suites passed (289 s); `test_project_file.sh` 278 passed, 0 failed (206 before this round); every new test was run against the code before its fix and failed there; shellcheck `--severity=warning` clean on `_project_registry.sh`, `project_setting.sh`, `dashboard.sh`, `adapter`, `test_project_file.sh`. Intermediate commits used `SKIP=validate-script-tests` as the host allowed; all other hooks ran on each commit.
