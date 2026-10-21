@@ -293,3 +293,29 @@ Specialists: static analysis (shellcheck clean on 8 scripts; test_project_file.s
 - [x] (suggestion) #332 change-log row re-dated 2026-10-21 (now in date order after the #395 row), names the whole-legacy-layer rule and the citation refresh; line count 781, the file's length — `c5380cf1`, `docs/design.md`
 
 Checks: `run_script_tests.sh` all 38 suites passed (472 s); `test_project_file.sh` 206 passed, 0 failed; shellcheck `--severity=warning` (the pre-commit level) clean on `_project_registry.sh`, `dashboard.sh`, `adapter`, `test_project_file.sh`; pre-commit hooks passed on every commit, design-anchor hook included.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 09:36 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a0bc444961900f34f, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `3cf5f537`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff ~1,990 changed lines outside work plans, 200+ threshold; AGENTS.md governance file)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Round-1 findings (5c68e36e) all resolved at c5380cf1, checked in the code: whole-key match `_project_file_key_in` with a test; precedence docs state the whole-legacy-layer rule in five places; dashboard `grep -qxF --` with tests; writer keeps mode and symlink with a test; change-log row re-dated, 781 lines matches the file, `adapter:80` citation correct.
+Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; test_project_file.sh 206 passed; run_script_tests.sh 38 suites passed; check_design_anchors.sh passed), governance, plan drift (step 6 amended to the whole-layer rule; no new drift), Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+
+### Findings
+- [ ] (must-fix) Writer treats an existing path that is not a readable regular file as absent: an unreadable file (mode 000) is overwritten with only the new keys and its settings lost, rc 0 "updated"; a directory at `projects.d/<name>` gets the temp file moved inside it, rc 0 "updated". Refuse when the path (or symlink target) exists and is not a readable regular file, with a test for each (Claude adversarial + codex, both confirmed by execution) — `.agent/scripts/_project_registry.sh:1110`, `:1188`
+- [ ] (must-fix) `project_setting.sh` resolves `SCRIPT_DIR` and `ROOT` with logical `pwd`, so run through the documented `scripts/` symlink it finds the wrong workspace (from this worktree it read `worktrees/workspace/.agent/projects.local`); use `pwd -P` for both (gemini, confirmed by running both paths) — `.agent/scripts/project_setting.sh:37`, `:47`
+- [ ] (suggestion) A dangling symlink at `projects.d/<name>` reads as "no file": `check` prints OK, the adapter ignores it, while `set` would create the target; report it as an error, and add tests for the symlink cases the comments claim (dangling, unresolvable, link to link, relative target) — `.agent/scripts/_project_registry.sh:788`
+- [ ] (suggestion) The writer's read-modify-rename has no lock and no interrupt cleanup: two concurrent `set` calls on one project lose one update, and SIGINT leaves a hidden `.name.XXXXXX` file the dashboard glob skips; serialize with a per-project lock and remove the temp file on exit (codex rated must-fix; Claude adversarial suggestion) — `.agent/scripts/_project_registry.sh:1110`
+- [ ] (suggestion) `IFS=$'\t' read -r _ _ layout _` collapses an empty layout field, so an unregistered name with `location=outside` gets layout "provisional" and skips the "not registered" error; unreachable today (callers are registered-only); use a non-whitespace delimiter or print the layout last (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:989`
+- [ ] (suggestion) A command whose first word starts with `-` reaches `exec` as an option (`build=-c make` runs make with an empty environment); use `exec --` or refuse a leading `-` in the value check (Claude adversarial, confirmed by execution) — `.agent/scripts/adapter:307`
+- [ ] (suggestion) The orphan settings-file check sits inside `if [ -n "$REGISTRY_ENTRIES" ]`, so with no registered project no orphan is reported; move the loop out (gemini) — `.agent/scripts/dashboard.sh:163`
+- [ ] (suggestion) A file with an unknown or misspelled key cannot be repaired by `set`/`unset` (lines are copied through, `-key` refuses an unknown key); allow `-key` to remove an unknown key or name the hand edit in the error (Claude adversarial) — `.agent/scripts/_project_registry.sh:1075`
