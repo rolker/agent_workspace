@@ -241,6 +241,26 @@ test_command_shell_syntax_refused() {
     assert_eq "none, a relative script and a glob-looking word are accepted" "0" "$rc"
 }
 
+test_command_env_assignment_refused() {
+    echo "TEST: a command whose first word is VAR=value is refused (it would run as a command of that name); a later VAR=value argument is fine"
+    local sb f out rc
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    printf 'build=CC=gcc make\n' | write_pfile "$sb" alpha
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_eq "check exits 2" "2" "$rc"
+    assert_contains "named with file:line" "$f:1: 'build' starts with an environment assignment 'CC=gcc'" "$out"
+    assert_contains "points at a script" "point the key at a script that sets the variable instead (build=./scripts/build.sh" "$out"
+    rm -f "$f"
+    rc=0; out="$(ps_run "$sb" set alpha "test=LANG=C make test" 2>&1)" || rc=$?
+    assert_eq "set refuses it: exit 2" "2" "$rc"
+    assert_contains "set names it" "'test' starts with an environment assignment 'LANG=C'" "$out"
+    assert_eq "set wrote nothing" "no" "$([ -e "$f" ] && echo yes || echo no)"
+    rc=0; ps_run "$sb" set alpha "build=make CC=gcc" >/dev/null 2>&1 || rc=$?
+    assert_eq "VAR=value after the first word is an argument: set exits 0" "0" "$rc"
+}
+
 test_registry_refuses_dot_sh_name() {
     echo "TEST: a registry name ending in .sh is refused (it would collide with a legacy file)"
     local sb out rc=0
@@ -1137,6 +1157,7 @@ test_no_file_is_all_defaults
 test_grammar_comments_blanks_crlf
 test_grammar_errors
 test_command_shell_syntax_refused
+test_command_env_assignment_refused
 test_registry_refuses_dot_sh_name
 test_absent_pair_resolves_to_default
 test_default_outside_layout_comes_from_the_function

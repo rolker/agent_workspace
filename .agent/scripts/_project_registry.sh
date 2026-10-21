@@ -55,9 +55,11 @@
 #                           has none"). The value is split on blanks into
 #                           argv and run without a shell, from the project
 #                           root, with no globbing. Quotes, & | ; < > $ ( )
-#                           ` and backslash are refused: anything that needs
-#                           them is a script, so point the key at one
-#                           (build=./scripts/build.sh, or an absolute path).
+#                           ` and backslash are refused, and so is a first
+#                           word VAR=value (no shell applies it): anything
+#                           that needs them is a script, so point the key at
+#                           one (build=./scripts/build.sh, or an absolute
+#                           path).
 #     bootstrap_url         http(s):// or file:// URL of a ros2_colcon
 #                           bootstrap.yaml (replaces MANIFEST_BOOTSTRAP_URL)
 # - a key the project's type never reads is an error, at `set` and in the
@@ -674,6 +676,13 @@ _project_file_value_error() {
                     return 1
                 fi
             done
+            # A first word VAR=value would be exec'd as a command name (no
+            # shell applies it as an environment assignment).
+            local first="${value%%[[:blank:]]*}"
+            if [[ "$first" == *=* ]]; then
+                echo "'$key' starts with an environment assignment '$first': a command here is run without a shell, so it would be run as a command named '$first'; point the key at a script that sets the variable instead ($key=./scripts/$key.sh, relative to the project root, or an absolute path)"
+                return 1
+            fi
             ;;
         bootstrap_url)
             if ! [[ "$value" =~ ^(https?|file)://[^[:space:]]+$ ]]; then
