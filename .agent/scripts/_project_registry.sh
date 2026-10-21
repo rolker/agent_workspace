@@ -150,9 +150,10 @@ registry_entries_full() {
             continue
         fi
         # Project 'x.sh' would own the file .agent/projects.d/x.sh, which is
-        # project 'x''s legacy command config (issue #332).
-        if [[ "$name" == *.sh ]]; then
-            echo "ERROR: ${file}:${lineno}: invalid project name '$name': a name may not end in '.sh' (its settings file would collide with the legacy .agent/projects.d/<name>.sh of project '${name%.sh}')" >&2
+        # project 'x''s legacy command config (issue #332). Any letter case:
+        # on a case-insensitive filesystem (macOS by default) x.SH is x.sh.
+        if [[ "$name" == *.[sS][hH] ]]; then
+            echo "ERROR: ${file}:${lineno}: invalid project name '$name': a name may not end in '.sh', in any letter case (its settings file would collide with the legacy .agent/projects.d/<name>.sh of project '${name:0:${#name}-3}')" >&2
             rc=2
             continue
         fi

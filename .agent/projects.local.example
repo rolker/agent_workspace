@@ -111,8 +111,9 @@
 #   # .agent/projects.d/shore_tools-jazzy.sh
 #   MANIFEST_BOOTSTRAP_URL="https://<host>/<manifest-repo>/raw/jazzy/config/bootstrap.yaml"
 #
-# A project name may not end in ".sh" (its settings file would collide with
-# another project's legacy file).
+# A project name may not end in ".sh", in any letter case (its settings file
+# would collide with another project's legacy file; on a case-insensitive
+# filesystem x.SH is x.sh).
 #
 # One instance per distro: a second distro of the same project is a second
 # registry entry with its OWN hosting dir. Group them under a parent root
