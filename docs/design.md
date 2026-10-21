@@ -272,16 +272,18 @@ Status: `decided`
   project has none"; anything that needs a shell is a script the key points at. The grammar and keys
   are in the header of `_project_registry.sh`, `project_setting.sh` reads and writes the file, and a
   malformed file stops every adapter verb and fails `make validate`. Per setting, the adapters read the
-  file, then the legacy `projects.d/<name>.sh` (a sourced shell file, which also keeps variables such
-  as `ROS_ROOT_DIR`), then the shared `.agent/project_config.sh`, and say on stderr when a registered
-  project falls through to the shared file.
+  file; for a setting it leaves unset, the legacy `projects.d/<name>.sh` (a sourced shell file, which
+  also keeps variables such as `ROS_ROOT_DIR`) when it exists, otherwise the shared
+  `.agent/project_config.sh`. An existing legacy file is the whole legacy layer, as before #332: the
+  shared file is not consulted for a variable it leaves unset. The adapters say on stderr when a
+  registered project falls through to the shared file.
 - Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
   type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12).
   `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
   every type implements every verb, in pre-commit and in CI.
 - Workflow scripts call adapter verbs and do not branch on the project type: a grep of `.agent/scripts/`
   for the two type names finds only help text and docstrings, and the `single_project` default in
-  `_resolve_project_type` (`adapter:73`) (2026-10-09).
+  `_resolve_project_type` (`adapter:80`) (2026-10-09).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
   colcon layers driven by a manifest, and its `adapter.sh` header holds the layers, the bootstrap URL
   order and the distro rule.

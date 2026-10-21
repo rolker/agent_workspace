@@ -43,10 +43,11 @@
 # ACTIVE_PROJECT_BUILD / _TEST / _INSTALL / _BOOTSTRAP_URL (its keys; empty
 # when unset), and ACTIVE_PROJECT_CONFIG (the legacy per-project config
 # .agent/projects.d/<name>.sh). Per setting, adapters read the settings-file
-# variable first, then the legacy file's variable, then the shared
-# .agent/project_config.sh, and say so on stderr when a registered project
-# falls through to the shared file. A malformed settings file stops every
-# verb.
+# variable first; for one it leaves unset, the legacy file's variable when
+# that file exists (it is then the whole legacy layer, as before #332),
+# otherwise the shared .agent/project_config.sh; and they say so on stderr
+# when a registered project falls through to the shared file. A malformed
+# settings file stops every verb.
 #
 # Contract requirements for .agent/project_types/<type>/adapter.sh:
 #   - Silent at source time: nothing written to stdout while being sourced

@@ -83,12 +83,16 @@
 # _project_registry.sh). Only (project, project) is honoured until the
 # records lookup lands (#393); project_setting.sh refuses to store another.
 #
-# Precedence for build/test/install/bootstrap_url: the settings file, then
-# the LEGACY .agent/projects.d/<name>.sh (a sourced shell file: BUILD_CMD,
-# TEST_CMD, INSTALL_CMD, MANIFEST_BOOTSTRAP_URL, and variables such as
-# ROS_DISTRO and ROS_ROOT_DIR, which stay there), then the shared
-# .agent/project_config.sh. A registered project that falls through to the
-# shared file gets a note on stderr. A legacy ros2_colcon config looks like:
+# Precedence for build/test/install/bootstrap_url: the settings file, key by
+# key; for a key it does not set, the LEGACY .agent/projects.d/<name>.sh (a
+# sourced shell file: BUILD_CMD, TEST_CMD, INSTALL_CMD,
+# MANIFEST_BOOTSTRAP_URL, and variables such as ROS_DISTRO and ROS_ROOT_DIR,
+# which stay there) when that file exists, otherwise the shared
+# .agent/project_config.sh. The legacy file, when present, is the whole
+# legacy layer, as before #332: the shared file is not consulted for a
+# variable it leaves unset (a legacy file with only BUILD_CMD gets no shared
+# TEST_CMD). A registered project that falls through to the shared file gets
+# a note on stderr. A legacy ros2_colcon config looks like:
 #
 #   # .agent/projects.d/shore_tools-jazzy.sh
 #   MANIFEST_BOOTSTRAP_URL="https://<host>/<manifest-repo>/raw/jazzy/config/bootstrap.yaml"

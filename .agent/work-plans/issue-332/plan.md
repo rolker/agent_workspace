@@ -132,7 +132,10 @@ change-log row.
    (atomic temp file and rename, comments kept) and a thin CLI `project_setting.sh get|set|unset|list|check <name>`.
    The dispatcher parses the file once and sets `ACTIVE_PROJECT_BUILD/_TEST/_INSTALL/_BOOTSTRAP_URL`
    (shell variables, not exported, as `ACTIVE_PROJECT_ROLE` is). Per setting the order is: project file
-   key, then the legacy `projects.d/<name>.sh` variable, then the shared `.agent/project_config.sh`.
+   key; for a key the file leaves unset, the legacy `projects.d/<name>.sh` variable when that file
+   exists, otherwise the shared `.agent/project_config.sh`. An existing legacy `.sh` stays the whole
+   legacy layer, as on main (amended 2026-10-21 in the pre-push fix round, host's choice: the `.sh`
+   reading goes with #265 PR 4, and a per-variable fall-through would change legacy behaviour here).
    `single_project` (`_single_project_load_cmd`, `adapter_install`) and `ros2_colcon` (`_rc_bootstrap_url`,
    `adapter_install`) read the variable first. For a registered project that falls through to the
    shared file, the adapter prints one stderr note ("project 'x' has no build command of its own; using

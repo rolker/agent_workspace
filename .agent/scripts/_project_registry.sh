@@ -76,9 +76,11 @@
 # - a records repository must not be a workspace: project_records_check
 #   refuses tracking=repo when the records clone is the workspace or a copy
 #   of it (remote URL, local-path remote, or the workspace marker files).
-# - precedence for build/test/install/bootstrap_url: this file, then the
-#   legacy .agent/projects.d/<name>.sh variable, then the shared
-#   .agent/project_config.sh (the dispatcher and the adapters).
+# - precedence for build/test/install/bootstrap_url: this file, key by key;
+#   for a key it leaves unset, the legacy .agent/projects.d/<name>.sh
+#   variable when that file exists (it is then the whole legacy layer, as
+#   before #332), otherwise the shared .agent/project_config.sh (the
+#   dispatcher and the adapters).
 #
 # Source this file from other scripts:
 #   source "$SCRIPT_DIR/_project_registry.sh"
