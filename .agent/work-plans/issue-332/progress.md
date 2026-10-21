@@ -572,3 +572,13 @@ Dropped: gemini local/file:// remote vs a shared upstream and push URLs (outside
 - [ ] (suggestion) The `.sh` name guard is case-sensitive: on a case-insensitive filesystem (macOS default) a project named `tools.SH` passes and its settings file `.agent/projects.d/tools.SH` is project `tools`'s legacy `tools.sh`; compare the suffix case-insensitively in both parsers, with a mixed-case parity case (codex rated must-fix; confirmed by reading) — `.agent/scripts/_project_registry.sh:154`, `.agent/scripts/lib/workspace.py:126`
 - [ ] (suggestion) `project_setting.sh get <parent> <key>` still reads a file under a parent root's name and prints a value nothing honours, while `check` and `list` now refuse it; give `get` the same parent handling (Claude adversarial, confirmed by reading) — `.agent/scripts/project_setting.sh:105`
 - [ ] (suggestion) For `tracking=repo`, a `location_path` that exists but is not yet a clone is resolved by `git rev-parse --show-toplevel` to whatever repository holds it (a home dotfiles repo, say) and checked as that repo, rather than reported "unverifiable until cloned"; require the toplevel to be `location_path` itself, or record it on the records-lookup issue (#393), where these combinations become honoured (gemini, confirmed by reading) — `.agent/scripts/_project_registry.sh:1099`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 12:34 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 7 (bbe5fb20, at 56a273a9): 1 mechanical must-fix (design.md Registry and adapters sentence "no such fallback, except in capture.sh" must name project_setting.sh too) and 3 suggestions (case-insensitive .sh guard in both parsers; get gets the parent-root handling; records-repo check must not adopt an enclosing repository for a not-yet-cloned location_path, or record on #393). Ship recommended. Owner's answers: "Fix, then publish after round 8 regardless (Recommended)": one fix pass, one review, then the host answers the round-8 checkpoint publish whatever it finds, leftovers listed in the PR body for post-push triage; and the two stale AGENTS.md Script Reference rows (validate_adapter.sh: unused_settings check; project_setting.sh: parent-root exit 2), Ask First: "Yes, update both rows".
