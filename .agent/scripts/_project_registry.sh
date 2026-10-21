@@ -54,12 +54,13 @@
 #     build, test, install  a command, or 'none' (a recorded "this project
 #                           has none"). The value is split on blanks into
 #                           argv and run without a shell, from the project
-#                           root, with no globbing. Quotes, & | ; < > $ ( )
-#                           ` and backslash are refused, and so is a first
-#                           word VAR=value (no shell applies it): anything
-#                           that needs them is a script, so point the key at
-#                           one (build=./scripts/build.sh, or an absolute
-#                           path).
+#                           root, with no globbing (* ? [ are literal).
+#                           Quotes, & | ; < > $ ( ) ` and backslash are
+#                           refused, and so is a first word VAR=value (no
+#                           shell applies it) and any word starting with ~
+#                           (no shell expands it): anything that needs them
+#                           is a script, so point the key at one
+#                           (build=./scripts/build.sh, or an absolute path).
 #     bootstrap_url         http(s):// or file:// URL of a ros2_colcon
 #                           bootstrap.yaml (replaces MANIFEST_BOOTSTRAP_URL)
 # - a key the project's type never reads is an error, at `set` and in the
@@ -683,6 +684,17 @@ _project_file_value_error() {
                 echo "'$key' starts with an environment assignment '$first': a command here is run without a shell, so it would be run as a command named '$first'; point the key at a script that sets the variable instead ($key=./scripts/$key.sh, relative to the project root, or an absolute path)"
                 return 1
             fi
+            # A word starting with ~ would reach the command literally (no
+            # shell expands it), so ~/bin/build fails as "not found".
+            local -a words=()
+            local w
+            read -r -a words <<< "$value"
+            for w in "${words[@]}"; do
+                if [[ "$w" == "~"* ]]; then
+                    echo "'$key' has a word starting with '~' ('$w'): a command here is run without a shell, so '~' is not expanded and would be passed literally; point the key at a script or an absolute path instead ($key=./scripts/$key.sh, relative to the project root, or /home/<you>/...)"
+                    return 1
+                fi
+            done
             ;;
         bootstrap_url)
             if ! [[ "$value" =~ ^(https?|file)://[^[:space:]]+$ ]]; then

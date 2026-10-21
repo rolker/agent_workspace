@@ -59,8 +59,9 @@
 #
 #   build, test, install  a command run from the project root, split on
 #                         blanks and run without a shell (no quotes, & | ;
-#                         < > $ ( ) ` or backslash, and no leading VAR=value:
-#                         anything needing them is a script, so point the
+#                         < > $ ( ) ` or backslash, no leading VAR=value and
+#                         no word starting with ~, and * ? [ are literal:
+#                         anything needing a shell is a script, so point the
 #                         key at one), or 'none' for
 #                         a recorded "this project has none". ros2_colcon
 #                         reads install only: colcon owns its build and

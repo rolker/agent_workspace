@@ -261,6 +261,33 @@ test_command_env_assignment_refused() {
     assert_eq "VAR=value after the first word is an argument: set exits 0" "0" "$rc"
 }
 
+test_command_tilde_word_refused() {
+    echo "TEST: a command word starting with '~' is refused (no shell expands it); '~' inside a word and glob characters are literal and accepted"
+    local sb f out rc v
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    # The tildes are meant literally: these are the values the check refuses.
+    # shellcheck disable=SC2088
+    for v in '~/bin/build' '~' 'make -C ~/src' 'make DEST=x ~other/y'; do
+        printf 'build=%s\n' "$v" | write_pfile "$sb" alpha
+        rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+        assert_eq "check refuses: $v" "2" "$rc"
+        assert_contains "names the word and points at a script: $v" "has a word starting with '~'" "$out"
+        assert_contains "hint: $v" "point the key at a script or an absolute path" "$out"
+        rc=0; out="$(cd "$sb" && "$sb/.agent/scripts/adapter" --project alpha build 2>&1)" || rc=$?
+        assert_eq "the adapter stops: $v" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+    done
+    rm -f "$f"
+    rc=0; out="$(ps_run "$sb" set alpha "test=~/bin/test" 2>&1)" || rc=$?
+    assert_eq "set refuses it: exit 2" "2" "$rc"
+    assert_contains "set names it" "'test' has a word starting with '~' ('~/bin/test')" "$out"
+    assert_eq "set wrote nothing" "no" "$([ -e "$f" ] && echo yes || echo no)"
+    rc=0; ps_run "$sb" set alpha "build=git log HEAD~1" "test=./run *.py [ab]?" >/dev/null 2>&1 || rc=$?
+    assert_eq "a '~' inside a word and glob characters are accepted: set exits 0" "0" "$rc"
+    assert_eq "stored literally" "./run *.py [ab]?" "$(ps_run "$sb" get alpha test 2>/dev/null)"
+}
+
 test_registry_refuses_dot_sh_name() {
     echo "TEST: a registry name ending in .sh is refused (it would collide with a legacy file)"
     local sb out rc=0
@@ -1288,6 +1315,7 @@ test_grammar_comments_blanks_crlf
 test_grammar_errors
 test_command_shell_syntax_refused
 test_command_env_assignment_refused
+test_command_tilde_word_refused
 test_registry_refuses_dot_sh_name
 test_absent_pair_resolves_to_default
 test_default_outside_layout_comes_from_the_function
