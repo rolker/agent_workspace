@@ -376,3 +376,22 @@ Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; 
 **Decision**: address
 
 Pre-push round 3 (8370f82b) reached MAX_ROUNDS with 1 must-fix (ros2_colcon stores build/test it never reads; silent bootstrap_url fall-through) and 4 suggestions; ship signal "fix and ship". Owner's answer: "Fix then publish (Recommended)": address all five, one more review on the fixed branch, then publish. Host's mechanism choice, open to veto: refuse build/test for a ros2_colcon project at set time rather than document them as ignored.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 10:29 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a8f73bec5a88b2c19, resume 2 of 3)
+
+**Branch**: feature/issue-332 at `050d22a7`
+**Addressed**: Local Review (Pre-Push) at `8062f779` (2026-10-21 10:03 -04:00)
+**Commits**: `f14d1d52`, `6d0d16f9`, `03196b80`, `8e366331`, `d067f944`, `050d22a7`
+
+### Actions
+- [x] (must-fix) ros2_colcon stored build/test it never read, and a shared bootstrap URL was silent. Refusal, not documentation (host's choice, open to the owner's veto): each type lists the keys it never reads, with the reason, in its own data file `.agent/project_types/<type>/unused_settings`, so no script names a type. `set` refuses such a key (exit 1, "colcon owns the build" for ros2_colcon), and the parser, given the type from the registry, reports a hand-written one with file:line and the unset repair, so `check` fails and the adapter stops. Deviation from the host's direction: `install` is NOT refused for ros2_colcon, because `adapter_install` reads it (an optional deploy step after colcon) and the direction also asked to test that read; only `build` and `test` are listed. Same mechanism, not asked for: single_project lists `bootstrap_url` (it never reads it). `_rc_bootstrap_url` now calls `active_project_fallback_note bootstrap_url` for a URL from the shared config. Documented in `projects.local.example`, the registry header and the Registry and adapters bullet (change-log row text and line count 784 refreshed). Tests: `test_type_unused_settings_refused` (refusals, hand edit, repair, ros2_colcon `install` and `install=none` from the settings file) and `test_setup_bootstrap_shared_url_is_reported` in `test_ros2_colcon.sh` (shared URL reported; settings-file and legacy URLs not) — `f14d1d52`, `6d0d16f9`
+- [x] (suggestion) A `projects.d` that exists but is not a searchable directory (regular file, dangling link, no search permission) now fails closed: check exits 2, the adapter stops, set refuses with the reason (path checked before the lock); an absent `projects.d` is still "no file"; new `test_unsearchable_settings_dir_fails_closed` — `03196b80`
+- [x] (suggestion) A command whose first word contains `=` is refused with the "point the key at a script" message; a later `VAR=value` stays an argument; documented; new `test_command_env_assignment_refused` — `8e366331`
+- [x] (suggestion) New `test_set_without_flock_writes_unlocked`: set and unset with a PATH holding every system command except flock succeed and leave no lock or temporary file; it fails against a writer that always takes the lock — `d067f944`
+- [x] (suggestion) `project_setting.sh` header: exit 2 also covers a malformed registry; new `test_malformed_registry_exits_2` covers all five commands — `050d22a7`
+
+Checks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract and the design-anchor check; `test_project_file.sh` 338 passed, 0 failed; `test_ros2_colcon.sh` 200 passed, 0 failed; each new test was run against the code before its fix and failed there; shellcheck `--severity=warning` clean on `_project_registry.sh`, `project_setting.sh`, `adapter`, `ros2_colcon/adapter.sh`, `test_project_file.sh`, `test_ros2_colcon.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
