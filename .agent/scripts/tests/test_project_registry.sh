@@ -1093,6 +1093,7 @@ test_validate_python_parser_matches_shell() {
     echo "r2 single_project $sb/alias2" >> "$sb/.agent/projects.local"
     echo "h single_project $sb/h distro=my-distro" >> "$sb/.agent/projects.local"
     echo "w single_project $sb/w worktrees=$sb/w/../w/x" >> "$sb/.agent/projects.local"
+    echo "tools.sh single_project $sb/tools" >> "$sb/.agent/projects.local"
     # Shell: entries as name|type|path|fields, then errors without the file prefix.
     shell_out="$( { reg "$sb" registry_entries_full "$sb" 2>/dev/null | tr '\t' '|' || true; echo "--errors--"; reg "$sb" registry_entries_full "$sb" 2>&1 >/dev/null | sed -E 's/^ERROR: [^:]+:([0-9]+): /\1: /' || true; } )"
     # Python: the same shape from read_projects_registry.
@@ -1114,6 +1115,8 @@ for err in errors:
     assert_contains "the comparison covered the '..' escape" "for 'climb' must lie under" "$shell_out"
     assert_contains "the comparison covered the alias collision" "'r2' resolves to $sb/real2" "$shell_out"
     assert_contains "the comparison kept the in-root '..' override" "w|single_project|$sb/w|worktrees=$sb/w/x" "$shell_out"
+    assert_contains "the comparison covered a name ending in .sh" "invalid project name 'tools.sh': a name may not end in '.sh'" "$shell_out"
+    assert_not_contains "neither parser keeps the .sh name" "tools.sh|" "$py_out"
 }
 
 test_worktree_create_parent_default_instance() {

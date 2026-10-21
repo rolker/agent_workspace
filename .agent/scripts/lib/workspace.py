@@ -121,6 +121,15 @@ def read_projects_registry(root=None):
         if not _REGISTRY_NAME_RE.match(name) or ".." in name:
             errors.append(f"{registry}:{lineno}: invalid project name '{name}'")
             continue
+        # Project 'x.sh' would own the file .agent/projects.d/x.sh, which is
+        # project 'x''s legacy command config (issue #332).
+        if name.endswith(".sh"):
+            errors.append(
+                f"{registry}:{lineno}: invalid project name '{name}': a name may not end in "
+                f"'.sh' (its settings file would collide with the legacy "
+                f".agent/projects.d/<name>.sh of project '{name[:-3]}')"
+            )
+            continue
         if not _REGISTRY_TYPE_RE.match(ptype):
             errors.append(f"{registry}:{lineno}: invalid or missing project type for '{name}'")
             continue
