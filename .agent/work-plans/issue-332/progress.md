@@ -469,3 +469,13 @@ Dropped: gemini "bare repo gives empty --show-toplevel" (git 2.43 exits 128, so 
 - [ ] (suggestion) A command set in the settings file runs without sourcing the legacy `.sh` or shared `project_config.sh`, so anything those files export (SDK paths, PATH) no longer reaches it once a command is moved into the settings file; no local config exports anything today (checked); document it in both adapter headers, `projects.local.example` and the design bullet (environment setup goes in the script the key points at), and note it for PR 2's adoption step (codex rated must-fix; reproduced by codex, confirmed by reading) — `.agent/project_types/single_project/adapter.sh:43`, `.agent/project_types/ros2_colcon/adapter.sh:640`
 - [ ] (suggestion) A leading `~` in a command value (`test=~/x`) is accepted and stored, then fails at run time (127) because nothing expands it; refuse a `~` word with the "point the key at a script or absolute path" hint, or state in the grammar header and `projects.local.example` that `~` and globs are literal (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:675`
 - [ ] (suggestion) The writer's lock is keyed by project name (`.lock.<name>`), but two projects whose settings files are symlinks to one target take different locks, so concurrent writes can lose an update; lock on the resolved destination or refuse a shared target, with a test (codex) — `.agent/scripts/_project_registry.sh:1289`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 11:13 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 5 (489cd883, cold review at the merge commit c064fead): 1 mechanical must-fix caused by the host's merge of origin/main (four dispatch_phase.sh line citations in docs/design.md went stale) and 3 suggestions (settings-file commands no longer see variables exported by the legacy or shared config: reviewer's choice is to document; a leading '~' stored literally fails at run time; two symlinked settings files sharing a target take different locks). The owner's answer at the round-4 publish checkpoint was "Fix suggestions, then publish"; the host applies it here, since the must-fix is a consequence of the publish path's own merge-from-main, and the owner may veto the S1 documentation choice at publish.
