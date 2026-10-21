@@ -768,6 +768,31 @@ test_set_lock_and_interrupt_cleanup() {
     rm -f "$marker"
 }
 
+test_set_without_flock_writes_unlocked() {
+    echo "TEST: without flock on PATH the writer still writes (unlocked, as its header says) and leaves no lock or temporary file"
+    local sb f out rc nolock t
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    # A PATH holding every command of the system directories except flock.
+    nolock="$(mktemp -d -p "$SANDBOX")"
+    for t in /usr/local/bin/* /usr/bin/* /bin/*; do
+        [ -x "$t" ] && [ ! -d "$t" ] || continue
+        [ "$(basename "$t")" = "flock" ] && continue
+        [ -e "$nolock/$(basename "$t")" ] || ln -s "$t" "$nolock/$(basename "$t")"
+    done
+    assert_eq "the test PATH has no flock" "none" "$(PATH="$nolock" bash -c 'command -v flock || echo none')"
+    rc=0; out="$(cd "$sb" && PATH="$nolock" "$sb/.agent/scripts/project_setting.sh" set alpha build=make 2>&1)" || rc=$?
+    assert_eq "set without flock: exit 0" "0" "$rc"
+    assert_contains "set without flock: updated" "updated $(cd "$sb" && pwd -P)/.agent/projects.d/alpha" "$out"
+    assert_eq "set without flock: written" "build=make" "$(cat "$f")"
+    rc=0; out="$(cd "$sb" && PATH="$nolock" "$sb/.agent/scripts/project_setting.sh" unset alpha build 2>&1)" || rc=$?
+    assert_eq "unset without flock: exit 0" "0" "$rc"
+    assert_eq "unset without flock: file removed" "no" "$([ -e "$f" ] && echo yes || echo no)"
+    assert_eq "no lock file without flock" "no" "$([ -e "$sb/.agent/projects.d/.lock.alpha" ] && echo yes || echo no)"
+    assert_eq "no temporary file left" "" "$(find "$sb/.agent/projects.d" -name '.alpha.*')"
+}
+
 test_outside_without_layout_unregistered() {
     echo "TEST: location=outside without location_path for an unregistered name is refused (empty default layout), not given 'provisional' as a path"
     local sb out rc=0
@@ -1177,6 +1202,7 @@ test_symlink_cases
 test_unsearchable_settings_dir_fails_closed
 test_unknown_key_repair
 test_set_lock_and_interrupt_cleanup
+test_set_without_flock_writes_unlocked
 test_outside_without_layout_unregistered
 test_set_refusals
 test_set_refuses_non_default_records
