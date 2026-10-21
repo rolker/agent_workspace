@@ -273,3 +273,22 @@ Plan review round 3 (77b370d7): ready, all five round-2 items resolved, one low 
 - Step 6, `test_dispatch_phase.sh` (`c17ce5dc`): rule present in workspace implement and address-findings, absent in the other five phases and in a `--type project` implement handoff (placed after the `SBP1` registry assertion, per the round-3 reviewer's note); mutation-checked.
 - Step 7: intermediate commits used `SKIP=validate-script-tests`; one branch-wide `pre-commit run --files` failed on `test_skill_paths.sh`, fixed in `d1186db4`, then re-run on the final tree: every hook passed, script suite included. Shellcheck at warning level clean on the three changed scripts.
 - Open for review: `pre-commit` is not on PATH in a dispatched shell (it lives in the main checkout's `.venv/bin`), so the handoff's literal command fails with "command not found" until the agent finds it.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 10:04 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-399 at `ae892a8c`
+**Base**: main
+**Depth**: Deep (reason: 472 changed lines with the work-plan files; AGENTS.md and .pre-commit-config.yaml are override triggers; Deep dispatches the same specialists as Standard)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck clean on the three scripts; yamllint warnings only on untouched lines), governance, plan drift (all seven planned files changed as planned; the extra commit d1186db4 is a wording fix for test_skill_paths.sh, which passes), Claude adversarial, cross-model (Gemini and Codex both completed, both "No issues found"; Codex ran read-only and did not run tests). test_dispatch_phase 120/0, test_skill_paths 58/0, test_script_tests_hook_scope 121/0. CI backstop verified: validate.yml runs `make lint` (`.venv/bin/pre-commit run --all-files`) and its SKIP list does not include validate-script-tests. Owner decision held: the hook definition is unchanged (comment only).
+
+### Findings
+- [ ] (must-fix) The rule's literal `pre-commit run --files ...` fails with "command not found" in a dispatched worktree shell: pre-commit is only at the main checkout's `.venv/bin/pre-commit` (worktrees have no `.venv`; the Makefile resolves it from git's common dir for this reason, issue #272), and the permission allowlist matches only `/home/roland/agent_workspace/.venv/bin/pre-commit run *`. Have `dispatch_phase.sh` print the absolute path (`$ROOT_DIR/.venv/bin/pre-commit`, ROOT_DIR is already the main checkout), make the skill, run-issue and AGENTS.md texts name the main checkout's venv pre-commit, and pin the path in the test — `.agent/scripts/dispatch_phase.sh:379`, `.claude/skills/address-findings/SKILL.md:173`, `.claude/skills/run-issue/SKILL.md:317`, `AGENTS.md:430`
+- [ ] (suggestion) The once-per-pass run includes the script suite (about 5 minutes), longer than the Bash tool's 120 s default timeout, so an agent that runs it as written gets it backgrounded and may read it as passed or abandon it; tell the agent to give it a long timeout (up to 600000 ms) or run it in the background and wait for the exit — `.agent/scripts/dispatch_phase.sh:379`, `.claude/skills/address-findings/SKILL.md:172`
+- [ ] (suggestion) `main...HEAD` is the wrong base for a sub-issue worktree (`--parent-issue` branches from the parent's feature branch, worktree_create.sh:800-815): the run then also checks the parent's files and can fail on files the pass never touched; say so in the rule or derive the base. Paths are also word-split by the unquoted `$(...)` (no such paths in the repo today) — `.agent/scripts/dispatch_phase.sh:379`
