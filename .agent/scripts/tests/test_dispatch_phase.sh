@@ -446,6 +446,30 @@ for sk in implement address-findings; do
         && pass "handoff: $sk (workspace) conventions= carries the once-per-pass hook rule, CI backstop, and the existing conventions" \
         || fail "handoff $sk once-per-pass rule (conv=$conv)"
 done
+# A main checkout whose path has a space: the rule prints ROOT_DIR through
+# printf %q, so the printed command runs as written. The fake pre-commit
+# proves the escaped path resolves to the right executable (round 2,
+# suggestion); the ordinary-path case above pins the unchanged form.
+SBS="$SANDBOX/root with space"
+mkdir -p "$SBS/.agent/scripts" "$SBS/worktrees/workspace" "$SBS/.venv/bin"
+git -C "$SBS" init -q -b main
+git -C "$SBS" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+    cp "$SCRIPT_DIR/../$f" "$SBS/.agent/scripts/"
+done
+git -C "$SBS" worktree add -q "$SBS/worktrees/workspace/issue-workspace-9" -b feature/issue-9 >/dev/null 2>&1
+printf '#!/usr/bin/env bash\necho "fake-pre-commit $*"\n' > "$SBS/.venv/bin/pre-commit"
+chmod +x "$SBS/.venv/bin/pre-commit"
+out=$(cd "$SBS" && AGENT_NAME=t AGENT_EMAIL=t@t bash .agent/scripts/dispatch_phase.sh --issue 9 --skill address-findings 2>&1); rc=$?
+conv=$(printf '%s\n' "$out" | grep '^conventions=')
+want_prefix="$(printf '%q' "$SBS")/.venv/bin/pre-commit run --files "
+printed="${conv#*\`"$want_prefix"}"
+[[ "$rc" -eq 0 && "$printed" != "$conv" ]] && printed="$want_prefix${printed%%\`*}" || printed=""
+ran=$([[ -n "$printed" ]] && cd "$SBS" && bash -c "$printed" 2>&1)
+[[ -n "$printed" && "$printed" == *'root\ with\ space/.venv/bin/pre-commit'* && "$ran" == "fake-pre-commit run --files"* ]] \
+    && pass "handoff: a main checkout path with a space prints escaped (printf %q) and the printed command runs" \
+    || fail "handoff spaced root (rc=$rc printed=$printed ran=$ran conv=$conv)"
+
 for sk in review-issue plan-task review-plan review-code triage-reviews; do
     out=$(run_handoff --issue 9 --skill "$sk" --pr 42)
     conv=$(printf '%s\n' "$out" | grep '^conventions=')
