@@ -418,3 +418,13 @@ Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; 
 - [ ] (suggestion) Nothing validates `unused_settings`: a misspelt key is inert and a line with no reason prints an empty reason; have `validate_adapter.sh` check each line names a known key and has a reason, with a test (Claude adversarial, confirmed by execution) — `.agent/scripts/validate_adapter.sh`
 - [ ] (suggestion) The AGENTS.md Script Reference row for `project_setting.sh` omits that `set` refuses, and `check` fails, a key the project's type never reads (`unused_settings`), which the design, example file and header all state (Claude adversarial) — `AGENTS.md:408`
 - [ ] (suggestion) Legacy compatibility: the adapters now clear `BUILD_CMD`/`TEST_CMD`/`INSTALL_CMD` before sourcing the legacy or shared config, so a value inherited from the environment (or a config using `${BUILD_CMD:-make}`) is no longer honoured as on main; no local config relies on it (checked), so name the change in the PR body or keep the inherited value (codex rated must-fix) — `.agent/project_types/single_project/adapter.sh:44`, `.agent/project_types/ros2_colcon/adapter.sh:645`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:47 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Pre-push round 4 (7b09bc7e): approved, ship recommended, 0 must-fix, 4 suggestions (unused_settings fails open when unreadable or CRLF; nothing validates unused_settings; the AGENTS.md project_setting.sh row omits the per-type refusal; adapters clear env-inherited BUILD_CMD/TEST_CMD/INSTALL_CMD). Owner's answers: "Fix suggestions, then publish"; the three host choices stand (legacy .sh is the whole legacy layer; per-type unused keys refused, install allowed for ros2_colcon; env-inherited commands cleared); and the AGENTS.md Script Reference row for project_setting.sh (Ask First): "Yes, approve the row".
