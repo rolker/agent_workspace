@@ -411,3 +411,13 @@ Pre-push round 3 (ea81e82c): approved, 0 must-fix, 1 cosmetic suggestion (a 101-
 - [ ] (suggestion, cosmetic, Local Review (Pre-Push) R3 @ `067fbcd7`) Reflow miss from the deleted-paths edit, still present at the head: line 189 is 101 characters ("here; CI's all-files run covers it); run no separate suite. It takes several minutes, longer than the") in a paragraph wrapped at about 75; re-wrap lines 186-193 of that paragraph, text unchanged — `.claude/skills/address-findings/SKILL.md`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:44 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+Integrated Review (28fbc09e) at PR #401 head 72cede46: one open box, cosmetic (a 101-character line in the address-findings skill); Copilot out of quota, no human reviews, CI pending (Lint). Owner's answer: "Merge, defer the reflow (Recommended)".
