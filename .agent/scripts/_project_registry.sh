@@ -623,6 +623,21 @@ PROJECT_RECORDS_LOOKUP_ISSUE="#393"
 # The workspace's own plugin name, one of its marker files' contents.
 _WORKSPACE_PLUGIN_NAME="agent-workspace"
 
+# Is $1 exactly one of the words in the space-separated list $2? A whole-word
+# comparison, never a substring test: "build test" or "location
+# location_path" must not pass as a key because it appears inside the list.
+# Usage: _project_file_key_in "$key" "$_PROJECT_FILE_KEYS"
+_project_file_key_in() {
+    local want="$1" k
+    local -a list
+    [ -n "$want" ] || return 1
+    read -r -a list <<< "$2"
+    for k in "${list[@]}"; do
+        [ "$k" = "$want" ] && return 0
+    done
+    return 1
+}
+
 # Print the per-project settings file path.
 # Usage: file=$(project_file_path "$root" "$name")
 project_file_path() {
@@ -785,7 +800,7 @@ _project_file_parse() {
         fi
         key="$(_project_file_trim "${line%%=*}")"
         value="$(_project_file_trim "${line#*=}")"
-        if [[ "$_PROJECT_FILE_KEYS" != *" $key "* ]] || [ -z "$key" ]; then
+        if ! _project_file_key_in "$key" "$_PROJECT_FILE_KEYS"; then
             echo "ERROR: ${file}:${lineno}: unknown key '$key' (known keys: $known)" >&2
             rc=2; continue
         fi
@@ -1052,7 +1067,7 @@ project_file_set() {
             echo "ERROR: expected key=value or -key, got '$arg'" >&2
             return 1
         fi
-        if [[ "$_PROJECT_FILE_KEYS" != *" $key "* ]] || [ -z "$key" ]; then
+        if ! _project_file_key_in "$key" "$_PROJECT_FILE_KEYS"; then
             local known="${_PROJECT_FILE_KEYS# }"; known="${known% }"
             echo "ERROR: unknown key '$key' (known keys: $known)" >&2
             return 1
@@ -1067,7 +1082,7 @@ project_file_set() {
                 return 1
             fi
         done
-        [[ "$_PROJECT_RECORDS_KEYS" == *" $key "* ]] && touches_records=1
+        _project_file_key_in "$key" "$_PROJECT_RECORDS_KEYS" && touches_records=1
         keys+=("$key"); vals+=("$arg")
     done
 

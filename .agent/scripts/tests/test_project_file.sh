@@ -488,6 +488,31 @@ install=none" "$(cat "$f")"
     assert_eq "file gone" "no" "$([ -e "$f" ] && echo yes || echo no)"
 }
 
+test_composite_keys_refused() {
+    echo "TEST: a key made of several known keys ('build test', 'location location_path') is unknown, in the parser and the writer"
+    local sb f out rc ck
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    for ck in "build test" "location location_path" "test install" "tracking instructions"; do
+        printf '%s=foo\n' "$ck" | write_pfile "$sb" alpha
+        rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+        assert_eq "parser, '$ck': check exits 2" "2" "$rc"
+        assert_contains "parser, '$ck': named as an unknown key" "$f:1: unknown key '$ck'" "$out"
+        rc=0; out="$(ps_run "$sb" get alpha build 2>&1)" || rc=$?
+        assert_eq "parser, '$ck': get on the invalid file exits 2" "2" "$rc"
+        rm -f "$f"
+
+        rc=0; out="$(ps_run "$sb" set alpha "$ck=foo" 2>&1)" || rc=$?
+        assert_eq "writer, '$ck': set exits 1" "1" "$rc"
+        assert_contains "writer, '$ck': named as an unknown key" "unknown key '$ck'" "$out"
+        assert_eq "writer, '$ck': no file written" "no" "$([ -e "$f" ] && echo yes || echo no)"
+        rc=0; out="$(ps_run "$sb" unset alpha "$ck" 2>&1)" || rc=$?
+        assert_eq "writer, '$ck': unset exits 1" "1" "$rc"
+    done
+    assert_eq "no temporary file left" "" "$(find "$sb/.agent/projects.d" -name '.alpha.*' 2>/dev/null)"
+}
+
 test_set_refusals() {
     echo "TEST: set refuses invalid results, unknown keys, unregistered names and parent roots, leaving the file as it was"
     local sb f out rc before
@@ -725,6 +750,7 @@ test_records_dir_inside_workspace_repo
 test_dispatcher_refuses_workspace_records_repo
 test_set_get_list_idempotent
 test_set_keeps_comments_and_order
+test_composite_keys_refused
 test_set_refusals
 test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes
