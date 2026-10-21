@@ -627,6 +627,21 @@ test_worktree_copy_reads_main_and_refuses_writes() {
     assert_eq "main file unchanged" "make" "$(ps_run "$sb" get alpha build)"
 }
 
+test_run_through_scripts_symlink() {
+    echo "TEST: project_setting.sh run through the root 'scripts' symlink finds its own workspace"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    ln -s .agent/scripts "$sb/scripts"
+    out="$(cd "$sb" && "$sb/scripts/project_setting.sh" set alpha build=make 2>&1)" || rc=$?
+    assert_eq "set through the symlink: exit 0" "0" "$rc"
+    assert_contains "writes this workspace's file" "updated $(cd "$sb" && pwd -P)/.agent/projects.d/alpha" "$out"
+    rc=0; out="$(cd "$sb" && "$sb/scripts/project_setting.sh" get alpha build 2>&1)" || rc=$?
+    assert_eq "get through the symlink: exit 0" "0" "$rc"
+    assert_eq "get reads this workspace's file" "make" "$out"
+    assert_eq "nothing written beside the sandbox" "no" "$([ -e "$(dirname "$sb")/.agent" ] && echo yes || echo no)"
+}
+
 # ---- Dispatcher and adapters ----
 
 test_build_test_install_from_file() {
@@ -812,6 +827,7 @@ test_set_keeps_mode_and_symlink
 test_set_refusals
 test_set_refuses_non_default_records
 test_worktree_copy_reads_main_and_refuses_writes
+test_run_through_scripts_symlink
 test_build_test_install_from_file
 test_relative_script_path
 test_none_values

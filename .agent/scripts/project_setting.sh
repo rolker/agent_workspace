@@ -34,7 +34,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=_project_registry.sh
 source "$SCRIPT_DIR/_project_registry.sh"
 
@@ -44,7 +44,7 @@ usage() {
 
 # The workspace checkout this copy belongs to, and the main checkout when
 # it is a linked worktree (the parent of git's common dir).
-ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 MAIN_ROOT="$ROOT"
 _GITDIR="$(cd "$ROOT" && cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || _GITDIR=""
 _COMMON="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || _COMMON=""
