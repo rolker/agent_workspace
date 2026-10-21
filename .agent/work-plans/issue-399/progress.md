@@ -181,3 +181,13 @@ All seven round 1 findings are resolved, the header one only partly. Three small
 - [ ] Put the header sentence after line 19, not line 16.
 - [ ] (suggestion) Name the file-list command for the single pre-commit run.
 - [ ] (suggestion) Say "at most once" for the suite run.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 09:35 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Plan review round 2 (ee17ac4c): needs-work, all seven round-1 must-fixes resolved, three new must-fixes (workspace-only rule emission, test wording, header insertion point) and two suggestions (name the file-list command, "at most once"). Owner's answer: "Revise (Recommended)".
