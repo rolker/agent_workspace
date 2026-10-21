@@ -582,3 +582,22 @@ Dropped: gemini local/file:// remote vs a shared upstream and push URLs (outside
 **Decision**: address
 
 Pre-push round 7 (bbe5fb20, at 56a273a9): 1 mechanical must-fix (design.md Registry and adapters sentence "no such fallback, except in capture.sh" must name project_setting.sh too) and 3 suggestions (case-insensitive .sh guard in both parsers; get gets the parent-root handling; records-repo check must not adopt an enclosing repository for a not-yet-cloned location_path, or record on #393). Ship recommended. Owner's answers: "Fix, then publish after round 8 regardless (Recommended)": one fix pass, one review, then the host answers the round-8 checkpoint publish whatever it finds, leftovers listed in the PR body for post-push triage; and the two stale AGENTS.md Script Reference rows (validate_adapter.sh: unused_settings check; project_setting.sh: parent-root exit 2), Ask First: "Yes, update both rows".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 12:52 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a44f63a2874f8018e, resume 2 of 3)
+
+**Branch**: feature/issue-332 at `b07050a5`
+**Addressed**: Local Review (Pre-Push) at `56a273a9` (2026-10-21 12:32 -04:00)
+**Commits**: `a06e523e`, `5fc35f35`, `46abd214`, `4f7ab94e`, `b07050a5`
+
+### Actions
+- [x] (must-fix) Registry and adapters now says the registry has no worktree fallback except in two scripts, `capture.sh` and `project_setting.sh` (which also reads the main checkout's settings files and refuses to write them from a worktree, checked against `project_setting.sh:54-60`); the #332 change-log row names it, with 109 section lines and 790 file lines — `a06e523e`, `docs/design.md:264`
+- [x] (suggestion) Both parsers refuse a name ending in `.sh` in any letter case (`*.[sS][hH]` in bash, so no bash-4 `${,,}`; `name.lower()` in Python), with the same message saying "in any letter case"; `projects.local.example` says so; the parity test gains `kit.SH` and `box.sH` lines (their three checks fail on the old parsers) — `5fc35f35`, `.agent/scripts/_project_registry.sh:155`, `.agent/scripts/lib/workspace.py:127`
+- [x] (suggestion) `get` on a parent root exits 2 with the INVALID message and prints no value when the parent has a file, and exits 1 saying the settings belong to its instances when not; the parent checks share helpers; `test_parent_root_settings_file_is_flagged` covers `get` (its four `get` checks fail on the old script) — `46abd214`, `.agent/scripts/project_setting.sh:115`
+- [x] (suggestion) Not as literally suggested: when the toplevel is not `location_path` itself, the result is "unverifiable until cloned" (exit 3, the note naming why), as the plan's wording says (`location_path` is the records clone; an uncloned one is unverifiable); but the enclosing repository is still refused when it is a workspace (its own repository or a copy), because records there would be committed into it and `test_records_dir_inside_workspace_repo` pins that refusal. No conflict with the #393 plan wording, so nothing recorded there. New `test_records_path_inside_another_repo_is_unverifiable` (inside a dotfiles repo: unverifiable with the reason; once cloned there: verified; absent: unverifiable; inside a workspace copy: refused); its two note checks fail on the old code — `4f7ab94e`, `.agent/scripts/_project_registry.sh:1140`
+- [x] (owner-approved, Ask First) AGENTS.md in its own commit: the `validate_adapter.sh` row names the `unused_settings` list check; the `project_setting.sh` row's exit codes name the parent-root exit 2 (for `check`, `get` and `list`) — `b07050a5`, `AGENTS.md:407-408`
+
+Checks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract, the design-anchor check, shellcheck, black, flake8 and pylint (flake8 with the repo's `--max-line-length=100`); `test_project_file.sh` 426 passed and `test_project_registry.sh` 263 passed, 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `-S warning` clean on `_project_registry.sh`, `project_setting.sh`, `test_project_file.sh`, `test_project_registry.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
