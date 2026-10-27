@@ -585,6 +585,19 @@ TYPE_TO_SKILL = {
 }
 
 
+def restart_start():
+    # Index of the first entry after the newest **Decision**: restart
+    # checkpoint (0 when there is none). The owner restated the goal
+    # (/orchestrator recipe (a)), so the new work starts here: round_count()
+    # counts reviews from it and skill_for() names phases from it.
+    start = 0
+    for i, e in enumerate(entries):
+        if e.get("base_type") == "Checkpoint" \
+                and ((e.get("fields") or {}).get("Decision") or "").strip().lower() == "restart":
+            start = i + 1
+    return start
+
+
 def skill_for(entry):
     b = entry.get("base_type")
     if b == "Implementation":
@@ -605,8 +618,12 @@ def skill_for(entry):
         # "## Implementation" on the timeline this is still the implement
         # pass. Ordinal position alone ("is this the first one?") would
         # misroute a second consecutive failed implement: retry -> failed
-        # again must still name **Phase**: implement (issue #314).
-        for e in entries:
+        # again must still name **Phase**: implement (issue #314). Only
+        # entries after the newest restart checkpoint count, the same start
+        # round_count() uses: a restart begins the new work at its first
+        # implement, so a complete Implementation from before it does not
+        # make the next failed pass an address-findings pass (issue 321).
+        for e in entries[restart_start():]:
             if e is entry:
                 break
             if e.get("base_type") == "Implementation" \
@@ -634,13 +651,8 @@ def round_count():
     # goal, /orchestrator recipe (a)): the new work starts at round 1. The
     # same rule as review_progress.sh round, which the round-3 handoff uses.
     branch = (E.get("correlation") or {}).get("branch")
-    start = 0
-    for i, e in enumerate(entries):
-        if e.get("base_type") == "Checkpoint" \
-                and ((e.get("fields") or {}).get("Decision") or "").strip().lower() == "restart":
-            start = i + 1
     n = 0
-    for e in entries[start:]:
+    for e in entries[restart_start():]:
         if e.get("base_type") == "Local Review (Pre-Push)":
             c = e.get("correlation") or {}
             if c.get("kind") == "branch" and c.get("branch") == branch \

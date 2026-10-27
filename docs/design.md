@@ -459,7 +459,7 @@ sessions walk the same order by hand, one `SKILL.md` at a time
 - **The next step is routed on the newest entry.** `dispatch_phase.sh next` routes on the newest entry
   and, as its one other input, the pull request state; it reads earlier entries for two things only, the
   count of completed pre-push reviews on the branch since the newest `**Decision**: restart` checkpoint (`round_count`; a restart begins the new work at round 1) and whether a failed `Implementation`
-  entry belongs to `address-findings` (`skill_for`); it makes no `gh` call and returns one action from a
+  entry belongs to `address-findings` (`skill_for`, which also looks only after that checkpoint); it makes no `gh` call and returns one action from a
   28-row table (`dispatch_phase.sh` header). A partial or failed newest entry is always a `phase-failed`
   checkpoint, never a silent retry.
 - **Each phase but `publish` and `merge` runs in a fresh sub-agent**, except that a repeat of a phase in

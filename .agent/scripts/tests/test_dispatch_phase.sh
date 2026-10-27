@@ -247,6 +247,28 @@ assert_next "round_count: after a restart, the new work reaches MAX_ROUNDS only 
 $(local_review_prepush complete changes-requested feature/issue-9 eee5555)
 $(local_review_prepush complete changes-requested feature/issue-9 fff6666)" checkpoint:rounds "round=3"
 
+echo "TEST: next -- skill_for after a restart (a failed first implement of the new work)"
+RESTART_THEN_FAILED_IMPL="$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$(implementation complete addressed)
+$(checkpoint rounds restart)
+$(issue_review complete 0)
+$(plan_authored complete)
+$(plan_review complete)
+$(checkpoint plan proceed)
+$(implementation failed "")"
+assert_next "skill_for: after a restart, a failed implement with no **Addressed** maps to implement -- the complete Implementations before the restart do not count" none \
+    "$RESTART_THEN_FAILED_IMPL" checkpoint:phase-failed "phase=implement"
+assert_next "skill_for: the retry answer to that checkpoint dispatches implement, not address-findings" none \
+    "$RESTART_THEN_FAILED_IMPL
+$(checkpoint phase-failed retry implement)" implement
+assert_next "skill_for: after a restart and a complete implement of the new work, a failed pass with no **Addressed** still maps to address-findings" none \
+    "$RESTART_THEN_FAILED_IMPL
+$(checkpoint phase-failed retry implement)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 bbb2222)
+$(implementation failed "")" checkpoint:phase-failed "phase=address-findings"
+
 echo "TEST: next -- a restart checkpoint as the newest entry (orchestrator recipe (a))"
 assert_next "restart: a restart checkpoint with no entry after it routes to row 28, checkpoint:unexpected (the host then dispatches review-issue)" none \
     "$TWO_ROUNDS
