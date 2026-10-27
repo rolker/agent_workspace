@@ -950,8 +950,10 @@ Rules for the report:
     then the same draft, fork and review words.
   - Last, after a period, the path step 3 printed: `Path 1`, `Path 2`,
     `no path` or "path unknown (steps not checked)". A branch with only a
-    pull request has no timeline here: `no path`, unless its issue is
-    named by a Direction line.
+    pull request has no timeline here, so no Serves line was read:
+    `Path 1` when a Direction line names its issue, else "path unknown
+    (no worktree, timeline not read)". Never `no path`, which says the
+    work serves neither path.
 - **Problems** in words: the Decision register's newest `yes <date>` is
   the "last design-decision review", its `not yet` rows "design
   decisions not yet reviewed"; digest entries are "research topics".

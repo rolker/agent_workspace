@@ -1223,6 +1223,13 @@ else
 fi
 grep -qF 'By default it is the focus: Path 1, Path' "$SKILL" && grep -qF '`no path`' "$SKILL" \
     && pass "(skill 8) the report marks each item's path and asks for the focus" || fail "(skill 8) path words or focus question missing"
+# A pull request with no worktree has no timeline read, so it is never
+# `no path` (work that serves neither path): Path 1 by a Direction line,
+# else path unknown.
+sk_flat="$(tr '\n' ' ' < "$SKILL" | tr -s ' ')"
+grep -qF 'A branch with only a pull request has no timeline here, so no Serves line was read: `Path 1` when a Direction line names its issue, else "path unknown (no worktree, timeline not read)". Never `no path`' <<< "$sk_flat" \
+    && pass "(skill 8) a pull request with no worktree is Path 1 by a Direction line, else path unknown, never no path" \
+    || fail "(skill 8) a pull request with no worktree: path words missing or it is still labelled no path"
 
 echo "TEST: sit-rep step 5 takes issue numbers from the line's own cells only, text kept as written"
 cat > "$WS/.agent/scripts/worktree_list.sh" <<'EOF'
