@@ -508,6 +508,39 @@ test_records_dir_inside_workspace_repo() {
     assert_not_contains "not refused" "must not be a workspace" "$out"
 }
 
+test_get_runs_the_records_check() {
+    echo "TEST: get refuses (exit 2) a file whose records repository is a workspace, as check and list do; a valid file not yet honoured still answers"
+    local sb out rc recs
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    recs="$(mktemp -d -p "$SANDBOX")"
+    gitq clone --quiet "$sb" "$recs/clone"
+    printf 'build=make\nlocation=outside\nlocation_path=%s\ntracking=repo\n' "$recs/clone" | write_pfile "$sb" alpha
+    rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
+    assert_eq "check refuses it (exit 2)" "2" "$rc"
+    rc=0; out="$(ps_run "$sb" list alpha 2>&1)" || rc=$?
+    assert_eq "list refuses it (exit 2)" "2" "$rc"
+    rc=0; out="$(ps_run "$sb" get alpha build 2>/dev/null)" || rc=$?
+    assert_eq "get of an unrelated key refuses it (exit 2)" "2" "$rc"
+    assert_eq "get prints no value on stdout" "" "$out"
+    rc=0; out="$(ps_run "$sb" get alpha build 2>&1 >/dev/null)" || rc=$?
+    assert_contains "get says why" "a records repository must not be a workspace" "$out"
+    assert_contains "get names the file" "INVALID: $(pfile "$sb" alpha): records settings refused" "$out"
+    rc=0; out="$(ps_run "$sb" get alpha nosuchkey 2>/dev/null)" || rc=$?
+    assert_eq "get of an absent key refuses it too (exit 2, not 1)" "2" "$rc"
+
+    # Valid but not yet honoured (check exits 3): get answers.
+    printf 'build=make\nlocation=outside\nlocation_path=%s\ntracking=untracked\n' "$sb/.agent/scratchpad/records" | write_pfile "$sb" alpha
+    mkdir -p "$sb/.agent/scratchpad/records"
+    rc=0; ps_run "$sb" check alpha >/dev/null 2>&1 || rc=$?
+    assert_eq "untracked records: check exits 3" "3" "$rc"
+    rc=0; out="$(ps_run "$sb" get alpha build 2>&1)" || rc=$?
+    assert_eq "untracked records: get exits 0" "0" "$rc"
+    assert_eq "untracked records: get prints only the value" "make" "$out"
+    rc=0; ps_run "$sb" get alpha install >/dev/null 2>&1 || rc=$?
+    assert_eq "untracked records: absent key still exit 1" "1" "$rc"
+}
+
 test_dispatcher_refuses_workspace_records_repo() {
     echo "TEST: the dispatcher stops when the records repository is a workspace"
     local sb out rc=0 recs
@@ -1516,6 +1549,7 @@ test_records_repo_workspace_by_local_path
 test_records_repo_workspace_by_contents
 test_records_dir_inside_workspace_repo
 test_records_path_inside_another_repo_is_unverifiable
+test_get_runs_the_records_check
 test_dispatcher_refuses_workspace_records_repo
 test_set_get_list_idempotent
 test_set_keeps_comments_and_order

@@ -121,8 +121,20 @@ case "$CMD" in
             echo "($1 is not set: '$NAME' is a parent root; settings belong to its instances (${_inst:-none registered}))" >&2
             exit 1
         fi
+        ENTRIES="$(project_file_entries "$MAIN_ROOT" "$NAME")" || exit 2
+        # The records settings are checked as check and list check them: a
+        # file they refuse (a records repository that is a workspace) is
+        # invalid, whichever key is asked for. Not yet honoured (3) is
+        # still a valid file, so get answers.
         _RC=0
-        project_file_get "$MAIN_ROOT" "$NAME" "$1" || _RC=$?
+        _ERR="$(_project_records_check_entries "$MAIN_ROOT" "$NAME" "$ENTRIES" 2>&1 >/dev/null)" || _RC=$?
+        if [ "$_RC" -eq 2 ]; then
+            printf '%s\n' "$_ERR" >&2
+            echo "INVALID: $FILE: records settings refused (run: project_setting.sh check $NAME)" >&2
+            exit 2
+        fi
+        _RC=0
+        _project_file_value_of "$ENTRIES" "$1" || _RC=$?
         [ "$_RC" -eq 1 ] && echo "($1 is not set in $FILE)" >&2
         exit "$_RC"
         ;;
