@@ -639,3 +639,13 @@ Codex drop re-examined and reversed: the local review dropped "SIGTERM to the CL
 - [ ] (suggestion, codex via Local Review drop list, reinstated) A writer whose parent `project_setting.sh` is killed by PID keeps running orphaned and can write after a later `set`, overwriting it. Fix: in `_project_file_set_locked`, capture the parent PID (`$$` in the subshell) and abort without writing (`return 1`, temp file removed by the EXIT trap) if `kill -0 "$$"` fails, both after the lock is taken and immediately before `mv`. Add a test: hold the lock, start `set`, kill the parent PID, release the lock, and assert the file is unchanged and no temp file is left — `.agent/scripts/_project_registry.sh:1366`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-27 13:59 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+PR 403 Integrated Review (b086e468, at 91366fc3): 3 valid suggestions, no must-fix (get skips the records check; bash-4-only ${1,,} in _records_norm_url silently skips the remote-URL refusal on bash 3.2; an orphaned writer subshell can take the lock later and overwrite a newer set). Host recommended addressing all three before merging. Owner's answer: "A yes, fix first".
