@@ -414,6 +414,15 @@ test_records_repo_workspace_by_remote_url() {
     refuse_case "ssh form with a port" "$sb" "$recs/r2" "is the workspace's remote 'origin'"
 }
 
+test_no_bash4_case_conversion() {
+    echo "TEST: the settings-file code uses no bash 4 case conversion (bash 3.2 would leave the remote-URL comparison empty and skip the refusal)"
+    local f hits
+    for f in _project_registry.sh project_setting.sh; do
+        hits="$(grep -nE '\$\{[^}]*(,,?|\^\^?)\}' "$REAL_ROOT/.agent/scripts/$f" | grep -vE '^[0-9]+:[[:space:]]*#' || true)"
+        assert_eq "$f: no \${x,,} or \${x^^}" "" "$hits"
+    done
+}
+
 test_records_repo_workspace_by_local_path() {
     echo "TEST: records repository whose remote is a local path or file:// URL at the workspace or a worktree is refused"
     local sb recs wt
@@ -1545,6 +1554,7 @@ test_default_outside_layout_comes_from_the_function
 test_valid_combinations_on_acceptance_shape
 test_refused_combinations
 test_records_repo_workspace_by_remote_url
+test_no_bash4_case_conversion
 test_records_repo_workspace_by_local_path
 test_records_repo_workspace_by_contents
 test_records_dir_inside_workspace_repo

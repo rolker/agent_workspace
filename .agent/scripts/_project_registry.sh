@@ -1049,9 +1049,12 @@ _records_local_remote_path() {
 
 # Normalise a network remote URL to "host/owner/repo" (lowercase; scheme,
 # user, port, trailing '/' and '.git' dropped) so https, ssh and scp forms
-# of one repository compare equal.
+# of one repository compare equal. tr, not ${1,,}: bash 3.2 (macOS
+# /bin/bash) has no case conversion, and an empty result there would skip
+# the workspace-remote refusal.
 _records_norm_url() {
-    local u="${1,,}"
+    local u
+    u="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
     u="${u%/}"; u="${u%.git}"; u="${u%/}"
     if [[ "$u" =~ ^[a-z][a-z0-9+.-]*://([^/@]*@)?([^/:]+)(:[0-9]*)?/+(.*)$ ]]; then
         printf '%s/%s\n' "${BASH_REMATCH[2]}" "${BASH_REMATCH[4]}"
