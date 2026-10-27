@@ -715,3 +715,18 @@ Finding 1 checked against the code: errexit does cover the one caller today (`pr
 **Decision**: address
 
 PR 403 Integrated Review (ead948c6, at 99626d24): 2 valid suggestions, no must-fix (the temp-file writer's printf calls rely on the caller's set -e, so a caller inside a condition can save a cut-off file; the no-bash-4 test regex flags legal bash and misses the pattern form). Host recommended fixing both and proposed a standing rule for this PR: fix every valid finding until a round comes back clean, then bring the merge. Owner's answer: "fix 403". Host reads it as the rule accepted for this PR, stated in the hand-back for veto.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-27 14:35 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `1adf7f20`
+**Addressed**: Integrated Review at `99626d24` (2026-10-27 14:17 -04:00)
+**Commits**: 8a130df3, 1adf7f20
+
+### Actions
+- [x] Each of the three `printf` calls writing the temporary settings file ends with `|| exit 1`, so a failed write stops the writer when it is called from a condition; new `test_set_stops_on_a_failed_write_inside_a_condition` shadows `printf` to fail on a kept, a replaced and an appended line and expects a non-zero exit, the file unchanged and no temporary file left (confirmed failing on the old code: 7 of 12 assertions) — `.agent/scripts/_project_registry.sh:1412`
+- [x] The no-bash-4 guard uses `\$\{([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)`, with a self-check against six samples it must catch and four legal ones it must skip (the old pattern misses `${x,,[A-Z]}` and matches `${x:-,}`, `${x%^}`) — `.agent/scripts/tests/test_project_file.sh:421`
+
+Hook run: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, exit 0 (script test suite included, passed).
