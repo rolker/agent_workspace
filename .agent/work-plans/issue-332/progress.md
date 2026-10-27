@@ -730,3 +730,22 @@ PR 403 Integrated Review (ead948c6, at 99626d24): 2 valid suggestions, no must-f
 - [x] The no-bash-4 guard uses `\$\{([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)`, with a self-check against six samples it must catch and four legal ones it must skip (the old pattern misses `${x,,[A-Z]}` and matches `${x:-,}`, `${x%^}`) — `.agent/scripts/tests/test_project_file.sh:421`
 
 Hook run: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, exit 0 (script test suite included, passed).
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-27 14:39 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #403 at `8798ed5d`
+**Depth**: convergence check (round 3 of PR-mode review; rounds 1 at `91366fc3`, 2 at `b9bfcd61`), under the owner's round-3 exception from issue 320 as the host's handoff stated it; no cross-model reviewers, no fresh Claude adversarial. The "Round-3 convergence check" section named in the handoff was not found in `review_depth_classification.md` (worktree or main checkout); scope taken from the handoff.
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: the Integrated Review's two findings (at `99626d24`) and the fix diff `ead948c6..8798ed5d` minus work plans (commits 8a130df3, 1adf7f20; 2 files, +48 -5). Local HEAD equals PR head; 0 behind origin/main.
+Fix 1 closed: the three `printf` calls in the `{ ... } > "$tmp"` group end with `|| exit 1`; the group runs in the `( _project_file_set_locked )` subshell, so `exit 1` ends the writer, its EXIT trap removes the temporary file, and `project_file_set` returns 1. New `test_set_stops_on_a_failed_write_inside_a_condition` covers all three writes; confirmed here against the pre-fix writer (ead948c6's `_project_registry.sh` in a throwaway detached worktree): 7 failures, exactly the new test's (the appended-key case on old code yields an unchanged file, so only its exit-status assertion fails, which is still the writer's printf).
+Fix 2 closed: the new regex catches `${x,,[A-Z]}`, `${arr[0],,}`, `${x[@],,}`, `${x[${i}],,}`, nested `${x:-${y,,}}`, and skips `${x:-,}`, `${x%^}`, `${x//,/ }`, `${x#^}`, `${x:+^}`, `${x[,]}`; ten-sample self-check runs in the test.
+Verified: `bash .agent/scripts/tests/test_project_file.sh` 471 passed, 0 failed; shellcheck --severity=warning clean on both changed files (`.venv/bin/shellcheck`).
+CI at review time (`gh pr checks 403`): Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs; Lint (pre-commit) pending on both.
+
+### Findings
+- [ ] (suggestion) The new no-bash-4 regex misses indirect expansion with case conversion, `${!y,,}` (valid bash 4, prints the lowercased value; bash 3.2 rejects it), which the old pattern did catch, so the fix narrows the guard on that one form; allow an optional `!` after `${`: `\$\{!?([A-Za-z_]...`, and add `${!x,,}` to the catch samples — `.agent/scripts/tests/test_project_file.sh:423`
