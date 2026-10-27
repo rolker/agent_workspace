@@ -987,6 +987,80 @@ test_set_rechecks_the_file_after_the_lock_wait() {
     rm -f "$marker" "$hold_marker"
 }
 
+test_set_writer_orphaned_by_a_killed_caller() {
+    echo "TEST: a writer whose caller is killed by PID writes nothing (checked after the lock is taken, and again just before the rename) and leaves no temporary file"
+    if ! command -v flock >/dev/null 2>&1 || ! command -v setsid >/dev/null 2>&1; then
+        echo "  SKIP: needs flock and setsid"
+        return 0
+    fi
+    local sb f lock out holder pid hold_marker wait_marker done_marker real_flock stubdir freed
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    printf 'build=make\n' | write_pfile "$sb" alpha
+    lock="$sb/.agent/projects.d/.lock.alpha"
+    # Wait until nothing holds the lock: the orphaned writer holds it from
+    # the moment it takes it until it exits.
+    lock_freed() {
+        local _i
+        for _i in $(seq 1 100); do
+            "$real_flock" -n "$lock" true 2>/dev/null && { echo yes; return 0; }
+            sleep 0.1
+        done
+        echo no
+    }
+
+    # 1. Killed while it waits for the lock. A flock stub on PATH marks the
+    # moment the writer starts to wait and the moment the real flock returns.
+    real_flock="$(command -v flock)"
+    stubdir="$(mktemp -d -p "$SANDBOX")"
+    printf '#!/usr/bin/env bash\n[ -n "${WAIT_MARK:-}" ] && touch "$WAIT_MARK"\n%s "$@"; rc=$?\n[ -n "${DONE_MARK:-}" ] && touch "$DONE_MARK"\nexit $rc\n' "$real_flock" > "$stubdir/flock"
+    chmod +x "$stubdir/flock"
+    hold_marker="$(mktemp -u -p "$SANDBOX")"
+    wait_marker="$(mktemp -u -p "$SANDBOX")"
+    done_marker="$(mktemp -u -p "$SANDBOX")"
+    setsid "$real_flock" -x "$lock" -c "touch '$hold_marker'; exec sleep 20" &
+    holder=$!
+    for _ in $(seq 1 100); do [ -e "$hold_marker" ] && break; sleep 0.1; done
+    (cd "$sb" && PATH="$stubdir:$PATH" WAIT_MARK="$wait_marker" DONE_MARK="$done_marker" PROJECT_FILE_LOCK_WAIT=15 \
+        exec "$sb/.agent/scripts/project_setting.sh" set alpha build=orphan > "$stubdir/out1" 2>&1) &
+    pid=$!
+    for _ in $(seq 1 100); do [ -e "$wait_marker" ] && break; sleep 0.1; done
+    kill -KILL "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    kill -TERM -- "-$holder" 2>/dev/null || kill -TERM "$holder" 2>/dev/null || true
+    wait "$holder" 2>/dev/null || true
+    for _ in $(seq 1 150); do [ -e "$done_marker" ] && break; sleep 0.1; done
+    assert_eq "killed while waiting: the orphan took the lock" "yes" "$([ -e "$done_marker" ] && echo yes || echo no)"
+    freed="$(lock_freed)"
+    assert_eq "killed while waiting: the orphan ended" "yes" "$freed"
+    assert_eq "killed while waiting: file unchanged" "build=make" "$(cat "$f")"
+    assert_contains "killed while waiting: says why" "the process that started this write ($pid) has ended" "$(cat "$stubdir/out1")"
+    assert_eq "killed while waiting: no temporary file left" "" "$(find "$sb/.agent/projects.d" -maxdepth 1 -name '.alpha.*')"
+
+    # 2. Killed after the new contents are written and validated: cmp, run
+    # just before the rename, is replaced by a function that waits.
+    hold_marker="$(mktemp -u -p "$SANDBOX")"
+    wait_marker="$(mktemp -u -p "$SANDBOX")"
+    bash -c 'source "$1/.agent/scripts/_project_registry.sh"
+        _waiting="$2"; _go="$3"
+        cmp() { touch "$_waiting"; while [ ! -e "$_go" ]; do sleep 0.1; done; return 1; }
+        project_file_set "$1" alpha build=late' _ "$sb" "$wait_marker" "$hold_marker" > "$stubdir/out2" 2>&1 &
+    pid=$!
+    for _ in $(seq 1 100); do [ -e "$wait_marker" ] && break; sleep 0.1; done
+    assert_eq "killed before the rename: the temporary file exists while it waits" "1" "$(find "$sb/.agent/projects.d" -maxdepth 1 -name '.alpha.*' | wc -l | tr -d ' ')"
+    kill -KILL "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    touch "$hold_marker"
+    freed="$(lock_freed)"
+    assert_eq "killed before the rename: the orphan ended" "yes" "$freed"
+    assert_eq "killed before the rename: file unchanged" "build=make" "$(cat "$f")"
+    assert_contains "killed before the rename: says why" "the process that started this write ($pid) has ended" "$(cat "$stubdir/out2")"
+    assert_eq "killed before the rename: no temporary file left" "" "$(find "$sb/.agent/projects.d" -maxdepth 1 -name '.alpha.*')"
+    rm -f "$hold_marker" "$wait_marker" "$done_marker"
+    unset -f lock_freed
+}
+
 test_set_without_flock_writes_unlocked() {
     echo "TEST: without flock on PATH the writer still writes (unlocked, as its header says) and leaves no lock or temporary file"
     local sb f out rc nolock t
@@ -1572,6 +1646,7 @@ test_unknown_key_repair
 test_set_lock_and_interrupt_cleanup
 test_set_lock_follows_shared_symlink_target
 test_set_rechecks_the_file_after_the_lock_wait
+test_set_writer_orphaned_by_a_killed_caller
 test_set_without_flock_writes_unlocked
 test_outside_without_layout_unregistered
 test_malformed_registry_exits_2

@@ -1233,6 +1233,10 @@ project_records_check() {
 # another directory leaves an untracked .lock.<basename> there, beside its
 # target (in a git checkout, ignore it).
 # The temporary file is removed on every exit, INT, TERM and HUP included.
+# A writer whose caller (the shell that ran project_file_set, $$ in the
+# subshell) has ended, killed by PID while it waited, say, writes nothing:
+# it checks once the lock is taken and again just before the rename or
+# removal, so an orphan cannot overwrite a later set.
 # Usage: project_file_set "$root" "$name" build=./b.sh -install
 project_file_set() {
     ( _project_file_set_locked "$@" )
@@ -1253,6 +1257,15 @@ _project_file_dest() {
         return 0
     fi
     printf '%s\n' "$file"
+}
+
+# Is the shell that called project_file_set still running? In the
+# subshell $$ is that caller's PID. Prints why on stderr and returns 1 when
+# it has ended.
+_project_file_caller_alive() {
+    kill -0 "$$" 2>/dev/null && return 0
+    echo "ERROR: not writing $1: the process that started this write ($$) has ended" >&2
+    return 1
 }
 
 # The body of project_file_set, run in its own subshell (its traps and the
@@ -1369,6 +1382,8 @@ _project_file_set_locked() {
             return 1
         fi
     fi
+    # The caller may have been killed while this writer waited.
+    _project_file_caller_alive "$file" || return 1
     # Remove the temporary file however this subshell ends.
     _PF_TMP=""
     trap 'rm -f -- "${_PF_TMP:-}"' EXIT
@@ -1436,6 +1451,7 @@ _project_file_set_locked() {
         # symlinked file is emptied instead (below), so the link stays.
         rm -f "$tmp"
         if [ -f "$file" ]; then
+            _project_file_caller_alive "$file" || return 1
             rm -f "$file" || return 1
             echo "removed $file"
         else
@@ -1454,6 +1470,7 @@ _project_file_set_locked() {
         echo "ERROR: could not set the mode of the new $file" >&2
         return 1
     fi
+    _project_file_caller_alive "$file" || { rm -f "$tmp"; return 1; }
     mv -f "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
     _PF_TMP=""
     echo "updated $file"
