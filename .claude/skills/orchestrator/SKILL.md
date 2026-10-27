@@ -119,6 +119,10 @@ moves one class inside; the issue 398 comment is the first.
   session ends before that entry is written, the `restart` checkpoint is
   the newest entry and `next` reports `unexpected`: the host dispatches
   `review-issue` then, without asking (the owner already decided it).
+  That `unexpected` gets no second `## Checkpoint` entry, the one
+  exception to run-issue step 6's "every checkpoint answer becomes an
+  entry": the `restart` entry already records the decision, and its
+  `**Decided-by**: owner` keeps it out of the host-answer repeat count.
   The restart also starts the pre-push review rounds over: `next` and the
   round-3 handoff count only reviews after it.
 - **(b) Project names.** Settled; not re-asked. See the standing rules row
