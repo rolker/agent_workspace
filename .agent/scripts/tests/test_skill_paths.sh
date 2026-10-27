@@ -269,6 +269,18 @@ if [[ -f "$ORCH" ]]; then
     else
         pass "orchestrator: no review-issue dispatch command drops the drive's root flags"
     fi
+    # Recipe (a) puts his restated goal where review-issue reads: a signed
+    # comment on the issue (posted once, checked by its first line), and his
+    # words quoted in the review-issue handoff too.
+    has "$ORCH" "orchestrator: the restart recipe posts his words on the issue, once, before review-issue, and quotes them in its handoff" \
+        'Post his words on the issue as a signed comment' \
+        'MARK="Goal restated by the owner mid-drive (restart checkpoint, <its **When**>):"' \
+        'elif grep -qF -- "$MARK" <<< "$COMMENTS"; then' \
+        'BODY="$(mktemp "$WS_ROOT/.agent/scratchpad/restart-goal.XXXXXX.md")"' \
+        'if gh issue comment <N> --body-file "$BODY"; then' \
+        'On a "not posted" line, dispatch nothing' \
+        'Paste his words, quoted, into its handoff as well' \
+        'the host does steps 2 and 3 then, from the `restart` entry'"'"'s words'
     has "$ORCH" "orchestrator: parked items go to the inbox with capture.sh" \
         '$WS_ROOT/.agent/scripts/capture.sh'
 else

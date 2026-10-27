@@ -111,26 +111,74 @@ moves one class inside; the issue 398 comment is the first.
 ## Recipes
 
 - **(a) Restart: he restates the goal mid-drive.** Wait for any running
-  phase to return. Write a `## Checkpoint` with `**Decided-by**: owner`,
-  `**After**: <the checkpoint pending, else unexpected>`, `**Decision**:
-  restart` and his words verbatim; then dispatch `review-issue`
-  (`$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill
-  review-issue [--type <type>] [--project <project>] [--skill-prefix
-  agent-workspace:]`, with this drive's own `--type`, `--project` and
-  `--skill-prefix`, exactly as on its other dispatches: `/run-issue`,
-  "This session's root" and "Skill names in this session"; without them
-  `dispatch_phase.sh` takes `--type workspace`, and a project drive would
-  review the workspace issue of the same number). Its
-  `## Issue Review` is then the newest entry and routes as usual. If the
-  session ends before that entry is written, the `restart` checkpoint is
-  the newest entry and `next` reports `unexpected`: the host dispatches
-  `review-issue` then, without asking (the owner already decided it).
-  That `unexpected` gets no second `## Checkpoint` entry, the one
-  exception to run-issue step 6's "every checkpoint answer becomes an
-  entry": the `restart` entry already records the decision, and its
-  `**Decided-by**: owner` keeps it out of the host-answer repeat count.
-  The restart also starts the pre-push review rounds over: `next` and the
-  round-3 handoff count only reviews after it.
+  phase to return, then, in this order:
+  1. Write a `## Checkpoint` with `**Decided-by**: owner`, `**After**:
+     <the checkpoint pending, else unexpected>`, `**Decision**: restart`
+     and his words verbatim.
+  2. Post his words on the issue as a signed comment, from the issue's
+     worktree, where the drive's other `gh` calls run, so `gh` targets the
+     issue's own repository. `review-issue`, and `plan-task` after it,
+     read the issue and its comments, never a `## Checkpoint` entry:
+     without the comment the new work is reviewed and planned against the
+     old goal. A comment, not an edit of the issue body: it adds his words
+     without rewriting anyone's text, and a signed comment on the issue
+     being driven is inside the outward boundary above.
+
+     ```bash
+     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+     MARK="Goal restated by the owner mid-drive (restart checkpoint, <its **When**>):"
+     if ! COMMENTS="$(gh issue view <N> --json comments --jq '.comments[].body')"; then
+         echo "not posted: gh issue view failed, so whether it is already there is unknown" >&2
+     elif grep -qF -- "$MARK" <<< "$COMMENTS"; then
+         echo "already on the issue: $MARK"
+     else
+     mkdir -p "$WS_ROOT/.agent/scratchpad"
+     BODY="$(mktemp "$WS_ROOT/.agent/scratchpad/restart-goal.XXXXXX.md")"
+     cat > "$BODY" <<'EOF'
+     Goal restated by the owner mid-drive (restart checkpoint, <its **When**>):
+
+     > <his words, verbatim, as in the restart entry>
+
+     The drive starts again at issue review, against this goal.
+
+     ---
+     **Authored-By**: `<agent name>`
+     **Model**: `<model id>`
+     EOF
+     if gh issue comment <N> --body-file "$BODY"; then
+         rm -f "$BODY"
+     else
+         echo "not posted: gh issue comment failed (exit $?); the text is kept at $BODY" >&2
+     fi
+     fi
+     ```
+
+     The first line of the comment is `$MARK`, word for word, so a second
+     run finds it and never posts the same restart twice. On a "not
+     posted" line, dispatch nothing: the line goes into the hand-back, and
+     the `restart` entry stays the newest, so the resumed drive takes the
+     path below and posts it then.
+  3. Dispatch `review-issue` (`$WS_ROOT/.agent/scripts/dispatch_phase.sh
+     --issue <N> --skill review-issue [--type <type>] [--project <project>]
+     [--skill-prefix agent-workspace:]`, with this drive's own `--type`,
+     `--project` and `--skill-prefix`, exactly as on its other dispatches:
+     `/run-issue`, "This session's root" and "Skill names in this
+     session"; without them `dispatch_phase.sh` takes `--type workspace`,
+     and a project drive would review the workspace issue of the same
+     number). Paste his words, quoted, into its handoff as well, like any
+     direction of his ("Several issues at once"): `review-issue` reads the
+     issue through git-bug first, whose copy may not have the comment yet.
+
+  Its `## Issue Review` is then the newest entry and routes as usual. If
+  the session ends before that entry is written, the `restart` checkpoint
+  is the newest entry and `next` reports `unexpected`: the host does steps
+  2 and 3 then, from the `restart` entry's words, without asking (the
+  owner already decided it). That `unexpected` gets no second
+  `## Checkpoint` entry, the one exception to run-issue step 6's "every
+  checkpoint answer becomes an entry": the `restart` entry already records
+  the decision, and its `**Decided-by**: owner` keeps it out of the
+  host-answer repeat count. The restart also starts the pre-push review
+  rounds over: `next` and the round-3 handoff count only reviews after it.
 - **(b) Project names.** Settled; not re-asked. See the standing rules row
   on names: mechanism text names no project, record text may name a public
   one.
