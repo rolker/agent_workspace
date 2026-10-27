@@ -779,3 +779,19 @@ CI at `8798ed5d`: Validate Adapter Contract, Validate Documentation, ros-manifes
 **Decision**: address
 
 PR 403 Integrated Review (18e54eb3, round 3): 1 valid suggestion, no must-fix (the no-bash-4 guard regex misses the indirect form ${!y,,}). Answered from the owner's standing rule for this PR, accepted 2026-10-27 ("fix 403": fix every valid finding until a round comes back clean, then bring the merge); no new question was put to him.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-27 14:51 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `f21f3371`
+**Addressed**: Integrated Review at `8798ed5d` (2026-10-27 14:42 -04:00)
+**Commits**: f21f3371
+
+### Actions
+- [x] The no-bash-4 guard now allows an optional `!` after `${`, so indirect `${!x,,}` and `${!x^^}` are caught; both added to the self-check's catch samples, `${!x}` to its skip samples, comment updated. The old pattern misses both new catch samples; the new one passes the whole self-check, and the guard still finds nothing in `_project_registry.sh` or `project_setting.sh` — `.agent/scripts/tests/test_project_file.sh:420`
+
+### Checks
+- `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, including the script test suite.
+- `test_project_file.sh` alone: 474 passed, 0 failed.
