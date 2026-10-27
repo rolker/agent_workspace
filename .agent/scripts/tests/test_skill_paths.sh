@@ -255,7 +255,7 @@ if [[ -f "$ORCH" ]]; then
         'BODY="$(mktemp "$WS_ROOT/.agent/scratchpad/orchestrator-log.XXXXXX.md")"' \
         'if gh issue comment 398 -R "$WS_REPO" --body-file "$BODY"; then rm -f "$BODY" else echo "not posted: gh issue comment failed'
     if grep -qE 'mktemp -t|; rm -f "\$BODY"' "$ORCH"; then
-        fail "orchestrator: the issue 398 log uses mktemp -t (/tmp) or removes its text whatever the post's exit"
+        fail "orchestrator: the issue 398 log writes its text to the system temp dir (-t) or removes it whatever the post's exit"
     else
         pass "orchestrator: the issue 398 log neither writes to /tmp nor removes its text on a failed post"
     fi
