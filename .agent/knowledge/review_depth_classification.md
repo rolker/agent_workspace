@@ -166,7 +166,10 @@ The words come from the handoff, never from the reviewer's own judgment:
 `dispatch_phase.sh` appends them to a pre-push review-code task line when
 `review_progress.sh round` gives 3 or more. Without them, the rule above
 applies unchanged. A PR-mode round has no counter in the script, so there
-the words appear only when the host writes them into the handoff.
+the words appear only when the host writes them into the handoff, and the
+host counts the round by the same rule over the PR's complete `## Local
+Review` entries: those after the newest `**Decision**: restart`
+checkpoint, plus one (pre-push rounds do not carry over).
 
 This is the owner's standing exception from issue 321 ("a third is a
 narrow convergence check without external reviewers"; reason recorded in

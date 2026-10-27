@@ -193,7 +193,10 @@ them, with the round and the scope, after a pre-push task line at round 3
 or later, e.g. `/review-code --branch --issue <N> (round 3: a narrow
 convergence check on the round 2 review's findings and the fix diff since
 it; no cross-model reviewers)`; a host may write the same words into a
-PR-mode handoff. When they are there and the round they name is 3 or
+PR-mode handoff, counting the round as `review_progress.sh round` counts
+pre-push ones but over the PR's complete `## Local Review` entries: those
+after the newest `**Decision**: restart` checkpoint, plus one (pre-push
+rounds do not carry over, so the first PR-mode review is round 1). When they are there and the round they name is 3 or
 later, review only the prior round's findings and the fix diff since that
 review, and skip 5e (cross-model); the other specialists of the
 whole-diff tier still run. Record `**Depth**: <tier> (reason: round <R>
