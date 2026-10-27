@@ -649,3 +649,20 @@ Codex drop re-examined and reversed: the local review dropped "SIGTERM to the CL
 **Decision**: address
 
 PR 403 Integrated Review (b086e468, at 91366fc3): 3 valid suggestions, no must-fix (get skips the records check; bash-4-only ${1,,} in _records_norm_url silently skips the remote-URL refusal on bash 3.2; an orphaned writer subshell can take the lock later and overwrite a newer set). Host recommended addressing all three before merging. Owner's answer: "A yes, fix first".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-27 14:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `315c4763`
+**Addressed**: Integrated Review at `91366fc3` (2026-10-27 13:50 -04:00)
+**Commits**: 8364e2c0, 0e286cce, 315c4763
+
+### Actions
+- [x] `get` now parses the file, runs the records check and exits 2 (reason plus an INVALID line) when it refuses; not yet honoured (3) still answers; test `test_get_runs_the_records_check` — `.agent/scripts/project_setting.sh:125`
+- [x] `_records_norm_url` lowercases with `tr '[:upper:]' '[:lower:]'` instead of bash-4 `${1,,}`; the mixed-case remote case in `test_records_repo_workspace_by_remote_url` covers the result, and the new `test_no_bash4_case_conversion` keeps `${x,,}`/`${x^^}` out of `_project_registry.sh` and `project_setting.sh` (this was the only one the branch added) — `.agent/scripts/_project_registry.sh:1054`
+- [x] `_project_file_set_locked` checks the caller (`kill -0 "$$"`) once the lock is taken and again just before the rename (and before removing an emptied file), returning 1 without writing; test `test_set_writer_orphaned_by_a_killed_caller` covers both points (file unchanged, no temporary file) and fails on the unfixed writer — `.agent/scripts/_project_registry.sh:1366`
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, the script test suite (`validate-script-tests`) included.
