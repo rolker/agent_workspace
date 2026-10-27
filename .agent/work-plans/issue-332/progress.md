@@ -765,7 +765,7 @@ Finding verified here: the regex at `.agent/scripts/tests/test_project_file.sh:4
 CI at `8798ed5d`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs; Lint (pre-commit) passed on run 40561517367 and is still pending on run 40561528755. The `copilot-pull-request-reviewer` check fails on quota, not code.
 
 ### Findings
-- [ ] (suggestion, Local Review @ `8798ed5`) The no-bash-4 guard misses indirect expansion with case conversion (`${!y,,}`, `${!y^^}`); allow an optional `!` after `${` (`re='\$\{!?([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)'`), add `${!x,,}` and `${!x^^}` to the catch samples and `${!x}` to the skip samples, and update the comment above the pattern — `.agent/scripts/tests/test_project_file.sh:423`
+- [x] (suggestion, Local Review @ `8798ed5`) The no-bash-4 guard misses indirect expansion with case conversion (`${!y,,}`, `${!y^^}`); allow an optional `!` after `${` (`re='\$\{!?([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)'`), add `${!x,,}` and `${!x^^}` to the catch samples and `${!x}` to the skip samples, and update the comment above the pattern — `.agent/scripts/tests/test_project_file.sh:423`
 
 ### False positives
 - (Copilot @ `8798ed5d`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
