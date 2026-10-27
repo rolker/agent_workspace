@@ -251,6 +251,14 @@ if [[ -f "$ORCH" ]]; then
     has "$ORCH" "orchestrator: the issue 398 log is posted only from the workspace checkout's own remote" \
         'if [ -f "$WS_ROOT/.agent/scripts/dispatch_phase.sh" ]; then' \
         'if [ -z "$WS_REPO" ]; then echo "not posted:' 'it is never retried against another repository'
+    has "$ORCH" "orchestrator: a failed issue 398 post reaches the not-posted line and keeps its text in the workspace scratchpad" \
+        'BODY="$(mktemp "$WS_ROOT/.agent/scratchpad/orchestrator-log.XXXXXX.md")"' \
+        'if gh issue comment 398 -R "$WS_REPO" --body-file "$BODY"; then rm -f "$BODY" else echo "not posted: gh issue comment failed'
+    if grep -qE 'mktemp -t|; rm -f "\$BODY"' "$ORCH"; then
+        fail "orchestrator: the issue 398 log uses mktemp -t (/tmp) or removes its text whatever the post's exit"
+    else
+        pass "orchestrator: the issue 398 log neither writes to /tmp nor removes its text on a failed post"
+    fi
     has "$ORCH" "orchestrator: parked items go to the inbox with capture.sh" \
         '$WS_ROOT/.agent/scripts/capture.sh'
 else

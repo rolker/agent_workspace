@@ -204,7 +204,10 @@ fi
 if [ -z "$WS_REPO" ]; then
     echo "not posted: $WS_ROOT is not the workspace checkout, or it has no GitHub remote" >&2
 else
-BODY="$(mktemp -t orchestrator-log.XXXXXX)"
+# The text goes to the workspace scratchpad (gitignored), not /tmp: a
+# failed post keeps it there for the retry from a workspace session.
+mkdir -p "$WS_ROOT/.agent/scratchpad"
+BODY="$(mktemp "$WS_ROOT/.agent/scratchpad/orchestrator-log.XXXXXX.md")"
 cat > "$BODY" <<'EOF'
 <issue number and label>, <how it ended>.
 Owner-level questions: <n>. Mechanism questions that reached him: <m>.
@@ -221,13 +224,18 @@ Owner-level questions: <n>. Mechanism questions that reached him: <m>.
 **Authored-By**: `<agent name>`
 **Model**: `<model id>`
 EOF
-gh issue comment 398 -R "$WS_REPO" --body-file "$BODY"; rm -f "$BODY"
+if gh issue comment 398 -R "$WS_REPO" --body-file "$BODY"; then
+    rm -f "$BODY"
+else
+    echo "not posted: gh issue comment failed (exit $?); the text is kept at $BODY" >&2
+fi
 fi
 ```
 
 "not posted" goes into the hand-back as it is, with the comment's text,
 so it can be posted from a workspace session; it is never retried against
-another repository.
+another repository. When the post itself failed (authentication, network),
+the text stays in the file the line names until that retry succeeds.
 
 This is how anyone tells whether the skill helps; look again after the
 acceptance-case run.
