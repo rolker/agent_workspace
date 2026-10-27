@@ -259,6 +259,16 @@ if [[ -f "$ORCH" ]]; then
     else
         pass "orchestrator: the issue 398 log neither writes to /tmp nor removes its text on a failed post"
     fi
+    # Recipe (a)'s review-issue dispatch carries the drive's own root flags:
+    # dispatch_phase.sh defaults to --type workspace, so a project drive
+    # following a flagless command would review the workspace issue.
+    has "$ORCH" "orchestrator: the restart recipe dispatches review-issue with the drive's --type, --project and --skill-prefix" \
+        '$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill review-issue [--type <type>] [--project <project>] [--skill-prefix agent-workspace:]'
+    if tr '\n' ' ' < "$ORCH" | tr -s ' ' | grep -qF -- '--skill review-issue`'; then
+        fail "orchestrator: a review-issue dispatch command ends without the drive's --type, --project and --skill-prefix"
+    else
+        pass "orchestrator: no review-issue dispatch command drops the drive's root flags"
+    fi
     has "$ORCH" "orchestrator: parked items go to the inbox with capture.sh" \
         '$WS_ROOT/.agent/scripts/capture.sh'
 else

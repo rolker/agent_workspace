@@ -114,7 +114,13 @@ moves one class inside; the issue 398 comment is the first.
   phase to return. Write a `## Checkpoint` with `**Decided-by**: owner`,
   `**After**: <the checkpoint pending, else unexpected>`, `**Decision**:
   restart` and his words verbatim; then dispatch `review-issue`
-  (`dispatch_phase.sh --issue <N> --skill review-issue`). Its
+  (`$WS_ROOT/.agent/scripts/dispatch_phase.sh --issue <N> --skill
+  review-issue [--type <type>] [--project <project>] [--skill-prefix
+  agent-workspace:]`, with this drive's own `--type`, `--project` and
+  `--skill-prefix`, exactly as on its other dispatches: `/run-issue`,
+  "This session's root" and "Skill names in this session"; without them
+  `dispatch_phase.sh` takes `--type workspace`, and a project drive would
+  review the workspace issue of the same number). Its
   `## Issue Review` is then the newest entry and routes as usual. If the
   session ends before that entry is written, the `restart` checkpoint is
   the newest entry and `next` reports `unexpected`: the host dispatches
