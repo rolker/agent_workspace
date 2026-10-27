@@ -620,3 +620,22 @@ Dropped: codex SIGTERM to the CLI PID alone lets the writer subshell finish (the
 ### Findings
 - [ ] (suggestion) `get` skips the records check: a file with `tracking=repo` at a workspace repository, which `check`, `list` and the adapter refuse, still returns any key with exit 0, against the header's exit-2 contract "records settings refused" and the round-7 parent-root parity; run `_project_records_check_entries` (exit 2 on refusal) or narrow the documented contract for `get` (codex and gemini, confirmed by reading `project_file_get`) — `.agent/scripts/project_setting.sh:125`
 - [ ] (suggestion) `_records_norm_url` lowercases with `${1,,}` (bash 4 only) although the round-7 `.sh` guard in the same file avoided it for macOS bash 3.2; reached on every adapter verb for `tracking=repo` with a network remote; use `tr '[:upper:]' '[:lower:]'` (the workspace already uses `${,,}` elsewhere, e.g. `_resolve_work_plans_dir.sh:96`, so low impact) (Claude adversarial, confirmed by reading) — `.agent/scripts/_project_registry.sh:1054`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-27 13:50 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `91366fc3`
+**Sources**: 2 (Local Review @ `91366fc3`, its cross-model drop list re-examined; CI rollup). Copilot posted only "insufficient remaining quota" (no review, not a source); no human or conversation comments.
+**Cross-source confirmations**: 0 (no GitHub comments to correlate; finding 1 was raised by codex and gemini inside the one local review)
+**CI**: all-pass (8 workflow checks green on both runs: Lint (pre-commit), Validate Documentation, Validate Adapter Contract, ros-manifest tests; the copilot-pull-request-reviewer check-run fails for quota only)
+
+Codex drop re-examined and reversed: the local review dropped "SIGTERM to the CLI PID alone lets the writer subshell finish" because the write is atomic and Ctrl-C signals the whole group. Atomicity and Ctrl-C hold (GNU `timeout` also signals the group), but the drop misses the lock-wait case. `project_file_set` runs `( _project_file_set_locked )` under a `project_setting.sh` that has no traps, so `kill <pid>` ends the parent at once (exit 143) and orphans the subshell, which carries on (reproduced with a minimal script: parent exit 143, the subshell's write still landed a second later). If the orphan is still in `flock -w` behind another writer, it takes the lock later, re-reads the file and writes its keys, possibly over a newer `set` of the same key the user made after "cancelling". Narrow, but a silent overwrite that can occur, so it is not dismissible under the Quality Standard.
+
+### Findings
+- [ ] (suggestion, Local Review: codex + gemini) `get` skips the records check: a file whose records repository is a workspace, which `check`, `list` and the adapter refuse with exit 2, still answers `get` with exit 0, against the header's exit-2 contract ("records settings refused") and the parent-root parity. Fix: in `get`, take `project_file_entries` (exit 2 on failure), run `_project_records_check_entries` and exit 2 on its 2 (3 is fine for `get`), then print the value; add a test in `test_project_file.sh` beside the existing records-refusal cases — `.agent/scripts/project_setting.sh:125`
+- [ ] (suggestion, Local Review: Claude adversarial) `_records_norm_url` uses `${1,,}` (bash 4 only). On bash 3.2 it is a bad substitution, so `norm`/`wnorm` come back empty, and the "records remote is the workspace's remote" refusal is silently skipped (or the caller aborts under `set -e`). That makes it a silent failure in a safety check, not just a portability nit; it is reached only from a hand-written `tracking=repo` file. Fix: `u="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"`; the existing mixed-case case (`https://GitHub.com/Example/ws-sandbox.git/`, `test_project_file.sh:411`) covers the result — `.agent/scripts/_project_registry.sh:1054`
+- [ ] (suggestion, codex via Local Review drop list, reinstated) A writer whose parent `project_setting.sh` is killed by PID keeps running orphaned and can write after a later `set`, overwriting it. Fix: in `_project_file_set_locked`, capture the parent PID (`$$` in the subshell) and abort without writing (`return 1`, temp file removed by the EXIT trap) if `kill -0 "$$"` fails, both after the lock is taken and immediately before `mv`. Add a test: hold the lock, start `set`, kill the parent PID, release the lock, and assert the file is unchanged and no temp file is left — `.agent/scripts/_project_registry.sh:1366`
+
+### False positives
