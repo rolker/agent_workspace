@@ -204,15 +204,11 @@ any other file.
   resumed agent is the same single driver's phase, held to the same exit
   contract and the same `--check-exit` check as a fresh dispatch.
 - Issue [#321](https://github.com/rolker/agent_workspace/issues/321) — the
-  interim `/orchestrator` skill. One amendment to what this ADR records: a
-  `## Checkpoint` entry is no longer always the owner's answer. The host
-  may answer a checkpoint itself, with the tokens the skill's table
-  allows, and records `**Decided-by**: host (<reason>)`; `merge`,
-  `merge-refused`, `takeover` at `phase-failed` and `merge` at `findings`
-  stay the owner's. The field's vocabulary is authored in
-  `.claude/skills/run-issue/SKILL.md` step 6, not here. Nothing routes on
-  the field, so the handoff contract and the decision table are
-  unchanged, and "one driver per issue" still holds.
+  interim `/orchestrator` skill. Who answers a checkpoint, and how a
+  `## Checkpoint` entry records it in `**Decided-by**`, is now authored in
+  `.claude/skills/orchestrator/SKILL.md` ("Decision rights" and
+  "Checkpoints: who answers, with which tokens") and
+  `.claude/skills/run-issue/SKILL.md` step 6, not here.
 - `ros2_agent_workspace` ADR-0015 ("handoff context contract") and
   ADR-0019 ("dispatch default flipped to in-process") — the fork ADRs this
   one adapts. That repo is not a GitHub remote reachable from this one; see
