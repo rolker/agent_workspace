@@ -749,3 +749,23 @@ CI at review time (`gh pr checks 403`): Validate Adapter Contract, Validate Docu
 
 ### Findings
 - [ ] (suggestion) The new no-bash-4 regex misses indirect expansion with case conversion, `${!y,,}` (valid bash 4, prints the lowercased value; bash 3.2 rejects it), which the old pattern did catch, so the fix narrows the guard on that one form; allow an optional `!` after `${`: `\$\{!?([A-Za-z_]...`, and add `${!x,,}` to the catch samples — `.agent/scripts/tests/test_project_file.sh:423`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-27 14:42 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `8798ed5d`
+**Sources**: 3 (Local Review @ `8798ed5` (covers local HEAD `994772c3` via bookkeeping), Copilot @ `8798ed5d` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Previous Integrated Review (at `99626d24`, committed `ead948c6`): both findings fixed in 8a130df3 and 1adf7f20 and confirmed closed by the round-3 Local Review; not re-listed. Older Local Reviews at `91366fc` and `b9bfcd6` are stale (code changed since) and were closed by earlier triage.
+Finding verified here: the regex at `.agent/scripts/tests/test_project_file.sh:423` reports `${!y,,}`, `${!y^^}` and `${!arr[0],,}` as missed; bash 5.2 evaluates `${!y,,}` (prints the lowercased value), and bash 3.2 rejects it. The guard exists to catch bash 4 case conversion, so a form it misses is a gap in the guard, and the old pattern did catch it: valid. No current hit in `_project_registry.sh` or `project_setting.sh`, so this is a regression-guard gap, not a live defect. Proposed fix checked: `\$\{!?(...)` catches all three indirect forms and still skips `${!x}`, `${!x@}`, `${!x*}`, `${#x}`, `${x:-,}`, `${x%^}`; no hits in the two real files.
+CI at `8798ed5d`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs; Lint (pre-commit) passed on run 40561517367 and is still pending on run 40561528755. The `copilot-pull-request-reviewer` check fails on quota, not code.
+
+### Findings
+- [ ] (suggestion, Local Review @ `8798ed5`) The no-bash-4 guard misses indirect expansion with case conversion (`${!y,,}`, `${!y^^}`); allow an optional `!` after `${` (`re='\$\{!?([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)'`), add `${!x,,}` and `${!x^^}` to the catch samples and `${!x}` to the skip samples, and update the comment above the pattern — `.agent/scripts/tests/test_project_file.sh:423`
+
+### False positives
+- (Copilot @ `8798ed5d`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
