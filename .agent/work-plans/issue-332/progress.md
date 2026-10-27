@@ -685,3 +685,23 @@ Dropped: codex `set` not running the records check on a hand-written refused fil
 ### Findings
 - [ ] (suggestion) The temporary-file writer relies on the caller's inherited errexit to stop on a failed `printf` (e.g. ENOSPC); safe for the one caller (`project_setting.sh`, `set -e`, plain call), but a future `if project_file_set ...` caller would validate and rename a truncated file; check each write (`|| exit 1` inside the group) or say so in the header (codex, confirmed by reading) — `.agent/scripts/_project_registry.sh:1395`
 - [ ] (suggestion) `test_no_bash4_case_conversion` regex `\$\{[^}]*(,,?|\^\^?)\}` also matches legal bash 3.2 such as `${x:-,}` or `${x%^}`; anchor on the operator after the name, e.g. `\$\{[A-Za-z_0-9@*]+(,,?|\^\^?)[^}]*\}` (Claude adversarial) — `.agent/scripts/tests/test_project_file.sh:421`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-27 14:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `99626d24`
+**Sources**: 2 (Local Review @ `b9bfcd61`, carried forward: `sources` lists it as stale only because 99626d24 touches `AGENTS.md`, read here and covered below; CI rollup). Copilot posted only "insufficient remaining quota" on every push (no review, not a source); no human or conversation comments.
+**Cross-source confirmations**: 0 (no GitHub comments to correlate)
+**CI**: pending (Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs at `99626d24`; Lint (pre-commit) still pending on both; the copilot-pull-request-reviewer check-run fails for quota only, not a CI failure)
+
+Covered here: 99626d24 (owner-approved AGENTS.md row edit, landed after the re-review) changes one phrase in the `project_setting.sh` row, "`get` and `list` exit 2 on that too" to "on all of those too", so the exit-2 list (malformed, records repository that is a workspace, parent-root file) now applies to `get` and `list`. True at this head: 8364e2c0 made `get` run the records check and exit 2 on its refusal; nothing else in the diff. The Local Review's fix-round checks (`get` records check, `tr` lowercasing, orphaned-writer guard) stand; the prior Integrated Review's three findings are closed by 8364e2c0, 0e286cce, 315c4763.
+
+Finding 1 checked against the code: errexit does cover the one caller today (`project_setting.sh` has `set -euo pipefail` and calls `project_file_set` plainly; `( _project_file_set_locked )` inherits it, and a failed `printf` inside the `{ ... } > "$tmp"` group exits the subshell, whose EXIT trap removes the temporary file). But bash ignores errexit for anything run in a condition context, subshells included: reproduced with bash 5.2, a writer called as `w || ...` or `if w` whose middle `printf` hit ENOSPC (`/dev/full`) carried on and kept a two-of-three-line file. `_project_file_parse` would accept such a file if the lost line was a whole key, and the rename then silently drops a setting. The library is sourced, and this code base's own idiom is `fn ... || rc=$?`, so a condition-context caller is the likely next one. A silent loss that can occur, so valid; the explicit checks cost three `|| exit 1`.
+
+### Findings
+- [ ] (suggestion, Local Review @ `b9bfcd61` (codex, confirmed by reproduction)) The temporary-file writer stops on a failed `printf` only through inherited errexit, which bash turns off when `project_file_set` is called from a condition (`|| rc=$?`, `if`): a cut-off file is then validated and renamed, silently dropping a setting. Fix: add `|| exit 1` to each of the three `printf` calls inside the `{ ... } > "$tmp"` group (the subshell's EXIT trap removes the temporary file); add a test in `test_project_file.sh` that calls `if project_file_set ...` with `printf` shadowed by a function failing on one line, and asserts a non-zero exit, the settings file unchanged and no temporary file left — `.agent/scripts/_project_registry.sh:1395`
+- [ ] (suggestion, Local Review @ `b9bfcd61` (Claude adversarial)) `test_no_bash4_case_conversion`'s regex `\$\{[^}]*(,,?|\^\^?)\}` matches legal bash 3.2 (`${x:-,}`, `${x%^}`) and, because it requires the operator right before `}`, misses the bash 4 pattern form `${x,,[A-Z]}`; a guard that both cries wolf and has a hole. Fix: match the operator right after a parameter name, subscript allowed: `\$\{([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)` (checked on samples here: matches `${1,,}`, `${x^^}`, `${arr[0],,}`, `${x,,[A-Z]}`, `${x,}`, `${@^^}`; not `${x:-,}` or `${x%^}`). The reviewer's suggested `[A-Za-z_0-9@*]+` would miss `${arr[0],,}` — `.agent/scripts/tests/test_project_file.sh:421`
+
+### False positives
