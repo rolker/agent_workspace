@@ -601,3 +601,22 @@ Pre-push round 7 (bbe5fb20, at 56a273a9): 1 mechanical must-fix (design.md Regis
 - [x] (owner-approved, Ask First) AGENTS.md in its own commit: the `validate_adapter.sh` row names the `unused_settings` list check; the `project_setting.sh` row's exit codes name the parent-root exit 2 (for `check`, `get` and `list`) — `b07050a5`, `AGENTS.md:407-408`
 
 Checks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract, the design-anchor check, shellcheck, black, flake8 and pylint (flake8 with the repo's `--max-line-length=100`); `test_project_file.sh` 426 passed and `test_project_registry.sh` 263 passed, 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `-S warning` clean on `_project_registry.sh`, `project_setting.sh`, `test_project_file.sh`, `test_project_registry.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-27 13:48 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #403 at `91366fc3`
+**Depth**: Deep (reason: 3,200+ changed lines outside work plans across 18 files; AGENTS.md governance file)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Round-7 fixes (bbe5fb20) checked in the code at 91366fc3: design.md names `project_setting.sh` beside `capture.sh`; both parsers refuse `.sh` in any case (`*.[sS][hH]`, `name.lower()`); `get` on a parent root exits 2 / 1; a `location_path` inside another repository is unverifiable unless that repository is a workspace (workspace refusals run before the enclosed return 3); AGENTS.md rows owner-approved (Checkpoint 2026-10-21 12:34). Local HEAD equals PR head; 0 behind origin/main.
+CI at review time: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs; Lint (pre-commit) passed on one run and was still pending on the other; Copilot PR review failed (quota exhausted, no review).
+Specialists: static analysis (shellcheck --severity=warning clean on the 12 changed shell files and `adapter`; flake8 clean on lib/workspace.py; validate_adapter.sh passed; test_project_file.sh 426, test_project_registry.sh 263, test_adapter.sh 96, test_ros2_colcon.sh 200 passed, 0 failed), governance, plan drift (no drift beyond the plan-review additions already recorded), Claude adversarial (fresh; its sandbox edge-case probes were denied, findings by reading), cross-model (gemini complete, codex complete).
+Dropped: codex SIGTERM to the CLI PID alone lets the writer subshell finish (the write is atomic and validated, the requested change lands; Ctrl-C signals the whole group); gemini `set` of an unrelated key on a file whose records are already refused (dropped round 5); gemini local/file:// remote vs a shared upstream (dropped rounds 5-7); gemini validate_workspace.py not flagging a parent's file (deliberate split, round 7); gemini dashboard orphan glob on dangling links and `.SH` (round 7; nothing reads such a file); gemini `list` sending the refusal reason to `check` (deliberate); gemini `list` not marking a defaulted `location_path` provisional (only a hand-written, not-yet-honoured combination reaches it; `check` prints the NOTE); gemini untrimmed `set` arguments and unset-typo error order (refused with a clear error; dropped before).
+
+### Findings
+- [ ] (suggestion) `get` skips the records check: a file with `tracking=repo` at a workspace repository, which `check`, `list` and the adapter refuse, still returns any key with exit 0, against the header's exit-2 contract "records settings refused" and the round-7 parent-root parity; run `_project_records_check_entries` (exit 2 on refusal) or narrow the documented contract for `get` (codex and gemini, confirmed by reading `project_file_get`) — `.agent/scripts/project_setting.sh:125`
+- [ ] (suggestion) `_records_norm_url` lowercases with `${1,,}` (bash 4 only) although the round-7 `.sh` guard in the same file avoided it for macOS bash 3.2; reached on every adapter verb for `tracking=repo` with a network remote; use `tr '[:upper:]' '[:lower:]'` (the workspace already uses `${,,}` elsewhere, e.g. `_resolve_work_plans_dir.sh:96`, so low impact) (Claude adversarial, confirmed by reading) — `.agent/scripts/_project_registry.sh:1054`
