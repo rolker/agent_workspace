@@ -666,3 +666,22 @@ PR 403 Integrated Review (b086e468, at 91366fc3): 3 valid suggestions, no must-f
 
 ### Checks
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, the script test suite (`validate-script-tests`) included.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-27 14:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #403 at `b9bfcd61`
+**Depth**: Deep (reason: whole-PR diff 4,600+ lines across 20 files incl. AGENTS.md; fix round re-classified on the whole diff per #320)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Fix-round re-review of the Integrated Review (b086e468) fixes 8364e2c0, 0e286cce, 315c4763, checked in the code at b9bfcd61: `get` parses the file, runs `_project_records_check_entries` and exits 2 only on its 2 (it returns only 0/2/3; 3 still answers, NOTE/WARNING lines stay quiet unless refused; missing/malformed/absent-key exits unchanged); `_records_norm_url` lowercases with `tr`; `_project_file_caller_alive` (`kill -0 "$$"`, `$$` = the `project_setting.sh` PID, the only caller besides the `project_file_unset` wrapper) guards after the lock, before removal and before `mv`. No `${x,,}`/`${x^^}` remains in any non-test shell file this branch changes. Local HEAD equals PR head; 0 behind origin/main.
+CI at review time: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs; Lint (pre-commit) still running on both.
+Specialists: static analysis (shellcheck --severity=warning clean on `_project_registry.sh`, `project_setting.sh`, `test_project_file.sh`; `test_project_file.sh` 449 passed, 0 failed, run once here and 4 times by the adversarial reviewer with no leftover processes), governance (fixes carry tests; header exit-2 contract and AGENTS.md row now true for `get`), plan drift (fixes match the Integrated Review's fix plan, nothing else changed), Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+Dropped: codex `set` not running the records check on a hand-written refused file (dropped round 5: `set` never stores a non-default combination, and refusing would block the `set location=project tracking=project` repair); gemini `readlink -f` on pre-12.3 macOS (fails loud with a clear error, symlinked settings files only); gemini dashboard orphan glob (round 7), untrimmed `set` arguments (dropped before), `validate_workspace.py` parent file (round 7); gemini `file://localhostname` / percent-encoded `file://` remotes (not a URL git clones locally; the contents check still catches a clone of the workspace).
+
+### Findings
+- [ ] (suggestion) The temporary-file writer relies on the caller's inherited errexit to stop on a failed `printf` (e.g. ENOSPC); safe for the one caller (`project_setting.sh`, `set -e`, plain call), but a future `if project_file_set ...` caller would validate and rename a truncated file; check each write (`|| exit 1` inside the group) or say so in the header (codex, confirmed by reading) — `.agent/scripts/_project_registry.sh:1395`
+- [ ] (suggestion) `test_no_bash4_case_conversion` regex `\$\{[^}]*(,,?|\^\^?)\}` also matches legal bash 3.2 such as `${x:-,}` or `${x%^}`; anchor on the operator after the name, e.g. `\$\{[A-Za-z_0-9@*]+(,,?|\^\^?)[^}]*\}` (Claude adversarial) — `.agent/scripts/tests/test_project_file.sh:421`
