@@ -463,3 +463,24 @@ Fix commits used `SKIP=validate-script-tests` (host decision for this pass). The
 **After**: rounds
 **Decision**: publish
 "1 publish" (owner, 2026-10-20, answering: publish the pull request when the final fix pass returns, or hold). The round-3 convergence check's Ship line was "recommended: fix and ship rather than another full round"; the fix pass closed both of its boxes with the full suite green. Loop defect noted for the record: `next` routed to a fourth pre-push review here because it routes on the review's Verdict, not its Ship line (parked as a follow-up, see issue 399's neighbour note in the hand-back).
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-27 14:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #400 at `6237c7e5`
+**Depth**: Standard (reason: governance-touching — ADRs 0014/0015, skills, dispatch_phase.sh; 22 files, +1619 -107)
+**Must-fix**: 4 | **Suggestions**: 3
+
+Cross-model: Gemini (agy) ran, EXIT=0, "No issues found" with a two-line summary (short; flagged). Codex ran, EXIT=0, 2 must-fix (both confirmed below). Claude adversarial (fresh subagent) ran, 2 must-fix + 4 suggestions. CI: all 8 checks green, completed 2026-10-20, none since. Main drift: 42 commits behind (once-per-pass pre-commit rule, issue 399); a throwaway merge with origin/main 2ec2ba8a was clean and test_dispatch_phase (136), test_review_code_convergence (35), test_sitrep_checks (185), test_skill_paths (71), test_plugin_manifest (12) all passed on it; main's hook text goes into implement/address `conventions=`, this PR's round-3 text into the review-code task line, so no semantic conflict. Local: shellcheck clean; pre-commit on the changed files passed.
+
+### Findings
+- [ ] (must-fix) A restart resets `round_count()` but not `skill_for()`: a failed first implement after a `**Decision**: restart` (no `**Addressed**`) finds the pre-restart complete Implementation and is named `address-findings`, so `retry` dispatches the wrong phase (reproduced with `next --pr none`); scan only entries after the newest restart and add the test (Codex + Claude adversarial) — `.agent/scripts/dispatch_phase.sh:609`
+- [ ] (must-fix) The issue 398 log post masks a `gh issue comment` failure (`; rm -f "$BODY"` deletes the text and exits 0), so an auth/network failure skips the documented "not posted" path; check gh's status, keep the text and report it on failure; also `mktemp -t` writes to /tmp rather than the scratchpad (Codex + Claude adversarial) — `.claude/skills/orchestrator/SKILL.md:207`, `:224`
+- [ ] (must-fix) The Review depth standing rule says a second code-review round happens only after a must-fix, citing `review_progress.sh verdict`, but `next` routes a Pre-Push review on `**Verdict**` (rows 13-15) and Verdict is approved only with zero findings, so a suggestions-only round 1 goes to address-findings and round 2 with no checkpoint; reword to state the gap (the parked "next routes on Verdict not Ship" item) or route on Ship (Claude adversarial) — `.agent/knowledge/host_standing_rules.md:30`
+- [ ] (must-fix) Missing consequence: the reviewer guide's ADR-0014 row still says checkpoint entries carry `**Decided-by**: owner`, so reviews following it would flag legitimate host-answered entries; add `host (<reason>)` per run-issue step 6 (Claude adversarial) — `.agent/knowledge/principles_review_guide.md:49`
+- [ ] (suggestion) The PR-mode round-3 allowance ("a host may write the same words into a PR-mode handoff") has no rule for how the host counts PR-mode rounds, so any PR re-review could drop cross-model; say how it counts or drop the allowance (Claude adversarial) — `.claude/skills/review-code/SKILL.md:195`, `.agent/knowledge/review_depth_classification.md:169`
+- [ ] (suggestion) Restart then `unexpected`: the table lists it as host-answerable and run-issue step 6 says every answer becomes a `## Checkpoint` entry, while recipe (a) says dispatch review-issue "without asking"; say whether a second entry is written (Claude adversarial) — `.claude/skills/orchestrator/SKILL.md:82`, `:120`
+- [ ] (suggestion) ADR-0014's References entry calls itself "one amendment to what this ADR records" (owner-only checkpoints softened to host-answerable); ADR-0008 treats softening a position as a superseding change, so reword it as a pointer or record why an addendum suffices (governance) — `docs/decisions/0014-in-process-phase-handoff.md:206`
