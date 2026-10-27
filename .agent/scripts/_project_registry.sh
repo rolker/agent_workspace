@@ -1392,6 +1392,10 @@ _project_file_set_locked() {
     trap 'exit 143' TERM
     tmp="$(mktemp "$dir/.${name}.XXXXXX")" || return 1
     _PF_TMP="$tmp"
+    # Each write stops the writer itself (the EXIT trap removes the
+    # temporary file): a caller running project_file_set as a condition
+    # (if, ||) turns set -e off, and a cut-off file would then be
+    # validated and renamed, silently dropping a setting.
     {
         if [ -f "$file" ]; then
             while IFS= read -r line || [ -n "$line" ]; do
@@ -1405,9 +1409,9 @@ _project_file_set_locked() {
                     [ -n "$lkey" ] && [ "${keys[$i]}" = "$lkey" ] && found=$i
                 done
                 if [ "$found" -lt 0 ]; then
-                    printf '%s\n' "$line"
+                    printf '%s\n' "$line" || exit 1
                 elif [[ "${vals[$found]}" != -* ]] && [[ " ${done_k[*]-} " != *" $lkey "* ]]; then
-                    printf '%s\n' "${vals[$found]}"
+                    printf '%s\n' "${vals[$found]}" || exit 1
                     done_k+=("$lkey")
                 fi
             done < "$file"
@@ -1415,7 +1419,7 @@ _project_file_set_locked() {
         for ((i = 0; i < ${#keys[@]}; i++)); do
             [[ "${vals[$i]}" == -* ]] && continue
             [[ " ${done_k[*]-} " == *" ${keys[$i]} "* ]] && continue
-            printf '%s\n' "${vals[$i]}"
+            printf '%s\n' "${vals[$i]}" || exit 1
         done
     } > "$tmp"
 

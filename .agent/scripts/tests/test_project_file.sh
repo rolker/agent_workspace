@@ -607,6 +607,33 @@ install=none" "$(cat "$f")"
     assert_eq "file gone" "no" "$([ -e "$f" ] && echo yes || echo no)"
 }
 
+test_set_stops_on_a_failed_write_inside_a_condition() {
+    echo "TEST: a failed write of the temporary file stops the writer even when it is called from a condition (where bash turns set -e off)"
+    local sb f before out rc fail_on case args
+    sb="$(make_sandbox)"
+    make_project "$sb" alpha >/dev/null
+    f="$(pfile "$sb" alpha)"
+    # One case per printf of the writer: a kept line, a replaced line and
+    # an appended key. printf is shadowed so it fails on exactly that line.
+    for case in "kept line|test=make test|build=./b.sh" \
+                "replaced line|test=make fail|test=make fail" \
+                "appended key|install=none|install=none"; do
+        IFS='|' read -r case fail_on args <<< "$case"
+        printf 'build=make\ntest=make test\n' | write_pfile "$sb" alpha
+        before="$(cksum < "$f")"
+        rc=0
+        out="$(bash -c 'source "$1/.agent/scripts/_project_registry.sh"
+            _fail_on="$2"
+            printf() { [ "${2-}" = "$_fail_on" ] && return 1; builtin printf "$@"; }
+            if project_file_set "$1" alpha "$3"; then exit 0; else exit $?; fi' \
+            _ "$sb" "$fail_on" "$args" 2>&1)" || rc=$?
+        assert_eq "$case: non-zero exit" "yes" "$([ "$rc" -ne 0 ] && echo yes || echo no)"
+        assert_not_contains "$case: no write reported" "updated $f" "$out"
+        assert_eq "$case: settings file unchanged" "$before" "$(cksum < "$f")"
+        assert_eq "$case: no temporary file left" "" "$(find "$sb/.agent/projects.d" -name '.alpha.*')"
+    done
+}
+
 test_composite_keys_refused() {
     echo "TEST: a key made of several known keys ('build test', 'location location_path') is unknown, in the parser and the writer"
     local sb f out rc ck
@@ -1637,6 +1664,7 @@ test_get_runs_the_records_check
 test_dispatcher_refuses_workspace_records_repo
 test_set_get_list_idempotent
 test_set_keeps_comments_and_order
+test_set_stops_on_a_failed_write_inside_a_condition
 test_composite_keys_refused
 test_set_keeps_mode_and_symlink
 test_set_refuses_unusable_path
