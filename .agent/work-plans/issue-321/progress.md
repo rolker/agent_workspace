@@ -484,3 +484,24 @@ Cross-model: Gemini (agy) ran, EXIT=0, "No issues found" with a two-line summary
 - [x] (suggestion) The PR-mode round-3 allowance ("a host may write the same words into a PR-mode handoff") has no rule for how the host counts PR-mode rounds, so any PR re-review could drop cross-model; say how it counts or drop the allowance (Claude adversarial) — `.claude/skills/review-code/SKILL.md:195`, `.agent/knowledge/review_depth_classification.md:169`
 - [x] (suggestion) Restart then `unexpected`: the table lists it as host-answerable and run-issue step 6 says every answer becomes a `## Checkpoint` entry, while recipe (a) says dispatch review-issue "without asking"; say whether a second entry is written (Claude adversarial) — `.claude/skills/orchestrator/SKILL.md:82`, `:120`
 - [x] (suggestion) ADR-0014's References entry calls itself "one amendment to what this ADR records" (owner-only checkpoints softened to host-answerable); ADR-0008 treats softening a position as a superseding change, so reword it as a pointer or record why an addendum suffices (governance) — `docs/decisions/0014-in-process-phase-handoff.md:206`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-27 14:51 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `420806b6`
+**Addressed**: Local Review at `6237c7e5` (2026-10-27 14:34 -04:00)
+**Commits**: 31af1470, 8a4bbaae, 2630993b, ee7e2573, 4cbc313a, bcbb4855, 9ad62671, 420806b6
+
+### Actions
+- [x] (must-fix) `skill_for()` and `round_count()` both start from a new `restart_start()`, so a failed first implement after a restart is named `implement` and `retry` dispatches it; three new test_dispatch_phase cases (restart then failed implement, its retry, and a failed pass after the new work's own complete implement still naming address-findings); design.md and review_loop_lifecycle.md say skill_for looks only after the restart too (ADR-0017) — `.agent/scripts/dispatch_phase.sh:609` (31af1470)
+- [x] (must-fix) The issue 398 post's status picks the branch: on failure a "not posted" line names the kept file; the text goes to `$WS_ROOT/.agent/scratchpad/` (gitignored), not /tmp; two test_skill_paths checks pin it (420806b6 rewords one failure message the suite's /tmp-mktemp lint misread) — `.claude/skills/orchestrator/SKILL.md:207`, `:224` (8a4bbaae, 420806b6)
+- [x] (must-fix) The review-depth rule now states what `next` does today (routes on Verdict, rows 13-15; any surviving finding, a suggestions-only round 1 too, goes to address-findings and the next round, no checkpoint before round 3) and names the parked owner item "next routes on Verdict not Ship" as the pending change; routing unchanged (host decision); no test pinned the old wording — `.agent/knowledge/host_standing_rules.md:30` (2630993b)
+- [x] (must-fix) The reviewer guide's ADR-0014 row gives `owner` or `host (<reason>)` per run-issue step 6, and flags only an owner-only token answered by the host or a missing reason — `.agent/knowledge/principles_review_guide.md:49` (ee7e2573)
+- [x] (suggestion) PR-mode round count stated where the allowance is: the `review_progress.sh round` rule over the PR's complete `## Local Review` entries after the newest restart, plus one; pre-push rounds do not carry over — `.claude/skills/review-code/SKILL.md:195`, `.agent/knowledge/review_depth_classification.md:169` (4cbc313a)
+- [x] (suggestion) Recipe (a) says a restart's `unexpected` gets no second `## Checkpoint` entry, the one exception to run-issue step 6 — `.claude/skills/orchestrator/SKILL.md:120` (bcbb4855)
+- [x] (suggestion) ADR-0014's issue 321 References entry is a pointer only, to the orchestrator skill's "Decision rights" and "Checkpoints" sections and run-issue step 6 — `docs/decisions/0014-in-process-phase-handoff.md:206` (9ad62671)
+
+### Tests
+Fix commits used `SKIP=validate-script-tests` (dispatched-pass hook rule) except 420806b6, which ran every hook. Final: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, passed on the final tree (the script test suite included); its first run failed on the /tmp-mktemp lint, fixed in 420806b6. Run by hand during the pass: test_dispatch_phase 130/0, test_skill_paths 73/0, test_review_code_convergence 35/0. A check that the new dispatch tests fail on the pre-fix script was not run (the command was denied by the permission system). Boxes in the source entry were checked by editing progress.md directly: `review_progress.sh findings/check` select only a `## Local Review (Pre-Push)` or `## Integrated Review`, never this PR-mode `## Local Review`.
