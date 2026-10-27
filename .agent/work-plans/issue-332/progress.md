@@ -769,3 +769,13 @@ CI at `8798ed5d`: Validate Adapter Contract, Validate Documentation, ros-manifes
 
 ### False positives
 - (Copilot @ `8798ed5d`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-27 14:42 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+PR 403 Integrated Review (18e54eb3, round 3): 1 valid suggestion, no must-fix (the no-bash-4 guard regex misses the indirect form ${!y,,}). Answered from the owner's standing rule for this PR, accepted 2026-10-27 ("fix 403": fix every valid finding until a round comes back clean, then bring the merge); no new question was put to him.
