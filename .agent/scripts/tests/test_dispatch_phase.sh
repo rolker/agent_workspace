@@ -259,12 +259,21 @@ $(checkpoint plan proceed)
 $(implementation failed "")"
 assert_next "skill_for: after a restart, a failed implement with no **Addressed** maps to implement -- the complete Implementations before the restart do not count" none \
     "$RESTART_THEN_FAILED_IMPL" checkpoint:phase-failed "phase=implement"
-assert_next "skill_for: the retry answer to that checkpoint dispatches implement, not address-findings" none \
-    "$RESTART_THEN_FAILED_IMPL
-$(checkpoint phase-failed retry implement)" implement
+# The retry checkpoint's **Phase** is what `next` printed for the failed
+# pass, as the real loop records it (run-issue step 6), never a hard-coded
+# value: on the pre-fix script `next` printed phase=address-findings, so
+# the retry dispatched address-findings and this case fails there.
+RETRY_PHASE="$(run_next none "$RESTART_THEN_FAILED_IMPL" | sed -n 's/^phase=//p')"
+if [[ -z "$RETRY_PHASE" ]]; then
+    fail "skill_for: next printed no phase= for the failed implement after a restart, so its retry cannot be recorded"
+else
+    assert_next "skill_for: the retry answer to that checkpoint (Phase: $RETRY_PHASE, from next) dispatches implement, not address-findings" none \
+        "$RESTART_THEN_FAILED_IMPL
+$(checkpoint phase-failed retry "$RETRY_PHASE")" implement
+fi
 assert_next "skill_for: after a restart and a complete implement of the new work, a failed pass with no **Addressed** still maps to address-findings" none \
     "$RESTART_THEN_FAILED_IMPL
-$(checkpoint phase-failed retry implement)
+$(checkpoint phase-failed retry "${RETRY_PHASE:-implement}")
 $(implementation complete "")
 $(local_review_prepush complete changes-requested feature/issue-9 bbb2222)
 $(implementation failed "")" checkpoint:phase-failed "phase=address-findings"
