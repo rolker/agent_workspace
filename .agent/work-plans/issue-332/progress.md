@@ -705,3 +705,13 @@ Finding 1 checked against the code: errexit does cover the one caller today (`pr
 - [ ] (suggestion, Local Review @ `b9bfcd61` (Claude adversarial)) `test_no_bash4_case_conversion`'s regex `\$\{[^}]*(,,?|\^\^?)\}` matches legal bash 3.2 (`${x:-,}`, `${x%^}`) and, because it requires the operator right before `}`, misses the bash 4 pattern form `${x,,[A-Z]}`; a guard that both cries wolf and has a hole. Fix: match the operator right after a parameter name, subscript allowed: `\$\{([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)` (checked on samples here: matches `${1,,}`, `${x^^}`, `${arr[0],,}`, `${x,,[A-Z]}`, `${x,}`, `${@^^}`; not `${x:-,}` or `${x%^}`). The reviewer's suggested `[A-Za-z_0-9@*]+` would miss `${arr[0],,}` — `.agent/scripts/tests/test_project_file.sh:421`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-27 14:26 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+PR 403 Integrated Review (ead948c6, at 99626d24): 2 valid suggestions, no must-fix (the temp-file writer's printf calls rely on the caller's set -e, so a caller inside a condition can save a cut-off file; the no-bash-4 test regex flags legal bash and misses the pattern form). Host recommended fixing both and proposed a standing rule for this PR: fix every valid finding until a round comes back clean, then bring the merge. Owner's answer: "fix 403". Host reads it as the rule accepted for this PR, stated in the hand-back for veto.
