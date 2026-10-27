@@ -813,3 +813,24 @@ CI at `8bc1d033`: Validate Documentation, Validate Adapter Contract, ros-manifes
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-27 14:58 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `876133c4`
+**Sources**: 3 (Local Review @ `8bc1d03` (covers head `876133c4` via bookkeeping), Copilot @ `8bc1d033` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Previous Integrated Review (at `8798ed5d`, committed `18e54eb3`): its one finding (no-bash-4 guard missed indirect `${!x,,}` / `${!x^^}`) was fixed in f21f3371 and confirmed closed by the round-4 Local Review; checked here: the pattern at `.agent/scripts/tests/test_project_file.sh:424` carries `\$\{!?`, and `${!x,,}` / `${!x^^}` are in the catch samples at line 426. Not re-listed.
+Round-4 Local Review @ `8bc1d03`: approved, 0 must-fix, 0 suggestions. Its one open box ("No issues found. LGTM.") is a placeholder, not a finding; nothing to triage. Older Local Reviews at `91366fc`, `b9bfcd6` and `8798ed5` are stale (code changed since) and were closed by earlier triage.
+GitHub: 8 Copilot reviews, all the quota message, no inline comments; no conversation comments; no human reviews.
+CI at `876133c4`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs (40564504213, 40564515660); Lint (pre-commit) still pending on both. The `copilot-pull-request-reviewer` check is still running and fails on quota, not code.
+
+### Findings
+None open.
+
+### False positives
+- (Copilot @ `8bc1d033`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
