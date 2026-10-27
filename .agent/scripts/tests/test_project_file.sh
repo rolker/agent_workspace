@@ -416,9 +416,20 @@ test_records_repo_workspace_by_remote_url() {
 
 test_no_bash4_case_conversion() {
     echo "TEST: the settings-file code uses no bash 4 case conversion (bash 3.2 would leave the remote-URL comparison empty and skip the refusal)"
-    local f hits
+    local f hits sample re
+    # The operator right after a parameter name (subscript allowed), so the
+    # pattern form ${x,,[A-Z]} is caught and legal bash 3.2 that merely
+    # contains ',' or '^' (${x:-,}, ${x%^}) is not.
+    re='\$\{([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)'
+    # Self-check, so the pattern cannot regress silently.
+    for sample in '${1,,}' '${x^^}' '${arr[0],,}' '${x,,[A-Z]}' '${x,}' '${@^^}'; do
+        assert_eq "the pattern catches $sample" "yes" "$(printf '%s\n' "$sample" | grep -qE "$re" && echo yes || echo no)"
+    done
+    for sample in '${x:-,}' '${x%^}' '${x//,/ }' '${x#^}'; do
+        assert_eq "the pattern skips legal $sample" "no" "$(printf '%s\n' "$sample" | grep -qE "$re" && echo yes || echo no)"
+    done
     for f in _project_registry.sh project_setting.sh; do
-        hits="$(grep -nE '\$\{[^}]*(,,?|\^\^?)\}' "$REAL_ROOT/.agent/scripts/$f" | grep -vE '^[0-9]+:[[:space:]]*#' || true)"
+        hits="$(grep -nE "$re" "$REAL_ROOT/.agent/scripts/$f" | grep -vE '^[0-9]+:[[:space:]]*#' || true)"
         assert_eq "$f: no \${x,,} or \${x^^}" "" "$hits"
     done
 }
