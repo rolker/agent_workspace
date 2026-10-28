@@ -1165,3 +1165,21 @@ The round-5 review's out-of-scope note, judged as a finding and reproduced: a sa
 **Decision**: address
 
 The Integrated Review at 2bfbb7f5 (pull request 409, PR 2 of 4) has one open finding, a suggestion: an interrupt or unexpected exit after backup_settings and before SETTINGS_WRITING=1 takes the rollback's do-nothing branch, so the run ends refused with the hidden .settings-backup.* file left in projects.d and NEXT naming nothing. The host read the triage's fix plan (that branch removes the backup when it exists, since the settings file was never written in that window; a failed removal warns and names the file through rollback_left; one sandbox test with the fault before SETTINGS_WRITING=1 and an existing settings file, asserting STATUS=refused, the settings file byte-identical, no registry line and no leftover files, failing on the current script) and sends it to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 12:54 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `6f0e6704`
+**Addressed**: Integrated Review at `c0710b66` (2026-10-28 12:37 -04:00)
+**Commits**: 6f0e6704
+
+### Actions
+- [x] A rollback after `backup_settings` and before `SETTINGS_WRITING=1` left the hidden `.settings-backup.*` unnamed with `STATUS=refused`: the `SETTINGS_WRITING -eq 0` branch of `rollback` now removes the backup (the settings file was never written, so it only duplicates it), and when the removal fails warns and names it through `rollback_left`; the header's rollback paragraph says so. New sandbox test (fault before `SETTINGS_WRITING=1`, existing settings file, `--set test=none`) asserts non-zero exit, `STATUS=refused`, the settings file byte-identical, no registry line, no backup or restore file left, plus the removal-failure path naming the backup on NEXT; it failed 2 checks on the script before the fix and passes after — `.agent/scripts/register_project.sh:1000`, `.agent/scripts/tests/test_register_project.sh:875`
+
+### Checks
+- `test_register_project.sh`: 196 passed, 2 failed before the fix (the new checks); 198 passed, 0 failed after.
+- Fix commit made with every hook, the script suite included (no SKIP); box checked with `review_progress.sh check` (it points at this Integrated Review), in the same commit.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: passed (exit 0).
+- Not pushed; the host owns the push.
