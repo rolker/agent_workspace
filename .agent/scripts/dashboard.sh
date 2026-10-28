@@ -143,7 +143,9 @@ fi
 
 # Project directory (legacy shape) + registered projects (issue #227)
 PROJECT_DIR="${MAIN_ROOT:-$ROOT_DIR}/project"
+REGISTRY_OK=1
 REGISTRY_ENTRIES="$(registry_entries "${MAIN_ROOT:-$ROOT_DIR}")" || {
+    REGISTRY_OK=0
     check_fail "projects.local has malformed entries (see errors above)"
     ((FAILED_CHECKS++))
     # Fail closed like the adapter dispatcher: don't report/sync/query a
@@ -173,6 +175,12 @@ if [ -n "$REGISTRY_ENTRIES" ]; then
             else
                 check_pass "parent root '$_name' at $_path ($_INSTANCES)"
             fi
+            # Nothing reads a parent's settings file (issue #332): the
+            # adapter resolves a parent to an instance first.
+            _PF="$(project_file_path "${MAIN_ROOT:-$ROOT_DIR}" "$_name")"
+            if [ -e "$_PF" ] || [ -L "$_PF" ]; then
+                check_warn "parent root '$_name' has a settings file .agent/projects.d/$_name, which nothing reads: settings belong to its instances (${_INSTANCES:-none registered}) (run: .agent/scripts/project_setting.sh check $_name)"
+            fi
             continue
         fi
         if [ -d "$_path" ] && git -C "$_path" rev-parse --git-dir &>/dev/null; then
@@ -180,7 +188,32 @@ if [ -n "$REGISTRY_ENTRIES" ]; then
         else
             check_warn "project '$_name' registered but not checked out at $_path"
         fi
+        # Its settings file, .agent/projects.d/<name> (issue #332): a
+        # malformed or refused file stops every adapter verb for the project.
+        _PF_RC=0
+        project_records_check "${MAIN_ROOT:-$ROOT_DIR}" "$_name" >/dev/null 2>&1 || _PF_RC=$?
+        if [ "$_PF_RC" -eq 2 ]; then
+            check_fail "project '$_name': settings file .agent/projects.d/$_name is invalid (run: .agent/scripts/project_setting.sh check $_name)"
+            ((FAILED_CHECKS++))
+        elif [ "$_PF_RC" -eq 3 ]; then
+            check_warn "project '$_name': records settings in .agent/projects.d/$_name are valid but not yet honoured ($PROJECT_RECORDS_LOOKUP_ISSUE)"
+        fi
     done <<< "$REGISTRY_ENTRIES"
+fi
+# A settings file whose project is not registered is read by nothing. Also
+# checked with no project registered (then every file is an orphan), but
+# not when the registry is malformed: its names are unknown.
+if [ "$REGISTRY_OK" -eq 1 ]; then
+    for _pf in "${MAIN_ROOT:-$ROOT_DIR}"/.agent/projects.d/*; do
+        [ -f "$_pf" ] || continue
+        _pfname="$(basename "$_pf")"
+        [[ "$_pfname" == *.sh ]] && _pfname="${_pfname%.sh}"
+        # Fixed-string whole-line match: a name may contain '.', and a
+        # file name may start with '-'.
+        if ! grep -qxF -- "$_pfname" <<< "$(cut -f1 <<< "$REGISTRY_ENTRIES")"; then
+            check_warn "settings file .agent/projects.d/$(basename "$_pf") belongs to no registered project"
+        fi
+    done
 fi
 
 # Configuration validation

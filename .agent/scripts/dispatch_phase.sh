@@ -17,6 +17,12 @@
 #     `key=value` lines, one per line, in this order: worktree, task,
 #     agent_name, agent_email, model, entry_type, exit_contract,
 #     conventions, and prompt_file (only when --prompt-file was given).
+#     For `implement` and `address-findings` in a workspace handoff,
+#     conventions also carries the once-per-pass hook rule (owner-decided
+#     2026-10-20, issue #399): SKIP=validate-script-tests on intermediate
+#     commits only, one `pre-commit run --files` over the branch's changed
+#     files before the entry, CI as the backstop; other phases and project
+#     handoffs carry none.
 #     --skill-prefix (default empty) namespaces every slash command in the
 #     task line, e.g. `agent-workspace:` gives `/agent-workspace:review-code`
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
@@ -390,7 +396,22 @@ cmd_handoff() {
     else
         echo "exit_contract=Append exactly one \`## $entry_type\` entry to $wt/.agent/work-plans/issue-$issue/progress.md via the phase's own persistence step. If you cannot finish, still append it with **Status**: partial or **Status**: failed and say why. Never push — the host owns every push."
     fi
-    echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create."
+    # The once-per-pass hook rule (issue #399, owner-decided 2026-10-20):
+    # only the committing passes of a workspace handoff get it. It names a
+    # workspace hook and workspace CI, so a project handoff carries none,
+    # and no review phase is ever told to skip a hook.
+    # ROOT_DIR goes through printf %q because the agent runs the printed
+    # command as written: an ordinary path prints unchanged (so the
+    # permission allowlist still matches it) and a path with a space or
+    # other shell character comes out escaped.
+    local pass_rule="" root_q
+    root_q=$(printf '%q' "$ROOT_DIR")
+    case "$skill" in
+        implement|address-findings)
+            [[ "$type" == workspace ]] && pass_rule=" Hook rule for this dispatched pass (owner-decided 2026-10-20): set \`SKIP=validate-script-tests\` only on your intermediate atomic commits, never \`--no-verify\`; before writing the entry, run \`$root_q/.venv/bin/pre-commit run --files \$(git diff --name-only main...HEAD)\` once with no SKIP (the main checkout's venv pre-commit: a worktree has no \`.venv\`; the file list is left unquoted because no repo path has a space; in a sub-issue worktree it also covers the parent's files). It runs the script test suite when a changed file that still exists matches that hook (pre-commit drops deleted paths; CI's all-files run covers the rest), so run no separate suite; it takes several minutes: give the call a long timeout (up to 600000 ms) and wait for its exit, because a run that was backgrounded or cut off has not passed. If it fails, fix it and run the same command again on the final tree. CI (\`make lint\`, every hook on all files) is the backstop."
+            ;;
+    esac
+    echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create.${pass_rule}"
     if [[ -n "$prompt_file" ]]; then
         echo "prompt_file=$prompt_file"
     fi
