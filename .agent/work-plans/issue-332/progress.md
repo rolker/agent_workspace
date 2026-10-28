@@ -979,3 +979,26 @@ PR 2 of 4, round 2 (taken as 2, counter says 9) at 89ac5d5d: 2 must-fix (M1 a le
 ### Verification
 - test_register_project.sh: 180 passed, 0 failed (was 142). Each new test was run against the pre-fix script (a scratch copy of the tree with the old register_project.sh): 25 checks fail there, at least one per finding.
 - Main checkout venv pre-commit run --files over main...HEAD, no SKIP: every hook passed, validate-script-tests included.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 11:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `1a2255eb`
+**Base**: main
+**Depth**: Deep (reason: whole-branch classification unchanged from round 2, 18 files, enforcement files touched); round-3 scope narrowed by the host to the round-2 findings and the fix diff 89ac5d5d..1a2255eb, no cross-model reviewers
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Round taken as 3, not the counter's 10: PR 1 of 4's pre-push entries (merged as PR 403) are still on this timeline (issue 384); this branch's rounds are the entries at a658c114 (round 1) and 89ac5d5d (round 2). `verdict` run with `--round 3 --prev-must-fix 2 --mechanical`. The task line named a "Round-3 convergence check" rule; no such section exists in review-code/SKILL.md (main or worktree), so the narrow scope and the skipped cross-model reviewers come from the host's task line, not the skill.
+
+Round-2 findings, each confirmed fixed against the code and its tests: M1 glob-bearing legacy command stays in the legacy file, warned and marked set so detection does not override it (c398b83c); M2 rollback_left/LINE_LEFT name what a rollback could not undo on NEXT=, NOT READY while the line is left, LINE_WRITTEN set before the rename with the rollback looking the line up, --remove reports a settings file it could not delete (STATUS=removed, settings file left, exit 1) and says the plugin is already disabled when the line cannot be written (547e2716); S1 dangling link / non-regular settings path refused before any write (66518ff6); S2 checksum taken after this run's write, a changed file kept and the backup named (744f3ada); S3 plugin state read just before step 4, same definition as user_tier_install.sh plugin_state "enabled" (09712d2d); S4 EXIT trap guarded by FINAL_DONE and RUN_STARTED (d440e915); S5 python3 fallback reads null/false as empty (831aa840). The design.md sentence (b55dd0bc) matches the code.
+
+Status contract: `removed, settings file left` (exit 1) follows the existing comma-qualified form (`registered, <verbs> not run`); NOT READY for a rollback that left the line keeps its meaning (registered, unchecked); STATUS/NAME/ROOT/NEXT stay the last lines, as the plan's stable last-lines rule asks. No consumer outside the script and its tests parses STATUS. Consistent.
+
+Checks: test_register_project.sh 180 passed, 0 failed; shellcheck --severity=warning (main checkout venv) clean on register_project.sh and its suite. A scratch probe in the session scratchpad (synthetic sandbox, the suite's fixtures and fault stubs) reproduced the must-fix below.
+
+### Findings
+- [ ] (must-fix) A signal during a rollback cuts it short and the last lines still claim a clean result: on_signal (and, for a second signal, on_exit) calls rollback, which is already disarmed, then prints STATUS=refused "interrupted; nothing is registered". Reproduced: build fails, TERM right after the rollback's registry mv, the settings file is left and not named; a signal during --disable-root would leave the line too. Mark the rollback as running and have on_signal return (resume it) while it runs, and on_exit name "the rollback stopped part way" with NOT READY; add a test (fault stub signal-after on mv during the rollback) — `.agent/scripts/register_project.sh:1029`
