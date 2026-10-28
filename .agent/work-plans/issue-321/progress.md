@@ -680,3 +680,13 @@ The open suggestion is confirmed against the code: review-plan step 2 reads the 
 - [ ] (suggestion, Local Review @ `4012a70d`) The restart words stop at `## Plan Authored`, so a `review-plan` dispatch and a `plan-task` revision after a plan-checkpoint `revise` can both read a git-bug copy of the issue without the restart comment; fix: in orchestrator recipe (a) and run-issue's restart paragraph, say the host quotes the newest `restart` entry's words into every `review-issue`, `plan-task` and `review-plan` handoff until a `## Checkpoint` with `**After**: plan` and `**Decision**: proceed` follows it, on a resumed drive too, and update the two matching assertions in `test_skill_paths.sh` (lines 288-289, 329-330) — `.claude/skills/orchestrator/SKILL.md:155-161`, `.claude/skills/run-issue/SKILL.md:435-439`, `.agent/scripts/tests/test_skill_paths.sh`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 09:12 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (second address in a row, within the cap; the one open finding is the same restart-words gap one step later, a mechanism fix with no goal question and no outward change)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at bf136567 has one open finding, a suggestion: review-plan and a plan-task revision after a "revise" answer also read a cached copy of the issue, so the restart words must be quoted into review-plan handoffs too, until a Checkpoint with After: plan and Decision: proceed follows the newest restart entry. The host read the triage's fix plan (orchestrator recipe (a), run-issue's restart paragraph, the two test_skill_paths assertions) and sends it to address-findings. The owner's direction for this run: "Let's have bg agents continue working on both."
