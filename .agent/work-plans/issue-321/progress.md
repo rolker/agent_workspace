@@ -849,3 +849,17 @@ The round-7 finding is fixed. Orchestrator recipe (a) step 2 now runs a new chec
 
 ### Findings
 - [x] (suggestion) run-issue's resumed-drive sentence states the failed-check branch as "nothing is asked or posted and the "not posted" line goes into the hand-back" and then continues "and dispatches `review-issue`", so it reads as dispatching after a failed check; recipe (a) says "On a "not posted" line, dispatch nothing", which keeps the `restart` entry newest so the recovery path posts the comment later (a dispatched review-issue would write the newest entry and the comment would never be posted). Make the parenthetical "nothing is asked, posted or dispatched" — `.claude/skills/run-issue/SKILL.md:437-439`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 10:07 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `5f0d3fdd`
+**Addressed**: Local Review at `5e5092f1` (2026-10-28 10:00 -04:00)
+**Commits**: 5f0d3fdd
+
+### Actions
+- [x] run-issue's resumed-drive sentence no longer reads as dispatching after a failed restart-comment check: the success path ("posts it on his yes, and dispatches `review-issue` (recipe (a))") comes first, then "When the check itself fails, nothing is asked, posted or dispatched: the "not posted" line goes into the hand-back and the `restart` entry stays the newest", matching orchestrator recipe (a); `test_skill_paths.sh` pins the new sentence in place of the old one — `.claude/skills/run-issue/SKILL.md:437-441`, `.agent/scripts/tests/test_skill_paths.sh:380`
+
+Box checked by editing progress.md in the fix commit: `review_progress.sh findings` selects the latest Integrated Review (this post-PR `## Local Review` is not a source type), so `check` could not target it. Verified: `test_skill_paths.sh` 86 passed, 0 failed; the main checkout's `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, exit 0, the script-test suite hook included.
