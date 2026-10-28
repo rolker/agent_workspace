@@ -151,10 +151,14 @@ footprint answers are recorded, and how many findings of each severity.
 
 A category 6 `error` means the registration does not work as it stands (a
 missing build or test command, the user tier out of date, a root that does
-not resolve). Name the fix the finding gives; a command the project lacks
-is a setting this session may store, after a yes
-(`project_setting.sh set <settings-name> build=<command>` or `test=none`); the
-user tier and the registry line are fixed from a workspace session.
+not resolve). Name the fix the finding gives. For a `single_project`
+project, a command it lacks is a setting this session may store, after a
+yes (`project_setting.sh set <settings-name> build=<command>` or
+`test=none`). A `ros2_colcon` project has no `build` or `test` setting:
+colcon owns both, and `set` refuses them (the type's
+`$WS_ROOT/.agent/project_types/ros2_colcon/unused_settings` says why), so
+its fix is the one the finding names. The user tier and the registry line
+are fixed from a workspace session.
 
 ### 3. Ask the footprint questions not yet answered
 
