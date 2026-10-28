@@ -1012,3 +1012,21 @@ Checks: test_register_project.sh 180 passed, 0 failed; shellcheck --severity=war
 **Decision**: address
 
 The owner's answer, in his words: "C fix". The question: fix the one must-fix the round-3 review (e8652419, this branch's round 3; the counter says 10, issue 384) left open before publishing PR 2 of 4, or publish now. The must-fix: a signal arriving during the rollback cuts it short while the last lines still say "interrupted; nothing is registered"; the fix lets a running rollback finish on a signal, reports "the rollback stopped part way" with NOT READY when the EXIT trap fires mid-rollback, with a test using the signal-after fault stub. The host had answered address twice in a row at this checkpoint, the cap, so the third answer was his. (Recorded after the fix pass was dispatched: a first write of this entry landed on the wrong branch, unpushed.)
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 12:09 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `ab758292`
+**Addressed**: Local Review (Pre-Push) at `1a2255eb` (2026-10-28 11:34 -04:00)
+**Commits**: ab758292
+
+Owner's decision on the one must-fix, in his words: "C fix" (fix it before the pull request opens).
+
+### Actions
+- [x] (must-fix) A signal during a rollback cut it short and the last lines still claimed a clean result. Fixed: a signal while a failure, an interrupt or an unexpected exit is being handled (its rollback included) now returns and lets it finish (`ENDING` / `ROLLBACK_RUNNING`; `on_signal` and `on_exit` no longer reset the traps); an exit inside the rollback reports STATUS=NOT READY, "the rollback stopped part way", naming each unfinished step found left (`rollback_unfinished`); script header's status contract updated — `.agent/scripts/register_project.sh:1029`
+
+### Tests
+- Three new cases in `.agent/scripts/tests/test_register_project.sh` (synthetic sandboxes, existing signal-after fault stub): TERM after the rollback's registry rename on a failed build; a second TERM during an interrupt's rollback; an unset variable read inside a sandbox copy's rollback. On the pre-fix script: 183 passed, 6 failed (exactly the new checks); after the fix: 189 passed, 0 failed.
+- Branch-wide `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, the script suite included. The fix commit itself skipped only `validate-script-tests` (#399 rule).
