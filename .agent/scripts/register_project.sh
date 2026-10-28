@@ -53,6 +53,9 @@
 #                  one command, so nothing is proposed: point build= at a
 #                  script.
 #
+# A settings path that is a dangling symlink, or not a regular file (a
+# directory, say), is refused before anything is written.
+#
 # Registering, in order, so a failed registration leaves nothing behind:
 #   1. write the registry line (a temporary copy, re-parsed, then renamed)
 #      and the settings file. Its command keys come from --set, else the
@@ -685,6 +688,17 @@ SETTINGS="$(project_file_path "$ROOT" "$NAME")"
 LEGACY="$PROJECTS_D/$NAME.sh"
 SETTINGS_EXISTED=0
 { [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; } && SETTINGS_EXISTED=1
+# A settings path that is there but is not a regular file (or a link to
+# one) cannot be backed up or checked, and the writer would create a file
+# through a dangling link: refused before anything is written.
+if [ -L "$SETTINGS" ] && [ ! -e "$SETTINGS" ]; then
+    echo "ERROR: the settings file $SETTINGS is a symlink to $(readlink -- "$SETTINGS" 2>/dev/null || echo '?'), which does not exist" >&2
+    final refused "remove the link, or create its target, then re-run" 1
+fi
+if [ -e "$SETTINGS" ] && [ ! -f "$SETTINGS" ]; then
+    echo "ERROR: the settings file $SETTINGS is there but is not a regular file (a directory, say)" >&2
+    final refused "move $SETTINGS aside, then re-run" 1
+fi
 KV=()          # key=value to write
 KV_NOTES=()    # where each came from
 if [ "$IS_PARENT" -eq 0 ]; then

@@ -411,6 +411,27 @@ check "the restore fails: the backup holds the content from before the run, no r
     bash -c 'cmp -s "$1" "$2" && [ -z "$(find "$3" -maxdepth 1 -name ".settings-restore.*")" ]' _ "$WS/.agent/projects.d/$BK" "$SANDBOX/psi.before" "$WS/.agent/projects.d"
 rm -f "$WS/.agent/projects.d/$BK" "$(pfile "$WS" psi)"
 
+echo "TEST: a settings path that is a dangling symlink or a directory is refused before anything is written"
+PSD="$(make_proj sdang)"
+# The target's directory exists, so a writer would create the file there.
+mkdir -p "$SANDBOX/sdangdir"
+ln -s "$SANDBOX/sdangdir/sdang-target" "$(pfile "$WS" sdang)"
+cp "$WS/.agent/projects.local" "$SANDBOX/reg.before"
+: > "$REG_LOG"
+out="$(reg "$WS" "$PSD")"; rc=$?
+check "a dangling link: exit 1, STATUS=refused, naming the link" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"is a symlink to $3, which does not exist"* ]]' _ "$rc" "$out" "$SANDBOX/sdangdir/sdang-target"
+check "a dangling link: registry unchanged, no file created through the link, nothing ran" \
+    bash -c 'cmp -s "$1" "$2" && [ -L "$3" ] && [ ! -e "$3" ] && [ -z "$(ls -A "$4")" ] && [ ! -s "$5" ]' _ "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$(pfile "$WS" sdang)" "$SANDBOX/sdangdir" "$REG_LOG"
+rm -f "$(pfile "$WS" sdang)"
+mkdir -p "$(pfile "$WS" sdang)"
+out="$(reg "$WS" "$PSD")"; rc=$?
+check "a directory: exit 1, STATUS=refused, naming it" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"is there but is not a regular file"* ]]' _ "$rc" "$out"
+check "a directory: registry unchanged, the directory kept, nothing ran" \
+    bash -c 'cmp -s "$1" "$2" && [ -d "$3" ] && [ ! -s "$4" ]' _ "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$(pfile "$WS" sdang)" "$REG_LOG"
+rmdir "$(pfile "$WS" sdang)"
+
 # ---------------------------------------------- failures roll back ---
 echo "TEST: a failing validate, build or test leaves no line, no file and no plugin enable"
 install_ut "$WS" >/dev/null || fail "installing the sandbox user tier"
