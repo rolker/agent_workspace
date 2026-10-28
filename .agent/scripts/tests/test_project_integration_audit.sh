@@ -229,6 +229,11 @@ check "4: info (got $(sev_of ignored-agent-file))" [ "$(sev_of ignored-agent-fil
 check "5: info (got $(sev_of conventions-unread))" [ "$(sev_of conventions-unread)" = "info" ]
 check "the detail says nothing is offered" grep -qF "(instructions=none: nothing is offered)" <<< "$AUDIT_OUT"
 check "3: the worktrees finding stays warn (its fix is untracked)" [ "$(sev_of worktrees-not-ignored)" = "warn" ]
+for id in skill-same-name process-branch process-issue old-work-plans; do
+    check "$id: info (got $(sev_of "$id"))" [ "$(sev_of "$id")" = "info" ]
+done
+check "no warn in categories 1 to 5 but the worktrees finding (got: $(awk -F'\t' '$3 == "warn" { print $2 }' <<< "$AUDIT_OUT" | paste -sd' ' -))" \
+    awk -F'\t' '$3 == "warn" && $1 < 6 && $2 != "worktrees-not-ignored" { bad = 1 } END { exit bad }' <<< "$AUDIT_OUT"
 rm -f "$WS/.agent/projects.d/handreg"
 
 echo "TEST: category 1, settings hooks and allow rules, .mcp.json, @ imports, same-named commands"
@@ -254,6 +259,11 @@ check "claude-md-import names the imports, not a mention" \
     grep -qE $'^1\tclaude-md-import\tinfo\tCLAUDE.md\timports @AGENTS.md @docs/style.md into' <<< "$AUDIT_OUT"
 check "command-same-name" grep -qE $'^1\tcommand-same-name\twarn\t.claude/commands/sitrep.md' <<< "$AUDIT_OUT"
 check "nothing outside category 1 (got: $(cats))" [ "$(cats)" = "1" ]
+printf 'build=make\ntest=make test\ninstructions=none\n' > "$WS/.agent/projects.d/p1"
+audit "$P1"
+check "instructions=none: command-same-name is info (got $(sev_of command-same-name))" [ "$(sev_of command-same-name)" = "info" ]
+check "instructions=none: settings-hooks stays warn (what the project loads)" [ "$(sev_of settings-hooks)" = "warn" ]
+printf 'build=make\ntest=make test\n' > "$WS/.agent/projects.d/p1"
 
 echo "TEST: category 3, the records settings against .agent/work-plans/"
 P3="$SANDBOX/projects/p3"
@@ -270,6 +280,10 @@ install_ut
 audit "$P3"
 check "(project, project) with .agent/ ignored: work-plans-ignored" \
     grep -qE $'^3\twork-plans-ignored\twarn\t.agent/work-plans/\t.*\\.gitignore:2:\\.agent/' <<< "$AUDIT_OUT"
+printf 'build=make\ntest=make test\ninstructions=none\n' > "$WS/.agent/projects.d/p3"
+audit "$P3"
+check "instructions=none: work-plans-ignored is info (got $(sev_of work-plans-ignored))" [ "$(sev_of work-plans-ignored)" = "info" ]
+printf 'build=make\ntest=make test\n' > "$WS/.agent/projects.d/p3"
 printf 'worktrees/\n' > "$P3/.gitignore"
 printf 'build=make\ntest=make test\nlocation=project\ntracking=untracked\n' > "$WS/.agent/projects.d/p3"
 audit "$P3"
@@ -290,6 +304,10 @@ sed -i '/work-plans/d' "$P3/.git/info/exclude"
 audit "$P3"
 check "docs/work-plans/ beside .agent/work-plans/: old-work-plans" has_id 3 old-work-plans
 check "and records-two-places" has_id 3 records-two-places
+printf 'build=make\ntest=make test\ninstructions=none\n' > "$WS/.agent/projects.d/p3"
+audit "$P3"
+check "instructions=none: records-two-places is info (got $(sev_of records-two-places))" [ "$(sev_of records-two-places)" = "info" ]
+printf 'build=make\ntest=make test\n' > "$WS/.agent/projects.d/p3"
 rm -rf "$P3/docs"
 
 echo "TEST: category 4, a path the workspace would add is ignored"

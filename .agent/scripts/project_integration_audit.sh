@@ -21,6 +21,12 @@
 # unless the user wants to). A finding whose fix would add or change a
 # tracked file in the project is info, never warn, when the project's
 # settings say instructions=none: the workspace offers nothing there.
+# Those ids: skill-same-name, command-same-name, process-branch,
+# process-issue, work-plans-ignored, old-work-plans, records-two-places,
+# ignored-agent-file, ignore-would-hide, conventions-unread. The rest keep
+# their severity: their fix touches no tracked file (a setting, a
+# .git/info/exclude line, the registration) or they report what the
+# project already loads (settings-hooks, settings-unread).
 #
 # Categories (ids are stable; the skill and tests key off them):
 #   1 overrides   project configuration that overrides or layers over the
@@ -159,7 +165,8 @@ emit() {
 }
 
 # The instructions setting, read once; findings whose fix is a tracked file
-# drop to info when it is none.
+# (the ids in the header) go through emit_offer and drop to info when it is
+# none.
 INSTRUCTIONS=""
 SETTINGS_OK=1
 if [ -n "$SNAME" ]; then
@@ -210,16 +217,16 @@ if [ -n "$PROOT_ABS" ]; then
         pl="$(wc -l < "$d/SKILL.md" | tr -d ' ')"
         wl="$(wc -l < "$ws" | tr -d ' ')"
         if cmp -s "$d/SKILL.md" "$ws"; then
-            emit 1 skill-same-name warn ".claude/skills/$sk" "identical to the workspace skill '$sk' ($pl lines): a copy that will drift; in a project session the workspace's is /agent-workspace:$sk"
+            emit_offer 1 skill-same-name warn ".claude/skills/$sk" "identical to the workspace skill '$sk' ($pl lines): a copy that will drift; in a project session the workspace's is /agent-workspace:$sk"
         else
-            emit 1 skill-same-name warn ".claude/skills/$sk" "differs from the workspace skill '$sk' (project $pl lines, workspace $wl lines); in a project session the bare /$sk is the project's and /agent-workspace:$sk the workspace's"
+            emit_offer 1 skill-same-name warn ".claude/skills/$sk" "differs from the workspace skill '$sk' (project $pl lines, workspace $wl lines); in a project session the bare /$sk is the project's and /agent-workspace:$sk the workspace's"
         fi
     done
     for c in "$PROOT_ABS"/.claude/commands/*.md; do
         [ -f "$c" ] || continue
         cn="$(basename "$c" .md)"
         [ -f "$MAIN_ROOT/.claude/skills/$cn/SKILL.md" ] || continue
-        emit 1 command-same-name warn ".claude/commands/$cn.md" "a project command with the workspace skill's name '$cn' ($(wc -l < "$c" | tr -d ' ') lines); the bare /$cn is the project's"
+        emit_offer 1 command-same-name warn ".claude/commands/$cn.md" "a project command with the workspace skill's name '$cn' ($(wc -l < "$c" | tr -d ' ') lines); the bare /$cn is the project's"
     done
     for s in .claude/settings.json .claude/settings.local.json; do
         sf="$PROOT_ABS/$s"
@@ -280,11 +287,11 @@ candidate() {
         fi
         n=$((n + 1))
         if [ "$n" -gt 10 ]; then
-            emit 2 "$id" "$sev" "$f" "and more lines like these ($total in all)"
+            emit_offer 2 "$id" "$sev" "$f" "and more lines like these ($total in all)"
             break
         fi
         text="$(sed -e 's/^[[:space:]]*//' <<< "$text" | cut -c1-200)"
-        emit 2 "$id" "$sev" "$f:$ln" "$text"
+        emit_offer 2 "$id" "$sev" "$f:$ln" "$text"
     done < <(grep -niE "$re" "$PROOT_ABS/$f" 2>/dev/null)
 }
 build_candidates() {  # <file>: build/test command lines that are not the project's own
@@ -336,7 +343,7 @@ if [ "$IS_GIT" -eq 1 ]; then
     case "$REC_LOC/$REC_TRACK" in
         project/project)
             if [ "$WP_IGN" -eq 1 ]; then
-                emit 3 work-plans-ignored warn ".agent/work-plans/" "records are committed in the project (location=project tracking=project) but an ignore rule hides them: $(g check-ignore -v -- "$WP_PROBE" 2>/dev/null | cut -f1)"
+                emit_offer 3 work-plans-ignored warn ".agent/work-plans/" "records are committed in the project (location=project tracking=project) but an ignore rule hides them: $(g check-ignore -v -- "$WP_PROBE" 2>/dev/null | cut -f1)"
             fi ;;
         project/untracked)
             if [ "$WP_IGN" -eq 0 ]; then
@@ -345,13 +352,13 @@ if [ "$IS_GIT" -eq 1 ]; then
     esac
     has_files() { [ -d "$1" ] && [ -n "$(find "$1" -type f -print -quit 2>/dev/null)" ]; }
     if has_files "$PROOT_ABS/docs/work-plans"; then
-        emit 3 old-work-plans warn "docs/work-plans/" "the older records location; records now live under .agent/work-plans/issue-N/ (or where the records settings say)"
+        emit_offer 3 old-work-plans warn "docs/work-plans/" "the older records location; records now live under .agent/work-plans/issue-N/ (or where the records settings say)"
         if has_files "$PROOT_ABS/.agent/work-plans"; then
-            emit 3 records-two-places warn "docs/work-plans/ and .agent/work-plans/" "records exist in two places; the records settings (location=$REC_LOC) name .agent/work-plans/ as the source of truth"
+            emit_offer 3 records-two-places warn "docs/work-plans/ and .agent/work-plans/" "records exist in two places; the records settings (location=$REC_LOC) name .agent/work-plans/ as the source of truth"
         fi
     fi
     if [ "$REC_LOC" = "outside" ] && has_files "$PROOT_ABS/.agent/work-plans"; then
-        emit 3 records-two-places warn ".agent/work-plans/" "records exist in the project although the records settings say location=outside; the setting names the outside location as the source of truth"
+        emit_offer 3 records-two-places warn ".agent/work-plans/" "records exist in the project although the records settings say location=outside; the setting names the outside location as the source of truth"
     fi
 fi
 
