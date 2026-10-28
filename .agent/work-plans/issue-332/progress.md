@@ -1155,3 +1155,13 @@ The round-5 review's out-of-scope note, judged as a finding and reproduced: a sa
 ### False positives
 - (Copilot @ `7b28b6f1`, `2582cdda`, `56d11847`) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
 - (Local Review @ `56d11847`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 12:37 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (second address in a row at this pull request's findings checkpoint, within the cap; one valid suggestion, reproduced, in the path the plan promises leaves nothing behind; mechanism fix, no goal question, no outward change)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at 2bfbb7f5 (pull request 409, PR 2 of 4) has one open finding, a suggestion: an interrupt or unexpected exit after backup_settings and before SETTINGS_WRITING=1 takes the rollback's do-nothing branch, so the run ends refused with the hidden .settings-backup.* file left in projects.d and NEXT naming nothing. The host read the triage's fix plan (that branch removes the backup when it exists, since the settings file was never written in that window; a failed removal warns and names the file through rollback_left; one sandbox test with the fault before SETTINGS_WRITING=1 and an existing settings file, asserting STATUS=refused, the settings file byte-identical, no registry line and no leftover files, failing on the current script) and sends it to address-findings.
