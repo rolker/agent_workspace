@@ -690,3 +690,19 @@ The open suggestion is confirmed against the code: review-plan step 2 reads the 
 **Decision**: address
 
 The Integrated Review at bf136567 has one open finding, a suggestion: review-plan and a plan-task revision after a "revise" answer also read a cached copy of the issue, so the restart words must be quoted into review-plan handoffs too, until a Checkpoint with After: plan and Decision: proceed follows the newest restart entry. The host read the triage's fix plan (orchestrator recipe (a), run-issue's restart paragraph, the two test_skill_paths assertions) and sends it to address-findings. The owner's direction for this run: "Let's have bg agents continue working on both."
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 09:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `777c452e`
+**Addressed**: Integrated Review at `54fe6091` (2026-10-28 09:14 -04:00)
+**Commits**: 777c452e
+
+### Actions
+- [x] The restart words now go into every `review-issue`, `plan-task` and `review-plan` handoff until a `## Checkpoint` with `**After**: plan` and `**Decision**: proceed` follows the newest `restart` entry (was: until `## Plan Authored`), on a resumed drive too; both matching assertions updated — `.claude/skills/orchestrator/SKILL.md:155-164`, `.claude/skills/run-issue/SKILL.md:435-441`, `.agent/scripts/tests/test_skill_paths.sh:286-292,332-335`
+
+### Checks
+- `test_skill_paths.sh`: 80 passed, 0 failed
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, including the script suite
