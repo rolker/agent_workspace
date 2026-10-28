@@ -346,6 +346,61 @@ check "--worktrees with '#': refused, nothing written" \
     bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"cannot hold a value with a blank"* ]] && cmp -s "$3" "$4"' _ "$rc" "$out" "$WS/.agent/projects.local" "$SANDBOX/reg.before"
 set --
 
+echo "TEST: a settings file that existed before: a failed backup refuses, and a rollback restores it by rename"
+# Fault injection: wrappers that fail mktemp, cp or mv on one argument
+# pattern and run the real tool otherwise.
+FAULT_BIN="$SANDBOX/faultbin"
+mkdir -p "$FAULT_BIN"
+for tool in mktemp cp mv; do
+    real="$(command -v "$tool")"
+    cat > "$FAULT_BIN/$tool" <<EOF
+#!/usr/bin/env bash
+if [ "\${FAULT_TOOL:-}" = "$tool" ]; then
+    for a in "\$@"; do [[ "\$a" == *"\$FAULT_ON"* ]] && { echo "$tool: injected failure" >&2; exit 1; }; done
+fi
+exec "$real" "\$@"
+EOF
+    chmod +x "$FAULT_BIN/$tool"
+done
+faulty() { # <tool> <pattern> <ws> <args...>: reg with one injected failure
+    (
+        export FAULT_TOOL="$1" FAULT_ON="$2"
+        PATH="$FAULT_BIN:$PATH"
+        shift 2
+        reg "$@"
+    )
+}
+leftovers() { # the backup and restore files left in projects.d, by name
+    find "$WS/.agent/projects.d" -maxdepth 1 \( -name '.settings-backup.*' -o -name '.settings-restore.*' \) | sed 's|.*/||'
+}
+PSI="$(make_proj psi 1 1 0)"   # its build fails
+printf 'build=make\ntest=make test\n' > "$(pfile "$WS" psi)"
+chmod 640 "$(pfile "$WS" psi)"
+cp -p "$(pfile "$WS" psi)" "$SANDBOX/psi.before"
+cp "$WS/.agent/projects.local" "$SANDBOX/reg.before"
+for t in mktemp cp; do
+    : > "$REG_LOG"
+    out="$(faulty "$t" .settings-backup. "$WS" "$PSI" --set test=none)"; rc=$?
+    check "$t of the backup fails: exit 1, STATUS=refused, naming the backup" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"could not back up the settings file"* ]]' _ "$rc" "$out"
+    check "$t of the backup fails: the settings file and the registry are unchanged, nothing ran" \
+        bash -c 'cmp -s "$1" "$2" && cmp -s "$3" "$4" && [ ! -s "$5" ]' _ "$(pfile "$WS" psi)" "$SANDBOX/psi.before" "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$REG_LOG"
+    check "$t of the backup fails: no backup file left" [ -z "$(leftovers)" ]
+done
+out="$(reg "$WS" "$PSI" --set test=none)"; rc=$?
+check "the build fails after the file was changed: refused, and the restore is reported" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"restored the settings file"* ]]' _ "$rc" "$out"
+check "the settings file is back byte for byte, its mode kept" \
+    bash -c 'cmp -s "$1" "$2" && [ "$(stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1")" = 640 ]' _ "$(pfile "$WS" psi)" "$SANDBOX/psi.before"
+check "no line, no backup or restore file left" bash -c '! grep -q "^psi " "$1" && [ -z "$2" ]' _ "$WS/.agent/projects.local" "$(leftovers)"
+out="$(faulty mv .settings-restore. "$WS" "$PSI" --set test=none)"; rc=$?
+BK="$(leftovers | grep '^\.settings-backup\.' | head -1)"
+check "the restore fails: a warning names the kept backup" \
+    bash -c '[ "$1" -eq 1 ] && [ -n "$3" ] && [[ "$2" == *"could not restore the settings file"* && "$2" == *"kept in $4/$3"* ]]' _ "$rc" "$out" "$BK" "$WS/.agent/projects.d"
+check "the restore fails: the backup holds the content from before the run, no restore temp left" \
+    bash -c 'cmp -s "$1" "$2" && [ -z "$(find "$3" -maxdepth 1 -name ".settings-restore.*")" ]' _ "$WS/.agent/projects.d/$BK" "$SANDBOX/psi.before" "$WS/.agent/projects.d"
+rm -f "$WS/.agent/projects.d/$BK" "$(pfile "$WS" psi)"
+
 # ---------------------------------------------- failures roll back ---
 echo "TEST: a failing validate, build or test leaves no line, no file and no plugin enable"
 install_ut "$WS" >/dev/null || fail "installing the sandbox user tier"

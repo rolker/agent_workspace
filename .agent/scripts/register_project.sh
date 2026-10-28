@@ -67,7 +67,9 @@
 #      then registration_verify.sh <name> --user-tier. Otherwise a warning
 #      and the next step, not a failure.
 # A failure in 1 to 4 removes the registry line and the settings file (on
-# INT, TERM and HUP too); after the installer ran it first calls
+# INT, TERM and HUP too; a settings file that existed before is copied
+# aside first, the run refused when that copy fails, and put back by a
+# rename); after the installer ran it first calls
 # user_tier_install.sh --disable-root <name>. A hosting directory that
 # setup created is kept and named on KEPT= (its clones are slow to redo,
 # and a re-run reuses it); a directory that existed before is never
@@ -713,7 +715,11 @@ fi
 if [ "${#KV[@]}" -gt 0 ]; then
     _tmpd="$(mktemp -d)" || final refused "could not make a temporary directory" 1
     _tmpf="$_tmpd/$NAME"
-    if [ "$SETTINGS_EXISTED" -eq 1 ] && [ -f "$SETTINGS" ]; then cat "$SETTINGS" > "$_tmpf"; fi
+    if [ "$SETTINGS_EXISTED" -eq 1 ] && [ -f "$SETTINGS" ] && ! cat "$SETTINGS" > "$_tmpf"; then
+        rm -rf "$_tmpd"
+        echo "ERROR: cannot read the settings file $SETTINGS (above), so the settings to write cannot be checked" >&2
+        final refused "make $SETTINGS readable, then re-run" 1
+    fi
     _tmpk=""
     for _kv in "${KV[@]}"; do _tmpk="$_tmpk ${_kv%%=*} "; done
     if [ -f "$_tmpf" ]; then
@@ -834,6 +840,38 @@ SETTINGS_BACKUP=""
 SETUP_RAN=0
 CHANGED=0
 
+# Copy the settings file aside before a new registration changes it (an
+# existing file with no registry line, kept by --remove --keep-settings).
+# Returns 1, with SETTINGS_BACKUP empty and nothing left behind, when the
+# copy cannot be made.
+backup_settings() {
+    SETTINGS_BACKUP="$(mktemp "$PROJECTS_D/.settings-backup.XXXXXX")" || { SETTINGS_BACKUP=""; return 1; }
+    if ! cp -p -- "$SETTINGS" "$SETTINGS_BACKUP"; then
+        rm -f -- "$SETTINGS_BACKUP"
+        SETTINGS_BACKUP=""
+        return 1
+    fi
+}
+
+# Put the backup back: a copy beside the destination (the file, or a
+# symlink's target), renamed onto it, so the file is never seen half
+# written; then checked against the backup. On failure the backup is kept
+# and named, for a restore by hand.
+restore_settings() {
+    local dest tmp
+    if dest="$(_project_file_dest "$SETTINGS")" \
+       && tmp="$(mktemp "$(dirname "$dest")/.settings-restore.XXXXXX")"; then
+        if cp -p -- "$SETTINGS_BACKUP" "$tmp" && mv -f -- "$tmp" "$dest" && cmp -s -- "$SETTINGS_BACKUP" "$SETTINGS"; then
+            rm -f -- "$SETTINGS_BACKUP"
+            echo "  restored the settings file $SETTINGS" >&2
+            return 0
+        fi
+        rm -f -- "$tmp"
+    fi
+    echo "  WARNING: could not restore the settings file $SETTINGS (above); its content before this run is kept in $SETTINGS_BACKUP: copy it back by hand" >&2
+    return 1
+}
+
 rollback() {
     [ "$ROLLBACK_ARMED" -eq 1 ] || return 0
     ROLLBACK_ARMED=0
@@ -852,8 +890,7 @@ rollback() {
         fi
     fi
     if [ -n "$SETTINGS_BACKUP" ]; then
-        cat "$SETTINGS_BACKUP" > "$SETTINGS" && echo "  restored the settings file $SETTINGS" >&2
-        rm -f "$SETTINGS_BACKUP"
+        restore_settings
     elif [ "$SETTINGS_EXISTED" -eq 0 ] && [ -e "$SETTINGS" ]; then
         rm -f "$SETTINGS" && echo "  removed the settings file $SETTINGS" >&2
     fi
@@ -878,6 +915,8 @@ failed() { # <what failed> <next>
         echo "'$NAME' was already registered, so it is kept as it is: $1" >&2
         final "NOT READY" "$2" 1
     fi
+    echo "" >&2
+    echo "ERROR: $1" >&2
     rollback
     if [ -n "$KEPT" ]; then
         final refused "$2; then re-run register_project.sh (setup is not run again on the kept $KEPT; remove it first to start over)" 1
@@ -909,7 +948,7 @@ else
 fi
 if [ "${#KV[@]}" -gt 0 ]; then
     if [ "$SETTINGS_EXISTED" -eq 1 ] && [ "$ADOPT" -eq 0 ] && [ -f "$SETTINGS" ]; then
-        SETTINGS_BACKUP="$(mktemp "$PROJECTS_D/.settings-backup.XXXXXX")" && cat "$SETTINGS" > "$SETTINGS_BACKUP"
+        backup_settings || failed "could not back up the settings file $SETTINGS (above), so it is not changed" "check $PROJECTS_D is writable and $SETTINGS readable"
     fi
     for _i in "${!KV[@]}"; do echo "  ${KV[$_i]}    (${KV_NOTES[$_i]#*: })"; done
     _out="$(project_file_set "$ROOT" "$NAME" "${KV[@]}")" || failed "the settings file could not be written (above)" "fix the --set values"
