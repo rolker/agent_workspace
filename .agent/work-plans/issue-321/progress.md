@@ -632,3 +632,17 @@ The one open suggestion is confirmed against the code: recipe (a)'s recovery par
 **Decision**: address
 
 The Integrated Review at 888cf891 has one open finding, a suggestion: a session resumed between review-issue and plan-task loses the restart words because nothing tells the host to quote the newest restart entry into the plan-task handoff. The host read the triage's fix plan (orchestrator recipe (a) recovery paragraph and run-issue's restart paragraph: quote the newest restart entry's words into every review-issue and plan-task handoff after it until a Plan Authored entry follows) and sends it to address-findings. The owner's direction for this run: "Let's have bg agents continue working on both."
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 09:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `7ea84fae`
+**Addressed**: Integrated Review at `d0ce9416` (2026-10-28 08:55 -04:00)
+**Commits**: 7ea84fae
+
+### Actions
+- [x] After a resume between review-issue and plan-task the restart words reached plan-task only through a git-bug copy that may lack the comment; recipe (a) and run-issue's restart paragraph now say the host quotes the newest `restart` entry's words into every `review-issue` and `plan-task` handoff until a `## Plan Authored` entry follows it, on a resumed drive too; test_skill_paths.sh checks both paragraphs — `.claude/skills/orchestrator/SKILL.md:155-161`, `.claude/skills/run-issue/SKILL.md:435-439`
+
+Checks: test_skill_paths.sh 80 passed, 0 failed; the fix commit's hooks passed (validate-script-tests included); `pre-commit run --files $(git diff --name-only main...HEAD)` from the main checkout's .venv, no SKIP, exit 0.
