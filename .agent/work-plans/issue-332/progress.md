@@ -898,3 +898,23 @@ Reviewers: static analysis (pre-commit on the 18 changed files: all hooks pass, 
 **Decision**: address
 
 PR 2 of 4 (register_project.sh and its gate), first pre-push review, recorded at a658c114 as round 1: 3 must-fix (a "#" in a path or field value is cut by the registry comment strip and a different directory registers silently; the registry lock is taken after the name and settings checks, so a losing concurrent run's rollback deletes the winner's settings file; a failed settings backup is ignored and the restore is neither atomic nor checked) and 2 suggestions (an interrupt on an already-registered project says "nothing is registered"; an empty ~/.claude/agent-workspace-root reads as this checkout). Host's call on must-fix 2: take the registry lock before the name and settings checks and hold it for the whole run. Sent to address-findings. The owner's direction for this run: "Let's have bg agents continue working on both."
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 10:44 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `9a58881c`
+**Addressed**: Local Review (Pre-Push) at `e9a5fc45` (2026-10-28 10:19 -04:00)
+**Commits**: ffda2e5e, 8ad4b990, 949d7408, 50aecdc7, 9a58881c
+
+### Actions
+- [x] A '#', blank or '=' in the path or a field value is refused before anything is written, and install_registry checks the entry the parser reads back is the one asked for (ffda2e5e) — `.agent/scripts/register_project.sh:523`
+- [x] The registry lock and the registry parse check come before every check (register and --remove), held through the last step; a dry run takes no lock. Tests: a run against a held lock refuses and changes nothing; a run that waited for the lock adopts the winner and keeps its settings file (fails on the old script) (8ad4b990) — `.agent/scripts/register_project.sh:844`
+- [x] A failed settings backup refuses the run before the file changes; the restore copies beside the destination, renames, compares, and on failure keeps and names the backup; the pre-write read of the settings file is checked; failed() now prints its reason for a new registration (949d7408) — `.agent/scripts/register_project.sh:869`
+- [x] An interrupt on an adopted project is NOT READY, and both interrupt and failure say nothing is rolled back and what the run already changed (line, settings file) (50aecdc7) — `.agent/scripts/register_project.sh:798`
+- [x] An empty or unreadable ~/.claude/agent-workspace-root is read as absent, with a warning naming it (9a58881c) — `.agent/scripts/register_project.sh:733`
+
+### Checks
+- test_register_project.sh: 142 passed, 0 failed; each new test was also run against the script before its fix and failed there
+- main checkout's pre-commit run --files over main...HEAD, no SKIP: every hook passed, validate-script-tests included
