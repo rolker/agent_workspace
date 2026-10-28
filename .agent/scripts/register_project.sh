@@ -92,6 +92,10 @@
 #
 # Runs only from the main checkout: the registry and settings files are per
 # machine and gitignored, so a linked worktree has none (--detect excepted).
+# One registration or removal runs at a time: each holds the registry lock
+# from before its first check to its last step, and a second run waits
+# for it (PROJECT_FILE_LOCK_WAIT seconds, default 10), then refuses having
+# changed nothing. A --dry-run takes no lock.
 # It never writes into the project. It is not promoted to the user tier.
 #
 # Last output lines (stable, for skills and tests):
@@ -285,11 +289,6 @@ REGISTRY="$(registry_file "$ROOT")"
 PROJECTS_D="$ROOT/.agent/projects.d"
 REG_LOCK="$PROJECTS_D/.registry.lock"
 
-if ! registry_entries_full "$ROOT" >/dev/null; then
-    echo "ERROR: the registry $REGISTRY does not parse (above); fix it first" >&2
-    exit 1
-fi
-
 # --------------------------------------------------------- final lines ---
 # The project's name and root, as known so far (for the status lines).
 NAME=""
@@ -308,10 +307,14 @@ final() { # <status> <next> [exit code]
 # ---------------------------------------------------- registry writing ---
 # Hold the registry lock (fd 8) for the rest of the run, the project's
 # build and test included (children get the descriptor closed, so nothing
-# they leave running holds it). Without flock
-# (macOS by default) the write is unlocked. The lock file is never
-# removed, as for the settings writer: removing it while another holder has
-# it open would let a third lock a new file of the same name.
+# they leave running holds it). It is taken before any check that reads
+# the registry or projects.d (is the name free, is it an adoption, does a
+# settings file exist), so those answers still hold when this run writes,
+# and a run that loses the race refuses before it writes or removes
+# anything. Without flock (macOS by default) the run is unlocked. The lock
+# file is never removed, as for the settings writer: removing it while
+# another holder has it open would let a third lock a new file of the
+# same name.
 take_registry_lock() {
     mkdir -p "$PROJECTS_D" || return 1
     command -v flock >/dev/null 2>&1 || return 0
@@ -321,6 +324,17 @@ take_registry_lock() {
         return 1
     fi
 }
+
+# A dry run writes nothing, the lock file included, and reads unlocked.
+if [ "$DRY_RUN" -eq 0 ]; then
+    [ "$MODE" = "remove" ] && NAME="$TARGET"
+    take_registry_lock || final refused "try again" 1
+fi
+
+if ! registry_entries_full "$ROOT" >/dev/null; then
+    echo "ERROR: the registry $REGISTRY does not parse (above); fix it first" >&2
+    exit 1
+fi
 
 # Replace the registry with <tmp> after it parses, and holds <name> when
 # <expect> is "present" (or not, when "absent"). With <entry> (the
@@ -440,7 +454,6 @@ if [ "$MODE" = "remove" ]; then
         echo "would leave alone: the project at $PROJECT_ROOT, its records and its memory"
         final dry-run "run again without --dry-run to remove '$NAME'"
     fi
-    take_registry_lock || final refused "try again" 1
     # The registry without the line must parse (a parent's default_instance
     # may name it) before anything changes.
     TMP="$(registry_without_name "$NAME")" || final refused "could not write a new registry" 1
@@ -872,7 +885,6 @@ failed() { # <what failed> <next>
     final refused "$2" 1
 }
 
-take_registry_lock || final refused "try again" 1
 [ "$ADOPT" -eq 0 ] && ROLLBACK_ARMED=1
 
 # 1. The registry line and the settings file.

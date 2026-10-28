@@ -541,6 +541,60 @@ check "exit 143, STATUS=refused, interrupted" bash -c '[ "$1" -eq 143 ] && [[ "$
 check "no registry line, no settings file" \
     bash -c '! grep -q "^tau " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" tau)"
 
+# ------------------------------------------------------- registry lock ---
+LOCKF="$WS/.agent/projects.d/.registry.lock"
+snap() { # <ws>: the registry and every file in projects.d, with checksums
+    cksum < "$1/.agent/projects.local"
+    (cd "$1/.agent/projects.d" && find . -type f -exec cksum {} + | sort)
+}
+if command -v flock >/dev/null 2>&1; then
+    echo "TEST: a run against a held registry lock refuses, and neither writes nor removes anything"
+    PLK="$(make_proj chi)"
+    snap "$WS" > "$SANDBOX/snap.before"
+    exec 7>>"$LOCKF"
+    flock -x 7
+    : > "$REG_LOG"; : > "$STUB_LOG"
+    out="$(PROJECT_FILE_LOCK_WAIT=1 reg "$WS" "$PLK" 7>&-)"; rc=$?
+    check "register: exit 1, STATUS=refused, naming the lock" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"holds the registry lock"* ]]' _ "$rc" "$out"
+    out="$(PROJECT_FILE_LOCK_WAIT=1 reg "$WS" --remove nu 7>&-)"; rc=$?
+    check "remove: exit 1, STATUS=refused, naming the lock" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"holds the registry lock"* ]]' _ "$rc" "$out"
+    exec 7>&-
+    snap "$WS" > "$SANDBOX/snap.after"
+    check "the registry and projects.d are byte for byte the same" cmp -s "$SANDBOX/snap.before" "$SANDBOX/snap.after"
+    check "nothing ran: no build, no CLI call" bash -c '[ ! -s "$1" ] && [ ! -s "$2" ]' _ "$REG_LOG" "$STUB_LOG"
+
+    echo "TEST: a run that waited for the lock checks under it, so a concurrent winner's settings file is kept"
+    # The run blocks on the lock; meanwhile this test, as the winning run,
+    # registers the same project. Checked before the lock, the waiting run
+    # would still think the name free and its settings file its own, and
+    # its rollback would delete the winner's file.
+    PRC="$(make_proj kai)"
+    exec 7>>"$LOCKF"
+    flock -x 7
+    (
+        unset CLAUDE_CONFIG_DIR
+        cd "$SANDBOX" && HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" REG_LOG="$REG_LOG" \
+            AGENT_WORKSPACE_CLAUDE_BIN="$STUB" PROJECT_FILE_LOCK_WAIT=30 \
+            exec "$WS/.agent/scripts/register_project.sh" "$PRC" > "$SANDBOX/race.out" 2>&1
+    ) 7>&- &
+    RPID=$!
+    for _ in $(seq 1 100); do pgrep -P "$RPID" -x flock >/dev/null && break; sleep 0.1; done
+    printf 'kai  single_project  %s\n' "$PRC" >> "$WS/.agent/projects.local"
+    printf 'build=make\ntest=make test\n' > "$(pfile "$WS" kai)"
+    exec 7>&-
+    wait "$RPID"; rc=$?
+    out="$(cat "$SANDBOX/race.out")"
+    check "the waiting run adopts the winner's registration: exit 0, nothing changed" \
+        bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"STATUS=registered"* && "$2" == *"nothing changed"* ]]' _ "$rc" "$out"
+    check "the winner's settings file is kept, byte for byte" [ "$(cat "$(pfile "$WS" kai)")" = $'build=make\ntest=make test' ]
+    check "the winner's line is there once" [ "$(grep -c '^kai ' "$WS/.agent/projects.local")" -eq 1 ]
+    reg "$WS" --remove kai >/dev/null
+else
+    echo "  SKIP: flock is not available (the registry lock needs it)"
+fi
+
 # ------------------------------------------------------- linked worktree ---
 echo "TEST: refused from a linked worktree of the workspace"
 gitq -C "$WS" worktree add --quiet "$SANDBOX/ws-linked" 2>/dev/null
