@@ -1272,3 +1272,24 @@ Checked: `main` and `origin/main` are both `cd60bc2a`, the merge's second parent
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 13:53 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `9e1f2720`
+**Sources**: 3 (Local Review @ `db76490a` (covers head `9e1f2720` via bookkeeping), Copilot @ `db76490a` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+PR 2 of 4 for issue 332. Builds on the Integrated Review at `e3b8736f` (clean, no findings); not re-listed. Since then main (`cd60bc2a`, pull request 400) was merged in as `9d8c1281`, and the round-7 Local Review at `db76490a` confirmed the merge exact (approved, 0 must-fix, 0 suggestions). The Local Reviews at `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03` belong to PR 1 of 4 (pull request 403, merged), and the Pre-Push at `6a92304` and the Local Reviews at `56d1184` and `94a2c14` were ruled on by earlier Integrated Reviews; `sources` lists all seven stale.
+GitHub: ten Copilot comment-reviews (latest at `db76490a`), each the quota message, no inline comments; no conversation comments; no human reviews.
+Merge spot-checked at the head: `9d8c1281` has parents `62feab91` and `cd60bc2a`; `docs/design.md` is 819 lines, its change log ends with the issue 321 row (2026-10-15) then this branch's issue 332 row (2026-10-28); no conflict markers in the tree.
+CI at `9e1f2720`: Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests pass on both runs (40738607126 push, 40738616457 pull_request).
+
+### Findings
+
+### False positives
+- (Copilot @ `7b28b6f1` through `db76490a`, ten reviews) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
+- (Local Review @ `db76490a`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.
