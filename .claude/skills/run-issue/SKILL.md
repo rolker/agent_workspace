@@ -424,15 +424,18 @@ to an `AskUserQuestion`, not a phase's own output. `**Decided-by**: host
 field, it is the record a later reader checks the host against. One owner
 answer outside the vocabulary is recorded by the host: `**Decision**:
 restart`, when he restates the goal mid-drive (`/orchestrator`, recipe
-(a)); it is followed at once by a signed comment carrying his words on
-the issue (review-issue reads the issue, not this entry) and a
-`review-issue` dispatch with his words quoted in its handoff, and in the
-`plan-task` handoff after it (both read a git-bug copy of the issue that
+(a)); it is followed by a signed comment carrying his words on the issue
+(review-issue reads the issue, not this entry), posted only after the
+host has shown him the exact comment and he has said yes, every time (on
+a no nothing is posted and the host asks him how the restated goal should
+reach the issue), and a `review-issue` dispatch with his words quoted in
+its handoff, and in the `plan-task` handoff after it (both read a git-bug copy of the issue that
 may not have the comment yet). If the
 session ends before that dispatch writes its entry, `next` routes the
-`restart` entry to row 28, `checkpoint:unexpected`, and the host posts the
-comment unless it is already there and dispatches `review-issue` (recipe
-(a)) rather than asking again. Until a `## Checkpoint` with `**After**:
+`restart` entry to row 28, `checkpoint:unexpected`, and the host shows him
+the comment and posts it on his yes, unless it is already there, and
+dispatches `review-issue` (recipe (a)) rather than asking again whether to
+restart. Until a `## Checkpoint` with `**After**:
 plan` and `**Decision**: proceed` follows the newest `restart` entry, the
 host quotes that entry's words into every `review-issue`, `plan-task` and
 `review-plan` handoff, on a resumed drive too: a session that ends after

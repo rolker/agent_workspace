@@ -282,6 +282,25 @@ if [[ -f "$ORCH" ]]; then
         'Paste his words, quoted, into its handoff as well' \
         'and into the `plan-task` handoff that follows it' \
         'the host does steps 2 and 3 then, from the `restart` entry'"'"'s words'
+    # The restart comment carries his words, which a stranger could read as
+    # his word, so the host shows him the exact comment and waits for his
+    # yes every time, on the recovery path too (owner at issue 321's merge
+    # checkpoint, 2026-10-28: "B ask first"); a no posts nothing and asks
+    # him how the goal should reach the issue.
+    has "$ORCH" "orchestrator: the restart comment is posted only on his yes to its exact text, every time, the recovery path included" \
+        'Ask first, every time: show him the exact comment the block in "The restart comment" below would post' \
+        'and wait for his yes' \
+        'On his no, nothing is posted: ask him how the restated goal should reach the issue instead' \
+        'he may post it himself, or give words he is willing to have posted' \
+        'The comment is not covered by that decision: step 2 shows him its exact text and waits for his yes before posting' \
+        'signed comments on the issue being driven except one that carries his words' \
+        'run from the issue'"'"'s worktree only after the owner has seen the exact comment it posts and said yes' \
+        '`restart` checkpoint (recipe (a); its comment still waits for his yes)'
+    if tr '\n' ' ' < "$ORCH" | tr -s ' ' | grep -qE 'without asking \(the owner already decided it\)|signed comment on the issue being driven is inside the outward boundary'; then
+        fail "orchestrator: the restart comment is still posted without asking him"
+    else
+        pass "orchestrator: no text lets the restart comment go out without his yes"
+    fi
     # A session that ends after the Issue Review resumes at plan-task, which
     # reads a git-bug copy that may lack the restart comment, and so do
     # review-plan and a plan-task revision after a plan checkpoint answered
@@ -332,6 +351,10 @@ has "$RI" "run-issue documents Decided-by: host and the owner-only answers" \
 has "$RI" "run-issue: the restart words go into every review-issue, plan-task and review-plan handoff until a plan checkpoint answered proceed, on a resumed drive too" \
     'Until a `## Checkpoint` with `**After**: plan` and `**Decision**: proceed` follows the newest `restart` entry, the host quotes that entry'"'"'s words into every `review-issue`, `plan-task` and `review-plan` handoff, on a resumed drive too' \
     'a plan checkpoint answered `revise` routes back to `plan-task` after the `## Plan Authored` entry'
+has "$RI" "run-issue: the restart comment is posted only on his yes to its exact text, every time, the resumed drive included" \
+    'posted only after the host has shown him the exact comment and he has said yes, every time' \
+    'on a no nothing is posted and the host asks him how the restated goal should reach the issue' \
+    'the host shows him the comment and posts it on his yes, unless it is already there'
 
 # --- The host's standing rules (#321): every rule carries its reason.
 # Rules with reasons are followed by intent, rules without them only

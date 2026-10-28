@@ -79,7 +79,7 @@ else waits for the owner, written `**Decided-by**: owner`.
 | `merge` | — | every answer |
 | `merge-refused` | — | every answer |
 | `phase-failed` | `retry` | `takeover` |
-| `unexpected` | only when the state is one of the other checkpoints under a name the table missed: that checkpoint's `**After**` and an allowed token; or the newest entry is a `restart` checkpoint (recipe (a)) | otherwise |
+| `unexpected` | only when the state is one of the other checkpoints under a name the table missed: that checkpoint's `**After**` and an allowed token; or the newest entry is a `restart` checkpoint (recipe (a); its comment still waits for his yes) | otherwise |
 
 A host answer that repeats does not loop without the owner: after two
 host `retry` answers in a row for the same phase, two host `revise`
@@ -99,14 +99,15 @@ of the three kinds above goes to the owner instead.
 ## The outward boundary
 
 Inside it, done by the host: the loop's own push and pull request, signed
-comments on the issue being driven, progress entries, and limits it sets on
-a read-only background run (listed as decisions). Everything else outward
-goes to the owner: a new issue, a merge, an edit to his text that is not
-drafted from his quoted words (recipe (c)), a message to another session, a
-comment on another issue, deleting data or a branch this drive did not
-create, anything a stranger could read as his word. A
-standing authorization of his, recorded in the rules file with his words,
-moves one class inside; the issue 398 comment is the first.
+comments on the issue being driven except one that carries his words (the
+restart comment, recipe (a), is posted only on his yes), progress entries,
+and limits it sets on a read-only background run (listed as decisions).
+Everything else outward goes to the owner: a new issue, a merge, an edit
+to his text that is not drafted from his quoted words (recipe (c)), a
+message to another session, a comment on another issue, deleting data or
+a branch this drive did not create, anything a stranger could read as his
+word. A standing authorization of his, recorded in the rules file with
+his words, moves one class inside; the issue 398 comment is the first.
 
 ## Recipes
 
@@ -121,13 +122,23 @@ moves one class inside; the issue 398 comment is the first.
      read the issue and its comments, never a `## Checkpoint` entry:
      without the comment the new work is reviewed and planned against the
      old goal. A comment, not an edit of the issue body: it adds his words
-     without rewriting anyone's text, and a signed comment on the issue
-     being driven is inside the outward boundary above.
+     without rewriting anyone's text.
 
-     Run the block in "The restart comment" below. On a "not posted"
-     line, dispatch nothing: the line goes into the hand-back, and the
-     `restart` entry stays the newest, so the resumed drive takes the
-     recovery path after step 3 and posts it then.
+     Ask first, every time: show him the exact comment the block in "The
+     restart comment" below would post (the `$MARK` line, his words
+     quoted, the closing line and the signature) and wait for his yes. A
+     signed comment carrying his words is something a stranger could read
+     as his word, so it is outside the outward boundary above (his answer
+     at issue 321's merge checkpoint, 2026-10-28: "B ask first"). On his
+     yes, run the block. On his no, nothing is posted: ask him how the
+     restated goal should reach the issue instead (he may post it himself,
+     or give words he is willing to have posted, which are shown and asked
+     the same way), and dispatch nothing until he has answered.
+
+     On a "not posted" line, dispatch nothing: the line goes into the
+     hand-back, and the `restart` entry stays the newest, so the resumed
+     drive takes the recovery path after step 3 and asks and posts it
+     then.
   3. Dispatch `review-issue` (`$WS_ROOT/.agent/scripts/dispatch_phase.sh
      --issue <N> --skill review-issue [--type <type>] [--project <project>]
      [--skill-prefix agent-workspace:]`, with this drive's own `--type`,
@@ -144,9 +155,11 @@ moves one class inside; the issue 398 comment is the first.
   Its `## Issue Review` is then the newest entry and routes as usual. If
   the session ends before that entry is written, the `restart` checkpoint
   is the newest entry and `next` reports `unexpected`: the host does steps
-  2 and 3 then, from the `restart` entry's words, without asking (the
-  owner already decided it). That `unexpected` gets no second
-  `## Checkpoint` entry, the one exception to run-issue step 6's "every
+  2 and 3 then, from the `restart` entry's words, without asking again
+  whether to restart (the owner already decided it). The comment is not
+  covered by that decision: step 2 shows him its exact text and waits for
+  his yes before posting, as on the first pass. That `unexpected` gets no
+  second `## Checkpoint` entry, the one exception to run-issue step 6's "every
   checkpoint answer becomes an entry": the `restart` entry already records
   the decision, and its `**Decided-by**: owner` keeps it out of the
   host-answer repeat count. The restart also starts the pre-push review
@@ -179,7 +192,8 @@ moves one class inside; the issue 398 comment is the first.
 
 ## The restart comment
 
-Recipe (a) step 2, run from the issue's worktree. The comment's first line
+Recipe (a) step 2, run from the issue's worktree only after the owner has
+seen the exact comment it posts and said yes. The comment's first line
 is printed from `$MARK`, so it matches the check word for word and a second
 run never posts the same restart twice. The block sits outside the recipe's
 list, at the start of the line, because a heredoc's closing `EOF` must
