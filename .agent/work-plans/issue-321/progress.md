@@ -880,3 +880,21 @@ The round-8 finding is fixed. run-issue's resumed-drive passage now states the s
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 10:15 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `d2d5bdda`
+**Sources**: 2 (Local Review @ `daf90e84` (covers `d2d5bdda` via bookkeeping), CI rollup); Copilot: no source — all twenty of its reviews (heads 6237c7e5 through daf90e84) are quota-failure notices with no comments, and its `copilot-pull-request-reviewer` Actions job at d2d5bdda failed for the same reason
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+GitHub side: 20 Copilot comment-reviews, 0 inline comments, 0 conversation comments, no human reviewer. Local timeline: the round-9 `## Local Review` at `daf90e84` (approved, 0 must-fix, 0 suggestions; its only box is the "No issues found. LGTM." placeholder, not a finding) is the only entry covering the head; daf90e84..d2d5bdda touches only this issue's progress.md. The round-7 review at `61284769` is stale (verified) and its one suggestion was ruled on by the Integrated Review at e476f8f4 and fixed in 52b9d064; the round-8 suggestion (Local Review at `5e5092f1`) was fixed in 5f0d3fdd and is ticked; the pre-push entry at `ea2491f1` and the reviews at `98870a6f`, `4012a70d` and `1ea24eb3` were ruled on by the Integrated Reviews at 888cf891, bf136567 and 25fd8040. None re-listed. Re-checked the round-8 fix at the head: run-issue lines 435-441 put the failed-check branch in its own sentence ("nothing is asked, posted or dispatched"), matching orchestrator recipe (a) ("On a "not posted" line, dispatch nothing"); `test_skill_paths.sh` 86 passed, 0 failed. CI at `d2d5bdda` (run 40703049695): Lint (pre-commit) (completed 14:15Z), Validate Adapter Contract, Validate Documentation and ros-manifest tests all completed with success.
+
+### Findings
+- (none) No open findings. Round 9 approved with nothing open and no GitHub review raised anything.
+
+### False positives
+- (Copilot) `copilot-pull-request-reviewer` check-run reports `failure` at the head — its review body states it was unable to review because the requester has insufficient remaining quota; no finding was produced, so it is a quota placeholder, not a code or CI signal.
