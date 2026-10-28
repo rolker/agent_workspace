@@ -1233,3 +1233,25 @@ CI at `e3b8736f`: Validate Adapter Contract, Validate Documentation, ros-manifes
 **Decision**: merge
 
 The owner's answer, in his words: "yes to both" (B: this pull request, AGENTS.md rows included). Presented: PR 2 of 4, 17 findings fixed across six rounds, round 6 approved with nothing open, the Integrated Review at 67758e99 clean, the AGENTS.md commit 18c4fb7b (two Script Reference rows and one clause on the validate_adapter.sh row) named as the Ask First item. Merge of pull request 409.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 13:35 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `9d8c1281`
+**Commits**: 9d8c1281
+
+Merge of main (`cd60bc2a`, pull request 400, the orchestrator skill for issue 321) into feature/issue-332 at `62feab91`; no rebase, no squash, default merge message.
+
+### Actions
+- [x] One content conflict, `docs/design.md`, in the change-log table only: both sides appended a row after the 2026-10-21 row. Kept both rows, main's issue 321 row (2026-10-15, "Who answers a checkpoint", 800) first and this branch's issue 332 row (2026-10-28, "Registration is built") after it; no sentence dropped from either side.
+- [x] Set this branch's row's line count from 807 to 819, the merged file's `wc -l docs/design.md`, so the last row's count equals the file length. Main's row keeps its own 800.
+- [x] Every other file, and every other hunk of `docs/design.md` (main's How it works, Direction row, Rules row, Review loop and timeline, Glossary changes), auto-merged; nothing changed beyond the conflict resolution.
+
+### Checks
+- `.agent/scripts/check_design_anchors.sh .`: exit 0.
+- `.agent/scripts/tests/run_script_tests.sh`: all 39 suites passed (511s).
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, every hook passed or skipped (run before the merge commit, against this branch's changed files).
+- The merge commit ran its hooks (pre-commit's merge mode checks conflicted files only): passed.
+- Not pushed; the host owns the push.
