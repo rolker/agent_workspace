@@ -786,3 +786,22 @@ The change does what the owner asked at the merge checkpoint (3558a376, "B ask f
 
 ### Findings
 - [ ] (suggestion) The recovery path asks him to approve the restart comment even when the first pass already posted it (session ended after posting, before review-issue's entry): the orchestrator's recovery text says step 2 shows him the text and waits for his yes, and the block checks `$MARK` only after that; run-issue says "unless it is already there". Check for `$MARK` on the issue first and skip the question when it is there, so a resumed drive does not put a pointless question to him — `.claude/skills/orchestrator/SKILL.md:124-141,158-161`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 09:46 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `d2cfb80e`
+**Sources**: 2 (Local Review @ `61284769` (covers `d2cfb80e` via bookkeeping), CI rollup); Copilot: no source — all fifteen of its reviews (heads 6237c7e5 through 61284769) are quota-failure notices with no comments, and its `copilot-pull-request-reviewer` Actions job at d2cfb80e failed for the same reason
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+GitHub side: 15 Copilot comment-reviews, 0 inline comments, 0 conversation comments, no human reviewer. Local timeline: the round-7 `## Local Review` at `61284769` (approved, 0 must-fix, 1 suggestion) is the only entry covering the head; 61284769..d2cfb80e touches only this issue's progress.md. The pre-push entry at `ea2491f1` and the reviews at `98870a6f`, `4012a70d` and `1ea24eb3` are stale (verified) and were ruled on by the Integrated Reviews at 888cf891, bf136567 and 25fd8040; not re-listed. CI at `d2cfb80e` (run 40698504685, checked 09:45): Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests all completed with success.
+
+The round-7 suggestion is valid, checked against the code. Orchestrator recipe (a) step 2 (lines 127-136) asks first and runs the block only on his yes; the block's `$MARK` check (lines 206-209) runs after that. The recovery path (lines 155-161) explicitly re-asks "as on the first pass", so a session that ended after the comment was posted but before review-issue's entry puts the same approval question to him again, and a "no" there would send him into the "how should the goal reach the issue" branch for a comment that is already public. run-issue (line 436) says "posts it on his yes, unless it is already there", which reads as no question when it is there: the two skills disagree. Owner-facing cost, not a correctness hole (the block still never double-posts).
+
+### Findings
+- [ ] (suggestion, Local Review @ `61284769`) Recovery path re-asks the owner to approve a restart comment already on the issue. Fix: in recipe (a) step 2 and the recovery paragraph, check the issue for `$MARK` before asking (the same `gh issue view <N> --json comments` + `grep -qF -- "$MARK"` the block uses, run first as its own check); if it is there, skip the question and go to step 3; if the check itself fails, nothing is asked or posted and the "not posted" line goes into the hand-back as now. Keep the block's own `$MARK` re-check as the idempotency guard. Make run-issue line 436 state the same order ("checks first whether it is already there; if not, shows him the comment and posts it on his yes"), and add a test_skill_paths assertion pinning check-before-ask in both skills — `.claude/skills/orchestrator/SKILL.md`, `.claude/skills/run-issue/SKILL.md`, `.agent/scripts/tests/test_skill_paths.sh`
+
+### False positives
