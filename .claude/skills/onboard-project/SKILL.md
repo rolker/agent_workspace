@@ -66,11 +66,20 @@ moved, renamed or changed project is re-checked. A re-run shows the
 recorded choices and the audit result, re-asks nothing unless `--reask`
 says so, and changes nothing without a yes.
 
-**Every write waits for a yes.** The writes this skill can make are: a
-setting in the project's settings file (through
-`$WS_ROOT/.agent/scripts/project_setting.sh set`), a line in the clone's
-`.git/info/exclude`, files on a branch of the project, an issue, and a pull
-request. Each is shown before it is made, and made only on the user's yes.
+**Every write waits for a yes.** The writes this skill can make are:
+
+- a setting in the project's settings file (through
+  `$WS_ROOT/.agent/scripts/project_setting.sh set`);
+- a line in the clone's `.git/info/exclude`;
+- a project worktree and its branch, files and commits on it, and a push;
+- an issue and a pull request on the project's repository;
+- from the hygiene checklist, changes to the GitHub repository itself:
+  branch protection and Copilot review (`gh api`), labels
+  (`gh label create`), and a git-bug bridge (`git bug bridge new`, then a
+  first pull).
+
+Each is shown before it is made, and made only on the user's yes to that
+write: a yes to the batch, or to one checklist item, covers nothing else.
 
 The settings file `.agent/projects.d/<name>` (at a parent root, the
 chosen instance's) lives in the workspace checkout, outside this session's
