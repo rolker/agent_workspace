@@ -603,3 +603,22 @@ Round 4 (PR mode: three complete `## Local Review` entries before this one (roun
 
 ### Findings
 - [ ] (suggestion) The restart's words reach `plan-task` only if the session holds through it: the recovery paragraph covers a break before the `## Issue Review` is written, but after it the newest entry is that review, `next` routes to plan-task as usual, nothing tells the resumed host to quote the `restart` entry's words, and plan-task's git-bug copy may still lack the comment; say the host quotes the newest `restart` entry's words into every review-issue and plan-task handoff after it until a plan is written — `.claude/skills/orchestrator/SKILL.md:145-147`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 08:55 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `d0ce9416`
+**Sources**: 2 (Local Review @ `98870a6f` (covers `d0ce9416` via bookkeeping), CI rollup); Copilot: no source — all six of its reviews (heads 6237c7e5 through 98870a6f) are quota-failure notices with no comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub side: 6 Copilot comment-reviews, 0 inline comments, 0 conversation comments, no human reviewer. Local timeline: the round-4 `## Local Review` (approved, 1 suggestion) is the only entry covering the head; the round-3 pre-push entry at `ea2491f1` is stale (verified; its two boxes were closed by the Implementation entry at `cdf2ac39`). CI at `d0ce9416`: Validate Adapter Contract, Validate Documentation and ros-manifest tests pass in both runs; Lint (pre-commit) still pending in both at 08:54.
+
+The one open suggestion is confirmed against the code: recipe (a)'s recovery paragraph covers only a break before the `## Issue Review` is written; once it is, `next` routes to plan-task as usual, nothing tells a resumed host to quote the `restart` entry's words, and plan-task step 1 reads git-bug first and pulls from GitHub only on a cache miss, so a cached copy without the restart comment is read as is. run-issue's `**Decision**: restart` paragraph has the same gap.
+
+### Findings
+- [ ] (suggestion, Local Review @ `98870a6f`) After a resume between review-issue and plan-task the restart words reach plan-task only through a git-bug copy that may lack the comment; fix: in recipe (a)'s recovery paragraph, say the host quotes the newest `restart` entry's words into every `review-issue` and `plan-task` handoff after it until a `## Plan Authored` entry follows it, and say the same in run-issue's restart paragraph — `.claude/skills/orchestrator/SKILL.md:145-153`, `.claude/skills/run-issue/SKILL.md:426-435`
+
+### False positives
