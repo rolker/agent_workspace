@@ -330,7 +330,9 @@ except ValueError:
     fi
     # Path 2 is any other work whose newest complete Issue Review has a
     # Serves line naming a goal (every Issue Review writes one, naming the
-    # README goals it serves). Only the newest complete Issue Review counts,
+    # README goals it serves). A project worktree's Serves line names the
+    # project's own goals (review-issue), not the workspace README's that
+    # Path 2 is defined by, so it is never Path 2. Only the newest complete Issue Review counts,
     # so a later "none" outranks an older goal, and a partial or failed one
     # (which may have stopped before its Serves line) changes nothing;
     # "none" means no path. With no complete Issue Review, or one with no
@@ -353,6 +355,7 @@ except ValueError:
     elif [ "$type" = workspace ] && [[ "$p1" == *" $issue "* ]]; then wpath="Path 1"
     elif [ -n "$slug" ] && [[ "$p1" == *" $slug#$issue "* ]]; then wpath="Path 1"
     elif [ "$type" = project ] && [ -n "$repo" ] && [[ "$p1" == *" project:$repo "* ]]; then wpath="Path 1"
+    elif [ "$serves" = goal ] && [ "$type" = project ]; then wpath="no path (serves a project goal)"
     elif [ "$serves" = goal ]; then wpath="Path 2"
     elif [ "$serves" = none ]; then wpath="no path"
     elif [ "$serves" = unstated ]; then wpath="path unknown (its issue review has no Serves line)"
@@ -377,7 +380,11 @@ partial or failed Issue Review leaves the older one's Serves in place.
 "path unknown (no complete issue review)", and with a complete one that
 has no Serves line it is "path unknown (its issue review has no Serves
 line)". It is `path unknown (steps not checked)` when step 1 printed no
-rows.
+rows. A project worktree is never `Path 2`: review-issue writes a project
+issue's Serves line from the project's own goals, and Path 2 is work that
+serves a goal in the workspace README. With such a goal it reads
+"no path (serves a project goal)", which says what it serves and that
+no Direction line names it.
 
 The state is the latest timeline entry in words, so the report needs no
 entry names. The entry is looked up by its base type

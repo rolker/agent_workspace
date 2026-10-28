@@ -1135,21 +1135,22 @@ echo "TEST: sit-rep step 3 names the path each piece of work serves"
 # names the worktree's project. Path 2: a Serves line on the timeline.
 # A deferral naming an issue does not make it Path 1, and a project
 # worktree's bare number never matches a workspace issue.
-mkdir -p "$SB/wt9/.agent/work-plans/issue-9" "$SB/wt8/.agent/work-plans/issue-8" "$SB/pq"
+mkdir -p "$SB/wt9/.agent/work-plans/issue-9" "$SB/wt8/.agent/work-plans/issue-8" "$SB/pq" "$SB/pr/.agent/work-plans/issue-4"
 served=$'---\nissue: 8\n---\n\n# Issue #8\n\n## Issue Review\n**Status**: complete\n**When**: 2026-10-01 10:00 -04:00\n**By**: t\n\n**Issue**: #8\n\n### Scope Assessment\n\n**Serves**: Easy to use\n'
 printf '%s' "$served" > "$SB/wt8/.agent/work-plans/issue-8/progress.md"
 printf '%s' "${served//\*\*Serves\*\*: Easy to use/**Serves**: none}" > "$SB/wt9/.agent/work-plans/issue-9/progress.md"
+printf '%s' "${served//issue: 8/issue: 4}" > "$SB/pr/.agent/work-plans/issue-4/progress.md"
 cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
 #!/usr/bin/env bash
-echo '{"worktrees":[{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"},{"type":"workspace","issue":8,"branch":"feature/issue-8","path":"$SB/wt8","repo":"workspace"},{"type":"workspace","issue":9,"branch":"feature/issue-9","path":"$SB/wt9","repo":"workspace"},{"type":"project","issue":3,"branch":"feature/issue-3","path":"$SB/pq","repo":"p"},{"type":"project","issue":7,"branch":"feature/issue-7","path":"$SB/pq","repo":"q"}]}'
+echo '{"worktrees":[{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"},{"type":"workspace","issue":8,"branch":"feature/issue-8","path":"$SB/wt8","repo":"workspace"},{"type":"workspace","issue":9,"branch":"feature/issue-9","path":"$SB/wt9","repo":"workspace"},{"type":"project","issue":3,"branch":"feature/issue-3","path":"$SB/pq","repo":"p"},{"type":"project","issue":7,"branch":"feature/issue-7","path":"$SB/pq","repo":"q"},{"type":"project","issue":4,"branch":"feature/issue-4","path":"$SB/pr","repo":"r"}]}'
 EOF
 printf 'line\tA line (#5, #7)\tfalse\tnone\t2026-10-15\nline\tThe project validates\ttrue\tscript adapter --project p validate\t2026-10-15\ndeferral\tLater (#9)\ttrue\tgh-issue 9 closed\t2026-10-15\n' > "$SB/rows3"
 blk="$(skill_step 3 2)"
 blkp="${blk//<rows_file printed in step 1>/$SB/rows3}"
 reset_marks
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$(cut -f1,2,4,7 <<< "$OUT")" == $'workspace\tworkspace\tissue 7\tPath 1\nworkspace\tworkspace\tissue 8\tPath 2\nworkspace\tworkspace\tissue 9\tno path\nproject\tp\tissue 3\tPath 1\nproject\tq\tissue 7\tpath unknown (no complete issue review)' ]] \
-    && pass "(skill 3) path: a Direction line's issue (second in a list too) or project is Path 1, a Serves line Path 2, Serves none no path, no timeline unknown; deferrals and a project's bare number do not count" \
+[[ $RC -eq 0 && "$(cut -f1,2,4,7 <<< "$OUT")" == $'workspace\tworkspace\tissue 7\tPath 1\nworkspace\tworkspace\tissue 8\tPath 2\nworkspace\tworkspace\tissue 9\tno path\nproject\tp\tissue 3\tPath 1\nproject\tq\tissue 7\tpath unknown (no complete issue review)\nproject\tr\tissue 4\tno path (serves a project goal)' ]] \
+    && pass "(skill 3) path: a Direction line's issue (second in a list too) or project is Path 1, a Serves line Path 2 (a project's own goal is not), Serves none no path, no timeline unknown; deferrals and a project's bare number do not count" \
     || fail "(skill 3) path rc=$RC '$OUT'"
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$(cut -f7 <<< "$OUT" | sort -u)" == "path unknown (steps not checked)" ]] \
