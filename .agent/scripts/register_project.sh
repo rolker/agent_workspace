@@ -89,8 +89,9 @@
 # sets or exports variables beyond the ones the adapters read: a command
 # in the settings file runs without sourcing it, so that environment no
 # longer reaches the command, and belongs in the script the key points at.
-# An adopted project that fails a check is reported NOT READY and kept,
-# never rolled back. A second identical run changes nothing and says so.
+# An adopted project that fails a check, or whose run is interrupted, is
+# reported NOT READY and kept, never rolled back; the output says what the
+# run already changed (its line, its settings file). A second identical run changes nothing and says so.
 #
 # Runs only from the main checkout: the registry and settings files are per
 # machine and gitignored, so a linked worktree has none (--detect excepted).
@@ -839,6 +840,8 @@ LINE_WRITTEN=0
 SETTINGS_BACKUP=""
 SETUP_RAN=0
 CHANGED=0
+LINE_CHANGED=0       # an adopted line got its default_instance
+SETTINGS_CHANGED=0   # the settings file was written by this run
 
 # Copy the settings file aside before a new registration changes it (an
 # existing file with no registry line, kept by --remove --keep-settings).
@@ -899,8 +902,23 @@ rollback() {
         echo "  kept $PROJECT_ROOT: created by setup; remove it, or re-run register_project.sh to reuse it" >&2
     fi
 }
+# What an adopted project keeps when a run stops early: it is never
+# rolled back, so say what this run already changed.
+adopt_kept() {
+    local line="its registry line is unchanged" settings="its settings file is unchanged"
+    [ "$LINE_CHANGED" -eq 1 ] && line="its registry line keeps the change above"
+    [ "$SETTINGS_CHANGED" -eq 1 ] && settings="its settings file keeps the values written above"
+    [ "$IS_PARENT" -eq 1 ] && settings="a parent root has no settings file"
+    echo "  '$NAME' was already registered, so nothing is rolled back: it stays registered; $line; $settings" >&2
+}
 on_signal() {
     trap - INT TERM HUP
+    if [ "$ADOPT" -eq 1 ]; then
+        echo "" >&2
+        echo "Interrupted." >&2
+        adopt_kept
+        final "NOT READY" "interrupted before its checks finished; re-run register_project.sh $NAME" "$1"
+    fi
     rollback
     final refused "interrupted; nothing is registered" "$1"
 }
@@ -912,7 +930,8 @@ trap 'on_signal 129' HUP
 failed() { # <what failed> <next>
     if [ "$ADOPT" -eq 1 ]; then
         echo "" >&2
-        echo "'$NAME' was already registered, so it is kept as it is: $1" >&2
+        echo "ERROR: $1" >&2
+        adopt_kept
         final "NOT READY" "$2" 1
     fi
     echo "" >&2
@@ -942,6 +961,7 @@ elif [ -n "$LINE_CHANGE" ]; then
     done < "$REGISTRY" > "$TMP"
     install_registry "$TMP" "$NAME" present "$LINE_CHANGE_ENTRY" || failed "the changed registry line does not parse as asked (above)" "fix --default-instance"
     CHANGED=1
+    LINE_CHANGED=1
     echo "changed the registry line to: $LINE_CHANGE"
 else
     echo "registry line kept as it is: $(registry_raw_line "$NAME")"
@@ -953,7 +973,7 @@ if [ "${#KV[@]}" -gt 0 ]; then
     for _i in "${!KV[@]}"; do echo "  ${KV[$_i]}    (${KV_NOTES[$_i]#*: })"; done
     _out="$(project_file_set "$ROOT" "$NAME" "${KV[@]}")" || failed "the settings file could not be written (above)" "fix the --set values"
     echo "$_out"
-    [[ "$_out" == unchanged* ]] || CHANGED=1
+    [[ "$_out" == unchanged* ]] || { CHANGED=1; SETTINGS_CHANGED=1; }
 elif [ "$IS_PARENT" -eq 0 ]; then
     if [ "$SETTINGS_EXISTED" -eq 1 ]; then echo "unchanged $SETTINGS"; else echo "no settings file (nothing to write)"; fi
 fi

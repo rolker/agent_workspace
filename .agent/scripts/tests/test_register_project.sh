@@ -465,6 +465,8 @@ cp "$WS/.agent/projects.local" "$SANDBOX/reg.before"
 out="$(reg "$WS" mu)"; rc=$?
 check "no build command: NOT READY, exit 1" [ "$rc" -eq 1 -a "$(status_of "$out")" = "NOT READY" ]
 check "kept, never rolled back: the registry is byte for byte the same" cmp -s "$WS/.agent/projects.local" "$SANDBOX/reg.before"
+check "says so: nothing rolled back, line and settings file unchanged" \
+    has "$out" "'mu' was already registered, so nothing is rolled back: it stays registered; its registry line is unchanged; its settings file is unchanged"
 out="$(reg "$WS" "$PH" --set build=./scripts/build.sh --set test=none)"; rc=$?
 check "by path with the commands: registered" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
 check "its line is kept as it was" cmp -s "$WS/.agent/projects.local" "$SANDBOX/reg.before"
@@ -595,6 +597,31 @@ out="$(cat "$SANDBOX/int.out")"
 check "exit 143, STATUS=refused, interrupted" bash -c '[ "$1" -eq 143 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"interrupted"* ]]' _ "$rc" "$out"
 check "no registry line, no settings file" \
     bash -c '! grep -q "^tau " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" tau)"
+
+echo "TEST: an interrupt on an adopted project keeps it, and says what the run already changed"
+PTA="$(make_proj taua)"
+printf 'all:\n\t@echo BUILD_START:taua >> "$(REG_LOG)"\n\t@sleep 2\ntest:\n\t@echo\n' > "$PTA/Makefile"
+printf 'taua  single_project  %s\n' "$PTA" >> "$WS/.agent/projects.local"
+printf 'build=make\ntest=make test\n' > "$(pfile "$WS" taua)"
+cp "$WS/.agent/projects.local" "$SANDBOX/reg.before"
+: > "$REG_LOG"
+(
+    unset CLAUDE_CONFIG_DIR
+    cd "$SANDBOX" && HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" REG_LOG="$REG_LOG" \
+        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" exec "$WS/.agent/scripts/register_project.sh" taua --set test=none > "$SANDBOX/int.out" 2>&1
+) &
+IPID=$!
+for _ in $(seq 1 100); do grep -q BUILD_START:taua "$REG_LOG" && break; sleep 0.1; done
+kill -TERM "$IPID" 2>/dev/null
+wait "$IPID"; rc=$?
+out="$(cat "$SANDBOX/int.out")"
+check "exit 143, STATUS=NOT READY, never 'nothing is registered'" \
+    bash -c '[ "$1" -eq 143 ] && [[ "$2" == *"STATUS=NOT READY"* && "$2" != *"nothing is registered"* ]]' _ "$rc" "$out"
+check "says it stays registered and the settings file keeps the values written" \
+    has "$out" "'taua' was already registered, so nothing is rolled back: it stays registered; its registry line is unchanged; its settings file keeps the values written above"
+check "the line is kept byte for byte, and the settings file holds the --set value" \
+    bash -c 'cmp -s "$1" "$2" && grep -qx "test=none" "$3"' _ "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$(pfile "$WS" taua)"
+reg "$WS" --remove taua >/dev/null
 
 # ------------------------------------------------------- registry lock ---
 LOCKF="$WS/.agent/projects.d/.registry.lock"
