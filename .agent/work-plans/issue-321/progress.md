@@ -908,3 +908,18 @@ GitHub side: 20 Copilot comment-reviews, 0 inline comments, 0 conversation comme
 **Decision**: merge
 
 The owner's answer, in his words: "a yes". The merge call presented: nine PR-mode rounds, all findings fixed, round 9 approved with nothing open, the Integrated Review at 86617791 clean with CI all-pass, his "B ask first" direction in. Merge of pull request 400.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 12:45 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**PR**: #400 at `c1e43a9a`
+
+Merged main (b120d541, pull request #403: issue 332 part 1, the per-project settings file) into feature/issue-321 with `git merge main`, default merge message; no rebase, no squash.
+
+- One content conflict, in `docs/design.md`, and only in the change-log table: both sides appended a row after the 2026-10-15 #395 row. Resolved by keeping both rows unedited, main's 2026-10-21 #332 row (Lines 790) first and this branch's 2026-10-15 #321 row (Lines 766) after it, as the earlier main merge 5c68e36e did for #332 and #395. No sentence from either side was dropped.
+- Every other design.md hunk auto-merged. Checked: the merged file's diff against main carries exactly this branch's design.md changes (orchestrator/host checkpoint wording, Rules row, Direction-row Paths sentence, glossary), and its diff against 29be214e carries exactly #403's (settings file, `project_setting.sh`, records keys, Registry and adapters, Worktrees Target, refreshed citations).
+- All other files auto-merged (including `dispatch_phase.sh`, `test_dispatch_phase.sh`, `run-issue/SKILL.md`); nothing changed beyond the conflict resolution.
+- Not changed: the #321 row's Lines value stays 766 (the count on the branch before the merge); the merged file is 800 lines.
+
+Verified: `check_design_anchors.sh .` exit 0; `.agent/scripts/tests/run_script_tests.sh` all 38 suites passed; the main checkout's `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, exit 0 (script-test suite hook included); the merge commit's own hooks passed.
