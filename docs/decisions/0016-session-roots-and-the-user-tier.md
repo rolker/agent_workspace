@@ -86,9 +86,9 @@ project's notes have no business in it.
 ### 5. Registration is a workspace script
 
 Adding a project to the registry is a workspace operation, not something a
-project session does to itself. (`register_project.sh` and its bootstrap
-command are PR 4 scope; `gz4d` is already registered, so PR 3 needs
-neither.)
+project session does to itself. (`register_project.sh` is built by #332,
+without a bootstrap command: registration runs in a workspace session;
+`gz4d` was already registered, so PR 3 needed neither.)
 
 ### 6. The user-tier rule
 
