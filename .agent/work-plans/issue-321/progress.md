@@ -737,3 +737,13 @@ GitHub side: 12 Copilot comment-reviews, 0 inline comments, 0 conversation comme
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 09:23 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+The owner's answer, in his words: "B ask first". The question (B) was whether the restart recipe may post his verbatim session words on the public issue as they are, or must ask him first each time; the round-3 review raised it against the skill's outward-boundary rule ("anything a stranger could read as his word"). Change before merge: the restart recipe shows the owner the comment it would post and waits for his yes before posting, every time; the recovery path (session ended, host has only the restart entry) asks the same way. The Integrated Review at 25fd8040 is clean; this is the owner's own direction, not a review finding.
