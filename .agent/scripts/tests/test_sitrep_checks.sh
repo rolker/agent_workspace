@@ -1114,6 +1114,8 @@ Checkpoint|complete|**After**: phase-failed\n**Decision**: retry\n**Phase**: imp
 Checkpoint|complete|**After**: phase-failed\n**Decision**: takeover\n**Phase**: implement|a step failed; the session is doing it by hand
 Checkpoint|complete|**After**: merge-refused\n**Decision**: retriage|merge refused; reviews being triaged again
 Checkpoint|complete|**After**: unexpected\n**Decision**: odd|checkpoint after unexpected: odd
+Checkpoint|complete|**After**: rounds\n**Decision**: restart|goal restated by the owner; issue review starts again
+Checkpoint|complete|**After**: unexpected\n**Decision**: restart|goal restated by the owner; issue review starts again
 Implementation|complete||implemented
 Implementation|failed||implementation failed
 Local Review (Pre-Push)|complete|\n### Findings\n- [ ] (must-fix) a\n- [x] (must-fix) b\n- [ ] (suggestion) c|code reviewed, 2 findings to address

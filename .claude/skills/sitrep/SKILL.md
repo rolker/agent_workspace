@@ -305,7 +305,8 @@ CHECKPOINT = {("plan", "proceed"): "plan approved, implementing",
               ("merge-refused", "retriage"): "merge refused; reviews being triaged again"}
 BY_DECISION = {"address": "review findings being addressed",
                "publish": "approved to publish", "merge": "approved to merge",
-               "stop": "stopped at a checkpoint"}
+               "stop": "stopped at a checkpoint",
+               "restart": "goal restated by the owner; issue review starts again"}
 def words(e):
     t, st = e.get("base_type") or e.get("type") or "", e.get("status") or ""
     f = e.get("fields") or {}
@@ -406,6 +407,7 @@ unchecked on an approval, is not a finding and is not counted:
 | Checkpoint after phase-failed, retry / takeover | a step failed; retrying it / a step failed; the session is doing it by hand |
 | Checkpoint after merge-refused, retriage | merge refused; reviews being triaged again |
 | Checkpoint, any other step: address / publish / merge / stop | review findings being addressed / approved to publish / approved to merge / stopped at a checkpoint |
+| Checkpoint, any step: restart (the owner restated the goal, `/orchestrator` recipe (a)) | goal restated by the owner; issue review starts again |
 | Implementation | implemented (for a workspace worktree with no pull request, the report adds "no pull request yet") |
 | Local Review, Local Review (Pre-Push), with <k> open boxes | code reviewed, <k> findings to address (1: "1 finding to address") |
 | Local Review, Local Review (Pre-Push), no open box | code reviewed, nothing open |
