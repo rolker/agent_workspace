@@ -834,3 +834,34 @@ None open.
 
 ### False positives
 - (Copilot @ `8bc1d033`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 10:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-332 at `6cb9cef3`
+
+PR 2 of 4 (`register_project.sh`), built on PR 1 as merged (#403). Commits 3e16db43..6cb9cef3.
+
+### Actions
+- [x] `registration.conf` per type (`required_commands`, `setup`, `run`): `single_project` build and test, never setup; `ros2_colcon` none required (its `unused_settings` refuses build/test), setup when missing, no verbs run. `validate_adapter.sh` requires one per type; `test_adapter.sh` case.
+- [x] `user_tier_install.sh --disable-root <name>`: one root, treated as `--uninstall` treats each; takes the machine-level record back if the local remove dropped it while other roots stay enabled. Tests in `test_user_tier_install.sh`.
+- [x] `register_project.sh`: register (registry line with an absolute path, parsed from a temp copy then renamed; settings from `--set`, else the legacy `.sh`, else `--detect`), setup when `registration.conf` says so and the directory is missing, `registration_verify.sh`, the `run=` verbs, then the user tier; rollback on any failure and on INT/TERM/HUP, with `--disable-root` once the installer ran; `KEPT=` for a directory setup created; adoption (line kept, `NOT READY` not rollback, warning on extra variables in the old config); `--remove`; `--detect`; `--dry-run`; main checkout only.
+- [x] `registration_verify.sh`: read-only gate with the inert marker (not added to `user_tier_scripts.txt`; PR 3 promotes it).
+- [x] `_project_registry.sh`: `project_command_source`, `project_config_extra_vars`, registration.conf readers, optional file argument to `registry_entries_full`.
+- [x] `projects.local.example`, `user_tier_scripts.txt` comment; #265 plan edits and ADR-0016 decision 5 pointer; `docs/design.md` (Registry Now, Sessions and roots Target to Now, Registry Target, C4, change-log row); `AGENTS.md` rows in their own commit (18c4fb7b, Ask First).
+- [x] `test_register_project.sh` (105 cases, synthetic sandbox projects only); `test_script_tests_hook_scope.sh` gains its ROOT_READERS row.
+
+### Where the plan and merged PR 1 differ (code followed)
+- `ros2_colcon` refuses `build`/`test` settings (PR 1's `unused_settings`), so its `required_commands=none` and adoption copies only keys the type reads.
+- The records refusal lives in `project_file_set`; register prechecks the same rule so `--dry-run` reports it.
+- Legacy `.sh` precedence is "whole legacy layer" (PR 1 amendment), so the gate accepts a command still read from the legacy `.sh` as the project's own.
+
+### Decisions for veto
+- Adoption may add a missing `default_instance` to a parent root's line (otherwise `--default-instance` could never be used: instances must exist first); every other field change is refused.
+- `--set` on an adopted project with a settings file updates it; copying from the `.sh` and detection happen only when there is no file.
+- `validate_adapter.sh` row in AGENTS.md also edited (one clause naming the registration.conf check), beside the two new rows.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, including the script test suite. (The first run failed on `test_script_tests_hook_scope.sh` needing a ROOT_READERS row; fixed in 6cb9cef3 and re-run.)
+- Run alone: `test_register_project.sh` 105/0, `test_user_tier_install.sh` 211/0, `test_adapter.sh` 113/0, `test_project_file.sh` 474/0, `test_project_registry.sh` 263/0, `test_ros2_colcon.sh` 200/0; `check_design_anchors.sh` clean.
