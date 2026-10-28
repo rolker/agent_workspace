@@ -588,3 +588,18 @@ Whether recipe (a) may post the owner's verbatim words on the public issue is le
 
 ### Tests
 Fix commits used `SKIP=validate-script-tests` (dispatched-pass hook rule). Run by hand during the pass: test_skill_paths 78/0, test_sitrep_checks 186/0 (counts unchanged where new cases joined existing assertions). Final: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, exit 0 on the final tree (script test suite and shellcheck passed). Boxes in the source entry were checked by editing progress.md in each fix commit: `review_progress.sh findings/check` select only a `## Local Review (Pre-Push)` or `## Integrated Review`, never this PR-mode `## Local Review`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 08:52 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #400 at `98870a6f`
+**Depth**: Standard (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Round 4 (PR mode: three complete `## Local Review` entries before this one (round 1, then b2fb88ef and a216e279); no restart). Narrow convergence check per the handoff: only the round-3 findings and the fix diff a216e279..98870a6f (7 files, progress.md excluded). Cross-model: skipped (round-4 convergence check, per handoff). All six round-3 items confirmed fixed: M1 restart comment block now at column 0 in its own section, its first line printed from `$MARK`, `bash -n` on the extracted block clean, and test_skill_paths parses every orchestrator bash block as written; S1 plan-task handoff quoting in orchestrator recipe (a) step 3 and run-issue; S2 sit-rep says `no path` only on `**Serves**: none`, two "path unknown" labels otherwise, PR-only issue from head branch or `closingIssuesReferences` (a valid `gh pr list --json` field, already used by step 5); S3 project goal reads "no path (serves a project goal)", Path 1 still checked first; S4 standing rule reworded, matches the orchestrator table (`address` host, `merge` owner at `findings`); S5 `restart` in BY_DECISION and the state table, two cases. Claude adversarial (fresh subagent, scoped to the fix diff) ran: no issues, all six fixed; its two notes dropped (a long comment line; prose-only test of the PR-only lookup, which is model instruction text). Static: shellcheck hook passed on the two changed test files. Tests run here: test_skill_paths 78/0, test_sitrep_checks 186/0. Plan drift: all seven files are in the plan. CI at 98870a6f: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass; Lint (pre-commit) pending in both runs.
+
+### Findings
+- [ ] (suggestion) The restart's words reach `plan-task` only if the session holds through it: the recovery paragraph covers a break before the `## Issue Review` is written, but after it the newest entry is that review, `next` routes to plan-task as usual, nothing tells the resumed host to quote the `restart` entry's words, and plan-task's git-bug copy may still lack the comment; say the host quotes the newest `restart` entry's words into every review-issue and plan-task handoff after it until a plan is written — `.claude/skills/orchestrator/SKILL.md:145-147`
