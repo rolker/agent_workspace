@@ -985,3 +985,13 @@ GitHub side: 26 Copilot comment-reviews, 0 inline comments, 0 conversation comme
 
 ### False positives
 - (Copilot) `copilot-pull-request-reviewer` reviews at every head — each body states it was unable to review because the requester has insufficient remaining quota; no finding was produced, so they are quota placeholders, not a code or CI signal.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 13:15 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer, in his words: "yes to both" (A: this pull request). Presented: after his earlier yes the branch took main in (merge c1e43a9a, the design.md change-log rows both kept), round 10 found the row's line count stale, fixed in e89102a7, round 11 approved, the Integrated Review at 726d9d81 clean with CI all-pass. Merge of pull request 400.
