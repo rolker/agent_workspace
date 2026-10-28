@@ -1202,3 +1202,24 @@ Verified: `test_register_project.sh` 198 passed, 0 failed on the head; the same 
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 13:06 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `e3b8736f`
+**Sources**: 3 (Local Review @ `94a2c149` (covers head `e3b8736f` via bookkeeping), Copilot @ `94a2c149` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR 2 of 4 for issue 332. Builds on the Integrated Reviews at `7b28b6f1` and `c0710b66` (one suggestion each, fixed in `d0c72a0f` and `6f0e6704`, each confirmed by the next Local Review); not re-listed. The round-6 Local Review at `94a2c149` is approved with 0 must-fix and 0 suggestions. The Local Reviews at `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03` belong to PR 1 of 4 (PR 403, merged), and the Pre-Push at `6a92304` and the Local Review at `56d1184` were ruled on by the earlier Integrated Reviews; `sources` lists all six stale.
+GitHub: six Copilot comment-reviews (at `7b28b6f1`, `2582cdda`, `56d11847`, `c0710b66`, `f086190e`, `94a2c149`), each the quota message, no inline comments; no conversation comments; no human reviews.
+Fix spot-checked at the head: the `SETTINGS_WRITING -eq 0` branch of `rollback` (`.agent/scripts/register_project.sh:1001-1009`) removes the backup, and a failed removal warns and names it through `rollback_left`, as the round-6 review states.
+CI at `e3b8736f`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs (40731261838 push, 40731269831 pull_request); Lint (pre-commit) passed on the push run and was still in progress on the pull_request run after a 7-minute wait, hence pending.
+
+### Findings
+
+### False positives
+- (Copilot @ `7b28b6f1`, `2582cdda`, `56d11847`, `c0710b66`, `f086190e`, `94a2c149`) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
+- (Local Review @ `94a2c149`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.
