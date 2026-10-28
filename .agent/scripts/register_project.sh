@@ -76,7 +76,8 @@
 # A failure in 1 to 4 removes the registry line and the settings file (on
 # INT, TERM and HUP too; a settings file that existed before is copied
 # aside first, the run refused when that copy fails, and put back by a
-# rename); after the installer ran it first calls
+# rename, or, when the run stops before writing the file, the copy is
+# removed); after the installer ran it first calls
 # user_tier_install.sh --disable-root <name>, unless the plugin was
 # enabled at the root from this checkout before the run (it is then left). A rollback step that fails is
 # named in the output and on NEXT=, never reported as a clean result, and
@@ -998,7 +999,14 @@ rollback() {
         # the build, say): someone else's change, kept as it is.
         echo "  WARNING: the settings file $SETTINGS changed after this run wrote it (a project_setting.sh set during the run, say), so it is kept as it is, with no registry line${SETTINGS_BACKUP:+; its content before this run is in $SETTINGS_BACKUP}" >&2
     elif [ "$SETTINGS_WRITING" -eq 0 ]; then
-        :   # this run never wrote it: not this run's to restore or remove
+        # This run never wrote the file: not this run's to restore or
+        # remove. A backup taken before the write (an exit between the two)
+        # only duplicates it, so it goes.
+        if [ -n "$SETTINGS_BACKUP" ] && [ -e "$SETTINGS_BACKUP" ] \
+           && ! { rm -f -- "$SETTINGS_BACKUP" && [ ! -e "$SETTINGS_BACKUP" ]; }; then
+            echo "  WARNING: could not remove the backup $SETTINGS_BACKUP of the settings file (above); the settings file was not changed, so remove it by hand" >&2
+            rollback_left "the backup of the settings file's content before this run, $SETTINGS_BACKUP (remove it)"
+        fi
     elif [ -n "$SETTINGS_BACKUP" ]; then
         restore_settings || rollback_left "the settings file $SETTINGS as this run wrote it (its content before the run is in $SETTINGS_BACKUP)"
     elif [ "$SETTINGS_EXISTED" -eq 0 ] && { [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; }; then

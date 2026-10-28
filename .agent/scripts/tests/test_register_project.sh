@@ -872,6 +872,32 @@ check "the backup is named on NEXT, to remove once the settings file is right" \
     bash -c '[ -n "$2" ] && [[ "$(tail -n 4 <<< "$1" | grep "^NEXT=")" == *"the backup of the settings file'"'"'s content before this run, $2 (remove it once $3 is right)"* ]]' _ "$out" "$BKB" "$(pfile "$WSB" rbbak)"
 rm -f "$BKB" "$SANDBOX/rbbak.before"
 
+echo "TEST: an unexpected exit after the settings backup, before the write, removes the backup"
+# A sandbox copy of the script with an unset variable read after
+# backup_settings and before SETTINGS_WRITING=1: the settings file was never
+# written, so the hidden backup only duplicates it and is this run's to remove.
+WSW="$(make_ws)"
+sed -i.bak 's|^    SETTINGS_WRITING=1$|    : "$REGISTER_TEST_UNSET_VARIABLE"\n&|' "$WSW/.agent/scripts/register_project.sh"
+rm -f "$WSW/.agent/scripts/register_project.sh.bak"
+check "the fault is in the sandbox copy, before the settings write" grep -q REGISTER_TEST_UNSET_VARIABLE "$WSW/.agent/scripts/register_project.sh"
+PRW="$(make_proj rbwin)"
+mkdir -p "$WSW/.agent/projects.d"
+printf 'build=make\ntest=make test\n' > "$(pfile "$WSW" rbwin)"
+cp -p "$(pfile "$WSW" rbwin)" "$SANDBOX/rbwin.before"
+wleft() { find "$WSW/.agent/projects.d" -maxdepth 1 \( -name '.settings-backup.*' -o -name '.settings-restore.*' \); }
+out="$(reg "$WSW" "$PRW" --set test=none)"; rc=$?
+check "exit non-zero, STATUS=refused, saying it stopped unexpectedly" \
+    bash -c '[ "$1" -ne 0 ] && [[ "$2" == *"stopped unexpectedly"* && "$2" == *"STATUS=refused"* && "$2" != *"STATUS=NOT READY"* ]]' _ "$rc" "$out"
+check "the settings file is byte for byte as before, no registry line, no backup or restore file left" \
+    bash -c 'cmp -s "$1" "$2" && ! grep -q "^rbwin " "$3" && [ -z "$4" ]' _ "$(pfile "$WSW" rbwin)" "$SANDBOX/rbwin.before" "$WSW/.agent/projects.local" "$(wleft)"
+out="$(faulty rm .settings-backup. "$WSW" "$PRW" --set test=none)"; rc=$?
+BKW="$(wleft | head -1)"
+check "the backup cannot be removed: a warning, and the backup named on NEXT" \
+    bash -c '[ "$1" -ne 0 ] && [ -n "$3" ] && [[ "$2" == *"could not remove the backup"* && "$(tail -n 4 <<< "$2" | grep "^NEXT=")" == *"the backup of the settings file'"'"'s content before this run, $3 (remove it)"* ]]' _ "$rc" "$out" "$BKW"
+check "the backup cannot be removed: the settings file is as before, the backup holds the same content" \
+    bash -c 'cmp -s "$1" "$2" && cmp -s "$3" "$2"' _ "$(pfile "$WSW" rbwin)" "$SANDBOX/rbwin.before" "$BKW"
+rm -f "$BKW" "$SANDBOX/rbwin.before"
+
 echo "TEST: a failure whose rollback cannot remove the settings file names it on NEXT"
 PRF="$(make_proj rmfa 1 1 0)"   # its build fails
 out="$(faulty rm "projects.d/rmfa" "$WS" "$PRF")"; rc=$?
