@@ -1002,3 +1002,13 @@ Checks: test_register_project.sh 180 passed, 0 failed; shellcheck --severity=war
 
 ### Findings
 - [ ] (must-fix) A signal during a rollback cuts it short and the last lines still claim a clean result: on_signal (and, for a second signal, on_exit) calls rollback, which is already disarmed, then prints STATUS=refused "interrupted; nothing is registered". Reproduced: build fails, TERM right after the rollback's registry mv, the settings file is left and not named; a signal during --disable-root would leave the line too. Mark the rollback as running and have on_signal return (resume it) while it runs, and on_exit name "the rollback stopped part way" with NOT READY; add a test (fault stub signal-after on mv during the rollback) — `.agent/scripts/register_project.sh:1029`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 11:55 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+The owner's answer, in his words: "C fix". The question: fix the one must-fix the round-3 review (e8652419, this branch's round 3; the counter says 10, issue 384) left open before publishing PR 2 of 4, or publish now. The must-fix: a signal arriving during the rollback cuts it short while the last lines still say "interrupted; nothing is registered"; the fix lets a running rollback finish on a signal, reports "the rollback stopped part way" with NOT READY when the EXIT trap fires mid-rollback, with a test using the signal-after fault stub. The host had answered address twice in a row at this checkpoint, the cap, so the third answer was his. (Recorded after the fix pass was dispatched: a first write of this entry landed on the wrong branch, unpushed.)
