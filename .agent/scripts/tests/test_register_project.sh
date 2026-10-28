@@ -488,6 +488,19 @@ check "the root was enabled, then disabled by --disable-root" \
 check "no enable left in the root" bash -c '! jq -e ".enabledPlugins[\"agent-workspace@agent-workspace\"] == true" "$1" >/dev/null 2>&1' _ "$PK/$SLJ"
 check "no registry line, no settings file; the other root's line kept" \
     bash -c '! grep -q "^kappa " "$1" && [ ! -e "$2" ] && grep -q "^broken " "$1"' _ "$WS/.agent/projects.local" "$(pfile "$WS" kappa)"
+echo "TEST: the rollback leaves a plugin the root had enabled before the run"
+PKE="$(make_proj kappae)"
+mkdir -p "$PKE/.claude"
+jq -n --arg p "$(cd "$WS" && pwd -P)" '{enabledPlugins: {"agent-workspace@agent-workspace": true}, extraKnownMarketplaces: {"agent-workspace": {source: {source: "directory", path: $p}}}}' > "$PKE/$SLJ"
+cp "$PKE/$SLJ" "$SANDBOX/slj.before"
+: > "$STUB_LOG"
+out="$(reg "$WS" "$PKE")"; rc=$?
+check "exit 1, STATUS=refused, saying the plugin is left as it was" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"left the workspace plugin at $3 enabled: it was enabled there from this checkout before this run"* ]]' _ "$rc" "$out" "$PKE"
+check "no uninstall in that root; its settings.local.json is byte for byte the same" \
+    bash -c '! grep -qF "$1|plugin uninstall" "$2" && cmp -s "$1/$3" "$4"' _ "$PKE" "$STUB_LOG" "$SLJ" "$SANDBOX/slj.before"
+check "no registry line, no settings file" \
+    bash -c '! grep -q "^kappae " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" kappae)"
 rm -f "$PBAD/$SLJ"
 reg "$WS" --remove broken >/dev/null
 

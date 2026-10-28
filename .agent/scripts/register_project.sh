@@ -77,7 +77,8 @@
 # INT, TERM and HUP too; a settings file that existed before is copied
 # aside first, the run refused when that copy fails, and put back by a
 # rename); after the installer ran it first calls
-# user_tier_install.sh --disable-root <name>. A rollback step that fails is
+# user_tier_install.sh --disable-root <name>, unless the plugin was
+# enabled at the root from this checkout before the run (it is then left). A rollback step that fails is
 # named in the output and on NEXT=, never reported as a clean result, and
 # while the registry line is left the status is NOT READY. A hosting directory that
 # setup created is kept and named on KEPT= (its clones are slow to redo,
@@ -895,6 +896,18 @@ SETTINGS_CHANGED=0   # the settings file was written by this run
 # line is among it (the project is then still registered).
 ROLLBACK_LEFT=""
 LINE_LEFT=0
+ROOT_PLUGIN_BEFORE=0    # the plugin was enabled at the root before step 4
+# Is the workspace plugin enabled at the project's root from this checkout
+# (user_tier_install.sh's "enabled" state; the ids are its PLUGIN_ID and
+# MARKETPLACE_NAME)? The installer leaves such a root as it is, so a
+# rollback must too.
+root_plugin_enabled_here() {
+    local f="$PROJECT_ROOT/.claude/settings.local.json" src
+    [ -f "$f" ] || return 1
+    jq -e '.enabledPlugins["agent-workspace@agent-workspace"] == true' "$f" >/dev/null 2>&1 || return 1
+    src="$(jq -r '.extraKnownMarketplaces["agent-workspace"].source.path // ""' "$f" 2>/dev/null)" || return 1
+    [ -n "$src" ] && [ "$(phys "$src")" = "$(phys "$ROOT")" ]
+}
 SETTINGS_WRITING=0      # this run started writing the settings file
 SETTINGS_WRITTEN_SUM="" # the file's checksum once this run wrote it
 # The settings file's checksum, "absent" when there is none.
@@ -941,7 +954,9 @@ rollback() {
     ROLLBACK_ARMED=0
     echo "" >&2
     echo "Rolling back the registration of '$NAME':" >&2
-    if [ "$INSTALLER_RAN" -eq 1 ]; then
+    if [ "$INSTALLER_RAN" -eq 1 ] && [ "$ROOT_PLUGIN_BEFORE" -eq 1 ]; then
+        echo "  left the workspace plugin at $PROJECT_ROOT enabled: it was enabled there from this checkout before this run" >&2
+    elif [ "$INSTALLER_RAN" -eq 1 ]; then
         if ! "$INSTALLER" --disable-root "$NAME" >&2 8>&-; then
             echo "  WARNING: could not remove the workspace plugin from $PROJECT_ROOT (above)" >&2
             rollback_left "the workspace plugin enabled at $PROJECT_ROOT"
@@ -1103,6 +1118,7 @@ done
 echo ""
 if [ "$RUN_UT" -eq 1 ]; then
     echo "== user_tier_install.sh"
+    root_plugin_enabled_here && ROOT_PLUGIN_BEFORE=1
     INSTALLER_RAN=1
     "$INSTALLER" 8>&- || failed "the user-tier installer failed (above)" "fix the installer failure"
     echo ""
