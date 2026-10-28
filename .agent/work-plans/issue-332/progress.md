@@ -1063,3 +1063,26 @@ Checks: test_register_project.sh 189 passed, 0 failed (main checkout venv shellc
 **Decision**: publish
 
 PR 2 of 4 for issue 332 (register_project.sh, registration_verify.sh, per-type registration.conf, user_tier_install.sh --disable-root, tests, plan and design edits): four pre-push rounds on this branch (taken as 1 to 4; the counter says 8 to 11 because PR 1's entries remain, issue 384), 13 findings fixed, round 4 approved with 1 suggestion open (name the hidden settings backup file when an unexpected exit leaves it). The owner's direction for this run: "Let's have bg agents continue working on both."; his "C fix" answer at round 3 is in. Publishing.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 12:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `7b28b6f1`
+**Sources**: 3 (Local Review (Pre-Push) @ `6a923041` (covers head `7b28b6f1` via bookkeeping), Copilot @ `7b28b6f1` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR 2 of 4 for issue 332. This branch's rounds: pre-push 1 to 4 (a658c114, 89ac5d5d, e8652419, round 4 reviewed code at 6a923041, recorded at 75bceb21); every earlier round's findings were fixed and confirmed by the next round; round 4 approved with one suggestion open, triaged below.
+Not re-listed: the Local Reviews at `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03` belong to PR 1 of 4 (PR 403, merged 2026-10-28) and were ruled on by its Integrated Reviews; `sources` lists them stale.
+GitHub: one Copilot comment-review, the quota message, no inline comments; no conversation comments; no human reviews.
+CI at `7b28b6f1`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs (40723988708, 40723979858); Lint (pre-commit) still pending on both; the `copilot-pull-request-reviewer` check fails on quota, not code.
+
+Round-4 suggestion checked in the code (`.agent/scripts/register_project.sh:1022-1040`), valid: `rollback_unfinished` names the backup only while the settings file still matches this run's write. Two exits leave it unnamed: (a) inside `restore_settings` after the `mv` restored the file but before `rm` of the backup (the file now holds the pre-run content, so the checksum guard fails); (b) the file was changed during the run by someone else and the exit lands before the rollback's settings step (the normal rollback names the backup in a WARNING here; the cut-short path says nothing). The hidden `.settings-backup.*` then stays in `projects.d` with nothing on NEXT pointing at it; in (b) it is the only copy of the pre-run content. Shell globs skip dotfiles, so no reader trips on it; the cost is unreported debris, which the Quality Standard does not let pass.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `6a923041`) An exit inside the rollback leaves the hidden settings backup unnamed when the settings file no longer matches this run's write (exit in `restore_settings` after the rename, or a file changed during the run). Fix: in `rollback_unfinished`, when the settings step is not done and `$SETTINGS_BACKUP` still exists, always name it: keep the current message when the file matches this run's write; otherwise add "the backup of the settings file's content before this run, $SETTINGS_BACKUP (remove it once $SETTINGS is right)"; add a test case in `test_register_project.sh` (sandbox copy with an unset-variable fault after the rename in `restore_settings`, as the existing rollback cases do) asserting the backup path is on the last lines — `.agent/scripts/register_project.sh:1029`
+
+### False positives
+- (Copilot @ `7b28b6f1`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
