@@ -1086,3 +1086,13 @@ Round-4 suggestion checked in the code (`.agent/scripts/register_project.sh:1022
 
 ### False positives
 - (Copilot @ `7b28b6f1`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 12:17 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (first address at this pull request's findings checkpoint; one valid suggestion, a silent leftover file in a rare exit path; mechanism fix, no goal question, no outward change)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at 57319ac6 (pull request 409, PR 2 of 4) has one open finding, a suggestion: when an exit cuts the rollback short, the hidden .settings-backup.* file in projects.d is never named, whether the exit fell inside restore_settings after the rename or the settings file was changed during the run. The host read the triage's fix plan (rollback_unfinished always names the backup while it exists, with a "remove it once the settings file is right" line when the file no longer matches this run's write; one new test with an unset-variable fault after the rename) and sends it to address-findings.
