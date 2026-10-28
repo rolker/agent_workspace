@@ -1320,3 +1320,35 @@ PR 3 of 4 (the `onboard-project` rewrite), on main `e0bab748`. No pull request y
 - `.agent/scripts/check_design_anchors.sh .`: exit 0.
 - Suites run directly: test_project_integration_audit (75 passed), test_user_tier_guard, test_skill_paths (98), test_project_file (474), test_register_project (198), test_user_tier_install (211), test_session_root (69), test_plugin_manifest (12), test_sitrep_checks (186), test_script_tests_hook_scope (149): all 0 failed.
 - Not covered by a test: the `session-root` finding (no synthetic setup makes `session_root.sh` fail at an existing registered root). Not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 14:25 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `4214aa7c`
+**Base**: main
+**Depth**: Deep (reason: 1544 changed lines over 13 files, with AGENTS.md and a SKILL.md)
+**Must-fix**: 7 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 7 must-fix; first round always re-reviews after fixes
+
+Round taken as 1 on the host's instruction: this is PR 3 of 4, a new diff, and `review_progress.sh round` reported round=12 only because the eleven pre-push entries of PRs 403 and 409 (parts 1 and 2, merged from branches of the same name) are still on this issue's timeline (issue 384). Classified on the whole `main...HEAD` diff; cross-model dispatched as a first review; verdict computed with `--round 1`, no `--prev-must-fix`.
+
+Reviewers: Claude adversarial ran (four suites green: audit 75, hook scope 149, skill paths 98, user-tier guard 63); Gemini (agy) ran, complete; Codex ran, complete. Static: shellcheck --severity=warning clean on the six changed shell files. Checked and holding: the audit exits 0 whatever it finds; the tests build synthetic sandboxes only (the real checkout is only the source the scripts are copied from, HOME redirected); the D6 quote is verbatim; every path the new skill names exists. Dropped: Gemini's logical-$PWD finding in project_setting.sh (false positive: the resolver canonicalizes, `_project_registry.sh:521`).
+
+### Findings
+- [ ] (must-fix) `git check-ignore -v --no-index` exits 0 and prints the rule for a negated (`!`) pattern, so a path a project explicitly un-ignores (e.g. `*.md` then `!AGENTS.md`) is reported as `ignore-would-hide`; verified in a scratch repo — `.agent/scripts/project_integration_audit.sh:372`
+- [ ] (must-fix) Step 7 runs `worktree_create.sh --issue <N> --type project` without `--project <name>`; with `--type` given, the cwd is not used, so it picks a legacy `project/` checkout (wrong repository) or fails when several are registered (Codex; `worktree_create.sh:252,349-388`) — `.claude/skills/onboard-project/SKILL.md:292`
+- [ ] (must-fix) At a parent root, `session_root.sh` gives the parent's name, and every `project_setting.sh set <name>` the skill shows is refused (`_project_registry.sh:1550`, settings belong to instances); resolve the default/only instance as the audit does, or ask (Codex) — `.claude/skills/onboard-project/SKILL.md:91,143,183`
+- [ ] (must-fix) No path for a project that does not use issues: step 7 needs `<N>` for `worktree_create.sh`, which requires an issue or an allowlisted skill, yet the skill promises edits left on a branch for a project with no GitHub (Codex); needs a decision on how such a project's onboarding branch is made — `.claude/skills/onboard-project/SKILL.md:285-300`
+- [ ] (must-fix) PR and issue bodies use an unquoted heredoc around finding text (category 2 lines often carry backticked commands, which the shell would run) and `$AGENT_NAME`/`$AGENT_MODEL`, normally unset in a project session, so the signature renders empty; no identity step for the step 7 commits (Gemini, Claude) — `.claude/skills/onboard-project/SKILL.md:303-320,329-343`
+- [ ] (must-fix) "The writes this skill can make are ..." omits the hygiene checklist's remote writes (`gh api` branch protection and Copilot review, `gh label create`, `git bug bridge new`); name them and say each runs only after its own yes (Claude) — `.claude/skills/onboard-project/SKILL.md:69-73,379-401`
+- [ ] (must-fix) The `instructions=none` downgrade is claimed for every finding whose fix is a tracked file (script header, AGENTS.md row, SKILL.md:136-137), but only `emit_offer` downgrades; `skill-same-name`, `command-same-name`, `old-work-plans`, `records-two-places`, `work-plans-ignored`, `process-branch`, `process-issue` stay `warn`; route them through `emit_offer` or narrow the claim (Claude) — `.agent/scripts/project_integration_audit.sh:19-23,171-178`
+- [ ] (suggestion) `build_candidates` matches the project's own commands as substrings, so `build=make` hides `cmake --build build`; match on command boundaries, per command (Codex) — `.agent/scripts/project_integration_audit.sh:297-299`
+- [ ] (suggestion) The worktrees directory is canonicalized only when it exists, so for a root registered through a symlink (directory not yet created, the usual case after registration) `worktrees-not-ignored` is silently skipped (Gemini) — `.agent/scripts/project_integration_audit.sh:319-321`
+- [ ] (suggestion) `candidate()`'s overflow total counts lines the skip pattern drops; `indent_out` is unused (Gemini) — `.agent/scripts/project_integration_audit.sh:273,399`
+- [ ] (suggestion) `clean()` uses the GNU-only `sed ':a;N;$!ba;...'`; on BSD sed it errors and every field is emptied; `tr`/awk is portable (Claude) — `.agent/scripts/project_integration_audit.sh:156`
+- [ ] (suggestion) The category-6 fix text tells the user to `set <name> build=<command>`, which a `ros2_colcon` project refuses (`unused_settings`); say it applies to `single_project` (Claude) — `.claude/skills/onboard-project/SKILL.md:117-122`
+- [ ] (suggestion) Tests missing for: the `session-root` finding (builder's note), a parent-type root, a negated ignore rule, the remaining ids under `instructions=none`, the more-than-10 cap — `.agent/scripts/tests/test_project_integration_audit.sh`
+- [ ] (suggestion) AGENTS.md: the `project_setting.sh` row does not mention the new write guard (`registry_require_root`; from a project root only its own file), and the new audit row repeats the over-wide `instructions=none` claim; fix both in the AGENTS.md commit — `AGENTS.md:408-411`
