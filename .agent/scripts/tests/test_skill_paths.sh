@@ -377,7 +377,7 @@ has "$RI" "run-issue: the restart comment is posted only on his yes to its exact
     'posted only after the host has shown him the exact comment and he has said yes, every time' \
     'on a no nothing is posted and the host asks him how the restated goal should reach the issue' \
     'the host checks first whether the comment is already there; if not, shows him the comment and posts it on his yes' \
-    'when the check itself fails, nothing is asked or posted and the "not posted" line goes into the hand-back'
+    'When the check itself fails, nothing is asked, posted or dispatched: the "not posted" line goes into the hand-back and the `restart` entry stays the newest'
 if tr '\n' ' ' < "$RI" | tr -s ' ' | grep -qF 'shows him the comment and posts it on his yes, unless it is already there'; then
     fail "run-issue: the resumed drive still asks before checking whether the restart comment is already there"
 else
