@@ -40,12 +40,15 @@
 #                                            used when the parent is
 #                                            selected without --project
 #
-# single_project checkouts are managed manually: clone the project into
-# its hosting dir, then register it here. ros2_colcon instances bootstrap
-# themselves from an empty hosting dir — register the name, set its
-# bootstrap_url (below) to the project's bootstrap.yaml, and run
-# `.agent/scripts/adapter --project <name> setup` (or `make build
-# PROJECT=<name>` after setup).
+# Register a project with `.agent/scripts/register_project.sh <path>` from
+# the workspace's main checkout (issue #332): it writes the line here and
+# the settings file below, checks them, and runs the project's build and
+# test; `--remove <name>` unregisters, `--dry-run` shows the steps, and
+# `register_project.sh <name>` adopts a line written by hand. A
+# single_project checkout is the user's own clone. A ros2_colcon instance
+# bootstraps itself: register a path that does not exist yet with
+# `--set bootstrap_url=<url of the project's bootstrap.yaml>`, and
+# registration runs `.agent/scripts/adapter --project <name> setup`.
 #
 # Per-project settings (issue #332) go in .agent/projects.d/<name> (no
 # extension; gitignored, per machine), one key=value per line, written with
