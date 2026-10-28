@@ -26,7 +26,7 @@
 # row costs a guard call plus a test row). register_project.sh is never
 # promoted: it writes the registry, so it runs only from the workspace
 # checkout (#332). Its read-only gate, registration_verify.sh, is promoted
-# with the integration audit (#332 PR 3).
+# with the integration audit and project_setting.sh (#332 PR 3), below.
 #
 # cross_model_review.sh is absent for a different reason: it CANNOT satisfy
 # the rule. Reviewing a repo that is neither the workspace nor registered is
@@ -52,6 +52,16 @@
 # they carry the inert marker rather than a guard.
 .agent/scripts/session_root.sh
 .agent/scripts/skill_prefix.sh
+
+# /onboard-project, run in a session at a project root (#332 PR 3). The
+# integration audit and the registration gate only read and print, so they
+# carry the inert marker; outside every registered root the audit exits 2
+# saying so. project_setting.sh reads anywhere, and its writes (set, unset)
+# call registry_require_root first and, from a project root, write only
+# that project's settings file.
+.agent/scripts/project_integration_audit.sh
+.agent/scripts/registration_verify.sh
+.agent/scripts/project_setting.sh
 
 # Inert helpers: sourced by the above, never invoked for effect.
 .agent/scripts/set_git_identity_env.sh

@@ -13,7 +13,8 @@
 # .agent/work-plans/; the TSV shape and the text format; read-only (no
 # file in the project, the registry, the settings or HOME changes); run
 # from a project root outside the workspace; refusal from an unregistered
-# directory.
+# directory. Also project_setting.sh's write guard (#332 PR 3): from a
+# project root it writes only that project's settings file.
 #
 # Every fixture is synthetic: a sandbox workspace (a git repository with
 # copies of the real scripts, project types, skills and user-tier files),
@@ -352,6 +353,29 @@ audit "$HR" --dir "$HR" --project handreg
 check "--dir with --project: exit 2" [ "$AUDIT_RC" -eq 2 ]
 audit "$HR" --format json
 check "an unknown format: exit 2" [ "$AUDIT_RC" -eq 2 ]
+
+echo "TEST: project_setting.sh from a project root writes only that project's settings"
+ps() { # <cwd> <args...>
+    PS_RC=0
+    PS_OUT="$(cd "$1" && shift && HOME="$HOMEDIR" "$WS/.agent/scripts/project_setting.sh" "$@" 2>&1)" || PS_RC=$?
+}
+ps "$HR/src" set handreg instructions=tracked
+check "its own project: exit 0" [ "$PS_RC" -eq 0 ]
+check "the value is stored" [ "$(cat "$WS/.agent/projects.d/handreg")" = "instructions=tracked" ]
+ps "$HR" set clean instructions=none
+check "another project's: refused (exit 1)" [ "$PS_RC" -eq 1 ]
+check "the refusal names the session's own project" grep -qF "writes only the settings of 'handreg'" <<< "$PS_OUT"
+check "the other file is unchanged" grep -qx "instructions=tracked" "$WS/.agent/projects.d/clean"
+ps "$HR" unset clean instructions
+check "unset of another project's: refused" [ "$PS_RC" -eq 1 ]
+ps "$HR" get clean build
+check "reading another project's is allowed" [ "$PS_RC" -eq 0 ] && [ "$PS_OUT" = "make" ]
+ps "$OUT_REPO" set handreg instructions=none
+check "from an unregistered repository: refused" [ "$PS_RC" -ne 0 ]
+check "by the root guard" grep -qF "refusing to run" <<< "$PS_OUT"
+check "the file is unchanged" [ "$(cat "$WS/.agent/projects.d/handreg")" = "instructions=tracked" ]
+ps "$WS" set clean instructions=none
+check "from the workspace checkout, any project: exit 0" [ "$PS_RC" -eq 0 ]
 
 echo ""
 echo "test_project_integration_audit: $PASS passed, $FAIL failed"
