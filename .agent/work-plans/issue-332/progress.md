@@ -1293,3 +1293,30 @@ CI at `9e1f2720`: Lint (pre-commit), Validate Adapter Contract, Validate Documen
 ### False positives
 - (Copilot @ `7b28b6f1` through `db76490a`, ten reviews) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
 - (Local Review @ `db76490a`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 14:21 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-332 at `c5c481a6`
+
+PR 3 of 4 (the `onboard-project` rewrite), on main `e0bab748`. No pull request yet.
+
+### Actions
+- [x] `9ecb7078` `project_integration_audit.sh` (new, read-only, inert marker): `[--dir D | --project N] [--format tsv|text]`, TSV `category<TAB>id<TAB>severity<TAB>subject<TAB>detail`, exit 0 whatever it finds, 2 on usage or a directory under no registered root. Categories 1 to 6 as the plan lists them, each with stable ids; a finding whose fix is a tracked file drops to info when `instructions=none`. `test_project_integration_audit.sh` (new): every category with a finding, a clean project with none, the hand-registered fixture reproducing one id per category, records settings against `.agent/work-plans/`, read-only snapshot, refusals; declared in `test_script_tests_hook_scope.sh`.
+- [x] `8a070061` User tier: the audit, `registration_verify.sh` and `project_setting.sh` promoted. `project_setting.sh` set/unset now call `registry_require_root` and, from a project root, write only that project's file (or a parent root's instance); reads unchanged; the linked-worktree refusal still comes first. `test_user_tier_guard.sh`: probe for the guarded writer, read-only rows for the two inert scripts.
+- [x] `ec194faa` `/onboard-project` rewritten per plan item 2 (`[--dry-run] [--reask <key>]`, no repo argument, session_root.sh resolution, footprint questions with the provisional default, the "until the records lookup (#393) lands" wording, offers only when `instructions=tracked`, the four answers and `## Onboarding` roadmap section with the owner's D6 words verbatim, every write waits for a yes, hygiene checklist in a labelled section until PR 4). `test_skill_paths.sh` holds the wording and parses the skill's bash blocks.
+- [x] `2472f8e2` design.md (Sessions and roots exception and onboarding bullet, Registry Target, Documentation layers, change-log row 836), roadmap (the "waits until onboarding asks" deferral now names the offer with a true revisit check; sit-rep row notes `ROADMAP.md`), `skill_workflows.md` row.
+- [x] `c5c481a6` AGENTS.md: one Script Reference row for the audit, its own commit, nothing else (Ask First).
+
+### Plan vs merged code / plan text
+- Test file named `test_project_integration_audit.sh` as the handoff said (the plan's table says `test_integration_audit.sh`).
+- Category 6 runs `registration_verify.sh` without `--user-tier` and runs `user_tier_install.sh --check --require` and `session_root.sh --dir` itself, so each gets a stable id; same three checks the plan names.
+- The old skill's `.agent/templates/pre-commit-config.yaml` and `ci_workflow.yml` never existed in this repository (no git history); the checklist rows now say no template exists.
+- AGENTS.md's existing `project_setting.sh` row does not mention the new write guard (only new rows were allowed); the script header does.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, every hook passed or skipped, the script suite hook included.
+- `.agent/scripts/check_design_anchors.sh .`: exit 0.
+- Suites run directly: test_project_integration_audit (75 passed), test_user_tier_guard, test_skill_paths (98), test_project_file (474), test_register_project (198), test_user_tier_install (211), test_session_root (69), test_plugin_manifest (12), test_sitrep_checks (186), test_script_tests_hook_scope (149): all 0 failed.
+- Not covered by a test: the `session-root` finding (no synthetic setup makes `session_root.sh` fail at an existing registered root). Not pushed.
