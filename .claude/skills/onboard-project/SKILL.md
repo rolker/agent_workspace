@@ -308,15 +308,29 @@ Fixes that touch no tracked file are made as soon as the user says yes:
 Show the whole batch (files to add or change, the roadmap section) and ask
 once more before creating anything. Then:
 
-1. If the project uses issues, open one issue for the onboarding work
-   (step 8's pattern, title "Onboard the project with the workspace"), and
-   use its number below.
-2. Create the project worktree and work there:
+1. Create the project worktree and work there. If the project uses
+   issues, open one issue for the onboarding work first (step 8's
+   pattern, title "Onboard the project with the workspace") and create
+   the worktree for it, on `feature/issue-<N>`:
 
    ```bash
    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
    "$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project --project <settings-name>
    ```
+
+   A project that uses no issues gets a skill worktree instead, on a
+   `skill/onboard-project-<timestamp>` branch with no issue behind it
+   (`onboard-project` is on `worktree_create.sh`'s skill allowlist for
+   this):
+
+   ```bash
+   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+   "$WS_ROOT/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project <settings-name>
+   ```
+
+   It is a worktree of the root's own repository, so a root that is not
+   the top of a git repository gets none: for such a project nothing goes
+   on a branch, and only fixes that touch no tracked file are made.
 
    `--project` is required: with `--type` given, `worktree_create.sh`
    does not look at the current directory, so without it it would take a
@@ -326,9 +340,9 @@ once more before creating anything. Then:
    repository the worktree is of (a fix to a file of the parent root
    itself is not in the batch: open issue or skip). Enter the worktree
    with `cd` to the path it prints.
-3. Make the changes, commit them (one commit per logical change), and show
+2. Make the changes, commit them (one commit per logical change), and show
    the commits.
-4. Push and open the pull request only on a yes. For a project with no
+3. Push and open the pull request only on a yes. For a project with no
    GitHub remote, leave the edits on the branch, push nothing, and say
    where the branch is.
 

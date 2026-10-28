@@ -221,7 +221,7 @@ Plain `cd <some-path>` would work — but only after `worktree_create.sh` has ru
 - The workspace/project repo distinction (two repos managed in one tree)
 - Branch naming conventions (`feature/issue-N`, `skill/<name>-<ts>`) that pre-commit hooks and `merge_pr.sh` depend on
 - Parent-issue branching for sub-issues
-- Skill worktree allowlist (`research`, `inspiration-tracker`)
+- Skill worktree allowlist (`research`, `inspiration-tracker`, and `onboard-project`, which `/onboard-project` uses with `--type project` for a project that uses no issues)
 - `--workflow` progress.md scaffolding under `$WS_ROOT/.agent/work-plans/issue-N/`
 - `--plan-file` draft-PR creation with AI signature
 - Cross-repo PR targeting for project-type worktrees

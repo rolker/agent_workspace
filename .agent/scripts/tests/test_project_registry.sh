@@ -674,6 +674,49 @@ test_worktree_create_unknown_repo() {
     assert_contains "lists registered projects" "alpha" "$out"
 }
 
+test_worktree_create_skill_project() {
+    echo "TEST: worktree_create --skill onboard-project --type project: the root's repo on a skill branch, entered and removed by --skill (#332)"
+    local sb out rc=0 wtp branch
+    sb="$(make_worktree_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    make_registered_project "$sb" alpha >/dev/null
+    seed_commit "$sb/projects/alpha"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project alpha 2>&1)" || rc=$?
+    assert_eq "exit 0 ($(tail -n3 <<< "$out"))" "0" "$rc"
+    wtp="$(find "$sb/projects/alpha/worktrees" -maxdepth 1 -name 'skill-alpha-onboard-project-*' -type d 2>/dev/null | head -n1)"
+    assert_eq "worktree under the root's worktrees/" "yes" "$([ -n "$wtp" ] && echo yes || echo no)"
+    branch="$(git -C "$wtp" branch --show-current 2>/dev/null)"
+    assert_eq "on a skill/onboard-project-<timestamp> branch (got $branch)" \
+        "yes" "$([[ "$branch" =~ ^skill/onboard-project-[0-9]{8}-[0-9]{6}- ]] && echo yes || echo no)"
+    assert_eq "a checkout of the alpha repo" \
+        "$(cd "$sb/projects/alpha/.git" && pwd -P)" \
+        "$(cd "$wtp" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_enter.sh" --skill onboard-project --type project --project alpha --print-path 2>&1)" || rc=$?
+    assert_eq "enter --skill finds it" "$wtp" "$out"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_remove.sh" --skill onboard-project --type project --project alpha --force 2>&1)" || rc=$?
+    assert_eq "remove --skill exit 0" "0" "$rc"
+    assert_eq "the worktree is gone" "no" "$([ -d "$wtp" ] && echo yes || echo no)"
+
+    echo "TEST: worktree_create --skill: a skill not on the allowlist is refused; a root that is not the top of a repo is refused"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill plan-task --type project --project alpha 2>&1)" || rc=$?
+    assert_eq "plan-task: exit 1" "1" "$rc"
+    assert_contains "says the allowlist" "is not in the allowlist" "$out"
+    mkdir -p "$sb/projects/alpha/sub"
+    echo "sub single_project $sb/projects/alpha/sub" >> "$sb/.agent/projects.local"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project sub 2>&1)" || rc=$?
+    assert_eq "a root inside another repo: exit 1" "1" "$rc"
+    assert_contains "says why" "is not the top of one" "$out"
+}
+
 test_worktree_create_registry_repo() {
     echo "TEST: worktree_create --project <name> creates the worktree from the registry checkout"
     local sb out rc=0
@@ -1491,6 +1534,7 @@ test_single_project_scoped_validate_nested_dir_fails
 test_single_project_legacy_validate
 test_worktree_create_unknown_repo
 test_worktree_create_registry_repo
+test_worktree_create_skill_project
 test_worktree_create_single_registry_autoselect
 test_worktree_create_dashed_name_roundtrip
 test_worktree_create_repo_alias
