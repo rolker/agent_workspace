@@ -769,3 +769,20 @@ From the merge checkpoint, the owner's own direction, not a review finding (the 
 ### Checks
 - `test_skill_paths.sh`: 83 passed, 0 failed
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, including the script suite (exit 0)
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 09:40 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #400 at `61284769`
+**Depth**: Standard (reason: round 7 convergence check per handoff; scope: bf58b010, the owner-directed "B ask first" change since the round 6 review at 1ea24eb3)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Cross-model: skipped (round-7 convergence check, per handoff).
+
+The change does what the owner asked at the merge checkpoint (3558a376, "B ask first"): recipe (a) step 2 shows him the exact comment and waits for his yes before running the block, on the first pass and on the recovery path; a no posts nothing and asks him how the goal should reach the issue, dispatching nothing meanwhile. The outward-boundary section now excludes a comment carrying his words, the checkpoint table's `unexpected` row says the comment still waits for his yes, "The restart comment" section is gated on his yes, and run-issue's restart paragraph matches. A repo-wide search (skills, `.agent`, `docs`) finds no remaining text that posts the comment without asking; the new negative check catches both old orchestrator phrasings when run against 1ea24eb3. Verified: `test_skill_paths.sh` 83 passed, 0 failed, including the 3 new checks and "all 5 bash blocks parse as written (bash -n)"; pre-commit on the three changed files: no hook failed (standalone shellcheck is not installed).
+
+### Findings
+- [ ] (suggestion) The recovery path asks him to approve the restart comment even when the first pass already posted it (session ended after posting, before review-issue's entry): the orchestrator's recovery text says step 2 shows him the text and waits for his yes, and the block checks `$MARK` only after that; run-issue says "unless it is already there". Check for `$MARK` on the issue first and skip the question when it is there, so a resumed drive does not put a pointless question to him — `.claude/skills/orchestrator/SKILL.md:124-141,158-161`
