@@ -1096,3 +1096,18 @@ Round-4 suggestion checked in the code (`.agent/scripts/register_project.sh:1022
 **Decision**: address
 
 The Integrated Review at 57319ac6 (pull request 409, PR 2 of 4) has one open finding, a suggestion: when an exit cuts the rollback short, the hidden .settings-backup.* file in projects.d is never named, whether the exit fell inside restore_settings after the rename or the settings file was changed during the run. The host read the triage's fix plan (rollback_unfinished always names the backup while it exists, with a "remove it once the settings file is right" line when the file no longer matches this run's write; one new test with an unset-variable fault after the rename) and sends it to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 12:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `d0c72a0f`
+**Addressed**: Integrated Review at `7b28b6f1` (2026-10-28 12:17 -04:00)
+**Commits**: d0c72a0f
+
+### Actions
+- [x] An exit inside the rollback left the hidden settings backup unnamed when the settings file no longer matched this run's write: `rollback_unfinished` now names `$SETTINGS_BACKUP` whenever it exists — the existing message while the file matches this run's write, otherwise "the backup of the settings file's content before this run, <path> (remove it once <settings> is right)"; header status contract updated; new sandbox case in `test_register_project.sh` (unset-variable fault after the rename in `restore_settings`) fails on the pre-fix script (192 passed, 1 failed) and passes after (193 passed, 0 failed); box checked with `review_progress.sh check` in the fix commit — `.agent/scripts/register_project.sh:1030`
+
+### Checks
+- Main checkout's `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, `validate-script-tests` included.
