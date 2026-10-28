@@ -1183,3 +1183,22 @@ The Integrated Review at 2bfbb7f5 (pull request 409, PR 2 of 4) has one open fin
 - Fix commit made with every hook, the script suite included (no SKIP); box checked with `review_progress.sh check` (it points at this Integrated Review), in the same commit.
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: passed (exit 0).
 - Not pushed; the host owns the push.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 12:58 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #409 at `94a2c149`
+**Depth**: Narrow convergence check (reason: round 6 of PR 2 of 4 under the owner's standing review-depth exception, issue 321; scope set by the host: the one finding the Integrated Review at `2bfbb7f5` opened, plus the fix diff since `c0710b66`, i.e. commit `6f0e6704`; no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round count: this branch's rounds are the four pre-push ones (`a658c114`, `89ac5d5d`, `e8652419`, `75bceb21`) and the PR-mode round 5 at `56d11847` (recorded as `c0710b66`), so this is its round 6. The earlier `## Local Review` entries on this timeline belong to PR 1 of 4 (merged as pull request 403) and are not counted (issue 384).
+
+Finding checked: an interrupt or unexpected exit after `backup_settings` and before `SETTINGS_WRITING=1` took the rollback's do-nothing branch and left the hidden `.settings-backup.*` unnamed. Confirmed fixed in `rollback` (`.agent/scripts/register_project.sh:1001-1009`): the `SETTINGS_WRITING -eq 0` branch now removes the backup when it is set and exists (the settings file was never written in that window, so it only duplicates it), and a failed removal warns and names it through `rollback_left`, which `rolled_back_final` puts on NEXT. The signal path (`on_signal` → `rollback`) and a partial `cp` inside `backup_settings` reach the same branch. Header rollback paragraph updated to match.
+
+Verified: `test_register_project.sh` 198 passed, 0 failed on the head; the same suite in a scratch worktree with the pre-fix `register_project.sh` (`6f0e6704^`) gives 196 passed, 2 failed, the two being the new checks (no backup left; the failed removal named on NEXT); the test's sed fault lands on the line before `SETTINGS_WRITING=1`, after the backup; shellcheck --severity=warning clean on both changed files.
+
+### Findings
+- [ ] No issues found. LGTM.
