@@ -863,3 +863,20 @@ The round-7 finding is fixed. Orchestrator recipe (a) step 2 now runs a new chec
 - [x] run-issue's resumed-drive sentence no longer reads as dispatching after a failed restart-comment check: the success path ("posts it on his yes, and dispatches `review-issue` (recipe (a))") comes first, then "When the check itself fails, nothing is asked, posted or dispatched: the "not posted" line goes into the hand-back and the `restart` entry stays the newest", matching orchestrator recipe (a); `test_skill_paths.sh` pins the new sentence in place of the old one — `.claude/skills/run-issue/SKILL.md:437-441`, `.agent/scripts/tests/test_skill_paths.sh:380`
 
 Box checked by editing progress.md in the fix commit: `review_progress.sh findings` selects the latest Integrated Review (this post-PR `## Local Review` is not a source type), so `check` could not target it. Verified: `test_skill_paths.sh` 86 passed, 0 failed; the main checkout's `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, exit 0, the script-test suite hook included.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 10:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #400 at `daf90e84`
+**Depth**: Standard (reason: round 9 convergence check per handoff; scope: the round-8 suggestion and the fix diff 5e5092f1..daf90e84, code commit 5f0d3fdd)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Cross-model: skipped (round-9 convergence check, per handoff). Adversarial pass done inline by the lead reviewer over the fix diff (no separate subagent, given the scope).
+
+The round-8 finding is fixed. run-issue's resumed-drive passage now states the success path first ("shows him the comment and posts it on his yes, and dispatches `review-issue` (recipe (a))") and the failed check as its own sentence: "When the check itself fails, nothing is asked, posted or dispatched: the "not posted" line goes into the hand-back and the `restart` entry stays the newest", which matches orchestrator recipe (a) step 2 ("On a "not posted" line, dispatch nothing ... the `restart` entry stays the newest"). The test_skill_paths assertion pins the new sentence, and the negative check against the old ask-before-check wording is unchanged. Verified: `test_skill_paths.sh` 86 passed, 0 failed; no other skill or doc carries the old "nothing is asked or posted" wording (grep).
+
+### Findings
+- [ ] No issues found. LGTM.
