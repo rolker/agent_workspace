@@ -89,7 +89,8 @@
 #   for a key it leaves unset, the legacy .agent/projects.d/<name>.sh
 #   variable when that file exists (it is then the whole legacy layer, as
 #   before #332), otherwise the shared .agent/project_config.sh (the
-#   dispatcher and the adapters).
+#   dispatcher and the adapters). project_command_source says which of the
+#   three a command comes from, without running it.
 #
 # Source this file from other scripts:
 #   source "$SCRIPT_DIR/_project_registry.sh"
@@ -121,13 +122,15 @@ registry_file() {
 # Malformed lines → diagnostics on stderr, return 2 (valid lines still
 # print). Cross-line rules (parent must exist and be a parent root;
 # default_instance must be an instance of that parent) also return 2 and
-# drop the offending line.
-# Usage: entries=$(registry_entries_full "$root") || { ...parse error... }
+# drop the offending line. An optional <file> parses that file as the
+# registry of <root> (relative paths still resolve against <root>):
+# register_project.sh checks a new registry before renaming it into place.
+# Usage: entries=$(registry_entries_full "$root" [<file>]) || { ...parse error... }
 registry_entries_full() {
     local root="$1" file lineno=0 rc=0
     local raw name type path rest field key value fields known
     local -a lines=()
-    file="$(registry_file "$root")"
+    file="${2:-$(registry_file "$root")}"
     [ -f "$file" ] || return 0
     while IFS= read -r raw || [ -n "$raw" ]; do
         lineno=$((lineno + 1))
@@ -1014,6 +1017,111 @@ project_file_get() {
     local entries
     entries="$(project_file_entries "$1" "$2")" || return 2
     _project_file_value_of "$entries" "$3"
+}
+
+# ------------------------------------- where a command comes from (#332) ---
+
+# The legacy and shared config variable for command setting <key>.
+_project_command_var() {
+    case "$1" in
+        build) echo BUILD_CMD ;;
+        test) echo TEST_CMD ;;
+        install) echo INSTALL_CMD ;;
+        *) return 1 ;;
+    esac
+}
+
+# Value of shell variable <var> after sourcing config file <file> in a
+# subshell, the way the adapters read it (the variable is cleared first, so
+# only the file sets it). Prints the value; return 1 when the file cannot
+# be sourced.
+_project_config_value() {
+    local file="$1" var="$2"
+    (
+        eval "$var="
+        # shellcheck source=/dev/null
+        source "$file" >/dev/null 2>&1 || exit 1
+        printf '%s' "${!var:-}"
+    )
+}
+
+# Where project <name>'s command setting <key> (build, test or install)
+# comes from, in the adapters' order (the dispatcher and single_project's
+# _single_project_resolve_cmd): its settings file ('none' included); else,
+# when the legacy .agent/projects.d/<name>.sh exists, that file, which is
+# then the whole legacy layer; else the shared .agent/project_config.sh.
+# Prints "<source>\t<value>", <source> one of file, legacy, shared or
+# missing (value empty). Return 2 when the settings file is invalid or a
+# config cannot be sourced (the reason on stderr).
+# Usage: src=$(project_command_source "$root" "$name" test)
+project_command_source() {
+    local root="$1" name="$2" key="$3" var entries v cfg
+    var="$(_project_command_var "$key")" || {
+        echo "ERROR: project_command_source: '$key' is not a command setting (build, test, install)" >&2
+        return 2
+    }
+    entries="$(project_file_entries "$root" "$name")" || return 2
+    if v="$(_project_file_value_of "$entries" "$key")"; then
+        printf 'file\t%s\n' "$v"
+        return 0
+    fi
+    cfg="$root/.agent/projects.d/$name.sh"
+    if [ -f "$cfg" ]; then
+        v="$(_project_config_value "$cfg" "$var")" || {
+            echo "ERROR: cannot source the legacy config $cfg" >&2
+            return 2
+        }
+        if [ -n "$(_project_file_trim "$v")" ]; then
+            printf 'legacy\t%s\n' "$v"
+        else
+            printf 'missing\t\n'
+        fi
+        return 0
+    fi
+    cfg="$root/.agent/project_config.sh"
+    if [ -f "$cfg" ]; then
+        v="$(_project_config_value "$cfg" "$var")" || {
+            echo "ERROR: cannot source the shared config $cfg" >&2
+            return 2
+        }
+        if [ -n "$(_project_file_trim "$v")" ]; then
+            printf 'shared\t%s\n' "$v"
+            return 0
+        fi
+    fi
+    printf 'missing\t\n'
+}
+
+# The variables the adapters read from a legacy or shared config file.
+_PROJECT_CONFIG_READ_VARS=" PROJECT_TYPE BUILD_CMD TEST_CMD INSTALL_CMD MANIFEST_BOOTSTRAP_URL ROS_DISTRO ROS_ROOT_DIR "
+
+# The variables config file <file> sets, changes or exports beyond the ones
+# the adapters read (_PROJECT_CONFIG_READ_VARS), one name per line, sorted.
+# A command in the settings file runs without sourcing the config, so such
+# a variable (an SDK path, PATH) no longer reaches it. The file is sourced
+# in a clean bash (env -i, keeping HOME and PATH), and every variable is
+# compared before and after. Returns non-zero when the file cannot be
+# sourced (call it as a condition: under set -e a failure would stop the
+# caller).
+# Usage: extra=$(project_config_extra_vars "$file") || { ...cannot source... }
+project_config_extra_vars() {
+    local file="$1"
+    env -i HOME="${HOME:-}" PATH="$PATH" bash --noprofile --norc -c '
+        __pcx_before="$(declare -p)"
+        # shellcheck source=/dev/null
+        source "$1" >/dev/null 2>&1 || exit 1
+        __pcx_after="$(declare -p)"
+        comm -13 <(printf "%s\n" "$__pcx_before" | sort) <(printf "%s\n" "$__pcx_after" | sort) \
+            | sed -n "s/^declare -[^ ]* \([A-Za-z_][A-Za-z0-9_]*\).*/\1/p" | sort -u
+    ' _ "$file" | while IFS= read -r n; do
+        case "$n" in
+            __pcx_*|_|BASH*|FUNCNAME|LINENO|RANDOM|SECONDS|SRANDOM|EPOCHREALTIME|EPOCHSECONDS|PIPESTATUS|COLUMNS|LINES|OLDPWD|PWD|SHLVL|HISTCMD|DIRSTACK|GROUPS|PPID|UID|EUID|SHELLOPTS|IFS|OPTIND|OPTERR|PS1|PS2|PS4|HOSTNAME|HOSTTYPE|MACHTYPE|OSTYPE|COMP_WORDBREAKS) continue ;;
+        esac
+        [[ "$_PROJECT_CONFIG_READ_VARS" == *" $n "* ]] && continue
+        echo "$n"
+    done
+    # The sourcing shell's status, not the filter's.
+    return "${PIPESTATUS[0]}"
 }
 
 # ------------------------------ per-type registration facts (#332, PR 2) ---
