@@ -747,3 +747,25 @@ GitHub side: 12 Copilot comment-reviews, 0 inline comments, 0 conversation comme
 **Decision**: address
 
 The owner's answer, in his words: "B ask first". The question (B) was whether the restart recipe may post his verbatim session words on the public issue as they are, or must ask him first each time; the round-3 review raised it against the skill's outward-boundary rule ("anything a stranger could read as his word"). Change before merge: the restart recipe shows the owner the comment it would post and waits for his yes before posting, every time; the recovery path (session ended, host has only the restart entry) asks the same way. The Integrated Review at 25fd8040 is clean; this is the owner's own direction, not a review finding.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 09:32 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `bf58b010`
+**Addressed**: Checkpoint (After: merge, Decision: address, Decided-by: owner) at `3558a376` (2026-10-28 09:23 -04:00)
+**Commits**: bf58b010
+
+From the merge checkpoint, the owner's own direction, not a review finding (the Integrated Review at 25fd8040 is clean). His words: "B ask first". The question (B) was whether the restart recipe may post his verbatim session words on the public issue as a signed comment as they are, or must ask him first each time.
+
+### Actions
+- [x] Orchestrator recipe (a) step 2: the host shows him the exact comment the restart-comment block would post and waits for his yes, every time; on a no nothing is posted and the host asks him how the restated goal should reach the issue (he may post it himself, or give words he is willing to have posted, shown and asked the same way), and dispatches nothing until he answers; the step no longer calls this comment inside the outward boundary — `.claude/skills/orchestrator/SKILL.md:116-141`
+- [x] Recovery path (session ended, only the restart entry left): no second "restart?" question, but the comment still waits for his yes on its exact text — `.claude/skills/orchestrator/SKILL.md:155-162`
+- [x] "The restart comment" section runs only after his yes; outward-boundary section excludes a comment carrying his words from the host's signed comments; checkpoint table's `unexpected` row notes the comment still waits for his yes — `.claude/skills/orchestrator/SKILL.md:82,101-111,195-196`
+- [x] run-issue's restart paragraph says the same, for the first pass and the resumed drive — `.claude/skills/run-issue/SKILL.md:425-438`
+- [x] Tests: new assertions pin the ask in both skills, and a negative check fails if the old "without asking (the owner already decided it)" or "inside the outward boundary" wording returns (checked: it matches the previous orchestrator text) — `.agent/scripts/tests/test_skill_paths.sh:280-299,354-357`
+
+### Checks
+- `test_skill_paths.sh`: 83 passed, 0 failed
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, including the script suite (exit 0)
