@@ -946,7 +946,7 @@ The builder's reported gap (an interrupt still says "nothing is registered" when
 - [x] (suggestion) Rollback restores or deletes the settings file without checking it is still what this run wrote, so a `project_setting.sh set` made during a long build is lost; compare before restoring and keep it with a warning when it changed (Codex) — `.agent/scripts/register_project.sh:901`
 - [x] (suggestion) Rollback's `--disable-root` can disable a plugin the root had enabled before this run; record the root's plugin state before step 4 and disable only what this run added (Claude) — `.agent/scripts/register_project.sh:890`
 - [x] (suggestion) With `set -u` on and only INT/TERM/HUP trapped, an unexpected abort after the rollback is armed leaves the line and settings file with no report; add an EXIT trap guarded by ROLLBACK_ARMED (Claude) — `.agent/scripts/register_project.sh:952`
-- [ ] (suggestion) The python3 fallback in detect_commands prints "None" for `"build": null` in package.json (jq's `// empty` gives nothing); use `(... or {}).get("build") or ""` (Gemini) — `.agent/scripts/register_project.sh:238`
+- [x] (suggestion) The python3 fallback in detect_commands prints "None" for `"build": null` in package.json (jq's `// empty` gives nothing); use `(... or {}).get("build") or ""` (Gemini) — `.agent/scripts/register_project.sh:238`
 
 ## Checkpoint
 **Status**: complete

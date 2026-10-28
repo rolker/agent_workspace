@@ -213,6 +213,34 @@ check "two build systems that disagree: no build proposed, the conflict named" \
 out="$(reg "$WS" --detect "$D/nowhere")"; rc=$?
 check "--detect on a missing directory exits 1" [ "$rc" -eq 1 ]
 
+echo "TEST: --detect reads package.json the same with jq and with the python3 fallback"
+# A PATH without jq: every other command on PATH, linked into one directory.
+NOJQ="$SANDBOX/nojq-bin"
+mkdir -p "$NOJQ"
+IFS=: read -r -a _pdirs <<< "$PATH"
+for _pd in "${_pdirs[@]}"; do
+    [ -d "$_pd" ] || continue
+    for _x in "$_pd"/*; do
+        _b="${_x##*/}"
+        [ "$_b" = jq ] && continue
+        [ -x "$_x" ] && [ ! -e "$NOJQ/$_b" ] && ln -s "$_x" "$NOJQ/$_b"
+    done
+done
+mkdir -p "$D/npmnull" "$D/npmnoscripts"
+printf '{"scripts": {"build": null, "test": "jest"}}\n' > "$D/npmnull/package.json"
+printf '{"name": "x", "scripts": null}\n' > "$D/npmnoscripts/package.json"
+if command -v python3 >/dev/null 2>&1 && ! PATH="$NOJQ" command -v jq >/dev/null 2>&1; then
+    for pj in npm npmnull npmnoscripts; do
+        with_jq="$(detect "$WS" "$D/$pj")"
+        no_jq="$(cd "$SANDBOX" && PATH="$NOJQ" "$WS/.agent/scripts/register_project.sh" --detect "$D/$pj" 2>/dev/null)"
+        check "$pj: the python3 fallback proposes what jq does ('${with_jq//$'\n'/, }')" [ "$no_jq" = "$with_jq" ]
+    done
+    no_jq="$(cd "$SANDBOX" && PATH="$NOJQ" "$WS/.agent/scripts/register_project.sh" --detect "$D/npmnull" 2>/dev/null)"
+    check "without jq, a null build script proposes no build, never 'None'" [ "$no_jq" = "test=npm test" ]
+else
+    echo "  SKIP: python3 is not available, or jq cannot be hidden from PATH"
+fi
+
 # ------------------------------------------------- register, one call ---
 echo "TEST: one call registers a single_project: registry line and settings file, no hand edits"
 WS="$(make_ws)"

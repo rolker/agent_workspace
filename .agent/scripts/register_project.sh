@@ -250,8 +250,9 @@ detect_commands() {
             sb="$(jq -r '.scripts.build // empty' "$d/package.json" 2>/dev/null)" || sb=""
             st="$(jq -r '.scripts.test // empty' "$d/package.json" 2>/dev/null)" || st=""
         elif command -v python3 >/dev/null 2>&1; then
-            sb="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("scripts",{}).get("build",""))' "$d/package.json" 2>/dev/null)" || sb=""
-            st="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("scripts",{}).get("test",""))' "$d/package.json" 2>/dev/null)" || st=""
+            # As jq's '// empty': a missing, null or false script is empty.
+            sb="$(python3 -I -c 'import json,sys; print((json.load(open(sys.argv[1])).get("scripts") or {}).get("build") or "")' "$d/package.json" 2>/dev/null)" || sb=""
+            st="$(python3 -I -c 'import json,sys; print((json.load(open(sys.argv[1])).get("scripts") or {}).get("test") or "")' "$d/package.json" 2>/dev/null)" || st=""
         else
             echo "note: package.json found, but neither jq nor python3 is available to read its scripts" >&2
         fi
