@@ -661,3 +661,22 @@ Round 5 (PR mode: four complete `## Local Review` entries before this one, at b2
 
 ### Findings
 - [ ] (suggestion) The quoting stops at `## Plan Authored`, but `review-plan` reads the issue the same way (git-bug first, `gh` only on an empty title or body), and a plan revised after a changes-requested Plan Review is a `plan-task` dispatch after a Plan Authored entry: both can run against a cached copy without the restart comment; carry the words into `review-plan` handoffs too and stop at the first approved `## Plan Review` after the restart, in both places and their tests — `.claude/skills/orchestrator/SKILL.md:155-161`, `.claude/skills/run-issue/SKILL.md:435-439`, `.claude/skills/review-plan/SKILL.md:120-158`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 09:14 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `54fe6091`
+**Sources**: 2 (Local Review @ `4012a70d` (covers `54fe6091` via bookkeeping), CI rollup); Copilot: no source — all nine of its reviews (heads 6237c7e5 through 4012a70d) are quota-failure notices with no comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub side: 9 Copilot comment-reviews, 0 inline comments, 0 conversation comments, no human reviewer. Local timeline: the round-5 `## Local Review` at `4012a70d` (approved, 1 suggestion) is the only entry covering the head; it confirmed the previous Integrated Review's one finding fixed in 7ea84fae. The pre-push entry at `ea2491f1` and the round-4 review at `98870a6f` are stale (verified; their boxes were closed by later Implementation entries and the Integrated Review at 888cf891). CI at `54fe6091`: Validate Adapter Contract, Validate Documentation and ros-manifest tests pass in both runs; Lint (pre-commit) still pending in both at 09:11.
+
+The open suggestion is confirmed against the code: review-plan step 2 reads the issue git-bug first and calls `gh` only on an empty title or body, so it can review a plan against a cached issue without the restart comment; and `dispatch_phase.sh next` routes a `## Checkpoint` `**After**: plan` `**Decision**: revise` to plan-task, which then runs after a `## Plan Authored` entry, where the current rule has stopped quoting. The reviewer's proposed stop point ("the first approved `## Plan Review`") does not match the vocabulary: review-plan's verdicts are `ready` / `needs-work`, and a `ready` review can still be answered `revise` at the plan checkpoint. The stop point that closes both paths is the plan checkpoint answered `proceed` (the row that routes to implement).
+
+### Findings
+- [ ] (suggestion, Local Review @ `4012a70d`) The restart words stop at `## Plan Authored`, so a `review-plan` dispatch and a `plan-task` revision after a plan-checkpoint `revise` can both read a git-bug copy of the issue without the restart comment; fix: in orchestrator recipe (a) and run-issue's restart paragraph, say the host quotes the newest `restart` entry's words into every `review-issue`, `plan-task` and `review-plan` handoff until a `## Checkpoint` with `**After**: plan` and `**Decision**: proceed` follows it, on a resumed drive too, and update the two matching assertions in `test_skill_paths.sh` (lines 288-289, 329-330) — `.claude/skills/orchestrator/SKILL.md:155-161`, `.claude/skills/run-issue/SKILL.md:435-439`, `.agent/scripts/tests/test_skill_paths.sh`
+
+### False positives
