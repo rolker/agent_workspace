@@ -184,7 +184,7 @@ WS_REPO="$(source "$WS_ROOT/.agent/scripts/_issue_helpers.sh" \
 echo "---"
 if [ -n "$WS_REPO" ]; then
     gh pr list -R "$WS_REPO" --state open \
-        --json number,title,headRefName,isCrossRepository,isDraft,reviewDecision,updatedAt
+        --json number,title,headRefName,isCrossRepository,isDraft,reviewDecision,updatedAt,closingIssuesReferences
 else
     echo "pull requests: not checked (no GitHub remote for $WS_ROOT)"
 fi
@@ -333,22 +333,30 @@ except ValueError:
     # README goals it serves). Only the newest complete Issue Review counts,
     # so a later "none" outranks an older goal, and a partial or failed one
     # (which may have stopped before its Serves line) changes nothing;
-    # "none" means no path. Fenced lines are not headings or fields.
-    serves=""
-    [ -z "$f" ] || serves="$(awk 'function done_ir() { if (ir && tolower(st) ~ /^complete[[:space:]]*$/) s = cs; ir = 0 }
+    # "none" means no path. With no complete Issue Review, or one with no
+    # Serves line, nothing was said either way: the path is unknown, never
+    # "no path". Fenced lines are not headings or fields.
+    serves="unreviewed"
+    [ -z "$f" ] || serves="$(awk 'function done_ir() { if (ir && tolower(st) ~ /^complete[[:space:]]*$/) { s = cs; seen = 1 }; ir = 0 }
         /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
         fence { next }
         /^## / { done_ir(); ir = ($0 ~ /^## Issue Review([[:space:]]|$)/); cs = ""; st = ""; sub_ = 0; next }
         /^### / { sub_ = 1 }
         ir && !sub_ && /^\*\*Status\*\*:/ { sub(/^\*\*Status\*\*:[[:space:]]*/, ""); st = $0 }
         ir && /^\*\*Serves\*\*:/ { sub(/^\*\*Serves\*\*:[[:space:]]*/, ""); cs = $0 }
-        END { done_ir(); if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) s = ""; print s }' "$f")"
+        END { done_ir()
+              if (!seen) print "unreviewed"
+              else if (s !~ /[^[:space:]]/) print "unstated"
+              else if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) print "none"
+              else print "goal" }' "$f")"
     if [ ! -f "$rows" ]; then wpath="path unknown (steps not checked)"
     elif [ "$type" = workspace ] && [[ "$p1" == *" $issue "* ]]; then wpath="Path 1"
     elif [ -n "$slug" ] && [[ "$p1" == *" $slug#$issue "* ]]; then wpath="Path 1"
     elif [ "$type" = project ] && [ -n "$repo" ] && [[ "$p1" == *" project:$repo "* ]]; then wpath="Path 1"
-    elif [[ "$serves" =~ [^[:space:]] ]]; then wpath="Path 2"
-    else wpath="no path"; fi
+    elif [ "$serves" = goal ]; then wpath="Path 2"
+    elif [ "$serves" = none ]; then wpath="no path"
+    elif [ "$serves" = unstated ]; then wpath="path unknown (its issue review has no Serves line)"
+    else wpath="path unknown (no complete issue review)"; fi
     printf '%s\t%s\t%s\tissue %s\t%s\t%s\t%s\n' "$type" "${repo:-workspace}" "${branch:-(no branch)}" "$issue" "$title" "$latest" "$wpath"
 done
 ```
@@ -358,14 +366,18 @@ TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
 reads `(no branch)`. The path is `Path 1` (a Direction line names the
 issue, in its own cells, or a check names the project the worktree
 belongs to), else `Path 2` (the newest complete Issue Review on its
-timeline has a `**Serves**:` line naming a goal), else `no path`, which is
-itself worth seeing: work that serves neither. Only the newest complete
-Issue Review's Serves line counts, so a re-review that found the issue
-serves nothing outranks an older one that named a goal, a partial or
-failed Issue Review leaves the older one's Serves in place, and
-`**Serves**: none` (the review template's word for no goal) is
-`no path`. It is
-`path unknown (steps not checked)` when step 1 printed no rows.
+timeline has a `**Serves**:` line naming a goal), else `no path` when
+that Serves line is `none` (the review template's word for no goal),
+which is itself worth seeing: work that serves neither. Only the newest
+complete Issue Review's Serves line counts, so a re-review that found the
+issue serves nothing outranks an older one that named a goal, and a
+partial or failed Issue Review leaves the older one's Serves in place.
+`no path` is said only on that evidence. With no complete Issue Review
+(no timeline yet, or only partial or failed ones) the path is
+"path unknown (no complete issue review)", and with a complete one that
+has no Serves line it is "path unknown (its issue review has no Serves
+line)". It is `path unknown (steps not checked)` when step 1 printed no
+rows.
 
 The state is the latest timeline entry in words, so the report needs no
 entry names. The entry is looked up by its base type
@@ -949,11 +961,14 @@ Rules for the report:
   - A pull request with no worktree: its title, "(pull request <M>)",
     then the same draft, fork and review words.
   - Last, after a period, the path step 3 printed: `Path 1`, `Path 2`,
-    `no path` or "path unknown (steps not checked)". A branch with only a
+    `no path` or one of its "path unknown (...)" labels. A branch with only a
     pull request has no timeline here, so no Serves line was read:
     `Path 1` when a Direction line names its issue, else "path unknown
-    (no worktree, timeline not read)". Never `no path`, which says the
-    work serves neither path.
+    (no worktree, timeline not read)". Its issue is the `<N>` of a
+    `feature/issue-<N>` head branch, or an issue in step 3's
+    `closingIssuesReferences` whose repository is this one (the match
+    step 5 makes); with neither, it is path unknown. Never `no path`,
+    which says the work serves neither path.
 - **Problems** in words: the Decision register's newest `yes <date>` is
   the "last design-decision review", its `not yet` rows "design
   decisions not yet reviewed"; digest entries are "research topics".
