@@ -183,6 +183,9 @@ declare -A ROOT_READERS=(
     # (`claude plugin validate` runs on the checkout root too).
     [test_plugin_manifest.sh]=".claude-plugin .claude/skills"
     [test_progress_read.py]=".agent/scripts"
+    # Copies the real scripts, project types, user-tier list, .claude and
+    # .claude-plugin into its sandbox workspace.
+    [test_project_integration_audit.sh]=".agent/scripts .agent/project_types .agent/user_tier_scripts.txt .claude .claude-plugin"
     # Copies the real scripts and the two adapters into its sandbox workspace.
     [test_project_file.sh]=".agent/scripts .agent/project_types"
     [test_project_registry.sh]=".agent/scripts .agent/project_types"
