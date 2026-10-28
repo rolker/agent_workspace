@@ -432,7 +432,11 @@ may not have the comment yet). If the
 session ends before that dispatch writes its entry, `next` routes the
 `restart` entry to row 28, `checkpoint:unexpected`, and the host posts the
 comment unless it is already there and dispatches `review-issue` (recipe
-(a)) rather than asking again.
+(a)) rather than asking again. Until a `## Plan Authored` entry follows
+the newest `restart` entry, the host quotes that entry's words into every
+`review-issue` and `plan-task` handoff, on a resumed drive too: a session
+that ends after the `## Issue Review` resumes at `plan-task`, and nothing
+else carries his words there.
 
 **Deferred suggestion-only boxes.** One case needs a second write alongside
 the `## Checkpoint` entry: an `**After**: findings` checkpoint answered

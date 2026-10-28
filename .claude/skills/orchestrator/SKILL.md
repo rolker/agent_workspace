@@ -151,6 +151,14 @@ moves one class inside; the issue 398 comment is the first.
   the decision, and its `**Decided-by**: owner` keeps it out of the
   host-answer repeat count. The restart also starts the pre-push review
   rounds over: `next` and the round-3 handoff count only reviews after it.
+
+  Until a `## Plan Authored` entry follows the newest `restart` entry,
+  the host quotes that entry's words into every `review-issue` and
+  `plan-task` handoff, on a resumed drive too. A session that ends after
+  the `## Issue Review` is written resumes with `next` routing to
+  `plan-task` as usual, and nothing else carries his words there:
+  `plan-task` reads git-bug first, and a cached copy without the restart
+  comment is read as is.
 - **(b) Project names.** Settled; not re-asked. See the standing rules row
   on names: mechanism text names no project, record text may name a public
   one.

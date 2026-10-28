@@ -282,6 +282,11 @@ if [[ -f "$ORCH" ]]; then
         'Paste his words, quoted, into its handoff as well' \
         'and into the `plan-task` handoff that follows it' \
         'the host does steps 2 and 3 then, from the `restart` entry'"'"'s words'
+    # A session that ends after the Issue Review resumes at plan-task, which
+    # reads a git-bug copy that may lack the restart comment: the host keeps
+    # quoting the restart words until a Plan Authored entry follows them.
+    has "$ORCH" "orchestrator: the restart words go into every review-issue and plan-task handoff until a Plan Authored entry, on a resumed drive too" \
+        'Until a `## Plan Authored` entry follows the newest `restart` entry, the host quotes that entry'"'"'s words into every `review-issue` and `plan-task` handoff, on a resumed drive too'
     # The restart comment's first line is printed from $MARK, so the
     # duplicate check and the posted text cannot drift apart.
     has "$ORCH" "orchestrator: the restart comment's first line is \$MARK itself" \
@@ -321,6 +326,8 @@ has "$RI" "run-issue documents Decided-by: host and the owner-only answers" \
     '**Decided-by**: owner | host (<reason>)' \
     '`merge` and `merge-refused` always wait for the owner, and so do `takeover` at `phase-failed` and `merge` at `findings`' \
     'never lets the host do a phase'"'"'s work itself' '/orchestrator'
+has "$RI" "run-issue: the restart words go into every review-issue and plan-task handoff until a Plan Authored entry, on a resumed drive too" \
+    'Until a `## Plan Authored` entry follows the newest `restart` entry, the host quotes that entry'"'"'s words into every `review-issue` and `plan-task` handoff, on a resumed drive too'
 
 # --- The host's standing rules (#321): every rule carries its reason.
 # Rules with reasons are followed by intent, rules without them only

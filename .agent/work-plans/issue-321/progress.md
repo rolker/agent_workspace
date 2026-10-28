@@ -619,7 +619,7 @@ GitHub side: 6 Copilot comment-reviews, 0 inline comments, 0 conversation commen
 The one open suggestion is confirmed against the code: recipe (a)'s recovery paragraph covers only a break before the `## Issue Review` is written; once it is, `next` routes to plan-task as usual, nothing tells a resumed host to quote the `restart` entry's words, and plan-task step 1 reads git-bug first and pulls from GitHub only on a cache miss, so a cached copy without the restart comment is read as is. run-issue's `**Decision**: restart` paragraph has the same gap.
 
 ### Findings
-- [ ] (suggestion, Local Review @ `98870a6f`) After a resume between review-issue and plan-task the restart words reach plan-task only through a git-bug copy that may lack the comment; fix: in recipe (a)'s recovery paragraph, say the host quotes the newest `restart` entry's words into every `review-issue` and `plan-task` handoff after it until a `## Plan Authored` entry follows it, and say the same in run-issue's restart paragraph — `.claude/skills/orchestrator/SKILL.md:145-153`, `.claude/skills/run-issue/SKILL.md:426-435`
+- [x] (suggestion, Local Review @ `98870a6f`) After a resume between review-issue and plan-task the restart words reach plan-task only through a git-bug copy that may lack the comment; fix: in recipe (a)'s recovery paragraph, say the host quotes the newest `restart` entry's words into every `review-issue` and `plan-task` handoff after it until a `## Plan Authored` entry follows it, and say the same in run-issue's restart paragraph — `.claude/skills/orchestrator/SKILL.md:145-153`, `.claude/skills/run-issue/SKILL.md:426-435`
 
 ### False positives
 
