@@ -315,10 +315,17 @@ once more before creating anything. Then:
 
    ```bash
    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-   "$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project
+   "$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project --project <settings-name>
    ```
 
-   Enter it with `cd` to the path it prints.
+   `--project` is required: with `--type` given, `worktree_create.sh`
+   does not look at the current directory, so without it it would take a
+   legacy `project/` checkout (the wrong repository) or stop when several
+   projects are registered. `<settings-name>` is step 1's: `<name>` from
+   `session_root.sh`, or at a parent root the chosen instance, whose
+   repository the worktree is of (a fix to a file of the parent root
+   itself is not in the batch: open issue or skip). Enter the worktree
+   with `cd` to the path it prints.
 3. Make the changes, commit them (one commit per logical change), and show
    the commits.
 4. Push and open the pull request only on a yes. For a project with no
