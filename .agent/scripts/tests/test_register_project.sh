@@ -411,6 +411,29 @@ check "the restore fails: the backup holds the content from before the run, no r
     bash -c 'cmp -s "$1" "$2" && [ -z "$(find "$3" -maxdepth 1 -name ".settings-restore.*")" ]' _ "$WS/.agent/projects.d/$BK" "$SANDBOX/psi.before" "$WS/.agent/projects.d"
 rm -f "$WS/.agent/projects.d/$BK" "$(pfile "$WS" psi)"
 
+echo "TEST: a rollback keeps a settings file changed during the build, never overwrites it"
+# The build sets a key through project_setting.sh, as someone working on
+# the project might while a long build runs, then fails.
+for case in new existing; do
+    nm="sset$case"
+    PSS="$(make_proj "$nm")"
+    printf 'all:\n\t@"%s" set %s install=none\n\t@exit 3\ntest:\n\t@echo\n' "$WS/.agent/scripts/project_setting.sh" "$nm" > "$PSS/Makefile"
+    rm -f "$(pfile "$WS" "$nm")"
+    [ "$case" = existing ] && printf 'build=make\n' > "$(pfile "$WS" "$nm")"
+    out="$(reg "$WS" "$PSS" --set test=none)"; rc=$?
+    check "$case file: refused, warning that the file changed and is kept" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"changed after this run wrote it"*"so it is kept as it is"* && "$2" != *"restored the settings file"* && "$2" != *"removed the settings file"* ]]' _ "$rc" "$out"
+    check "$case file: the change made during the build is still there, no line" \
+        bash -c 'grep -qx "install=none" "$1" && grep -qx "test=none" "$1" && ! grep -q "^$3 " "$2"' _ "$(pfile "$WS" "$nm")" "$WS/.agent/projects.local" "$nm"
+    if [ "$case" = existing ]; then
+        BK="$(leftovers | grep '^\.settings-backup\.' | head -1)"
+        check "existing file: the backup of its content before the run is kept and named" \
+            bash -c '[ -n "$1" ] && [ "$(cat "$2/$1")" = "build=make" ] && [[ "$3" == *"its content before this run is in $2/$1"* ]]' _ "$BK" "$WS/.agent/projects.d" "$out"
+        rm -f "$WS/.agent/projects.d/$BK"
+    fi
+    rm -f "$(pfile "$WS" "$nm")"
+done
+
 echo "TEST: a settings path that is a dangling symlink or a directory is refused before anything is written"
 PSD="$(make_proj sdang)"
 # The target's directory exists, so a writer would create the file there.

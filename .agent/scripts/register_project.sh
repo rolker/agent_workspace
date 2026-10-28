@@ -82,7 +82,9 @@
 # while the registry line is left the status is NOT READY. A hosting directory that
 # setup created is kept and named on KEPT= (its clones are slow to redo,
 # and a re-run reuses it); a directory that existed before is never
-# touched. The type's facts come from
+# touched, and a settings file changed after this run wrote it (a
+# project_setting.sh set during the build, say) is kept, with a warning,
+# never overwritten. The type's facts come from
 # .agent/project_types/<type>/registration.conf, so this script names no
 # type; a type without one is refused.
 #
@@ -893,6 +895,13 @@ SETTINGS_CHANGED=0   # the settings file was written by this run
 # line is among it (the project is then still registered).
 ROLLBACK_LEFT=""
 LINE_LEFT=0
+SETTINGS_WRITING=0      # this run started writing the settings file
+SETTINGS_WRITTEN_SUM="" # the file's checksum once this run wrote it
+# The settings file's checksum, "absent" when there is none.
+settings_sum() {
+    if [ -e "$SETTINGS" ]; then cksum < "$SETTINGS" 2>/dev/null || echo unreadable
+    else echo absent; fi
+}
 rollback_left() { ROLLBACK_LEFT="${ROLLBACK_LEFT:+$ROLLBACK_LEFT; }$1"; }
 
 # Copy the settings file aside before a new registration changes it (an
@@ -952,7 +961,14 @@ rollback() {
             LINE_LEFT=1
         fi
     fi
-    if [ -n "$SETTINGS_BACKUP" ]; then
+    if [ "$SETTINGS_WRITING" -eq 1 ] && [ -n "$SETTINGS_WRITTEN_SUM" ] \
+       && [ "$(settings_sum)" != "$SETTINGS_WRITTEN_SUM" ]; then
+        # Changed after this run wrote it (a project_setting.sh set during
+        # the build, say): someone else's change, kept as it is.
+        echo "  WARNING: the settings file $SETTINGS changed after this run wrote it (a project_setting.sh set during the run, say), so it is kept as it is, with no registry line${SETTINGS_BACKUP:+; its content before this run is in $SETTINGS_BACKUP}" >&2
+    elif [ "$SETTINGS_WRITING" -eq 0 ]; then
+        :   # this run never wrote it: not this run's to restore or remove
+    elif [ -n "$SETTINGS_BACKUP" ]; then
         restore_settings || rollback_left "the settings file $SETTINGS as this run wrote it (its content before the run is in $SETTINGS_BACKUP)"
     elif [ "$SETTINGS_EXISTED" -eq 0 ] && { [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; }; then
         if rm -f -- "$SETTINGS" && [ ! -e "$SETTINGS" ] && [ ! -L "$SETTINGS" ]; then
@@ -1053,7 +1069,9 @@ if [ "${#KV[@]}" -gt 0 ]; then
         backup_settings || failed "could not back up the settings file $SETTINGS (above), so it is not changed" "check $PROJECTS_D is writable and $SETTINGS readable"
     fi
     for _i in "${!KV[@]}"; do echo "  ${KV[$_i]}    (${KV_NOTES[$_i]#*: })"; done
+    SETTINGS_WRITING=1
     _out="$(project_file_set "$ROOT" "$NAME" "${KV[@]}")" || failed "the settings file could not be written (above)" "fix the --set values"
+    SETTINGS_WRITTEN_SUM="$(settings_sum)"
     echo "$_out"
     [[ "$_out" == unchanged* ]] || { CHANGED=1; SETTINGS_CHANGED=1; }
 elif [ "$IS_PARENT" -eq 0 ]; then
