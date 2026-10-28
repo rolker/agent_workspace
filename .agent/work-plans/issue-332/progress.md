@@ -1352,3 +1352,13 @@ Reviewers: Claude adversarial ran (four suites green: audit 75, hook scope 149, 
 - [ ] (suggestion) The category-6 fix text tells the user to `set <name> build=<command>`, which a `ros2_colcon` project refuses (`unused_settings`); say it applies to `single_project` (Claude) — `.claude/skills/onboard-project/SKILL.md:117-122`
 - [ ] (suggestion) Tests missing for: the `session-root` finding (builder's note), a parent-type root, a negated ignore rule, the remaining ids under `instructions=none`, the more-than-10 cap — `.agent/scripts/tests/test_project_integration_audit.sh`
 - [ ] (suggestion) AGENTS.md: the `project_setting.sh` row does not mention the new write guard (`registry_require_root`; from a project root only its own file), and the new audit row repeats the over-wide `instructions=none` claim; fix both in the AGENTS.md commit — `AGENTS.md:408-411`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 14:26 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fires on the false count from the merged parts' entries (issue 384); this branch, PR 3 of 4, had its round 1 at 10aef17f; seven must-fix and seven suggestions open, all mechanism; the one design point, M4, decided by the host and listed for the owner's veto)
+**After**: rounds
+**Decision**: address
+
+PR 3 of 4 (the onboard-project rewrite), round 1 (taken as 1, counter says 12) at 10aef17f: 7 must-fix (M1 a deliberately un-ignored file reported as hidden; M2 the project worktree created without --project; M3 settings writes refused at a parent root; M4 no branch path for a project without issues; M5 unquoted heredocs run backticks from finding text, empty signature and no identity step in a project session; M6 remote writes missing from the every-write list; M7 seven ids stay warn under instructions=none) and 7 suggestions (S1 substring match on build commands; S2 symlinked root skips the worktrees check; S3 overflow count and an unused helper; S4 GNU-only sed; S5 category-6 fix text wrong for ros2_colcon; S6 missing tests; S7 the AGENTS.md rows). Host's decision on M4: a project with no issue tracker gets its onboarding branch through the skill-worktree path, onboard-project added to the worktree_create.sh skill allowlist (branch skill/onboard-project-<timestamp>, --type project --project <name>); a project that uses issues keeps the issue worktree with the issue the skill opens. All fourteen sent to address-findings.
