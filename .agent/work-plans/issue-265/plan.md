@@ -152,9 +152,6 @@ p11-rolling  ros2_colcon     /home/roland/project11-ng/rolling parent=p11 distro
   `"_agent_workspace": "<ws path>"` marker so `--check` and uninstall find
   exactly their own entries.
 - `~/.claude/skills/<name>` → symlinks for the curated subset (below).
-- `~/.claude/commands/register-project.md` → the bootstrap command
-  (decision 6). It calls `<ws>/.agent/scripts/register_project.sh --path
-  "$PWD"` and tells the user to relaunch.
 - `--check` reports every missing/stale/foreign-owned entry; exit non-zero
   on drift. Two machines (dev, ROS) run the same script; drift is not
   silent.
@@ -294,16 +291,14 @@ against that repo's remote. Therefore:
 - Package worktrees (ADR-0012) keep their `.worktree-repos` manifest; only
   their location changes. `p11-jazzy` layout: `~/project11-ng/jazzy/worktrees/
   issue-<N>/` beside `layers/` and `configs/`.
-- Unregister (`register_project.sh --remove <name>`) refuses while the root
-  has live worktrees, listing them.
+- Unregister: built by #332 (`register_project.sh --remove <name>`, which
+  refuses while the root has live worktrees, listing them).
 
 ### 5. Registration and migration
 
-- `register_project.sh --name --type --path [--parent --distro --role
-  --worktrees]`: validates, appends the registry line, runs `adapter setup`
-  for the type, writes the exclusions, prints the relaunch hint. Type
-  auto-detection when `--type` is omitted: `configs/manifest/` or a
-  bootstrap URL → `ros2_colcon`, else `single_project`.
+- Registration: built by #332 (`register_project.sh`). Registration runs
+  in a workspace session (#332 D1), so there is no user-tier bootstrap
+  command.
 - Migration on this machine: `gz4d` unchanged (already out-of-tree);
   `p11-jazzy`/`p11-rolling` re-registered at `~/project11-ng/<distro>` with a
   parent `p11` (`-ng` while the fork's `~/project11` stays in production on
@@ -368,12 +363,10 @@ precondition of it.
 | `.agent/projects.local.example` | New format, parent/instance example, no hosting-dir wording |
 | `.claude/hooks/session_start_project_layer.sh` (new) | Registry-gated layer injection; `WORKTREE_TYPE`/`PROJECT` lines |
 | `.claude/hooks/block-bash-tool-mapping.sh`, `log-tool-use.sh` | Registry guard, stand down elsewhere |
-| `.agent/scripts/user_tier_install.sh` (new) | Install/`--check`/`--uninstall` for hooks, settings entries, skill symlinks, bootstrap command |
+| `.agent/scripts/user_tier_install.sh` (new) | Install/`--check`/`--uninstall` for hooks, settings entries, skill symlinks |
 | `Makefile` | `user-tier-install`, `generate-user-tier-skills`; `validate` runs `--check` |
 | `.claude/skills/*/SKILL.md` (11) | `${AGENT_WORKSPACE_ROOT:-.}` script paths; `session_scope` frontmatter on all 20 |
 | `.claude/settings.json` | Hook commands by absolute path resolved at install (file keeps relative for workspace sessions; install rewrites into user tier) |
-| `.agent/scripts/register_project.sh` (new) | Register/unregister, setup, exclusions, relaunch hint |
-| `.claude/commands/register-project.md` (new, installed to user tier) | Bootstrap command |
 | `.agent/scripts/_worktree_helpers.sh`, `worktree_create.sh`, `worktree_enter.sh`, `worktree_remove.sh`, `worktree_list.sh`, `merge_pr.sh` | `registry_worktree_dir`; registry iteration; exclusion writing; work from any cwd |
 | `.agent/scripts/dashboard.sh` | Replace the hardcoded path-substring root classification and worktree counting (`*/worktrees/project/*`, `*/project/worktrees/*`, `*/.workspace-worktrees/*`, `*/worktrees/workspace/*`) with registry-driven enumeration of each root's worktree dir |
 | `.agent/scripts/adapter` | Drop `project/` fallback; pass `ACTIVE_PROJECT_ROLE/DISTRO` |
@@ -391,8 +384,8 @@ Additive, each independently mergeable and tested:
 
 1. **Registry + resolution** (schema, `resolve_path`, `worktree_dir`, tests). No behaviour change for existing three-column lines.
 2. **Worktrees under the root** (generic scripts, exclusions, dashboard/list iteration, tests). `gz4d` worktrees move on first use.
-3. **User tier** (hook, install/check, skill scopes + generator, tool-mapping guard, permissions subset, docs). Acceptance: the **full `/run-issue` loop** run from `~/src/gz4d` through the merge checkpoint — widened from "acceptance test steps 1–3" by the owner's issue-review checkpoint on #317 (2026-09-22), because the loop is what proves `dispatch_phase.sh`'s `--project` resolution from a project cwd. The `register-project` bootstrap command moves to PR 4 (`register_project.sh` is PR 4 scope and `gz4d` is already registered).
-4. **Retire hosting** (drop `project/`/`projects/` fallbacks, `register_project.sh`, migrate p11 instances, `AGENTS.md` wording, roadmap). Acceptance test steps 4–6.
+3. **User tier** (hook, install/check, skill scopes + generator, tool-mapping guard, permissions subset, docs). Acceptance: the **full `/run-issue` loop** run from `~/src/gz4d` through the merge checkpoint — widened from "acceptance test steps 1–3" by the owner's issue-review checkpoint on #317 (2026-09-22), because the loop is what proves `dispatch_phase.sh`'s `--project` resolution from a project cwd.
+4. **Retire hosting** (drop `project/`/`projects/` fallbacks, migrate p11 instances with #332's adoption path (their `.sh` values become project-file keys), then delete the `.sh` reading and the shared-config fallback for registered projects, `AGENTS.md` wording, roadmap). Acceptance test steps 4–6.
 
 ## Principles Self-Check
 
@@ -422,7 +415,7 @@ Additive, each independently mergeable and tested:
 | Skills reference `AGENT_WORKSPACE_ROOT` | Codex/Gemini adapter files (they have no hook) — document that non-Claude project sessions must export it manually | Yes, doc only (decision 7) |
 | Hook renders `AGENTS.md` sections | #259 (trim `AGENTS.md`) must keep the section headings the renderer keys on, or update the list | Cross-reference on #259 |
 | `distro` moves to the registry | `projects.d/p11-*.sh` `ROS_DISTRO` becomes fallback; ros2_colcon tests' config fixtures | Yes (PR 4) |
-| `project/` removed | `README.md`, `ARCHITECTURE.md`, `AGENTS.md`, `onboard-project` and `gather-project-knowledge` skills that mention `project/` | Yes (PR 4); skills grep'd in PR 4 |
+| `project/` removed | `README.md`, `ARCHITECTURE.md`, `AGENTS.md`, and the `gather-project-knowledge` skill, where they mention `project/` (`onboard-project` and `audit-project` are rewritten by #332 PRs 3 and 4) | Yes (PR 4); skills grep'd in PR 4 |
 | Global hooks in every repo | User-tier rule in the new ADR; `--check` reports foreign entries | Yes (PR 3) |
 
 ## Open Questions

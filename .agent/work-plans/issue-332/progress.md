@@ -834,3 +834,462 @@ None open.
 
 ### False positives
 - (Copilot @ `8bc1d033`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 10:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-332 at `6cb9cef3`
+
+PR 2 of 4 (`register_project.sh`), built on PR 1 as merged (#403). Commits 3e16db43..6cb9cef3.
+
+### Actions
+- [x] `registration.conf` per type (`required_commands`, `setup`, `run`): `single_project` build and test, never setup; `ros2_colcon` none required (its `unused_settings` refuses build/test), setup when missing, no verbs run. `validate_adapter.sh` requires one per type; `test_adapter.sh` case.
+- [x] `user_tier_install.sh --disable-root <name>`: one root, treated as `--uninstall` treats each; takes the machine-level record back if the local remove dropped it while other roots stay enabled. Tests in `test_user_tier_install.sh`.
+- [x] `register_project.sh`: register (registry line with an absolute path, parsed from a temp copy then renamed; settings from `--set`, else the legacy `.sh`, else `--detect`), setup when `registration.conf` says so and the directory is missing, `registration_verify.sh`, the `run=` verbs, then the user tier; rollback on any failure and on INT/TERM/HUP, with `--disable-root` once the installer ran; `KEPT=` for a directory setup created; adoption (line kept, `NOT READY` not rollback, warning on extra variables in the old config); `--remove`; `--detect`; `--dry-run`; main checkout only.
+- [x] `registration_verify.sh`: read-only gate with the inert marker (not added to `user_tier_scripts.txt`; PR 3 promotes it).
+- [x] `_project_registry.sh`: `project_command_source`, `project_config_extra_vars`, registration.conf readers, optional file argument to `registry_entries_full`.
+- [x] `projects.local.example`, `user_tier_scripts.txt` comment; #265 plan edits and ADR-0016 decision 5 pointer; `docs/design.md` (Registry Now, Sessions and roots Target to Now, Registry Target, C4, change-log row); `AGENTS.md` rows in their own commit (18c4fb7b, Ask First).
+- [x] `test_register_project.sh` (105 cases, synthetic sandbox projects only); `test_script_tests_hook_scope.sh` gains its ROOT_READERS row.
+
+### Where the plan and merged PR 1 differ (code followed)
+- `ros2_colcon` refuses `build`/`test` settings (PR 1's `unused_settings`), so its `required_commands=none` and adoption copies only keys the type reads.
+- The records refusal lives in `project_file_set`; register prechecks the same rule so `--dry-run` reports it.
+- Legacy `.sh` precedence is "whole legacy layer" (PR 1 amendment), so the gate accepts a command still read from the legacy `.sh` as the project's own.
+
+### Decisions for veto
+- Adoption may add a missing `default_instance` to a parent root's line (otherwise `--default-instance` could never be used: instances must exist first); every other field change is refused.
+- `--set` on an adopted project with a settings file updates it; copying from the `.sh` and detection happen only when there is no file.
+- `validate_adapter.sh` row in AGENTS.md also edited (one clause naming the registration.conf check), beside the two new rows.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, including the script test suite. (The first run failed on `test_script_tests_hook_scope.sh` needing a ROOT_READERS row; fixed in 6cb9cef3 and re-run.)
+- Run alone: `test_register_project.sh` 105/0, `test_user_tier_install.sh` 211/0, `test_adapter.sh` 113/0, `test_project_file.sh` 474/0, `test_project_registry.sh` 263/0, `test_ros2_colcon.sh` 200/0; `check_design_anchors.sh` clean.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 10:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `e9a5fc45`
+**Base**: main
+**Depth**: Deep (reason: 2291 changed lines across 18 files; enforcement and governance files touched)
+**Must-fix**: 3 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Round taken as 1, not the counter's 8: this is PR 2 of 4 on a reused branch name, and PR 1's seven pre-push entries (merged as PR 403) still sit on the timeline (round counter spans PRs, issue 384). Whole diff main...HEAD classified fresh.
+
+Reviewers: static analysis (pre-commit on the 18 changed files: all hooks pass, shellcheck and the script test suites included); governance and plan drift (no drift from plan PR 2; the AGENTS.md commit 18c4fb7b is accurate against the scripts and awaits the owner at the merge checkpoint); Claude adversarial (completed, but it did not cover registration_verify.sh or the _project_registry.sh changes, which the lead reviewed instead); Gemini via agy (ran, EXIT=0; its CLAUDE_CONFIG_DIR must-fix is a false positive, since user_tier_install.sh also writes the root file to $HOME/.claude); Codex (ran, EXIT=0). Tests use synthetic sandboxes only (HOME redirected, stub claude); none reads a real checkout.
+
+### Findings
+- [x] (must-fix) A '#' in the project path or in a field value (--role, --distro, --parent, --worktrees, --default-instance) is cut off by the registry parser (comment strip at _project_registry.sh:138), so a different directory or value is registered silently. Reject '#' (and blanks/'=' in field values), check that the parsed entry matches what was asked, and add a test (Codex + Claude) — `.agent/scripts/register_project.sh:523`
+- [x] (must-fix) The registry lock is taken after the name-free, adopt and SETTINGS_EXISTED decisions. With two concurrent registrations of one name, the loser's rollback deletes the winner's settings file. Take the lock before those checks (or re-check under it), and only remove a settings file this run wrote (Codex + Claude) — `.agent/scripts/register_project.sh:844`
+- [x] (must-fix) A failed settings backup (mktemp or cat) is ignored and the write proceeds. Rollback then either leaves the changed file or restores an empty or partial backup, and the restore (`cat > "$SETTINGS"`) is neither atomic nor checked. Abort before writing when the backup fails, and restore by rename with a warning on failure (Codex + Claude) — `.agent/scripts/register_project.sh:869`
+- [x] (suggestion) For an adopted project, an interrupt reports "nothing is registered" and a failure says "kept as it is", even though the project stays registered and --set may already have changed its settings file. Word both for adoption (Gemini) — `.agent/scripts/register_project.sh:798`
+- [x] (suggestion) An empty ~/.claude/agent-workspace-root makes `phys ""` return the cwd, so UT_STATE can wrongly be "here". Treat an empty file as absent (Claude) — `.agent/scripts/register_project.sh:733`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 10:20 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fired on a false count: review_progress.sh round reports 8 because the seven pre-push reviews of PR 1 of 4, merged as pull request 403, are still on this issue's timeline (issue 384); this branch is PR 2 of 4 and its review at a658c114 is its first round; three must-fix and two suggestions open, all mechanism fixes)
+**After**: rounds
+**Decision**: address
+
+PR 2 of 4 (register_project.sh and its gate), first pre-push review, recorded at a658c114 as round 1: 3 must-fix (a "#" in a path or field value is cut by the registry comment strip and a different directory registers silently; the registry lock is taken after the name and settings checks, so a losing concurrent run's rollback deletes the winner's settings file; a failed settings backup is ignored and the restore is neither atomic nor checked) and 2 suggestions (an interrupt on an already-registered project says "nothing is registered"; an empty ~/.claude/agent-workspace-root reads as this checkout). Host's call on must-fix 2: take the registry lock before the name and settings checks and hold it for the whole run. Sent to address-findings. The owner's direction for this run: "Let's have bg agents continue working on both."
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 10:44 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `9a58881c`
+**Addressed**: Local Review (Pre-Push) at `e9a5fc45` (2026-10-28 10:19 -04:00)
+**Commits**: ffda2e5e, 8ad4b990, 949d7408, 50aecdc7, 9a58881c
+
+### Actions
+- [x] A '#', blank or '=' in the path or a field value is refused before anything is written, and install_registry checks the entry the parser reads back is the one asked for (ffda2e5e) — `.agent/scripts/register_project.sh:523`
+- [x] The registry lock and the registry parse check come before every check (register and --remove), held through the last step; a dry run takes no lock. Tests: a run against a held lock refuses and changes nothing; a run that waited for the lock adopts the winner and keeps its settings file (fails on the old script) (8ad4b990) — `.agent/scripts/register_project.sh:844`
+- [x] A failed settings backup refuses the run before the file changes; the restore copies beside the destination, renames, compares, and on failure keeps and names the backup; the pre-write read of the settings file is checked; failed() now prints its reason for a new registration (949d7408) — `.agent/scripts/register_project.sh:869`
+- [x] An interrupt on an adopted project is NOT READY, and both interrupt and failure say nothing is rolled back and what the run already changed (line, settings file) (50aecdc7) — `.agent/scripts/register_project.sh:798`
+- [x] An empty or unreadable ~/.claude/agent-workspace-root is read as absent, with a warning naming it (9a58881c) — `.agent/scripts/register_project.sh:733`
+
+### Checks
+- test_register_project.sh: 142 passed, 0 failed; each new test was also run against the script before its fix and failed there
+- main checkout's pre-commit run --files over main...HEAD, no SKIP: every hook passed, validate-script-tests included
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 10:48 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `74d60acd`
+**Base**: main
+**Depth**: Deep (reason: 2631 changed lines across 18 files; enforcement and governance files touched; fix round classified on the whole diff, never lowered)
+**Must-fix**: 2 | **Suggestions**: 5
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Round taken as 2, not the counter's 9: this is PR 2 of 4 on a reused branch name, and PR 1's seven pre-push entries (merged as PR 403) still sit on the timeline (issue 384); this branch's round 1 is the entry at `e9a5fc45` (recorded at a658c114). `verdict` run with `--round 2 --prev-must-fix 3 --mechanical`.
+
+Round-1 findings, all confirmed fixed against the code and tests: '#', blank and '=' refused in path and field values, with a read-back check in install_registry (ffda2e5e); registry lock taken before every check and held to the end, held-lock and race tests (8ad4b990); failed backup refuses, restore by copy-beside, rename and cmp, fault-injection tests (949d7408); adopted interrupt/failure wording (50aecdc7); empty root file read as absent (9a58881c).
+
+Reviewers: static analysis (shellcheck --severity=warning on the 8 changed scripts and suites: clean; test_register_project.sh 142/0, and per the Claude adversarial run test_user_tier_install.sh 211/0 and test_adapter.sh 113/0); governance (AGENTS.md rows from 18c4fb7b still accurate against the scripts after the fix round; they await the owner at the merge checkpoint); plan drift (fix round touched only register_project.sh and its tests: none); Claude adversarial (completed, no must-fix; it did not check the docs); Gemini via agy (ran, EXIT=0, 3 suggestions); Codex (ran, EXIT=0, 3 must-fix, of which one is kept as must-fix, one merged into must-fix 2 and one taken as a suggestion). Tests use synthetic sandboxes only.
+
+The builder's reported gap (an interrupt still says "nothing is registered" when the rollback warned it could not remove the line) is taken as a finding: it is must-fix 2.
+
+### Findings
+- [x] (must-fix) Legacy migration copies a command with a glob ('*', '?', '[') into the settings file, where it runs without a shell and is passed literally, while the legacy `exec $SP_CMD` expanded it (TEST_CMD="pytest tests/test_*.py"); an adopted project keeps the changed file. Leave such a value in the legacy file with the existing "not copied" warning, and add a test (Codex) — `.agent/scripts/register_project.sh:688`
+- [x] (must-fix) The last lines claim a clean result after a failed cleanup: an interrupt says "nothing is registered" when rollback could not remove the line or restore the settings file (builder's gap); a signal between the registry rename and `LINE_WRITTEN=1` skips the line removal (set the flag before install_registry); --remove prints "removed the settings file" and STATUS=removed when `rm -f` fails, and its line-removal failure does not say the plugin is already disabled. Have rollback record an incomplete cleanup and let the final NEXT/STATUS say what is left (Codex + Claude) — `.agent/scripts/register_project.sh:928`
+- [x] (suggestion) A settings path that exists but is not a regular file (dangling symlink, directory) sets SETTINGS_EXISTED=1 yet is neither backed up nor checked, so the run writes the registry first and a rollback can leave a file created through the dangling link; refuse it up front (Claude + Gemini) — `.agent/scripts/register_project.sh:714`
+- [x] (suggestion) Rollback restores or deletes the settings file without checking it is still what this run wrote, so a `project_setting.sh set` made during a long build is lost; compare before restoring and keep it with a warning when it changed (Codex) — `.agent/scripts/register_project.sh:901`
+- [x] (suggestion) Rollback's `--disable-root` can disable a plugin the root had enabled before this run; record the root's plugin state before step 4 and disable only what this run added (Claude) — `.agent/scripts/register_project.sh:890`
+- [x] (suggestion) With `set -u` on and only INT/TERM/HUP trapped, an unexpected abort after the rollback is armed leaves the line and settings file with no report; add an EXIT trap guarded by ROLLBACK_ARMED (Claude) — `.agent/scripts/register_project.sh:952`
+- [x] (suggestion) The python3 fallback in detect_commands prints "None" for `"build": null` in package.json (jq's `// empty` gives nothing); use `(... or {}).get("build") or ""` (Gemini) — `.agent/scripts/register_project.sh:238`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 10:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (second address in a row at this checkpoint, within the cap; the rounds checkpoint fires on the false count from PR 1's entries (issue 384), this branch's own round 2 is at 89ac5d5d; two mechanical must-fix and five suggestions open, every one a correctness or silent-failure item, so all seven are addressed rather than shipped past)
+**After**: rounds
+**Decision**: address
+
+PR 2 of 4, round 2 (taken as 2, counter says 9) at 89ac5d5d: 2 must-fix (M1 a legacy command with a wildcard loses its expansion when copied into the settings file, which runs without a shell; M2 clean-result lines after a failed cleanup: "nothing is registered" after a rollback that could not remove the line, a signal between the registry rename and LINE_WRITTEN=1 skips the line removal, --remove reports removed when the settings rm fails) and 5 suggestions (S1 dangling-symlink or directory settings path not backed up or checked; S2 rollback overwrites a settings change made during a long build; S3 rollback's --disable-root can disable a plugin the root had enabled before the run; S4 no EXIT trap, so an abort under set -u leaves no report; S5 --detect's python fallback prints None for a null package.json script). All seven sent to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 11:27 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `b55dd0bc`
+**Addressed**: Local Review (Pre-Push) at `74d60acd` (2026-10-28 10:48 -04:00)
+**Commits**: c398b83c, 547e2716, 66518ff6, 744f3ada, 09712d2d, d440e915, 831aa840, b55dd0bc
+
+### Actions
+- [x] (must-fix) A legacy command with a glob character (* ? [) is not copied into the settings file; it stays in the legacy file with a warning naming the key — `.agent/scripts/register_project.sh` (c398b83c)
+- [x] (must-fix) No clean-result line after a failed cleanup: rollback records what it could not undo and names it on NEXT (NOT READY while the line is left); LINE_WRITTEN set before the registry rename and the rollback looks for the line; --remove reports a settings file it could not remove (STATUS=removed, settings file left, exit 1) and a line-removal failure says the plugin is already disabled — `.agent/scripts/register_project.sh` (547e2716)
+- [x] (suggestion) A settings path that is a dangling symlink or not a regular file is refused before anything is written — `.agent/scripts/register_project.sh` (66518ff6)
+- [x] (suggestion) Rollback keeps a settings file changed after this run wrote it (checksum compare), naming the backup; a file this run never wrote is never touched — `.agent/scripts/register_project.sh` (744f3ada; design.md sentence in b55dd0bc)
+- [x] (suggestion) Rollback's --disable-root is skipped when the plugin was enabled at the root from this checkout before step 4 — `.agent/scripts/register_project.sh` (09712d2d)
+- [x] (suggestion) EXIT trap, inert once the last lines are printed, handles an unchosen exit as a failure (rollback, or NOT READY for an adopted project) — `.agent/scripts/register_project.sh` (d440e915)
+- [x] (suggestion) The python3 fallback in --detect reads a null/false script as empty, matching jq — `.agent/scripts/register_project.sh` (831aa840)
+
+### Verification
+- test_register_project.sh: 180 passed, 0 failed (was 142). Each new test was run against the pre-fix script (a scratch copy of the tree with the old register_project.sh): 25 checks fail there, at least one per finding.
+- Main checkout venv pre-commit run --files over main...HEAD, no SKIP: every hook passed, validate-script-tests included.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 11:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `1a2255eb`
+**Base**: main
+**Depth**: Deep (reason: whole-branch classification unchanged from round 2, 18 files, enforcement files touched); round-3 scope narrowed by the host to the round-2 findings and the fix diff 89ac5d5d..1a2255eb, no cross-model reviewers
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Round taken as 3, not the counter's 10: PR 1 of 4's pre-push entries (merged as PR 403) are still on this timeline (issue 384); this branch's rounds are the entries at a658c114 (round 1) and 89ac5d5d (round 2). `verdict` run with `--round 3 --prev-must-fix 2 --mechanical`. The task line named a "Round-3 convergence check" rule; no such section exists in review-code/SKILL.md (main or worktree), so the narrow scope and the skipped cross-model reviewers come from the host's task line, not the skill.
+
+Round-2 findings, each confirmed fixed against the code and its tests: M1 glob-bearing legacy command stays in the legacy file, warned and marked set so detection does not override it (c398b83c); M2 rollback_left/LINE_LEFT name what a rollback could not undo on NEXT=, NOT READY while the line is left, LINE_WRITTEN set before the rename with the rollback looking the line up, --remove reports a settings file it could not delete (STATUS=removed, settings file left, exit 1) and says the plugin is already disabled when the line cannot be written (547e2716); S1 dangling link / non-regular settings path refused before any write (66518ff6); S2 checksum taken after this run's write, a changed file kept and the backup named (744f3ada); S3 plugin state read just before step 4, same definition as user_tier_install.sh plugin_state "enabled" (09712d2d); S4 EXIT trap guarded by FINAL_DONE and RUN_STARTED (d440e915); S5 python3 fallback reads null/false as empty (831aa840). The design.md sentence (b55dd0bc) matches the code.
+
+Status contract: `removed, settings file left` (exit 1) follows the existing comma-qualified form (`registered, <verbs> not run`); NOT READY for a rollback that left the line keeps its meaning (registered, unchecked); STATUS/NAME/ROOT/NEXT stay the last lines, as the plan's stable last-lines rule asks. No consumer outside the script and its tests parses STATUS. Consistent.
+
+Checks: test_register_project.sh 180 passed, 0 failed; shellcheck --severity=warning (main checkout venv) clean on register_project.sh and its suite. A scratch probe in the session scratchpad (synthetic sandbox, the suite's fixtures and fault stubs) reproduced the must-fix below.
+
+### Findings
+- [x] (must-fix) A signal during a rollback cuts it short and the last lines still claim a clean result: on_signal (and, for a second signal, on_exit) calls rollback, which is already disarmed, then prints STATUS=refused "interrupted; nothing is registered". Reproduced: build fails, TERM right after the rollback's registry mv, the settings file is left and not named; a signal during --disable-root would leave the line too. Mark the rollback as running and have on_signal return (resume it) while it runs, and on_exit name "the rollback stopped part way" with NOT READY; add a test (fault stub signal-after on mv during the rollback) — `.agent/scripts/register_project.sh:1029`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 11:55 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+The owner's answer, in his words: "C fix". The question: fix the one must-fix the round-3 review (e8652419, this branch's round 3; the counter says 10, issue 384) left open before publishing PR 2 of 4, or publish now. The must-fix: a signal arriving during the rollback cuts it short while the last lines still say "interrupted; nothing is registered"; the fix lets a running rollback finish on a signal, reports "the rollback stopped part way" with NOT READY when the EXIT trap fires mid-rollback, with a test using the signal-after fault stub. The host had answered address twice in a row at this checkpoint, the cap, so the third answer was his. (Recorded after the fix pass was dispatched: a first write of this entry landed on the wrong branch, unpushed.)
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 12:09 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `ab758292`
+**Addressed**: Local Review (Pre-Push) at `1a2255eb` (2026-10-28 11:34 -04:00)
+**Commits**: ab758292
+
+Owner's decision on the one must-fix, in his words: "C fix" (fix it before the pull request opens).
+
+### Actions
+- [x] (must-fix) A signal during a rollback cut it short and the last lines still claimed a clean result. Fixed: a signal while a failure, an interrupt or an unexpected exit is being handled (its rollback included) now returns and lets it finish (`ENDING` / `ROLLBACK_RUNNING`; `on_signal` and `on_exit` no longer reset the traps); an exit inside the rollback reports STATUS=NOT READY, "the rollback stopped part way", naming each unfinished step found left (`rollback_unfinished`); script header's status contract updated — `.agent/scripts/register_project.sh:1029`
+
+### Tests
+- Three new cases in `.agent/scripts/tests/test_register_project.sh` (synthetic sandboxes, existing signal-after fault stub): TERM after the rollback's registry rename on a failed build; a second TERM during an interrupt's rollback; an unset variable read inside a sandbox copy's rollback. On the pre-fix script: 183 passed, 6 failed (exactly the new checks); after the fix: 189 passed, 0 failed.
+- Branch-wide `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, the script suite included. The fix commit itself skipped only `validate-script-tests` (#399 rule).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 12:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `6a923041`
+**Base**: main
+**Depth**: Deep (reason: whole-branch classification unchanged, enforcement files touched); round-4 scope narrowed by the host's task line (owner's standing review-depth exception, issue 321) to the round-3 must-fix and the fix diff e8652419..6a923041 (ab758292), no cross-model reviewers
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 4 | **Ship**: recommended — no must-fix findings; the one suggestion can be applied or tracked
+
+Round taken as 4, not the counter's 11: PR 1 of 4's pre-push entries (merged as PR 403) are still on this timeline (issue 384); this branch's rounds are a658c114 (1), 89ac5d5d (2), e8652419 (3). `verdict` run with `--round 4 --prev-must-fix 1`.
+
+Round-3 must-fix confirmed fixed (ab758292): failed(), on_signal and on_exit set ENDING, rollback sets ROLLBACK_RUNNING; a signal then makes on_signal return, and bash resumes the handler after the running command, so the rollback finishes and the last lines come from the original handler (failure: STATUS=refused with the failure's NEXT; interrupt: "interrupted; nothing is registered" only after a full rollback). The traps are no longer reset, so a second signal can no longer kill the run silently mid-rollback. An exit inside the rollback reaches on_exit with ROLLBACK_RUNNING=1: rollback_unfinished checks each step not yet marked done (line looked up on disk, settings by checksum, plugin named "perhaps") and the last lines are NOT READY, "the rollback stopped part way", never a clean result. Header status contract matches the code.
+
+Signal behaviour change, judged acceptable: once a run is ending, further INT/TERM/HUP to the script are deferred until the rollback and last lines finish; only SIGKILL stops it. The ending work is bounded local steps (installer --disable-root, a registry rewrite and rename, an rm or a restore); before, a second signal killed bash with no EXIT trap and no last lines, leaving debris unreported. A terminal Ctrl-C still reaches a hung child step (the process group gets it; the installer's own INT/TERM traps exit 130/143), and that step's failure is then reported by the rollback (rollback_left, NOT READY while the line is left), not hidden — by reading, not probed. A supervisor's TERM to the script alone was already deferred by bash until the running child returned, so that case is unchanged.
+
+Checks: test_register_project.sh 189 passed, 0 failed (main checkout venv shellcheck --severity=warning clean on register_project.sh and its suite). The builder's claim that the six new checks fail on the pre-fix script was not re-run here (the scratch-copy run was denied by the permission prompt).
+
+### Findings
+- [ ] (suggestion) rollback_unfinished does not name a settings backup left when the exit came after the settings step began but the file no longer matches this run's write (inside restore_settings after the rename, or a file changed during the run): the hidden .settings-backup.* in projects.d stays unnamed on NEXT; name "$SETTINGS_BACKUP" whenever it still exists — `.agent/scripts/register_project.sh:1029`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 12:14 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (pre-push review approved at 75bceb21, round 4 of this branch, ship recommended; the one open suggestion carries into the pull-request rounds; the orchestrator's checkpoint table lets the host answer publish)
+**After**: publish
+**Decision**: publish
+
+PR 2 of 4 for issue 332 (register_project.sh, registration_verify.sh, per-type registration.conf, user_tier_install.sh --disable-root, tests, plan and design edits): four pre-push rounds on this branch (taken as 1 to 4; the counter says 8 to 11 because PR 1's entries remain, issue 384), 13 findings fixed, round 4 approved with 1 suggestion open (name the hidden settings backup file when an unexpected exit leaves it). The owner's direction for this run: "Let's have bg agents continue working on both."; his "C fix" answer at round 3 is in. Publishing.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 12:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `7b28b6f1`
+**Sources**: 3 (Local Review (Pre-Push) @ `6a923041` (covers head `7b28b6f1` via bookkeeping), Copilot @ `7b28b6f1` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR 2 of 4 for issue 332. This branch's rounds: pre-push 1 to 4 (a658c114, 89ac5d5d, e8652419, round 4 reviewed code at 6a923041, recorded at 75bceb21); every earlier round's findings were fixed and confirmed by the next round; round 4 approved with one suggestion open, triaged below.
+Not re-listed: the Local Reviews at `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03` belong to PR 1 of 4 (PR 403, merged 2026-10-28) and were ruled on by its Integrated Reviews; `sources` lists them stale.
+GitHub: one Copilot comment-review, the quota message, no inline comments; no conversation comments; no human reviews.
+CI at `7b28b6f1`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs (40723988708, 40723979858); Lint (pre-commit) still pending on both; the `copilot-pull-request-reviewer` check fails on quota, not code.
+
+Round-4 suggestion checked in the code (`.agent/scripts/register_project.sh:1022-1040`), valid: `rollback_unfinished` names the backup only while the settings file still matches this run's write. Two exits leave it unnamed: (a) inside `restore_settings` after the `mv` restored the file but before `rm` of the backup (the file now holds the pre-run content, so the checksum guard fails); (b) the file was changed during the run by someone else and the exit lands before the rollback's settings step (the normal rollback names the backup in a WARNING here; the cut-short path says nothing). The hidden `.settings-backup.*` then stays in `projects.d` with nothing on NEXT pointing at it; in (b) it is the only copy of the pre-run content. Shell globs skip dotfiles, so no reader trips on it; the cost is unreported debris, which the Quality Standard does not let pass.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) @ `6a923041`) An exit inside the rollback leaves the hidden settings backup unnamed when the settings file no longer matches this run's write (exit in `restore_settings` after the rename, or a file changed during the run). Fix: in `rollback_unfinished`, when the settings step is not done and `$SETTINGS_BACKUP` still exists, always name it: keep the current message when the file matches this run's write; otherwise add "the backup of the settings file's content before this run, $SETTINGS_BACKUP (remove it once $SETTINGS is right)"; add a test case in `test_register_project.sh` (sandbox copy with an unset-variable fault after the rename in `restore_settings`, as the existing rollback cases do) asserting the backup path is on the last lines — `.agent/scripts/register_project.sh:1029`
+
+### False positives
+- (Copilot @ `7b28b6f1`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 12:17 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (first address at this pull request's findings checkpoint; one valid suggestion, a silent leftover file in a rare exit path; mechanism fix, no goal question, no outward change)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at 57319ac6 (pull request 409, PR 2 of 4) has one open finding, a suggestion: when an exit cuts the rollback short, the hidden .settings-backup.* file in projects.d is never named, whether the exit fell inside restore_settings after the rename or the settings file was changed during the run. The host read the triage's fix plan (rollback_unfinished always names the backup while it exists, with a "remove it once the settings file is right" line when the file no longer matches this run's write; one new test with an unset-variable fault after the rename) and sends it to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 12:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `d0c72a0f`
+**Addressed**: Integrated Review at `7b28b6f1` (2026-10-28 12:17 -04:00)
+**Commits**: d0c72a0f
+
+### Actions
+- [x] An exit inside the rollback left the hidden settings backup unnamed when the settings file no longer matched this run's write: `rollback_unfinished` now names `$SETTINGS_BACKUP` whenever it exists — the existing message while the file matches this run's write, otherwise "the backup of the settings file's content before this run, <path> (remove it once <settings> is right)"; header status contract updated; new sandbox case in `test_register_project.sh` (unset-variable fault after the rename in `restore_settings`) fails on the pre-fix script (192 passed, 1 failed) and passes after (193 passed, 0 failed); box checked with `review_progress.sh check` in the fix commit — `.agent/scripts/register_project.sh:1030`
+
+### Checks
+- Main checkout's `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, `validate-script-tests` included.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 12:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #409 at `56d11847`
+**Depth**: Narrow convergence check (reason: round 5 of PR 2 of 4 under the owner's standing review-depth exception, issue 321; scope set by the host: the one finding left open by the round-4 review and the Integrated Review at `57319ac6`, plus the fix diff since `75bceb21`, i.e. commit `d0c72a0f`; no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round count: this branch's pre-push rounds are `a658c114`, `89ac5d5d`, `e8652419`, `75bceb21`, so this is its round 5. The earlier `## Local Review` entries on this timeline belong to PR 1 of 4 (merged as pull request 403) and are not counted (issue 384).
+
+Finding checked: a rollback cut short left the hidden `.settings-backup.*` unnamed when the settings file no longer matched this run's write. Confirmed fixed in `rollback_unfinished` (`.agent/scripts/register_project.sh:1031-1052`): while the settings step is unfinished and the backup exists it is always named, with the old wording when the file still matches this run's write and the new "remove it once ... is right" wording otherwise; the no-backup new-file branch keeps its old condition (`ours`). The new path also covers an exit after `backup_settings` and before `SETTINGS_WRITING=1` inside a rollback. Header status contract updated to match.
+
+Verified: `test_register_project.sh` 193 passed, 0 failed on the head; the same suite against a scratch copy with the pre-fix `register_project.sh` (`d0c72a0f^`) gives 192 passed, 1 failed, the failure being the new case "the backup is named on NEXT, to remove once the settings file is right"; the test's sed fault lands after the restore's rename and before `rm` of the backup, as intended; shellcheck --severity=warning clean on both changed files.
+
+Outside this review's scope, not a finding on the fix (for the host to judge): the ordinary rollback (not cut short) leaves the backup unnamed when it was made but `SETTINGS_WRITING` is still 0 — a signal between `backup_settings` and `SETTINGS_WRITING=1` (`register_project.sh:1182-1185`, an echo loop) takes the `:` branch at line 1000, and the run ends `refused` with the hidden backup left in `projects.d`. Pre-existing and a narrow window.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 12:37 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `c0710b66`
+**Sources**: 3 (Local Review @ `56d11847` (covers head `c0710b66` via bookkeeping), Copilot @ `56d11847` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR 2 of 4 for issue 332. Builds on the Integrated Review at `7b28b6f1` (one suggestion, fixed in `d0c72a0f`, confirmed by the round-5 Local Review at `56d11847`); not re-listed. The Local Reviews at `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03` belong to PR 1 of 4 (PR 403, merged) and the Pre-Push at `6a92304` was ruled on by the Integrated Review at `7b28b6f1`; `sources` lists all five stale.
+GitHub: three Copilot comment-reviews (at `7b28b6f1`, `2582cdda`, `56d11847`), each the quota message, no inline comments; no conversation comments; no human reviews.
+CI at `c0710b66`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs (40727416331, 40727406353); Lint (pre-commit) still pending on both.
+
+The round-5 review's out-of-scope note, judged as a finding and reproduced: a sandbox copy of `register_project.sh` with an unset-variable fault on the line before `SETTINGS_WRITING=1` (`.agent/scripts/register_project.sh:1185`), registering over an existing settings file with `--set test=none`, ends exit 1, `STATUS=refused`, "removed the registry line", NEXT names nothing else, and `projects.d/.settings-backup.*` is left. Cause: `backup_settings` (line 1182) sets `SETTINGS_BACKUP` and makes the copy, then the echo loop runs before `SETTINGS_WRITING=1`; `rollback`'s `SETTINGS_WRITING -eq 0` branch (line 1000) is a `:`, so the backup is neither removed nor named. An interrupt in the same window (on_signal) or after `mktemp` inside `backup_settings` takes the same branch. The plan's order rule ("so a failed registration leaves nothing behind") and the header's contract cover it, and the existing failed-backup case already asserts "no backup file left"; a silent leftover is what the Quality Standard does not let pass. Valid; the settings file itself is untouched in this window, so the backup is a redundant copy and removing it is safe.
+
+### Findings
+- [x] (suggestion, Local Review @ `56d11847` note outside its scope) A rollback after `backup_settings` but before `SETTINGS_WRITING=1` (an interrupt or unexpected exit in the echo loop, or inside `backup_settings` after its `mktemp`) leaves the hidden `.settings-backup.*` in `projects.d`, unnamed, and the run ends `refused` as if nothing were left. Fix: in `rollback`, replace the `:` of the `SETTINGS_WRITING -eq 0` branch with: when `$SETTINGS_BACKUP` is set and exists, `rm -f` it (this run never wrote the settings file, so the backup only duplicates it); if it is still there, warn and `rollback_left "the backup of the settings file's content before this run, $SETTINGS_BACKUP (remove it)"`. Add a sandbox case in `test_register_project.sh` like the existing rollback cases: fault `: "$REGISTER_TEST_UNSET_VARIABLE"` inserted before `    SETTINGS_WRITING=1`, an existing settings file, `--set test=none`; assert non-zero exit, `STATUS=refused`, the settings file byte-identical to its pre-run copy, no registry line, and no `.settings-backup.*` or `.settings-restore.*` left; show it fails on the current script — `.agent/scripts/register_project.sh:1000`
+
+### False positives
+- (Copilot @ `7b28b6f1`, `2582cdda`, `56d11847`) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
+- (Local Review @ `56d11847`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 12:37 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (second address in a row at this pull request's findings checkpoint, within the cap; one valid suggestion, reproduced, in the path the plan promises leaves nothing behind; mechanism fix, no goal question, no outward change)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at 2bfbb7f5 (pull request 409, PR 2 of 4) has one open finding, a suggestion: an interrupt or unexpected exit after backup_settings and before SETTINGS_WRITING=1 takes the rollback's do-nothing branch, so the run ends refused with the hidden .settings-backup.* file left in projects.d and NEXT naming nothing. The host read the triage's fix plan (that branch removes the backup when it exists, since the settings file was never written in that window; a failed removal warns and names the file through rollback_left; one sandbox test with the fault before SETTINGS_WRITING=1 and an existing settings file, asserting STATUS=refused, the settings file byte-identical, no registry line and no leftover files, failing on the current script) and sends it to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 12:54 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `6f0e6704`
+**Addressed**: Integrated Review at `c0710b66` (2026-10-28 12:37 -04:00)
+**Commits**: 6f0e6704
+
+### Actions
+- [x] A rollback after `backup_settings` and before `SETTINGS_WRITING=1` left the hidden `.settings-backup.*` unnamed with `STATUS=refused`: the `SETTINGS_WRITING -eq 0` branch of `rollback` now removes the backup (the settings file was never written, so it only duplicates it), and when the removal fails warns and names it through `rollback_left`; the header's rollback paragraph says so. New sandbox test (fault before `SETTINGS_WRITING=1`, existing settings file, `--set test=none`) asserts non-zero exit, `STATUS=refused`, the settings file byte-identical, no registry line, no backup or restore file left, plus the removal-failure path naming the backup on NEXT; it failed 2 checks on the script before the fix and passes after — `.agent/scripts/register_project.sh:1000`, `.agent/scripts/tests/test_register_project.sh:875`
+
+### Checks
+- `test_register_project.sh`: 196 passed, 2 failed before the fix (the new checks); 198 passed, 0 failed after.
+- Fix commit made with every hook, the script suite included (no SKIP); box checked with `review_progress.sh check` (it points at this Integrated Review), in the same commit.
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: passed (exit 0).
+- Not pushed; the host owns the push.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 12:58 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #409 at `94a2c149`
+**Depth**: Narrow convergence check (reason: round 6 of PR 2 of 4 under the owner's standing review-depth exception, issue 321; scope set by the host: the one finding the Integrated Review at `2bfbb7f5` opened, plus the fix diff since `c0710b66`, i.e. commit `6f0e6704`; no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round count: this branch's rounds are the four pre-push ones (`a658c114`, `89ac5d5d`, `e8652419`, `75bceb21`) and the PR-mode round 5 at `56d11847` (recorded as `c0710b66`), so this is its round 6. The earlier `## Local Review` entries on this timeline belong to PR 1 of 4 (merged as pull request 403) and are not counted (issue 384).
+
+Finding checked: an interrupt or unexpected exit after `backup_settings` and before `SETTINGS_WRITING=1` took the rollback's do-nothing branch and left the hidden `.settings-backup.*` unnamed. Confirmed fixed in `rollback` (`.agent/scripts/register_project.sh:1001-1009`): the `SETTINGS_WRITING -eq 0` branch now removes the backup when it is set and exists (the settings file was never written in that window, so it only duplicates it), and a failed removal warns and names it through `rollback_left`, which `rolled_back_final` puts on NEXT. The signal path (`on_signal` → `rollback`) and a partial `cp` inside `backup_settings` reach the same branch. Header rollback paragraph updated to match.
+
+Verified: `test_register_project.sh` 198 passed, 0 failed on the head; the same suite in a scratch worktree with the pre-fix `register_project.sh` (`6f0e6704^`) gives 196 passed, 2 failed, the two being the new checks (no backup left; the failed removal named on NEXT); the test's sed fault lands on the line before `SETTINGS_WRITING=1`, after the backup; shellcheck --severity=warning clean on both changed files.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 13:06 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `e3b8736f`
+**Sources**: 3 (Local Review @ `94a2c149` (covers head `e3b8736f` via bookkeeping), Copilot @ `94a2c149` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR 2 of 4 for issue 332. Builds on the Integrated Reviews at `7b28b6f1` and `c0710b66` (one suggestion each, fixed in `d0c72a0f` and `6f0e6704`, each confirmed by the next Local Review); not re-listed. The round-6 Local Review at `94a2c149` is approved with 0 must-fix and 0 suggestions. The Local Reviews at `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03` belong to PR 1 of 4 (PR 403, merged), and the Pre-Push at `6a92304` and the Local Review at `56d1184` were ruled on by the earlier Integrated Reviews; `sources` lists all six stale.
+GitHub: six Copilot comment-reviews (at `7b28b6f1`, `2582cdda`, `56d11847`, `c0710b66`, `f086190e`, `94a2c149`), each the quota message, no inline comments; no conversation comments; no human reviews.
+Fix spot-checked at the head: the `SETTINGS_WRITING -eq 0` branch of `rollback` (`.agent/scripts/register_project.sh:1001-1009`) removes the backup, and a failed removal warns and names it through `rollback_left`, as the round-6 review states.
+CI at `e3b8736f`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs (40731261838 push, 40731269831 pull_request); Lint (pre-commit) passed on the push run and was still in progress on the pull_request run after a 7-minute wait, hence pending.
+
+### Findings
+
+### False positives
+- (Copilot @ `7b28b6f1`, `2582cdda`, `56d11847`, `c0710b66`, `f086190e`, `94a2c149`) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
+- (Local Review @ `94a2c149`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 13:16 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer, in his words: "yes to both" (B: this pull request, AGENTS.md rows included). Presented: PR 2 of 4, 17 findings fixed across six rounds, round 6 approved with nothing open, the Integrated Review at 67758e99 clean, the AGENTS.md commit 18c4fb7b (two Script Reference rows and one clause on the validate_adapter.sh row) named as the Ask First item. Merge of pull request 409.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 13:35 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `9d8c1281`
+**Commits**: 9d8c1281
+
+Merge of main (`cd60bc2a`, pull request 400, the orchestrator skill for issue 321) into feature/issue-332 at `62feab91`; no rebase, no squash, default merge message.
+
+### Actions
+- [x] One content conflict, `docs/design.md`, in the change-log table only: both sides appended a row after the 2026-10-21 row. Kept both rows, main's issue 321 row (2026-10-15, "Who answers a checkpoint", 800) first and this branch's issue 332 row (2026-10-28, "Registration is built") after it; no sentence dropped from either side.
+- [x] Set this branch's row's line count from 807 to 819, the merged file's `wc -l docs/design.md`, so the last row's count equals the file length. Main's row keeps its own 800.
+- [x] Every other file, and every other hunk of `docs/design.md` (main's How it works, Direction row, Rules row, Review loop and timeline, Glossary changes), auto-merged; nothing changed beyond the conflict resolution.
+
+### Checks
+- `.agent/scripts/check_design_anchors.sh .`: exit 0.
+- `.agent/scripts/tests/run_script_tests.sh`: all 39 suites passed (511s).
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, every hook passed or skipped (run before the merge commit, against this branch's changed files).
+- The merge commit ran its hooks (pre-commit's merge mode checks conflicted files only): passed.
+- Not pushed; the host owns the push.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 13:44 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #409 at `db76490a`
+**Depth**: Narrow convergence check (reason: round 7 of PR 2 of 4 under the owner's standing review-depth exception, issue 321; scope set by the host: only the merge of main (`cd60bc2a`, pull request 400, issue 321) into this branch at `62feab91`, merge commit `9d8c1281`; no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round count: this branch's rounds are the four pre-push ones (`a658c114`, `89ac5d5d`, `e8652419`, `75bceb21`) and the PR-mode rounds 5 at `56d11847` and 6 at `94a2c149` (recorded as `e3b8736f`), so this is its round 7. The earlier `## Local Review` entries on this timeline belong to PR 1 of 4 (merged as pull request 403) and are not counted (issue 384).
+
+Checked: `main` and `origin/main` are both `cd60bc2a`, the merge's second parent. `git diff main...HEAD` names the same files as the pre-merge branch diff (`git diff b120d541 62feab91`, `b120d541` being the old merge base), and every file's changed lines match, except `docs/design.md` (only this branch's change-log row count, 807 to 819) and this issue's `progress.md` (only the 22-line Implementation entry added in `db76490a`). `git diff main 9d8c1281` equals `git diff b120d541 62feab91` byte for byte outside `docs/design.md`, and for `docs/design.md` main's own changes (`git diff b120d541 cd60bc2a`) reappear unchanged in `git diff 62feab91 9d8c1281` apart from hunk offsets and the count row, so no text from either side was lost. The change-log ends with main's issue 321 row (count 800, equal to main's own file length) and then this branch's issue 332 row (819); `wc -l docs/design.md` is 819; no conflict markers. `check_design_anchors.sh` on the worktree: exit 0. `run_script_tests.sh`: all 39 suites passed (419s).
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 13:53 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `9e1f2720`
+**Sources**: 3 (Local Review @ `db76490a` (covers head `9e1f2720` via bookkeeping), Copilot @ `db76490a` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+PR 2 of 4 for issue 332. Builds on the Integrated Review at `e3b8736f` (clean, no findings); not re-listed. Since then main (`cd60bc2a`, pull request 400) was merged in as `9d8c1281`, and the round-7 Local Review at `db76490a` confirmed the merge exact (approved, 0 must-fix, 0 suggestions). The Local Reviews at `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03` belong to PR 1 of 4 (pull request 403, merged), and the Pre-Push at `6a92304` and the Local Reviews at `56d1184` and `94a2c14` were ruled on by earlier Integrated Reviews; `sources` lists all seven stale.
+GitHub: ten Copilot comment-reviews (latest at `db76490a`), each the quota message, no inline comments; no conversation comments; no human reviews.
+Merge spot-checked at the head: `9d8c1281` has parents `62feab91` and `cd60bc2a`; `docs/design.md` is 819 lines, its change log ends with the issue 321 row (2026-10-15) then this branch's issue 332 row (2026-10-28); no conflict markers in the tree.
+CI at `9e1f2720`: Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests pass on both runs (40738607126 push, 40738616457 pull_request).
+
+### Findings
+
+### False positives
+- (Copilot @ `7b28b6f1` through `db76490a`, ten reviews) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
+- (Local Review @ `db76490a`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.

@@ -186,6 +186,9 @@ declare -A ROOT_READERS=(
     # Copies the real scripts and the two adapters into its sandbox workspace.
     [test_project_file.sh]=".agent/scripts .agent/project_types"
     [test_project_registry.sh]=".agent/scripts .agent/project_types"
+    # Copies the real scripts, project types, user-tier list, .claude and
+    # .claude-plugin into its sandbox workspace.
+    [test_register_project.sh]=".agent/scripts .agent/project_types .agent/user_tier_scripts.txt .claude .claude-plugin"
     [test_resolve_work_plans_dir.sh]=""
     [test_ros2_colcon.sh]=".agent/scripts .agent/project_types"
     # Whole-tree `cp -r $WS_ROOT/.agent` into its sandbox workspace.

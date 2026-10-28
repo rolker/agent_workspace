@@ -22,8 +22,11 @@
 # and `#` comments are ignored.
 #
 # Trimmed to what the #317 acceptance loop actually invokes from a project
-# cwd. dashboard.sh and register_project.sh are deliberately absent —
-# deferred to PR 4 (each row costs a guard call plus a test row).
+# cwd. dashboard.sh is deliberately absent — deferred to #265 PR 4 (each
+# row costs a guard call plus a test row). register_project.sh is never
+# promoted: it writes the registry, so it runs only from the workspace
+# checkout (#332). Its read-only gate, registration_verify.sh, is promoted
+# with the integration audit (#332 PR 3).
 #
 # cross_model_review.sh is absent for a different reason: it CANNOT satisfy
 # the rule. Reviewing a repo that is neither the workspace nor registered is
