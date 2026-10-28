@@ -13,9 +13,14 @@
 #
 # round    Prints two lines: "round=<R>" and "prev_must_fix=<P|->". R is the
 #          count of prior "## Local Review (Pre-Push)" entries whose
-#          **Branch** correlation names <name>, plus 1. P is the must-fix
-#          finding count of the most recent such entry ("-" when none).
-#          Reads the file via progress_read.py; a missing file is round 1.
+#          **Branch** correlation names <name> and whose **Status** is
+#          complete, plus 1; only entries after the newest "## Checkpoint"
+#          with **Decision**: restart count (a restart starts the rounds
+#          over). A partial or failed review was not a round (issue 321).
+#          P is the must-fix finding count of the most recent counted entry
+#          ("-" when none). dispatch_phase.sh's `next` counts rounds by the
+#          same rule. Reads the file via progress_read.py; a missing file
+#          is round 1.
 #
 # verdict  Prints "ship=<recommended|continue>" and "reason=<one line>",
 #          applying the convergence rule from the review-code skill:
@@ -115,14 +120,24 @@ cmd_round() {
         echo "round=1"; echo "prev_must_fix=-"; return 0
     fi
     local json
-    json=$("$PYTHON" "$PROGRESS_READ" "$progress" --type "Local Review (Pre-Push)") || {
+    json=$("$PYTHON" "$PROGRESS_READ" "$progress") || {
         echo "error: round: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
-    # Prior entries for THIS branch only; the newest is the last in file order.
+    # Prior COMPLETE entries for THIS branch, after the newest restart
+    # checkpoint; the newest is the last in file order. The whole timeline
+    # is read (not --type) because the restart is a Checkpoint entry. Keep
+    # this rule in step with round_count() in dispatch_phase.sh `next`.
     printf '%s' "$json" | BRANCH="$branch" "$PYTHON" -c '
 import json, os, sys
-data = json.load(sys.stdin)
-mine = [e for e in data["entries"]
-        if (e.get("correlation") or {}).get("kind") == "branch"
+entries = json.load(sys.stdin)["entries"]
+start = 0
+for i, e in enumerate(entries):
+    if e.get("base_type") == "Checkpoint" \
+            and ((e.get("fields") or {}).get("Decision") or "").strip().lower() == "restart":
+        start = i + 1
+mine = [e for e in entries[start:]
+        if e.get("base_type") == "Local Review (Pre-Push)"
+        and (e.get("status") or "").strip().lower() == "complete"
+        and (e.get("correlation") or {}).get("kind") == "branch"
         and (e.get("correlation") or {}).get("branch") == os.environ["BRANCH"]]
 print(f"round={len(mine) + 1}")
 if mine:

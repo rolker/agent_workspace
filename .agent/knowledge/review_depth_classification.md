@@ -150,6 +150,32 @@ own delta was tried and dropped: a small fix to a large PR would drop to
 Light (static analysis only), so no governance, Claude adversarial or
 cross-model pass would check that the earlier findings were actually
 resolved — it could lower a re-review below the whole-PR tier.
+One exception, for round 3 and later only: see *Round-3 convergence check* below.
+
+### Round-3 convergence check (owner's standing exception)
+
+A pre-push or PR re-review at **round 3 or later** whose handoff says
+**"no cross-model reviewers"** is a narrow convergence check: it reviews
+the prior round's findings and the fix diff since that review, and skips
+the cross-model specialist. Every other specialist the whole-diff tier
+dispatches still runs. The `**Depth**` line names the round and the
+handoff as the signal, and the cross-model outcome reads "skipped
+(round-<R> convergence check, per handoff)".
+
+The words come from the handoff, never from the reviewer's own judgment:
+`dispatch_phase.sh` appends them to a pre-push review-code task line when
+`review_progress.sh round` gives 3 or more. Without them, the rule above
+applies unchanged. A PR-mode round has no counter in the script, so there
+the words appear only when the host writes them into the handoff, and the
+host counts the round by the same rule over the PR's complete `## Local
+Review` entries: those after the newest `**Decision**: restart`
+checkpoint, plus one (pre-push rounds do not carry over).
+
+This is the owner's standing exception from issue 321 ("a third is a
+narrow convergence check without external reviewers"; reason recorded in
+`.agent/knowledge/host_standing_rules.md`): by round 3 the external
+reviewers have read the whole diff twice, and a convergence check only
+needs to re-read the fixes.
 
 ## User Override
 

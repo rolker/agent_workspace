@@ -1003,7 +1003,7 @@ EOF
 reset_marks
 blk="$(skill_step 3 2)"
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial\nworkspace\tworkspace\tfeature/issue-8\tissue 8\tunknown (no GitHub remote)\tno progress record yet' && ! -e "$MARK/gh" ]] \
+[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial\tpath unknown (steps not checked)\nworkspace\tworkspace\tfeature/issue-8\tissue 8\tunknown (no GitHub remote)\tno progress record yet\tpath unknown (steps not checked)' && ! -e "$MARK/gh" ]] \
     && pass "(skill 3) latest entry in state words; no row for main or a skill worktree; no remote, no gh" || fail "(skill 3) flight rc=$RC '$OUT'"
 
 echo "TEST: sit-rep step 3 reads each worktree field by name: an empty branch or repo shifts nothing"
@@ -1016,7 +1016,7 @@ echo '{"worktrees":[{"type":"workspace","issue":7,"branch":null,"path":"$SB/wt7"
 EOF
 reset_marks
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\t(no branch)\tissue 7\tunknown (no GitHub remote)\timplementation partial\nworkspace\tworkspace\t(no branch)\tissue 8\tunknown (no GitHub remote)\tno progress record yet\nworkspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial' ]] \
+[[ $RC -eq 0 && "$OUT" == $'workspace\tworkspace\t(no branch)\tissue 7\tunknown (no GitHub remote)\timplementation partial\tpath unknown (steps not checked)\nworkspace\tworkspace\t(no branch)\tissue 8\tunknown (no GitHub remote)\tno progress record yet\tpath unknown (steps not checked)\nworkspace\tworkspace\tfeature/issue-7\tissue 7\tunknown (no GitHub remote)\timplementation partial\tpath unknown (steps not checked)' ]] \
     && pass "(skill 3) no branch or no repo: the issue and path stay in place, read as (no branch)" || fail "(skill 3) empty fields rc=$RC '$OUT'"
 
 echo "TEST: sit-rep step 3 reads a package worktree's repository and timeline through its manifest"
@@ -1039,11 +1039,11 @@ EOF
 reset_marks
 echo "Package title" > "$SB/gh_state"
 RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT")" == $'project\tp\tfeature/issue-12,feature/issue-12\tissue 12\tPackage title\timplementation partial' ]] \
+[[ $RC -eq 0 && "$(sed -n 1p <<< "$OUT")" == $'project\tp\tfeature/issue-12,feature/issue-12\tissue 12\tPackage title\timplementation partial\tpath unknown (steps not checked)' ]] \
     && pass "(skill 3) package worktree: title from the header's repository, timeline found in a listed checkout" || fail "(skill 3) package rc=$RC '$OUT'"
 [[ "$(cat "$MARK/gh" 2>/dev/null)" == "issue view 12 -R acme/pkg_b --json title --jq .title" ]] \
     && pass "(skill 3) package worktree: gh asked the header's repository only" || fail "(skill 3) package gh: $(cat "$MARK/gh" 2>/dev/null)"
-[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are not all in one GitHub repository)\tunknown (no repository to read it from)' ]] \
+[[ "$(sed -n 2p <<< "$OUT")" == $'project\tp\tfeature/issue-13,feature/issue-13\tissue 13\tunknown (its checkouts are not all in one GitHub repository)\tunknown (no repository to read it from)\tpath unknown (steps not checked)' ]] \
     && pass "(skill 3) package worktree with a bare issue number and two repositories: no guess" || fail "(skill 3) package bare '$OUT'"
 
 echo "TEST: sit-rep step 3 reads a package worktree's title and timeline from the issue's repository only"
@@ -1114,6 +1114,8 @@ Checkpoint|complete|**After**: phase-failed\n**Decision**: retry\n**Phase**: imp
 Checkpoint|complete|**After**: phase-failed\n**Decision**: takeover\n**Phase**: implement|a step failed; the session is doing it by hand
 Checkpoint|complete|**After**: merge-refused\n**Decision**: retriage|merge refused; reviews being triaged again
 Checkpoint|complete|**After**: unexpected\n**Decision**: odd|checkpoint after unexpected: odd
+Checkpoint|complete|**After**: rounds\n**Decision**: restart|goal restated by the owner; issue review starts again
+Checkpoint|complete|**After**: unexpected\n**Decision**: restart|goal restated by the owner; issue review starts again
 Implementation|complete||implemented
 Implementation|failed||implementation failed
 Local Review (Pre-Push)|complete|\n### Findings\n- [ ] (must-fix) a\n- [x] (must-fix) b\n- [ ] (suggestion) c|code reviewed, 2 findings to address
@@ -1129,6 +1131,114 @@ Merge (report-only)|complete||merged although the merge check found problems
 Merge (unreviewed)|complete||merged without review
 CASES
 $st_ok && pass "(skill 3) every timeline state reads as the mapping table says" || fail "(skill 3) state words (cases above)"
+
+echo "TEST: sit-rep step 3 names the path each piece of work serves"
+# Path 1: a Direction line names the issue in its own cells, or a check
+# names the worktree's project. Path 2: a Serves line on the timeline.
+# A deferral naming an issue does not make it Path 1, and a project
+# worktree's bare number never matches a workspace issue.
+mkdir -p "$SB/wt9/.agent/work-plans/issue-9" "$SB/wt8/.agent/work-plans/issue-8" "$SB/pq" "$SB/pr/.agent/work-plans/issue-4"
+served=$'---\nissue: 8\n---\n\n# Issue #8\n\n## Issue Review\n**Status**: complete\n**When**: 2026-10-01 10:00 -04:00\n**By**: t\n\n**Issue**: #8\n\n### Scope Assessment\n\n**Serves**: Easy to use\n'
+printf '%s' "$served" > "$SB/wt8/.agent/work-plans/issue-8/progress.md"
+printf '%s' "${served//\*\*Serves\*\*: Easy to use/**Serves**: none}" > "$SB/wt9/.agent/work-plans/issue-9/progress.md"
+printf '%s' "${served//issue: 8/issue: 4}" > "$SB/pr/.agent/work-plans/issue-4/progress.md"
+cat > "$WS/.agent/scripts/worktree_list.sh" <<EOF
+#!/usr/bin/env bash
+echo '{"worktrees":[{"type":"workspace","issue":7,"branch":"feature/issue-7","path":"$SB/wt7","repo":"workspace"},{"type":"workspace","issue":8,"branch":"feature/issue-8","path":"$SB/wt8","repo":"workspace"},{"type":"workspace","issue":9,"branch":"feature/issue-9","path":"$SB/wt9","repo":"workspace"},{"type":"project","issue":3,"branch":"feature/issue-3","path":"$SB/pq","repo":"p"},{"type":"project","issue":7,"branch":"feature/issue-7","path":"$SB/pq","repo":"q"},{"type":"project","issue":4,"branch":"feature/issue-4","path":"$SB/pr","repo":"r"}]}'
+EOF
+printf 'line\tA line (#5, #7)\tfalse\tnone\t2026-10-15\nline\tThe project validates\ttrue\tscript adapter --project p validate\t2026-10-15\ndeferral\tLater (#9)\ttrue\tgh-issue 9 closed\t2026-10-15\n' > "$SB/rows3"
+blk="$(skill_step 3 2)"
+blkp="${blk//<rows_file printed in step 1>/$SB/rows3}"
+reset_marks
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(cut -f1,2,4,7 <<< "$OUT")" == $'workspace\tworkspace\tissue 7\tPath 1\nworkspace\tworkspace\tissue 8\tPath 2\nworkspace\tworkspace\tissue 9\tno path\nproject\tp\tissue 3\tPath 1\nproject\tq\tissue 7\tpath unknown (no complete issue review)\nproject\tr\tissue 4\tno path (serves a project goal)' ]] \
+    && pass "(skill 3) path: a Direction line's issue (second in a list too) or project is Path 1, a Serves line Path 2 (a project's own goal is not), Serves none no path, no timeline unknown; deferrals and a project's bare number do not count" \
+    || fail "(skill 3) path rc=$RC '$OUT'"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(cut -f7 <<< "$OUT" | sort -u)" == "path unknown (steps not checked)" ]] \
+    && pass "(skill 3) path: with no rows from step 1 the path is unknown, never guessed" || fail "(skill 3) path no rows '$OUT'"
+
+echo "TEST: sit-rep step 3 reads Path 2 from the newest complete Issue Review's Serves line only"
+# A Serves line of "none" (review-issue's word for no goal) is no path; a
+# newer Issue Review's Serves outranks an older one either way; a Serves
+# line outside an Issue Review, or inside a fence, does not count. With
+# no Serves line in the newest complete Issue Review, or no complete
+# Issue Review at all (none, only partial, no timeline), nothing was said:
+# the path is unknown, never "no path".
+ir() {  # <when> <serves line or empty> [status, default complete]
+    printf '## Issue Review\n**Status**: %s\n**When**: %s\n**By**: t\n\n**Issue**: #1\n\n### Scope Assessment\n\n%s\n\n' "${3:-complete}" "$1" "$2"
+}
+hdr=$'---\nissue: 1\n---\n\n# Issue\n\n'
+for n in 21 22 23 24 25 26 27 28 29 30 31; do mkdir -p "$SB/wt$n/.agent/work-plans/issue-$n"; done
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none'; } > "$SB/wt21/.agent/work-plans/issue-21/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Easy to use'; ir '2026-10-02 10:00 -04:00' '**Serves**: "none" — nothing in the README'; } > "$SB/wt22/.agent/work-plans/issue-22/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none'; ir '2026-10-02 10:00 -04:00' '**Serves**: Easy to use'; } > "$SB/wt23/.agent/work-plans/issue-23/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' ''; printf '## Plan Authored\n**Status**: complete\n\n**Serves**: Easy to use\n\n'; } > "$SB/wt24/.agent/work-plans/issue-24/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' $'```\n## Issue Review\n**Serves**: Easy to use\n```'; } > "$SB/wt25/.agent/work-plans/issue-25/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Nonetheless a goal'; } > "$SB/wt26/.agent/work-plans/issue-26/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Easy to use'; ir '2026-10-02 10:00 -04:00' '' partial; ir '2026-10-03 10:00 -04:00' '' failed; } > "$SB/wt27/.agent/work-plans/issue-27/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: none'; ir '2026-10-02 10:00 -04:00' '**Serves**: Easy to use' partial; } > "$SB/wt28/.agent/work-plans/issue-28/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' $'### Notes\n\n**Status**: partial\n\n**Serves**: Easy to use'; } > "$SB/wt29/.agent/work-plans/issue-29/progress.md"
+{ printf '%s' "$hdr"; ir '2026-10-01 10:00 -04:00' '**Serves**: Easy to use' partial; } > "$SB/wt30/.agent/work-plans/issue-30/progress.md"
+{ printf '{"worktrees":['
+  for n in 21 22 23 24 25 26 27 28 29 30 31; do
+      [ "$n" = 21 ] || printf ','
+      printf '{"type":"workspace","issue":%s,"branch":"feature/issue-%s","path":"%s","repo":"workspace"}' "$n" "$n" "$SB/wt$n"
+  done
+  printf ']}\n'; } > "$SB/wl-serves.json"
+printf '#!/usr/bin/env bash\ncat %q\n' "$SB/wl-serves.json" > "$WS/.agent/scripts/worktree_list.sh"
+reset_marks
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(cut -f4,7 <<< "$OUT")" == $'issue 21\tno path\nissue 22\tno path\nissue 23\tPath 2\nissue 24\tpath unknown (its issue review has no Serves line)\nissue 25\tpath unknown (its issue review has no Serves line)\nissue 26\tPath 2\nissue 27\tPath 2\nissue 28\tno path\nissue 29\tPath 2\nissue 30\tpath unknown (no complete issue review)\nissue 31\tpath unknown (no complete issue review)' ]] \
+    && pass "(skill 3) path: only the newest complete Issue Review's Serves counts (a partial or failed one, with or without Serves, changes nothing); \"none\" is no path; Serves elsewhere or fenced does not count; no Serves line or no complete review is path unknown" \
+    || fail "(skill 3) path from Serves rc=$RC '$OUT'"
+rm -f "$SB/wl-serves.json"
+
+echo "TEST: sit-rep step 3 reads the roadmap's Paths paragraphs, as written"
+cp "$WS/docs/roadmap.md" "$SB/roadmap3.saved"
+printf '%s\n' '# R' '' '**Path 9, Not this.** Outside the section.' '' '## Direction' '' 'Intro.' '' \
+    '**Path 1, Alpha one.** First sentence, with `code`. Second' 'sentence.' '' \
+    '**Path 2, Beta.** Only one sentence' '' '## Next' > "$WS/docs/roadmap.md"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$OUT" == $'path\tPath 1\tAlpha one\tFirst sentence, with `code`.\npath\tPath 2\tBeta\tOnly one sentence' ]] \
+    && pass "(skill 3) paths: number, name and first sentence of each Path paragraph in the Direction section only" || fail "(skill 3) paths rc=$RC '$OUT'"
+printf '## Direction\n\nNo paths.\n' > "$WS/docs/roadmap.md"
+RC=0; OUT="$(cd "$SB/elsewhere" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$OUT" == "paths=none"* ]] && pass "(skill 3) paths: none in the roadmap is said, not guessed" || fail "(skill 3) no paths '$OUT'"
+mv "$SB/roadmap3.saved" "$WS/docs/roadmap.md"
+
+echo "TEST: sit-rep step 8 template: lead words, one item per line, blank lines between sections"
+tpl="$(awk '/^### 8\. / { s = 1; next } s && /^### / { exit }
+    s && !b && /^```markdown/ { b = 1; next } b && /^```/ { exit } b { print }' "$SKILL")"
+if [[ -z "$tpl" ]]; then
+    fail "(skill 8) no markdown template found in step 8"
+else
+    lead_ok=true
+    for w in "Done: " "Not yet: " "Next: " "Running: "; do
+        grep -q "^\(- \)\?$w" <<< "$tpl" || { lead_ok=false; echo "    no line led by '$w'"; }
+    done
+    $lead_ok && pass "(skill 8) lines lead with Done:, Not yet:, Next: and Running:" || fail "(skill 8) lead words"
+    joined="$(awk '/^ *- / { item = 1 } /^[[:space:]]*$/ || /^\*\*/ { item = 0 } item' <<< "$tpl" | grep -F '; ' || true)"
+    [[ -z "$joined" ]] && pass "(skill 8) no list item joins items with '; '" || fail "(skill 8) joined list items: $joined"
+    # A heading's paragraph may wrap; a bullet before the next blank line
+    # means the heading and its list are not set apart.
+    spacing="$(awk '/^\*\*[A-Z][A-Za-z ]*\*\*:/ { if (prev !~ /^[[:space:]]*$/) print "no blank line before: " $0; inhdr = 1; hdr = $0; prev = $0; next }
+        /^[[:space:]]*$/ { inhdr = 0 }
+        inhdr && /^- / { print "no blank line after: " hdr; inhdr = 0 }
+        { prev = $0 }' <<< "$tpl")"
+    [[ -z "$spacing" ]] && pass "(skill 8) a blank line before every section heading and after it" || fail "(skill 8) spacing: $spacing"
+fi
+grep -qF 'By default it is the focus: Path 1, Path' "$SKILL" && grep -qF '`no path`' "$SKILL" \
+    && pass "(skill 8) the report marks each item's path and asks for the focus" || fail "(skill 8) path words or focus question missing"
+# A pull request with no worktree has no timeline read, so it is never
+# `no path` (work that serves neither path): Path 1 by a Direction line,
+# else path unknown.
+sk_flat="$(tr '\n' ' ' < "$SKILL" | tr -s ' ')"
+grep -qF 'A branch with only a pull request has no timeline here, so no Serves line was read: `Path 1` when a Direction line names its issue, else "path unknown (no worktree, timeline not read)". Its issue is the `<N>` of a `feature/issue-<N>` head branch, or an issue in step 3'"'"'s `closingIssuesReferences` whose repository is this one' <<< "$sk_flat" \
+    && grep -qF 'Never `no path`, which says the work serves neither path.' <<< "$sk_flat" \
+    && grep -qF 'isDraft,reviewDecision,updatedAt,closingIssuesReferences' "$SKILL" \
+    && pass "(skill 8) a pull request with no worktree is Path 1 by a Direction line, else path unknown, never no path" \
+    || fail "(skill 8) a pull request with no worktree: path words missing or it is still labelled no path"
 
 echo "TEST: sit-rep step 5 takes issue numbers from the line's own cells only, text kept as written"
 cat > "$WS/.agent/scripts/worktree_list.sh" <<'EOF'
@@ -1159,6 +1269,9 @@ step5 "It's \$HOME and \`x\` (#7), not #8" '`file-exists a` ; `gh-issue 9 closed
 step5 'No number here' '`gh-issue acme/other#5 closed`'
 [[ "$OUT" == *"issues_named=none"* && "$OUT" != *branch* ]] \
     && pass "(skill 5) another repository's gh-issue names no issue here" || fail "(skill 5) other repo '$OUT'"
+step5 'Two at once (#7, #9), then (#11, see below) and #8' ''
+[[ "$OUT" == *"issues_named=7 9 11"* && "$OUT" != *"issue	8"* ]] \
+    && pass "(skill 5) every number of a list (#N, #M) is taken, and (#N, text) still is" || fail "(skill 5) list '$OUT'"
 echo "TEST: sit-rep step 5 reads the acceptance case's first sentence, as written, with a simple command"
 case5() {  # <roadmap text> [<lines for the TEXT markers>]: step 5's second block against it; sets OUT, RC
     cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"

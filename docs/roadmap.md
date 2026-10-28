@@ -27,6 +27,26 @@ Design question OQ-2
 here. The run's target is the `gz4d` project, as step 5 of the Workspace
 Redesign table below says.
 
+**Paths.** Two paths run in parallel. In the owner's words (2026-10-15):
+"I think I would like two parallel paths: focus on getting the workspace
+ready to support geozui (as well as monitor the testing and evaluation of
+it) in one, and implementing the missing pieces to making this workspace
+reflect the goals we set in the other." When he asks for a sit-rep, he
+decides whether to focus on one, the other, or both; that choice is not
+written here.
+
+**Path 1, GeoZui4D.** Getting the workspace ready to support GeoZui4D, as
+well as monitoring the testing and evaluation of it. Path 1 work is an
+issue named in a Direction line below (in the line itself or its check),
+or work in the project a line's check names.
+
+**Path 2, the workspace reflects the goals.** Implementing the missing
+pieces to make this workspace reflect the goals we set: the acceptance
+cases after GeoZui4D, audit trials (starting with the escape-rate count
+and the review-round rule), the instruction-file trim, and a backlog
+sweep. Path 2 work is any other work that serves a goal in the
+README.
+
 **Format.** `sitrep_checks.sh` has the full grammar in its header.
 
 - Two tables, picked by their header: `| Line | Check |` and
@@ -52,6 +72,7 @@ Redesign table below says.
 | The user tier is installed from this checkout, with no drift | `script user_tier_install.sh --check --require` |
 | `/run-issue` can run in a project session | `file-contains .claude/skills/run-issue/SKILL.md session_scope: both` |
 | The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
+| The orchestrator skill runs issues with the owner at goal level only (#321) | `gh-issue 321 closed` |
 | GeoZui4D (`gz4d`) is onboarded through onboard-project (#332) | |
 | A `/run-issue` run started from the project root reaches the merge checkpoint | |
 | ADR-0016 is promoted from Provisional to Accepted | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
@@ -103,8 +124,9 @@ acceptance case, then the next step: the first [Direction](#direction)
 line not yet true, checked that run, and the work in flight for it. Then
 where work in flight stands, and problems to know about: an audit or
 research due, documentation that may have fallen behind, from dates and
-the commits since, and deferrals that are due (#395). The counts and the
-inbox follow. It is also what answers "What's
+the commits since, and deferrals that are due (#395). Each piece of work
+in flight names the path it serves, and the report ends by asking which
+path to focus on (#321). The counts and the inbox follow. It is also what answers "What's
 next?": it replaced the `what-next` skill (#389), and its suggested next
 step names the fact it rests on.
 
