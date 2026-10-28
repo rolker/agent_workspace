@@ -80,7 +80,11 @@
 # user_tier_install.sh --disable-root <name>, unless the plugin was
 # enabled at the root from this checkout before the run (it is then left). A rollback step that fails is
 # named in the output and on NEXT=, never reported as a clean result, and
-# while the registry line is left the status is NOT READY. A hosting directory that
+# while the registry line is left the status is NOT READY. A signal that
+# arrives while a failure, an interrupt or an unexpected exit is being
+# handled (the rollback included) waits for it to finish; a rollback cut
+# short all the same (an unexpected exit inside it) is reported NOT READY,
+# "the rollback stopped part way", naming what it left. A hosting directory that
 # setup created is kept and named on KEPT= (its clones are slow to redo,
 # and a re-run reuses it); a directory that existed before is never
 # touched, and a settings file changed after this run wrote it (a
@@ -117,7 +121,8 @@
 # Last output lines (stable, for skills and tests):
 #   STATUS=registered | registered, <verbs> not run | NOT READY | refused
 #          | removed | removed, settings file left | dry-run
-#          (NOT READY also when a rollback could not remove the line;
+#          (NOT READY also when a rollback could not remove the line,
+#          or stopped part way;
 #          "removed, settings file left" exits 1)
 #   NAME=<name>
 #   ROOT=<the project's root>
@@ -900,6 +905,9 @@ SETTINGS_CHANGED=0   # the settings file was written by this run
 # line is among it (the project is then still registered).
 ROLLBACK_LEFT=""
 LINE_LEFT=0
+ROLLBACK_RUNNING=0      # a rollback has started and not finished
+ROLLBACK_DONE=" "       # its steps finished so far, " "-separated
+ENDING=0                # a handler is ending the run: a signal then waits
 ROOT_PLUGIN_BEFORE=0    # the plugin was enabled at the root before step 4
 # Is the workspace plugin enabled at the project's root from this checkout
 # (user_tier_install.sh's "enabled" state; the ids are its PLUGIN_ID and
@@ -956,6 +964,7 @@ restore_settings() {
 rollback() {
     [ "$ROLLBACK_ARMED" -eq 1 ] || return 0
     ROLLBACK_ARMED=0
+    ROLLBACK_RUNNING=1
     echo "" >&2
     echo "Rolling back the registration of '$NAME':" >&2
     if [ "$INSTALLER_RAN" -eq 1 ] && [ "$ROOT_PLUGIN_BEFORE" -eq 1 ]; then
@@ -966,6 +975,7 @@ rollback() {
             rollback_left "the workspace plugin enabled at $PROJECT_ROOT"
         fi
     fi
+    ROLLBACK_DONE+="plugin "
     # LINE_WRITTEN is set before the registry is renamed, so a signal
     # between the rename and the next line still gets here; the line is
     # looked for, since the rename may not have happened. The name was free
@@ -980,6 +990,7 @@ rollback() {
             LINE_LEFT=1
         fi
     fi
+    ROLLBACK_DONE+="line "
     if [ "$SETTINGS_WRITING" -eq 1 ] && [ -n "$SETTINGS_WRITTEN_SUM" ] \
        && [ "$(settings_sum)" != "$SETTINGS_WRITTEN_SUM" ]; then
         # Changed after this run wrote it (a project_setting.sh set during
@@ -997,9 +1008,35 @@ rollback() {
             rollback_left "the settings file $SETTINGS"
         fi
     fi
+    ROLLBACK_DONE+="settings "
     if [ "$SETUP_RAN" -eq 1 ] && [ -e "$PROJECT_ROOT" ]; then
         KEPT="$PROJECT_ROOT"
         echo "  kept $PROJECT_ROOT: created by setup; remove it, or re-run register_project.sh to reuse it" >&2
+    fi
+    ROLLBACK_RUNNING=0
+}
+# What a rollback cut short leaves (an exit inside it): each step it had
+# not finished, under the conditions that step undoes, checked on disk
+# where it can be. The plugin step cannot be checked from here, so an
+# unfinished one is named.
+rollback_unfinished() {
+    if [[ "$ROLLBACK_DONE" != *" plugin "* ]] && [ "$INSTALLER_RAN" -eq 1 ] && [ "$ROOT_PLUGIN_BEFORE" -eq 0 ]; then
+        rollback_left "the workspace plugin enabled at $PROJECT_ROOT, perhaps"
+    fi
+    if [[ "$ROLLBACK_DONE" != *" line "* ]] && [ "$LINE_WRITTEN" -eq 1 ] && registry_raw_line "$NAME" >/dev/null; then
+        rollback_left "its registry line in $REGISTRY"
+        LINE_LEFT=1
+    fi
+    if [[ "$ROLLBACK_DONE" != *" settings "* ]] && [ "$SETTINGS_WRITING" -eq 1 ] \
+       && { [ -z "$SETTINGS_WRITTEN_SUM" ] || [ "$(settings_sum)" = "$SETTINGS_WRITTEN_SUM" ]; }; then
+        if [ -n "$SETTINGS_BACKUP" ] && [ -e "$SETTINGS_BACKUP" ]; then
+            rollback_left "the settings file $SETTINGS as this run wrote it (its content before the run is in $SETTINGS_BACKUP)"
+        elif [ -z "$SETTINGS_BACKUP" ] && [ "$SETTINGS_EXISTED" -eq 0 ] && { [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; }; then
+            rollback_left "the settings file $SETTINGS"
+        fi
+    fi
+    if [ "$SETUP_RAN" -eq 1 ] && [ -e "$PROJECT_ROOT" ]; then
+        KEPT="$PROJECT_ROOT"
     fi
 }
 # What an adopted project keeps when a run stops early: it is never
@@ -1024,8 +1061,20 @@ rolled_back_final() { # <next> <exit code>
     [ "$LINE_LEFT" -eq 1 ] && status="NOT READY"
     final "$status" "undo by hand what the rollback left ($ROLLBACK_LEFT), then $1" "$2"
 }
+# A signal while a handler is already ending the run (a failure, an
+# interrupt or an unexpected exit, its rollback included) waits for it to
+# finish: bash runs this after the running command returns, and the
+# return resumes the handler where it was.
 on_signal() {
-    trap - INT TERM HUP
+    if [ "$ENDING" -eq 1 ] || [ "$ROLLBACK_RUNNING" -eq 1 ]; then
+        if [ "$ROLLBACK_RUNNING" -eq 1 ]; then
+            echo "  (signal received: finishing the rollback first)" >&2
+        else
+            echo "  (signal received: finishing the run's last steps first)" >&2
+        fi
+        return 0
+    fi
+    ENDING=1
     if [ "$ADOPT" -eq 1 ]; then
         echo "" >&2
         echo "Interrupted." >&2
@@ -1044,6 +1093,7 @@ trap 'on_signal 129' HUP
 
 # A failure: a new registration is rolled back; an adopted one is kept.
 failed() { # <what failed> <next>
+    ENDING=1
     if [ "$ADOPT" -eq 1 ]; then
         echo "" >&2
         echo "ERROR: $1" >&2
@@ -1065,10 +1115,19 @@ RUN_STARTED=0
 on_exit() {
     local rc=$?
     { [ "$FINAL_DONE" -eq 0 ] && [ "$RUN_STARTED" -eq 1 ]; } || return 0
-    trap - INT TERM HUP
+    ENDING=1
     [ "$rc" -eq 0 ] && rc=1
     echo "" >&2
     echo "ERROR: register_project.sh stopped unexpectedly (exit $rc, above)" >&2
+    if [ "$ROLLBACK_RUNNING" -eq 1 ]; then
+        # It stopped inside the rollback: never a clean result.
+        rollback_unfinished
+        echo "ERROR: the rollback stopped part way; left: ${ROLLBACK_LEFT:-nothing it undoes was found left}" >&2
+        if [ -n "$ROLLBACK_LEFT" ]; then
+            final "NOT READY" "the rollback stopped part way: undo by hand what it left ($ROLLBACK_LEFT), then re-run register_project.sh, and report the error above" "$rc"
+        fi
+        final "NOT READY" "the rollback stopped part way: check $REGISTRY and $SETTINGS for '$NAME' by hand, then re-run register_project.sh, and report the error above" "$rc"
+    fi
     if [ "$ADOPT" -eq 1 ]; then
         adopt_kept
         final "NOT READY" "stopped unexpectedly; re-run register_project.sh $NAME, and report the error above if it recurs" "$rc"

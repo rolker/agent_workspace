@@ -796,6 +796,59 @@ check "the settings file was still removed; the line is there, as reported" \
     bash -c 'grep -q "^taul " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" taul)"
 reg "$WS" --remove taul >/dev/null
 
+echo "TEST: a signal during a failure's rollback waits for the rollback to finish"
+# The build arms the fault and fails; the rollback's registry rename then
+# sends TERM to the run (signal-after, once), between the line and the
+# settings file.
+PSB="$(make_proj sigrb)"
+printf 'all:\n\t@: > "$(FAULT_ARMED_BY)"\n\t@exit 3\ntest:\n\t@echo\n' > "$PSB/Makefile"
+rm -f "$SANDBOX/fault.arm" "$SANDBOX/fault.once"
+out="$(export FAULT_MODE=signal-after FAULT_ONCE="$SANDBOX/fault.once" FAULT_ARMED_BY="$SANDBOX/fault.arm"; faulty mv projects.local "$WS" "$PSB")"; rc=$?
+check "the signal arrived during the rollback" bash -c '[ -e "$1" ] && [ -e "$2" ]' _ "$SANDBOX/fault.arm" "$SANDBOX/fault.once"
+rm -f "$SANDBOX/fault.arm" "$SANDBOX/fault.once"
+check "exit 1, STATUS=refused for the build failure, never 'nothing is registered'" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"adapter build failed"* && "$2" == *"STATUS=refused"* && "$2" != *"nothing is registered"* ]]' _ "$rc" "$out"
+check "the rollback finished: no registry line, no settings file" \
+    bash -c '! grep -q "^sigrb " "$1" && [ ! -e "$2" ] && [[ "$3" == *"removed the settings file"* ]]' _ "$WS/.agent/projects.local" "$(pfile "$WS" sigrb)" "$out"
+
+echo "TEST: a second signal during an interrupt's rollback waits for the rollback to finish"
+PTS="$(make_proj taus)"
+printf 'all:\n\t@echo BUILD_START:taus >> "$(REG_LOG)"\n\t@sleep 2\ntest:\n\t@echo\n' > "$PTS/Makefile"
+rm -f "$SANDBOX/fault.arm" "$SANDBOX/fault.once"
+: > "$REG_LOG"
+(
+    export FAULT_TOOL=mv FAULT_ON=projects.local FAULT_ARMED_BY="$SANDBOX/fault.arm" FAULT_MODE=signal-after FAULT_ONCE="$SANDBOX/fault.once"
+    unset CLAUDE_CONFIG_DIR
+    cd "$SANDBOX" && HOME="$HOMEDIR" PATH="$FAULT_BIN:$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" REG_LOG="$REG_LOG" \
+        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" exec "$WS/.agent/scripts/register_project.sh" "$PTS" > "$SANDBOX/int.out" 2>&1
+) &
+IPID=$!
+for _ in $(seq 1 100); do grep -q BUILD_START:taus "$REG_LOG" && break; sleep 0.1; done
+: > "$SANDBOX/fault.arm"
+kill -TERM "$IPID" 2>/dev/null
+wait "$IPID"; rc=$?
+check "the second signal arrived during the rollback" [ -e "$SANDBOX/fault.once" ]
+rm -f "$SANDBOX/fault.arm" "$SANDBOX/fault.once"
+out="$(cat "$SANDBOX/int.out")"
+check "exit 143, STATUS=refused, interrupted, never 'stopped unexpectedly'" \
+    bash -c '[ "$1" -eq 143 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"interrupted; nothing is registered"* && "$2" != *"stopped unexpectedly"* ]]' _ "$rc" "$out"
+check "the rollback finished: no registry line, no settings file" \
+    bash -c '! grep -q "^taus " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" taus)"
+
+echo "TEST: an unexpected exit inside the rollback says it stopped part way, NOT READY, naming what it left"
+# A sandbox copy of the script with an unset variable read in the rollback,
+# after the registry line is removed and before the settings file is.
+WSR="$(make_ws)"
+sed -i.bak 's|^    if \[ "\$SETTINGS_WRITING" -eq 1 \] && \[ -n "\$SETTINGS_WRITTEN_SUM" \] \\$|    : "$REGISTER_TEST_UNSET_VARIABLE"\n&|' "$WSR/.agent/scripts/register_project.sh"
+rm -f "$WSR/.agent/scripts/register_project.sh.bak"
+check "the fault is in the sandbox copy's rollback" grep -q REGISTER_TEST_UNSET_VARIABLE "$WSR/.agent/scripts/register_project.sh"
+PRP="$(make_proj rbpart 1 1 0)"   # its build fails
+out="$(reg "$WSR" "$PRP")"; rc=$?
+check "exit non-zero, STATUS=NOT READY, 'the rollback stopped part way'" \
+    bash -c '[ "$1" -ne 0 ] && [[ "$2" == *"the rollback stopped part way"* && "$2" == *"STATUS=NOT READY"* && "$2" != *"STATUS=refused"* ]]' _ "$rc" "$out"
+check "the settings file it left is named on NEXT, and is there; the line is gone" \
+    bash -c '[[ "$1" == *"NEXT="*"the settings file $2"* ]] && [ -e "$2" ] && ! grep -q "^rbpart " "$3"' _ "$out" "$(pfile "$WSR" rbpart)" "$WSR/.agent/projects.local"
+
 echo "TEST: a failure whose rollback cannot remove the settings file names it on NEXT"
 PRF="$(make_proj rmfa 1 1 0)"   # its build fails
 out="$(faulty rm "projects.d/rmfa" "$WS" "$PRF")"; rc=$?
