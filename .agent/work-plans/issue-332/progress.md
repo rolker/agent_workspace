@@ -1351,7 +1351,7 @@ Reviewers: Claude adversarial ran (four suites green: audit 75, hook scope 149, 
 - [x] (suggestion) `clean()` uses the GNU-only `sed ':a;N;$!ba;...'`; on BSD sed it errors and every field is emptied; `tr`/awk is portable (Claude) — `.agent/scripts/project_integration_audit.sh:156`
 - [x] (suggestion) The category-6 fix text tells the user to `set <name> build=<command>`, which a `ros2_colcon` project refuses (`unused_settings`); say it applies to `single_project` (Claude) — `.claude/skills/onboard-project/SKILL.md:117-122`
 - [x] (suggestion) Tests missing for: the `session-root` finding (builder's note), a parent-type root, a negated ignore rule, the remaining ids under `instructions=none`, the more-than-10 cap — `.agent/scripts/tests/test_project_integration_audit.sh`
-- [ ] (suggestion) AGENTS.md: the `project_setting.sh` row does not mention the new write guard (`registry_require_root`; from a project root only its own file), and the new audit row repeats the over-wide `instructions=none` claim; fix both in the AGENTS.md commit — `AGENTS.md:408-411`
+- [x] (suggestion) AGENTS.md: the `project_setting.sh` row does not mention the new write guard (`registry_require_root`; from a project root only its own file), and the new audit row repeats the over-wide `instructions=none` claim; fix both in the AGENTS.md commit — `AGENTS.md:408-411`
 
 ## Checkpoint
 **Status**: complete
