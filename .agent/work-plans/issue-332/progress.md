@@ -1030,3 +1030,26 @@ Owner's decision on the one must-fix, in his words: "C fix" (fix it before the p
 ### Tests
 - Three new cases in `.agent/scripts/tests/test_register_project.sh` (synthetic sandboxes, existing signal-after fault stub): TERM after the rollback's registry rename on a failed build; a second TERM during an interrupt's rollback; an unset variable read inside a sandbox copy's rollback. On the pre-fix script: 183 passed, 6 failed (exactly the new checks); after the fix: 189 passed, 0 failed.
 - Branch-wide `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, the script suite included. The fix commit itself skipped only `validate-script-tests` (#399 rule).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 12:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `6a923041`
+**Base**: main
+**Depth**: Deep (reason: whole-branch classification unchanged, enforcement files touched); round-4 scope narrowed by the host's task line (owner's standing review-depth exception, issue 321) to the round-3 must-fix and the fix diff e8652419..6a923041 (ab758292), no cross-model reviewers
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 4 | **Ship**: recommended — no must-fix findings; the one suggestion can be applied or tracked
+
+Round taken as 4, not the counter's 11: PR 1 of 4's pre-push entries (merged as PR 403) are still on this timeline (issue 384); this branch's rounds are a658c114 (1), 89ac5d5d (2), e8652419 (3). `verdict` run with `--round 4 --prev-must-fix 1`.
+
+Round-3 must-fix confirmed fixed (ab758292): failed(), on_signal and on_exit set ENDING, rollback sets ROLLBACK_RUNNING; a signal then makes on_signal return, and bash resumes the handler after the running command, so the rollback finishes and the last lines come from the original handler (failure: STATUS=refused with the failure's NEXT; interrupt: "interrupted; nothing is registered" only after a full rollback). The traps are no longer reset, so a second signal can no longer kill the run silently mid-rollback. An exit inside the rollback reaches on_exit with ROLLBACK_RUNNING=1: rollback_unfinished checks each step not yet marked done (line looked up on disk, settings by checksum, plugin named "perhaps") and the last lines are NOT READY, "the rollback stopped part way", never a clean result. Header status contract matches the code.
+
+Signal behaviour change, judged acceptable: once a run is ending, further INT/TERM/HUP to the script are deferred until the rollback and last lines finish; only SIGKILL stops it. The ending work is bounded local steps (installer --disable-root, a registry rewrite and rename, an rm or a restore); before, a second signal killed bash with no EXIT trap and no last lines, leaving debris unreported. A terminal Ctrl-C still reaches a hung child step (the process group gets it; the installer's own INT/TERM traps exit 130/143), and that step's failure is then reported by the rollback (rollback_left, NOT READY while the line is left), not hidden — by reading, not probed. A supervisor's TERM to the script alone was already deferred by bash until the running child returned, so that case is unchanged.
+
+Checks: test_register_project.sh 189 passed, 0 failed (main checkout venv shellcheck --severity=warning clean on register_project.sh and its suite). The builder's claim that the six new checks fail on the pre-fix script was not re-run here (the scratch-copy run was denied by the permission prompt).
+
+### Findings
+- [ ] (suggestion) rollback_unfinished does not name a settings backup left when the exit came after the settings step began but the file no longer matches this run's write (inside restore_settings after the rename, or a file changed during the run): the hidden .settings-backup.* in projects.d stays unnamed on NEXT; name "$SETTINGS_BACKUP" whenever it still exists — `.agent/scripts/register_project.sh:1029`
