@@ -79,7 +79,7 @@ else waits for the owner, written `**Decided-by**: owner`.
 | `merge` | — | every answer |
 | `merge-refused` | — | every answer |
 | `phase-failed` | `retry` | `takeover` |
-| `unexpected` | only when the state is one of the other checkpoints under a name the table missed: that checkpoint's `**After**` and an allowed token; or the newest entry is a `restart` checkpoint (recipe (a); its comment still waits for his yes) | otherwise |
+| `unexpected` | only when the state is one of the other checkpoints under a name the table missed: that checkpoint's `**After**` and an allowed token; or the newest entry is a `restart` checkpoint (recipe (a); its comment is checked for first and, when not there, still waits for his yes) | otherwise |
 
 A host answer that repeats does not loop without the owner: after two
 host `retry` answers in a row for the same phase, two host `revise`
@@ -124,21 +124,28 @@ his words, moves one class inside; the issue 398 comment is the first.
      old goal. A comment, not an edit of the issue body: it adds his words
      without rewriting anyone's text.
 
-     Ask first, every time: show him the exact comment the block in "The
-     restart comment" below would post (the `$MARK` line, his words
-     quoted, the closing line and the signature) and wait for his yes. A
+     Check first, then ask. Run the check block in "The restart comment"
+     below: it looks for the comment's `$MARK` line on the issue and
+     posts nothing. On "already on the issue", the comment went out on an
+     earlier pass: ask him nothing and go on to step 3. On its "not
+     posted" line, the check itself failed: ask nothing, post nothing,
+     and the line goes into the hand-back (below). Only on "not on the
+     issue yet", ask, every time: show him the exact comment the post
+     block below would post (the `$MARK` line, his words quoted, the
+     closing line and the signature) and wait for his yes. A
      signed comment carrying his words is something a stranger could read
      as his word, so it is outside the outward boundary above (his answer
      at issue 321's merge checkpoint, 2026-10-28: "B ask first"). On his
-     yes, run the block. On his no, nothing is posted: ask him how the
+     yes, run the post block, which checks for `$MARK` again before it
+     posts. On his no, nothing is posted: ask him how the
      restated goal should reach the issue instead (he may post it himself,
      or give words he is willing to have posted, which are shown and asked
      the same way), and dispatch nothing until he has answered.
 
      On a "not posted" line, dispatch nothing: the line goes into the
      hand-back, and the `restart` entry stays the newest, so the resumed
-     drive takes the recovery path after step 3 and asks and posts it
-     then.
+     drive takes the recovery path after step 3 and checks, asks and
+     posts it then.
   3. Dispatch `review-issue` (`$WS_ROOT/.agent/scripts/dispatch_phase.sh
      --issue <N> --skill review-issue [--type <type>] [--project <project>]
      [--skill-prefix agent-workspace:]`, with this drive's own `--type`,
@@ -157,8 +164,10 @@ his words, moves one class inside; the issue 398 comment is the first.
   is the newest entry and `next` reports `unexpected`: the host does steps
   2 and 3 then, from the `restart` entry's words, without asking again
   whether to restart (the owner already decided it). The comment is not
-  covered by that decision: step 2 shows him its exact text and waits for
-  his yes before posting, as on the first pass. That `unexpected` gets no
+  covered by that decision: step 2 checks the issue for it first, and
+  only when it is not there shows him its exact text and waits for his
+  yes before posting, as on the first pass. When it is there, he is not
+  asked to approve a comment that is already public. That `unexpected` gets no
   second `## Checkpoint` entry, the one exception to run-issue step 6's "every
   checkpoint answer becomes an entry": the `restart` entry already records
   the decision, and its `**Decided-by**: owner` keeps it out of the
@@ -192,13 +201,30 @@ his words, moves one class inside; the issue 398 comment is the first.
 
 ## The restart comment
 
-Recipe (a) step 2, run from the issue's worktree only after the owner has
-seen the exact comment it posts and said yes. The comment's first line
-is printed from `$MARK`, so it matches the check word for word and a second
-run never posts the same restart twice. The block sits outside the recipe's
-list, at the start of the line, because a heredoc's closing `EOF` must
-start its line: indented inside a list item, it never closes and bash
-stops on a syntax error before any "not posted" line.
+Recipe (a) step 2 has two blocks. The check block runs first, before
+the owner is asked anything, from the issue's worktree like every `gh`
+call of the drive; it posts nothing:
+
+```bash
+MARK="Goal restated by the owner mid-drive (restart checkpoint, <its **When**>):"
+if ! COMMENTS="$(gh issue view <N> --json comments --jq '.comments[].body')"; then
+    echo "not posted: gh issue view failed, so whether it is already there is unknown" >&2
+elif grep -qF -- "$MARK" <<< "$COMMENTS"; then
+    echo "already on the issue: $MARK"
+else
+    echo "not on the issue yet: show him the comment and ask"
+fi
+```
+
+The post block is run from the issue's worktree only after the owner has
+seen the exact comment it posts and said yes. It checks for `$MARK`
+again, so a comment that went out between the check and his yes is not
+posted twice. The comment's first line is printed from `$MARK`, so it
+matches the check word for word and a second run never posts the same
+restart twice. The blocks sit outside the recipe's list, at the start of
+the line, because a heredoc's closing `EOF` must start its line: indented
+inside a list item, it never closes and bash stops on a syntax error
+before any "not posted" line.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"

@@ -288,18 +288,40 @@ if [[ -f "$ORCH" ]]; then
     # checkpoint, 2026-10-28: "B ask first"); a no posts nothing and asks
     # him how the goal should reach the issue.
     has "$ORCH" "orchestrator: the restart comment is posted only on his yes to its exact text, every time, the recovery path included" \
-        'Ask first, every time: show him the exact comment the block in "The restart comment" below would post' \
+        'Only on "not on the issue yet", ask, every time: show him the exact comment the post block below would post' \
         'and wait for his yes' \
         'On his no, nothing is posted: ask him how the restated goal should reach the issue instead' \
         'he may post it himself, or give words he is willing to have posted' \
-        'The comment is not covered by that decision: step 2 shows him its exact text and waits for his yes before posting' \
+        'The comment is not covered by that decision: step 2 checks the issue for it first, and only when it is not there shows him its exact text and waits for his yes before posting' \
         'signed comments on the issue being driven except one that carries his words' \
         'run from the issue'"'"'s worktree only after the owner has seen the exact comment it posts and said yes' \
-        '`restart` checkpoint (recipe (a); its comment still waits for his yes)'
+        '`restart` checkpoint (recipe (a); its comment is checked for first and, when not there, still waits for his yes)'
     if tr '\n' ' ' < "$ORCH" | tr -s ' ' | grep -qE 'without asking \(the owner already decided it\)|signed comment on the issue being driven is inside the outward boundary'; then
         fail "orchestrator: the restart comment is still posted without asking him"
     else
         pass "orchestrator: no text lets the restart comment go out without his yes"
+    fi
+    # Check before ask: on a resumed drive the restart comment may already
+    # be public, so the host looks for $MARK first and asks him only when
+    # it is not there; a failed check asks nothing and posts nothing. The
+    # post block keeps its own re-check as the idempotency guard.
+    has "$ORCH" "orchestrator: the restart recipe checks the issue for the comment before asking him, on the recovery path too" \
+        'Check first, then ask. Run the check block in "The restart comment" below' \
+        'On "already on the issue", the comment went out on an earlier pass: ask him nothing and go on to step 3' \
+        'the check itself failed: ask nothing, post nothing, and the line goes into the hand-back' \
+        'checks, asks and posts it then' \
+        'echo "not on the issue yet: show him the comment and ask"' \
+        'It checks for `$MARK` again'
+    orch_flat="$(tr '\n' ' ' < "$ORCH" | tr -s ' ')"
+    check_at="$(grep -bo -F -- 'Check first, then ask' <<< "$orch_flat" | head -n1 | cut -d: -f1)"
+    ask_at="$(grep -bo -F -- 'show him the exact comment' <<< "$orch_flat" | head -n1 | cut -d: -f1)"
+    chk_blk="$(grep -bo -F -- 'echo "not on the issue yet' <<< "$orch_flat" | head -n1 | cut -d: -f1)"
+    post_blk="$(grep -bo -F -- 'if gh issue comment <N>' <<< "$orch_flat" | head -n1 | cut -d: -f1)"
+    if [[ -n "$check_at" && -n "$ask_at" && -n "$chk_blk" && -n "$post_blk" \
+          && $check_at -lt $ask_at && $chk_blk -lt $post_blk ]]; then
+        pass "orchestrator: the check comes before the question, and the check block before the post block"
+    else
+        fail "orchestrator: the restart recipe asks him before checking the issue for the comment"
     fi
     # A session that ends after the Issue Review resumes at plan-task, which
     # reads a git-bug copy that may lack the restart comment, and so do
@@ -354,7 +376,13 @@ has "$RI" "run-issue: the restart words go into every review-issue, plan-task an
 has "$RI" "run-issue: the restart comment is posted only on his yes to its exact text, every time, the resumed drive included" \
     'posted only after the host has shown him the exact comment and he has said yes, every time' \
     'on a no nothing is posted and the host asks him how the restated goal should reach the issue' \
-    'the host shows him the comment and posts it on his yes, unless it is already there'
+    'the host checks first whether the comment is already there; if not, shows him the comment and posts it on his yes' \
+    'when the check itself fails, nothing is asked or posted and the "not posted" line goes into the hand-back'
+if tr '\n' ' ' < "$RI" | tr -s ' ' | grep -qF 'shows him the comment and posts it on his yes, unless it is already there'; then
+    fail "run-issue: the resumed drive still asks before checking whether the restart comment is already there"
+else
+    pass "run-issue: the resumed drive checks for the restart comment before asking"
+fi
 
 # --- The host's standing rules (#321): every rule carries its reason.
 # Rules with reasons are followed by intent, rules without them only

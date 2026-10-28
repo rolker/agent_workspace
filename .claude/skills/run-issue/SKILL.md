@@ -432,10 +432,11 @@ reach the issue), and a `review-issue` dispatch with his words quoted in
 its handoff, and in the `plan-task` handoff after it (both read a git-bug copy of the issue that
 may not have the comment yet). If the
 session ends before that dispatch writes its entry, `next` routes the
-`restart` entry to row 28, `checkpoint:unexpected`, and the host shows him
-the comment and posts it on his yes, unless it is already there, and
-dispatches `review-issue` (recipe (a)) rather than asking again whether to
-restart. Until a `## Checkpoint` with `**After**:
+`restart` entry to row 28, `checkpoint:unexpected`, and the host checks
+first whether the comment is already there; if not, shows him the comment
+and posts it on his yes (when the check itself fails, nothing is asked or
+posted and the "not posted" line goes into the hand-back), and dispatches
+`review-issue` (recipe (a)) rather than asking again whether to restart. Until a `## Checkpoint` with `**After**:
 plan` and `**Decision**: proceed` follows the newest `restart` entry, the
 host quotes that entry's words into every `review-issue`, `plan-task` and
 `review-plan` handoff, on a resumed drive too: a session that ends after
