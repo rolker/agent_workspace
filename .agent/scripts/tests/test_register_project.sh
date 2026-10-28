@@ -505,6 +505,29 @@ check "the warning names PATH and SDK_ROOT" has "$out" "sets or exports PATH, SD
 check "the warning does not name the variables the adapters read" bash -c '[[ "$1" != *"BUILD_CMD,"* && "$1" != *", BUILD_CMD"* ]]' _ "$out"
 check "the legacy file is left alone" [ -f "$WS/.agent/projects.d/nu.sh" ]
 
+echo "TEST: a legacy command with a glob character is left in the legacy file, never copied"
+# The legacy command ran through the shell's word splitting, which expands
+# a glob: 'ls Makefil?' lists the Makefile. Copied into the settings file
+# it would run without a shell and look for a file named 'Makefil?'.
+PNG="$(make_proj nuglob)"
+printf 'nuglob single_project %s\n' "$PNG" >> "$WS/.agent/projects.local"
+printf 'BUILD_CMD="make"\nTEST_CMD="ls Makefil?"\n' > "$WS/.agent/projects.d/nuglob.sh"
+out="$(reg "$WS" nuglob)"; rc=$?
+check "registered: the test still runs from the legacy file, glob expanded" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
+check "the warning names TEST_CMD, the key and the glob" \
+    has "$out" "TEST_CMD in $WS/.agent/projects.d/nuglob.sh is not copied ('test' has a glob character"
+check "only the build is copied" [ "$(cat "$(pfile "$WS" nuglob)")" = "build=make" ]
+for gv in 'pytest tests/test_*.py' 'pytest tests/[ab]*.py'; do
+    PG2="$(make_proj nuglob2)"
+    printf 'BUILD_CMD="make"\nTEST_CMD="%s"\n' "$gv" > "$WS/.agent/projects.d/nuglob2.sh"
+    out="$(reg "$WS" "$PG2" --dry-run)"
+    check "'$gv': not copied, warned, and nothing detected in its place" \
+        bash -c '[[ "$1" == *"TEST_CMD in "*"is not copied ('"'"'test'"'"' has a glob character"* && "$1" != *"test=make test"* && "$1" != *"test=pytest"* ]]' _ "$out"
+    rm -f "$WS/.agent/projects.d/nuglob2.sh"
+done
+reg "$WS" --remove nuglob >/dev/null
+rm -f "$WS/.agent/projects.d/nuglob.sh"
+
 echo "TEST: adoption refuses to rewrite a registered line"
 out="$(reg "$WS" nu ros2_colcon)"; rc=$?
 check "a different type is refused" bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"no silent rewrite"* ]]' _ "$rc" "$out"

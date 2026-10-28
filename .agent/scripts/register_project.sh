@@ -56,7 +56,11 @@
 # Registering, in order, so a failed registration leaves nothing behind:
 #   1. write the registry line (a temporary copy, re-parsed, then renamed)
 #      and the settings file. Its command keys come from --set, else the
-#      legacy .agent/projects.d/<name>.sh, else --detect's proposals.
+#      legacy .agent/projects.d/<name>.sh, else --detect's proposals. A
+#      legacy command with a glob character (* ? [) is not copied: the
+#      legacy file ran it through a shell, which expanded the glob, and the
+#      settings file runs it without one; it stays in the legacy file, with
+#      a warning naming the key.
 #      Then, when the type's registration.conf says setup=when-missing and
 #      the hosting directory does not exist, `adapter setup`.
 #   2. the static gate, registration_verify.sh <name> (read-only).
@@ -685,6 +689,14 @@ if [ "$IS_PARENT" -eq 0 ]; then
                 fi
                 _val="$(_project_file_trim "$_val")"
                 [ -n "$_val" ] || continue
+                # The legacy file's command ran through a shell, which
+                # expanded a glob; the settings file's runs without one, so
+                # the pattern would reach the command literally.
+                if [[ "$_k" != bootstrap_url ]] && [[ "$_val" == *[\*\?\[]* ]]; then
+                    echo "WARNING: $_var in $LEGACY is not copied ('$_k' has a glob character, * ? or [: the legacy command ran through a shell, which expanded it, and a command in the settings file runs without one, so the pattern would be passed literally); the adapters keep reading it from the legacy file" >&2
+                    SET_KEYS="$SET_KEYS$_k "
+                    continue
+                fi
                 if _why="$(_project_file_value_error "$_k" "$_val")"; then
                     KV+=("$_k=$_val"); KV_NOTES+=("$_k: copied from $_var in $LEGACY")
                     SET_KEYS="$SET_KEYS$_k "
