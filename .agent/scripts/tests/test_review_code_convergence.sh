@@ -61,6 +61,34 @@ out=$("$RP" round --branch feature/issue-7 --progress "$FIX/two.md")
 out=$("$RP" round --branch feature/issue-7 --progress "$FIX/ticked.md")
 [[ "$out" == $'round=3\nprev_must_fix=2' ]] && pass "round: a backticked **Branch** entry correlates with a bare one -> round 3, no silent restart" || fail "round: backticked branch (out=$out)"
 
+# a failed and a partial entry for this branch are not rounds: only the
+# complete one counts -> round 2, and prev is the complete entry's count,
+# not the newer partial one's (issue 321)
+{ printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n'
+  prepush_entry feature/issue-7 3 | sed 's/^\*\*Status\*\*: complete/**Status**: failed/'; printf '\n'
+  prepush_entry feature/issue-7 2; printf '\n'
+  prepush_entry feature/issue-7 4 | sed 's/^\*\*Status\*\*: complete/**Status**: partial/'; } > "$FIX/notcomplete.md"
+out=$("$RP" round --branch feature/issue-7 --progress "$FIX/notcomplete.md")
+[[ "$out" == $'round=2\nprev_must_fix=2' ]] && pass "round: a failed and a partial entry are not rounds -> round 2, prev from the complete entry" || fail "round: failed/partial entries (out=$out)"
+
+# a restart checkpoint (the owner restated the goal) starts the rounds
+# over: only reviews after the newest one count (issue 321)
+restart_checkpoint() {
+    printf '## Checkpoint\n**Status**: complete\n**When**: 2026-09-17 12:00 -04:00\n**By**: t (m)\n**Decided-by**: owner\n**After**: rounds\n**Decision**: restart\n'
+}
+{ printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n'
+  prepush_entry feature/issue-7 3; printf '\n'
+  prepush_entry feature/issue-7 2; printf '\n'
+  restart_checkpoint; } > "$FIX/restart0.md"
+out=$("$RP" round --branch feature/issue-7 --progress "$FIX/restart0.md")
+[[ "$out" == $'round=1\nprev_must_fix=-' ]] && pass "round: two reviews then a restart -> round 1, no prev (the old work's reviews do not count)" || fail "round: restart, no review after (out=$out)"
+{ cat "$FIX/restart0.md"; printf '\n'; prepush_entry feature/issue-7 1; } > "$FIX/restart1.md"
+out=$("$RP" round --branch feature/issue-7 --progress "$FIX/restart1.md")
+[[ "$out" == $'round=2\nprev_must_fix=1' ]] && pass "round: one review after the restart -> round 2, prev from that review" || fail "round: restart then a review (out=$out)"
+{ cat "$FIX/restart1.md"; printf '\n'; restart_checkpoint; printf '\n'; prepush_entry feature/issue-7 4; } > "$FIX/restart2.md"
+out=$("$RP" round --branch feature/issue-7 --progress "$FIX/restart2.md")
+[[ "$out" == $'round=2\nprev_must_fix=4' ]] && pass "round: two restarts -> only reviews after the newest count" || fail "round: two restarts (out=$out)"
+
 # malformed file (unterminated fence) -> non-zero, not a silent round 1
 printf '## Implementation\n```\nopen\n' > "$FIX/bad.md"
 "$RP" round --branch feature/issue-7 --progress "$FIX/bad.md" >/dev/null 2>&1; rc=$?
