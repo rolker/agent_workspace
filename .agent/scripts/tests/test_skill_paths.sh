@@ -381,14 +381,29 @@ if [[ -f "$ONB" ]]; then
         '"$WS_ROOT/.agent/scripts/session_root.sh"' 'register_project.sh <path>' \
         'Onboarding runs in a session started at the project'"'"'s root'
     has "$ONB" "onboard-project: shows the recorded choices and runs the integration audit" \
-        '"$WS_ROOT/.agent/scripts/project_setting.sh" list <name>' \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" list <settings-name>' \
         '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text'
     has "$ONB" "onboard-project: asks only unanswered footprint questions, with the provisional default" \
         'Ask only for a key with no recorded value, or the one `--reask` names' \
-        'project_records_default "$WS_ROOT" <name> accepts-footprint' \
+        'project_records_default "$WS_ROOT" <settings-name> accepts-footprint' \
         '**provisional**' \
         'until the records lookup (#393) lands, only (project, project) is stored' \
         'records still land on each issue'"'"'s feature branch'
+    has "$ONB" "onboard-project: at a parent root, settings belong to the instance the user picks" \
+        'registry_instances "$WS_ROOT" <name>' 'registry_default_instance "$WS_ROOT" <name>' \
+        '[--instance <settings-name>]'
+    has "$ONB" "onboard-project: the worktree names its project; a project with no issues gets a skill worktree" \
+        '"$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project --project <settings-name>' \
+        '"$WS_ROOT/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project <settings-name>'
+    # A heredoc delimiter not in single quotes (<< EOF, <<EOF, <<-EOF).
+    if grep -qE '<<-?[[:space:]]*[A-Za-z_]' "$ONB"; then
+        fail "onboard-project: a heredoc is unquoted, so finding text in it would be run or expanded"
+    else
+        pass "onboard-project: every heredoc is quoted (<<'EOF')"
+    fi
+    has "$ONB" "onboard-project: the signature comes from the identity sourced in the same shell" \
+        'source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1' \
+        "printf '\\n---\\n**Authored-By**: \`%s\`\\n**Model**: \`%s\`\\n' \"\$AGENT_NAME\" \"\$AGENT_MODEL\""
     has "$ONB" "onboard-project: offers only when instructions=tracked; audit-project always" \
         '### 5. Offers — only when `instructions=tracked`' \
         'When it is `none`, make no offer of a tracked file' \
