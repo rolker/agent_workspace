@@ -419,6 +419,24 @@ AUDIT_OUT="$(cd "$CLEAN" && HOME="$EMPTY_HOME" PATH="$STUB_BIN:$PATH" AGENT_WORK
 check "exit 0" [ "$AUDIT_RC" -eq 0 ]
 check "user-tier error" grep -qE $'^6\tuser-tier\terror\tuser tier\tuser_tier_install.sh --check --require failed' <<< "$AUDIT_OUT"
 
+echo "TEST: category 6, a session at the root that does not resolve to the project"
+# No registry the parser accepts makes a registered root resolve to another
+# project (duplicate paths are refused), so the sandbox's session_root.sh is
+# swapped for a stub for these two cases, then restored.
+SR="$WS/.agent/scripts/session_root.sh"
+cp -p "$SR" "$SANDBOX/session_root.real"
+printf '#!/usr/bin/env bash\necho "session_root: stub refusal" >&2\nexit 1\n' > "$SR"
+audit "$CLEAN"
+check "session_root.sh exit 1: a session-root error naming the exit and the reason" \
+    grep -qE $'^6\tsession-root\terror\t'"$CLEAN"$'\ta session started here does not resolve to .clean. \\(session_root.sh exit 1\\): session_root: stub refusal' <<< "$AUDIT_OUT"
+printf '#!/usr/bin/env bash\nprintf "root=/elsewhere\\ntype=project\\nproject=other\\n"\n' > "$SR"
+audit "$CLEAN"
+check "resolving to another project: a session-root error (got: ${AUDIT_OUT//$'\t'/ | })" \
+    grep -qE $'^6\tsession-root\terror\t'"$CLEAN"$'\t.*exit 0.*project=other' <<< "$AUDIT_OUT"
+cp -p "$SANDBOX/session_root.real" "$SR"
+audit "$CLEAN"
+check "restored: no finding again" [ -z "$AUDIT_OUT" ]
+
 echo "TEST: a root that is not a git repository"
 NG="$SANDBOX/projects/nogit"
 mkdir -p "$NG"
@@ -517,7 +535,8 @@ check "the other file is unchanged" grep -qx "instructions=tracked" "$WS/.agent/
 ps "$HR" unset clean instructions
 check "unset of another project's: refused" [ "$PS_RC" -eq 1 ]
 ps "$HR" get clean build
-check "reading another project's is allowed" [ "$PS_RC" -eq 0 ] && [ "$PS_OUT" = "make" ]
+check "reading another project's is allowed" [ "$PS_RC" -eq 0 ]
+check "and gives its value (got: $PS_OUT)" [ "$PS_OUT" = "make" ]
 ps "$OUT_REPO" set handreg instructions=none
 check "from an unregistered repository: refused" [ "$PS_RC" -ne 0 ]
 check "by the root guard" grep -qF "refusing to run" <<< "$PS_OUT"
