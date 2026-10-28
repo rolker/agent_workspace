@@ -1053,3 +1053,13 @@ Checks: test_register_project.sh 189 passed, 0 failed (main checkout venv shellc
 
 ### Findings
 - [ ] (suggestion) rollback_unfinished does not name a settings backup left when the exit came after the settings step began but the file no longer matches this run's write (inside restore_settings after the rename, or a file changed during the run): the hidden .settings-backup.* in projects.d stays unnamed on NEXT; name "$SETTINGS_BACKUP" whenever it still exists — `.agent/scripts/register_project.sh:1029`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 12:14 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (pre-push review approved at 75bceb21, round 4 of this branch, ship recommended; the one open suggestion carries into the pull-request rounds; the orchestrator's checkpoint table lets the host answer publish)
+**After**: publish
+**Decision**: publish
+
+PR 2 of 4 for issue 332 (register_project.sh, registration_verify.sh, per-type registration.conf, user_tier_install.sh --disable-root, tests, plan and design edits): four pre-push rounds on this branch (taken as 1 to 4; the counter says 8 to 11 because PR 1's entries remain, issue 384), 13 findings fixed, round 4 approved with 1 suggestion open (name the hidden settings backup file when an unexpected exit leaves it). The owner's direction for this run: "Let's have bg agents continue working on both."; his "C fix" answer at round 3 is in. Publishing.
