@@ -1016,6 +1016,155 @@ project_file_get() {
     _project_file_value_of "$entries" "$3"
 }
 
+# ------------------------------ per-type registration facts (#332, PR 2) ---
+# .agent/project_types/<type>/registration.conf: what register_project.sh
+# does for a project of that type, as data, so no script branches on a type
+# name. The settings file's line grammar (key=value split at the first
+# '=', blank lines and '#' comment lines ignored, CRLF tolerated); every
+# key is required, once:
+#   required_commands  'none', or the command settings (build test install)
+#                      a project of the type must have of its own, or
+#                      declare 'none'; registration_verify.sh refuses one
+#                      that falls through to the shared config or is missing
+#   setup              'never' (the checkout is the user's), or
+#                      'when-missing' (register_project.sh runs `adapter
+#                      setup` when the hosting directory does not exist)
+#   run                'none', or the verbs (build test) register_project.sh
+#                      runs after the static gate
+_REGISTRATION_KEYS=" required_commands setup run "
+
+# Usage: f=$(registration_conf_path "$root" "$type")
+registration_conf_path() {
+    echo "$1/.agent/project_types/$2/registration.conf"
+}
+
+# Check one value of registration.conf; prints the reason, return 1.
+_registration_value_error() {
+    local key="$1" value="$2" allowed w seen=" "
+    local -a words=()
+    case "$key" in
+        setup)
+            case "$value" in never|when-missing) return 0 ;; esac
+            echo "setup must be 'never' or 'when-missing', got '$value'"
+            return 1
+            ;;
+        required_commands) allowed=" build test install " ;;
+        run) allowed=" build test " ;;
+    esac
+    [ "$value" = "none" ] && return 0
+    read -r -a words <<< "$value"
+    for w in "${words[@]}"; do
+        if [ "$w" = "none" ]; then
+            echo "$key: 'none' stands alone, got '$value'"
+            return 1
+        fi
+        if [[ "$allowed" != *" $w "* ]]; then
+            echo "$key: '$w' is not one of:${allowed% } (or 'none')"
+            return 1
+        fi
+        if [[ "$seen" == *" $w "* ]]; then
+            echo "$key: '$w' is listed twice"
+            return 1
+        fi
+        seen="$seen$w "
+    done
+    return 0
+}
+
+# Parse registration.conf <file>. Prints "key<TAB>value" per key, or one
+# problem per line ("<file>: line N: ..." or "<file>: ...") on stderr and
+# returns 1. With <root> and <type>, a required command the type never
+# reads (its unused_settings) is a problem too.
+# Usage: entries=$(_registration_conf_parse "$file" [<root> <type>])
+_registration_conf_parse() {
+    local f="$1" root="${2:-}" ptype="${3:-}" raw line key value lineno=0 bad=0 seen=" " reason k known urc
+    local -a out=()
+    if [ ! -e "$f" ] && [ ! -L "$f" ]; then
+        echo "$f: missing (every project type needs one: required_commands, setup, run)" >&2
+        return 1
+    fi
+    if [ ! -f "$f" ] || [ ! -r "$f" ]; then
+        echo "$f: exists but is not a readable file" >&2
+        return 1
+    fi
+    known="${_REGISTRATION_KEYS# }"; known="${known% }"
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        lineno=$((lineno + 1))
+        line="$(_project_file_trim "${raw%$'\r'}")"
+        [ -z "$line" ] && continue
+        [[ "$line" == \#* ]] && continue
+        if [[ "$line" != *=* ]]; then
+            echo "$f: line $lineno: expected key=value, got '$line' (keys: $known)" >&2
+            bad=1; continue
+        fi
+        key="$(_project_file_trim "${line%%=*}")"
+        value="$(_project_file_trim "${line#*=}")"
+        if ! _project_file_key_in "$key" "$_REGISTRATION_KEYS"; then
+            echo "$f: line $lineno: unknown key '$key' (keys: $known)" >&2
+            bad=1; continue
+        fi
+        if [[ "$seen" == *" $key "* ]]; then
+            echo "$f: line $lineno: '$key' is set twice" >&2
+            bad=1; continue
+        fi
+        seen="$seen$key "
+        if [ -z "$value" ]; then
+            echo "$f: line $lineno: empty value for '$key' (use 'none' for an empty list)" >&2
+            bad=1; continue
+        fi
+        if ! reason="$(_registration_value_error "$key" "$value")"; then
+            echo "$f: line $lineno: $reason" >&2
+            bad=1; continue
+        fi
+        if [ "$key" = "required_commands" ] && [ -n "$ptype" ] && [ "$value" != "none" ]; then
+            for k in $value; do
+                urc=0; reason="$(_project_type_unused_setting "$root" "$ptype" "$k")" || urc=$?
+                if [ "$urc" -eq 0 ]; then
+                    echo "$f: line $lineno: '$k' is required, but the type's unused_settings says it never reads it ($reason)" >&2
+                    bad=1
+                elif [ "$urc" -eq 2 ]; then
+                    echo "$f: line $lineno: cannot tell whether type $ptype reads '$k': $reason" >&2
+                    bad=1
+                fi
+            done
+        fi
+        out+=("$key"$'\t'"$value")
+    done < "$f"
+    for k in $_REGISTRATION_KEYS; do
+        if [[ "$seen" != *" $k "* ]]; then
+            echo "$f: '$k' is not set (every key is required: $known)" >&2
+            bad=1
+        fi
+    done
+    [ "$bad" -eq 0 ] || return 1
+    printf '%s\n' "${out[@]}"
+}
+
+# Problems with type <type>'s registration.conf under workspace <root>, one
+# per line on stdout; return 1 when there are any. Used by
+# validate_adapter.sh.
+# Usage: registration_conf_problems "$root" "$type"
+registration_conf_problems() {
+    local out
+    if ! out="$(_registration_conf_parse "$(registration_conf_path "$1" "$2")" "$1" "$2" 2>&1 >/dev/null)"; then
+        printf '%s\n' "$out"
+        return 1
+    fi
+    return 0
+}
+
+# Print the value of <key> in type <type>'s registration.conf, with 'none'
+# printed as an empty line. Return 2 (problems on stderr) when the file is
+# missing or invalid.
+# Usage: run=$(registration_conf_get "$root" "$type" run)
+registration_conf_get() {
+    local entries v
+    entries="$(_registration_conf_parse "$(registration_conf_path "$1" "$2")" "$1" "$2")" || return 2
+    v="$(_project_file_value_of "$entries" "$3")" || return 2
+    [ "$v" = "none" ] && v=""
+    printf '%s\n' "$v"
+}
+
 # Git common dir of the repository at or above <dir>, absolute and
 # symlink-resolved. Return 1 when <dir> is in no repository.
 _records_git_common_dir() {

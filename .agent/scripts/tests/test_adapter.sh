@@ -262,6 +262,48 @@ test_validator_checks_unused_settings() {
     assert_eq "no list at all: exit 0" "0" "$rc"
 }
 
+test_validator_checks_registration_conf() {
+    echo "TEST: validator requires each type's registration.conf: every key once, valid values (#332)"
+    local sb out rc conf
+    sb="$(make_sandbox)"
+    conf="$sb/.agent/project_types/single_project/registration.conf"
+    printf '# comment\r\n\r\nrequired_commands=build test\r\nsetup=never\r\nrun=none\r\n' > "$conf"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "a valid file (CRLF, comments, blanks, run=none): exit 0" "0" "$rc"
+    assert_not_contains "a valid file: no complaint" "registration.conf is missing or invalid" "$out"
+
+    printf 'required_commands=build bootstrap\nsetup=sometimes\nsetup=never\nrun=\nextra=1\n' > "$conf"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "a bad file: exit 1" "1" "$rc"
+    assert_contains "a bad file: flagged" "single_project: registration.conf is missing or invalid" "$out"
+    assert_contains "unknown command named with its line" "line 1: required_commands: 'bootstrap' is not one of: build test install" "$out"
+    assert_contains "bad setup value named" "line 2: setup must be 'never' or 'when-missing'" "$out"
+    assert_contains "duplicate key named" "line 3: 'setup' is set twice" "$out"
+    assert_contains "empty value named" "line 4: empty value for 'run'" "$out"
+    assert_contains "unknown key named" "line 5: unknown key 'extra'" "$out"
+
+    printf 'required_commands=build\nsetup=never\n' > "$conf"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "a missing key: exit 1" "1" "$rc"
+    assert_contains "a missing key named" "'run' is not set" "$out"
+
+    printf 'required_commands=none\nsetup=never\nrun=install\n' > "$conf"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "run=install (registration never runs install): exit 1" "1" "$rc"
+    assert_contains "run=install named" "run: 'install' is not one of: build test" "$out"
+
+    printf 'test the type never reads it\n' > "$sb/.agent/project_types/single_project/unused_settings"
+    printf 'required_commands=build test\nsetup=never\nrun=build\n' > "$conf"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "a required command the type never reads: exit 1" "1" "$rc"
+    assert_contains "the contradiction named" "'test' is required, but the type's unused_settings says it never reads it" "$out"
+
+    rm -f "$conf"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "no registration.conf: exit 1" "1" "$rc"
+    assert_contains "a missing file named" "registration.conf: missing" "$out"
+}
+
 test_validator_rejects_toplevel_exit() {
     echo "TEST: validator rejects an adapter that exits at top level (any status)"
     local sb out rc=0
@@ -734,6 +776,7 @@ test_validator_passes_complete_adapters
 test_validator_flags_missing_verbs
 test_validator_flags_missing_adapter_file
 test_validator_checks_unused_settings
+test_validator_checks_registration_conf
 test_validator_rejects_toplevel_exit
 test_validator_rejects_noisy_source
 test_validator_empty_types_dir
