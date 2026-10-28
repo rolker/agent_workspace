@@ -938,3 +938,17 @@ Checked: `git merge-tree` of 29be214e and b120d541 reproduces c1e43a9a in every 
 
 ### Findings
 - [x] (must-fix) The merge left the 321 change-log row's line count at 766, the file length on the pre-merge branch; the merged file is 800 lines and the row now follows the 332 row's 790, so the growth series reads as a shrink. Every merge to main so far kept the last row's count equal to the file length; change `| #321 | 766 |` to `| #321 | 800 |` (the edit changes no line count) — `docs/design.md:746`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 13:01 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `e89102a7`
+**Addressed**: Local Review at `fb783f81` (2026-10-28 12:53 -04:00)
+**Commits**: e89102a7
+
+The source is the round-10 Local Review the handoff named (`review_progress.sh findings` selects the latest Integrated Review, which has no open boxes, so its box was checked by editing progress.md in the fix commit). Checks: check_design_anchors.sh exit 0; main checkout's pre-commit run --files over main...HEAD, no SKIP, exit 0 (validate-script-tests passed).
+
+### Actions
+- [x] The issue 321 change-log row's line count changed from 766 to 800, the merged file's length (`wc -l docs/design.md` = 800 after the edit) — `docs/design.md:746`
