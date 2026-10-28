@@ -721,3 +721,19 @@ Round 6 (PR mode: five complete `## Local Review` entries before this one, at b2
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 09:22 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `59859992`
+**Sources**: 2 (Local Review @ `1ea24eb3` (covers `59859992` via bookkeeping), CI rollup); Copilot: no source — all twelve of its reviews (heads 6237c7e5 through 1ea24eb3) are quota-failure notices with no comments
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub side: 12 Copilot comment-reviews, 0 inline comments, 0 conversation comments, no human reviewer. Local timeline: the round-6 `## Local Review` at `1ea24eb3` (approved, 0 must-fix, 0 suggestions) is the only entry covering the head; 1ea24eb3..59859992 touches only this issue's progress.md. Its one unchecked line ("No issues found. LGTM.") is the empty-findings placeholder, not a finding. The pre-push entry at `ea2491f1` and the reviews at `98870a6f` and `4012a70d` are stale (verified); their boxes were closed by the Implementation entries at `cdf2ac39` and the Integrated Reviews at 888cf891 and bf136567, whose fixes (7ea84fae, 777c452e) the round-5 and round-6 reviews confirmed. Re-checked here: orchestrator recipe (a) and run-issue's restart paragraph both stop quoting the restart words at a `## Checkpoint` with `**After**: plan` and `**Decision**: proceed`; no "until Plan Authored" text remains in skills, scripts or docs (grep); test_skill_paths 80 passed, 0 failed. CI at `59859992` (09:22): ros-manifest tests and Validate Documentation pass in both runs, Validate Adapter Contract passes in one run and is pending in the other, Lint (pre-commit) pending in both.
+
+### Findings
+
+### False positives
