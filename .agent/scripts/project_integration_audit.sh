@@ -274,25 +274,29 @@ OWN_DESC="the project's own: ${OWN_CMDS[*]:-none set}"
 [ "${#OWN_CMDS[@]}" -gt 1 ] && OWN_DESC="the project's own: $(printf '%s; ' "${OWN_CMDS[@]}" | sed 's/; $//')"
 
 # candidate <file> <id> <severity> <ERE> [<skip ERE>]: one finding per
-# matching line, at most 10 per file and id.
+# matching line the skip ERE does not drop, at most 10 per file and id, then
+# one line with the count of them all.
 candidate() {
-    local f="$1" id="$2" sev="$3" re="$4" skip="${5:-}" n=0 total ln text
-    total="$(grep -ciE "$re" "$PROOT_ABS/$f" 2>/dev/null)" || total=0
+    local f="$1" id="$2" sev="$3" re="$4" skip="${5:-}" n=0 total line ln text
+    local hits=()
     while IFS= read -r line; do
         [ -n "$line" ] || continue
-        ln="${line%%:*}"
-        text="${line#*:}"
-        if [ -n "$skip" ] && grep -qiE "$skip" <<< "$text"; then
+        if [ -n "$skip" ] && grep -qiE "$skip" <<< "${line#*:}"; then
             continue
         fi
+        hits+=("$line")
+    done < <(grep -niE "$re" "$PROOT_ABS/$f" 2>/dev/null)
+    total="${#hits[@]}"
+    for line in "${hits[@]+"${hits[@]}"}"; do
         n=$((n + 1))
         if [ "$n" -gt 10 ]; then
             emit_offer 2 "$id" "$sev" "$f" "and more lines like these ($total in all)"
             break
         fi
-        text="$(sed -e 's/^[[:space:]]*//' <<< "$text" | cut -c1-200)"
+        ln="${line%%:*}"
+        text="$(sed -e 's/^[[:space:]]*//' <<< "${line#*:}" | cut -c1-200)"
         emit_offer 2 "$id" "$sev" "$f:$ln" "$text"
-    done < <(grep -niE "$re" "$PROOT_ABS/$f" 2>/dev/null)
+    done
 }
 BUILD_TOOLS='make|cmake|cargo|npm|pnpm|yarn|go|pytest|python3? -m pytest|colcon|ctest|ninja|meson'
 # commands <text> [tools]: the commands a line names, one per line: its lead
@@ -473,7 +477,6 @@ if [ -n "$PROOT_ABS" ] && [ ! -f "$PROOT_ABS/.agents/README.md" ] && [ ! -f "$PR
 fi
 
 # ------------------------------------------------- 6. registration -----
-indent_out() { sed -e 's/^/  /'; }
 _RC=0
 VOUT="$("$MAIN_ROOT/.agent/scripts/registration_verify.sh" "$NAME" 2>&1)" || _RC=$?
 while IFS= read -r line; do

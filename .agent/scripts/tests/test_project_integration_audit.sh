@@ -294,6 +294,34 @@ audit "$P2"
 check "build=cmake --build build: make -j4 and a bare make are not its own (got: $(p2_lines))" \
     [ "$(p2_lines)" = "CLAUDE.md:4 CLAUDE.md:5" ]
 
+echo "TEST: category 2, at most 10 candidate lines per file and id, then the count"
+P5="$SANDBOX/projects/p5"
+mkdir -p "$P5/.agents"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$P5/Makefile"
+printf '# guide\n' > "$P5/.agents/README.md"
+printf 'worktrees/\n' > "$P5/.gitignore"
+{
+    echo "# p5"
+    for i in 1 2 3; do echo "- Use a feature branch in a worktree ($i)."; done
+    for i in $(seq 1 12); do echo "- Push the feature branch ($i)."; done
+    for i in $(seq 1 12); do echo "- \`cargo build -p crate$i\`"; done
+} > "$P5/CLAUDE.md"
+gitq -C "$P5" init --quiet
+commit_all "$P5"
+gitq -C "$P5" remote add origin "git@example.invalid:someone/p5.git"
+register p5 "$P5" "build=make" "test=make test"
+install_ut
+audit "$P5"
+check "10 process-branch lines with a line number" \
+    [ "$(grep -cE $'^2\tprocess-branch\twarn\tCLAUDE.md:[0-9]+\t' <<< "$AUDIT_OUT")" -eq 10 ]
+check "then one line counting the 12 kept, not the 3 the worktree skip drops" \
+    grep -qxE $'2\tprocess-branch\twarn\tCLAUDE.md\tand more lines like these \\(12 in all\\)' <<< "$AUDIT_OUT"
+check "no skipped line among them" bash -c '! grep -q "worktree (" <<< "$1"' _ "$AUDIT_OUT"
+check "10 build-command lines" \
+    [ "$(grep -cE $'^2\tprocess-build-command\tinfo\tCLAUDE.md:[0-9]+\t' <<< "$AUDIT_OUT")" -eq 10 ]
+check "then one more-line" \
+    grep -qxE $'2\tprocess-build-command\tinfo\tCLAUDE.md\tand more build or test command lines' <<< "$AUDIT_OUT"
+
 echo "TEST: category 3, the records settings against .agent/work-plans/"
 P3="$SANDBOX/projects/p3"
 mkdir -p "$P3/.agents" "$P3/.agent/work-plans/issue-1"
