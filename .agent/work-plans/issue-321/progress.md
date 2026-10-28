@@ -646,3 +646,18 @@ The Integrated Review at 888cf891 has one open finding, a suggestion: a session 
 - [x] After a resume between review-issue and plan-task the restart words reached plan-task only through a git-bug copy that may lack the comment; recipe (a) and run-issue's restart paragraph now say the host quotes the newest `restart` entry's words into every `review-issue` and `plan-task` handoff until a `## Plan Authored` entry follows it, on a resumed drive too; test_skill_paths.sh checks both paragraphs — `.claude/skills/orchestrator/SKILL.md:155-161`, `.claude/skills/run-issue/SKILL.md:435-439`
 
 Checks: test_skill_paths.sh 80 passed, 0 failed; the fix commit's hooks passed (validate-script-tests included); `pre-commit run --files $(git diff --name-only main...HEAD)` from the main checkout's .venv, no SKIP, exit 0.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 09:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #400 at `4012a70d`
+**Depth**: Standard (reason: round 5 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Round 5 (PR mode: four complete `## Local Review` entries before this one, at b2fb88ef, a216e279, 98870a6f and d0ce9416; no restart). Narrow convergence check per the handoff: only the one finding the round-4 review and the Integrated Review at 888cf891 left open, and the fix diff d0ce9416..4012a70d (3 files, progress.md excluded). Cross-model: skipped (round-5 convergence check, per handoff). The finding is confirmed fixed: orchestrator recipe (a) and run-issue's restart paragraph both say the host quotes the newest `restart` entry's words into every `review-issue` and `plan-task` handoff until a `## Plan Authored` entry follows it, on a resumed drive too, with the reason (a resume after the Issue Review routes to plan-task, which reads git-bug first); the two texts agree and test_skill_paths pins each. Claude adversarial: not dispatched as a separate subagent for a 21-line prose fix; the lead read the fix in context. Static: shellcheck hook passed on test_skill_paths.sh. Tests run here: test_skill_paths 80/0. Plan drift: all three files are in the plan. CI at 4012a70d: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass; Lint (pre-commit) pending in both runs.
+
+### Findings
+- [ ] (suggestion) The quoting stops at `## Plan Authored`, but `review-plan` reads the issue the same way (git-bug first, `gh` only on an empty title or body), and a plan revised after a changes-requested Plan Review is a `plan-task` dispatch after a Plan Authored entry: both can run against a cached copy without the restart comment; carry the words into `review-plan` handoffs too and stop at the first approved `## Plan Review` after the restart, in both places and their tests — `.claude/skills/orchestrator/SKILL.md:155-161`, `.claude/skills/run-issue/SKILL.md:435-439`, `.claude/skills/review-plan/SKILL.md:120-158`
