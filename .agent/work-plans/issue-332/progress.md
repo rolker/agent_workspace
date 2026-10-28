@@ -918,3 +918,32 @@ PR 2 of 4 (register_project.sh and its gate), first pre-push review, recorded at
 ### Checks
 - test_register_project.sh: 142 passed, 0 failed; each new test was also run against the script before its fix and failed there
 - main checkout's pre-commit run --files over main...HEAD, no SKIP: every hook passed, validate-script-tests included
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 10:48 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `74d60acd`
+**Base**: main
+**Depth**: Deep (reason: 2631 changed lines across 18 files; enforcement and governance files touched; fix round classified on the whole diff, never lowered)
+**Must-fix**: 2 | **Suggestions**: 5
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Round taken as 2, not the counter's 9: this is PR 2 of 4 on a reused branch name, and PR 1's seven pre-push entries (merged as PR 403) still sit on the timeline (issue 384); this branch's round 1 is the entry at `e9a5fc45` (recorded at a658c114). `verdict` run with `--round 2 --prev-must-fix 3 --mechanical`.
+
+Round-1 findings, all confirmed fixed against the code and tests: '#', blank and '=' refused in path and field values, with a read-back check in install_registry (ffda2e5e); registry lock taken before every check and held to the end, held-lock and race tests (8ad4b990); failed backup refuses, restore by copy-beside, rename and cmp, fault-injection tests (949d7408); adopted interrupt/failure wording (50aecdc7); empty root file read as absent (9a58881c).
+
+Reviewers: static analysis (shellcheck --severity=warning on the 8 changed scripts and suites: clean; test_register_project.sh 142/0, and per the Claude adversarial run test_user_tier_install.sh 211/0 and test_adapter.sh 113/0); governance (AGENTS.md rows from 18c4fb7b still accurate against the scripts after the fix round; they await the owner at the merge checkpoint); plan drift (fix round touched only register_project.sh and its tests: none); Claude adversarial (completed, no must-fix; it did not check the docs); Gemini via agy (ran, EXIT=0, 3 suggestions); Codex (ran, EXIT=0, 3 must-fix, of which one is kept as must-fix, one merged into must-fix 2 and one taken as a suggestion). Tests use synthetic sandboxes only.
+
+The builder's reported gap (an interrupt still says "nothing is registered" when the rollback warned it could not remove the line) is taken as a finding: it is must-fix 2.
+
+### Findings
+- [ ] (must-fix) Legacy migration copies a command with a glob ('*', '?', '[') into the settings file, where it runs without a shell and is passed literally, while the legacy `exec $SP_CMD` expanded it (TEST_CMD="pytest tests/test_*.py"); an adopted project keeps the changed file. Leave such a value in the legacy file with the existing "not copied" warning, and add a test (Codex) — `.agent/scripts/register_project.sh:688`
+- [ ] (must-fix) The last lines claim a clean result after a failed cleanup: an interrupt says "nothing is registered" when rollback could not remove the line or restore the settings file (builder's gap); a signal between the registry rename and `LINE_WRITTEN=1` skips the line removal (set the flag before install_registry); --remove prints "removed the settings file" and STATUS=removed when `rm -f` fails, and its line-removal failure does not say the plugin is already disabled. Have rollback record an incomplete cleanup and let the final NEXT/STATUS say what is left (Codex + Claude) — `.agent/scripts/register_project.sh:928`
+- [ ] (suggestion) A settings path that exists but is not a regular file (dangling symlink, directory) sets SETTINGS_EXISTED=1 yet is neither backed up nor checked, so the run writes the registry first and a rollback can leave a file created through the dangling link; refuse it up front (Claude + Gemini) — `.agent/scripts/register_project.sh:714`
+- [ ] (suggestion) Rollback restores or deletes the settings file without checking it is still what this run wrote, so a `project_setting.sh set` made during a long build is lost; compare before restoring and keep it with a warning when it changed (Codex) — `.agent/scripts/register_project.sh:901`
+- [ ] (suggestion) Rollback's `--disable-root` can disable a plugin the root had enabled before this run; record the root's plugin state before step 4 and disable only what this run added (Claude) — `.agent/scripts/register_project.sh:890`
+- [ ] (suggestion) With `set -u` on and only INT/TERM/HUP trapped, an unexpected abort after the rollback is armed leaves the line and settings file with no report; add an EXIT trap guarded by ROLLBACK_ARMED (Claude) — `.agent/scripts/register_project.sh:952`
+- [ ] (suggestion) The python3 fallback in detect_commands prints "None" for `"build": null` in package.json (jq's `// empty` gives nothing); use `(... or {}).get("build") or ""` (Gemini) — `.agent/scripts/register_project.sh:238`
