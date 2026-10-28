@@ -307,6 +307,17 @@ audit "$P4"
 check "ignore-would-hide docs/roadmap.md with its rule" \
     grep -qE $'^4\tignore-would-hide\twarn\tdocs/roadmap.md\t.*\\.gitignore:2:docs/' <<< "$AUDIT_OUT"
 check "nothing outside category 4 (got: $(cats))" [ "$(cats)" = "4" ]
+# A path the project un-ignores with a "!" rule is not hidden: check-ignore
+# -v prints the negated rule and exits 0 for it, so -v must not decide.
+printf 'worktrees/\n*.md\n!AGENTS.md\n!CLAUDE.md\n!.agents/README.md\n!docs/roadmap.md\n' > "$P4/.gitignore"
+audit "$P4"
+check "a \"!\" rule un-ignores AGENTS.md, CLAUDE.md and docs/roadmap.md: no finding (got: ${AUDIT_OUT//$'\t'/ | })" \
+    bash -c '! grep -qE $'"'"'^4\tignore-would-hide\t[^\t]*\t(AGENTS|CLAUDE|docs/roadmap)'"'"' <<< "$1"' _ "$AUDIT_OUT"
+printf 'worktrees/\n*.md\n!AGENTS.md\n' > "$P4/.gitignore"
+audit "$P4"
+check "a path the \"!\" rule leaves ignored is still reported, with the ignoring rule" \
+    grep -qE $'^4\tignore-would-hide\twarn\tCLAUDE.md\t.*\\.gitignore:2:\\*\\.md' <<< "$AUDIT_OUT"
+printf 'worktrees/\ndocs/\n' > "$P4/.gitignore"
 
 echo "TEST: category 6, the user tier not installed"
 EMPTY_HOME="$SANDBOX/emptyhome"

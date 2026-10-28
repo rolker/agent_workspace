@@ -369,8 +369,10 @@ if [ "$IS_GIT" -eq 1 ]; then
              .pre-commit-config.yaml .github/workflows/ci.yml; do
         [ -n "${REPORTED[$p]:-}" ] && continue
         g ls-files --error-unmatch -- "$p" >/dev/null 2>&1 && continue
+        # -q decides: with -v, check-ignore also prints a negated ("!")
+        # rule that un-ignores the path, and exits 0 for it.
+        g check-ignore -q --no-index -- "$p" 2>/dev/null || continue
         rule="$(g check-ignore -v --no-index -- "$p" 2>/dev/null | cut -f1)" || rule=""
-        [ -n "$rule" ] || continue
         emit_offer 4 ignore-would-hide warn "$p" "a file the workspace may offer here would be ignored; the rule: $rule"
     done
 fi
