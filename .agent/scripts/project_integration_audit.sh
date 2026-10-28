@@ -158,8 +158,9 @@ fi
 # ----------------------------------------------------------- findings ---
 FINDINGS=""
 # emit <category> <id> <severity> <subject> <detail>: one TSV line; a tab
-# or a line break inside a field becomes a space or " | ".
-clean() { printf '%s' "$1" | tr '\t' ' ' | sed ':a;N;$!ba;s/\n/ | /g'; }
+# or a line break inside a field becomes a space or " | " (awk, not GNU
+# sed's ':a;N;$!ba' loop, which BSD sed refuses).
+clean() { printf '%s' "$1" | tr '\t' ' ' | awk 'NR > 1 { printf " | " } { printf "%s", $0 }'; }
 emit() {
     FINDINGS+="$(clean "$1")"$'\t'"$(clean "$2")"$'\t'"$(clean "$3")"$'\t'"$(clean "$4")"$'\t'"$(clean "$5")"$'\n'
 }
