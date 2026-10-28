@@ -274,7 +274,9 @@ Status: `decided`
   read-only gate `registration_verify.sh` (each command the type requires is the project's own or
   `none`; a shared-config fallback or a missing test command is refused), the type's build and test,
   and only then the user-tier installer. A failure removes the line and the file, and the plugin
-  enable when the installer ran; a hosting directory `setup` created is kept and reported. A line
+  enable when this run's installer added it; a settings file changed during the run is kept, and a
+  cleanup step that fails is reported, never a clean result; a hosting directory `setup` created is
+  kept and reported. A line
   written by hand is adopted by the same command, kept as it is, and reported `NOT READY` rather
   than removed when a check fails. `--remove` refuses live worktrees, disables the plugin in the root
   (`user_tier_install.sh --disable-root`), removes the line and the settings file, and leaves the
