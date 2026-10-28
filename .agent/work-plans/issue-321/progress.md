@@ -622,3 +622,13 @@ The one open suggestion is confirmed against the code: recipe (a)'s recovery par
 - [ ] (suggestion, Local Review @ `98870a6f`) After a resume between review-issue and plan-task the restart words reach plan-task only through a git-bug copy that may lack the comment; fix: in recipe (a)'s recovery paragraph, say the host quotes the newest `restart` entry's words into every `review-issue` and `plan-task` handoff after it until a `## Plan Authored` entry follows it, and say the same in run-issue's restart paragraph — `.claude/skills/orchestrator/SKILL.md:145-153`, `.claude/skills/run-issue/SKILL.md:426-435`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 08:55 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (one valid suggestion, a mechanism gap in the restart resume path; no goal question, no outward or irreversible change)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at 888cf891 has one open finding, a suggestion: a session resumed between review-issue and plan-task loses the restart words because nothing tells the host to quote the newest restart entry into the plan-task handoff. The host read the triage's fix plan (orchestrator recipe (a) recovery paragraph and run-issue's restart paragraph: quote the newest restart entry's words into every review-issue and plan-task handoff after it until a Plan Authored entry follows) and sends it to address-findings. The owner's direction for this run: "Let's have bg agents continue working on both."
