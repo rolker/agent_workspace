@@ -865,3 +865,26 @@ PR 2 of 4 (`register_project.sh`), built on PR 1 as merged (#403). Commits 3e16d
 ### Checks
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, including the script test suite. (The first run failed on `test_script_tests_hook_scope.sh` needing a ROOT_READERS row; fixed in 6cb9cef3 and re-run.)
 - Run alone: `test_register_project.sh` 105/0, `test_user_tier_install.sh` 211/0, `test_adapter.sh` 113/0, `test_project_file.sh` 474/0, `test_project_registry.sh` 263/0, `test_ros2_colcon.sh` 200/0; `check_design_anchors.sh` clean.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 10:19 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `e9a5fc45`
+**Base**: main
+**Depth**: Deep (reason: 2291 changed lines across 18 files; enforcement and governance files touched)
+**Must-fix**: 3 | **Suggestions**: 2
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Round taken as 1, not the counter's 8: this is PR 2 of 4 on a reused branch name, and PR 1's seven pre-push entries (merged as PR 403) still sit on the timeline (round counter spans PRs, issue 384). Whole diff main...HEAD classified fresh.
+
+Reviewers: static analysis (pre-commit on the 18 changed files: all hooks pass, shellcheck and the script test suites included); governance and plan drift (no drift from plan PR 2; the AGENTS.md commit 18c4fb7b is accurate against the scripts and awaits the owner at the merge checkpoint); Claude adversarial (completed, but it did not cover registration_verify.sh or the _project_registry.sh changes, which the lead reviewed instead); Gemini via agy (ran, EXIT=0; its CLAUDE_CONFIG_DIR must-fix is a false positive, since user_tier_install.sh also writes the root file to $HOME/.claude); Codex (ran, EXIT=0). Tests use synthetic sandboxes only (HOME redirected, stub claude); none reads a real checkout.
+
+### Findings
+- [ ] (must-fix) A '#' in the project path or in a field value (--role, --distro, --parent, --worktrees, --default-instance) is cut off by the registry parser (comment strip at _project_registry.sh:138), so a different directory or value is registered silently. Reject '#' (and blanks/'=' in field values), check that the parsed entry matches what was asked, and add a test (Codex + Claude) — `.agent/scripts/register_project.sh:523`
+- [ ] (must-fix) The registry lock is taken after the name-free, adopt and SETTINGS_EXISTED decisions. With two concurrent registrations of one name, the loser's rollback deletes the winner's settings file. Take the lock before those checks (or re-check under it), and only remove a settings file this run wrote (Codex + Claude) — `.agent/scripts/register_project.sh:844`
+- [ ] (must-fix) A failed settings backup (mktemp or cat) is ignored and the write proceeds. Rollback then either leaves the changed file or restores an empty or partial backup, and the restore (`cat > "$SETTINGS"`) is neither atomic nor checked. Abort before writing when the backup fails, and restore by rename with a warning on failure (Codex + Claude) — `.agent/scripts/register_project.sh:869`
+- [ ] (suggestion) For an adopted project, an interrupt reports "nothing is registered" and a failure says "kept as it is", even though the project stays registered and --set may already have changed its settings file. Word both for adoption (Gemini) — `.agent/scripts/register_project.sh:798`
+- [ ] (suggestion) An empty ~/.claude/agent-workspace-root makes `phys ""` return the cwd, so UT_STATE can wrongly be "here". Treat an empty file as absent (Claude) — `.agent/scripts/register_project.sh:733`
