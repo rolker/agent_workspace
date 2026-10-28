@@ -805,3 +805,13 @@ The round-7 suggestion is valid, checked against the code. Orchestrator recipe (
 - [ ] (suggestion, Local Review @ `61284769`) Recovery path re-asks the owner to approve a restart comment already on the issue. Fix: in recipe (a) step 2 and the recovery paragraph, check the issue for `$MARK` before asking (the same `gh issue view <N> --json comments` + `grep -qF -- "$MARK"` the block uses, run first as its own check); if it is there, skip the question and go to step 3; if the check itself fails, nothing is asked or posted and the "not posted" line goes into the hand-back as now. Keep the block's own `$MARK` re-check as the idempotency guard. Make run-issue line 436 state the same order ("checks first whether it is already there; if not, shows him the comment and posts it on his yes"), and add a test_skill_paths assertion pinning check-before-ask in both skills — `.claude/skills/orchestrator/SKILL.md`, `.claude/skills/run-issue/SKILL.md`, `.agent/scripts/tests/test_skill_paths.sh`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 09:46 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (one valid suggestion, a defect in the owner-directed ask-first change: the recovery path asks him to approve a comment already posted; mechanism fix, no goal question, no outward change; the previous host address streak was broken by the owner's own merge-checkpoint answer)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at e476f8f4 has one open finding, a suggestion: the recovery path shows the owner the restart comment and waits for his yes before the block checks the issue for the marker, so on a resumed drive he is asked to approve a comment that is already public, and run-issue's "unless it is already there" disagrees with the orchestrator text. The host read the triage's fix plan (check the issue for the marker before asking, in step 2 and the recovery paragraph; skip the question when it is there; a failed check asks nothing and posts nothing; run-issue's sentence made to match; a check-before-ask assertion in test_skill_paths.sh) and sends it to address-findings. CI is all-pass at d2cfb80e.
