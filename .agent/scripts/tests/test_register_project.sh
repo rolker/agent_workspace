@@ -252,6 +252,14 @@ check "the project's build and test did not run" [ ! -s "$REG_LOG" ]
 out="$(verify "$WS" nosuch)"; rc=$?
 check "an unregistered name exits 2" [ "$rc" -eq 2 ]
 
+echo "TEST: --skip-run registers without running build and test, and says so"
+PSK="$(make_proj upsilon)"
+: > "$REG_LOG"
+out="$(reg "$WS" "$PSK" --skip-run)"; rc=$?
+check "exit 0, STATUS=registered, build and test not run" [ "$rc" -eq 0 -a "$(status_of "$out")" = "registered, build and test not run" ]
+check "neither verb ran" [ ! -s "$REG_LOG" ]
+reg "$WS" --remove upsilon >/dev/null
+
 # ------------------------------------------------------------ dry run ---
 echo "TEST: --dry-run writes nothing, for register and for remove"
 P2="$(make_proj beta)"
