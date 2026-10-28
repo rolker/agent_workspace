@@ -815,3 +815,20 @@ The round-7 suggestion is valid, checked against the code. Orchestrator recipe (
 **Decision**: address
 
 The Integrated Review at e476f8f4 has one open finding, a suggestion: the recovery path shows the owner the restart comment and waits for his yes before the block checks the issue for the marker, so on a resumed drive he is asked to approve a comment that is already public, and run-issue's "unless it is already there" disagrees with the orchestrator text. The host read the triage's fix plan (check the issue for the marker before asking, in step 2 and the recovery paragraph; skip the question when it is there; a failed check asks nothing and posts nothing; run-issue's sentence made to match; a check-before-ask assertion in test_skill_paths.sh) and sends it to address-findings. CI is all-pass at d2cfb80e.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 09:59 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `52b9d064`
+**Addressed**: Integrated Review at `d2cfb80e` (2026-10-28 09:46 -04:00)
+**Commits**: 52b9d064
+
+### Actions
+- [x] (suggestion) Restart recipe now checks the issue for `$MARK` before asking him: a new check block runs first; "already on the issue" asks nothing and goes on to step 3; a failed check asks nothing, posts nothing and puts the "not posted" line in the hand-back; only "not on the issue yet" shows him the comment and waits for his yes. The post block keeps its own re-check. Recovery paragraph and the `unexpected` table row say the same; run-issue's resumed-drive sentence states check-then-ask; test_skill_paths pins check-before-ask in both skills (wording plus an order check, and a negative check on run-issue's old ask-first phrasing) — `.claude/skills/orchestrator/SKILL.md`, `.claude/skills/run-issue/SKILL.md`, `.agent/scripts/tests/test_skill_paths.sh`
+
+### Checks
+- test_skill_paths.sh: 86 passed, 0 failed; against the old skill text the new assertions fail (5 failures), so they bite. All 6 orchestrator bash blocks parse (bash -n).
+- Main checkout's pre-commit over `git diff --name-only main...HEAD`, no SKIP: all hooks passed (script test suite included).
+- Box checked with `review_progress.sh check --index 0` (it pointed at this Integrated Review), in commit 52b9d064.
