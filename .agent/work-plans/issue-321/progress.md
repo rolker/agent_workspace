@@ -967,3 +967,21 @@ Checked: the fix commit e89102a7 changes one cell in docs/design.md (the 321 cha
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 13:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `1102cb8d`
+**Sources**: 2 (Local Review @ `b03a1f5f` (covers `1102cb8d` via bookkeeping), CI rollup); Copilot: no source — all 26 of its comment-reviews, through b03a1f5f, are quota-failure notices with no inline comments
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+GitHub side: 26 Copilot comment-reviews, 0 inline comments, 0 conversation comments, no human reviewer. Local timeline: the round-11 `## Local Review` at `b03a1f5f` (approved, 0 must-fix, 0 suggestions; its only box is the "No issues found. LGTM." placeholder, not a finding) is the only entry covering the head; b03a1f5f..1102cb8d touches only this issue's progress.md. The round-10 must-fix (Local Review at `fb783f81`, the 321 change-log row's line count) is ticked and fixed in e89102a7; re-checked at the head: `docs/design.md:746` reads `| #321 | 800 |`, after the 332 row's 790, and `wc -l docs/design.md` = 800. The merge of main (c1e43a9a) was confirmed exact by round 10. Entries at `ea2491f1`, `98870a6f`, `4012a70d`, `1ea24eb3`, `61284769` and `daf90e84` are stale (verified) and were ruled on by earlier Integrated Reviews; none re-listed. CI at `1102cb8d` (runs 40731917186 and 40731929181): Lint (pre-commit), Validate Adapter Contract, Validate Documentation and ros-manifest tests all pass in both runs.
+
+### Findings
+- (none) No open findings. Round 11 approved with nothing open and no GitHub review raised anything.
+
+### False positives
+- (Copilot) `copilot-pull-request-reviewer` reviews at every head — each body states it was unable to review because the requester has insufficient remaining quota; no finding was produced, so they are quota placeholders, not a code or CI signal.
