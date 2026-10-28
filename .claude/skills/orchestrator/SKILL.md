@@ -136,8 +136,10 @@ moves one class inside; the issue 398 comment is the first.
      session"; without them `dispatch_phase.sh` takes `--type workspace`,
      and a project drive would review the workspace issue of the same
      number). Paste his words, quoted, into its handoff as well, like any
-     direction of his ("Several issues at once"): `review-issue` reads the
-     issue through git-bug first, whose copy may not have the comment yet.
+     direction of his ("Several issues at once"), and into the `plan-task`
+     handoff that follows it: both read the issue through git-bug first,
+     whose copy may not have the comment yet (`plan-task` calls `gh` only
+     when git-bug has no title or body).
 
   Its `## Issue Review` is then the newest entry and routes as usual. If
   the session ends before that entry is written, the `restart` checkpoint

@@ -280,6 +280,7 @@ if [[ -f "$ORCH" ]]; then
         'if gh issue comment <N> --body-file "$BODY"; then' \
         'On a "not posted" line, dispatch nothing' \
         'Paste his words, quoted, into its handoff as well' \
+        'and into the `plan-task` handoff that follows it' \
         'the host does steps 2 and 3 then, from the `restart` entry'"'"'s words'
     # The restart comment's first line is printed from $MARK, so the
     # duplicate check and the posted text cannot drift apart.
