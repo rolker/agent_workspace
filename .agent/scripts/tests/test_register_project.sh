@@ -421,6 +421,11 @@ check "an instance with --parent registers" [ "$rc" -eq 0 -a "$(status_of "$out"
 out="$(reg "$WS" fam --default-instance fam-one)"; rc=$?
 check "adding a missing default_instance to the parent is allowed" \
     bash -c '[ "$1" -eq 0 ] && grep -qE "^fam .*default_instance=fam-one" "$2"' _ "$rc" "$WS/.agent/projects.local"
+cp "$WS/.agent/projects.local" "$SANDBOX/reg.before"
+: > "$STUB_LOG"
+out="$(reg "$WS" --remove fam-one)"; rc=$?
+check "removing the parent's default_instance is refused before anything changes" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"would not parse"* ]] && cmp -s "$3" "$4" && [ ! -s "$5" ]' _ "$rc" "$out" "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$STUB_LOG"
 out="$(reg "$WS" --remove fam)"; rc=$?
 check "removing a parent with instances is refused, listing them" \
     bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"parent root with instances"* && "$2" == *"fam-one"* ]]' _ "$rc" "$out"

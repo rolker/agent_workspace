@@ -19,8 +19,9 @@
 #   <path|name>    the project's root (written to the registry as an
 #                  absolute path, never the projects/<name> default), or the
 #                  name of a project already registered (adoption, below).
-#                  A relative path needs a '/' (./x) unless that directory
-#                  exists.
+#                  A bare word that is a registered name is that project;
+#                  otherwise a relative path needs a '/' (./x) unless that
+#                  directory exists.
 #   <type>         single_project, ros2_colcon, or the pseudo-type project
 #                  (a parent root grouping instances). Omitted: ros2_colcon
 #                  when <path>/configs/manifest exists or --set
@@ -429,17 +430,25 @@ if [ "$MODE" = "remove" ]; then
         final dry-run "run again without --dry-run to remove '$NAME'"
     fi
     take_registry_lock || final refused "try again" 1
-    # The plugin first: the installer finds the root through the registry.
-    if [ "$TYPE" != "$REGISTRY_PARENT_TYPE" ] || [ -d "$PROJECT_ROOT" ]; then
-        if ! "$INSTALLER" --disable-root "$NAME" 8>&-; then
-            echo "ERROR: could not remove the workspace plugin from $PROJECT_ROOT (above); nothing else was changed" >&2
-            final refused "fix the plugin removal above, then re-run register_project.sh --remove $NAME" 1
-        fi
-    fi
+    # The registry without the line must parse (a parent's default_instance
+    # may name it) before anything changes.
     TMP="$(registry_without_name "$NAME")" || final refused "could not write a new registry" 1
-    if ! install_registry "$TMP" "$NAME" absent; then
-        echo "ERROR: the registry without '$NAME' would not parse (above; a parent's default_instance may name it); nothing removed" >&2
+    if ! _err="$(registry_entries_full "$ROOT" "$TMP" 2>&1 >/dev/null)"; then
+        printf '%s\n' "${_err//$TMP/$REGISTRY}" >&2
+        rm -f "$TMP"
+        echo "ERROR: the registry without '$NAME' would not parse (above); nothing removed" >&2
         final refused "fix the line that names '$NAME', then re-run" 1
+    fi
+    # Then the plugin: the installer finds the root through the registry,
+    # so it goes before the line.
+    if ! "$INSTALLER" --disable-root "$NAME" 8>&-; then
+        rm -f "$TMP"
+        echo "ERROR: could not remove the workspace plugin from $PROJECT_ROOT (above); nothing else was changed" >&2
+        final refused "fix the plugin removal above, then re-run register_project.sh --remove $NAME" 1
+    fi
+    if ! install_registry "$TMP" "$NAME" absent; then
+        echo "ERROR: could not write the registry without '$NAME' (above)" >&2
+        final refused "remove its line from $REGISTRY by hand" 1
     fi
     echo "removed the registry line: $LINE"
     if [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; then
