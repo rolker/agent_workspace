@@ -341,14 +341,26 @@ once more before creating anything. Then:
    itself is not in the batch: open issue or skip). Enter the worktree
    with `cd` to the path it prints.
 2. Make the changes, commit them (one commit per logical change), and show
-   the commits.
+   the commits. Each commit carries the agent's identity: shell state does
+   not persist between tool calls, so source it in the same command chain
+   as every `git commit`, with this session's own agent name, email and
+   model ID (the three-argument form, as `/run-issue` does):
+
+   ```bash
+   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+   source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" \
+     && git commit -m "<what changed>"
+   ```
 3. Push and open the pull request only on a yes. For a project with no
    GitHub remote, leave the edits on the branch, push nothing, and say
    where the branch is.
 
 ```bash
-PR_BODY_FILE=$(mktemp)
-cat << EOF > "$PR_BODY_FILE"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1
+[ -n "${AGENT_NAME:-}" ] && [ -n "${AGENT_MODEL:-}" ] || { echo "AGENT_NAME/AGENT_MODEL not set: no signature" >&2; exit 1; }
+PR_BODY_FILE="$(mktemp)"
+cat > "$PR_BODY_FILE" <<'EOF'
 ## Summary
 
 Onboarding with the workspace:
@@ -356,38 +368,46 @@ Onboarding with the workspace:
 - <each item>
 
 Closes #<N>
-
----
-**Authored-By**: \`$AGENT_NAME\`
-**Model**: \`$AGENT_MODEL\`
 EOF
+printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$PR_BODY_FILE"
 gh pr create -R <owner>/<repo> --title "Onboard the project with the workspace" \
   --body-file "$PR_BODY_FILE"
 rm -f "$PR_BODY_FILE"
 ```
 
 `<owner>/<repo>` comes from the project's `git remote get-url origin`.
+Leave out the `Closes #<N>` line when step 1 opened no issue.
+
+The body's heredoc is quoted (`<<'EOF'`): finding text often carries
+backticked commands and `$`, which an unquoted heredoc would run or
+expand. The signature is appended after it by `printf`, from the
+`AGENT_NAME` and `AGENT_MODEL` the `source` line has just set in the same
+shell, and the run stops before creating anything when they are not set,
+so a signature is never empty.
 
 ### 8. Open the issues
 
 For each "open issue" answer, after showing the title and body:
 
 ```bash
-BODY_FILE=$(mktemp)
-cat << EOF > "$BODY_FILE"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1
+[ -n "${AGENT_NAME:-}" ] && [ -n "${AGENT_MODEL:-}" ] || { echo "AGENT_NAME/AGENT_MODEL not set: no signature" >&2; exit 1; }
+BODY_FILE="$(mktemp)"
+cat > "$BODY_FILE" <<'EOF'
 ## <item>
 
 <what the audit found, where, and the fix it suggests>
 
-Found by the \`onboard-project\` skill.
-
----
-**Authored-By**: \`$AGENT_NAME\`
-**Model**: \`$AGENT_MODEL\`
+Found by the `onboard-project` skill.
 EOF
+printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$BODY_FILE"
 gh issue create -R <owner>/<repo> --title "<item title>" --body-file "$BODY_FILE"
 rm -f "$BODY_FILE"
 ```
+
+The same rules as step 7's pull request: a quoted heredoc for the text, the
+signature appended from the identity sourced in the same shell.
 
 ### 9. Summary
 
