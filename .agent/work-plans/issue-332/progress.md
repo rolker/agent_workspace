@@ -1111,3 +1111,24 @@ The Integrated Review at 57319ac6 (pull request 409, PR 2 of 4) has one open fin
 
 ### Checks
 - Main checkout's `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, `validate-script-tests` included.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 12:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #409 at `56d11847`
+**Depth**: Narrow convergence check (reason: round 5 of PR 2 of 4 under the owner's standing review-depth exception, issue 321; scope set by the host: the one finding left open by the round-4 review and the Integrated Review at `57319ac6`, plus the fix diff since `75bceb21`, i.e. commit `d0c72a0f`; no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round count: this branch's pre-push rounds are `a658c114`, `89ac5d5d`, `e8652419`, `75bceb21`, so this is its round 5. The earlier `## Local Review` entries on this timeline belong to PR 1 of 4 (merged as pull request 403) and are not counted (issue 384).
+
+Finding checked: a rollback cut short left the hidden `.settings-backup.*` unnamed when the settings file no longer matched this run's write. Confirmed fixed in `rollback_unfinished` (`.agent/scripts/register_project.sh:1031-1052`): while the settings step is unfinished and the backup exists it is always named, with the old wording when the file still matches this run's write and the new "remove it once ... is right" wording otherwise; the no-backup new-file branch keeps its old condition (`ours`). The new path also covers an exit after `backup_settings` and before `SETTINGS_WRITING=1` inside a rollback. Header status contract updated to match.
+
+Verified: `test_register_project.sh` 193 passed, 0 failed on the head; the same suite against a scratch copy with the pre-fix `register_project.sh` (`d0c72a0f^`) gives 192 passed, 1 failed, the failure being the new case "the backup is named on NEXT, to remove once the settings file is right"; the test's sed fault lands after the restore's rename and before `rm` of the backup, as intended; shellcheck --severity=warning clean on both changed files.
+
+Outside this review's scope, not a finding on the fix (for the host to judge): the ordinary rollback (not cut short) leaves the backup unnamed when it was made but `SETTINGS_WRITING` is still 0 — a signal between `backup_settings` and `SETTINGS_WRITING=1` (`register_project.sh:1182-1185`, an echo loop) takes the `:` branch at line 1000, and the run ends `refused` with the hidden backup left in `projects.d`. Pre-existing and a narrow window.
+
+### Findings
+- [ ] No issues found. LGTM.
