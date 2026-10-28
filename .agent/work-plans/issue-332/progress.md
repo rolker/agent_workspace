@@ -888,3 +888,13 @@ Reviewers: static analysis (pre-commit on the 18 changed files: all hooks pass, 
 - [ ] (must-fix) A failed settings backup (mktemp or cat) is ignored and the write proceeds. Rollback then either leaves the changed file or restores an empty or partial backup, and the restore (`cat > "$SETTINGS"`) is neither atomic nor checked. Abort before writing when the backup fails, and restore by rename with a warning on failure (Codex + Claude) — `.agent/scripts/register_project.sh:869`
 - [ ] (suggestion) For an adopted project, an interrupt reports "nothing is registered" and a failure says "kept as it is", even though the project stays registered and --set may already have changed its settings file. Word both for adoption (Gemini) — `.agent/scripts/register_project.sh:798`
 - [ ] (suggestion) An empty ~/.claude/agent-workspace-root makes `phys ""` return the cwd, so UT_STATE can wrongly be "here". Treat an empty file as absent (Claude) — `.agent/scripts/register_project.sh:733`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 10:20 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fired on a false count: review_progress.sh round reports 8 because the seven pre-push reviews of PR 1 of 4, merged as pull request 403, are still on this issue's timeline (issue 384); this branch is PR 2 of 4 and its review at a658c114 is its first round; three must-fix and two suggestions open, all mechanism fixes)
+**After**: rounds
+**Decision**: address
+
+PR 2 of 4 (register_project.sh and its gate), first pre-push review, recorded at a658c114 as round 1: 3 must-fix (a "#" in a path or field value is cut by the registry comment strip and a different directory registers silently; the registry lock is taken after the name and settings checks, so a losing concurrent run's rollback deletes the winner's settings file; a failed settings backup is ignored and the restore is neither atomic nor checked) and 2 suggestions (an interrupt on an already-registered project says "nothing is registered"; an empty ~/.claude/agent-workspace-root reads as this checkout). Host's call on must-fix 2: take the registry lock before the name and settings checks and hold it for the whole run. Sent to address-findings. The owner's direction for this run: "Let's have bg agents continue working on both."
