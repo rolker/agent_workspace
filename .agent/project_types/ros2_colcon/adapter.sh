@@ -12,10 +12,20 @@
 # when configs/manifest is absent, porting ros2's setup_layers.sh flow
 # non-interactively. The bootstrap URL (a remote bootstrap.yaml) resolves
 # from BOOTSTRAP_URL in the environment, MANIFEST_BOOTSTRAP_URL in the
-# per-project config, or configs/project_bootstrap.url in the hosting dir.
+# per-project config, or configs/project_bootstrap.url in the hosting dir;
+# a registered project's bootstrap_url setting (.agent/projects.d/<name>,
+# issue #332) comes before MANIFEST_BOOTSTRAP_URL (see _rc_bootstrap_url).
 # bootstrap.yaml fields: git_url, branch (required); layer (Pattern B —
 # clone into layers/main/<layer>_ws/src/<repo>; absent = Pattern A —
 # configs/manifest_repo/<repo>); config_path (default "config").
+#
+# Changed from main (issue #332): an INSTALL_CMD inherited from the
+# caller's environment is no longer honoured; adapter_install clears it
+# before sourcing the legacy or shared config, so only a config file (or
+# install= in the settings file) sets it. An install= command runs
+# without sourcing the legacy or shared config, so nothing they export (an
+# SDK path, PATH) reaches it: environment setup belongs in the script the
+# key points at.
 #
 # Distro handling (new capability — the ros2 scripts hardcoded jazzy):
 #   1. `distro:` field in configs/manifest/bootstrap.yaml
@@ -239,15 +249,24 @@ _rc_config_var() {
 }
 
 # Resolve the bootstrap URL (remote bootstrap.yaml). Priority: BOOTSTRAP_URL
-# env, MANIFEST_BOOTSTRAP_URL in the per-project config, then the hosting
-# dir's configs/project_bootstrap.url. Never prompts — the adapter runs
-# under make and in CI.
+# env (a per-invocation override), bootstrap_url in the per-project
+# settings file .agent/projects.d/<name> (the dispatcher's
+# ACTIVE_PROJECT_BOOTSTRAP_URL, issue #332), MANIFEST_BOOTSTRAP_URL in the
+# legacy per-project config (projects.d/<name>.sh, else the shared
+# project_config.sh), then the hosting dir's configs/project_bootstrap.url.
+# A URL taken from the shared project_config.sh is reported on stderr for a
+# registered project, as single_project reports a shared command.
+# Never prompts — the adapter runs under make and in CI.
 _rc_bootstrap_url() {
     local url="" url_file
     url="$(printf '%s' "${BOOTSTRAP_URL:-}" | tr -d '[:space:]')"
+    [ -z "$url" ] && url="${ACTIVE_PROJECT_BOOTSTRAP_URL:-}"
     if [ -z "$url" ]; then
         url="$(_rc_config_var MANIFEST_BOOTSTRAP_URL)" || return 1
         url="$(printf '%s' "$url" | tr -d '[:space:]')"
+        if [ -n "$url" ] && [ "$(_rc_config_file)" = "$WORKSPACE_ROOT/.agent/project_config.sh" ]; then
+            active_project_fallback_note bootstrap_url
+        fi
     fi
     if [ -z "$url" ]; then
         url_file="$(_rc_root)/configs/project_bootstrap.url"
@@ -283,7 +302,10 @@ _rc_bootstrap_manifest() {
         echo "ERROR: no manifest at $mdir and no bootstrap URL to fetch one." >&2
         echo "Provide the URL of the project's bootstrap.yaml via one of:" >&2
         echo "  BOOTSTRAP_URL=<url> (environment)" >&2
-        echo "  MANIFEST_BOOTSTRAP_URL=<url> in $(_rc_config_file)" >&2
+        if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
+            echo "  .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME bootstrap_url=<url>" >&2
+        fi
+        echo "  MANIFEST_BOOTSTRAP_URL=<url> in $(_rc_config_file) (legacy)" >&2
         echo "  $root/configs/project_bootstrap.url" >&2
         return 1
     fi
@@ -612,17 +634,37 @@ adapter_validate() {
 
 adapter_install() {
     # colcon installs during build; a separate deploy step is optional and
-    # config-driven, matching single_project's INSTALL_CMD semantics.
-    local config
-    config="$(_rc_config_file)"
-    if [ -f "$config" ]; then
+    # config-driven, matching single_project's install semantics (issue
+    # #332): install= in the per-project settings file, then INSTALL_CMD in
+    # the legacy projects.d/<name>.sh when it exists, else in the shared
+    # project_config.sh (reported on stderr for a registered project).
+    local from="" shared
+    shared="$WORKSPACE_ROOT/.agent/project_config.sh"
+    if [ -n "${ACTIVE_PROJECT_INSTALL:-}" ]; then
+        if [ "$ACTIVE_PROJECT_INSTALL" = "none" ]; then
+            echo "install=none: project '$ACTIVE_PROJECT_NAME' records that it has no install step — nothing to install (colcon installs during build)."
+            return 0
+        fi
+        echo "Running: $ACTIVE_PROJECT_INSTALL $*"
+        echo ""
+        cd "$(_rc_root)" || return 1
+        active_project_exec "$ACTIVE_PROJECT_INSTALL" "$@"
+    fi
+    INSTALL_CMD=""
+    if [ -n "${ACTIVE_PROJECT_CONFIG:-}" ] && [ -f "$ACTIVE_PROJECT_CONFIG" ]; then
         # shellcheck source=/dev/null
-        source "$config"
+        source "$ACTIVE_PROJECT_CONFIG"
+        from="legacy"
+    elif [ -f "$shared" ]; then
+        # shellcheck source=/dev/null
+        source "$shared"
+        [ -n "${INSTALL_CMD:-}" ] && from="shared"
     fi
     if [ -z "${INSTALL_CMD:-}" ]; then
         echo "INSTALL_CMD not set — nothing to install (colcon installs during build)."
         return 0
     fi
+    [ "$from" = "shared" ] && active_project_fallback_note install
     echo "Running: $INSTALL_CMD $*"
     echo ""
     cd "$(_rc_root)" || return 1

@@ -36,6 +36,61 @@
 #
 # See .agent/projects.local.example for a commented template.
 #
+# Per-project settings file (issue #332): .agent/projects.d/<name> (no
+# extension; gitignored, per machine). The registry line stays the index;
+# the file holds the project's own settings, one key=value per line:
+#
+#   build=./scripts/build.sh
+#   test=make test
+#   instructions=none
+#
+# - split at the first '='; blank lines and lines whose first non-blank
+#   character is '#' are ignored (no trailing comments: a command may
+#   contain '#'); surrounding blanks and a trailing CR are stripped.
+# - an unknown key, a duplicate key, an empty value or a line with no '='
+#   is an error naming the file, the line and the known keys. A malformed
+#   file stops the adapter dispatcher and `validate`; it never resolves.
+# - keys (everything else stays in the legacy projects.d/<name>.sh):
+#     build, test, install  a command, or 'none' (a recorded "this project
+#                           has none"). The value is split on blanks into
+#                           argv and run without a shell, from the project
+#                           root, with no globbing (* ? [ are literal).
+#                           Quotes, & | ; < > $ ( ) ` and backslash are
+#                           refused, and so is a first word VAR=value (no
+#                           shell applies it) and any word starting with ~
+#                           (no shell expands it): anything that needs them
+#                           is a script, so point the key at one
+#                           (build=./scripts/build.sh, or an absolute path).
+#     bootstrap_url         http(s):// or file:// URL of a ros2_colcon
+#                           bootstrap.yaml (replaces MANIFEST_BOOTSTRAP_URL)
+# - a key the project's type never reads is an error, at `set` and in the
+#   parser (so a hand-written one fails check and stops the adapter): each
+#   type lists such keys with the reason in
+#   .agent/project_types/<type>/unused_settings (_project_type_unused_setting).
+#   Today ros2_colcon lists build and test (colcon owns them; it reads
+#   install), and single_project lists bootstrap_url.
+#     location              project | outside       where the loop's records
+#     location_path         absolute path           (work plans, progress
+#     tracking              project | untracked | repo   timelines) live
+#     instructions          none | tracked          may the workspace offer
+#                           agent instructions in tracked project files
+# - records combinations (docs/design.md, Worktrees Target): valid are
+#   (project, project), (project, untracked), (outside, untracked),
+#   (outside, repo); refused are (outside, project), (project, repo),
+#   location_path without location=outside, and location=outside without
+#   tracking. An absent pair is (project, project). Every default and the
+#   outside layout come from project_records_default, and are provisional.
+#   Only (project, project) is honoured until the records lookup (#393)
+#   lands, so project_file_set refuses to store any other combination.
+# - a records repository must not be a workspace: project_records_check
+#   refuses tracking=repo when the records clone is the workspace or a copy
+#   of it (remote URL, local-path remote, or the workspace marker files).
+# - precedence for build/test/install/bootstrap_url: this file, key by key;
+#   for a key it leaves unset, the legacy .agent/projects.d/<name>.sh
+#   variable when that file exists (it is then the whole legacy layer, as
+#   before #332), otherwise the shared .agent/project_config.sh (the
+#   dispatcher and the adapters).
+#
 # Source this file from other scripts:
 #   source "$SCRIPT_DIR/_project_registry.sh"
 #
@@ -91,6 +146,14 @@ registry_entries_full() {
         # wt_project_base's path-traversal rule downstream.
         if ! [[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$name" == *..* ]]; then
             echo "ERROR: ${file}:${lineno}: invalid project name '$name'" >&2
+            rc=2
+            continue
+        fi
+        # Project 'x.sh' would own the file .agent/projects.d/x.sh, which is
+        # project 'x''s legacy command config (issue #332). Any letter case:
+        # on a case-insensitive filesystem (macOS by default) x.SH is x.sh.
+        if [[ "$name" == *.[sS][hH] ]]; then
+            echo "ERROR: ${file}:${lineno}: invalid project name '$name': a name may not end in '.sh', in any letter case (its settings file would collide with the legacy .agent/projects.d/<name>.sh of project '${name:0:${#name}-3}')" >&2
             rc=2
             continue
         fi
@@ -554,4 +617,875 @@ registry_require_root() {
     [ "$rc" -eq 2 ] && return 2
     echo "ERROR: refusing to run: $abs is neither inside the workspace ($wsabs) nor under a registered project root ($(registry_file "$root"))" >&2
     return 1
+}
+
+# ------------------------------------------- per-project settings (#332) ---
+# The file .agent/projects.d/<name>; grammar and keys in the header above.
+
+# Keys the per-project file accepts.
+_PROJECT_FILE_KEYS=" build test install bootstrap_url location location_path tracking instructions "
+# The records keys, which are set and validated together.
+_PROJECT_RECORDS_KEYS=" location location_path tracking "
+# Characters refused in a command value: anything that needs them is a script.
+_PROJECT_FILE_CMD_REFUSED=$'\'"`$&|;<>()\\'
+# The issue that builds the records lookup; until it lands only the default
+# records combination is honoured, so it is cited by every refusal.
+# shellcheck disable=SC2034
+PROJECT_RECORDS_LOOKUP_ISSUE="#393"
+# The workspace's own plugin name, one of its marker files' contents.
+_WORKSPACE_PLUGIN_NAME="agent-workspace"
+
+# Is $1 exactly one of the words in the space-separated list $2? A whole-word
+# comparison, never a substring test: "build test" or "location
+# location_path" must not pass as a key because it appears inside the list.
+# Usage: _project_file_key_in "$key" "$_PROJECT_FILE_KEYS"
+_project_file_key_in() {
+    local want="$1" k
+    local -a list
+    [ -n "$want" ] || return 1
+    read -r -a list <<< "$2"
+    for k in "${list[@]}"; do
+        [ "$k" = "$want" ] && return 0
+    done
+    return 1
+}
+
+# Print the per-project settings file path.
+# Usage: file=$(project_file_path "$root" "$name")
+project_file_path() {
+    echo "$1/.agent/projects.d/$2"
+}
+
+# Strip leading and trailing blanks (spaces and tabs) from $1.
+_project_file_trim() {
+    local s="$1"
+    s="${s#"${s%%[![:blank:]]*}"}"
+    s="${s%"${s##*[![:blank:]]}"}"
+    printf '%s' "$s"
+}
+
+# Check one value against its key's type. Prints the reason and returns 1
+# when the value is invalid.
+_project_file_value_error() {
+    local key="$1" value="$2" i c
+    case "$key" in
+        build|test|install)
+            [ "$value" = "none" ] && return 0
+            for ((i = 0; i < ${#_PROJECT_FILE_CMD_REFUSED}; i++)); do
+                c="${_PROJECT_FILE_CMD_REFUSED:i:1}"
+                if [[ "$value" == *"$c"* ]]; then
+                    echo "'$key' contains '$c': a command here is split on blanks and run without a shell, so quotes, & | ; < > \$ ( ) \` and backslash are refused; point the key at a script instead ($key=./scripts/$key.sh, relative to the project root, or an absolute path)"
+                    return 1
+                fi
+            done
+            # A first word VAR=value would be exec'd as a command name (no
+            # shell applies it as an environment assignment).
+            local first="${value%%[[:blank:]]*}"
+            if [[ "$first" == *=* ]]; then
+                echo "'$key' starts with an environment assignment '$first': a command here is run without a shell, so it would be run as a command named '$first'; point the key at a script that sets the variable instead ($key=./scripts/$key.sh, relative to the project root, or an absolute path)"
+                return 1
+            fi
+            # A word starting with ~ would reach the command literally (no
+            # shell expands it), so ~/bin/build fails as "not found".
+            local -a words=()
+            local w
+            read -r -a words <<< "$value"
+            for w in "${words[@]}"; do
+                if [[ "$w" == "~"* ]]; then
+                    echo "'$key' has a word starting with '~' ('$w'): a command here is run without a shell, so '~' is not expanded and would be passed literally; point the key at a script or an absolute path instead ($key=./scripts/$key.sh, relative to the project root, or /home/<you>/...)"
+                    return 1
+                fi
+            done
+            ;;
+        bootstrap_url)
+            if ! [[ "$value" =~ ^(https?|file)://[^[:space:]]+$ ]]; then
+                echo "bootstrap_url must be an http://, https:// or file:// URL with no blanks, got '$value'"
+                return 1
+            fi
+            ;;
+        location)
+            case "$value" in project|outside) ;; *) echo "location must be 'project' or 'outside', got '$value'"; return 1 ;; esac
+            ;;
+        location_path)
+            if [[ "$value" != /* ]]; then
+                echo "location_path must be an absolute path, got '$value'"
+                return 1
+            fi
+            if [[ "$value" == *[[:cntrl:]]* ]]; then
+                echo "location_path must not contain control characters (tabs included)"
+                return 1
+            fi
+            ;;
+        tracking)
+            case "$value" in project|untracked|repo) ;; *) echo "tracking must be 'project', 'untracked' or 'repo', got '$value'"; return 1 ;; esac
+            ;;
+        instructions)
+            case "$value" in none|tracked) ;; *) echo "instructions must be 'none' or 'tracked', got '$value'"; return 1 ;; esac
+            ;;
+    esac
+    return 0
+}
+
+# Value of <key> in parsed entries ("key<TAB>value" lines), or return 1.
+_project_file_value_of() {
+    local entries="$1" want="$2" k v
+    while IFS=$'\t' read -r k v; do
+        [ "$k" = "$want" ] && { printf '%s\n' "$v"; return 0; }
+    done <<< "$entries"
+    return 1
+}
+
+# The default records combination and outside-path layout. THE ONE PLACE a
+# records default lives (#332): the validator, the audit and the records
+# lookup (#393) call it; nothing else writes a default or a layout.
+#
+# PROVISIONAL (owner, 2026-10-13: where the defaults should be "is not
+# settled even in my mind"). They are chosen when the records lookup is
+# built and may be revised after the first real onboarding; changing them
+# touches this function and its test only.
+#
+# Modes: accepts-footprint (the default) is what an absent location/
+# tracking pair resolves to, for every file: (project, project), the
+# Target's default and what every reader does today. zero-footprint only
+# feeds onboarding's proposal; nothing stored says a project is
+# zero-footprint, so it never resolves a file.
+#
+# Prints "<location>\t<tracking>\t<outside_layout>\tprovisional", where
+# <outside_layout> is the location_path used when location=outside omits
+# it: provisionally the sibling "<clone>-records" of the project clone
+# (empty when <name> is not given or not registered).
+# Usage: project_records_default "$root" "$name" [accepts-footprint|zero-footprint]
+project_records_default() {
+    local root="${1:-}" name="${2:-}" mode="${3:-accepts-footprint}" entry clone="" layout=""
+    if [ -n "$root" ] && [ -n "$name" ]; then
+        entry="$(registry_lookup "$root" "$name" 2>/dev/null)" && clone="$(cut -f2 <<< "$entry")"
+    fi
+    [ -n "$clone" ] && layout="$(dirname "$clone")/$(basename "$clone")-records"
+    case "$mode" in
+        accepts-footprint) printf 'project\tproject\t%s\tprovisional\n' "$layout" ;;
+        zero-footprint)    printf 'outside\tuntracked\t%s\tprovisional\n' "$layout" ;;
+        *) echo "ERROR: project_records_default: unknown mode '$mode' (accepts-footprint|zero-footprint)" >&2; return 1 ;;
+    esac
+}
+
+# Resolve the records combination from raw key values (empty = absent).
+# Prints "<location>\t<tracking>" or, for a refused combination, the
+# reason (return 1). Pure: no filesystem access.
+_project_records_combination() {
+    local loc="$1" lpath="$2" track="$3" dflt dloc dtrack
+    if [ -n "$lpath" ] && [ "$loc" != "outside" ]; then
+        echo "location_path is only valid with location=outside"
+        return 1
+    fi
+    if [ "$loc" = "outside" ] && [ -z "$track" ]; then
+        echo "location=outside needs tracking=untracked or tracking=repo"
+        return 1
+    fi
+    dflt="$(project_records_default "" "" accepts-footprint)"
+    IFS=$'\t' read -r dloc dtrack _ <<< "$dflt"
+    [ -z "$loc" ] && loc="$dloc"
+    [ -z "$track" ] && track="$dtrack"
+    case "$loc/$track" in
+        project/project|project/untracked|outside/untracked|outside/repo)
+            printf '%s\t%s\n' "$loc" "$track"
+            ;;
+        outside/project)
+            echo "location=outside with tracking=project is refused: records outside the project cannot be committed in it (use tracking=untracked or tracking=repo)"
+            return 1
+            ;;
+        project/repo)
+            echo "tracking=repo is refused with location=project: a records repository is a separate clone, so it needs location=outside"
+            return 1
+            ;;
+        *)
+            echo "records combination location=$loc tracking=$track is not valid"
+            return 1
+            ;;
+    esac
+}
+
+# Why the settings-file path <file> cannot be used: prints the reason and
+# returns 0 when its directory exists but is not a searchable directory (a
+# regular file, a dangling link, no search permission), when the path is a
+# symlink that does not resolve to an existing
+# file (dangling, a loop, a missing directory on the way), or exists
+# (directly or through a symlink) but is not a readable regular file;
+# returns 1 when it can be used (absent, or a readable regular file, also
+# through a chain of symlinks with absolute or relative targets).
+_project_file_path_error() {
+    local file="$1" dir
+    if [ ! -e "$file" ] && [ ! -L "$file" ]; then
+        # Absent only when the lookup could see: a projects.d that exists
+        # (or is a link) but is not a searchable directory hides the file,
+        # and reading that as "no file" would fall through to the shared
+        # config.
+        dir="$(dirname "$file")"
+        if { [ -e "$dir" ] || [ -L "$dir" ]; } && { [ ! -d "$dir" ] || [ ! -x "$dir" ]; }; then
+            echo "the settings directory $dir exists but is not a searchable directory, so $file cannot be looked up"
+            return 0
+        fi
+        return 1
+    fi
+    if [ -L "$file" ] && [ ! -e "$file" ]; then
+        echo "$file is a symlink (to '$(readlink -- "$file" 2>/dev/null)') that does not resolve to an existing file: create its target or remove the link"
+        return 0
+    fi
+    if [ -e "$file" ]; then
+        if [ ! -f "$file" ]; then
+            echo "$file exists but is not a regular file"
+            return 0
+        fi
+        if [ ! -r "$file" ]; then
+            echo "$file is not readable"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Does settings file <file> have a key=value line whose key is exactly
+# <key>, whatever the key (unknown keys included)? Comment lines never
+# count. Return 1 when not, or when the file cannot be read.
+_project_file_has_line_key() {
+    local file="$1" want="$2" raw line
+    [ -f "$file" ] && [ -r "$file" ] || return 1
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        line="$(_project_file_trim "${raw%$'\r'}")"
+        [[ "$line" == \#* ]] && continue
+        [[ "$line" == *=* ]] || continue
+        [ "$(_project_file_trim "${line%%=*}")" = "$want" ] && return 0
+    done < "$file"
+    return 1
+}
+
+# Does project type <type> refuse settings key <key> because it never
+# reads it? Prints the reason and returns 0 when it does; returns 1 when the
+# type reads the key (or <type> is empty or has no list); prints the reason
+# and returns 2 when the list exists but cannot be read (never read as "no
+# list": that would let a refused key through). CRLF lines are read as LF
+# lines. The list is the
+# type's own data file .agent/project_types/<type>/unused_settings under
+# workspace <root> ("<key> <reason>" lines, '#' comments), so no script
+# here names a type.
+# Usage: reason=$(_project_type_unused_setting "$root" "$type" build)
+_project_type_unused_setting() {
+    local root="$1" type="$2" want="$3" f k reason
+    [ -n "$type" ] || return 1
+    f="$root/.agent/project_types/$type/unused_settings"
+    [ -e "$f" ] || [ -L "$f" ] || return 1
+    if [ ! -f "$f" ] || [ ! -r "$f" ]; then
+        echo "the list of settings project type '$type' never reads, $f, exists but is not a readable file"
+        return 2
+    fi
+    while read -r k reason || [ -n "$k" ]; do
+        k="${k%$'\r'}"; reason="${reason%$'\r'}"
+        [ -z "$k" ] && continue
+        [[ "$k" == \#* ]] && continue
+        if [ "$k" = "$want" ]; then
+            printf '%s\n' "$reason"
+            return 0
+        fi
+    done < "$f"
+    return 1
+}
+
+# Check a type's unused_settings list <file> (the grammar
+# _project_type_unused_setting reads): readable; each line that is not
+# blank or a '#' comment names a known settings key, once, followed by a
+# reason. Prints one problem per line ("line N: ...") and returns 1 when
+# there is any; returns 0 when the list is valid or absent. Used by
+# validate_adapter.sh.
+# Usage: project_type_unused_settings_problems "$file"
+project_type_unused_settings_problems() {
+    local f="$1" raw k reason lineno=0 bad=0 seen=" " known
+    [ -e "$f" ] || [ -L "$f" ] || return 0
+    if [ ! -f "$f" ] || [ ! -r "$f" ]; then
+        echo "$f exists but is not a readable file"
+        return 1
+    fi
+    known="${_PROJECT_FILE_KEYS# }"; known="${known% }"
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        lineno=$((lineno + 1))
+        raw="${raw%$'\r'}"
+        read -r k reason <<< "$raw" || true
+        [ -z "$k" ] && continue
+        [[ "$k" == \#* ]] && continue
+        if ! _project_file_key_in "$k" "$_PROJECT_FILE_KEYS"; then
+            echo "line $lineno: unknown settings key '$k' (known keys: $known)"
+            bad=1; continue
+        fi
+        if [[ "$seen" == *" $k "* ]]; then
+            echo "line $lineno: '$k' is listed twice"
+            bad=1; continue
+        fi
+        seen="$seen$k "
+        if [ -z "$reason" ]; then
+            echo "line $lineno: '$k' has no reason (the reason is what set and check show the user)"
+            bad=1; continue
+        fi
+    done < "$f"
+    return "$bad"
+}
+
+# Parse a settings file. Prints "key<TAB>value" per setting. A missing
+# file prints nothing and returns 0 (every setting at its default). Any
+# error (line grammar, unknown or duplicate key, empty or ill-typed value,
+# refused records combination) is reported on stderr naming the file and
+# line, nothing is printed, and the return is 2: a malformed file never
+# resolves. <name> (default: the file's base name) is the project named in
+# the repair hints. With <root> and <type>, a key that project type never
+# reads (_project_type_unused_setting) is an error too.
+# Usage: _project_file_parse <file> [<name> [<root> <type>]]
+_project_file_parse() {
+    local file="$1" name="${2:-}" root="${3:-}" ptype="${4:-}" raw line key value lineno=0 rc=0 urc seen=" " reason known
+    [ -n "$name" ] || name="$(basename "$file")"
+    local -a out=()
+    if reason="$(_project_file_path_error "$file")"; then
+        echo "ERROR: $reason" >&2
+        return 2
+    fi
+    [ -e "$file" ] || return 0
+    known="${_PROJECT_FILE_KEYS# }"; known="${known% }"
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        lineno=$((lineno + 1))
+        line="$(_project_file_trim "${raw%$'\r'}")"
+        [ -z "$line" ] && continue
+        [[ "$line" == \#* ]] && continue
+        if [[ "$line" != *=* ]]; then
+            echo "ERROR: ${file}:${lineno}: expected key=value, got '$line' (known keys: $known)" >&2
+            rc=2; continue
+        fi
+        key="$(_project_file_trim "${line%%=*}")"
+        value="$(_project_file_trim "${line#*=}")"
+        if ! _project_file_key_in "$key" "$_PROJECT_FILE_KEYS"; then
+            echo "ERROR: ${file}:${lineno}: unknown key '$key' (known keys: $known); remove it with: .agent/scripts/project_setting.sh unset $name '$key', or edit the file by hand" >&2
+            rc=2; continue
+        fi
+        if [[ "$seen" == *" $key "* ]]; then
+            echo "ERROR: ${file}:${lineno}: duplicate key '$key' (edit the file by hand to keep one line, or remove both with: .agent/scripts/project_setting.sh unset $name $key)" >&2
+            rc=2; continue
+        fi
+        seen="$seen$key "
+        if [ -z "$value" ]; then
+            echo "ERROR: ${file}:${lineno}: empty value for '$key' (remove the line to use the default; build, test and install take 'none' for a recorded \"this project has none\")" >&2
+            rc=2; continue
+        fi
+        if ! reason="$(_project_file_value_error "$key" "$value")"; then
+            echo "ERROR: ${file}:${lineno}: $reason" >&2
+            rc=2; continue
+        fi
+        urc=0; reason="$(_project_type_unused_setting "$root" "$ptype" "$key")" || urc=$?
+        if [ "$urc" -eq 0 ]; then
+            echo "ERROR: ${file}:${lineno}: '$key' is not read for project '$name' (type $ptype): $reason; remove it with: .agent/scripts/project_setting.sh unset $name $key" >&2
+            rc=2; continue
+        fi
+        if [ "$urc" -eq 2 ]; then
+            echo "ERROR: ${file}:${lineno}: cannot tell whether '$key' applies to project '$name': $reason" >&2
+            rc=2; continue
+        fi
+        out+=("$key"$'\t'"$value")
+    done < "$file"
+    [ "$rc" -eq 0 ] || return 2
+    local entries="" loc lpath track
+    [ "${#out[@]}" -gt 0 ] && entries="$(printf '%s\n' "${out[@]}")"
+    loc="$(_project_file_value_of "$entries" location)" || loc=""
+    lpath="$(_project_file_value_of "$entries" location_path)" || lpath=""
+    track="$(_project_file_value_of "$entries" tracking)" || track=""
+    if ! reason="$(_project_records_combination "$loc" "$lpath" "$track")"; then
+        echo "ERROR: ${file}: $reason" >&2
+        return 2
+    fi
+    [ -n "$entries" ] && printf '%s\n' "$entries"
+    return 0
+}
+
+# Parse project <name>'s settings file (see _project_file_parse).
+# Usage: entries=$(project_file_entries "$root" "$name") || { ...invalid... }
+project_file_entries() {
+    local entry ptype=""
+    entry="$(registry_lookup "$1" "$2" 2>/dev/null)" && ptype="$(cut -f1 <<< "$entry")"
+    _project_file_parse "$(project_file_path "$1" "$2")" "$2" "$1" "$ptype"
+}
+
+# Print the stored value of <key> for project <name>. Return 1 when the key
+# is not set (or there is no file), 2 when the file is invalid.
+# Usage: v=$(project_file_get "$root" "$name" build)
+project_file_get() {
+    local entries
+    entries="$(project_file_entries "$1" "$2")" || return 2
+    _project_file_value_of "$entries" "$3"
+}
+
+# Git common dir of the repository at or above <dir>, absolute and
+# symlink-resolved. Return 1 when <dir> is in no repository.
+_records_git_common_dir() {
+    local common
+    common="$(git -C "$1" rev-parse --git-common-dir 2>/dev/null)" || return 1
+    (cd "$1" 2>/dev/null && cd "$common" 2>/dev/null && pwd -P)
+}
+
+# The local path a remote URL names, resolved against <top> when relative;
+# return 1 for a network URL (scheme://host/..., or scp form host:path).
+# Git's own rule: "://" makes a URL; else a ':' before the first '/' is scp
+# form; else it is a path.
+_records_local_remote_path() {
+    local top="$1" url="$2" head
+    case "$url" in
+        file://*) url="${url#file://}"; url="${url#localhost}"; printf '%s\n' "$url"; return 0 ;;
+        *://*) return 1 ;;
+    esac
+    head="${url%%/*}"
+    [[ "$head" == *:* ]] && return 1
+    # shellcheck disable=SC2088  # a literal "~/" prefix is what we look for
+    if [ "${url:0:2}" = '~/' ]; then
+        printf '%s\n' "$HOME/${url:2}"
+        return 0
+    fi
+    case "$url" in
+        /*) printf '%s\n' "$url" ;;
+        *) printf '%s\n' "$top/$url" ;;
+    esac
+}
+
+# Normalise a network remote URL to "host/owner/repo" (lowercase; scheme,
+# user, port, trailing '/' and '.git' dropped) so https, ssh and scp forms
+# of one repository compare equal. tr, not ${1,,}: bash 3.2 (macOS
+# /bin/bash) has no case conversion, and an empty result there would skip
+# the workspace-remote refusal.
+_records_norm_url() {
+    local u
+    u="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+    u="${u%/}"; u="${u%.git}"; u="${u%/}"
+    if [[ "$u" =~ ^[a-z][a-z0-9+.-]*://([^/@]*@)?([^/:]+)(:[0-9]*)?/+(.*)$ ]]; then
+        printf '%s/%s\n' "${BASH_REMATCH[2]}" "${BASH_REMATCH[4]}"
+    elif [[ "$u" =~ ^([^@/:]+@)?([^/:]+):/*(.*)$ ]]; then
+        printf '%s/%s\n' "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+    else
+        printf '%s\n' "$u"
+    fi
+}
+
+# Print which workspace marker a repository carries (working tree or HEAD),
+# or return 1. The markers: .agent/user_tier_scripts.txt, and
+# .claude-plugin/plugin.json naming the workspace's plugin.
+_records_workspace_marker() {
+    local top="$1" plugin_re
+    plugin_re="\"name\"[[:space:]]*:[[:space:]]*\"${_WORKSPACE_PLUGIN_NAME}\""
+    if [ -f "$top/.agent/user_tier_scripts.txt" ]; then
+        echo ".agent/user_tier_scripts.txt"; return 0
+    fi
+    if [ -f "$top/.claude-plugin/plugin.json" ] && grep -Eq "$plugin_re" "$top/.claude-plugin/plugin.json" 2>/dev/null; then
+        echo ".claude-plugin/plugin.json (plugin '$_WORKSPACE_PLUGIN_NAME')"; return 0
+    fi
+    if git -C "$top" cat-file -e HEAD:.agent/user_tier_scripts.txt 2>/dev/null; then
+        echo ".agent/user_tier_scripts.txt (in its HEAD commit)"; return 0
+    fi
+    if git -C "$top" show HEAD:.claude-plugin/plugin.json 2>/dev/null | grep -Eq "$plugin_re"; then
+        echo ".claude-plugin/plugin.json (plugin '$_WORKSPACE_PLUGIN_NAME', in its HEAD commit)"; return 0
+    fi
+    return 1
+}
+
+# Is the repository holding records directory <dir> the workspace, or a
+# copy of it? A records repository must not be a workspace (owner,
+# 2026-10-13: a fork would carry other projects' records, and a pull
+# request sent back would bring them past the merge gate's bookkeeping
+# exemption). Prints the reason and returns 0 when it is; returns 1 when it
+# is not; prints why and returns 3 when it cannot tell yet: no repository
+# at <dir>, or <dir> is not the top of a clone but lies inside another
+# repository (a home dotfiles repository, say), which is not the records
+# repository. That enclosing repository is still refused when it is a
+# workspace, since records there would be committed into it.
+# Checks: the same repository as the workspace checkout (any worktree);
+# the workspace's marker files (contents, so a clone of a fork under any
+# owner is caught offline); a local-path or file:// remote at the
+# workspace checkout or one of its worktrees; a network remote equal to
+# one of the workspace's.
+_records_repo_workspace_reason() {
+    local root="$1" dir="$2" top ws_common rec_common marker r url lpath lcommon norm wurl wnorm
+    local here enclosed=0
+    [ -d "$dir" ] || { echo "no directory there yet"; return 3; }
+    top="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || { echo "no git repository there yet"; return 3; }
+    here="$(cd "$dir" 2>/dev/null && pwd -P)" || here="$dir"
+    [ "$(cd "$top" 2>/dev/null && pwd -P)" = "$here" ] || enclosed=1
+    ws_common="$(_records_git_common_dir "$root")" || ws_common=""
+    rec_common="$(_records_git_common_dir "$top")" || rec_common=""
+    if [ -n "$ws_common" ] && [ "$rec_common" = "$ws_common" ]; then
+        echo "$dir is in the workspace's own repository ($top)"
+        return 0
+    fi
+    if marker="$(_records_workspace_marker "$top")"; then
+        echo "the repository at $top contains the workspace marker $marker: it is a copy of the workspace"
+        return 0
+    fi
+    while IFS= read -r r; do
+        [ -n "$r" ] || continue
+        url="$(git -C "$top" remote get-url "$r" 2>/dev/null)" || continue
+        if lpath="$(_records_local_remote_path "$top" "$url")"; then
+            lcommon="$(_records_git_common_dir "$lpath")" || continue
+            if [ -n "$ws_common" ] && [ "$lcommon" = "$ws_common" ]; then
+                echo "its remote '$r' ($url) is the workspace checkout or one of its worktrees"
+                return 0
+            fi
+            continue
+        fi
+        norm="$(_records_norm_url "$url")"
+        while IFS= read -r wurl; do
+            [ -n "$wurl" ] || continue
+            wnorm="$(_records_norm_url "$(git -C "$root" remote get-url "$wurl" 2>/dev/null)")"
+            if [ -n "$wnorm" ] && [ "$norm" = "$wnorm" ]; then
+                echo "its remote '$r' ($url) is the workspace's remote '$wurl'"
+                return 0
+            fi
+        done < <(git -C "$root" remote 2>/dev/null)
+    done < <(git -C "$top" remote 2>/dev/null)
+    if [ "$enclosed" -eq 1 ]; then
+        echo "$dir is not the top of a clone: it lies inside the repository at $top"
+        return 3
+    fi
+    return 1
+}
+
+# Check parsed settings <entries> of project <name> (hosting dir <clone>):
+# resolve the records combination with its defaults and refuse a records
+# repository that is a workspace. Prints
+#   "<location>\t<tracking>\t<location_path>"   (location_path empty for
+#                                                location=project)
+# on stdout and notes on stderr. Return 0 when valid and honoured today
+# (the default combination), 3 when valid but not yet honoured (#393), 2
+# when refused.
+_project_records_check_entries() {
+    local root="$1" name="$2" entries="$3" loc lpath track combo dflt layout reason rc
+    loc="$(_project_file_value_of "$entries" location)" || loc=""
+    lpath="$(_project_file_value_of "$entries" location_path)" || lpath=""
+    track="$(_project_file_value_of "$entries" tracking)" || track=""
+    if ! combo="$(_project_records_combination "$loc" "$lpath" "$track")"; then
+        echo "ERROR: project '$name': $combo" >&2
+        return 2
+    fi
+    IFS=$'\t' read -r loc track <<< "$combo"
+    if [ "$loc" = "outside" ] && [ -z "$lpath" ]; then
+        dflt="$(project_records_default "$root" "$name" accepts-footprint)"
+        # cut, not read: a tab is IFS whitespace, so read would collapse an
+        # empty layout field and take the next field ("provisional").
+        layout="$(cut -f3 <<< "$dflt")"
+        lpath="$layout"
+        if [ -z "$lpath" ]; then
+            echo "ERROR: project '$name': location=outside without location_path, and no default layout (the project is not registered)" >&2
+            return 2
+        fi
+        echo "NOTE: project '$name': location_path is the provisional default $lpath (project_records_default)" >&2
+    fi
+    if [ "$track" = "repo" ]; then
+        rc=0
+        reason="$(_records_repo_workspace_reason "$root" "$lpath")" || rc=$?
+        if [ "$rc" -eq 0 ]; then
+            echo "ERROR: project '$name': a records repository must not be a workspace: $reason. Use a separate records repository, or tracking=untracked for records kept on this machine only" >&2
+            return 2
+        fi
+        if [ "$rc" -eq 3 ]; then
+            echo "NOTE: project '$name': records repository $lpath is unverifiable until cloned ($reason)" >&2
+        fi
+    fi
+    printf '%s\t%s\t%s\n' "$loc" "$track" "$lpath"
+    if [ "$loc/$track" != "project/project" ]; then
+        echo "WARNING: project '$name': records location=$loc tracking=$track is valid but not yet honoured: until the records lookup lands ($PROJECT_RECORDS_LOOKUP_ISSUE) every reader and writer still builds <worktree>/.agent/work-plans/issue-N/" >&2
+        return 3
+    fi
+    return 0
+}
+
+# Validate project <name>'s settings file and check its records settings
+# (see _project_records_check_entries for output and return codes; 2 also
+# covers a malformed file).
+# Usage: project_records_check "$root" "$name"
+project_records_check() {
+    local entries
+    entries="$(project_file_entries "$1" "$2")" || return 2
+    _project_records_check_entries "$1" "$2" "$entries"
+}
+
+# The one writer for .agent/projects.d/<name>. Arguments are 'key=value'
+# (set) or '-key' (remove; also an unknown key the file holds, so a
+# misspelt key can be repaired). The result is validated as a whole file before
+# an atomic rename; comment lines and the order of untouched lines are
+# kept. Refuses: an unregistered name, a parent root (settings belong to
+# its instances), and, until the records lookup lands (#393), a write that
+# touches the records keys and leaves any combination other than the
+# default (project, project). Prints "unchanged <file>" or "updated
+# <file>". Return 0 on success, 1 when refused, 2 when the result would be
+# an invalid file (the existing file is left as it was). An existing file
+# keeps its mode (a new one is 644), and a symlinked file stays a link:
+# its target is rewritten in place of the link, and emptied rather than
+# removed when nothing is left.
+#
+# Concurrency: the read-modify-rename runs in a subshell holding an
+# exclusive flock on a sidecar beside the resolved destination,
+# <dir>/.lock.<basename> (projects.d/.lock.<name> for an ordinary file;
+# waits PROJECT_FILE_LOCK_WAIT seconds, default 10, then refuses), so two
+# writers of one file never lose an update, even through two projects
+# whose settings files are links to one target. A link repointed while
+# the writer waited, or a file that stopped being a readable regular file
+# (replaced by a directory, say), is refused. Without flock (macOS by
+# default) the write is unlocked. The lock file is never removed: removing
+# it while another writer has it open would let a third lock a new file of
+# the same name and write alongside. So a settings file that is a link into
+# another directory leaves an untracked .lock.<basename> there, beside its
+# target (in a git checkout, ignore it).
+# The temporary file is removed on every exit, INT, TERM and HUP included.
+# A writer whose caller (the shell that ran project_file_set, $$ in the
+# subshell) has ended, killed by PID while it waited, say, writes nothing:
+# it checks once the lock is taken and again just before the rename or
+# removal, so an orphan cannot overwrite a later set.
+# Usage: project_file_set "$root" "$name" build=./b.sh -install
+project_file_set() {
+    ( _project_file_set_locked "$@" )
+}
+
+# The path the writer renames new contents onto: the file itself, or the
+# target of a symlinked one, so the rename never replaces the link. Prints
+# it, or the reason on stderr and returns 1 for a link that cannot be
+# resolved.
+_project_file_dest() {
+    local file="$1" d
+    if [ -L "$file" ]; then
+        if ! d="$(readlink -f -- "$file" 2>/dev/null)" || [ -z "$d" ]; then
+            echo "ERROR: $file is a symlink whose target cannot be resolved" >&2
+            return 1
+        fi
+        printf '%s\n' "$d"
+        return 0
+    fi
+    printf '%s\n' "$file"
+}
+
+# Is the shell that called project_file_set still running? In the
+# subshell $$ is that caller's PID. Prints why on stderr and returns 1 when
+# it has ended.
+_project_file_caller_alive() {
+    kill -0 "$$" 2>/dev/null && return 0
+    echo "ERROR: not writing $1: the process that started this write ($$) has ended" >&2
+    return 1
+}
+
+# The body of project_file_set, run in its own subshell (its traps and the
+# lock's file descriptor end with it).
+_project_file_set_locked() {
+    local root="$1" name="$2" entry ptype file dest dir tmp arg key value i found line lkey
+    local touches_records=0 reason entries rc=0 combo loc track lpath mode lock urc
+    local -a keys=() vals=() done_k=()
+    shift 2
+    if [ $# -eq 0 ]; then
+        echo "ERROR: project_file_set: nothing to set" >&2
+        return 1
+    fi
+    entry="$(registry_lookup "$root" "$name")" || rc=$?
+    if [ "$rc" -eq 2 ]; then
+        echo "ERROR: the registry $(registry_file "$root") has errors; fix it first" >&2
+        return 1
+    fi
+    if [ "$rc" -ne 0 ]; then
+        echo "ERROR: project '$name' is not registered in $(registry_file "$root")" >&2
+        return 1
+    fi
+    ptype="$(cut -f1 <<< "$entry")"
+    if [ "$ptype" = "$REGISTRY_PARENT_TYPE" ]; then
+        echo "ERROR: '$name' is a parent root (no adapter of its own); settings belong to its instances" >&2
+        return 1
+    fi
+    for arg in "$@"; do
+        if [[ "$arg" == -* ]]; then
+            key="${arg#-}"; value=""
+        elif [[ "$arg" == *=* ]]; then
+            key="${arg%%=*}"; value="${arg#*=}"
+            if [ -z "$value" ]; then
+                echo "ERROR: empty value for '$key' (use '-$key' to remove it)" >&2
+                return 1
+            fi
+        else
+            echo "ERROR: expected key=value or -key, got '$arg'" >&2
+            return 1
+        fi
+        # An unknown key is refused, except that '-key' may remove one
+        # the file holds (a misspelt key is repaired with unset).
+        if ! _project_file_key_in "$key" "$_PROJECT_FILE_KEYS" \
+            && ! { [ -n "$key" ] && [ -z "$value" ] && [[ "$arg" == -* ]] \
+                   && _project_file_has_line_key "$(project_file_path "$root" "$name")" "$key"; }; then
+            local known="${_PROJECT_FILE_KEYS# }"; known="${known% }"
+            echo "ERROR: unknown key '$key' (known keys: $known)" >&2
+            return 1
+        fi
+        if [[ "$value" == *$'\n'* ]] || [[ "$value" == *$'\r'* ]]; then
+            echo "ERROR: the value for '$key' contains a line break" >&2
+            return 1
+        fi
+        if [[ "$arg" != -* ]]; then
+            urc=0; reason="$(_project_type_unused_setting "$root" "$ptype" "$key")" || urc=$?
+            if [ "$urc" -eq 0 ]; then
+                echo "ERROR: not setting '$key' for project '$name' (type $ptype): $reason" >&2
+                return 1
+            fi
+            if [ "$urc" -eq 2 ]; then
+                echo "ERROR: not setting '$key' for project '$name': $reason" >&2
+                return 1
+            fi
+        fi
+        for ((i = 0; i < ${#keys[@]}; i++)); do
+            if [ "${keys[$i]}" = "$key" ]; then
+                echo "ERROR: '$key' given twice" >&2
+                return 1
+            fi
+        done
+        _project_file_key_in "$key" "$_PROJECT_RECORDS_KEYS" && touches_records=1
+        keys+=("$key"); vals+=("$arg")
+    done
+
+    file="$(project_file_path "$root" "$name")"
+    # A path that exists but cannot be read as a settings file is never
+    # treated as absent: its settings would be lost, or the new file moved
+    # inside a directory. Checked before the lock, whose sidecar lives
+    # beside the file (or beside the target of a symlinked one).
+    if reason="$(_project_file_path_error "$file")"; then
+        echo "ERROR: not writing: $reason (fix or remove it by hand first)" >&2
+        return 1
+    fi
+    mkdir -p "$(dirname "$file")" || return 1
+    dest="$(_project_file_dest "$file")" || return 1
+    dir="$(dirname "$dest")"
+    mkdir -p "$dir" || return 1
+    # Serialize writers of the destination. The lock is a sidecar, not the
+    # file: the rename replaces the file's inode, so a lock on the file
+    # itself would not exclude the next writer. It is named after the
+    # resolved destination, not the project, so two projects whose files
+    # link to one target take one lock.
+    lock="$dir/.lock.$(basename "$dest")"
+    if command -v flock >/dev/null 2>&1; then
+        if ! exec 9>>"$lock"; then
+            echo "ERROR: cannot open the lock file $lock" >&2
+            return 1
+        fi
+        if ! flock -x -w "${PROJECT_FILE_LOCK_WAIT:-10}" 9; then
+            echo "ERROR: not writing $file: another writer holds its lock $lock (waited ${PROJECT_FILE_LOCK_WAIT:-10} s); try again" >&2
+            return 1
+        fi
+        # The lock covers the destination resolved before it was taken; a
+        # link repointed meanwhile would be written under the wrong lock.
+        if [ "$(_project_file_dest "$file" 2>/dev/null)" != "$dest" ]; then
+            echo "ERROR: not writing $file: it was changed while waiting for the lock $lock (it no longer leads to $dest); try again" >&2
+            return 1
+        fi
+        # The same path may have stopped being a readable regular file
+        # (replaced by a directory, say): mv would then move the new
+        # contents inside it and report success.
+        if reason="$(_project_file_path_error "$file")"; then
+            echo "ERROR: not writing: $reason (changed while waiting for the lock $lock; fix or remove it by hand first)" >&2
+            return 1
+        fi
+    fi
+    # The caller may have been killed while this writer waited.
+    _project_file_caller_alive "$file" || return 1
+    # Remove the temporary file however this subshell ends.
+    _PF_TMP=""
+    trap 'rm -f -- "${_PF_TMP:-}"' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    tmp="$(mktemp "$dir/.${name}.XXXXXX")" || return 1
+    _PF_TMP="$tmp"
+    # Each write stops the writer itself (the EXIT trap removes the
+    # temporary file): a caller running project_file_set as a condition
+    # (if, ||) turns set -e off, and a cut-off file would then be
+    # validated and renamed, silently dropping a setting.
+    {
+        if [ -f "$file" ]; then
+            while IFS= read -r line || [ -n "$line" ]; do
+                line="${line%$'\r'}"
+                lkey=""
+                if [[ "$(_project_file_trim "$line")" != \#* ]] && [[ "$line" == *=* ]]; then
+                    lkey="$(_project_file_trim "${line%%=*}")"
+                fi
+                found=-1
+                for ((i = 0; i < ${#keys[@]}; i++)); do
+                    [ -n "$lkey" ] && [ "${keys[$i]}" = "$lkey" ] && found=$i
+                done
+                if [ "$found" -lt 0 ]; then
+                    printf '%s\n' "$line" || exit 1
+                elif [[ "${vals[$found]}" != -* ]] && [[ " ${done_k[*]-} " != *" $lkey "* ]]; then
+                    printf '%s\n' "${vals[$found]}" || exit 1
+                    done_k+=("$lkey")
+                fi
+            done < "$file"
+        fi
+        for ((i = 0; i < ${#keys[@]}; i++)); do
+            [[ "${vals[$i]}" == -* ]] && continue
+            [[ " ${done_k[*]-} " == *" ${keys[$i]} "* ]] && continue
+            printf '%s\n' "${vals[$i]}" || exit 1
+        done
+    } > "$tmp"
+
+    # Captures the parser's stderr only; its exit status is kept.
+    if ! reason="$(_project_file_parse "$tmp" "$name" "$root" "$ptype" 2>&1 >/dev/null)"; then
+        rm -f "$tmp"
+        echo "ERROR: not writing $file: the result would be invalid:" >&2
+        # Name the real file in the messages, not the temporary one.
+        printf '%s\n' "${reason//$tmp/$file}" >&2
+        return 2
+    fi
+    entries="$(_project_file_parse "$tmp" "$name" "$root" "$ptype")"
+    if [ "$touches_records" -eq 1 ]; then
+        loc="$(_project_file_value_of "$entries" location)" || loc=""
+        lpath="$(_project_file_value_of "$entries" location_path)" || lpath=""
+        track="$(_project_file_value_of "$entries" tracking)" || track=""
+        combo="$(_project_records_combination "$loc" "$lpath" "$track")"
+        IFS=$'\t' read -r loc track <<< "$combo"
+        if [ "$loc/$track" != "project/project" ] || [ -n "$lpath" ]; then
+            rm -f "$tmp"
+            echo "ERROR: not storing records location=$loc tracking=$track${lpath:+ location_path=$lpath} for '$name': not honoured until the records lookup lands ($PROJECT_RECORDS_LOOKUP_ISSUE): every reader and writer still builds <worktree>/.agent/work-plans/issue-N/. Set or remove location, location_path and tracking together; only the default (project, project) is stored today" >&2
+            return 1
+        fi
+    fi
+    if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then
+        rm -f "$tmp"
+        echo "unchanged $file"
+        return 0
+    fi
+    if [ ! -s "$tmp" ] && [ ! -L "$file" ]; then
+        # Nothing left: no file is the same as an empty one (every setting
+        # at its default), so remove it rather than leave an empty file. A
+        # symlinked file is emptied instead (below), so the link stays.
+        rm -f "$tmp"
+        if [ -f "$file" ]; then
+            _project_file_caller_alive "$file" || return 1
+            rm -f "$file" || return 1
+            echo "removed $file"
+        else
+            echo "unchanged $file"
+        fi
+        return 0
+    fi
+    # Keep the existing file's mode (it may be 600 on purpose); a new file
+    # is 644 (mktemp creates 600).
+    mode=""
+    if [ -f "$dest" ]; then
+        mode="$(stat -c %a "$dest" 2>/dev/null || stat -f %Lp "$dest" 2>/dev/null)" || mode=""
+    fi
+    if ! chmod "${mode:-644}" "$tmp"; then
+        rm -f "$tmp"
+        echo "ERROR: could not set the mode of the new $file" >&2
+        return 1
+    fi
+    _project_file_caller_alive "$file" || { rm -f "$tmp"; return 1; }
+    mv -f "$tmp" "$dest" || { rm -f "$tmp"; return 1; }
+    _PF_TMP=""
+    echo "updated $file"
+}
+
+# Remove keys from project <name>'s settings file (project_file_set with
+# '-key' arguments). Usage: project_file_unset "$root" "$name" build test
+project_file_unset() {
+    local root="$1" name="$2" k
+    local -a args=()
+    shift 2
+    for k in "$@"; do args+=("-$k"); done
+    project_file_set "$root" "$name" ${args[@]+"${args[@]}"}
 }

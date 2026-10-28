@@ -1,0 +1,836 @@
+---
+issue: 332
+---
+
+# Issue #332 — onboard-project registers projects and audits workspace integration
+
+## Issue Review
+**Status**: complete
+**When**: 2026-10-13 13:50 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**Issue**: #332
+
+### Scope Assessment
+
+**Well-scoped?** No, as a single PR; yes as one issue with a split. The 2026-10-13 re-scope (D1 to D5) is clear and I treat it as settled. It now holds four separable deliverables: (1) the per-project file and its validated keys, (2) `register_project.sh`, (3) the `onboard-project` rewrite with the seven-category integration audit, (4) the hygiene checklist moving into `audit-project`. They share a design but not a review: (1) is a parser change with tests, (2) writes the registry and runs the user-tier install, (3) and (4) are skill text plus whatever mechanical checks are pulled into a script.
+**Right repo?** Yes. Registry, scripts, skills and design doc are all workspace. The footprint the onboarding offers lands in projects (their repos, their PRs), which the skill already handles by running from the project root.
+**Serves**: Light touch on projects (the footprint question, `records=` and `instructions=`, nothing required of a project) and Easy to use (one way to register and onboard) — `docs/design.md#registry-and-adapters`, with `docs/design.md#sessions-and-roots` and `docs/design.md#worktrees` (records) also touched.
+**Design picture?** Changes it. The issue names "Registry and adapters" and "Sessions and roots". It does not name the Worktrees Target, which proposes `location` and `tracking` settings "in its registry entry"; D2 replaces that with one `records=` key in the project file, and the registry line stays an index. The owner's decisions are recorded, so I do not re-ask them; the gap is the third section (Action 1).
+**Dependencies**: #330 (scoped `validate`): CLOSED, so the "registration works" check can mean something. #345 (plugin tier, PR #392): CLOSED, and `user_tier_install.sh` already enables the plugin per registered root, which ADR-0018 says registration reuses by re-running the installer. #335 (design doc): CLOSED. #265 (hosted projects anywhere): OPEN, PRs 1 to 3 merged, PR 4 not; PR 4's plan scopes `register_project.sh` and a `/register-project` bootstrap command, which overlaps this issue (Action 6). #331 (research skill in project sessions): OPEN; it blocks category 7 of the audit and gz4d's `research` only, not this work. #310 (mixed-flavour projects) and #295 (workspace as a registered project): OPEN, related to the Target text and not blocking.
+
+### Principle Alignment
+
+| Principle | Status | Notes |
+|---|---|---|
+| Keep one current design | Action needed | The change must update four places in `docs/design.md` in the same PR: "Registry and adapters" Now ("Registration is by hand") and its Target ("Proposed: `onboard-project` is the one way a project is registered"), "Sessions and roots" Target (`register_project.sh` listed as PR 4), and the Worktrees Target, whose `location`/`tracking` pair in the registry entry is replaced by D2's `records=` key in `.agent/projects.d/<name>`. Open question C4 is answered yes by D1 and is closed in the same change. The issue names the first two sections only. |
+| Leave in a project only what it chose to carry / A change includes its consequences (records) | Action needed | `records=workspace` and `records=local` cannot be honoured by the code as it is: `progress_append.sh` (line 87), `review_progress.sh` (112, 268, 290), `dispatch_phase.sh` (362, 364, 407, 499) and `merge_pr.sh` (682, 839) each build `<worktree>/.agent/work-plans/issue-N/progress.md` themselves, and `_resolve_work_plans_dir.sh` assumes the owning repo's worktree. The design doc already lists this as "mechanism 1: one lookup" and none of it is built. Specific failures: `records=local` puts the path under `.git/info/exclude`, so `progress_append.sh`'s `git add` of it fails, and the file lives in the issue worktree, which `merge_pr.sh` removes, so the history is lost at merge; `records=workspace` needs a per-project key (workspace issue 5 and project issue 5 would both be `issue-5`) and the project-rooted session writing the records is outside its root, against "a session works only under its root" (Sessions and roots) and the rule that every change to the workspace goes through a branch and PR. Until the lookup exists, a stored `records=workspace\|local` would be a setting nothing reads. Build the lookup as its own issue; this issue may validate all three values but must refuse to write (or must flag as not yet honoured) any value other than `project`. |
+| Ask about what matters, and show how much (records=workspace) | Action needed | One owner question remains inside decision D2 and is not a reopening of it. D2: "`records=workspace\|local\|project` (the loop's work plans and progress timelines: kept in the workspace keyed by project / in the project under `.git/info/exclude` / committed)". It does not say whether "kept in the workspace" means tracked in the workspace repository or untracked on this machine. Tracked puts a project's plans and reviews into the workspace's remote, which matters for a private project and sits badly with "workspace is project-agnostic"; untracked is the same cost as `local` (one machine, lost with the directory). The answer decides the lookup's design, so ask it first, alone. |
+| Enforce what matters, as simply as possible / Only what's needed (command keys) | Action needed | The re-scope drops `projects.d/<name>.sh` and says commands are "keys in the same file, or a pointer to a script", but the named first keys are only `records` and `instructions`, and the adapters still read the `.sh` file: `_single_project_config_file` in `single_project/adapter.sh` sources `ACTIVE_PROJECT_CONFIG` (`adapter` line 243), and `ros2_colcon` reads `MANIFEST_BOOTSTRAP_URL` and `ROS_DISTRO` from it. The registry grammar, which D2 reuses, forbids spaces in values, so `BUILD_CMD="cmake -S . -B build && cmake --build build"` cannot be a key as it stands. Without a decision, the acceptance items "a missing test command is refused" and "reproduce the gz4d fallback finding" cannot be built or tested. The plan must settle: the build/test/install key names, the quoting or script-pointer form, the precedence and migration against an existing `projects.d/<name>.sh` (the owner's p11 files use it), and which adapter code reads the new file. |
+| Small steps; step back when they stop converging | Action needed | Split into PRs that can each be reviewed and merged on their own; see the first Recommendation for the split. A single PR would carry a parser change, a new script that writes the registry, two skill rewrites and a design edit. |
+| Put each thing at the level it applies to | Action needed | `register_project.sh` is scoped twice. This issue's D1 has `register_project.sh <path> <type>` write the index line and run the user-tier install. The #265 plan (decision 6, files table) and ADR-0016 decision 5 give PR 4 a `register_project.sh --name --type --path [--parent --distro --role]`, a `--remove` that refuses while the root is in use, and a `/register-project` bootstrap command; the design Target repeats "also PR 4". D1 makes the bootstrap command unnecessary (registration runs in a workspace session). Settle which issue owns the script, its flags (parent roots and `ros2_colcon` `setup` must still be reachable) and unregister, and edit the #265 plan so the two do not both build it. |
+| Verify before claiming / Test what breaks | Watch | The acceptance line "reproduces every gz4d finding as it was on 2026-09-23" cannot be run against gz4d today in a repeatable way (gz4d is hand-registered and will change under rolker/geozui4d#7). Per the workspace gate rule, script tests use synthetic sandbox projects; the gz4d run is the separate first real use the owner named. |
+| Leave a trail | Watch | `.gitignore` already ignores `.agent/projects.d/` (line 12), so the extension-less project file is covered. `projects.local.example` and the `_project_registry.sh` header need the new file's documentation, and `validate_workspace.py` / `dashboard.sh` should report a malformed project file the way they report a malformed registry (fail loud, no silent resolve). |
+| Look for prior art before building | OK | The D2 prior-art check (git config, direnv, EditorConfig, systemd conf.d and others) is recorded in the owner's comment. |
+
+### ADR Applicability
+
+| ADR | Triggered | Notes |
+|---|---|---|
+| ADR-0011 (adapter contract) | Yes | New project-file keys feed the adapters; `validate_adapter.sh` must still pass. The `single_project` command fallback to `.agent/project_config.sh` is what the register gate is meant to stop relying on. |
+| ADR-0013 (progress.md vocabulary) | Yes | `records=` changes where the file is, not its shape; the entry validator and the merge gate's timeline lookup must follow the lookup. |
+| ADR-0016 (session roots, user tier) | Yes | Decision 5 (registration is a workspace script) is built here; decision 2 (workspace writes nothing into a project beyond the exclude line and `COLCON_IGNORE`) bounds what onboarding may write; decision 6 (user-tier entries inert outside registered roots) applies to any new promoted script. |
+| ADR-0017 (design document) | Yes | Four sections in one change (see Principle Alignment). |
+| ADR-0018 (plugin delivery) | Yes | Registration reuses `user_tier_install.sh` rather than a second enable path; the session-root rule (decision 6) is why onboarding runs at the project root. |
+
+### Consequences
+
+- `docs/design.md`: "Registry and adapters", "Sessions and roots", Worktrees Target, Open questions C4, and the Change log row.
+- `.agent/projects.local.example`, the `_project_registry.sh` header, and `AGENTS.md` Script Reference (the new script; Ask First applies to `AGENTS.md`).
+- `.claude/skills/onboard-project/SKILL.md` (rewrite) and `.claude/skills/audit-project/SKILL.md` (absorbs the checklist). Both still locate the repo as `project/<repo-name>` (step 1 of each), which the registry-only change in #265 PR 4 removes.
+- `make generate-user-tier-skills` and `test_plugin_manifest.sh` if a skill's `session_scope` changes.
+- Tests: `test_project_registry.sh` (keys, unknown-key refusal), a new `register_project` suite (idempotent re-run, `--dry-run` writes nothing, missing test command refused, failing `validate` blocks "registered"), and the user-tier suites if the installer call changes.
+- `.agent/work-plans/issue-265/plan.md` (PR 4 scope) and ADR-0016 decision 5's pointer to PR 4.
+- Roadmap: the deferral "a Direction section in the acceptance project's own repository waits until onboarding asks" is resolved by D3 and is edited when the offers list lands.
+
+### Recommendations
+
+- Plan this as four PRs, in this order: (1) the project file reader/validator in `_project_registry.sh` and its tests, with the example file and header documented, and the command-key decision made; (2) `register_project.sh` with `--dry-run`, idempotent adoption of an already-registered project that has no project file (gz4d is hand-registered), unknown keys refused, the user-tier install and the scoped `adapter validate`/`build`/`test` gate; (3) the `onboard-project` rewrite (registry-resolved via `session_root.sh`, footprint question, offers, re-run behaviour from D5); (4) `audit-project` taking the hygiene checklist and skipping items a project's style makes moot. Put the design-doc edits with the PR that makes each statement true.
+- Make the integration audit's mechanical categories (ignore rules via `git check-ignore`, paths the workspace writes into the project, same-named skill diffs, adapter verbs succeeding) a script the skill calls, so they are testable and `audit-project` can reuse them report-only; keep only the judgement (instruction-file conflicts, what to port) in the skill text. The re-scope says the existing scope stands, which includes `audit-project` sharing these checks.
+- Open a separate issue for the one records lookup (`records=` for every reader and writer, including the merge gate and `_bookkeeping.sh`) and cite it from the design Target; until it lands, onboarding offers and records only `records=project` and says so rather than writing a value nothing reads.
+- Treat audit category 7 (skills with no `session_scope`; 9 of the 22 skills have none today, several by intent) as a test or `--check` item that rides with #331, not a per-project audit line, as the original issue already suggests.
+- Test with synthetic sandbox projects registered in a temporary workspace root; do not depend on gz4d or any real project checkout. The gz4d onboarding run stays the separate first real use.
+
+### Actions
+- [ ] The change must update four places in `docs/design.md` in the same PR: "Registry and adapters" Now ("Registration is by hand") and its Target ("Proposed: `onboard-project` is the one way a project is registered"), "Sessions and roots" Target (`register_project.sh` listed as PR 4), and the Worktrees Target, whose `location`/`tracking` pair in the registry entry is replaced by D2's `records=` key in `.agent/projects.d/<name>`. Open question C4 is answered yes by D1 and is closed in the same change. The issue names the first two sections only.
+- [ ] `records=workspace` and `records=local` cannot be honoured by the code as it is: `progress_append.sh` (line 87), `review_progress.sh` (112, 268, 290), `dispatch_phase.sh` (362, 364, 407, 499) and `merge_pr.sh` (682, 839) each build `<worktree>/.agent/work-plans/issue-N/progress.md` themselves, and `_resolve_work_plans_dir.sh` assumes the owning repo's worktree. The design doc already lists this as "mechanism 1: one lookup" and none of it is built. Specific failures: `records=local` puts the path under `.git/info/exclude`, so `progress_append.sh`'s `git add` of it fails, and the file lives in the issue worktree, which `merge_pr.sh` removes, so the history is lost at merge; `records=workspace` needs a per-project key (workspace issue 5 and project issue 5 would both be `issue-5`) and the project-rooted session writing the records is outside its root, against "a session works only under its root" (Sessions and roots) and the rule that every change to the workspace goes through a branch and PR. Until the lookup exists, a stored `records=workspace|local` would be a setting nothing reads. Build the lookup as its own issue; this issue may validate all three values but must refuse to write (or must flag as not yet honoured) any value other than `project`.
+- [ ] One owner question remains inside decision D2 and is not a reopening of it. D2: "`records=workspace|local|project` (the loop's work plans and progress timelines: kept in the workspace keyed by project / in the project under `.git/info/exclude` / committed)". It does not say whether "kept in the workspace" means tracked in the workspace repository or untracked on this machine. Tracked puts a project's plans and reviews into the workspace's remote, which matters for a private project and sits badly with "workspace is project-agnostic"; untracked is the same cost as `local` (one machine, lost with the directory). The answer decides the lookup's design, so ask it first, alone.
+- [ ] The re-scope drops `projects.d/<name>.sh` and says commands are "keys in the same file, or a pointer to a script", but the named first keys are only `records` and `instructions`, and the adapters still read the `.sh` file: `_single_project_config_file` in `single_project/adapter.sh` sources `ACTIVE_PROJECT_CONFIG` (`adapter` line 243), and `ros2_colcon` reads `MANIFEST_BOOTSTRAP_URL` and `ROS_DISTRO` from it. The registry grammar, which D2 reuses, forbids spaces in values, so `BUILD_CMD="cmake -S . -B build && cmake --build build"` cannot be a key as it stands. Without a decision, the acceptance items "a missing test command is refused" and "reproduce the gz4d fallback finding" cannot be built or tested. The plan must settle: the build/test/install key names, the quoting or script-pointer form, the precedence and migration against an existing `projects.d/<name>.sh` (the owner's p11 files use it), and which adapter code reads the new file.
+- [ ] Split into PRs that can each be reviewed and merged on their own; see the first Recommendation for the split. A single PR would carry a parser change, a new script that writes the registry, two skill rewrites and a design edit.
+- [ ] `register_project.sh` is scoped twice. This issue's D1 has `register_project.sh <path> <type>` write the index line and run the user-tier install. The #265 plan (decision 6, files table) and ADR-0016 decision 5 give PR 4 a `register_project.sh --name --type --path [--parent --distro --role]`, a `--remove` that refuses while the root is in use, and a `/register-project` bootstrap command; the design Target repeats "also PR 4". D1 makes the bootstrap command unnecessary (registration runs in a workspace session). Settle which issue owns the script, its flags (parent roots and `ros2_colcon` `setup` must still be reachable) and unregister, and edit the #265 plan so the two do not both build it.
+- [ ] Plan this as four PRs, in this order: (1) the project file reader/validator in `_project_registry.sh` and its tests, with the example file and header documented, and the command-key decision made; (2) `register_project.sh` with `--dry-run`, idempotent adoption of an already-registered project that has no project file (gz4d is hand-registered), unknown keys refused, the user-tier install and the scoped `adapter validate`/`build`/`test` gate; (3) the `onboard-project` rewrite (registry-resolved via `session_root.sh`, footprint question, offers, re-run behaviour from D5); (4) `audit-project` taking the hygiene checklist and skipping items a project's style makes moot. Put the design-doc edits with the PR that makes each statement true.
+- [ ] Make the integration audit's mechanical categories (ignore rules via `git check-ignore`, paths the workspace writes into the project, same-named skill diffs, adapter verbs succeeding) a script the skill calls, so they are testable and `audit-project` can reuse them report-only; keep only the judgement (instruction-file conflicts, what to port) in the skill text. The re-scope says the existing scope stands, which includes `audit-project` sharing these checks.
+- [ ] Open a separate issue for the one records lookup (`records=` for every reader and writer, including the merge gate and `_bookkeeping.sh`) and cite it from the design Target; until it lands, onboarding offers and records only `records=project` and says so rather than writing a value nothing reads.
+- [ ] Treat audit category 7 (skills with no `session_scope`; 9 of the 22 skills have none today, several by intent) as a test or `--check` item that rides with #331, not a per-project audit line, as the original issue already suggests.
+- [ ] Test with synthetic sandbox projects registered in a temporary workspace root; do not depend on gz4d or any real project checkout. The gz4d onboarding run stays the separate first real use.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 13:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+"Proceed" with the Issue Review (20cbbd3c) actions A1 (four PRs: project file + keys; register_project.sh; onboard-project rewrite; audit-project takes the hygiene checklist; design-doc edits travel with the PR that makes each true), A2 (the records lookup becomes its own issue; this issue validates every records= value but writes only `project` until it lands), A3 (the plan settles command keys: names, quoting or script pointer, precedence over existing projects.d/<name>.sh), A4 (#332 owns register_project.sh incl. unregister and adopting a hand-registered project; #265 PR 4 shrinks to retiring project/ and projects/), and the recommendations (audit categories in a script both skills call; category 7 folds into #331; tests on synthetic projects only; both skills stop looking under project/<name>).
+
+Action 3 answered alone (D2a), owner verbatim: "I'm leaning 2. It makes no sense to commit with the workspace. I think I had discussed the possibility of a separate repo as well. This would allow tracking for a zero footprint repo. It could be setup so the project dir holds the clone as a child dir, and the clone of the repo for records as a sibling for instance. All of this should be flexible at onboard time, but provide reasonable defaults." Recorded as: records never go into the workspace repository. Places: committed in the project; in the project but ignored; a separate records repository (tracked; default layout a hosting directory holding the project clone and the records clone as sibling children); untracked on this machine. Chosen at onboarding with defaults: `project` when the project accepts footprint, machine-local for zero footprint, the records repo as the opt-in that adds tracking. The plan proposes the exact key values and the layout.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-13 13:55 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Plan**: `.agent/work-plans/issue-332/plan.md` at `8b6d7a41`
+
+Four-PR plan: (1) per-project file `.agent/projects.d/<name>` with a validated key list (build/test/install/bootstrap_url, location/location_path/tracking, instructions); (2) register_project.sh with registration_verify.sh, unregister and adoption; (3) onboard-project rewrite with a shared integration-audit script; (4) audit-project takes the hygiene checklist. Builds on the Worktrees Target in docs/design.md (location/tracking, moved to the per-project file); the records lookup is a separate follow-up issue and category 7 rides with #331.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-13 13:59 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Verdict**: needs-work
+
+**Issue**: #332 — onboard-project registers projects and audits workspace integration
+**Plan**: `.agent/work-plans/issue-332/plan.md` at `8b6d7a41`
+**Branch**: `feature/issue-332`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Four PRs in the owner's order (A1), lookup as a separate issue (A2). PR 2 and PR 3 are large but each is one job; the owner fixed the split, not reopened here |
+| Issue alignment | Needs work | Serves, as checked: "Light touch on projects and Easy to use (`README.md#workspace-goals`); `docs/design.md#registry-and-adapters`, with `docs/design.md#sessions-and-roots` and `docs/design.md#worktrees`" (both goal headings exist in README.md). Issue Review actions A1 to A4 are each answered. Gaps: the default records place and layout are written as decided (finding 1, owner note 2026-10-13: "where the defaults should be is not settled even in my mind"); the plan supersedes a recorded owner stance on its own (finding 2); the issue's gz4d acceptance item has no test mapping (finding 9) |
+| File targeting | Good | Every cited helper exists (`uninstall_plugin_from` line 826, `registry_require_root` 542, `registry_entries_full` 71, `wt_ensure_exclusion`, `_settings.sh`, `check_design_anchors.sh`, the four test suites, `make generate-user-tier-skills`, `.agent/work-plans/issue-265/plan.md`). PR 1's new `project_setting.sh` has no AGENTS.md row planned (finding 8) |
+| Consequences | Needs work | The gate's rollback leaves the plugin enabled in the root (finding 4); `registration_verify.sh --run` breaks the inert marker's contract (finding 5) |
+| Principle alignment | Needs work | Name the rule before bending it: the session-root rule is bent twice without being named (finding 3); Keep one current design: defaults recorded as decided (finding 1) |
+| ADR compliance | Good | ADR-0011 (verbs unchanged), 0013, 0016 decision 5 and 6, 0017, 0018 addressed; 0016 decision 6 needs finding 5 |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[Issue alignment / Keep one current design] (must-fix)** — The plan writes the default records layout and the zero-footprint default as decided: the `location_path` row ("default the sibling `<project clone>-records` in the clone's parent directory (D2a layout: ...)"), Approach 4 ("(outside, untracked), the default for zero footprint"), PR 1 step 8 ("the D2a layout sentence" in the Target) and Q1 ("Confirm the first"). Owner, 2026-10-13: the defaults are not settled. Also the parenthetical misattributes: D2a's words describe a hosting directory holding both clones, not the clone's parent. Resolution: keep the mechanism (two settings, four combinations, `location_path` any absolute path) and hold the derived default in one function in `_project_registry.sh` that the validator, the audit and the later lookup all call; tests assert through that function, not a literal path; the design text and onboarding wording mark the default place and layout as provisional and overridable. Keep the registered root the project clone (no reason found that forces a change; see finding 3 for the one pressure toward the hosting directory).
+2. **[Issue alignment] (must-fix, owner decides)** — Approach 4 refuses a `location_path` inside the workspace checkout and says this "supersedes the Target's 'don't prohibit' sentence". A plan cannot supersede a recorded owner stance; the owner's D2a words ("It makes no sense to commit with the workspace") are about committing, and the checkpoint recorded "records never go into the workspace repository". A directory check is a proxy for that and misses both ways: it refuses an untracked records directory under the workspace's ignored area (not a commit), and it passes `tracking=repo` with a separate clone of the workspace repository elsewhere (a commit into the workspace repository). Put to the owner: hard refusal of tracking in the workspace repository (checked by the remote, not the directory), or default plus warning.
+3. **[Principle alignment: Name the rule before bending it] (must-fix)** — "A session works only under its root" (Sessions and roots Now; `session_root.sh` header) is bent in two places the plan does not name: `project_setting.sh set` from a project session writes `.agent/projects.d/<name>` in the workspace checkout (PR 3's onboarding answers), and any `location=outside` records path is outside the project-clone root by definition. Resolution: PR 3's design edit states the first as a named exception (per-machine, gitignored workspace config the project session owns); the follow-up issue text states that the records location counts as the root's own, as a `worktrees=` override already does (`registry_worktree_dir`, `session_root.sh`), or names the alternative.
+4. **[Consequences] (must-fix)** — PR 2's gate runs `user_tier_install.sh` (which enables the plugin in the root's `.claude/settings.local.json`) and then, with `--run`, build and test; a newly added entry that fails is rolled back "line and file" only, leaving the plugin enabled in an unregistered directory. Resolution: run the installer only after build and test pass, or have the rollback call the new `--disable-root`; add the case to `test_register_project.sh`.
+5. **[ADR compliance: ADR-0016 decision 6] (must-fix)** — `registration_verify.sh` is planned as `# user-tier: inert` and promoted in PR 3, but `--run` executes the project's build and test, which is not "only reads and prints" (`user_tier_scripts.txt` header). Resolution: keep `registration_verify.sh` read-only (no `--run`) and let `register_project.sh` run `adapter build`/`test` itself, or give it a real `registry_require_root` guard and drop the inert marker.
+6. **[Consequences] (suggestion)** — The follow-up issue text carries mechanisms 1 to 3 and the acceptance test by shape, but drops the Target's second half ("which a project with pull requests has to exercise"), the one rule, and two unsettled points: for `tracking=repo`, who commits to the records repository, on which branch and when it is pushed; and `cross_model_review.sh --work-plans-dir` and package-repo issues as existing override and no-timeline cases. Add them, and open the issue before PR 1 so `project_setting.sh`'s refusal and the Target edit cite its number.
+7. **[Principle alignment: Put each thing at the level it applies to] (suggestion)** — `registration.conf` is consistent with "workflow scripts do not branch on the project type" (Q2 confirmed), but nothing checks it exists: say `register_project.sh` refuses a type without one, add the check to `validate_adapter.sh` or a test, and name the file in the Registry and adapters Now bullet beside the verb contract.
+8. **[File targeting] (suggestion)** — PR 1 adds `project_setting.sh` but the AGENTS.md Script Reference rows are planned only in PR 2 and PR 3; add PR 1's row in its own commit (Ask First), or say why it waits.
+9. **[Issue alignment: Test what breaks] (suggestion)** — Add a table mapping each issue acceptance item to its test, and make `test_integration_audit.sh`'s fixture a synthetic project shaped like gz4d on 2026-09-23 (same-named skills, branch-not-worktree instruction, unignored `worktrees/`, unanchored `build/` hiding `.claude/skills/build/SKILL.md`, no `.agents/`, a `docs/work-plans/`), so "reproduces every finding" is a test, not the first real run.
+10. **[Issue alignment: Q4] (suggestion)** — Q4's default (an existing `docs/roadmap.md` or `ROADMAP.md`, else create `docs/roadmap.md`) fits design.md line 127 ("A project's roadmap may carry a `## Direction` section ... by its own choice"). State that the agent-guide and Direction offers are made only when `instructions=tracked` (Approach says only audit findings become `info`), and note in the sit-rep follow-up row that a project's roadmap may be `ROADMAP.md`.
+
+Q3 confirmed: `audit-project` is report-only today and D5 says nothing changes without a yes, so report-only with the fix flow offered at the end keeps the hygiene fixes owned.
+
+### Summary
+
+The plan builds on the Worktrees Target as required, honours A2 without building the lookup (the dispatcher reads only command and URL keys; only (project, project) is written), and its line numbers and helpers check out. Five must-fixes before implementation: defaults written as decided, a recorded owner stance superseded by the plan, the session-root rule bent without being named, an incomplete rollback, and a promoted script that is not inert.
+
+### Recommended Actions
+
+- [ ] Hold the default records place and layout in one function, mark them provisional in the design text and onboarding wording, and describe D2a's layout accurately (finding 1)
+- [ ] Put the workspace-location question to the owner: refusal checked by the remote, or default plus warning; drop "supersedes" until he answers (finding 2)
+- [ ] Name both session-root exceptions in the design edits and the follow-up text (finding 3)
+- [ ] Order the installer after build/test or roll back the plugin enable; test it (finding 4)
+- [ ] Make `registration_verify.sh` truly read-only or guard it (finding 5)
+- [ ] Complete the follow-up issue text and open it before PR 1 (finding 6)
+- [ ] Check `registration.conf` exists per type (finding 7); add PR 1's AGENTS.md row (finding 8); add the acceptance-to-test table and the gz4d-shaped fixture (finding 9); gate the offers on `instructions` (finding 10)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 14:03 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+"Revise and re-review": the plan author fixes Plan Review (dc77392d) must-fix M1–M5 and the five suggestions, then a fresh plan review.
+Owner answers folded in:
+- Defaults are OPEN (owner, during the review: "where the defaults should be is not settled even in my mind"): the mechanism (design.md Worktrees Target: `location`/`tracking`, four combinations, one lookup) is settled; the default combination and the outside-path layout are provisional — one function in the registry helper, overridable at onboarding, marked provisional in design text and onboarding wording (M1).
+- Records in the workspace repository: REFUSE (owner answer "Refuse" to the question "May a project's loop records be committed to the agent_workspace repository (any clone of it)?", with the fork/PR scenario: records would ride along with every fork and come back in PRs past the merge gate's bookkeeping exemption). The check is by the named repository's remote URL, not by path; untracked records under the workspace's ignored scratchpad stay allowed. This supersedes the Target's "I don't want to prohibit it, but I also don't want to encourage it" — the PR 1 design edit rewrites that sentence and says why (M2).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-13 14:06 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a0a1c30f33fc0db7c, resume 1 of 3)
+**Plan**: `.agent/work-plans/issue-332/plan.md` at `754f8675`
+
+Revision 1, after plan review round 1 (dc77392d) and the owner's checkpoint (b9ab8403). Still builds on the Worktrees Target (location/tracking). Records defaults are provisional and held in one function (project_records_default); tracking in the workspace repository is refused by remote URL; both session-root bends are named; the installer runs only after build and test pass; registration_verify.sh is read-only; follow-up issue text is complete; an acceptance-to-test table with a synthetic fixture shaped like the hand-registered gz4d is added. Every finding and its resolution is in the plan's "Plan Review Resolution" section.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-13 14:07 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a98d6c53c11e1c1af, resume 1 of 3)
+**Verdict**: ready
+
+**Issue**: #332 — onboard-project registers projects and audits workspace integration
+**Plan**: `.agent/work-plans/issue-332/plan.md` at `754f8675`
+**Branch**: `feature/issue-332`
+
+Round 2, after the owner's Checkpoint (b9ab8403) and the revised plan's "Plan Review Resolution" table. Each round-1 finding was checked against the plan text, not the table.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: four PRs in the owner's order; the follow-up issue is now opened as PR 1's first step |
+| Issue alignment | Good | Serves, as checked: "Light touch on projects and Easy to use (`README.md#workspace-goals`); `docs/design.md#registry-and-adapters`, with `docs/design.md#sessions-and-roots` and `docs/design.md#worktrees`". Owner decisions of b9ab8403 folded in: defaults open (one function, provisional), workspace repository refused by remote URL, scratchpad untracked allowed, Target sentence rewritten with the fork and PR reason. "Acceptance to test" table added (finding 4 is a gap in it) |
+| File targeting | Good | `validate_adapter.sh` and its suite, `--disable-root` in `test_user_tier_install.sh`, AGENTS.md rows in each of PR 1 to PR 3 added |
+| Consequences | Good | Registration order now leaves no plugin enable on failure; one open case for `ros2_colcon` `setup` (finding 3) |
+| Principle alignment | Good | Both session-root bends named (PR 3 design edit; follow-up text); defaults no longer written as decided |
+| ADR compliance | Good | ADR-0016 decision 6: `registration_verify.sh` has no build/test mode, so its inert marker is true |
+| ROS conventions | N/A | Workspace plan |
+
+### Round-1 findings, checked in the plan text
+
+- M1 defaults: resolved. `project_records_default` is the one place (PR 1 item 4, Files table); the `location_path` row names both layouts as undecided candidates; Q1 withdrawn with the root kept as the clone; tests assert through the function. See finding 1 for one ambiguity it introduced.
+- M2 workspace repository: resolved as the owner decided. `project_records_check` compares remotes, no path rule, scratchpad untracked validates, PR 1 item 9 rewrites the Target sentence with the reason.
+- M3 session-root bends: resolved. PR 3 item 3 names the projects.d write; the follow-up's "Rules carried" names the outside-records bend.
+- M4 rollback: resolved. Installer is step 4, after the static gate, build and test; an installer failure calls `--disable-root`; the "failing check" acceptance row asserts an empty stub-claude log.
+- M5 inert marker: resolved. `registration_verify.sh` is read-only (`--user-tier` only reads); `register_project.sh` runs build and test.
+- S6 to S10: resolved (follow-up text has both acceptance halves, the one rule, the unsettled points; `registration.conf` checked by `validate_adapter.sh`; PR 1 AGENTS.md row; acceptance table and fixture; offers gated on `instructions=tracked`).
+
+### Findings
+
+1. **[Issue alignment] (suggestion)** — `project_records_default` takes `accepts-footprint|zero-footprint`, and item 4 says the validator calls it "to fill omitted keys", but nothing stored says which mode a project is in. Then a project file with no records keys means different things depending on an input that is not in the file. State that an absent pair always resolves with the accepts-footprint mode, (project, project) (the Target's default and what every reader does today), and that the zero-footprint mode only feeds onboarding's proposal. Add a `test_project_file.sh` case for it.
+2. **[Principle alignment: Enforce what matters] (suggestion)** — Normalising URLs to host and `owner/repo` misses two cases. (a) A remote that is a local path or `file://` URL to the workspace checkout or one of its worktrees, such as `git clone ~/agent_workspace records`. Resolve such a remote and compare it with the workspace's git common dir. (b) The Q5 fork case: facts below; the owner decides.
+3. **[Consequences] (suggestion)** — For `ros2_colcon`, `setup` creates the hosting directory when it is missing. The plan does not say where `setup` falls in the four-step order, or whether a directory it created is removed or kept and reported when a later step fails. Say which, and add the case to `test_register_project.sh`.
+4. **[Issue alignment: Test what breaks] (suggestion)** — The fixture omits pre-commit and CI, and the table asserts seven audit finding ids. Three of the issue's listed gz4d findings are not reproduced by the script, so name where each is covered:
+   - no pre-commit or CI: the `audit-project` checklist in PR 4, which is skill text and not script-tested;
+   - `validate` failing because of unrelated projects: fixed by #330;
+   - `research` missing in project sessions: category 7 on #331.
+
+   Then "reproduces every finding" claims only what is tested.
+
+### Q5 facts (owner decides)
+
+- A fork keeps the workspace's history, so a clone of any fork shares the workspace's root commit (`git rev-list --max-parents=0 HEAD` gives `c286e7ba` here). Comparing root commits catches forks offline, on any host, with no `gh` call. It misses only a fork whose history was rewritten, and a records repository started fresh never matches. `gh repo view --json parent` sees only GitHub forks and needs network and auth.
+- The no-project-names rule is `review only` (design.md Rules) and covers what is committed to the workspace repository. It would catch fork-carried records only when a PR comes back, which is the very path the owner gave as the reason to refuse. It is weak cover for that case, and nothing covers the fork itself.
+
+### Summary
+
+All five round-1 must-fixes and the five suggestions are resolved in the plan text, and the revision follows the owner's checkpoint without reopening it. Four suggestions remain, none blocking. The plan is ready for implementation once the owner answers Q5.
+
+### Recommended Actions
+
+- [ ] State that omitted records keys resolve in accepts-footprint mode, and test it (finding 1)
+- [ ] Match local-path and `file://` remotes against the workspace's git dir; put Q5 (root-commit comparison, `gh` parent check, or neither) to the owner (finding 2)
+- [ ] Place `ros2_colcon` `setup` in the registration order and state what happens on rollback (finding 3)
+- [ ] Name in the acceptance table the gz4d findings not reproduced by the script, and where each is covered (finding 4)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-13 14:12 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+"Proceed; fold D6, Q5 and the suggestions into the plan first" after Plan Review round 2 (2bf12b40, ready, 0 must-fix, 4 suggestions): implementation of PR 1 starts; its first commit amends the plan with (a) D6 — owner: onboarding work is queued in the project's roadmap when the user approves, "so that it can get tackled maybe as other issues are resolved": the audit's findings and the accepted offers become rows of an "Onboarding" section in the project's roadmap table (docs/roadmap.md or ROADMAP.md; kept with the records for a zero-footprint project), an issue per row when the project uses issues, picked up like any other open row; a pace rule is a later item; PR 3's offers and PR 4's audit outcome gain "queue in the roadmap" beside fix / issue / skip; (b) the four round-2 suggestions (absent records pair resolves to project/project with a test; a local-path or file:// remote pointing at the workspace checkout or a worktree is refused too; where ros2_colcon setup sits in the registration order and what a failure keeps; the acceptance table says where the three gz4d findings are covered); (c) Q5 (fork detection for the records-repo refusal): the owner's answer is being taken separately and the host supplies it in the implement handoff. No third plan review; the pre-push code review sees both.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-13 14:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Branch**: feature/issue-332 at `4df7317b`
+
+PR 1 of four (the per-project settings file and its keys), after the owner's checkpoint `21c8e15f`.
+
+- `15005ad8` plan amended first: D6 (queue in the roadmap, `## Onboarding` section, issue per row; PR 3 offers and PR 4 audit outcome), Q5 (a records repository must not be a workspace, recognised by its contents beside the remote URL; no lineage check), round-2 suggestions (absent pair is (project, project); local-path and `file://` remotes refused; `ros2_colcon` `setup` between registration steps 1 and 2 with a created hosting directory kept and reported on `KEPT=`; acceptance table names where the three unreproduced gz4d findings are covered).
+- Follow-up issue for the records lookup opened first: #393, cited in the refusal message, the design Target and `PROJECT_RECORDS_LOOKUP_ISSUE`.
+- `b1612865` `.agent/projects.d/<name>`: parser, validator, one writer and `project_records_default` / `project_records_check` in `_project_registry.sh`; new `project_setting.sh get|set|unset|list|check`; the dispatcher parses the file once and stops on a malformed or refused one; `single_project` and `ros2_colcon` read the keys first and note a fall-through to the shared config; dashboard and `make validate` report a bad file; registry names ending in `.sh` refused; `projects.local.example` documents it; new `test_project_file.sh` (157 assertions, synthetic sandbox projects only).
+- `24b14c06` design: Registry and adapters Now bullet; Worktrees Target rewritten (settings in the project file, built in #332 versus #393, defaults provisional, refused combinations, the workspace refusal with its reason, line numbers refreshed); change-log row.
+- `4df7317b` AGENTS.md Script Reference row for `project_setting.sh`, its own commit (Ask First, owner approval on the PR).
+- Deviations from the plan text, for review: `bootstrap_url` also accepts `file://` (the legacy variable and the tests use it); the legacy `projects.d/<name>.sh`, when present, stays the whole legacy layer (the shared config is consulted only when it is absent), as before #332, rather than falling through per variable.
+- Tests: `run_script_tests.sh` all 38 suites passed; shellcheck clean on the changed scripts; design-anchor hook passed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 08:29 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `5c68e36e`
+**Base**: main
+**Depth**: Deep (reason: 1930 changed lines outside work plans, 200+ threshold; AGENTS.md governance file)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck clean on 8 scripts; test_project_file.sh 157 passed; run_script_tests.sh 38 suites passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial, cross-model (gemini complete, codex complete). Merge resolution 5c68e36e checked: both change-log rows kept, no conflict markers, 779 lines matches the file.
+
+### Findings
+- [x] (must-fix) Key check matches substrings of the space-separated key list, so `build test=foo` or `location location_path=/x` passes `check` (exit 0) and is then ignored by `get`; `set` writes it too. Compare the whole key exactly in parser and writer, and add a test (codex + Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:788`, `:1055`
+- [x] (must-fix) Docs say precedence is "the settings file, then the legacy .sh, then the shared config", but the code treats an existing legacy .sh as the whole legacy layer (shared config never consulted, e.g. a legacy file with only BUILD_CMD gets no shared TEST_CMD). The implementation keeps main's behaviour as a declared deviation; state that rule in the docs (or implement per-variable fall-through as the plan said) — `.agent/projects.local.example:86`, `docs/design.md:275`
+- [x] (suggestion) Orphan-settings check uses `grep -qx "$_pfname"` (regex, no `--`): `.` matches any character and a leading `-` is read as an option; use `grep -qxF --` (gemini + Claude adversarial) — `.agent/scripts/dashboard.sh:199`
+- [x] (suggestion) The writer forces mode 644 on every rewrite and replaces a symlinked settings file with a regular file; keep the original file's mode (confirmed: 600 became 644 after `set`) — `.agent/scripts/_project_registry.sh:1143`
+- [x] (suggestion) After the merge the #332 change-log row (dated 2026-10-13) sits below the #395 row (2026-10-15); re-date it to the day this lands so the log's dates run in order — `docs/design.md:726`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 09:27 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**Branch**: feature/issue-332 at `c5380cf1`
+**Addressed**: Local Review (Pre-Push) at `5c68e36e` (2026-10-21 08:29 -04:00)
+**Commits**: `3b9169fc`, `8b047605`, `d714184a`, `7d7507fb`, `c5380cf1`
+
+### Actions
+- [x] (must-fix) Composite keys such as `build test` or `location location_path` passed the substring key check: new `_project_file_key_in` compares each listed word exactly; the parser, the writer and the records-key test use it; new `test_composite_keys_refused` (four composite keys, parser and writer; fails on the old code) — `3b9169fc`, `.agent/scripts/_project_registry.sh`
+- [x] (must-fix) Precedence docs vs code: the documentation edit, not a code change (host's choice, owner may veto at the publish checkpoint: the whole-layer rule is main's behaviour, the `.sh` reading goes with #265 PR 4, a per-variable fall-through would change legacy behaviour here). `projects.local.example`, `docs/design.md` Registry and adapters, the `adapter` dispatcher header and the `_project_registry.sh` header now say an existing legacy `.sh` is the whole legacy layer; the plan sentence in step 6 is amended to match. Also refreshed the stale `adapter:73` citation of the `single_project` default to `adapter:80` (the PR had moved it) — `8b047605`
+- [x] (suggestion) Orphan check now `grep -qxF --`; dashboard test adds an orphan `web.app` beside a registered `webXapp` (missed before), a `-x` file (was a grep usage error) and a dotted registered name's own file (not an orphan) — `d714184a`, `.agent/scripts/dashboard.sh`
+- [x] (suggestion) Writer keeps the existing file's mode (GNU or BSD stat; a new file is still 644) and renames onto a symlink's resolved target, so the link stays; with nothing left a symlinked file's target is emptied rather than the link removed; an unresolvable link or a link to a non-regular file is refused; new `test_set_keeps_mode_and_symlink` (fails on the old code) — `7d7507fb`, `.agent/scripts/_project_registry.sh`
+- [x] (suggestion) #332 change-log row re-dated 2026-10-21 (now in date order after the #395 row), names the whole-legacy-layer rule and the citation refresh; line count 781, the file's length — `c5380cf1`, `docs/design.md`
+
+Checks: `run_script_tests.sh` all 38 suites passed (472 s); `test_project_file.sh` 206 passed, 0 failed; shellcheck `--severity=warning` (the pre-commit level) clean on `_project_registry.sh`, `dashboard.sh`, `adapter`, `test_project_file.sh`; pre-commit hooks passed on every commit, design-anchor hook included.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 09:36 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a0bc444961900f34f, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `3cf5f537`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff ~1,990 changed lines outside work plans, 200+ threshold; AGENTS.md governance file)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Round-1 findings (5c68e36e) all resolved at c5380cf1, checked in the code: whole-key match `_project_file_key_in` with a test; precedence docs state the whole-legacy-layer rule in five places; dashboard `grep -qxF --` with tests; writer keeps mode and symlink with a test; change-log row re-dated, 781 lines matches the file, `adapter:80` citation correct.
+Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; test_project_file.sh 206 passed; run_script_tests.sh 38 suites passed; check_design_anchors.sh passed), governance, plan drift (step 6 amended to the whole-layer rule; no new drift), Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+
+### Findings
+- [x] (must-fix) Writer treats an existing path that is not a readable regular file as absent: an unreadable file (mode 000) is overwritten with only the new keys and its settings lost, rc 0 "updated"; a directory at `projects.d/<name>` gets the temp file moved inside it, rc 0 "updated". Refuse when the path (or symlink target) exists and is not a readable regular file, with a test for each (Claude adversarial + codex, both confirmed by execution) — `.agent/scripts/_project_registry.sh:1110`, `:1188`
+- [x] (must-fix) `project_setting.sh` resolves `SCRIPT_DIR` and `ROOT` with logical `pwd`, so run through the documented `scripts/` symlink it finds the wrong workspace (from this worktree it read `worktrees/workspace/.agent/projects.local`); use `pwd -P` for both (gemini, confirmed by running both paths) — `.agent/scripts/project_setting.sh:37`, `:47`
+- [x] (suggestion) A dangling symlink at `projects.d/<name>` reads as "no file": `check` prints OK, the adapter ignores it, while `set` would create the target; report it as an error, and add tests for the symlink cases the comments claim (dangling, unresolvable, link to link, relative target) — `.agent/scripts/_project_registry.sh:788`
+- [x] (suggestion) The writer's read-modify-rename has no lock and no interrupt cleanup: two concurrent `set` calls on one project lose one update, and SIGINT leaves a hidden `.name.XXXXXX` file the dashboard glob skips; serialize with a per-project lock and remove the temp file on exit (codex rated must-fix; Claude adversarial suggestion) — `.agent/scripts/_project_registry.sh:1110`
+- [x] (suggestion) `IFS=$'\t' read -r _ _ layout _` collapses an empty layout field, so an unregistered name with `location=outside` gets layout "provisional" and skips the "not registered" error; unreachable today (callers are registered-only); use a non-whitespace delimiter or print the layout last (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:989`
+- [x] (suggestion) A command whose first word starts with `-` reaches `exec` as an option (`build=-c make` runs make with an empty environment); use `exec --` or refuse a leading `-` in the value check (Claude adversarial, confirmed by execution) — `.agent/scripts/adapter:307`
+- [x] (suggestion) The orphan settings-file check sits inside `if [ -n "$REGISTRY_ENTRIES" ]`, so with no registered project no orphan is reported; move the loop out (gemini) — `.agent/scripts/dashboard.sh:163`
+- [x] (suggestion) A file with an unknown or misspelled key cannot be repaired by `set`/`unset` (lines are copied through, `-key` refuses an unknown key); allow `-key` to remove an unknown key or name the hand edit in the error (Claude adversarial) — `.agent/scripts/_project_registry.sh:1075`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 09:55 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a8f73bec5a88b2c19, resume 1 of 3)
+
+**Branch**: feature/issue-332 at `cf393f33`
+**Addressed**: Local Review (Pre-Push) at `3cf5f537` (2026-10-21 09:36 -04:00)
+**Commits**: `fa135945`, `57ad0825`, `664aa88d`, `f70b1cf0`, `bbf97f18`, `80989c7f`, `d5d05a7c`, `1cc8395c`, `cf393f33`
+
+### Actions
+- [x] (must-fix) Writer treated an unreadable or non-regular path as absent: new `_project_file_path_error`; the writer refuses (exit 1, file left as it was) when the path or a symlink's target exists but is not a readable regular file; new `test_set_refuses_unusable_path` (a directory, a symlink to one, a mode 000 file, a symlink to one; mode 000 cases skip as root) — `57ad0825`, `.agent/scripts/_project_registry.sh`
+- [x] (must-fix) `project_setting.sh` `SCRIPT_DIR` and `ROOT` use `pwd -P`; new `test_run_through_scripts_symlink` runs set and get through a root `scripts` symlink — `fa135945`, `.agent/scripts/project_setting.sh`
+- [x] (suggestion) A dangling or unresolvable symlink is an error: the parser reports it (exit 2, so check, the adapter, dashboard and validate stop on it) and the writer refuses it; new `test_symlink_cases` covers dangling, a loop, link to link (final target rewritten, both links kept) and a relative target (kept relative) — `664aa88d`
+- [x] (suggestion) Writer body runs in a subshell holding an exclusive flock on the sidecar `projects.d/.lock.<name>` (a lock on the file itself would not exclude the next writer, since the rename replaces its inode), waiting `PROJECT_FILE_LOCK_WAIT` s (default 10) then refusing; unlocked without flock, as `capture.sh`; EXIT/HUP/INT/TERM traps remove the temporary file; new `test_set_lock_and_interrupt_cleanup` (five concurrent writers over three rounds keep every update, a held lock refuses, TERM removes the temporary file; fails on the old code) — `bbf97f18`
+- [x] (suggestion) The default layout field is read with `cut -f3`, not a tab `read`; new `test_outside_without_layout_unregistered` — `80989c7f`
+- [x] (suggestion) `active_project_exec` uses `exec --`; new `test_command_leading_dash_is_the_command` (a `-dashcmd` command runs; `-c <stub>` fails without running the stub). The legacy/shared path `exec $SP_CMD` is main's code and is unchanged — `d5d05a7c`, `.agent/scripts/adapter`
+- [x] (suggestion) Dashboard orphan loop moved out of the registered-entries branch; it runs whenever the registry parsed and is skipped when the registry is malformed (names unknown); new `test_dashboard_orphans_without_registered_projects` — `1cc8395c`, `.agent/scripts/dashboard.sh`
+- [x] (suggestion) `unset`/`-key` removes an unknown key the file holds (an unknown key it lacks, and any unknown key on `set`, are still refused); the parser's unknown-key error names `project_setting.sh unset <name> '<key>'` or a hand edit, a duplicate names the hand edit, and the writer's replayed error names the project, not its temporary file; usage text updated; new `test_unknown_key_repair` — `f70b1cf0`
+
+Also, not a finding: `cf393f33` fixes the one precedence comment round 1 missed (the dispatcher's settings-file section in `adapter` still read as a per-variable fall-through); comment only.
+
+Checks: `run_script_tests.sh` all 38 suites passed (289 s); `test_project_file.sh` 278 passed, 0 failed (206 before this round); every new test was run against the code before its fix and failed there; shellcheck `--severity=warning` clean on `_project_registry.sh`, `project_setting.sh`, `dashboard.sh`, `adapter`, `test_project_file.sh`. Intermediate commits used `SKIP=validate-script-tests` as the host allowed; all other hooks ran on each commit.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 10:03 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a0bc444961900f34f, resume 2 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `8062f779`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff past the 200-line threshold; AGENTS.md governance file)
+**Must-fix**: 1 | **Suggestions**: 4
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Round-2 findings (3cf5f537) all resolved at cf393f33, checked in the code: writer refuses a path that is not a readable regular file; `pwd -P` (confirmed: through `scripts/` it now reads the main registry); dangling and looping links are errors; flock on a sidecar `.lock.<name>` with subshell-local traps (adversarial confirmed a caller's EXIT trap survives and the temp file goes on SIGTERM); `cut -f3`; `exec --`; orphan check with nothing registered; `unset` repairs an unknown key.
+Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; test_project_file.sh 278 passed; run_script_tests.sh 38 suites passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+
+### Findings
+- [x] (must-fix) `ros2_colcon` does not follow the settings contract the docs state for "build/test/install/bootstrap_url": `build=` and `test=` are stored by `set` and never read (colcon builds; silent no-op), and a `MANIFEST_BOOTSTRAP_URL` taken from the shared `project_config.sh` prints no fall-through note. Say in `projects.local.example`, `docs/design.md` Registry and adapters and the registry header that `build`/`test` apply to `single_project` only (or refuse them for a `ros2_colcon` project), print the fall-through note for a shared bootstrap URL, and test both plus `adapter_install` from the settings file (Claude adversarial + codex) — `.agent/project_types/ros2_colcon/adapter.sh:255`, `.agent/projects.local.example:86`
+- [x] (suggestion) A settings path that cannot be looked up reads as absent: when `projects.d` is a regular file, a dangling link, or not searchable, `[ -e ]` and `[ -L ]` are both false and the parser returns no settings, so the adapter falls through to the shared config (with the note on single_project); fail closed when the parent exists but is not a searchable directory (codex rated must-fix, confirmed by its probes; the legacy `.sh` lookup has the same pre-existing gap) — `.agent/scripts/_project_registry.sh:835`
+- [x] (suggestion) A command whose first word is an environment assignment (`build=CC=gcc make`) validates and is stored, then fails at run time with `exec: CC=gcc: not found` (127); refuse a first word containing `=` with the "point the key at a script" message (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:667`
+- [x] (suggestion) The unlocked path the writer's header documents for a machine without `flock` has no test; cover it with a `PATH` lacking `flock` (Claude adversarial) — `.agent/scripts/tests/test_project_file.sh`
+- [x] (suggestion) The exit-code header says 2 means the settings file is invalid, but 2 is also returned for a malformed registry; add that case (Claude adversarial) — `.agent/scripts/project_setting.sh:32`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:08 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 3 (8370f82b) reached MAX_ROUNDS with 1 must-fix (ros2_colcon stores build/test it never reads; silent bootstrap_url fall-through) and 4 suggestions; ship signal "fix and ship". Owner's answer: "Fix then publish (Recommended)": address all five, one more review on the fixed branch, then publish. Host's mechanism choice, open to veto: refuse build/test for a ros2_colcon project at set time rather than document them as ignored.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 10:29 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a8f73bec5a88b2c19, resume 2 of 3)
+
+**Branch**: feature/issue-332 at `050d22a7`
+**Addressed**: Local Review (Pre-Push) at `8062f779` (2026-10-21 10:03 -04:00)
+**Commits**: `f14d1d52`, `6d0d16f9`, `03196b80`, `8e366331`, `d067f944`, `050d22a7`
+
+### Actions
+- [x] (must-fix) ros2_colcon stored build/test it never read, and a shared bootstrap URL was silent. Refusal, not documentation (host's choice, open to the owner's veto): each type lists the keys it never reads, with the reason, in its own data file `.agent/project_types/<type>/unused_settings`, so no script names a type. `set` refuses such a key (exit 1, "colcon owns the build" for ros2_colcon), and the parser, given the type from the registry, reports a hand-written one with file:line and the unset repair, so `check` fails and the adapter stops. Deviation from the host's direction: `install` is NOT refused for ros2_colcon, because `adapter_install` reads it (an optional deploy step after colcon) and the direction also asked to test that read; only `build` and `test` are listed. Same mechanism, not asked for: single_project lists `bootstrap_url` (it never reads it). `_rc_bootstrap_url` now calls `active_project_fallback_note bootstrap_url` for a URL from the shared config. Documented in `projects.local.example`, the registry header and the Registry and adapters bullet (change-log row text and line count 784 refreshed). Tests: `test_type_unused_settings_refused` (refusals, hand edit, repair, ros2_colcon `install` and `install=none` from the settings file) and `test_setup_bootstrap_shared_url_is_reported` in `test_ros2_colcon.sh` (shared URL reported; settings-file and legacy URLs not) — `f14d1d52`, `6d0d16f9`
+- [x] (suggestion) A `projects.d` that exists but is not a searchable directory (regular file, dangling link, no search permission) now fails closed: check exits 2, the adapter stops, set refuses with the reason (path checked before the lock); an absent `projects.d` is still "no file"; new `test_unsearchable_settings_dir_fails_closed` — `03196b80`
+- [x] (suggestion) A command whose first word contains `=` is refused with the "point the key at a script" message; a later `VAR=value` stays an argument; documented; new `test_command_env_assignment_refused` — `8e366331`
+- [x] (suggestion) New `test_set_without_flock_writes_unlocked`: set and unset with a PATH holding every system command except flock succeed and leave no lock or temporary file; it fails against a writer that always takes the lock — `d067f944`
+- [x] (suggestion) `project_setting.sh` header: exit 2 also covers a malformed registry; new `test_malformed_registry_exits_2` covers all five commands — `050d22a7`
+
+Checks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract and the design-anchor check; `test_project_file.sh` 338 passed, 0 failed; `test_ros2_colcon.sh` 200 passed, 0 failed; each new test was run against the code before its fix and failed there; shellcheck `--severity=warning` clean on `_project_registry.sh`, `project_setting.sh`, `adapter`, `ros2_colcon/adapter.sh`, `test_project_file.sh`, `test_ros2_colcon.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 10:39 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a0bc444961900f34f, resume 3 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `4a937d4a`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff ~2,730 changed lines outside work plans, 200+ threshold; AGENTS.md governance file)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 4 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round-3 findings (8062f779) all resolved at 050d22a7, checked in the code: per-type `unused_settings` data file read by `_project_type_unused_setting` (no script names a type), applied by every reader through `project_file_entries` (adversarial confirmed a hand-written `bootstrap_url` stops a single_project's `build` and `validate`); shared bootstrap URL fall-through note; `projects.d` that is not a searchable directory fails closed; first word `VAR=value` refused; no-flock path tested; exit-code header. Change-log row 784 matches `wc -l`.
+For the owner (not findings): `install` stays allowed for ros2_colcon because its `adapter_install` reads it; `bootstrap_url` is now refused for single_project, so a hand-written one stops that project's verbs; `unused_settings` is a second per-type data file beside PR 2's planned `registration.conf` (PR 2 may fold one into the other).
+Specialists: static analysis (shellcheck --severity=warning clean on 8 scripts; test_project_file.sh 338 passed; test_ros2_colcon.sh 200 passed; run_script_tests.sh 38 suites passed; validate_adapter.sh passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+
+### Findings
+- [x] (suggestion) `unused_settings` fails open when present but unusable: unreadable (mode 000) gives `check` OK and the adapter runs; a CRLF `test\r` line never matches; treat a present-but-unreadable file as an error and strip `\r`, with tests (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:855`
+- [x] (suggestion) Nothing validates `unused_settings`: a misspelt key is inert and a line with no reason prints an empty reason; have `validate_adapter.sh` check each line names a known key and has a reason, with a test (Claude adversarial, confirmed by execution) — `.agent/scripts/validate_adapter.sh`
+- [x] (suggestion) The AGENTS.md Script Reference row for `project_setting.sh` omits that `set` refuses, and `check` fails, a key the project's type never reads (`unused_settings`), which the design, example file and header all state (Claude adversarial) — `AGENTS.md:408`
+- [x] (suggestion) Legacy compatibility: the adapters now clear `BUILD_CMD`/`TEST_CMD`/`INSTALL_CMD` before sourcing the legacy or shared config, so a value inherited from the environment (or a config using `${BUILD_CMD:-make}`) is no longer honoured as on main; no local config relies on it (checked), so name the change in the PR body or keep the inherited value (codex rated must-fix) — `.agent/project_types/single_project/adapter.sh:44`, `.agent/project_types/ros2_colcon/adapter.sh:645`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 10:47 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Pre-push round 4 (7b09bc7e): approved, ship recommended, 0 must-fix, 4 suggestions (unused_settings fails open when unreadable or CRLF; nothing validates unused_settings; the AGENTS.md project_setting.sh row omits the per-type refusal; adapters clear env-inherited BUILD_CMD/TEST_CMD/INSTALL_CMD). Owner's answers: "Fix suggestions, then publish"; the three host choices stand (legacy .sh is the whole legacy layer; per-type unused keys refused, install allowed for ros2_colcon; env-inherited commands cleared); and the AGENTS.md Script Reference row for project_setting.sh (Ask First): "Yes, approve the row".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 11:02 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a8f73bec5a88b2c19, resume 3 of 3)
+
+**Branch**: feature/issue-332 at `c00db0c6`
+**Addressed**: Local Review (Pre-Push) at `4a937d4a` (2026-10-21 10:39 -04:00)
+**Commits**: `8fa23a3f`, `be7878c7`, `fb250aae`, `c00db0c6`
+
+### Actions
+- [x] (suggestion) `unused_settings` failing open: `_project_type_unused_setting` returns 2 with the reason when the list exists but is not a readable file, so the parser reports it on the key's line (check fails, the adapter stops) and `set` refuses; CRs are stripped from key and reason; new `test_unused_settings_list_unreadable_or_crlf` (CRLF list still refuses, also a key alone on its line, with a clean message; unreadable list fails check, stops the adapter, refuses set; skips as root) — `8fa23a3f`, `.agent/scripts/_project_registry.sh`
+- [x] (suggestion) `validate_adapter.sh` now checks every type's `unused_settings` through the new `project_type_unused_settings_problems` (readable; each entry a known key, once, with a reason; CRLF, comments, blanks allowed), so the adapter-contract hook and CI catch a bad list; new `test_validator_checks_unused_settings` in `test_adapter.sh` — `be7878c7`
+- [x] (suggestion) AGENTS.md Script Reference row for `project_setting.sh` names the per-type refusal; its own commit, owner-approved at the 2026-10-21 checkpoint. Not changed (no approval asked): the `validate_adapter.sh` row still reads "verify every project type implements the full adapter contract" and does not mention the `unused_settings` check — `fb250aae`
+- [x] (suggestion) Env-inherited `BUILD_CMD`/`TEST_CMD`/`INSTALL_CMD` stay cleared (owner let it stand at the checkpoint); the change is named in one sentence each in the single_project and ros2_colcon adapter headers and `projects.local.example`, for the PR body to cite; a new `test_env_inherited_commands_ignored` pins it; no behaviour change — `c00db0c6`
+
+Checks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract and the design-anchor check; `test_project_file.sh` 353 passed, `test_adapter.sh` 96 passed, `test_ros2_colcon.sh` 200 passed, all 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `--severity=warning` clean on `_project_registry.sh`, `validate_adapter.sh`, both adapters, `test_project_file.sh`, `test_adapter.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 11:12 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `c064fead`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 2,916 changed lines outside work plans, 16 files; AGENTS.md governance file)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 5 | **Ship**: continue — must-fix rising (0 -> 1); the one must-fix is a mechanical four-number doc edit caused by the origin/main merge
+
+Round-4 findings (7b09bc7e) all resolved at c00db0c6, checked in the code: unreadable or CRLF `unused_settings` is an error at set, check and the adapter (return 2); `validate_adapter.sh` checks each list through `project_type_unused_settings_problems`; AGENTS.md `project_setting.sh` row names the per-type refusal; env-inherited commands documented and pinned by a test. The merge c064fead brings only main's #399 content (no conflicts); its `dispatch_phase.sh` edits made the design doc's line citations stale (must-fix below).
+For the owner (not a finding): the AGENTS.md `validate_adapter.sh` row still reads "verify every project type implements the full adapter contract" and does not mention the new `unused_settings` list check; changing it is Ask First.
+Specialists: static analysis (shellcheck --severity=warning clean on 11 changed shell files; run_script_tests.sh 38 suites passed at c064fead; validate_adapter.sh passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+Dropped: gemini "bare repo gives empty --show-toplevel" (git 2.43 exits 128, so the check returns 3 as designed; checked by execution); gemini local-remote vs shared upstream (outside the owner-set three checks); gemini `set -foo=bar` parsed as removal (refused as unknown key, not silent); adversarial empty reason at runtime (validate_adapter.sh, a pre-commit hook and CI, already catches it).
+
+### Findings
+- [x] (must-fix) docs/design.md Worktrees Target, mechanism 1, cites `dispatch_phase.sh` lines 362, 364, 407, 499; after the origin/main merge (#399 edits to dispatch_phase.sh) the work-plans path lines are 368, 370, 428, 520; refresh them (the change-log row says they were refreshed; line count 784 is unchanged by the edit) (Claude adversarial + lead, confirmed by grep) — `docs/design.md:430`
+- [x] (suggestion) A command set in the settings file runs without sourcing the legacy `.sh` or shared `project_config.sh`, so anything those files export (SDK paths, PATH) no longer reaches it once a command is moved into the settings file; no local config exports anything today (checked); document it in both adapter headers, `projects.local.example` and the design bullet (environment setup goes in the script the key points at), and note it for PR 2's adoption step (codex rated must-fix; reproduced by codex, confirmed by reading) — `.agent/project_types/single_project/adapter.sh:43`, `.agent/project_types/ros2_colcon/adapter.sh:640`
+- [x] (suggestion) A leading `~` in a command value (`test=~/x`) is accepted and stored, then fails at run time (127) because nothing expands it; refuse a `~` word with the "point the key at a script or absolute path" hint, or state in the grammar header and `projects.local.example` that `~` and globs are literal (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:675`
+- [x] (suggestion) The writer's lock is keyed by project name (`.lock.<name>`), but two projects whose settings files are symlinks to one target take different locks, so concurrent writes can lose an update; lock on the resolved destination or refuse a shared target, with a test (codex) — `.agent/scripts/_project_registry.sh:1289`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 11:13 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 5 (489cd883, cold review at the merge commit c064fead): 1 mechanical must-fix caused by the host's merge of origin/main (four dispatch_phase.sh line citations in docs/design.md went stale) and 3 suggestions (settings-file commands no longer see variables exported by the legacy or shared config: reviewer's choice is to document; a leading '~' stored literally fails at run time; two symlinked settings files sharing a target take different locks). The owner's answer at the round-4 publish checkpoint was "Fix suggestions, then publish"; the host applies it here, since the must-fix is a consequence of the publish path's own merge-from-main, and the owner may veto the S1 documentation choice at publish.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 11:34 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+
+**Branch**: feature/issue-332 at `c9ad44df`
+**Addressed**: Local Review (Pre-Push) at `c064fead` (2026-10-21 11:12 -04:00)
+**Commits**: `5596be9a`, `8eb91cd3`, `aa1a9c12`, `c9ad44df`
+
+### Actions
+- [x] (must-fix) `docs/design.md` Worktrees Target mechanism 1 now cites `dispatch_phase.sh` lines 368, 370, 428, 520 (checked by grep at HEAD: the two exit contracts, `cmd_check_exit`, `cmd_next`); the other citations in that paragraph (`merge_pr.sh`, `review_progress.sh`, `progress_append.sh`) were checked and still hold, since the merge did not touch those files; the change-log row's "line numbers are refreshed" is true again — `5596be9a`, `docs/design.md:431`
+- [x] (suggestion) Documented, not changed: a command set in the settings file runs without sourcing the legacy `.sh` or the shared `project_config.sh`, so their exports do not reach it; environment setup belongs in the script the key points at. One sentence each in both adapter headers, `projects.local.example` and the design's Registry and adapters bullet; the plan's PR 2 adoption step now warns, naming each, when a legacy `.sh` (or the shared config) sets anything beyond `PROJECT_TYPE`, `BUILD_CMD`, `TEST_CMD`, `INSTALL_CMD`, `MANIFEST_BOOTSTRAP_URL`, `ROS_DISTRO`, `ROS_ROOT_DIR`, with a test named for PR 2. New `test_settings_command_gets_no_config_environment` pins the behaviour. The #332 change-log row names the change; its section count "98 lines" had been stale since round 2 and now reads 105, and the file is 786 lines — `8eb91cd3`, `.agent/project_types/single_project/adapter.sh:15`, `.agent/project_types/ros2_colcon/adapter.sh:22`
+- [x] (suggestion) The value check refuses any command word starting with `~` with the "point the key at a script or an absolute path" hint, at `set`, at `check` and in the adapter; a `~` inside a word (`HEAD~1`) is accepted; the grammar header and `projects.local.example` say `* ? [` are literal. New `test_command_tilde_word_refused` (fails 15 checks on the code before the fix) — `aa1a9c12`, `.agent/scripts/_project_registry.sh:686`
+- [x] (suggestion) The writer resolves the destination before taking the lock and puts the sidecar beside it, `<dir>/.lock.<basename>` (still `projects.d/.lock.<name>` for an ordinary file), so two names linking to one target take one lock; a sidecar file rather than a directory lock, since an exclusive flock needs a writable descriptor on NFS; once the lock is held the link is re-resolved, and a link repointed while waiting is refused. New `test_set_lock_follows_shared_symlink_target` (held lock refuses through either name; three rounds of mixed concurrent writers through both links keep every update; repointed-while-waiting refused, neither target changed; fails 12 checks on the code before the fix, a lost update among them) — `c9ad44df`, `.agent/scripts/_project_registry.sh:1318`
+
+Checks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite (`validate-script-tests`), the adapter contract and the design-anchor check; `test_project_file.sh` 397 passed, 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `-S warning` clean on `_project_registry.sh`, `test_project_file.sh` and both adapters. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 11:44 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a1794adcd75b020c6, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `dcbddea6`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 3,095 changed lines outside work plans, 16 files; AGENTS.md governance file; fix-round re-review keeps the whole-diff tier)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 6 | **Ship**: recommended — 1 mechanical must-fix (prev 1), not rising; fix and ship rather than another full round
+
+Round-5 findings (489cd883) all resolved at c9ad44df, checked in the code: dispatch_phase.sh citations 368, 370, 428, 520 match (grep); Registry and adapters 105 lines and design.md 786 lines match; S1 documented in both adapter headers, the example file and the design bullet, plus the PR 2 adoption warning in the plan; a `~` word refused at set, check and adapter (`HEAD~1` accepted); the lock is taken beside the resolved destination and a link repointed while waiting is refused. No merge from main since round 5; 0 behind origin/main.
+Still open for the owner (not a finding): the AGENTS.md `validate_adapter.sh` row does not mention the `unused_settings` list check (Ask First).
+Specialists: static analysis (shellcheck --severity=warning clean on 11 changed shell files; run_script_tests.sh 38 suites passed at dcbddea6; validate_adapter.sh passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+Dropped: gemini local/file:// remote vs a shared upstream (outside the owner-set three checks, dropped in round 5 too); gemini `set` not running the workspace-repo check on an already hand-written records combination (the file was already failing check; a write of such a combination is refused either way); gemini `-key=value` and untrimmed `set` arguments (refused with a clear error, not silent).
+
+### Findings
+- [x] (must-fix) The Python registry parser that `validate_workspace.py` uses, which says it mirrors `_project_registry.sh`, does not refuse a project name ending in `.sh`: `read_projects_registry` returns `tools.sh` as a valid entry with no error while `registry_entries` exits 2 (both run); add the rule with the same message and a `.sh` case to `test_validate_python_parser_matches_shell` (gemini, confirmed by execution) — `.agent/scripts/lib/workspace.py:121`
+- [x] (suggestion) The writer re-checks after taking the lock only that the destination path is unchanged, not that it is still a readable regular file; a settings file replaced by a directory while the writer waits makes `mv -f` put the temporary file inside that directory and report success; re-run `_project_file_path_error` beside the destination re-check, with a test (codex rated must-fix; confirmed by reading; needs a hand replacement inside the lock wait, and the gap predates this round) — `.agent/scripts/_project_registry.sh:1340`
+- [x] (suggestion) A settings file for a parent root (`type=project`) is read by nothing (the adapter resolves the parent to its instance first, dashboard skips parents and counts the name as registered), yet `project_setting.sh check` and `list` on a parent exit 0 as if it had settings; make `check` fail for a parent that has a file, and have the dashboard warn, as `set` already refuses (gemini, confirmed by reading) — `.agent/scripts/project_setting.sh:73`, `.agent/scripts/dashboard.sh:168`
+- [x] (suggestion) For a symlinked settings file whose target is in another directory, the lock sidecar `.lock.<basename>` is created beside the target and never removed (removing it would be unsafe); say so in the writer's header and the design bullet so a user who keeps settings in a git checkout knows where the untracked file comes from (Claude adversarial, confirmed by execution) — `.agent/scripts/_project_registry.sh:1328`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 11:51 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 6 (b9a1cf11, at dcbddea6): 1 mechanical must-fix (the Python registry parser in lib/workspace.py does not refuse a name ending in .sh, unlike the shell parser) and 3 suggestions (re-check the destination is still a regular file after the lock; check fails and the dashboard warns for a parent root's settings file; document the lock file left beside a symlink target). Ship signal "fix and ship". Owner's answer: "Fix, re-review, publish (Recommended)"; if round 7 finds another small must-fix the host asks again rather than loop.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 12:13 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a44f63a2874f8018e, resume 1 of 3)
+
+**Branch**: feature/issue-332 at `4405f1d2`
+**Addressed**: Local Review (Pre-Push) at `dcbddea6` (2026-10-21 11:44 -04:00)
+**Commits**: `cc82f3c7`, `a7b00b6d`, `f1074424`, `4405f1d2`
+
+### Actions
+- [x] (must-fix) `read_projects_registry` refuses a project name ending in `.sh` with the shell parser's message; `test_validate_python_parser_matches_shell` gains a `tools.sh` line and asserts both the error and that neither parser keeps the entry (the parity check fails on the old parser) — `cc82f3c7`, `.agent/scripts/lib/workspace.py:126`
+- [x] (suggestion) Once the lock is held the writer re-runs `_project_file_path_error` beside the destination re-check and refuses with the reason; header updated. New `test_set_rechecks_the_file_after_the_lock_wait` (a flock stub marks the wait, the file is replaced by a directory, the write is refused, nothing lands inside, no temporary file left); on the old code the write reported "updated" and left its temporary file inside the directory (checked by execution) — `a7b00b6d`, `.agent/scripts/_project_registry.sh:1350`
+- [x] (suggestion) `project_setting.sh check` and `list` on a parent root exit 2 when it has a settings file, naming its instances, and print "is a parent root and has no settings file" (exit 0) when not; the dashboard warns about a parent's file. New `test_parent_root_settings_file_is_flagged` (fails 7 checks on the old scripts). Not changed: the AGENTS.md `project_setting.sh` row's exit-code summary does not mention the parent case (Ask First) — `f1074424`, `.agent/scripts/project_setting.sh:85`, `.agent/scripts/dashboard.sh:180`
+- [x] (suggestion) The lock file is never removed, by design; said in the writer's header (with why: removing it would let a third writer lock a new file of the same name) and in the design's Registry and adapters bullet (a linked file leaves an untracked `.lock.<basename>` beside its target); the #332 change-log row names it, with 107 section lines and 788 file lines; no behaviour change — `4405f1d2`, `.agent/scripts/_project_registry.sh:1215`, `docs/design.md:276`
+
+Checks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract, the design-anchor check, shellcheck, black, flake8 and pylint; `test_project_file.sh` 413 passed and `test_project_registry.sh` 260 passed, 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `-S warning` clean on `_project_registry.sh`, `project_setting.sh`, `dashboard.sh`, `test_project_file.sh`, `test_project_registry.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-21 12:32 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a1794adcd75b020c6, resume 2 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `56a273a9`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff 3,228 changed lines outside work plans, 18 files; AGENTS.md governance file; fix-round re-review keeps the whole-diff tier)
+**Must-fix**: 1 | **Suggestions**: 3
+**Round**: 7 | **Ship**: recommended — 1 mechanical must-fix (prev 1), not rising; every remaining item is mechanical, fix and ship rather than another full round
+
+Round-6 findings (b9a1cf11) all resolved at 4405f1d2, checked in the code: the Python parser refuses a `.sh` name with the shell's exact message, in the same check order; the writer re-runs `_project_file_path_error` after the lock, before any temp file; `check`/`list` exit 2 for a parent root that has a file and the dashboard warns; the lock file left beside a link target is documented. design.md counts verified: Registry and adapters 107 lines, file 788. 0 behind origin/main.
+For the owner (not findings, Ask First): the AGENTS.md `validate_adapter.sh` row does not mention the `unused_settings` list check, and the `project_setting.sh` row's exit codes do not mention the parent-root exit 2.
+Specialists: static analysis (shellcheck --severity=warning clean on the 5 touched scripts and suites; flake8 clean on workspace.py; run_script_tests.sh 38 suites passed at 56a273a9; validate_adapter.sh passed; check_design_anchors.sh passed), governance, plan drift, Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+Dropped: gemini local/file:// remote vs a shared upstream and push URLs (outside the owner-set three checks; dropped in rounds 5 and 6); gemini `-key=value` parsing (refused with a clear error; dropped twice before); gemini unquoted `$tmp` in the error-message substitution (affects message text only); gemini dashboard skipping a dangling orphan link (nothing reads it); adversarial dashboard warning vs `check` exit 2 for a parent's file (a deliberate split: `make validate` stays about what is read).
+
+### Findings
+- [x] (must-fix) docs/design.md Registry and adapters says "The registry has no such fallback, except in `capture.sh`"; this branch's `project_setting.sh` also reads the main checkout's registry and settings file from a linked worktree (and refuses to write there), so name it in that sentence (gemini, confirmed by reading `project_setting.sh:54-60`) — `docs/design.md:264`
+- [x] (suggestion) The `.sh` name guard is case-sensitive: on a case-insensitive filesystem (macOS default) a project named `tools.SH` passes and its settings file `.agent/projects.d/tools.SH` is project `tools`'s legacy `tools.sh`; compare the suffix case-insensitively in both parsers, with a mixed-case parity case (codex rated must-fix; confirmed by reading) — `.agent/scripts/_project_registry.sh:154`, `.agent/scripts/lib/workspace.py:126`
+- [x] (suggestion) `project_setting.sh get <parent> <key>` still reads a file under a parent root's name and prints a value nothing honours, while `check` and `list` now refuse it; give `get` the same parent handling (Claude adversarial, confirmed by reading) — `.agent/scripts/project_setting.sh:105`
+- [x] (suggestion) For `tracking=repo`, a `location_path` that exists but is not yet a clone is resolved by `git rev-parse --show-toplevel` to whatever repository holds it (a home dotfiles repo, say) and checked as that repo, rather than reported "unverifiable until cloned"; require the toplevel to be `location_path` itself, or record it on the records-lookup issue (#393), where these combinations become honoured (gemini, confirmed by reading) — `.agent/scripts/_project_registry.sh:1099`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-21 12:34 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+Pre-push round 7 (bbe5fb20, at 56a273a9): 1 mechanical must-fix (design.md Registry and adapters sentence "no such fallback, except in capture.sh" must name project_setting.sh too) and 3 suggestions (case-insensitive .sh guard in both parsers; get gets the parent-root handling; records-repo check must not adopt an enclosing repository for a not-yet-cloned location_path, or record on #393). Ship recommended. Owner's answers: "Fix, then publish after round 8 regardless (Recommended)": one fix pass, one review, then the host answers the round-8 checkpoint publish whatever it finds, leftovers listed in the PR body for post-push triage; and the two stale AGENTS.md Script Reference rows (validate_adapter.sh: unused_settings check; project_setting.sh: parent-root exit 2), Ask First: "Yes, update both rows".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-21 12:52 -04:00
+**By**: Claude Code Agent (claude-opus-4-6)
+**Dispatch**: resumed (agent a44f63a2874f8018e, resume 2 of 3)
+
+**Branch**: feature/issue-332 at `b07050a5`
+**Addressed**: Local Review (Pre-Push) at `56a273a9` (2026-10-21 12:32 -04:00)
+**Commits**: `a06e523e`, `5fc35f35`, `46abd214`, `4f7ab94e`, `b07050a5`
+
+### Actions
+- [x] (must-fix) Registry and adapters now says the registry has no worktree fallback except in two scripts, `capture.sh` and `project_setting.sh` (which also reads the main checkout's settings files and refuses to write them from a worktree, checked against `project_setting.sh:54-60`); the #332 change-log row names it, with 109 section lines and 790 file lines — `a06e523e`, `docs/design.md:264`
+- [x] (suggestion) Both parsers refuse a name ending in `.sh` in any letter case (`*.[sS][hH]` in bash, so no bash-4 `${,,}`; `name.lower()` in Python), with the same message saying "in any letter case"; `projects.local.example` says so; the parity test gains `kit.SH` and `box.sH` lines (their three checks fail on the old parsers) — `5fc35f35`, `.agent/scripts/_project_registry.sh:155`, `.agent/scripts/lib/workspace.py:127`
+- [x] (suggestion) `get` on a parent root exits 2 with the INVALID message and prints no value when the parent has a file, and exits 1 saying the settings belong to its instances when not; the parent checks share helpers; `test_parent_root_settings_file_is_flagged` covers `get` (its four `get` checks fail on the old script) — `46abd214`, `.agent/scripts/project_setting.sh:115`
+- [x] (suggestion) Not as literally suggested: when the toplevel is not `location_path` itself, the result is "unverifiable until cloned" (exit 3, the note naming why), as the plan's wording says (`location_path` is the records clone; an uncloned one is unverifiable); but the enclosing repository is still refused when it is a workspace (its own repository or a copy), because records there would be committed into it and `test_records_dir_inside_workspace_repo` pins that refusal. No conflict with the #393 plan wording, so nothing recorded there. New `test_records_path_inside_another_repo_is_unverifiable` (inside a dotfiles repo: unverifiable with the reason; once cloned there: verified; absent: unverifiable; inside a workspace copy: refused); its two note checks fail on the old code — `4f7ab94e`, `.agent/scripts/_project_registry.sh:1140`
+- [x] (owner-approved, Ask First) AGENTS.md in its own commit: the `validate_adapter.sh` row names the `unused_settings` list check; the `project_setting.sh` row's exit codes name the parent-root exit 2 (for `check`, `get` and `list`) — `b07050a5`, `AGENTS.md:407-408`
+
+Checks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the full script suite, the adapter contract, the design-anchor check, shellcheck, black, flake8 and pylint (flake8 with the repo's `--max-line-length=100`); `test_project_file.sh` 426 passed and `test_project_registry.sh` 263 passed, 0 failed; each new code test was run against the code before its fix and failed there; shellcheck `-S warning` clean on `_project_registry.sh`, `project_setting.sh`, `test_project_file.sh`, `test_project_registry.sh`. Intermediate commits used `SKIP=validate-script-tests` as allowed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-27 13:48 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #403 at `91366fc3`
+**Depth**: Deep (reason: 3,200+ changed lines outside work plans across 18 files; AGENTS.md governance file)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Round-7 fixes (bbe5fb20) checked in the code at 91366fc3: design.md names `project_setting.sh` beside `capture.sh`; both parsers refuse `.sh` in any case (`*.[sS][hH]`, `name.lower()`); `get` on a parent root exits 2 / 1; a `location_path` inside another repository is unverifiable unless that repository is a workspace (workspace refusals run before the enclosed return 3); AGENTS.md rows owner-approved (Checkpoint 2026-10-21 12:34). Local HEAD equals PR head; 0 behind origin/main.
+CI at review time: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs; Lint (pre-commit) passed on one run and was still pending on the other; Copilot PR review failed (quota exhausted, no review).
+Specialists: static analysis (shellcheck --severity=warning clean on the 12 changed shell files and `adapter`; flake8 clean on lib/workspace.py; validate_adapter.sh passed; test_project_file.sh 426, test_project_registry.sh 263, test_adapter.sh 96, test_ros2_colcon.sh 200 passed, 0 failed), governance, plan drift (no drift beyond the plan-review additions already recorded), Claude adversarial (fresh; its sandbox edge-case probes were denied, findings by reading), cross-model (gemini complete, codex complete).
+Dropped: codex SIGTERM to the CLI PID alone lets the writer subshell finish (the write is atomic and validated, the requested change lands; Ctrl-C signals the whole group); gemini `set` of an unrelated key on a file whose records are already refused (dropped round 5); gemini local/file:// remote vs a shared upstream (dropped rounds 5-7); gemini validate_workspace.py not flagging a parent's file (deliberate split, round 7); gemini dashboard orphan glob on dangling links and `.SH` (round 7; nothing reads such a file); gemini `list` sending the refusal reason to `check` (deliberate); gemini `list` not marking a defaulted `location_path` provisional (only a hand-written, not-yet-honoured combination reaches it; `check` prints the NOTE); gemini untrimmed `set` arguments and unset-typo error order (refused with a clear error; dropped before).
+
+### Findings
+- [ ] (suggestion) `get` skips the records check: a file with `tracking=repo` at a workspace repository, which `check`, `list` and the adapter refuse, still returns any key with exit 0, against the header's exit-2 contract "records settings refused" and the round-7 parent-root parity; run `_project_records_check_entries` (exit 2 on refusal) or narrow the documented contract for `get` (codex and gemini, confirmed by reading `project_file_get`) — `.agent/scripts/project_setting.sh:125`
+- [ ] (suggestion) `_records_norm_url` lowercases with `${1,,}` (bash 4 only) although the round-7 `.sh` guard in the same file avoided it for macOS bash 3.2; reached on every adapter verb for `tracking=repo` with a network remote; use `tr '[:upper:]' '[:lower:]'` (the workspace already uses `${,,}` elsewhere, e.g. `_resolve_work_plans_dir.sh:96`, so low impact) (Claude adversarial, confirmed by reading) — `.agent/scripts/_project_registry.sh:1054`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-27 13:50 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `91366fc3`
+**Sources**: 2 (Local Review @ `91366fc3`, its cross-model drop list re-examined; CI rollup). Copilot posted only "insufficient remaining quota" (no review, not a source); no human or conversation comments.
+**Cross-source confirmations**: 0 (no GitHub comments to correlate; finding 1 was raised by codex and gemini inside the one local review)
+**CI**: all-pass (8 workflow checks green on both runs: Lint (pre-commit), Validate Documentation, Validate Adapter Contract, ros-manifest tests; the copilot-pull-request-reviewer check-run fails for quota only)
+
+Codex drop re-examined and reversed: the local review dropped "SIGTERM to the CLI PID alone lets the writer subshell finish" because the write is atomic and Ctrl-C signals the whole group. Atomicity and Ctrl-C hold (GNU `timeout` also signals the group), but the drop misses the lock-wait case. `project_file_set` runs `( _project_file_set_locked )` under a `project_setting.sh` that has no traps, so `kill <pid>` ends the parent at once (exit 143) and orphans the subshell, which carries on (reproduced with a minimal script: parent exit 143, the subshell's write still landed a second later). If the orphan is still in `flock -w` behind another writer, it takes the lock later, re-reads the file and writes its keys, possibly over a newer `set` of the same key the user made after "cancelling". Narrow, but a silent overwrite that can occur, so it is not dismissible under the Quality Standard.
+
+### Findings
+- [x] (suggestion, Local Review: codex + gemini) `get` skips the records check: a file whose records repository is a workspace, which `check`, `list` and the adapter refuse with exit 2, still answers `get` with exit 0, against the header's exit-2 contract ("records settings refused") and the parent-root parity. Fix: in `get`, take `project_file_entries` (exit 2 on failure), run `_project_records_check_entries` and exit 2 on its 2 (3 is fine for `get`), then print the value; add a test in `test_project_file.sh` beside the existing records-refusal cases — `.agent/scripts/project_setting.sh:125`
+- [x] (suggestion, Local Review: Claude adversarial) `_records_norm_url` uses `${1,,}` (bash 4 only). On bash 3.2 it is a bad substitution, so `norm`/`wnorm` come back empty, and the "records remote is the workspace's remote" refusal is silently skipped (or the caller aborts under `set -e`). That makes it a silent failure in a safety check, not just a portability nit; it is reached only from a hand-written `tracking=repo` file. Fix: `u="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"`; the existing mixed-case case (`https://GitHub.com/Example/ws-sandbox.git/`, `test_project_file.sh:411`) covers the result — `.agent/scripts/_project_registry.sh:1054`
+- [x] (suggestion, codex via Local Review drop list, reinstated) A writer whose parent `project_setting.sh` is killed by PID keeps running orphaned and can write after a later `set`, overwriting it. Fix: in `_project_file_set_locked`, capture the parent PID (`$$` in the subshell) and abort without writing (`return 1`, temp file removed by the EXIT trap) if `kill -0 "$$"` fails, both after the lock is taken and immediately before `mv`. Add a test: hold the lock, start `set`, kill the parent PID, release the lock, and assert the file is unchanged and no temp file is left — `.agent/scripts/_project_registry.sh:1366`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-27 13:59 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+PR 403 Integrated Review (b086e468, at 91366fc3): 3 valid suggestions, no must-fix (get skips the records check; bash-4-only ${1,,} in _records_norm_url silently skips the remote-URL refusal on bash 3.2; an orphaned writer subshell can take the lock later and overwrite a newer set). Host recommended addressing all three before merging. Owner's answer: "A yes, fix first".
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-27 14:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `315c4763`
+**Addressed**: Integrated Review at `91366fc3` (2026-10-27 13:50 -04:00)
+**Commits**: 8364e2c0, 0e286cce, 315c4763
+
+### Actions
+- [x] `get` now parses the file, runs the records check and exits 2 (reason plus an INVALID line) when it refuses; not yet honoured (3) still answers; test `test_get_runs_the_records_check` — `.agent/scripts/project_setting.sh:125`
+- [x] `_records_norm_url` lowercases with `tr '[:upper:]' '[:lower:]'` instead of bash-4 `${1,,}`; the mixed-case remote case in `test_records_repo_workspace_by_remote_url` covers the result, and the new `test_no_bash4_case_conversion` keeps `${x,,}`/`${x^^}` out of `_project_registry.sh` and `project_setting.sh` (this was the only one the branch added) — `.agent/scripts/_project_registry.sh:1054`
+- [x] `_project_file_set_locked` checks the caller (`kill -0 "$$"`) once the lock is taken and again just before the rename (and before removing an emptied file), returning 1 without writing; test `test_set_writer_orphaned_by_a_killed_caller` covers both points (file unchanged, no temporary file) and fails on the unfixed writer — `.agent/scripts/_project_registry.sh:1366`
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, the script test suite (`validate-script-tests`) included.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-27 14:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #403 at `b9bfcd61`
+**Depth**: Deep (reason: whole-PR diff 4,600+ lines across 20 files incl. AGENTS.md; fix round re-classified on the whole diff per #320)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Fix-round re-review of the Integrated Review (b086e468) fixes 8364e2c0, 0e286cce, 315c4763, checked in the code at b9bfcd61: `get` parses the file, runs `_project_records_check_entries` and exits 2 only on its 2 (it returns only 0/2/3; 3 still answers, NOTE/WARNING lines stay quiet unless refused; missing/malformed/absent-key exits unchanged); `_records_norm_url` lowercases with `tr`; `_project_file_caller_alive` (`kill -0 "$$"`, `$$` = the `project_setting.sh` PID, the only caller besides the `project_file_unset` wrapper) guards after the lock, before removal and before `mv`. No `${x,,}`/`${x^^}` remains in any non-test shell file this branch changes. Local HEAD equals PR head; 0 behind origin/main.
+CI at review time: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs; Lint (pre-commit) still running on both.
+Specialists: static analysis (shellcheck --severity=warning clean on `_project_registry.sh`, `project_setting.sh`, `test_project_file.sh`; `test_project_file.sh` 449 passed, 0 failed, run once here and 4 times by the adversarial reviewer with no leftover processes), governance (fixes carry tests; header exit-2 contract and AGENTS.md row now true for `get`), plan drift (fixes match the Integrated Review's fix plan, nothing else changed), Claude adversarial (fresh), cross-model (gemini complete, codex complete).
+Dropped: codex `set` not running the records check on a hand-written refused file (dropped round 5: `set` never stores a non-default combination, and refusing would block the `set location=project tracking=project` repair); gemini `readlink -f` on pre-12.3 macOS (fails loud with a clear error, symlinked settings files only); gemini dashboard orphan glob (round 7), untrimmed `set` arguments (dropped before), `validate_workspace.py` parent file (round 7); gemini `file://localhostname` / percent-encoded `file://` remotes (not a URL git clones locally; the contents check still catches a clone of the workspace).
+
+### Findings
+- [ ] (suggestion) The temporary-file writer relies on the caller's inherited errexit to stop on a failed `printf` (e.g. ENOSPC); safe for the one caller (`project_setting.sh`, `set -e`, plain call), but a future `if project_file_set ...` caller would validate and rename a truncated file; check each write (`|| exit 1` inside the group) or say so in the header (codex, confirmed by reading) — `.agent/scripts/_project_registry.sh:1395`
+- [ ] (suggestion) `test_no_bash4_case_conversion` regex `\$\{[^}]*(,,?|\^\^?)\}` also matches legal bash 3.2 such as `${x:-,}` or `${x%^}`; anchor on the operator after the name, e.g. `\$\{[A-Za-z_0-9@*]+(,,?|\^\^?)[^}]*\}` (Claude adversarial) — `.agent/scripts/tests/test_project_file.sh:421`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-27 14:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `99626d24`
+**Sources**: 2 (Local Review @ `b9bfcd61`, carried forward: `sources` lists it as stale only because 99626d24 touches `AGENTS.md`, read here and covered below; CI rollup). Copilot posted only "insufficient remaining quota" on every push (no review, not a source); no human or conversation comments.
+**Cross-source confirmations**: 0 (no GitHub comments to correlate)
+**CI**: pending (Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs at `99626d24`; Lint (pre-commit) still pending on both; the copilot-pull-request-reviewer check-run fails for quota only, not a CI failure)
+
+Covered here: 99626d24 (owner-approved AGENTS.md row edit, landed after the re-review) changes one phrase in the `project_setting.sh` row, "`get` and `list` exit 2 on that too" to "on all of those too", so the exit-2 list (malformed, records repository that is a workspace, parent-root file) now applies to `get` and `list`. True at this head: 8364e2c0 made `get` run the records check and exit 2 on its refusal; nothing else in the diff. The Local Review's fix-round checks (`get` records check, `tr` lowercasing, orphaned-writer guard) stand; the prior Integrated Review's three findings are closed by 8364e2c0, 0e286cce, 315c4763.
+
+Finding 1 checked against the code: errexit does cover the one caller today (`project_setting.sh` has `set -euo pipefail` and calls `project_file_set` plainly; `( _project_file_set_locked )` inherits it, and a failed `printf` inside the `{ ... } > "$tmp"` group exits the subshell, whose EXIT trap removes the temporary file). But bash ignores errexit for anything run in a condition context, subshells included: reproduced with bash 5.2, a writer called as `w || ...` or `if w` whose middle `printf` hit ENOSPC (`/dev/full`) carried on and kept a two-of-three-line file. `_project_file_parse` would accept such a file if the lost line was a whole key, and the rename then silently drops a setting. The library is sourced, and this code base's own idiom is `fn ... || rc=$?`, so a condition-context caller is the likely next one. A silent loss that can occur, so valid; the explicit checks cost three `|| exit 1`.
+
+### Findings
+- [x] (suggestion, Local Review @ `b9bfcd61` (codex, confirmed by reproduction)) The temporary-file writer stops on a failed `printf` only through inherited errexit, which bash turns off when `project_file_set` is called from a condition (`|| rc=$?`, `if`): a cut-off file is then validated and renamed, silently dropping a setting. Fix: add `|| exit 1` to each of the three `printf` calls inside the `{ ... } > "$tmp"` group (the subshell's EXIT trap removes the temporary file); add a test in `test_project_file.sh` that calls `if project_file_set ...` with `printf` shadowed by a function failing on one line, and asserts a non-zero exit, the settings file unchanged and no temporary file left — `.agent/scripts/_project_registry.sh:1395`
+- [x] (suggestion, Local Review @ `b9bfcd61` (Claude adversarial)) `test_no_bash4_case_conversion`'s regex `\$\{[^}]*(,,?|\^\^?)\}` matches legal bash 3.2 (`${x:-,}`, `${x%^}`) and, because it requires the operator right before `}`, misses the bash 4 pattern form `${x,,[A-Z]}`; a guard that both cries wolf and has a hole. Fix: match the operator right after a parameter name, subscript allowed: `\$\{([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)` (checked on samples here: matches `${1,,}`, `${x^^}`, `${arr[0],,}`, `${x,,[A-Z]}`, `${x,}`, `${@^^}`; not `${x:-,}` or `${x%^}`). The reviewer's suggested `[A-Za-z_0-9@*]+` would miss `${arr[0],,}` — `.agent/scripts/tests/test_project_file.sh:421`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-27 14:26 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+PR 403 Integrated Review (ead948c6, at 99626d24): 2 valid suggestions, no must-fix (the temp-file writer's printf calls rely on the caller's set -e, so a caller inside a condition can save a cut-off file; the no-bash-4 test regex flags legal bash and misses the pattern form). Host recommended fixing both and proposed a standing rule for this PR: fix every valid finding until a round comes back clean, then bring the merge. Owner's answer: "fix 403". Host reads it as the rule accepted for this PR, stated in the hand-back for veto.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-27 14:35 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `1adf7f20`
+**Addressed**: Integrated Review at `99626d24` (2026-10-27 14:17 -04:00)
+**Commits**: 8a130df3, 1adf7f20
+
+### Actions
+- [x] Each of the three `printf` calls writing the temporary settings file ends with `|| exit 1`, so a failed write stops the writer when it is called from a condition; new `test_set_stops_on_a_failed_write_inside_a_condition` shadows `printf` to fail on a kept, a replaced and an appended line and expects a non-zero exit, the file unchanged and no temporary file left (confirmed failing on the old code: 7 of 12 assertions) — `.agent/scripts/_project_registry.sh:1412`
+- [x] The no-bash-4 guard uses `\$\{([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)`, with a self-check against six samples it must catch and four legal ones it must skip (the old pattern misses `${x,,[A-Z]}` and matches `${x:-,}`, `${x%^}`) — `.agent/scripts/tests/test_project_file.sh:421`
+
+Hook run: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, exit 0 (script test suite included, passed).
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-27 14:39 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #403 at `8798ed5d`
+**Depth**: convergence check (round 3 of PR-mode review; rounds 1 at `91366fc3`, 2 at `b9bfcd61`), under the owner's round-3 exception from issue 320 as the host's handoff stated it; no cross-model reviewers, no fresh Claude adversarial. The "Round-3 convergence check" section named in the handoff was not found in `review_depth_classification.md` (worktree or main checkout); scope taken from the handoff.
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: the Integrated Review's two findings (at `99626d24`) and the fix diff `ead948c6..8798ed5d` minus work plans (commits 8a130df3, 1adf7f20; 2 files, +48 -5). Local HEAD equals PR head; 0 behind origin/main.
+Fix 1 closed: the three `printf` calls in the `{ ... } > "$tmp"` group end with `|| exit 1`; the group runs in the `( _project_file_set_locked )` subshell, so `exit 1` ends the writer, its EXIT trap removes the temporary file, and `project_file_set` returns 1. New `test_set_stops_on_a_failed_write_inside_a_condition` covers all three writes; confirmed here against the pre-fix writer (ead948c6's `_project_registry.sh` in a throwaway detached worktree): 7 failures, exactly the new test's (the appended-key case on old code yields an unchanged file, so only its exit-status assertion fails, which is still the writer's printf).
+Fix 2 closed: the new regex catches `${x,,[A-Z]}`, `${arr[0],,}`, `${x[@],,}`, `${x[${i}],,}`, nested `${x:-${y,,}}`, and skips `${x:-,}`, `${x%^}`, `${x//,/ }`, `${x#^}`, `${x:+^}`, `${x[,]}`; ten-sample self-check runs in the test.
+Verified: `bash .agent/scripts/tests/test_project_file.sh` 471 passed, 0 failed; shellcheck --severity=warning clean on both changed files (`.venv/bin/shellcheck`).
+CI at review time (`gh pr checks 403`): Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs; Lint (pre-commit) pending on both.
+
+### Findings
+- [ ] (suggestion) The new no-bash-4 regex misses indirect expansion with case conversion, `${!y,,}` (valid bash 4, prints the lowercased value; bash 3.2 rejects it), which the old pattern did catch, so the fix narrows the guard on that one form; allow an optional `!` after `${`: `\$\{!?([A-Za-z_]...`, and add `${!x,,}` to the catch samples — `.agent/scripts/tests/test_project_file.sh:423`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-27 14:42 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `8798ed5d`
+**Sources**: 3 (Local Review @ `8798ed5` (covers local HEAD `994772c3` via bookkeeping), Copilot @ `8798ed5d` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Previous Integrated Review (at `99626d24`, committed `ead948c6`): both findings fixed in 8a130df3 and 1adf7f20 and confirmed closed by the round-3 Local Review; not re-listed. Older Local Reviews at `91366fc` and `b9bfcd6` are stale (code changed since) and were closed by earlier triage.
+Finding verified here: the regex at `.agent/scripts/tests/test_project_file.sh:423` reports `${!y,,}`, `${!y^^}` and `${!arr[0],,}` as missed; bash 5.2 evaluates `${!y,,}` (prints the lowercased value), and bash 3.2 rejects it. The guard exists to catch bash 4 case conversion, so a form it misses is a gap in the guard, and the old pattern did catch it: valid. No current hit in `_project_registry.sh` or `project_setting.sh`, so this is a regression-guard gap, not a live defect. Proposed fix checked: `\$\{!?(...)` catches all three indirect forms and still skips `${!x}`, `${!x@}`, `${!x*}`, `${#x}`, `${x:-,}`, `${x%^}`; no hits in the two real files.
+CI at `8798ed5d`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs; Lint (pre-commit) passed on run 40561517367 and is still pending on run 40561528755. The `copilot-pull-request-reviewer` check fails on quota, not code.
+
+### Findings
+- [x] (suggestion, Local Review @ `8798ed5`) The no-bash-4 guard misses indirect expansion with case conversion (`${!y,,}`, `${!y^^}`); allow an optional `!` after `${` (`re='\$\{!?([A-Za-z_][A-Za-z_0-9]*|[0-9]+|[@*])(\[[^]]*\])?(,,?|\^\^?)'`), add `${!x,,}` and `${!x^^}` to the catch samples and `${!x}` to the skip samples, and update the comment above the pattern — `.agent/scripts/tests/test_project_file.sh:423`
+
+### False positives
+- (Copilot @ `8798ed5d`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-27 14:42 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+PR 403 Integrated Review (18e54eb3, round 3): 1 valid suggestion, no must-fix (the no-bash-4 guard regex misses the indirect form ${!y,,}). Answered from the owner's standing rule for this PR, accepted 2026-10-27 ("fix 403": fix every valid finding until a round comes back clean, then bring the merge); no new question was put to him.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-27 14:51 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `f21f3371`
+**Addressed**: Integrated Review at `8798ed5d` (2026-10-27 14:42 -04:00)
+**Commits**: f21f3371
+
+### Actions
+- [x] The no-bash-4 guard now allows an optional `!` after `${`, so indirect `${!x,,}` and `${!x^^}` are caught; both added to the self-check's catch samples, `${!x}` to its skip samples, comment updated. The old pattern misses both new catch samples; the new one passes the whole self-check, and the guard still finds nothing in `_project_registry.sh` or `project_setting.sh` — `.agent/scripts/tests/test_project_file.sh:420`
+
+### Checks
+- `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, including the script test suite.
+- `test_project_file.sh` alone: 474 passed, 0 failed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-27 14:55 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #403 at `8bc1d03`
+**Depth**: convergence check (reason: PR-mode round 4; owner's standing exception for rounds three and later, issue 321 — narrow check, no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 (PR mode) | **Scope**: commit `f21f3371` only — the prior round's one finding (no-bash-4 guard missed indirect `${!x,,}` / `${!x^^}`) and its fix diff in `.agent/scripts/tests/test_project_file.sh`
+
+Verified: the new regex `\$\{!?(...)(\[[^]]*\])?(,,?|\^\^?)` run by hand against all committed samples plus extras — catches `${!x,,}`, `${!x^^}`, `${!x,}`, `${!1^}`, `${!arr[@],,}`; skips `${!x}`, `${!prefix@}`, `${!arr[@]}`, `${#x}`, `${!x:-,}` and the four prior legal samples. `bash .agent/scripts/tests/test_project_file.sh`: 474 passed, 0 failed. shellcheck --severity=warning on the file: clean. Comment above the pattern updated to match. Prior finding resolved.
+
+CI at `8bc1d033`: Validate Documentation, Validate Adapter Contract, ros-manifest tests pass on both runs; Lint (pre-commit) pending on both runs (40563845046, 40563834709).
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-27 14:58 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #403 at `876133c4`
+**Sources**: 3 (Local Review @ `8bc1d03` (covers head `876133c4` via bookkeeping), Copilot @ `8bc1d033` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Previous Integrated Review (at `8798ed5d`, committed `18e54eb3`): its one finding (no-bash-4 guard missed indirect `${!x,,}` / `${!x^^}`) was fixed in f21f3371 and confirmed closed by the round-4 Local Review; checked here: the pattern at `.agent/scripts/tests/test_project_file.sh:424` carries `\$\{!?`, and `${!x,,}` / `${!x^^}` are in the catch samples at line 426. Not re-listed.
+Round-4 Local Review @ `8bc1d03`: approved, 0 must-fix, 0 suggestions. Its one open box ("No issues found. LGTM.") is a placeholder, not a finding; nothing to triage. Older Local Reviews at `91366fc`, `b9bfcd6` and `8798ed5` are stale (code changed since) and were closed by earlier triage.
+GitHub: 8 Copilot reviews, all the quota message, no inline comments; no conversation comments; no human reviews.
+CI at `876133c4`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs (40564504213, 40564515660); Lint (pre-commit) still pending on both. The `copilot-pull-request-reviewer` check is still running and fails on quota, not code.
+
+### Findings
+None open.
+
+### False positives
+- (Copilot @ `8bc1d033`) Review body "unable to review ... insufficient remaining quota" — not a finding; no comments and no code claim to evaluate.

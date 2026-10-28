@@ -42,15 +42,78 @@
 #
 # single_project checkouts are managed manually: clone the project into
 # its hosting dir, then register it here. ros2_colcon instances bootstrap
-# themselves from an empty hosting dir — register the name, point
-# MANIFEST_BOOTSTRAP_URL at the project's bootstrap.yaml, and run
+# themselves from an empty hosting dir — register the name, set its
+# bootstrap_url (below) to the project's bootstrap.yaml, and run
 # `.agent/scripts/adapter --project <name> setup` (or `make build
-# PROJECT=<name>` after setup). Per-project build/test commands go in
-# .agent/projects.d/<name>.sh (gitignored), with .agent/project_config.sh
-# as the shared fallback. A ros2_colcon config looks like:
+# PROJECT=<name>` after setup).
+#
+# Per-project settings (issue #332) go in .agent/projects.d/<name> (no
+# extension; gitignored, per machine), one key=value per line, written with
+# `.agent/scripts/project_setting.sh set <name> key=value ...` or by hand:
+#
+#   # .agent/projects.d/boat_sim
+#   build=./scripts/build.sh
+#   test=make test
+#   install=none
+#   instructions=none
+#
+#   build, test, install  a command run from the project root, split on
+#                         blanks and run without a shell (no quotes, & | ;
+#                         < > $ ( ) ` or backslash, no leading VAR=value and
+#                         no word starting with ~, and * ? [ are literal:
+#                         anything needing a shell is a script, so point the
+#                         key at one), or 'none' for
+#                         a recorded "this project has none". ros2_colcon
+#                         reads install only: colcon owns its build and
+#                         tests, so build and test are refused for it
+#   bootstrap_url         ros2_colcon only: http(s):// or file:// URL of the
+#                         project's bootstrap.yaml (refused for
+#                         single_project, which is cloned by hand)
+#
+# A key the project's type never reads is refused by `set`, and a
+# hand-written one fails `check` and stops the adapter; each type lists
+# such keys in .agent/project_types/<type>/unused_settings.
+#   location              project | outside       where the loop's work
+#   location_path         absolute path           plans and progress
+#   tracking              project | untracked | repo   timelines live
+#   instructions          none | tracked  (may the workspace offer agent
+#                         instructions in tracked project files)
+#
+# Lines starting with '#' are comments (no trailing comments: a command may
+# contain '#'). An unknown or duplicate key or an empty value is an error,
+# and a malformed file stops every adapter verb for the project.
+#
+# Records settings: valid combinations are (project, project), (project,
+# untracked), (outside, untracked) and (outside, repo); a records repository
+# must not be a workspace. With neither key set a project's records are
+# (project, project): committed in the project on the issue's feature
+# branch, as today. That default, the zero-footprint proposal and the
+# default outside layout are PROVISIONAL (project_records_default in
+# _project_registry.sh). Only (project, project) is honoured until the
+# records lookup lands (#393); project_setting.sh refuses to store another.
+#
+# Precedence for build/test/install/bootstrap_url: the settings file, key by
+# key; for a key it does not set, the LEGACY .agent/projects.d/<name>.sh (a
+# sourced shell file: BUILD_CMD, TEST_CMD, INSTALL_CMD,
+# MANIFEST_BOOTSTRAP_URL, and variables such as ROS_DISTRO and ROS_ROOT_DIR,
+# which stay there) when that file exists, otherwise the shared
+# .agent/project_config.sh. The legacy file, when present, is the whole
+# legacy layer, as before #332: the shared file is not consulted for a
+# variable it leaves unset (a legacy file with only BUILD_CMD gets no shared
+# TEST_CMD). A registered project that falls through to the shared file gets
+# a note on stderr. Changed with #332: BUILD_CMD, TEST_CMD and INSTALL_CMD
+# set in the environment are no longer honoured; only a config file sets
+# them. A command set in the settings file runs without sourcing the legacy
+# or shared config, so nothing they export (an SDK path, PATH) reaches it:
+# environment setup belongs in the script the key points at. A legacy
+# ros2_colcon config looks like:
 #
 #   # .agent/projects.d/shore_tools-jazzy.sh
 #   MANIFEST_BOOTSTRAP_URL="https://<host>/<manifest-repo>/raw/jazzy/config/bootstrap.yaml"
+#
+# A project name may not end in ".sh", in any letter case (its settings file
+# would collide with another project's legacy file; on a case-insensitive
+# filesystem x.SH is x.sh).
 #
 # One instance per distro: a second distro of the same project is a second
 # registry entry with its OWN hosting dir. Group them under a parent root
