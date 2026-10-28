@@ -1223,3 +1223,13 @@ CI at `e3b8736f`: Validate Adapter Contract, Validate Documentation, ros-manifes
 ### False positives
 - (Copilot @ `7b28b6f1`, `2582cdda`, `56d11847`, `c0710b66`, `f086190e`, `94a2c149`) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
 - (Local Review @ `94a2c149`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 13:16 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer, in his words: "yes to both" (B: this pull request, AGENTS.md rows included). Presented: PR 2 of 4, 17 findings fixed across six rounds, round 6 approved with nothing open, the Integrated Review at 67758e99 clean, the AGENTS.md commit 18c4fb7b (two Script Reference rows and one clause on the validate_adapter.sh row) named as the Ask First item. Merge of pull request 409.
