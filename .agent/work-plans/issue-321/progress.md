@@ -706,3 +706,18 @@ The Integrated Review at bf136567 has one open finding, a suggestion: review-pla
 ### Checks
 - `test_skill_paths.sh`: 80 passed, 0 failed
 - `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed, including the script suite
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 09:21 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #400 at `1ea24eb3`
+**Depth**: Standard (reason: round 6 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round 6 (PR mode: five complete `## Local Review` entries before this one, at b2fb88ef, a216e279, 98870a6f, d0ce9416 and 4012a70d; no restart). Narrow convergence check per the handoff: only the one finding the round-5 review and the Integrated Review at bf136567 left open, and the fix diff 4012a70d..1ea24eb3 (commit 777c452e: orchestrator and run-issue skills, test_skill_paths.sh; progress.md excluded). Cross-model: skipped (round-6 convergence check, per handoff). The finding is confirmed fixed: orchestrator recipe (a) and run-issue's restart paragraph both now say the host quotes the newest `restart` entry's words into every `review-issue`, `plan-task` and `review-plan` handoff until a `## Checkpoint` with `**After**: plan` and `**Decision**: proceed` follows it, on a resumed drive too, and both name the `revise` route back to plan-task as the reason Plan Authored is not the stop point. The stop point matches dispatch_phase.sh `next` (After plan + proceed is the only route to implement; After plan + revise routes to plan-task), and review-plan always ends at `checkpoint:plan`, so the stop is always written before implement. No leftover "until Plan Authored" text in skills, scripts or docs (grep). Claude adversarial: not dispatched as a separate subagent for a 25-line prose fix; the lead read both paragraphs in context. Static: shellcheck hook passed on test_skill_paths.sh. Tests run here: test_skill_paths 80 passed, 0 failed. Plan drift: all three files are in the plan. CI at 1ea24eb3: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass; Lint (pre-commit) pending in both runs.
+
+### Findings
+- [ ] No issues found. LGTM.
