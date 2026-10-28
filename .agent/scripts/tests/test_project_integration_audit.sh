@@ -366,6 +366,22 @@ check "a path the \"!\" rule leaves ignored is still reported, with the ignoring
     grep -qE $'^4\tignore-would-hide\twarn\tCLAUDE.md\t.*\\.gitignore:2:\\*\\.md' <<< "$AUDIT_OUT"
 printf 'worktrees/\ndocs/\n' > "$P4/.gitignore"
 
+echo "TEST: category 3, a root registered through a symlink, its worktrees directory not created yet"
+PL="$SANDBOX/projects/plink"
+mkdir -p "$PL/.agents"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$PL/Makefile"
+printf '# guide\n' > "$PL/.agents/README.md"
+gitq -C "$PL" init --quiet
+commit_all "$PL"
+gitq -C "$PL" remote add origin "git@example.invalid:someone/plink.git"
+ln -s "$PL" "$SANDBOX/plink-link"
+register plink "$SANDBOX/plink-link" "build=make" "test=make test"
+install_ut
+audit "$PL"
+check "no worktrees/ yet" [ ! -e "$PL/worktrees" ]
+check "worktrees-not-ignored is still reported (got: ${AUDIT_OUT//$'\t'/ | })" \
+    grep -qE $'^3\tworktrees-not-ignored\twarn\tworktrees/\t' <<< "$AUDIT_OUT"
+
 echo "TEST: category 6, the user tier not installed"
 EMPTY_HOME="$SANDBOX/emptyhome"
 mkdir -p "$EMPTY_HOME"

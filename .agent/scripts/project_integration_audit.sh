@@ -380,8 +380,19 @@ done
 # ------------------------------------------------- 3. written files ----
 if [ "$IS_GIT" -eq 1 ]; then
     WTDIR="$(registry_worktree_dir "$MAIN_ROOT" "$NAME" 2>/dev/null)" || WTDIR=""
-    WTABS="$WTDIR"
-    [ -d "$WTDIR" ] && WTABS="$(cd "$WTDIR" && pwd -P)"
+    # Canonical, like PROOT_ABS, although the directory usually does not
+    # exist yet: the deepest existing ancestor resolved (a root registered
+    # through a symlink), the rest appended.
+    WTABS=""
+    if [ -n "$WTDIR" ]; then
+        _head="$WTDIR"; _tail=""
+        while [ ! -d "$_head" ] && [ "$_head" != "/" ] && [ "$_head" != "." ]; do
+            _tail="/$(basename "$_head")$_tail"
+            _head="$(dirname "$_head")"
+        done
+        WTABS="$(cd "$_head" 2>/dev/null && pwd -P)$_tail" || WTABS="$WTDIR"
+        WTABS="${WTABS/#\/\//\/}"
+    fi
     if [ -n "$WTABS" ] && [[ "$WTABS" == "$PROOT_ABS/"* ]]; then
         rel="${WTABS#"$PROOT_ABS"/}"
         if ! g check-ignore -q -- "$rel/probe" 2>/dev/null; then
