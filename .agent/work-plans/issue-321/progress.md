@@ -565,3 +565,26 @@ Round 3 (PR mode: two complete `## Local Review` entries before this one, no res
 - [x] (suggestion) A project worktree whose Issue Review Serves line names a project goal is labelled Path 2, but the roadmap defines Path 2 as serving a goal in the workspace README; limit Path 2 to workspace rows or say why project goals count (Claude adversarial) — `.claude/skills/sitrep/SKILL.md:342-350`
 - [x] (suggestion) Standing rule "A review that comes back with open findings goes to the owner" reads as a stop at every findings checkpoint, while the orchestrator table lets the host answer `address` there; reword to "is never merged past without the owner" (Claude adversarial) — `.agent/knowledge/host_standing_rules.md:26`
 - [x] (suggestion) Sit-rep state words have no entry for `**Decision**: restart`, so a drive stopped after a restart reads "checkpoint after rounds: restart" (mechanism words); add a BY_DECISION entry (Claude adversarial) — `.claude/skills/sitrep/SKILL.md:303-315`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 08:49 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `1a22069d`
+**Addressed**: Local Review at `a216e279` (2026-10-28 08:44 -04:00)
+**Commits**: 0a1dd402, 540a7a53, bae742c6, 5f404fa0, 51df49a1, 1a22069d
+
+### Actions
+- [x] (must-fix) The restart comment block moved out of recipe (a)'s numbered list into its own section, "The restart comment", at column 0, so its heredoc's `EOF` closes; the comment's first line is printed from `$MARK` (`printf '%s\n\n' "$MARK"`), so the `<its **When**>` placeholder appears once; test_skill_paths runs every bash block in the orchestrator skill through `bash -n` as written (indentation kept, `<placeholders>` substituted, any stderr fails) and pins the printf line; on the previous text both new checks fail (76/2, "here-document ... delimited by end-of-file") (0a1dd402) — `.claude/skills/orchestrator/SKILL.md`, `.agent/scripts/tests/test_skill_paths.sh`
+- [x] (suggestion) Recipe (a) step 3 and run-issue's restart paragraph quote his words into the `plan-task` handoff too (plan-task reads git-bug first, gh only on an empty title or body); test_skill_paths pins it (540a7a53) — `.claude/skills/orchestrator/SKILL.md`, `.claude/skills/run-issue/SKILL.md`
+- [x] (suggestion) Sit-rep says `no path` only for a newest complete Issue Review with `**Serves**: none`; no timeline or no complete Issue Review is "path unknown (no complete issue review)", a complete one with no Serves line "path unknown (its issue review has no Serves line)"; a PR-only branch finds its issue by its `feature/issue-<N>` head branch or a this-repository `closingIssuesReferences` entry, which step 3's `gh pr list` now fetches; test_sitrep_checks covers the new labels (issues 24, 25, 30, 31, project q) and the wording (bae742c6) — `.claude/skills/sitrep/SKILL.md:331-378`, `:955-963`
+- [x] (suggestion) A project worktree whose Serves line names a goal reads "no path (serves a project goal)", never Path 2 (review-issue writes a project's Serves from its own goals; the roadmap's Path 2 is a workspace README goal); test_sitrep_checks adds that row (5f404fa0) — `.claude/skills/sitrep/SKILL.md`
+- [x] (suggestion) Standing rule reworded: a review with open findings "is never merged past without the owner"; the host may answer `address` at `findings`, `merge` there stays his; his quoted reason unchanged (51df49a1) — `.agent/knowledge/host_standing_rules.md:26`
+- [x] (suggestion) BY_DECISION and the state table give `restart` the words "goal restated by the owner; issue review starts again"; two state cases added (after rounds, after unexpected) (1a22069d) — `.claude/skills/sitrep/SKILL.md:303-309`, `:409`
+
+### Not changed (owner question)
+Whether recipe (a) may post the owner's verbatim words on the public issue is left as it is, per the host's handoff: the host is taking it to the owner. The round-3 review raised it in the hand-back, not as a box, so there was no box to leave open.
+
+### Tests
+Fix commits used `SKIP=validate-script-tests` (dispatched-pass hook rule). Run by hand during the pass: test_skill_paths 78/0, test_sitrep_checks 186/0 (counts unchanged where new cases joined existing assertions). Final: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, exit 0 on the final tree (script test suite and shellcheck passed). Boxes in the source entry were checked by editing progress.md in each fix commit: `review_progress.sh findings/check` select only a `## Local Review (Pre-Push)` or `## Integrated Review`, never this PR-mode `## Local Review`.
