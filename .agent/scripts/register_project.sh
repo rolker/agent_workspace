@@ -781,16 +781,22 @@ RUN_VERBS=""
 # The user tier.
 ROOT_FILE="${HOME:-}/.claude/agent-workspace-root"
 UT_STATE="absent"
-if [ -f "$ROOT_FILE" ]; then
-    if [ "$(phys "$(cat "$ROOT_FILE")")" = "$(phys "$ROOT")" ]; then UT_STATE="here"; else UT_STATE="elsewhere"; fi
+# An empty (or unreadable) file names no checkout: it is read as absent,
+# never as a path (phys "" would answer the current directory).
+UT_ROOT=""
+[ -f "$ROOT_FILE" ] && { UT_ROOT="$(cat "$ROOT_FILE" 2>/dev/null)" || UT_ROOT=""; }
+if [ -n "$UT_ROOT" ]; then
+    if [ "$(phys "$UT_ROOT")" = "$(phys "$ROOT")" ]; then UT_STATE="here"; else UT_STATE="elsewhere"; fi
 fi
 RUN_UT=0
 { [ "$UT_STATE" = here ] || [ "$INSTALL_UT" -eq 1 ]; } && RUN_UT=1
 ONBOARD_NEXT="start a Claude Code session at $PROJECT_ROOT and run /agent-workspace:onboard-project"
 ut_note() {
     case "$UT_STATE" in
-        absent) echo "WARNING: the user tier is not installed, so a session started at $PROJECT_ROOT gets no workspace layer or skills: install it with .agent/scripts/user_tier_install.sh (or re-run with --install-user-tier)" ;;
-        elsewhere) echo "WARNING: the user tier is installed for another checkout ($(cat "$ROOT_FILE")), so the installer is not run from here: run that checkout's installer, or this one's with --force to take it over" ;;
+        absent)
+            [ -f "$ROOT_FILE" ] && echo "WARNING: $ROOT_FILE is empty or unreadable, so it names no checkout"
+            echo "WARNING: the user tier is not installed, so a session started at $PROJECT_ROOT gets no workspace layer or skills: install it with .agent/scripts/user_tier_install.sh (or re-run with --install-user-tier)" ;;
+        elsewhere) echo "WARNING: the user tier is installed for another checkout ($UT_ROOT), so the installer is not run from here: run that checkout's installer, or this one's with --force to take it over" ;;
     esac
 }
 ut_next() {

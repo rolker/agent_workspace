@@ -457,6 +457,23 @@ check "registered, with a warning naming the other checkout, and no CLI call" \
 cp "$SANDBOX/root-file.saved" "$HOMEDIR/.claude/agent-workspace-root"
 reg "$WS" --remove omega >/dev/null
 
+echo "TEST: an empty agent-workspace-root names no checkout: read as not installed, never as the current directory"
+# Run from the workspace itself, where an empty path would resolve to "here".
+: > "$HOMEDIR/.claude/agent-workspace-root"
+PE="$(make_proj ephi)"
+: > "$STUB_LOG"
+out="$(
+    unset CLAUDE_CONFIG_DIR
+    cd "$WS" && HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" REG_LOG="$REG_LOG" \
+        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" "$WS/.agent/scripts/register_project.sh" "$PE" 2>&1
+)"; rc=$?
+check "registered, warning that the file is empty and the user tier not installed" \
+    bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"STATUS=registered"* && "$2" == *"agent-workspace-root is empty or unreadable"* && "$2" == *"the user tier is not installed"* ]]' _ "$rc" "$out"
+check "the installer did not run: no CLI call, no enable at the root" \
+    bash -c '[ ! -s "$1" ] && [ ! -e "$2/.claude/settings.local.json" ]' _ "$STUB_LOG" "$PE"
+cp "$SANDBOX/root-file.saved" "$HOMEDIR/.claude/agent-workspace-root"
+reg "$WS" --remove ephi >/dev/null
+
 # ------------------------------------------------------------ adoption ---
 echo "TEST: adopting a hand-registered project (a one-line entry, no settings file)"
 PH="$(make_cmake_proj mu)"

@@ -887,7 +887,7 @@ Reviewers: static analysis (pre-commit on the 18 changed files: all hooks pass, 
 - [x] (must-fix) The registry lock is taken after the name-free, adopt and SETTINGS_EXISTED decisions. With two concurrent registrations of one name, the loser's rollback deletes the winner's settings file. Take the lock before those checks (or re-check under it), and only remove a settings file this run wrote (Codex + Claude) — `.agent/scripts/register_project.sh:844`
 - [x] (must-fix) A failed settings backup (mktemp or cat) is ignored and the write proceeds. Rollback then either leaves the changed file or restores an empty or partial backup, and the restore (`cat > "$SETTINGS"`) is neither atomic nor checked. Abort before writing when the backup fails, and restore by rename with a warning on failure (Codex + Claude) — `.agent/scripts/register_project.sh:869`
 - [x] (suggestion) For an adopted project, an interrupt reports "nothing is registered" and a failure says "kept as it is", even though the project stays registered and --set may already have changed its settings file. Word both for adoption (Gemini) — `.agent/scripts/register_project.sh:798`
-- [ ] (suggestion) An empty ~/.claude/agent-workspace-root makes `phys ""` return the cwd, so UT_STATE can wrongly be "here". Treat an empty file as absent (Claude) — `.agent/scripts/register_project.sh:733`
+- [x] (suggestion) An empty ~/.claude/agent-workspace-root makes `phys ""` return the cwd, so UT_STATE can wrongly be "here". Treat an empty file as absent (Claude) — `.agent/scripts/register_project.sh:733`
 
 ## Checkpoint
 **Status**: complete
