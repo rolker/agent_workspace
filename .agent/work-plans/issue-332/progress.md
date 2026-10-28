@@ -947,3 +947,13 @@ The builder's reported gap (an interrupt still says "nothing is registered" when
 - [ ] (suggestion) Rollback's `--disable-root` can disable a plugin the root had enabled before this run; record the root's plugin state before step 4 and disable only what this run added (Claude) — `.agent/scripts/register_project.sh:890`
 - [ ] (suggestion) With `set -u` on and only INT/TERM/HUP trapped, an unexpected abort after the rollback is armed leaves the line and settings file with no report; add an EXIT trap guarded by ROLLBACK_ARMED (Claude) — `.agent/scripts/register_project.sh:952`
 - [ ] (suggestion) The python3 fallback in detect_commands prints "None" for `"build": null` in package.json (jq's `// empty` gives nothing); use `(... or {}).get("build") or ""` (Gemini) — `.agent/scripts/register_project.sh:238`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 10:49 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (second address in a row at this checkpoint, within the cap; the rounds checkpoint fires on the false count from PR 1's entries (issue 384), this branch's own round 2 is at 89ac5d5d; two mechanical must-fix and five suggestions open, every one a correctness or silent-failure item, so all seven are addressed rather than shipped past)
+**After**: rounds
+**Decision**: address
+
+PR 2 of 4, round 2 (taken as 2, counter says 9) at 89ac5d5d: 2 must-fix (M1 a legacy command with a wildcard loses its expansion when copied into the settings file, which runs without a shell; M2 clean-result lines after a failed cleanup: "nothing is registered" after a rollback that could not remove the line, a signal between the registry rename and LINE_WRITTEN=1 skips the line removal, --remove reports removed when the settings rm fails) and 5 suggestions (S1 dangling-symlink or directory settings path not backed up or checked; S2 rollback overwrites a settings change made during a long build; S3 rollback's --disable-root can disable a plugin the root had enabled before the run; S4 no EXIT trap, so an abort under set -u leaves no report; S5 --detect's python fallback prints None for a null package.json script). All seven sent to address-findings.
