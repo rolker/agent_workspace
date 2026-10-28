@@ -1132,3 +1132,26 @@ Outside this review's scope, not a finding on the fix (for the host to judge): t
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-28 12:37 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #409 at `c0710b66`
+**Sources**: 3 (Local Review @ `56d11847` (covers head `c0710b66` via bookkeeping), Copilot @ `56d11847` (quota message only, no comments), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR 2 of 4 for issue 332. Builds on the Integrated Review at `7b28b6f1` (one suggestion, fixed in `d0c72a0f`, confirmed by the round-5 Local Review at `56d11847`); not re-listed. The Local Reviews at `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03` belong to PR 1 of 4 (PR 403, merged) and the Pre-Push at `6a92304` was ruled on by the Integrated Review at `7b28b6f1`; `sources` lists all five stale.
+GitHub: three Copilot comment-reviews (at `7b28b6f1`, `2582cdda`, `56d11847`), each the quota message, no inline comments; no conversation comments; no human reviews.
+CI at `c0710b66`: Validate Adapter Contract, Validate Documentation, ros-manifest tests pass on both runs (40727416331, 40727406353); Lint (pre-commit) still pending on both.
+
+The round-5 review's out-of-scope note, judged as a finding and reproduced: a sandbox copy of `register_project.sh` with an unset-variable fault on the line before `SETTINGS_WRITING=1` (`.agent/scripts/register_project.sh:1185`), registering over an existing settings file with `--set test=none`, ends exit 1, `STATUS=refused`, "removed the registry line", NEXT names nothing else, and `projects.d/.settings-backup.*` is left. Cause: `backup_settings` (line 1182) sets `SETTINGS_BACKUP` and makes the copy, then the echo loop runs before `SETTINGS_WRITING=1`; `rollback`'s `SETTINGS_WRITING -eq 0` branch (line 1000) is a `:`, so the backup is neither removed nor named. An interrupt in the same window (on_signal) or after `mktemp` inside `backup_settings` takes the same branch. The plan's order rule ("so a failed registration leaves nothing behind") and the header's contract cover it, and the existing failed-backup case already asserts "no backup file left"; a silent leftover is what the Quality Standard does not let pass. Valid; the settings file itself is untouched in this window, so the backup is a redundant copy and removing it is safe.
+
+### Findings
+- [ ] (suggestion, Local Review @ `56d11847` note outside its scope) A rollback after `backup_settings` but before `SETTINGS_WRITING=1` (an interrupt or unexpected exit in the echo loop, or inside `backup_settings` after its `mktemp`) leaves the hidden `.settings-backup.*` in `projects.d`, unnamed, and the run ends `refused` as if nothing were left. Fix: in `rollback`, replace the `:` of the `SETTINGS_WRITING -eq 0` branch with: when `$SETTINGS_BACKUP` is set and exists, `rm -f` it (this run never wrote the settings file, so the backup only duplicates it); if it is still there, warn and `rollback_left "the backup of the settings file's content before this run, $SETTINGS_BACKUP (remove it)"`. Add a sandbox case in `test_register_project.sh` like the existing rollback cases: fault `: "$REGISTER_TEST_UNSET_VARIABLE"` inserted before `    SETTINGS_WRITING=1`, an existing settings file, `--set test=none`; assert non-zero exit, `STATUS=refused`, the settings file byte-identical to its pre-run copy, no registry line, and no `.settings-backup.*` or `.settings-restore.*` left; show it fails on the current script — `.agent/scripts/register_project.sh:1000`
+
+### False positives
+- (Copilot @ `7b28b6f1`, `2582cdda`, `56d11847`) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
+- (Local Review @ `56d11847`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.
