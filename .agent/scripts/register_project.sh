@@ -323,10 +323,13 @@ take_registry_lock() {
 }
 
 # Replace the registry with <tmp> after it parses, and holds <name> when
-# <expect> is "present" (or not, when "absent"). The registry's mode is
-# kept. Prints the parser's errors and returns 1 when it does not parse.
-install_registry() { # <tmp> <name> <present|absent>
-    local tmp="$1" want="$2" expect="$3" err mode has=0
+# <expect> is "present" (or not, when "absent"). With <entry> (the
+# parser's "name<TAB>type<TAB>path<TAB>fields" line), the entry read back
+# must be exactly that one, so a line the parser reads differently from
+# what was asked is never written. The registry's mode is kept. Prints the
+# parser's errors and returns 1 when it does not parse.
+install_registry() { # <tmp> <name> <present|absent> [<entry>]
+    local tmp="$1" want="$2" expect="$3" entry="${4:-}" err mode has=0 got
     if ! err="$(registry_entries_full "$ROOT" "$tmp" 2>&1 >/dev/null)"; then
         printf '%s\n' "${err//$tmp/$REGISTRY}" >&2
         rm -f "$tmp"
@@ -337,6 +340,14 @@ install_registry() { # <tmp> <name> <present|absent>
         echo "ERROR: the new registry does not hold '$want' as expected; not writing it" >&2
         rm -f "$tmp"
         return 1
+    fi
+    if [ -n "$entry" ]; then
+        got="$(registry_entries_full "$ROOT" "$tmp" 2>/dev/null | awk -F'\t' -v n="$want" '$1 == n')"
+        if [ "$got" != "$entry" ]; then
+            echo "ERROR: the new registry reads '$want' back as '${got//$'\t'/  }', not as asked ('${entry//$'\t'/  }'); not writing it" >&2
+            rm -f "$tmp"
+            return 1
+        fi
     fi
     mode="644"
     [ -f "$REGISTRY" ] && mode="$(stat -c %a "$REGISTRY" 2>/dev/null || stat -f %Lp "$REGISTRY" 2>/dev/null || echo 644)"
@@ -520,9 +531,11 @@ if [ "$ADOPT" -eq 0 ]; then
         echo "ERROR: the name '$NAME' is already registered, at $(cut -f2 <<< "$_other"); a different path for a registered name is refused (no silent rewrite)" >&2
         final refused "choose another name with --name, or remove '$NAME' first" 1
     fi
-    if [[ "$PROJECT_ROOT" == *[[:space:]=]* ]]; then
-        echo "ERROR: the registry cannot hold a path with a blank or '=' ($PROJECT_ROOT)" >&2
-        final refused "move the project to a path without blanks or '='" 1
+    # A blank or '=' splits the line into other fields, and a '#' starts a
+    # comment, so the parser would read back a different directory.
+    if [[ "$PROJECT_ROOT" == *[[:space:]=#]* ]]; then
+        echo "ERROR: the registry cannot hold a path with a blank, '=' or '#' ($PROJECT_ROOT): a '#' starts a comment there, so a shorter path would be registered" >&2
+        final refused "move the project to a path without blanks, '=' or '#'" 1
     fi
 fi
 
@@ -588,7 +601,18 @@ fi
 # The registry line: new, or the existing one kept (with a missing
 # default_instance added to a parent root).
 [ -n "$F_worktrees" ] && F_worktrees="$(abs_path "$F_worktrees")"
+# The same for the trailing fields: a value with a blank, '=' or '#' would
+# be read back as another value (role=sim#x as role=sim), so it is refused
+# before anything is written.
+for _f in $FIELD_KEYS; do
+    _v="F_$_f"
+    if [[ "${!_v}" == *[[:space:]=#]* ]]; then
+        echo "ERROR: --${_f//_/-} '${!_v}': the registry cannot hold a value with a blank, '=' or '#' (a '#' starts a comment there)" >&2
+        final refused "give --${_f//_/-} a value without blanks, '=' or '#'" 1
+    fi
+done
 LINE_CHANGE=""
+LINE_CHANGE_ENTRY=""
 if [ "$ADOPT" -eq 1 ]; then
     OLD_LINE="$(registry_raw_line "$NAME")"
     _fields="$(registry_entries_full "$ROOT" | awk -F'\t' -v n="$NAME" '$1 == n { print $4 }')"
@@ -599,6 +623,8 @@ if [ "$ADOPT" -eq 1 ]; then
         if [ -z "$_have" ] && [ "$_f" = default_instance ]; then
             LINE_CHANGE="${OLD_LINE%%#*}"
             LINE_CHANGE="$(_project_file_trim "${LINE_CHANGE%$'\r'}")  default_instance=$F_default_instance"
+            LINE_CHANGE_ENTRY="$(registry_entries_full "$ROOT" | awk -F'\t' -v n="$NAME" '$1 == n { print $1 "\t" $2 "\t" $3 }')"
+            LINE_CHANGE_ENTRY="$LINE_CHANGE_ENTRY"$'\t'"${_fields:+$_fields }default_instance=$F_default_instance"
             continue
         fi
         if [ "$_have" != "${!_v}" ]; then
@@ -608,10 +634,15 @@ if [ "$ADOPT" -eq 1 ]; then
     done
 else
     NEW_LINE="$NAME  $TYPE  $PROJECT_ROOT"
+    _fields=""
     for _f in $FIELD_KEYS; do
         _v="F_$_f"
-        [ -n "${!_v}" ] && NEW_LINE="$NEW_LINE  $_f=${!_v}"
+        [ -n "${!_v}" ] || continue
+        NEW_LINE="$NEW_LINE  $_f=${!_v}"
+        _fields="${_fields:+$_fields }$_f=${!_v}"
     done
+    # What the parser must read back from NEW_LINE.
+    NEW_ENTRY="$(printf '%s\t%s\t%s\t%s' "$NAME" "$TYPE" "$PROJECT_ROOT" "$_fields")"
 fi
 
 # ------------------------------------------------- the settings to write ---
@@ -847,7 +878,7 @@ take_registry_lock || final refused "try again" 1
 # 1. The registry line and the settings file.
 if [ "$ADOPT" -eq 0 ]; then
     TMP="$(registry_with_line "$NEW_LINE")" || failed "could not write a new registry" "check $PROJECTS_D is writable"
-    install_registry "$TMP" "$NAME" present || failed "the new registry line does not parse (above)" "fix the arguments"
+    install_registry "$TMP" "$NAME" present "$NEW_ENTRY" || failed "the new registry line does not parse as asked (above)" "fix the arguments"
     LINE_WRITTEN=1
     CHANGED=1
     echo "added the registry line: $NEW_LINE"
@@ -858,7 +889,7 @@ elif [ -n "$LINE_CHANGE" ]; then
         _first=""; read -r _first _ <<< "${_raw%%#*}" || true
         if [ "${_first%$'\r'}" = "$NAME" ]; then printf '%s\n' "$LINE_CHANGE"; else printf '%s\n' "$_raw"; fi
     done < "$REGISTRY" > "$TMP"
-    install_registry "$TMP" "$NAME" present || failed "the changed registry line does not parse (above)" "fix --default-instance"
+    install_registry "$TMP" "$NAME" present "$LINE_CHANGE_ENTRY" || failed "the changed registry line does not parse as asked (above)" "fix --default-instance"
     CHANGED=1
     echo "changed the registry line to: $LINE_CHANGE"
 else

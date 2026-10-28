@@ -320,6 +320,32 @@ check "a records combination other than the default is refused (not yet honoured
 out="$(reg "$WS" "$P4" --set buld=make)"; rc=$?
 check "an unknown key is a usage error" [ "$rc" -eq 2 ]
 
+echo "TEST: a '#' in the path or a field value is refused, never registered as something shorter"
+# The registry strips from '#' to the end of a line, so phi#2 would read
+# back as phi: a different directory, and a valid project too.
+PHASH="$(make_proj phi)"
+cp -r "$PHASH" "$PHASH#2"
+cp "$WS/.agent/projects.local" "$SANDBOX/reg.before"
+ls -A "$WS/.agent/projects.d" > "$SANDBOX/pd.before"
+: > "$REG_LOG"
+out="$(reg "$WS" "$PHASH#2" --name phi2)"; rc=$?
+check "a path with '#': exit 1, STATUS=refused, naming the '#'" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"cannot hold a path with a blank, '"'"'='"'"' or '"'"'#'"'"'"* ]]' _ "$rc" "$out"
+check "a path with '#': nothing written, nothing run" \
+    bash -c 'cmp -s "$1" "$2" && [ "$(ls -A "$3")" = "$(cat "$4")" ] && [ ! -s "$5" ]' _ "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$WS/.agent/projects.d" "$SANDBOX/pd.before" "$REG_LOG"
+for fv in "--role sim#x" "--distro foxy#2" "--parent fam#x" "--role 'a b'" "--distro a=b"; do
+    eval "set -- $fv"
+    out="$(reg "$WS" "$PHASH" "$@")"; rc=$?
+    check "$fv: exit 1, refused naming the value" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"cannot hold a value with a blank, '"'"'='"'"' or '"'"'#'"'"'"* ]]' _ "$rc" "$out"
+    check "$fv: nothing written" \
+        bash -c 'cmp -s "$1" "$2" && [ "$(ls -A "$3")" = "$(cat "$4")" ]' _ "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$WS/.agent/projects.d" "$SANDBOX/pd.before"
+done
+out="$(reg "$WS" "$PHASH" --worktrees "$PHASH/wt#x")"; rc=$?
+check "--worktrees with '#': refused, nothing written" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"cannot hold a value with a blank"* ]] && cmp -s "$3" "$4"' _ "$rc" "$out" "$WS/.agent/projects.local" "$SANDBOX/reg.before"
+set --
+
 # ---------------------------------------------- failures roll back ---
 echo "TEST: a failing validate, build or test leaves no line, no file and no plugin enable"
 install_ut "$WS" >/dev/null || fail "installing the sandbox user tier"
