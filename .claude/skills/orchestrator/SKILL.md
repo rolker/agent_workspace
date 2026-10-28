@@ -124,40 +124,10 @@ moves one class inside; the issue 398 comment is the first.
      without rewriting anyone's text, and a signed comment on the issue
      being driven is inside the outward boundary above.
 
-     ```bash
-     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-     MARK="Goal restated by the owner mid-drive (restart checkpoint, <its **When**>):"
-     if ! COMMENTS="$(gh issue view <N> --json comments --jq '.comments[].body')"; then
-         echo "not posted: gh issue view failed, so whether it is already there is unknown" >&2
-     elif grep -qF -- "$MARK" <<< "$COMMENTS"; then
-         echo "already on the issue: $MARK"
-     else
-     mkdir -p "$WS_ROOT/.agent/scratchpad"
-     BODY="$(mktemp "$WS_ROOT/.agent/scratchpad/restart-goal.XXXXXX.md")"
-     cat > "$BODY" <<'EOF'
-     Goal restated by the owner mid-drive (restart checkpoint, <its **When**>):
-
-     > <his words, verbatim, as in the restart entry>
-
-     The drive starts again at issue review, against this goal.
-
-     ---
-     **Authored-By**: `<agent name>`
-     **Model**: `<model id>`
-     EOF
-     if gh issue comment <N> --body-file "$BODY"; then
-         rm -f "$BODY"
-     else
-         echo "not posted: gh issue comment failed (exit $?); the text is kept at $BODY" >&2
-     fi
-     fi
-     ```
-
-     The first line of the comment is `$MARK`, word for word, so a second
-     run finds it and never posts the same restart twice. On a "not
-     posted" line, dispatch nothing: the line goes into the hand-back, and
-     the `restart` entry stays the newest, so the resumed drive takes the
-     path below and posts it then.
+     Run the block in "The restart comment" below. On a "not posted"
+     line, dispatch nothing: the line goes into the hand-back, and the
+     `restart` entry stays the newest, so the resumed drive takes the
+     recovery path after step 3 and posts it then.
   3. Dispatch `review-issue` (`$WS_ROOT/.agent/scripts/dispatch_phase.sh
      --issue <N> --skill review-issue [--type <type>] [--project <project>]
      [--skill-prefix agent-workspace:]`, with this drive's own `--type`,
@@ -193,6 +163,45 @@ moves one class inside; the issue 398 comment is the first.
   one on its own.
 - **(e) Merge.** Always his, after the decision summary (`/run-issue` steps
   7 and 11). Reviews reduce what he reads; they do not decide.
+
+## The restart comment
+
+Recipe (a) step 2, run from the issue's worktree. The comment's first line
+is printed from `$MARK`, so it matches the check word for word and a second
+run never posts the same restart twice. The block sits outside the recipe's
+list, at the start of the line, because a heredoc's closing `EOF` must
+start its line: indented inside a list item, it never closes and bash
+stops on a syntax error before any "not posted" line.
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+MARK="Goal restated by the owner mid-drive (restart checkpoint, <its **When**>):"
+if ! COMMENTS="$(gh issue view <N> --json comments --jq '.comments[].body')"; then
+    echo "not posted: gh issue view failed, so whether it is already there is unknown" >&2
+elif grep -qF -- "$MARK" <<< "$COMMENTS"; then
+    echo "already on the issue: $MARK"
+else
+mkdir -p "$WS_ROOT/.agent/scratchpad"
+BODY="$(mktemp "$WS_ROOT/.agent/scratchpad/restart-goal.XXXXXX.md")"
+{
+printf '%s\n\n' "$MARK"
+cat <<'EOF'
+> <his words, verbatim, as in the restart entry>
+
+The drive starts again at issue review, against this goal.
+
+---
+**Authored-By**: `<agent name>`
+**Model**: `<model id>`
+EOF
+} > "$BODY"
+if gh issue comment <N> --body-file "$BODY"; then
+    rm -f "$BODY"
+else
+    echo "not posted: gh issue comment failed (exit $?); the text is kept at $BODY" >&2
+fi
+fi
+```
 
 ## Hand-back shape
 

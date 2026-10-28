@@ -281,6 +281,33 @@ if [[ -f "$ORCH" ]]; then
         'On a "not posted" line, dispatch nothing' \
         'Paste his words, quoted, into its handoff as well' \
         'the host does steps 2 and 3 then, from the `restart` entry'"'"'s words'
+    # The restart comment's first line is printed from $MARK, so the
+    # duplicate check and the posted text cannot drift apart.
+    has "$ORCH" "orchestrator: the restart comment's first line is \$MARK itself" \
+        "printf '%s\\n\\n' \"\$MARK\""
+    # Every bash block runs as written: raw lines, indentation kept, only
+    # the <placeholders> replaced. A block indented inside a list item has
+    # its heredoc's closing EOF indented too, so the heredoc never closes:
+    # bash -n then reports a syntax error or warns, and either fails here.
+    n_blocks=0; bad_blocks=""
+    while IFS= read -r -d '' block; do
+        n_blocks=$((n_blocks + 1))
+        out="$(sed -E 's/<[A-Za-z][^<>]*>/PLACEHOLDER/g' <<< "$block" | bash -n 2>&1)"; rc=$?
+        if [[ $rc -ne 0 || -n "$out" ]]; then
+            bad_blocks+="block $n_blocks (exit $rc): $(head -n1 <<< "$out")"$'\n'
+        fi
+    done < <(awk '
+        /^[[:space:]]*```bash[[:space:]]*$/ { inb = 1; buf = ""; next }
+        inb && /^[[:space:]]*```[[:space:]]*$/ { inb = 0; printf "%s%c", buf, 0; next }
+        inb { buf = buf $0 "\n" }' "$ORCH")
+    if [[ $n_blocks -eq 0 ]]; then
+        fail "orchestrator: no bash blocks found to parse"
+    elif [[ -n "$bad_blocks" ]]; then
+        fail "orchestrator: a bash block does not parse as written (bash -n):"
+        printf '%s' "$bad_blocks" | sed 's/^/        /'
+    else
+        pass "orchestrator: all $n_blocks bash blocks parse as written (bash -n, indentation kept)"
+    fi
     has "$ORCH" "orchestrator: parked items go to the inbox with capture.sh" \
         '$WS_ROOT/.agent/scripts/capture.sh'
 else
