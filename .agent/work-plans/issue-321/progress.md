@@ -523,3 +523,25 @@ Round 2 (PR mode). All seven round-1 items confirmed fixed: M1 restart-then-fail
 - [x] (must-fix) Restart recipe never puts the restart entry's quoted words into the review-issue handoff; review-issue reads only the GitHub issue and its comments (its SKILL.md reads no Checkpoint entry), so on the recovery path (session ended, host has only the entry) the new work is reviewed and planned against the old goal; require quoting the restart entry's words into the handoff on both paths (Codex) — `.claude/skills/orchestrator/SKILL.md:115-122`
 - [x] (suggestion) A pull request with no worktree is labelled `no path`, which step 3 defines as "work that serves neither", though no timeline was read; say path unknown unless a Direction line names its issue (Codex) — `.claude/skills/sitrep/SKILL.md:952-954`
 - [x] (suggestion) The new "retry answer dispatches implement" test passes on the pre-fix script (its checkpoint hard-codes `**Phase**: implement`), so it guards nothing about the fix and the commit's "tests reproduce ... the retry answer" overstates; drop it or note it is a row-26 guard (old-code check) — `.agent/scripts/tests/test_dispatch_phase.sh:262-264`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 08:27 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #400 at `fbb7c179`
+**Addressed**: Local Review at `b2fb88ef` (2026-10-27 14:55 -04:00)
+**Commits**: 63b49c26, 0d781162, 22176b9e, fbb7c179
+
+The four fix commits were made by an earlier pass that was cut off before this entry; this pass verified each against its finding and added no commits.
+
+### Actions
+- [x] (must-fix) Restart recipe's review-issue dispatch now carries the drive's own `--type`, `--project` and `--skill-prefix`; test_skill_paths pins the flags and rejects a flagless `--skill review-issue` command (63b49c26) — `.claude/skills/orchestrator/SKILL.md:159-165`
+- [x] (must-fix) Restart recipe posts his words on the issue as a signed comment (marker line checked first so it posts once; text kept on a failed post; nothing dispatched when not posted) and quotes them in the review-issue handoff; the recovery path repeats both steps from the restart entry's words; run-issue's restart paragraph matches (0d781162) — `.claude/skills/orchestrator/SKILL.md:113-181`, `.claude/skills/run-issue/SKILL.md:426-433`
+- [x] (suggestion) A pull request with no worktree is `Path 1` by a Direction line, else "path unknown (no worktree, timeline not read)", never `no path`; test_sitrep_checks pins it (22176b9e) — `.claude/skills/sitrep/SKILL.md:952-956`
+- [x] (suggestion) The restart retry case takes its **Phase** from what `next` printed; re-checked against dispatch_phase.sh from 5a3de604 (scratch copy in a throwaway git repo): 128 passed, 2 failed, the two restart cases, so it now guards the fix (fbb7c179) — `.agent/scripts/tests/test_dispatch_phase.sh:262-273`
+
+### Checks
+- test_skill_paths.sh 76 passed 0 failed; test_sitrep_checks.sh 186 passed 0 failed; test_dispatch_phase.sh 130 passed 0 failed.
+- Restart recipe's bash block: `bash -n` clean (placeholders substituted); its paths were read, not executed.
+- `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: every hook passed or had no files, including the script test suite and shellcheck.
