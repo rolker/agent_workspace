@@ -849,6 +849,29 @@ check "exit non-zero, STATUS=NOT READY, 'the rollback stopped part way'" \
 check "the settings file it left is named on NEXT, and is there; the line is gone" \
     bash -c '[[ "$1" == *"NEXT="*"the settings file $2"* ]] && [ -e "$2" ] && ! grep -q "^rbpart " "$3"' _ "$out" "$(pfile "$WSR" rbpart)" "$WSR/.agent/projects.local"
 
+echo "TEST: an unexpected exit inside the settings restore, after the rename, names the backup it left"
+# A sandbox copy of the script with an unset variable read in
+# restore_settings, after the backup is renamed onto the settings file and
+# before the backup is removed: the file no longer matches this run's
+# write, and the hidden backup is still in projects.d.
+WSB="$(make_ws)"
+sed -i.bak 's|^        if cp -p -- "\$SETTINGS_BACKUP" "\$tmp" && mv -f -- "\$tmp" "\$dest" && .*; then$|&\n            : "$REGISTER_TEST_UNSET_VARIABLE"|' "$WSB/.agent/scripts/register_project.sh"
+rm -f "$WSB/.agent/scripts/register_project.sh.bak"
+check "the fault is in the sandbox copy's restore_settings" grep -q REGISTER_TEST_UNSET_VARIABLE "$WSB/.agent/scripts/register_project.sh"
+PRB="$(make_proj rbbak 1 1 0)"   # its build fails
+mkdir -p "$WSB/.agent/projects.d"
+printf 'build=make\ntest=make test\n' > "$(pfile "$WSB" rbbak)"
+cp -p "$(pfile "$WSB" rbbak)" "$SANDBOX/rbbak.before"
+out="$(reg "$WSB" "$PRB" --set test=none)"; rc=$?
+BKB="$(find "$WSB/.agent/projects.d" -maxdepth 1 -name '.settings-backup.*' | head -1)"
+check "exit non-zero, STATUS=NOT READY, 'the rollback stopped part way'" \
+    bash -c '[ "$1" -ne 0 ] && [[ "$2" == *"the rollback stopped part way"* && "$2" == *"STATUS=NOT READY"* && "$2" != *"STATUS=refused"* ]]' _ "$rc" "$out"
+check "the settings file is back (the rename happened), the backup is still there" \
+    bash -c 'cmp -s "$1" "$2" && [ -n "$3" ] && cmp -s "$3" "$2"' _ "$(pfile "$WSB" rbbak)" "$SANDBOX/rbbak.before" "$BKB"
+check "the backup is named on NEXT, to remove once the settings file is right" \
+    bash -c '[ -n "$2" ] && [[ "$(tail -n 4 <<< "$1" | grep "^NEXT=")" == *"the backup of the settings file'"'"'s content before this run, $2 (remove it once $3 is right)"* ]]' _ "$out" "$BKB" "$(pfile "$WSB" rbbak)"
+rm -f "$BKB" "$SANDBOX/rbbak.before"
+
 echo "TEST: a failure whose rollback cannot remove the settings file names it on NEXT"
 PRF="$(make_proj rmfa 1 1 0)"   # its build fails
 out="$(faulty rm "projects.d/rmfa" "$WS" "$PRF")"; rc=$?

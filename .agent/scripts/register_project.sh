@@ -84,7 +84,8 @@
 # arrives while a failure, an interrupt or an unexpected exit is being
 # handled (the rollback included) waits for it to finish; a rollback cut
 # short all the same (an unexpected exit inside it) is reported NOT READY,
-# "the rollback stopped part way", naming what it left. A hosting directory that
+# "the rollback stopped part way", naming what it left (the hidden backup
+# of a settings file that existed before included, while it is there). A hosting directory that
 # setup created is kept and named on KEPT= (its clones are slow to redo,
 # and a re-run reuses it); a directory that existed before is never
 # touched, and a settings file changed after this run wrote it (a
@@ -1027,11 +1028,25 @@ rollback_unfinished() {
         rollback_left "its registry line in $REGISTRY"
         LINE_LEFT=1
     fi
-    if [[ "$ROLLBACK_DONE" != *" settings "* ]] && [ "$SETTINGS_WRITING" -eq 1 ] \
-       && { [ -z "$SETTINGS_WRITTEN_SUM" ] || [ "$(settings_sum)" = "$SETTINGS_WRITTEN_SUM" ]; }; then
+    # The hidden backup is always named while it is there: beside the file
+    # as this run wrote it, or alone when the file no longer matches that
+    # write (put back by a restore cut short after its rename, or changed
+    # during the run, when the backup is the only copy of the content
+    # before the run).
+    if [[ "$ROLLBACK_DONE" != *" settings "* ]]; then
+        local ours=0
+        if [ "$SETTINGS_WRITING" -eq 1 ] \
+           && { [ -z "$SETTINGS_WRITTEN_SUM" ] || [ "$(settings_sum)" = "$SETTINGS_WRITTEN_SUM" ]; }; then
+            ours=1
+        fi
         if [ -n "$SETTINGS_BACKUP" ] && [ -e "$SETTINGS_BACKUP" ]; then
-            rollback_left "the settings file $SETTINGS as this run wrote it (its content before the run is in $SETTINGS_BACKUP)"
-        elif [ -z "$SETTINGS_BACKUP" ] && [ "$SETTINGS_EXISTED" -eq 0 ] && { [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; }; then
+            if [ "$ours" -eq 1 ]; then
+                rollback_left "the settings file $SETTINGS as this run wrote it (its content before the run is in $SETTINGS_BACKUP)"
+            else
+                rollback_left "the backup of the settings file's content before this run, $SETTINGS_BACKUP (remove it once $SETTINGS is right)"
+            fi
+        elif [ "$ours" -eq 1 ] && [ -z "$SETTINGS_BACKUP" ] && [ "$SETTINGS_EXISTED" -eq 0 ] \
+             && { [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; }; then
             rollback_left "the settings file $SETTINGS"
         fi
     fi
