@@ -923,3 +923,18 @@ Merged main (b120d541, pull request #403: issue 332 part 1, the per-project sett
 - Not changed: the #321 row's Lines value stays 766 (the count on the branch before the merge); the merged file is 800 lines.
 
 Verified: `check_design_anchors.sh .` exit 0; `.agent/scripts/tests/run_script_tests.sh` all 38 suites passed; the main checkout's `.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, exit 0 (script-test suite hook included); the merge commit's own hooks passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 12:53 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #400 at `fb783f81`
+**Depth**: Standard (reason: round 10 convergence check per handoff; scope: the merge of main (PR 403, issue 332 part 1) into this branch, merge commit c1e43a9a; cross-model skipped (round-10 convergence check, per handoff))
+**Must-fix**: 1 | **Suggestions**: 0
+
+Checked: `git merge-tree` of 29be214e and b120d541 reproduces c1e43a9a in every file but docs/design.md, whose only conflict resolution keeps both change-log rows (332 then 321) with no other change; the branch's diff against its new base matches the pre-merge diff 29be214e against a3b9969a in all 23 files (line numbers aside), and main's diff a3b9969a..b120d541 lands intact; check_design_anchors.sh exit 0; run_script_tests.sh all 38 suites passed.
+
+### Findings
+- [ ] (must-fix) The merge left the 321 change-log row's line count at 766, the file length on the pre-merge branch; the merged file is 800 lines and the row now follows the 332 row's 790, so the growth series reads as a shrink. Every merge to main so far kept the last row's count equal to the file length; change `| #321 | 766 |` to `| #321 | 800 |` (the edit changes no line count) — `docs/design.md:746`
