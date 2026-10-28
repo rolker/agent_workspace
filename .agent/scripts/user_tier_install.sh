@@ -73,6 +73,17 @@
 #   --uninstall          remove every entry tagged with this checkout, and
 #                        the plugin from every root where this checkout
 #                        declared it (another checkout's is left alone).
+#   --disable-root <name>
+#                        remove the plugin from one registered root, the
+#                        way --uninstall does for every root (this
+#                        checkout's declaration only; another checkout's is
+#                        left alone). Nothing else in ~/.claude changes.
+#                        register_project.sh runs it before it removes a
+#                        registry line (--remove, or a failed registration
+#                        after the installer ran), so <name> must still be
+#                        registered. A parent= instance whose parent
+#                        provides the plugin, or a root the CLI never runs
+#                        in, gets the same report as --uninstall gives it.
 #   --list-skills        print the skills the plugin exposes (session_scope
 #                        project|both), one per line.
 #   --generate-plugin-manifest
@@ -148,12 +159,28 @@ set_mode() {
     fi
     MODE="$1"
 }
-for arg in "$@"; do
+DISABLE_NAME=""
+usage_line() {
+    echo "usage: user_tier_install.sh [--force] | --check [--require] | --uninstall | --disable-root <name> | --list-skills | --generate-plugin-manifest" >&2
+}
+while [[ $# -gt 0 ]]; do
+    arg="$1"
+    shift
     case "$arg" in
         --check)       set_mode check ;;
         --require)     REQUIRE=true ;;
         --force)       FORCE=true ;;
         --uninstall)   set_mode uninstall ;;
+        --disable-root)
+            set_mode disable-root
+            if [[ $# -eq 0 || -z "$1" || "$1" == -* ]]; then
+                echo "ERROR: --disable-root needs a registered project name" >&2
+                usage_line
+                exit 2
+            fi
+            DISABLE_NAME="$1"
+            shift
+            ;;
         --list-skills) set_mode list-skills ;;
         --generate-plugin-manifest) set_mode generate-plugin-manifest ;;
         -h|--help)
@@ -161,7 +188,7 @@ for arg in "$@"; do
             exit 0
             ;;
         *)
-            echo "usage: user_tier_install.sh [--force] | --check [--require] | --uninstall | --list-skills | --generate-plugin-manifest" >&2
+            usage_line
             exit 2
             ;;
     esac
@@ -177,7 +204,7 @@ fi
 # it up front made `make validate` exit 3 on a jq-less machine -- the exact
 # case this script's --check is supposed to keep green.
 case "$MODE" in
-    install|check|uninstall|generate-plugin-manifest)
+    install|check|uninstall|disable-root|generate-plugin-manifest)
         if ! command -v jq >/dev/null 2>&1; then
             if [[ "$MODE" == "check" ]]; then
                 echo "agent_workspace user tier: jq not installed -- cannot check (install jq to enable this check)"
@@ -869,6 +896,55 @@ plugin_anywhere() {
     done <<< "$PLUGIN_ROOTS"
     [[ "$(plugin_state "$WS_ROOT")" != absent ]]
 }
+
+# ---------------------------------------------------------- disable-root ---
+# One registered root, as --uninstall treats each (below): the plugin goes
+# where this checkout declared it, and the roots the CLI never runs in are
+# reported, not touched.
+if [[ "$MODE" == "disable-root" ]]; then
+    line="$(awk -F'\t' -v n="$DISABLE_NAME" '$1 == n' <<< "$PLUGIN_ROOTS")"
+    if [[ -z "$line" ]]; then
+        echo "ERROR: '$DISABLE_NAME' is not registered in $(registry_file "$WS_ROOT")" >&2
+        exit 1
+    fi
+    IFS=$'\t' read -r name root verdict detail <<< "$line"
+    uninstall_rc=0
+    record_was_ours=false
+    machine_record_ours && record_was_ours=true
+    if [[ ! -d "$root" ]]; then
+        echo "  NOTE: registered root $root is not on disk -- nothing to remove there"
+    else
+        case "$verdict" in
+            skip-instance)
+                echo "  $name is a parent= instance whose parent root provides the plugin -- the parent's is left alone"
+                uninstall_refused_root "parent= instance $name" "$root" "$(instance_cli_reason "$root")" ;;
+            skip-enclosed) uninstall_refused_root "registered root $name" "$root" "$(enclosed_reason "$detail")" ;;
+            *) uninstall_plugin_from "$root" ;;
+        esac
+    fi
+    # A local `marketplace remove` can drop the CLI's machine-level record
+    # (live case J), which would leave every other root enabled from here
+    # without the plugin. When the record was this checkout's and some
+    # other root is still enabled from here, take it back, as install's
+    # step 6c does.
+    if [[ "$record_was_ours" == true ]] && have_claude && ! machine_record_ours; then
+        still_enabled=false
+        while IFS=$'\t' read -r _n r v _d; do
+            case "$v" in enable|enable-instance) ;; *) continue ;; esac
+            [[ "$(plugin_state "$r")" == enabled ]] && still_enabled=true
+        done <<< "$PLUGIN_ROOTS"
+        if [[ "$still_enabled" == true ]] && ! claim_machine_record "back, after removing the plugin from $name"; then
+            echo "agent_workspace plugin: removed from $name ($root), but the machine-level record of the $MARKETPLACE_NAME marketplace was lost and could not be taken back (above): sessions in the other roots may not load this checkout's skills -- re-run the installer." >&2
+            exit 1
+        fi
+    fi
+    if [[ "$uninstall_rc" -ne 0 ]]; then
+        echo "agent_workspace plugin: not removed from $name ($root) -- see above." >&2
+        exit 1
+    fi
+    echo "agent_workspace plugin: none left from this checkout in $name ($root)."
+    exit 0
+fi
 
 if [[ "$MODE" == "uninstall" ]]; then
     if [[ ! -e "$ROOT_FILE" && ! -e "$SESSION_HOOK_LINK" && ! -f "$SETTINGS" ]] && ! plugin_anywhere; then
