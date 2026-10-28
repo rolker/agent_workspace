@@ -72,12 +72,14 @@ setting in the project's settings file (through
 `.git/info/exclude`, files on a branch of the project, an issue, and a pull
 request. Each is shown before it is made, and made only on the user's yes.
 
-The settings file `.agent/projects.d/<name>` lives in the workspace
-checkout, outside this session's root. It is the one thing a project session
+The settings file `.agent/projects.d/<name>` (at a parent root, the
+chosen instance's) lives in the workspace checkout, outside this session's
+root. It is the one thing a project session
 writes outside its root: per-machine, gitignored workspace configuration that
 the project's onboarding owns, not a tracked change to the workspace
 (`docs/design.md`, Sessions and roots). `project_setting.sh set` refuses to
-write any other project's file from here.
+write any other project's file from here (at a parent root, it writes only
+its instances').
 
 ## Steps
 
@@ -101,24 +103,48 @@ the rest of the run.
   project's root, not in the workspace; register the project first if it
   is not, then start a session there.
 
+**A parent root** (a root that groups instances, such as one per ROS
+distro) has no settings, adapter or worktrees of its own: they belong to
+its instances, and `project_setting.sh set <name>` refuses a parent's
+name. Find out whether `<name>` is one:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+source "$WS_ROOT/.agent/scripts/_project_registry.sh"
+registry_instances "$WS_ROOT" <name>
+registry_default_instance "$WS_ROOT" <name>
+```
+
+- **No instance listed**: `<name>` is no parent root. `<settings-name>`
+  below is `<name>`.
+- **Instances listed**: `<settings-name>` is the instance this run's
+  settings, branch and pull request belong to. Show the instances and
+  propose the one `registry_default_instance` prints (the default, else
+  the only instance); when it prints an error instead (several instances,
+  no default), ask which. The user may pick any listed instance. Say
+  plainly that the parent root's own settings do not exist: every
+  setting below is the chosen instance's.
+
 ### 2. Show the recorded choices and the audit
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-"$WS_ROOT/.agent/scripts/project_setting.sh" list <name>
-"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text
+"$WS_ROOT/.agent/scripts/project_setting.sh" list <settings-name>
+"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text [--instance <settings-name>]
 ```
 
-`list` prints the stored keys and the resolved records settings, marking a
-default as provisional. The audit prints its findings grouped by category,
-and a count. Show both to the user as they are, then a short summary: which
+`--instance` only at a parent root: the audit then reads that instance's
+settings (without it, the default or only instance's). `list` prints the
+stored keys and the resolved records settings, marking a default as
+provisional. The audit prints its findings grouped by category, and a
+count. Show both to the user as they are, then a short summary: which
 footprint answers are recorded, and how many findings of each severity.
 
 A category 6 `error` means the registration does not work as it stands (a
 missing build or test command, the user tier out of date, a root that does
 not resolve). Name the fix the finding gives; a command the project lacks
 is a setting this session may store, after a yes
-(`project_setting.sh set <name> build=<command>` or `test=none`); the
+(`project_setting.sh set <settings-name> build=<command>` or `test=none`); the
 user tier and the registry line are fixed from a workspace session.
 
 ### 3. Ask the footprint questions not yet answered
@@ -140,7 +166,7 @@ roadmap section)?"
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-"$WS_ROOT/.agent/scripts/project_setting.sh" set <name> instructions=<tracked|none>
+"$WS_ROOT/.agent/scripts/project_setting.sh" set <settings-name> instructions=<tracked|none>
 ```
 
 The setting records the answer; readers key off the files themselves,
@@ -162,8 +188,8 @@ Show the default from the one function that holds it, and say that it is
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 source "$WS_ROOT/.agent/scripts/_project_registry.sh"
-project_records_default "$WS_ROOT" <name> accepts-footprint
-project_records_default "$WS_ROOT" <name> zero-footprint
+project_records_default "$WS_ROOT" <settings-name> accepts-footprint
+project_records_default "$WS_ROOT" <settings-name> zero-footprint
 ```
 
 Each prints `location`, `tracking`, the outside layout and `provisional`.
@@ -180,7 +206,7 @@ explicitly is optional: a file without the keys already resolves to it.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-"$WS_ROOT/.agent/scripts/project_setting.sh" set <name> location=project tracking=project
+"$WS_ROOT/.agent/scripts/project_setting.sh" set <settings-name> location=project tracking=project
 ```
 
 When a setting changed, run the audit again (step 2's command): severities
@@ -271,7 +297,7 @@ file (a setting, a `.git/info/exclude` line).
 
 Fixes that touch no tracked file are made as soon as the user says yes:
 
-- a setting: `project_setting.sh set <name> <key>=<value>`;
+- a setting: `project_setting.sh set <settings-name> <key>=<value>`;
 - the worktrees directory: add its line (the finding names it, e.g.
   `worktrees/`) to the file `git rev-parse --git-path info/exclude` prints,
   the same line `worktree_create.sh` adds when it creates the first
@@ -379,7 +405,7 @@ issue or skip only.
 | Item | Check | Fix approach |
 |------|-------|-------------|
 | **Pre-commit config** | `.pre-commit-config.yaml` exists at the root | Write one for the project's languages, with `no-commit-to-branch` set to the default branch; the workspace has no template, and its own `$WS_ROOT/.pre-commit-config.yaml` is an example |
-| **CI workflow** | `.github/workflows/*.yml` with build and test steps | Write a workflow on the default branch that runs the project's own build and test commands (`project_setting.sh get <name> build` and `test`); the workspace has no template |
+| **CI workflow** | `.github/workflows/*.yml` with build and test steps | Write a workflow on the default branch that runs the project's own build and test commands (`project_setting.sh get <settings-name> build` and `test`); the workspace has no template |
 | **Branch protection** | A ruleset requires pull requests on the default branch | `gh api` — needs admin access |
 | **Copilot auto-review** | Copilot reviews pull requests | `gh api` — needs admin access |
 | **Component labels** | `component:` labels (multi-component repositories only) | `gh label create` per component |

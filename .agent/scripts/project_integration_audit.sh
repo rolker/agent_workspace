@@ -5,11 +5,17 @@
 # reports; the skill judges and asks. Read-only.
 #
 # Usage:
-#   project_integration_audit.sh [--dir D | --project N] [--format tsv|text]
+#   project_integration_audit.sh [--dir D | --project N] [--instance I]
+#                                [--format tsv|text]
 #
 #   --dir D        audit the registered project whose root contains D
 #                  (default: the current directory)
 #   --project N    audit registered project N
+#   --instance I   at a parent root, whose settings apply: instance I's
+#                  (default: the parent's default_instance, else its only
+#                  instance; with several and no default, none are read
+#                  and the text format says so). A parent root has no
+#                  settings of its own.
 #   --format tsv   (default) one finding per line:
 #                  category<TAB>id<TAB>severity<TAB>subject<TAB>detail
 #                  No line at all means no findings.
@@ -65,8 +71,9 @@
 # (not-git) and no git checks.
 #
 # Exit codes: 0 the audit ran (whatever it found); 2 usage, a directory
-# under no registered project root, an unregistered name, or a registry
-# that does not parse.
+# under no registered project root, an unregistered name, an --instance
+# that is not an instance of the audited parent root (or given for a
+# project that is no parent root), or a registry that does not parse.
 #
 # Like registration_verify.sh, from a linked worktree of the workspace it
 # reads the main checkout's registry and settings files.
@@ -89,11 +96,13 @@ usage() {
 
 DIR=""
 NAME=""
+INSTANCE=""
 FORMAT="tsv"
 while [ $# -gt 0 ]; do
     case "$1" in
         --dir)     [ $# -ge 2 ] && [ -n "$2" ] || { usage; exit 2; }; DIR="$2"; shift 2 ;;
         --project) [ $# -ge 2 ] && [ -n "$2" ] || { usage; exit 2; }; NAME="$2"; shift 2 ;;
+        --instance) [ $# -ge 2 ] && [ -n "$2" ] || { usage; exit 2; }; INSTANCE="$2"; shift 2 ;;
         --format)  [ $# -ge 2 ] || { usage; exit 2; }; FORMAT="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "ERROR: unknown argument '$1'" >&2; usage; exit 2 ;;
@@ -152,7 +161,18 @@ PROOT_ABS="$(cd "$PROOT" 2>/dev/null && pwd -P)" || PROOT_ABS=""
 # default (or only) instance carries them.
 SNAME="$NAME"
 if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ]; then
-    SNAME="$(registry_default_instance "$MAIN_ROOT" "$NAME" 2>/dev/null)" || SNAME=""
+    if [ -n "$INSTANCE" ]; then
+        if [ "$(registry_field "$MAIN_ROOT" "$INSTANCE" parent 2>/dev/null)" != "$NAME" ]; then
+            echo "ERROR: '$INSTANCE' is not a registered instance of the parent root '$NAME' (its instances: $(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null | paste -sd' ' -))" >&2
+            exit 2
+        fi
+        SNAME="$INSTANCE"
+    else
+        SNAME="$(registry_default_instance "$MAIN_ROOT" "$NAME" 2>/dev/null)" || SNAME=""
+    fi
+elif [ -n "$INSTANCE" ]; then
+    echo "ERROR: --instance is for a parent root; '$NAME' is a $TYPE project with settings of its own" >&2
+    exit 2
 fi
 
 # ----------------------------------------------------------- findings ---
@@ -510,6 +530,13 @@ if [ "$FORMAT" = "tsv" ]; then
 fi
 
 echo "Integration audit: $NAME ($TYPE) at $PROOT"
+if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ]; then
+    if [ -n "$SNAME" ]; then
+        echo "settings: instance $SNAME's (a parent root has none of its own)"
+    else
+        echo "settings: none read (several instances and no default_instance; pass --instance <name>)"
+    fi
+fi
 echo "instructions: ${INSTRUCTIONS:-not set}"
 declare -A CAT_NAME=(
     [1]="Project configuration that overrides or layers over the workspace's"

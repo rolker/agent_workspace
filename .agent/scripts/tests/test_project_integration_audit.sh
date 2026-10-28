@@ -428,6 +428,52 @@ audit "$NG"
 check "exit 0" [ "$AUDIT_RC" -eq 0 ]
 check "not-git info, no ignore-rule findings" bash -c 'grep -qE $'"'"'^3\tnot-git\tinfo\t'"'"' <<< "$1" && ! grep -qE $'"'"'^4\t'"'"' <<< "$1"' _ "$AUDIT_OUT"
 
+echo "TEST: a parent root: the audit runs at it, with its default instance's settings"
+PAR="$SANDBOX/projects/fam"
+mkdir -p "$PAR/a/.agents" "$PAR/b"
+printf '# fam\n\n- Work on a feature branch.\n' > "$PAR/CLAUDE.md"
+printf 'worktrees/\na/\nb/\n' > "$PAR/.gitignore"
+gitq -C "$PAR" init --quiet
+commit_all "$PAR"
+for i in a b; do
+    printf 'all:\n\t@true\ntest:\n\t@true\n' > "$PAR/$i/Makefile"
+    gitq -C "$PAR/$i" init --quiet
+    commit_all "$PAR/$i"
+done
+printf 'fam project %s default_instance=fam_a\n' "$PAR" >> "$WS/.agent/projects.local"
+printf 'fam_a single_project %s parent=fam\n' "$PAR/a" >> "$WS/.agent/projects.local"
+printf 'fam_b single_project %s parent=fam\n' "$PAR/b" >> "$WS/.agent/projects.local"
+printf 'build=make\ntest=make test\ninstructions=none\n' > "$WS/.agent/projects.d/fam_a"
+printf 'build=make\ntest=make test\ninstructions=tracked\n' > "$WS/.agent/projects.d/fam_b"
+install_ut
+audit "$PAR"
+check "exit 0" [ "$AUDIT_RC" -eq 0 ]
+check "the default instance's instructions=none applies (got $(sev_of process-branch))" [ "$(sev_of process-branch)" = "info" ]
+check "the root resolves: no session-root or registration error (got: ${AUDIT_OUT//$'\t'/ | })" \
+    bash -c '! grep -qE $'"'"'^6\t'"'"' <<< "$1"' _ "$AUDIT_OUT"
+audit "$PAR" --format text
+check "the text names the parent root" grep -qF "Integration audit: fam (project) at $PAR" <<< "$AUDIT_OUT"
+check "and whose settings were read" grep -qxF "settings: instance fam_a's (a parent root has none of its own)" <<< "$AUDIT_OUT"
+audit "$PAR" --instance fam_b
+check "--instance fam_b: its instructions=tracked applies (got $(sev_of process-branch))" [ "$(sev_of process-branch)" = "warn" ]
+audit "$PAR" --instance clean
+check "--instance of another project: exit 2" [ "$AUDIT_RC" -eq 2 ]
+check "it names the parent's instances" grep -qF "its instances: fam_a fam_b" <<< "$AUDIT_ERR"
+audit "$CLEAN" --instance fam_a
+check "--instance at a root that is no parent: exit 2" [ "$AUDIT_RC" -eq 2 ]
+PS_RC=0
+PS_OUT="$(cd "$PAR" && HOME="$HOMEDIR" "$WS/.agent/scripts/project_setting.sh" set fam_b instructions=none 2>&1)" || PS_RC=$?
+check "from the parent root, an instance's setting is written (exit $PS_RC: $PS_OUT)" [ "$PS_RC" -eq 0 ]
+check "the instance's file has it" grep -qx "instructions=none" "$WS/.agent/projects.d/fam_b"
+PS_RC=0
+PS_OUT="$(cd "$PAR" && HOME="$HOMEDIR" "$WS/.agent/scripts/project_setting.sh" set fam instructions=none 2>&1)" || PS_RC=$?
+check "and the parent's own name is refused" [ "$PS_RC" -ne 0 ]
+check "no settings file under the parent's name" [ ! -e "$WS/.agent/projects.d/fam" ]
+sed -i 's/ default_instance=fam_a$//' "$WS/.agent/projects.local"
+audit "$PAR" --format text
+check "several instances, no default: says no settings were read" grep -qF "settings: none read (several instances and no default_instance" <<< "$AUDIT_OUT"
+check "and instructions are not set" grep -qxF "instructions: not set" <<< "$AUDIT_OUT"
+
 echo "TEST: read-only: nothing in the project, the workspace or HOME changes"
 snap() { # <dir>: every path with its content hash, .git included
     (cd "$1" && find . -type f -print0 | sort -z | xargs -0 sha1sum)
