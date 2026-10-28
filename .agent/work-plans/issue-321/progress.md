@@ -832,3 +832,20 @@ The Integrated Review at e476f8f4 has one open finding, a suggestion: the recove
 - test_skill_paths.sh: 86 passed, 0 failed; against the old skill text the new assertions fail (5 failures), so they bite. All 6 orchestrator bash blocks parse (bash -n).
 - Main checkout's pre-commit over `git diff --name-only main...HEAD`, no SKIP: all hooks passed (script test suite included).
 - Box checked with `review_progress.sh check --index 0` (it pointed at this Integrated Review), in commit 52b9d064.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-28 10:00 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #400 at `5e5092f1`
+**Depth**: Standard (reason: round 8 convergence check per handoff; scope: the round-7 suggestion left open by the Integrated Review at e476f8f4, and the fix diff 61284769..5e5092f1, code commit 52b9d064)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Cross-model: skipped (round-8 convergence check, per handoff). Adversarial pass done inline by the lead reviewer over the fix diff (no separate subagent, given the scope).
+
+The round-7 finding is fixed. Orchestrator recipe (a) step 2 now runs a new check block first (it posts nothing): "already on the issue" asks nothing and goes to step 3; a failed `gh issue view` prints a "not posted" line, asks and posts nothing, and the line goes into the hand-back; only "not on the issue yet" shows him the exact comment and waits for his yes. The post block keeps its own `$MARK` re-check, both blocks use the identical `$MARK` line, the recovery paragraph and the `unexpected` table row say the same, and no other skill or doc carries the old ask-first-then-check order. Verified: `test_skill_paths.sh` 86 passed, 0 failed (the new order check anchors on unique strings: `Check first, then ask` at line 127 precedes `show him the exact comment` at 133, the check block at 215 precedes `if gh issue comment <N>` at 251); pre-commit over the three changed files (validate-script-tests skipped, the suite above run directly): no hook failed.
+
+### Findings
+- [ ] (suggestion) run-issue's resumed-drive sentence states the failed-check branch as "nothing is asked or posted and the "not posted" line goes into the hand-back" and then continues "and dispatches `review-issue`", so it reads as dispatching after a failed check; recipe (a) says "On a "not posted" line, dispatch nothing", which keeps the `restart` entry newest so the recovery path posts the comment later (a dispatched review-issue would write the newest entry and the comment would never be posted). Make the parenthetical "nothing is asked, posted or dispatched" — `.claude/skills/run-issue/SKILL.md:437-439`
