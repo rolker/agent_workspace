@@ -203,6 +203,10 @@ where that run is tracked.
   `SessionStart` hook, a `PreToolUse` hook and permission rules for the promoted scripts. Everything it
   writes is tagged with the checkout, so install is repeatable and `--uninstall` removes only its own
   entries (`user_tier_install.sh` header).
+- Registration is a workspace operation, not something a project session does to itself (ADR-0016
+  decision 5): `register_project.sh`, run from the workspace's main checkout, registers a project and,
+  when the user tier is installed from that checkout, re-runs its installer so the new root gets the
+  plugin; the project side, `onboard-project`, runs in a session started at the project root (#332 D1). See [Registry and adapters](#registry-and-adapters).
 - Skills reach project sessions through the `agent-workspace` Claude Code plugin, whose marketplace is
   the workspace checkout (`.claude-plugin/`). It ships every skill that declares
   `session_scope: project` or `session_scope: both` (`make generate-user-tier-skills`, checked by
@@ -235,11 +239,10 @@ Status: `decided, not built`
 - Discovery becomes registry-only: PR 4 of #265 removes the legacy `project/` step. The dispatcher
   still has it as step 3 of its resolution order (`adapter` header; ADR-0016, "ADR-0011's discovery
   order will be superseded").
-- Registration is a workspace script, `register_project.sh`, also PR 4 (ADR-0016 decision 5). It does
-  not exist yet (`.agent/scripts/` has no such file).
 - The workspace tree hosts no project, and the workspace writes nothing into a project checkout beyond
   `.git/info/exclude` and an untracked `COLCON_IGNORE` (ADR-0016 decision 2). The registry's default
-  hosting directory is still `projects/<name>` under the workspace (`_project_registry.sh` header).
+  hosting directory is still `projects/<name>` under the workspace (`_project_registry.sh` header);
+  `register_project.sh` always writes an absolute path, so nothing it registers relies on it.
 - A project's memory attaches to its own root, not to the workspace (ADR-0016 decision 4). No workspace
   script implements or checks this.
 
@@ -265,8 +268,17 @@ Status: `decided`
   checkout's registry the same way: `capture.sh`, so a thought captured from a worktree copy is tagged
   with its project, and `project_setting.sh`, which reads the main checkout's settings files too and
   refuses to write them from a worktree (#332).
-- Registration is by hand. No script writes the registry, and `onboard-project` does not mention it
-  (grep of `.agent/scripts/` and `.claude/skills/*/SKILL.md`, 2026-10-09).
+- Registration is `register_project.sh <path>`, run from the main checkout (#332). It writes the
+  registry line, always with an absolute path, and the settings file (commands from `--set`, else the
+  legacy `.sh`, else `--detect`, which proposes only a single correct command), then runs the
+  read-only gate `registration_verify.sh` (each command the type requires is the project's own or
+  `none`; a shared-config fallback or a missing test command is refused), the type's build and test,
+  and only then the user-tier installer. A failure removes the line and the file, and the plugin
+  enable when the installer ran; a hosting directory `setup` created is kept and reported. A line
+  written by hand is adopted by the same command, kept as it is, and reported `NOT READY` rather
+  than removed when a check fails. `--remove` refuses live worktrees, disables the plugin in the root
+  (`user_tier_install.sh --disable-root`), removes the line and the settings file, and leaves the
+  project, its records and its memory alone. The script header holds the order and the output lines.
 - A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
   read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`, the
   records settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
@@ -289,7 +301,10 @@ Status: `decided`
 - Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
   type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12).
   `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
-  every type implements every verb, in pre-commit and in CI.
+  every type implements every verb, in pre-commit and in CI. Beside the contract, each type has a
+  `registration.conf` (#332): the commands a project of the type must have of its own, whether
+  registration runs `setup` for a missing hosting directory, and the verbs it runs, so
+  `register_project.sh` names no type; `validate_adapter.sh` checks it too.
 - Workflow scripts call adapter verbs and do not branch on the project type: a grep of `.agent/scripts/`
   for the two type names finds only help text and docstrings, and the `single_project` default in
   `_resolve_project_type` (`adapter:80`) (2026-10-09).
@@ -352,10 +367,11 @@ Tally: 3 no-op, 5 thin wrapper, 4 real. No conclusion is drawn from it here; tha
 
 Status: `proposed`
 
-Proposed: `onboard-project` is the one way a project is registered and adapted (#332). A project's
-life from register to unregister is defined, including one project on two machines. Mixed-flavour
-projects, a repository carrying tools of another flavour, are supported (#310). [Open questions](#open-questions)
-C4 holds what is unsettled. The legacy `project/` shape is dropped with the registry-only change
+Proposed: a project is added in two steps (#332 D1), registration from the workspace
+(`register_project.sh`, built, see Now) and onboarding at the project root (`onboard-project`, #332
+PR 3, not built). Registering and unregistering on one machine are defined (Now); one project on two
+machines is not. Mixed-flavour projects, a repository carrying tools of another flavour, are supported
+(#310). [Open questions](#open-questions) C4 holds what is unsettled. The legacy `project/` shape is dropped with the registry-only change
 described under [Sessions and roots](#sessions-and-roots).
 
 ## Worktrees
@@ -681,7 +697,7 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 |---|---|---|---|
 | OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
 | OQ-2 | ADR-0016 stays Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? | Owner | When the [Sessions and roots](#sessions-and-roots) Now block becomes `decided`, and when the Registry inventory is read to settle #295 |
-| C4 | Is `onboard-project` the only path that registers and adapts a project (#332) and is hand registration retired? What does unregistering do to a project's plans, timelines and memory, and how does one project live on two machines? How are mixed-flavour projects (#310) described? | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on it yet |
+| C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line, the settings file and the plugin enable, and leaves the project's plans, timelines and memory alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
 | OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? Partly answered (#386): the roadmap's Direction section and the sit-rep run record. Still open: what healthy means beyond the acceptance case, and a measure beyond counts of lines true | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
 | OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file; `AGENTS.md` is 442)? | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First |
@@ -735,6 +751,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-13 | Sessions and roots | Review fixes: the installer refuses a root that is a plain directory inside another repository (its sessions read that repository's settings); the directory a run starts from names its root, rather than the current directory at any point; the `SessionStart` hook counts a root's `worktrees=` directory as the root's; `session_root.sh` and `skill_prefix.sh` refuse the same directories | #345 | 753 |
 | 2026-10-15 | Documentation layers | Direction row: the sit-rep names the first Direction line not yet true as the next step and reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since this file last changed, and may start a due read-only check in the background in a workspace session; the gaps paragraph calls that Problems section a first form of health signals | #395 | 756 |
 | 2026-10-21 | Registry and adapters, Worktrees | The per-project settings file `.agent/projects.d/<name>` (commands, `bootstrap_url`, the records settings, `instructions`), read before the legacy `.sh` and the shared config (an existing legacy `.sh` is the whole legacy layer, as before), with a fall-through to the shared config reported, a command set in the file run without either config's environment (environment setup goes in the script the key points at), the writer's lock file beside the file or its link target and never removed, `project_setting.sh` named beside `capture.sh` as reading the main checkout's registry from a worktree, and a key the project's type never reads refused (`unused_settings` per type); the Worktrees Target's `location` and `tracking` move from the registry entry to that file, what #332 builds and what the records lookup (#393) builds are marked, every default is provisional and held by `project_records_default`, the refused combinations are named, the "don't prohibit" sentence is replaced by the owner's refusal (a records repository must not be a workspace: remote URL, local path, contents) with its fork-and-pull-request reason, and the mechanism-1 `dispatch_phase.sh` line numbers and the `adapter:73` default citation are refreshed. Registry and adapters is 109 lines, past the 60-line prompt: the new bullet is one paragraph that points at the `_project_registry.sh` header, where the grammar and keys live, so it stays. Worktrees is 95 lines and its Target 57, under the 60-line split point set on 2026-10-09, so it stays one section | #332 | 790 |
+| 2026-10-28 | Sessions and roots, Registry and adapters, Open questions | Registration is built (#332 PR 2): `register_project.sh` (register, adopt a hand-written line, `--remove`, `--detect`, `--dry-run`, rollback of a failed registration) and its read-only gate `registration_verify.sh` replace "Registration is by hand"; each type's `registration.conf` sits beside the 12-verb contract, checked by `validate_adapter.sh`; the Sessions and roots registration bullet moves from Target to Now; the Registry Target names the two steps (register from the workspace, onboard at the root); C4 keeps only one project on two machines and mixed-flavour projects | #332 | 807 |
 
 ## Glossary
 
