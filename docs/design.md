@@ -129,8 +129,9 @@ Proposed: a project records its own mapping of the seven roles, seeded from the 
 `discover_governance.sh` already finds, and never forced on it: a convention is encouraged where a
 project has no documentation (owner goal of 2026-09-23, issue #335), and a project may leave a role
 unmapped. Where that mapping is kept is not decided. A project's roadmap may carry a `## Direction`
-section in the workspace's format, by its own choice; the sit-rep reads only the workspace root so
-far, and reading every registered root with such a section is a follow-up to #386.
+section in the workspace's format, by its own choice: `onboard-project` offers one to a project whose
+settings say `instructions=tracked`, and never requires it (#332 D3). The sit-rep reads only the
+workspace root so far, and reading every registered root with such a section is a follow-up to #386.
 
 ## Rules
 
@@ -198,6 +199,11 @@ where that run is tracked.
   do not read the root's local settings (a package repository nested in it, a subdirectory of a root
   in no git repository) is refused by `session_root.sh` and `skill_prefix.sh` alike (ADR-0018
   decision 6).
+- One exception to working only under the root (#332): a project session writes its own project's
+  settings file `.agent/projects.d/<name>` in the workspace checkout, through `project_setting.sh set`,
+  which calls `registry_require_root` and, from a project root, refuses any other project's file. That
+  file is per-machine, gitignored workspace configuration the project's onboarding owns, not a tracked
+  change to the workspace. Nothing else a project session does leaves its root.
 - When `--type` is omitted, the worktree scripts and `dispatch_phase.sh` take the type and project
   from the cwd the same way (`registry_derive_type_from_dir`; ADR-0016, "Multi-project machines need
   disambiguation").
@@ -208,7 +214,17 @@ where that run is tracked.
 - Registration is a workspace operation, not something a project session does to itself (ADR-0016
   decision 5): `register_project.sh`, run from the workspace's main checkout, registers a project and,
   when the user tier is installed from that checkout, re-runs its installer so the new root gets the
-  plugin; the project side, `onboard-project`, runs in a session started at the project root (#332 D1). See [Registry and adapters](#registry-and-adapters).
+  plugin. See [Registry and adapters](#registry-and-adapters).
+- Onboarding is the project side (#332 D1): `/agent-workspace:onboard-project`, in a session started at
+  the project root, finds the project through `session_root.sh` (a workspace session or an
+  unregistered root is sent to registration), shows the recorded choices, asks only the footprint
+  questions not yet answered (`instructions`, and the records settings, whose default is provisional and
+  of which only (project, project) is stored until #393), runs `project_integration_audit.sh` (read-only;
+  six categories of how the project and the workspace fit together), and makes offers only when
+  `instructions=tracked`. A project need carry nothing (D3). Every finding or accepted offer is answered
+  fix now, open issue, queue in the roadmap (an `## Onboarding` section of the project's roadmap) or
+  skip, and every write waits for a yes; a re-run re-asks nothing unless told (D5). The audit,
+  `registration_verify.sh` and `project_setting.sh` are promoted to the user tier for it.
 - Skills reach project sessions through the `agent-workspace` Claude Code plugin, whose marketplace is
   the workspace checkout (`.claude-plugin/`). It ships every skill that declares
   `session_scope: project` or `session_scope: both` (`make generate-user-tier-skills`, checked by
@@ -371,10 +387,10 @@ Tally: 3 no-op, 5 thin wrapper, 4 real. No conclusion is drawn from it here; tha
 
 Status: `proposed`
 
-Proposed: a project is added in two steps (#332 D1), registration from the workspace
-(`register_project.sh`, built, see Now) and onboarding at the project root (`onboard-project`, #332
-PR 3, not built). Registering and unregistering on one machine are defined (Now); one project on two
-machines is not. Mixed-flavour projects, a repository carrying tools of another flavour, are supported
+A project is added in two steps (#332 D1), and both are built: registration from the workspace
+(`register_project.sh`, see Now) and onboarding at the project root (`onboard-project`, see
+[Sessions and roots](#sessions-and-roots)). Registering and unregistering on one machine are defined
+(Now). Proposed: one project on two machines, not defined yet. Mixed-flavour projects, a repository carrying tools of another flavour, are supported
 (#310). [Open questions](#open-questions) C4 holds what is unsettled. The legacy `project/` shape is dropped with the registry-only change
 described under [Sessions and roots](#sessions-and-roots).
 
@@ -763,6 +779,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-21 | Registry and adapters, Worktrees | The per-project settings file `.agent/projects.d/<name>` (commands, `bootstrap_url`, the records settings, `instructions`), read before the legacy `.sh` and the shared config (an existing legacy `.sh` is the whole legacy layer, as before), with a fall-through to the shared config reported, a command set in the file run without either config's environment (environment setup goes in the script the key points at), the writer's lock file beside the file or its link target and never removed, `project_setting.sh` named beside `capture.sh` as reading the main checkout's registry from a worktree, and a key the project's type never reads refused (`unused_settings` per type); the Worktrees Target's `location` and `tracking` move from the registry entry to that file, what #332 builds and what the records lookup (#393) builds are marked, every default is provisional and held by `project_records_default`, the refused combinations are named, the "don't prohibit" sentence is replaced by the owner's refusal (a records repository must not be a workspace: remote URL, local path, contents) with its fork-and-pull-request reason, and the mechanism-1 `dispatch_phase.sh` line numbers and the `adapter:73` default citation are refreshed. Registry and adapters is 109 lines, past the 60-line prompt: the new bullet is one paragraph that points at the `_project_registry.sh` header, where the grammar and keys live, so it stays. Worktrees is 95 lines and its Target 57, under the 60-line split point set on 2026-10-09, so it stays one section | #332 | 790 |
 | 2026-10-15 | How it works, Documentation layers, Rules, Review loop and timeline, Glossary | Who answers a checkpoint (owner decision 2026-10-15): the owner answers what touches his goals and every merge, the host the rest within `/orchestrator`'s table, recorded `**Decided-by**: host (<reason>)` and listed for veto; the phase table's who-decides wording, the exit-check bullet (take over is the owner's), the checkpoint bullet and the glossary entry follow; a Rules row for host answers (`review only`); the Direction row names the roadmap's two paths and the sit-rep's path word and focus question | #321 | 800 |
 | 2026-10-28 | Sessions and roots, Registry and adapters, Open questions | Registration is built (#332 PR 2): `register_project.sh` (register, adopt a hand-written line, `--remove`, `--detect`, `--dry-run`, rollback of a failed registration) and its read-only gate `registration_verify.sh` replace "Registration is by hand"; each type's `registration.conf` sits beside the 12-verb contract, checked by `validate_adapter.sh`; the Sessions and roots registration bullet moves from Target to Now; the Registry Target names the two steps (register from the workspace, onboard at the root); C4 keeps only one project on two machines and mixed-flavour projects | #332 | 819 |
+| 2026-10-28 | Documentation layers, Sessions and roots, Registry and adapters | Onboarding is built (#332 PR 3): Sessions and roots names the one exception to working only under the root (a project session writes its own project's settings file through `project_setting.sh set`, guarded to that project) and gains the onboarding bullet (`/agent-workspace:onboard-project`, the footprint questions, `project_integration_audit.sh`, offers only with `instructions=tracked`, the four answers and the `## Onboarding` roadmap section, every write waits for a yes); the Registry Target says both steps are built; Documentation layers says onboarding offers a project's Direction section. Sessions and roots is 101 lines, past the 60-line prompt: the two bullets name how the session-root rule is bent and what the project side does, which no single script header shows, so they stay; the onboarding steps themselves live in the skill | #332 | 836 |
 
 ## Glossary
 
