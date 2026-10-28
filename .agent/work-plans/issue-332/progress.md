@@ -957,3 +957,25 @@ The builder's reported gap (an interrupt still says "nothing is registered" when
 **Decision**: address
 
 PR 2 of 4, round 2 (taken as 2, counter says 9) at 89ac5d5d: 2 must-fix (M1 a legacy command with a wildcard loses its expansion when copied into the settings file, which runs without a shell; M2 clean-result lines after a failed cleanup: "nothing is registered" after a rollback that could not remove the line, a signal between the registry rename and LINE_WRITTEN=1 skips the line removal, --remove reports removed when the settings rm fails) and 5 suggestions (S1 dangling-symlink or directory settings path not backed up or checked; S2 rollback overwrites a settings change made during a long build; S3 rollback's --disable-root can disable a plugin the root had enabled before the run; S4 no EXIT trap, so an abort under set -u leaves no report; S5 --detect's python fallback prints None for a null package.json script). All seven sent to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 11:27 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `b55dd0bc`
+**Addressed**: Local Review (Pre-Push) at `74d60acd` (2026-10-28 10:48 -04:00)
+**Commits**: c398b83c, 547e2716, 66518ff6, 744f3ada, 09712d2d, d440e915, 831aa840, b55dd0bc
+
+### Actions
+- [x] (must-fix) A legacy command with a glob character (* ? [) is not copied into the settings file; it stays in the legacy file with a warning naming the key — `.agent/scripts/register_project.sh` (c398b83c)
+- [x] (must-fix) No clean-result line after a failed cleanup: rollback records what it could not undo and names it on NEXT (NOT READY while the line is left); LINE_WRITTEN set before the registry rename and the rollback looks for the line; --remove reports a settings file it could not remove (STATUS=removed, settings file left, exit 1) and a line-removal failure says the plugin is already disabled — `.agent/scripts/register_project.sh` (547e2716)
+- [x] (suggestion) A settings path that is a dangling symlink or not a regular file is refused before anything is written — `.agent/scripts/register_project.sh` (66518ff6)
+- [x] (suggestion) Rollback keeps a settings file changed after this run wrote it (checksum compare), naming the backup; a file this run never wrote is never touched — `.agent/scripts/register_project.sh` (744f3ada; design.md sentence in b55dd0bc)
+- [x] (suggestion) Rollback's --disable-root is skipped when the plugin was enabled at the root from this checkout before step 4 — `.agent/scripts/register_project.sh` (09712d2d)
+- [x] (suggestion) EXIT trap, inert once the last lines are printed, handles an unchosen exit as a failure (rollback, or NOT READY for an adopted project) — `.agent/scripts/register_project.sh` (d440e915)
+- [x] (suggestion) The python3 fallback in --detect reads a null/false script as empty, matching jq — `.agent/scripts/register_project.sh` (831aa840)
+
+### Verification
+- test_register_project.sh: 180 passed, 0 failed (was 142). Each new test was run against the pre-fix script (a scratch copy of the tree with the old register_project.sh): 25 checks fail there, at least one per finding.
+- Main checkout venv pre-commit run --files over main...HEAD, no SKIP: every hook passed, validate-script-tests included.
