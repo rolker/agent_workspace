@@ -265,6 +265,35 @@ check "instructions=none: command-same-name is info (got $(sev_of command-same-n
 check "instructions=none: settings-hooks stays warn (what the project loads)" [ "$(sev_of settings-hooks)" = "warn" ]
 printf 'build=make\ntest=make test\n' > "$WS/.agent/projects.d/p1"
 
+echo "TEST: category 2, build commands compared one command at a time, on word boundaries"
+P2="$SANDBOX/projects/p2"
+mkdir -p "$P2/.agents"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$P2/Makefile"
+printf '# guide\n' > "$P2/.agents/README.md"
+printf 'worktrees/\n' > "$P2/.gitignore"
+cat > "$P2/CLAUDE.md" <<'EOF'
+# p2
+
+- Build with `cmake --build build`.
+- Build with `make -j4`.
+- Then `make && ninja -C out`.
+- Run `make test` before pushing.
+- $ make test  # the suite
+EOF
+gitq -C "$P2" init --quiet
+commit_all "$P2"
+gitq -C "$P2" remote add origin "git@example.invalid:someone/p2.git"
+register p2 "$P2" "build=make" "test=make test"
+install_ut
+audit "$P2"
+p2_lines() { awk -F'\t' '$2 == "process-build-command" { print $4 }' <<< "$AUDIT_OUT" | paste -sd' ' -; }
+check "build=make does not hide cmake --build (line 3), nor ninja after make (line 5); its own commands with arguments are its own (got: $(p2_lines))" \
+    [ "$(p2_lines)" = "CLAUDE.md:3 CLAUDE.md:5" ]
+printf 'build=cmake --build build\ntest=make test\n' > "$WS/.agent/projects.d/p2"
+audit "$P2"
+check "build=cmake --build build: make -j4 and a bare make are not its own (got: $(p2_lines))" \
+    [ "$(p2_lines)" = "CLAUDE.md:4 CLAUDE.md:5" ]
+
 echo "TEST: category 3, the records settings against .agent/work-plans/"
 P3="$SANDBOX/projects/p3"
 mkdir -p "$P3/.agents" "$P3/.agent/work-plans/issue-1"

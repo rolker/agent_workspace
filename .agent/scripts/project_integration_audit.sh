@@ -294,24 +294,81 @@ candidate() {
         emit_offer 2 "$id" "$sev" "$f:$ln" "$text"
     done < <(grep -niE "$re" "$PROOT_ABS/$f" 2>/dev/null)
 }
+BUILD_TOOLS='make|cmake|cargo|npm|pnpm|yarn|go|pytest|python3? -m pytest|colcon|ctest|ninja|meson'
+# commands <text> [tools]: the commands a line names, one per line: its lead
+# (blanks, a list marker and a "$ " prompt dropped) up to a code span, and
+# each code span, split at &&, ||, ; and |, trimmed, a trailing comment and
+# trailing punctuation dropped. With "tools", only the ones that start with
+# a build or test tool. Plain awk ([ \t], not [[:space:]]), so mawk and BSD
+# awk read it the same.
+commands() {
+    printf '%s\n' "$1" | awk -v tools="${2:+$BUILD_TOOLS}" '
+    {
+        lead = $0
+        sub(/^[ \t]*([-*][ \t]+)?(\$[ \t]+)?/, "", lead)
+        n = 0
+        p = index(lead, "`")
+        seg[++n] = (p ? substr(lead, 1, p - 1) : lead)
+        rest = $0
+        while ((p = index(rest, "`")) > 0) {
+            rest = substr(rest, p + 1)
+            q = index(rest, "`")
+            if (!q) break
+            seg[++n] = substr(rest, 1, q - 1)
+            rest = substr(rest, q + 1)
+        }
+        for (i = 1; i <= n; i++) {
+            m = split(seg[i], parts, /&&|[|][|]|;|[|]/)
+            for (j = 1; j <= m; j++) {
+                c = parts[j]
+                sub(/^[ \t]+/, "", c)
+                sub(/^\$[ \t]+/, "", c)
+                sub(/[ \t]+#.*$/, "", c)
+                sub(/[ \t]+$/, "", c)
+                sub(/[.,:]+$/, "", c)
+                if (c == "") continue
+                if (tools == "" || c ~ ("^(" tools ")([ \t]|$)")) print c
+            }
+        }
+    }'
+}
+# The parts of the project's own commands ("cmake -S . -B build && cmake
+# --build build" is two), against which a line's commands are compared.
+OWN_PARTS=()
+for own in "${OWN_CMDS[@]+"${OWN_CMDS[@]}"}"; do
+    while IFS= read -r part; do
+        [ -n "$part" ] && OWN_PARTS+=("$part")
+    done < <(commands "$own")
+done
+is_own() {  # <command>: one of the project's own, or one with more arguments
+    local part
+    for part in "${OWN_PARTS[@]+"${OWN_PARTS[@]}"}"; do
+        [ "$1" = "$part" ] && return 0
+        [[ "$1" == "$part "* ]] && return 0
+    done
+    return 1
+}
 build_candidates() {  # <file>: build/test command lines that are not the project's own
-    local f="$1" n=0 line ln text own hit
+    local f="$1" n=0 line ln text cmd foreign
     while IFS= read -r line; do
         [ -n "$line" ] || continue
         ln="${line%%:*}"
         text="${line#*:}"
-        hit=0
-        for own in "${OWN_CMDS[@]}"; do
-            [[ "$text" == *"$own"* ]] && hit=1
-        done
-        [ "$hit" -eq 1 ] && continue
+        # Each command on the line on its own: "make" being the project's
+        # own neither hides "cmake --build build" nor a second command.
+        foreign=0
+        while IFS= read -r cmd; do
+            [ -n "$cmd" ] || continue
+            is_own "$cmd" || foreign=1
+        done < <(commands "$text" tools)
+        [ "$foreign" -eq 1 ] || continue
         n=$((n + 1))
         [ "$n" -gt 10 ] && { emit 2 process-build-command info "$f" "and more build or test command lines"; break; }
         text="$(sed -e 's/^[[:space:]]*//' <<< "$text" | cut -c1-200)"
         emit 2 process-build-command info "$f:$ln" "$text ($OWN_DESC)"
     # A command at the start of a line (after blanks, a list marker or a
     # "$ " prompt) or of a code span, so prose such as "make sure" is not one.
-    done < <(grep -nE '(^[[:space:]]*([-*][[:space:]]+)?(\$[[:space:]]+)?|`)(make|cmake|cargo|npm|pnpm|yarn|go|pytest|python3? -m pytest|colcon|ctest|ninja|meson)([[:space:]`]|$)' "$PROOT_ABS/$f" 2>/dev/null)
+    done < <(grep -nE "(^[[:space:]]*([-*][[:space:]]+)?(\\\$[[:space:]]+)?|\`)($BUILD_TOOLS)([[:space:]\`]|\$)" "$PROOT_ABS/$f" 2>/dev/null)
 }
 for f in "${INSTR_FILES[@]}"; do
     candidate "$f" process-branch warn 'feature[- ]branch|git (checkout|switch) -[bc]|create (a )?(new )?branch' 'worktree'
