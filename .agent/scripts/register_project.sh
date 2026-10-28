@@ -85,7 +85,8 @@
 # and a re-run reuses it); a directory that existed before is never
 # touched, and a settings file changed after this run wrote it (a
 # project_setting.sh set during the build, say) is kept, with a warning,
-# never overwritten. The type's facts come from
+# never overwritten. An exit no step chose (an unset variable, say) is
+# handled as a failure, by an EXIT trap. The type's facts come from
 # .agent/project_types/<type>/registration.conf, so this script names no
 # type; a type without one is refused.
 #
@@ -311,7 +312,9 @@ REG_LOCK="$PROJECTS_D/.registry.lock"
 NAME=""
 PROJECT_ROOT=""
 KEPT=""
+FINAL_DONE=0   # the last lines are printed (the EXIT trap then does nothing)
 final() { # <status> <next> [exit code]
+    FINAL_DONE=1
     echo ""
     echo "STATUS=$1"
     echo "NAME=$NAME"
@@ -1055,6 +1058,26 @@ failed() { # <what failed> <next>
     rolled_back_final "$2" 1
 }
 
+# An exit that no step chose (an unset variable under set -u, say): the
+# same rollback and last lines as a failure, never a silent stop.
+RUN_STARTED=0
+on_exit() {
+    local rc=$?
+    { [ "$FINAL_DONE" -eq 0 ] && [ "$RUN_STARTED" -eq 1 ]; } || return 0
+    trap - INT TERM HUP
+    [ "$rc" -eq 0 ] && rc=1
+    echo "" >&2
+    echo "ERROR: register_project.sh stopped unexpectedly (exit $rc, above)" >&2
+    if [ "$ADOPT" -eq 1 ]; then
+        adopt_kept
+        final "NOT READY" "stopped unexpectedly; re-run register_project.sh $NAME, and report the error above if it recurs" "$rc"
+    fi
+    rollback
+    rolled_back_final "re-run register_project.sh, and report the error above if it recurs" "$rc"
+}
+trap on_exit EXIT
+
+RUN_STARTED=1
 [ "$ADOPT" -eq 0 ] && ROLLBACK_ARMED=1
 
 # 1. The registry line and the settings file.

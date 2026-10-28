@@ -794,6 +794,25 @@ check "the line is gone, the settings file is there, as reported" \
     bash -c '! grep -q "^rmset " "$1" && [ -f "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" rmset)"
 rm -f "$(pfile "$WS" rmset)"
 
+echo "TEST: an unexpected exit after the run started rolls back and prints the last lines"
+# A sandbox copy of the script with an unset variable read after step 1:
+# set -u ends the run there, at no step's choice.
+WSU="$(make_ws)"
+sed -i.bak 's|^# 2\. The static gate\.$|: "$REGISTER_TEST_UNSET_VARIABLE"\n&|' "$WSU/.agent/scripts/register_project.sh"
+rm -f "$WSU/.agent/scripts/register_project.sh.bak"
+check "the fault is in the sandbox copy" grep -q REGISTER_TEST_UNSET_VARIABLE "$WSU/.agent/scripts/register_project.sh"
+PUX="$(make_proj unx)"
+out="$(reg "$WSU" "$PUX")"; rc=$?
+check "a new registration: exit non-zero, STATUS=refused, saying it stopped unexpectedly" \
+    bash -c '[ "$1" -ne 0 ] && [[ "$2" == *"stopped unexpectedly"* && "$2" == *"STATUS=refused"* && "$2" == *"NAME=unx"* ]]' _ "$rc" "$out"
+check "a new registration: rolled back, no line, no settings file" \
+    bash -c '! grep -q "^unx " "$1" && [ ! -e "$2" ]' _ "$WSU/.agent/projects.local" "$(pfile "$WSU" unx)"
+printf 'unx  single_project  %s\n' "$PUX" >> "$WSU/.agent/projects.local"
+cp "$WSU/.agent/projects.local" "$SANDBOX/reg.before"
+out="$(reg "$WSU" unx)"; rc=$?
+check "an adopted project: exit non-zero, STATUS=NOT READY, kept and said so" \
+    bash -c '[ "$1" -ne 0 ] && [[ "$2" == *"stopped unexpectedly"* && "$2" == *"STATUS=NOT READY"* && "$2" == *"nothing is rolled back"* ]] && cmp -s "$3" "$4"' _ "$rc" "$out" "$WSU/.agent/projects.local" "$SANDBOX/reg.before"
+
 # ------------------------------------------------------- registry lock ---
 LOCKF="$WS/.agent/projects.d/.registry.lock"
 snap() { # <ws>: the registry and every file in projects.d, with checksums
