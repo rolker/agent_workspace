@@ -74,7 +74,9 @@
 # INT, TERM and HUP too; a settings file that existed before is copied
 # aside first, the run refused when that copy fails, and put back by a
 # rename); after the installer ran it first calls
-# user_tier_install.sh --disable-root <name>. A hosting directory that
+# user_tier_install.sh --disable-root <name>. A rollback step that fails is
+# named in the output and on NEXT=, never reported as a clean result, and
+# while the registry line is left the status is NOT READY. A hosting directory that
 # setup created is kept and named on KEPT= (its clones are slow to redo,
 # and a re-run reuses it); a directory that existed before is never
 # touched. The type's facts come from
@@ -107,7 +109,9 @@
 #
 # Last output lines (stable, for skills and tests):
 #   STATUS=registered | registered, <verbs> not run | NOT READY | refused
-#          | removed | dry-run
+#          | removed | removed, settings file left | dry-run
+#          (NOT READY also when a rollback could not remove the line;
+#          "removed, settings file left" exits 1)
 #   NAME=<name>
 #   ROOT=<the project's root>
 #   KEPT=<dir>                 only when setup created a directory that a
@@ -478,22 +482,33 @@ if [ "$MODE" = "remove" ]; then
         final refused "fix the plugin removal above, then re-run register_project.sh --remove $NAME" 1
     fi
     if ! install_registry "$TMP" "$NAME" absent; then
-        echo "ERROR: could not write the registry without '$NAME' (above)" >&2
-        final refused "remove its line from $REGISTRY by hand" 1
+        echo "ERROR: could not write the registry without '$NAME' (above). The workspace plugin is already removed from $PROJECT_ROOT; the registry line and the settings file are kept" >&2
+        final refused "remove its line from $REGISTRY by hand (the plugin is already disabled at $PROJECT_ROOT), or re-run register_project.sh --remove $NAME" 1
     fi
     echo "removed the registry line: $LINE"
+    _remove_status="removed"
+    _remove_next="nothing; register it again with register_project.sh $PROJECT_ROOT"
+    _remove_rc=0
     if [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; then
         if [ "$KEEP_SETTINGS" -eq 1 ]; then
             echo "kept the settings file $SETTINGS (--keep-settings)"
         else
-            echo "removed the settings file $SETTINGS; its content was:"
-            sed 's/^/    /' "$SETTINGS" 2>/dev/null
-            rm -f "$SETTINGS"
+            # Read before the removal, printed only once it is gone.
+            _content="$(sed 's/^/    /' "$SETTINGS" 2>/dev/null)" || _content=""
+            if rm -f -- "$SETTINGS" && [ ! -e "$SETTINGS" ] && [ ! -L "$SETTINGS" ]; then
+                echo "removed the settings file $SETTINGS; its content was:"
+                [ -n "$_content" ] && printf '%s\n' "$_content"
+            else
+                echo "ERROR: could not remove the settings file $SETTINGS (above); '$NAME' is unregistered and its plugin disabled, so nothing reads the file now" >&2
+                _remove_status="removed, settings file left"
+                _remove_next="remove $SETTINGS by hand"
+                _remove_rc=1
+            fi
         fi
     fi
     [ -f "$PROJECTS_D/$NAME.sh" ] && echo "note: the legacy $PROJECTS_D/$NAME.sh is left in place; remove it by hand when it is no longer wanted"
     echo "left alone: the project at $PROJECT_ROOT, its records (in the project, or where its settings put them) and its memory"
-    final removed "nothing; register it again with register_project.sh $PROJECT_ROOT"
+    final "$_remove_status" "$_remove_next" "$_remove_rc"
 fi
 
 # --------------------------------------------------- what to register ---
@@ -860,6 +875,11 @@ SETUP_RAN=0
 CHANGED=0
 LINE_CHANGED=0       # an adopted line got its default_instance
 SETTINGS_CHANGED=0   # the settings file was written by this run
+# What a rollback could not undo, "; "-separated, and whether the registry
+# line is among it (the project is then still registered).
+ROLLBACK_LEFT=""
+LINE_LEFT=0
+rollback_left() { ROLLBACK_LEFT="${ROLLBACK_LEFT:+$ROLLBACK_LEFT; }$1"; }
 
 # Copy the settings file aside before a new registration changes it (an
 # existing file with no registry line, kept by --remove --keep-settings).
@@ -899,21 +919,34 @@ rollback() {
     echo "" >&2
     echo "Rolling back the registration of '$NAME':" >&2
     if [ "$INSTALLER_RAN" -eq 1 ]; then
-        "$INSTALLER" --disable-root "$NAME" >&2 8>&- \
-            || echo "  WARNING: could not remove the workspace plugin from $PROJECT_ROOT (above)" >&2
+        if ! "$INSTALLER" --disable-root "$NAME" >&2 8>&-; then
+            echo "  WARNING: could not remove the workspace plugin from $PROJECT_ROOT (above)" >&2
+            rollback_left "the workspace plugin enabled at $PROJECT_ROOT"
+        fi
     fi
-    if [ "$LINE_WRITTEN" -eq 1 ]; then
+    # LINE_WRITTEN is set before the registry is renamed, so a signal
+    # between the rename and the next line still gets here; the line is
+    # looked for, since the rename may not have happened. The name was free
+    # under the lock this run holds, so a line with it is this run's.
+    if [ "$LINE_WRITTEN" -eq 1 ] && registry_raw_line "$NAME" >/dev/null; then
         local tmp
         if tmp="$(registry_without_name "$NAME")" && install_registry "$tmp" "$NAME" absent; then
             echo "  removed the registry line" >&2
         else
             echo "  WARNING: could not remove the registry line for '$NAME' from $REGISTRY; remove it by hand" >&2
+            rollback_left "its registry line in $REGISTRY"
+            LINE_LEFT=1
         fi
     fi
     if [ -n "$SETTINGS_BACKUP" ]; then
-        restore_settings
-    elif [ "$SETTINGS_EXISTED" -eq 0 ] && [ -e "$SETTINGS" ]; then
-        rm -f "$SETTINGS" && echo "  removed the settings file $SETTINGS" >&2
+        restore_settings || rollback_left "the settings file $SETTINGS as this run wrote it (its content before the run is in $SETTINGS_BACKUP)"
+    elif [ "$SETTINGS_EXISTED" -eq 0 ] && { [ -e "$SETTINGS" ] || [ -L "$SETTINGS" ]; }; then
+        if rm -f -- "$SETTINGS" && [ ! -e "$SETTINGS" ] && [ ! -L "$SETTINGS" ]; then
+            echo "  removed the settings file $SETTINGS" >&2
+        else
+            echo "  WARNING: could not remove the settings file $SETTINGS (above); remove it by hand" >&2
+            rollback_left "the settings file $SETTINGS"
+        fi
     fi
     if [ "$SETUP_RAN" -eq 1 ] && [ -e "$PROJECT_ROOT" ]; then
         KEPT="$PROJECT_ROOT"
@@ -929,6 +962,19 @@ adopt_kept() {
     [ "$IS_PARENT" -eq 1 ] && settings="a parent root has no settings file"
     echo "  '$NAME' was already registered, so nothing is rolled back: it stays registered; $line; $settings" >&2
 }
+# The last lines after a rollback: "refused" with <next> when it undid
+# everything; otherwise what it left, and NOT READY while the registry line
+# is among it (the project is then still registered, unchecked).
+rolled_back_final() { # <next> <exit code>
+    local status=refused
+    if [ -z "$ROLLBACK_LEFT" ]; then
+        final refused "$1" "$2"
+    fi
+    echo "" >&2
+    echo "ERROR: the rollback could not undo everything; left: $ROLLBACK_LEFT" >&2
+    [ "$LINE_LEFT" -eq 1 ] && status="NOT READY"
+    final "$status" "undo by hand what the rollback left ($ROLLBACK_LEFT), then $1" "$2"
+}
 on_signal() {
     trap - INT TERM HUP
     if [ "$ADOPT" -eq 1 ]; then
@@ -938,6 +984,9 @@ on_signal() {
         final "NOT READY" "interrupted before its checks finished; re-run register_project.sh $NAME" "$1"
     fi
     rollback
+    if [ -n "$ROLLBACK_LEFT" ]; then
+        rolled_back_final "re-run register_project.sh (interrupted)" "$1"
+    fi
     final refused "interrupted; nothing is registered" "$1"
 }
 trap 'on_signal 130' INT
@@ -956,9 +1005,9 @@ failed() { # <what failed> <next>
     echo "ERROR: $1" >&2
     rollback
     if [ -n "$KEPT" ]; then
-        final refused "$2; then re-run register_project.sh (setup is not run again on the kept $KEPT; remove it first to start over)" 1
+        rolled_back_final "$2; then re-run register_project.sh (setup is not run again on the kept $KEPT; remove it first to start over)" 1
     fi
-    final refused "$2" 1
+    rolled_back_final "$2" 1
 }
 
 [ "$ADOPT" -eq 0 ] && ROLLBACK_ARMED=1
@@ -966,8 +1015,9 @@ failed() { # <what failed> <next>
 # 1. The registry line and the settings file.
 if [ "$ADOPT" -eq 0 ]; then
     TMP="$(registry_with_line "$NEW_LINE")" || failed "could not write a new registry" "check $PROJECTS_D is writable"
-    install_registry "$TMP" "$NAME" present "$NEW_ENTRY" || failed "the new registry line does not parse as asked (above)" "fix the arguments"
+    # Before the rename: a signal right after it must still remove the line.
     LINE_WRITTEN=1
+    install_registry "$TMP" "$NAME" present "$NEW_ENTRY" || failed "the new registry line does not parse as asked (above)" "fix the arguments"
     CHANGED=1
     echo "added the registry line: $NEW_LINE"
 elif [ -n "$LINE_CHANGE" ]; then

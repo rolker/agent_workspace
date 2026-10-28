@@ -347,16 +347,26 @@ check "--worktrees with '#': refused, nothing written" \
 set --
 
 echo "TEST: a settings file that existed before: a failed backup refuses, and a rollback restores it by rename"
-# Fault injection: wrappers that fail mktemp, cp or mv on one argument
-# pattern and run the real tool otherwise.
+# Fault injection: wrappers that fail mktemp, cp, mv or rm on one argument
+# pattern and run the real tool otherwise. FAULT_ARMED_BY=<file> injects
+# only once that file exists; FAULT_MODE=signal-after runs the real tool,
+# then sends TERM to its caller, once (FAULT_ONCE=<marker file>).
 FAULT_BIN="$SANDBOX/faultbin"
 mkdir -p "$FAULT_BIN"
-for tool in mktemp cp mv; do
+for tool in mktemp cp mv rm; do
     real="$(command -v "$tool")"
     cat > "$FAULT_BIN/$tool" <<EOF
 #!/usr/bin/env bash
-if [ "\${FAULT_TOOL:-}" = "$tool" ]; then
-    for a in "\$@"; do [[ "\$a" == *"\$FAULT_ON"* ]] && { echo "$tool: injected failure" >&2; exit 1; }; done
+if [ "\${FAULT_TOOL:-}" = "$tool" ] && { [ -z "\${FAULT_ARMED_BY:-}" ] || [ -e "\$FAULT_ARMED_BY" ]; }; then
+    for a in "\$@"; do
+        [[ "\$a" == *"\$FAULT_ON"* ]] || continue
+        if [ "\${FAULT_MODE:-fail}" = signal-after ]; then
+            "$real" "\$@"; rc=\$?
+            if [ ! -e "\$FAULT_ONCE" ]; then : > "\$FAULT_ONCE"; kill -TERM "\$PPID"; fi
+            exit \$rc
+        fi
+        echo "$tool: injected failure" >&2; exit 1
+    done
 fi
 exec "$real" "\$@"
 EOF
@@ -662,6 +672,70 @@ check "says it stays registered and the settings file keeps the values written" 
 check "the line is kept byte for byte, and the settings file holds the --set value" \
     bash -c 'cmp -s "$1" "$2" && grep -qx "test=none" "$3"' _ "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$(pfile "$WS" taua)"
 reg "$WS" --remove taua >/dev/null
+
+echo "TEST: a signal right after the registry rename still removes the line"
+# mv renames the new registry into place, then the caller gets TERM: the
+# trap runs before the run records that the line was written.
+PSR="$(make_proj sigrn)"
+rm -f "$SANDBOX/fault.once"
+out="$(export FAULT_MODE=signal-after FAULT_ONCE="$SANDBOX/fault.once"; faulty mv projects.local "$WS" "$PSR")"; rc=$?
+check "the signal arrived after the rename" [ -e "$SANDBOX/fault.once" ]
+check "exit 143, STATUS=refused, nothing is registered" \
+    bash -c '[ "$1" -eq 143 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"interrupted; nothing is registered"* ]]' _ "$rc" "$out"
+check "no registry line, no settings file" \
+    bash -c '! grep -q "^sigrn " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" sigrn)"
+
+echo "TEST: an interrupt whose rollback cannot remove the line says so, never 'nothing is registered'"
+PTL="$(make_proj taul)"
+printf 'all:\n\t@echo BUILD_START:taul >> "$(REG_LOG)"\n\t@sleep 2\ntest:\n\t@echo\n' > "$PTL/Makefile"
+rm -f "$SANDBOX/fault.arm"
+: > "$REG_LOG"
+(
+    export FAULT_TOOL=mv FAULT_ON=projects.local FAULT_ARMED_BY="$SANDBOX/fault.arm"
+    unset CLAUDE_CONFIG_DIR
+    cd "$SANDBOX" && HOME="$HOMEDIR" PATH="$FAULT_BIN:$STUB_BIN:$PATH" STUB_LOG="$STUB_LOG" REG_LOG="$REG_LOG" \
+        AGENT_WORKSPACE_CLAUDE_BIN="$STUB" exec "$WS/.agent/scripts/register_project.sh" "$PTL" > "$SANDBOX/int.out" 2>&1
+) &
+IPID=$!
+for _ in $(seq 1 100); do grep -q BUILD_START:taul "$REG_LOG" && break; sleep 0.1; done
+: > "$SANDBOX/fault.arm"
+kill -TERM "$IPID" 2>/dev/null
+wait "$IPID"; rc=$?
+rm -f "$SANDBOX/fault.arm"
+out="$(cat "$SANDBOX/int.out")"
+check "exit 143, STATUS=NOT READY, never 'nothing is registered'" \
+    bash -c '[ "$1" -eq 143 ] && [[ "$2" == *"STATUS=NOT READY"* && "$2" != *"nothing is registered"* ]]' _ "$rc" "$out"
+check "the output and NEXT name the line left behind" \
+    bash -c '[[ "$1" == *"the rollback could not undo everything; left: its registry line in "* && "$1" == *"NEXT=undo by hand what the rollback left (its registry line in "* ]]' _ "$out"
+check "the settings file was still removed; the line is there, as reported" \
+    bash -c 'grep -q "^taul " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" taul)"
+reg "$WS" --remove taul >/dev/null
+
+echo "TEST: a failure whose rollback cannot remove the settings file names it on NEXT"
+PRF="$(make_proj rmfa 1 1 0)"   # its build fails
+out="$(faulty rm "projects.d/rmfa" "$WS" "$PRF")"; rc=$?
+check "exit 1, STATUS=refused (the line is gone), the settings file named on NEXT" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"NEXT=undo by hand what the rollback left (the settings file $3)"* && "$2" != *"removed the settings file"* ]]' _ "$rc" "$out" "$(pfile "$WS" rmfa)"
+check "no line; the settings file is there, as reported" \
+    bash -c '! grep -q "^rmfa " "$1" && [ -f "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" rmfa)"
+rm -f "$(pfile "$WS" rmfa)"
+
+echo "TEST: --remove reports a settings file it could not remove, and a line it could not remove after the plugin went"
+PRM="$(make_proj rmset)"
+reg "$WS" "$PRM" >/dev/null
+check "registered with the plugin enabled" enabled_in "$PRM"
+cp "$WS/.agent/projects.local" "$SANDBOX/reg.before"
+out="$(faulty mv projects.local "$WS" --remove rmset)"; rc=$?
+check "the line cannot be written: refused, saying the plugin is already disabled" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=refused"* && "$2" == *"The workspace plugin is already removed from $3"* && "$2" == *"NEXT=remove its line from"*"(the plugin is already disabled at $3)"* ]]' _ "$rc" "$out" "$PRM"
+check "the line and the settings file are kept, the plugin is gone" \
+    bash -c 'cmp -s "$1" "$2" && [ -f "$3" ] && ! jq -e ".enabledPlugins[\"agent-workspace@agent-workspace\"] == true" "$4/.claude/settings.local.json" >/dev/null 2>&1' _ "$WS/.agent/projects.local" "$SANDBOX/reg.before" "$(pfile "$WS" rmset)" "$PRM"
+out="$(faulty rm "projects.d/rmset" "$WS" --remove rmset)"; rc=$?
+check "the settings file cannot be removed: exit 1, never STATUS=removed or 'removed the settings file'" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"STATUS=removed, settings file left"* && "$2" == *"could not remove the settings file"* && "$2" != *"removed the settings file"* && "$2" != *$'"'"'\nSTATUS=removed\n'"'"'* ]]' _ "$rc" "$out"
+check "the line is gone, the settings file is there, as reported" \
+    bash -c '! grep -q "^rmset " "$1" && [ -f "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" rmset)"
+rm -f "$(pfile "$WS" rmset)"
 
 # ------------------------------------------------------- registry lock ---
 LOCKF="$WS/.agent/projects.d/.registry.lock"
