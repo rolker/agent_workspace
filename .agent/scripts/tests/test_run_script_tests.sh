@@ -429,6 +429,10 @@ EOF
     printf 'C = 1\n' > "$r/.agent/scripts/pkg/mod_c.py"
     printf 'D = 1\n' > "$r/.agent/scripts/pkg/mod_d.py"
     printf 'E = 1\n' > "$r/.agent/scripts/pkg/mod_e.py"
+    printf 'F = 1\n' > "$r/.agent/scripts/pkg/mod_f.py"
+    printf 'G = 1\n' > "$r/.agent/scripts/mod_g.py"
+    printf 'H = 1\n' > "$r/.agent/scripts/mod_h.py"
+    printf 'anchor\n' > "$r/.agent/scripts/anchor.txt"
     printf '#!/usr/bin/env bash\necho tool\n' > "$r/.agent/scripts/tool"
     chmod +x "$r/.agent/scripts/tool"
     printf '# scanned\n' > "$r/.agent/docs/scanned.md"
@@ -472,6 +476,27 @@ sys.path.insert(0, sys.argv[1])
 ${kw_from} pkg import mod_d, \\
     mod_e
 PY"
+    # Imports that do not start their line, each module named only once:
+    # inside a `python3 -c "..."`, after a `;`, after a `:`. The echo is
+    # prose that starts a piece with `import `; it must not make this suite
+    # fall back to every .py (mod_x.py's selection below shows it does not).
+    # Both suites read anchor.txt so each has a reference a mapper that
+    # misses the imports still sees: otherwise the "no derived references"
+    # rule would select them everywhere and hide the miss.
+    write_syn_suite "$t" test_pyc.sh "$sd
+cat \"\$SCRIPT_DIR/../anchor.txt\" >/dev/null
+echo \"import failed for optional layer\" >/dev/null
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=\"\$SCRIPT_DIR/..\" python3 -c \"from pkg import mod_f\"
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=\"\$SCRIPT_DIR/..\" python3 - <<'PY'
+x = 1; import mod_g
+try: import mod_h
+except ImportError: raise
+PY"
+    # A mid-line import the parser cannot read (`*`), assembled here for
+    # the same reason as test_backslash.sh's.
+    write_syn_suite "$t" test_midstar.sh "$sd
+cat \"\$SCRIPT_DIR/../anchor.txt\" >/dev/null
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=\"\$SCRIPT_DIR/..\" python3 -c \"${kw_from} pkg import *\""
     write_syn_suite "$t" test_noref.sh ':'
     write_syn_suite "$t" test_scanner.sh '# scans: .agent/docs/ .agent/scripts/tests/'
     write_syn_suite "$t" test_covered.sh '# covers: .agent/scripts/tests/fixture_data.txt'
@@ -507,22 +532,29 @@ expect_sel "a script maps to a strict subset (its suite, the required suite, '# 
     "test_alpha.sh $BASE_ALWAYS test_noref.sh" -- .agent/scripts/beta.sh
 expect_sel "a comment-only mention does not select a suite (gamma.sh: test_other.sh, not test_alpha.sh)" \
     "$BASE_ALWAYS test_noref.sh test_other.sh" -- .agent/scripts/gamma.sh
-# test_backslash.sh has an import the parser cannot fully read (a `\`
-# continuation), so it counts every .py file as referenced: it joins every
-# .py file's selection below. test_fromimp.sh reads fully, so it does not
-# join mod_x.py's.
-expect_sel "'import mod_x' selects the suite for mod_x.py (and the unreadable-import suite, not test_fromimp.sh)" \
-    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_noref.sh test_pyimp.sh" -- .agent/scripts/mod_x.py
+# test_backslash.sh (a `\` continuation) and test_midstar.sh (a `*` inside
+# a `python3 -c "..."`) each have an import the parser cannot fully read,
+# so each counts every .py file as referenced: both join every .py file's
+# selection below, though neither names the file. test_fromimp.sh and
+# test_pyc.sh read fully, so they do not join mod_x.py's.
+expect_sel "'import mod_x' selects the suite for mod_x.py (and both unreadable-import suites, not test_fromimp.sh or test_pyc.sh)" \
+    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_midstar.sh test_noref.sh test_pyimp.sh" -- .agent/scripts/mod_x.py
 expect_sel "an extensionless script run as './tool' selects its suite" \
     "$BASE_ALWAYS test_dotslash.sh test_noref.sh" -- .agent/scripts/tool
 expect_sel "'from pkg import mod_y' selects the suite for pkg/mod_y.py" \
-    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_fromimp.sh test_noref.sh" -- .agent/scripts/pkg/mod_y.py
-expect_sel "a name on a continuation line of 'from pkg import (' selects the suite for pkg/mod_b.py" \
-    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_fromimp.sh test_noref.sh" -- .agent/scripts/pkg/mod_b.py
-expect_sel "a name after a ')' in an inline comment of 'from pkg import (' selects the suite for pkg/mod_c.py" \
-    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_fromimp.sh test_noref.sh" -- .agent/scripts/pkg/mod_c.py
+    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_fromimp.sh test_midstar.sh test_noref.sh" -- .agent/scripts/pkg/mod_y.py
+expect_sel "a name on a continuation line of a parenthesised from-import list selects the suite for pkg/mod_b.py" \
+    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_fromimp.sh test_midstar.sh test_noref.sh" -- .agent/scripts/pkg/mod_b.py
+expect_sel "a name after a ')' in an inline comment of a parenthesised from-import list selects the suite for pkg/mod_c.py" \
+    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_fromimp.sh test_midstar.sh test_noref.sh" -- .agent/scripts/pkg/mod_c.py
 expect_sel "a name after a '\\' continuation selects the suite (fallback) for pkg/mod_e.py" \
-    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_noref.sh" -- .agent/scripts/pkg/mod_e.py
+    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_midstar.sh test_noref.sh" -- .agent/scripts/pkg/mod_e.py
+expect_sel "an import inside 'python3 -c \"...\"' selects the suite for pkg/mod_f.py" \
+    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_midstar.sh test_noref.sh test_pyc.sh" -- .agent/scripts/pkg/mod_f.py
+expect_sel "an import after a ';' selects the suite for mod_g.py" \
+    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_midstar.sh test_noref.sh test_pyc.sh" -- .agent/scripts/mod_g.py
+expect_sel "an import after a ':' ('try: import') selects the suite for mod_h.py" \
+    "test_always.sh test_backslash.sh test_checkpoint_269.sh test_midstar.sh test_noref.sh test_pyc.sh" -- .agent/scripts/mod_h.py
 expect_sel "a mapped file under a '# scans:' prefix adds the scanning suite" \
     "$BASE_ALWAYS test_noref.sh test_other.sh test_scanner.sh" -- .agent/docs/scanned.md
 expect_sel "an exact-file '# covers:' file under tests/ selects its suite, not ALL" \
