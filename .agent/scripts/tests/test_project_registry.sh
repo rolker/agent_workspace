@@ -708,6 +708,16 @@ test_worktree_create_skill_project() {
         "$sb/.agent/scripts/worktree_create.sh" --skill plan-task --type project --project alpha 2>&1)" || rc=$?
     assert_eq "plan-task: exit 1" "1" "$rc"
     assert_contains "says the allowlist" "is not in the allowlist" "$out"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill research --type project --project alpha 2>&1)" || rc=$?
+    assert_eq "research --type project: exit 1" "1" "$rc"
+    assert_contains "says research is for workspace worktrees" "--skill research is for --type workspace worktrees, not --type project" "$out"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type workspace 2>&1)" || rc=$?
+    assert_eq "onboard-project --type workspace: exit 1" "1" "$rc"
+    assert_contains "says onboard-project is for project worktrees" "--skill onboard-project is for --type project worktrees, not --type workspace" "$out"
     mkdir -p "$sb/projects/alpha/sub"
     echo "sub single_project $sb/projects/alpha/sub" >> "$sb/.agent/projects.local"
     rc=0
