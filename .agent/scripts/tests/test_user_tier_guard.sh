@@ -165,6 +165,7 @@ probe_args() {  # <manifest path> -- prints the argv for a real invocation
         *cross_model_review.sh) echo "--pr 1 --no-progress" ;;
         *build.sh|*test.sh)     echo "" ;;
         */adapter)              echo "build" ;;
+        *project_setting.sh)    echo "set demo build=make" ;;
         *) return 1 ;;
     esac
 }
@@ -265,6 +266,39 @@ for rel in .agent/scripts/session_root.sh .agent/scripts/skill_prefix.sh; do
     if [[ "$rc" -eq 1 && "$out" == *"neither in the workspace checkout"* \
           && -z "$(git -C "$OUTSIDE" status --porcelain --ignored)" && "$(find "$FAKE_HOME" | sort)" == "$home_before" ]]; then
         pass "$rel says it is outside every root, changing nothing, from an unregistered repo"
+    else
+        fail "$rel from an unregistered repo (rc=$rc out=${out:0:200})"
+    fi
+done
+
+# ------------------------------------- read-only onboarding scripts (#332) ---
+# project_integration_audit.sh and registration_verify.sh carry the inert
+# marker: they only read and print. Hold them to that -- no repo-changing
+# call in the source, and from an unregistered repo they exit 2 with their
+# own message, leaving the repo and HOME untouched.
+for rel in .agent/scripts/project_integration_audit.sh .agent/scripts/registration_verify.sh; do
+    in_manifest=false
+    for e in "${ENTRIES[@]}"; do [[ "$e" == "$rel" ]] && in_manifest=true; done
+    [[ "$in_manifest" == true ]] && pass "manifest lists the read-only $rel" \
+        || fail "the read-only $rel is not in the manifest"
+    [[ "$(marker_of "$WS_ROOT/$rel")" == "inert" ]] && pass "$rel carries the inert marker" \
+        || fail "$rel does not carry the '# user-tier: inert' marker"
+    if grep -nE '(^|[^[:alnum:]_.-])(gh[[:space:]]+(pr|issue|api|repo|run|release|label|auth)|git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(push|commit|merge|rebase|fetch|pull|checkout|switch|branch|tag|clone|init|add|rm|mv|reset|worktree[[:space:]]+(add|remove)))[[:space:]]' "$WS_ROOT/$rel" \
+        | grep -vE ':[[:space:]]*#' | grep -q .; then
+        fail "$rel makes a gh or repo-changing git call, so it is not read-only"
+    else
+        pass "$rel makes no gh or repo-changing git call"
+    fi
+    case "$rel" in
+        *registration_verify.sh) args="nosuch"; want="is not registered" ;;
+        *) args=""; want="is under no registered project root" ;;
+    esac
+    home_before="$(find "$FAKE_HOME" | sort)"
+    # shellcheck disable=SC2086  # deliberate word-split argv
+    out=$(cd "$OUTSIDE" && HOME="$FAKE_HOME" timeout 30 bash "$WSC/$rel" $args 2>&1); rc=$?
+    if [[ "$rc" -eq 2 && "$out" == *"$want"* \
+          && -z "$(git -C "$OUTSIDE" status --porcelain --ignored)" && "$(find "$FAKE_HOME" | sort)" == "$home_before" ]]; then
+        pass "$rel exits 2 from an unregistered repo, changing nothing"
     else
         fail "$rel from an unregistered repo (rc=$rc out=${out:0:200})"
     fi

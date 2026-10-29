@@ -5,6 +5,7 @@
 # Usage:
 #   ./worktree_create.sh --issue <number> --type workspace|project [--branch <name>] [--plan-file <path>]
 #   ./worktree_create.sh --skill <name> --type workspace
+#   ./worktree_create.sh --skill onboard-project --type project --project <name>
 #
 # Worktree Types:
 #   workspace - For infrastructure work (.agent/, docs/, skills/)
@@ -18,6 +19,15 @@
 #               worktrees/project/<repo>/issue-<slug>-<N>/, #265)
 #               Git worktree of the project repo
 #               Draft PRs target the project repo (-R <project-remote>)
+#
+# Skill worktrees (--skill, no issue): branch skill/<name>-<timestamp>.
+# Each allowlisted skill has one type: research and inspiration-tracker
+# --type workspace, onboard-project --type project.
+# With --type project (onboard-project, for a project that uses no
+# issues, #332), the worktree is of the project root's own repository
+# alone: the adapter's worktree_repos manifest is keyed to an issue, so it
+# is not asked, and a root that is not the top of a git repository is
+# refused.
 
 set -e
 
@@ -79,7 +89,16 @@ done
 unset _arg
 
 # Skills allowed to create worktrees without a GitHub issue
-ALLOWED_SKILLS=("research" "inspiration-tracker")
+# (onboard-project: a project's onboarding branch when it uses no issues)
+ALLOWED_SKILLS=("research" "inspiration-tracker" "onboard-project")
+# The one worktree type each is for: the living-document skills keep
+# workspace documents; onboard-project changes a project's repository.
+skill_worktree_type() {
+    case "$1" in
+        onboard-project) echo project ;;
+        *) echo workspace ;;
+    esac
+}
 
 show_usage() {
     echo "Usage: $0 (--issue <number> | --skill <name>) --type workspace|project [options]"
@@ -276,6 +295,10 @@ if [ "$WORKTREE_TYPE" = "layer" ]; then
 fi
 if [ "$WORKTREE_TYPE" != "workspace" ] && [ "$WORKTREE_TYPE" != "project" ]; then
     echo "Error: --type must be 'workspace' or 'project'"
+    exit 1
+fi
+if [ -n "$SKILL_NAME" ] && [ "$WORKTREE_TYPE" != "$(skill_worktree_type "$SKILL_NAME")" ]; then
+    echo "Error: --skill $SKILL_NAME is for --type $(skill_worktree_type "$SKILL_NAME") worktrees, not --type $WORKTREE_TYPE"
     exit 1
 fi
 
@@ -543,7 +566,18 @@ fi
 # worktree and what to name their branches — this script never decides
 # that itself, and never checks the project type.
 REPO_LINES=""
-if [ "$WORKTREE_TYPE" == "project" ]; then
+if [ "$WORKTREE_TYPE" == "project" ] && [ -n "$SKILL_NAME" ]; then
+    # A skill worktree has no issue to key the manifest to: it is a
+    # worktree of the project root's own repository, on the skill branch.
+    _SK_TOP="$(git -C "$PROJECT_DIR" rev-parse --show-toplevel 2>/dev/null)" || _SK_TOP=""
+    _SK_TOP="$(cd "$_SK_TOP" 2>/dev/null && pwd -P)" || _SK_TOP=""
+    if [ -z "$_SK_TOP" ] || [ "$_SK_TOP" != "$(cd "$PROJECT_DIR" && pwd -P)" ]; then
+        echo "Error: a skill worktree of a project is a worktree of its root's own repository, and $PROJECT_DIR is not the top of one"
+        exit 1
+    fi
+    REPO_LINES="$(printf '%s\t.\t%s' "$PROJECT_DIR" "$BRANCH_NAME")"
+    unset _SK_TOP
+elif [ "$WORKTREE_TYPE" == "project" ]; then
     WR_ADAPTER_ARGS=()
     [ -n "$PROJECT_NAME" ] && WR_ADAPTER_ARGS+=(--project "$PROJECT_NAME")
     WR_VERB_ARGS=(--issue "$ISSUE_REF")

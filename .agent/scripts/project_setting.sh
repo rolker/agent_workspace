@@ -27,6 +27,12 @@
 # script reads the main checkout's files (get, list, check) and refuses to
 # write (set, unset) — run the main checkout's copy instead.
 #
+# It is promoted to the user tier (#332 PR 3), so a session at a project
+# root can run it. Reads work from anywhere. A write first passes the
+# registry_require_root guard (the cwd is in the workspace checkout or a
+# registered root, else "refusing to run"), and from a project root it
+# writes only that project's file (or, at a parent root, an instance's).
+#
 # Exit codes:
 #   0  done; for check: valid, and honoured today
 #   1  usage error, unknown project, absent key (get), or a refused write
@@ -71,6 +77,35 @@ esac
 [ $# -ge 1 ] || { echo "ERROR: $CMD needs a project name" >&2; usage; exit 1; }
 NAME="$1"
 shift
+
+# Writes, from the main checkout's copy: the user-tier root guard first
+# (this script is promoted, #332 PR 3), then the session-root rule. A
+# session in the workspace checkout may write any project's file; a
+# session at a project root writes only its own project's (or, at a
+# parent root, one of its instances'): that file is per-machine workspace
+# configuration the project's onboarding owns, the one thing a project
+# session writes outside its root (docs/design.md, Sessions and roots).
+if [ "$IN_WORKTREE" -eq 0 ] && { [ "$CMD" = "set" ] || [ "$CMD" = "unset" ]; }; then
+    registry_broken() {
+        echo "ERROR: the registry $(registry_file "$MAIN_ROOT") has errors (above); fix it first" >&2
+        exit 2
+    }
+    _RC=0
+    registry_require_root "$MAIN_ROOT" || _RC=$?
+    [ "$_RC" -eq 2 ] && registry_broken
+    [ "$_RC" -eq 0 ] || exit 1
+    _RC=0
+    _SESSION="$(registry_resolve_session_dir "$MAIN_ROOT" "$PWD")" || _RC=$?
+    [ "$_RC" -eq 2 ] && registry_broken
+    if [ "$_RC" -eq 0 ]; then
+        _SNAME="$(cut -f1 <<< "$_SESSION")"
+        if [ "$NAME" != "$_SNAME" ] \
+                && [ "$(registry_field "$MAIN_ROOT" "$NAME" parent 2>/dev/null)" != "$_SNAME" ]; then
+            echo "ERROR: refusing to $CMD '$NAME' from $PWD: a session at the root of '$_SNAME' writes only the settings of '$_SNAME'. Run it from that project's root, or from the workspace checkout ($MAIN_ROOT)" >&2
+            exit 1
+        fi
+    fi
+fi
 
 # The project must be registered (in the main checkout's registry).
 _RC=0

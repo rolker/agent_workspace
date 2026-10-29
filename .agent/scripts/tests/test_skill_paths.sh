@@ -5,7 +5,7 @@
 # replacement of the old what-next skill by the sit-rep (#389), and the
 # orchestrator skill, the host's standing rules, the run-issue
 # checkpoint text they rely on, and the roadmap's two Paths paragraphs
-# (#321).
+# (#321), and the onboard-project rules the owner gave (#332).
 #
 # A skill whose SKILL.md declares `session_scope: project` or `both` can run
 # in a session started in a project checkout. There, a bare
@@ -367,6 +367,92 @@ if [[ -f "$ORCH" ]]; then
         '$WS_ROOT/.agent/scripts/capture.sh'
 else
     fail "orchestrator skill is missing: .claude/skills/orchestrator/SKILL.md"
+fi
+
+# --- onboard-project (#332 PR 3): the project side of onboarding, run at
+# the project root; its owner-given rules are worded here so a rewrite
+# cannot drop one silently.
+ONB="$SKILLS/onboard-project/SKILL.md"
+if [[ -f "$ONB" ]]; then
+    has "$ONB" "onboard-project: no repository argument; --dry-run and --reask" \
+        '/agent-workspace:onboard-project [--dry-run] [--reask <key>]' \
+        'No repository argument'
+    if grep -qF 'project/<repo-name>' "$ONB"; then
+        fail "onboard-project still locates the repository as project/<repo-name>"
+    else
+        pass "onboard-project no longer locates the repository under project/"
+    fi
+    has "$ONB" "onboard-project: resolves the project with session_root.sh and sends an unregistered one to register_project.sh" \
+        '"$WS_ROOT/.agent/scripts/session_root.sh"' 'register_project.sh <path>' \
+        'Onboarding runs in a session started at the project'"'"'s root'
+    has "$ONB" "onboard-project: shows the recorded choices and runs the integration audit" \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" list <settings-name>' \
+        '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text'
+    has "$ONB" "onboard-project: asks only unanswered footprint questions, with the provisional default" \
+        'Ask only for a key with no recorded value, or the one `--reask` names' \
+        'project_records_default "$WS_ROOT" <settings-name> accepts-footprint' \
+        '**provisional**' \
+        'until the records lookup (#393) lands, only (project, project) is stored' \
+        'records still land on each issue'"'"'s feature branch'
+    has "$ONB" "onboard-project: at a parent root, settings belong to the instance the user picks" \
+        'registry_instances "$WS_ROOT" <name>' 'registry_default_instance "$WS_ROOT" <name>' \
+        '[--instance <settings-name>]'
+    has "$ONB" "onboard-project: a parent root is told by its registered type; with no instance it stops" \
+        'registry_lookup "$WS_ROOT" <name> | cut -f1' \
+        '**Type `project`, no instance listed**' \
+        'register_project.sh <path> --parent <name>'
+    has "$ONB" "onboard-project: the worktree names its project; a project with no issues gets a skill worktree" \
+        '"$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project --project <settings-name>' \
+        '"$WS_ROOT/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project <settings-name>'
+    # A heredoc delimiter not in single quotes (<< EOF, <<EOF, <<-EOF).
+    if grep -qE '<<-?[[:space:]]*[A-Za-z_]' "$ONB"; then
+        fail "onboard-project: a heredoc is unquoted, so finding text in it would be run or expanded"
+    else
+        pass "onboard-project: every heredoc is quoted (<<'EOF')"
+    fi
+    has "$ONB" "onboard-project: the branch is pushed before gh pr create" \
+        'git push -u origin "$(git branch --show-current)" || exit 1'
+    has "$ONB" "onboard-project: the signature comes from the identity sourced in the same shell" \
+        'source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1' \
+        "printf '\\n---\\n**Authored-By**: \`%s\`\\n**Model**: \`%s\`\\n' \"\$AGENT_NAME\" \"\$AGENT_MODEL\""
+    has "$ONB" "onboard-project: offers only when instructions=tracked; audit-project always" \
+        '### 5. Offers — only when `instructions=tracked`' \
+        'When it is `none`, make no offer of a tracked file' \
+        'Whatever `instructions` says, offer to run `/agent-workspace:audit-project`'
+    has "$ONB" "onboard-project: every write waits for a yes" \
+        '**Every write waits for a yes.**' 'changes nothing without a yes'
+    has "$ONB" "onboard-project: the four answers and the owner's D6 words, verbatim" \
+        '**Fix now**' '**Open issue**' '**Queue in the roadmap**' '**Skip**' \
+        '"all that work should be cued up in the roadmap, if the user approves, so that it can get tackled maybe as other issues are resolved"' \
+        '## Onboarding' \
+        'until the records lookup (#393) lands, queue in the roadmap is not offered to it'
+    has "$ONB" "onboard-project: process conflicts are flagged with both sides, never picked" \
+        'never pick one' 'Governance Layering'
+    has "$ONB" "onboard-project: the hygiene checklist keeps a labelled home until PR 4" \
+        '## Hygiene checklist (moves to audit-project, #332 PR 4)'
+    has "$ONB" "onboard-project: a project with no GitHub keeps its edits on a branch" \
+        'leave the edits on the branch, push nothing'
+    n_blocks=0; bad_blocks=""
+    while IFS= read -r -d '' block; do
+        n_blocks=$((n_blocks + 1))
+        out="$(sed -E 's/<[A-Za-z][^<>]*>/PLACEHOLDER/g' <<< "$block" | bash -n 2>&1)"; rc=$?
+        if [[ $rc -ne 0 || -n "$out" ]]; then
+            bad_blocks+="block $n_blocks (exit $rc): $(head -n1 <<< "$out")"$'\n'
+        fi
+    done < <(awk '
+        /^[[:space:]]*```bash[[:space:]]*$/ { inb = 1; buf = ""; next }
+        inb && /^[[:space:]]*```[[:space:]]*$/ { inb = 0; printf "%s%c", buf, 0; next }
+        inb { buf = buf $0 "\n" }' "$ONB")
+    if [[ $n_blocks -eq 0 ]]; then
+        fail "onboard-project: no bash blocks found to parse"
+    elif [[ -n "$bad_blocks" ]]; then
+        fail "onboard-project: a bash block does not parse as written (bash -n):"
+        printf '%s' "$bad_blocks" | sed 's/^/        /'
+    else
+        pass "onboard-project: all $n_blocks bash blocks parse as written (bash -n, indentation kept)"
+    fi
+else
+    fail "onboard-project skill is missing: .claude/skills/onboard-project/SKILL.md"
 fi
 
 # --- run-issue: the host may answer a checkpoint, within the orchestrator's table.
