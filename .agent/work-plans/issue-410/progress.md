@@ -659,3 +659,33 @@ Scope: round 6's two findings and the fix diff `92a807a7..dae905cf` (`63a57508`)
 - [x] (must-fix) `from .import a` and its kin now map (host direction, two changes). (1) A `.py` file's imports are read with Python's `ast`, exactly: a relative import resolves against the file's own directory (each further dot one level up) to the module file or its package init file and to each name as a possible submodule; an absolute one maps each dotted component by basename as before; a file `ast` cannot parse, or a star import, takes the every-.py fallback. The piece parser now runs only on Python embedded in other files. (2) In the piece parser a `from` module may be dots alone touching the keyword (`from .import a`, `from ..import(a)`), and an `import` word after a dot counts unless that dot follows a word character (`x.import`). The header states both paths; residual risk now names Python held in a `.py` file's string literals, which `ast` does not read. The new init-file literal is split so the mapper's own text does not reference every package init file by basename. Synthetic cases in test_run_script_tests.sh (l): rel/helper.py, reached by a suite, maps `from .import`, `from ..import a, b`, `from .import(b)`, a try-wrapped import and a parenthesised multi-line list exactly, while a same-named decoy elsewhere and an unimported sibling stay unselected; a `.py` file with a syntax error falls back; a shell `python3 -c "from .import rel_y"` maps rel_y.py. 6 of these fail on the round-6 mapper. Real repository `--dump`: unchanged, 1601 lines, diffed against the HEAD tree in a temporary worktree (no pair added or removed). Box ticked by direct edit in `95588362` (PR-mode entry) — `.agent/scripts/tests/suites_for_files.sh`
 
 Hooks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook (script suites and shellcheck included), in 606 s. Direct run under a private TMPDIR: `test_run_script_tests.sh` 87/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 12:16 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent aa4121f4bda159108, resume 2 of 3)
+
+**PR**: #411 at `8ae7b355`
+**Depth**: Deep (reason: round 8 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+
+Scope: round 7's must-fix and the fix diff `dae905cf..8ae7b355` (`95588362`). What holds:
+- Relative imports in a `.py` resolve correctly, probed through `Index.refs`. `from .. import x` in `pkg/sub/mod.py` maps `pkg/__init__.py`, `pkg/x.py` and `pkg/x/__init__.py`. `from . import y`, `from .import y`, `from .y import z` and `from ...pkg.x import q` resolve as documented.
+- `ast` failures fall back to every `.py`: a syntax error, Python 2 `print 'x'`, a NUL byte (ValueError) and a star import all do.
+- `import a.b.c` maps a, b and c by basename.
+- On the shell path, `from .import a`, `from ..import(a, b)` and `from ...import a` map, and `from . . import a` falls back. `from.import a` maps nothing, but it is moot there: Python run from `-c` or stdin has no package, so a relative import can only raise ImportError.
+- The real repository's `--dump` is unchanged at 1601 lines.
+
+Specialists:
+- Static analysis: shellcheck is clean on both files.
+- Governance and plan drift: no change.
+- Claude adversarial: a lead probe; no fresh subagent on a resumed narrow check.
+- Cross-model: skipped (round-8 convergence check, per handoff).
+
+Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 87/0 and `test_script_tests_hook_scope.sh` 239/0, no leftovers. Convergence: round 8, 1 mechanical must-fix (prev 1). `review_progress.sh verdict` says recommended (fix and ship).
+
+### Findings
+- [ ] (must-fix) A regression from this diff: Python held in a `.py` file's string literals is no longer read, and nothing falls back. In `s/t/test_q.py`, `subprocess.run([sys.executable, "-c", "import a"])` maps nothing, and so does `subprocess.run(["python3", "-c", "from lib import w"])`. Round 7's piece parser mapped both, and the same text in a `.sh` file still maps a.py. The header documents this as residual risk, but it is a silent miss that a `.py` test running a subprocess can produce. No instance exists in the tree today; I grepped in-scope `.py` string literals. Fix: in `_py_imports`, also hand each `ast.Constant` str holding an import word to `_embedded_imports` (OR its result into the fallback). Then drop that sentence from the header and residual risk, add a synthetic `.py` case, and check that `--dump` stays at 1601 lines — `.agent/scripts/tests/suites_for_files.sh:351-392`
+- [ ] (suggestion) An absolute import of a package maps nothing on either path. `import lib` maps nothing for `lib/__init__.py`, and `from lib import w` maps `lib/w.py` but not the package init, which runs too. This gap predates this diff, and no in-scope file imports a package today. Mapping `<name>/__init__.py` by directory basename for each component would make absolute imports consistent with the new relative ones — `.agent/scripts/tests/suites_for_files.sh:348`
