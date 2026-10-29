@@ -441,3 +441,19 @@ Round 1's four findings are fixed as claimed: a passed file the mapper's parse r
 - [x] (suggestion) `from pkg import mod` maps `mod.py` as well as `pkg.py` (one line, parentheses allowed); synthetic suite running `from pkg import mod_y` — `.agent/scripts/tests/suites_for_files.sh`
 
 Hooks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook, in 442 s (the branch changes the runner, so every suite ran). The source entry is a PR-mode `## Local Review`, which `review_progress.sh findings`/`check` do not select, so its three boxes were checked by direct edit in each fix commit.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 10:41 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a179d7297ea6933f7, resume 1 of 3)
+
+**PR**: #411 at `71281825`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: round 2's findings (1 must-fix, 2 suggestions) and the fix diff `4384d03d..79b9f12c` (`1dfaa50d`, `2aafe78c`, `79b9f12c`). All three hold: both deletion queries read `git diff -z` through `git_paths_z` (`mapfile -d ''`, `wait "$!"`), and git's failure still sets the error (checked here with a bad ref: rc=1; a slow failing command also caught, per the adversarial pass); the commit deleting `café.sh` (hook_case non_ascii) and the branch run after one (case q) assert the deleted name and a full run; the exclude probe (a tracked work-plans file named by test_alpha.sh, passed in every yaml_case) plus the excludes-nothing control proves `exclude:` is parsed; `from pkg import mod` and `from pkg import (mod, ...)` on one line map `mod.py`. Specialists: static analysis (shellcheck clean on the 3 changed scripts), governance and plan drift (no change since round 2), Claude adversarial (fresh: no must-fix, 1 suggestion kept). Cross-model: skipped (round-3 convergence check, per handoff). Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 60/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers. Convergence: round 3, 0 must-fix (prev 1) — ship recommended.
+
+### Findings
+- [ ] (suggestion) `FROM_RE` reads only the `from ... import` line, so a name on a continuation line of a parenthesised import (`from pkg import (` / `mod_b,`) is not mapped; a suite importing a module only that way is skipped when another suite maps that module (an unmapped module still gives ALL). Join continuation lines, or run ALL on an unterminated `(`, or at least say so in the header comment, which now claims `from X import Y` maps `Y.py` — `.agent/scripts/tests/suites_for_files.sh:190,250`
