@@ -219,3 +219,45 @@ Plan Review round 2 verdict needs-work (12f625db). Owner answers given this turn
 **Plan**: `.agent/work-plans/issue-410/plan.md` at `0270dd6a`
 
 Revision 2: deletion check runs before GIT_INDEX_FILE is unset using --no-renames --diff-filter=D (tested through commit -a, pathspec commit and an in-scope to out-of-scope rename); prefix-scanning suites get covers lines; hub guard bounded at 5; AGENTS.md row edit approved; parallel runner moved to a follow-up.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-29 09:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #410 — Pre-commit script-test hook: run only the suites whose declared files changed
+**Plan**: `.agent/work-plans/issue-410/plan.md` at `0270dd6a`
+**Branch**: `feature/issue-410`
+
+Round 3, narrow convergence check against the round-2 entry (12f625db) and the plan diff 5af3efe3..0270dd6a. Sections passed in rounds 1 and 2 were not re-reviewed; owner decisions (AGENTS.md row approved, about 2 minutes serial accepted, parallel runner a follow-up) are settled.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged; one PR |
+| Issue alignment | Good | Serves, as checked: "Quality of the work and review-loop wall-clock (README Workspace goals); `docs/design.md#rules` and `docs/design.md#review-loop-and-timeline`". The under-a-minute gap is now recorded as the owner's decision, not an open question |
+| File targeting | Good | `# covers:` row names `test_skill_paths.sh`, `test_script_tests_hook_scope.sh`, `test_progress_read.sh`; `AGENTS.md` row unconditional after the owner's yes |
+| Consequences | Good | Must-fix 1 holds: step 4 computes the staged check before `GIT_INDEX_FILE` is unset (or from the saved value), uses `--no-renames --diff-filter=D` for both the staged and the `<default>...HEAD` branch-run checks, "with the same ordering". Must-fix 2 holds: both prefix-scanning suites get `# covers:` lines, and the scan-vs-copy note goes next to `ROOT_READERS`, with 6(b) scoped to real-root readers. One new interaction, finding 1 |
+| Principle alignment | Good | "Test what breaks": the deletion/rename tests now go through a real hook with `git commit -a`, a pathspec commit and an in-scope to out-of-scope rename, which fail against the round-2 mechanism |
+| ADR compliance | Good | No change from round 2 (ADR-0005 kept; CI still runs every hook on all files) |
+| ROS conventions | N/A | Workspace plan |
+
+Taken suggestions, all in: `test_progress_read.py` handled by a `covers:` line and exempted from the `tests/` trigger (step 3); hub guard bounded at 5 suites (step 7); `dispatch_phase.sh:411` "pre-commit drops deleted paths" and "several minutes" added to the step 9 check.
+
+### Findings
+
+1. **[Consequences] The new `test_skill_paths.sh` `covers:` line makes the "unmapped file runs everything" fail-safe dead.** Its guard (c) prefixes are `.agent/ .claude/ AGENTS.md Makefile`, which is nearly the whole hook scope. Read as an ordinary `covers:` mapping, every one of the 55 unmapped in-scope files (`.agent/knowledge/*.md`, `.agent/hooks/*.py`, the `.agent/*.md` guides) now maps to `test_skill_paths.sh`, so it selects one fast suite instead of `ALL`. Step 3 still says "those commits still pay the full run", which would no longer be true. The copy-into-sandbox readers (the ROOT_READERS suites, which deliberately do not select) are the suites that fail-safe protects, and they would be skipped. The same thing happens on a smaller scale with `test_script_tests_hook_scope.sh` covering `.agent/scripts/tests/`: if "a file some suite declares with `# covers:`" in step 3 matches prefixes, the "anything under `tests/` that is not a `test_*.sh`" trigger can never fire (`tests/live/plugin_acceptance.sh` would stop forcing a full run). This does not block the plan: the fix is one rule plus one test, and the implementer can apply it. Rule: a scan-prefix declaration (a distinct keyword such as `# scans:`, or `covers:` marked as a scan) **adds** its suite to the selection but does not count as a mapping for the unmapped-file rule or for the `tests/` exemption. The `tests/` exemption matches exact declared files only. Test: on the real tree, `suites_for_files.sh` given one of today's unmapped files (for example a `.agent/knowledge/*.md`) still prints `ALL`, and a synthetic `tests/` helper still prints `ALL`.
+2. **[Suggestion] Name the hub guard's fourth suite.** Step 7 says "4 today: the two timed ones plus the always-run `test_checkpoint_269.sh` and any other reference", which adds up to 3 plus an unnamed one. The fourth is most likely `test_skill_paths.sh` through its new `.agent/` prefix. Name it, so the bound of 5 has a stated margin of 1.
+3. **[Suggestion] Spell out two things in the rename test and the PR.** The out-of-scope rename case needs an in-scope edit staged alongside, or pre-commit never invokes the hook ("Same for" implies this, so say it). A commit whose only in-scope change is a deletion or an outbound rename still does not run the hook at all, as today, and CI is the backstop. Say that in the PR, so the "deletions force a full run" claim is not read as covering it.
+
+### Summary
+
+Both round-2 must-fixes are now correctly specified, with tests that would fail against the round-2 mechanism. The three taken suggestions are in. The revision adds one interaction that needs a rule at implementation: a whole-prefix scan declaration must not count as a mapping, or the unmapped-file fail-safe never fires. That is a one-rule fix with a real-tree test, carried as an implementation item rather than another plan round. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] Implement: scan-prefix declarations (`test_skill_paths.sh`, `test_script_tests_hook_scope.sh`) add their suite but do not count as a mapping for the unmapped-file `ALL` rule or the `tests/` exemption (exact declared files only); add a real-tree test that a currently unmapped in-scope file still yields `ALL`.
+- [ ] Suggestion: name the fourth suite in the `register_project.sh` hub-guard count (likely `test_skill_paths.sh`).
+- [ ] Suggestion: state that the out-of-scope rename test stages an in-scope edit alongside, and note in the PR that a deletion-only commit still skips the hook (CI backstop).
