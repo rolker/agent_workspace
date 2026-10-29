@@ -1389,3 +1389,33 @@ The fixes were made in a fix pass on 2026-10-28 that checked each box in its fix
 - [x] S5 category-6 fix text wrong for ros2_colcon: the build/test setting applies to `single_project`; ros2_colcon refuses them, pointing to its `unused_settings` (a580c161) — `.claude/skills/onboard-project/SKILL.md:151-161`
 - [x] S6 missing tests: session-root (591ec23b), parent root (2d68adb6), negated rule (5514f5ff), the ids under `instructions=none` (559cdc6a), the cap (732929e8); skill text checks (fdf9cc9c) — `.agent/scripts/tests/test_project_integration_audit.sh`
 - [x] S7 AGENTS.md rows: `project_setting.sh` names the `registry_require_root` write guard; the audit row narrows the claim to the header's ids and adds `--instance` (ce28b0e8) — `AGENTS.md:408-411`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 10:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `377b4e29`
+**Base**: main
+**Depth**: Deep (reason: 1868 changed lines over 16 files, with AGENTS.md and a SKILL.md; fix-round re-review on the whole-diff tier)
+**Must-fix**: 2 | **Suggestions**: 8
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Round taken as 2 on the host's instruction: this is PR 3 of 4, whose round 1 was the `## Local Review (Pre-Push)` of 2026-10-28 14:25 at 4214aa7c; `review_progress.sh round` reported round=13 only because the eleven pre-push entries of PRs 403 and 409 (parts 1 and 2) are still on this issue's timeline (issue 384). Not a convergence check: full re-review of the fix diff 4214aa7c..fdf9cc9c (15 commits) with the cross-model reviewers, after a round with must-fixes. Verdict computed with `--round 2 --prev-must-fix 7`.
+
+All 14 round-1 findings checked closed in the code and tests (M1 `check-ignore -q` gate with a `!` rule test; M2/M4 both worktree commands pass `--project <settings-name>`; M3 instance resolution, `--instance`, guarded writes; M5 quoted heredocs, printf signature, identity in each commit chain; M6 write list; M7 the ten ids through `emit_offer`; S1-S7). The host's M4 decision is implemented as recorded: `onboard-project` on the `worktree_create.sh` allowlist, branch `skill/onboard-project-<timestamp>`, `--skill onboard-project --type project --project <name>`, a worktree of the root's own repository, refused when the root is not a repository top; AGENTS.md, start-task and design.md say so.
+
+Reviewers: Claude adversarial ran (complete; 3 must-fix reported, 1 kept as must-fix, 2 taken as suggestions); Gemini (agy) ran, EXIT=0, 1 suggestion (kept); Codex ran, EXIT=0, 1 must-fix (kept). Static: shellcheck --severity=warning clean on the five changed shell files. Suites under a private TMPDIR: test_project_integration_audit 114/0, test_project_registry 274/0, test_skill_paths 102/0, no files left behind. Open for the owner at the merge checkpoint (Ask First): AGENTS.md commit ce28b0e8 changes the Skill Worktree Exception rule (onboard-project on the allowlist) and the `project_setting.sh` row, beyond the one new row approved in round 1.
+
+### Findings
+- [ ] (must-fix) At a parent root, category 6 runs `registration_verify.sh` on the parent name only, which skips settings, required commands and adapter validation, so the chosen instance's broken registration is never reported; verify `$SNAME` too, with tests for an instance with malformed settings and a missing command (Codex) — `.agent/scripts/project_integration_audit.sh:502`
+- [ ] (must-fix) At a parent root, category 3 takes the worktrees directory and the records ignore probes from the parent, which never gets worktrees (they go under the instance; `wt_ensure_exclusion` returns early for a parent): a false `worktrees-not-ignored` warn whose detail ("worktree_create.sh adds 'worktrees/'") is untrue there, and the instance's own directory unchecked; the test fixture hides it (its `.gitignore` already has `worktrees/`). Use the instance for both, and decide which root's files categories 1, 2, 4, 5 read at a parent root, since the fix batch can only change the instance's repository (Claude, reproduced) — `.agent/scripts/project_integration_audit.sh:407-445`
+- [ ] (suggestion) `commands()` takes the prose before a code span as a command, so `- make sure \`pytest\` passes` with `test=pytest` is flagged (round 1's substring match hid it); take the lead only when the line has no code span (Gemini, reproduced) — `.agent/scripts/project_integration_audit.sh:336`
+- [ ] (suggestion) `worktree_list.sh` misparses a project skill worktree whose project name holds `-` or `.` (slug is the raw registry name; its regex allows `[a-zA-Z0-9_]`); enter/remove unaffected; the same class already exists for issue worktrees of such names (Claude) — `.agent/scripts/worktree_list.sh:124`
+- [ ] (suggestion) Step 1 reads a parent root with no instances as "no parent root", so every later write is refused; decide on `session_root.sh`'s `type=` and stop with "register an instance first"; the audit's text says "several instances" for zero too (Claude) — `.claude/skills/onboard-project/SKILL.md:127`, `.agent/scripts/project_integration_audit.sh:537`
+- [ ] (suggestion) The allowlist is not tied to the type: `--skill research --type project` and `--skill onboard-project --type workspace` now both succeed; allow onboard-project only with `--type project` (Claude) — `.agent/scripts/worktree_create.sh:91,555`
+- [ ] (suggestion) Step 7's pull-request block has no `git push -u origin <branch>`, so a non-interactive `gh pr create` stops ("you must first push the current branch") (Claude) — `.claude/skills/onboard-project/SKILL.md:367-389`
+- [ ] (suggestion) `ignored-agent-file` emits one warn per file with no cap and flags Claude Code's own ignored `.claude/worktrees/`; cap or group per rule, treat `.claude/worktrees/` like `settings.local.json` (Claude) — `.agent/scripts/project_integration_audit.sh:461-467`
+- [ ] (suggestion) Category 2 misses numbered and `+` list items (`1. make install`, `+ cargo build`) in both the grep and the awk lead-stripping (Claude) — `.agent/scripts/project_integration_audit.sh:333,396`
+- [ ] (suggestion) Plain `"${arr[@]}"` on possibly empty arrays under `set -u` (bash 4.0-4.3 aborts); use the `${arr[@]+...}` form the new code uses (Claude) — `.agent/scripts/project_integration_audit.sh:398,482,488`
