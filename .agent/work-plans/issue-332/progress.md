@@ -1419,3 +1419,13 @@ Reviewers: Claude adversarial ran (complete; 3 must-fix reported, 1 kept as must
 - [ ] (suggestion) `ignored-agent-file` emits one warn per file with no cap and flags Claude Code's own ignored `.claude/worktrees/`; cap or group per rule, treat `.claude/worktrees/` like `settings.local.json` (Claude) — `.agent/scripts/project_integration_audit.sh:461-467`
 - [ ] (suggestion) Category 2 misses numbered and `+` list items (`1. make install`, `+ cargo build`) in both the grep and the awk lead-stripping (Claude) — `.agent/scripts/project_integration_audit.sh:333,396`
 - [ ] (suggestion) Plain `"${arr[@]}"` on possibly empty arrays under `set -u` (bash 4.0-4.3 aborts); use the `${arr[@]+...}` form the new code uses (Claude) — `.agent/scripts/project_integration_audit.sh:398,482,488`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 10:30 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fires on the false count from the merged parts' entries (issue 384); this is round 2 of PR 3 of 4, with 2 must-fix and 8 suggestions, all mechanism; second host address in a row at rounds, so the next rounds answer is the owner's)
+**After**: rounds
+**Decision**: address
+
+PR 3 of 4 (the onboard-project rewrite), round 2 at 377b4e29 (8c7b5e6d): M1 at a parent root category 6 verifies only the parent name, so the chosen instance's broken registration is never reported; M2 at a parent root category 3 probes the parent for worktrees and records ignores, which belong to the instance. Host decision on M2's open design point, listed for the owner's veto: at a parent root the audit reads, reports and fixes one repository, the chosen instance's (categories 1 to 6 alike), because the fix batch can only write there; the parent root's own files are not audited by this skill. Eight suggestions sent along (commands() lead text, worktree_list.sh name parse, zero-instance parent wording, allowlist tied to type, git push before gh pr create, ignored-agent-file cap and .claude/worktrees, numbered list items, empty arrays under set -u). Ask-First item for the owner, raised in the session: the AGENTS.md commit ce28b0e8 also changes the Skill Worktree Exception rule and the project_setting.sh row, beyond the one row approved yesterday.
