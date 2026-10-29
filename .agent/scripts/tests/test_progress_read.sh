@@ -7,6 +7,11 @@
 # shell fixture would allow).
 #
 # Run: bash .agent/scripts/tests/test_progress_read.sh
+#
+# Selection declaration for run_script_tests.sh --files (issue #410): the
+# module is named only as a `unittest` argument, which suites_for_files.sh
+# cannot derive.
+# covers: .agent/scripts/tests/test_progress_read.py
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
