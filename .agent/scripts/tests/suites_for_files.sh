@@ -38,7 +38,9 @@
 #     `/` (`./adapter` included), so the plain English word does not.
 #     Python `import X` counts as a reference to `X.py`, and
 #     `from X import Y` to `X.py` and `Y.py` (Y may be a module of package X),
-#     each found by basename. Imports are read on one of two paths:
+#     each found by basename, and a component that names a package
+#     directory also maps that package's init file (`import lib` ->
+#     `lib/__init__.py`). Imports are read on one of two paths:
 #     A `.py` file is parsed with Python's `ast`, which reads every import
 #     statement exactly, wherever and however it is written (`try:` blocks,
 #     parenthesised lists, `from .import a`). A relative import resolves
@@ -46,8 +48,10 @@
 #     x` maps `x.py` beside the file (and the package's init file), each
 #     further dot one directory up. A file `ast` cannot parse (a syntax
 #     error, Python 2) or a star import takes the every-`.py` fallback below.
-#     Python held in a `.py` file's string literals is not read (see Residual
-#     risk).
+#     Every string literal in it (docstrings and the literal parts of
+#     f-strings included) is also read by the piece parser, so Python run
+#     from a `.py` file (`subprocess.run([sys.executable, "-c", "import
+#     a"])`) is mapped or falls back like Python in a shell file.
 #     Any other file (shell, with Python in `python3 -c`, heredocs,
 #     `$'...'`) is read by the piece parser below.
 #     The piece parser's promise: every `import` word that could be Python
@@ -120,8 +124,7 @@
 #
 # Residual risk: a path or module name assembled at runtime entirely from
 # variables, with no literal name anywhere (including a module loaded with
-# `__import__` or `importlib`, or Python source held in a `.py` file's
-# string literals), is invisible to this derivation; the drift
+# `__import__` or `importlib`), is invisible to this derivation; the drift
 # check in test_script_tests_hook_scope.sh catches it only for suites that
 # read the real repository root (ROOT_READERS).
 
@@ -268,8 +271,11 @@ NOT_PYTHON_RE = re.compile(
 )
 # After a quote that ends a piece: another string literal (Python implicit
 # concatenation, or the shell's `"a"'b'`) or a character glued to the quote
-# (the shell's `"a"b`) may continue the statement.
-CONCAT_RE = re.compile(r"""^\\?["'](?:\s*\\?["']|[^\s;|&)<>])""")
+# (the shell's `"a"b`) may continue the statement. A blank, a shell
+# operator, or a closing `)`, `]` or `}` does not: glued on, a closer is a
+# Python syntax error (`import a]`), and it is how a string ends inside a
+# call or a list (`run([sys.executable, "-c", "..."])`).
+CONCAT_RE = re.compile(r"""^\\?["'](?:\s*\\?["']|[^\s;|&)\]}<>])""")
 # A `from` header with no `import` yet: `from`, then at most a module name.
 FROM_HEAD_RE = re.compile(r"^\s*from(?:\s+[A-Za-z0-9_.]+|\s*\.+)?\s*(\\?)\s*$")
 # A comment: a `#` at the start of a piece or after a blank (a `#` glued to
@@ -310,6 +316,12 @@ class Index:
         for v in vocab:
             self.by_base.setdefault(os.path.basename(v), set()).add(v)
         self.py_files = {v for v in vocab if v.endswith(".py")}
+        # Package init files by their directory's name: `lib` -> lib's.
+        self.by_pkg = {}
+        for v in vocab:
+            if os.path.basename(v) == PKG_INIT:
+                pkg = os.path.basename(os.path.dirname(v))
+                self.by_pkg.setdefault(pkg, set()).add(v)
 
     def refs(self, text, self_path=None):
         found = set()
@@ -346,7 +358,10 @@ class Index:
         return found
 
     def _add_module(self, comp, found):
+        """One dotted-name component: its `.py` by basename, and the init
+        file of any package directory of that name, which runs too."""
         found |= self.by_base.get(comp + ".py", set())
+        found |= self.by_pkg.get(comp, set())
 
     def _py_imports(self, text, self_path, found):
         """Map a .py file's own statements, read with `ast`. An absolute
@@ -357,15 +372,21 @@ class Index:
         each imported name may be a submodule `<dir>/<module>/<name>.py`
         (or its package). Returns True (fall back to every .py) when `ast`
         cannot parse the file, or for a star statement, whose names
-        `__all__` may extend to any submodule.
+        `__all__` may extend to any submodule. Every str literal
+        (docstrings and f-string parts are str constants too) also goes
+        through the piece parser, and its fallback is this file's.
         """
         try:
             tree = ast.parse(text, filename=self_path)
         except (SyntaxError, ValueError):
             return True
         here = os.path.dirname(self_path)
+        unreadable = False
         for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if self._embedded_imports(strip_comment_lines(node.value), found):
+                    unreadable = True
+            elif isinstance(node, ast.Import):
                 for alias in node.names:
                     for comp in alias.name.split("."):
                         self._add_module(comp, found)
@@ -389,7 +410,7 @@ class Index:
                 for n in names:
                     cands += [os.path.join(base, n + ".py"), os.path.join(base, n, PKG_INIT)]
                 found |= {os.path.normpath(c) for c in cands} & self.by_path
-        return False
+        return unreadable
 
     def _embedded_imports(self, body, found):
         # Python imports, looked for in every piece of every line. Every

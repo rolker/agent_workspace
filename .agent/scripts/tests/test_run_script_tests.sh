@@ -625,6 +625,27 @@ from .sub import (
 )
 PYEOF
     printf 'import rel_p\ndef broken(:\n    pass\n' > "$A_S/broken.py"
+    # String literals in a .py file (a docstring, a subprocess's -c text,
+    # an f-string's literal part) go through the piece parser too; an
+    # absolute import of a package maps its init file.
+    mkdir -p "$A_S/libpkg" "$A_S/libpkg2"
+    for f in libpkg/__init__.py libpkg2/__init__.py; do : > "$A_S/$f"; done
+    for f in str_a.py str_d.py str_f.py libpkg/w_mod.py libpkg/other.py; do
+        printf 'V = 1\n' > "$A_S/$f"
+    done
+    cat > "$A_S/runner.py" <<'PYEOF'
+"import str_d"
+import subprocess
+import sys
+import libpkg2
+from libpkg import w_mod
+
+subprocess.run([sys.executable, "-c", "import str_a"], check=False)
+X = 1
+CMD = f"import str_f\n{X}"
+PYEOF
+    write_syn_suite "$A_S/tests" test_pyrun.sh "$(printf '%s\ncat "$SCRIPT_DIR/../runner.py" >/dev/null' \
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"')"
     write_syn_suite "$A_S/tests" test_relpkg.sh "$(printf '%s\ncat "$SCRIPT_DIR/../rel/helper.py" >/dev/null' \
         'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"')"
     write_syn_suite "$A_S/tests" test_pybroken.sh "$(printf '%s\ncat "$SCRIPT_DIR/../broken.py" >/dev/null' \
@@ -656,6 +677,13 @@ ast_sel "ast: a relative import resolves in its own directory, not by basename (
 ast_sel "ast: an unimported sibling (rel/rel_z.py) is not selected: no fallback" .agent/scripts/rel/rel_z.py test_relpkg.sh no
 ast_sel "ast: a .py file with a syntax error falls back (selected for rel/rel_z.py, which it never names)" .agent/scripts/rel/rel_z.py test_pybroken.sh yes
 ast_sel "a shell 'python3 -c' with a dots-only from maps its name (rel_y.py)" .agent/scripts/rel_y.py test_shrel.sh yes
+ast_sel "ast: a subprocess's -c string in a .py file maps str_a.py" .agent/scripts/str_a.py test_pyrun.sh yes
+ast_sel "ast: a docstring in a .py file is read too (str_d.py)" .agent/scripts/str_d.py test_pyrun.sh yes
+ast_sel "ast: an f-string's literal part is read too (str_f.py)" .agent/scripts/str_f.py test_pyrun.sh yes
+ast_sel "ast: an absolute from-import of a package maps the module in it (libpkg/w_mod.py)" .agent/scripts/libpkg/w_mod.py test_pyrun.sh yes
+ast_sel "ast: an absolute from-import of a package maps its init file (libpkg)" .agent/scripts/libpkg/__init__.py test_pyrun.sh yes
+ast_sel "ast: a plain import of a package maps its init file (libpkg2)" .agent/scripts/libpkg2/__init__.py test_pyrun.sh yes
+ast_sel "ast: a package import does not map the package's other modules (libpkg/other.py)" .agent/scripts/libpkg/other.py test_pyrun.sh no
 expect_sel "a mapped file under a '# scans:' prefix adds the scanning suite" \
     "$BASE_ALWAYS test_noref.sh test_other.sh test_scanner.sh" -- .agent/docs/scanned.md
 expect_sel "an exact-file '# covers:' file under tests/ selects its suite, not ALL" \
