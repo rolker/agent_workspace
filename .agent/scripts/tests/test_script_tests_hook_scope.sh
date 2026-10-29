@@ -618,20 +618,38 @@ done <<<"$DUMP"
 
 # --- Real-tree checks of the mapper. ---
 
-# Hub guard: a single script change stays selective. register_project.sh
-# selects 4 suites today (test_register_project.sh, this suite through its
-# ROOT_READERS text, test_checkpoint_269.sh always, and test_skill_paths.sh
-# through its '# scans: .agent/'). A file that starts naming everything
-# turns this red instead of silently restoring the full run.
-HUB_MAX=5
+# Hub guard: a single script change stays selective. No fixed count: the
+# suites that read register_project.sh grow as other scripts come to name
+# it (PR 413's project_integration_audit.sh took it from 4 to 6, and a
+# fixed bound of 5 broke CI on the merge with main). Instead, three checks
+# that do not drift: the selection includes test_register_project.sh; it
+# excludes two suites with no relation to it (test_merge_pr.sh and
+# test_cross_model_review.sh: neither suite nor the scripts they read name
+# it); and, apart from the always-run test_checkpoint_269.sh, it is at most
+# a third of the suites, counted from the glob. A file that starts naming
+# everything turns this red instead of silently restoring the full run.
 map_once .agent/scripts/register_project.sh
 hub_out="$map_out"
-hub_n="$(grep -c . <<<"$hub_out")"
-if [[ "$hub_out" != "ALL" && "$hub_n" -le $HUB_MAX ]] \
-        && grep -qx 'test_register_project.sh' <<<"$hub_out"; then
-    pass "hub guard: register_project.sh selects $hub_n suites (at most $HUB_MAX), including test_register_project.sh"
+hub_suites=("$REAL_ROOT"/.agent/scripts/tests/test_*.sh)
+hub_max=$(( (${#hub_suites[@]} - 1) / 3 ))
+hub_n="$(grep -vcx 'test_checkpoint_269.sh' <<<"$hub_out")"
+hub_got="$(tr '\n' ' ' <<<"$hub_out")"
+if [[ "$hub_out" != "ALL" ]] && grep -qx 'test_register_project.sh' <<<"$hub_out"; then
+    pass "hub guard: register_project.sh selects test_register_project.sh"
 else
-    fail "hub guard: register_project.sh should select at most $HUB_MAX suites including test_register_project.sh; got: $(tr '\n' ' ' <<<"$hub_out")"
+    fail "hub guard: register_project.sh should select test_register_project.sh; got: $hub_got"
+fi
+for hub_unrelated in test_merge_pr.sh test_cross_model_review.sh; do
+    if [[ "$hub_out" != "ALL" ]] && ! grep -qx "$hub_unrelated" <<<"$hub_out"; then
+        pass "hub guard: register_project.sh does not select the unrelated $hub_unrelated"
+    else
+        fail "hub guard: register_project.sh should not select the unrelated $hub_unrelated; got: $hub_got"
+    fi
+done
+if [[ "$hub_out" != "ALL" && "$hub_n" -le "$hub_max" ]]; then
+    pass "hub guard: register_project.sh selects $hub_n suites besides test_checkpoint_269.sh (at most $hub_max, a third of ${#hub_suites[@]})"
+else
+    fail "hub guard: register_project.sh should select at most $hub_max suites besides test_checkpoint_269.sh (a third of ${#hub_suites[@]}); got $hub_n: $hub_got"
 fi
 
 # The all-files list (what CI's `pre-commit run --all-files` passes) runs
