@@ -518,3 +518,24 @@ Scope: round 3's one suggestion (continuation lines of a parenthesised `from pkg
 
 ### Findings
 - [ ] (suggestion) A `)` inside an inline comment in a parenthesised import (`a,  # see f()`) ends `FROM_PAREN_RE`'s `[^)]*` early, so later names (`b`) are lost (confirmed); a backslash-continued `from p import a, \` loses `b` too. Fail-open only when that module is also mapped by another suite; none in the tree. Strip comments before finding the `)`, or run ALL on any `from` import the parser cannot fully read — `.agent/scripts/tests/suites_for_files.sh:193`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-29 10:55 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a690d590879db8601, resume 1 of 3)
+
+**PR**: #411 at `797ac2d2`
+**Sources**: 3 (Local Review @ `244f4db8` (covers 797ac2d2 via bookkeeping), Copilot x7 (quota or error notices, no review content), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+The previous Integrated Review's one open finding (continuation lines of a parenthesised `from pkg import (...)`) is closed by `0e4a8717`: `sources` lists the round-3 entry as stale, and a reproduction at this head shows a continuation-line name now maps. Copilot's three new reviews (at `11a0612e`, `90249967`, `244f4db8`) are again quota or error notices with no comments. The one conversation comment is the previous decision summary. CI at `797ac2d2`: Validate Documentation and ros-manifest tests pass in both runs, Validate Adapter Contract pass in one run and pending in the other, Lint (pre-commit) pending in both.
+
+The round-4 suggestion is kept open, verified at this head: with `FROM_PAREN_RE`'s substitution and `FROM_RE` run on `from pkg import (\n    a,  # see f()\n    b,\n)` the names read are `pkg, a` (`b` lost), and on `from p import a, \` + `    b` they are `p, a` (`b` lost). Failure mode is real and silent (a suite skipped) only when the lost module is also mapped by another suite; nothing in the tree hits it (no backslash-continued import in tracked `.sh`/`.py`; the one multi-line import, `validate_workspace.py:42`, has no comments). This is the third edge case of the same import parser in a row, so the fix recommended is the one that closes the class rather than a third patch.
+
+### Findings
+- [ ] (suggestion, Local Review @ `244f4db8`) A `)` inside an inline comment in a parenthesised import (`a,  # see f()`) ends `FROM_PAREN_RE`'s `[^)]*` early, so later names (`b`) are lost; a backslash-continued `from p import a, \` loses `b` too. Fix the class: when a `from` import line is one the parser cannot fully read (an unclosed `(` after joining, a trailing `\`, or a `#` inside the parenthesised span), make the suite's selection fall back to ALL (or treat the file as referencing every `.py` in the vocabulary) instead of mapping a partial name list; add synthetic cases for both shapes — `.agent/scripts/tests/suites_for_files.sh:193`
+
+### False positives
+- (Copilot x7) "unable to review this pull request" (quota exhausted, or an error at `90249967`) — not a finding; no review content to triage.
