@@ -37,7 +37,9 @@
 #     basename (`adapter`, `agent`) only counts inside a token that has a
 #     `/` (`./adapter` included), so the plain English word does not.
 #     Python `import X` counts as a reference to `X.py`, and
-#     `from X import Y` to `X.py` and `Y.py` (Y may be a module of package X).
+#     `from X import Y` to `X.py` and `Y.py` (Y may be a module of package X),
+#     with the names of a parenthesised `from X import (...)` read across
+#     its continuation lines.
 #   - Closure: a suite's own references, expanded only through referenced
 #     files that are code (`.sh`, `.py`, or extensionless with a `#!`
 #     line). Documents are leaves.
@@ -188,6 +190,7 @@ def yaml_scalar(raw):
 TOKEN_RE = re.compile(r"[A-Za-z0-9_./-]+")
 IMPORT_RE = re.compile(r"^\s*import\s+([A-Za-z0-9_., ]+)")
 FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_.]+)\s+import\s*\(?\s*([A-Za-z0-9_., ]*)")
+FROM_PAREN_RE = re.compile(r"^(\s*from\s+[A-Za-z0-9_.]+\s+import\s*\()([^)]*)\)", re.M)
 DECL_RE = re.compile(r"^#\s*(covers|scans):\s*(.*?)\s*$")
 
 
@@ -243,7 +246,14 @@ class Index:
             last = t.rsplit("/", 1)[-1]
             if last in self.by_base and ("." in last or slashed):
                 found |= self.by_base[last]
-        for line in body.splitlines():
+        # A parenthesised `from X import (` list may span lines: join each
+        # onto its first line (inline ` # ...` comments dropped) so the
+        # per-line import match sees every name.
+        imports = FROM_PAREN_RE.sub(
+            lambda m: m.group(1) + " ".join(re.sub(r"#[^\n]*", "", m.group(2)).split()) + ")",
+            body,
+        )
+        for line in imports.splitlines():
             names = []
             m = IMPORT_RE.match(line)
             if m:
