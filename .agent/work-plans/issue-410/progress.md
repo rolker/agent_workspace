@@ -211,3 +211,11 @@ The revision fixes the round-1 core problem: the bounded derivation is selective
 **Decision**: revise
 
 Plan Review round 2 verdict needs-work (12f625db). Owner answers given this turn and carried into the handoff: the AGENTS.md Script Reference row edit is approved ("Yes, edit the row"); the under-a-minute acceptance is settled as "Accept ~2 min now; parallel later": scoping ships as planned, the parallel runner and the two slow suites are a follow-up (captured in the inbox), so the plan's Open Question on that closes and the parallel-runner suggestion is not taken into this plan.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-29 09:27 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-410/plan.md` at `0270dd6a`
+
+Revision 2: deletion check runs before GIT_INDEX_FILE is unset using --no-renames --diff-filter=D (tested through commit -a, pathspec commit and an in-scope to out-of-scope rename); prefix-scanning suites get covers lines; hub guard bounded at 5; AGENTS.md row edit approved; parallel runner moved to a follow-up.
