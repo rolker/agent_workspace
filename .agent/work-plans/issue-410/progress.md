@@ -610,3 +610,21 @@ Scope: round 5's must-fix and the fix diff `0de3699a..92a807a7` (`fac2fe43`). Wh
 ### Findings
 - [x] (must-fix) A `\` continuation inside the `from X ... import` header still maps a partial list silently, though the header comment promises the fallback for any `\` continuation: `from pkg \` + newline + `    import a, b` maps a.py and b.py but not pkg.py; `from pkg.z \` + newline + `    import a` misses pkg.py and z.py; `from \` + newline + ` pkg import a` maps nothing (confirmed with `Index.refs`). The second line's piece is not an import and the first's does not match FROM_RE. Fix: a piece matching `^\s*(from|import)\b` that ends in `\` (after the `#` cut) counts every `.py`; add a synthetic `from pkg \` case — `.agent/scripts/tests/suites_for_files.sh:282-309`
 - [x] (suggestion) A name list cut by a quote with a dangling comma is dismissed as prose: `python3 -c "import a, "'b'` maps nothing (Python runs `import a, b`). Only a shell concatenation of quote styles mid-import produces it; narrowing PROSE_RE to refuse a trailing comma (only two names side by side are prose) would send it to the fallback; check `--dump` stays 1601 lines — `.agent/scripts/tests/suites_for_files.sh:224,300`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 11:54 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af6fdb4891bd180cc, resume 1 of 3)
+
+**PR**: #411 at `63a57508`
+**Addressed**: Local Review at `92a807a7` (2026-10-29 11:35 -04:00)
+**Commits**: `63a57508`
+
+### Actions
+- [x] (must-fix) A `\` in the `from X` header no longer maps a partial list. Instead of patching the shape, the host-directed structural backstop: every `import` word that could be Python is either the keyword of a clean statement (exactly one import word, plain name list, no string glued onto its closing quote), whose names are mapped, or it sends the file to the every-.py fallback; mid-piece words included (`echo import x | python3`). A bare `from X` header (at most a module name) ending in `\` or with a string glued on falls back, as does an import whose `from X` header is the piece before. Lines are also cut at escaped `\n`/`\r`/`\t`; a comment is now a `#` at a piece start or after a blank (so `${#a[@]}` hides nothing). Header comment rewritten around the promise "every import word is either mapped exactly or widens to every .py" — `.agent/scripts/tests/suites_for_files.sh`
+- [x] (suggestion) The dangling comma (`"import a, "'b'`) now falls back; PROSE_RE is gone. Reconciling the host's prose direction: an import word is ignored only when no Python statement can hold what follows it — a `-` (`vcs import --skip-existing`) or a plain name, a blank and a second name that is not `as` (`import failed for optional layer`), which Python rejects whatever the shell appends. Without it the ros2_colcon adapter's `vcs import` lines sent about 29 suites into the fallback (measured), not just test_adapter.sh. The mapper's own patterns spell the keyword `\x69mport` and the test file passes keywords through variables, so neither file trips the fallback — `.agent/scripts/tests/suites_for_files.sh`
+
+Synthetic `shape_case` cases in test_run_script_tests.sh (l), each a lone suite reading anchor.txt: the three `\` header shapes, the dangling comma, a clean list with a glued string, a `from pkg` header glued to its import and an unreadable import line each select the suite for a .py it never names (6 of these fail on the round-5 mapper); an escaped-newline import, the prose message and `vcs import --skip-existing` do not. Real repository `--dump`: unchanged, 1601 lines, diffed before and after; no real file takes the fallback. Both boxes ticked by direct edit in `63a57508` (PR-mode entry).
+
+Hooks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook (script suites and shellcheck included), in 531 s. Direct run under a private TMPDIR: `test_run_script_tests.sh` 76/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
