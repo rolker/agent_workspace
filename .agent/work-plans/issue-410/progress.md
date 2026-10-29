@@ -873,3 +873,30 @@ Checked:
 
 ### Findings
 - [ ] (suggestion) roadmap Direction row for #410 says "all 39 suites"; the merged tree has 40 — `docs/roadmap.md:76`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-29 13:36 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #411 at `e2b8d1df`
+**Sources**: 3 (Local Review R11 @ `ba6614e8` (covers `e2b8d1df` via bookkeeping), Copilot @ `ba6614e8` (quota notice, no review), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Copilot: 23 reviews, every one a quota or error notice with no inline
+comments; no review exists at `e2b8d1df` yet (its check-run is pending).
+No GitHub inline comments; the three conversation comments are earlier
+decision summaries. Stale entries (Local Review @ `7128182`, `244f4db`,
+`fcd11d5`) were ruled on by earlier Integrated Reviews and are not
+re-listed. CI at `e2b8d1df`: Validate Documentation and ros-manifest
+tests pass in both runs, Validate Adapter Contract pass in one run and
+pending in the other, Lint (pre-commit) pending in both.
+
+Verified: `docs/roadmap.md:76` reads "all 39 suites";
+`.agent/scripts/tests/test_*.sh` holds 40 on the merged tree.
+
+### Findings
+- [ ] (suggestion, Local Review @ `ba6614e8`) roadmap Direction row for #410 says "all 39 suites"; the merged tree has 40 — `docs/roadmap.md:76`
+
+### False positives
