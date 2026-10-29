@@ -1521,3 +1521,13 @@ Round 4 of PR 3 of 4 (the onboard-project rewrite); `review_progress.sh round` s
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 11:11 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (round 4 of PR 3 of 4 approved with nothing open; the owner already answered the publish checkpoint once this drive with "refresh both, then publish", and the refreshes are in; the branch is not behind main)
+**After**: publish
+**Decision**: publish
+
+PR 3 of 4 (the onboard-project rewrite and the project integration audit) at 680806ec, round 4 (b3b8c3c8) approved. Pushed and opened as a pull request by the host.
