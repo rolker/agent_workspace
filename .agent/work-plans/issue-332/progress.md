@@ -1485,3 +1485,19 @@ Checks: shellcheck --severity=warning clean on the six changed shell files; suit
 **Decision**: address
 
 Owner's answer: "Yes, refresh both, then publish". Round 3 (ed1bcc04) approved with nothing open. Two AGENTS.md wording refreshes (Ask-First, approved now) go in before publish: the project_integration_audit.sh row says that at a parent root the audit reads the chosen instance's settings and repository, checks the instance's registration as well as the parent's, and skips the parent's own files; the Skill Worktree Exception says each allowlisted skill has one worktree type (research and inspiration-tracker workspace only, onboard-project project only). Then a round-4 convergence check and publish.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 11:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aa8647374c5538f24, resume 2 of 3)
+
+**Branch**: feature/issue-332 at `4281cc40`
+**Addressed**: Checkpoint (owner, 2026-10-29 11:01 -04:00) after the Local Review (Pre-Push) at `ed1bcc04`: the two AGENTS.md wording refreshes it approved ("Yes, refresh both, then publish")
+**Commits**: 4281cc40
+
+The round-3 review left nothing open; its LGTM placeholder box is left as it is. No test pins either passage. No-SKIP pre-commit over `main...HEAD` on `4281cc40`: exit 0 in 454 s, the script suite hook passed.
+
+### Actions
+- [x] The `project_integration_audit.sh` Script Reference row: at a parent root the audit reads the settings and repository of `--instance I` (else the default or only instance), checks that instance's registration as well as the parent's, and skips the parent's own files; checked against `SNAME`/`AUD_NAME` and `verify_registration` in the script (4281cc40) — `AGENTS.md` Script Reference
+- [x] The Skill Worktree Exception: each allowlisted skill has one worktree type, `research` and `inspiration-tracker` workspace only, `onboard-project` project only; checked against `skill_worktree_type` in `worktree_create.sh` (4281cc40) — `AGENTS.md` Skill Worktree Exception
