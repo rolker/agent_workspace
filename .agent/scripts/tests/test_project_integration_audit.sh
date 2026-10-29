@@ -578,6 +578,10 @@ cat > "$FACT_BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_GH_LOG"
 if [ "${STUB_GH_RC:-0}" -ne 0 ]; then echo "gh: not logged in" >&2; exit "$STUB_GH_RC"; fi
+# Like the real gh: a repository named without its host goes to $GH_HOST.
+if [ -n "${GH_HOST:-}" ] && ! grep -qE '(^| )github\.com/[^ ]+/[^ ]+( |$)' <<< "$*"; then
+    echo "HTTP 404: Not Found (https://$GH_HOST/api/v3/...)" >&2; exit 1
+fi
 case "$1 $2" in
     "repo view")  printf '%s\n' "$STUB_GH_VIEW" ;;
     "issue list") printf '%s\n' "${STUB_GH_ISSUES:-[]}" ;;
@@ -627,7 +631,7 @@ check "issues yes from the open count (got: $(fev issues))" [ "$(fval issues)" =
 check "prs yes from a closed one when none is open (got: $(fev prs))" \
     [ "$(fval prs)/$(fev prs)" = "yes/none open on github.com/someone/factgh, but some were opened before" ]
 check "gh was asked only to read: repo view, then pr list over every state (got: $(paste -sd'|' "$GH_LOG"))" \
-    [ "$(paste -sd'|' "$GH_LOG")" = "repo view someone/factgh --json hasIssuesEnabled,issues,pullRequests|pr list -R someone/factgh --state all --limit 1 --json number" ]
+    [ "$(paste -sd'|' "$GH_LOG")" = "repo view github.com/someone/factgh --json hasIssuesEnabled,issues,pullRequests|pr list -R github.com/someone/factgh --state all --limit 1 --json number" ]
 check "windows no on Linux (got: $(fev windows))" [ "$(fval windows)/$(fev windows)" = "no/this machine: uname -s is Linux" ]
 check "multi_component yes: two package.xml directories, the tracked node_modules one left out (got: $(fev multi_component))" \
     [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: pkgs/a, pkgs/b" ]
@@ -638,7 +642,7 @@ facts "$FG"
 check "issues enabled but none ever opened: issues no (got: $(fev issues))" \
     [ "$(fval issues)/$(fev issues)" = "no/enabled on github.com/someone/factgh, but none was ever opened" ]
 check "no pull request ever: prs no" [ "$(fval prs)" = "no" ]
-check "and gh issue list was asked over every state" grep -qxF "issue list -R someone/factgh --state all --limit 1 --json number" "$GH_LOG"
+check "and gh issue list was asked over every state" grep -qxF "issue list -R github.com/someone/factgh --state all --limit 1 --json number" "$GH_LOG"
 export STUB_GH_ISSUES='[{"number":1}]'
 facts "$FG"
 check "none open, one closed: issues yes" [ "$(fval issues)" = "yes" ]
@@ -650,10 +654,18 @@ check "2 open pull requests: prs yes" [ "$(fval prs)/$(fev prs)" = "yes/2 open o
 export STUB_GH_RC=1
 facts "$FG"
 check "gh fails (not signed in): issues and prs unknown, saying why (got: $(fev issues))" \
-    bash -c '[ "$1" = unknown ] && [ "$2" = unknown ] && grep -qF "gh repo view someone/factgh failed (exit 1): gh: not logged in" <<< "$3"' \
+    bash -c '[ "$1" = unknown ] && [ "$2" = unknown ] && grep -qF "gh repo view github.com/someone/factgh failed (exit 1): gh: not logged in" <<< "$3"' \
     _ "$(fval issues)" "$(fval prs)" "$(fev issues)"
 check "the audit still exits 0" [ "$AUDIT_RC" -eq 0 ]
 unset STUB_GH_RC
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullRequests":{"totalCount":0}}'
+export STUB_GH_ISSUES='[{"number":1}]' STUB_GH_PRS='[{"number":2}]'
+GH_HOST=ghe.example.invalid facts "$FG"
+check "with GH_HOST naming another server, every gh call still names github.com/<owner>/<repo> (got: $(paste -sd'|' "$GH_LOG"))" \
+    bash -c '[ "$(wc -l < "$1")" -eq 3 ] && ! grep -vqE "(^| )github\.com/someone/factgh( |$)" "$1"' _ "$GH_LOG"
+check "and its answers are github.com's: issues yes, prs yes (got: $(fval issues)/$(fval prs))" \
+    [ "$(fval issues)/$(fval prs)" = "yes/yes" ]
+unset STUB_GH_ISSUES STUB_GH_PRS
 export STUB_GH_VIEW='{"message":"Not Found"}'
 facts "$FG"
 check "an answer without the counts: unknown, not no (got: $(fval issues))" [ "$(fval issues)" = "unknown" ]
@@ -661,7 +673,7 @@ export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullReq
 export STUB_GH_ISSUES='garbage'
 facts "$FG"
 check "a list answer that is not JSON: issues unknown, naming the call (got: $(fev issues))" \
-    bash -c '[ "$1" = unknown ] && grep -qF "gh issue list -R someone/factgh gave no JSON list: garbage" <<< "$2"' _ "$(fval issues)" "$(fev issues)"
+    bash -c '[ "$1" = unknown ] && grep -qF "gh issue list -R github.com/someone/factgh gave no JSON list: garbage" <<< "$2"' _ "$(fval issues)" "$(fev issues)"
 unset STUB_GH_ISSUES STUB_GH_PRS
 STUB_UNAME=MINGW64_NT-10.0-19045 facts "$FG"
 check "uname -s MINGW64: windows yes" [ "$(fval windows)/$(fev windows)" = "yes/this machine: uname -s is MINGW64_NT-10.0-19045" ]

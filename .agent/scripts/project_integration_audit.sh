@@ -338,7 +338,11 @@ if [ "$FACTS" -eq 1 ]; then
         fi
     fi
 
-    # issues and prs: gh repo view counts only open ones, so when none is
+    # issues and prs, always from github.com: the repository is named with
+    # its host, since a bare owner/repo goes to $GH_HOST (or gh's default
+    # host) when that is set, a server the github fact did not name.
+    GH_FULL="github.com/$GH_REPO"
+    # gh repo view counts only open ones, so when none is
     # open, one list call over every state says whether any ever was.
     # ever_opened <issue|pr>: 0 yes, 1 no, 2 unknown (the reason on stdout)
     ever_opened() {
@@ -346,14 +350,14 @@ if [ "$FACTS" -eq 1 ]; then
         # Each call written out, so the read-only check in
         # test_user_tier_guard.sh sees exactly which gh commands run.
         case "$1" in
-            issue) what="gh issue list"; out="$(gh issue list -R "$GH_REPO" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
-            *)     what="gh pr list"; out="$(gh pr list -R "$GH_REPO" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
+            issue) what="gh issue list"; out="$(gh issue list -R "$GH_FULL" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
+            *)     what="gh pr list"; out="$(gh pr list -R "$GH_FULL" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
         esac
         if [ "$rc" -ne 0 ] || ! n="$(jq -er 'length' <<< "$out" 2>/dev/null)"; then
             if [ "$rc" -ne 0 ]; then
-                echo "$what -R $GH_REPO failed (exit $rc): $(head -n1 <<< "$out")"
+                echo "$what -R $GH_FULL failed (exit $rc): $(head -n1 <<< "$out")"
             else
-                echo "$what -R $GH_REPO gave no JSON list: $(head -c 200 <<< "$out")"
+                echo "$what -R $GH_FULL gave no JSON list: $(head -c 200 <<< "$out")"
             fi
             return 2
         fi
@@ -374,12 +378,12 @@ if [ "$FACTS" -eq 1 ]; then
         fact prs unknown "jq is not installed, so gh's answer was not read"
     else
         _RC=0
-        RV="$(gh repo view "$GH_REPO" --json hasIssuesEnabled,issues,pullRequests 2>&1)" || _RC=$?
+        RV="$(gh repo view "$GH_FULL" --json hasIssuesEnabled,issues,pullRequests 2>&1)" || _RC=$?
         RV_TSV=""
         [ "$_RC" -eq 0 ] && RV_TSV="$(jq -r '[.hasIssuesEnabled, .issues.totalCount, .pullRequests.totalCount] | @tsv' <<< "$RV" 2>/dev/null)"
         if ! [[ "$RV_TSV" =~ ^(true|false)$'\t'[0-9]+$'\t'[0-9]+$ ]]; then
-            _WHY="gh repo view $GH_REPO failed (exit $_RC): $(head -n1 <<< "$RV")"
-            [ "$_RC" -eq 0 ] && _WHY="gh repo view $GH_REPO gave no hasIssuesEnabled, issues and pullRequests counts: $(head -c 200 <<< "$RV")"
+            _WHY="gh repo view $GH_FULL failed (exit $_RC): $(head -n1 <<< "$RV")"
+            [ "$_RC" -eq 0 ] && _WHY="gh repo view $GH_FULL gave no hasIssuesEnabled, issues and pullRequests counts: $(head -c 200 <<< "$RV")"
             fact issues unknown "$_WHY"
             fact prs unknown "$_WHY"
         else

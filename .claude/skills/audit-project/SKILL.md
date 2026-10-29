@@ -143,7 +143,7 @@ the value `yes`, `no` or `unknown`:
 
 | Fact | Means |
 |------|-------|
-| `github` | The repository's remote is on github.com; the evidence names `github.com/<owner>/<repo>`, used as `<owner>/<repo>` below |
+| `github` | The repository's remote is on github.com; the evidence names `github.com/<owner>/<repo>`. The gh calls below name that host: `-R github.com/<owner>/<repo>`, `gh repo view github.com/<owner>/<repo>` and `gh api --hostname github.com`, since a bare `<owner>/<repo>` goes to `$GH_HOST` when that is set |
 | `issues` | It uses GitHub issues: enabled, and at least one ever opened |
 | `prs` | It uses pull requests: at least one ever opened |
 | `windows` | This machine runs Windows (`uname -s`) |
@@ -245,13 +245,13 @@ recommend it.
 The GitHub checks only read. The default branch and the rules on it:
 
 ```bash
-gh repo view <owner>/<repo> --json defaultBranchRef --jq .defaultBranchRef.name
-gh api repos/<owner>/<repo>/rules/branches/<default-branch> --jq '.[].type'
-gh label list -R <owner>/<repo> --search "component:" --json name --jq '.[].name'
+gh repo view github.com/<owner>/<repo> --json defaultBranchRef --jq .defaultBranchRef.name
+gh api --hostname github.com repos/<owner>/<repo>/rules/branches/<default-branch> --jq '.[].type'
+gh label list -R github.com/<owner>/<repo> --search "component:" --json name --jq '.[].name'
 ```
 
 The rules call shows rulesets. Classic branch protection is read with
-`gh api repos/<owner>/<repo>/branches/<default-branch>/protection`, which
+`gh api --hostname github.com repos/<owner>/<repo>/branches/<default-branch>/protection`, which
 needs admin access; the item is missing only when neither shows a pull
 request rule. A call that fails (no access, offline) makes its item `not
 checked: <reason>`; a permission problem never fails the run.
@@ -388,14 +388,14 @@ bridge) touch no tracked file, so each is made as soon as the user says yes
 to it, one item at a time. Check access first:
 
 ```bash
-gh api repos/<owner>/<repo> --jq '.permissions.admin'
+gh api --hostname github.com repos/<owner>/<repo> --jq '.permissions.admin'
 ```
 
 Without admin access, say that branch protection and Copilot review need it
 and move on. Labels need write access only:
 
 ```bash
-gh label create "component:<name>" --description "<what it is>" --color "5319E7" -R <owner>/<repo>
+gh label create "component:<name>" --description "<what it is>" --color "5319E7" -R github.com/<owner>/<repo>
 ```
 
 **The fix-now batch and the issues.** Follow `onboard-project`'s steps 7
