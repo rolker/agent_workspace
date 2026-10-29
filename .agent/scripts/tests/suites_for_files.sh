@@ -35,8 +35,9 @@
 #     is that file's repo-relative path (or ends in `/<path>`), or the
 #     token's last `/`-component is the file's basename. An extensionless
 #     basename (`adapter`, `agent`) only counts inside a token that has a
-#     `/` (`./adapter` included), so the plain English word does not. Python `import X` and
-#     `from X import` count as a reference to `X.py`.
+#     `/` (`./adapter` included), so the plain English word does not.
+#     Python `import X` counts as a reference to `X.py`, and
+#     `from X import Y` to `X.py` and `Y.py` (Y may be a module of package X).
 #   - Closure: a suite's own references, expanded only through referenced
 #     files that are code (`.sh`, `.py`, or extensionless with a `#!`
 #     line). Documents are leaves.
@@ -186,7 +187,7 @@ def yaml_scalar(raw):
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_./-]+")
 IMPORT_RE = re.compile(r"^\s*import\s+([A-Za-z0-9_., ]+)")
-FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_.]+)\s+import\b")
+FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_.]+)\s+import\s*\(?\s*([A-Za-z0-9_., ]*)")
 DECL_RE = re.compile(r"^#\s*(covers|scans):\s*(.*?)\s*$")
 
 
@@ -249,7 +250,10 @@ class Index:
                 names = [n.strip().split(" ")[0] for n in m.group(1).split(",")]
             m = FROM_RE.match(line)
             if m:
-                names = [m.group(1)]
+                # `from pkg import mod` may import the module mod.py.
+                names = [m.group(1)] + [
+                    n.strip().split(" ")[0] for n in m.group(2).split(",") if n.strip()
+                ]
             for name in names:
                 for comp in name.split("."):
                     if comp:
