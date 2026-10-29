@@ -54,3 +54,13 @@ issue: 410
 - [ ] Make the fail-safe explicit: a changed file that maps to no suite, a suite with no entry, or a runner/shared-helper/hook-config change runs everything.
 - [ ] List the shared helpers every suite sources, and test that a change to each triggers the full run.
 - [ ] State the measured timing for one or two typical fix commits in the plan, and confirm `make lint` / CI `--all-files` still runs all 39.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 08:13 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (all five open Actions are plan-level requirements: how the suite-to-file map is built, its enforced drift check, the run-everything fail-safe, the shared-helper list and measured timing; none changes what the issue is for or its scope, so /orchestrator's table lets the host answer proceed)
+**After**: issue-actions
+**Decision**: proceed
+
+The Issue Review found the issue well-scoped and in the right repository, with one premise to correct: `test_script_tests_hook_scope.sh` declares only 5 ROOT_READERS entries (out-of-tree prefixes read), not a suite-to-file map, so the map has to be built. All five Actions are carried into the plan-task handoff as plan requirements.
