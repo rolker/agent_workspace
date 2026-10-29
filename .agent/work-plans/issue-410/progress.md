@@ -424,3 +424,20 @@ Round 1's four findings are fixed as claimed: a passed file the mapper's parse r
 - [x] (must-fix) The deletion check reads `git diff --name-only` without `-z`, so git C-quotes a non-ASCII path (`".agent/scripts/caf\303\251.sh"`, confirmed); the quoted path fails the mapper's anchored scope regex and an in-scope deletion no longer forces ALL. Read both deletion queries NUL-delimited (`-z`, `mapfile -d ''`) and add a synthetic non-ASCII deletion case — `.agent/scripts/tests/run_script_tests.sh:135,143`
 - [x] (suggestion) The quoted-scalar `yaml_case` cases never prove `exclude:` was parsed: a mis-stripped exclude regex matches nothing and gives the same selection. Add a probe that depends on the exclude (pass a tracked `.agent/work-plans/` file, expect ALL) — `.agent/scripts/tests/test_run_script_tests.sh:530`
 - [x] (suggestion) `from pkg import mod` maps only `pkg`, not `mod.py`; a suite importing a module that way is not selected when another suite already maps it (no such import in the tree today; `.agent/scripts/lib/` is a package) — `.agent/scripts/tests/suites_for_files.sh:189`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 10:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a59fddc42ed513466, resume 1 of 3)
+
+**PR**: #411 at `79b9f12c`
+**Addressed**: Local Review at `4384d03d` (2026-10-29 10:26 -04:00)
+**Commits**: `1dfaa50d`, `2aafe78c`, `79b9f12c`
+
+### Actions
+- [x] (must-fix) Both deletion queries read NUL-delimited (`git diff -z`, `mapfile -d ''`, git's exit status kept through `wait $!`), so a non-ASCII deleted path is no longer C-quoted; synthetic cases: a commit deleting `café.sh` (case o) and a branch run after one (case q), both failing on the old runner — `.agent/scripts/tests/run_script_tests.sh:131`
+- [x] (suggestion) Exclude probe: the synthetic repo tracks a work-plans file test_alpha.sh names; every yaml_case also passes it (parsed exclude: ALL; lost: test_alpha.sh), and a case with an exclude that excludes nothing shows the probe tells them apart — `.agent/scripts/tests/test_run_script_tests.sh`
+- [x] (suggestion) `from pkg import mod` maps `mod.py` as well as `pkg.py` (one line, parentheses allowed); synthetic suite running `from pkg import mod_y` — `.agent/scripts/tests/suites_for_files.sh`
+
+Hooks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook, in 442 s (the branch changes the runner, so every suite ran). The source entry is a PR-mode `## Local Review`, which `review_progress.sh findings`/`check` do not select, so its three boxes were checked by direct edit in each fix commit.
