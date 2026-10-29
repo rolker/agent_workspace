@@ -1362,3 +1362,30 @@ Reviewers: Claude adversarial ran (four suites green: audit 75, hook scope 149, 
 **Decision**: address
 
 PR 3 of 4 (the onboard-project rewrite), round 1 (taken as 1, counter says 12) at 10aef17f: 7 must-fix (M1 a deliberately un-ignored file reported as hidden; M2 the project worktree created without --project; M3 settings writes refused at a parent root; M4 no branch path for a project without issues; M5 unquoted heredocs run backticks from finding text, empty signature and no identity step in a project session; M6 remote writes missing from the every-write list; M7 seven ids stay warn under instructions=none) and 7 suggestions (S1 substring match on build commands; S2 symlinked root skips the worktrees check; S3 overflow count and an unused helper; S4 GNU-only sed; S5 category-6 fix text wrong for ros2_colcon; S6 missing tests; S7 the AGENTS.md rows). Host's decision on M4: a project with no issue tracker gets its onboarding branch through the skill-worktree path, onboard-project added to the worktree_create.sh skill allowlist (branch skill/onboard-project-<timestamp>, --type project --project <name>); a project that uses issues keeps the issue worktree with the issue the skill opens. All fourteen sent to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 10:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `fdf9cc9c`
+**Addressed**: Local Review (Pre-Push) at `4214aa7c` (2026-10-28 14:25 -04:00)
+**Commits**: 5514f5ff, 503b3afb, 2d68adb6, a1499311, e363dda6, af2d0f42, 559cdc6a, 65810920, b05b5ae3, 732929e8, b7d5d216, a580c161, 591ec23b, ce28b0e8, fdf9cc9c
+
+The fixes were made in a fix pass on 2026-10-28 that checked each box in its fix commit but wrote no entry; this pass verified each against `git diff 4214aa7c..HEAD` and the files, found every one done, changed nothing, and writes the entry. No-SKIP pre-commit over `main...HEAD` (16 files) on `fdf9cc9c`: exit 0 in 522 s, the script suite hook passed.
+
+### Actions
+- [x] M1 negated ignore rule reported as hidden: `check-ignore -q` decides, `-v` only names the rule; test with `*.md` + `!AGENTS.md` (5514f5ff) — `.agent/scripts/project_integration_audit.sh:472`
+- [x] M2 step 7 without `--project`: both worktree commands pass `--project <settings-name>`, with the reason (503b3afb, then a1499311) — `.claude/skills/onboard-project/SKILL.md:324-352`
+- [x] M3 settings writes refused at a parent root: step 1 resolves `<settings-name>` (default or only instance, else ask); every `project_setting.sh` call uses it; the audit gains `--instance`; tests for the parent root, `--instance`, an instance write and the parent name refused (2d68adb6) — `.claude/skills/onboard-project/SKILL.md:115-136`, `.agent/scripts/project_integration_audit.sh:162-176`
+- [x] M4 no branch for a project without issues (host decision): `onboard-project` on the `worktree_create.sh` skill allowlist; `--skill onboard-project --type project --project <name>` makes a worktree of the root's own repository on `skill/onboard-project-<timestamp>`, refusing a root that is not a repository top; skill, start-task, design.md updated; tests in test_project_registry.sh (a1499311; AGENTS.md allowlist in ce28b0e8) — `.agent/scripts/worktree_create.sh:90,555-565`
+- [x] M5 unquoted heredocs and empty signature: quoted `<<'EOF'` bodies, signature appended by `printf` after sourcing the identity in the same shell and stopping when unset; identity sourced in the chain of every step 7 commit (e363dda6) — `.claude/skills/onboard-project/SKILL.md:356-424`
+- [x] M6 remote writes missing from the write list: the list names branch protection and Copilot review, labels and the git-bug bridge, each on its own yes (af2d0f42) — `.claude/skills/onboard-project/SKILL.md:69-82`
+- [x] M7 `instructions=none` claim wider than the code: all ten tracked-file ids go through `emit_offer`, the header lists them and why the rest keep severity; tests for each id (559cdc6a) — `.agent/scripts/project_integration_audit.sh:27-35`
+- [x] S1 build commands matched as substrings: a line's commands split and compared one at a time on word boundaries; tests for `make` vs `cmake --build` (65810920) — `.agent/scripts/project_integration_audit.sh:322-397`
+- [x] S2 symlinked root skips the worktrees check: the deepest existing ancestor is canonicalized and the rest appended; test with a symlinked root and no worktrees/ (b05b5ae3) — `.agent/scripts/project_integration_audit.sh:408-420`
+- [x] S3 overflow count and unused `indent_out`: the count is of kept lines only, helper dropped; more-than-10 cap test (732929e8) — `.agent/scripts/project_integration_audit.sh:300-320`
+- [x] S4 GNU-only sed in `clean()`: awk join (b7d5d216) — `.agent/scripts/project_integration_audit.sh:183`
+- [x] S5 category-6 fix text wrong for ros2_colcon: the build/test setting applies to `single_project`; ros2_colcon refuses them, pointing to its `unused_settings` (a580c161) — `.claude/skills/onboard-project/SKILL.md:151-161`
+- [x] S6 missing tests: session-root (591ec23b), parent root (2d68adb6), negated rule (5514f5ff), the ids under `instructions=none` (559cdc6a), the cap (732929e8); skill text checks (fdf9cc9c) — `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] S7 AGENTS.md rows: `project_setting.sh` names the `registry_require_root` write guard; the audit row narrows the claim to the header's ids and adds `--instance` (ce28b0e8) — `AGENTS.md:408-411`
