@@ -689,3 +689,21 @@ Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 87/0 and `tes
 ### Findings
 - [x] (must-fix) A regression from this diff: Python held in a `.py` file's string literals is no longer read, and nothing falls back. In `s/t/test_q.py`, `subprocess.run([sys.executable, "-c", "import a"])` maps nothing, and so does `subprocess.run(["python3", "-c", "from lib import w"])`. Round 7's piece parser mapped both, and the same text in a `.sh` file still maps a.py. The header documents this as residual risk, but it is a silent miss that a `.py` test running a subprocess can produce. No instance exists in the tree today; I grepped in-scope `.py` string literals. Fix: in `_py_imports`, also hand each `ast.Constant` str holding an import word to `_embedded_imports` (OR its result into the fallback). Then drop that sentence from the header and residual risk, add a synthetic `.py` case, and check that `--dump` stays at 1601 lines — `.agent/scripts/tests/suites_for_files.sh:351-392`
 - [x] (suggestion) An absolute import of a package maps nothing on either path. `import lib` maps nothing for `lib/__init__.py`, and `from lib import w` maps `lib/w.py` but not the package init, which runs too. This gap predates this diff, and no in-scope file imports a package today. Mapping `<name>/__init__.py` by directory basename for each component would make absolute imports consistent with the new relative ones — `.agent/scripts/tests/suites_for_files.sh:348`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 12:27 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af6fdb4891bd180cc, resume 3 of 3)
+
+**PR**: #411 at `a414d207`
+**Addressed**: Local Review at `8ae7b355`
+**Commits**: `a414d207`
+
+### Actions
+- [x] (must-fix) Python held in a `.py` file's strings is read again: in `_py_imports` every `ast.Constant` str (docstrings and f-string literal parts are str constants too, so all three are covered) goes through the piece parser, and its fallback becomes the file's. Removed the header sentence and the residual-risk clause about string literals. Also, a string that ends at a closing `)`, `]` or `}` glued to its quote no longer counts as continued (a glued closer is a Python syntax error). Without that, `run([sys.executable, "-c", "import a"])` would have fallen back instead of mapping — `.agent/scripts/tests/suites_for_files.sh`
+- [x] (suggestion) An absolute import of a package now maps the package's init file on both paths: each dotted component maps its `.py` by basename and the init file of any package directory with that name (`Index.by_pkg`) — `.agent/scripts/tests/suites_for_files.sh`
+
+New synthetic cases in test_run_script_tests.sh (l): a `.py` runner reached by a suite maps str_a.py from `subprocess.run([sys.executable, "-c", "import str_a"])`, str_d.py from its docstring and str_f.py from an f-string's literal part. `from libpkg import w_mod` maps libpkg/w_mod.py and libpkg's init file, `import libpkg2` maps libpkg2's init file, and libpkg/other.py is not mapped. Five of these fail on the round-7 mapper. Real repository `--dump`: unchanged at 1601 lines, compared with the HEAD tree in a temporary worktree; no pair added or removed. Both boxes ticked by direct edit in `a414d207` (PR-mode entry).
+
+Hooks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, script suites and shellcheck included, in 447 s. Direct runs under a private TMPDIR: `test_run_script_tests.sh` 94/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
