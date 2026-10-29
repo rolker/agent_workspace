@@ -674,6 +674,12 @@ export STUB_GH_ISSUES='garbage'
 facts "$FG"
 check "a list answer that is not JSON: issues unknown, naming the call (got: $(fev issues))" \
     bash -c '[ "$1" = unknown ] && grep -qF "gh issue list -R github.com/someone/factgh gave no JSON list: garbage" <<< "$2"' _ "$(fval issues)" "$(fev issues)"
+for _notlist in '{"number":1}' '"x"' '1'; do
+    export STUB_GH_ISSUES="$_notlist"
+    facts "$FG"
+    check "a list answer that is JSON but not a list ($_notlist): issues unknown, never yes (got: $(fval issues))" \
+        bash -c '[ "$1" = unknown ] && grep -qF "gave no JSON list" <<< "$2"' _ "$(fval issues)" "$(fev issues)"
+done
 unset STUB_GH_ISSUES STUB_GH_PRS
 STUB_UNAME=MINGW64_NT-10.0-19045 facts "$FG"
 check "uname -s MINGW64: windows yes" [ "$(fval windows)/$(fev windows)" = "yes/this machine: uname -s is MINGW64_NT-10.0-19045" ]

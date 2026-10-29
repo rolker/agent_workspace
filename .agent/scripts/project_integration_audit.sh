@@ -353,7 +353,7 @@ if [ "$FACTS" -eq 1 ]; then
             issue) what="gh issue list"; out="$(gh issue list -R "$GH_FULL" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
             *)     what="gh pr list"; out="$(gh pr list -R "$GH_FULL" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
         esac
-        if [ "$rc" -ne 0 ] || ! n="$(jq -er 'length' <<< "$out" 2>/dev/null)"; then
+        if [ "$rc" -ne 0 ] || ! n="$(jq -er 'if type == "array" then length else error("not a list") end' <<< "$out" 2>/dev/null)"; then
             if [ "$rc" -ne 0 ]; then
                 echo "$what -R $GH_FULL failed (exit $rc): $(head -n1 <<< "$out")"
             else
