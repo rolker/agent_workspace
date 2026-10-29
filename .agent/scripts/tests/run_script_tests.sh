@@ -53,6 +53,9 @@
 # GIT_INDEX_FILE, and after the unset the diff would read the real index
 # and see nothing. A commit whose only in-scope change is a deletion still
 # does not invoke the hook at all; CI's all-files run is the backstop.
+# Where no default branch can be resolved (CI's shallow checkout has no
+# `main`), a branch run cannot list the branch's deletions, so it runs
+# every suite and says so in one plain line.
 #
 # Exit codes:
 #   0  all suites passed
@@ -130,6 +133,7 @@ fi
 # the index the commit is building.
 deleted_paths=()
 deletion_check_error=""
+no_default_branch=0
 # git_paths_z <array-name> <git args>...: read a `git diff -z` path list
 # into the named array (appending), NUL-delimited so a non-ASCII or
 # otherwise unusual path arrives as itself, not C-quoted; returns git's
@@ -151,8 +155,8 @@ if [[ $files_mode -eq 1 ]]; then
         # Not a commit: a branch run also sees the branch's deletions.
         # shellcheck source=../_resolve_default_branch.sh
         source "$SCRIPT_DIR/../_resolve_default_branch.sh"
-        if ! default_ref=$(resolve_default_branch 2>&1); then
-            deletion_check_error="could not resolve the default branch: $default_ref"
+        if ! default_ref=$(resolve_default_branch 2>/dev/null); then
+            no_default_branch=1
         elif ! git_paths_z deleted_paths diff --name-only -z --no-renames --diff-filter=D "$default_ref...HEAD"; then
             deletion_check_error="git diff $default_ref...HEAD failed"
         fi
@@ -252,6 +256,8 @@ if [[ $files_mode -eq 0 ]]; then
     full_reason="no --files given"
 elif [[ -n "$deletion_check_error" ]]; then
     full_reason="the deletion check failed ($deletion_check_error)"
+elif [[ $no_default_branch -eq 1 ]]; then
+    full_reason="no default branch available here (shallow checkout?), so the branch's deletions cannot be listed"
 elif [[ ${#changed_files[@]} -gt $FILES_MAX ]]; then
     full_reason="${#changed_files[@]} changed files (more than $FILES_MAX)"
 else

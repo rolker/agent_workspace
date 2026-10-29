@@ -8,12 +8,13 @@
 # cover the per-run TMPDIR leak guard and the absolute-/tmp mktemp lint
 # added for issue #304 — (h)–(i) one case per mktemp spelling that escapes
 # TMPDIR, (j) the anchoring that keeps a nested .../tmp/ path green, (k) the
-# recursive listing in the leak message. (l)–(p) cover the --files mode
+# recursive listing in the leak message. (l)–(r) cover the --files mode
 # added for issue #410: (l) suites_for_files.sh's selection rules, (m) a
 # scoped run, (n) the full runs (no --files, the runner in the list, no
 # files, over 200 files), (o) deletions and renames through a real git
 # hook (`git commit -a`, a pathspec commit, a rename out of the hook's
-# scope, and an edit-only control), (p) the branch run.
+# scope, and an edit-only control), (p) the branch run, (q) a non-ASCII
+# deletion on the branch, (r) no default branch to diff against.
 #
 # Every case runs against a scratch copy of a tests directory
 # (run_script_tests.sh's optional [tests-dir] argument), never the real
@@ -892,6 +893,22 @@ if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'full run' && printf '%s' "$o
     pass "(q) branch run: a non-ASCII in-scope deletion earlier on the branch forces a full run"
 else
     fail "(q) branch run: a non-ASCII in-scope deletion earlier on the branch forces a full run (rc=$rc, out=$out)"
+fi
+
+# --- Case (r): no default branch to diff against (CI's shallow checkout
+#     has no `main`): a branch run runs every suite, in one plain line
+#     with no ERROR text. ---
+R="$TMPD/syn_r"
+make_syn_repo "$R" && sgit -C "$R" branch -q -D main
+rm -rf "$TMPD/r_marks" && mkdir -p "$TMPD/r_marks"
+out=$(cd "$R" && unset GIT_INDEX_FILE && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/r_marks" \
+    "$RUNNER" "$R/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
+r_ran=$(find "$TMPD/r_marks" -mindepth 1 | wc -l | tr -d ' ')
+if [[ $rc -eq 0 && "$r_ran" -eq $SYN_N ]] && printf '%s' "$out" | grep -q 'full run.*no default branch available here' \
+        && ! printf '%s' "$out" | grep -q 'ERROR'; then
+    pass "(r) no default branch: a branch run runs all $SYN_N suites, with a plain reason line"
+else
+    fail "(r) no default branch: a branch run runs all $SYN_N suites, with a plain reason line (rc=$rc, ran=$r_ran, out=$out)"
 fi
 
 echo ""
