@@ -427,10 +427,13 @@ EOF
     printf '# scanned\n' > "$r/.agent/docs/scanned.md"
     printf '# unmapped\n' > "$r/.agent/docs/unmapped.md"
     printf 'data\n' > "$t/fixture_data.txt"
+    mkdir -p "$r/.agent/work-plans/issue-1"
+    printf '# plan\n' > "$r/.agent/work-plans/issue-1/plan.md"
     printf 'data\n' > "$t/helper_data.txt"
     write_syn_suite "$t" test_checkpoint_269.sh ':'
     write_syn_suite "$t" test_alpha.sh "# gamma.sh is named only in this comment line.
 $sd
+: .agent/work-plans/issue-1/plan.md  # maps only if the exclude: regex is lost
 bash \"\$SCRIPT_DIR/../alpha.sh\" >/dev/null"
     write_syn_suite "$t" test_other.sh "$sd
 bash \"\$SCRIPT_DIR/../other.sh\" >/dev/null"
@@ -504,9 +507,9 @@ done
 # The hook's files:/exclude: values written as quoted YAML scalars (the
 # same regexes to pre-commit) give the same selection as plain ones; a
 # files: regex that matches no tracked file means the parse is wrong: ALL.
-# yaml_case <label> <expected> <files: value> <exclude: value>
+# yaml_case <label> <expected> <files: value> <exclude: value> [<expected exclude probe, default ALL>]
 yaml_case() {
-    local label="$1" want="$2" fval="$3" xval="$4" r="$TMPD/syn_yaml" got
+    local label="$1" want="$2" fval="$3" xval="$4" xwant="${5:-ALL}" r="$TMPD/syn_yaml" got xgot
     rm -rf "$r"
     make_syn_repo "$r" || { fail "(l) $label: could not build the repository"; return; }
     FVAL="$fval" XVAL="$xval" python3 - "$r/.pre-commit-config.yaml" <<'PY'
@@ -519,10 +522,14 @@ lines = ["        files: " + os.environ["FVAL"] if l.startswith("        files: 
 open(p, "w").write("\n".join(lines) + "\n")
 PY
     got="$(bash "$MAPPER" --tests-dir "$r/.agent/scripts/tests" -- .agent/scripts/beta.sh 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
-    if [[ "$got" == "$want" ]]; then
+    # Exclude probe: test_alpha.sh names a tracked work-plans file, so a
+    # lost exclude: regex would put it in scope and select test_alpha.sh;
+    # parsed, it is out of scope and passing it gives ALL.
+    xgot="$(bash "$MAPPER" --tests-dir "$r/.agent/scripts/tests" -- .agent/work-plans/issue-1/plan.md 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+    if [[ "$got" == "$want" && "$xgot" == "$xwant" ]]; then
         pass "(l) $label"
     else
-        fail "(l) $label: expected '$want', got '$got'"
+        fail "(l) $label: expected '$want' and the exclude probe '$xwant', got '$got' and '$xgot'"
     fi
     rm -rf "$r"
 }
@@ -533,6 +540,9 @@ yaml_case "double-quoted files:/exclude: give the same selection as plain" \
     "test_alpha.sh $BASE_ALWAYS test_noref.sh" "\"${SYN_FILES//\\/\\\\}\"" '"^\\.agent/work-plans/"'
 yaml_case "a plain files: value with a trailing comment gives the same selection" \
     "test_alpha.sh $BASE_ALWAYS test_noref.sh" "$SYN_FILES  # scope" '^\.agent/work-plans/'
+yaml_case "an exclude: regex that excludes nothing changes the exclude probe (the probe has teeth)" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh" "'$SYN_FILES'" "'^nothing-excluded/'" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh"
 yaml_case "a files: regex no tracked file matches yields ALL" "ALL" '^nothing-tracked/' '^\.agent/work-plans/'
 yaml_case "a block-scalar files: value yields ALL" "ALL" '>' '^\.agent/work-plans/'
 
