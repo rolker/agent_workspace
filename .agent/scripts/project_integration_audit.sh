@@ -344,9 +344,11 @@ candidate() {
     done
 }
 BUILD_TOOLS='make|cmake|cargo|npm|pnpm|yarn|go|pytest|python3? -m pytest|colcon|ctest|ninja|meson'
-# commands <text> [tools]: the commands a line names, one per line: its lead
-# (blanks, a list marker and a "$ " prompt dropped) up to a code span, and
-# each code span, split at &&, ||, ; and |, trimmed, a trailing comment and
+# commands <text> [tools]: the commands a line names, one per line: each
+# code span, or on a line with none, the line itself (blanks, a list marker
+# and a "$ " prompt dropped; the prose around a code span, as in "make sure
+# `pytest` passes", is no command), split at &&, ||, ; and |, trimmed, a
+# trailing comment and
 # trailing punctuation dropped. With "tools", only the ones that start with
 # a build or test tool. Plain awk ([ \t], not [[:space:]]), so mawk and BSD
 # awk read it the same.
@@ -356,8 +358,7 @@ commands() {
         lead = $0
         sub(/^[ \t]*([-*][ \t]+)?(\$[ \t]+)?/, "", lead)
         n = 0
-        p = index(lead, "`")
-        seg[++n] = (p ? substr(lead, 1, p - 1) : lead)
+        if (index(lead, "`") == 0) seg[++n] = lead
         rest = $0
         while ((p = index(rest, "`")) > 0) {
             rest = substr(rest, p + 1)

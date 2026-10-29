@@ -279,6 +279,7 @@ cat > "$P2/CLAUDE.md" <<'EOF'
 - Then `make && ninja -C out`.
 - Run `make test` before pushing.
 - $ make test  # the suite
+- make sure `make test` passes.
 EOF
 gitq -C "$P2" init --quiet
 commit_all "$P2"
@@ -291,7 +292,7 @@ check "build=make does not hide cmake --build (line 3), nor ninja after make (li
     [ "$(p2_lines)" = "CLAUDE.md:3 CLAUDE.md:5" ]
 printf 'build=cmake --build build\ntest=make test\n' > "$WS/.agent/projects.d/p2"
 audit "$P2"
-check "build=cmake --build build: make -j4 and a bare make are not its own (got: $(p2_lines))" \
+check "build=cmake --build build: make -j4 and a bare make are not its own; the prose before a code span (make sure, line 8) is no command (got: $(p2_lines))" \
     [ "$(p2_lines)" = "CLAUDE.md:4 CLAUDE.md:5" ]
 
 echo "TEST: category 2, at most 10 candidate lines per file and id, then the count"
