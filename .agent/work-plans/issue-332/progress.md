@@ -1559,3 +1559,30 @@ None open.
 **Decision**: merge
 
 Owner's answer: "Merge". PR 413 (part 3 of 4) at 489a94d8, Integrated Review 489a94d8 with nothing open; CI lint still running at the time of the answer, so the host waits for it before merge_pr.sh.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 14:11 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `03c7a4e6`
+**Commits**: 9c99f086, 274d3423, 562886af, 03c7a4e6
+
+Part 4 of 4 of issue 332 (plan section "PR 4 — `audit-project` takes the hygiene checklist (D4)"), on main at 4bd9ce77. No-SKIP pre-commit over `main...HEAD` on `03c7a4e6`: exit 0 in 618 s, the script suite hook passed (an earlier run on `562886af` failed in `test_user_tier_guard.sh`, which refused every gh call in the read-only audit; fixed in 03c7a4e6).
+
+### Changes
+- [x] `project_integration_audit.sh --facts`: `fact<TAB>value<TAB>evidence` (text: `fact: value -- evidence`), value yes/no/unknown, in the order `github` (origin, else first remote, on github.com), `issues` (enabled and at least one ever opened: `gh repo view`, then `gh issue list --state all` when none is open), `prs` (same with `gh pr list`), `windows` (`uname -s` MINGW/MSYS/CYGWIN), `multi_component` (tracked component manifests in two or more directories; node_modules/vendor/third_party left out; a CMakeLists.txt counts only with project()); at a parent root the chosen instance's repository; gh only reads and is never called without a GitHub remote (9c99f086)
+- [x] Tests in `test_project_integration_audit.sh` (167 pass): synthetic repositories with a stub gh and stub uname; each value, gh failure, malformed answers, local-path and non-GitHub remotes, non-git root, parent-root instance, gh not called without GitHub (9c99f086)
+- [x] `audit-project` SKILL.md rewritten: session_root.sh instead of `project/<repo-name>`; parent root reads, reports and fixes the chosen instance's repository only; step 2 reads `--facts`; the seven checklist items with fix approaches and read-only checks; a facts table of what each fact makes moot, each skipped item reported "skipped: <reason>", unknown makes nothing moot; the stale step 7 replaced by the integration script, report-only; optional step 10 with fix now / open issue / queue in the roadmap / skip, the D6 words, the shared `## Onboarding` section, each queued row a yes, an issue per row when `issues=yes` (274d3423)
+- [x] `onboard-project`: checklist section and its GitHub writes removed; step 2 also runs `--facts`, steps 6 and 7 read `issues`/`github` (ask when unknown); new step 10 offers audit-project (D4) (274d3423)
+- [x] `test_skill_paths.sh` (120 pass): audit-project pins (no `project/<repo-name>` or `project_knowledge`, facts command and table, seven items, the moot reasons, report-only, four answers, D6, cited onboard headings exist, heredocs quoted, bash blocks parse); onboard pins for the checklist's removal, step 10 and the facts; parse and heredoc checks made shared functions (274d3423)
+- [x] `docs/design.md` Sessions and roots bullet for audit-project's job and change-log row (852 lines); `skill_workflows.md` rows; `user_tier_scripts.txt` comment (562886af)
+- [x] `test_user_tier_guard.sh`: the read-only audit may call `gh repo view`, `gh issue list`, `gh pr list` and nothing else, a gh subcommand in a variable refused; the audit's list calls written out (03c7a4e6)
+
+### Host decisions, listed for veto
+- `issues=yes` means at least one issue ever opened, not just enabled (GitHub enables issues by default, so a project that never used them would read yes); this needs `gh issue list`/`gh pr list` beside `gh repo view`, whose counts are open only.
+- The moot table is finer than the plan's line: `issues=no` skips the bridge, `prs=no` skips Copilot, both skip labels; with `prs=no`, branch protection is reported and asked about, not recommended.
+- audit-project's fix-now batch follows onboard-project's steps 7 and 8 by heading (pinned by the test) instead of a second copy; for a project with no issues it uses the `onboard-project` skill worktree, since adding audit-project to the allowlist would need an AGENTS.md edit.
+
+### AGENTS.md (Ask-First, not done)
+- Script Reference row for `project_integration_audit.sh`: "run by `/onboard-project` at the project's root: `[--dir D \| --project N] [--instance I] [--format tsv\|text]`" becomes "run by `/onboard-project` and `/audit-project` at the project's root: `[--dir D \| --project N] [--instance I] [--facts] [--format tsv\|text]`", and before "exits 0 whatever it finds" add: "`--facts` prints instead `fact<TAB>value<TAB>evidence` for `github`, `issues`, `prs`, `windows`, `multi_component` (yes, no or unknown; from the remote, read-only `gh repo view`/`issue list`/`pr list` and `uname`), which `/audit-project` reads to skip the hygiene items they make moot;"
