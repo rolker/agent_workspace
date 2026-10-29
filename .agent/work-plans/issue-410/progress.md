@@ -323,3 +323,13 @@ All three round-3 items are folded into the plan correctly, and the edit introdu
 ### Recommended Actions
 
 - [ ] Suggestion: choose the real-tree unmapped candidate independently of `suites_for_files.sh` (for example, a `.agent/knowledge/*.md` that no suite names), and fail rather than skip when none is found.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 09:36 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (Plan Review round 4 is ready with one suggestion-only box for the implementer; the host repeat limit was reset by the owner's own revise answer at the previous plan checkpoint, so proceed is a host answer again)
+**After**: plan
+**Decision**: proceed
+
+Plan at 481378f5, reviewed ready in round 4 (2d0e6231). The one open suggestion (pick the real-tree unmapped test candidate independently of suites_for_files.sh and fail rather than skip when none is found) is carried into the implement handoff. Owner answers already in the plan: the AGENTS.md row edit is approved; about 2 minutes serial per typical fix commit is accepted; the parallel runner and the slow suites are a follow-up.
