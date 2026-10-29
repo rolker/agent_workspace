@@ -8,12 +8,18 @@
 # cover the per-run TMPDIR leak guard and the absolute-/tmp mktemp lint
 # added for issue #304 — (h)–(i) one case per mktemp spelling that escapes
 # TMPDIR, (j) the anchoring that keeps a nested .../tmp/ path green, (k) the
-# recursive listing in the leak message.
+# recursive listing in the leak message. (l)–(p) cover the --files mode
+# added for issue #410: (l) suites_for_files.sh's selection rules, (m) a
+# scoped run, (n) the full runs (no --files, the runner in the list, no
+# files, over 200 files), (o) deletions and renames through a real git
+# hook (`git commit -a`, a pathspec commit, a rename out of the hook's
+# scope, and an edit-only control), (p) the branch run.
 #
 # Every case runs against a scratch copy of a tests directory
 # (run_script_tests.sh's optional [tests-dir] argument), never the real
 # .agent/scripts/tests/ — so this suite's own pass/fail never depends on
-# which suites currently live in this repo.
+# which suites currently live in this repo. The real-tree checks of the
+# suite map live in test_script_tests_hook_scope.sh.
 #
 # Run: bash .agent/scripts/tests/test_run_script_tests.sh
 
@@ -353,6 +359,250 @@ if [ "$rc" -eq 2 ] && printf '%s' "$out" | grep -q 'test_aaa_nested_leaker.sh' \
 else
     fail "(k) the leak message lists the leaked tree recursively (rc=$rc, out=$out)"
 fi
+
+# ===================================================================
+# Issue #410: --files mode. Every case below builds a synthetic git
+# repository (never the real tree: this file is itself one of the real
+# suites, so running the real tree from here would recurse) with its own
+# .pre-commit-config.yaml hook block, scripts and suites, and asks the real
+# suites_for_files.sh / run_script_tests.sh about it. Suites record that
+# they ran by touching "$SYN_MARKS/<own name>".
+# ===================================================================
+MAPPER="$SCRIPT_DIR/suites_for_files.sh"
+
+# Synthetic git runs ignore the user's global and system config (hooks
+# path, signing, default branch).
+sgit() {
+    GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+        git -c user.name=syn -c user.email=syn@example.invalid \
+            -c commit.gpgsign=false -c init.defaultBranch=main "$@"
+}
+
+# write_syn_suite <tests-dir> <name> <body>: a suite that runs <body> and
+# then marks itself as run.
+write_syn_suite() {
+    local d="$1" name="$2" body="$3"
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf '%s\n' "$body"
+        printf 'touch "${SYN_MARKS:?}/$(basename "${BASH_SOURCE[0]}")"\n'
+    } > "$d/$name"
+    chmod +x "$d/$name"
+}
+
+# make_syn_repo <dir>: the fixture repository, committed on main, with a
+# `feature` branch checked out at the same commit.
+make_syn_repo() {
+    local r="$1" t="$1/.agent/scripts/tests" sd='SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
+    mkdir -p "$t" "$r/.agent/docs" "$r/outside"
+    cat > "$r/.pre-commit-config.yaml" <<'EOF'
+repos:
+  - repo: local
+    hooks:
+      - id: validate-script-tests
+        name: synthetic
+        entry: bash .agent/scripts/tests/run_script_tests.sh --files
+        language: system
+        pass_filenames: true
+        require_serial: true
+        files: ^(\.agent/|Makefile$|\.pre-commit-config\.yaml$)
+        exclude: ^\.agent/work-plans/
+      - id: unrelated
+        name: unrelated
+        entry: "true"
+        language: system
+        files: ^nothing$
+EOF
+    printf 'all:\n\ttrue\n' > "$r/Makefile"
+    printf '#!/usr/bin/env bash\nbash "$(dirname "$0")/beta.sh"\n' > "$r/.agent/scripts/alpha.sh"
+    printf '#!/usr/bin/env bash\necho beta\n' > "$r/.agent/scripts/beta.sh"
+    printf '#!/usr/bin/env bash\necho gamma\n' > "$r/.agent/scripts/gamma.sh"
+    printf '#!/usr/bin/env bash\nbash "$(dirname "$0")/gamma.sh"\ncat "$(dirname "$0")/../docs/scanned.md" >/dev/null\n' > "$r/.agent/scripts/other.sh"
+    printf '#!/usr/bin/env bash\necho lone\n' > "$r/.agent/scripts/lone.sh"
+    printf '#!/usr/bin/env bash\necho helper\n' > "$r/.agent/scripts/_helper.sh"
+    printf '#!/usr/bin/env bash\necho identity\n' > "$r/.agent/scripts/set_git_identity_env.sh"
+    printf 'X = 1\n' > "$r/.agent/scripts/mod_x.py"
+    printf '# scanned\n' > "$r/.agent/docs/scanned.md"
+    printf '# unmapped\n' > "$r/.agent/docs/unmapped.md"
+    printf 'data\n' > "$t/fixture_data.txt"
+    printf 'data\n' > "$t/helper_data.txt"
+    write_syn_suite "$t" test_checkpoint_269.sh ':'
+    write_syn_suite "$t" test_alpha.sh "# gamma.sh is named only in this comment line.
+$sd
+bash \"\$SCRIPT_DIR/../alpha.sh\" >/dev/null"
+    write_syn_suite "$t" test_other.sh "$sd
+bash \"\$SCRIPT_DIR/../other.sh\" >/dev/null"
+    write_syn_suite "$t" test_pyimp.sh "$sd
+PYTHONDONTWRITEBYTECODE=1 python3 - \"\$SCRIPT_DIR/..\" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[1])
+import mod_x
+PY"
+    write_syn_suite "$t" test_noref.sh ':'
+    write_syn_suite "$t" test_scanner.sh '# scans: .agent/docs/ .agent/scripts/tests/'
+    write_syn_suite "$t" test_covered.sh '# covers: .agent/scripts/tests/fixture_data.txt'
+    write_syn_suite "$t" test_always.sh '# covers: ALL'
+    sgit init -q "$r" && sgit -C "$r" add -A && sgit -C "$r" commit -q -m base \
+        && sgit -C "$r" checkout -q -b feature
+}
+
+SYN="$TMPD/syn"
+make_syn_repo "$SYN" || fail "(l) could not build the synthetic repository"
+SYN_T="$SYN/.agent/scripts/tests"
+shopt -s nullglob
+syn_suites=("$SYN_T"/test_*.sh)
+shopt -u nullglob
+SYN_N=${#syn_suites[@]}
+
+# sfor <file>...: the mapper's stdout for the synthetic repo, as one line.
+sfor() { bash "$MAPPER" --tests-dir "$SYN_T" "$@" 2>/dev/null | tr '\n' ' ' | sed 's/ $//'; }
+
+# --- Case (l): the mapper on the synthetic repo. ---
+expect_sel() {  # <label> <expected one-line output> <mapper args>...
+    local label="$1" want="$2" got
+    shift 2
+    got="$(sfor "$@")"
+    if [[ "$got" == "$want" ]]; then
+        pass "(l) $label"
+    else
+        fail "(l) $label: expected '$want', got '$got'"
+    fi
+}
+BASE_ALWAYS="test_always.sh test_checkpoint_269.sh"
+expect_sel "a script maps to a strict subset (its suite, the required suite, '# covers: ALL', and the suite with no references)" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh" -- .agent/scripts/beta.sh
+expect_sel "a comment-only mention does not select a suite (gamma.sh: test_other.sh, not test_alpha.sh)" \
+    "$BASE_ALWAYS test_noref.sh test_other.sh" -- .agent/scripts/gamma.sh
+expect_sel "'import mod_x' selects the suite for mod_x.py" \
+    "$BASE_ALWAYS test_noref.sh test_pyimp.sh" -- .agent/scripts/mod_x.py
+expect_sel "a mapped file under a '# scans:' prefix adds the scanning suite" \
+    "$BASE_ALWAYS test_noref.sh test_other.sh test_scanner.sh" -- .agent/docs/scanned.md
+expect_sel "an exact-file '# covers:' file under tests/ selects its suite, not ALL" \
+    "$BASE_ALWAYS test_covered.sh test_noref.sh test_scanner.sh" -- .agent/scripts/tests/fixture_data.txt
+expect_sel "a changed suite selects itself" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh test_scanner.sh" -- .agent/scripts/tests/test_alpha.sh
+expect_sel "a file outside the hook scope is ignored" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh" -- README.md .agent/scripts/beta.sh
+expect_sel "an out-of-scope deleted path does not force ALL" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh" --deleted outside/gone.sh -- .agent/scripts/beta.sh
+expect_sel "an unmapped in-scope file yields ALL, even under a '# scans:' prefix" "ALL" -- .agent/docs/unmapped.md
+expect_sel "no files yields ALL" "ALL" --
+expect_sel "a deleted in-scope path yields ALL" "ALL" --deleted .agent/scripts/lone.sh -- .agent/scripts/beta.sh
+for trig in .agent/scripts/tests/run_script_tests.sh .agent/scripts/tests/suites_for_files.sh \
+        .agent/scripts/tests/helper_data.txt .pre-commit-config.yaml Makefile \
+        .agent/scripts/set_git_identity_env.sh .agent/scripts/_helper.sh .agent/scripts/_not_yet_written.sh; do
+    expect_sel "full-run trigger $trig yields ALL" "ALL" -- .agent/scripts/beta.sh "$trig"
+done
+NOT_GIT="$TMPD/not_git_tests"
+mkdir -p "$NOT_GIT"
+if [[ "$(bash "$MAPPER" --tests-dir "$NOT_GIT" -- .agent/scripts/beta.sh 2>/dev/null)" == "ALL" ]]; then
+    pass "(l) an error (tests dir outside any git repository) yields ALL"
+else
+    fail "(l) an error (tests dir outside any git repository) yields ALL"
+fi
+
+# run_syn <marks-dir> <runner args>...: run the runner from the synthetic
+# repo root (as pre-commit would), recording which suites ran.
+run_syn() {
+    local marks="$1"
+    shift
+    rm -rf "$marks" && mkdir -p "$marks"
+    (cd "$SYN" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$marks" "$RUNNER" "$@" 2>&1)
+}
+ran() { (cd "$1" && ls | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//'); }
+
+# --- Case (m): the runner in --files mode runs only the chosen suites. ---
+M_MARKS="$TMPD/m_marks"
+out=$(run_syn "$M_MARKS" "$SYN_T" --files .agent/scripts/beta.sh); rc=$?
+if [[ $rc -eq 0 && "$(ran "$M_MARKS")" == "test_alpha.sh test_always.sh test_checkpoint_269.sh test_noref.sh" ]] \
+        && printf '%s' "$out" | grep -q "scoped run, 4 of $SYN_N suites"; then
+    pass "(m) --files runs only the selected suites and says so"
+else
+    fail "(m) --files runs only the selected suites (rc=$rc, ran=$(ran "$M_MARKS"), out=$out)"
+fi
+
+# --- Case (n): full runs. The count comes from the glob, not a literal. ---
+check_full() {  # <label> <runner args>...
+    local label="$1" out rc
+    shift
+    out=$(run_syn "$TMPD/n_marks" "$SYN_T" "$@"); rc=$?
+    local n_ran
+    n_ran=$(find "$TMPD/n_marks" -mindepth 1 | wc -l | tr -d ' ')
+    if [[ $rc -eq 0 && "$n_ran" -eq $SYN_N ]] && printf '%s' "$out" | grep -q "all $SYN_N suites passed"; then
+        pass "(n) $label runs all $SYN_N suites"
+    else
+        fail "(n) $label runs all $SYN_N suites (rc=$rc, ran=$n_ran, out=$out)"
+    fi
+}
+check_full "no --files (make lint / --all-files without a list)"
+check_full "--files naming the runner (what --all-files passes)" --files .agent/scripts/tests/run_script_tests.sh .agent/scripts/beta.sh
+check_full "--files with no files" --files
+many=()
+for _ in $(seq 1 201); do many+=(".agent/scripts/beta.sh"); done
+check_full "--files with more than 200 files" --files "${many[@]}"
+
+# --- Case (o): deletions and renames through a real git hook. pre-commit
+#     would pass only the edited file, so the hook passes just beta.sh; the
+#     runner has to find the deletion itself, from the index the commit is
+#     building (GIT_INDEX_FILE), before it unsets the GIT_* variables. ---
+# hook_case <label> <want: full|scoped> <setup-and-commit commands>
+hook_case() {
+    local label="$1" want="$2" cmds="$3"
+    local r="$TMPD/hook_$label" hooks="$TMPD/hooks_$label" log="$TMPD/hook_$label.log"
+    rm -rf "$r" "$hooks" "$log"
+    make_syn_repo "$r" || { fail "(o) $label: could not build the repository"; return; }
+    mkdir -p "$hooks"
+    printf '#!/usr/bin/env bash\nbash %q %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
+        "$RUNNER" "$r/.agent/scripts/tests" "$log" > "$hooks/pre-commit"
+    chmod +x "$hooks/pre-commit"
+    sgit -C "$r" config core.hooksPath "$hooks"
+    mkdir -p "$TMPD/o_marks"
+    local rc
+    (cd "$r" && export SYN_MARKS="$TMPD/o_marks" && eval "$cmds") >/dev/null 2>&1; rc=$?
+    local outl
+    outl="$(cat "$log" 2>/dev/null)"
+    if [[ $rc -ne 0 || -z "$outl" ]]; then
+        fail "(o) $label: the commit or its hook did not run (rc=$rc, log=$outl)"
+    elif [[ "$want" == full ]] && printf '%s' "$outl" | grep -q 'full run' \
+            && printf '%s' "$outl" | grep -q 'deleted or renamed away'; then
+        pass "(o) $label: full run, the deletion named"
+    elif [[ "$want" == scoped ]] && printf '%s' "$outl" | grep -q 'scoped run'; then
+        pass "(o) $label: scoped run"
+    else
+        fail "(o) $label: expected a $want run; hook log: $outl"
+    fi
+    rm -rf "$r" "$hooks" "$log" "$TMPD/o_marks"
+}
+EDIT_BETA='echo "echo edited" >> .agent/scripts/beta.sh'
+hook_case commit_a full "rm .agent/scripts/other.sh && $EDIT_BETA && sgit commit -q -a -m d"
+hook_case pathspec full "rm .agent/scripts/other.sh && $EDIT_BETA && sgit commit -q -m d -- .agent/scripts/other.sh .agent/scripts/beta.sh"
+hook_case rename_out full "sgit mv .agent/scripts/other.sh outside/other.sh && $EDIT_BETA && sgit add .agent/scripts/beta.sh && sgit commit -q -m d"
+hook_case edit_only scoped "$EDIT_BETA && sgit commit -q -a -m d"
+
+# --- Case (p): a branch run (nothing staged) sees a deletion made earlier
+#     on the branch; a commit with something staged does not. ---
+P="$TMPD/syn_p"
+make_syn_repo "$P" && sgit -C "$P" rm -q .agent/scripts/other.sh && sgit -C "$P" commit -q -m "delete other.sh"
+p_run() {
+    rm -rf "$TMPD/p_marks" && mkdir -p "$TMPD/p_marks"
+    (cd "$P" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/p_marks" \
+        "$RUNNER" "$P/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1)
+}
+out=$(p_run); rc=$?
+if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'full run' && printf '%s' "$out" | grep -q "other.sh' is deleted"; then
+    pass "(p) branch run: an in-scope deletion earlier on the branch forces a full run"
+else
+    fail "(p) branch run: an in-scope deletion earlier on the branch forces a full run (rc=$rc, out=$out)"
+fi
+echo "echo edited" >> "$P/.agent/scripts/beta.sh"
+sgit -C "$P" add .agent/scripts/beta.sh
+out=$(p_run); rc=$?
+if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'scoped run'; then
+    pass "(p) with an edit staged, an earlier branch deletion does not force a full run"
+else
+    fail "(p) with an edit staged, an earlier branch deletion does not force a full run (rc=$rc, out=$out)"
+fi
+
 
 echo ""
 echo "test_run_script_tests: $PASS passed, $FAIL failed"
