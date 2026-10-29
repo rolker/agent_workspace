@@ -735,3 +735,20 @@ Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 94/0 and `tes
 
 ### Findings
 - [x] (must-fix) Bytes literals in a `.py` file are not read. `_py_imports` hands only `str` constants to the piece parser, so `subprocess.run([sys.executable, "-"], input=b"import a\n")` maps nothing and does not fall back, and neither does `subprocess.run([sys.executable, "-c", b"import a"])`. Both are valid Python, and bytes stdin is a common way for a test to feed Python to a child interpreter. No instance exists in the tree today; I grepped in-scope `.py` files. Fix: also take `bytes` constants, decoded with `errors="replace"`, and add a synthetic `input=b"..."` case — `.agent/scripts/tests/suites_for_files.sh:386`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 12:45 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #411 at `602b9e64`
+**Addressed**: Local Review at `73d86b66` (2026-10-29 12:30 -04:00)
+**Commits**: 602b9e64
+
+### Actions
+- [x] (must-fix) Bytes literals in a `.py` file are now read: `_py_imports` hands `bytes` constants, decoded with `errors="replace"`, to the same piece parser as `str` constants; header comment and docstring updated; synthetic `input=b"import str_b\n"` case added beside the string-literal cases in `test_run_script_tests.sh` (failed on the previous mapper, 94/95; passes after, 95/95) — `.agent/scripts/tests/suites_for_files.sh:388`
+
+### Notes
+- The source is a PR-mode `## Local Review` entry, which `review_progress.sh findings` does not select, so its box was ticked by direct edit inside the fix commit 602b9e64, as in earlier passes.
+- `suites_for_files.sh --dump` on the real tree: 1601 lines, byte-identical to the previous mapper's output.
+- Fix commit made with `SKIP=validate-script-tests` (dispatched-pass rule); then `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook including the script-test suite (586 s, exit 0).
