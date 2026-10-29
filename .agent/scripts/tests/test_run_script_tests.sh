@@ -422,6 +422,8 @@ EOF
     printf '#!/usr/bin/env bash\necho helper\n' > "$r/.agent/scripts/_helper.sh"
     printf '#!/usr/bin/env bash\necho identity\n' > "$r/.agent/scripts/set_git_identity_env.sh"
     printf 'X = 1\n' > "$r/.agent/scripts/mod_x.py"
+    printf '#!/usr/bin/env bash\necho tool\n' > "$r/.agent/scripts/tool"
+    chmod +x "$r/.agent/scripts/tool"
     printf '# scanned\n' > "$r/.agent/docs/scanned.md"
     printf '# unmapped\n' > "$r/.agent/docs/unmapped.md"
     printf 'data\n' > "$t/fixture_data.txt"
@@ -438,6 +440,8 @@ import sys
 sys.path.insert(0, sys.argv[1])
 import mod_x
 PY"
+    write_syn_suite "$t" test_dotslash.sh "$sd
+(cd \"\$SCRIPT_DIR/..\" && ./tool >/dev/null)"
     write_syn_suite "$t" test_noref.sh ':'
     write_syn_suite "$t" test_scanner.sh '# scans: .agent/docs/ .agent/scripts/tests/'
     write_syn_suite "$t" test_covered.sh '# covers: .agent/scripts/tests/fixture_data.txt'
@@ -475,6 +479,8 @@ expect_sel "a comment-only mention does not select a suite (gamma.sh: test_other
     "$BASE_ALWAYS test_noref.sh test_other.sh" -- .agent/scripts/gamma.sh
 expect_sel "'import mod_x' selects the suite for mod_x.py" \
     "$BASE_ALWAYS test_noref.sh test_pyimp.sh" -- .agent/scripts/mod_x.py
+expect_sel "an extensionless script run as './tool' selects its suite" \
+    "$BASE_ALWAYS test_dotslash.sh test_noref.sh" -- .agent/scripts/tool
 expect_sel "a mapped file under a '# scans:' prefix adds the scanning suite" \
     "$BASE_ALWAYS test_noref.sh test_other.sh test_scanner.sh" -- .agent/docs/scanned.md
 expect_sel "an exact-file '# covers:' file under tests/ selects its suite, not ALL" \

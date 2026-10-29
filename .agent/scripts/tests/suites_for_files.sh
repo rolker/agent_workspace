@@ -35,7 +35,7 @@
 #     is that file's repo-relative path (or ends in `/<path>`), or the
 #     token's last `/`-component is the file's basename. An extensionless
 #     basename (`adapter`, `agent`) only counts inside a token that has a
-#     `/`, so the plain English word does not. Python `import X` and
+#     `/` (`./adapter` included), so the plain English word does not. Python `import X` and
 #     `from X import` count as a reference to `X.py`.
 #   - Closure: a suite's own references, expanded only through referenced
 #     files that are code (`.sh`, `.py`, or extensionless with a `#!`
@@ -227,6 +227,9 @@ class Index:
             if not tok:
                 continue
             t = tok[2:] if tok.startswith("./") else tok
+            # `./adapter` names the extensionless script as surely as
+            # `scripts/adapter` does, so the slash test reads the raw token.
+            slashed = "/" in tok
             if t in self.by_path:
                 found.add(t)
             if "/" in t:
@@ -237,7 +240,7 @@ class Index:
                     if tail in self.by_path:
                         found.add(tail)
             last = t.rsplit("/", 1)[-1]
-            if last in self.by_base and ("." in last or "/" in t):
+            if last in self.by_base and ("." in last or slashed):
                 found |= self.by_base[last]
         for line in body.splitlines():
             names = []
