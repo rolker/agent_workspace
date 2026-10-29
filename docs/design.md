@@ -226,7 +226,9 @@ where that run is tracked.
   skip, and every write waits for a yes; a re-run re-asks nothing unless told (D5). The fix-now batch
   is one pull request from a project worktree: on the onboarding issue's `feature/issue-<N>`, or, for a
   project that uses no issues, on a `skill/onboard-project-<timestamp>` branch (`onboard-project` is on
-  `worktree_create.sh`'s skill allowlist; its project skill worktree is of the root's own repository). The audit,
+  `worktree_create.sh`'s skill allowlist; its project skill worktree is of the root's own repository). At a
+  parent root the run reads, reports and fixes one repository, the chosen instance's: the batch can only
+  write there, so the parent root's own files are not audited. The audit,
   `registration_verify.sh` and `project_setting.sh` are promoted to the user tier for it.
 - Skills reach project sessions through the `agent-workspace` Claude Code plugin, whose marketplace is
   the workspace checkout (`.claude-plugin/`). It ships every skill that declares
@@ -784,6 +786,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-28 | Sessions and roots, Registry and adapters, Open questions | Registration is built (#332 PR 2): `register_project.sh` (register, adopt a hand-written line, `--remove`, `--detect`, `--dry-run`, rollback of a failed registration) and its read-only gate `registration_verify.sh` replace "Registration is by hand"; each type's `registration.conf` sits beside the 12-verb contract, checked by `validate_adapter.sh`; the Sessions and roots registration bullet moves from Target to Now; the Registry Target names the two steps (register from the workspace, onboard at the root); C4 keeps only one project on two machines and mixed-flavour projects | #332 | 819 |
 | 2026-10-28 | Documentation layers, Sessions and roots, Registry and adapters | Onboarding is built (#332 PR 3): Sessions and roots names the one exception to working only under the root (a project session writes its own project's settings file through `project_setting.sh set`, guarded to that project) and gains the onboarding bullet (`/agent-workspace:onboard-project`, the footprint questions, `project_integration_audit.sh`, offers only with `instructions=tracked`, the four answers and the `## Onboarding` roadmap section, every write waits for a yes); the Registry Target says both steps are built; Documentation layers says onboarding offers a project's Direction section. Sessions and roots is 101 lines, past the 60-line prompt: the two bullets name how the session-root rule is bent and what the project side does, which no single script header shows, so they stay; the onboarding steps themselves live in the skill | #332 | 836 |
 | 2026-10-28 | Sessions and roots | Review fix: the onboarding bullet says where the fix-now batch goes, the onboarding issue's feature branch or, for a project that uses no issues, a `skill/onboard-project-<timestamp>` branch from a project skill worktree (`onboard-project` joins `worktree_create.sh`'s skill allowlist) | #332 | 840 |
+| 2026-10-29 | Sessions and roots | Review fix (host decision, listed for the owner's veto): at a parent root onboarding reads, reports and fixes the chosen instance's repository alone (audit categories 1 to 5 read only the instance; category 6 verifies the instance's registration beside the parent's) and does not audit the parent root's own files | #332 | 843 |
 
 ## Glossary
 
