@@ -628,3 +628,19 @@ Scope: round 5's must-fix and the fix diff `0de3699a..92a807a7` (`fac2fe43`). Wh
 Synthetic `shape_case` cases in test_run_script_tests.sh (l), each a lone suite reading anchor.txt: the three `\` header shapes, the dangling comma, a clean list with a glued string, a `from pkg` header glued to its import and an unreadable import line each select the suite for a .py it never names (6 of these fail on the round-5 mapper); an escaped-newline import, the prose message and `vcs import --skip-existing` do not. Real repository `--dump`: unchanged, 1601 lines, diffed before and after; no real file takes the fallback. Both boxes ticked by direct edit in `63a57508` (PR-mode entry).
 
 Hooks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook (script suites and shellcheck included), in 531 s. Direct run under a private TMPDIR: `test_run_script_tests.sh` 76/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 11:57 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent aa4121f4bda159108, resume 1 of 3)
+
+**PR**: #411 at `dae905cf`
+**Depth**: Deep (reason: round 7 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: round 6's two findings and the fix diff `92a807a7..dae905cf` (`63a57508`). What holds: the three `\` header shapes and the dangling comma (`"import a, "'b'`) now fall back; glued strings, a mid-piece `import`, `\n`-escaped imports and `${#a[@]}` behave as claimed. The prose rule (NOT_PYTHON_RE) has no valid Python counter-example: `import a as b`, `import a  as  b, c` and `import a ,b` map exactly; `import a. b` and `import a .b` (valid, a.b) fall back; every input it dismisses (`import a b`, `import failed for layer`, `vcs import --x`, `import a<TAB>b`) is a syntax error. The real repository's `--dump` is unchanged at 1601 lines. Static analysis: shellcheck is clean on both files. Governance and plan drift: no change since round 5. Claude adversarial: a lead probe through `Index.refs`; no fresh subagent this round, because this is a resumed narrow check. Cross-model: skipped (round-7 convergence check, per handoff). Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 76/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers. Convergence: round 7, 1 mechanical must-fix (prev 1). `review_progress.sh verdict` says recommended (fix and ship).
+
+### Findings
+- [ ] (must-fix) A relative import written without a blank before `import` is valid Python but silently maps nothing. `from .import a` maps nothing (`ast.parse` gives ImportFrom level=1, names a), and so do `from ..import a, b` and `from .import(a)`. IMPORT_WORD_RE's lookbehind excludes a word preceded by `.`, so the word is not counted; FROM_RE needs `\s+` before `import`; FROM_HEAD_RE does not match either. As a result neither the mapping nor the fallback fires. No instance exists in the tree today. Fix: let FROM_RE take a dots-only module with `\s*` before the keyword (`from\s*(\.+)\s*import` beside the current form), or at least count a `.import` word whose dot is not preceded by a word character, so it falls back. Add a synthetic `from .import` case and check that `--dump` stays at 1601 lines — `.agent/scripts/tests/suites_for_files.sh:226,242`
