@@ -1,6 +1,6 @@
 ---
 name: audit-project
-description: Check a project repo against workspace and project-level conventions. Reports governance coverage, documentation gaps, and test status.
+description: Check the project at this session's root against workspace and project conventions. Reports governance coverage, documentation and test gaps, the hygiene checklist (pre-commit, CI, branch protection, Copilot review, component labels, git-bug bridge, license headers; items the project's facts make moot are reported skipped) and the integration audit. Report-only; an optional final step answers each finding with fix now, open issue, queue in the roadmap, or skip, every write after a yes.
 session_scope: project
 ---
 
@@ -30,49 +30,132 @@ never reaches a tool call's shell (ADR-0016).
 optional — `--check` and ADR-0016 both say so — and on a machine without it
 the file does not exist. A bare `cat` would leave `$WS_ROOT` empty and turn
 every command below into `/.agent/scripts/...`, which is worse than the
-relative path it replaced. With the fallback, `$WS_ROOT` is `.` and a
-workspace session behaves exactly as it did before this idiom existed.
+relative path it replaced. With the fallback, `$WS_ROOT` is `.` and the
+root check in step 1 says this is no project session.
 
 ## Usage
 
 ```
-/audit-project [<repo-name>]
+/agent-workspace:audit-project
 ```
 
-If no repo name is given, audit the project repo in the current directory
-(when working in a project worktree).
+No repository argument: the project audited is the one whose root this
+session was started in (at a parent root, the instance chosen in step 1).
 
 ## Overview
 
-**Lifecycle position**: Utility/periodic — run before or after repo work to
-check project-level governance. Not tied to the per-issue lifecycle.
+**Lifecycle position**: Utility/periodic — run before or after work on the
+project, and offered at the end of `onboard-project` (#332 D4). Not tied to
+the per-issue lifecycle.
 
-Check a project repo against workspace standards and its own governance docs.
-Reports what's present, what's missing, and what may have drifted. Useful
-for onboarding to a repo, identifying documentation gaps, or verifying
-governance adoption.
+Check the project against workspace standards and its own governance docs:
+governance coverage, the agent guide, component metadata, tests,
+documentation, the hygiene checklist and the integration audit (how the
+project and the workspace fit together). Reports what's present, what's
+missing, what was skipped and why, and what may have drifted.
 
 **Not the same as `audit-workspace`** — that checks workspace-level governance.
-This checks a single project repo.
+This checks one project.
+
+**Report-only by default.** Steps 1 to 9 read and report; they write
+nothing. Step 10 is optional and offered at the end: it answers each
+finding with fix now, open issue, queue in the roadmap, or skip, and
+**every write waits for a yes**. The writes step 10 can make:
+
+- changes to the GitHub repository itself: branch protection and Copilot
+  review (`gh api`), labels (`gh label create`), and a git-bug bridge
+  (`git bug bridge new`, then a first pull);
+- a project worktree and its branch, files and commits on it (an
+  `## Onboarding` roadmap section among them), and a push;
+- an issue and a pull request on the project's repository.
+
+Each is shown before it is made, and made only on the user's yes to that
+write: a yes to the batch, or to one item, covers nothing else.
 
 ## Steps
 
-### 1. Identify the repo
-
-If a repo name is given, find it under `project/<repo-name>`.
-If not, use the current directory. Verify it's a valid project repo
-(has at least a recognizable project structure such as a build file,
-source directory, or manifest).
+### 1. Resolve the project
 
 ```bash
-# Find repo location
-find project/<repo-name> -maxdepth 0 -type d 2>/dev/null
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/session_root.sh"
 ```
 
-### 2. Check governance coverage
+It prints `root=`, `type=` and `project=`. Keep `project=` as `<name>` and
+`root=` as `<repo-dir>` for the rest of the run.
+
+- **Exit 1** (this directory is no session's root, or a session here does
+  not read the root's settings): stop and report its message. If the
+  project is not registered, say so: registration comes first, from a
+  workspace session: `$WS_ROOT/.agent/scripts/register_project.sh <path>`,
+  run in the workspace checkout.
+- **`type=workspace`**: stop. This skill audits a project from a session
+  started at the project's root, not from the workspace; register the
+  project first if it is not, then start a session there.
+
+**A parent root** (a root that groups instances, such as one per ROS
+distro) has no settings, adapter or repository content of its own: they
+belong to its instances. Find out whether `<name>` is one from its
+registered type, and list its instances:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+source "$WS_ROOT/.agent/scripts/_project_registry.sh"
+registry_lookup "$WS_ROOT" <name> | cut -f1
+registry_instances "$WS_ROOT" <name>
+registry_default_instance "$WS_ROOT" <name>
+```
+
+- **A type other than `project`**: `<name>` is no parent root.
+  `<settings-name>` below is `<name>`.
+- **Type `project`, no instance listed**: stop. There is no repository to
+  audit yet; say to register an instance first, from a workspace session:
+  `$WS_ROOT/.agent/scripts/register_project.sh <path> --parent <name>`.
+- **Type `project`, instances listed**: `<settings-name>` is the instance
+  audited. Propose the one `registry_default_instance` prints (the default,
+  else the only instance); when it prints an error instead (several
+  instances, no default), ask which. Say plainly that this run reads,
+  reports and fixes the chosen instance's repository alone, and that the
+  parent root's own files are not audited, because a fix can only be
+  written in the instance's repository. `<repo-dir>` is the instance's
+  root:
+
+  ```bash
+  WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+  source "$WS_ROOT/.agent/scripts/_project_registry.sh"
+  registry_lookup "$WS_ROOT" <settings-name> | cut -f2
+  ```
+
+Every check below reads `<repo-dir>`.
+
+### 2. Read the facts
+
+The facts decide which hygiene items are moot (step 8). They are read, not
+guessed:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format text [--instance <settings-name>]
+```
+
+`--instance` only at a parent root. Each line is `fact: value -- evidence`,
+the value `yes`, `no` or `unknown`:
+
+| Fact | Means |
+|------|-------|
+| `github` | The repository's remote is on github.com; the evidence names `github.com/<owner>/<repo>`, used as `<owner>/<repo>` below |
+| `issues` | It uses GitHub issues: enabled, and at least one ever opened |
+| `prs` | It uses pull requests: at least one ever opened |
+| `windows` | This machine runs Windows (`uname -s`) |
+| `multi_component` | Component manifests in two or more directories; the evidence lists them |
+
+`unknown` (gh missing or not signed in, no instance chosen) makes nothing
+moot: the item is checked, and its line says the fact could not be read.
+
+### 3. Check governance coverage
 
 Using the governance template (`$WS_ROOT/.agent/templates/project_governance.md`)
-as reference, check what exists:
+as reference, check what exists in `<repo-dir>`:
 
 | Item | Status | Path |
 |---|---|---|
@@ -85,7 +168,7 @@ as reference, check what exists:
 This is a **coverage report**, not a mandate — not every repo needs full
 governance. But missing items should be noted.
 
-### 3. Check agent guide quality
+### 4. Check agent guide quality
 
 If `.agents/README.md` exists, check it against the template
 (`$WS_ROOT/.agent/templates/project_agents_guide.md`):
@@ -96,7 +179,7 @@ If `.agents/README.md` exists, check it against the template
 - Do listed file paths actually exist in the repo?
 - Does the component inventory match actual source modules?
 
-### 4. Check project metadata
+### 5. Check project metadata
 
 For each component/module in the repo:
 
@@ -105,40 +188,105 @@ For each component/module in the repo:
 - Does it have a license?
 - Is the maintainer field populated?
 
-### 5. Check test status
+### 6. Check test status
 
 For each component:
 
 - Do test files exist? (`test/`, `tests/`, `*_test.py`, `*_test.cpp`, `*_test.go`, `*.test.*`)
-- If available, run or report last known test results:
+- Report test existence, not test quality. Run the tests only if the user
+  asks, with the project's own test command:
 
 ```bash
-make test
-# or: npm test, pytest, cargo test, etc.
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/project_setting.sh" get <settings-name> test
 ```
 
-Report test existence and pass/fail, not test quality.
-
-### 6. Check documentation
+### 7. Check documentation
 
 - Does a top-level `README.md` exist?
 - Do components have individual READMEs?
 - Are entry points and interfaces documented?
 - Are public APIs documented?
 
-### 7. Cross-reference with workspace
+### 8. Hygiene checklist
 
-- Is this repo listed in a workspace config or manifest file?
-- Does the workspace's `.agent/project_knowledge/` symlink (pointing to
-  `.agents/workspace-context/`) include content from this repo?
+Every item gets one status: **in place**, **missing**, **skipped:
+<reason>**, or **not checked: <reason>** (a check that could not run, such
+as a GitHub call without access). An item is never dropped from the report.
 
-## Report Format
+| Item | Check | Fix approach |
+|------|-------|-------------|
+| **Pre-commit config** | `.pre-commit-config.yaml` exists at the root | Write one for the project's languages, with `no-commit-to-branch` set to the default branch; the workspace has no template, and its own `$WS_ROOT/.pre-commit-config.yaml` is an example |
+| **CI workflow** | `.github/workflows/*.yml` with build and test steps | Write a workflow on the default branch that runs the project's own build and test commands (`project_setting.sh get <settings-name> build` and `test`); the workspace has no template |
+| **Branch protection** | A rule requires pull requests on the default branch (`pull_request` in the branch's rules) | `gh api` — needs admin access |
+| **Copilot auto-review** | Copilot reviews pull requests (`copilot_code_review` in the branch's rules) | `gh api` — needs admin access |
+| **Component labels** | `component:` labels, one per component | `gh label create` per component |
+| **git-bug bridge** | `git bug bridge`, run in `<repo-dir>`, lists a GitHub bridge | `git bug bridge new` and a first pull |
+| **License headers** | Source files carry copyright and license headers | Too invasive for a batch: always open issue or queue |
+
+**What the facts make moot.** Skip these items and report each as
+`skipped: <reason>`, the reason naming the fact:
+
+| Fact | Items skipped | Reason line |
+|------|---------------|-------------|
+| `github=no` | Branch protection, Copilot auto-review, Component labels, git-bug bridge | `skipped: no GitHub remote (github=no)` |
+| `issues=no` | git-bug bridge (it carries issues) | `skipped: the project uses no GitHub issues (issues=no)` |
+| `prs=no` | Copilot auto-review (it reviews pull requests) | `skipped: the project uses no pull requests (prs=no)` |
+| `issues=no` and `prs=no` | Component labels (they label issues and pull requests) | `skipped: the project uses no issues or pull requests (issues=no, prs=no)` |
+| `multi_component=no` | Component labels | `skipped: one component (multi_component=no)` |
+| `windows=yes` | git-bug bridge, and shell-script hooks in the pre-commit item (offer language-native hooks instead) | `skipped: Windows (windows=yes)` |
+
+Also skip, with its reason, the git-bug bridge when git-bug is not
+installed (`git bug version` fails): `skipped: git-bug is not installed`.
+With `prs=no`, branch protection that requires pull requests would change
+how the project works: report the item, and in step 10 ask rather than
+recommend it.
+
+The GitHub checks only read. The default branch and the rules on it:
+
+```bash
+gh repo view <owner>/<repo> --json defaultBranchRef --jq .defaultBranchRef.name
+gh api repos/<owner>/<repo>/rules/branches/<default-branch> --jq '.[].type'
+gh label list -R <owner>/<repo> --search "component:" --json name --jq '.[].name'
+```
+
+The rules call shows rulesets. Classic branch protection is read with
+`gh api repos/<owner>/<repo>/branches/<default-branch>/protection`, which
+needs admin access; the item is missing only when neither shows a pull
+request rule. A call that fails (no access, offline) makes its item `not
+checked: <reason>`; a permission problem never fails the run.
+
+### 9. Integration audit
+
+How the project and the workspace fit together, report-only (the same
+script `onboard-project` runs):
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text [--instance <settings-name>]
+```
+
+Report its findings as printed, grouped by category, with the count.
+Category 2 lines are candidates: quote each in its context; when one
+really disagrees with the workspace's process, **flag it with both sides
+quoted and never pick one** (Governance Layering in
+`$WS_ROOT/.agent/knowledge/principles_review_guide.md`). The detail of
+each finding in categories 1 and 3 to 6 names its fix.
+
+### The report
 
 ```markdown
-## Project Audit: <repo-name>
+## Project Audit: <settings-name>
 
-**Location**: `project/<repo-name>`
+**Location**: `<repo-dir>`
 **Components**: N components (list)
+
+### Facts
+
+| Fact | Value | Evidence |
+|---|---|---|
+| github | yes / no / unknown | ... |
+| ... | ... | ... |
 
 ### Governance Coverage
 
@@ -166,22 +314,123 @@ creating one with the project_agents_guide.md template">
 | Top-level README | Present / Missing |
 | ... | ... |
 
+### Hygiene
+
+| Item | Status |
+|---|---|
+| Pre-commit config | in place / missing / skipped: <reason> / not checked: <reason> |
+| ... | ... |
+
 ### Workspace Integration
 
-| Check | Status |
-|---|---|
-| Listed in workspace manifest | Yes / No |
-| ... | ... |
+<the integration audit's findings by category, and its count>
 
 ### Recommended Actions
 
 - [ ] <specific action items>
 ```
 
+Each line says whether it is the current state or still to do.
+
+### 10. Optional: answer the findings
+
+After the report, offer once: answer the findings now? Nothing is written
+unless the user says yes, and then each write still waits for its own yes.
+A no ends the run with the report.
+
+Every finding the user wants answered gets one of four answers:
+
+- **Fix now** — made now (a GitHub setting) or added to the batch below.
+- **Open issue** — an issue on the project describing it.
+- **Queue in the roadmap** — a row in the project's roadmap, below.
+- **Skip** — nothing done, nothing tracked.
+
+Owner, verbatim (#332 D6): "all that work should be cued up in the roadmap,
+if the user approves, so that it can get tackled maybe as other issues are
+resolved".
+
+**Queue in the roadmap.** Queued items become rows of the same
+`## Onboarding` section `onboard-project` writes, in the project's roadmap
+(an existing `docs/roadmap.md` or `ROADMAP.md`, else a new
+`docs/roadmap.md`); a section already there gains rows:
+
+```markdown
+## Onboarding
+
+Queued by /agent-workspace:onboard-project or /agent-workspace:audit-project
+on <date>; picked up like any other open roadmap row.
+
+| Item | Issue |
+|------|-------|
+| <the finding, in plain words> | <#N, or none> |
+```
+
+Each queued row is its own yes. When the project uses issues (`issues=yes`),
+each row gets its issue; with `issues=no` the cell says `none`; when the
+fact is `unknown`, ask. Writing the section is itself a write: it waits for
+the same yes and rides in the same batched pull request as the fix-now
+items.
+
+**A project that takes no footprint.** Read its `instructions` setting:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/project_setting.sh" get <settings-name> instructions
+```
+
+With `instructions=none`, an item that adds or changes a tracked file is
+offered as open issue or skip only, and queue in the roadmap is not offered
+**until the records lookup (#393) lands** (such a project keeps its roadmap
+with its records): say so.
+
+**GitHub settings** (branch protection, Copilot review, labels, git-bug
+bridge) touch no tracked file, so each is made as soon as the user says yes
+to it, one item at a time. Check access first:
+
+```bash
+gh api repos/<owner>/<repo> --jq '.permissions.admin'
+```
+
+Without admin access, say that branch protection and Copilot review need it
+and move on. Labels need write access only:
+
+```bash
+gh label create "component:<name>" --description "<what it is>" --color "5319E7" -R <owner>/<repo>
+```
+
+**The fix-now batch and the issues.** Follow `onboard-project`'s steps 7
+and 8 as written (`$WS_ROOT/.claude/skills/onboard-project/SKILL.md`,
+"7. Make the fix-now batch — one pull request" and "8. Open the issues"):
+show the whole batch and ask once more, one project worktree, one commit
+per logical change with the identity sourced in the same command chain, the
+branch pushed and the pull request opened only on a yes, signed issues and
+pull request bodies from quoted heredocs. With these changes:
+
+- the issue and pull request title is "Fix what the project audit found";
+- an issue body ends "Found by the `audit-project` skill.";
+- the worktree: on the issue's `feature/issue-<N>` when the project uses
+  issues; for a project that uses none, the `onboard-project` skill
+  worktree (`--skill onboard-project`), because this hygiene work is
+  onboarding work and `onboard-project` is the project skill on
+  `worktree_create.sh`'s allowlist;
+- `github=no`: leave the edits on the branch, push nothing, and say where
+  the branch is.
+
+Generated CI workflows and pre-commit configs must work in the project on
+their own, with no dependency on workspace scripts or paths.
+
+End with what was done, what is still to do (issue links, queued rows) and
+what was skipped, each line saying which. Look every link up with `gh`;
+never build a URL by hand.
+
 ## Guidelines
 
-- **Report, don't fix** — identify gaps, don't fill them. Fixes should be
-  separate issues.
+- **Report-only by default** — steps 1 to 9 write nothing; step 10 is
+  optional and every write in it waits for a yes.
+- **One project, the session's own** — no repository argument; another root
+  is audited from a session started there.
+- **Skipped, never dropped** — every checklist item has a status line, a
+  skipped one with the fact that made it moot.
 - **Coverage, not quality** — check what exists, not whether it's good.
   "README exists" is objective; "README is well-written" is subjective.
 - **Flag adoption level** — reference the governance template's adoption

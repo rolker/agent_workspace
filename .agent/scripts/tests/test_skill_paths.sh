@@ -5,7 +5,8 @@
 # replacement of the old what-next skill by the sit-rep (#389), and the
 # orchestrator skill, the host's standing rules, the run-issue
 # checkpoint text they rely on, and the roadmap's two Paths paragraphs
-# (#321), and the onboard-project rules the owner gave (#332).
+# (#321), and the onboard-project and audit-project rules the owner gave
+# (#332).
 #
 # A skill whose SKILL.md declares `session_scope: project` or `both` can run
 # in a session started in a project checkout. There, a bare
@@ -364,6 +365,40 @@ else
     fail "orchestrator skill is missing: .claude/skills/orchestrator/SKILL.md"
 fi
 
+# bash_blocks_parse <file> <label>: every ```bash block in the file parses
+# as written (bash -n), placeholders such as <name> read as a word and
+# indentation kept.
+bash_blocks_parse() {
+    local f="$1" label="$2" n_blocks=0 bad_blocks="" block out rc
+    while IFS= read -r -d '' block; do
+        n_blocks=$((n_blocks + 1))
+        out="$(sed -E 's/<[A-Za-z][^<>]*>/PLACEHOLDER/g' <<< "$block" | bash -n 2>&1)"; rc=$?
+        if [[ $rc -ne 0 || -n "$out" ]]; then
+            bad_blocks+="block $n_blocks (exit $rc): $(head -n1 <<< "$out")"$'\n'
+        fi
+    done < <(awk '
+        /^[[:space:]]*```bash[[:space:]]*$/ { inb = 1; buf = ""; next }
+        inb && /^[[:space:]]*```[[:space:]]*$/ { inb = 0; printf "%s%c", buf, 0; next }
+        inb { buf = buf $0 "\n" }' "$f")
+    if [[ $n_blocks -eq 0 ]]; then
+        fail "$label: no bash blocks found to parse"
+    elif [[ -n "$bad_blocks" ]]; then
+        fail "$label: a bash block does not parse as written (bash -n):"
+        printf '%s' "$bad_blocks" | sed 's/^/        /'
+    else
+        pass "$label: all $n_blocks bash blocks parse as written (bash -n, indentation kept)"
+    fi
+}
+# no_unquoted_heredoc <file> <label>: a heredoc delimiter not in single
+# quotes (<< EOF, <<EOF, <<-EOF) would run or expand finding text.
+no_unquoted_heredoc() {
+    if grep -qE '<<-?[[:space:]]*[A-Za-z_]' "$1"; then
+        fail "$2: a heredoc is unquoted, so finding text in it would be run or expanded"
+    else
+        pass "$2: every heredoc is quoted (<<'EOF')"
+    fi
+}
+
 # --- onboard-project (#332 PR 3): the project side of onboarding, run at
 # the project root; its owner-given rules are worded here so a rewrite
 # cannot drop one silently.
@@ -399,12 +434,7 @@ if [[ -f "$ONB" ]]; then
     has "$ONB" "onboard-project: the worktree names its project; a project with no issues gets a skill worktree" \
         '"$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project --project <settings-name>' \
         '"$WS_ROOT/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project <settings-name>'
-    # A heredoc delimiter not in single quotes (<< EOF, <<EOF, <<-EOF).
-    if grep -qE '<<-?[[:space:]]*[A-Za-z_]' "$ONB"; then
-        fail "onboard-project: a heredoc is unquoted, so finding text in it would be run or expanded"
-    else
-        pass "onboard-project: every heredoc is quoted (<<'EOF')"
-    fi
+    no_unquoted_heredoc "$ONB" onboard-project
     has "$ONB" "onboard-project: the branch is pushed before gh pr create" \
         'git push -u origin "$(git branch --show-current)" || exit 1'
     has "$ONB" "onboard-project: the signature comes from the identity sourced in the same shell" \
@@ -423,31 +453,85 @@ if [[ -f "$ONB" ]]; then
         'until the records lookup (#393) lands, queue in the roadmap is not offered to it'
     has "$ONB" "onboard-project: process conflicts are flagged with both sides, never picked" \
         'never pick one' 'Governance Layering'
-    has "$ONB" "onboard-project: the hygiene checklist keeps a labelled home until PR 4" \
-        '## Hygiene checklist (moves to audit-project, #332 PR 4)'
+    if grep -qE '^## Hygiene checklist|gh label create|git bug bridge new' "$ONB"; then
+        fail "onboard-project still carries the hygiene checklist, which audit-project holds (#332 PR 4)"
+    else
+        pass "onboard-project no longer carries the hygiene checklist"
+    fi
+    has "$ONB" "onboard-project: ends by offering audit-project, which holds the checklist (D4)" \
+        '### 10. Offer audit-project' \
+        'End by offering `/agent-workspace:audit-project` (#332 D4), whatever `instructions` says'
+    has "$ONB" "onboard-project: reads the facts for issues and GitHub, asks when unknown" \
+        '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format text [--instance <settings-name>]' \
+        'When the project uses issues (`issues=yes` in step 2'"'"'s facts), each row gets its issue' \
+        'when the fact is `unknown`, ask' \
+        'For a project with no GitHub remote (`github=no`)'
     has "$ONB" "onboard-project: a project with no GitHub keeps its edits on a branch" \
         'leave the edits on the branch, push nothing'
-    n_blocks=0; bad_blocks=""
-    while IFS= read -r -d '' block; do
-        n_blocks=$((n_blocks + 1))
-        out="$(sed -E 's/<[A-Za-z][^<>]*>/PLACEHOLDER/g' <<< "$block" | bash -n 2>&1)"; rc=$?
-        if [[ $rc -ne 0 || -n "$out" ]]; then
-            bad_blocks+="block $n_blocks (exit $rc): $(head -n1 <<< "$out")"$'\n'
-        fi
-    done < <(awk '
-        /^[[:space:]]*```bash[[:space:]]*$/ { inb = 1; buf = ""; next }
-        inb && /^[[:space:]]*```[[:space:]]*$/ { inb = 0; printf "%s%c", buf, 0; next }
-        inb { buf = buf $0 "\n" }' "$ONB")
-    if [[ $n_blocks -eq 0 ]]; then
-        fail "onboard-project: no bash blocks found to parse"
-    elif [[ -n "$bad_blocks" ]]; then
-        fail "onboard-project: a bash block does not parse as written (bash -n):"
-        printf '%s' "$bad_blocks" | sed 's/^/        /'
-    else
-        pass "onboard-project: all $n_blocks bash blocks parse as written (bash -n, indentation kept)"
-    fi
+    bash_blocks_parse "$ONB" onboard-project
 else
     fail "onboard-project skill is missing: .claude/skills/onboard-project/SKILL.md"
+fi
+
+# --- audit-project (#332 PR 4): takes the hygiene checklist from
+# onboard-project, with the facts that make items moot; report-only by
+# default, the four answers as an optional final step.
+AUD="$SKILLS/audit-project/SKILL.md"
+if [[ -f "$AUD" ]]; then
+    has "$AUD" "audit-project: no repository argument; the session's own project" \
+        '/agent-workspace:audit-project' 'No repository argument'
+    if grep -qF 'project/<repo-name>' "$AUD"; then
+        fail "audit-project still locates the repository as project/<repo-name>"
+    else
+        pass "audit-project no longer locates the repository under project/"
+    fi
+    if grep -qF 'project_knowledge' "$AUD"; then
+        fail "audit-project still checks the project_knowledge symlink (the stale step 7)"
+    else
+        pass "audit-project no longer checks the project_knowledge symlink"
+    fi
+    has "$AUD" "audit-project: resolves the project with session_root.sh, an instance at a parent root" \
+        '"$WS_ROOT/.agent/scripts/session_root.sh"' 'register_project.sh <path>' \
+        'registry_default_instance "$WS_ROOT" <name>' \
+        'this run reads, reports and fixes the chosen instance'"'"'s repository alone'
+    has "$AUD" "audit-project: reads the facts with --facts" \
+        '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format text [--instance <settings-name>]' \
+        '| `github` |' '| `issues` |' '| `prs` |' '| `windows` |' '| `multi_component` |'
+    has "$AUD" "audit-project: the seven checklist items with their fix approaches" \
+        '**Pre-commit config**' '**CI workflow**' '**Branch protection**' '**Copilot auto-review**' \
+        '**Component labels**' '**git-bug bridge**' '**License headers**' \
+        'gh label create "component:<name>"' 'git bug bridge new' \
+        'with no dependency on workspace scripts or paths'
+    has "$AUD" "audit-project: the facts table names what each fact makes moot, reported as skipped" \
+        'skipped: no GitHub remote (github=no)' \
+        'skipped: the project uses no GitHub issues (issues=no)' \
+        'skipped: the project uses no pull requests (prs=no)' \
+        'skipped: one component (multi_component=no)' \
+        'skipped: Windows (windows=yes)' \
+        'An item is never dropped from the report' \
+        '`unknown` (gh missing or not signed in, no instance chosen) makes nothing moot'
+    has "$AUD" "audit-project: the integration script replaces the stale workspace check, report-only" \
+        '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text [--instance <settings-name>]' \
+        '**Report-only by default.**' 'never pick one' 'Governance Layering'
+    has "$AUD" "audit-project: the optional final step, the four answers and the owner's D6 words" \
+        '### 10. Optional: answer the findings' \
+        '**Fix now**' '**Open issue**' '**Queue in the roadmap**' '**Skip**' \
+        '"all that work should be cued up in the roadmap, if the user approves, so that it can get tackled maybe as other issues are resolved"' \
+        '## Onboarding' 'Each queued row is its own yes' \
+        'When the project uses issues (`issues=yes`), each row gets its issue' \
+        'until the records lookup (#393) lands'
+    has "$AUD" "audit-project: every write waits for a yes" \
+        '**every write waits for a yes**' 'a permission problem never fails the run'
+    # The fix-now batch follows onboard-project's steps 7 and 8 by heading,
+    # so those headings must still be there.
+    has "$AUD" "audit-project: cites onboard-project's steps 7 and 8 by heading" \
+        '"7. Make the fix-now batch — one pull request" and "8. Open the issues"'
+    has "$ONB" "onboard-project: the step headings audit-project cites exist" \
+        '### 7. Make the fix-now batch — one pull request' '### 8. Open the issues'
+    no_unquoted_heredoc "$AUD" audit-project
+    bash_blocks_parse "$AUD" audit-project
+else
+    fail "audit-project skill is missing: .claude/skills/audit-project/SKILL.md"
 fi
 
 # --- run-issue: the host may answer a checkpoint, within the orchestrator's table.
