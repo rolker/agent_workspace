@@ -798,3 +798,13 @@ None open.
 
 ### False positives
 - (Copilot x13) "unable to review this pull request" (quota exhausted) — not a finding; no review content to triage.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 12:50 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer at the round-9 merge call, verbatim: "One-line fix, then merge" (option text: fix pass, round-10 check and re-triage, then the merge script with the gate enforced). The condition is met: round 10 (791567b4) approved with 0 must-fix and 0 suggestions; Integrated Review ae12409e at head 791567b4 with nothing open. CI lint still running at this point, so the host waits for it before merge_pr.sh.
