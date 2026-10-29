@@ -41,8 +41,9 @@
 # suite when one is in the hook's scope. Which deletions depends on the
 # context, keyed on GIT_INDEX_FILE, which git sets for every commit hook:
 #   - a commit (GIT_INDEX_FILE set): the staged deletions
-#     (`git diff --cached --no-renames --diff-filter=D`; --no-renames makes
-#     a rename show as a deletion of its source);
+#     (`git diff --cached -z --no-renames --diff-filter=D`; --no-renames
+#     makes a rename show as a deletion of its source, and -z keeps a
+#     non-ASCII path unquoted);
 #   - any other run (a branch run,
 #     `pre-commit run --files $(git diff --name-only main...HEAD)`, staged
 #     changes or not): the staged deletions plus the deletions on the
@@ -129,10 +130,22 @@ fi
 # the index the commit is building.
 deleted_paths=()
 deletion_check_error=""
+# git_paths_z <array-name> <git args>...: read a `git diff -z` path list
+# into the named array (appending), NUL-delimited so a non-ASCII or
+# otherwise unusual path arrives as itself, not C-quoted; returns git's
+# exit status.
+git_paths_z() {
+    local -n _paths="$1"
+    shift
+    local _got=()
+    mapfile -d '' -t _got < <(git "$@" 2>/dev/null)
+    wait "$!" || return 1
+    _paths+=("${_got[@]}")
+}
 if [[ $files_mode -eq 1 ]]; then
     if ! git rev-parse --git-dir >/dev/null 2>&1; then
         deletion_check_error="not inside a git repository ($(pwd))"
-    elif ! del_out=$(git diff --cached --name-only --no-renames --diff-filter=D 2>/dev/null); then
+    elif ! git_paths_z deleted_paths diff --cached --name-only -z --no-renames --diff-filter=D; then
         deletion_check_error="git diff --cached --diff-filter=D failed"
     elif [[ -z "${GIT_INDEX_FILE:-}" ]]; then
         # Not a commit: a branch run also sees the branch's deletions.
@@ -140,14 +153,9 @@ if [[ $files_mode -eq 1 ]]; then
         source "$SCRIPT_DIR/../_resolve_default_branch.sh"
         if ! default_ref=$(resolve_default_branch 2>&1); then
             deletion_check_error="could not resolve the default branch: $default_ref"
-        elif ! branch_del=$(git diff --name-only --no-renames --diff-filter=D "$default_ref...HEAD" 2>/dev/null); then
+        elif ! git_paths_z deleted_paths diff --name-only -z --no-renames --diff-filter=D "$default_ref...HEAD"; then
             deletion_check_error="git diff $default_ref...HEAD failed"
-        elif [[ -n "$branch_del" ]]; then
-            del_out="${del_out:+$del_out$'\n'}$branch_del"
         fi
-    fi
-    if [[ -z "$deletion_check_error" && -n "${del_out:-}" ]]; then
-        mapfile -t deleted_paths <<<"$del_out"
     fi
 fi
 

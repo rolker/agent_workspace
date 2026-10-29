@@ -621,6 +621,12 @@ hook_case commit_a full "rm .agent/scripts/other.sh && $EDIT_BETA && sgit commit
 hook_case pathspec full "rm .agent/scripts/other.sh && $EDIT_BETA && sgit commit -q -m d -- .agent/scripts/other.sh .agent/scripts/beta.sh"
 hook_case rename_out full "sgit mv .agent/scripts/other.sh outside/other.sh && $EDIT_BETA && sgit add .agent/scripts/beta.sh && sgit commit -q -m d"
 hook_case edit_only scoped "$EDIT_BETA && sgit commit -q -a -m d"
+# A non-ASCII path: git C-quotes it in a plain --name-only list
+# ("caf\303\251.sh"), which no scope regex matches; the runner reads -z.
+# The first commit's hook log is overwritten by the deletion commit's.
+CAFE='.agent/scripts/café.sh'
+hook_case non_ascii full "echo 'echo cafe' > $CAFE && sgit add $CAFE && sgit commit -q -m add \
+    && sgit rm -q $CAFE && $EDIT_BETA && sgit commit -q -a -m d"
 
 # --- Case (p): a branch run sees a deletion made earlier on the branch,
 #     with or without something staged; a commit (git sets GIT_INDEX_FILE
@@ -660,6 +666,21 @@ else
     fail "(p) a commit with an edit staged checks only its own deletions: scoped run (rc=$rc, log=$out)"
 fi
 rm -rf "$P_HOOKS" "$P_LOG"
+
+# --- Case (q): a branch run sees a non-ASCII deletion made earlier on the
+#     branch (git -z output, not C-quoted). ---
+Q="$TMPD/syn_q"
+make_syn_repo "$Q" && sgit -C "$Q" checkout -q main \
+    && echo 'echo cafe' > "$Q/$CAFE" && sgit -C "$Q" add "$CAFE" && sgit -C "$Q" commit -q -m "add café" \
+    && sgit -C "$Q" checkout -q -B feature && sgit -C "$Q" rm -q "$CAFE" && sgit -C "$Q" commit -q -m "delete café"
+rm -rf "$TMPD/q_marks" && mkdir -p "$TMPD/q_marks"
+out=$(cd "$Q" && unset GIT_INDEX_FILE && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/q_marks" \
+    "$RUNNER" "$Q/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1); rc=$?
+if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'full run' && printf '%s' "$out" | grep -q "café.sh' is deleted"; then
+    pass "(q) branch run: a non-ASCII in-scope deletion earlier on the branch forces a full run"
+else
+    fail "(q) branch run: a non-ASCII in-scope deletion earlier on the branch forces a full run (rc=$rc, out=$out)"
+fi
 
 echo ""
 echo "test_run_script_tests: $PASS passed, $FAIL failed"
