@@ -818,3 +818,23 @@ Owner's answer at the round-9 merge call, verbatim: "One-line fix, then merge" (
 **Decision**: address
 
 merge_pr.sh at 8e5099de: review gate approved, then "CI failed: Lint (pre-commit)". The hook-scope suite's hub guard asserted register_project.sh selects at most 5 suites; GitHub's checkout (PR merged with main, which now holds PR 413's project_integration_audit.sh) selects 6, local tree 4. Owner's answer: "Fix and merge": merge main into the branch, replace the fixed count with drift-proof include/exclude checks, round-11 check, re-triage, then the merge on the owner's existing yes. Also noted in CI: the runner's deletion check cannot resolve main in the shallow checkout and takes the run-everything path (correct), but the message reads like an error.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 13:31 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a13c4c4205fa198f2, resume 1 of 3)
+
+**PR**: #411 at `1baeccc9`
+**Addressed**: CI failure at merge (hub guard count; merge from main), per Checkpoint at 13:17 (owner: "Fix and merge"); no open review box
+**Commits**: 28f033fe, 96e91ac2, 1baeccc9
+
+### Actions
+- [x] Merged `origin/main` (47 commits, including PR 413) into the branch: `28f033fe`, no conflicts (AGENTS.md and docs/roadmap.md auto-merged, both sides kept). After the merge, `register_project.sh` selects 6 suites locally too, matching CI.
+- [x] Hub guard made drift-proof: it now checks that the selection includes `test_register_project.sh`, excludes the unrelated `test_merge_pr.sh` and `test_cross_model_review.sh` (neither is mapped to it in `--dump`), and, apart from `test_checkpoint_269.sh`, selects at most a third of the suites, counted from the glob (5 of at most 13 of 40 today). The header comment says why, and the plan's hub-guard wording is amended with the reason. `96e91ac2` — `.agent/scripts/tests/test_script_tests_hook_scope.sh`, `.agent/work-plans/issue-410/plan.md:38`
+- [x] Default-branch reason line: when `resolve_default_branch` fails, a branch run still runs every suite but now prints one plain line, `full run, all N suites: no default branch available here (shallow checkout?), so the branch's deletions cannot be listed`, with no ERROR text. Added case (r): no `main` branch in a synthetic repo. It failed on the previous runner, which printed the two-line ERROR text, and passes now. `1baeccc9` — `.agent/scripts/tests/run_script_tests.sh`, `.agent/scripts/tests/test_run_script_tests.sh`
+
+### Notes
+- `--dump` on the merged tree is 1713 lines, up from 1601 at `8e5099de`. 112 pairs were added and none removed: 66 for the new `test_project_integration_audit.sh`, plus 33 for `test_user_tier_guard.sh`, 11 for `test_skill_paths.sh` and 2 for `test_script_tests_hook_scope.sh`, which now reach PR 413's `project_integration_audit.sh` and the files it names.
+- Targeted suites after the changes: `test_run_script_tests.sh` 96/0 and `test_script_tests_hook_scope.sh` 261/0.
+- Fix commits were made with `SKIP=validate-script-tests`. Then `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the script-test suite (631 s, exit 0).
