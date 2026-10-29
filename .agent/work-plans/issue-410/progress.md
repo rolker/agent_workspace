@@ -64,3 +64,11 @@ issue: 410
 **Decision**: proceed
 
 The Issue Review found the issue well-scoped and in the right repository, with one premise to correct: `test_script_tests_hook_scope.sh` declares only 5 ROOT_READERS entries (out-of-tree prefixes read), not a suite-to-file map, so the map has to be built. All five Actions are carried into the plan-task handoff as plan requirements.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-29 08:17 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-410/plan.md` at `6c764c56`
+
+Derive the suite-to-file map from suite text (closure over referenced scripts) with optional covers lines, pass changed files to the runner, and run everything on no files, helper or runner change, or an unmapped file. Drift and helper-rule tests are enforced; CI stays full.
