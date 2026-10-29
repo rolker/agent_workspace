@@ -502,3 +502,19 @@ Integrated Review c56bdf12 at head 11a0612e: one open suggestion, the continuati
 - [x] (suggestion) Each parenthesised `from X import ( ... )` span is joined onto one line (inline ` # ...` comments dropped) before the per-line import match, so a module named only on a continuation line maps; the header comment now says so. Synthetic case in test_run_script_tests.sh (l), next to the existing from-import case: a suite reaching `pkg/mod_b.py` only through a continuation line with an inline comment; it fails on the previous mapper — `.agent/scripts/tests/suites_for_files.sh`
 
 Hooks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook, in 392 s. Direct suite runs under a private TMPDIR: `test_run_script_tests.sh` 61/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 10:53 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a179d7297ea6933f7, resume 2 of 3)
+
+**PR**: #411 at `244f4db8`
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: round 3's one suggestion (continuation lines of a parenthesised `from pkg import (...)`) and the fix diff `11a0612e..244f4db8` (`0e4a8717`). The fix holds: `FROM_PAREN_RE` joins a parenthesised list onto its first line, inline comments dropped, before the per-line match, and the new synthetic case (test_fromimp.sh reaches `pkg/mod_b.py` only through a continuation line with an inline comment) proves its label (`mod_b` alone is no token match). Token and single-line import matching unchanged. The tree's one multi-line import (`validate_workspace.py:42`) is plain. Specialists: static analysis (shellcheck clean on the 2 changed scripts), governance and plan drift (no change), Claude adversarial (fresh: its comment-`)` case kept below as a suggestion, a strict sub-case of round 3's suggestion; the `\s*`-under-`re.M` quadratic cost dropped, 0.5 s at 20,000 blank lines). Cross-model: skipped (round-4 convergence check, per handoff). Targeted suite under a private TMPDIR: `test_run_script_tests.sh` 61/0, no leftovers. Convergence: round 4, 0 must-fix (prev 0) — ship recommended.
+
+### Findings
+- [ ] (suggestion) A `)` inside an inline comment in a parenthesised import (`a,  # see f()`) ends `FROM_PAREN_RE`'s `[^)]*` early, so later names (`b`) are lost (confirmed); a backslash-continued `from p import a, \` loses `b` too. Fail-open only when that module is also mapped by another suite; none in the tree. Strip comments before finding the `)`, or run ALL on any `from` import the parser cannot fully read — `.agent/scripts/tests/suites_for_files.sh:193`
