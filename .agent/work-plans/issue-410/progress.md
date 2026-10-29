@@ -201,3 +201,13 @@ The revision fixes the round-1 core problem: the bounded derivation is selective
 - [ ] Suggestion: tighten the real-tree hub guard to a small upper bound (for example at most 5 suites for `register_project.sh`).
 - [ ] Suggestion: add `dispatch_phase.sh:411`'s "pre-commit drops deleted paths" and "several minutes" claims to the step 9 wording check.
 - [ ] Suggestion: if the owner picks parallel running, plan per-suite TMPDIR guards, sibling kill on first failure, per-suite output buffering and a HOME/real-repo write audit. Note that `register_project.sh` fixes stay above a minute regardless.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 09:26 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (second revise in a row at plan, the last the host may answer; the two must-fixes are mechanism and cheap: the deletion check must run before the runner unsets GIT_INDEX_FILE and must use --no-renames --diff-filter=D, and the prefix-scanning suites need covers: lines)
+**After**: plan
+**Decision**: revise
+
+Plan Review round 2 verdict needs-work (12f625db). Owner answers given this turn and carried into the handoff: the AGENTS.md Script Reference row edit is approved ("Yes, edit the row"); the under-a-minute acceptance is settled as "Accept ~2 min now; parallel later": scoping ships as planned, the parallel runner and the two slow suites are a follow-up (captured in the inbox), so the plan's Open Question on that closes and the parallel-runner suggestion is not taken into this plan.
