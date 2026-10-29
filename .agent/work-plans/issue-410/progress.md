@@ -564,3 +564,19 @@ Owner's answer: "Fix the class, then merge". Integrated Review 91cc10ba at head 
 - [x] (suggestion) Fixed the class (owner: "Fix the class, then merge"). Inline comments are dropped before a `from X import ( ... )` span is joined, so a `)` in a comment no longer ends the list and that common case maps precisely. Any `import`/`from` line whose name list is still not a plain list (a `\` continuation, an unclosed `(`, `;`, `*`, anything else) makes the file count every `.py` in the vocabulary as referenced; the header comment says so. Chosen over ALL because a lost name can only be a module, so every `.py` is exactly the set it could denote, and it needs no new plumbing: it is a per-file reference, so it carries through the closure to every suite that reaches the file, a helper reached transitively included. Synthetic cases in test_run_script_tests.sh (l): a name after `)` in an inline comment (precise: test_fromimp.sh does not join mod_x.py's selection), a name after a `\` (fallback), and mod_x.py, which the fallback suite never names, selecting it (the fallback runs the suite); the unreadable import is assembled at generation time so this suite's own text does not trip the fallback. The real repository's derived map is unchanged (`--dump` before and after compared) — `.agent/scripts/tests/suites_for_files.sh`
 
 Hooks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook, in 404 s. Direct suite runs under a private TMPDIR: `test_run_script_tests.sh` 63/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 11:14 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a179d7297ea6933f7, resume 3 of 3)
+
+**PR**: #411 at `0de3699a`
+**Depth**: Deep (reason: round 5 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: round 4's suggestion and the fix diff `797ac2d2..0de3699a` (`47787ccc`), against the owner's "Fix the class, then merge". What holds: comments are dropped per line before a parenthesised list is joined, so a `)` in a comment no longer cuts it, and stripping cannot drop a real name (probed: `import helper#x`, a comment inside a list, `${#arr[@]}` on a non-import line); a line-start import that is not a plain name list (`\` continuation, unclosed `(`, `;`, `*`) counts every `.py`; the real repository's `--dump` map is unchanged (diffed old vs new, 1601 lines); the 5 changed/new expectations fail on the round-4 mapper (run in a scratch copy: 58/5) and pass now. Specialists: static analysis (shellcheck clean), governance and plan drift (no change), Claude adversarial (fresh: found the same gap independently; no spurious fallback anywhere in the tree today, prose starting `import ` would over-select safely). Cross-model: skipped (round-5 convergence check, per handoff). Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 63/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers. Convergence: round 5, 1 mechanical must-fix (prev 0) — `review_progress.sh verdict` says continue (rising).
+
+### Findings
+- [ ] (must-fix) The class is not closed: `FROM_RE`/`IMPORT_RE` are anchored at line start, so an import that does not start its line is never seen and the every-`.py` fallback does not fire: `python3 -c "from pkg import mod"` (the usual way a bash suite runs Python), `x = 1; import mod`, `try: import mod`, `if x: import mod` each map nothing (confirmed with `Index(vocab).refs`). The header comment's "anything but a plain name list" claim is false for them. No instance in the tree today. Treat an `import`/`from ... import` found mid-line (after `;`, `:` or a quote) as unreadable, or parse that segment, and add a synthetic `python3 -c` case; or narrow the comment to line-start imports if the owner accepts that bound — `.agent/scripts/tests/suites_for_files.sh:195,196,42`
