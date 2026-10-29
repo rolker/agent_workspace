@@ -11,11 +11,13 @@
 #   --dir D        audit the registered project whose root contains D
 #                  (default: the current directory)
 #   --project N    audit registered project N
-#   --instance I   at a parent root, whose settings apply: instance I's
+#   --instance I   at a parent root, the instance audited: instance I
 #                  (default: the parent's default_instance, else its only
-#                  instance; with several and no default, none are read
-#                  and the text format says so). A parent root has no
-#                  settings of its own.
+#                  instance; with several and no default, none is, and the
+#                  text format says so). Categories 1 to 5 read that
+#                  instance's settings and repository alone: the fix
+#                  batch can only write there, and a parent root has no
+#                  settings of its own. Its own files are not audited.
 #   --format tsv   (default) one finding per line:
 #                  category<TAB>id<TAB>severity<TAB>subject<TAB>detail
 #                  No line at all means no findings.
@@ -175,6 +177,23 @@ elif [ -n "$INSTANCE" ]; then
     exit 2
 fi
 
+# The one repository categories 1 to 5 read: the project's root, or at a
+# parent root the chosen instance's, because the fix batch can only write
+# there (its worktree, branch and pull request are the instance's). The
+# parent root's own files are not audited. SESSION_ABS stays the registered
+# root, where a session starts (category 6's session-root check).
+SESSION_ABS="$PROOT_ABS"
+SESSION_PATH="$PROOT"
+AUD_NAME="$NAME"
+if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ]; then
+    PROOT=""; PROOT_ABS=""; AUD_NAME=""
+    if [ -n "$SNAME" ]; then
+        AUD_NAME="$SNAME"
+        PROOT="$(registry_lookup "$MAIN_ROOT" "$SNAME" 2>/dev/null | cut -f2)"
+        PROOT_ABS="$(cd "$PROOT" 2>/dev/null && pwd -P)" || PROOT_ABS=""
+    fi
+fi
+
 # ----------------------------------------------------------- findings ---
 FINDINGS=""
 # emit <category> <id> <severity> <subject> <detail>: one TSV line; a tab
@@ -212,8 +231,11 @@ if [ -n "$PROOT_ABS" ] && git -C "$PROOT_ABS" rev-parse --is-inside-work-tree >/
 fi
 g() { git -C "$PROOT_ABS" "$@"; }
 
-if [ -z "$PROOT_ABS" ]; then
-    emit 6 registration error "$PROOT" "the registered root is not on disk, so nothing in it can be audited"
+if [ "$AUD_NAME" != "$NAME" ] && [ -z "$SESSION_ABS" ]; then
+    emit 6 registration error "$SESSION_PATH" "the parent root is not on disk, so no session can start there"
+fi
+if [ -n "$AUD_NAME" ] && [ -z "$PROOT_ABS" ]; then
+    emit 6 registration error "$PROOT" "the registered root$([ "$AUD_NAME" != "$NAME" ] && echo " of the instance $AUD_NAME") is not on disk, so nothing in it can be audited"
 fi
 if [ -n "$PROOT_ABS" ] && [ "$IS_GIT" -eq 0 ]; then
     emit 3 not-git info "$PROOT" "the root is not the top of a git repository: the ignore-rule checks (categories 3 and 4) are skipped"
@@ -404,7 +426,7 @@ done
 
 # ------------------------------------------------- 3. written files ----
 if [ "$IS_GIT" -eq 1 ]; then
-    WTDIR="$(registry_worktree_dir "$MAIN_ROOT" "$NAME" 2>/dev/null)" || WTDIR=""
+    WTDIR="$(registry_worktree_dir "$MAIN_ROOT" "$AUD_NAME" 2>/dev/null)" || WTDIR=""
     # Canonical, like PROOT_ABS, although the directory usually does not
     # exist yet: the deepest existing ancestor resolved (a root registered
     # through a symlink), the rest appended.
@@ -514,12 +536,12 @@ UOUT="$("$MAIN_ROOT/.agent/scripts/user_tier_install.sh" --check --require 2>&1)
 if [ "$_RC" -ne 0 ]; then
     emit 6 user-tier error "user tier" "user_tier_install.sh --check --require failed (exit $_RC), so a session at the root may not get the workspace plugin or scripts: $(grep -vE '^[[:space:]]*$' <<< "$UOUT" | head -n4)"
 fi
-if [ -n "$PROOT_ABS" ]; then
+if [ -n "$SESSION_ABS" ]; then
     _RC=0
-    SOUT="$("$MAIN_ROOT/.agent/scripts/session_root.sh" --dir "$PROOT_ABS" 2>&1)" || _RC=$?
+    SOUT="$("$MAIN_ROOT/.agent/scripts/session_root.sh" --dir "$SESSION_ABS" 2>&1)" || _RC=$?
     _PROJ="$(sed -n 's/^project=//p' <<< "$SOUT")"
     if [ "$_RC" -ne 0 ] || [ "$_PROJ" != "$NAME" ]; then
-        emit 6 session-root error "$PROOT_ABS" "a session started here does not resolve to '$NAME' (session_root.sh exit $_RC): $(head -n3 <<< "$SOUT")"
+        emit 6 session-root error "$SESSION_ABS" "a session started here does not resolve to '$NAME' (session_root.sh exit $_RC): $(head -n3 <<< "$SOUT")"
     fi
 fi
 
@@ -529,13 +551,15 @@ if [ "$FORMAT" = "tsv" ]; then
     exit 0
 fi
 
-echo "Integration audit: $NAME ($TYPE) at $PROOT"
 if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ]; then
+    echo "Integration audit: $NAME ($TYPE) at $SESSION_ABS"
     if [ -n "$SNAME" ]; then
-        echo "settings: instance $SNAME's (a parent root has none of its own)"
+        echo "audited: instance $SNAME at $PROOT, its settings and its repository (a parent root has no settings of its own, and its own files are not audited)"
     else
-        echo "settings: none read (several instances and no default_instance; pass --instance <name>)"
+        echo "audited: no instance (several instances and no default_instance; pass --instance <name>)"
     fi
+else
+    echo "Integration audit: $NAME ($TYPE) at $PROOT"
 fi
 echo "instructions: ${INSTRUCTIONS:-not set}"
 declare -A CAT_NAME=(

@@ -131,8 +131,11 @@ registry_default_instance "$WS_ROOT" <name>
   propose the one `registry_default_instance` prints (the default, else
   the only instance); when it prints an error instead (several instances,
   no default), ask which. The user may pick any listed instance. Say
-  plainly that the parent root's own settings do not exist: every
-  setting below is the chosen instance's.
+  plainly that the parent root's own settings do not exist, and that this
+  run reads, reports and fixes the chosen instance's repository alone:
+  every setting below is the instance's, and the parent root's own files
+  are not audited, because the fix batch can only write in the
+  instance's repository.
 
 ### 2. Show the recorded choices and the audit
 
@@ -143,7 +146,9 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 ```
 
 `--instance` only at a parent root: the audit then reads that instance's
-settings (without it, the default or only instance's). `list` prints the
+settings and repository, for categories 1 to 5 alike (without it, the
+default or only instance's), and verifies its registration beside the
+parent's. `list` prints the
 stored keys and the resolved records settings, marking a default as
 provisional. The audit prints its findings grouped by category, and a
 count. Show both to the user as they are, then a short summary: which
@@ -350,8 +355,8 @@ once more before creating anything. Then:
    legacy `project/` checkout (the wrong repository) or stop when several
    projects are registered. `<settings-name>` is step 1's: `<name>` from
    `session_root.sh`, or at a parent root the chosen instance, whose
-   repository the worktree is of (a fix to a file of the parent root
-   itself is not in the batch: open issue or skip). Enter the worktree
+   repository the worktree is of, and the one repository the audit read
+   (the parent root's own files were not audited). Enter the worktree
    with `cd` to the path it prints.
 2. Make the changes, commit them (one commit per logical change), and show
    the commits. Each commit carries the agent's identity: shell state does

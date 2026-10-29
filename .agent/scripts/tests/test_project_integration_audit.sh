@@ -446,18 +446,28 @@ audit "$NG"
 check "exit 0" [ "$AUDIT_RC" -eq 0 ]
 check "not-git info, no ignore-rule findings" bash -c 'grep -qE $'"'"'^3\tnot-git\tinfo\t'"'"' <<< "$1" && ! grep -qE $'"'"'^4\t'"'"' <<< "$1"' _ "$AUDIT_OUT"
 
-echo "TEST: a parent root: the audit runs at it, with its default instance's settings"
+echo "TEST: a parent root: the audit reads the chosen instance's settings and repository, not the parent's"
 PAR="$SANDBOX/projects/fam"
-mkdir -p "$PAR/a/.agents" "$PAR/b"
+mkdir -p "$PAR/a/.agents" "$PAR/b/.agents"
+# The parent's own files say feature branch and ignore worktrees/: neither
+# is the instance's, so neither may decide a finding (round 2's fixture had
+# the parent's worktrees/ rule hide the instance's missing one).
 printf '# fam\n\n- Work on a feature branch.\n' > "$PAR/CLAUDE.md"
 printf 'worktrees/\na/\nb/\n' > "$PAR/.gitignore"
 gitq -C "$PAR" init --quiet
 commit_all "$PAR"
 for i in a b; do
     printf 'all:\n\t@true\ntest:\n\t@true\n' > "$PAR/$i/Makefile"
+    printf '# %s guide\n' "$i" > "$PAR/$i/.agents/README.md"
     gitq -C "$PAR/$i" init --quiet
     commit_all "$PAR/$i"
 done
+# Instance a: no ignore rule for its worktrees directory, and an
+# instruction line of its own; instance b: clean.
+printf '# a\n\n- Push the feature branch for review.\n' > "$PAR/a/CLAUDE.md"
+commit_all "$PAR/a"
+printf 'worktrees/\n' > "$PAR/b/.gitignore"
+commit_all "$PAR/b"
 printf 'fam project %s default_instance=fam_a\n' "$PAR" >> "$WS/.agent/projects.local"
 printf 'fam_a single_project %s parent=fam\n' "$PAR/a" >> "$WS/.agent/projects.local"
 printf 'fam_b single_project %s parent=fam\n' "$PAR/b" >> "$WS/.agent/projects.local"
@@ -466,14 +476,22 @@ printf 'build=make\ntest=make test\ninstructions=tracked\n' > "$WS/.agent/projec
 install_ut
 audit "$PAR"
 check "exit 0" [ "$AUDIT_RC" -eq 0 ]
+check "the instance's line is a candidate, the parent's is not (got: $(awk -F'\t' '$2 == "process-branch" { print $4 }' <<< "$AUDIT_OUT" | paste -sd' ' -))" \
+    [ "$(awk -F'\t' '$2 == "process-branch" { print $4 }' <<< "$AUDIT_OUT" | paste -sd' ' -)" = "CLAUDE.md:3" ]
+check "the parent's CLAUDE.md is not read" bash -c '! grep -qF "Work on a feature branch" <<< "$1"' _ "$AUDIT_OUT"
 check "the default instance's instructions=none applies (got $(sev_of process-branch))" [ "$(sev_of process-branch)" = "info" ]
+check "the instance's worktrees directory is checked in its own repository, not hidden by the parent's rule" \
+    grep -qE $'^3\tworktrees-not-ignored\twarn\tworktrees/\t' <<< "$AUDIT_OUT"
+check "no finding about the parent's own files (got: ${AUDIT_OUT//$'\t'/ | })" \
+    bash -c '! grep -qE $'"'"'\t(a|b)/'"'"' <<< "$1"' _ "$AUDIT_OUT"
 check "the root resolves: no session-root or registration error (got: ${AUDIT_OUT//$'\t'/ | })" \
     bash -c '! grep -qE $'"'"'^6\t'"'"' <<< "$1"' _ "$AUDIT_OUT"
 audit "$PAR" --format text
 check "the text names the parent root" grep -qF "Integration audit: fam (project) at $PAR" <<< "$AUDIT_OUT"
-check "and whose settings were read" grep -qxF "settings: instance fam_a's (a parent root has none of its own)" <<< "$AUDIT_OUT"
+check "and the instance audited" grep -qxF "audited: instance fam_a at $PAR/a, its settings and its repository (a parent root has no settings of its own, and its own files are not audited)" <<< "$AUDIT_OUT"
 audit "$PAR" --instance fam_b
-check "--instance fam_b: its instructions=tracked applies (got $(sev_of process-branch))" [ "$(sev_of process-branch)" = "warn" ]
+check "--instance fam_b: its repository, which ignores worktrees/ and has no candidate line: no finding (got: ${AUDIT_OUT//$'\t'/ | })" \
+    [ -z "$AUDIT_OUT" ]
 audit "$PAR" --instance clean
 check "--instance of another project: exit 2" [ "$AUDIT_RC" -eq 2 ]
 check "it names the parent's instances" grep -qF "its instances: fam_a fam_b" <<< "$AUDIT_ERR"
@@ -489,7 +507,7 @@ check "and the parent's own name is refused" [ "$PS_RC" -ne 0 ]
 check "no settings file under the parent's name" [ ! -e "$WS/.agent/projects.d/fam" ]
 sed -i 's/ default_instance=fam_a$//' "$WS/.agent/projects.local"
 audit "$PAR" --format text
-check "several instances, no default: says no settings were read" grep -qF "settings: none read (several instances and no default_instance" <<< "$AUDIT_OUT"
+check "several instances, no default: says no instance was audited" grep -qF "audited: no instance (several instances and no default_instance" <<< "$AUDIT_OUT"
 check "and instructions are not set" grep -qxF "instructions: not set" <<< "$AUDIT_OUT"
 
 echo "TEST: read-only: nothing in the project, the workspace or HOME changes"
