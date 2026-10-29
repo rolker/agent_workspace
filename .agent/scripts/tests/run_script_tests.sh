@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # .agent/scripts/tests/run_script_tests.sh
-# Runner for every .agent/scripts/tests/test_*.sh suite (issue #269 PR A).
+# Runner for the .agent/scripts/tests/test_*.sh suites (issue #269 PR A):
+# every suite, or, in `--files` mode (issue #410), only the suites the
+# changed files can affect.
 #
 # Before this script, .github/workflows/validate.yml explicitly named only
 # three of this repo's ten existing test_*.sh scripts by individual `run:`
 # steps; the other seven ran nowhere in CI. This runner globs and executes
 # every test_*.sh in its directory (auto-discovery for future suites) and
 # additionally, separately, asserts by exact filename that
-# test_checkpoint_269.sh is present and was executed — see "Protecting the
+# test_checkpoint_269.sh is present and was executed (in a scoped run too:
+# it joins every selection) — see "Protecting the
 # checkpoint test from edit/deletion" in .agent/work-plans/issue-269/plan.md:
 # if test_checkpoint_269.sh is ever deleted, this runner fails loudly (the
 # whole pre-commit hook goes red) rather than the glob silently running one
@@ -18,10 +21,33 @@
 # unambiguous (no unrelated failures interleaved in the same run) and keeps
 # runtime bounded by the first failure, not the whole suite list.
 #
-# Usage: run_script_tests.sh [tests-dir]
+# Usage: run_script_tests.sh [tests-dir] [--files <file>...]
 #   tests-dir defaults to this script's own directory. The parameter exists
 #   so test_run_script_tests.sh can point the runner at a scratch copy of the
 #   tests directory without touching the real one.
+#   Without --files every suite runs, as before. With --files (the
+#   pre-commit hook passes the commit's in-scope files, repo-relative), the
+#   suites to run come from suites_for_files.sh (see its header for the
+#   rules): only those the files can reach, plus test_checkpoint_269.sh, or
+#   every suite when in doubt (no files, more than $FILES_MAX files, a
+#   full-run trigger such as this runner or a .agent/scripts/_*.sh helper,
+#   an in-scope file no suite maps, a deleted in-scope path, or any error).
+#   The run prints which suites it chose and why.
+#
+# Deletions and renames (issue #410): pre-commit passes only files that
+# still exist, so a deleted file or a rename's source never reaches
+# --files, and the suites that still name the old path would be skipped.
+# In --files mode the runner therefore lists them itself and runs every
+# suite when one is in the hook's scope: the staged deletions
+# (`git diff --cached --no-renames --diff-filter=D`; --no-renames makes a
+# rename show as a deletion of its source), or, when nothing is staged (a
+# branch run, `pre-commit run --files $(git diff --name-only main...HEAD)`),
+# the deletions on the branch (`<default-branch>...HEAD`, same flags). This
+# check runs before the GIT_* unset below: `git commit -a` and
+# `git commit <paths>` give the hook a temporary index through
+# GIT_INDEX_FILE, and after the unset the diff would read the real index
+# and see nothing. A commit whose only in-scope change is a deletion still
+# does not invoke the hook at all; CI's all-files run is the backstop.
 #
 # Exit codes:
 #   0  all suites passed
@@ -34,8 +60,10 @@
 # Wired into .pre-commit-config.yaml as the `validate-script-tests` local
 # hook inside the existing Lint (pre-commit) job — no .github/workflows/
 # validate.yml edit. CI's Lint (pre-commit) job runs `pre-commit run
-# --all-files`, which always runs this hook regardless of what changed.
-# Locally, since issue #354, the hook is scoped with `files:`/`exclude:`
+# --all-files`, which always runs this hook regardless of what changed, and
+# runs every suite: the file list it passes includes this runner, a
+# full-run trigger. Locally, since issue #354, the hook is scoped with
+# `files:`/`exclude:`
 # (see .pre-commit-config.yaml) so a `git commit` only pays this cost when
 # the commit touches .agent/, .claude/, AGENTS.md, Makefile,
 # .pre-commit-config.yaml itself, or .github/PULL_REQUEST_TEMPLATE.md
@@ -48,7 +76,9 @@
 # support); a dispatched workspace implement or address-findings pass uses
 # it on its intermediate commits and runs the hooks once over the branch
 # before its progress entry (owner-decided 2026-10-20, issue #399), with
-# CI's all-files run as the backstop.
+# CI's all-files run as the backstop. Since issue #410 that branch run, and
+# each commit, runs only the suites the changed files reach (--files mode
+# above), not every suite.
 #
 # Git-hook environment sanitization (found while wiring this into
 # .pre-commit-config.yaml for the first time — none of these suites had
@@ -68,12 +98,58 @@
 
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# More changed files than this runs every suite without asking the mapper.
+FILES_MAX=200
+
+# --- Arguments: [tests-dir] [--files <file>...] ---
+TESTS_DIR="$SCRIPT_DIR"
+files_mode=0
+changed_files=()
+if [[ $# -gt 0 && "$1" != "--files" ]]; then
+    TESTS_DIR="$1"
+    shift
+fi
+if [[ $# -gt 0 ]]; then
+    if [[ "$1" != "--files" ]]; then
+        echo "error: unexpected argument '$1' (usage: run_script_tests.sh [tests-dir] [--files <file>...])" >&2
+        exit 1
+    fi
+    files_mode=1
+    shift
+    changed_files=("$@")
+fi
+
+# --- Deleted and renamed-away paths (see "Deletions and renames" above) ---
+# Must run before the GIT_* unset below, while GIT_INDEX_FILE still names
+# the index the commit is building.
+deleted_paths=()
+deletion_check_error=""
+if [[ $files_mode -eq 1 ]]; then
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        deletion_check_error="not inside a git repository ($(pwd))"
+    elif ! git diff --cached --quiet 2>/dev/null; then
+        if ! del_out=$(git diff --cached --name-only --no-renames --diff-filter=D 2>/dev/null); then
+            deletion_check_error="git diff --cached --diff-filter=D failed"
+        fi
+    else
+        # shellcheck source=../_resolve_default_branch.sh
+        source "$SCRIPT_DIR/../_resolve_default_branch.sh"
+        if ! default_ref=$(resolve_default_branch 2>&1); then
+            deletion_check_error="could not resolve the default branch: $default_ref"
+        elif ! del_out=$(git diff --name-only --no-renames --diff-filter=D "$default_ref...HEAD" 2>/dev/null); then
+            deletion_check_error="git diff $default_ref...HEAD failed"
+        fi
+    fi
+    if [[ -z "$deletion_check_error" && -n "${del_out:-}" ]]; then
+        mapfile -t deleted_paths <<<"$del_out"
+    fi
+fi
+
 # See "Git-hook environment sanitization" above.
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR \
       GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TESTS_DIR="${1:-$SCRIPT_DIR}"
 REQUIRED_SUITE="test_checkpoint_269.sh"
 # Cap on how many leaked paths the exit-2 message prints (see the leak sweep).
 LEAK_LIST_MAX=200
@@ -153,6 +229,63 @@ if [[ -n "$lint_hits" ]]; then
     exit 1
 fi
 
+# --- Suite selection (issue #410; see Usage above) ---
+# run_suites is what the loop below runs. Every reason for a full run is
+# printed; a scoped run prints the mapper's suite <- file lines.
+run_suites=("${suites[@]}")
+selection="full"
+full_reason=""
+if [[ $files_mode -eq 0 ]]; then
+    full_reason="no --files given"
+elif [[ -n "$deletion_check_error" ]]; then
+    full_reason="the deletion check failed ($deletion_check_error)"
+elif [[ ${#changed_files[@]} -gt $FILES_MAX ]]; then
+    full_reason="${#changed_files[@]} changed files (more than $FILES_MAX)"
+else
+    mapper_args=(--tests-dir "$TESTS_DIR")
+    for d in "${deleted_paths[@]}"; do
+        [[ -n "$d" ]] && mapper_args+=(--deleted "$d")
+    done
+    if ! chosen=$(bash "$SCRIPT_DIR/suites_for_files.sh" "${mapper_args[@]}" -- "${changed_files[@]}"); then
+        full_reason="suites_for_files.sh failed"
+    elif [[ -z "$chosen" ]]; then
+        full_reason="suites_for_files.sh chose nothing"
+    elif [[ "$chosen" == "ALL" ]]; then
+        full_reason="suites_for_files.sh chose ALL (reason above)"
+    else
+        mapfile -t chosen_names <<<"$chosen"
+        scoped=()
+        unknown=""
+        for n in "${chosen_names[@]}"; do
+            if [[ -f "$TESTS_DIR/$n" ]]; then
+                scoped+=("$TESTS_DIR/$n")
+            else
+                unknown="$n"
+                break
+            fi
+        done
+        if [[ -n "$unknown" ]]; then
+            full_reason="suites_for_files.sh named '$unknown', which is not in $TESTS_DIR"
+        else
+            # The required suite joins every scoped run, whatever the mapper said.
+            have_required=0
+            for s in "${scoped[@]}"; do
+                [[ "$(basename "$s")" == "$REQUIRED_SUITE" ]] && have_required=1
+            done
+            [[ $have_required -eq 1 ]] || scoped+=("$TESTS_DIR/$REQUIRED_SUITE")
+            run_suites=("${scoped[@]}")
+            selection="scoped"
+        fi
+    fi
+fi
+if [[ "$selection" == "full" ]]; then
+    echo "run_script_tests: full run, all ${#suites[@]} suites: $full_reason"
+else
+    names=""
+    for s in "${run_suites[@]}"; do names+="${names:+ }$(basename "$s")"; done
+    echo "run_script_tests: scoped run, ${#run_suites[@]} of ${#suites[@]} suites for ${#changed_files[@]} changed file(s): $names"
+fi
+
 # --- Per-run TMPDIR guard (issue #304, #297 PR 2) ---
 #
 # Give the whole run one private temp root and point every suite at it via
@@ -226,7 +359,7 @@ export TMPDIR="$RUN_TMPDIR" TMP="$RUN_TMPDIR" TEMP="$RUN_TMPDIR"
 
 start_ts=$(date +%s)
 total=0
-for s in "${suites[@]}"; do
+for s in "${run_suites[@]}"; do
     name="$(basename "$s")"
     total=$((total + 1))
     echo "=== run_script_tests: running $name ==="
@@ -234,7 +367,7 @@ for s in "${suites[@]}"; do
         end_ts=$(date +%s)
         elapsed=$((end_ts - start_ts))
         echo "" >&2
-        echo "run_script_tests: FAILED at $name (suite $total of ${#suites[@]}) after ${elapsed}s — stopping, remaining suites not run" >&2
+        echo "run_script_tests: FAILED at $name (suite $total of ${#run_suites[@]}) after ${elapsed}s — stopping, remaining suites not run" >&2
         exit 1
     fi
 
@@ -254,7 +387,7 @@ for s in "${suites[@]}"; do
         end_ts=$(date +%s)
         elapsed=$((end_ts - start_ts))
         echo "" >&2
-        echo "run_script_tests: FAILED at $name (suite $total of ${#suites[@]}) after ${elapsed}s — it left ${#leaked[@]} entr$([[ ${#leaked[@]} -eq 1 ]] && echo y || echo ies) behind in TMPDIR ($RUN_TMPDIR):" >&2
+        echo "run_script_tests: FAILED at $name (suite $total of ${#run_suites[@]}) after ${elapsed}s — it left ${#leaked[@]} entr$([[ ${#leaked[@]} -eq 1 ]] && echo y || echo ies) behind in TMPDIR ($RUN_TMPDIR):" >&2
         printf '%s\n' "${leaked[@]:0:$LEAK_LIST_MAX}" >&2
         if [[ ${#leaked[@]} -gt $LEAK_LIST_MAX ]]; then
             echo "... and $(( ${#leaked[@]} - LEAK_LIST_MAX )) more entries (listing truncated)" >&2
@@ -267,5 +400,9 @@ done
 end_ts=$(date +%s)
 elapsed=$((end_ts - start_ts))
 echo ""
-echo "run_script_tests: all $total suites passed in ${elapsed}s"
+if [[ "$selection" == "scoped" ]]; then
+    echo "run_script_tests: all $total suites passed in ${elapsed}s (scoped run, $total of ${#suites[@]})"
+else
+    echo "run_script_tests: all $total suites passed in ${elapsed}s"
+fi
 exit 0
