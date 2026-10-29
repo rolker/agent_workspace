@@ -725,6 +725,22 @@ test_worktree_create_skill_project() {
         "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project sub 2>&1)" || rc=$?
     assert_eq "a root inside another repo: exit 1" "1" "$rc"
     assert_contains "says why" "is not the top of one" "$out"
+
+    echo "TEST: worktree_list.sh: a project named with - and . lists its skill and issue worktrees under that name"
+    cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
+    local mp
+    mp="$(make_registered_project "$sb" my-proj.x)"
+    seed_commit "$mp"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project my-proj.x 2>&1)" || rc=$?
+    assert_eq "skill worktree of my-proj.x: exit 0 ($(tail -n2 <<< "$out"))" "0" "$rc"
+    git -C "$mp" worktree add --quiet -b feature/issue-7 "$mp/worktrees/issue-my-proj.x-7" 2>/dev/null
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" --json 2>/dev/null)" || true
+    assert_eq "the skill worktree: repo my-proj.x, skill onboard-project" "my-proj.x onboard-project" \
+        "$(jq -r '.worktrees[] | select(.type == "project" and .skill != null and (.path | contains("my-proj.x"))) | "\(.repo) \(.skill)"' <<< "$out")"
+    assert_eq "the issue worktree: repo my-proj.x, issue 7" "my-proj.x 7" \
+        "$(jq -r '.worktrees[] | select(.type == "project" and .issue != null and (.path | contains("my-proj.x"))) | "\(.repo) \(.issue)"' <<< "$out")"
 }
 
 test_worktree_create_registry_repo() {

@@ -113,12 +113,34 @@ WORKSPACE_COUNT=0
 PROJECT_COUNT=0
 REGISTRY_MALFORMED=false
 
-# Helper: extract issue/repo/skill from worktree directory basename
+# Helper: extract issue/repo/skill from worktree directory basename.
+# [known_repo]: the registered project whose worktrees directory holds it.
+# A project's slug is its registry name, which may hold "-" and "." (the
+# generic patterns below allow neither, and a "-" makes the split between
+# slug and skill ambiguous), so a basename that starts with that name is
+# split at it first.
 extract_issue_repo() {
-    local basename="$1"
+    local basename="$1" known="${2:-}" rest
     WT_ISSUE=""
     WT_REPO=""
     WT_SKILL=""
+
+    if [ -n "$known" ] && [[ "$basename" == "skill-$known-"* ]]; then
+        rest="${basename#"skill-$known-"}"
+        if [[ "$rest" =~ ^([a-zA-Z0-9_-]+)-([0-9]{8}-[0-9]{6}(-[0-9]+)?)$ ]]; then
+            WT_REPO="$known"
+            WT_SKILL="${BASH_REMATCH[1]}"
+            return 0
+        fi
+    fi
+    if [ -n "$known" ] && [[ "$basename" == "issue-$known-"* ]]; then
+        rest="${basename#"issue-$known-"}"
+        if [[ "$rest" =~ ^[0-9]+$ ]]; then
+            WT_REPO="$known"
+            WT_ISSUE="$rest"
+            return 0
+        fi
+    fi
 
     # Skill format: skill-{REPO_SLUG}-{SKILL_NAME}-{TIMESTAMP}
     if [[ "$basename" =~ ^skill-([a-zA-Z0-9_]+)-([a-zA-Z0-9_-]+)-([0-9]{8}-[0-9]{6}(-[0-9]+)?)$ ]]; then
@@ -233,6 +255,7 @@ fi
 _scan_project_worktrees() {
     local search_dir="$1"
     local is_legacy="$2"
+    local known_repo="${3:-}"
 
     [ -d "$search_dir" ] || return 0
 
@@ -278,7 +301,7 @@ _scan_project_worktrees() {
             local_branch="$(IFS=,; echo "${_wt_branches[*]:-}")"
             [ "$local_status" = "dirty" ] && ((DIRTY_COUNT++)) || true
         else
-            extract_issue_repo "$(basename "$proj_wt")"
+            extract_issue_repo "$(basename "$proj_wt")" "$known_repo"
             local_issue="$WT_ISSUE"
             local_repo="$WT_REPO"
             local_skill="$WT_SKILL"
@@ -332,7 +355,7 @@ _scan_project_worktrees() {
 if registry_entries "$ROOT_DIR" >/dev/null 2>&1 || [ $? -ne 2 ]; then
     while IFS=$'\t' read -r _reg_name _reg_dir; do
         [ -z "$_reg_dir" ] && continue
-        _scan_project_worktrees "$_reg_dir" false
+        _scan_project_worktrees "$_reg_dir" false "$_reg_name"
     done < <(wt_registry_worktree_dirs "$ROOT_DIR" 2>/dev/null; wt_legacy_worktree_dirs "$ROOT_DIR" 2>/dev/null)
     unset _reg_name _reg_dir
 else
