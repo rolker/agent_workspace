@@ -1621,3 +1621,27 @@ Merge c0bcc8a9 (main at f90d8ffe, PR 411) is clean: its tree equals `git merge-t
 **Decision**: address
 
 Owner's answer: "Address". Part 4 of 4, round 1 (15207a51, taken as round 1; the counter says 16 from parts 1 to 3, issue 384): 2 must-fix (a non-GitHub remote URL printed verbatim could leak a credential; gh calls pass bare owner/repo and would hit a configured GH_HOST) and 7 suggestions. The owner was asked only because the host had answered the rounds checkpoint twice in a row on this issue; logged as a loop defect for issue 398. The approved AGENTS.md row edit for project_integration_audit.sh (--facts) goes into this fix pass.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 15:01 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `0526dd91`
+**Addressed**: Local Review (Pre-Push) at `c0bcc8a9` (2026-10-29 14:17 -04:00); also the owner-approved AGENTS.md Script Reference row ("Yes, edit the row", 2026-10-29)
+**Commits**: f7772a19, 5ce71257, 840e6941, 055d4417, f6525b48, 3dc8ede7, 0a7073e8, 27c73d6b, 2692f682, 3135e88d, 0526dd91
+
+### Actions
+- [x] (must-fix) Credential leak: the user part of a remote URL is stripped and the evidence names host/path only; a fixture with three credential-bearing remotes asserts the secret never appears, tsv or text (f7772a19) — `.agent/scripts/project_integration_audit.sh:321`
+- [x] (must-fix) Wrong host: gh repo view, gh issue list -R and gh pr list -R get `github.com/<owner>/<repo>`; the stub gh answers a host-less repository from GH_HOST and a test with a conflicting GH_HOST checks every call; the skill's own gh calls name the host too (5ce71257) — `.agent/scripts/project_integration_audit.sh:334,335,362`
+- [x] (suggestion) The list count requires `type == "array"`; an object, a string and a number each give unknown (840e6941) — `.agent/scripts/project_integration_audit.sh:337`
+- [x] (suggestion) gh guard: `gh_calls_not_read_only` checks every gh word in command position on its own, refuses a flag before the subcommand, `command gh` and a gh named by a variable; a 15-line fixture tests the matcher (gawk and mawk) (055d4417) — `.agent/scripts/tests/test_user_tier_guard.sh:289-294`
+- [x] (suggestion) github is unknown when the checked remote's host only looks like GitHub (ssh alias, GitHub Enterprise) or another remote is on GitHub; issues and prs follow; ssh.github.com counts as github.com; tested (f6525b48) — `.agent/scripts/project_integration_audit.sh:304-321`
+- [x] (suggestion) --facts tests for gh missing, jq missing, list calls failing after repo view, no commits, a remote named upstream, a root nested in a larger repository (3dc8ede7) — `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] (suggestion) The skill says which facts go unknown for which cause (0a7073e8; its test_skill_paths check updated in 0526dd91) — `.claude/skills/audit-project/SKILL.md:152`
+- [x] (suggestion) windows=yes skips the git-bug bridge only; the pre-commit item keeps in place / missing with "(windows=yes: language-native hooks only)" (27c73d6b) — `.claude/skills/audit-project/SKILL.md:237`
+- [x] (suggestion) Step 10 gives the audit's pull request body ("Fixes from the project audit:"), the issue body line it replaces, and the -R github.com/... the create calls take (2692f682) — `.claude/skills/audit-project/SKILL.md:401-410`
+- [x] AGENTS.md Script Reference row for project_integration_audit.sh: run by /onboard-project and /audit-project, `[--facts]` in the usage, what --facts prints (3135e88d) — `AGENTS.md`
+
+### Checks
+- Full pass `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: first run failed test_skill_paths (the old "unknown" sentence, fixed in 0526dd91); rerun on the final tree passed every hook, 693 s; the script-test hook ran all 40 suites (`.agent/knowledge/skill_workflows.md` on the branch maps to no suite).
