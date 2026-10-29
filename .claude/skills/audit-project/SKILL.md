@@ -426,7 +426,24 @@ branch pushed and the pull request opened only on a yes, signed issues and
 pull request bodies from quoted heredocs. With these changes:
 
 - the issue and pull request title is "Fix what the project audit found";
-- an issue body ends "Found by the `audit-project` skill.";
+- the pull request body's summary line is "Fixes from the project audit:"
+  where step 7's reads "Onboarding with the workspace:", followed as there
+  by one `- <each item>` line per change and `Closes #<N>` (left out, as
+  there, when no issue was opened):
+
+  ```markdown
+  ## Summary
+
+  Fixes from the project audit:
+
+  - <each item>
+
+  Closes #<N>
+  ```
+- an issue body ends "Found by the `audit-project` skill." where step 8's
+  ends "Found by the `onboard-project` skill.";
+- `gh pr create` and `gh issue create` take `-R github.com/<owner>/<repo>`,
+  the repository the `github` fact names;
 - the worktree: on the issue's `feature/issue-<N>` when the project uses
   issues; for a project that uses none, the `onboard-project` skill
   worktree (`--skill onboard-project`), because this hygiene work is

@@ -1610,7 +1610,7 @@ Merge c0bcc8a9 (main at f90d8ffe, PR 411) is clean: its tree equals `git merge-t
 - [x] (suggestion) Test gaps in `--facts`: gh missing, jq missing, a repository with no commits, a remote not named origin, `ever_opened` failing after a successful `repo view`, and a root nested inside a larger repository — `.agent/scripts/tests/test_project_integration_audit.sh`
 - [x] (suggestion) The skill blurs which facts go `unknown` for which cause: gh problems make only issues and prs unknown, and `github` is unknown only when the repository cannot be read. Say which facts — `.claude/skills/audit-project/SKILL.md:152`
 - [x] (suggestion) The `windows=yes` row is a partial skip ("shell-script hooks in the pre-commit item"). Say how it is reported, since the pre-commit item keeps its in place / missing status — `.claude/skills/audit-project/SKILL.md:237`
-- [ ] (suggestion) Step 10 follows onboard-project step 7 "as written" but overrides only the title. Step 7's pull request body still reads "Onboarding with the workspace", so give the audit's body wording too — `.claude/skills/audit-project/SKILL.md:401-410`
+- [x] (suggestion) Step 10 follows onboard-project step 7 "as written" but overrides only the title. Step 7's pull request body still reads "Onboarding with the workspace", so give the audit's body wording too — `.claude/skills/audit-project/SKILL.md:401-410`
 
 ## Checkpoint
 **Status**: complete
