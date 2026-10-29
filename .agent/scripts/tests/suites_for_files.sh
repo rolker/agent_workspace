@@ -39,7 +39,11 @@
 #     Python `import X` counts as a reference to `X.py`, and
 #     `from X import Y` to `X.py` and `Y.py` (Y may be a module of package X),
 #     with the names of a parenthesised `from X import (...)` read across
-#     its continuation lines.
+#     its continuation lines (inline comments dropped first). An import the
+#     parser cannot fully read (a `\` continuation, an unclosed `(`, `;`,
+#     `*`, anything but a plain name list) may hide a name, and that name
+#     can only be a module, so the file then counts every `.py` file as
+#     referenced: its suites run whenever any `.py` file changes.
 #   - Closure: a suite's own references, expanded only through referenced
 #     files that are code (`.sh`, `.py`, or extensionless with a `#!`
 #     line). Documents are leaves.
@@ -188,9 +192,15 @@ def yaml_scalar(raw):
 
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_./-]+")
-IMPORT_RE = re.compile(r"^\s*import\s+([A-Za-z0-9_., ]+)")
-FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_.]+)\s+import\s*\(?\s*([A-Za-z0-9_., ]*)")
+IMPORT_RE = re.compile(r"^\s*import\s+(.*)$")
+FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_.]+)\s+import\b(.*)$")
 FROM_PAREN_RE = re.compile(r"^(\s*from\s+[A-Za-z0-9_.]+\s+import\s*\()([^)]*)\)", re.M)
+# A fully readable import name list: `a`, `a.b as c`, comma-separated; a
+# `from` list may also sit in one pair of parentheses with a trailing comma.
+_NAME = r"[A-Za-z0-9_.]+(?:\s+as\s+[A-Za-z0-9_]+)?"
+_LIST = rf"{_NAME}(?:\s*,\s*{_NAME})*"
+IMPORT_NAMES_RE = re.compile(rf"^\s*({_LIST})\s*$")
+FROM_NAMES_RE = re.compile(rf"^\s*(?:\(\s*({_LIST})\s*,?\s*\)|({_LIST}))\s*$")
 DECL_RE = re.compile(r"^#\s*(covers|scans):\s*(.*?)\s*$")
 
 
@@ -222,6 +232,7 @@ class Index:
         self.by_base = {}
         for v in vocab:
             self.by_base.setdefault(os.path.basename(v), set()).add(v)
+        self.py_files = {v for v in vocab if v.endswith(".py")}
 
     def refs(self, text, self_path=None):
         found = set()
@@ -246,30 +257,48 @@ class Index:
             last = t.rsplit("/", 1)[-1]
             if last in self.by_base and ("." in last or slashed):
                 found |= self.by_base[last]
-        # A parenthesised `from X import (` list may span lines: join each
-        # onto its first line (inline ` # ...` comments dropped) so the
-        # per-line import match sees every name.
+        # Python imports. Inline ` # ...` comments are dropped first, so a
+        # `)` in one cannot end a parenthesised list early; then each
+        # `from X import ( ... )` span is joined onto its first line.
+        imports = "\n".join(re.sub(r"#.*$", "", l) for l in body.splitlines())
         imports = FROM_PAREN_RE.sub(
-            lambda m: m.group(1) + " ".join(re.sub(r"#[^\n]*", "", m.group(2)).split()) + ")",
-            body,
+            lambda m: m.group(1) + " ".join(m.group(2).split()) + ")", imports
         )
+        unreadable = False
         for line in imports.splitlines():
-            names = []
-            m = IMPORT_RE.match(line)
-            if m:
-                names = [n.strip().split(" ")[0] for n in m.group(1).split(",")]
+            names = None
             m = FROM_RE.match(line)
             if m:
-                # `from pkg import mod` may import the module mod.py.
-                names = [m.group(1)] + [
-                    n.strip().split(" ")[0] for n in m.group(2).split(",") if n.strip()
-                ]
-            for name in names:
+                n = FROM_NAMES_RE.match(m.group(2))
+                if n:
+                    # `from pkg import mod` may import the module mod.py.
+                    names = [m.group(1)] + split_names(n.group(1) or n.group(2))
+            else:
+                m = IMPORT_RE.match(line)
+                if m:
+                    n = IMPORT_NAMES_RE.match(m.group(1))
+                    if n:
+                        names = split_names(n.group(1))
+            if m and names is None:
+                # An import this parser cannot fully read (a `\`
+                # continuation, an unclosed `(`, `;`, `*`, ...): a name in
+                # it may be lost, and it can only be a module, so count
+                # every .py file as referenced.
+                unreadable = True
+                continue
+            for name in names or []:
                 for comp in name.split("."):
                     if comp:
                         found |= self.by_base.get(comp + ".py", set())
+        if unreadable:
+            found |= self.py_files
         found.discard(self_path)
         return found
+
+
+def split_names(names):
+    """`a.b as c, d` -> ['a.b', 'd']: the imported names, aliases dropped."""
+    return [n.split()[0] for n in names.split(",") if n.strip()]
 
 
 def main():
