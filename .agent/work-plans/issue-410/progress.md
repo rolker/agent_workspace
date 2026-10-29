@@ -144,3 +144,60 @@ Plan Review verdict needs-work (42c529c8). Host decisions carried into the plan-
 **Plan**: `.agent/work-plans/issue-410/plan.md` at `5af3efe3`
 
 Revision after a needs-work plan review. Suite derivation is now bounded (comment lines stripped, closure only through code, vocabulary = hook scope minus work-plans) and measured on the real tree: a merge_pr.sh change selects 16 of 39 suites (about 137 s serial), a register_project.sh change 2 (about 95 to 118 s), so the under-a-minute acceptance is not met serially and is raised as an open question. ROOT_READERS prefixes (23, not 5) feed the drift check only; staged deletions and rename sources force a full run; the AGENTS.md row is a last, Ask-First step; the wording sites are named.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-29 09:25 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #410 — Pre-commit script-test hook: run only the suites whose declared files changed
+**Plan**: `.agent/work-plans/issue-410/plan.md` at `5af3efe3`
+**Branch**: `feature/issue-410`
+
+Round 2. Round-1 must-fixes: (1) bounded derivation, measured, real-tree selectivity test: addressed; my own prototype of the rule as written reproduces the plan's figures (`merge_pr.sh` 16 of 39, `register_project.sh` 2, `review_progress.sh` 10, `AGENTS.md` and a `SKILL.md` 13, 55 unmapped in-scope files). (2) 23 `ROOT_READERS`, prefixes drift-only, suite sets and times stated: addressed, but see finding 2 for what drift-only drops. (3) Deletions and renames: addressed in intent, but the mechanism as written misses both cases it targets (finding 1). (4) `AGENTS.md` row and #399 wording sites: addressed (all five line references checked). Round-1 suggestions 5 to 9 are all addressed (entry pin, glob-count and real `git ls-files` pins, step 8 wording, Python imports, empty-suite and checkpoint semantics, the 55 full-run files).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR; unchanged from round 1 |
+| Issue alignment | Good | Serves, as checked: "Quality of the work and review-loop wall-clock (README Workspace goals); `docs/design.md#rules` and `docs/design.md#review-loop-and-timeline`" (goal heading and both anchors exist). Under-a-minute miss is stated honestly and is with the owner |
+| File targeting | Good | Wording sites verified at the cited lines; `AGENTS.md` row is step 10 |
+| Consequences | Needs work | Deletion check reads the wrong index and the wrong side of a rename (finding 1); whole-prefix scanning suites lose their coverage (finding 2) |
+| Principle alignment | Needs work | "Test what breaks": the planned deletion/rename tests would pass against the broken mechanism unless they go through a real `git commit -a` and an out-of-scope rename. "Enforce what matters": the drift check in `test_script_tests_hook_scope.sh` itself stops running when a suite it guards is edited |
+| ADR compliance | Good | ADR-0005 kept (CI runs every hook on all files); ADR-0013 and ADR-0011 not triggered. Design picture: `docs/design.md` line 359 (adapter `test` verb wraps the runner) stays true, since no `--files` still runs everything |
+| ROS conventions | N/A | Workspace plan |
+
+### Findings
+
+1. **[Consequences] The deletion/rename trigger in step 4 misses the cases it is for (verified in a scratch repo).**
+   (a) The runner unsets `GIT_INDEX_FILE` at its top (the hook-environment sanitization). `git commit -a` runs hooks with `GIT_INDEX_FILE=.git/index.lock`, and `git commit <paths>` with `.git/next-index-*.lock`. After the unset, `git diff --cached --name-only --diff-filter=D` reads `.git/index` and printed nothing for a deleted file; before the unset it printed the deletion. The check must run before the unset, or with the saved `GIT_INDEX_FILE`.
+   (b) `git diff --name-only --diff-filter=DR` prints a rename's destination, not its source (`git mv .agent/scripts/x.sh old/x.sh` printed `old/x.sh`). A rename from inside the hook scope to outside it is therefore not forced full. Use `--no-renames --diff-filter=D`, which lists the rename source as a deletion. The same applies to the branch-run `<default>...HEAD` check.
+   Tests: drive one case through a real `git commit -a` (or a pathspec commit) with the runner as the hook, and rename an in-scope file to an out-of-scope path. A `git rm` plus a direct runner call passes against the broken version.
+2. **[Consequences] Suites that scan a whole prefix are no longer selected by it, and drift check 6(b) passes for them anyway.** Prototype of step 1:
+   - `test_skill_paths.sh` guard (c) runs `git grep` for pointers to the old what-next skill over `.agent/ .claude/ AGENTS.md Makefile`. A pointer added to, say, `dashboard.sh` selects 3 suites, not this one.
+   - `test_script_tests_hook_scope.sh` scans every `test_*.sh` (root-derivation scan, ROOT_READERS check, and the new step 6 checks). Editing a suite outside ROOT_READERS (`test_capture.sh` selects only itself) skips it. A suite that starts deriving a real root without a declaration, or loses its references, passes locally; only CI catches it.
+   Step 6(b) passes for both, because their prefixes trivially contain derived files. Name the scanning suites in the plan and give each a `# covers:` line with the prefix it scans (`test_skill_paths.sh`: its four grep prefixes; `test_script_tests_hook_scope.sh`: `.agent/scripts/tests/`). Both are among the fast suites. Distinguish a scanning prefix (selects) from a copy-into-sandbox prefix (drift-only) in the `ROOT_READERS` comment. The manifest-driven `test_user_tier_guard.sh` is fine: every manifest entry already maps to it.
+3. **[Suggestion] `test_progress_read.sh` derives no references.** It runs `python3 -m unittest test_progress_read`, which neither filename matching nor `import X` matching sees. The plan says the prototype found no such suite; mine found this one. Step 6(a) will then demand a `covers:` line, which is fine. Also, step 3's "anything under `tests/` that is not a `test_*.sh`" makes an edit to `test_progress_read.py` (and `tests/live/plugin_acceptance.sh`) a full 7-minute run. A `# covers: .agent/scripts/tests/test_progress_read.py` on the wrapper, with the `.py` dropped from the trigger rule, would select one suite instead.
+4. **[Suggestion] The hub guard in step 7 is weak.** "Fewer than the glob count" still passes at 38 of 39. Pin a bound that a hub regression would break, for example `register_project.sh` selects at most 5 suites (2 today).
+5. **[Suggestion] `dispatch_phase.sh:411` has two more claims that step 4 makes stale.** It says "pre-commit drops deleted paths; CI's all-files run covers the rest" and "it takes several minutes". Add both to step 9's check, with `test_dispatch_phase.sh:497-498`.
+6. **[Suggestion, for the owner's parallel-runner decision] A parallel runner is workable but not a drop-in.**
+   - The leak sweep uses one shared `RUN_TMPDIR`, swept after each suite. Run concurrently, a suite's sweep would see the other suites' sandboxes as leaks (false exit 2) and charge them to the wrong suite. Each suite needs its own guard directory, swept when that suite exits.
+   - Fail-fast must kill the sibling suites' process groups. It must also still clean up or report their temp directories.
+   - Output must be buffered per suite.
+   - 30 of 39 suites do not set `HOME`. Any suite that writes under the real `HOME` or the real repo could race; that needs an audit first.
+   - Gain is capped by the slowest chosen suite: about 57 s for a `merge_pr.sh` fix, but still 95 to 118 s for a `register_project.sh` fix. For that commit only speeding up `test_register_project.sh` meets the minute.
+
+### Summary
+
+The revision fixes the round-1 core problem: the bounded derivation is selective, and I reproduced its numbers. Two mechanism gaps remain, both cheap. The deletion/rename trigger reads the wrong index under `git commit -a` and the wrong side of a rename. Prefix-scanning suites, including the drift check itself, stop running when the files they scan change. Fix those, with tests that would fail against the current text, and the plan is ready.
+
+### Recommended Actions
+
+- [ ] Must-fix: compute the deletion check before the runner unsets `GIT_INDEX_FILE` (or with the saved value), and use `--no-renames --diff-filter=D` for both the staged and the branch-run checks. Test it through a real `git commit -a` or pathspec commit and an in-scope to out-of-scope rename.
+- [ ] Must-fix: give the prefix-scanning suites `# covers:` lines with what they scan, at least `test_skill_paths.sh` (guard (c) prefixes) and `test_script_tests_hook_scope.sh` (`.agent/scripts/tests/`). Record the scan vs copy distinction next to `ROOT_READERS`, so drift check 6(b) is not read as covering them.
+- [ ] Suggestion: handle `test_progress_read.sh` with a `covers:` line for `test_progress_read.py`, and drop that `.py` from the full-run trigger rule.
+- [ ] Suggestion: tighten the real-tree hub guard to a small upper bound (for example at most 5 suites for `register_project.sh`).
+- [ ] Suggestion: add `dispatch_phase.sh:411`'s "pre-commit drops deleted paths" and "several minutes" claims to the step 9 wording check.
+- [ ] Suggestion: if the owner picks parallel running, plan per-suite TMPDIR guards, sibling kill on first failure, per-suite output buffering and a HOME/real-repo write audit. Note that `register_project.sh` fixes stay above a minute regardless.
