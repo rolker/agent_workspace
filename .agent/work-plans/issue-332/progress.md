@@ -1645,3 +1645,43 @@ Owner's answer: "Address". Part 4 of 4, round 1 (15207a51, taken as round 1; the
 
 ### Checks
 - Full pass `pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: first run failed test_skill_paths (the old "unknown" sentence, fixed in 0526dd91); rerun on the final tree passed every hook, 693 s; the script-test hook ran all 40 suites (`.agent/knowledge/skill_workflows.md` on the branch maps to no suite).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 15:07 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af1efbe1213e3292e, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `485e4628`
+**Base**: main
+**Depth**: Deep (reason: round 2 of part 4 of 4 of #332, classified on the whole main...HEAD diff as in round 1; a full re-review of the 11 fix commits since c0bcc8a9 with the cross-model reviewers, because round 1 had 2 must-fix. The counter reads 17 from parts 1 to 3 (#384); for this part it is round 2)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round (verdict run with --round 2 --prev-must-fix 2 --mechanical)
+
+Round-1 findings checked against the fixes. All nine are addressed:
+- The credential test covers tsv and text.
+- Every gh call names github.com/<owner>/<repo>, in the script (via $GH_FULL) and in the audit-project skill. The GH_HOST stub would fail a call that drops the host.
+- The guard matcher gives identical results under gawk and mawk. It refuses fixture lines 1-9 and raises no false positives on the real scripts.
+- For an alias host or a GitHub remote other than the one checked, github is unknown, and issues and prs follow with no gh call.
+- All six --facts test gaps are covered.
+- The AGENTS.md row matches the argument parser, the outputs and the exit codes.
+
+Suites run under a private TMPDIR: test_project_integration_audit 191/0, test_user_tier_guard 64/0, test_skill_paths 121/0. shellcheck is clean. The branch is not behind main.
+
+Reviewers:
+- Gemini ran: 3 suggestions.
+- Codex ran: 2 must-fix. One is kept as must-fix (branch protection); the other is reclassified as a suggestion: the unconditional `git push -u origin` sits in merged onboard-project step 7 and fails loudly.
+- Claude adversarial ran: 2 must-fix, merged into one below, plus suggestions folded in.
+
+### Findings
+- [ ] (must-fix) Credential redaction is still incomplete:
+  - A query or fragment on the URL is kept. `https://github.com/o/r?token=abc` becomes github=yes with GH_REPO `o/r?token=abc`, which goes into the evidence and every `gh -R` call (reproduced).
+  - A `file://user:tok@...` remote is classified local, and its raw URL is printed (reproduced).
+  - The scp form `user:tok@host:path` is not redacted.
+  - The comment's claim that the URL is never printed is false.
+  - Fix: strip `[?#].*` and the user part in every form, require `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$` for owner/repo, and add fixtures for ssh://, file://, a query string and a credential on a GitHub remote — `.agent/scripts/project_integration_audit.sh:343-366`
+- [ ] (must-fix) The classic protection endpoint returns 404 "Branch not protected" when no protection exists, but the skill treats every failed call as `not checked`. A project with no rulesets and no classic protection is therefore never reported missing. Fix: check `.permissions.admin` first. With admin, a 404 means missing; without admin, the item is not checked. A pull-request rule found in the rulesets stands whatever the classic call returns (Codex) — `.claude/skills/audit-project/SKILL.md:272-276`
+- [ ] (suggestion) A github.com remote whose path is not owner/repo (e.g. `https://github.com/owner`) falls into the "host looks like GitHub but is not github.com" reason. The value unknown is safe, but the reason is wrong (Gemini) — `.agent/scripts/project_integration_audit.sh:369`
+- [ ] (suggestion) Step 10 says what to do with `github=no` but not with `github=unknown` (alias host, GitHub on another remote). Say to ask which repository and which remote before any issue, push or pull request (Gemini) — `.claude/skills/audit-project/SKILL.md:445`
+- [ ] (suggestion) onboard-project steps 7 and 8, which audit-project step 10 follows, still push to `origin` unconditionally and pass a bare `-R <owner>/<repo>` to `gh pr create` and `gh issue create`. A repository whose GitHub remote is `upstream` gets an issue and commits, and the push then fails. Its own create calls go to `$GH_HOST`. Carry the remote and host from the facts (Codex, plus lead) — `.claude/skills/onboard-project/SKILL.md:406,438`
