@@ -275,10 +275,72 @@ done
 # project_integration_audit.sh and registration_verify.sh carry the inert
 # marker: they only read and print. Hold them to that -- no repo-changing
 # git call and no gh call but the three that only read (gh repo view, gh
-# issue list, gh pr list: project_integration_audit.sh --facts, #332 PR 4;
-# a gh subcommand given by a variable is refused, since it cannot be
-# checked) in the source, and from an unregistered repo they exit 2 with
-# their own message, leaving the repo and HOME untouched.
+# issue list, gh pr list: project_integration_audit.sh --facts, #332 PR 4)
+# in the source, and from an unregistered repo they exit 2 with their own
+# message, leaving the repo and HOME untouched.
+#
+# gh_calls_not_read_only <file>: every gh call in <file> that is not one of
+# those three, as "line: text". Each gh word is checked on its own, so one
+# allowed call does not exempt the rest of its line. A gh word is a call
+# when it stands in command position: first on the line, after ; & | ( `
+# ! {, after a keyword that runs a command (then, do, if, command, exec,
+# xargs, env, ...), or after a NAME=value prefix; a gh word inside a
+# quoted message is not. It must be followed by exactly the subcommand,
+# so a flag before it (gh -R o/r issue close) is refused, and so is a gh
+# named by a variable ($GH, ${GH_BIN}), which cannot be checked. command
+# -v gh only looks gh up and is not a call. Comment lines are skipped.
+gh_calls_not_read_only() {
+    awk '
+        /^[[:space:]]*#/ { next }
+        {
+            s = $0
+            gsub(/[;&|(`!]/, "& ", s)
+            sub(/^[[:space:]]+/, "", s)
+            n = split(s, w, /[[:space:]]+/)
+            for (i = 1; i <= n; i++) {
+                t = w[i]
+                gsub(/^["\047]+|["\047]+$/, "", t)
+                if (t != "gh" && t !~ /^\$\{?[A-Za-z_]*[Gg][Hh][A-Za-z0-9_]*\}?$/) continue
+                p = (i > 1) ? w[i - 1] : ""
+                if (!(i == 1 || p ~ /[;&|(`!{]$/ \
+                      || p ~ /^(then|do|else|elif|if|while|until|command|exec|time|xargs|nohup|env|sudo|builtin)$/ \
+                      || p ~ /^[A-Za-z_][A-Za-z0-9_]*=/)) continue
+                a = w[i + 1]; b = w[i + 2]
+                gsub(/^["\047]+|[)"\047;]+$/, "", a); gsub(/^["\047]+|[)"\047;]+$/, "", b)
+                sub_cmd = a " " b
+                if (t == "gh" && (sub_cmd == "repo view" || sub_cmd == "issue list" || sub_cmd == "pr list")) continue
+                print NR ": " $0
+                break
+            }
+        }' "$1"
+}
+
+# The matcher itself, on lines it must refuse and lines it must let pass.
+GH_FIXTURE="$SANDBOX/gh_guard_fixture.sh"
+cat > "$GH_FIXTURE" <<'FIXEOF'
+gh issue close 1
+gh -R o/r issue close 1
+command gh issue close 1
+"$GH" issue list
+${GH_BIN} pr list
+x="$(gh repo view o/r)"; gh issue close 1
+gh issue list && gh pr merge 1
+FOO=1 gh pr close 2
+if gh api repos/o/r; then :; fi
+out="$(gh issue list -R o/r --state all)" || rc=$?
+gh repo view github.com/o/r --json name
+! command -v gh >/dev/null 2>&1
+fact issues unknown "gh is not installed"
+echo "so gh can neither read nor open"
+# gh issue close 1 in a comment
+FIXEOF
+gh_hits="$(gh_calls_not_read_only "$GH_FIXTURE" | cut -d: -f1 | paste -sd' ' -)"
+if [[ "$gh_hits" == "1 2 3 4 5 6 7 8 9" ]]; then
+    pass "the gh matcher refuses lines 1-9 of its fixture (flag before the subcommand, command gh, \$GH, a second call on an allowed line) and passes the rest"
+else
+    fail "the gh matcher refused fixture lines '$gh_hits', wanted '1 2 3 4 5 6 7 8 9'"
+fi
+
 for rel in .agent/scripts/project_integration_audit.sh .agent/scripts/registration_verify.sh; do
     in_manifest=false
     for e in "${ENTRIES[@]}"; do [[ "$e" == "$rel" ]] && in_manifest=true; done
@@ -288,9 +350,7 @@ for rel in .agent/scripts/project_integration_audit.sh .agent/scripts/registrati
         || fail "$rel does not carry the '# user-tier: inert' marker"
     git_bad="$(grep -nE '(^|[^[:alnum:]_.-])git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(push|commit|merge|rebase|fetch|pull|checkout|switch|branch|tag|clone|init|add|rm|mv|reset|worktree[[:space:]]+(add|remove))[[:space:]]' "$WS_ROOT/$rel" \
         | grep -vE ':[[:space:]]*#')"
-    gh_bad="$(grep -nE '(^|[^[:alnum:]_.-])gh[[:space:]]+((pr|issue|api|repo|run|release|label|auth|workflow|secret|variable|gist|ruleset|cache|project|search|config|extension|alias)([[:space:]]|$)|["$])' "$WS_ROOT/$rel" \
-        | grep -vE ':[[:space:]]*#' \
-        | grep -vE '(^|[^[:alnum:]_.-])gh[[:space:]]+(repo[[:space:]]+view|issue[[:space:]]+list|pr[[:space:]]+list)([[:space:]]|$)')"
+    gh_bad="$(gh_calls_not_read_only "$WS_ROOT/$rel")"
     if [[ -n "$git_bad$gh_bad" ]]; then
         fail "$rel makes a repo-changing git call or a gh call that is not read-only: $(head -n1 <<< "${git_bad:-$gh_bad}")"
     else
