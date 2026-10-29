@@ -457,3 +457,23 @@ Scope: round 2's findings (1 must-fix, 2 suggestions) and the fix diff `4384d03d
 
 ### Findings
 - [ ] (suggestion) `FROM_RE` reads only the `from ... import` line, so a name on a continuation line of a parenthesised import (`from pkg import (` / `mod_b,`) is not mapped; a suite importing a module only that way is skipped when another suite maps that module (an unmapped module still gives ALL). Join continuation lines, or run ALL on an unterminated `(`, or at least say so in the header comment, which now claims `from X import Y` maps `Y.py` — `.agent/scripts/tests/suites_for_files.sh:190,250`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-29 10:43 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #411 at `11a0612e`
+**Sources**: 3 (Local Review @ `71281825` (covers 11a0612e via bookkeeping), Copilot x4 (quota exhausted, no review content), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Copilot's four reviews (at `4d1cdee3`, `db6547dd`, `4384d03d`, `71281825`) each say only that its quota is exhausted: no comments, nothing to triage. No conversation comments. Earlier Local Review rounds (`db6547dd`, `4384d03d`) have no open boxes; `sources` reports no dropped entries. Codex and Gemini ran inside the round-1/round-2 local reviews (Codex at capacity in round 1); their findings were folded into those entries and are closed. CI at the head: Validate Documentation and ros-manifest tests pass in both runs, Validate Adapter Contract pass in one run and pending in the other, Lint (pre-commit) pending in both.
+
+The one open finding is kept open (suggestion, not must-fix). Verified at the head: `FROM_RE` captures only the text after `import (` on the same line, and a bare continuation-line name (`mod_b,`) is not a vocabulary token, so it maps nothing. Failure mode is real but latent: a suite whose only link to `mod_b.py` is such a continuation line is silently skipped when another suite maps `mod_b.py`. Nothing in the tree hits it today: of the two parenthesised imports tracked, `.agent/scripts/validate_workspace.py:42` (`from workspace import (`) lists functions and its module `workspace.py` is mapped from the first line, and `tools/ros-manifest/tests/test_selectors.py:5` is outside the hook's `files:` scope. CI's all-files run is the backstop. The fix is a few lines plus one synthetic case, so it is recommended before merge rather than deferred.
+
+### Findings
+- [ ] (suggestion, Local Review @ `71281825`) `FROM_RE` reads only the `from ... import` line, so a name on a continuation line of a parenthesised import (`from pkg import (` / `mod_b,`) is not mapped; a suite importing a module only that way is skipped when another suite maps that module. Fix: in `Index.refs`, before the per-line import loop, join each `from X import ( ... )` span onto one line (e.g. `re.sub(r"(^\s*from\s+[\w.]+\s+import\s*\()([^)]*)\)", lambda m: m.group(1) + " ".join(m.group(2).split()) + ")", body, flags=re.M)`), and add a case to `test_script_tests_hook_scope.sh` where a suite reaches `mod_b.py` only through a continuation line — `.agent/scripts/tests/suites_for_files.sh`
+
+### False positives
+- (Copilot x4) "unable to review this pull request ... insufficient remaining quota" — not a finding; no review content to triage.
