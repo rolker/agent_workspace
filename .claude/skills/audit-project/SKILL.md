@@ -246,7 +246,14 @@ as a GitHub call without access). An item is never dropped from the report.
 | `prs=no` | Copilot auto-review (it reviews pull requests) | `skipped: the project uses no pull requests (prs=no)` |
 | `issues=no` and `prs=no` | Component labels (they label issues and pull requests) | `skipped: the project uses no issues or pull requests (issues=no, prs=no)` |
 | `multi_component=no` | Component labels | `skipped: one component (multi_component=no)` |
-| `windows=yes` | git-bug bridge, and shell-script hooks in the pre-commit item (offer language-native hooks instead) | `skipped: Windows (windows=yes)` |
+| `windows=yes` | git-bug bridge | `skipped: Windows (windows=yes)` |
+
+`windows=yes` skips only part of the pre-commit item, so the item is not
+reported as skipped: it keeps its **in place** or **missing** status, and
+its line ends `(windows=yes: language-native hooks only)`. When it is
+missing, the fix offers language-native hooks and no shell-script hook;
+when it is in place, the line also names each hook that runs a shell
+script, since such a hook may not run on this machine.
 
 Also skip, with its reason, the git-bug bridge when git-bug is not
 installed (`git bug version` fails): `skipped: git-bug is not installed`.
