@@ -73,7 +73,7 @@ README.
 | `/run-issue` can run in a project session | `file-contains .claude/skills/run-issue/SKILL.md session_scope: both` |
 | The merge gate finds a project pull request's timeline at the registered root (#379) | `gh-issue 379 closed` |
 | The orchestrator skill runs issues with the owner at goal level only (#321) | `gh-issue 321 closed` |
-| The script-test pre-commit hook runs only the suites the changed files reach (#410), so a fix pass stops paying for all 39 suites | `gh-issue 410 closed` |
+| The script-test pre-commit hook runs only the suites the changed files reach (#410), so a fix pass stops paying for all suites | `gh-issue 410 closed` |
 | GeoZui4D (`gz4d`) is onboarded through onboard-project (#332): parts 3 and 4 of its plan are driven through `/orchestrator`, the first drive of that skill | |
 | A `/run-issue` run started from the project root reaches the merge checkpoint | |
 | ADR-0016 is promoted from Provisional to Accepted | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |

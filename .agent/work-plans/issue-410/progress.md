@@ -897,7 +897,7 @@ Verified: `docs/roadmap.md:76` reads "all 39 suites";
 `.agent/scripts/tests/test_*.sh` holds 40 on the merged tree.
 
 ### Findings
-- [ ] (suggestion, Local Review @ `ba6614e8`) roadmap Direction row for #410 says "all 39 suites"; the merged tree has 40 — `docs/roadmap.md:76`
+- [x] (suggestion, Local Review @ `ba6614e8`) roadmap Direction row for #410 says "all 39 suites"; the merged tree has 40 — `docs/roadmap.md:76`
 
 ### False positives
 
