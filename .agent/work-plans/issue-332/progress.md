@@ -1453,3 +1453,25 @@ All ten fixed; none deferred. No-SKIP pre-commit over `main...HEAD` on `16d94083
 - [x] S6 `ignored-agent-file` uncapped and flagging `.claude/worktrees/`: one finding per ignoring rule naming up to three files and the count; `.claude/worktrees/` excluded like `settings.local.json`; test with five files under one rule (4dc559ee) — `.agent/scripts/project_integration_audit.sh` (category 4)
 - [x] S7 numbered and `+` list items missed: list marker `-`, `*`, `+`, `1.`, `1)` in both the grep and the awk; test lines 9 to 11 (61df2c3e) — `.agent/scripts/project_integration_audit.sh`
 - [x] S8 empty arrays under `set -u`: the instruction-file and rule-file expansions use `${arr[@]+...}`; the two remaining plain ones are guarded by a non-empty check. Not testable on this machine's bash 5 (4d2c0537) — `.agent/scripts/project_integration_audit.sh`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 10:57 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4f6a454516d4c385, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `df3b8943`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 3 of PR 3 of 4 (the onboard-project rewrite); `review_progress.sh round` says 14 only because of the merged parts' entries (issue 384). A narrow convergence check per the handoff: scope is the round-2 entry 8c7b5e6d's 10 findings and the fix diff 377b4e29..16d94083 (11 commits); cross-model skipped (round-3 convergence check, per handoff). Verdict computed with `--round 3 --prev-must-fix 2`.
+
+All 10 round-2 findings checked closed. M1: category 6 verifies the parent and the audited instance (`verify_registration`), with tests for an instance with malformed settings and with no test command. M2: at a parent root categories 1 to 5 read only the chosen instance's settings and repository (host decision), the session-root check stays on the parent; the fixture's parent now ignores `worktrees/` while instance a does not, and the parent's CLAUDE.md line must not be reported; design.md bullet and changelog row (16d94083) say so. Suggestions: prose before a code span is no command; `+`, `1.`, `1)` list markers in grep and awk; `${arr[@]+...}` expansions; `ignored-agent-file` one per rule, `.claude/worktrees/` skipped; zero-instance parent stops (skill decides on the registered type; audit `parent-instance` error, text "none registered"); `skill_worktree_type` ties research and inspiration-tracker to workspace and onboard-project to project (no existing caller uses another combination: research's project scope uses `--issue`); `git push -u` before `gh pr create`; `worktree_list.sh` splits at the registered name (test with `my-proj.x`). AGENTS.md deliberately untouched (owner's call on two wording refreshes), not counted.
+
+Checks: shellcheck --severity=warning clean on the six changed shell files; suites under a private TMPDIR: test_project_integration_audit 130/0, test_project_registry 281/0, test_skill_paths 104/0, no files left behind.
+
+### Findings
+- [ ] No issues found. LGTM.
