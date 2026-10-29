@@ -900,3 +900,13 @@ Verified: `docs/roadmap.md:76` reads "all 39 suites";
 - [ ] (suggestion, Local Review @ `ba6614e8`) roadmap Direction row for #410 says "all 39 suites"; the merged tree has 40 — `docs/roadmap.md:76`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 13:37 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (one open suggestion, a one-number edit to the owner's roadmap Direction row, "all 39 suites" where the merged tree has 40; the owner's text is kept true with the smallest edit, and merging with a finding open is his answer only; he was told and may say merge instead)
+**After**: findings
+**Decision**: address
+
+Integrated Review e20087ba at head e2b8d1df: one open suggestion (roadmap Direction row for #410 says "all 39 suites"; the merged tree has 40). Sent to address-findings; then a round-12 convergence check, re-triage and the merge on the owner's recorded yes.
