@@ -752,3 +752,30 @@ Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 94/0 and `tes
 - The source is a PR-mode `## Local Review` entry, which `review_progress.sh findings` does not select, so its box was ticked by direct edit inside the fix commit 602b9e64, as in earlier passes.
 - `suites_for_files.sh --dump` on the real tree: 1601 lines, byte-identical to the previous mapper's output.
 - Fix commit made with `SKIP=validate-script-tests` (dispatched-pass rule); then `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook including the script-test suite (586 s, exit 0).
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 12:48 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #411 at `fcd11d50`
+**Depth**: Deep (reason: round 10 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: round 9's one must-fix (bytes literals in a `.py` file not read) and the fix diff `73d86b66..fcd11d50` (`602b9e64` plus its progress entry). Only `suites_for_files.sh`, `test_run_script_tests.sh` and progress.md changed. Probed in a throwaway synthetic repository with `--dump`:
+- `run([sys.executable, "-c", b"import a"])`, `input=b"import a\n"`, `rb"import a"` and `b"import a\x0a"` each map exactly their module, and an unnamed sibling stays unmapped.
+- The decode cannot raise: `bytes.decode("utf-8", errors="replace")` substitutes U+FFFD for invalid bytes. Invalid bytes before an `import` word (`b"\xff\xfe import a"`) make the piece parser fall back to every `.py` for the file, the safe direction, not a miss.
+- The round-9 mapper (`73d86b66`) maps none of those five shapes on the same fixture, so the new `input=b"import str_b\n"` case is a real regression test. It ran and passed in the suite.
+- The real repository's `--dump` is unchanged at 1601 lines.
+
+Specialists:
+- Static analysis: shellcheck (`--severity=warning`) is clean on both files.
+- Governance and plan drift: no change.
+- Claude adversarial: a lead probe on this narrow check.
+- Cross-model: skipped (round-10 convergence check, per handoff).
+
+Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 95/0 and `test_script_tests_hook_scope.sh` 239/0, no leftovers. Convergence: round 10, 0 must-fix (prev 1). `review_progress.sh verdict` says recommended.
+
+### Findings
+- [ ] No issues found. LGTM.
