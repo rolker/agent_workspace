@@ -1501,3 +1501,23 @@ The round-3 review left nothing open; its LGTM placeholder box is left as it is.
 ### Actions
 - [x] The `project_integration_audit.sh` Script Reference row: at a parent root the audit reads the settings and repository of `--instance I` (else the default or only instance), checks that instance's registration as well as the parent's, and skips the parent's own files; checked against `SNAME`/`AUD_NAME` and `verify_registration` in the script (4281cc40) — `AGENTS.md` Script Reference
 - [x] The Skill Worktree Exception: each allowlisted skill has one worktree type, `research` and `inspiration-tracker` workspace only, `onboard-project` project only; checked against `skill_worktree_type` in `worktree_create.sh` (4281cc40) — `AGENTS.md` Skill Worktree Exception
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 11:12 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4f6a454516d4c385, resume 2 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `680806ec`
+**Base**: main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 4 of PR 3 of 4 (the onboard-project rewrite); `review_progress.sh round` says 15 only because of the merged parts' entries (issue 384). A narrow convergence check per the handoff on the one code change since round 3 (ed1bcc04): the owner-approved AGENTS.md commit 4281cc40; cross-model skipped (round-4 convergence check, per handoff). Verdict computed with `--round 4 --prev-must-fix 0`.
+
+`git diff ed1bcc04..HEAD`: only AGENTS.md (2 lines) and progress.md changed. Each claim checked against the code. The audit row: at a parent root the instance's settings and repository are read (`project_integration_audit.sh:196-198`, AUD_NAME/PROOT from the `--instance` or default/only instance), its registration is verified beside the parent's (`:582-584`), and the parent's own files are not read (PROOT replaced by the instance's). The Skill Worktree Exception: `skill_worktree_type` (`worktree_create.sh:96-101`) gives onboard-project `project` and the rest `workspace`, and `:300-301` refuses any other combination.
+
+### Findings
+- [ ] No issues found. LGTM.
