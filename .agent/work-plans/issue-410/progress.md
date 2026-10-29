@@ -333,3 +333,42 @@ All three round-3 items are folded into the plan correctly, and the edit introdu
 **Decision**: proceed
 
 Plan at 481378f5, reviewed ready in round 4 (2d0e6231). The one open suggestion (pick the real-tree unmapped test candidate independently of suites_for_files.sh and fail rather than skip when none is found) is carried into the implement handoff. Owner answers already in the plan: the AGENTS.md row edit is approved; about 2 minutes serial per typical fix commit is accepted; the parallel runner and the slow suites are a follow-up.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 10:03 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**PR**: #411 at `f958ce35`
+
+Every plan step (1 to 11) is implemented, in 7 commits (a42d5dca..f958ce35):
+
+- **New `.agent/scripts/tests/suites_for_files.sh`** (bash wrapper around embedded Python). Takes the vocabulary from the hook's `files:`/`exclude:` regexes, matched with Python `re.search` as pre-commit matches them. Strips comment lines. Matches path and basename tokens; an extensionless basename counts only inside a token with a `/`. Maps Python `import X` to `X.py`. Expands the closure through code files only. Declarations: `# covers: <file>` maps exactly and counts as a mapping. `# covers: ALL` puts the suite in every scoped run. `# scans: <prefix>` adds the suite and never counts as a mapping. It prints `ALL` for every trigger the plan lists and for any error. `--dump` prints the derived map. Mapper runtime is about 0.3 s on the real tree.
+- **Declarations added**: `test_progress_read.sh` covers `test_progress_read.py`. `test_skill_paths.sh` scans `.agent/ .claude/ AGENTS.md Makefile`. `test_script_tests_hook_scope.sh` scans `.agent/scripts/tests/`. `test_plugin_manifest.sh` scans `.claude/skills/`; this is a third prefix scanner, found by grepping the suites for directory walks.
+- **`run_script_tests.sh`**: new `[tests-dir] [--files <f>...]` mode. The deletion check runs before the `GIT_*` unset and uses `--no-renames --diff-filter=D`. It reads the staged index, or `<default>...HEAD` when nothing is staged. Every suite runs when the check fails, with more than 200 files, or when the mapper fails or answers ALL. `test_checkpoint_269.sh` is always added to a scoped run. The runner prints its choice and the reason.
+- **`.pre-commit-config.yaml`**: entry ends in `--files`, with `pass_filenames: true` and `require_serial: true`. The comment block is reworded.
+- **`test_script_tests_hook_scope.sh`** adds:
+  - the entry, pass_filenames and require_serial pins;
+  - drift checks (a), (b) (real-root readers; a non-suite key is checked through the suites that map it, excluding this suite) and (c);
+  - the hub guard: `register_project.sh` selects at most 5 suites;
+  - the all-files list (198 paths) gives ALL;
+  - each of the 11 `.agent/scripts/_*.sh` helpers gives ALL as a shared helper;
+  - an unmapped candidate gives ALL. Per the round-4 suggestion, the candidate is chosen without the mapper: a `.agent/knowledge/*.md` named by no tracked non-markdown file. The check fails, not skips, when none is found (today it is `agent_wait_patterns.md`).
+  - Mutation-checked: a wrong covers path fails (b) and (c); a missing covers line fails (a).
+- **`test_run_script_tests.sh`**: cases (l) to (p), on synthetic git repos only. They cover:
+  - the mapper rules and every trigger;
+  - a scoped run;
+  - full runs, with the count taken from the glob;
+  - real-hook deletions: `git commit -a`, a pathspec commit, a rename out of scope, plus an edit-only control;
+  - the branch run, plus its staged-edit negative.
+  - Mutation-checked: moving the check after the unset fails the commit -a and pathspec cases. Dropping `--no-renames` fails the rename case. Not stripping comments fails the comment case. Dropping the exact-covers exemption fails the covers case.
+- **Wording** (step 9): updated `address-findings` and `run-issue` SKILL.md, `dispatch_phase.sh` lines 22 and 411 (deleted-path and "several minutes" claims reworded), and the `test_dispatch_phase.sh` assertion.
+- **`AGENTS.md`** Script Reference row (owner-approved).
+
+Measured (2026-10-29, serial, this machine):
+
+- **Synthetic `merge_pr.sh` change**: 17 of 39 suites, 85 s. The 16 the plan's prototype counted, plus `test_progress_read.sh`, which its new covers line pulls in through `progress_read.py`.
+- **Synthetic `register_project.sh` change**: 4 of 39 suites (`test_register_project`, `test_script_tests_hook_scope`, `test_checkpoint_269`, `test_skill_paths`), 72 s.
+- **Final no-SKIP `pre-commit run --files $(git diff --name-only main...HEAD)`**: exit 0, every hook passed. It ran all 39 suites, as it should, because the branch changes the runner, a full-run trigger. Wall-clock 551 s (suites 547 s).
+- Unmapped in-scope files today: 56. A commit that touches one still runs every suite.
+
+For the PR description: a commit whose only in-scope change is a deletion or an outbound rename still does not invoke the hook at all (pre-commit drops the path). CI's all-files run is the backstop there.
