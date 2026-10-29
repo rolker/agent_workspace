@@ -1429,3 +1429,27 @@ Reviewers: Claude adversarial ran (complete; 3 must-fix reported, 1 kept as must
 **Decision**: address
 
 PR 3 of 4 (the onboard-project rewrite), round 2 at 377b4e29 (8c7b5e6d): M1 at a parent root category 6 verifies only the parent name, so the chosen instance's broken registration is never reported; M2 at a parent root category 3 probes the parent for worktrees and records ignores, which belong to the instance. Host decision on M2's open design point, listed for the owner's veto: at a parent root the audit reads, reports and fixes one repository, the chosen instance's (categories 1 to 6 alike), because the fix batch can only write there; the parent root's own files are not audited by this skill. Eight suggestions sent along (commands() lead text, worktree_list.sh name parse, zero-instance parent wording, allowlist tied to type, git push before gh pr create, ignored-agent-file cap and .claude/worktrees, numbered list items, empty arrays under set -u). Ask-First item for the owner, raised in the session: the AGENTS.md commit ce28b0e8 also changes the Skill Worktree Exception rule and the project_setting.sh row, beyond the one row approved yesterday.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 10:52 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aa8647374c5538f24, resume 1 of 3)
+
+**Branch**: feature/issue-332 at `16d94083`
+**Addressed**: Local Review (Pre-Push) at `377b4e29` (2026-10-29 10:30 -04:00)
+**Commits**: 3c12d408, 0241da7e, 89ee14aa, 61df2c3e, 4d2c0537, 4dc559ee, 0c7573b7, b180073c, 412282dc, 5c7104f7, 16d94083
+
+All ten fixed; none deferred. No-SKIP pre-commit over `main...HEAD` on `16d94083`: exit 0 in 456 s, the script suite hook passed. AGENTS.md was not touched (the owner is being asked about its earlier changes): its `project_integration_audit.sh` row still says "at a parent root it reads the settings of `--instance I`"; the right wording is "reads the settings and repository of `--instance I` (else the default or only instance), verifies its registration beside the parent's, and does not audit the parent root's own files". The Skill Worktree Exception could also say that each allowlisted skill has one worktree type. Both are left for the AGENTS.md decision.
+
+### Actions
+- [x] M1 the instance's registration never verified at a parent root: category 6 runs `registration_verify.sh` on the parent and on the audited instance, each finding's subject naming which; tests for an instance with malformed settings and one with no test command (0241da7e) — `.agent/scripts/project_integration_audit.sh` (verify_registration)
+- [x] M2 category 3 read the parent at a parent root (host decision: one repository, the chosen instance's, for categories 1 to 5): the audited root, worktrees directory and records ignore probes are the instance's, and the parent's own files are not read; the session-root check stays on the parent. The fixture no longer lets the parent's `worktrees/` rule hide the instance's missing one, and puts a candidate line in the parent's CLAUDE.md that must not be reported. Skill step 1, 2 and 7 text (3c12d408); design.md onboarding bullet and changelog row (16d94083) — `.agent/scripts/project_integration_audit.sh` (SESSION_ABS / AUD_NAME)
+- [x] S1 prose before a code span taken as a command: `commands()` uses the line itself only when it has no code span; test line `- make sure \`make test\` passes.` (89ee14aa) — `.agent/scripts/project_integration_audit.sh` (commands)
+- [x] S2 `worktree_list.sh` misparsed a project named with `-` or `.`: the scan passes the registered name, and a skill or issue basename starting with it is split there first; test with `my-proj.x` (5c7104f7) — `.agent/scripts/worktree_list.sh` (extract_issue_repo)
+- [x] S3 a parent root with no instances: the skill decides on the registered type (`registry_lookup ... | cut -f1`), because `session_root.sh`'s `type=` says only workspace or project, and stops saying to register an instance; the audit emits `parent-instance` (error with none, info with several and no default) and its text says "none registered" for zero; tests in both suites (0c7573b7) — `.claude/skills/onboard-project/SKILL.md` step 1
+- [x] S4 allowlist not tied to the type: `skill_worktree_type` (onboard-project project, the rest workspace) refuses the other combinations; tests for `research --type project` and `onboard-project --type workspace` (412282dc) — `.agent/scripts/worktree_create.sh`
+- [x] S5 no push before `gh pr create`: `git push -u origin "$(git branch --show-current)" || exit 1` first, with the reason; skill text test (b180073c) — `.claude/skills/onboard-project/SKILL.md` step 7
+- [x] S6 `ignored-agent-file` uncapped and flagging `.claude/worktrees/`: one finding per ignoring rule naming up to three files and the count; `.claude/worktrees/` excluded like `settings.local.json`; test with five files under one rule (4dc559ee) — `.agent/scripts/project_integration_audit.sh` (category 4)
+- [x] S7 numbered and `+` list items missed: list marker `-`, `*`, `+`, `1.`, `1)` in both the grep and the awk; test lines 9 to 11 (61df2c3e) — `.agent/scripts/project_integration_audit.sh`
+- [x] S8 empty arrays under `set -u`: the instruction-file and rule-file expansions use `${arr[@]+...}`; the two remaining plain ones are guarded by a non-empty check. Not testable on this machine's bash 5 (4d2c0537) — `.agent/scripts/project_integration_audit.sh`
