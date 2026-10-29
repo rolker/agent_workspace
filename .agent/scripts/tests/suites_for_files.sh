@@ -27,8 +27,9 @@
 # How the map is derived (plan .agent/work-plans/issue-410/plan.md, step 1):
 #   - Vocabulary: tracked paths (`git ls-files`) plus the passed files,
 #     kept when they match the hook's `files:` and not its `exclude:`
-#     regex, parsed from .pre-commit-config.yaml (Python `re.search`, the
-#     same matching pre-commit itself does).
+#     regex, parsed from .pre-commit-config.yaml (one-line plain, single-
+#     or double-quoted scalars; Python `re.search`, the same matching
+#     pre-commit itself does).
 #   - A text references a vocabulary file when, after whole-line comments
 #     (first non-blank character `#`) are stripped, a path-like token in it
 #     is that file's repo-relative path (or ends in `/<path>`), or the
@@ -53,6 +54,10 @@
 # Full run (`ALL`) when any of these holds:
 #   - no files were passed;
 #   - a deleted in-scope path was passed with --deleted;
+#   - a passed file is outside the hook's files:/exclude: scope as this
+#     script parses it (pre-commit has already filtered the list, so the
+#     parse or the caller disagrees with pre-commit), or no tracked file is
+#     in that scope at all;
 #   - a changed file is a full-run trigger: run_script_tests.sh, this
 #     script, anything else under the tests directory that is not a direct
 #     test_*.sh suite and not an exact-file `# covers:` path,
@@ -140,13 +145,43 @@ def hook_regexes(root):
             continue
         m = re.match(r"^\s*files:\s*(.+?)\s*$", line)
         if m and files_re is None:
-            files_re = m.group(1)
+            files_re = yaml_scalar(m.group(1))
         m = re.match(r"^\s*exclude:\s*(.+?)\s*$", line)
         if m and exclude_re is None:
-            exclude_re = m.group(1)
+            exclude_re = yaml_scalar(m.group(1))
     if files_re is None:
         raise ValueError(f"no files: regex for {HOOK_ID} in {path}")
     return re.compile(files_re), (re.compile(exclude_re) if exclude_re else None)
+
+
+def yaml_scalar(raw):
+    """The string a one-line YAML scalar holds, as pre-commit reads it.
+
+    Single quotes: strip them, `''` is one quote. Double quotes: strip
+    them and undo the escapes a regex needs (`\\\\`, `\\"`); any other
+    escape is refused. Plain: cut a ` #` comment. A block scalar (`|`,
+    `>`) or an unclosed quote is refused: the caller's error path runs
+    every suite rather than guess.
+    """
+    if raw[0] == "'":
+        m = re.match(r"^'((?:[^']|'')*)'\s*(?:#.*)?$", raw)
+        if not m:
+            raise ValueError(f"cannot read the single-quoted YAML scalar {raw!r}")
+        return m.group(1).replace("''", "'")
+    if raw[0] == '"':
+        m = re.match(r'^"((?:[^"\\]|\\.)*)"\s*(?:#.*)?$', raw)
+        if not m:
+            raise ValueError(f"cannot read the double-quoted YAML scalar {raw!r}")
+
+        def unescape(e):
+            if e.group(1) not in '\\"':
+                raise ValueError(f"unsupported escape {e.group(0)!r} in {raw!r}")
+            return e.group(1)
+
+        return re.sub(r"\\(.)", unescape, m.group(1))
+    if raw[0] in "|>":
+        raise ValueError(f"block scalar {raw!r} is not supported")
+    return re.split(r"\s+#", raw, maxsplit=1)[0]
 
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_./-]+")
@@ -244,6 +279,8 @@ def main():
         ["git", "-C", root, "ls-files", "-z"],
         check=True, capture_output=True, text=True,
     ).stdout.split("\0")
+    if not any(p and in_scope(p) for p in tracked):
+        raise ValueError(f"no tracked file matches the {HOOK_ID} files:/exclude: regexes as parsed; the parse is wrong")
     vocab = sorted({p for p in tracked + files if p and in_scope(p)})
     index = Index(vocab)
 
@@ -335,8 +372,10 @@ def main():
     for f in files:
         f = os.path.normpath(f[2:] if f.startswith("./") else f)
         if not in_scope(f):
-            note(f"ignored '{f}' (outside the hook's files:/exclude: scope)")
-            continue
+            # pre-commit passes only files its own files:/exclude: match, so
+            # a passed file this parse rejects means the parse (or the
+            # caller) disagrees with pre-commit: run everything.
+            run_all(f"'{f}' was passed but is outside the hook's files:/exclude: scope as parsed here")
         if f in fixed_triggers:
             run_all(f"'{f}' is a full-run trigger")
         if os.path.dirname(f) == ".agent/scripts" and fnmatch.fnmatch(os.path.basename(f), "_*.sh"):

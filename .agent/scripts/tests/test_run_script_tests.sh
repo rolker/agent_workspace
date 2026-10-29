@@ -481,8 +481,10 @@ expect_sel "an exact-file '# covers:' file under tests/ selects its suite, not A
     "$BASE_ALWAYS test_covered.sh test_noref.sh test_scanner.sh" -- .agent/scripts/tests/fixture_data.txt
 expect_sel "a changed suite selects itself" \
     "test_alpha.sh $BASE_ALWAYS test_noref.sh test_scanner.sh" -- .agent/scripts/tests/test_alpha.sh
-expect_sel "a file outside the hook scope is ignored" \
-    "test_alpha.sh $BASE_ALWAYS test_noref.sh" -- README.md .agent/scripts/beta.sh
+# pre-commit passes only files its own files:/exclude: match, so a passed
+# file the mapper's parse calls out of scope is a disagreement: run all.
+expect_sel "a passed file outside the hook scope yields ALL" "ALL" -- README.md .agent/scripts/beta.sh
+expect_sel "an absolute path (outside the scope as parsed) yields ALL" "ALL" -- "$SYN/.agent/scripts/beta.sh"
 expect_sel "an out-of-scope deleted path does not force ALL" \
     "test_alpha.sh $BASE_ALWAYS test_noref.sh" --deleted outside/gone.sh -- .agent/scripts/beta.sh
 expect_sel "an unmapped in-scope file yields ALL, even under a '# scans:' prefix" "ALL" -- .agent/docs/unmapped.md
@@ -493,6 +495,41 @@ for trig in .agent/scripts/tests/run_script_tests.sh .agent/scripts/tests/suites
         .agent/scripts/set_git_identity_env.sh .agent/scripts/_helper.sh .agent/scripts/_not_yet_written.sh; do
     expect_sel "full-run trigger $trig yields ALL" "ALL" -- .agent/scripts/beta.sh "$trig"
 done
+# The hook's files:/exclude: values written as quoted YAML scalars (the
+# same regexes to pre-commit) give the same selection as plain ones; a
+# files: regex that matches no tracked file means the parse is wrong: ALL.
+# yaml_case <label> <expected> <files: value> <exclude: value>
+yaml_case() {
+    local label="$1" want="$2" fval="$3" xval="$4" r="$TMPD/syn_yaml" got
+    rm -rf "$r"
+    make_syn_repo "$r" || { fail "(l) $label: could not build the repository"; return; }
+    FVAL="$fval" XVAL="$xval" python3 - "$r/.pre-commit-config.yaml" <<'PY'
+import os, sys
+p = sys.argv[1]
+lines = open(p).read().splitlines()
+lines = ["        files: " + os.environ["FVAL"] if l.startswith("        files: ^(") else
+         "        exclude: " + os.environ["XVAL"] if l.startswith("        exclude: ") else l
+         for l in lines]
+open(p, "w").write("\n".join(lines) + "\n")
+PY
+    got="$(bash "$MAPPER" --tests-dir "$r/.agent/scripts/tests" -- .agent/scripts/beta.sh 2>/dev/null | tr '\n' ' ' | sed 's/ $//')"
+    if [[ "$got" == "$want" ]]; then
+        pass "(l) $label"
+    else
+        fail "(l) $label: expected '$want', got '$got'"
+    fi
+    rm -rf "$r"
+}
+SYN_FILES='^(\.agent/|Makefile$|\.pre-commit-config\.yaml$)'
+yaml_case "single-quoted files:/exclude: give the same selection as plain" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh" "'$SYN_FILES'" "'^\.agent/work-plans/'"
+yaml_case "double-quoted files:/exclude: give the same selection as plain" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh" "\"${SYN_FILES//\\/\\\\}\"" '"^\\.agent/work-plans/"'
+yaml_case "a plain files: value with a trailing comment gives the same selection" \
+    "test_alpha.sh $BASE_ALWAYS test_noref.sh" "$SYN_FILES  # scope" '^\.agent/work-plans/'
+yaml_case "a files: regex no tracked file matches yields ALL" "ALL" '^nothing-tracked/' '^\.agent/work-plans/'
+yaml_case "a block-scalar files: value yields ALL" "ALL" '>' '^\.agent/work-plans/'
+
 NOT_GIT="$TMPD/not_git_tests"
 mkdir -p "$NOT_GIT"
 if [[ "$(bash "$MAPPER" --tests-dir "$NOT_GIT" -- .agent/scripts/beta.sh 2>/dev/null)" == "ALL" ]]; then
