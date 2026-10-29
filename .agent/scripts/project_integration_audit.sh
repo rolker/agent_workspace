@@ -64,7 +64,9 @@
 #                 for the workspace's review skills to read
 #                 (conventions-unread)
 #   6 registration registration that does not work: registration_verify.sh
-#                 failures and warnings (registration, registration-note),
+#                 failures and warnings (registration, registration-note;
+#                 at a parent root for the parent and the audited
+#                 instance, each finding's subject naming which),
 #                 the user tier not installed or out of date (user-tier),
 #                 a session at the root not resolving to the project
 #                 (session-root)
@@ -520,16 +522,27 @@ if [ -n "$PROOT_ABS" ] && [ ! -f "$PROOT_ABS/.agents/README.md" ] && [ ! -f "$PR
 fi
 
 # ------------------------------------------------- 6. registration -----
-_RC=0
-VOUT="$("$MAIN_ROOT/.agent/scripts/registration_verify.sh" "$NAME" 2>&1)" || _RC=$?
-while IFS= read -r line; do
-    case "$line" in
-        FAIL:*) emit 6 registration error "$NAME" "${line#FAIL: }" ;;
-        WARN:*) emit 6 registration-note warn "$NAME" "${line#WARN: }" ;;
-    esac
-done <<< "$VOUT"
-if [ "$_RC" -ne 0 ] && ! grep -q '^FAIL:' <<< "$VOUT"; then
-    emit 6 registration error "$NAME" "registration_verify.sh exited $_RC: $(tail -n3 <<< "$VOUT")"
+# verify_registration <name>: registration_verify.sh's failures and
+# warnings, each with <name> as its subject.
+verify_registration() {
+    local n="$1" rc=0 out line
+    out="$("$MAIN_ROOT/.agent/scripts/registration_verify.sh" "$n" 2>&1)" || rc=$?
+    while IFS= read -r line; do
+        case "$line" in
+            FAIL:*) emit 6 registration error "$n" "${line#FAIL: }" ;;
+            WARN:*) emit 6 registration-note warn "$n" "${line#WARN: }" ;;
+        esac
+    done <<< "$out"
+    if [ "$rc" -ne 0 ] && ! grep -q '^FAIL:' <<< "$out"; then
+        emit 6 registration error "$n" "registration_verify.sh exited $rc: $(tail -n3 <<< "$out")"
+    fi
+}
+# The registered root, and at a parent root the audited instance too: the
+# parent's own check reads no settings, commands or adapter, which are the
+# instance's.
+verify_registration "$NAME"
+if [ -n "$AUD_NAME" ] && [ "$AUD_NAME" != "$NAME" ]; then
+    verify_registration "$AUD_NAME"
 fi
 _RC=0
 UOUT="$("$MAIN_ROOT/.agent/scripts/user_tier_install.sh" --check --require 2>&1)" || _RC=$?

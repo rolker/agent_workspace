@@ -461,6 +461,7 @@ for i in a b; do
     printf '# %s guide\n' "$i" > "$PAR/$i/.agents/README.md"
     gitq -C "$PAR/$i" init --quiet
     commit_all "$PAR/$i"
+    gitq -C "$PAR/$i" remote add origin "git@example.invalid:someone/fam-$i.git"
 done
 # Instance a: no ignore rule for its worktrees directory, and an
 # instruction line of its own; instance b: clean.
@@ -492,6 +493,22 @@ check "and the instance audited" grep -qxF "audited: instance fam_a at $PAR/a, i
 audit "$PAR" --instance fam_b
 check "--instance fam_b: its repository, which ignores worktrees/ and has no candidate line: no finding (got: ${AUDIT_OUT//$'\t'/ | })" \
     [ -z "$AUDIT_OUT" ]
+# The instance's registration is verified, not only the parent's (whose
+# check reads no settings, commands or adapter).
+cp "$WS/.agent/projects.d/fam_b" "$SANDBOX/fam_b.settings"
+printf 'build=make\nthis line is no setting\n' > "$WS/.agent/projects.d/fam_b"
+audit "$PAR" --instance fam_b
+check "an instance with malformed settings: a registration error naming it (got: ${AUDIT_OUT//$'\t'/ | })" \
+    grep -qE $'^6\tregistration\terror\tfam_b\t' <<< "$AUDIT_OUT"
+check "and none for the parent" bash -c '! grep -qE $'"'"'^6\tregistration\terror\tfam\t'"'"' <<< "$1"' _ "$AUDIT_OUT"
+printf 'build=make\ninstructions=tracked\n' > "$WS/.agent/projects.d/fam_b"
+audit "$PAR" --instance fam_b
+check "an instance with no test command: a registration error naming it (got: ${AUDIT_OUT//$'\t'/ | })" \
+    grep -qE $'^6\tregistration\terror\tfam_b\tno test command' <<< "$AUDIT_OUT"
+audit "$PAR"
+check "the default instance (fam_a) is verified, not fam_b: no registration error (got: ${AUDIT_OUT//$'\t'/ | })" \
+    bash -c '! grep -qE $'"'"'^6\tregistration\t'"'"' <<< "$1"' _ "$AUDIT_OUT"
+cp "$SANDBOX/fam_b.settings" "$WS/.agent/projects.d/fam_b"
 audit "$PAR" --instance clean
 check "--instance of another project: exit 2" [ "$AUDIT_RC" -eq 2 ]
 check "it names the parent's instances" grep -qF "its instances: fam_a fam_b" <<< "$AUDIT_ERR"
