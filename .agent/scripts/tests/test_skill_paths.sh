@@ -514,7 +514,12 @@ if [[ -f "$AUD" ]]; then
         'skipped: one component (multi_component=no)' \
         'skipped: Windows (windows=yes)' \
         'An item is never dropped from the report' \
-        '`unknown` (gh missing or not signed in, no instance chosen) makes nothing moot'
+        '`unknown` makes nothing moot' 'Which facts go `unknown`, and for what' \
+        'A gh problem leaves `github`' \
+        'its line ends `(windows=yes: language-native hooks only)`'
+    has "$AUD" "audit-project: the gh calls name github.com, and step 10 gives the audit's own pull request body" \
+        '`gh api --hostname github.com`' 'gh label list -R github.com/<owner>/<repo>' \
+        'Fixes from the project audit:' 'Found by the `audit-project` skill.'
     has "$AUD" "audit-project: the integration script replaces the stale workspace check, report-only" \
         '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text [--instance <settings-name>]' \
         '**Report-only by default.**' 'never pick one' 'Governance Layering'
