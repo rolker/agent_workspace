@@ -1418,7 +1418,7 @@ Reviewers: Claude adversarial ran (complete; 3 must-fix reported, 1 kept as must
 - [ ] (suggestion) Step 7's pull-request block has no `git push -u origin <branch>`, so a non-interactive `gh pr create` stops ("you must first push the current branch") (Claude) — `.claude/skills/onboard-project/SKILL.md:367-389`
 - [ ] (suggestion) `ignored-agent-file` emits one warn per file with no cap and flags Claude Code's own ignored `.claude/worktrees/`; cap or group per rule, treat `.claude/worktrees/` like `settings.local.json` (Claude) — `.agent/scripts/project_integration_audit.sh:461-467`
 - [x] (suggestion) Category 2 misses numbered and `+` list items (`1. make install`, `+ cargo build`) in both the grep and the awk lead-stripping (Claude) — `.agent/scripts/project_integration_audit.sh:333,396`
-- [ ] (suggestion) Plain `"${arr[@]}"` on possibly empty arrays under `set -u` (bash 4.0-4.3 aborts); use the `${arr[@]+...}` form the new code uses (Claude) — `.agent/scripts/project_integration_audit.sh:398,482,488`
+- [x] (suggestion) Plain `"${arr[@]}"` on possibly empty arrays under `set -u` (bash 4.0-4.3 aborts); use the `${arr[@]+...}` form the new code uses (Claude) — `.agent/scripts/project_integration_audit.sh:398,482,488`
 
 ## Checkpoint
 **Status**: complete

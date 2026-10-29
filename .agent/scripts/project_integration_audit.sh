@@ -421,7 +421,7 @@ build_candidates() {  # <file>: build/test command lines that are not the projec
     # prose such as "make sure" is not one.
     done < <(grep -nE "(^[[:space:]]*(([-*+]|[0-9]+[.)])[[:space:]]+)?(\\\$[[:space:]]+)?|\`)($BUILD_TOOLS)([[:space:]\`]|\$)" "$PROOT_ABS/$f" 2>/dev/null)
 }
-for f in "${INSTR_FILES[@]}"; do
+for f in "${INSTR_FILES[@]+"${INSTR_FILES[@]}"}"; do
     candidate "$f" process-branch warn 'feature[- ]branch|git (checkout|switch) -[bc]|create (a )?(new )?branch' 'worktree'
     candidate "$f" process-issue warn '(if|when|where) (one|an issue|it|there is one) (exists|is open)|issue[^.]{0,40}(if|when) (one|available|applicable)'
     candidate "$f" process-signature info 'co-authored-by|signed-off-by|generated with|authored-by|signature'
@@ -505,13 +505,13 @@ fi
 
 # ------------------------------------------------- 5. conventions ------
 if [ -n "$PROOT_ABS" ] && [ ! -f "$PROOT_ABS/.agents/README.md" ] && [ ! -f "$PROOT_ABS/.agents/review-context.yaml" ]; then
-    RULE_FILES=("${INSTR_FILES[@]}")
+    RULE_FILES=("${INSTR_FILES[@]+"${INSTR_FILES[@]}"}")
     for f in "$PROOT_ABS"/.claude/skills/*/SKILL.md "$PROOT_ABS"/.claude/commands/*.md; do
         [ -f "$f" ] && RULE_FILES+=("${f#"$PROOT_ABS"/}")
     done
     total=0
     where=()
-    for f in "${RULE_FILES[@]}"; do
+    for f in "${RULE_FILES[@]+"${RULE_FILES[@]}"}"; do
         n="$(grep -ciE "\\b(must|never|always|do not|don't|should)\\b" "$PROOT_ABS/$f" 2>/dev/null)" || n=0
         if [ "$n" -gt 0 ]; then
             total=$((total + n))
