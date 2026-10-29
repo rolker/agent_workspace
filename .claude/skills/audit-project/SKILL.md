@@ -143,14 +143,26 @@ the value `yes`, `no` or `unknown`:
 
 | Fact | Means |
 |------|-------|
-| `github` | The repository's remote is on github.com; the evidence names `github.com/<owner>/<repo>`. The gh calls below name that host: `-R github.com/<owner>/<repo>`, `gh repo view github.com/<owner>/<repo>` and `gh api --hostname github.com`, since a bare `<owner>/<repo>` goes to `$GH_HOST` when that is set |
+| `github` | The repository's remote (origin, else its first) is on github.com; the evidence names `github.com/<owner>/<repo>`, and for any remote only host and path. The gh calls below name that host: `-R github.com/<owner>/<repo>`, `gh repo view github.com/<owner>/<repo>` and `gh api --hostname github.com`, since a bare `<owner>/<repo>` goes to `$GH_HOST` when that is set |
 | `issues` | It uses GitHub issues: enabled, and at least one ever opened |
 | `prs` | It uses pull requests: at least one ever opened |
 | `windows` | This machine runs Windows (`uname -s`) |
 | `multi_component` | Component manifests in two or more directories; the evidence lists them |
 
-`unknown` (gh missing or not signed in, no instance chosen) makes nothing
-moot: the item is checked, and its line says the fact could not be read.
+`unknown` makes nothing moot: the item is checked, and its line says the
+fact could not be read. Which facts go `unknown`, and for what:
+
+- `github` and `multi_component`: the repository cannot be read — at a
+  parent root with no instance chosen (several, none the default: pass
+  `--instance`) or none registered, or the root not on disk. `github` is
+  also `unknown` when its remote's host only looks like GitHub (an ssh
+  host alias such as `github.com-work`, GitHub Enterprise), or when that
+  remote is not on GitHub but another one is.
+- `issues` and `prs`: whenever `github` is `unknown`, and on any gh
+  problem — gh or jq missing, gh not signed in or offline, an answer
+  without the counts or the list asked for. A gh problem leaves `github`,
+  `windows` and `multi_component` as they were read.
+- `windows`: `uname -s` gave nothing.
 
 ### 3. Check governance coverage
 
