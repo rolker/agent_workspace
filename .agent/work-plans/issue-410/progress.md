@@ -549,3 +549,18 @@ The round-4 suggestion is kept open, verified at this head: with `FROM_PAREN_RE`
 **Decision**: address
 
 Owner's answer: "Fix the class, then merge". Integrated Review 91cc10ba at head 797ac2d2 left one suggestion open, the third edge case in the same import parser (a `)` inside an inline comment, or a backslash-continued `from` import, drops the names after it). The fix closes the class: when a `from` import cannot be fully read, the suite's selection falls back to ALL instead of a partial name list, with synthetic cases for both shapes. Then a round-5 convergence check, re-triage and the merge call.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 11:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a59fddc42ed513466, resume 3 of 3)
+
+**PR**: #411 at `47787ccc`
+**Addressed**: Integrated Review at `797ac2d2` (2026-10-29 10:55 -04:00)
+**Commits**: `47787ccc`
+
+### Actions
+- [x] (suggestion) Fixed the class (owner: "Fix the class, then merge"). Inline comments are dropped before a `from X import ( ... )` span is joined, so a `)` in a comment no longer ends the list and that common case maps precisely. Any `import`/`from` line whose name list is still not a plain list (a `\` continuation, an unclosed `(`, `;`, `*`, anything else) makes the file count every `.py` in the vocabulary as referenced; the header comment says so. Chosen over ALL because a lost name can only be a module, so every `.py` is exactly the set it could denote, and it needs no new plumbing: it is a per-file reference, so it carries through the closure to every suite that reaches the file, a helper reached transitively included. Synthetic cases in test_run_script_tests.sh (l): a name after `)` in an inline comment (precise: test_fromimp.sh does not join mod_x.py's selection), a name after a `\` (fallback), and mod_x.py, which the fallback suite never names, selecting it (the fallback runs the suite); the unreadable import is assembled at generation time so this suite's own text does not trip the fallback. The real repository's derived map is unchanged (`--dump` before and after compared) — `.agent/scripts/tests/suites_for_files.sh`
+
+Hooks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook, in 404 s. Direct suite runs under a private TMPDIR: `test_run_script_tests.sh` 63/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
