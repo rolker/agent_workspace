@@ -48,10 +48,11 @@
 #     x` maps `x.py` beside the file (and the package's init file), each
 #     further dot one directory up. A file `ast` cannot parse (a syntax
 #     error, Python 2) or a star import takes the every-`.py` fallback below.
-#     Every string literal in it (docstrings and the literal parts of
-#     f-strings included) is also read by the piece parser, so Python run
-#     from a `.py` file (`subprocess.run([sys.executable, "-c", "import
-#     a"])`) is mapped or falls back like Python in a shell file.
+#     Every string literal in it (docstrings, the literal parts of
+#     f-strings and bytes literals included) is also read by the piece
+#     parser, so Python run from a `.py` file (`subprocess.run([sys.executable,
+#     "-c", "import a"])`, or `input=b"import a\n"` on stdin) is mapped or
+#     falls back like Python in a shell file.
 #     Any other file (shell, with Python in `python3 -c`, heredocs,
 #     `$'...'`) is read by the piece parser below.
 #     The piece parser's promise: every `import` word that could be Python
@@ -373,8 +374,9 @@ class Index:
         (or its package). Returns True (fall back to every .py) when `ast`
         cannot parse the file, or for a star statement, whose names
         `__all__` may extend to any submodule. Every str literal
-        (docstrings and f-string parts are str constants too) also goes
-        through the piece parser, and its fallback is this file's.
+        (docstrings and f-string parts are str constants too) and every
+        bytes literal (decoded, `errors="replace"`) also goes through the
+        piece parser, and its fallback is this file's.
         """
         try:
             tree = ast.parse(text, filename=self_path)
@@ -383,8 +385,11 @@ class Index:
         here = os.path.dirname(self_path)
         unreadable = False
         for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                if self._embedded_imports(strip_comment_lines(node.value), found):
+            if isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)):
+                lit = node.value
+                if isinstance(lit, bytes):
+                    lit = lit.decode("utf-8", errors="replace")
+                if self._embedded_imports(strip_comment_lines(lit), found):
                     unreadable = True
             elif isinstance(node, ast.Import):
                 for alias in node.names:
