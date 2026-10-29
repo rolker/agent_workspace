@@ -398,6 +398,20 @@ check "a path the \"!\" rule leaves ignored is still reported, with the ignoring
     grep -qE $'^4\tignore-would-hide\twarn\tCLAUDE.md\t.*\\.gitignore:2:\\*\\.md' <<< "$AUDIT_OUT"
 printf 'worktrees/\ndocs/\n' > "$P4/.gitignore"
 
+echo "TEST: category 4, ignored agent files grouped per rule; Claude Code's own worktrees not reported"
+mkdir -p "$P4/.claude/worktrees/wt1" "$P4/.claude/notes"
+echo x > "$P4/.claude/worktrees/wt1/file"
+for i in 1 2 3 4 5; do echo n > "$P4/.claude/notes/n$i.md"; done
+printf 'worktrees/\ndocs/\n.claude/worktrees/\n.claude/notes/\n' > "$P4/.gitignore"
+audit "$P4"
+check "one ignored-agent-file line for the five files (got: $(grep -c $'\tignored-agent-file\t' <<< "$AUDIT_OUT"))" \
+    [ "$(grep -c $'\tignored-agent-file\t' <<< "$AUDIT_OUT")" -eq 1 ]
+check "it names three, the count and the rule (got: ${AUDIT_OUT//$'\t'/ | })" \
+    grep -qxE $'4\tignored-agent-file\twarn\t.claude/notes/n[0-9].md, .claude/notes/n[0-9].md, .claude/notes/n[0-9].md and 2 more\t5 files present but ignored by one rule, .*the rule: \\.gitignore:4:\\.claude/notes/' <<< "$AUDIT_OUT"
+check ".claude/worktrees/ is not reported" bash -c '! grep -qF ".claude/worktrees" <<< "$1"' _ "$AUDIT_OUT"
+rm -rf "$P4/.claude"
+printf 'worktrees/\ndocs/\n' > "$P4/.gitignore"
+
 echo "TEST: category 3, a root registered through a symlink, its worktrees directory not created yet"
 PL="$SANDBOX/projects/plink"
 mkdir -p "$PL/.agents"

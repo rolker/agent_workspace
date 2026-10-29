@@ -56,8 +56,11 @@
 #                 (work-plans-ignored, work-plans-not-ignored), the older
 #                 docs/work-plans/ (old-work-plans), records in two places
 #                 (records-two-places)
-#   4 ignore      ignore rules hiding agent files: an agent file present but
-#                 ignored (ignored-agent-file), a path the workspace would
+#   4 ignore      ignore rules hiding agent files: agent files present but
+#                 ignored (ignored-agent-file, one per ignoring rule naming
+#                 up to three of its files; Claude Code's own
+#                 settings.local.json and .claude/worktrees/ are meant to
+#                 be ignored and are not reported), a path the workspace would
 #                 add that an ignore rule would hide (ignore-would-hide)
 #   5 conventions rule-like lines in instruction files and project skills,
 #                 with no .agents/README.md or .agents/review-context.yaml
@@ -484,13 +487,37 @@ fi
 # ------------------------------------------------- 4. ignore rules -----
 declare -A REPORTED=()
 if [ "$IS_GIT" -eq 1 ]; then
+    # One finding per ignoring rule, naming up to three of its files: a
+    # rule such as build/ or *.local.md can hide many. Claude Code's own
+    # per-machine files are meant to be ignored: settings.local.json and
+    # its worktrees directory .claude/worktrees/.
+    declare -A IGN_BY_RULE=()
+    IGN_RULES=()
     while IFS= read -r p; do
         [ -n "$p" ] || continue
-        case "$p" in .claude/settings.local.json) continue ;; esac
+        case "$p" in .claude/settings.local.json|.claude/worktrees/*) continue ;; esac
         rule="$(g check-ignore -v -- "$p" 2>/dev/null | cut -f1)"
-        emit_offer 4 ignored-agent-file warn "$p" "present but ignored, so it is never committed and no other clone or worktree has it; the rule: ${rule:-unknown}"
+        rule="${rule:-unknown}"
+        if [ -z "${IGN_BY_RULE[$rule]+set}" ]; then
+            IGN_RULES+=("$rule")
+            IGN_BY_RULE["$rule"]="$p"
+        else
+            IGN_BY_RULE["$rule"]+=$'\n'"$p"
+        fi
         REPORTED["$p"]=1
-    done < <(g ls-files --others --ignored --exclude-standard -- .claude .agents AGENTS.md CLAUDE.md 2>/dev/null)
+    done < <(g ls-files --others --ignored --exclude-standard -- .claude .agents AGENTS.md CLAUDE.md \
+                 ':(exclude).claude/worktrees' 2>/dev/null)
+    for rule in "${IGN_RULES[@]+"${IGN_RULES[@]}"}"; do
+        files="${IGN_BY_RULE[$rule]}"
+        n="$(wc -l <<< "$files" | tr -d ' ')"
+        if [ "$n" -eq 1 ]; then
+            emit_offer 4 ignored-agent-file warn "$files" "present but ignored, so it is never committed and no other clone or worktree has it; the rule: $rule"
+        else
+            subj="$(head -n3 <<< "$files" | paste -sd, - | sed 's/,/, /g')"
+            [ "$n" -gt 3 ] && subj="$subj and $((n - 3)) more"
+            emit_offer 4 ignored-agent-file warn "$subj" "$n files present but ignored by one rule, so they are never committed and no other clone or worktree has them; the rule: $rule"
+        fi
+    done
     for p in AGENTS.md CLAUDE.md .agents/README.md .agents/review-context.yaml docs/roadmap.md \
              .pre-commit-config.yaml .github/workflows/ci.yml; do
         [ -n "${REPORTED[$p]:-}" ] && continue
