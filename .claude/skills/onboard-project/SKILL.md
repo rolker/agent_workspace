@@ -115,18 +115,26 @@ the rest of the run.
 **A parent root** (a root that groups instances, such as one per ROS
 distro) has no settings, adapter or worktrees of its own: they belong to
 its instances, and `project_setting.sh set <name>` refuses a parent's
-name. Find out whether `<name>` is one:
+name. Find out whether `<name>` is one from its registered type
+(`session_root.sh`'s `type=` says only `workspace` or `project`, for any
+project root), and list its instances:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 source "$WS_ROOT/.agent/scripts/_project_registry.sh"
+registry_lookup "$WS_ROOT" <name> | cut -f1
 registry_instances "$WS_ROOT" <name>
 registry_default_instance "$WS_ROOT" <name>
 ```
 
-- **No instance listed**: `<name>` is no parent root. `<settings-name>`
-  below is `<name>`.
-- **Instances listed**: `<settings-name>` is the instance this run's
+- **A type other than `project`**: `<name>` is no parent root.
+  `<settings-name>` below is `<name>`.
+- **Type `project`, no instance listed**: a parent root with nothing
+  registered under it. Stop: its settings, worktrees and repository are
+  an instance's, so there is nothing to onboard yet. Say to register an
+  instance first, from a workspace session:
+  `$WS_ROOT/.agent/scripts/register_project.sh <path> --parent <name>`.
+- **Type `project`, instances listed**: `<settings-name>` is the instance this run's
   settings, branch and pull request belong to. Show the instances and
   propose the one `registry_default_instance` prints (the default, else
   the only instance); when it prints an error instead (several instances,

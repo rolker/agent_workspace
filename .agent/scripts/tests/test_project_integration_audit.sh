@@ -544,6 +544,27 @@ sed -i 's/ default_instance=fam_a$//' "$WS/.agent/projects.local"
 audit "$PAR" --format text
 check "several instances, no default: says no instance was audited" grep -qF "audited: no instance (several instances and no default_instance" <<< "$AUDIT_OUT"
 check "and instructions are not set" grep -qxF "instructions: not set" <<< "$AUDIT_OUT"
+audit "$PAR"
+check "several instances, no default: a parent-instance info finding naming them (got: ${AUDIT_OUT//$'\t'/ | })" \
+    grep -qE $'^6\tparent-instance\tinfo\tfam\tseveral instances \\(fam_a fam_b\\)' <<< "$AUDIT_OUT"
+check "and nothing in categories 1 to 5 (got: $(cats))" bash -c '! grep -qE $'"'"'^[1-5]\t'"'"' <<< "$1"' _ "$AUDIT_OUT"
+
+echo "TEST: a parent root with no instances registered"
+P0="$SANDBOX/projects/lone"
+mkdir -p "$P0"
+gitq -C "$P0" init --quiet
+printf '# lone\n' > "$P0/README.md"
+commit_all "$P0"
+printf 'lone project %s\n' "$P0" >> "$WS/.agent/projects.local"
+install_ut
+audit "$P0"
+check "exit 0" [ "$AUDIT_RC" -eq 0 ]
+check "a parent-instance error saying to register an instance first (got: ${AUDIT_OUT//$'\t'/ | })" \
+    grep -qE $'^6\tparent-instance\terror\tlone\ta parent root with no instances registered: .*register_project.sh <path> --parent lone' <<< "$AUDIT_OUT"
+audit "$P0" --format text
+check "the text says none are registered, not several" grep -qxF "audited: no instance (none registered; register one first)" <<< "$AUDIT_OUT"
+sed -i '/^lone project /d' "$WS/.agent/projects.local"
+install_ut
 
 echo "TEST: read-only: nothing in the project, the workspace or HOME changes"
 snap() { # <dir>: every path with its content hash, .git included

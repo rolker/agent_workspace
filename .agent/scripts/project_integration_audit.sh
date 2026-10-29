@@ -72,7 +72,9 @@
 #                 instance, each finding's subject naming which),
 #                 the user tier not installed or out of date (user-tier),
 #                 a session at the root not resolving to the project
-#                 (session-root)
+#                 (session-root), a parent root with no instance to audit
+#                 (parent-instance: error with none registered, info with
+#                 several and no default_instance or --instance)
 # Category 7 of the plan (skills with no session_scope) is not a per-project
 # check (#331). A root that is not a git repository gets one info finding
 # (not-git) and no git checks.
@@ -236,6 +238,14 @@ if [ -n "$PROOT_ABS" ] && git -C "$PROOT_ABS" rev-parse --is-inside-work-tree >/
 fi
 g() { git -C "$PROOT_ABS" "$@"; }
 
+if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ] && [ -z "$AUD_NAME" ]; then
+    _INST="$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null | paste -sd' ' -)"
+    if [ -z "$_INST" ]; then
+        emit 6 parent-instance error "$NAME" "a parent root with no instances registered: its settings, worktrees and repository content are an instance's, so there is nothing to audit or onboard yet; register an instance first, from a workspace session: register_project.sh <path> --parent $NAME"
+    else
+        emit 6 parent-instance info "$NAME" "several instances ($_INST) and no default_instance: categories 1 to 5 audit one instance's repository and were not run; pass --instance <name>"
+    fi
+fi
 if [ "$AUD_NAME" != "$NAME" ] && [ -z "$SESSION_ABS" ]; then
     emit 6 registration error "$SESSION_PATH" "the parent root is not on disk, so no session can start there"
 fi
@@ -598,7 +608,11 @@ if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ]; then
     if [ -n "$SNAME" ]; then
         echo "audited: instance $SNAME at $PROOT, its settings and its repository (a parent root has no settings of its own, and its own files are not audited)"
     else
-        echo "audited: no instance (several instances and no default_instance; pass --instance <name>)"
+        if [ -z "$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null)" ]; then
+            echo "audited: no instance (none registered; register one first)"
+        else
+            echo "audited: no instance (several instances and no default_instance; pass --instance <name>)"
+        fi
     fi
 else
     echo "Integration audit: $NAME ($TYPE) at $PROOT"

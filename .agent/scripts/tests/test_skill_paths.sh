@@ -392,6 +392,10 @@ if [[ -f "$ONB" ]]; then
     has "$ONB" "onboard-project: at a parent root, settings belong to the instance the user picks" \
         'registry_instances "$WS_ROOT" <name>' 'registry_default_instance "$WS_ROOT" <name>' \
         '[--instance <settings-name>]'
+    has "$ONB" "onboard-project: a parent root is told by its registered type; with no instance it stops" \
+        'registry_lookup "$WS_ROOT" <name> | cut -f1' \
+        '**Type `project`, no instance listed**' \
+        'register_project.sh <path> --parent <name>'
     has "$ONB" "onboard-project: the worktree names its project; a project with no issues gets a skill worktree" \
         '"$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project --project <settings-name>' \
         '"$WS_ROOT/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project <settings-name>'
