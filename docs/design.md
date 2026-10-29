@@ -230,6 +230,14 @@ where that run is tracked.
   parent root the run reads, reports and fixes one repository, the chosen instance's: the batch can only
   write there, so the parent root's own files are not audited. The audit,
   `registration_verify.sh` and `project_setting.sh` are promoted to the user tier for it.
+- Onboarding ends by offering `/agent-workspace:audit-project` (#332 D4), which also runs any time in a
+  session at the project root and holds the hygiene checklist: pre-commit, CI, branch protection,
+  Copilot review, component labels, git-bug bridge and license headers. The items a fact makes moot are
+  reported skipped with the reason, never dropped; the facts are read by `project_integration_audit.sh
+  --facts` (`github`, `issues`, `prs`, `windows`, `multi_component`, from the remote, `gh` and `uname`),
+  which onboarding also reads to know whether the project uses issues. It is report-only and runs the
+  integration audit as well; an optional final step answers findings the four ways onboarding does, and
+  every write waits for a yes.
 - Skills reach project sessions through the `agent-workspace` Claude Code plugin, whose marketplace is
   the workspace checkout (`.claude-plugin/`). It ships every skill that declares
   `session_scope: project` or `session_scope: both` (`make generate-user-tier-skills`, checked by
@@ -787,6 +795,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-28 | Documentation layers, Sessions and roots, Registry and adapters | Onboarding is built (#332 PR 3): Sessions and roots names the one exception to working only under the root (a project session writes its own project's settings file through `project_setting.sh set`, guarded to that project) and gains the onboarding bullet (`/agent-workspace:onboard-project`, the footprint questions, `project_integration_audit.sh`, offers only with `instructions=tracked`, the four answers and the `## Onboarding` roadmap section, every write waits for a yes); the Registry Target says both steps are built; Documentation layers says onboarding offers a project's Direction section. Sessions and roots is 101 lines, past the 60-line prompt: the two bullets name how the session-root rule is bent and what the project side does, which no single script header shows, so they stay; the onboarding steps themselves live in the skill | #332 | 836 |
 | 2026-10-28 | Sessions and roots | Review fix: the onboarding bullet says where the fix-now batch goes, the onboarding issue's feature branch or, for a project that uses no issues, a `skill/onboard-project-<timestamp>` branch from a project skill worktree (`onboard-project` joins `worktree_create.sh`'s skill allowlist) | #332 | 840 |
 | 2026-10-29 | Sessions and roots | Review fix (host decision, listed for the owner's veto): at a parent root onboarding reads, reports and fixes the chosen instance's repository alone (audit categories 1 to 5 read only the instance; category 6 verifies the instance's registration beside the parent's) and does not audit the parent root's own files | #332 | 843 |
+| 2026-10-29 | Sessions and roots | `audit-project` takes the hygiene checklist (#332 PR 4, D4): a bullet says onboarding ends by offering it, that it holds the checklist with the items a fact makes moot reported skipped (`project_integration_audit.sh --facts`: `github`, `issues`, `prs`, `windows`, `multi_component`), that onboarding reads the same facts for issues, and that it is report-only with an optional final step answering findings the four ways onboarding does. Sessions and roots is 114 lines, past the 60-line prompt: the bullet names which skill holds the checklist and what decides a skip, which no single script header shows, so it stays; the checklist itself lives in the skill | #332 | 852 |
 
 ## Glossary
 
