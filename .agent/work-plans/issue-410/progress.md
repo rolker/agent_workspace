@@ -271,3 +271,11 @@ Both round-2 must-fixes are now correctly specified, with tests that would fail 
 **Decision**: revise
 
 Owner, verbatim: "revise, but also launch bg agents to look into why the tests are slow, and to prepare for parallelization". Plan Review round 3 (7d267c0f) was ready with one implementation item (scan-prefix declarations must not count as a mapping for the unmapped-file ALL rule or the tests/ exemption) and two suggestions; the owner chose to fold them into the plan text first. The two background investigations (slow suites, parallel-runner readiness) are read-only and outside this plan; their reports feed the follow-up issue.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-10-29 09:34 -04:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-410/plan.md` at `481378f5`
+
+Third revision: scan-prefix declarations add only their own suite and do not satisfy the unmapped-file or tests/ rules (real-tree test added); fourth hub-guard suite named; rename test stages an in-scope edit, deletion-only note for the PR.
