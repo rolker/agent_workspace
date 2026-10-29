@@ -910,3 +910,22 @@ Verified: `docs/roadmap.md:76` reads "all 39 suites";
 **Decision**: address
 
 Integrated Review e20087ba at head e2b8d1df: one open suggestion (roadmap Direction row for #410 says "all 39 suites"; the merged tree has 40). Sent to address-findings; then a round-12 convergence check, re-triage and the merge on the owner's recorded yes.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 13:47 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a13c4c4205fa198f2, resume 2 of 3)
+
+**PR**: #411 at `7a004c71`
+**Addressed**: Integrated Review at `e2b8d1df` (2026-10-29 13:36 -04:00)
+**Commits**: 7a004c71
+
+### Actions
+- [x] (suggestion) The roadmap Direction row for #410 said "all 39 suites", but the merged tree has 40. The count is now dropped, which is the smallest edit that stays true: "so a fix pass stops paying for all suites". The box was ticked with `review_progress.sh check` in the same commit. — `docs/roadmap.md:76`
+
+### Notes
+- The same count elsewhere was left unedited:
+  - `plan.md` (lines 9, 13, 17, 29, 40, 65) says 39 as a record of the tree when the plan was written.
+  - The PR 411 body says "used to run all 39 suites" (historical). Its timing table has "17 of 39" (merge_pr.sh), "4 of 39" (register_project.sh) and "39" (helpers). After the merge with main the register_project.sh row is 6 of 40 and the total is 40. The PR body is the host's to update.
+- The commit was made with `SKIP=validate-script-tests`. Then `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP exited 0 (587 s). I removed its log before reading it, so this result rests on the exit code alone.
