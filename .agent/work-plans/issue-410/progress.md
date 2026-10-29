@@ -279,3 +279,47 @@ Owner, verbatim: "revise, but also launch bg agents to look into why the tests a
 **Plan**: `.agent/work-plans/issue-410/plan.md` at `481378f5`
 
 Third revision: scan-prefix declarations add only their own suite and do not satisfy the unmapped-file or tests/ rules (real-tree test added); fourth hub-guard suite named; rename test stages an in-scope edit, deletion-only note for the PR.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-10-29 09:35 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #410 — Pre-commit script-test hook: run only the suites whose declared files changed
+**Plan**: `.agent/work-plans/issue-410/plan.md` at `481378f5`
+**Branch**: `feature/issue-410`
+
+Round 4, narrow convergence check: only the diff `0270dd6a..481378f5` of `plan.md`, checked against the three boxes left open by round 3 (entry `7d267c0f`). Rounds 1 to 3 are not re-reviewed.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | The diff touches step 3 and step 7 only; it adds no files or steps. |
+| Issue alignment | Good | Serves (checked, unchanged): "Quality of the work and review-loop wall-clock (README Workspace goals); `docs/design.md#rules` and `docs/design.md#review-loop-and-timeline`." |
+| File targeting | Good | Unchanged by the diff. |
+| Consequences | Good | The PR note on deletion-only commits is now in step 7, so the "deletions force a full run" claim is bounded. |
+| Principle alignment | Good | "Test what breaks": the scan-prefix rule now has a real-tree test that fails if the prefixes swallow the unmapped set. |
+| ADR compliance | Good | No new ADR triggers. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+Round 3 items, each checked against the diff:
+
+1. **Box 1 (implement) holds.** Step 3 now defines scan-prefix declarations as a separate kind. They add their own suite for a changed file under the prefix and do not count as a mapping for the unmapped-file `ALL` rule or the `tests/` exemption. Only exact-file `# covers:` lines count, and both rule sites say "exact-file". It gives the reason: the `test_skill_paths.sh` prefixes would map all 55 files, and `.agent/scripts/tests/` would defeat the `tests/` trigger. I confirmed the prefixes in `test_skill_paths.sh` lines 31-32: `.agent/`, `.claude/`, `AGENTS.md`, `Makefile`. Step 7 adds the real-tree test, which takes a currently unmapped in-scope file and expects `ALL`.
+2. **Box 2 (suggestion) holds.** The hub-guard count now names `test_skill_paths.sh`, selected through its scan prefix, as the fourth suite. The bound of 5 is left with a margin of 1.
+3. **Box 3 (suggestion) holds.** The out-of-scope rename test now stages an in-scope edit alongside the rename, and says why. Step 7 also says the PR will note that a deletion-only commit still skips the hook, with CI as the backstop.
+
+The diff introduced no new defect. One residual nit for the implementer, not a reason to withhold:
+
+4. **[Suggestion] Keep the real-tree unmapped-file test non-circular and non-vacuous.** "Chosen at test time from the real unmapped set" means calling the mapper under test to find the input. Pick the candidate independently: for example, a tracked `.agent/knowledge/*.md` that no suite names literally, found with `grep -L` over the suites. Then assert `ALL`, and fail the test (not skip it) if no candidate is found, so it cannot pass vacuously.
+
+### Summary
+
+All three round-3 items are folded into the plan correctly, and the edit introduces no new defect. The plan is ready for implementation.
+
+### Recommended Actions
+
+- [ ] Suggestion: choose the real-tree unmapped candidate independently of `suites_for_files.sh` (for example, a `.agent/knowledge/*.md` that no suite names), and fail rather than skip when none is found.
