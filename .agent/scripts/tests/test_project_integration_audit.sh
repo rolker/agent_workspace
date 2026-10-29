@@ -714,6 +714,26 @@ facts "$CLEAN"
 check "the evidence names host and path only (got: $(fev github))" \
     [ "$(fval github)/$(fev github)" = "no/remote 'origin' is gitlab.example.invalid/someone/clean, not on github.com" ]
 gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
+# A host that only looks like GitHub, and GitHub on a remote other than origin.
+gitq -C "$CLEAN" remote set-url origin "git@github.com-work:Someone/Clean.git"
+facts "$CLEAN"
+check "an ssh host alias (github.com-work): github unknown, saying the host only looks like GitHub (got: $(fev github))" \
+    bash -c '[ "$1" = unknown ] && grep -qF "remote '"'"'origin'"'"' is github.com-work/someone/clean: the host looks like GitHub" <<< "$2"' _ "$(fval github)" "$(fev github)"
+check "and issues and prs unknown, not no, with the same reason (got: $(fev issues))" \
+    bash -c '[ "$1/$2" = unknown/unknown ] && grep -qF "github is unknown: remote '"'"'origin'"'"' is github.com-work" <<< "$3"' _ "$(fval issues)" "$(fval prs)" "$(fev issues)"
+check "gh was not called" [ ! -s "$GH_LOG" ]
+gitq -C "$CLEAN" remote set-url origin "ssh://git@ssh.github.com:443/Someone/Clean.git"
+facts "$CLEAN"
+check "ssh.github.com (ssh over 443) is github.com: github yes (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "yes/remote 'origin' is github.com/someone/clean" ]
+gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
+gitq -C "$CLEAN" remote add upstream "https://github.com/someone/clean.git"
+facts "$CLEAN"
+check "origin elsewhere but another remote on GitHub: github unknown, naming both (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "unknown/remote 'origin' is example.invalid/someone/clean, not on github.com, but remote 'upstream' is github.com/someone/clean: which one holds the issues and pull requests was not read" ]
+check "issues and prs unknown, gh not called" \
+    bash -c '[ "$1" = unknown/unknown ] && [ ! -s "$2" ]' _ "$(fval issues)/$(fval prs)" "$GH_LOG"
+gitq -C "$CLEAN" remote remove upstream
 facts "$HR"
 check "no remote: github no (got: $(fev github))" [ "$(fval github)/$(fev github)" = "no/the repository has no remote" ]
 check "a root CMakeLists.txt with project(): one directory, multi_component no (got: $(fev multi_component))" \

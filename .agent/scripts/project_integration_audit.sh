@@ -34,7 +34,12 @@
 #                                     github.com/<owner>/<repo>, and for
 #                                     any remote only host and path,
 #                                     never the URL (its user part can
-#                                     hold a credential)
+#                                     hold a credential). unknown when
+#                                     that remote's host only looks like
+#                                     GitHub (an ssh host alias such as
+#                                     github.com-work, GitHub
+#                                     Enterprise), or when it is not on
+#                                     GitHub but another remote is
 #                    issues           it uses GitHub issues: enabled, and
 #                                     at least one ever opened (gh repo
 #                                     view, then gh issue list --state all
@@ -51,9 +56,10 @@
 #                                     or more directories, tracked files
 #                                     only, node_modules/, vendor/ and
 #                                     third_party/ left out
-#                  issues and prs are no without a GitHub remote, and
-#                  unknown when gh or jq is missing or gh fails (not
-#                  signed in, offline); the evidence says which.
+#                  issues and prs are no when github is no, unknown when
+#                  github is, and unknown when gh or jq is missing or gh
+#                  fails (not signed in, offline); the evidence says
+#                  which.
 #
 # Severity: error (the workspace cannot work with the project as it is),
 # warn (worth fixing or deciding), info (for the record; nothing to do
@@ -302,9 +308,30 @@ if [ "$FACTS" -eq 1 ]; then
         fi
     fi
 
-    # github: the remote's host. origin, else the first remote.
+    # github: the remote's host. origin, else the first remote. yes only
+    # for github.com itself; unknown when that remote's host only looks
+    # like GitHub (an ssh host alias such as github.com-work, GitHub
+    # Enterprise), or when it is not on GitHub but another remote is:
+    # which server holds the issues and pull requests is then not read.
+    # remote_where <remote>: "host/path" (no user part), "local" for a
+    # local path, or nothing when the remote has no URL. Only host/path
+    # ever reaches the evidence: a URL's user part
+    # (https://user:TOKEN@host/...) can hold a secret, so it is dropped
+    # before the URL is normalised, and the URL itself is never printed.
+    remote_where() {
+        local url
+        url="$(g remote get-url "$1" 2>/dev/null)" || return 0
+        [ -n "$url" ] || return 0
+        if _records_local_remote_path "$PROOT_ABS" "$url" >/dev/null; then
+            echo local
+        else
+            _records_norm_url "$(url_without_userinfo "$url")"
+        fi
+    }
+    is_github_host() { [ "$1" = "github.com" ] || [ "$1" = "ssh.github.com" ]; }
     GH_REPO=""
     GH_STATE="unknown"
+    GH_WHY="$REPO_WHY"
     if [ -n "$REPO_WHY" ]; then
         fact github unknown "$REPO_WHY"
     elif [ "$IS_GIT" -eq 0 ]; then
@@ -313,27 +340,44 @@ if [ "$FACTS" -eq 1 ]; then
     else
         REMOTE="origin"
         g remote get-url origin >/dev/null 2>&1 || REMOTE="$(g remote 2>/dev/null | head -n1)"
-        URL=""
-        [ -n "$REMOTE" ] && URL="$(g remote get-url "$REMOTE" 2>/dev/null)"
+        _N=""
+        [ -n "$REMOTE" ] && _N="$(remote_where "$REMOTE")"
+        _HOST="${_N%%/*}"
+        _PATH="${_N#*/}"
+        # Another remote on GitHub, or one that looks like it, if any.
+        _OTHER=""
+        while IFS= read -r _r; do
+            [ -n "$_r" ] && [ "$_r" != "$REMOTE" ] || continue
+            _o="$(remote_where "$_r")"
+            case "${_o%%/*}" in
+                *github*) _OTHER="remote '$_r' is $_o"; break ;;
+            esac
+        done < <(g remote 2>/dev/null)
         GH_STATE="no"
-        if [ -z "$URL" ]; then
+        if [ -z "$_N" ]; then
             fact github no "the repository has no remote"
-        elif _records_local_remote_path "$PROOT_ABS" "$URL" >/dev/null; then
-            fact github no "remote '$REMOTE' is a local path: $URL"
+        elif is_github_host "$_HOST" && [[ "$_PATH" =~ ^[^/]+/[^/]+$ ]]; then
+            GH_REPO="$_PATH"
+            GH_STATE="yes"
+            fact github yes "remote '$REMOTE' is github.com/$GH_REPO"
         else
-            # Only host/path ever reaches the evidence: a URL's user part
-            # (https://user:TOKEN@host/...) can hold a secret, so it is
-            # dropped before the URL is normalised, and the URL itself is
-            # never printed.
-            _N="$(_records_norm_url "$(url_without_userinfo "$URL")")"
-            _HOST="${_N%%/*}"
-            _PATH="${_N#*/}"
-            if [ "$_HOST" = "github.com" ] && [[ "$_PATH" =~ ^[^/]+/[^/]+$ ]]; then
-                GH_REPO="$_PATH"
-                GH_STATE="yes"
-                fact github yes "remote '$REMOTE' is github.com/$GH_REPO"
+            if [ "$_N" = "local" ]; then
+                _WHERE="remote '$REMOTE' is a local path: $(g remote get-url "$REMOTE" 2>/dev/null)"
             else
-                fact github no "remote '$REMOTE' is $_N, not on github.com"
+                _WHERE="remote '$REMOTE' is $_N"
+            fi
+            if [[ "$_HOST" == *github* ]]; then
+                GH_STATE="unknown"
+                GH_WHY="$_WHERE: the host looks like GitHub (an ssh host alias, GitHub Enterprise) but is not github.com, so which server it is was not read"
+                fact github unknown "$GH_WHY"
+            elif [ -n "$_OTHER" ]; then
+                GH_STATE="unknown"
+                GH_WHY="$_WHERE, not on github.com, but $_OTHER: which one holds the issues and pull requests was not read"
+                fact github unknown "$GH_WHY"
+            elif [ "$_N" = "local" ]; then
+                fact github no "$_WHERE"
+            else
+                fact github no "$_WHERE, not on github.com"
             fi
         fi
     fi
@@ -365,8 +409,8 @@ if [ "$FACTS" -eq 1 ]; then
         return 1
     }
     if [ "$GH_STATE" = "unknown" ]; then
-        fact issues unknown "github is unknown: $REPO_WHY"
-        fact prs unknown "github is unknown: $REPO_WHY"
+        fact issues unknown "github is unknown: $GH_WHY"
+        fact prs unknown "github is unknown: $GH_WHY"
     elif [ "$GH_STATE" = "no" ]; then
         fact issues no "no GitHub remote, so gh can neither read nor open its issues"
         fact prs no "no GitHub remote, so gh can neither read nor open its pull requests"
