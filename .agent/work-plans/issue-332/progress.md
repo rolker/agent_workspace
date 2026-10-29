@@ -1293,3 +1293,269 @@ CI at `9e1f2720`: Lint (pre-commit), Validate Adapter Contract, Validate Documen
 ### False positives
 - (Copilot @ `7b28b6f1` through `db76490a`, ten reviews) Review bodies "unable to review ... insufficient remaining quota" — not findings; no comments and no code claim to evaluate.
 - (Local Review @ `db76490a`) The unchecked box "No issues found. LGTM." — not a finding: the review's verdict is approved with 0 must-fix and 0 suggestions; the box is how it wrote "no findings", and `sources` reads every open box as one.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-28 14:21 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-332 at `c5c481a6`
+
+PR 3 of 4 (the `onboard-project` rewrite), on main `e0bab748`. No pull request yet.
+
+### Actions
+- [x] `9ecb7078` `project_integration_audit.sh` (new, read-only, inert marker): `[--dir D | --project N] [--format tsv|text]`, TSV `category<TAB>id<TAB>severity<TAB>subject<TAB>detail`, exit 0 whatever it finds, 2 on usage or a directory under no registered root. Categories 1 to 6 as the plan lists them, each with stable ids; a finding whose fix is a tracked file drops to info when `instructions=none`. `test_project_integration_audit.sh` (new): every category with a finding, a clean project with none, the hand-registered fixture reproducing one id per category, records settings against `.agent/work-plans/`, read-only snapshot, refusals; declared in `test_script_tests_hook_scope.sh`.
+- [x] `8a070061` User tier: the audit, `registration_verify.sh` and `project_setting.sh` promoted. `project_setting.sh` set/unset now call `registry_require_root` and, from a project root, write only that project's file (or a parent root's instance); reads unchanged; the linked-worktree refusal still comes first. `test_user_tier_guard.sh`: probe for the guarded writer, read-only rows for the two inert scripts.
+- [x] `ec194faa` `/onboard-project` rewritten per plan item 2 (`[--dry-run] [--reask <key>]`, no repo argument, session_root.sh resolution, footprint questions with the provisional default, the "until the records lookup (#393) lands" wording, offers only when `instructions=tracked`, the four answers and `## Onboarding` roadmap section with the owner's D6 words verbatim, every write waits for a yes, hygiene checklist in a labelled section until PR 4). `test_skill_paths.sh` holds the wording and parses the skill's bash blocks.
+- [x] `2472f8e2` design.md (Sessions and roots exception and onboarding bullet, Registry Target, Documentation layers, change-log row 836), roadmap (the "waits until onboarding asks" deferral now names the offer with a true revisit check; sit-rep row notes `ROADMAP.md`), `skill_workflows.md` row.
+- [x] `c5c481a6` AGENTS.md: one Script Reference row for the audit, its own commit, nothing else (Ask First).
+
+### Plan vs merged code / plan text
+- Test file named `test_project_integration_audit.sh` as the handoff said (the plan's table says `test_integration_audit.sh`).
+- Category 6 runs `registration_verify.sh` without `--user-tier` and runs `user_tier_install.sh --check --require` and `session_root.sh --dir` itself, so each gets a stable id; same three checks the plan names.
+- The old skill's `.agent/templates/pre-commit-config.yaml` and `ci_workflow.yml` never existed in this repository (no git history); the checklist rows now say no template exists.
+- AGENTS.md's existing `project_setting.sh` row does not mention the new write guard (only new rows were allowed); the script header does.
+
+### Checks
+- `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP: exit 0, every hook passed or skipped, the script suite hook included.
+- `.agent/scripts/check_design_anchors.sh .`: exit 0.
+- Suites run directly: test_project_integration_audit (75 passed), test_user_tier_guard, test_skill_paths (98), test_project_file (474), test_register_project (198), test_user_tier_install (211), test_session_root (69), test_plugin_manifest (12), test_sitrep_checks (186), test_script_tests_hook_scope (149): all 0 failed.
+- Not covered by a test: the `session-root` finding (no synthetic setup makes `session_root.sh` fail at an existing registered root). Not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-28 14:25 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `4214aa7c`
+**Base**: main
+**Depth**: Deep (reason: 1544 changed lines over 13 files, with AGENTS.md and a SKILL.md)
+**Must-fix**: 7 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 7 must-fix; first round always re-reviews after fixes
+
+Round taken as 1 on the host's instruction: this is PR 3 of 4, a new diff, and `review_progress.sh round` reported round=12 only because the eleven pre-push entries of PRs 403 and 409 (parts 1 and 2, merged from branches of the same name) are still on this issue's timeline (issue 384). Classified on the whole `main...HEAD` diff; cross-model dispatched as a first review; verdict computed with `--round 1`, no `--prev-must-fix`.
+
+Reviewers: Claude adversarial ran (four suites green: audit 75, hook scope 149, skill paths 98, user-tier guard 63); Gemini (agy) ran, complete; Codex ran, complete. Static: shellcheck --severity=warning clean on the six changed shell files. Checked and holding: the audit exits 0 whatever it finds; the tests build synthetic sandboxes only (the real checkout is only the source the scripts are copied from, HOME redirected); the D6 quote is verbatim; every path the new skill names exists. Dropped: Gemini's logical-$PWD finding in project_setting.sh (false positive: the resolver canonicalizes, `_project_registry.sh:521`).
+
+### Findings
+- [x] (must-fix) `git check-ignore -v --no-index` exits 0 and prints the rule for a negated (`!`) pattern, so a path a project explicitly un-ignores (e.g. `*.md` then `!AGENTS.md`) is reported as `ignore-would-hide`; verified in a scratch repo — `.agent/scripts/project_integration_audit.sh:372`
+- [x] (must-fix) Step 7 runs `worktree_create.sh --issue <N> --type project` without `--project <name>`; with `--type` given, the cwd is not used, so it picks a legacy `project/` checkout (wrong repository) or fails when several are registered (Codex; `worktree_create.sh:252,349-388`) — `.claude/skills/onboard-project/SKILL.md:292`
+- [x] (must-fix) At a parent root, `session_root.sh` gives the parent's name, and every `project_setting.sh set <name>` the skill shows is refused (`_project_registry.sh:1550`, settings belong to instances); resolve the default/only instance as the audit does, or ask (Codex) — `.claude/skills/onboard-project/SKILL.md:91,143,183`
+- [x] (must-fix) No path for a project that does not use issues: step 7 needs `<N>` for `worktree_create.sh`, which requires an issue or an allowlisted skill, yet the skill promises edits left on a branch for a project with no GitHub (Codex); needs a decision on how such a project's onboarding branch is made — `.claude/skills/onboard-project/SKILL.md:285-300`
+- [x] (must-fix) PR and issue bodies use an unquoted heredoc around finding text (category 2 lines often carry backticked commands, which the shell would run) and `$AGENT_NAME`/`$AGENT_MODEL`, normally unset in a project session, so the signature renders empty; no identity step for the step 7 commits (Gemini, Claude) — `.claude/skills/onboard-project/SKILL.md:303-320,329-343`
+- [x] (must-fix) "The writes this skill can make are ..." omits the hygiene checklist's remote writes (`gh api` branch protection and Copilot review, `gh label create`, `git bug bridge new`); name them and say each runs only after its own yes (Claude) — `.claude/skills/onboard-project/SKILL.md:69-73,379-401`
+- [x] (must-fix) The `instructions=none` downgrade is claimed for every finding whose fix is a tracked file (script header, AGENTS.md row, SKILL.md:136-137), but only `emit_offer` downgrades; `skill-same-name`, `command-same-name`, `old-work-plans`, `records-two-places`, `work-plans-ignored`, `process-branch`, `process-issue` stay `warn`; route them through `emit_offer` or narrow the claim (Claude) — `.agent/scripts/project_integration_audit.sh:19-23,171-178`
+- [x] (suggestion) `build_candidates` matches the project's own commands as substrings, so `build=make` hides `cmake --build build`; match on command boundaries, per command (Codex) — `.agent/scripts/project_integration_audit.sh:297-299`
+- [x] (suggestion) The worktrees directory is canonicalized only when it exists, so for a root registered through a symlink (directory not yet created, the usual case after registration) `worktrees-not-ignored` is silently skipped (Gemini) — `.agent/scripts/project_integration_audit.sh:319-321`
+- [x] (suggestion) `candidate()`'s overflow total counts lines the skip pattern drops; `indent_out` is unused (Gemini) — `.agent/scripts/project_integration_audit.sh:273,399`
+- [x] (suggestion) `clean()` uses the GNU-only `sed ':a;N;$!ba;...'`; on BSD sed it errors and every field is emptied; `tr`/awk is portable (Claude) — `.agent/scripts/project_integration_audit.sh:156`
+- [x] (suggestion) The category-6 fix text tells the user to `set <name> build=<command>`, which a `ros2_colcon` project refuses (`unused_settings`); say it applies to `single_project` (Claude) — `.claude/skills/onboard-project/SKILL.md:117-122`
+- [x] (suggestion) Tests missing for: the `session-root` finding (builder's note), a parent-type root, a negated ignore rule, the remaining ids under `instructions=none`, the more-than-10 cap — `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] (suggestion) AGENTS.md: the `project_setting.sh` row does not mention the new write guard (`registry_require_root`; from a project root only its own file), and the new audit row repeats the over-wide `instructions=none` claim; fix both in the AGENTS.md commit — `AGENTS.md:408-411`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-28 14:26 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fires on the false count from the merged parts' entries (issue 384); this branch, PR 3 of 4, had its round 1 at 10aef17f; seven must-fix and seven suggestions open, all mechanism; the one design point, M4, decided by the host and listed for the owner's veto)
+**After**: rounds
+**Decision**: address
+
+PR 3 of 4 (the onboard-project rewrite), round 1 (taken as 1, counter says 12) at 10aef17f: 7 must-fix (M1 a deliberately un-ignored file reported as hidden; M2 the project worktree created without --project; M3 settings writes refused at a parent root; M4 no branch path for a project without issues; M5 unquoted heredocs run backticks from finding text, empty signature and no identity step in a project session; M6 remote writes missing from the every-write list; M7 seven ids stay warn under instructions=none) and 7 suggestions (S1 substring match on build commands; S2 symlinked root skips the worktrees check; S3 overflow count and an unused helper; S4 GNU-only sed; S5 category-6 fix text wrong for ros2_colcon; S6 missing tests; S7 the AGENTS.md rows). Host's decision on M4: a project with no issue tracker gets its onboarding branch through the skill-worktree path, onboard-project added to the worktree_create.sh skill allowlist (branch skill/onboard-project-<timestamp>, --type project --project <name>); a project that uses issues keeps the issue worktree with the issue the skill opens. All fourteen sent to address-findings.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 10:20 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-332 at `fdf9cc9c`
+**Addressed**: Local Review (Pre-Push) at `4214aa7c` (2026-10-28 14:25 -04:00)
+**Commits**: 5514f5ff, 503b3afb, 2d68adb6, a1499311, e363dda6, af2d0f42, 559cdc6a, 65810920, b05b5ae3, 732929e8, b7d5d216, a580c161, 591ec23b, ce28b0e8, fdf9cc9c
+
+The fixes were made in a fix pass on 2026-10-28 that checked each box in its fix commit but wrote no entry; this pass verified each against `git diff 4214aa7c..HEAD` and the files, found every one done, changed nothing, and writes the entry. No-SKIP pre-commit over `main...HEAD` (16 files) on `fdf9cc9c`: exit 0 in 522 s, the script suite hook passed.
+
+### Actions
+- [x] M1 negated ignore rule reported as hidden: `check-ignore -q` decides, `-v` only names the rule; test with `*.md` + `!AGENTS.md` (5514f5ff) — `.agent/scripts/project_integration_audit.sh:472`
+- [x] M2 step 7 without `--project`: both worktree commands pass `--project <settings-name>`, with the reason (503b3afb, then a1499311) — `.claude/skills/onboard-project/SKILL.md:324-352`
+- [x] M3 settings writes refused at a parent root: step 1 resolves `<settings-name>` (default or only instance, else ask); every `project_setting.sh` call uses it; the audit gains `--instance`; tests for the parent root, `--instance`, an instance write and the parent name refused (2d68adb6) — `.claude/skills/onboard-project/SKILL.md:115-136`, `.agent/scripts/project_integration_audit.sh:162-176`
+- [x] M4 no branch for a project without issues (host decision): `onboard-project` on the `worktree_create.sh` skill allowlist; `--skill onboard-project --type project --project <name>` makes a worktree of the root's own repository on `skill/onboard-project-<timestamp>`, refusing a root that is not a repository top; skill, start-task, design.md updated; tests in test_project_registry.sh (a1499311; AGENTS.md allowlist in ce28b0e8) — `.agent/scripts/worktree_create.sh:90,555-565`
+- [x] M5 unquoted heredocs and empty signature: quoted `<<'EOF'` bodies, signature appended by `printf` after sourcing the identity in the same shell and stopping when unset; identity sourced in the chain of every step 7 commit (e363dda6) — `.claude/skills/onboard-project/SKILL.md:356-424`
+- [x] M6 remote writes missing from the write list: the list names branch protection and Copilot review, labels and the git-bug bridge, each on its own yes (af2d0f42) — `.claude/skills/onboard-project/SKILL.md:69-82`
+- [x] M7 `instructions=none` claim wider than the code: all ten tracked-file ids go through `emit_offer`, the header lists them and why the rest keep severity; tests for each id (559cdc6a) — `.agent/scripts/project_integration_audit.sh:27-35`
+- [x] S1 build commands matched as substrings: a line's commands split and compared one at a time on word boundaries; tests for `make` vs `cmake --build` (65810920) — `.agent/scripts/project_integration_audit.sh:322-397`
+- [x] S2 symlinked root skips the worktrees check: the deepest existing ancestor is canonicalized and the rest appended; test with a symlinked root and no worktrees/ (b05b5ae3) — `.agent/scripts/project_integration_audit.sh:408-420`
+- [x] S3 overflow count and unused `indent_out`: the count is of kept lines only, helper dropped; more-than-10 cap test (732929e8) — `.agent/scripts/project_integration_audit.sh:300-320`
+- [x] S4 GNU-only sed in `clean()`: awk join (b7d5d216) — `.agent/scripts/project_integration_audit.sh:183`
+- [x] S5 category-6 fix text wrong for ros2_colcon: the build/test setting applies to `single_project`; ros2_colcon refuses them, pointing to its `unused_settings` (a580c161) — `.claude/skills/onboard-project/SKILL.md:151-161`
+- [x] S6 missing tests: session-root (591ec23b), parent root (2d68adb6), negated rule (5514f5ff), the ids under `instructions=none` (559cdc6a), the cap (732929e8); skill text checks (fdf9cc9c) — `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] S7 AGENTS.md rows: `project_setting.sh` names the `registry_require_root` write guard; the audit row narrows the claim to the header's ids and adds `--instance` (ce28b0e8) — `AGENTS.md:408-411`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 10:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `377b4e29`
+**Base**: main
+**Depth**: Deep (reason: 1868 changed lines over 16 files, with AGENTS.md and a SKILL.md; fix-round re-review on the whole-diff tier)
+**Must-fix**: 2 | **Suggestions**: 8
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Round taken as 2 on the host's instruction: this is PR 3 of 4, whose round 1 was the `## Local Review (Pre-Push)` of 2026-10-28 14:25 at 4214aa7c; `review_progress.sh round` reported round=13 only because the eleven pre-push entries of PRs 403 and 409 (parts 1 and 2) are still on this issue's timeline (issue 384). Not a convergence check: full re-review of the fix diff 4214aa7c..fdf9cc9c (15 commits) with the cross-model reviewers, after a round with must-fixes. Verdict computed with `--round 2 --prev-must-fix 7`.
+
+All 14 round-1 findings checked closed in the code and tests (M1 `check-ignore -q` gate with a `!` rule test; M2/M4 both worktree commands pass `--project <settings-name>`; M3 instance resolution, `--instance`, guarded writes; M5 quoted heredocs, printf signature, identity in each commit chain; M6 write list; M7 the ten ids through `emit_offer`; S1-S7). The host's M4 decision is implemented as recorded: `onboard-project` on the `worktree_create.sh` allowlist, branch `skill/onboard-project-<timestamp>`, `--skill onboard-project --type project --project <name>`, a worktree of the root's own repository, refused when the root is not a repository top; AGENTS.md, start-task and design.md say so.
+
+Reviewers: Claude adversarial ran (complete; 3 must-fix reported, 1 kept as must-fix, 2 taken as suggestions); Gemini (agy) ran, EXIT=0, 1 suggestion (kept); Codex ran, EXIT=0, 1 must-fix (kept). Static: shellcheck --severity=warning clean on the five changed shell files. Suites under a private TMPDIR: test_project_integration_audit 114/0, test_project_registry 274/0, test_skill_paths 102/0, no files left behind. Open for the owner at the merge checkpoint (Ask First): AGENTS.md commit ce28b0e8 changes the Skill Worktree Exception rule (onboard-project on the allowlist) and the `project_setting.sh` row, beyond the one new row approved in round 1.
+
+### Findings
+- [x] (must-fix) At a parent root, category 6 runs `registration_verify.sh` on the parent name only, which skips settings, required commands and adapter validation, so the chosen instance's broken registration is never reported; verify `$SNAME` too, with tests for an instance with malformed settings and a missing command (Codex) — `.agent/scripts/project_integration_audit.sh:502`
+- [x] (must-fix) At a parent root, category 3 takes the worktrees directory and the records ignore probes from the parent, which never gets worktrees (they go under the instance; `wt_ensure_exclusion` returns early for a parent): a false `worktrees-not-ignored` warn whose detail ("worktree_create.sh adds 'worktrees/'") is untrue there, and the instance's own directory unchecked; the test fixture hides it (its `.gitignore` already has `worktrees/`). Use the instance for both, and decide which root's files categories 1, 2, 4, 5 read at a parent root, since the fix batch can only change the instance's repository (Claude, reproduced) — `.agent/scripts/project_integration_audit.sh:407-445`
+- [x] (suggestion) `commands()` takes the prose before a code span as a command, so `- make sure \`pytest\` passes` with `test=pytest` is flagged (round 1's substring match hid it); take the lead only when the line has no code span (Gemini, reproduced) — `.agent/scripts/project_integration_audit.sh:336`
+- [x] (suggestion) `worktree_list.sh` misparses a project skill worktree whose project name holds `-` or `.` (slug is the raw registry name; its regex allows `[a-zA-Z0-9_]`); enter/remove unaffected; the same class already exists for issue worktrees of such names (Claude) — `.agent/scripts/worktree_list.sh:124`
+- [x] (suggestion) Step 1 reads a parent root with no instances as "no parent root", so every later write is refused; decide on `session_root.sh`'s `type=` and stop with "register an instance first"; the audit's text says "several instances" for zero too (Claude) — `.claude/skills/onboard-project/SKILL.md:127`, `.agent/scripts/project_integration_audit.sh:537`
+- [x] (suggestion) The allowlist is not tied to the type: `--skill research --type project` and `--skill onboard-project --type workspace` now both succeed; allow onboard-project only with `--type project` (Claude) — `.agent/scripts/worktree_create.sh:91,555`
+- [x] (suggestion) Step 7's pull-request block has no `git push -u origin <branch>`, so a non-interactive `gh pr create` stops ("you must first push the current branch") (Claude) — `.claude/skills/onboard-project/SKILL.md:367-389`
+- [x] (suggestion) `ignored-agent-file` emits one warn per file with no cap and flags Claude Code's own ignored `.claude/worktrees/`; cap or group per rule, treat `.claude/worktrees/` like `settings.local.json` (Claude) — `.agent/scripts/project_integration_audit.sh:461-467`
+- [x] (suggestion) Category 2 misses numbered and `+` list items (`1. make install`, `+ cargo build`) in both the grep and the awk lead-stripping (Claude) — `.agent/scripts/project_integration_audit.sh:333,396`
+- [x] (suggestion) Plain `"${arr[@]}"` on possibly empty arrays under `set -u` (bash 4.0-4.3 aborts); use the `${arr[@]+...}` form the new code uses (Claude) — `.agent/scripts/project_integration_audit.sh:398,482,488`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 10:30 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fires on the false count from the merged parts' entries (issue 384); this is round 2 of PR 3 of 4, with 2 must-fix and 8 suggestions, all mechanism; second host address in a row at rounds, so the next rounds answer is the owner's)
+**After**: rounds
+**Decision**: address
+
+PR 3 of 4 (the onboard-project rewrite), round 2 at 377b4e29 (8c7b5e6d): M1 at a parent root category 6 verifies only the parent name, so the chosen instance's broken registration is never reported; M2 at a parent root category 3 probes the parent for worktrees and records ignores, which belong to the instance. Host decision on M2's open design point, listed for the owner's veto: at a parent root the audit reads, reports and fixes one repository, the chosen instance's (categories 1 to 6 alike), because the fix batch can only write there; the parent root's own files are not audited by this skill. Eight suggestions sent along (commands() lead text, worktree_list.sh name parse, zero-instance parent wording, allowlist tied to type, git push before gh pr create, ignored-agent-file cap and .claude/worktrees, numbered list items, empty arrays under set -u). Ask-First item for the owner, raised in the session: the AGENTS.md commit ce28b0e8 also changes the Skill Worktree Exception rule and the project_setting.sh row, beyond the one row approved yesterday.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 10:52 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aa8647374c5538f24, resume 1 of 3)
+
+**Branch**: feature/issue-332 at `16d94083`
+**Addressed**: Local Review (Pre-Push) at `377b4e29` (2026-10-29 10:30 -04:00)
+**Commits**: 3c12d408, 0241da7e, 89ee14aa, 61df2c3e, 4d2c0537, 4dc559ee, 0c7573b7, b180073c, 412282dc, 5c7104f7, 16d94083
+
+All ten fixed; none deferred. No-SKIP pre-commit over `main...HEAD` on `16d94083`: exit 0 in 456 s, the script suite hook passed. AGENTS.md was not touched (the owner is being asked about its earlier changes): its `project_integration_audit.sh` row still says "at a parent root it reads the settings of `--instance I`"; the right wording is "reads the settings and repository of `--instance I` (else the default or only instance), verifies its registration beside the parent's, and does not audit the parent root's own files". The Skill Worktree Exception could also say that each allowlisted skill has one worktree type. Both are left for the AGENTS.md decision.
+
+### Actions
+- [x] M1 the instance's registration never verified at a parent root: category 6 runs `registration_verify.sh` on the parent and on the audited instance, each finding's subject naming which; tests for an instance with malformed settings and one with no test command (0241da7e) — `.agent/scripts/project_integration_audit.sh` (verify_registration)
+- [x] M2 category 3 read the parent at a parent root (host decision: one repository, the chosen instance's, for categories 1 to 5): the audited root, worktrees directory and records ignore probes are the instance's, and the parent's own files are not read; the session-root check stays on the parent. The fixture no longer lets the parent's `worktrees/` rule hide the instance's missing one, and puts a candidate line in the parent's CLAUDE.md that must not be reported. Skill step 1, 2 and 7 text (3c12d408); design.md onboarding bullet and changelog row (16d94083) — `.agent/scripts/project_integration_audit.sh` (SESSION_ABS / AUD_NAME)
+- [x] S1 prose before a code span taken as a command: `commands()` uses the line itself only when it has no code span; test line `- make sure \`make test\` passes.` (89ee14aa) — `.agent/scripts/project_integration_audit.sh` (commands)
+- [x] S2 `worktree_list.sh` misparsed a project named with `-` or `.`: the scan passes the registered name, and a skill or issue basename starting with it is split there first; test with `my-proj.x` (5c7104f7) — `.agent/scripts/worktree_list.sh` (extract_issue_repo)
+- [x] S3 a parent root with no instances: the skill decides on the registered type (`registry_lookup ... | cut -f1`), because `session_root.sh`'s `type=` says only workspace or project, and stops saying to register an instance; the audit emits `parent-instance` (error with none, info with several and no default) and its text says "none registered" for zero; tests in both suites (0c7573b7) — `.claude/skills/onboard-project/SKILL.md` step 1
+- [x] S4 allowlist not tied to the type: `skill_worktree_type` (onboard-project project, the rest workspace) refuses the other combinations; tests for `research --type project` and `onboard-project --type workspace` (412282dc) — `.agent/scripts/worktree_create.sh`
+- [x] S5 no push before `gh pr create`: `git push -u origin "$(git branch --show-current)" || exit 1` first, with the reason; skill text test (b180073c) — `.claude/skills/onboard-project/SKILL.md` step 7
+- [x] S6 `ignored-agent-file` uncapped and flagging `.claude/worktrees/`: one finding per ignoring rule naming up to three files and the count; `.claude/worktrees/` excluded like `settings.local.json`; test with five files under one rule (4dc559ee) — `.agent/scripts/project_integration_audit.sh` (category 4)
+- [x] S7 numbered and `+` list items missed: list marker `-`, `*`, `+`, `1.`, `1)` in both the grep and the awk; test lines 9 to 11 (61df2c3e) — `.agent/scripts/project_integration_audit.sh`
+- [x] S8 empty arrays under `set -u`: the instruction-file and rule-file expansions use `${arr[@]+...}`; the two remaining plain ones are guarded by a non-empty check. Not testable on this machine's bash 5 (4d2c0537) — `.agent/scripts/project_integration_audit.sh`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 10:57 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4f6a454516d4c385, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `df3b8943`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 3 of PR 3 of 4 (the onboard-project rewrite); `review_progress.sh round` says 14 only because of the merged parts' entries (issue 384). A narrow convergence check per the handoff: scope is the round-2 entry 8c7b5e6d's 10 findings and the fix diff 377b4e29..16d94083 (11 commits); cross-model skipped (round-3 convergence check, per handoff). Verdict computed with `--round 3 --prev-must-fix 2`.
+
+All 10 round-2 findings checked closed. M1: category 6 verifies the parent and the audited instance (`verify_registration`), with tests for an instance with malformed settings and with no test command. M2: at a parent root categories 1 to 5 read only the chosen instance's settings and repository (host decision), the session-root check stays on the parent; the fixture's parent now ignores `worktrees/` while instance a does not, and the parent's CLAUDE.md line must not be reported; design.md bullet and changelog row (16d94083) say so. Suggestions: prose before a code span is no command; `+`, `1.`, `1)` list markers in grep and awk; `${arr[@]+...}` expansions; `ignored-agent-file` one per rule, `.claude/worktrees/` skipped; zero-instance parent stops (skill decides on the registered type; audit `parent-instance` error, text "none registered"); `skill_worktree_type` ties research and inspiration-tracker to workspace and onboard-project to project (no existing caller uses another combination: research's project scope uses `--issue`); `git push -u` before `gh pr create`; `worktree_list.sh` splits at the registered name (test with `my-proj.x`). AGENTS.md deliberately untouched (owner's call on two wording refreshes), not counted.
+
+Checks: shellcheck --severity=warning clean on the six changed shell files; suites under a private TMPDIR: test_project_integration_audit 130/0, test_project_registry 281/0, test_skill_paths 104/0, no files left behind.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 11:01 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Owner's answer: "Yes, refresh both, then publish". Round 3 (ed1bcc04) approved with nothing open. Two AGENTS.md wording refreshes (Ask-First, approved now) go in before publish: the project_integration_audit.sh row says that at a parent root the audit reads the chosen instance's settings and repository, checks the instance's registration as well as the parent's, and skips the parent's own files; the Skill Worktree Exception says each allowlisted skill has one worktree type (research and inspiration-tracker workspace only, onboard-project project only). Then a round-4 convergence check and publish.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 11:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aa8647374c5538f24, resume 2 of 3)
+
+**Branch**: feature/issue-332 at `4281cc40`
+**Addressed**: Checkpoint (owner, 2026-10-29 11:01 -04:00) after the Local Review (Pre-Push) at `ed1bcc04`: the two AGENTS.md wording refreshes it approved ("Yes, refresh both, then publish")
+**Commits**: 4281cc40
+
+The round-3 review left nothing open; its LGTM placeholder box is left as it is. No test pins either passage. No-SKIP pre-commit over `main...HEAD` on `4281cc40`: exit 0 in 454 s, the script suite hook passed.
+
+### Actions
+- [x] The `project_integration_audit.sh` Script Reference row: at a parent root the audit reads the settings and repository of `--instance I` (else the default or only instance), checks that instance's registration as well as the parent's, and skips the parent's own files; checked against `SNAME`/`AUD_NAME` and `verify_registration` in the script (4281cc40) — `AGENTS.md` Script Reference
+- [x] The Skill Worktree Exception: each allowlisted skill has one worktree type, `research` and `inspiration-tracker` workspace only, `onboard-project` project only; checked against `skill_worktree_type` in `worktree_create.sh` (4281cc40) — `AGENTS.md` Skill Worktree Exception
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 11:12 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4f6a454516d4c385, resume 2 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `680806ec`
+**Base**: main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 4 of PR 3 of 4 (the onboard-project rewrite); `review_progress.sh round` says 15 only because of the merged parts' entries (issue 384). A narrow convergence check per the handoff on the one code change since round 3 (ed1bcc04): the owner-approved AGENTS.md commit 4281cc40; cross-model skipped (round-4 convergence check, per handoff). Verdict computed with `--round 4 --prev-must-fix 0`.
+
+`git diff ed1bcc04..HEAD`: only AGENTS.md (2 lines) and progress.md changed. Each claim checked against the code. The audit row: at a parent root the instance's settings and repository are read (`project_integration_audit.sh:196-198`, AUD_NAME/PROOT from the `--instance` or default/only instance), its registration is verified beside the parent's (`:582-584`), and the parent's own files are not read (PROOT replaced by the instance's). The Skill Worktree Exception: `skill_worktree_type` (`worktree_create.sh:96-101`) gives onboard-project `project` and the rest `workspace`, and `:300-301` refuses any other combination.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 11:11 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (round 4 of PR 3 of 4 approved with nothing open; the owner already answered the publish checkpoint once this drive with "refresh both, then publish", and the refreshes are in; the branch is not behind main)
+**After**: publish
+**Decision**: publish
+
+PR 3 of 4 (the onboard-project rewrite and the project integration audit) at 680806ec, round 4 (b3b8c3c8) approved. Pushed and opened as a pull request by the host.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-29 11:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #413 at `10448742`
+**Sources**: 3 (Local Review (Pre-Push) round 4 @ `680806e` (covers 10448742 via bookkeeping: progress.md only); GitHub reviews and comments at the head: none; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR 3 of 4 of issue 332 (the onboard-project rewrite and the project integration audit). `review_progress.sh sources` at the head: one local entry covers it, round 4 (b3b8c3c8, approved at 680806ec), whose only box is its LGTM placeholder; nine older entries with open boxes are stale (parts 1 and 2, PRs 403 and 409, merged, and this part's earlier rounds, all 24 of whose findings were fixed in rounds 1 to 3). GitHub: 0 reviews, 0 inline comments, 0 conversation comments. The copilot-pull-request-reviewer check run failed at the head (`HttpError: Not Found`, exit 1) and posted no review. CI at the head: Validate Adapter Contract, Validate Documentation and ros-manifest tests pass (both workflow runs); Lint (pre-commit) still in progress in both runs; triage did not wait for it.
+
+### Findings
+None open.
+
+### False positives
+- (Local Review (Pre-Push) @ `680806e`) "No issues found. LGTM." — a placeholder box, not a finding: the round-4 entry's verdict is approved with 0 must-fix and 0 suggestions, so there is nothing to act on.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 11:26 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer: "Merge". PR 413 (part 3 of 4) at 489a94d8, Integrated Review 489a94d8 with nothing open; CI lint still running at the time of the answer, so the host waits for it before merge_pr.sh.

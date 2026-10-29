@@ -81,8 +81,8 @@ README.
 |----------|---------------|
 | The registration script and retiring `project/` and `projects/` (#265, PR 4): after the acceptance run | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
 | The workspace as a registered project (#295): settled once ADR-0016 is | `adr-status docs/decisions/0016-session-roots-and-the-user-tier.md accepted` |
-| A Direction section in the acceptance project's own repository: waits until onboarding asks a project what it carries | |
-| The sit-rep over every registered root with a Direction section (this first form reads the workspace root only) | |
+| A Direction section in the acceptance project's own repository: `onboard-project` offers one to a project whose settings say `instructions=tracked` (#332 D3), so it is decided at the acceptance project's onboarding run | `file-contains .claude/skills/onboard-project/SKILL.md Direction section` |
+| The sit-rep over every registered root with a Direction section (this first form reads the workspace root only; a project's roadmap may be `docs/roadmap.md` or `ROADMAP.md`, the two places `onboard-project` looks) | |
 
 Things set aside for good are under [Decided Against](#decided-against).
 
