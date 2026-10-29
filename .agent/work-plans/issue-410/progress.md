@@ -580,3 +580,17 @@ Scope: round 4's suggestion and the fix diff `797ac2d2..0de3699a` (`47787ccc`), 
 
 ### Findings
 - [x] (must-fix) The class is not closed: `FROM_RE`/`IMPORT_RE` are anchored at line start, so an import that does not start its line is never seen and the every-`.py` fallback does not fire: `python3 -c "from pkg import mod"` (the usual way a bash suite runs Python), `x = 1; import mod`, `try: import mod`, `if x: import mod` each map nothing (confirmed with `Index(vocab).refs`). The header comment's "anything but a plain name list" claim is false for them. No instance in the tree today. Treat an `import`/`from ... import` found mid-line (after `;`, `:` or a quote) as unreadable, or parse that segment, and add a synthetic `python3 -c` case; or narrow the comment to line-start imports if the owner accepts that bound — `.agent/scripts/tests/suites_for_files.sh:195,196,42`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 11:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #411 at `fac2fe43`
+**Addressed**: Local Review at `0de3699a` (2026-10-29 11:14 -04:00)
+**Commits**: `fac2fe43`
+
+### Actions
+- [x] (must-fix) Imports that do not start their line are now found (host decision: extend, not narrow the comment). Each line is cut at every `;`, `:`, `'` and `"` (a `\` before a quote goes with it) and each piece is parsed as an import: a plain name list maps its modules, anything else makes the file count every `.py` as referenced. A `#` ends only its own piece, so an earlier `${#a[@]}` or `"#"` no longer hides an import later on the line; a parenthesised `from X import (` opened mid-line is joined across lines as before. Text after `import` that is only words, dots and commas yet not a name list is prose (Python refuses it) and is ignored: without that rule `ros2_colcon/adapter.sh`'s `"... import failed for optional layer"` message widened test_adapter.sh to every `.py`. Probed with `Index.refs`: `python3 -c "from pkg import mod"`, `x = 1; import mod`, `try: import mod`, `if x: import mod`, `else:import mod` map precisely; `$'import a\nimport b'` and a mid-line `from pkg import *` fall back. Header comment rewritten to match, residual risk now names `__import__`/`importlib`. Synthetic cases in test_run_script_tests.sh (l): test_pyc.sh (`-c "from pkg import mod_f"`, `; import mod_g`, `try: import mod_h`, plus a prose echo) selects each module precisely and does not join mod_x.py's selection; test_midstar.sh (a `from pkg import *` inside `python3 -c`, assembled at generation time) joins every `.py` selection; both read anchor.txt so the "no derived references" rule cannot mask a miss. Two labels reworded so this suite's own text does not open a parenthesised from-import. The 8 affected (l) expectations fail on the round-4 mapper (scratch copy) and pass now. Real repository `--dump` map: unchanged (1601 lines, diffed before and after). Box ticked by direct edit in `fac2fe43` (PR-mode entry, not selected by `findings`) — `.agent/scripts/tests/suites_for_files.sh`
+
+Hooks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook (script suites and shellcheck included), in 524 s. Direct run under a private TMPDIR: `test_run_script_tests.sh` 66/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
