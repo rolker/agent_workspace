@@ -468,12 +468,12 @@ from pkg import (
 PY"
     # This file's own text must not hold the unreadable import, or this
     # suite would count every .py in the real repository as referenced.
-    local kw_from=from
+    local kw_from=from kw_import=import
     write_syn_suite "$t" test_backslash.sh "$sd
 PYTHONDONTWRITEBYTECODE=1 python3 - \"\$SCRIPT_DIR/..\" <<'PY'
 import sys
 sys.path.insert(0, sys.argv[1])
-${kw_from} pkg import mod_d, \\
+${kw_from} pkg ${kw_import} mod_d, \\
     mod_e
 PY"
     # Imports that do not start their line, each module named only once:
@@ -496,7 +496,7 @@ PY"
     # the same reason as test_backslash.sh's.
     write_syn_suite "$t" test_midstar.sh "$sd
 cat \"\$SCRIPT_DIR/../anchor.txt\" >/dev/null
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=\"\$SCRIPT_DIR/..\" python3 -c \"${kw_from} pkg import *\""
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=\"\$SCRIPT_DIR/..\" python3 -c \"${kw_from} pkg ${kw_import} *\""
     write_syn_suite "$t" test_noref.sh ':'
     write_syn_suite "$t" test_scanner.sh '# scans: .agent/docs/ .agent/scripts/tests/'
     write_syn_suite "$t" test_covered.sh '# covers: .agent/scripts/tests/fixture_data.txt'
@@ -549,12 +549,53 @@ expect_sel "a name after a ')' in an inline comment of a parenthesised from-impo
     "test_always.sh test_backslash.sh test_checkpoint_269.sh test_fromimp.sh test_midstar.sh test_noref.sh" -- .agent/scripts/pkg/mod_c.py
 expect_sel "a name after a '\\' continuation selects the suite (fallback) for pkg/mod_e.py" \
     "test_always.sh test_backslash.sh test_checkpoint_269.sh test_midstar.sh test_noref.sh" -- .agent/scripts/pkg/mod_e.py
-expect_sel "an import inside 'python3 -c \"...\"' selects the suite for pkg/mod_f.py" \
+expect_sel "an import statement inside a python3 -c string selects the suite for pkg/mod_f.py" \
     "test_always.sh test_backslash.sh test_checkpoint_269.sh test_midstar.sh test_noref.sh test_pyc.sh" -- .agent/scripts/pkg/mod_f.py
-expect_sel "an import after a ';' selects the suite for mod_g.py" \
+expect_sel "an import statement after a semicolon selects the suite for mod_g.py" \
     "test_always.sh test_backslash.sh test_checkpoint_269.sh test_midstar.sh test_noref.sh test_pyc.sh" -- .agent/scripts/mod_g.py
-expect_sel "an import after a ':' ('try: import') selects the suite for mod_h.py" \
+expect_sel "an import statement after the colon of a try line selects the suite for mod_h.py" \
     "test_always.sh test_backslash.sh test_checkpoint_269.sh test_midstar.sh test_noref.sh test_pyc.sh" -- .agent/scripts/mod_h.py
+# Each import shape below is written as the only import in a suite of its
+# own (shape_case), which also reads anchor.txt so the "no derived
+# references" rule cannot select it. A shape that hides a name must make
+# the suite count every .py as referenced: it is selected for mod_x.py,
+# which it never names. A shape that cannot be Python must not. Each is a
+# printf format whose %s are the keywords, so this file's own text holds no
+# import word the mapper cannot read.
+# shape_case <label> <yes|no: selected for mod_x.py> <printf format> <arg>...
+shape_case() {
+    local label="$1" want="$2" fmt="$3" got sel=no
+    shift 3
+    # shellcheck disable=SC2059  # the format is the case
+    write_syn_suite "$SYN_T" test_shape.sh "$(printf '%s\ncat "$SCRIPT_DIR/../anchor.txt" >/dev/null\n' \
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"')
+$(printf "$fmt" "$@")"
+    got="$(sfor -- .agent/scripts/mod_x.py)"
+    rm -f "$SYN_T/test_shape.sh"
+    [[ " $got " == *" test_shape.sh "* ]] && sel=yes
+    if [[ "$sel" == "$want" ]]; then
+        pass "(l) $label"
+    else
+        fail "(l) $label: expected selected=$want for mod_x.py, got '$got'"
+    fi
+}
+KW_FROM=from KW_IMPORT=import
+shape_case "a '\\' after 'from pkg' falls back (the suite runs)" yes '%s pkg \\\n    %s mod_d, mod_e\n' "$KW_FROM" "$KW_IMPORT"
+shape_case "a '\\' after 'from pkg.sub' falls back (the suite runs)" yes '%s pkg.sub \\\n    %s mod_d\n' "$KW_FROM" "$KW_IMPORT"
+shape_case "a '\\' right after 'from' falls back (the suite runs)" yes '%s \\\n pkg %s mod_d\n' "$KW_FROM" "$KW_IMPORT"
+shape_case "a name list cut by a quote with a dangling comma falls back (the suite runs)" yes \
+    'python3 -c "%s mod_d, "%smod_e%s\n' "$KW_IMPORT" "'" "'"
+shape_case "a clean list with a string glued after it falls back (the suite runs)" yes \
+    'python3 -c "%s mod_d"", mod_e"\n' "$KW_IMPORT"
+shape_case "a 'from pkg' header with the rest in a glued string falls back (the suite runs)" yes \
+    'python3 -c "%s pkg "%s%s mod_d%s\n' "$KW_FROM" "'" "$KW_IMPORT" "'"
+shape_case "an import line no pattern reads falls back (the suite runs)" yes '%s !!mod_d\n' "$KW_IMPORT"
+shape_case "an import after an escaped newline is read as a statement (no fallback)" no \
+    'python3 -c $%sx = 1\\n%s mod_d%s\n' "'" "$KW_IMPORT" "'"
+shape_case "prose 'import failed for layer' is not Python (no fallback)" no \
+    'echo "WARNING: %s failed for optional layer"\n' "$KW_IMPORT"
+shape_case "a command 'vcs import --skip-existing' is not Python (no fallback)" no \
+    'vcs %s --skip-existing src < x.repos\n' "$KW_IMPORT"
 expect_sel "a mapped file under a '# scans:' prefix adds the scanning suite" \
     "$BASE_ALWAYS test_noref.sh test_other.sh test_scanner.sh" -- .agent/docs/scanned.md
 expect_sel "an exact-file '# covers:' file under tests/ selects its suite, not ALL" \

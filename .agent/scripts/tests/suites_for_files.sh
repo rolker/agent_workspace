@@ -38,25 +38,38 @@
 #     `/` (`./adapter` included), so the plain English word does not.
 #     Python `import X` counts as a reference to `X.py`, and
 #     `from X import Y` to `X.py` and `Y.py` (Y may be a module of package X).
-#     An import is looked for wherever a Python statement or a string can
-#     start: at the start of a line, and after every `;`, `:`, `'` and `"`
-#     on it (a `\` just before a quote goes with the quote), so
-#     `python3 -c "from X import Y"`, `x = 1; import X` and `try: import X`
-#     are all seen. In each such piece a `#` ends the name list. The names
-#     of a parenthesised `from X import (...)` are read across its
-#     continuation lines, each line's `#` comment dropped first. An import
-#     whose names are not a plain list (`a`, `a.b as c`, comma-separated,
-#     a `from` list optionally in one pair of parentheses) -- a `\`
-#     continuation, an unclosed `(`, `*`, anything else -- may hide a name,
-#     and that name can only be a module, so the file then counts every
-#     `.py` file as referenced: its suites run whenever any `.py` file
-#     changes. A piece whose text after `import` is only words, dots and
-#     commas yet not a name list (`import failed for optional layer`) is
-#     prose, not Python (two names side by side), and is ignored; other
-#     prose that starts a piece with `import ` takes the fallback (it
-#     over-selects, never under-selects). What stays invisible is an import
-#     that is not a statement: `__import__("x")`,
-#     `importlib.import_module(...)` (see Residual risk).
+#     The promise: every `import` word that could be Python is either the
+#     keyword of a statement whose names are mapped exactly, or it makes the
+#     file count every `.py` file as referenced (its suites then run
+#     whenever any `.py` file changes); a name that is lost can only be a
+#     module, so every `.py` is exactly the set it could denote. How:
+#       * Each line is cut into pieces at every `;`, `:`, `'`, `"` (a `\`
+#         just before a quote goes with it) and escaped `\n`, `\r`, `\t`;
+#         a comment (a `#` at the start of a piece or after a blank) is
+#         dropped. So `python3 -c "from X import Y"`, `x = 1; import X`,
+#         `try: import X` and `$'x = 1\nimport X'` are all seen.
+#       * A piece is a clean statement when it is `import <list>` or
+#         `from X import <list>`, the list plain (`a`, `a.b as c`,
+#         comma-separated, a `from` list optionally in one pair of
+#         parentheses, read across its continuation lines), it holds no
+#         other `import` word, and no string is glued onto its closing
+#         quote (`"import a"", b"`, `"import a"'b'`, Python's `"a" "b"`).
+#         Its names are mapped.
+#       * Any other piece holding an `import` word takes the fallback: a
+#         `\` continuation, an unclosed `(`, `*`, a dangling comma, a
+#         glued string, an `import` mid-piece (`echo import x | python3`),
+#         an `import` whose `from X` header is the piece before it. So does
+#         a `from` header with no `import` yet (`from`, then at most a
+#         module name) that ends in `\` or has a string glued on.
+#       * An `import` word is not Python, and ignored, only when no Python
+#         statement can hold what follows it: a `-` (`vcs import --x`), or
+#         a plain name (letters, digits, `_`, inner dots: no `$`, quote or
+#         other shell expansion), a blank, and a second name that is not
+#         `as` (`import failed for layer`). Python is then handed a syntax
+#         error whatever the shell makes of the rest, and imports nothing.
+#         `importlib`, `import_module` and `-import-` are not the word.
+#     What stays invisible is an import that is not a statement:
+#     `__import__("x")`, `importlib.import_module(...)` (see Residual risk).
 #   - Closure: a suite's own references, expanded only through referenced
 #     files that are code (`.sh`, `.py`, or extensionless with a `#!`
 #     line). Documents are leaves.
@@ -207,21 +220,43 @@ def yaml_scalar(raw):
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9_./-]+")
 # Applied to each piece of a line (see import_pieces), not to whole lines.
-IMPORT_RE = re.compile(r"^\s*import\s+(.*)$")
-FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_.]+)\s+import\b(.*)$")
-FROM_OPEN_RE = re.compile(r"^\s*from\s+[A-Za-z0-9_.]+\s+import\s*\([^)]*$")
+# The keyword is spelled `\x69mport` in these patterns so that this file's
+# own text holds no import word the parser cannot read: one would send every
+# suite that reaches this file into the every-.py fallback.
+IMPORT_RE = re.compile(r"^\s*\x69mport\s+(.*)$")
+FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_.]+)\s+\x69mport\b(.*)$")
+FROM_OPEN_RE = re.compile(r"^\s*from\s+[A-Za-z0-9_.]+\s+\x69mport\s*\([^)]*$")
 # Where a Python statement or a string can start inside a line. A `\"` (a
 # quote escaped for the shell around a `python3 -c`) is one boundary.
-PIECE_SPLIT_RE = re.compile(r"""\\?["']|[;:]""")
+PIECE_SPLIT_RE = re.compile(r"""\\?["']|[;:]|\\[nrt]""")
 # A fully readable import name list: `a`, `a.b as c`, comma-separated; a
 # `from` list may also sit in one pair of parentheses with a trailing comma.
 _NAME = r"[A-Za-z0-9_.]+(?:\s+as\s+[A-Za-z0-9_]+)?"
 _LIST = rf"{_NAME}(?:\s*,\s*{_NAME})*"
 IMPORT_NAMES_RE = re.compile(rf"^\s*({_LIST})\s*$")
 FROM_NAMES_RE = re.compile(rf"^\s*(?:\(\s*({_LIST})\s*,?\s*\)|({_LIST}))\s*$")
-# What follows `import` in prose: words, dots, commas and blanks only, and
-# (checked first) not a name list. No Python import has that shape.
-PROSE_RE = re.compile(r"^[A-Za-z0-9_.,\s]*$")
+# The keyword itself: every one in a piece must be the keyword of a clean
+# statement, or the file takes the fallback. `importlib`, `import_module`
+# and `__import__` are not this word.
+IMPORT_WORD_RE = re.compile(r"(?<![\w.=/-])\x69mport(?![\w.=/-])")
+# What may follow an `import` word that no Python statement can hold, so
+# the word is prose or a command (`vcs import --skip-existing`, `import
+# failed for layer`): a `-`, or a plain name, a blank and a second name
+# that is not `as`. Plain means no `$`, quote or other shell expansion, so
+# what Python is handed starts with exactly this text; the name may not end
+# in `.`, since `import a. b` is Python (it imports a.b).
+NOT_PYTHON_RE = re.compile(
+    r"\s*-|\s+[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*\s+(?!as\b)[A-Za-z_]"
+)
+# After a quote that ends a piece: another string literal (Python implicit
+# concatenation, or the shell's `"a"'b'`) or a character glued to the quote
+# (the shell's `"a"b`) may continue the statement.
+CONCAT_RE = re.compile(r"""^\\?["'](?:\s*\\?["']|[^\s;|&)<>])""")
+# A `from` header with no `import` yet: `from`, then at most a module name.
+FROM_HEAD_RE = re.compile(r"^\s*from(?:\s+[A-Za-z0-9_.]+)?\s*(\\?)\s*$")
+# A comment: a `#` at the start of a piece or after a blank (a `#` glued to
+# a word, as in `${#a[@]}`, starts none in either bash or Python).
+COMMENT_RE = re.compile(r"(?:^|\s)#.*$")
 DECL_RE = re.compile(r"^#\s*(covers|scans):\s*(.*?)\s*$")
 
 
@@ -278,41 +313,52 @@ class Index:
             last = t.rsplit("/", 1)[-1]
             if last in self.by_base and ("." in last or slashed):
                 found |= self.by_base[last]
-        # Python imports, looked for in every piece of every line.
+        # Python imports, looked for in every piece of every line. Every
+        # `import` word that could be Python is either the keyword of a
+        # clean statement, whose names are mapped, or it makes the file
+        # take the fallback.
         unreadable = False
-        for piece in import_pieces(body):
-            names = rest = None
+        after_from_head = False
+        for piece, tail in import_pieces(body):
+            if not piece.strip():
+                continue
+            names = None
             m = FROM_RE.match(piece)
             if m:
-                rest = m.group(2)
-                n = FROM_NAMES_RE.match(rest)
+                n = FROM_NAMES_RE.match(m.group(2))
                 if n:
                     # `from pkg import mod` may import the module mod.py.
                     names = [m.group(1)] + split_names(n.group(1) or n.group(2))
             else:
                 m = IMPORT_RE.match(piece)
                 if m:
-                    rest = m.group(1)
-                    n = IMPORT_NAMES_RE.match(rest)
+                    n = IMPORT_NAMES_RE.match(m.group(1))
                     if n:
                         names = split_names(n.group(1))
-            if m and names is None:
-                if PROSE_RE.match(rest):
-                    # Only words, dots and commas, yet not a name list:
-                    # two names side by side or a dangling comma, which
-                    # Python refuses, so this is prose ("import failed
-                    # for ...") and imports nothing.
-                    continue
-                # An import this parser cannot fully read (a `\`
-                # continuation, an unclosed `(`, `*`, an escaped newline,
-                # ...): a name in it may be lost, and it can only be a
-                # module, so count every .py file as referenced.
+            words = [w for w in IMPORT_WORD_RE.finditer(piece)
+                     if not NOT_PYTHON_RE.match(piece, w.end())]
+            head = FROM_HEAD_RE.match(piece)
+            clean = (
+                names is not None
+                and len(words) == 1
+                and not (after_from_head and m.re is IMPORT_RE)
+                and not CONCAT_RE.match(tail)
+            )
+            if clean:
+                for name in names:
+                    for comp in name.split("."):
+                        if comp:
+                            found |= self.by_base.get(comp + ".py", set())
+            elif words or (head and (head.group(1) or CONCAT_RE.match(tail))):
+                # An `import` this parser cannot fully read (a `\`
+                # continuation, an unclosed `(`, `*`, a dangling comma, a
+                # string glued on after it, an `import` whose `from X`
+                # header sits in the piece before), or a `from X` header
+                # continued by a `\` or a glued string: a name in it may
+                # be lost, and it can only be a module, so count every .py
+                # file as referenced.
                 unreadable = True
-                continue
-            for name in names or []:
-                for comp in name.split("."):
-                    if comp:
-                        found |= self.by_base.get(comp + ".py", set())
+            after_from_head = head is not None
         if unreadable:
             found |= self.py_files
         found.discard(self_path)
@@ -320,18 +366,20 @@ class Index:
 
 
 def import_pieces(body):
-    """Each place in `body` a Python import statement could start, as text.
+    """Each place in `body` a Python import statement could start, as
+    (text, tail): tail is the rest of the line from the cut that ends the
+    piece ("" for a joined parenthesised list).
 
-    A line is cut at every `;`, `:`, `'` and `"` (PIECE_SPLIT_RE); each
-    piece runs to the next cut, with a `#` and what follows it dropped (a
-    name list never holds a `#`). Cutting more often than Python would only
-    adds pieces, and a piece that does not start with `import`/`from` is
-    ignored, so no import that starts a piece is lost. A piece that opens a
-    parenthesised `from X import (` without closing it is joined with the
-    following lines (each line's `#` comment dropped first) up to the first
-    line holding a `)`, and the rest of its first line is part of it; with
-    no `)` before the end, the joined text is unreadable, which the caller
-    treats as the every-.py fallback.
+    A line is cut at every `;`, `:`, `'`, `"` and escaped `\\n`, `\\r`,
+    `\\t` (PIECE_SPLIT_RE); each piece runs to the next cut, with a
+    comment (COMMENT_RE) dropped. Every
+    character of the line outside a comment is in exactly one piece, so the
+    caller sees every keyword. A piece that opens a parenthesised from-list
+    (FROM_OPEN_RE) without closing it is joined with the following lines
+    (each line's comment dropped first) up to the first line holding a `)`,
+    and the rest of its first line is part of it; with no `)` before the
+    end, the joined text is unreadable, which the caller treats as the
+    every-.py fallback.
     """
     lines = body.splitlines()
     i = 0
@@ -342,15 +390,15 @@ def import_pieces(body):
         starts = [0] + [c.end() for c in cuts]
         ends = [c.start() for c in cuts] + [len(line)]
         for start, end in zip(starts, ends):
-            rest = line[start:].split("#", 1)[0]
+            rest = COMMENT_RE.sub("", line[start:])
             if FROM_OPEN_RE.match(rest):
                 parts = [rest]
                 while i < len(lines) and ")" not in parts[-1]:
-                    parts.append(lines[i].split("#", 1)[0])
+                    parts.append(COMMENT_RE.sub("", lines[i]))
                     i += 1
-                yield " ".join(" ".join(parts).split())
+                yield " ".join(" ".join(parts).split()), ""
                 break
-            yield line[start:end].split("#", 1)[0]
+            yield COMMENT_RE.sub("", line[start:end]), line[end:]
 
 
 def split_names(names):
