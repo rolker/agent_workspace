@@ -372,3 +372,21 @@ Measured (2026-10-29, serial, this machine):
 - Unmapped in-scope files today: 56. A commit that touches one still runs every suite.
 
 For the PR description: a commit whose only in-scope change is a deletion or an outbound rename still does not invoke the hook at all (pre-commit drops the path). CI's all-files run is the backstop there.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 10:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #411 at `db6547dd`
+**Depth**: Deep (reason: 1541 lines over 16 files; touches the enforcement config `.pre-commit-config.yaml` and `AGENTS.md`)
+**Must-fix**: 2 | **Suggestions**: 2
+
+Specialists: static analysis (shellcheck clean on the 9 changed scripts; flake8 on the embedded Python: style only), governance, plan drift (no drift: `# scans:` is the plan's scan-prefix declaration; `test_plugin_manifest.sh` is a third scanner found by the implementer), Claude adversarial, cross-model (Gemini ran, 4 findings; Codex failed: "Selected model is at capacity"; Copilot hosted review: quota exhausted, no review). Targeted suites run under a private TMPDIR: `test_script_tests_hook_scope.sh` 239/0, `test_run_script_tests.sh` 48/0, `test_dispatch_phase.sh` 139/0, no leftovers. Plan correctness points verified in code: comment stripping before derivation; deletion check before the `GIT_*` unset with `--no-renames --diff-filter=D` in the staged and `main...HEAD` cases; `# scans:` never counts as a mapping for the unmapped-file rule or the tests/ exemption; the all-files list gives ALL; helper rule over the `_*.sh` glob; `test_run_script_tests.sh` builds synthetic repos only.
+
+### Findings
+- [ ] (must-fix) Fail-open on scope mismatch: a passed file the mapper's own `files:`/`exclude:` parse calls out of scope is only noted and skipped. Reproduced: quoting the hook's `files:` value (valid YAML, same regex to pre-commit) makes every file "ignored" and every closure empty, so `--all-files` (CI) runs 35 of 39 suites and skips `test_script_tests_hook_scope.sh`, the suite that guards the hook; an absolute path or an all-out-of-scope list (Gemini 4) also gives a near-empty run. pre-commit has already filtered the list, so any passed file the mapper deems out of scope should give ALL (and/or strip YAML quotes when parsing); add a synthetic case — `.agent/scripts/tests/suites_for_files.sh:338` (parse at `:127`)
+- [ ] (must-fix) Roadmap row says "a fix pass and a CI run stop paying for all 39 suites"; CI runs every suite (plan step 8, runner header, hook comment). Reword (also "declared files": the map is derived) — `docs/roadmap.md:76`
+- [ ] (suggestion) `./adapter` / `./agent` (extensionless script run as `./name`) is not mapped: `./` is stripped before the `"/" in t` test, so the token is bare and rejected; no suite uses that spelling today — `.agent/scripts/tests/suites_for_files.sh:194`
+- [ ] (suggestion) The branch-deletion check runs only when nothing is staged, so `pre-commit run --files $(git diff --name-only main...HEAD)` with anything staged misses earlier branch deletions, while the SKILL.md / hook-comment wording says the branch run goes to every suite on a deletion. Key on the commit context (GIT_INDEX_FILE set by git) instead, or add "with nothing staged" to the wording — `.agent/scripts/tests/run_script_tests.sh:131`
