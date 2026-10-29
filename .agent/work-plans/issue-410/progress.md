@@ -838,3 +838,38 @@ merge_pr.sh at 8e5099de: review gate approved, then "CI failed: Lint (pre-commit
 - `--dump` on the merged tree is 1713 lines, up from 1601 at `8e5099de`. 112 pairs were added and none removed: 66 for the new `test_project_integration_audit.sh`, plus 33 for `test_user_tier_guard.sh`, 11 for `test_skill_paths.sh` and 2 for `test_script_tests_hook_scope.sh`, which now reach PR 413's `project_integration_audit.sh` and the files it names.
 - Targeted suites after the changes: `test_run_script_tests.sh` 96/0 and `test_script_tests_hook_scope.sh` 261/0.
 - Fix commits were made with `SKIP=validate-script-tests`. Then `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, including the script-test suite (631 s, exit 0).
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 13:34 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #411 at `ba6614e8`
+**Depth**: Standard (reason: round 11 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 11 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the merge from main (28f033fe), the hub-guard fix (96e91ac2), the
+no-default-branch reason line and case (r) (1baeccc9). Cross-model
+reviewers skipped (round-11 convergence check, per handoff).
+
+Checked:
+- Merge: only AGENTS.md, docs/roadmap.md, test_script_tests_hook_scope.sh
+  and test_skill_paths.sh changed on both sides. Merge vs main differs only
+  by this PR's runner row (AGENTS.md) and its #410 + gz4d roadmap rows;
+  merge vs the branch carries PR 413's allowlist rule, project_setting and
+  audit rows, the two Deferred roadmap rows, the
+  test_project_integration_audit.sh ROOT_READERS entry and the
+  onboard-project section of test_skill_paths.sh. Nothing lost on either side.
+- Map: --dump 1601 -> 1713 lines, 112 added, 0 removed; 66 under
+  test_project_integration_audit.sh, the rest (test_user_tier_guard.sh 33,
+  test_skill_paths.sh 11, this suite 2) trace to PR 413 commits 8a070061,
+  fdf9cc9c and the new audit script.
+- Hub guard now: 6 suites (5 besides test_checkpoint_269.sh, cap 13 = a
+  third of 40); the cap scales with the glob; the two exclusions hold.
+- Suites, private TMPDIR, no leftovers: test_script_tests_hook_scope.sh
+  261 passed 0 failed; test_run_script_tests.sh 96 passed 0 failed (incl. r).
+
+### Findings
+- [ ] (suggestion) roadmap Direction row for #410 says "all 39 suites"; the merged tree has 40 — `docs/roadmap.md:76`
