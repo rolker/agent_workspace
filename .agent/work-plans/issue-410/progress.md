@@ -808,3 +808,13 @@ None open.
 **Decision**: merge
 
 Owner's answer at the round-9 merge call, verbatim: "One-line fix, then merge" (option text: fix pass, round-10 check and re-triage, then the merge script with the gate enforced). The condition is met: round 10 (791567b4) approved with 0 must-fix and 0 suggestions; Integrated Review ae12409e at head 791567b4 with nothing open. CI lint still running at this point, so the host waits for it before merge_pr.sh.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 13:17 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+merge_pr.sh at 8e5099de: review gate approved, then "CI failed: Lint (pre-commit)". The hook-scope suite's hub guard asserted register_project.sh selects at most 5 suites; GitHub's checkout (PR merged with main, which now holds PR 413's project_integration_audit.sh) selects 6, local tree 4. Owner's answer: "Fix and merge": merge main into the branch, replace the fixed count with drift-proof include/exclude checks, round-11 check, re-triage, then the merge on the owner's existing yes. Also noted in CI: the runner's deletion check cannot resolve main in the shallow checkout and takes the run-everything path (correct), but the message reads like an error.
