@@ -539,3 +539,13 @@ The round-4 suggestion is kept open, verified at this head: with `FROM_PAREN_RE`
 
 ### False positives
 - (Copilot x7) "unable to review this pull request" (quota exhausted, or an error at `90249967`) — not a finding; no review content to triage.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 11:00 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Owner's answer: "Fix the class, then merge". Integrated Review 91cc10ba at head 797ac2d2 left one suggestion open, the third edge case in the same import parser (a `)` inside an inline comment, or a backslash-continued `from` import, drops the names after it). The fix closes the class: when a `from` import cannot be fully read, the suite's selection falls back to ALL instead of a partial name list, with synthetic cases for both shapes. Then a round-5 convergence check, re-triage and the merge call.
