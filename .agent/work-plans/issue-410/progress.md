@@ -126,3 +126,13 @@ The fail-safes and the CI backstop are sound, and the pre-commit wiring is right
 - [ ] Suggestion: map Python `import X` to `X.py` or record it as a known gap.
 - [ ] Suggestion: say whether a suite with no references makes that suite always run or the whole run, and whether `test_checkpoint_269.sh` joins every scoped run; fix the runner header's "and was executed".
 - [ ] Suggestion: list the in-scope files that will still trigger a full run (knowledge docs, `.agent/hooks/*.py`) in the PR.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 08:23 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (first revise at plan; the review's four must-fixes are mechanism: the derivation as written selects all 39 suites for every change, the ROOT_READERS count is 23 not 5, deletions and renames never reach the hook, and the Files-to-Change list misses the AGENTS.md row and the #399 wording sites; none changes what the issue is for)
+**After**: plan
+**Decision**: revise
+
+Plan Review verdict needs-work (42c529c8). Host decisions carried into the plan-task handoff, listed for the owner's veto: ROOT_READERS prefixes feed the drift check only and never select suites (selectivity is the point; helpers and the runner already force a full run); staged deletions and renames of in-scope files force a full run (the simplest safe rule); the AGENTS.md Script Reference row is flagged Ask-First and the owner is asked in this turn, before implementation.
