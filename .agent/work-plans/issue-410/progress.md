@@ -390,3 +390,20 @@ Specialists: static analysis (shellcheck clean on the 9 changed scripts; flake8 
 - [x] (must-fix) Roadmap row says "a fix pass and a CI run stop paying for all 39 suites"; CI runs every suite (plan step 8, runner header, hook comment). Reword (also "declared files": the map is derived) — `docs/roadmap.md:76`
 - [x] (suggestion) `./adapter` / `./agent` (extensionless script run as `./name`) is not mapped: `./` is stripped before the `"/" in t` test, so the token is bare and rejected; no suite uses that spelling today — `.agent/scripts/tests/suites_for_files.sh:194`
 - [x] (suggestion) The branch-deletion check runs only when nothing is staged, so `pre-commit run --files $(git diff --name-only main...HEAD)` with anything staged misses earlier branch deletions, while the SKILL.md / hook-comment wording says the branch run goes to every suite on a deletion. Key on the commit context (GIT_INDEX_FILE set by git) instead, or add "with nothing staged" to the wording — `.agent/scripts/tests/run_script_tests.sh:131`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 10:22 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #411 at `03017e7c`
+**Addressed**: Local Review at `db6547dd` (2026-10-29 10:08 -04:00)
+**Commits**: `3f4ffdee`, `22a6ae07`, `6a3a5158`, `03017e7c`
+
+### Actions
+- [x] (must-fix) Fail-open on scope mismatch: a passed file the mapper's parse calls out of scope (an absolute path included) now gives ALL; the parse reads single- and double-quoted scalars and a plain value's trailing comment, refuses block scalars, and a files: regex matching no tracked file is an error (ALL); synthetic cases in test_run_script_tests.sh (l) — `.agent/scripts/tests/suites_for_files.sh`
+- [x] (must-fix) Roadmap row no longer claims a CI run stops paying for all suites, and says "the changed files reach" instead of "declared files" — `docs/roadmap.md:76`
+- [x] (suggestion) `./name` maps an extensionless script (the slash test reads the raw token); synthetic suite running `./tool` — `.agent/scripts/tests/suites_for_files.sh`
+- [x] (suggestion) The deletion check is keyed on GIT_INDEX_FILE (git sets it for every commit hook): a commit checks its staged deletions; any other run checks the staged deletions plus the branch's, so a branch run with something staged no longer misses an earlier deletion; case (p) covers both runs and a commit — `.agent/scripts/tests/run_script_tests.sh`
+
+Hooks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook, in 455 s (the branch changes the runner, so every suite ran). The source entry's heading is `## Local Review`, which `review_progress.sh findings`/`check` do not select, so its four boxes were checked by direct edit in each fix commit.
