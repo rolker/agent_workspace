@@ -327,13 +327,18 @@ if [ "$FACTS" -eq 1 ]; then
     # open, one list call over every state says whether any ever was.
     # ever_opened <issue|pr>: 0 yes, 1 no, 2 unknown (the reason on stdout)
     ever_opened() {
-        local out rc=0 n
-        out="$(gh "$1" list -R "$GH_REPO" --state all --limit 1 --json number 2>&1)" || rc=$?
+        local out rc=0 n what
+        # Each call written out, so the read-only check in
+        # test_user_tier_guard.sh sees exactly which gh commands run.
+        case "$1" in
+            issue) what="gh issue list"; out="$(gh issue list -R "$GH_REPO" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
+            *)     what="gh pr list"; out="$(gh pr list -R "$GH_REPO" --state all --limit 1 --json number 2>&1)" || rc=$? ;;
+        esac
         if [ "$rc" -ne 0 ] || ! n="$(jq -er 'length' <<< "$out" 2>/dev/null)"; then
             if [ "$rc" -ne 0 ]; then
-                echo "gh $1 list -R $GH_REPO failed (exit $rc): $(head -n1 <<< "$out")"
+                echo "$what -R $GH_REPO failed (exit $rc): $(head -n1 <<< "$out")"
             else
-                echo "gh $1 list -R $GH_REPO gave no JSON list: $(head -c 200 <<< "$out")"
+                echo "$what -R $GH_REPO gave no JSON list: $(head -c 200 <<< "$out")"
             fi
             return 2
         fi

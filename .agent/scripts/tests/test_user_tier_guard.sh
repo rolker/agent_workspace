@@ -274,8 +274,11 @@ done
 # ------------------------------------- read-only onboarding scripts (#332) ---
 # project_integration_audit.sh and registration_verify.sh carry the inert
 # marker: they only read and print. Hold them to that -- no repo-changing
-# call in the source, and from an unregistered repo they exit 2 with their
-# own message, leaving the repo and HOME untouched.
+# git call and no gh call but the three that only read (gh repo view, gh
+# issue list, gh pr list: project_integration_audit.sh --facts, #332 PR 4;
+# a gh subcommand given by a variable is refused, since it cannot be
+# checked) in the source, and from an unregistered repo they exit 2 with
+# their own message, leaving the repo and HOME untouched.
 for rel in .agent/scripts/project_integration_audit.sh .agent/scripts/registration_verify.sh; do
     in_manifest=false
     for e in "${ENTRIES[@]}"; do [[ "$e" == "$rel" ]] && in_manifest=true; done
@@ -283,11 +286,15 @@ for rel in .agent/scripts/project_integration_audit.sh .agent/scripts/registrati
         || fail "the read-only $rel is not in the manifest"
     [[ "$(marker_of "$WS_ROOT/$rel")" == "inert" ]] && pass "$rel carries the inert marker" \
         || fail "$rel does not carry the '# user-tier: inert' marker"
-    if grep -nE '(^|[^[:alnum:]_.-])(gh[[:space:]]+(pr|issue|api|repo|run|release|label|auth)|git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(push|commit|merge|rebase|fetch|pull|checkout|switch|branch|tag|clone|init|add|rm|mv|reset|worktree[[:space:]]+(add|remove)))[[:space:]]' "$WS_ROOT/$rel" \
-        | grep -vE ':[[:space:]]*#' | grep -q .; then
-        fail "$rel makes a gh or repo-changing git call, so it is not read-only"
+    git_bad="$(grep -nE '(^|[^[:alnum:]_.-])git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(push|commit|merge|rebase|fetch|pull|checkout|switch|branch|tag|clone|init|add|rm|mv|reset|worktree[[:space:]]+(add|remove))[[:space:]]' "$WS_ROOT/$rel" \
+        | grep -vE ':[[:space:]]*#')"
+    gh_bad="$(grep -nE '(^|[^[:alnum:]_.-])gh[[:space:]]+((pr|issue|api|repo|run|release|label|auth|workflow|secret|variable|gist|ruleset|cache|project|search|config|extension|alias)([[:space:]]|$)|["$])' "$WS_ROOT/$rel" \
+        | grep -vE ':[[:space:]]*#' \
+        | grep -vE '(^|[^[:alnum:]_.-])gh[[:space:]]+(repo[[:space:]]+view|issue[[:space:]]+list|pr[[:space:]]+list)([[:space:]]|$)')"
+    if [[ -n "$git_bad$gh_bad" ]]; then
+        fail "$rel makes a repo-changing git call or a gh call that is not read-only: $(head -n1 <<< "${git_bad:-$gh_bad}")"
     else
-        pass "$rel makes no gh or repo-changing git call"
+        pass "$rel makes no repo-changing git call and no gh call but repo view, issue list and pr list"
     fi
     case "$rel" in
         *registration_verify.sh) args="nosuch"; want="is not registered" ;;
