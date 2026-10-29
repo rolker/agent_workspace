@@ -477,3 +477,13 @@ The one open finding is kept open (suggestion, not must-fix). Verified at the he
 
 ### False positives
 - (Copilot x4) "unable to review this pull request ... insufficient remaining quota" — not a finding; no review content to triage.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 10:44 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (one open suggestion, a few lines plus a test; the workspace quality rule says fix it rather than defer it, and merging with a finding open is the owner's answer only)
+**After**: findings
+**Decision**: address
+
+Integrated Review c56bdf12 at head 11a0612e: one open suggestion, the continuation lines of a parenthesised `from pkg import (...)` are not mapped. Sent to address-findings; the owner is told and may instead say merge.
