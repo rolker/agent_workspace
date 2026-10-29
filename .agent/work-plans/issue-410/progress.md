@@ -407,3 +407,20 @@ Specialists: static analysis (shellcheck clean on the 9 changed scripts; flake8 
 - [x] (suggestion) The deletion check is keyed on GIT_INDEX_FILE (git sets it for every commit hook): a commit checks its staged deletions; any other run checks the staged deletions plus the branch's, so a branch run with something staged no longer misses an earlier deletion; case (p) covers both runs and a commit — `.agent/scripts/tests/run_script_tests.sh`
 
 Hooks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook, in 455 s (the branch changes the runner, so every suite ran). The source entry's heading is `## Local Review`, which `review_progress.sh findings`/`check` do not select, so its four boxes were checked by direct edit in each fix commit.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 10:26 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #411 at `4384d03d`
+**Depth**: Deep (reason: whole-PR diff 1724 lines over 16 files; touches the enforcement config `.pre-commit-config.yaml` and `AGENTS.md`); round 2, scoped to the fix diff `db6547dd..03017e7c` against round 1's four findings plus a regression read of the changed files
+**Must-fix**: 1 | **Suggestions**: 2
+
+Round 1's four findings are fixed as claimed: a passed file the mapper's parse rejects (an absolute path included) gives ALL; the YAML parse reads plain, single- and double-quoted one-line scalars and a plain value's trailing comment, refuses block scalars and unclosed quotes, and a files: regex matching no tracked file is an error (ALL); `./tool` maps an extensionless script; the deletion check is keyed on GIT_INDEX_FILE (a commit: staged deletions only; any other run: staged plus `main...HEAD`), and the runner header, hook comment and SKILL.md wording match it. pre-commit passes the environment unchanged to a `language: system` hook (`no_git_env` is used only for its own clones), and case (p)'s real `core.hooksPath` commit proves git sets GIT_INDEX_FILE for a plain commit. Roadmap row: smallest edit, accurate. Specialists: static analysis (shellcheck clean on the 3 changed scripts), governance, plan drift (none), Claude adversarial (3 suggestions, 1 kept), cross-model (Gemini ran, 4 suggestions, 1 kept: basename over-matching only widens a run, the `pwd` vs tests-dir point has no real caller, the #332 roadmap row was an intended commit `4d1cdee3`; Codex ran, 1 must-fix, reproduced here; Copilot hosted review: quota exhausted, no review). Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 56/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers. Convergence: round 2, 1 mechanical must-fix (prev 2), not rising — `review_progress.sh verdict` says ship recommended after the fix.
+
+### Findings
+- [ ] (must-fix) The deletion check reads `git diff --name-only` without `-z`, so git C-quotes a non-ASCII path (`".agent/scripts/caf\303\251.sh"`, confirmed); the quoted path fails the mapper's anchored scope regex and an in-scope deletion no longer forces ALL. Read both deletion queries NUL-delimited (`-z`, `mapfile -d ''`) and add a synthetic non-ASCII deletion case — `.agent/scripts/tests/run_script_tests.sh:135,143`
+- [ ] (suggestion) The quoted-scalar `yaml_case` cases never prove `exclude:` was parsed: a mis-stripped exclude regex matches nothing and gives the same selection. Add a probe that depends on the exclude (pass a tracked `.agent/work-plans/` file, expect ALL) — `.agent/scripts/tests/test_run_script_tests.sh:530`
+- [ ] (suggestion) `from pkg import mod` maps only `pkg`, not `mod.py`; a suite importing a module that way is not selected when another suite already maps it (no such import in the tree today; `.agent/scripts/lib/` is a package) — `.agent/scripts/tests/suites_for_files.sh:189`
