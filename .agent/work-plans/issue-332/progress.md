@@ -1531,3 +1531,21 @@ Round 4 of PR 3 of 4 (the onboard-project rewrite); `review_progress.sh round` s
 **Decision**: publish
 
 PR 3 of 4 (the onboard-project rewrite and the project integration audit) at 680806ec, round 4 (b3b8c3c8) approved. Pushed and opened as a pull request by the host.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-29 11:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #413 at `10448742`
+**Sources**: 3 (Local Review (Pre-Push) round 4 @ `680806e` (covers 10448742 via bookkeeping: progress.md only); GitHub reviews and comments at the head: none; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR 3 of 4 of issue 332 (the onboard-project rewrite and the project integration audit). `review_progress.sh sources` at the head: one local entry covers it, round 4 (b3b8c3c8, approved at 680806ec), whose only box is its LGTM placeholder; nine older entries with open boxes are stale (parts 1 and 2, PRs 403 and 409, merged, and this part's earlier rounds, all 24 of whose findings were fixed in rounds 1 to 3). GitHub: 0 reviews, 0 inline comments, 0 conversation comments. The copilot-pull-request-reviewer check run failed at the head (`HttpError: Not Found`, exit 1) and posted no review. CI at the head: Validate Adapter Contract, Validate Documentation and ros-manifest tests pass (both workflow runs); Lint (pre-commit) still in progress in both runs; triage did not wait for it.
+
+### Findings
+None open.
+
+### False positives
+- (Local Review (Pre-Push) @ `680806e`) "No issues found. LGTM." — a placeholder box, not a finding: the round-4 entry's verdict is approved with 0 must-fix and 0 suggestions, so there is nothing to act on.
