@@ -488,9 +488,10 @@ out=$(run_handoff --issue 9 --skill implement)
 # timeout and a wait for the exit (round 1, suggestion). A sub-issue
 # worktree branches from its parent's feature branch, so main...HEAD also
 # covers the parent's files; the rule says so (round 1, suggestion). The
-# suite runs only when a changed file that still exists matches the hook
-# (pre-commit drops deleted paths), so the rule says CI covers the rest
-# (round 2, suggestion).
+# hook runs only the suites the changed files reach, all of them when the
+# branch deletes an in-scope file, and none when deletions are the only
+# in-scope change (pre-commit drops deleted paths), so the rule says CI
+# covers that (round 2, suggestion; reworded for issue #410).
 for sk in implement address-findings; do
     out=$(run_handoff --issue 9 --skill "$sk")
     conv=$(printf '%s\n' "$out" | grep '^conventions=')
@@ -498,7 +499,7 @@ for sk in implement address-findings; do
         && "$conv" == *'$(git diff --name-only main...HEAD)'* && "$conv" == *"CI"* \
         && "$conv" == *"--no-verify"* && "$conv" != *"run_script_tests.sh"* \
         && "$conv" == *"600000 ms"*"wait for its exit"* \
-        && "$conv" == *"changed file that still exists matches that hook"*"CI's all-files run covers the rest"* \
+        && "$conv" == *"suites those files reach when a changed file that still exists matches that hook"*"deletes an in-scope file"*"only in-scope changes are deletions runs none, and CI's all-files run covers that"*"about 2 minutes"* \
         && "$conv" == *"sub-issue worktree it also covers the parent's files"* \
         && "$conv" == *"local time with offset"*"scratchpad"* ]] \
         && pass "handoff: $sk (workspace) conventions= carries the once-per-pass hook rule, CI backstop, and the existing conventions" \

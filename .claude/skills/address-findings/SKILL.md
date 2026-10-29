@@ -183,12 +183,16 @@ sub-issue worktree (branched from the parent's feature branch)
 `main...HEAD` also covers the parent's files, so a failure there may be in
 a file this pass never touched.
 
-It includes `validate-script-tests`, so the script suite runs once for the
-pass whenever a changed file that still exists matches that hook (pre-commit
-drops deleted paths, so a branch that only deletes a script runs no suite
-here; CI's all-files run covers it); run no separate suite. It takes several minutes, longer than the
-Bash tool's 120 s default timeout: give the call a long timeout (up to
-600000 ms) and wait for its exit. A run that was backgrounded or cut off
+It includes `validate-script-tests`, so the script suites run once for the
+pass whenever a changed file that still exists matches that hook: the
+suites those files reach (issue #410), or every suite when the branch
+deletes an in-scope file or touches a shared helper, the runner or the hook
+config. pre-commit drops deleted paths, so a branch whose only in-scope
+changes are deletions runs no suite here; CI's all-files run covers it.
+Run no separate suite. It takes about 2 minutes for a typical fix and
+about 7 when every suite runs, longer than the Bash tool's 120 s default
+timeout: give the call a long timeout (up to 600000 ms) and wait for its
+exit. A run that was backgrounded or cut off
 by a timeout has not passed. If it fails, fix the failure (a commit of its
 own) and run the same command again on the final tree before step 5.
 

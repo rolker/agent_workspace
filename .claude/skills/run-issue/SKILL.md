@@ -325,11 +325,13 @@ path because a worktree has no `.venv`:
 <main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
 ```
 
-That run includes the script suite whenever a changed file that still
-exists matches the hook, so the suite runs once per pass, not once per
-commit. CI (`make lint`, every hook on all files, awaited by
-`merge_pr.sh`) is the backstop, and covers a branch that only deletes a
-script. Review phases and project handoffs carry no such rule.
+That run includes the script suites whenever a changed file that still
+exists matches the hook, so they run once per pass, not once per commit:
+the suites the branch's changed files reach, or every suite when the
+branch deletes an in-scope file or touches a shared helper, the runner or
+the hook config (issue #410). CI (`make lint`, every hook on all files,
+awaited by `merge_pr.sh`) is the backstop, runs every suite, and covers a
+branch that only deletes a script. Review phases and project handoffs carry no such rule.
 
 ### 4a. Reusing a running sub-agent for a repeat phase
 

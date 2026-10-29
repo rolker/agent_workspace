@@ -64,10 +64,25 @@
 #     could claim `manifest:` to dodge coverage for reads that are not
 #     manifest-driven at all.
 #
+# Issue #410 adds, at the end: the hook entry pin (`--files`,
+# pass_filenames, require_serial), drift checks on the suite map that
+# suites_for_files.sh derives (every suite maps to something; each
+# ROOT_READERS prefix agrees with the derived map; every `# covers:` /
+# `# scans:` path is tracked), and real-tree checks of the mapper itself
+# (a hub guard on register_project.sh, the all-files list runs everything,
+# every .agent/scripts/_*.sh helper runs everything, a file no code names
+# runs everything).
+#
 # Hermetic: reads only the real .pre-commit-config.yaml, the real
 # .agent/scripts/tests/ directory, .agent/user_tier_scripts.txt and the
-# repository's tracked-file list (`git ls-files`); writes nothing.
+# repository's tracked files (`git ls-files`, `git grep`, and
+# suites_for_files.sh, which only reads); writes nothing.
 # Run: bash .agent/scripts/tests/test_script_tests_hook_scope.sh
+#
+# Selection declaration for run_script_tests.sh --files (issue #410): every
+# check here scans the whole suites directory, so any change under it must
+# select this suite.
+# scans: .agent/scripts/tests/
 
 set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -160,6 +175,18 @@ if [[ ${#ROOT_DERIVING[@]} -eq 0 ]]; then
 fi
 
 # --- Allowlist: suite -> space-separated out-of-tree read prefixes ---
+#
+# Issue #410: these prefixes say where a suite reads or copies from the
+# real root. They do NOT select suites for run_script_tests.sh --files
+# (`.agent/scripts` alone would pull in ten suites); they feed drift check
+# (b) at the end of this file only, which requires each suite's derived map
+# to include a tracked file under each of its prefixes. A suite that
+# *scans* a whole prefix (a `git grep`, a directory walk) is a different
+# kind: copying a file in is visible in the text of what runs, scanning is
+# not. Such a suite carries a `# scans: <prefix>` line in its own header
+# (test_skill_paths.sh, test_plugin_manifest.sh, this suite), which does
+# select it. Check (b) does not cover scanning suites; their `# scans:`
+# lines do.
 declare -A ROOT_READERS=(
     [test_adapter.sh]=".agent/scripts .agent/project_types"
     # The real gate itself (GATED_FILES) diffs merge-base..HEAD over these
@@ -474,6 +501,215 @@ assert_covered "a suite under .agent/scripts/tests/" ".agent/scripts/tests/test_
 assert_not_covered "plain docs file" "README.md"
 assert_not_covered "docs tree" "docs/roadmap.md"
 assert_not_covered "work-plans progress.md" ".agent/work-plans/issue-354/progress.md"
+
+# ===================================================================
+# Issue #410: scoped runs. The hook passes the changed files and
+# run_script_tests.sh runs only the suites suites_for_files.sh selects.
+# ===================================================================
+
+# --- (e) The hook entry passes the files, in one process. ---
+ENTRY="$(echo "$BLOCK" | grep -m1 -E '^\s*entry:' | sed -E 's/^\s*entry:\s*//; s/\s+$//')"
+if [[ "$ENTRY" == *"run_script_tests.sh --files" ]]; then
+    pass "hook entry ends in 'run_script_tests.sh --files': $ENTRY"
+else
+    fail "hook entry does not end in 'run_script_tests.sh --files' (scoped runs need the file list): $ENTRY"
+fi
+if echo "$BLOCK" | grep -qE '^\s*pass_filenames:\s*true\s*$'; then
+    pass "pass_filenames: true"
+else
+    fail "hook lacks pass_filenames: true -- the runner would get no files and run every suite"
+fi
+if echo "$BLOCK" | grep -qE '^\s*require_serial:\s*true\s*$'; then
+    pass "require_serial: true"
+else
+    fail "hook lacks require_serial: true -- pre-commit could split the file list across parallel runner processes"
+fi
+
+MAPPER="$SCRIPT_DIR/suites_for_files.sh"
+REL_TESTS=".agent/scripts/tests"
+# map_once <file>...: one mapper run; sets map_out (its stdout: ALL or suite
+# names) and map_err (its "suites_for_files: ..." reason lines).
+map_once() {
+    local both
+    both="$(bash "$MAPPER" -- "$@" 2>&1)"
+    map_out="$(grep -v '^suites_for_files: ' <<<"$both")"
+    map_err="$(grep '^suites_for_files: ' <<<"$both")"
+}
+assert_covered "suite mapper" "$REL_TESTS/suites_for_files.sh"
+
+# --- The derived map, for the drift checks. ---
+DUMP="$(bash "$MAPPER" --dump 2>/dev/null)"
+if [[ -z "$DUMP" || "$(head -n1 <<<"$DUMP")" == "ALL" ]]; then
+    fail "suites_for_files.sh --dump produced no map (it errored): $(bash "$MAPPER" --dump 2>&1 | tail -n 3)"
+    DUMP=""
+fi
+
+shopt -s nullglob
+ALL_SUITES=("$SCRIPT_DIR"/test_*.sh)
+shopt -u nullglob
+
+# (a) every suite maps to something: a derived reference or a declaration.
+#     A suite with neither would join every scoped run silently.
+for sp in "${ALL_SUITES[@]}"; do
+    sn="$(basename "$sp")"
+    if grep -qP "^\Q$sn\E\t" <<<"$DUMP"; then
+        pass "(a) $sn has a derived reference or a declaration"
+    else
+        fail "(a) $sn derives no reference and has no '# covers:' / '# scans:' line -- declare what it reads"
+    fi
+done
+
+# map_paths <suite>...: the ref and covers paths of those suites.
+map_paths() {
+    local s
+    for s in "$@"; do
+        awk -F'\t' -v s="$s" '$1 == s && ($2 == "ref" || $2 == "covers") { print $3 }' <<<"$DUMP"
+    done
+}
+
+# (b) real-root readers only: each declared prefix agrees with the derived
+#     map. A ROOT_READERS key that is not a test_*.sh (test_progress_read.py)
+#     is checked through the suites that map it (other than this suite, which
+#     names every ROOT_READERS key by design).
+for suite in "${!ROOT_READERS[@]}"; do
+    owners=()
+    if [[ "$suite" == test_*.sh ]]; then
+        owners=("$suite")
+    else
+        mapfile -t owners < <(awk -F'\t' -v p="$REL_TESTS/$suite" -v self="$(basename "${BASH_SOURCE[0]}")" \
+            '($2 == "ref" || $2 == "covers") && $3 == p && $1 != self { print $1 }' <<<"$DUMP" | sort -u)
+        if [[ ${#owners[@]} -eq 0 ]]; then
+            fail "(b) $suite: no suite maps it -- declare it with a '# covers:' line in the suite that runs it"
+            continue
+        fi
+    fi
+    paths="$(map_paths "${owners[@]}")"
+    for prefix in ${ROOT_READERS[$suite]}; do
+        case "$prefix" in git-history:*|manifest:*) continue ;; esac
+        p="${prefix%/}"
+        if awk -v p="$p" '$0 == p || index($0, p "/") == 1 { found = 1 } END { exit !found }' <<<"$paths"; then
+            pass "(b) $suite: derived map includes a file under its declared prefix '$prefix'"
+        else
+            fail "(b) $suite: declares '$prefix' but its derived map has no file under it -- it reads paths text derivation cannot see; add a '# covers:' line naming them"
+        fi
+    done
+done
+
+# (c) every declared path is tracked: an exact '# covers:' file by name, a
+#     '# scans:' prefix by having at least one tracked file under it.
+while IFS=$'\t' read -r suite kind path; do
+    case "$kind" in
+        covers)
+            if git -C "$REAL_ROOT" ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+                pass "(c) $suite: '# covers: $path' is a tracked file"
+            else
+                fail "(c) $suite: '# covers: $path' is not a tracked file (stale or misspelt declaration)"
+            fi
+            ;;
+        scans)
+            if [[ -n "$(git -C "$REAL_ROOT" ls-files -- "$path" | head -n1)" ]]; then
+                pass "(c) $suite: '# scans: $path' has tracked files"
+            else
+                fail "(c) $suite: '# scans: $path' matches no tracked file (stale or misspelt declaration)"
+            fi
+            ;;
+    esac
+done <<<"$DUMP"
+
+# --- Real-tree checks of the mapper. ---
+
+# Hub guard: a single script change stays selective. No fixed count: the
+# suites that read register_project.sh grow as other scripts come to name
+# it (PR 413's project_integration_audit.sh took it from 4 to 6, and a
+# fixed bound of 5 broke CI on the merge with main). Instead, three checks
+# that do not drift: the selection includes test_register_project.sh; it
+# excludes two suites with no relation to it (test_merge_pr.sh and
+# test_cross_model_review.sh: neither suite nor the scripts they read name
+# it); and, apart from the always-run test_checkpoint_269.sh, it is at most
+# a third of the suites, counted from the glob. A file that starts naming
+# everything turns this red instead of silently restoring the full run.
+map_once .agent/scripts/register_project.sh
+hub_out="$map_out"
+hub_suites=("$REAL_ROOT"/.agent/scripts/tests/test_*.sh)
+hub_max=$(( (${#hub_suites[@]} - 1) / 3 ))
+hub_n="$(grep -vcx 'test_checkpoint_269.sh' <<<"$hub_out")"
+hub_got="$(tr '\n' ' ' <<<"$hub_out")"
+if [[ "$hub_out" != "ALL" ]] && grep -qx 'test_register_project.sh' <<<"$hub_out"; then
+    pass "hub guard: register_project.sh selects test_register_project.sh"
+else
+    fail "hub guard: register_project.sh should select test_register_project.sh; got: $hub_got"
+fi
+for hub_unrelated in test_merge_pr.sh test_cross_model_review.sh; do
+    if [[ "$hub_out" != "ALL" ]] && ! grep -qx "$hub_unrelated" <<<"$hub_out"; then
+        pass "hub guard: register_project.sh does not select the unrelated $hub_unrelated"
+    else
+        fail "hub guard: register_project.sh should not select the unrelated $hub_unrelated; got: $hub_got"
+    fi
+done
+if [[ "$hub_out" != "ALL" && "$hub_n" -le "$hub_max" ]]; then
+    pass "hub guard: register_project.sh selects $hub_n suites besides test_checkpoint_269.sh (at most $hub_max, a third of ${#hub_suites[@]})"
+else
+    fail "hub guard: register_project.sh should select at most $hub_max suites besides test_checkpoint_269.sh (a third of ${#hub_suites[@]}); got $hub_n: $hub_got"
+fi
+
+# The all-files list (what CI's `pre-commit run --all-files` passes) runs
+# every suite. Not by running them: this suite only asks the mapper.
+mapfile -t all_in_scope < <(
+    git -C "$REAL_ROOT" ls-files | while IFS= read -r f; do
+        path_matches_files "$f" && ! path_matches_exclude "$f" && printf '%s\n' "$f"
+    done
+)
+map_once "${all_in_scope[@]}"
+pin_out="$map_out" pin_err="$map_err"
+if [[ "$pin_out" == "ALL" && "$pin_err" != *"error:"* ]]; then
+    pass "all ${#all_in_scope[@]} in-scope tracked files select ALL"
+else
+    fail "all ${#all_in_scope[@]} in-scope tracked files should select ALL (not by error); got: $(tr '\n' ' ' <<<"$pin_out") / $pin_err"
+fi
+
+# Every shared helper runs everything, matched by the same glob the mapper
+# uses, so a new helper needs no edit here.
+shopt -s nullglob
+helpers=("$REAL_ROOT"/.agent/scripts/_*.sh)
+shopt -u nullglob
+if [[ ${#helpers[@]} -eq 0 ]]; then
+    fail "no .agent/scripts/_*.sh helpers found -- the glob or the tree changed"
+fi
+for h in "${helpers[@]}"; do
+    rel=".agent/scripts/$(basename "$h")"
+    map_once "$rel"
+    h_out="$map_out" h_err="$map_err"
+    if [[ "$h_out" == "ALL" && "$h_err" == *"shared helper"* ]]; then
+        pass "helper $rel selects ALL"
+    else
+        fail "helper $rel should select ALL as a shared helper; got: $(tr '\n' ' ' <<<"$h_out") / $h_err"
+    fi
+done
+
+# A currently unmapped in-scope file still runs everything, despite the
+# '# scans:' prefixes (which cover nearly the whole scope). The candidate
+# is chosen without the mapper: a tracked .agent/knowledge/*.md whose
+# basename appears in no tracked non-markdown file, so no suite or code
+# file can name it.
+unmapped=""
+while IFS= read -r f; do
+    base="$(basename "$f")"
+    if [[ -z "$(git -C "$REAL_ROOT" grep -l -F -e "$base" -- ':(exclude)*.md' ':(exclude).agent/work-plans/' 2>/dev/null)" ]]; then
+        unmapped="$f"
+        break
+    fi
+done < <(git -C "$REAL_ROOT" ls-files -- '.agent/knowledge/*.md')
+if [[ -z "$unmapped" ]]; then
+    fail "no tracked .agent/knowledge/*.md is unnamed by every non-markdown file -- pick another candidate source for this check"
+else
+    map_once "$unmapped"
+    u_out="$map_out" u_err="$map_err"
+    if [[ "$u_out" == "ALL" && "$u_err" == *"maps to no suite"* ]]; then
+        pass "unmapped in-scope file $unmapped selects ALL (scan prefixes do not count as a mapping)"
+    else
+        fail "unmapped in-scope file $unmapped should select ALL as unmapped; got: $(tr '\n' ' ' <<<"$u_out") / $u_err"
+    fi
+fi
 
 echo ""
 echo "test_script_tests_hook_scope: ${PASS} passed, ${FAIL} failed"
