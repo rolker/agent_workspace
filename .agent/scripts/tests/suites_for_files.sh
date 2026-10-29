@@ -37,12 +37,25 @@
 #     basename (`adapter`, `agent`) only counts inside a token that has a
 #     `/` (`./adapter` included), so the plain English word does not.
 #     Python `import X` counts as a reference to `X.py`, and
-#     `from X import Y` to `X.py` and `Y.py` (Y may be a module of package X).
-#     The promise: every `import` word that could be Python is either the
-#     keyword of a statement whose names are mapped exactly, or it makes the
-#     file count every `.py` file as referenced (its suites then run
-#     whenever any `.py` file changes); a name that is lost can only be a
-#     module, so every `.py` is exactly the set it could denote. How:
+#     `from X import Y` to `X.py` and `Y.py` (Y may be a module of package X),
+#     each found by basename. Imports are read on one of two paths:
+#     A `.py` file is parsed with Python's `ast`, which reads every import
+#     statement exactly, wherever and however it is written (`try:` blocks,
+#     parenthesised lists, `from .import a`). A relative import resolves
+#     against the file's own directory instead of by basename: `from . import
+#     x` maps `x.py` beside the file (and the package's init file), each
+#     further dot one directory up. A file `ast` cannot parse (a syntax
+#     error, Python 2) or a star import takes the every-`.py` fallback below.
+#     Python held in a `.py` file's string literals is not read (see Residual
+#     risk).
+#     Any other file (shell, with Python in `python3 -c`, heredocs,
+#     `$'...'`) is read by the piece parser below.
+#     The piece parser's promise: every `import` word that could be Python
+#     is either the keyword of a statement whose names are mapped exactly,
+#     or it makes the file count every `.py` file as referenced (its suites
+#     then run whenever any `.py` file changes); a name that is lost can
+#     only be a module, so every `.py` is exactly the set it could denote.
+#     How:
 #       * Each line is cut into pieces at every `;`, `:`, `'`, `"` (a `\`
 #         just before a quote goes with it) and escaped `\n`, `\r`, `\t`;
 #         a comment (a `#` at the start of a piece or after a blank) is
@@ -67,7 +80,8 @@
 #         other shell expansion), a blank, and a second name that is not
 #         `as` (`import failed for layer`). Python is then handed a syntax
 #         error whatever the shell makes of the rest, and imports nothing.
-#         `importlib`, `import_module` and `-import-` are not the word.
+#         `importlib`, `import_module`, `-import-` and `x.import` are not
+#         the word; a dots-only module may touch it (`from .import a`).
 #     What stays invisible is an import that is not a statement:
 #     `__import__("x")`, `importlib.import_module(...)` (see Residual risk).
 #   - Closure: a suite's own references, expanded only through referenced
@@ -106,7 +120,8 @@
 #
 # Residual risk: a path or module name assembled at runtime entirely from
 # variables, with no literal name anywhere (including a module loaded with
-# `__import__` or `importlib`), is invisible to this derivation; the drift
+# `__import__` or `importlib`, or Python source held in a `.py` file's
+# string literals), is invisible to this derivation; the drift
 # check in test_script_tests_hook_scope.sh catches it only for suites that
 # read the real repository root (ROOT_READERS).
 
@@ -115,6 +130,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 exec python3 - "$SCRIPT_DIR" "$@" <<'PY'
+import ast
 import fnmatch
 import os
 import re
@@ -224,8 +240,10 @@ TOKEN_RE = re.compile(r"[A-Za-z0-9_./-]+")
 # own text holds no import word the parser cannot read: one would send every
 # suite that reaches this file into the every-.py fallback.
 IMPORT_RE = re.compile(r"^\s*\x69mport\s+(.*)$")
-FROM_RE = re.compile(r"^\s*from\s+([A-Za-z0-9_.]+)\s+\x69mport\b(.*)$")
-FROM_OPEN_RE = re.compile(r"^\s*from\s+[A-Za-z0-9_.]+\s+\x69mport\s*\([^)]*$")
+# A `from` module is a dotted name before a blank, or dots alone, which
+# Python lets touch the keyword (`from .import a`, `from ..import(a)`).
+FROM_RE = re.compile(r"^\s*from(?:\s+([A-Za-z0-9_.]+)\s+|\s*(\.+)\s*)\x69mport\b(.*)$")
+FROM_OPEN_RE = re.compile(r"^\s*from(?:\s+[A-Za-z0-9_.]+\s+|\s*\.+\s*)\x69mport\s*\([^)]*$")
 # Where a Python statement or a string can start inside a line. A `\"` (a
 # quote escaped for the shell around a `python3 -c`) is one boundary.
 PIECE_SPLIT_RE = re.compile(r"""\\?["']|[;:]|\\[nrt]""")
@@ -238,7 +256,7 @@ FROM_NAMES_RE = re.compile(rf"^\s*(?:\(\s*({_LIST})\s*,?\s*\)|({_LIST}))\s*$")
 # The keyword itself: every one in a piece must be the keyword of a clean
 # statement, or the file takes the fallback. `importlib`, `import_module`
 # and `__import__` are not this word.
-IMPORT_WORD_RE = re.compile(r"(?<![\w.=/-])\x69mport(?![\w.=/-])")
+IMPORT_WORD_RE = re.compile(r"(?<![\w=/-])(?<!\w\.)\x69mport(?![\w.=/-])")
 # What may follow an `import` word that no Python statement can hold, so
 # the word is prose or a command (`vcs import --skip-existing`, `import
 # failed for layer`): a `-`, or a plain name, a blank and a second name
@@ -253,10 +271,13 @@ NOT_PYTHON_RE = re.compile(
 # (the shell's `"a"b`) may continue the statement.
 CONCAT_RE = re.compile(r"""^\\?["'](?:\s*\\?["']|[^\s;|&)<>])""")
 # A `from` header with no `import` yet: `from`, then at most a module name.
-FROM_HEAD_RE = re.compile(r"^\s*from(?:\s+[A-Za-z0-9_.]+)?\s*(\\?)\s*$")
+FROM_HEAD_RE = re.compile(r"^\s*from(?:\s+[A-Za-z0-9_.]+|\s*\.+)?\s*(\\?)\s*$")
 # A comment: a `#` at the start of a piece or after a blank (a `#` glued to
 # a word, as in `${#a[@]}`, starts none in either bash or Python).
 COMMENT_RE = re.compile(r"(?:^|\s)#.*$")
+# A package's init file, spelled in two parts so this file's own text does
+# not reference every such file in the repository by basename.
+PKG_INIT = "__init__" + ".py"
 DECL_RE = re.compile(r"^#\s*(covers|scans):\s*(.*?)\s*$")
 
 
@@ -313,6 +334,64 @@ class Index:
             last = t.rsplit("/", 1)[-1]
             if last in self.by_base and ("." in last or slashed):
                 found |= self.by_base[last]
+        # Python imports: a .py file's own statements through `ast`, Python
+        # embedded in any other file through the piece parser.
+        if self_path is not None and self_path.endswith(".py"):
+            unreadable = self._py_imports(text, self_path, found)
+        else:
+            unreadable = self._embedded_imports(body, found)
+        if unreadable:
+            found |= self.py_files
+        found.discard(self_path)
+        return found
+
+    def _add_module(self, comp, found):
+        found |= self.by_base.get(comp + ".py", set())
+
+    def _py_imports(self, text, self_path, found):
+        """Map a .py file's own statements, read with `ast`. An absolute
+        name maps each dotted component's `.py` by basename, as the piece
+        parser does; a relative one resolves against the file's own
+        directory: level 1 is that directory, each further dot one up; the
+        module, if any, is `<dir>/<module>.py` or its package init file, and
+        each imported name may be a submodule `<dir>/<module>/<name>.py`
+        (or its package). Returns True (fall back to every .py) when `ast`
+        cannot parse the file, or for a star statement, whose names
+        `__all__` may extend to any submodule.
+        """
+        try:
+            tree = ast.parse(text, filename=self_path)
+        except (SyntaxError, ValueError):
+            return True
+        here = os.path.dirname(self_path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    for comp in alias.name.split("."):
+                        self._add_module(comp, found)
+            elif isinstance(node, ast.ImportFrom):
+                names = [a.name for a in node.names]
+                if "*" in names:
+                    return True
+                if node.level == 0:
+                    for comp in (node.module or "").split(".") + names:
+                        if comp:
+                            self._add_module(comp, found)
+                    continue
+                base = here
+                for _ in range(node.level - 1):
+                    base = os.path.dirname(base)
+                if node.module:
+                    base = os.path.join(base, *node.module.split("."))
+                    cands = [base + ".py", os.path.join(base, PKG_INIT)]
+                else:
+                    cands = [os.path.join(base, PKG_INIT)]
+                for n in names:
+                    cands += [os.path.join(base, n + ".py"), os.path.join(base, n, PKG_INIT)]
+                found |= {os.path.normpath(c) for c in cands} & self.by_path
+        return False
+
+    def _embedded_imports(self, body, found):
         # Python imports, looked for in every piece of every line. Every
         # `import` word that could be Python is either the keyword of a
         # clean statement, whose names are mapped, or it makes the file
@@ -325,10 +404,10 @@ class Index:
             names = None
             m = FROM_RE.match(piece)
             if m:
-                n = FROM_NAMES_RE.match(m.group(2))
+                n = FROM_NAMES_RE.match(m.group(3))
                 if n:
                     # `from pkg import mod` may import the module mod.py.
-                    names = [m.group(1)] + split_names(n.group(1) or n.group(2))
+                    names = [m.group(1) or m.group(2)] + split_names(n.group(1) or n.group(2))
             else:
                 m = IMPORT_RE.match(piece)
                 if m:
@@ -348,7 +427,7 @@ class Index:
                 for name in names:
                     for comp in name.split("."):
                         if comp:
-                            found |= self.by_base.get(comp + ".py", set())
+                            self._add_module(comp, found)
             elif words or (head and (head.group(1) or CONCAT_RE.match(tail))):
                 # An `import` this parser cannot fully read (a `\`
                 # continuation, an unclosed `(`, `*`, a dangling comma, a
@@ -359,10 +438,7 @@ class Index:
                 # file as referenced.
                 unreadable = True
             after_from_head = head is not None
-        if unreadable:
-            found |= self.py_files
-        found.discard(self_path)
-        return found
+        return unreadable
 
 
 def import_pieces(body):

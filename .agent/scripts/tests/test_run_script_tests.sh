@@ -596,6 +596,66 @@ shape_case "prose 'import failed for layer' is not Python (no fallback)" no \
     'echo "WARNING: %s failed for optional layer"\n' "$KW_IMPORT"
 shape_case "a command 'vcs import --skip-existing' is not Python (no fallback)" no \
     'vcs %s --skip-existing src < x.repos\n' "$KW_IMPORT"
+
+# A .py file is read with `ast`, not the piece parser: every relative form
+# maps exactly (rel/helper.py's imports resolve inside rel/, so the decoy
+# decoy/rel_a.py and the unimported rel/rel_z.py do not select its suite),
+# and a .py file `ast` cannot parse falls back. A shell `python3 -c` with a
+# dots-only `from` is read by the piece parser and maps its name.
+AST="$TMPD/syn_ast"
+if make_syn_repo "$AST"; then
+    A_S="$AST/.agent/scripts"
+    mkdir -p "$A_S/rel/sub" "$A_S/decoy"
+    for f in rel/__init__.py rel/sub/__init__.py; do : > "$A_S/$f"; done
+    for f in rel/rel_a.py rel/rel_b.py rel/rel_c.py rel/rel_z.py rel/sub/rel_d.py rel/sub/rel_e.py \
+            rel_p.py rel_q.py rel_y.py decoy/rel_a.py; do
+        printf 'V = 1\n' > "$A_S/$f"
+    done
+    cat > "$A_S/rel/helper.py" <<'PYEOF'
+from .import rel_a
+from ..import rel_p, rel_q
+from .import(rel_b)
+try:
+    from . import rel_c
+except ImportError:
+    rel_c = None
+from .sub import (
+    rel_d,  # a comment line inside the list
+    rel_e,
+)
+PYEOF
+    printf 'import rel_p\ndef broken(:\n    pass\n' > "$A_S/broken.py"
+    write_syn_suite "$A_S/tests" test_relpkg.sh "$(printf '%s\ncat "$SCRIPT_DIR/../rel/helper.py" >/dev/null' \
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"')"
+    write_syn_suite "$A_S/tests" test_pybroken.sh "$(printf '%s\ncat "$SCRIPT_DIR/../broken.py" >/dev/null' \
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"')"
+    write_syn_suite "$A_S/tests" test_shrel.sh "$(printf '%s\ncat "$SCRIPT_DIR/../anchor.txt" >/dev/null\npython3 -c "%s .%s rel_y" 2>/dev/null || :' \
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' "$KW_FROM" "$KW_IMPORT")"
+    printf 'anchor\n' > "$A_S/anchor.txt"
+    sgit -C "$AST" add -A && sgit -C "$AST" commit -q -m ast || fail "(l) ast: could not commit the fixture"
+fi
+# ast_sel <label> <file> <suite> <yes|no>: is <suite> selected for <file>?
+ast_sel() {
+    local label="$1" file="$2" suite="$3" want="$4" got sel=no
+    got="$(bash "$MAPPER" --tests-dir "$AST/.agent/scripts/tests" -- "$file" 2>/dev/null | tr '\n' ' ')"
+    [[ " $got " == *" $suite "* ]] && sel=yes
+    if [[ "$sel" == "$want" && "$got" != "ALL " ]]; then
+        pass "(l) $label"
+    else
+        fail "(l) $label: expected $suite selected=$want for $file, got '$got'"
+    fi
+}
+ast_sel "ast: a dots-only module touching the keyword maps rel/rel_a.py" .agent/scripts/rel/rel_a.py test_relpkg.sh yes
+ast_sel "ast: two dots touching the keyword map rel_p.py one level up" .agent/scripts/rel_p.py test_relpkg.sh yes
+ast_sel "ast: two dots touching the keyword map rel_q.py, the second name" .agent/scripts/rel_q.py test_relpkg.sh yes
+ast_sel "ast: a parenthesis touching the keyword maps rel/rel_b.py" .agent/scripts/rel/rel_b.py test_relpkg.sh yes
+ast_sel "ast: an import inside a try block maps rel/rel_c.py" .agent/scripts/rel/rel_c.py test_relpkg.sh yes
+ast_sel "ast: a parenthesised multi-line list maps rel/sub/rel_d.py" .agent/scripts/rel/sub/rel_d.py test_relpkg.sh yes
+ast_sel "ast: a parenthesised multi-line list maps rel/sub/rel_e.py, after a comment line" .agent/scripts/rel/sub/rel_e.py test_relpkg.sh yes
+ast_sel "ast: a relative import resolves in its own directory, not by basename (decoy/rel_a.py)" .agent/scripts/decoy/rel_a.py test_relpkg.sh no
+ast_sel "ast: an unimported sibling (rel/rel_z.py) is not selected: no fallback" .agent/scripts/rel/rel_z.py test_relpkg.sh no
+ast_sel "ast: a .py file with a syntax error falls back (selected for rel/rel_z.py, which it never names)" .agent/scripts/rel/rel_z.py test_pybroken.sh yes
+ast_sel "a shell 'python3 -c' with a dots-only from maps its name (rel_y.py)" .agent/scripts/rel_y.py test_shrel.sh yes
 expect_sel "a mapped file under a '# scans:' prefix adds the scanning suite" \
     "$BASE_ALWAYS test_noref.sh test_other.sh test_scanner.sh" -- .agent/docs/scanned.md
 expect_sel "an exact-file '# covers:' file under tests/ selects its suite, not ALL" \
