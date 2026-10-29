@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # .agent/scripts/project_integration_audit.sh
 # How a registered project and the workspace fit together (issue #332, PR
-# 3): the mechanical half of /onboard-project's integration audit. It
-# reports; the skill judges and asks. Read-only.
+# 3): the mechanical half of /onboard-project's integration audit, also
+# run by /audit-project. It reports; the skill judges and asks. Read-only.
 #
 # Usage:
 #   project_integration_audit.sh [--dir D | --project N] [--instance I]
-#                                [--format tsv|text]
+#                                [--facts] [--format tsv|text]
 #
 #   --dir D        audit the registered project whose root contains D
 #                  (default: the current directory)
@@ -23,6 +23,34 @@
 #                  No line at all means no findings.
 #   --format text  the same findings grouped under the category names, and
 #                  a count at the end
+#   --facts        instead of the findings, the facts /audit-project reads
+#                  to skip the hygiene items they make moot (#332 PR 4),
+#                  read rather than guessed, one per line in this order:
+#                  fact<TAB>value<TAB>evidence (text: "fact: value --
+#                  evidence"), value yes, no or unknown:
+#                    github           the audited repository's remote
+#                                     (origin, else its first) is on
+#                                     github.com; the evidence names
+#                                     github.com/<owner>/<repo>
+#                    issues           it uses GitHub issues: enabled, and
+#                                     at least one ever opened (gh repo
+#                                     view, then gh issue list --state all
+#                                     when none is open)
+#                    prs              it uses pull requests: at least one
+#                                     ever opened (gh repo view, then gh
+#                                     pr list --state all)
+#                    windows          this machine runs Windows (uname -s:
+#                                     MINGW, MSYS or CYGWIN)
+#                    multi_component  component manifests (package.xml,
+#                                     Cargo.toml, package.json,
+#                                     pyproject.toml, setup.py, go.mod, a
+#                                     CMakeLists.txt with project()) in two
+#                                     or more directories, tracked files
+#                                     only, node_modules/, vendor/ and
+#                                     third_party/ left out
+#                  issues and prs are no without a GitHub remote, and
+#                  unknown when gh or jq is missing or gh fails (not
+#                  signed in, offline); the evidence says which.
 #
 # Severity: error (the workspace cannot work with the project as it is),
 # warn (worth fixing or deciding), info (for the record; nothing to do
@@ -89,9 +117,10 @@
 #
 # user-tier: inert -- read-only: prints findings and writes nothing. It
 # runs registration_verify.sh, user_tier_install.sh --check, session_root.sh
-# and read-only git queries (check-ignore, ls-files); no gh call and no
-# repo-changing git call. Outside every registered root it exits 2 saying
-# so, which is its job.
+# and read-only git queries (check-ignore, ls-files, remote get-url); no
+# repo-changing git call. Only --facts calls gh, and only to read (repo
+# view, issue list, pr list), and uname. Outside every registered root it
+# exits 2 saying so, which is its job.
 
 set -uo pipefail
 
@@ -107,8 +136,10 @@ DIR=""
 NAME=""
 INSTANCE=""
 FORMAT="tsv"
+FACTS=0
 while [ $# -gt 0 ]; do
     case "$1" in
+        --facts)   FACTS=1; shift ;;
         --dir)     [ $# -ge 2 ] && [ -n "$2" ] || { usage; exit 2; }; DIR="$2"; shift 2 ;;
         --project) [ $# -ge 2 ] && [ -n "$2" ] || { usage; exit 2; }; NAME="$2"; shift 2 ;;
         --instance) [ $# -ge 2 ] && [ -n "$2" ] || { usage; exit 2; }; INSTANCE="$2"; shift 2 ;;
@@ -237,6 +268,188 @@ if [ -n "$PROOT_ABS" ] && git -C "$PROOT_ABS" rev-parse --is-inside-work-tree >/
     IS_GIT=1
 fi
 g() { git -C "$PROOT_ABS" "$@"; }
+
+# -------------------------------------------------------------- facts ---
+# --facts: what the audited repository (at a parent root, the chosen
+# instance's) and this machine are, so /audit-project skips the hygiene
+# items a fact makes moot and says why. Printed instead of the findings.
+if [ "$FACTS" -eq 1 ]; then
+    FACT_LINES=""
+    fact() { FACT_LINES+="$1"$'\t'"$2"$'\t'"$(clean "$3")"$'\n'; }
+
+    # Why the repository cannot be read, if it cannot.
+    REPO_WHY=""
+    if [ -z "$PROOT_ABS" ]; then
+        if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ] && [ -z "$AUD_NAME" ]; then
+            if [ -z "$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null)" ]; then
+                REPO_WHY="the parent root '$NAME' has no instance registered, so there is no repository to read"
+            else
+                REPO_WHY="several instances of the parent root '$NAME' and no default_instance: pass --instance <name>"
+            fi
+        else
+            REPO_WHY="the registered root $PROOT is not on disk"
+        fi
+    fi
+
+    # github: the remote's host. origin, else the first remote.
+    GH_REPO=""
+    GH_STATE="unknown"
+    if [ -n "$REPO_WHY" ]; then
+        fact github unknown "$REPO_WHY"
+    elif [ "$IS_GIT" -eq 0 ]; then
+        GH_STATE="no"
+        fact github no "the root is not the top of a git repository, so it has no remote of its own"
+    else
+        REMOTE="origin"
+        g remote get-url origin >/dev/null 2>&1 || REMOTE="$(g remote 2>/dev/null | head -n1)"
+        URL=""
+        [ -n "$REMOTE" ] && URL="$(g remote get-url "$REMOTE" 2>/dev/null)"
+        GH_STATE="no"
+        if [ -z "$URL" ]; then
+            fact github no "the repository has no remote"
+        elif _records_local_remote_path "$PROOT_ABS" "$URL" >/dev/null; then
+            fact github no "remote '$REMOTE' is a local path: $URL"
+        else
+            _N="$(_records_norm_url "$URL")"
+            _HOST="${_N%%/*}"
+            _PATH="${_N#*/}"
+            if [ "$_HOST" = "github.com" ] && [[ "$_PATH" =~ ^[^/]+/[^/]+$ ]]; then
+                GH_REPO="$_PATH"
+                GH_STATE="yes"
+                fact github yes "remote '$REMOTE' is github.com/$GH_REPO"
+            else
+                fact github no "remote '$REMOTE' is on $_HOST, not github.com: $URL"
+            fi
+        fi
+    fi
+
+    # issues and prs: gh repo view counts only open ones, so when none is
+    # open, one list call over every state says whether any ever was.
+    # ever_opened <issue|pr>: 0 yes, 1 no, 2 unknown (the reason on stdout)
+    ever_opened() {
+        local out rc=0 n
+        out="$(gh "$1" list -R "$GH_REPO" --state all --limit 1 --json number 2>&1)" || rc=$?
+        if [ "$rc" -ne 0 ] || ! n="$(jq -er 'length' <<< "$out" 2>/dev/null)"; then
+            if [ "$rc" -ne 0 ]; then
+                echo "gh $1 list -R $GH_REPO failed (exit $rc): $(head -n1 <<< "$out")"
+            else
+                echo "gh $1 list -R $GH_REPO gave no JSON list: $(head -c 200 <<< "$out")"
+            fi
+            return 2
+        fi
+        [ "$n" -gt 0 ] 2>/dev/null && return 0
+        return 1
+    }
+    if [ "$GH_STATE" = "unknown" ]; then
+        fact issues unknown "github is unknown: $REPO_WHY"
+        fact prs unknown "github is unknown: $REPO_WHY"
+    elif [ "$GH_STATE" = "no" ]; then
+        fact issues no "no GitHub remote, so gh can neither read nor open its issues"
+        fact prs no "no GitHub remote, so gh can neither read nor open its pull requests"
+    elif ! command -v gh >/dev/null 2>&1; then
+        fact issues unknown "gh is not installed"
+        fact prs unknown "gh is not installed"
+    elif ! command -v jq >/dev/null 2>&1; then
+        fact issues unknown "jq is not installed, so gh's answer was not read"
+        fact prs unknown "jq is not installed, so gh's answer was not read"
+    else
+        _RC=0
+        RV="$(gh repo view "$GH_REPO" --json hasIssuesEnabled,issues,pullRequests 2>&1)" || _RC=$?
+        RV_TSV=""
+        [ "$_RC" -eq 0 ] && RV_TSV="$(jq -r '[.hasIssuesEnabled, .issues.totalCount, .pullRequests.totalCount] | @tsv' <<< "$RV" 2>/dev/null)"
+        if ! [[ "$RV_TSV" =~ ^(true|false)$'\t'[0-9]+$'\t'[0-9]+$ ]]; then
+            _WHY="gh repo view $GH_REPO failed (exit $_RC): $(head -n1 <<< "$RV")"
+            [ "$_RC" -eq 0 ] && _WHY="gh repo view $GH_REPO gave no hasIssuesEnabled, issues and pullRequests counts: $(head -c 200 <<< "$RV")"
+            fact issues unknown "$_WHY"
+            fact prs unknown "$_WHY"
+        else
+            IFS=$'\t' read -r _EN _OI _OP <<< "$RV_TSV"
+            if [ "$_EN" = "false" ]; then
+                fact issues no "issues are disabled on github.com/$GH_REPO"
+            elif [ "$_OI" -gt 0 ]; then
+                fact issues yes "$_OI open on github.com/$GH_REPO"
+            else
+                _RC=0
+                _WHY="$(ever_opened issue)" || _RC=$?
+                case "$_RC" in
+                    0) fact issues yes "none open on github.com/$GH_REPO, but some were opened before" ;;
+                    1) fact issues no "enabled on github.com/$GH_REPO, but none was ever opened" ;;
+                    *) fact issues unknown "$_WHY" ;;
+                esac
+            fi
+            if [ "$_OP" -gt 0 ]; then
+                fact prs yes "$_OP open on github.com/$GH_REPO"
+            else
+                _RC=0
+                _WHY="$(ever_opened pr)" || _RC=$?
+                case "$_RC" in
+                    0) fact prs yes "none open on github.com/$GH_REPO, but some were opened before" ;;
+                    1) fact prs no "none was ever opened on github.com/$GH_REPO" ;;
+                    *) fact prs unknown "$_WHY" ;;
+                esac
+            fi
+        fi
+    fi
+
+    # windows: this machine, not the repository.
+    _OS=""
+    command -v uname >/dev/null 2>&1 && _OS="$(uname -s 2>/dev/null)"
+    case "$_OS" in
+        "") fact windows unknown "uname -s gave nothing on this machine" ;;
+        MINGW*|MSYS*|CYGWIN*|Windows*) fact windows yes "this machine: uname -s is $_OS" ;;
+        *) fact windows no "this machine: uname -s is $_OS" ;;
+    esac
+
+    # multi_component: the directories holding a component manifest.
+    if [ -n "$REPO_WHY" ]; then
+        fact multi_component unknown "$REPO_WHY"
+    else
+        MANIFESTS=(package.xml Cargo.toml package.json pyproject.toml setup.py go.mod CMakeLists.txt)
+        _FILES=()
+        if [ "$IS_GIT" -eq 1 ]; then
+            _SPECS=()
+            for m in "${MANIFESTS[@]}"; do _SPECS+=(":(glob)**/$m"); done
+            while IFS= read -r -d '' p; do _FILES+=("$p"); done \
+                < <(g ls-files -z -- "${_SPECS[@]}" 2>/dev/null)
+        else
+            _NAMES=()
+            for m in "${MANIFESTS[@]}"; do _NAMES+=(-o -name "$m"); done
+            while IFS= read -r -d '' p; do _FILES+=("${p#"$PROOT_ABS"/}"); done \
+                < <(find "$PROOT_ABS" -maxdepth 4 \( -name .git -o -name node_modules -o -name vendor -o -name third_party \) -prune \
+                        -o -type f \( -false "${_NAMES[@]}" \) -print0 2>/dev/null)
+        fi
+        declare -A _SEEN=()
+        _DIRS=()
+        for p in "${_FILES[@]+"${_FILES[@]}"}"; do
+            case "/$p" in */node_modules/*|*/vendor/*|*/third_party/*) continue ;; esac
+            if [ "$(basename "$p")" = "CMakeLists.txt" ]; then
+                grep -qiE '^[[:space:]]*project[[:space:]]*\(' "$PROOT_ABS/$p" 2>/dev/null || continue
+            fi
+            d="$(dirname "$p")"
+            [ -n "${_SEEN[$d]+set}" ] && continue
+            _SEEN["$d"]=1
+            _DIRS+=("$d")
+        done
+        _ND="${#_DIRS[@]}"
+        _LIST="$(printf '%s\n' "${_DIRS[@]+"${_DIRS[@]}"}" | sort | head -n5 | paste -sd, - | sed 's/,/, /g')"
+        [ "$_ND" -gt 5 ] && _LIST="$_LIST and $((_ND - 5)) more"
+        if [ "$_ND" -ge 2 ]; then
+            fact multi_component yes "component manifests in $_ND directories: $_LIST"
+        elif [ "$_ND" -eq 1 ]; then
+            fact multi_component no "component manifests in one directory: $_LIST"
+        else
+            fact multi_component no "no component manifest (${MANIFESTS[*]}) found"
+        fi
+    fi
+
+    if [ "$FORMAT" = "tsv" ]; then
+        printf '%s' "$FACT_LINES"
+    else
+        echo "Facts: ${AUD_NAME:-$NAME}${PROOT:+ at $PROOT}"
+        printf '%s' "$FACT_LINES" | awk -F'\t' 'NF { printf "%s: %s -- %s\n", $1, $2, $3 }'
+    fi
+    exit 0
+fi
 
 if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ] && [ -z "$AUD_NAME" ]; then
     _INST="$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null | paste -sd' ' -)"

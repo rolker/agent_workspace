@@ -14,7 +14,10 @@
 # file in the project, the registry, the settings or HOME changes); run
 # from a project root outside the workspace; refusal from an unregistered
 # directory. Also project_setting.sh's write guard (#332 PR 3): from a
-# project root it writes only that project's settings file.
+# project root it writes only that project's settings file. And --facts
+# (#332 PR 4): github, issues, prs, windows and multi_component read from
+# the remote, a stub gh and a stub uname, at a parent root from the chosen
+# instance's repository; gh is never called without a GitHub remote.
 #
 # Every fixture is synthetic: a sandbox workspace (a git repository with
 # copies of the real scripts, project types, skills and user-tier files),
@@ -566,6 +569,155 @@ check "the text says none are registered, not several" grep -qxF "audited: no in
 sed -i '/^lone project /d' "$WS/.agent/projects.local"
 install_ut
 
+echo "TEST: --facts, with stub gh and uname (never the real ones, never the network)"
+FACT_BIN="$SANDBOX/factbin"
+mkdir -p "$FACT_BIN"
+GH_LOG="$SANDBOX/gh.log"
+# gh: logs its arguments and answers from the STUB_GH_* variables.
+cat > "$FACT_BIN/gh" <<'GHEOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_GH_LOG"
+if [ "${STUB_GH_RC:-0}" -ne 0 ]; then echo "gh: not logged in" >&2; exit "$STUB_GH_RC"; fi
+case "$1 $2" in
+    "repo view")  printf '%s\n' "$STUB_GH_VIEW" ;;
+    "issue list") printf '%s\n' "${STUB_GH_ISSUES:-[]}" ;;
+    "pr list")    printf '%s\n' "${STUB_GH_PRS:-[]}" ;;
+    *) echo "stub gh: unexpected call: $*" >&2; exit 9 ;;
+esac
+GHEOF
+printf '#!/usr/bin/env bash\n[ "$1" = "-s" ] || exit 9\necho "${STUB_UNAME:-Linux}"\n' > "$FACT_BIN/uname"
+chmod +x "$FACT_BIN/gh" "$FACT_BIN/uname"
+facts() { # <cwd> <args...>: like audit, with --facts and the fact stubs first on PATH
+    local cwd="$1"
+    shift
+    : > "$GH_LOG"
+    AUDIT_RC=0
+    AUDIT_OUT="$(cd "$cwd" && HOME="$HOMEDIR" PATH="$FACT_BIN:$STUB_BIN:$PATH" STUB_GH_LOG="$GH_LOG" \
+        "$WS/.agent/scripts/project_integration_audit.sh" --facts "$@" 2>"$SANDBOX/audit.err")" || AUDIT_RC=$?
+    AUDIT_ERR="$(cat "$SANDBOX/audit.err")"
+}
+fval() { awk -F'\t' -v n="$1" '$1 == n { print $2 }' <<< "$AUDIT_OUT"; }
+fev() { awk -F'\t' -v n="$1" '$1 == n { print $3 }' <<< "$AUDIT_OUT"; }
+
+FG="$SANDBOX/projects/factgh"
+mkdir -p "$FG/pkgs/a" "$FG/pkgs/b" "$FG/node_modules/dep"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$FG/Makefile"
+printf '<package/>\n' > "$FG/pkgs/a/package.xml"
+printf '<package/>\n' > "$FG/pkgs/b/package.xml"
+printf '{}\n' > "$FG/node_modules/dep/package.json"
+gitq -C "$FG" init --quiet
+gitq -C "$FG" add -A
+gitq -C "$FG" add -f node_modules
+gitq -C "$FG" commit --quiet -m init
+gitq -C "$FG" remote add origin "git@github.com:Someone/FactGH.git"
+register factgh "$FG" "build=make" "test=make test"
+install_ut
+
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":3},"pullRequests":{"totalCount":0}}'
+export STUB_GH_PRS='[{"number":7}]'
+facts "$FG/pkgs"
+check "exit 0" [ "$AUDIT_RC" -eq 0 ]
+check "five facts in order: github issues prs windows multi_component (got: $(cut -f1 <<< "$AUDIT_OUT" | paste -sd' ' -))" \
+    [ "$(cut -f1 <<< "$AUDIT_OUT" | paste -sd' ' -)" = "github issues prs windows multi_component" ]
+check "every line has three tab-separated fields and a yes/no/unknown value" \
+    awk -F'\t' 'NF != 3 || $2 !~ /^(yes|no|unknown)$/ { bad = 1 } END { exit bad }' <<< "$AUDIT_OUT"
+check "github yes, naming the repository (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "yes/remote 'origin' is github.com/someone/factgh" ]
+check "issues yes from the open count (got: $(fev issues))" [ "$(fval issues)" = "yes" ]
+check "prs yes from a closed one when none is open (got: $(fev prs))" \
+    [ "$(fval prs)/$(fev prs)" = "yes/none open on github.com/someone/factgh, but some were opened before" ]
+check "gh was asked only to read: repo view, then pr list over every state (got: $(paste -sd'|' "$GH_LOG"))" \
+    [ "$(paste -sd'|' "$GH_LOG")" = "repo view someone/factgh --json hasIssuesEnabled,issues,pullRequests|pr list -R someone/factgh --state all --limit 1 --json number" ]
+check "windows no on Linux (got: $(fev windows))" [ "$(fval windows)/$(fev windows)" = "no/this machine: uname -s is Linux" ]
+check "multi_component yes: two package.xml directories, the tracked node_modules one left out (got: $(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: pkgs/a, pkgs/b" ]
+
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullRequests":{"totalCount":0}}'
+export STUB_GH_ISSUES='[]' STUB_GH_PRS='[]'
+facts "$FG"
+check "issues enabled but none ever opened: issues no (got: $(fev issues))" \
+    [ "$(fval issues)/$(fev issues)" = "no/enabled on github.com/someone/factgh, but none was ever opened" ]
+check "no pull request ever: prs no" [ "$(fval prs)" = "no" ]
+check "and gh issue list was asked over every state" grep -qxF "issue list -R someone/factgh --state all --limit 1 --json number" "$GH_LOG"
+export STUB_GH_ISSUES='[{"number":1}]'
+facts "$FG"
+check "none open, one closed: issues yes" [ "$(fval issues)" = "yes" ]
+export STUB_GH_VIEW='{"hasIssuesEnabled":false,"issues":{"totalCount":0},"pullRequests":{"totalCount":2}}'
+facts "$FG"
+check "issues disabled: issues no, and no issue list call (got: $(fev issues))" \
+    bash -c '[ "$1" = "no/issues are disabled on github.com/someone/factgh" ] && ! grep -q "^issue list" "$2"' _ "$(fval issues)/$(fev issues)" "$GH_LOG"
+check "2 open pull requests: prs yes" [ "$(fval prs)/$(fev prs)" = "yes/2 open on github.com/someone/factgh" ]
+export STUB_GH_RC=1
+facts "$FG"
+check "gh fails (not signed in): issues and prs unknown, saying why (got: $(fev issues))" \
+    bash -c '[ "$1" = unknown ] && [ "$2" = unknown ] && grep -qF "gh repo view someone/factgh failed (exit 1): gh: not logged in" <<< "$3"' \
+    _ "$(fval issues)" "$(fval prs)" "$(fev issues)"
+check "the audit still exits 0" [ "$AUDIT_RC" -eq 0 ]
+unset STUB_GH_RC
+export STUB_GH_VIEW='{"message":"Not Found"}'
+facts "$FG"
+check "an answer without the counts: unknown, not no (got: $(fval issues))" [ "$(fval issues)" = "unknown" ]
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullRequests":{"totalCount":1}}'
+export STUB_GH_ISSUES='garbage'
+facts "$FG"
+check "a list answer that is not JSON: issues unknown, naming the call (got: $(fev issues))" \
+    bash -c '[ "$1" = unknown ] && grep -qF "gh issue list -R someone/factgh gave no JSON list: garbage" <<< "$2"' _ "$(fval issues)" "$(fev issues)"
+unset STUB_GH_ISSUES STUB_GH_PRS
+STUB_UNAME=MINGW64_NT-10.0-19045 facts "$FG"
+check "uname -s MINGW64: windows yes" [ "$(fval windows)/$(fev windows)" = "yes/this machine: uname -s is MINGW64_NT-10.0-19045" ]
+STUB_UNAME=Darwin facts "$FG"
+check "uname -s Darwin: windows no" [ "$(fval windows)" = "no" ]
+facts "$FG" --format text
+check "--format text: a heading and fact: value -- evidence lines" \
+    bash -c 'grep -qxF "Facts: factgh at $2" <<< "$1" && grep -qxF "github: yes -- remote '"'"'origin'"'"' is github.com/someone/factgh" <<< "$1" && [ "$(grep -c -- " -- " <<< "$1")" -eq 5 ]' \
+    _ "$AUDIT_OUT" "$FG"
+
+echo "TEST: --facts without GitHub: no gh call at all"
+facts "$CLEAN"
+check "a remote on another host: github no, naming the host (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is on example.invalid, not github.com: git@example.invalid:someone/clean.git" ]
+check "issues and prs no" [ "$(fval issues)/$(fval prs)" = "no/no" ]
+check "gh was not called" [ ! -s "$GH_LOG" ]
+check "one Makefile and no manifest: multi_component no (got: $(fev multi_component))" \
+    [ "$(fval multi_component)" = "no" ]
+facts "$HR"
+check "no remote: github no (got: $(fev github))" [ "$(fval github)/$(fev github)" = "no/the repository has no remote" ]
+check "a root CMakeLists.txt with project(): one directory, multi_component no (got: $(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "no/component manifests in one directory: ." ]
+FL="$SANDBOX/projects/factlocal"
+mkdir -p "$FL/sub"
+printf 'cmake_minimum_required(VERSION 3.16)\nproject(fl)\nadd_subdirectory(sub)\n' > "$FL/CMakeLists.txt"
+printf 'add_library(sub sub.c)\n' > "$FL/sub/CMakeLists.txt"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$FL/Makefile"
+gitq -C "$FL" init --quiet
+commit_all "$FL"
+mkdir -p "$FL/untracked"
+printf '[package]\n' > "$FL/untracked/Cargo.toml"
+gitq -C "$FL" remote add origin "$SANDBOX/projects/factgh"
+register factlocal "$FL" "build=make" "test=make test"
+install_ut
+facts "$FL"
+check "a local-path remote: github no (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: $SANDBOX/projects/factgh" ]
+check "a sub-CMakeLists.txt with no project() and an untracked Cargo.toml do not count (got: $(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "no/component manifests in one directory: ." ]
+check "gh was not called" [ ! -s "$GH_LOG" ]
+facts "$NG"
+check "a root that is not a git repository: github no (got: $(fev github))" [ "$(fval github)" = "no" ]
+
+echo "TEST: --facts at a parent root reads the chosen instance's repository"
+facts "$PAR"
+check "several instances, no default: the repository facts are unknown and say to pass --instance (got: $(fev github))" \
+    bash -c '[ "$1" = unknown ] && grep -qF "pass --instance <name>" <<< "$2"' _ "$(fval github)" "$(fev github)"
+check "windows is still read (got: $(fval windows))" [ "$(fval windows)" = "no" ]
+facts "$PAR" --instance fam_a
+check "--instance fam_a: its remote, not the parent's (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is on example.invalid, not github.com: git@example.invalid:someone/fam-a.git" ]
+check "its one Makefile: multi_component no" [ "$(fval multi_component)" = "no" ]
+facts "$SANDBOX"
+check "a directory under no registered root: exit 2" [ "$AUDIT_RC" -eq 2 ]
+unset STUB_GH_VIEW
+
 echo "TEST: read-only: nothing in the project, the workspace or HOME changes"
 snap() { # <dir>: every path with its content hash, .git included
     (cd "$1" && find . -type f -print0 | sort -z | xargs -0 sha1sum)
@@ -573,6 +725,7 @@ snap() { # <dir>: every path with its content hash, .git included
 before_hr="$(snap "$HR")"; before_ws="$(snap "$WS/.agent")"; before_home="$(snap "$HOMEDIR")"
 audit "$HR"
 audit "$HR" --format text
+audit "$HR" --facts
 check "the project is unchanged" [ "$before_hr" = "$(snap "$HR")" ]
 check "the workspace's .agent (registry, settings) is unchanged" [ "$before_ws" = "$(snap "$WS/.agent")" ]
 check "HOME is unchanged" [ "$before_home" = "$(snap "$HOMEDIR")" ]
