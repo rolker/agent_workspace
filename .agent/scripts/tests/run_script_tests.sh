@@ -38,12 +38,16 @@
 # still exist, so a deleted file or a rename's source never reaches
 # --files, and the suites that still name the old path would be skipped.
 # In --files mode the runner therefore lists them itself and runs every
-# suite when one is in the hook's scope: the staged deletions
-# (`git diff --cached --no-renames --diff-filter=D`; --no-renames makes a
-# rename show as a deletion of its source), or, when nothing is staged (a
-# branch run, `pre-commit run --files $(git diff --name-only main...HEAD)`),
-# the deletions on the branch (`<default-branch>...HEAD`, same flags). This
-# check runs before the GIT_* unset below: `git commit -a` and
+# suite when one is in the hook's scope. Which deletions depends on the
+# context, keyed on GIT_INDEX_FILE, which git sets for every commit hook:
+#   - a commit (GIT_INDEX_FILE set): the staged deletions
+#     (`git diff --cached --no-renames --diff-filter=D`; --no-renames makes
+#     a rename show as a deletion of its source);
+#   - any other run (a branch run,
+#     `pre-commit run --files $(git diff --name-only main...HEAD)`, staged
+#     changes or not): the staged deletions plus the deletions on the
+#     branch (`<default-branch>...HEAD`, same flags).
+# This check runs before the GIT_* unset below: `git commit -a` and
 # `git commit <paths>` give the hook a temporary index through
 # GIT_INDEX_FILE, and after the unset the diff would read the real index
 # and see nothing. A commit whose only in-scope change is a deletion still
@@ -128,17 +132,18 @@ deletion_check_error=""
 if [[ $files_mode -eq 1 ]]; then
     if ! git rev-parse --git-dir >/dev/null 2>&1; then
         deletion_check_error="not inside a git repository ($(pwd))"
-    elif ! git diff --cached --quiet 2>/dev/null; then
-        if ! del_out=$(git diff --cached --name-only --no-renames --diff-filter=D 2>/dev/null); then
-            deletion_check_error="git diff --cached --diff-filter=D failed"
-        fi
-    else
+    elif ! del_out=$(git diff --cached --name-only --no-renames --diff-filter=D 2>/dev/null); then
+        deletion_check_error="git diff --cached --diff-filter=D failed"
+    elif [[ -z "${GIT_INDEX_FILE:-}" ]]; then
+        # Not a commit: a branch run also sees the branch's deletions.
         # shellcheck source=../_resolve_default_branch.sh
         source "$SCRIPT_DIR/../_resolve_default_branch.sh"
         if ! default_ref=$(resolve_default_branch 2>&1); then
             deletion_check_error="could not resolve the default branch: $default_ref"
-        elif ! del_out=$(git diff --name-only --no-renames --diff-filter=D "$default_ref...HEAD" 2>/dev/null); then
+        elif ! branch_del=$(git diff --name-only --no-renames --diff-filter=D "$default_ref...HEAD" 2>/dev/null); then
             deletion_check_error="git diff $default_ref...HEAD failed"
+        elif [[ -n "$branch_del" ]]; then
+            del_out="${del_out:+$del_out$'\n'}$branch_del"
         fi
     fi
     if [[ -z "$deletion_check_error" && -n "${del_out:-}" ]]; then

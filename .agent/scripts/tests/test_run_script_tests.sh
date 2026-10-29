@@ -622,30 +622,44 @@ hook_case pathspec full "rm .agent/scripts/other.sh && $EDIT_BETA && sgit commit
 hook_case rename_out full "sgit mv .agent/scripts/other.sh outside/other.sh && $EDIT_BETA && sgit add .agent/scripts/beta.sh && sgit commit -q -m d"
 hook_case edit_only scoped "$EDIT_BETA && sgit commit -q -a -m d"
 
-# --- Case (p): a branch run (nothing staged) sees a deletion made earlier
-#     on the branch; a commit with something staged does not. ---
+# --- Case (p): a branch run sees a deletion made earlier on the branch,
+#     with or without something staged; a commit (git sets GIT_INDEX_FILE
+#     for its hooks) checks only its own staged deletions. ---
 P="$TMPD/syn_p"
 make_syn_repo "$P" && sgit -C "$P" rm -q .agent/scripts/other.sh && sgit -C "$P" commit -q -m "delete other.sh"
 p_run() {
     rm -rf "$TMPD/p_marks" && mkdir -p "$TMPD/p_marks"
-    (cd "$P" && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/p_marks" \
+    (cd "$P" && unset GIT_INDEX_FILE && GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 SYN_MARKS="$TMPD/p_marks" \
         "$RUNNER" "$P/.agent/scripts/tests" --files .agent/scripts/beta.sh 2>&1)
 }
 out=$(p_run); rc=$?
 if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'full run' && printf '%s' "$out" | grep -q "other.sh' is deleted"; then
-    pass "(p) branch run: an in-scope deletion earlier on the branch forces a full run"
+    pass "(p) branch run, nothing staged: an in-scope deletion earlier on the branch forces a full run"
 else
-    fail "(p) branch run: an in-scope deletion earlier on the branch forces a full run (rc=$rc, out=$out)"
+    fail "(p) branch run, nothing staged: an in-scope deletion earlier on the branch forces a full run (rc=$rc, out=$out)"
 fi
 echo "echo edited" >> "$P/.agent/scripts/beta.sh"
 sgit -C "$P" add .agent/scripts/beta.sh
 out=$(p_run); rc=$?
-if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'scoped run'; then
-    pass "(p) with an edit staged, an earlier branch deletion does not force a full run"
+if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'full run' && printf '%s' "$out" | grep -q "other.sh' is deleted"; then
+    pass "(p) branch run with an edit staged: the earlier branch deletion still forces a full run"
 else
-    fail "(p) with an edit staged, an earlier branch deletion does not force a full run (rc=$rc, out=$out)"
+    fail "(p) branch run with an edit staged: the earlier branch deletion still forces a full run (rc=$rc, out=$out)"
 fi
-
+P_HOOKS="$TMPD/p_hooks" P_LOG="$TMPD/p_hook.log"
+mkdir -p "$P_HOOKS" "$TMPD/p_marks"
+printf '#!/usr/bin/env bash\nbash %q %q --files .agent/scripts/beta.sh > %q 2>&1\n' \
+    "$RUNNER" "$P/.agent/scripts/tests" "$P_LOG" > "$P_HOOKS/pre-commit"
+chmod +x "$P_HOOKS/pre-commit"
+sgit -C "$P" config core.hooksPath "$P_HOOKS"
+(cd "$P" && export SYN_MARKS="$TMPD/p_marks" && sgit commit -q -m edit) >/dev/null 2>&1; rc=$?
+out="$(cat "$P_LOG" 2>/dev/null)"
+if [[ $rc -eq 0 ]] && printf '%s' "$out" | grep -q 'scoped run'; then
+    pass "(p) a commit with an edit staged checks only its own deletions: scoped run"
+else
+    fail "(p) a commit with an edit staged checks only its own deletions: scoped run (rc=$rc, log=$out)"
+fi
+rm -rf "$P_HOOKS" "$P_LOG"
 
 echo ""
 echo "test_run_script_tests: $PASS passed, $FAIL failed"
