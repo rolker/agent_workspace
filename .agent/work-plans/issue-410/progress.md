@@ -487,3 +487,18 @@ The one open finding is kept open (suggestion, not must-fix). Verified at the he
 **Decision**: address
 
 Integrated Review c56bdf12 at head 11a0612e: one open suggestion, the continuation lines of a parenthesised `from pkg import (...)` are not mapped. Sent to address-findings; the owner is told and may instead say merge.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 10:52 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a59fddc42ed513466, resume 2 of 3)
+
+**PR**: #411 at `0e4a8717`
+**Addressed**: Integrated Review at `11a0612e` (2026-10-29 10:43 -04:00)
+**Commits**: `0e4a8717`
+
+### Actions
+- [x] (suggestion) Each parenthesised `from X import ( ... )` span is joined onto one line (inline ` # ...` comments dropped) before the per-line import match, so a module named only on a continuation line maps; the header comment now says so. Synthetic case in test_run_script_tests.sh (l), next to the existing from-import case: a suite reaching `pkg/mod_b.py` only through a continuation line with an inline comment; it fails on the previous mapper — `.agent/scripts/tests/suites_for_files.sh`
+
+Hooks: `pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook, in 392 s. Direct suite runs under a private TMPDIR: `test_run_script_tests.sh` 61/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
