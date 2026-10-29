@@ -644,3 +644,18 @@ Scope: round 6's two findings and the fix diff `92a807a7..dae905cf` (`63a57508`)
 
 ### Findings
 - [x] (must-fix) A relative import written without a blank before `import` is valid Python but silently maps nothing. `from .import a` maps nothing (`ast.parse` gives ImportFrom level=1, names a), and so do `from ..import a, b` and `from .import(a)`. IMPORT_WORD_RE's lookbehind excludes a word preceded by `.`, so the word is not counted; FROM_RE needs `\s+` before `import`; FROM_HEAD_RE does not match either. As a result neither the mapping nor the fallback fires. No instance exists in the tree today. Fix: let FROM_RE take a dots-only module with `\s*` before the keyword (`from\s*(\.+)\s*import` beside the current form), or at least count a `.import` word whose dot is not preceded by a word character, so it falls back. Add a synthetic `from .import` case and check that `--dump` stays at 1601 lines — `.agent/scripts/tests/suites_for_files.sh:226,242`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-29 12:13 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af6fdb4891bd180cc, resume 2 of 3)
+
+**PR**: #411 at `95588362`
+**Addressed**: Local Review at `dae905cf` (2026-10-29 11:57 -04:00)
+**Commits**: `95588362`
+
+### Actions
+- [x] (must-fix) `from .import a` and its kin now map (host direction, two changes). (1) A `.py` file's imports are read with Python's `ast`, exactly: a relative import resolves against the file's own directory (each further dot one level up) to the module file or its package init file and to each name as a possible submodule; an absolute one maps each dotted component by basename as before; a file `ast` cannot parse, or a star import, takes the every-.py fallback. The piece parser now runs only on Python embedded in other files. (2) In the piece parser a `from` module may be dots alone touching the keyword (`from .import a`, `from ..import(a)`), and an `import` word after a dot counts unless that dot follows a word character (`x.import`). The header states both paths; residual risk now names Python held in a `.py` file's string literals, which `ast` does not read. The new init-file literal is split so the mapper's own text does not reference every package init file by basename. Synthetic cases in test_run_script_tests.sh (l): rel/helper.py, reached by a suite, maps `from .import`, `from ..import a, b`, `from .import(b)`, a try-wrapped import and a parenthesised multi-line list exactly, while a same-named decoy elsewhere and an unimported sibling stay unselected; a `.py` file with a syntax error falls back; a shell `python3 -c "from .import rel_y"` maps rel_y.py. 6 of these fail on the round-6 mapper. Real repository `--dump`: unchanged, 1601 lines, diffed against the HEAD tree in a temporary worktree (no pair added or removed). Box ticked by direct edit in `95588362` (PR-mode entry) — `.agent/scripts/tests/suites_for_files.sh`
+
+Hooks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed, every hook (script suites and shellcheck included), in 606 s. Direct run under a private TMPDIR: `test_run_script_tests.sh` 87/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
