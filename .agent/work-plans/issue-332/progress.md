@@ -1586,3 +1586,28 @@ Part 4 of 4 of issue 332 (plan section "PR 4 — `audit-project` takes the hygie
 
 ### AGENTS.md (Ask-First, not done)
 - Script Reference row for `project_integration_audit.sh`: "run by `/onboard-project` at the project's root: `[--dir D \| --project N] [--instance I] [--format tsv\|text]`" becomes "run by `/onboard-project` and `/audit-project` at the project's root: `[--dir D \| --project N] [--instance I] [--facts] [--format tsv\|text]`", and before "exits 0 whatever it finds" add: "`--facts` prints instead `fact<TAB>value<TAB>evidence` for `github`, `issues`, `prs`, `windows`, `multi_component` (yes, no or unknown; from the remote, read-only `gh repo view`/`issue list`/`pr list` and `uname`), which `/audit-project` reads to skip the hygiene items they make moot;"
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-29 14:17 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `c0bcc8a9`
+**Base**: main
+**Depth**: Deep (reason: part 4 of 4 of #332 is a new diff: 10 files, +865/-139, a user-tier script, its read-only guard and two project skills; the dispatcher said round 16 because parts 1 to 3's pre-push entries, PRs 403, 409 and 413, all merged, are still on this timeline (#384); per the host's correction this is ROUND 1 for part 4, a full Deep review with cross-model reviewers, classified on the whole main...HEAD diff)
+**Must-fix**: 2 | **Suggestions**: 7
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix (both mechanical); the first round always re-reviews after fixes (verdict run with --round 1, no --prev-must-fix)
+
+Merge c0bcc8a9 (main at f90d8ffe, PR 411) is clean: its tree equals `git merge-tree` of its parents, and it is not part of the review target. Suites: test_project_integration_audit 167/0, test_user_tier_guard 63/0, test_skill_paths 120/0. shellcheck is clean on the four changed scripts. Cross-model: Gemini ran (1 suggestion), Codex ran (2 must-fix). Claude adversarial ran; it confirmed that `--facts` writes nothing and makes only the three allowed gh calls, that a project with no remote gives github/issues/prs no with evidence and no gh call, that an unknown fact keeps its item checked, and that the fix-batch `--project <settings-name>` resolves to the instance's repository at a parent root. Its AGENTS.md finding is dropped: that row edit is Ask-First and was left for the owner on purpose.
+
+### Findings
+- [ ] (must-fix) Credential leak: the evidence for a non-GitHub remote prints the URL verbatim, so `https://user:TOKEN@gitlab.com/...` puts the secret into the audit report. Print the host and path only, and add a fixture with a credential-bearing remote that asserts the secret never appears — `.agent/scripts/project_integration_audit.sh:321`
+- [ ] (must-fix) Wrong host: the gh calls pass bare `owner/repo`, so with `GH_HOST` set they query another server while the evidence says github.com. Pass `github.com/<owner>/<repo>` to `gh repo view`, `gh issue list -R` and `gh pr list -R`, and test it with a conflicting GH_HOST — `.agent/scripts/project_integration_audit.sh:334,335,362`
+- [ ] (suggestion) `jq -er 'length'` also accepts an object or a string, so an exit-0 non-array answer reads as "yes". Require `type == "array"` (Gemini) — `.agent/scripts/project_integration_audit.sh:337`
+- [ ] (suggestion) The gh guard is weaker than its comment says. It exempts a whole line that holds one allowed call, and it misses a flag placed before the subcommand (`gh -R o/r issue close`) and `command gh` / `$GH`. Match every gh token not followed by exactly one of the three allowed subcommands — `.agent/scripts/tests/test_user_tier_guard.sh:289-294`
+- [ ] (suggestion) A GitHub SSH host alias (`git@github.com-work:o/r.git`), or a GitHub remote that is not the first one checked, gives `github=no`, and four hygiene items are then skipped as "no GitHub remote". Consider `unknown` when the host only looks like GitHub — `.agent/scripts/project_integration_audit.sh:304-321`
+- [ ] (suggestion) Test gaps in `--facts`: gh missing, jq missing, a repository with no commits, a remote not named origin, `ever_opened` failing after a successful `repo view`, and a root nested inside a larger repository — `.agent/scripts/tests/test_project_integration_audit.sh`
+- [ ] (suggestion) The skill blurs which facts go `unknown` for which cause: gh problems make only issues and prs unknown, and `github` is unknown only when the repository cannot be read. Say which facts — `.claude/skills/audit-project/SKILL.md:152`
+- [ ] (suggestion) The `windows=yes` row is a partial skip ("shell-script hooks in the pre-commit item"). Say how it is reported, since the pre-commit item keeps its in place / missing status — `.claude/skills/audit-project/SKILL.md:237`
+- [ ] (suggestion) Step 10 follows onboard-project step 7 "as written" but overrides only the title. Step 7's pull request body still reads "Onboarding with the workspace", so give the audit's body wording too — `.claude/skills/audit-project/SKILL.md:401-410`
