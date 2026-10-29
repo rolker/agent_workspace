@@ -31,7 +31,10 @@
 #                    github           the audited repository's remote
 #                                     (origin, else its first) is on
 #                                     github.com; the evidence names
-#                                     github.com/<owner>/<repo>
+#                                     github.com/<owner>/<repo>, and for
+#                                     any remote only host and path,
+#                                     never the URL (its user part can
+#                                     hold a credential)
 #                    issues           it uses GitHub issues: enabled, and
 #                                     at least one ever opened (gh repo
 #                                     view, then gh issue list --state all
@@ -277,6 +280,14 @@ if [ "$FACTS" -eq 1 ]; then
     FACT_LINES=""
     fact() { FACT_LINES+="$1"$'\t'"$2"$'\t'"$(clean "$3")"$'\n'; }
 
+    # url_without_userinfo <url>: the URL with its user part (everything
+    # from the scheme's "://" to the last "@" before the first "/")
+    # removed. scp-like and local forms are left as they are: their user
+    # part is an ssh login, never a password.
+    url_without_userinfo() {
+        printf '%s' "$1" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@#\1#'
+    }
+
     # Why the repository cannot be read, if it cannot.
     REPO_WHY=""
     if [ -z "$PROOT_ABS" ]; then
@@ -310,7 +321,11 @@ if [ "$FACTS" -eq 1 ]; then
         elif _records_local_remote_path "$PROOT_ABS" "$URL" >/dev/null; then
             fact github no "remote '$REMOTE' is a local path: $URL"
         else
-            _N="$(_records_norm_url "$URL")"
+            # Only host/path ever reaches the evidence: a URL's user part
+            # (https://user:TOKEN@host/...) can hold a secret, so it is
+            # dropped before the URL is normalised, and the URL itself is
+            # never printed.
+            _N="$(_records_norm_url "$(url_without_userinfo "$URL")")"
             _HOST="${_N%%/*}"
             _PATH="${_N#*/}"
             if [ "$_HOST" = "github.com" ] && [[ "$_PATH" =~ ^[^/]+/[^/]+$ ]]; then
@@ -318,7 +333,7 @@ if [ "$FACTS" -eq 1 ]; then
                 GH_STATE="yes"
                 fact github yes "remote '$REMOTE' is github.com/$GH_REPO"
             else
-                fact github no "remote '$REMOTE' is on $_HOST, not github.com: $URL"
+                fact github no "remote '$REMOTE' is $_N, not on github.com"
             fi
         fi
     fi

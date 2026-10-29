@@ -675,11 +675,27 @@ check "--format text: a heading and fact: value -- evidence lines" \
 echo "TEST: --facts without GitHub: no gh call at all"
 facts "$CLEAN"
 check "a remote on another host: github no, naming the host (got: $(fev github))" \
-    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is on example.invalid, not github.com: git@example.invalid:someone/clean.git" ]
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is example.invalid/someone/clean, not on github.com" ]
 check "issues and prs no" [ "$(fval issues)/$(fval prs)" = "no/no" ]
 check "gh was not called" [ ! -s "$GH_LOG" ]
 check "one Makefile and no manifest: multi_component no (got: $(fev multi_component))" \
     [ "$(fval multi_component)" = "no" ]
+# A remote URL carrying a credential: only host and path may be printed.
+for _cred_url in "https://someone:s3cr3tTOKEN@gitlab.example.invalid/someone/clean.git" \
+        "https://s3cr3tTOKEN@gitlab.example.invalid/someone/clean" \
+        "https://someone:s3cr3tTOKEN@gitlab.example.invalid"; do
+    gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+    facts "$CLEAN"
+    _tsv="$AUDIT_OUT$AUDIT_ERR"
+    facts "$CLEAN" --format text
+    check "a credential in the remote URL never reaches the output, tsv or text ($_cred_url)" \
+        bash -c '! grep -qF s3cr3tTOKEN <<< "$1"' _ "$_tsv$AUDIT_OUT$AUDIT_ERR"
+done
+gitq -C "$CLEAN" remote set-url origin "https://someone:s3cr3tTOKEN@gitlab.example.invalid/someone/clean.git"
+facts "$CLEAN"
+check "the evidence names host and path only (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is gitlab.example.invalid/someone/clean, not on github.com" ]
+gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
 facts "$HR"
 check "no remote: github no (got: $(fev github))" [ "$(fval github)/$(fev github)" = "no/the repository has no remote" ]
 check "a root CMakeLists.txt with project(): one directory, multi_component no (got: $(fev multi_component))" \
@@ -712,7 +728,7 @@ check "several instances, no default: the repository facts are unknown and say t
 check "windows is still read (got: $(fval windows))" [ "$(fval windows)" = "no" ]
 facts "$PAR" --instance fam_a
 check "--instance fam_a: its remote, not the parent's (got: $(fev github))" \
-    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is on example.invalid, not github.com: git@example.invalid:someone/fam-a.git" ]
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is example.invalid/someone/fam-a, not on github.com" ]
 check "its one Makefile: multi_component no" [ "$(fval multi_component)" = "no" ]
 facts "$SANDBOX"
 check "a directory under no registered root: exit 2" [ "$AUDIT_RC" -eq 2 ]
