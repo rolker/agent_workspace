@@ -17,7 +17,12 @@
 # project root it writes only that project's settings file. And --facts
 # (#332 PR 4): github, issues, prs, windows and multi_component read from
 # the remote, a stub gh and a stub uname, at a parent root from the chosen
-# instance's repository; gh is never called without a GitHub remote.
+# instance's repository; gh is never called without a GitHub remote. Its
+# edge cases: gh or jq missing, the list calls failing after repo view
+# answered, a JSON answer that is not a list, a credential in a remote URL
+# (never printed), GH_HOST naming another server, an ssh host alias or
+# GitHub on a remote other than the one checked (unknown), no commits, a
+# remote not named origin, and a root nested inside another repository.
 #
 # Every fixture is synthetic: a sandbox workspace (a git repository with
 # copies of the real scripts, project types, skills and user-tier files),
@@ -583,6 +588,10 @@ if [ -n "${GH_HOST:-}" ] && ! grep -qE '(^| )github\.com/[^ ]+/[^ ]+( |$)' <<< "
     echo "HTTP 404: Not Found (https://$GH_HOST/api/v3/...)" >&2; exit 1
 fi
 case "$1 $2" in
+    "issue list"|"pr list")
+        if [ "${STUB_GH_LIST_RC:-0}" -ne 0 ]; then echo "HTTP 502: Bad Gateway" >&2; exit "$STUB_GH_LIST_RC"; fi ;;
+esac
+case "$1 $2" in
     "repo view")  printf '%s\n' "$STUB_GH_VIEW" ;;
     "issue list") printf '%s\n' "${STUB_GH_ISSUES:-[]}" ;;
     "pr list")    printf '%s\n' "${STUB_GH_PRS:-[]}" ;;
@@ -592,11 +601,12 @@ GHEOF
 printf '#!/usr/bin/env bash\n[ "$1" = "-s" ] || exit 9\necho "${STUB_UNAME:-Linux}"\n' > "$FACT_BIN/uname"
 chmod +x "$FACT_BIN/gh" "$FACT_BIN/uname"
 facts() { # <cwd> <args...>: like audit, with --facts and the fact stubs first on PATH
+    # (FACT_PATH, when set, is the whole PATH instead)
     local cwd="$1"
     shift
     : > "$GH_LOG"
     AUDIT_RC=0
-    AUDIT_OUT="$(cd "$cwd" && HOME="$HOMEDIR" PATH="$FACT_BIN:$STUB_BIN:$PATH" STUB_GH_LOG="$GH_LOG" \
+    AUDIT_OUT="$(cd "$cwd" && HOME="$HOMEDIR" PATH="${FACT_PATH:-$FACT_BIN:$STUB_BIN:$PATH}" STUB_GH_LOG="$GH_LOG" \
         "$WS/.agent/scripts/project_integration_audit.sh" --facts "$@" 2>"$SANDBOX/audit.err")" || AUDIT_RC=$?
     AUDIT_ERR="$(cat "$SANDBOX/audit.err")"
 }
@@ -758,6 +768,82 @@ check "a sub-CMakeLists.txt with no project() and an untracked Cargo.toml do not
 check "gh was not called" [ ! -s "$GH_LOG" ]
 facts "$NG"
 check "a root that is not a git repository: github no (got: $(fev github))" [ "$(fval github)" = "no" ]
+
+echo "TEST: --facts edge cases: gh or jq missing, a list call failing, no commits, no origin, a nested root"
+# PATHs without gh, and without jq: every other command on PATH linked
+# into one directory, the stubs first.
+fact_path_without() { # <dir> <command>
+    local dir="$1" skip="$2" pd x b
+    mkdir -p "$dir"
+    IFS=: read -r -a _pdirs <<< "$FACT_BIN:$STUB_BIN:$PATH"
+    for pd in "${_pdirs[@]}"; do
+        [ -d "$pd" ] || continue
+        for x in "$pd"/*; do
+            b="${x##*/}"
+            [ "$b" = "$skip" ] && continue
+            [ -x "$x" ] && [ ! -e "$dir/$b" ] && ln -s "$x" "$dir/$b"
+        done
+    done
+}
+fact_path_without "$SANDBOX/nogh-bin" gh
+fact_path_without "$SANDBOX/nojq-bin" jq
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":0},"pullRequests":{"totalCount":0}}'
+if PATH="$SANDBOX/nogh-bin" command -v gh >/dev/null 2>&1; then
+    fail "the PATH without gh still finds gh"
+else
+    FACT_PATH="$SANDBOX/nogh-bin" facts "$FG"
+    check "gh missing: github still yes, issues and prs unknown, saying gh is not installed (got: $(fev issues))" \
+        [ "$(fval github)/$(fval issues)/$(fev issues)/$(fval prs)/$(fev prs)" = "yes/unknown/gh is not installed/unknown/gh is not installed" ]
+fi
+if PATH="$SANDBOX/nojq-bin" command -v jq >/dev/null 2>&1; then
+    fail "the PATH without jq still finds jq"
+else
+    FACT_PATH="$SANDBOX/nojq-bin" facts "$FG"
+    check "jq missing: issues and prs unknown, saying gh's answer was not read, and gh not called (got: $(fev issues))" \
+        bash -c '[ "$1" = "yes/unknown/unknown" ] && grep -qF "jq is not installed" <<< "$2" && [ ! -s "$3" ]' \
+        _ "$(fval github)/$(fval issues)/$(fval prs)" "$(fev issues)" "$GH_LOG"
+fi
+STUB_GH_LIST_RC=4 facts "$FG"
+check "repo view answers but the list calls fail: issues and prs unknown, naming the list call (got: $(fev issues))" \
+    bash -c '[ "$1" = unknown/unknown ] && grep -qF "gh issue list -R github.com/someone/factgh failed (exit 4): HTTP 502" <<< "$2" && grep -qF "gh pr list -R github.com/someone/factgh failed (exit 4)" <<< "$3"' \
+    _ "$(fval issues)/$(fval prs)" "$(fev issues)" "$(fev prs)"
+
+NC="$SANDBOX/projects/factnocommit"
+mkdir -p "$NC"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$NC/Makefile"
+printf '[package]\n' > "$NC/Cargo.toml"
+gitq -C "$NC" init --quiet
+gitq -C "$NC" remote add upstream "https://github.com/someone/nocommit.git"
+register factnocommit "$NC" "build=make" "test=make test"
+install_ut
+facts "$NC"
+check "a repository with no commits: exit 0 and five facts" \
+    bash -c '[ "$1" -eq 0 ] && [ "$(cut -f1 <<< "$2" | paste -sd" " -)" = "github issues prs windows multi_component" ]' _ "$AUDIT_RC" "$AUDIT_OUT"
+check "its one remote, named upstream, not origin: github yes, naming it (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "yes/remote 'upstream' is github.com/someone/nocommit" ]
+check "nothing tracked yet, so the untracked Cargo.toml does not count: multi_component no (got: $(fev multi_component))" \
+    [ "$(fval multi_component)" = "no" ]
+
+OUTER="$SANDBOX/projects/outer"
+NEST="$OUTER/inner"
+mkdir -p "$NEST/a" "$NEST/b"
+printf 'all:\n\t@true\ntest:\n\t@true\n' > "$NEST/Makefile"
+printf '<package/>\n' > "$NEST/a/package.xml"
+printf '<package/>\n' > "$NEST/b/package.xml"
+gitq -C "$OUTER" init --quiet
+commit_all "$OUTER"
+gitq -C "$OUTER" remote add origin "git@github.com:someone/outer.git"
+# Registered by hand only: the user-tier installer refuses a root inside
+# another repository (skip-enclosed), so the line goes again below.
+register factnested "$NEST" "build=make" "test=make test"
+facts "$NEST"
+check "a root nested inside a larger repository: github no, not the enclosing repository's remote (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/the root is not the top of a git repository, so it has no remote of its own" ]
+check "and gh not called" [ ! -s "$GH_LOG" ]
+check "its manifests read from disk: multi_component yes (got: $(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: a, b" ]
+sed -i '/^factnested /d' "$WS/.agent/projects.local"
+rm -f "$WS/.agent/projects.d/factnested"
 
 echo "TEST: --facts at a parent root reads the chosen instance's repository"
 facts "$PAR"
