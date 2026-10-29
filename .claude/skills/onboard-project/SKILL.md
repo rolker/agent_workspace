@@ -377,14 +377,17 @@ once more before creating anything. Then:
    source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" \
      && git commit -m "<what changed>"
    ```
-3. Push and open the pull request only on a yes. For a project with no
-   GitHub remote, leave the edits on the branch, push nothing, and say
-   where the branch is.
+3. Push and open the pull request only on a yes, from the worktree. For a
+   project with no GitHub remote, leave the edits on the branch, push
+   nothing, and say where the branch is. The branch is pushed first:
+   `gh pr create` run without a terminal does not offer to push it, and
+   stops.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1
 [ -n "${AGENT_NAME:-}" ] && [ -n "${AGENT_MODEL:-}" ] || { echo "AGENT_NAME/AGENT_MODEL not set: no signature" >&2; exit 1; }
+git push -u origin "$(git branch --show-current)" || exit 1
 PR_BODY_FILE="$(mktemp)"
 cat > "$PR_BODY_FILE" <<'EOF'
 ## Summary

@@ -405,6 +405,8 @@ if [[ -f "$ONB" ]]; then
     else
         pass "onboard-project: every heredoc is quoted (<<'EOF')"
     fi
+    has "$ONB" "onboard-project: the branch is pushed before gh pr create" \
+        'git push -u origin "$(git branch --show-current)" || exit 1'
     has "$ONB" "onboard-project: the signature comes from the identity sourced in the same shell" \
         'source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1' \
         "printf '\\n---\\n**Authored-By**: \`%s\`\\n**Model**: \`%s\`\\n' \"\$AGENT_NAME\" \"\$AGENT_MODEL\""
