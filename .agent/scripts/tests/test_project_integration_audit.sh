@@ -280,6 +280,9 @@ cat > "$P2/CLAUDE.md" <<'EOF'
 - Run `make test` before pushing.
 - $ make test  # the suite
 - make sure `make test` passes.
+1. ninja -C out
++ cargo build
+2) make test
 EOF
 gitq -C "$P2" init --quiet
 commit_all "$P2"
@@ -288,12 +291,12 @@ register p2 "$P2" "build=make" "test=make test"
 install_ut
 audit "$P2"
 p2_lines() { awk -F'\t' '$2 == "process-build-command" { print $4 }' <<< "$AUDIT_OUT" | paste -sd' ' -; }
-check "build=make does not hide cmake --build (line 3), nor ninja after make (line 5); its own commands with arguments are its own (got: $(p2_lines))" \
-    [ "$(p2_lines)" = "CLAUDE.md:3 CLAUDE.md:5" ]
+check "build=make does not hide cmake --build (line 3), nor ninja after make (line 5); numbered and + list items are read (9, 10; 11 is its own); its own commands with arguments are its own (got: $(p2_lines))" \
+    [ "$(p2_lines)" = "CLAUDE.md:3 CLAUDE.md:5 CLAUDE.md:9 CLAUDE.md:10" ]
 printf 'build=cmake --build build\ntest=make test\n' > "$WS/.agent/projects.d/p2"
 audit "$P2"
 check "build=cmake --build build: make -j4 and a bare make are not its own; the prose before a code span (make sure, line 8) is no command (got: $(p2_lines))" \
-    [ "$(p2_lines)" = "CLAUDE.md:4 CLAUDE.md:5" ]
+    [ "$(p2_lines)" = "CLAUDE.md:4 CLAUDE.md:5 CLAUDE.md:9 CLAUDE.md:10" ]
 
 echo "TEST: category 2, at most 10 candidate lines per file and id, then the count"
 P5="$SANDBOX/projects/p5"

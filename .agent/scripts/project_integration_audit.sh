@@ -346,7 +346,7 @@ candidate() {
 BUILD_TOOLS='make|cmake|cargo|npm|pnpm|yarn|go|pytest|python3? -m pytest|colcon|ctest|ninja|meson'
 # commands <text> [tools]: the commands a line names, one per line: each
 # code span, or on a line with none, the line itself (blanks, a list marker
-# and a "$ " prompt dropped; the prose around a code span, as in "make sure
+# -- "-", "*", "+", "1." or "1)" -- and a "$ " prompt dropped; the prose around a code span, as in "make sure
 # `pytest` passes", is no command), split at &&, ||, ; and |, trimmed, a
 # trailing comment and
 # trailing punctuation dropped. With "tools", only the ones that start with
@@ -356,7 +356,7 @@ commands() {
     printf '%s\n' "$1" | awk -v tools="${2:+$BUILD_TOOLS}" '
     {
         lead = $0
-        sub(/^[ \t]*([-*][ \t]+)?(\$[ \t]+)?/, "", lead)
+        sub(/^[ \t]*(([-*+]|[0-9]+[.)])[ \t]+)?(\$[ \t]+)?/, "", lead)
         n = 0
         if (index(lead, "`") == 0) seg[++n] = lead
         rest = $0
@@ -416,9 +416,10 @@ build_candidates() {  # <file>: build/test command lines that are not the projec
         [ "$n" -gt 10 ] && { emit 2 process-build-command info "$f" "and more build or test command lines"; break; }
         text="$(sed -e 's/^[[:space:]]*//' <<< "$text" | cut -c1-200)"
         emit 2 process-build-command info "$f:$ln" "$text ($OWN_DESC)"
-    # A command at the start of a line (after blanks, a list marker or a
-    # "$ " prompt) or of a code span, so prose such as "make sure" is not one.
-    done < <(grep -nE "(^[[:space:]]*([-*][[:space:]]+)?(\\\$[[:space:]]+)?|\`)($BUILD_TOOLS)([[:space:]\`]|\$)" "$PROOT_ABS/$f" 2>/dev/null)
+    # A command at the start of a line (after blanks, a list marker -- "-",
+    # "*", "+", "1." or "1)" -- or a "$ " prompt) or of a code span, so
+    # prose such as "make sure" is not one.
+    done < <(grep -nE "(^[[:space:]]*(([-*+]|[0-9]+[.)])[[:space:]]+)?(\\\$[[:space:]]+)?|\`)($BUILD_TOOLS)([[:space:]\`]|\$)" "$PROOT_ABS/$f" 2>/dev/null)
 }
 for f in "${INSTR_FILES[@]}"; do
     candidate "$f" process-branch warn 'feature[- ]branch|git (checkout|switch) -[bc]|create (a )?(new )?branch' 'worktree'
