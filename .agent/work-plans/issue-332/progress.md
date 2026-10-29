@@ -1475,3 +1475,13 @@ Checks: shellcheck --severity=warning clean on the six changed shell files; suit
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 11:01 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: address
+
+Owner's answer: "Yes, refresh both, then publish". Round 3 (ed1bcc04) approved with nothing open. Two AGENTS.md wording refreshes (Ask-First, approved now) go in before publish: the project_integration_audit.sh row says that at a parent root the audit reads the chosen instance's settings and repository, checks the instance's registration as well as the parent's, and skips the parent's own files; the Skill Worktree Exception says each allowlisted skill has one worktree type (research and inspiration-tracker workspace only, onboard-project project only). Then a round-4 convergence check and publish.
