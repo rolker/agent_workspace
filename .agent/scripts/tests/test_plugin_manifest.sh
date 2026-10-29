@@ -20,6 +20,10 @@
 # the rewritten manifest.
 #
 # Run: bash .agent/scripts/tests/test_plugin_manifest.sh
+#
+# Selection declaration for run_script_tests.sh --files (issue #410): the
+# skills-array check walks every .claude/skills/*/SKILL.md.
+# scans: .claude/skills/
 
 set -uo pipefail
 

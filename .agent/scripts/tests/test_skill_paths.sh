@@ -41,6 +41,11 @@
 #      does not cover, so that test would fail. Those files were checked by
 #      hand in #389.
 #
+# Selection declaration for run_script_tests.sh --files (issue #410):
+# guard (c) git-greps these whole prefixes, so a pointer added to any file
+# under them must select this suite.
+# scans: .agent/ .claude/ AGENTS.md Makefile
+#
 # Hermetic: reads tracked files only (git grep for guard (c)). No HOME
 # access, no network, no gh.
 #
