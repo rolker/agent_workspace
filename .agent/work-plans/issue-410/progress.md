@@ -707,3 +707,31 @@ Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 87/0 and `tes
 New synthetic cases in test_run_script_tests.sh (l): a `.py` runner reached by a suite maps str_a.py from `subprocess.run([sys.executable, "-c", "import str_a"])`, str_d.py from its docstring and str_f.py from an f-string's literal part. `from libpkg import w_mod` maps libpkg/w_mod.py and libpkg's init file, `import libpkg2` maps libpkg2's init file, and libpkg/other.py is not mapped. Five of these fail on the round-7 mapper. Real repository `--dump`: unchanged at 1601 lines, compared with the HEAD tree in a temporary worktree; no pair added or removed. Both boxes ticked by direct edit in `a414d207` (PR-mode entry).
 
 Hooks: `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)` with no SKIP passed every hook, script suites and shellcheck included, in 447 s. Direct runs under a private TMPDIR: `test_run_script_tests.sh` 94/0, `test_script_tests_hook_scope.sh` 239/0, no leftovers.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-29 12:30 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent aa4121f4bda159108, resume 3 of 3)
+
+**PR**: #411 at `73d86b66`
+**Depth**: Deep (reason: round 9 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: round 8's must-fix and suggestion and the fix diff `8ae7b355..73d86b66` (`a414d207`). What holds, probed through `Index.refs`:
+- The round-8 regression is gone for str literals. `run([sys.executable, "-c", "import a"])` maps a.py, with or without a following `check=True`, and so do two such calls on one line. An f-string's literal part (`f"import a; x = {1}"`), a `textwrap.dedent("""...""")` block and Python's implicit concatenation (`"import a, " "b"`) all map exactly. `"import a, " + "b"`, `f"import {m}"` and a prose docstring fall back.
+- The glued-closer rule cannot hide a Python continuation: once a quote is closed by `)`, `]` or `}`, Python cannot concatenate another string onto it, and a glued `]`/`}` hands Python a syntax error. The only bash construct it misreads is `${x:-"import a"}"b"`, where Python receives `import ab` and the mapper maps a.py. That is contrived and not a finding.
+- Package init files map correctly. `import lib` maps `lib/__init__.py`; `from lib import w` maps it and `lib/w.py`; `import pkg.sub.mod` maps both inits and the module; the shell path does the same.
+- The real repository's `--dump` is unchanged at 1601 lines.
+
+Specialists:
+- Static analysis: shellcheck is clean on both files.
+- Governance and plan drift: no change.
+- Claude adversarial: a lead probe on this resumed narrow check.
+- Cross-model: skipped (round-9 convergence check, per handoff).
+
+Targeted suites under a private TMPDIR: `test_run_script_tests.sh` 94/0 and `test_script_tests_hook_scope.sh` 239/0, no leftovers. Convergence: round 9, 1 mechanical must-fix (prev 1). `review_progress.sh verdict` says recommended (fix and ship).
+
+### Findings
+- [ ] (must-fix) Bytes literals in a `.py` file are not read. `_py_imports` hands only `str` constants to the piece parser, so `subprocess.run([sys.executable, "-"], input=b"import a\n")` maps nothing and does not fall back, and neither does `subprocess.run([sys.executable, "-c", b"import a"])`. Both are valid Python, and bytes stdin is a common way for a test to feed Python to a child interpreter. No instance exists in the tree today; I grepped in-scope `.py` files. Fix: also take `bytes` constants, decoded with `errors="replace"`, and add a synthetic `input=b"..."` case — `.agent/scripts/tests/suites_for_files.sh:386`
