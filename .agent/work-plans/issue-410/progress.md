@@ -982,3 +982,13 @@ both runs; Lint (pre-commit) and Validate Adapter Contract pending in both.
 None open.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 13:50 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer after the CI failure, verbatim: "Fix and merge" (and before it, "One-line fix, then merge"). The condition is met: main merged in (28f033fe), hub guard drift-proof, round 11 (e2b8d1df) and round 12 (9163ce99) approved, Integrated Review cd415fd3 at head 9163ce99 with nothing open. CI pending at this point; the host waits for it before merge_pr.sh.
