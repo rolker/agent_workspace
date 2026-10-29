@@ -261,3 +261,13 @@ Both round-2 must-fixes are now correctly specified, with tests that would fail 
 - [ ] Implement: scan-prefix declarations (`test_skill_paths.sh`, `test_script_tests_hook_scope.sh`) add their suite but do not count as a mapping for the unmapped-file `ALL` rule or the `tests/` exemption (exact declared files only); add a real-tree test that a currently unmapped in-scope file still yields `ALL`.
 - [ ] Suggestion: name the fourth suite in the `register_project.sh` hub-guard count (likely `test_skill_paths.sh`).
 - [ ] Suggestion: state that the out-of-scope rename test stages an in-scope edit alongside, and note in the PR that a deletion-only commit still skips the hook (CI backstop).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-29 09:33 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Owner, verbatim: "revise, but also launch bg agents to look into why the tests are slow, and to prepare for parallelization". Plan Review round 3 (7d267c0f) was ready with one implementation item (scan-prefix declarations must not count as a mapping for the unmapped-file ALL rule or the tests/ exemption) and two suggestions; the owner chose to fold them into the plan text first. The two background investigations (slow suites, parallel-runner readiness) are read-only and outside this plan; their reports feed the follow-up issue.
