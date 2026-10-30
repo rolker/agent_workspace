@@ -2005,3 +2005,22 @@ Checks: test_project_integration_audit 411 passed, 0 failed; test_skill_paths 12
 - [x] (must-fix) scrub_secrets still leaks a password split by whitespace: the join is skipped when the last word's part before "@" holds ":" or a "/" follows the "@", so `Get "https://user:abc SECRET tail:xxx@github.com/o/r"` prints `SECRET` and `cannot reach user:s3cr3t1 part:s3cr3t2@github.com:o/r` prints `user:s3cr3t1`; a query split by a space leaks its tail (`https://github.com/o/r?tok=abc def` keeps `def`). A word join cannot bound a URL holding spaces; redact from an ambiguous URL word to the end of the text, or print no gh text (Gemini, Codex, Claude adversarial) — `.agent/scripts/project_integration_audit.sh:431`
 - [x] (must-fix) The plain-character backstop depends on the locale: host_re/path_re bracket ranges collate under en_US.UTF-8 (this machine's LANG and LC_ALL), so `https://gîthub.com/o/r` is printed whole there and redacted under C.UTF-8; the header's "plain characters" claim is false in the owner's locale. Fix: LC_ALL=C for the script (or explicit sets) and a fixture run under en_US.UTF-8 (Claude adversarial) — `.agent/scripts/project_integration_audit.sh:348`
 - [x] (suggestion) gh output is cut with `head -c 200` before fact() scrubs it, so a cut inside a user part leaves `https://TOKENPREFIX` that reads as a host and is printed; scrub, then cut (needs gh to exit 0 with non-JSON output, so unlikely) (Codex) — `.agent/scripts/project_integration_audit.sh:637`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 13:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #414 at `9ecacc2f`
+**Addressed**: Local Review at `8398df0` (2026-10-30 12:38 -04:00)
+**Commits**: e4c55c4d, 9ecacc2f
+
+### Actions
+- [x] (must-fix) scrub_secrets' join over-joined ordinary evidence. Closed as a class, on the host's direction: no text from gh reaches the evidence, so there is nothing to join, and `scrub_secrets` is removed. Evidence that is not gh's is printed as it is: an "@" in a local remote's path (`$SANDBOX/srv/repo@2`) and in a manifest directory (`packages/@scope/pkg`) now print unchanged (fixtures). gh text that held ":" and "@" (`failed (exit 1): user …@…`) gives the fixed phrase. — `.agent/scripts/project_integration_audit.sh` (fact, gh_failed)
+- [x] (must-fix) scrub_secrets under-joined a URL holding spaces. A failed gh call's evidence is now `gh failed, exit <N>: <the call> (its message is not printed[; its first word: W])`, W only from a fixed list (GH_WORDS: HTTP GraphQL error failed could not no gh To Get Post). An answer that does not parse gives a fixed phrase. The round-3 texts (`https://user:abc SECRET tail:xxx@…`, a query split by a space, the scp run, a remote-helper command, a secret as the first word) all give the fixed phrase and never the secret (fixtures). remote_where gains a fail-closed guard: a network remote whose cut still holds "@" or "://" reads as unread (github unknown). The header and audit-project's unknown list describe the gh failure wording (pinned in test_skill_paths). — `.agent/scripts/project_integration_audit.sh`, `.claude/skills/audit-project/SKILL.md`, `.agent/scripts/tests/test_skill_paths.sh`
+- [x] (must-fix) The plain-character backstop depended on the locale. The script exports `LC_ALL=C` once, at the top. A fixture runs it under en_US.UTF-8 and C.UTF-8 with origin `https://gîthub.com/someone/clean`: unknown in both, the host not printed, the two outputs identical. Before the fix, bash under en_US.UTF-8 matched `gîthub.com` against `[A-Za-z0-9._~-]+` (checked by hand). — `.agent/scripts/project_integration_audit.sh:162`, `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] (suggestion) `head -c 200` cut gh's output before it was scrubbed. Removed with the rest of the gh text. gh exiting 0 with a URL or a bare token as its answer gives the fixed "gave no … counts (its answer is not printed)" phrase, with no secret printed (fixtures). — `.agent/scripts/project_integration_audit.sh` (ever_opened, repo view)
+
+Boxes ticked by editing the Local Review entry directly: `review_progress.sh findings` does not select a PR-mode Local Review (known defect).
+
+Checks: test_project_integration_audit 438 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP, main checkout's venv) passed every hook, validate-script-tests included.
