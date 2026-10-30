@@ -1910,3 +1910,18 @@ Reviewers:
 **Decision**: publish
 
 Owner's answer: "Publish (Recommended)". Round 5 of part 4 approved (0 must-fix, 1 suggestion: an "@" inside a URL path can print a wrong host in the evidence, no secret printed; handled in the post-push round if repeated).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-30 11:43 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #414 at `da86308`
+**Sources**: 2 (Local Review (Pre-Push) @ `9638dc8` (covers `da86308` via bookkeeping), CI rollup). Copilot's review at `da86308` is not a source: its check-run concluded "failure" and its only review body says it could not review for lack of quota (0 inline comments). 0 conversation comments. 10 older local entries with open boxes are stale (code changed since, verified by `sources`) and are not re-listed.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [ ] (should-fix, Local Review (Pre-Push) @ 9638dc8, covers da86308 via bookkeeping) Valid, reproduced at the head: `redact_url` takes an "@" inside a path that a "/" follows as the user separator, so a wrong host is printed. `https://github.com/o/r/x@y/z` gives `https://y/z`; `https://host/repos/foo@v2/bar.git` gives `https://v2/bar.git`. It is worse than the round-5 wording: `https://gitlab.com/x@github.com/someone/repo` gives `https://github.com/someone/repo`, so the github fact says yes and `gh repo view` is asked about a repository the remote does not name (read-only, no secret printed). Needs an "@" in a remote's path, which GitHub and GitLab names do not allow, so rare, but the cost is a wrong fact, not only wrong evidence. Fix: redact (github unknown) when the chosen user part holds "/", since that shape is ambiguous (a literal "/" in a password is not a valid URL authority either, so git does not send it as one); move the table's "/" and "://" password rows from read to unread, add the three URLs above as fixtures, and keep the header's backstop list in step. Not a must-fix: the merge gate does not hold on it — `.agent/scripts/project_integration_audit.sh:339`, `.agent/scripts/tests/test_project_integration_audit.sh`
+
+### False positives
