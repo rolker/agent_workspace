@@ -677,7 +677,8 @@ per ADR in `docs/decisions/` (18), in order. The ADRs are history and none is ed
 decision 2026-10-09, C1-c); this table is the only place the standing below is recorded.
 
 Standing takes one of four values. `in force`: the ADR's Status line says Accepted and nothing found
-contradicts it. `superseded`: a later ADR replaced it, as its Status line says. `superseded in
+contradicts it; the cell may carry an owner-decided note on a detail that differs here without
+contradicting the decision. `superseded`: a later ADR replaced it, as its Status line says. `superseded in
 practice`: the ADR is Accepted but the code does something else, stated in the cell. `Provisional`: the
 ADR's own Status line. Re-examined is `yes <date>` when the ADR was checked against the code, while
 this document was rewritten or since by `/audit-workspace`, and `not yet` when it was not; the date is
@@ -693,7 +694,7 @@ no section of this file carries that ADR.
 | [0004](decisions/0004-enforcement-hierarchy-for-agent-compliance.md) | A rule that matters is enforced at more than one layer; instruction files alone are not enough | in force | [Rules](#rules) | yes 2026-10-27 |
 | [0005](decisions/0005-layered-enforcement-strategy.md) | CI is the enforcement layer, pre-commit hooks the local mirror, framework hooks the early feedback; new rules go CI-first | in force | [Rules](#rules) | yes 2026-10-27 |
 | [0006](decisions/0006-adopt-agents-md-as-shared-instruction-file.md) | `AGENTS.md` holds the shared rules and each framework gets a thin adapter file | in force | [Decision register](#decision-register) | yes 2026-10-27 |
-| [0007](decisions/0007-retain-make-with-dependency-tracking.md) | Keep Make as the task runner, with stamp files for setup dependencies | in force (its "key behaviours" list describes the ROS fork's bootstrap/manifest/layer chain; here the stamps are setup-dev, then project and git-bug, and make test does not depend on build, Makefile lines 98-116, 182-193) | [Decision register](#decision-register) | yes 2026-10-27 |
+| [0007](decisions/0007-retain-make-with-dependency-tracking.md) | Keep Make as the task runner, with stamp files for setup dependencies | in force (its "key behaviours" list describes the ROS fork's bootstrap/manifest/layer chain; here the stamps are setup-dev, then project and git-bug, and make test does not depend on build) | [Decision register](#decision-register) | yes 2026-10-27 |
 | [0008](decisions/0008-permit-cross-reference-addendums-in-adrs.md) | An accepted ADR may gain a status note, a references list or link and typo fixes; anything else needs a superseding ADR | in force | [Documentation layers](#documentation-layers) | yes 2026-10-27 |
 | [0009](decisions/0009-python-package-management-policy.md) | Python tools go in the workspace `.venv` (from `requirements.txt`) or in pipx; PEP 668 is the guardrail | in force | [Decision register](#decision-register) | yes 2026-10-27 |
 | [0010](decisions/0010-git-bug-is-optional.md) | git-bug is installed by default and `skip-git-bug` opts out; scripts work without it | in force | [Decision register](#decision-register) | yes 2026-10-27 |
@@ -787,7 +788,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-28 | Documentation layers, Sessions and roots, Registry and adapters | Onboarding is built (#332 PR 3): Sessions and roots names the one exception to working only under the root (a project session writes its own project's settings file through `project_setting.sh set`, guarded to that project) and gains the onboarding bullet (`/agent-workspace:onboard-project`, the footprint questions, `project_integration_audit.sh`, offers only with `instructions=tracked`, the four answers and the `## Onboarding` roadmap section, every write waits for a yes); the Registry Target says both steps are built; Documentation layers says onboarding offers a project's Direction section. Sessions and roots is 101 lines, past the 60-line prompt: the two bullets name how the session-root rule is bent and what the project side does, which no single script header shows, so they stay; the onboarding steps themselves live in the skill | #332 | 836 |
 | 2026-10-28 | Sessions and roots | Review fix: the onboarding bullet says where the fix-now batch goes, the onboarding issue's feature branch or, for a project that uses no issues, a `skill/onboard-project-<timestamp>` branch from a project skill worktree (`onboard-project` joins `worktree_create.sh`'s skill allowlist) | #332 | 840 |
 | 2026-10-29 | Sessions and roots | Review fix (host decision, listed for the owner's veto): at a parent root onboarding reads, reports and fixes the chosen instance's repository alone (audit categories 1 to 5 read only the instance; category 6 verifies the instance's registration beside the parent's) and does not audit the parent root's own files | #332 | 843 |
-| 2026-10-30 | Decision register | Nine Re-examined cells (0001, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0018) set to `yes 2026-10-27` from the 2026-10-27 audit, each checked against code; 0007 stays in force with a note on how its key behaviours differ here (owner, 2026-10-27) | #405 | 844 |
+| 2026-10-30 | Decision register | Nine Re-examined cells (0001, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0018) set to `yes 2026-10-27` from the 2026-10-27 audit, each checked against code; 0007 stays in force with a note on how its key behaviours differ here (owner, 2026-10-27); the `in force` definition now admits such a note | #405 | 845 |
 
 ## Glossary
 
