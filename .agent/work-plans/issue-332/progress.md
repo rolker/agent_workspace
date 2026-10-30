@@ -1829,3 +1829,13 @@ Reviewers:
   - Add fixtures: a secret after an "@" in a query and in a fragment, with no user part.
   - `.agent/scripts/project_integration_audit.sh:301-316`
 - [ ] (suggestion) The final `${u%%[?#]*}` also cuts local and `file:///` paths, so `/home/me/repo#1` is printed as `/home/me/repo`. The "local path" evidence then names the wrong directory; classification is unaffected. Apply the cut to network URLs only — `.agent/scripts/project_integration_audit.sh:326`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 11:06 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fires on the cross-part count (issue 384); this is round 4 of part 4; one must-fix, a regression of the round-3 fix (stripping to the last "@" anywhere leaks a query or fragment holding "@" and loses the GitHub remote), and one suggestion (the query cut truncates local and file:/// paths); both mechanism; first host answer at rounds since the owner's of 2026-10-30 (round 3), so the next rounds answer is the owner's; third finding in the redaction mechanism, so this pass is told to close it by construction, not by another case)
+**After**: rounds
+**Decision**: address
+
+Direction to the fix pass: redact by construction. For a scheme URL, the user part is everything to the last "@" whose remainder has a "/" before any "?" or "#"; with no such "@", the authority (up to the first "/", "?" or "#") is stripped to its last "@". Then cut "?" and "#". Backstop: a result that still holds "@", "?", "#", or a ":" after "://" that is not a port is replaced by "<scheme>://<redacted>", so no secret can survive whatever the input; the scp form gets the same backstop (host part must hold no "@" or ":"). Forms with no authority (file:/// and local paths) keep their "?" and "#". Fixtures: the round-4 example, and a table over every form and every secret holding "?", "#", "@", "/", ":" and "://", asserting the secret never appears. Listed for the owner's veto.
