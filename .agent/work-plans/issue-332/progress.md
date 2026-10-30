@@ -1967,3 +1967,24 @@ Checks: test_project_integration_audit 386 passed, 0 failed; test_skill_paths 12
 - [x] (suggestion) scrub_secrets splits gh's error text on whitespace before redacting, so a URL with a space in its password leaks the part after the space: `Get "https://user:abc s3cr3tTOKEN@github.com/o/r"` prints `s3cr3tTOKEN@github.com/o/r` (Go escapes spaces in URLs it prints, so unlikely from gh) (Codex) — `.agent/scripts/project_integration_audit.sh:392`
 - [x] (suggestion) A scheme-form host holding a space is printed and can be misread: `https://local /x/y` normalises to `local /x/y` and the `${_N%% *}` test classes it as a local path; redact a host with whitespace (same fix as the first must-fix) — `.agent/scripts/project_integration_audit.sh:363`
 - [x] (suggestion) An ssh alias or GHE host with no "github" in its name (`git@work:o/r`, `git.corp.example`) gives github=no, and audit-project then skips branch protection, labels and the bridge with "no GitHub remote"; either treat a dotless scp/ssh host as unknown or word the no as "not github.com by name" and state the limit in the skill — `.agent/scripts/project_integration_audit.sh:482`, `.claude/skills/audit-project/SKILL.md:153`
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 12:31 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a7825ea1a4a670ea3, resume 3 of 3)
+
+**PR**: #414 at `59027ed7`
+**Addressed**: Local Review at `bbba75d` (2026-10-30 12:08 -04:00)
+**Commits**: 59027ed7
+
+### Actions
+- [x] (must-fix) Remote-helper URL printed whole. `redact_url` now redacts any input holding "::" (`<transport>::<address>`, and IPv6 hosts). It prints a result only in plain characters: a host of letters, digits and "._~-", a numeric port, and a path of those plus "/%+=,". No whitespace, quote or "@" can survive in either form. Fixtures: the review's `ext::sh -c "..."` command, `ext::<secret>`, quotes and spaces in a host or path, and IPv6. All give github unknown, with gh not called and the secret never printed. In gh's error text, a remote-helper address redacts the rest of the line — `.agent/scripts/project_integration_audit.sh` (redact_url, scrub_secrets)
+- [x] (must-fix) Authority-only GitHub URL gave github=no. `remote_where` now reads a scheme URL with no path as its host alone, lower-cased and without the port. So `https://github.com`, `https://github.com/`, `ssh://git@github.com` and `HTTPS://GitHub.com:443` are unknown ("on github.com, but the path is not <owner>/<repo>"), with gh not called (fixtures). The header and audit-project's list of unknown reasons say "or it has none" (pinned) — `.agent/scripts/project_integration_audit.sh` (remote_where)
+- [x] (suggestion) A password holding a space leaked through `scrub_secrets`. A word holding "@", with no ":" before it and a host name after it, is now joined back to the nearest word holding "://" (otherwise ":"). The joined run is redacted as one URL. Trailing punctuation is set aside and put back, and a stand-in already in the evidence is kept as it is. Fixtures: quoted, unquoted and scp runs, and an exact check that the scrubbed line still says what failed — `.agent/scripts/project_integration_audit.sh` (scrub_secrets)
+- [x] (suggestion) A scheme host holding a space is redacted by the plain-character backstop from the first item. `https://local /someone/clean` gives github unknown, never a local path (fixture) — `.agent/scripts/project_integration_audit.sh` (redact_url)
+- [x] (suggestion) The choice: github stays read by name. Treating dotless hosts as unknown would still miss GitHub Enterprise servers whose names have dots. A no now says so: the github evidence ends "not github.com by name"; the issues and prs evidence says "no remote is github.com by name, so gh was not asked about its …". audit-project's facts table states the limit (a GitHub Enterprise server, or an ssh alias with no "github" in its name, reads as no), and its skip reason is `skipped: no remote is github.com by name (github=no)`. onboard-project's push step uses the same words. Pinned in test_skill_paths, with fixtures for `git.corp.example` and `git@work:` — `.claude/skills/audit-project/SKILL.md`, `.claude/skills/onboard-project/SKILL.md`
+
+Boxes ticked by editing the Local Review entry directly: `review_progress.sh findings` does not select a PR-mode Local Review (known defect, inbox 2026-10-29).
+
+Checks: test_project_integration_audit 411 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP) passed every hook; validate-script-tests ran every suite.
