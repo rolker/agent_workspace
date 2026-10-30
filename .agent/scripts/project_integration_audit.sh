@@ -76,7 +76,11 @@
 #                                     CMakeLists.txt with project()) in two
 #                                     or more directories, tracked files
 #                                     only, node_modules/, vendor/ and
-#                                     third_party/ left out; unknown
+#                                     third_party/ left out (a root that
+#                                     is not a git repository: every
+#                                     file at any depth, and colcon's
+#                                     build/, install/ and log/ left out
+#                                     too); unknown
 #                                     when the scan fails (git ls-files
 #                                     or find exits non-zero, or a
 #                                     CMakeLists.txt cannot be read) and
@@ -595,7 +599,8 @@ if [ "$FACTS" -eq 1 ]; then
             _NAMES=()
             for m in "${MANIFESTS[@]}"; do _NAMES+=(-o -name "$m"); done
             while IFS= read -r -d '' p; do _FILES+=("${p#"$PROOT_ABS"/}"); done \
-                < <(find "$PROOT_ABS" -maxdepth 4 \( -name .git -o -name node_modules -o -name vendor -o -name third_party \) -prune \
+                < <(find "$PROOT_ABS" \( -name .git -o -name node_modules -o -name vendor -o -name third_party \
+                        -o -name build -o -name install -o -name log \) -prune \
                         -o -type f \( -false "${_NAMES[@]}" \) -print0 2>/dev/null)
             wait "$!" || _RC=$?
             [ "$_RC" -eq 0 ] || _SCAN_WHY="find failed (exit $_RC; a directory it could not read, perhaps), so not every manifest was seen"

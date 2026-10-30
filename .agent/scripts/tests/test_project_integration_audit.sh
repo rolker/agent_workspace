@@ -977,6 +977,21 @@ check "no evidence of any network-remote run holds a remote URL ('://'), in eith
 check "and none holds the secret" bash -c '! grep -qiF s3cr3tTOKEN <<< "$1"' _ "$NET_ALL"
 facts "$NG"
 check "a root that is not a git repository: github no (got: $(fev github))" [ "$(fval github)" = "no" ]
+# A colcon-shaped root that is not a git repository: the packages sit six
+# levels down (src/<repo>/<group>/<sub>/<pkg>/package.xml), with no depth
+# cap on the scan; colcon's build/, install/ and log/ are left out.
+for _d in src/repo_a/group/sub/pkg_a src/repo_b/group/sub/pkg_b; do
+    mkdir -p "$NG/$_d"
+    printf '<package/>\n' > "$NG/$_d/package.xml"
+done
+for _d in build/pkg_c install/pkg_c/share/pkg_c log/latest; do
+    mkdir -p "$NG/$_d"
+    printf '<package/>\n' > "$NG/$_d/package.xml"
+done
+facts "$NG"
+check "a colcon-shaped non-git root, manifests six deep: multi_component yes, build/ install/ log/ left out (got: $(fval multi_component)/$(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "yes/component manifests in 2 directories: src/repo_a/group/sub/pkg_a, src/repo_b/group/sub/pkg_b" ]
+rm -rf "$NG/src" "$NG/build" "$NG/install" "$NG/log"
 # A manifest scan that fails cannot say no: multi_component unknown,
 # saying why. find meeting a directory it cannot read (skipped when
 # running as root, which reads it anyway):
