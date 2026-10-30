@@ -642,7 +642,7 @@ if [ "$FACTS" -eq 1 ]; then
     if [ "$FORMAT" = "tsv" ]; then
         printf '%s' "$FACT_LINES"
     else
-        echo "Facts: ${AUD_NAME:-$NAME}${PROOT:+ at $PROOT}"
+        echo "Facts: ${AUD_NAME:-$NAME}${PROOT:+ at $(clean "$PROOT")}"
         printf '%s' "$FACT_LINES" | awk -F'\t' 'NF { printf "%s: %s -- %s\n", $1, $2, $3 }'
     fi
     exit 0
@@ -1016,7 +1016,7 @@ fi
 if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ]; then
     echo "Integration audit: $NAME ($TYPE) at $SESSION_ABS"
     if [ -n "$SNAME" ]; then
-        echo "audited: instance $SNAME at $PROOT, its settings and its repository (a parent root has no settings of its own, and its own files are not audited)"
+        echo "audited: instance $SNAME at $(clean "$PROOT"), its settings and its repository (a parent root has no settings of its own, and its own files are not audited)"
     else
         if [ -z "$(registry_instances "$MAIN_ROOT" "$NAME" 2>/dev/null)" ]; then
             echo "audited: no instance (none registered; register one first)"
@@ -1025,7 +1025,7 @@ if [ "$TYPE" = "$REGISTRY_PARENT_TYPE" ]; then
         fi
     fi
 else
-    echo "Integration audit: $NAME ($TYPE) at $PROOT"
+    echo "Integration audit: $NAME ($TYPE) at $(clean "$PROOT")"
 fi
 echo "instructions: ${INSTRUCTIONS:-not set}"
 declare -A CAT_NAME=(
