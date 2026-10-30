@@ -157,8 +157,11 @@ fact could not be read. Which facts go `unknown`, and for what:
   `--instance`) or none registered, or the root not on disk. `github` is
   also `unknown` when its remote's host only looks like GitHub (an ssh
   host alias such as `github.com-work`, GitHub Enterprise), when it is on
-  github.com but its path is not `<owner>/<repo>`, or when that remote is
-  not on GitHub but another one is.
+  github.com but its path is not `<owner>/<repo>`, when its URL could not
+  be cut to host and path safely (a user part holding `?` or `#`, an `@`
+  in a query with no path before it, or another shape that is not host
+  and path: the URL is not printed and the server it names is not read),
+  or when that remote is not on GitHub but another one is or may be.
 - `issues` and `prs`: whenever `github` is `unknown`, and on any gh
   problem — gh or jq missing, gh not signed in or offline, an answer
   without the counts or the list asked for. A gh problem leaves `github`,
@@ -483,10 +486,11 @@ pull request bodies from quoted heredocs. With these changes:
 - `github=no`: leave the edits on the branch, push nothing, and say where
   the branch is;
 - `github=unknown` (a host that only looks like GitHub, a github.com path
-  that is not `<owner>/<repo>`, or GitHub on another remote): ask which
-  repository on github.com and which remote it is before any issue, push
-  or pull request, and use the answer; without one, open nothing, push
-  nothing, and say where the branch is.
+  that is not `<owner>/<repo>`, a URL that could not be printed safely, or
+  GitHub on another remote): ask which repository on github.com and which
+  remote it is before any issue, push or pull request, and use the
+  answer; without one, open nothing, push nothing, and say where the
+  branch is.
 
 Generated CI workflows and pre-commit configs must work in the project on
 their own, with no dependency on workspace scripts or paths.

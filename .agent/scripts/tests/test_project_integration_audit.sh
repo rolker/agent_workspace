@@ -21,10 +21,12 @@
 # edge cases: gh or jq missing, the list calls failing after repo view
 # answered, a JSON answer that is not a list, a credential in a remote URL
 # or a secret anywhere in it, in any form: user part, query, fragment,
-# https, ssh, scp, file://, a password holding "?", "#", "@" or "/" in
-# each of those forms (GitHub still read as GitHub), on origin or another
-# remote, or in gh's error text (never printed, never passed to gh), a
-# github.com path that is not
+# https, ssh, scp, file://, a secret holding "?", "#", "@", "/", ":" or
+# "://" in each part of each form, an "@" in a query or fragment with no
+# user part, on origin or another remote, or in gh's error text (never
+# printed, never passed to gh; GitHub read as GitHub, or unknown when the
+# URL cannot be cut safely), local and file:/// paths keeping their "?"
+# and "#", a github.com path that is not
 # owner/repo (unknown), GH_HOST naming another server, an ssh host alias or
 # GitHub on a remote other than the one checked (unknown), no commits, a
 # remote not named origin, and a root nested inside another repository.
@@ -768,28 +770,103 @@ facts "$CLEAN"
 check "a file:// remote with a user part and a query: a local path, printed without either (got: $(fev github))" \
     [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: file://localhost$SANDBOX/projects/factgh" ]
 no_secret "a file:// remote"
-# The class behind those: a password holding "?", "#", "@" or "/", in
-# each form. redact_url strips the user part before the query and
-# fragment, so no part of the password is kept and the host is still
-# read. The secret marker sits on both sides of the character, so a kept
-# prefix or a kept suffix both show.
-for _c in '?' '#' '@' '/'; do
+# The class behind those, as a table: a secret holding "?", "#", "@",
+# "/", ":" or "://", in the user part, the query or the fragment of each
+# form (https, ssh, scp, file:// with a host). The secret marker sits on
+# both sides of the character, so a kept prefix or a kept suffix both
+# show. The secret never appears, in either output format or in gh's
+# arguments, and the github fact is either read (GitHub, gh asked about
+# github.com/someone/clean alone) or unknown (the URL could not be cut
+# safely, gh not called): never a wrong host.
+gh_read() { # <label>: github yes, github.com/someone/clean, gh asked about that alone
+    check "$1: github yes, github.com/someone/clean, gh asked about that alone (got: $(fval github)/$(fev github) | $(head -n1 "$GH_LOG"))" \
+        bash -c '[ "$1" = "yes/remote '"'"'origin'"'"' is github.com/someone/clean" ] && [ "$2" = "repo view github.com/someone/clean --json hasIssuesEnabled,issues,pullRequests" ]' \
+        _ "$(fval github)/$(fev github)" "$(head -n1 "$GH_LOG")"
+}
+gh_unread() { # <label>: github unknown, the URL not printed, gh not called
+    check "$1: github unknown, its URL not printed, gh not called (got: $(fval github)/$(fev github))" \
+        bash -c '[ "$1" = unknown ] && grep -qF "has a URL that could not be printed safely" <<< "$2" && [ ! -s "$3" ]' \
+        _ "$(fval github)" "$(fev github)" "$GH_LOG"
+}
+for _c in '?' '#' '@' '/' ':' '://'; do
     _pw="s3cr3tTOKEN${_c}s3cr3tTOKEN"
-    for _cred_url in "https://someone:${_pw}@github.com/someone/clean.git" \
-            "ssh://git:${_pw}@ssh.github.com:443/someone/clean.git" \
-            "someone:${_pw}@github.com:someone/clean.git"; do
-        gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+    # A password holding "?" or "#" cannot be told from a query holding
+    # "@", so that URL is not read; any other is read past its user part.
+    case "$_c" in '?'|'#') _user_read=0 ;; *) _user_read=1 ;; esac
+    for _form in https ssh scp; do
+        case "$_form" in
+            https) _base="https://github.com/someone/clean.git"; _cred="https://someone:${_pw}@github.com/someone/clean.git" ;;
+            ssh)   _base="ssh://git@ssh.github.com:443/someone/clean.git"; _cred="ssh://git:${_pw}@ssh.github.com:443/someone/clean.git" ;;
+            scp)   _base="git@github.com:someone/clean.git"; _cred="someone:${_pw}@github.com:someone/clean.git" ;;
+        esac
+        gitq -C "$CLEAN" remote set-url origin "$_cred"
         facts "$CLEAN"
-        check "a password holding '$_c' in a GitHub remote ($_cred_url): github yes, github.com/someone/clean, gh asked about that alone (got: $(fval github)/$(fev github) | $(head -n1 "$GH_LOG"))" \
-            bash -c '[ "$1" = "yes/remote '"'"'origin'"'"' is github.com/someone/clean" ] && [ "$2" = "repo view github.com/someone/clean --json hasIssuesEnabled,issues,pullRequests" ]' \
-            _ "$(fval github)/$(fev github)" "$(head -n1 "$GH_LOG")"
-        no_secret "a password holding '$_c' in GitHub remote $_cred_url"
+        if [ "$_user_read" -eq 1 ]; then
+            gh_read "a password holding '$_c' ($_cred)"
+        else
+            gh_unread "a password holding '$_c' ($_cred)"
+        fi
+        no_secret "a password holding '$_c' ($_cred)"
+        for _cred in "$_base?token=${_pw}" "$_base#${_pw}"; do
+            gitq -C "$CLEAN" remote set-url origin "$_cred"
+            facts "$CLEAN"
+            gh_read "a query or fragment holding '$_c' ($_cred)"
+            no_secret "a query or fragment holding '$_c' ($_cred)"
+        done
     done
     gitq -C "$CLEAN" remote set-url origin "file://someone:${_pw}@localhost$SANDBOX/projects/factgh"
     facts "$CLEAN"
-    check "a password holding '$_c' in a file:// remote: a local path, printed without it (got: $(fev github))" \
-        [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: file://localhost$SANDBOX/projects/factgh" ]
+    if [ "$_user_read" -eq 1 ]; then
+        _want="file://localhost$SANDBOX/projects/factgh"
+    else
+        _want="file://<redacted>"
+    fi
+    check "a password holding '$_c' in a file:// remote: a local path, printed as $_want (got: $(fev github))" \
+        [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: $_want" ]
     no_secret "a password holding '$_c' in a file:// remote"
+    for _cred in "file://localhost$SANDBOX/projects/factgh?token=${_pw}" "file://localhost$SANDBOX/projects/factgh#${_pw}"; do
+        gitq -C "$CLEAN" remote set-url origin "$_cred"
+        facts "$CLEAN"
+        check "a query or fragment holding '$_c' in a file:// remote with a host: cut (got: $(fev github))" \
+            [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: file://localhost$SANDBOX/projects/factgh" ]
+        no_secret "a query or fragment holding '$_c' in a file:// remote with a host"
+    done
+done
+# No user part, but an "@" in the query or fragment: it is not read as
+# one. With a path before it the remote is read; with none, or when the
+# text after the "@" could be a host and path, the URL is not read.
+for _cred_url in "https://github.com/someone/clean?user=me@x.com&token=s3cr3tTOKEN" \
+        "https://github.com/someone/clean#frag@s3cr3tTOKEN" \
+        "git@github.com:someone/clean.git?user=me@x.com&token=s3cr3tTOKEN"; do
+    gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+    facts "$CLEAN"
+    gh_read "an '@' in the query or fragment of a remote with no user part ($_cred_url)"
+    no_secret "an '@' in the query or fragment of a remote with no user part ($_cred_url)"
+done
+for _cred_url in "https://github.com?user=me@x.com&token=s3cr3tTOKEN" \
+        "https://s3cr3tTOKEN?s3cr3tTOKEN@github.com" \
+        "https://github.com/someone/clean?next=a@b/c&token=s3cr3tTOKEN" \
+        "git@github.com:someone/clean?x=a@b:c&token=s3cr3tTOKEN"; do
+    gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+    facts "$CLEAN"
+    gh_unread "an '@' that may end a user part or sit in a query ($_cred_url)"
+    no_secret "an '@' that may end a user part or sit in a query ($_cred_url)"
+done
+# A second remote that could not be read may be on GitHub: unknown.
+gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
+gitq -C "$CLEAN" remote add upstream "https://someone:s3cr3tTOKEN?s3cr3tTOKEN@github.com/someone/clean.git"
+facts "$CLEAN"
+check "a second remote whose URL could not be printed safely: github unknown, saying so (got: $(fval github)/$(fev github))" \
+    bash -c '[ "$1" = unknown ] && grep -qF "but remote '"'"'upstream'"'"' has a URL that could not be printed safely and may be on GitHub" <<< "$2"' \
+    _ "$(fval github)" "$(fev github)"
+no_secret "a second remote whose URL could not be printed safely"
+gitq -C "$CLEAN" remote remove upstream
+# Forms with no authority keep their "?" and "#": part of the path there.
+for _local in "$SANDBOX/projects/factgh?x#1" "file://$SANDBOX/projects/factgh?x#1"; do
+    gitq -C "$CLEAN" remote set-url origin "$_local"
+    facts "$CLEAN"
+    check "a local path or file:/// remote keeps its '?' and '#' ($_local) (got: $(fev github))" \
+        [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: $_local" ]
 done
 gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
 gitq -C "$CLEAN" remote add upstream "https://someone:s3cr3tTOKEN@github.com/someone/clean?token=s3cr3tTOKEN"

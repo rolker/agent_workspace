@@ -556,6 +556,8 @@ if [[ -f "$AUD" ]]; then
     has "$AUD" "audit-project: github=unknown asks before any GitHub write and leaves the GitHub checks not checked" \
         '`github=unknown` (a host that only looks like GitHub' \
         'ask which repository on github.com and which remote it is before any issue, push or pull request' \
+        'a URL that could not be printed safely' \
+        'when its URL could not be cut to host and path safely' \
         '`not checked: github=unknown (<the fact'"'"'s evidence>)`' \
         'and the branch is pushed to `<remote>`, both as the `github` fact names them'
     no_unquoted_heredoc "$AUD" audit-project

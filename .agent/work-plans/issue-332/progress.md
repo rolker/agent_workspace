@@ -1820,7 +1820,7 @@ Reviewers:
 - Cross-model: skipped (round-19 convergence check, per handoff).
 
 ### Findings
-- [ ] (must-fix) `redact_url` now strips to the last "@" in the whole URL, so an "@" in the query or fragment of a URL with no user part is read as the user separator. What follows it reaches the evidence, and `scrub_secrets` does not catch it (reproduced):
+- [x] (must-fix) `redact_url` now strips to the last "@" in the whole URL, so an "@" in the query or fragment of a URL with no user part is read as the user separator. What follows it reaches the evidence, and `scrub_secrets` does not catch it (reproduced):
   - `https://github.com/o/r?user=me@x.com&token=SECRET` gives `remote 'origin' is https/x.com&token=secret`;
   - `https://github.com/o/r#frag@SECRET` gives `https/secret`;
   - the GitHub remote is also lost.
@@ -1828,7 +1828,7 @@ Reviewers:
   - Fix: the user part ends at the last "@" whose remainder has a "/" before any "?" or "#". With no such "@", there is no user part. Then cut the query and fragment.
   - Add fixtures: a secret after an "@" in a query and in a fragment, with no user part.
   - `.agent/scripts/project_integration_audit.sh:301-316`
-- [ ] (suggestion) The final `${u%%[?#]*}` also cuts local and `file:///` paths, so `/home/me/repo#1` is printed as `/home/me/repo`. The "local path" evidence then names the wrong directory; classification is unaffected. Apply the cut to network URLs only — `.agent/scripts/project_integration_audit.sh:326`
+- [x] (suggestion) The final `${u%%[?#]*}` also cuts local and `file:///` paths, so `/home/me/repo#1` is printed as `/home/me/repo`. The "local path" evidence then names the wrong directory; classification is unaffected. Apply the cut to network URLs only — `.agent/scripts/project_integration_audit.sh:326`
 
 ## Checkpoint
 **Status**: complete
