@@ -520,6 +520,14 @@ if [[ -f "$AUD" ]]; then
     has "$AUD" "audit-project: the gh calls name github.com, and step 10 gives the audit's own pull request body" \
         '`gh api --hostname github.com`' 'gh label list -R github.com/<owner>/<repo>' \
         'Fixes from the project audit:' 'Found by the `audit-project` skill.'
+    # Classic protection's 404 means "not protected" only with admin
+    # access; without it the same 404 hides a protected branch.
+    has "$AUD" "audit-project: branch protection asks for admin access before reading classic protection's 404" \
+        "gh api --hostname github.com repos/<owner>/<repo> --jq '.permissions.admin'" \
+        '| `true` | 404 with the message `Branch not protected`' \
+        '| `false` | not made | `not checked: classic branch protection needs admin access` |' \
+        'A 404 is never read as missing without admin access' \
+        'puts branch protection **in place**, whatever'
     has "$AUD" "audit-project: the integration script replaces the stale workspace check, report-only" \
         '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --format text [--instance <settings-name>]' \
         '**Report-only by default.**' 'never pick one' 'Governance Layering'

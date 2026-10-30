@@ -270,11 +270,32 @@ gh api --hostname github.com repos/<owner>/<repo>/rules/branches/<default-branch
 gh label list -R github.com/<owner>/<repo> --search "component:" --json name --jq '.[].name'
 ```
 
-The rules call shows rulesets. Classic branch protection is read with
-`gh api --hostname github.com repos/<owner>/<repo>/branches/<default-branch>/protection`, which
-needs admin access; the item is missing only when neither shows a pull
-request rule. A call that fails (no access, offline) makes its item `not
-checked: <reason>`; a permission problem never fails the run.
+The rules call shows rulesets and needs read access only. A
+`pull_request` rule there puts branch protection **in place**, whatever
+classic protection says. Otherwise classic branch protection decides, and
+GitHub answers its call with 404 both when the branch is not protected and
+when the caller lacks admin access, so ask for admin access first:
+
+```bash
+gh api --hostname github.com repos/<owner>/<repo> --jq '.permissions.admin'
+gh api --hostname github.com repos/<owner>/<repo>/branches/<default-branch>/protection --jq '.required_pull_request_reviews != null'
+```
+
+| Admin access | Protection call | Branch protection |
+|--------------|-----------------|-------------------|
+| `true` | `true` | **in place** |
+| `true` | `false` (protected, no pull request required) | **missing** |
+| `true` | 404 with the message `Branch not protected` (gh prints `Branch not protected (HTTP 404)`) | **missing** |
+| `true` | any other failure | `not checked: <the call's error>` |
+| `false` | not made | `not checked: classic branch protection needs admin access` |
+| the access call fails | not made | `not checked: <the call's error>` |
+
+A 404 is never read as missing without admin access: without it the same
+404 hides a protected branch. When the rules call itself fails (offline),
+the item is `not checked: <reason>` unless the protection call shows
+required pull request reviews. Copilot auto-review lives only in the
+rules, so a failed rules call leaves it `not checked: <reason>`; a
+permission problem never fails the run.
 
 ### 9. Integration audit
 
