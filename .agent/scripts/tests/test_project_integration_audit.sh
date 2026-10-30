@@ -751,8 +751,7 @@ export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":1},"pullReq
 for _cred_url in "https://github.com/someone/clean?token=s3cr3tTOKEN" \
         "https://github.com/someone/clean.git#s3cr3tTOKEN" \
         "https://someone:s3cr3tTOKEN@github.com/someone/clean.git" \
-        "ssh://git:s3cr3tTOKEN@ssh.github.com:443/someone/clean.git" \
-        "someone:s3cr3tTOKEN@github.com:someone/clean.git"; do
+        "ssh://git:s3cr3tTOKEN@ssh.github.com:443/someone/clean.git"; do
     gitq -C "$CLEAN" remote set-url origin "$_cred_url"
     facts "$CLEAN"
     check "a secret in a GitHub remote ($_cred_url): github yes, github.com/someone/clean, gh asked about that alone (got: $(fval github)/$(fev github) | $(head -n1 "$GH_LOG"))" \
@@ -761,8 +760,7 @@ for _cred_url in "https://github.com/someone/clean?token=s3cr3tTOKEN" \
     no_secret "GitHub remote $_cred_url"
 done
 for _cred_url in "https://gitlab.example.invalid/someone/clean?private_token=s3cr3tTOKEN" \
-        "ssh://someone:s3cr3tTOKEN@gitlab.example.invalid:2222/someone/clean.git" \
-        "someone:s3cr3tTOKEN@gitlab.example.invalid:someone/clean.git"; do
+        "ssh://someone:s3cr3tTOKEN@gitlab.example.invalid:2222/someone/clean.git"; do
     gitq -C "$CLEAN" remote set-url origin "$_cred_url"
     facts "$CLEAN"
     check "a secret in another host's remote ($_cred_url): github no, host and path only (got: $(fev github))" \
@@ -796,9 +794,13 @@ for _c in '?' '#' '@' '/' ':' '://'; do
     _pw="s3cr3tTOKEN${_c}s3cr3tTOKEN"
     # A password holding "?" or "#" cannot be told from a query holding
     # "@", nor one holding "/" (or "://") from a path holding "@", so that
-    # URL is not read; any other is read past its user part.
+    # URL is not read; any other is read past its user part. The scp form
+    # never is: git takes its host from the text before the first ":", so
+    # a ":" in its user part makes git contact another host.
     case "$_c" in '?'|'#'|'/'|'://') _user_read=0 ;; *) _user_read=1 ;; esac
     for _form in https ssh scp; do
+        _form_read="$_user_read"
+        [ "$_form" = scp ] && _form_read=0
         case "$_form" in
             https) _base="https://github.com/someone/clean.git"; _cred="https://someone:${_pw}@github.com/someone/clean.git" ;;
             ssh)   _base="ssh://git@ssh.github.com:443/someone/clean.git"; _cred="ssh://git:${_pw}@ssh.github.com:443/someone/clean.git" ;;
@@ -806,7 +808,7 @@ for _c in '?' '#' '@' '/' ':' '://'; do
         esac
         gitq -C "$CLEAN" remote set-url origin "$_cred"
         facts "$CLEAN"
-        if [ "$_user_read" -eq 1 ]; then
+        if [ "$_form_read" -eq 1 ]; then
             gh_read "a password holding '$_c' ($_cred)"
         else
             gh_unread "a password holding '$_c' ($_cred)"
@@ -844,7 +846,8 @@ done
 # as GitHub), the URL is not read and gh is not called.
 for _cred_url in "https://github.com/someone/clean?user=me@x.com&token=s3cr3tTOKEN" \
         "https://github.com/someone/clean#frag@s3cr3tTOKEN" \
-        "git@github.com:someone/clean.git?user=me@x.com&token=s3cr3tTOKEN"; do
+        "git@github.com:someone/clean.git?user=me@x.com&token=s3cr3tTOKEN" \
+        "git@github.com:someone/clean?x=a@b:c&token=s3cr3tTOKEN"; do
     gitq -C "$CLEAN" remote set-url origin "$_cred_url"
     facts "$CLEAN"
     gh_read "an '@' in the query or fragment of a remote with no user part ($_cred_url)"
@@ -853,7 +856,6 @@ done
 for _cred_url in "https://github.com?user=me@x.com&token=s3cr3tTOKEN" \
         "https://s3cr3tTOKEN?s3cr3tTOKEN@github.com" \
         "https://github.com/someone/clean?next=a@b/c&token=s3cr3tTOKEN" \
-        "git@github.com:someone/clean?x=a@b:c&token=s3cr3tTOKEN" \
         "https://github.com/someone/clean/x@y/z" \
         "https://example.invalid/repos/foo@v2/bar.git" \
         "https://gitlab.com/x@github.com/someone/clean" \
@@ -878,6 +880,22 @@ for _cred_url in 'ext::sh -c "curl -H X-Token:s3cr3tTOKEN https://github.com/som
     facts "$CLEAN"
     gh_unread "not a plain cut URL ($_cred_url)"
     no_secret "not a plain cut URL ($_cred_url)"
+done
+# The scp form: git contacts the host before the first ":", so that text
+# must be a plain [user@]host. A ":" or "@" in the user part would print
+# github.com while git contacts host x (or tok): not read, gh not called.
+for _cred_url in "x:y@github.com:someone/clean" "tok:s3cr3tTOKEN@github.com:someone/clean" \
+        "someone:s3cr3tTOKEN@gitlab.example.invalid:someone/clean.git" \
+        "a@b@github.com:someone/clean" "\"x\"@github.com:someone/clean"; do
+    gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+    facts "$CLEAN"
+    gh_unread "an scp host that is not a plain name ($_cred_url)"
+    no_secret "an scp host that is not a plain name ($_cred_url)"
+done
+for _cred_url in "user@github.com:someone/clean" "github.com:someone/clean"; do
+    gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+    facts "$CLEAN"
+    gh_read "an scp remote with a plain [user@]host ($_cred_url)"
 done
 # The plain-character rule is byte-based whatever the caller's locale:
 # under en_US.UTF-8 a bracket range such as [A-Za-z] can match a letter

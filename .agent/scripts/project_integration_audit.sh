@@ -49,8 +49,14 @@
 #                                     <owner>/<repo> (or it has none),
 #                                     when its URL could
 #                                     not be cut safely (redact_url's
-#                                     rule), or when it is not on GitHub
-#                                     but another remote is or may be
+#                                     rule; in the scp form
+#                                     [user@]host:path the text before
+#                                     the first ":" must be a plain
+#                                     [user@]host, the host git
+#                                     contacts, so x:y@github.com:o/r
+#                                     is not read), or when it is not
+#                                     on GitHub but another remote is
+#                                     or may be
 #                    issues           it uses GitHub issues: enabled, and
 #                                     at least one ever opened (gh repo
 #                                     view, then gh issue list --state all
@@ -323,9 +329,16 @@ if [ "$FACTS" -eq 1 ]; then
     #      to its last "@" (user:secret@host, no path), if it holds one.
     #   2. Then the query and fragment: everything from the first "?" or
     #      "#" left.
-    # The scp form [user[:secret]@]host:path (no scheme, a ":" before the
-    # first "/"): the user part is everything to the last "@" before the
-    # last ":"; then the query and fragment, as above.
+    # The scp form [user@]host:path (no scheme, a ":" before the first
+    # "/"): git takes the host from the text before the first ":", so
+    # that text must be a plain host name, after at most a plain user and
+    # an "@" (letters, digits, ".", "_" and "-"). Anything else there is
+    # redacted: a ":" or "@" in the user part (x:y@github.com:o/r and
+    # tok:en@github.com:o/r make git contact host x or tok, not
+    # github.com), a space, a quote. The rest, after that first ":", is
+    # the path: its query and fragment are cut, as above, and what is left
+    # must be a plain path (so no "@": git@gitlab.com:x@github.com:o/r is
+    # gitlab.com with the path x@github.com:o/r, never GitHub).
     #
     # Backstop, by construction: the input is printed only when it is
     # unambiguous and the result has the shape of a cut URL. Otherwise
@@ -340,8 +353,8 @@ if [ "$FACTS" -eq 1 ]; then
     #     from a path holding "@", which would print another host
     #     (https://gitlab.com/x@github.com/o/r would read as GitHub); git
     #     does not send such a password as one either;
-    #   - scp form: the user part holds a ":" after an "@", so it has the
-    #     shape user@host:path itself (git@gitlab.com:x@github.com:o/r);
+    #   - scp form: the text before the first ":" is not [user@]host in
+    #     plain characters (git's host would not be the one printed);
     #   - an "@" is left after a "?" or "#" with no path before it
     #     (https://tok?en@host, https://host?q=a@b);
     #   - the result is not host[:port][/path] (scheme form) or host:path
@@ -359,7 +372,7 @@ if [ "$FACTS" -eq 1 ]; then
     # scheme, no ":" before its first "/"), which git never sends
     # anywhere; one holding "::" is still redacted.
     redact_url() {
-        local u="$1" scheme rest user head lead hasuser=0
+        local u="$1" scheme rest user head hasuser=0
         local host_re='[A-Za-z0-9._~-]+' path_re='[A-Za-z0-9._~%+=,/-]*'
         if [[ "$u" == *::* ]]; then
             printf '<redacted>'
@@ -400,15 +413,17 @@ if [ "$FACTS" -eq 1 ]; then
             printf '%s' "$u"
             return 0
         fi
-        lead="${u%:*}"
-        if [[ "$lead" == *@* ]]; then
-            user="${lead%@*}"
-            [[ "$user" == *[/?#]* || "$user" == *@*:* ]] && { printf '<redacted>'; return 0; }
-            u="${u#"$user"@}"
+        # git's host: the text before the first ":", after at most a
+        # plain user and an "@"; everything after that ":" is the path.
+        if ! [[ "${u%%:*}" =~ ^([A-Za-z0-9._-]+@)?([A-Za-z0-9._-]+)$ ]]; then
+            printf '<redacted>'
+            return 0
         fi
-        u="${u%%[?#]*}"
-        if [[ "$u" =~ ^${host_re}:${path_re}$ ]]; then
-            printf '%s' "$u"
+        head="${BASH_REMATCH[2]}"
+        rest="${u#*:}"
+        rest="${rest%%[?#]*}"
+        if [[ "$rest" =~ ^${path_re}$ ]]; then
+            printf '%s:%s' "$head" "$rest"
         else
             printf '<redacted>'
         fi
@@ -509,7 +524,7 @@ if [ "$FACTS" -eq 1 ]; then
             fact github no "the repository has no remote"
         elif [ "$_N" = "unread" ]; then
             GH_STATE="unknown"
-            GH_WHY="remote '$REMOTE' has a URL that could not be printed safely (a remote-helper <transport>::<address>, a user part holding \"/\", \"?\" or \"#\", an \"@\" in a path or in a query with no path before it, or a host or path not in plain characters, such as one holding a space or a quote), so which server it names was not read"
+            GH_WHY="remote '$REMOTE' has a URL that could not be printed safely (a remote-helper <transport>::<address>, an scp-form host that is not a plain name, such as x:y@github.com:o/r, where git contacts host x, a user part holding \"/\", \"?\" or \"#\", an \"@\" in a path or in a query with no path before it, or a host or path not in plain characters, such as one holding a space or a quote), so which server it names was not read"
             fact github unknown "$GH_WHY"
         elif is_github_host "$_HOST" && [[ "$_PATH" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
             GH_REPO="$_PATH"
