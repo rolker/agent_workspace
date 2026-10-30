@@ -1950,3 +1950,20 @@ Fix plan from the triage: in redact_url, when the user part it picks holds a "/"
 - [x] (should-fix) A user part holding "/" is now redacted, and the github fact is unknown with gh not called. Before this, an "@" in a path followed by a "/" printed another host: `https://gitlab.com/x@github.com/someone/repo` read as GitHub. The scp form follows the same rule. The scp form also redacts a user part that has a ":" after an "@", because that user part has the shape user@host:path itself (`git@gitlab.com:x@github.com:o/r`). The table's "/" and "://" password rows moved from read to unread. The round-3 "s3cr/3t" rows for https and scp were dropped, since the table covers them. New fixtures: the review's three URLs and the scp shape. The header's backstop list, the unknown reason and audit-project's list of unknown reasons all name the new case. The test_skill_paths pin is unchanged and still passes — `.agent/scripts/project_integration_audit.sh:339`, `.agent/scripts/tests/test_project_integration_audit.sh`, `.claude/skills/audit-project/SKILL.md:161`
 
 Checks: test_project_integration_audit 386 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP) passed every hook. validate-script-tests ran every suite, because .agent/knowledge/skill_workflows.md maps to no suite.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 12:08 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #414 at `bbba75d`
+**Depth**: Deep (reason: 2081 changed lines in 11 files, governance files AGENTS.md and two skills; fix-round re-review classified on the whole diff)
+**Must-fix**: 2 | **Suggestions**: 3
+
+### Findings
+- [ ] (must-fix) A git remote-helper URL `<transport>::<address>` takes redact_url's scp branch and is printed whole, since the tail regex `[^@?#]*` accepts spaces, quotes and "/": `ext::sh -c "curl -H X-Token:abc123 https://x/y"` reaches the github evidence as `remote 'origin' is ext/:sh -c "curl -h x-token:abc123 ...", not on github.com` (reproduced end to end with the suite's fixtures). Breaks the "printed only when it has the shape of a cut URL" claim. Fix: redact a lead holding "::" and any scp/scheme result holding whitespace or a quote; add fixtures — `.agent/scripts/project_integration_audit.sh:373`
+- [ ] (must-fix) An authority-only GitHub URL gives github=no instead of unknown: `https://github.com`, `https://github.com/` and `ssh://git@github.com` normalise through `_records_norm_url` to `https/github.com` (host "https"), so the evidence reads "remote 'origin' is https/github.com, not on github.com" and issues/prs become no, skipping hygiene items; the header and the "on github.com, but the path is not <owner>/<repo>" branch say unknown (reproduced end to end). Fix: in remote_where, treat a scheme-form result with no path as host-only before normalising; add fixtures (Codex) — `.agent/scripts/project_integration_audit.sh:448`
+- [ ] (suggestion) scrub_secrets splits gh's error text on whitespace before redacting, so a URL with a space in its password leaks the part after the space: `Get "https://user:abc s3cr3tTOKEN@github.com/o/r"` prints `s3cr3tTOKEN@github.com/o/r` (Go escapes spaces in URLs it prints, so unlikely from gh) (Codex) — `.agent/scripts/project_integration_audit.sh:392`
+- [ ] (suggestion) A scheme-form host holding a space is printed and can be misread: `https://local /x/y` normalises to `local /x/y` and the `${_N%% *}` test classes it as a local path; redact a host with whitespace (same fix as the first must-fix) — `.agent/scripts/project_integration_audit.sh:363`
+- [ ] (suggestion) An ssh alias or GHE host with no "github" in its name (`git@work:o/r`, `git.corp.example`) gives github=no, and audit-project then skips branch protection, labels and the bridge with "no GitHub remote"; either treat a dotless scp/ssh host as unknown or word the no as "not github.com by name" and state the limit in the skill — `.agent/scripts/project_integration_audit.sh:482`, `.claude/skills/audit-project/SKILL.md:153`
