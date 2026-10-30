@@ -2181,3 +2181,19 @@ Verified: the round-2 suggestion is addressed. In onboard-project step 7, before
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-10-30 14:46 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a047ea09fe98d2d4c, resume 2 of 3)
+
+**PR**: #414 at `76449e5`
+**Sources**: 2 (Local Review @ `76449e5` (exact; approved, 0 must-fix, 0 suggestions), CI rollup). Its only box, "No issues found. LGTM.", is the reviewer's no-findings line, not a finding. Reviewer outcomes, as the host reported them for that round: Gemini ran, nothing found; Codex failed (usage limit), no review from it; Claude adversarial ran, nothing found; Copilot is not a source (8 reviews on this PR, one per pushed head including `76449e5`, each "insufficient remaining quota", 0 inline comments; check-run "failure"). 0 conversation comments. The previous Integrated Review's push-URL box (Local Review @ `505805d`) is ticked, fixed in `a4bfa490` and verified by the `76449e5` review. 12 older local entries with open boxes are stale per `sources` (code changed since): Local Review @ `91366fc`, `b9bfcd6`, `8798ed5`, `8bc1d03`, `56d1184`, `94a2c14`, `db76490`, `505805d`; Local Review (Pre-Push) @ `6a92304`, `df3b894`, `680806e`, `9638dc8`.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+None open at `76449e5`.
+
+### False positives
