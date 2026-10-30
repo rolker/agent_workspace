@@ -2150,3 +2150,18 @@ Verified: both prior findings fixed. The find depth cap is gone, and build/, ins
 **Decision**: address
 
 Owner's answer: "Fix first". One open suggestion in the Integrated Review at 2878b663: a remote the user picks at onboard-project's "which remote" question gets no push-URL check before the push (onboard-project/SKILL.md:398); skill text only. CI lint pending at the time of the answer.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 14:44 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a2149d9b97c0f8f8e, resume 2 of 3)
+
+**PR**: #414 at `a4bfa490`
+**Addressed**: Integrated Review at `505805d` (2026-10-30 14:32 -04:00)
+**Commits**: a4bfa490
+
+### Actions
+- [x] a remote the user picks (from the evidence's other remotes, or in a github=unknown answer) has its push URLs compared with its fetch URL before the push, neither printed; a difference is handled like the github fact's push note (say so, the user checks, push only on a yes); audit-project's facts row and the test_skill_paths pins follow — `.claude/skills/onboard-project/SKILL.md:398`
+
+Pre-commit over `git diff --name-only main...HEAD` with no SKIP: passed. test_skill_paths 127 passed, 0 failed.
