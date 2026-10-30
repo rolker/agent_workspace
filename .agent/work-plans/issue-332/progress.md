@@ -2024,3 +2024,21 @@ Checks: test_project_integration_audit 411 passed, 0 failed; test_skill_paths 12
 Boxes ticked by editing the Local Review entry directly: `review_progress.sh findings` does not select a PR-mode Local Review (known defect).
 
 Checks: test_project_integration_audit 438 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP, main checkout's venv) passed every hook, validate-script-tests included.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 13:10 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a11b6bf8cb11fb48d, resume 2 of 3)
+**Verdict**: changes-requested
+
+**PR**: #414 at `c76005c`
+**Depth**: Deep (reason: 2317 changed lines in 11 files, governance files AGENTS.md and two skills; PR-mode round 3, classified on the whole diff, no convergence-check words in the handoff)
+**Must-fix**: 1 | **Suggestions**: 4
+
+### Findings
+- [ ] (must-fix) The scp branch of redact_url reads a user part holding ":" as a user, but git takes the host to the first ":": `x:y@github.com:o/r` and `tok:en@github.com:o/r` print `github.com:o/r`, so github=yes and gh is asked about github.com/o/r while git contacts host `x` (checked with a GIT_SSH stub: `x git-upload-pack 'y@github.com:o/r'`). Fix: in the scp form, redact when the user part holds ":" at all (as the scheme form already does for `x:y@github.com/o/r`); add both as fixtures giving github unknown (Claude adversarial) — `.agent/scripts/project_integration_audit.sh:398`
+- [ ] (suggestion) `clean` folds only tabs and line breaks, so an ESC or CR in a manifest directory name or a local remote path reaches the evidence and can inject terminal escapes into what the agent shows; map the other control bytes to "?" (Claude adversarial) — `.agent/scripts/project_integration_audit.sh:271`
+- [ ] (suggestion) audit-project's facts table says the github evidence shows "for any remote only host and path, never a user part, query or fragment", but a local remote (`/home/u/tok@en/repo`, `file:///p?x#y`) is printed whole, on purpose; say "for a network remote" (Claude adversarial) — `.claude/skills/audit-project/SKILL.md:146`
+- [ ] (suggestion) The push step pushes to `<remote>` after the fact read its fetch URL; a `pushurl` or `pushInsteadOf` can send the branch elsewhere. Show `git remote get-url --push --all <remote>` in the approval question (Codex, raised in round 2 too) — `.claude/skills/onboard-project/SKILL.md:398`
+- [ ] (suggestion) The manifest scan drops the exit status of `git ls-files`/`find` (process substitution, stderr to /dev/null), so a failed scan gives multi_component=no rather than unknown (Codex) — `.agent/scripts/project_integration_audit.sh:663`
