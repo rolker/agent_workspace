@@ -1839,3 +1839,19 @@ Reviewers:
 **Decision**: address
 
 Direction to the fix pass: redact by construction. For a scheme URL, the user part is everything to the last "@" whose remainder has a "/" before any "?" or "#"; with no such "@", the authority (up to the first "/", "?" or "#") is stripped to its last "@". Then cut "?" and "#". Backstop: a result that still holds "@", "?", "#", or a ":" after "://" that is not a port is replaced by "<scheme>://<redacted>", so no secret can survive whatever the input; the scp form gets the same backstop (host part must hold no "@" or ":"). Forms with no authority (file:/// and local paths) keep their "?" and "#". Fixtures: the round-4 example, and a table over every form and every secret holding "?", "#", "@", "/", ":" and "://", asserting the secret never appears. Listed for the owner's veto.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 11:24 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Dispatch**: resumed (agent a7825ea1a4a670ea3, resume 1 of 3)
+
+**Branch**: feature/issue-332 at `9a854ec1`
+**Addressed**: Local Review (Pre-Push) at `ae8218d8` (2026-10-30 11:03 -04:00)
+**Commits**: 9a854ec1
+
+### Actions
+- [x] (must-fix) `redact_url` now redacts by construction, following the host's direction. For a scheme URL, the user part ends at the last "@" whose remainder has a "/" before any "?" or "#", or else at the authority's last "@". Then the query and fragment are cut. For the scp form, the user part ends at the last "@" before the last ":". Backstop: `<scheme>://<redacted>` (scp form: `<redacted>`) unless the result is host[:port][/path] (or host:path), with no "@" and no ":" other than a numeric port's. The header now states the rule and the backstop and makes no claim beyond them. Two extra redactions close leaks the stated rule leaves open: a user part holding "?" or "#" (`https://h/o/r?next=a@b/c&token=S`), and an "@" after a "?" or "#" with no path before it (`https://tok?en@host`). A remote that is redacted makes the github fact unknown with the reason, and so does a second remote that could not be read. `scrub_secrets` now runs `redact_url` on each URL-shaped word, so it follows the same rule. New fixtures: the round-4 examples, plus a table of https, ssh, scp and file:// with a secret holding "?", "#", "@", "/", ":" or "://" in the user part, query and fragment. The secret never appears; GitHub is either read or unknown, never a wrong host. audit-project's list of unknown reasons names the new case (pinned in test_skill_paths). Trade-off for the owner's veto: a password holding "?" or "#" now gives github unknown, where round 3 read it as GitHub — `.agent/scripts/project_integration_audit.sh:295`, `.agent/scripts/tests/test_project_integration_audit.sh`, `.claude/skills/audit-project/SKILL.md`
+- [x] (suggestion) The "?" and "#" cut now applies only to forms with an authority. file:/// and local paths keep their "?" and "#" (fixture for both) — `.agent/scripts/project_integration_audit.sh:326`
+
+Checks: test_project_integration_audit 382 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP) passed every hook. validate-script-tests ran every suite, because .agent/knowledge/skill_workflows.md maps to no suite.
