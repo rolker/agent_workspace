@@ -262,6 +262,11 @@ With `prs=no`, branch protection that requires pull requests would change
 how the project works: report the item, and in step 10 ask rather than
 recommend it.
 
+With `github=unknown`, the GitHub checks have no repository to read: ask
+which repository on github.com it is, or report branch protection, Copilot
+auto-review and component labels as `not checked: github=unknown (<the
+fact's evidence>)`.
+
 The GitHub checks only read. The default branch and the rules on it:
 
 ```bash
@@ -465,14 +470,20 @@ pull request bodies from quoted heredocs. With these changes:
 - an issue body ends "Found by the `audit-project` skill." where step 8's
   ends "Found by the `onboard-project` skill.";
 - `gh pr create` and `gh issue create` take `-R github.com/<owner>/<repo>`,
-  the repository the `github` fact names;
+  and the branch is pushed to `<remote>`, both as the `github` fact names
+  them (`remote '<remote>' is github.com/<owner>/<repo>`);
 - the worktree: on the issue's `feature/issue-<N>` when the project uses
   issues; for a project that uses none, the `onboard-project` skill
   worktree (`--skill onboard-project`), because this hygiene work is
   onboarding work and `onboard-project` is the project skill on
   `worktree_create.sh`'s allowlist;
 - `github=no`: leave the edits on the branch, push nothing, and say where
-  the branch is.
+  the branch is;
+- `github=unknown` (a host that only looks like GitHub, a github.com path
+  that is not `<owner>/<repo>`, or GitHub on another remote): ask which
+  repository on github.com and which remote it is before any issue, push
+  or pull request, and use the answer; without one, open nothing, push
+  nothing, and say where the branch is.
 
 Generated CI workflows and pre-commit configs must work in the project on
 their own, with no dependency on workspace scripts or paths.

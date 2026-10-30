@@ -440,8 +440,12 @@ if [[ -f "$ONB" ]]; then
         '"$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project --project <settings-name>' \
         '"$WS_ROOT/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project <settings-name>'
     no_unquoted_heredoc "$ONB" onboard-project
-    has "$ONB" "onboard-project: the branch is pushed before gh pr create" \
-        'git push -u origin "$(git branch --show-current)" || exit 1'
+    has "$ONB" "onboard-project: the branch is pushed before gh pr create, to the remote the github fact names" \
+        'git push -u <remote> "$(git branch --show-current)" || exit 1' \
+        'gh pr create -R github.com/<owner>/<repo>' 'gh issue create -R github.com/<owner>/<repo>' \
+        "are the ones step 2's \`github\` fact names (\`remote '<remote>' is github.com/<owner>/<repo>\`)"
+    has "$ONB" "onboard-project: github=unknown asks for the repository and remote before any issue, push or pull request" \
+        'With `github=unknown`, ask which repository on github.com and which remote it is before any issue, push or pull request'
     has "$ONB" "onboard-project: the signature comes from the identity sourced in the same shell" \
         'source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1' \
         "printf '\\n---\\n**Authored-By**: \`%s\`\\n**Model**: \`%s\`\\n' \"\$AGENT_NAME\" \"\$AGENT_MODEL\""
@@ -546,11 +550,30 @@ if [[ -f "$AUD" ]]; then
         '"7. Make the fix-now batch — one pull request" and "8. Open the issues"'
     has "$ONB" "onboard-project: the step headings audit-project cites exist" \
         '### 7. Make the fix-now batch — one pull request' '### 8. Open the issues'
+    has "$AUD" "audit-project: github=unknown asks before any GitHub write and leaves the GitHub checks not checked" \
+        '`github=unknown` (a host that only looks like GitHub' \
+        'ask which repository on github.com and which remote it is before any issue, push or pull request' \
+        '`not checked: github=unknown (<the fact'"'"'s evidence>)`' \
+        'and the branch is pushed to `<remote>`, both as the `github` fact names them'
     no_unquoted_heredoc "$AUD" audit-project
     bash_blocks_parse "$AUD" audit-project
 else
     fail "audit-project skill is missing: .claude/skills/audit-project/SKILL.md"
 fi
+
+# Where onboard-project's and audit-project's GitHub calls and pushes go
+# (#332 PR 4): every gh call names github.com (a bare <owner>/<repo>
+# goes to $GH_HOST when that is set), and no push names origin (the
+# GitHub remote the github fact names need not be origin).
+for _gf in "$ONB" "$AUD"; do
+    [[ -f "$_gf" ]] || continue
+    _gbad="$(grep -nE -- '-R <owner>/<repo>|gh repo view <owner>|gh api (repos|-X)|git push( -u)? origin' "$_gf")"
+    if [[ -n "$_gbad" ]]; then
+        fail "$(basename "$(dirname "$_gf")"): a GitHub call without github.com, or a push to origin: $_gbad"
+    else
+        pass "$(basename "$(dirname "$_gf")"): every gh call names github.com and no push names origin"
+    fi
+done
 
 # --- run-issue: the host may answer a checkpoint, within the orchestrator's table.
 RI="$SKILLS/run-issue/SKILL.md"

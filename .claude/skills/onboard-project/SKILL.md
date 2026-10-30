@@ -383,7 +383,11 @@ once more before creating anything. Then:
    ```
 3. Push and open the pull request only on a yes, from the worktree. For a
    project with no GitHub remote (`github=no`), leave the edits on the branch, push
-   nothing, and say where the branch is. The branch is pushed first:
+   nothing, and say where the branch is. With `github=unknown`, ask which
+   repository on github.com and which remote it is before any issue,
+   push or pull request (the fact's evidence says why it is unknown);
+   without an answer, open nothing, push nothing, and say where the
+   branch is. The branch is pushed first:
    `gh pr create` run without a terminal does not offer to push it, and
    stops.
 
@@ -391,7 +395,7 @@ once more before creating anything. Then:
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" "<agent name>" "<agent email>" "<model-id>" || exit 1
 [ -n "${AGENT_NAME:-}" ] && [ -n "${AGENT_MODEL:-}" ] || { echo "AGENT_NAME/AGENT_MODEL not set: no signature" >&2; exit 1; }
-git push -u origin "$(git branch --show-current)" || exit 1
+git push -u <remote> "$(git branch --show-current)" || exit 1
 PR_BODY_FILE="$(mktemp)"
 cat > "$PR_BODY_FILE" <<'EOF'
 ## Summary
@@ -403,12 +407,17 @@ Onboarding with the workspace:
 Closes #<N>
 EOF
 printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$PR_BODY_FILE"
-gh pr create -R <owner>/<repo> --title "Onboard the project with the workspace" \
+gh pr create -R github.com/<owner>/<repo> --title "Onboard the project with the workspace" \
   --body-file "$PR_BODY_FILE"
 rm -f "$PR_BODY_FILE"
 ```
 
-`<owner>/<repo>` comes from the project's `git remote get-url origin`.
+`<remote>` and `<owner>/<repo>` are the ones step 2's `github` fact
+names (`remote '<remote>' is github.com/<owner>/<repo>`), or the user's
+answer when it was `unknown`: a GitHub remote not named `origin` is pushed
+by its own name, and the repository is named with its host because a bare
+`<owner>/<repo>` goes to `$GH_HOST` when that is set. Step 8's issues go
+to the same repository.
 Leave out the `Closes #<N>` line when step 1 opened no issue.
 
 The body's heredoc is quoted (`<<'EOF'`): finding text often carries
@@ -435,11 +444,12 @@ cat > "$BODY_FILE" <<'EOF'
 Found by the `onboard-project` skill.
 EOF
 printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$BODY_FILE"
-gh issue create -R <owner>/<repo> --title "<item title>" --body-file "$BODY_FILE"
+gh issue create -R github.com/<owner>/<repo> --title "<item title>" --body-file "$BODY_FILE"
 rm -f "$BODY_FILE"
 ```
 
-The same rules as step 7's pull request: a quoted heredoc for the text, the
+The same rules as step 7's pull request: the repository the `github` fact
+names, asked for when it is `unknown`, a quoted heredoc for the text, the
 signature appended from the identity sourced in the same shell.
 
 ### 9. Summary
