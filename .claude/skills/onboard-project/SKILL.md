@@ -396,7 +396,12 @@ once more before creating anything. Then:
    prints a URL), and push only on a yes to that; without one, push
    nothing and say where the branch is. When the evidence names other
    remotes (`; other remotes: <names>`), ask which remote to push to.
-   The branch is pushed first: `gh pr create` run without a terminal
+   For a remote the user names, here or in a `github=unknown` answer,
+   compare its push URLs with its fetch URL without printing either:
+   `[ "$(git remote get-url --push --all <remote> | sort -u)" = "$(git remote get-url <remote>)" ] && echo same || echo differs`.
+   On `differs`, handle it as the push note above: say so, have the user
+   check `git remote get-url --push <remote>` themselves, and push only
+   on a yes to that. The branch is pushed first: `gh pr create` run without a terminal
    does not offer to push it, and stops.
 
 ```bash

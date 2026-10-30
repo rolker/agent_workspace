@@ -471,7 +471,10 @@ if [[ -f "$ONB" ]]; then
         'evidence says `; its push URL differs from its fetch URL`' \
         'would send the branch somewhere other than the repository the fact' \
         '(the audit never' 'push only on a yes to that' \
-        'remotes (`; other remotes: <names>`), ask which remote to push to.'
+        'remotes (`; other remotes: <names>`), ask which remote to push to.' \
+        'For a remote the user names, here or in a `github=unknown` answer, compare its push URLs with its fetch URL without printing either' \
+        '[ "$(git remote get-url --push --all <remote> | sort -u)" = "$(git remote get-url <remote>)" ] && echo same || echo differs' \
+        'On `differs`, handle it as the push note above'
     has "$ONB" "onboard-project: ends by offering audit-project, which holds the checklist (D4)" \
         '### 10. Offer audit-project' \
         'End by offering `/agent-workspace:audit-project` (#332 D4), whatever `instructions` says'
