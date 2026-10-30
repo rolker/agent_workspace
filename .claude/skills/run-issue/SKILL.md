@@ -149,9 +149,11 @@ review-issue → plan-task → review-plan → implement
    → triage-reviews → merge
 ```
 
-Nine checkpoint kinds pause for `AskUserQuestion` along this path:
+Nine checkpoint kinds pause the loop along this path:
 `issue-actions`, `plan`, `publish`, `rounds`, `findings`, `merge`,
-`merge-refused`, `phase-failed`, `unexpected`. Every checkpoint answer is
+`merge-refused`, `phase-failed`, `unexpected`. The owner answers through
+`AskUserQuestion`, or the host answers within `/orchestrator`'s checkpoint
+table (step 6, "No auto-chaining"). Every checkpoint answer is
 recorded as a durable `## Checkpoint` entry on `progress.md` **before** the
 next `dispatch_phase.sh next` call — the timeline alone is the state
 machine, so `/run-issue <N>` on a half-done issue resumes from the newest
@@ -280,7 +282,9 @@ PARTIAL|FAILED|MISSING` → this is always `checkpoint:phase-failed`, never a
 silent retry: surface the phase, the outcome, and the last entry's text (or
 "no entry written") in an `AskUserQuestion` offering re-dispatch, takeover,
 or stop, then write the `## Checkpoint` entry (below) before calling `next`
-again.
+again. A host running `/orchestrator` may answer `retry` or `stop` itself,
+within that skill's limit on repeated host answers; `takeover` is always
+the owner's answer.
 
 **The dispatched implement pass.** `action=implement` has no `SKILL.md` of
 its own — no `/implement` slash command exists, so `skill_task_line()`
@@ -321,11 +325,13 @@ path because a worktree has no `.venv`:
 <main checkout>/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)
 ```
 
-That run includes the script suite whenever a changed file that still
-exists matches the hook, so the suite runs once per pass, not once per
-commit. CI (`make lint`, every hook on all files, awaited by
-`merge_pr.sh`) is the backstop, and covers a branch that only deletes a
-script. Review phases and project handoffs carry no such rule.
+That run includes the script suites whenever a changed file that still
+exists matches the hook, so they run once per pass, not once per commit:
+the suites the branch's changed files reach, or every suite when the
+branch deletes an in-scope file or touches a shared helper, the runner or
+the hook config (issue #410). CI (`make lint`, every hook on all files,
+awaited by `merge_pr.sh`) is the backstop, runs every suite, and covers a
+branch that only deletes a script. Review phases and project handoffs carry no such rule.
 
 ### 4a. Reusing a running sub-agent for a repeat phase
 
@@ -405,9 +411,10 @@ contract).
 
 ### 6. Checkpoints are entries, written before the next call
 
-Every `AskUserQuestion` outcome becomes a `## Checkpoint` entry, appended
-via `progress_append.sh` **before** the next `dispatch_phase.sh next` call
-— this is a contract line, not a suggestion; `next` reads the timeline, not
+Every checkpoint answer, the owner's `AskUserQuestion` outcome or the
+host's own, becomes a `## Checkpoint` entry, appended via
+`progress_append.sh` **before** the next `dispatch_phase.sh next` call —
+this is a contract line, not a suggestion; `next` reads the timeline, not
 the conversation.
 
 ```markdown
@@ -415,12 +422,12 @@ the conversation.
 **Status**: complete
 **When**: <YYYY-MM-DD HH:MM ±HH:MM>
 **By**: <host agent> (<model>)
-**Decided-by**: owner
+**Decided-by**: owner | host (<reason>)
 **After**: <checkpoint name>
 **Decision**: <token from the vocabulary below>
 **Phase**: <skill>   <!-- only on an `After: phase-failed` entry -->
 
-<the owner's answer text verbatim>
+<the owner's answer text verbatim, or the host's reason and what it read>
 ```
 
 `**After**` is one of the nine checkpoint names above (from
@@ -431,7 +438,32 @@ full table; anything outside it routes `next` to row 28,
 `**Phase**` is copied from the `phase=` line `next` printed with the
 `checkpoint:phase-failed` action; omit it for every other `**After**`.
 `**Decided-by**: owner` records that this entry captures the human's answer
-to an `AskUserQuestion`, not a phase's own output.
+to an `AskUserQuestion`, not a phase's own output. `**Decided-by**: host
+(<reason>)` records that the host answered it itself, with a token
+`/orchestrator`'s checkpoint table allows the host; nothing routes on this
+field, it is the record a later reader checks the host against. One owner
+answer outside the vocabulary is recorded by the host: `**Decision**:
+restart`, when he restates the goal mid-drive (`/orchestrator`, recipe
+(a)); it is followed by a signed comment carrying his words on the issue
+(review-issue reads the issue, not this entry), posted only after the
+host has shown him the exact comment and he has said yes, every time (on
+a no nothing is posted and the host asks him how the restated goal should
+reach the issue), and a `review-issue` dispatch with his words quoted in
+its handoff, and in the `plan-task` handoff after it (both read a git-bug copy of the issue that
+may not have the comment yet). If the
+session ends before that dispatch writes its entry, `next` routes the
+`restart` entry to row 28, `checkpoint:unexpected`, and the host checks
+first whether the comment is already there; if not, shows him the comment
+and posts it on his yes, and dispatches `review-issue` (recipe (a)) rather
+than asking again whether to restart. When the check itself fails, nothing
+is asked, posted or dispatched: the "not posted" line goes into the
+hand-back and the `restart` entry stays the newest. Until a `## Checkpoint` with `**After**:
+plan` and `**Decision**: proceed` follows the newest `restart` entry, the
+host quotes that entry's words into every `review-issue`, `plan-task` and
+`review-plan` handoff, on a resumed drive too: a session that ends after
+the `## Issue Review` resumes at `plan-task`, a plan checkpoint answered
+`revise` routes back to `plan-task` after the `## Plan Authored` entry,
+and nothing else carries his words to either phase or to `review-plan`.
 
 **Deferred suggestion-only boxes.** One case needs a second write alongside
 the `## Checkpoint` entry: an `**After**: findings` checkpoint answered
@@ -701,10 +733,17 @@ cleanly) — it does not re-derive or restate the table.
 
 ## No auto-chaining
 
-Phases never dispatch each other, and `run-issue` never advances past a
-checkpoint on its own judgment. Each `next` call decides exactly one step;
-the host always pauses at a checkpoint for the owner's actual answer before
-writing the entry that unblocks the next call.
+Phases never dispatch each other. Each `next` call decides exactly one
+step, and every checkpoint is written as an entry before the call that
+moves past it (step 6).
+
+The host may answer a checkpoint itself, with the tokens `/orchestrator`'s
+table allows, written `Decided-by: host (<reason>)`. `merge` and
+`merge-refused` always wait for the owner, and so do `takeover` at
+`phase-failed` and `merge` at `findings`. A host-answered checkpoint never
+lets the host do a phase's work itself. Without `/orchestrator` (or the
+owner's standing rule for this drive), the host pauses at every checkpoint
+for the owner's answer.
 
 ## One driver per issue
 

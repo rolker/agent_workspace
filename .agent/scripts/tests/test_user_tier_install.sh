@@ -5,7 +5,7 @@
 # (foreign entry, missing entry, stale symlink, retired hook entry, legacy
 # skill symlink), skill selection from session_scope frontmatter, the
 # plugin manifest generator, per-registered-root plugin enable / --check /
-# --uninstall (ADR-0018), and uninstall.
+# --uninstall (ADR-0018), --disable-root <name> (#332), and uninstall.
 #
 # Hermetic: HOME is redirected to a sandbox for every invocation, so the
 # real ~/.claude is never read or written. The installer is run against a
@@ -1612,6 +1612,71 @@ out="$(run --uninstall)"; rc=$?
     && pass "--uninstall reports an unparseable settings.local.json, exits 1 and leaves it alone" \
     || fail "--uninstall over an unparseable settings.local.json (rc=$rc out=${out:0:400})"
 rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+
+# ------------------------------------------------- --disable-root <name> ---
+# One registered root (#332: register_project.sh runs it before removing a
+# registry line). It treats that root as --uninstall treats each: the
+# plugin goes where this checkout declared it; another checkout's
+# declaration, a parent= instance's parent and the rest of ~/.claude stay.
+run >/dev/null
+enabled_in "$ROOTS/a" && enabled_in "$ROOTS/fam" && enabled_in "$ROOTS/pp/inst" \
+    || fail "--disable-root setup: roots not enabled before the cases"
+cp "$SETTINGS" "$SANDBOX/settings.before-disable"
+: > "$STUB_LOG"
+out="$(run --disable-root a)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"removed the agent-workspace plugin from $ROOTS/a"* ]] && ! enabled_in "$ROOTS/a" \
+      && [[ "$(jq -c '(.enabledPlugins // {} | length) + (.extraKnownMarketplaces // {} | length)' "$ROOTS/a/$SLJ")" == 0 ]] \
+    && pass "--disable-root removes the plugin from that root" \
+    || fail "--disable-root a (rc=$rc out=${out:0:400} slj=$(cat "$ROOTS/a/$SLJ" 2>/dev/null))"
+enabled_in "$ROOTS/fam" && enabled_in "$ROOTS/pp/inst" && ! grep -qv "^$ROOTS/a|" "$STUB_LOG" \
+    && pass "--disable-root leaves every other root alone (the CLI ran only in that root)" \
+    || fail "--disable-root touched another root ($(cat "$STUB_LOG"))"
+cmp -s "$SETTINGS" "$SANDBOX/settings.before-disable" && [[ -f "$ROOT_FILE" ]] \
+    && pass "--disable-root leaves ~/.claude (settings.json, the root file) unchanged" \
+    || fail "--disable-root changed ~/.claude"
+: > "$STUB_LOG"
+out="$(run --disable-root a)"; rc=$?
+[[ "$rc" -eq 0 && ! -s "$STUB_LOG" ]] \
+    && pass "--disable-root on a root without the plugin is a no-op, with no CLI call" \
+    || fail "second --disable-root a (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:300})"
+foreign_enable "$ROOTS/a"
+out="$(run --disable-root a)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"declared from another checkout"* \
+      && "$(jq -r '.extraKnownMarketplaces["agent-workspace"].source.path' "$ROOTS/a/$SLJ")" == "$SANDBOX/elsewhere" ]] \
+    && pass "--disable-root leaves another checkout's declaration alone, with a note" \
+    || fail "--disable-root over a foreign declaration (rc=$rc out=${out:0:400})"
+rm -f "${ROOTS:?}/a/.claude/settings.local.json"
+# A CLI whose local remove drops the machine-level record: the other roots
+# enabled from here would lose the plugin, so the record is taken back.
+run >/dev/null
+out="$(STUB_REMOVE_DROPS_KM=1 run --disable-root a)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"taking it over back, after removing the plugin from a"* \
+      && "$(jq -r '.["agent-workspace"].source.path' "$KM")" == "$WSC_PHYS" ]] && ! enabled_in "$ROOTS/a" \
+    && pass "--disable-root takes the machine-level record back when the local remove drops it" \
+    || fail "--disable-root with a dropped record (rc=$rc km=$(tr -d '\n' < "$KM" 2>/dev/null) out=${out:0:500})"
+: > "$STUB_LOG"
+out="$(run --disable-root fam-i)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"parent root provides the plugin"* && ! -s "$STUB_LOG" ]] && enabled_in "$ROOTS/fam" \
+    && pass "--disable-root on a parent= instance leaves its parent's plugin, and runs no CLI" \
+    || fail "--disable-root fam-i (rc=$rc log=$(cat "$STUB_LOG") out=${out:0:400})"
+out="$(run --disable-root gone)"; rc=$?
+[[ "$rc" -eq 0 && "$out" == *"is not on disk"* ]] \
+    && pass "--disable-root on a root not on disk is a note" \
+    || fail "--disable-root gone (rc=$rc out=${out:0:300})"
+out="$(run --disable-root nosuch)"; rc=$?
+[[ "$rc" -eq 1 && "$out" == *"'nosuch' is not registered"* ]] \
+    && pass "--disable-root on an unregistered name exits 1" \
+    || fail "--disable-root nosuch (rc=$rc out=${out:0:300})"
+out="$(run --disable-root)"; rc=$?
+[[ "$rc" -eq 2 && "$out" == *"needs a registered project name"* ]] \
+    && pass "--disable-root without a name is a usage error" \
+    || fail "--disable-root without a name (rc=$rc out=${out:0:300})"
+out="$(run --disable-root a --uninstall)"; rc=$?
+[[ "$rc" -eq 2 && "$out" == *"mutually exclusive"* ]] \
+    && pass "--disable-root and another mode are mutually exclusive" \
+    || fail "--disable-root with --uninstall (rc=$rc out=${out:0:300})"
+rm -f "$SANDBOX/settings.before-disable"
+run >/dev/null
 
 rm -f "${WSC:?}/.agent/projects.local" "${SANDBOX:?}/ws-link"
 rm -rf "${WSC:?}/.git" "${WSC:?}/projects"

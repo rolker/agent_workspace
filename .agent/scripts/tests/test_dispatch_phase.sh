@@ -37,7 +37,7 @@ mk_sandbox() {  # <issue-num>
     git -C "$sb" init -q -b main
     git -C "$sb" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
     mkdir -p "$sb/.agent/scripts" "$sb/worktrees/workspace"
-    for f in dispatch_phase.sh progress_read.py _worktree_helpers.sh _project_registry.sh; do
+    for f in dispatch_phase.sh progress_read.py review_progress.sh _worktree_helpers.sh _project_registry.sh; do
         cp "$SCRIPT_DIR/../$f" "$sb/.agent/scripts/"
     done
     git -C "$sb" worktree add -q "$sb/worktrees/workspace/issue-workspace-$n" -b "feature/issue-$n" >/dev/null 2>&1
@@ -226,6 +226,64 @@ $(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
 $(local_review_prepush complete changes-requested feature/issue-9 bbb2222)"
 assert_next "round_count: a partial Pre-Push review on the branch does not count as a round -- 2 complete rounds, round=2, address-findings (not checkpoint:rounds at MAX_ROUNDS=3)" none \
     "$PARTIAL_PLUS_TWO" address-findings "round=2"
+FAILED_PLUS_TWO="$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$(local_review_prepush failed changes-requested feature/issue-9 zzz0000)
+$(local_review_prepush complete changes-requested feature/issue-9 bbb2222)"
+assert_next "round_count: a failed Pre-Push review between two complete ones does not count -- round=2, address-findings" none \
+    "$FAILED_PLUS_TWO" address-findings "round=2"
+
+RESTART_THEN_ONE="$THREE_ROUNDS
+$(checkpoint rounds restart)
+$(issue_review complete 0)
+$(plan_authored complete)
+$(plan_review complete)
+$(checkpoint plan proceed)
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 ddd4444)"
+assert_next "round_count: a restart checkpoint starts the rounds over -- three reviews, restart, one review of the new work: round=1, address-findings (not checkpoint:rounds)" none \
+    "$RESTART_THEN_ONE" address-findings "round=1"
+assert_next "round_count: after a restart, the new work reaches MAX_ROUNDS only on its own third review" none \
+    "$RESTART_THEN_ONE
+$(local_review_prepush complete changes-requested feature/issue-9 eee5555)
+$(local_review_prepush complete changes-requested feature/issue-9 fff6666)" checkpoint:rounds "round=3"
+
+echo "TEST: next -- skill_for after a restart (a failed first implement of the new work)"
+RESTART_THEN_FAILED_IMPL="$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 aaa1111)
+$(implementation complete addressed)
+$(checkpoint rounds restart)
+$(issue_review complete 0)
+$(plan_authored complete)
+$(plan_review complete)
+$(checkpoint plan proceed)
+$(implementation failed "")"
+assert_next "skill_for: after a restart, a failed implement with no **Addressed** maps to implement -- the complete Implementations before the restart do not count" none \
+    "$RESTART_THEN_FAILED_IMPL" checkpoint:phase-failed "phase=implement"
+# The retry checkpoint's **Phase** is what `next` printed for the failed
+# pass, as the real loop records it (run-issue step 6), never a hard-coded
+# value: on the pre-fix script `next` printed phase=address-findings, so
+# the retry dispatched address-findings and this case fails there.
+RETRY_PHASE="$(run_next none "$RESTART_THEN_FAILED_IMPL" | sed -n 's/^phase=//p')"
+if [[ -z "$RETRY_PHASE" ]]; then
+    fail "skill_for: next printed no phase= for the failed implement after a restart, so its retry cannot be recorded"
+else
+    assert_next "skill_for: the retry answer to that checkpoint (Phase: $RETRY_PHASE, from next) dispatches implement, not address-findings" none \
+        "$RESTART_THEN_FAILED_IMPL
+$(checkpoint phase-failed retry "$RETRY_PHASE")" implement
+fi
+assert_next "skill_for: after a restart and a complete implement of the new work, a failed pass with no **Addressed** still maps to address-findings" none \
+    "$RESTART_THEN_FAILED_IMPL
+$(checkpoint phase-failed retry "${RETRY_PHASE:-implement}")
+$(implementation complete "")
+$(local_review_prepush complete changes-requested feature/issue-9 bbb2222)
+$(implementation failed "")" checkpoint:phase-failed "phase=address-findings"
+
+echo "TEST: next -- a restart checkpoint as the newest entry (orchestrator recipe (a))"
+assert_next "restart: a restart checkpoint with no entry after it routes to row 28, checkpoint:unexpected (the host then dispatches review-issue)" none \
+    "$TWO_ROUNDS
+$(checkpoint rounds restart)" checkpoint:unexpected
+assert_next "restart: a restart recorded under **After**: unexpected also routes to checkpoint:unexpected" none \
+    "$(checkpoint unexpected restart)" checkpoint:unexpected
 
 echo "TEST: next -- rows 16-18 (checkpoint publish/rounds)"
 assert_next "row 16: checkpoint publish answered publish, --pr none -> publish" none \
@@ -430,9 +488,10 @@ out=$(run_handoff --issue 9 --skill implement)
 # timeout and a wait for the exit (round 1, suggestion). A sub-issue
 # worktree branches from its parent's feature branch, so main...HEAD also
 # covers the parent's files; the rule says so (round 1, suggestion). The
-# suite runs only when a changed file that still exists matches the hook
-# (pre-commit drops deleted paths), so the rule says CI covers the rest
-# (round 2, suggestion).
+# hook runs only the suites the changed files reach, all of them when the
+# branch deletes an in-scope file, and none when deletions are the only
+# in-scope change (pre-commit drops deleted paths), so the rule says CI
+# covers that (round 2, suggestion; reworded for issue #410).
 for sk in implement address-findings; do
     out=$(run_handoff --issue 9 --skill "$sk")
     conv=$(printf '%s\n' "$out" | grep '^conventions=')
@@ -440,7 +499,7 @@ for sk in implement address-findings; do
         && "$conv" == *'$(git diff --name-only main...HEAD)'* && "$conv" == *"CI"* \
         && "$conv" == *"--no-verify"* && "$conv" != *"run_script_tests.sh"* \
         && "$conv" == *"600000 ms"*"wait for its exit"* \
-        && "$conv" == *"changed file that still exists matches that hook"*"CI's all-files run covers the rest"* \
+        && "$conv" == *"suites those files reach when a changed file that still exists matches that hook"*"deletes an in-scope file"*"only in-scope changes are deletions runs none, and CI's all-files run covers that"*"about 2 minutes"* \
         && "$conv" == *"sub-issue worktree it also covers the parent's files"* \
         && "$conv" == *"local time with offset"*"scratchpad"* ]] \
         && pass "handoff: $sk (workspace) conventions= carries the once-per-pass hook rule, CI backstop, and the existing conventions" \
@@ -488,6 +547,59 @@ out=$(run_handoff --issue 9 --skill not-a-real-skill); rc=$?
 [[ "$rc" -eq 2 && "$out" == *"unknown --skill"* ]] && pass "handoff: an unknown --skill is a usage error" || fail "handoff unknown skill (rc=$rc out=$out)"
 out=$(run_handoff --issue 999 --skill review-issue); rc=$?
 [[ "$rc" -eq 2 && "$out" == *"no workspace worktree found"* ]] && pass "handoff: no worktree for --issue is a usage error" || fail "handoff no worktree (rc=$rc out=$out)"
+
+echo ""
+echo "TEST: handoff -- a pre-push review-code at round 3 or later is a narrow convergence check (issue 321)"
+# Round = prior complete Local Review (Pre-Push) entries for the worktree's
+# branch + 1 (review_progress.sh round). Rounds 1 and 2 keep the bare task line; round
+# 3 and later name the scope and "no cross-model reviewers"; a PR-mode
+# handoff is never changed; another branch's reviews do not count.
+WT9="$SB/worktrees/workspace/issue-workspace-9"
+P9="$WT9/.agent/work-plans/issue-9/progress.md"
+mkdir -p "$(dirname "$P9")"
+printf '# Issue 9\n\n' > "$P9"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: round 1 (no prior review) -- bare review-code task line" || fail "handoff round 1 (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: round 2 -- still the bare task line (the fix-round rule applies)" || fail "handoff round 2 (out=$out)"
+append "$P9" "$(local_review_prepush failed changes-requested feature/issue-9)"
+append "$P9" "$(local_review_prepush partial changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: a failed and a partial review are not rounds -- still round 2, the bare task line" || fail "handoff failed/partial reviews (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-other)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: another branch's review does not count toward the round" || fail "handoff other branch (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9 (round 3: a narrow convergence check on the round 2 review\'s findings and the fix diff since it; no cross-model reviewers)\n'* ]] \
+    && pass "handoff: round 3 -- the task line names the scope and \"no cross-model reviewers\"" || fail "handoff round 3 (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *"task=/review-code --branch --issue 9 (round 4: a narrow convergence check on the round 3 review's findings"*"; no cross-model reviewers)"$'\n'* ]] \
+    && pass "handoff: round 4 -- still a convergence check, naming round 3 as the prior one" || fail "handoff round 4 (out=$out)"
+out=$(run_handoff --issue 9 --skill review-code --pr 42)
+[[ "$out" == *$'\ntask=/review-code 42\n'* && "$out" != *"no cross-model reviewers"* ]] \
+    && pass "handoff: PR mode -- the pre-push round count never changes a PR-mode task line" || fail "handoff round PR mode (out=$out)"
+append "$P9" "$(checkpoint rounds restart)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *$'\ntask=/review-code --branch --issue 9\n'* ]] \
+    && pass "handoff: a restart checkpoint starts the rounds over -- after four reviews, the next is round 1, the bare task line" || fail "handoff restart (out=$out)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+append "$P9" "$(local_review_prepush complete changes-requested feature/issue-9)"
+out=$(run_handoff --issue 9 --skill review-code)
+[[ "$out" == *"task=/review-code --branch --issue 9 (round 3: a narrow convergence check on the round 2 review's findings"* ]] \
+    && pass "handoff: two reviews after the restart -- the next is round 3 of the new work" || fail "handoff restart round 3 (out=$out)"
+git -C "$WT9" checkout -q --detach
+out=$(run_handoff --issue 9 --skill review-code); rc=$?
+git -C "$WT9" checkout -q feature/issue-9
+[[ "$rc" -eq 0 && "$out" == *$'\ntask=/review-code --branch --issue 9\n'* && "$out" == *"could not count the review rounds"* ]] \
+    && pass "handoff: no branch to count rounds on -- a full fix-round review, with a warning" || fail "handoff round detached (rc=$rc out=$out)"
+rm -rf "$WT9/.agent/work-plans"
 
 echo ""
 echo "TEST: resolve_worktree -- --type project (registry lookup, then the deprecated project/worktrees fallback)"

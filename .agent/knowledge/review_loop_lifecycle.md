@@ -17,7 +17,10 @@ review-issue → plan-task → review-plan → implement
 ```
 
 Each arrow is a human or `/run-issue` deciding to move forward — nothing
-in the loop advances a phase on its own judgment (no auto-chaining).
+in the loop advances a phase on its own judgment (no auto-chaining). A
+host running `/orchestrator` may answer a checkpoint itself, only with the
+answers that skill's table allows it (never `merge`, `merge-refused`, or
+`takeover`), and records it `**Decided-by**: host (<reason>)`.
 
 ## Who writes what
 
@@ -32,6 +35,7 @@ in the loop advances a phase on its own judgment (no auto-chaining).
 | `review-code <PR>` | `## Local Review` | `review-code`, PR mode |
 | `triage-reviews` | `## Integrated Review` | `triage-reviews` |
 | a human's answer to an `AskUserQuestion` checkpoint | `## Checkpoint` | `/run-issue`, on the owner's behalf (`**Decided-by**: owner`) |
+| the host's own answer to a checkpoint, within `/orchestrator`'s table | `## Checkpoint` | `/run-issue` (`**Decided-by**: host (<reason>)`) |
 | `merge_pr.sh`'s gate under `--report-only` (or `--force-unreviewed`), when a precondition is unmet — the default (enforce, #300) on a workspace PR refuses with no entry | `## Merge (report-only)` / `## Merge (unreviewed)` | `merge_pr.sh` |
 
 Both `## Implementation` writers are dispatched sub-agents (issue #314);
@@ -51,9 +55,10 @@ via `.agent/scripts/progress_append.sh` and read back via
 the newest `progress.md` entry (plus `--pr`, the one non-timeline input)
 and prints an `action=` token. It reads earlier entries for two things
 only: `round_count()` counts the completed `## Local Review (Pre-Push)`
-entries on the branch, and `skill_for()` looks for an earlier complete
-`## Implementation` to tell a failed address-findings pass from a failed
-implement pass. The routing key is the entry's `base_type`
+entries on the branch after the newest `**Decision**: restart`
+checkpoint (a restart begins the new work at round 1), and `skill_for()` looks for an earlier complete
+`## Implementation` after that same checkpoint to tell a failed
+address-findings pass from a failed implement pass. The routing key is the entry's `base_type`
 and its fields — never adjacency to the entry before it. Two routing rules
 worth remembering because they read as exceptions:
 

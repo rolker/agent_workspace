@@ -2,45 +2,108 @@
 # .agent/project_types/single_project/adapter.sh
 # single_project adapter — one repo cloned or symlinked at $WORKSPACE_ROOT/project.
 #
-# Pure facade over the pre-adapter workspace scripts (ADR-0011, #210):
-# behavior is intentionally identical to the old build.sh/test.sh/
-# setup_project.sh/sync_project.py flow.
+# Facade over the pre-adapter workspace scripts (ADR-0011, #210): behavior
+# matches the old build.sh/test.sh/setup_project.sh/sync_project.py flow,
+# except that a registered project's build/test/install command comes first
+# from its settings file .agent/projects.d/<name> (issue #332; see
+# _single_project_resolve_cmd) and a fall-through to the shared
+# .agent/project_config.sh is reported on stderr. Changed from main (issue
+# #332): BUILD_CMD, TEST_CMD and INSTALL_CMD inherited from the caller's
+# environment are no longer honoured; they are cleared before the legacy or
+# shared config is sourced, so only a config file sets them (a config line
+# such as BUILD_CMD="${BUILD_CMD:-make}" now always gives its default).
+# A command set in the settings file runs without sourcing the legacy or
+# shared config, so nothing they export (an SDK path, PATH) reaches it:
+# environment setup belongs in the script the key points at.
 #
 # Sourced by .agent/scripts/adapter with WORKSPACE_ROOT and ADAPTER_TYPE_DIR
 # set as shell variables (not exported). Not executable on its own; must be
 # silent at source time.
 
-# Resolve the command-config file for the active project: the per-project
-# override (.agent/projects.d/<name>.sh, set by the dispatcher as
-# ACTIVE_PROJECT_CONFIG) when it exists, else the shared
-# .agent/project_config.sh.
-_single_project_config_file() {
-    if [ -n "${ACTIVE_PROJECT_CONFIG:-}" ] && [ -f "$ACTIVE_PROJECT_CONFIG" ]; then
-        echo "$ACTIVE_PROJECT_CONFIG"
-    else
-        echo "$WORKSPACE_ROOT/.agent/project_config.sh"
-    fi
-}
-
-# Load the command config and require the named command variable to be set
-# (e.g. BUILD_CMD). Prints the same guidance the old scripts printed.
+# Resolve one command setting (issue #332), per setting in this order:
+#   1. the key in the per-project settings file .agent/projects.d/<name>
+#      (the dispatcher's ACTIVE_PROJECT_BUILD/_TEST/_INSTALL);
+#   2. <VAR> in the legacy .agent/projects.d/<name>.sh, when that file
+#      exists (it is then the whole legacy layer, as before #332);
+#   3. otherwise <VAR> in the shared .agent/project_config.sh.
+# Sets SP_CMD (the value; empty when nothing sets it) and SP_CMD_FROM
+# (file | legacy | shared | empty). The legacy or shared config is sourced
+# in the current shell, as the pre-adapter scripts did; <VAR> is cleared
+# first so only a config file can set it, never the caller's environment.
 #
 # Callers must NOT guard this with `||` — verbs run under the dispatcher's
-# set -e, and an unguarded call is what makes a failure inside the sourced
+# set -e, and an unguarded call is what makes a failure inside a sourced
 # config abort the verb (matching the old top-level-source behavior).
-# A `|| return 1` guard would disable errexit for the whole call, silently
-# swallowing config failures.
-_single_project_load_cmd() {
-    local var_name="$1"
-    local config
-    config="$(_single_project_config_file)"
+_single_project_resolve_cmd() {
+    local key="$1" var_name="$2" shared pf=""
+    SP_CMD=""
+    SP_CMD_FROM=""
+    case "$key" in
+        build) pf="${ACTIVE_PROJECT_BUILD:-}" ;;
+        test) pf="${ACTIVE_PROJECT_TEST:-}" ;;
+        install) pf="${ACTIVE_PROJECT_INSTALL:-}" ;;
+    esac
+    if [ -n "$pf" ]; then
+        SP_CMD="$pf"
+        SP_CMD_FROM="file"
+        return 0
+    fi
+    printf -v "$var_name" '%s' ""
+    if [ -n "${ACTIVE_PROJECT_CONFIG:-}" ] && [ -f "$ACTIVE_PROJECT_CONFIG" ]; then
+        # shellcheck source=/dev/null
+        source "$ACTIVE_PROJECT_CONFIG"
+        if [ -n "${!var_name:-}" ]; then
+            SP_CMD="${!var_name}"
+            SP_CMD_FROM="legacy"
+        fi
+        return 0
+    fi
+    shared="$WORKSPACE_ROOT/.agent/project_config.sh"
+    if [ -f "$shared" ]; then
+        # shellcheck source=/dev/null
+        source "$shared"
+        if [ -n "${!var_name:-}" ]; then
+            SP_CMD="${!var_name}"
+            SP_CMD_FROM="shared"
+        fi
+    fi
+    return 0
+}
 
-    if [ ! -f "$config" ]; then
+# Load a required command (build or test) into SP_CMD / SP_CMD_FROM, or
+# print guidance and return 1. Prints the fallback note when a registered
+# project's command comes from the shared config.
+#
+# Callers must NOT guard this with `||` (see _single_project_resolve_cmd).
+_single_project_load_cmd() {
+    local key="$1" var_name="$2" shared
+    shared="$WORKSPACE_ROOT/.agent/project_config.sh"
+    _single_project_resolve_cmd "$key" "$var_name"
+    if [ -n "$SP_CMD" ]; then
+        [ "$SP_CMD_FROM" = "shared" ] && active_project_fallback_note "$key"
+        return 0
+    fi
+    if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
+        echo "❌ project '$ACTIVE_PROJECT_NAME' has no $key command."
+        if [ -n "${ACTIVE_PROJECT_CONFIG:-}" ] && [ -f "$ACTIVE_PROJECT_CONFIG" ]; then
+            echo "   ($var_name is not set in its legacy config $ACTIVE_PROJECT_CONFIG)"
+        fi
+        echo ""
+        echo "Set it in its settings file ($ACTIVE_PROJECT_FILE):"
+        echo ""
+        echo "  .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME $key=<command>"
+        echo ""
+        echo "  (a plain command run from the project root, or a script path;"
+        echo "   $key=none records that the project has none)"
+        echo ""
+        return 1
+    fi
+    if [ ! -f "$shared" ]; then
         echo "❌ No project_config.sh found."
         echo ""
-        echo "Create $config with your project commands:"
+        echo "Create $shared with your project commands:"
         echo ""
-        echo "  cat > $config << 'EOF'"
+        echo "  cat > $shared << 'EOF'"
         echo "  # Per-developer project configuration (gitignored)"
         echo "  PROJECT_TYPE=\"single_project\""
         echo "  BUILD_CMD=\"make\"          # or: cmake --build build, cargo build, etc."
@@ -48,24 +111,28 @@ _single_project_load_cmd() {
         echo "  INSTALL_CMD=\"\"            # optional deploy/install command"
         echo "  EOF"
         echo ""
-        if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
-            echo "  (active project: $ACTIVE_PROJECT_NAME — per-project override: ${ACTIVE_PROJECT_CONFIG:-unset})"
-            echo ""
-        fi
         return 1
     fi
+    echo "❌ $var_name is not set in $shared"
+    echo ""
+    echo "Add to $shared:"
+    echo "  $var_name=\"...\"   # your project's command"
+    echo ""
+    return 1
+}
 
-    # shellcheck source=/dev/null
-    source "$config"
-
-    if [ -z "${!var_name:-}" ]; then
-        echo "❌ $var_name is not set in $config"
-        echo ""
-        echo "Add to $config:"
-        echo "  $var_name=\"...\"   # your project's command"
-        echo ""
-        return 1
+# Run the resolved command (SP_CMD / SP_CMD_FROM) from the project root.
+# A settings-file value is split into argv and run without a shell; a
+# legacy or shared value keeps the pre-adapter word splitting.
+_single_project_exec_cmd() {
+    echo "Running: $SP_CMD $*"
+    echo ""
+    cd "$(adapter_project_root)" || return 1
+    if [ "$SP_CMD_FROM" = "file" ]; then
+        active_project_exec "$SP_CMD" "$@"
     fi
+    # shellcheck disable=SC2086
+    exec $SP_CMD "$@"
 }
 
 adapter_setup() {
@@ -110,39 +177,35 @@ adapter_validate() {
 }
 
 adapter_build() {
-    _single_project_load_cmd BUILD_CMD
-    echo "Running: $BUILD_CMD $*"
-    echo ""
-    cd "$(adapter_project_root)" || return 1
-    # shellcheck disable=SC2086
-    exec $BUILD_CMD "$@"
+    _single_project_load_cmd build BUILD_CMD
+    if [ "$SP_CMD" = "none" ] && [ "$SP_CMD_FROM" = "file" ]; then
+        echo "build=none: project '$ACTIVE_PROJECT_NAME' records that it has no build step — nothing to build."
+        return 0
+    fi
+    _single_project_exec_cmd "$@"
 }
 
 adapter_test() {
-    _single_project_load_cmd TEST_CMD
-    echo "Running: $TEST_CMD $*"
-    echo ""
-    cd "$(adapter_project_root)" || return 1
-    # shellcheck disable=SC2086
-    exec $TEST_CMD "$@"
+    _single_project_load_cmd test TEST_CMD
+    if [ "$SP_CMD" = "none" ] && [ "$SP_CMD_FROM" = "file" ]; then
+        echo "test=none: project '$ACTIVE_PROJECT_NAME' records that it has no tests — nothing to run."
+        return 0
+    fi
+    _single_project_exec_cmd "$@"
 }
 
 adapter_install() {
-    local config
-    config="$(_single_project_config_file)"
-    if [ -f "$config" ]; then
-        # shellcheck source=/dev/null
-        source "$config"
+    _single_project_resolve_cmd install INSTALL_CMD
+    if [ "$SP_CMD" = "none" ] && [ "$SP_CMD_FROM" = "file" ]; then
+        echo "install=none: project '$ACTIVE_PROJECT_NAME' records that it has no install step — nothing to install."
+        return 0
     fi
-    if [ -z "${INSTALL_CMD:-}" ]; then
+    if [ -z "$SP_CMD" ]; then
         echo "INSTALL_CMD not set — nothing to install (this is fine for most projects)."
         return 0
     fi
-    echo "Running: $INSTALL_CMD $*"
-    echo ""
-    cd "$(adapter_project_root)" || return 1
-    # shellcheck disable=SC2086
-    exec $INSTALL_CMD "$@"
+    [ "$SP_CMD_FROM" = "shared" ] && active_project_fallback_note install
+    _single_project_exec_cmd "$@"
 }
 
 adapter_env() {

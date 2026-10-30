@@ -12,9 +12,10 @@ principles in [`docs/principles.md`](principles.md) connect them.
 push (`publish`) and the merge; each of the others is run by a fresh sub-agent (a repeat of a phase may
 resume the earlier one, and the owner may have the host take over a failed one) and leaves one entry in
 the issue's progress timeline, which is the only record of where the issue stands
-([Review loop and timeline](#review-loop-and-timeline)). The loop stops at checkpoints and asks the
-owner. The owner decides every merge, and no phase moves on by its own judgment
-([Merge gate](#merge-gate)).
+([Review loop and timeline](#review-loop-and-timeline)). The loop stops at checkpoints. The owner
+answers the ones that touch his goals; the host answers the rest under his standing rules, from a fixed
+set of answers, and lists each decision for his veto. The owner decides every merge, and no phase moves
+on by its own judgment ([Merge gate](#merge-gate)).
 
 **What agents may do alone.** Agents decide small things within their limits and record them. Limits
 start strict, and only the user relaxes them. Changing instruction files, CI or branch protection, or the
@@ -101,7 +102,7 @@ root and `.agent/knowledge/`).
 | Principles | How work is judged | [`docs/principles.md`](principles.md), applied through [`.agent/knowledge/principles_review_guide.md`](../.agent/knowledge/principles_review_guide.md) |
 | Design | How the parts fit today | This file, from `# The design` on |
 | Decisions | What was decided, why, and when | [`docs/decisions/`](decisions/) (ADRs), plus each issue's `progress.md`; history, never rewritten |
-| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background |
+| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background. A Paths paragraph names the two paths the owner runs in parallel; the sit-rep marks each piece of work in flight with the path it serves and asks which to focus on, a choice that is not stored |
 | Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run with the counts of lines true and deferrals due, so the next run says what moved |
 
 Two of the seven were gaps (`README.md`, "The long view": each project, and the workspace, says what
@@ -128,8 +129,9 @@ Proposed: a project records its own mapping of the seven roles, seeded from the 
 `discover_governance.sh` already finds, and never forced on it: a convention is encouraged where a
 project has no documentation (owner goal of 2026-09-23, issue #335), and a project may leave a role
 unmapped. Where that mapping is kept is not decided. A project's roadmap may carry a `## Direction`
-section in the workspace's format, by its own choice; the sit-rep reads only the workspace root so
-far, and reading every registered root with such a section is a follow-up to #386.
+section in the workspace's format, by its own choice: `onboard-project` offers one to a project whose
+settings say `instructions=tracked`, and never requires it (#332 D3). The sit-rep reads only the
+workspace root so far, and reading every registered root with such a section is a follow-up to #386.
 
 ## Rules
 
@@ -157,6 +159,7 @@ only.
 | A progress entry has the ADR-0013 shape | Leave a trail; start limits strict | `script` | `_progress_entry.sh` validates the heading, the entry type, fences and title in every writer (`progress_append.sh`, `review_progress.sh persist`); editing the file by hand is not checked |
 | Merge only after a current review and a decision summary | Leave a trail; start limits strict | `script` | The gate in `merge_pr.sh` refuses by default on workspace PRs and is report-only for project PRs. It is local only: the script's own comment says a Merge click on GitHub bypasses it, and the server-side complement is not built |
 | The owner decides every merge; the loop pauses at a merge checkpoint and no phase merges on its own judgment | Leave a trail; start limits strict | `review only` | `run-issue/SKILL.md` step 11 stops the loop at the `merge` checkpoint and passes the gate-relaxing flags only on the owner's answer; `merge_pr.sh` does not check who runs it (its gate checks the review and the decision summary, not the person), so a reviewer checks the host against the skill |
+| The host answers a checkpoint only with the answers the `/orchestrator` table allows it, and never does a phase's work | Ask about what matters, and show how much | `review only` | Each `## Checkpoint` entry records `**Decided-by**: owner` or `host (<reason>)`; `dispatch_phase.sh` routes on `**After**` and `**Decision**` only and does not read who decided, so a reviewer checks host answers against the table |
 | Every project type implements every adapter verb | Put each thing at the level it applies to | `hook` | `validate_adapter.sh` (`validate-adapter-contract`), also its own CI job |
 | Design anchors resolve | Keep one current design | `hook` | `check_design_anchors.sh` (`check-design-anchors`); `make lint` and CI run it again |
 | A change that alters how the parts fit updates this file | Keep one current design | `review only` | Review guide rows "Keep one current design" and ADR-0017 |
@@ -196,6 +199,11 @@ where that run is tracked.
   do not read the root's local settings (a package repository nested in it, a subdirectory of a root
   in no git repository) is refused by `session_root.sh` and `skill_prefix.sh` alike (ADR-0018
   decision 6).
+- One exception to working only under the root (#332): a project session writes its own project's
+  settings file `.agent/projects.d/<name>` in the workspace checkout, through `project_setting.sh set`,
+  which calls `registry_require_root` and, from a project root, refuses any other project's file. That
+  file is per-machine, gitignored workspace configuration the project's onboarding owns, not a tracked
+  change to the workspace. Nothing else a project session does leaves its root.
 - When `--type` is omitted, the worktree scripts and `dispatch_phase.sh` take the type and project
   from the cwd the same way (`registry_derive_type_from_dir`; ADR-0016, "Multi-project machines need
   disambiguation").
@@ -203,6 +211,25 @@ where that run is tracked.
   `SessionStart` hook, a `PreToolUse` hook and permission rules for the promoted scripts. Everything it
   writes is tagged with the checkout, so install is repeatable and `--uninstall` removes only its own
   entries (`user_tier_install.sh` header).
+- Registration is a workspace operation, not something a project session does to itself (ADR-0016
+  decision 5): `register_project.sh`, run from the workspace's main checkout, registers a project and,
+  when the user tier is installed from that checkout, re-runs its installer so the new root gets the
+  plugin. See [Registry and adapters](#registry-and-adapters).
+- Onboarding is the project side (#332 D1): `/agent-workspace:onboard-project`, in a session started at
+  the project root, finds the project through `session_root.sh` (a workspace session or an
+  unregistered root is sent to registration), shows the recorded choices, asks only the footprint
+  questions not yet answered (`instructions`, and the records settings, whose default is provisional and
+  of which only (project, project) is stored until #393), runs `project_integration_audit.sh` (read-only;
+  six categories of how the project and the workspace fit together), and makes offers only when
+  `instructions=tracked`. A project need carry nothing (D3). Every finding or accepted offer is answered
+  fix now, open issue, queue in the roadmap (an `## Onboarding` section of the project's roadmap) or
+  skip, and every write waits for a yes; a re-run re-asks nothing unless told (D5). The fix-now batch
+  is one pull request from a project worktree: on the onboarding issue's `feature/issue-<N>`, or, for a
+  project that uses no issues, on a `skill/onboard-project-<timestamp>` branch (`onboard-project` is on
+  `worktree_create.sh`'s skill allowlist; its project skill worktree is of the root's own repository). At a
+  parent root the run reads, reports and fixes one repository, the chosen instance's: the batch can only
+  write there, so the parent root's own files are not audited. The audit,
+  `registration_verify.sh` and `project_setting.sh` are promoted to the user tier for it.
 - Skills reach project sessions through the `agent-workspace` Claude Code plugin, whose marketplace is
   the workspace checkout (`.claude-plugin/`). It ships every skill that declares
   `session_scope: project` or `session_scope: both` (`make generate-user-tier-skills`, checked by
@@ -235,11 +262,10 @@ Status: `decided, not built`
 - Discovery becomes registry-only: PR 4 of #265 removes the legacy `project/` step. The dispatcher
   still has it as step 3 of its resolution order (`adapter` header; ADR-0016, "ADR-0011's discovery
   order will be superseded").
-- Registration is a workspace script, `register_project.sh`, also PR 4 (ADR-0016 decision 5). It does
-  not exist yet (`.agent/scripts/` has no such file).
 - The workspace tree hosts no project, and the workspace writes nothing into a project checkout beyond
   `.git/info/exclude` and an untracked `COLCON_IGNORE` (ADR-0016 decision 2). The registry's default
-  hosting directory is still `projects/<name>` under the workspace (`_project_registry.sh` header).
+  hosting directory is still `projects/<name>` under the workspace (`_project_registry.sh` header);
+  `register_project.sh` always writes an absolute path, so nothing it registers relies on it.
 - A project's memory attaches to its own root, not to the workspace (ADR-0016 decision 4). No workspace
   script implements or checks this.
 
@@ -261,17 +287,52 @@ Status: `decided`
   the header of `_project_registry.sh` and in `.agent/projects.local.example`. Beside it,
   `.agent/settings.local` (per machine, gitignored, read and never sourced by `_settings.sh`) names
   the machine's inbox and sit-rep run record; a script run from a worktree falls back to the main
-  checkout's copy. The registry has no such fallback, except in `capture.sh`, which reads the main
-  checkout's registry the same way so a thought captured from a worktree copy is tagged with its project.
-- Registration is by hand. No script writes the registry, and `onboard-project` does not mention it
-  (grep of `.agent/scripts/` and `.claude/skills/*/SKILL.md`, 2026-10-09).
+  checkout's copy. The registry has no such fallback, except in two scripts that read the main
+  checkout's registry the same way: `capture.sh`, so a thought captured from a worktree copy is tagged
+  with its project, and `project_setting.sh`, which reads the main checkout's settings files too and
+  refuses to write them from a worktree (#332).
+- Registration is `register_project.sh <path>`, run from the main checkout (#332). It writes the
+  registry line, always with an absolute path, and the settings file (commands from `--set`, else the
+  legacy `.sh`, else `--detect`, which proposes only a single correct command), then runs the
+  read-only gate `registration_verify.sh` (each command the type requires is the project's own or
+  `none`; a shared-config fallback or a missing test command is refused), the type's build and test,
+  and only then the user-tier installer. A failure removes the line and the file, and the plugin
+  enable when this run's installer added it; a settings file changed during the run is kept, and a
+  cleanup step that fails is reported, never a clean result; a hosting directory `setup` created is
+  kept and reported. A line
+  written by hand is adopted by the same command, kept as it is, and reported `NOT READY` rather
+  than removed when a check fails. `--remove` refuses live worktrees, disables the plugin in the root
+  (`user_tier_install.sh --disable-root`), removes the line and the settings file, and leaves the
+  project, its records and its memory alone. The script header holds the order and the output lines.
+- A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
+  read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`, the
+  records settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
+  and `instructions`. A command is split into words and run without a shell, or is `none` for "this
+  project has none"; anything that needs a shell is a script the key points at. A command set in the
+  file runs without sourcing the legacy or shared config below, so nothing they export (an SDK path,
+  `PATH`) reaches it: environment setup belongs in the script the key points at. The grammar and keys
+  are in the header of `_project_registry.sh`, `project_setting.sh` reads and writes the file, and a
+  malformed file stops every adapter verb and fails `make validate`. The writer locks a
+  `.lock.<basename>` file beside the file, or beside the target of a linked one, and never removes it,
+  so settings kept in a git checkout through a link leave that untracked file there. A key the
+  project's type never reads is refused the same way: each type lists such keys in
+  `.agent/project_types/<type>/unused_settings` (`ros2_colcon`: `build` and `test`, which colcon
+  owns; `single_project`: `bootstrap_url`), so no setting is stored and silently ignored. Per
+  setting, the adapters read the file; for a setting it leaves unset, the legacy
+  `projects.d/<name>.sh` (a sourced shell file, which also keeps variables such as `ROS_ROOT_DIR`)
+  when it exists, otherwise the shared `.agent/project_config.sh`. An existing legacy file is the
+  whole legacy layer, as before #332: the shared file is not consulted for a variable it leaves
+  unset. The adapters say on stderr when a registered project falls through to the shared file.
 - Behaviour that differs per project shape sits behind a 12-verb adapter contract, one `adapter.sh` per
   type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12).
   `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
-  every type implements every verb, in pre-commit and in CI.
+  every type implements every verb, in pre-commit and in CI. Beside the contract, each type has a
+  `registration.conf` (#332): the commands a project of the type must have of its own, whether
+  registration runs `setup` for a missing hosting directory, and the verbs it runs, so
+  `register_project.sh` names no type; `validate_adapter.sh` checks it too.
 - Workflow scripts call adapter verbs and do not branch on the project type: a grep of `.agent/scripts/`
   for the two type names finds only help text and docstrings, and the `single_project` default in
-  `_resolve_project_type` (`adapter:73`) (2026-10-09).
+  `_resolve_project_type` (`adapter:80`) (2026-10-09).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
   colcon layers driven by a manifest, and its `adapter.sh` header holds the layers, the bootstrap URL
   order and the distro rule.
@@ -331,10 +392,11 @@ Tally: 3 no-op, 5 thin wrapper, 4 real. No conclusion is drawn from it here; tha
 
 Status: `proposed`
 
-Proposed: `onboard-project` is the one way a project is registered and adapted (#332). A project's
-life from register to unregister is defined, including one project on two machines. Mixed-flavour
-projects, a repository carrying tools of another flavour, are supported (#310). [Open questions](#open-questions)
-C4 holds what is unsettled. The legacy `project/` shape is dropped with the registry-only change
+A project is added in two steps (#332 D1), and both are built: registration from the workspace
+(`register_project.sh`, see Now) and onboarding at the project root (`onboard-project`, see
+[Sessions and roots](#sessions-and-roots)). Registering and unregistering on one machine are defined
+(Now). Proposed: one project on two machines, not defined yet. Mixed-flavour projects, a repository carrying tools of another flavour, are supported
+(#310). [Open questions](#open-questions) C4 holds what is unsettled. The legacy `project/` shape is dropped with the registry-only change
 described under [Sessions and roots](#sessions-and-roots).
 
 ## Worktrees
@@ -378,16 +440,25 @@ Status: `decided`
 
 Status: `proposed`
 
-Proposed: a project carries its records by choice, through two settings in its registry entry, each with
-a default derived when the entry omits it.
+Proposed: a project carries its records by choice, through two settings in its settings file
+`.agent/projects.d/<name>` (not its registry entry, #332). Built in #332: the settings, their validation,
+and the refusal to store any combination but the default, so until the records lookup (#393) lands only
+(project, project) is honoured and `project_setting.sh check` flags a hand-written other one. Built by
+#393: mechanisms 1 to 3 below, and honouring the other combinations.
 
-- `location`: in the project repository (the default), or an outside path. The default outside path is
-  a fixed derived one, such as a sibling directory of the project root; the exact path is chosen when
-  this is built.
-- `tracking`: untracked; tracked in the project repository (the default when the location is in the
-  project repository); or tracked in a repository the user names. This document gives no example of
-  that repository being `agent_workspace` (owner: "I don't want to prohibit it, but I also don't want to
-  encourage it").
+- `location`: `project`, in the project repository, or `outside`, at `location_path`; when that is
+  omitted, a provisional default from `project_records_default` in `_project_registry.sh` (a sibling
+  `<clone>-records` of the clone, or a hosting directory holding both clones), chosen when #393 is built
+  (owner, 2026-10-13: where the defaults should be is not settled).
+- `tracking`: `untracked`; `project`, tracked in the project repository (the default when the location
+  is in the project repository); or `repo`, tracked in a separate records repository the user names. A
+  records repository must not be a workspace (owner, 2026-10-13): a fork of the workspace would carry
+  other projects' records, and a pull request sent back would bring them past the merge gate's
+  bookkeeping exemption. `project_records_check` refuses one by its remote URL, by a local-path or
+  `file://` remote at the workspace checkout or one of its worktrees, and by its contents (the
+  workspace's marker files, `.claude-plugin/plugin.json` naming the plugin and
+  `.agent/user_tier_scripts.txt`), so a clone of a fork under any owner is caught offline. Untracked
+  records under the workspace's ignored scratchpad are allowed.
 
 | location | tracking | What it is |
 |---|---|---|
@@ -396,12 +467,15 @@ a default derived when the entry omits it.
 | outside | tracked in a named repository | No footprint in the project; portable |
 | in the project repository | untracked, through the clone's `.git/info/exclude` | Behaves like outside and untracked |
 
-Other combinations are not named as working; whether the registry rejects them is decided when this is
-built. Three mechanisms would do it, each a later build:
+The settings validator refuses every other combination: `outside` with `tracking=project`, `project`
+with `tracking=repo`, `location_path` without `outside`, and `outside` without `tracking`. Every default
+is provisional and comes from `project_records_default`: (project, project) for a project whose file
+says nothing, which is what every reader does today, and the zero-footprint proposal onboarding makes.
+Three mechanisms would do it, each built by #393:
 
-1. One lookup, "where are the records for this project and issue", fed by the registry entry and used
+1. One lookup, "where are the records for this project and issue", fed by the settings file and used
    by every reader and writer. Today each one writes the path out itself: `dispatch_phase.sh` (lines
-   342, 344, 387, 479: the exit contract, `--check-exit` and `next`, which is what a resumed session
+   368, 370, 428, 520: the exit contract, `--check-exit` and `next`, which is what a resumed session
    reads), `merge_pr.sh` (673-684, 793-863: the gate's lookup and its `Merge` entry),
    `review_progress.sh` (112, 268, 290) and `progress_append.sh` (87). `_resolve_work_plans_dir.sh` is
    the nearest lookup that exists, and `cross_model_review.sh --work-plans-dir` already feeds it an
@@ -412,7 +486,7 @@ built. Three mechanisms would do it, each a later build:
 3. Untracked records are per machine and per clone. A second machine or a fresh clone starts with no
    timeline, and losing the directory loses the history. That is the cost of the combination.
 
-One rule: when records exist in two places, the registry setting names the source of truth.
+One rule: when records exist in two places, the setting names the source of truth.
 
 Acceptance test for this Target: a colleague's project, by shape only: a single-repository web app
 developed in a different style, with no GitHub issues or pull requests, and records where its developer
@@ -434,13 +508,13 @@ sessions walk the same order by hand, one `SKILL.md` at a time
 
 | Phase | What it produces | What follows, and who decides |
 |---|---|---|
-| `review-issue` | An `## Issue Review` entry and a comment on the issue | Open `### Actions` boxes go to the owner at an `issue-actions` checkpoint; with none open the loop moves on to `plan-task` |
+| `review-issue` | An `## Issue Review` entry and a comment on the issue | Open `### Actions` boxes go to an `issue-actions` checkpoint; with none open the loop moves on to `plan-task` |
 | `plan-task` | `plan.md`, committed on the feature branch, and a `## Plan Authored` entry | `review-plan` runs next, no decision |
-| `review-plan` | A `## Plan Review` entry | The owner decides at the `plan` checkpoint after every plan review, whatever its verdict: proceed, revise or stop |
+| `review-plan` | A `## Plan Review` entry | The `plan` checkpoint follows every plan review, whatever its verdict: proceed, revise or stop |
 | `implement` | Commits on the branch and an `## Implementation` entry; it never pushes | `review-code` on the branch runs next, no decision |
-| `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the owner at the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) without approval the owner is asked at `rounds`. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
-| `publish` | The push and the pull request, whose body carries a `## Decision summary` heading | The owner has just decided at `publish`; the host does the push (`run-issue/SKILL.md` step 7) |
-| `triage-reviews` | An `## Integrated Review` entry: every review source combined into one list of findings with a verdict on each | Open findings go to the owner at `findings`; with none open the owner is asked at `merge` |
+| `review-code` | `## Local Review (Pre-Push)` before the push, `## Local Review` after it | Pre-push: an approved verdict goes to the `publish` checkpoint; otherwise `address-findings` runs, and after 3 rounds (`MAX_ROUNDS`) without approval the `rounds` checkpoint is raised. Post-push: approved goes on to `triage-reviews`, otherwise `address-findings` |
+| `publish` | The push and the pull request, whose body carries a `## Decision summary` heading | `publish` has just been answered; the host does the push (`run-issue/SKILL.md` step 7) |
+| `triage-reviews` | An `## Integrated Review` entry: every review source combined into one list of findings with a verdict on each | Open findings go to the `findings` checkpoint, where merging past them is the owner's answer only; with none open, the `merge` checkpoint |
 | `merge` | The merge by `merge_pr.sh`, its worktree removal and branch cleanup | The owner decides at the `merge` checkpoint. The gate in `merge_pr.sh` refuses a gap on a workspace PR; a merge that does not end merged, after the run recorded a merge entry, goes to `merge-refused` |
 
 - **One entry per dispatched phase, in `progress.md`.** `.agent/work-plans/issue-<N>/progress.md` is the
@@ -456,8 +530,8 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   `_progress_entry.sh` and read by `progress_read.py`.
 - **The next step is routed on the newest entry.** `dispatch_phase.sh next` routes on the newest entry
   and, as its one other input, the pull request state; it reads earlier entries for two things only, the
-  count of completed pre-push reviews on the branch (`round_count`) and whether a failed `Implementation`
-  entry belongs to `address-findings` (`skill_for`); it makes no `gh` call and returns one action from a
+  count of completed pre-push reviews on the branch since the newest `**Decision**: restart` checkpoint (`round_count`; a restart begins the new work at round 1) and whether a failed `Implementation`
+  entry belongs to `address-findings` (`skill_for`, which also looks only after that checkpoint); it makes no `gh` call and returns one action from a
   28-row table (`dispatch_phase.sh` header). A partial or failed newest entry is always a `phase-failed`
   checkpoint, never a silent retry.
 - **Each phase but `publish` and `merge` runs in a fresh sub-agent**, except that a repeat of a phase in
@@ -469,15 +543,21 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   Claude run in parallel and synchronously through `cross_model_review.sh` (ADR-0015).
 - **The host checks the exit, not the sub-agent's word.** `dispatch_phase.sh --check-exit` compares the
   count of entries of the phase's type before and after, and returns `OK`, `PARTIAL`, `FAILED` or
-  `MISSING`; anything but `OK` goes to the owner at `phase-failed` to retry, take over or stop. What it
+  `MISSING`; anything but `OK` goes to the `phase-failed` checkpoint: retry or stop, or take over, which
+  only the owner answers. What it
   checks is that an entry of the right type appeared, its `**Status**` and, for an `## Implementation`
   entry, its `**PR**` or `**Branch**` line. It does not check whether a review's findings are right; the
   merge gate reads the `**Verdict**` and the open boxes a reviewer wrote.
-- **Nine checkpoint kinds stop for the owner**: `issue-actions`, `plan`, `publish`, `rounds`,
+- **Nine checkpoint kinds stop the loop**: `issue-actions`, `plan`, `publish`, `rounds`,
   `findings`, `merge`, `merge-refused`, `phase-failed` and `unexpected`. Each answer is recorded as a
-  `## Checkpoint` entry (`**Decided-by**: owner`) before the loop moves on, and an answer outside a
-  checkpoint's fixed vocabulary routes to `unexpected`. No phase advances on its own judgment
-  (`review_loop_lifecycle.md`).
+  `## Checkpoint` entry before the loop moves on: `**Decided-by**: owner` for his answer, or
+  `**Decided-by**: host (<reason>)` when the host answers within the `/orchestrator` skill's checkpoint
+  table, which keeps `merge`, `merge-refused`, `takeover` at `phase-failed` and `merge` at `findings`
+  for the owner (owner decision 2026-10-15, #321; `run-issue/SKILL.md`, "No auto-chaining"). The owner
+  answers what touches his goals; the host decides the rest and lists each decision for his veto, under
+  the standing rules in `.agent/knowledge/host_standing_rules.md`. An answer outside a checkpoint's
+  fixed vocabulary routes to `unexpected`. No phase advances on its own judgment, and a host answer
+  never lets the host do a phase's work (`review_loop_lifecycle.md`).
 - **One driver per issue.** There is no lock; a second driver or a hand edit shows only as an unexpected
   entry at the next check (ADR-0014).
 
@@ -648,7 +728,7 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 |---|---|---|---|
 | OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
 | OQ-2 | ADR-0016 stays Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? | Owner | When the [Sessions and roots](#sessions-and-roots) Now block becomes `decided`, and when the Registry inventory is read to settle #295 |
-| C4 | Is `onboard-project` the only path that registers and adapts a project (#332) and is hand registration retired? What does unregistering do to a project's plans, timelines and memory, and how does one project live on two machines? How are mixed-flavour projects (#310) described? | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on it yet |
+| C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line, the settings file and the plugin enable, and leaves the project's plans, timelines and memory alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
 | OQ-3 | Where do "healthy" and the measures live for the workspace (the Direction and Measures roles have no home for them), and how will anyone tell a change helped? Partly answered (#386): the roadmap's Direction section and the sit-rep run record. Still open: what healthy means beyond the acceptance case, and a measure beyond counts of lines true | Owner | The two gap rows of [Documentation layers](#documentation-layers); the long-view goal in the README |
 | OQ-4 | What budget does the always-loaded instruction layer get (the reference point is under 200 lines per file; `AGENTS.md` is 442)? | Owner | [Instruction layers](#instruction-layers); changing `AGENTS.md` is Ask First |
@@ -701,7 +781,13 @@ makes untrue in the same change (ADR-0017).
 | 2026-10-13 | Sessions and roots | The root rule (owner, 2026-10-13): a session works only under the root it was launched in, cross-root work is an issue or an inbox line, and `run-issue` and `/start-task` refuse an issue of another root through `session_root.sh`; the user-tier bullet drops the `~/.claude/skills/` symlinks and a new bullet describes plugin skill delivery (ADR-0018). Section is 79 lines, past the 60-line prompt: asked whether the detail moves next to the code; the two new bullets are the interface between the installer, the hook, `run-issue`, `/start-task` and the two location scripts, which no one script header shows, so they stay | #345 | 748 |
 | 2026-10-13 | Sessions and roots | Review fixes: the installer refuses a root that is a plain directory inside another repository (its sessions read that repository's settings); the directory a run starts from names its root, rather than the current directory at any point; the `SessionStart` hook counts a root's `worktrees=` directory as the root's; `session_root.sh` and `skill_prefix.sh` refuse the same directories | #345 | 753 |
 | 2026-10-15 | Documentation layers | Direction row: the sit-rep names the first Direction line not yet true as the next step and reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since this file last changed, and may start a due read-only check in the background in a workspace session; the gaps paragraph calls that Problems section a first form of health signals | #395 | 756 |
-| 2026-10-27 | Decision register | Nine Re-examined cells (0001, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0018) set to `yes 2026-10-27` from the 2026-10-27 audit, each checked against code; 0007 stays in force with a note on how its key behaviours differ here (owner, 2026-10-27) | #405 | 757 |
+| 2026-10-21 | Registry and adapters, Worktrees | The per-project settings file `.agent/projects.d/<name>` (commands, `bootstrap_url`, the records settings, `instructions`), read before the legacy `.sh` and the shared config (an existing legacy `.sh` is the whole legacy layer, as before), with a fall-through to the shared config reported, a command set in the file run without either config's environment (environment setup goes in the script the key points at), the writer's lock file beside the file or its link target and never removed, `project_setting.sh` named beside `capture.sh` as reading the main checkout's registry from a worktree, and a key the project's type never reads refused (`unused_settings` per type); the Worktrees Target's `location` and `tracking` move from the registry entry to that file, what #332 builds and what the records lookup (#393) builds are marked, every default is provisional and held by `project_records_default`, the refused combinations are named, the "don't prohibit" sentence is replaced by the owner's refusal (a records repository must not be a workspace: remote URL, local path, contents) with its fork-and-pull-request reason, and the mechanism-1 `dispatch_phase.sh` line numbers and the `adapter:73` default citation are refreshed. Registry and adapters is 109 lines, past the 60-line prompt: the new bullet is one paragraph that points at the `_project_registry.sh` header, where the grammar and keys live, so it stays. Worktrees is 95 lines and its Target 57, under the 60-line split point set on 2026-10-09, so it stays one section | #332 | 790 |
+| 2026-10-15 | How it works, Documentation layers, Rules, Review loop and timeline, Glossary | Who answers a checkpoint (owner decision 2026-10-15): the owner answers what touches his goals and every merge, the host the rest within `/orchestrator`'s table, recorded `**Decided-by**: host (<reason>)` and listed for veto; the phase table's who-decides wording, the exit-check bullet (take over is the owner's), the checkpoint bullet and the glossary entry follow; a Rules row for host answers (`review only`); the Direction row names the roadmap's two paths and the sit-rep's path word and focus question | #321 | 800 |
+| 2026-10-28 | Sessions and roots, Registry and adapters, Open questions | Registration is built (#332 PR 2): `register_project.sh` (register, adopt a hand-written line, `--remove`, `--detect`, `--dry-run`, rollback of a failed registration) and its read-only gate `registration_verify.sh` replace "Registration is by hand"; each type's `registration.conf` sits beside the 12-verb contract, checked by `validate_adapter.sh`; the Sessions and roots registration bullet moves from Target to Now; the Registry Target names the two steps (register from the workspace, onboard at the root); C4 keeps only one project on two machines and mixed-flavour projects | #332 | 819 |
+| 2026-10-28 | Documentation layers, Sessions and roots, Registry and adapters | Onboarding is built (#332 PR 3): Sessions and roots names the one exception to working only under the root (a project session writes its own project's settings file through `project_setting.sh set`, guarded to that project) and gains the onboarding bullet (`/agent-workspace:onboard-project`, the footprint questions, `project_integration_audit.sh`, offers only with `instructions=tracked`, the four answers and the `## Onboarding` roadmap section, every write waits for a yes); the Registry Target says both steps are built; Documentation layers says onboarding offers a project's Direction section. Sessions and roots is 101 lines, past the 60-line prompt: the two bullets name how the session-root rule is bent and what the project side does, which no single script header shows, so they stay; the onboarding steps themselves live in the skill | #332 | 836 |
+| 2026-10-28 | Sessions and roots | Review fix: the onboarding bullet says where the fix-now batch goes, the onboarding issue's feature branch or, for a project that uses no issues, a `skill/onboard-project-<timestamp>` branch from a project skill worktree (`onboard-project` joins `worktree_create.sh`'s skill allowlist) | #332 | 840 |
+| 2026-10-29 | Sessions and roots | Review fix (host decision, listed for the owner's veto): at a parent root onboarding reads, reports and fixes the chosen instance's repository alone (audit categories 1 to 5 read only the instance; category 6 verifies the instance's registration beside the parent's) and does not audit the parent root's own files | #332 | 843 |
+| 2026-10-30 | Decision register | Nine Re-examined cells (0001, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0018) set to `yes 2026-10-27` from the 2026-10-27 audit, each checked against code; 0007 stays in force with a note on how its key behaviours differ here (owner, 2026-10-27) | #405 | 844 |
 
 ## Glossary
 
@@ -722,8 +808,9 @@ Our own terms:
 - **round**: one pass of a review phase. Round 2 is the re-review after fixes.
 - **convergence**: rounds converge when each finds fewer must-fix items than the last. When they stop
   converging the loop steps back.
-- **checkpoint**: a point where the loop stops and asks the owner (after the plan, before publish,
-  before merge).
+- **checkpoint**: a point where the loop stops for an answer (after the plan, before publish,
+  before merge). The owner answers the ones that touch his goals and every merge; the host answers
+  the rest under his standing rules.
 - **progress timeline**: the per-issue file where the loop records each step and decision, so a new
   session can see what happened without re-reading the chat.
 - **Integrated Review**: the entry `triage-reviews` writes, with all review sources combined into one

@@ -674,6 +674,75 @@ test_worktree_create_unknown_repo() {
     assert_contains "lists registered projects" "alpha" "$out"
 }
 
+test_worktree_create_skill_project() {
+    echo "TEST: worktree_create --skill onboard-project --type project: the root's repo on a skill branch, entered and removed by --skill (#332)"
+    local sb out rc=0 wtp branch
+    sb="$(make_worktree_sandbox)"
+    cp "$REAL_ROOT/.agent/scripts/worktree_remove.sh" "$sb/.agent/scripts/"
+    make_registered_project "$sb" alpha >/dev/null
+    seed_commit "$sb/projects/alpha"
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project alpha 2>&1)" || rc=$?
+    assert_eq "exit 0 ($(tail -n3 <<< "$out"))" "0" "$rc"
+    wtp="$(find "$sb/projects/alpha/worktrees" -maxdepth 1 -name 'skill-alpha-onboard-project-*' -type d 2>/dev/null | head -n1)"
+    assert_eq "worktree under the root's worktrees/" "yes" "$([ -n "$wtp" ] && echo yes || echo no)"
+    branch="$(git -C "$wtp" branch --show-current 2>/dev/null)"
+    assert_eq "on a skill/onboard-project-<timestamp> branch (got $branch)" \
+        "yes" "$([[ "$branch" =~ ^skill/onboard-project-[0-9]{8}-[0-9]{6}- ]] && echo yes || echo no)"
+    assert_eq "a checkout of the alpha repo" \
+        "$(cd "$sb/projects/alpha/.git" && pwd -P)" \
+        "$(cd "$wtp" && cd "$(git rev-parse --git-common-dir)" && pwd -P)"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_enter.sh" --skill onboard-project --type project --project alpha --print-path 2>&1)" || rc=$?
+    assert_eq "enter --skill finds it" "$wtp" "$out"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_remove.sh" --skill onboard-project --type project --project alpha --force 2>&1)" || rc=$?
+    assert_eq "remove --skill exit 0" "0" "$rc"
+    assert_eq "the worktree is gone" "no" "$([ -d "$wtp" ] && echo yes || echo no)"
+
+    echo "TEST: worktree_create --skill: a skill not on the allowlist is refused; a root that is not the top of a repo is refused"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill plan-task --type project --project alpha 2>&1)" || rc=$?
+    assert_eq "plan-task: exit 1" "1" "$rc"
+    assert_contains "says the allowlist" "is not in the allowlist" "$out"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill research --type project --project alpha 2>&1)" || rc=$?
+    assert_eq "research --type project: exit 1" "1" "$rc"
+    assert_contains "says research is for workspace worktrees" "--skill research is for --type workspace worktrees, not --type project" "$out"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type workspace 2>&1)" || rc=$?
+    assert_eq "onboard-project --type workspace: exit 1" "1" "$rc"
+    assert_contains "says onboard-project is for project worktrees" "--skill onboard-project is for --type project worktrees, not --type workspace" "$out"
+    mkdir -p "$sb/projects/alpha/sub"
+    echo "sub single_project $sb/projects/alpha/sub" >> "$sb/.agent/projects.local"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project sub 2>&1)" || rc=$?
+    assert_eq "a root inside another repo: exit 1" "1" "$rc"
+    assert_contains "says why" "is not the top of one" "$out"
+
+    echo "TEST: worktree_list.sh: a project named with - and . lists its skill and issue worktrees under that name"
+    cp "$REAL_ROOT/.agent/scripts/worktree_list.sh" "$sb/.agent/scripts/"
+    local mp
+    mp="$(make_registered_project "$sb" my-proj.x)"
+    seed_commit "$mp"
+    rc=0
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --skill onboard-project --type project --project my-proj.x 2>&1)" || rc=$?
+    assert_eq "skill worktree of my-proj.x: exit 0 ($(tail -n2 <<< "$out"))" "0" "$rc"
+    git -C "$mp" worktree add --quiet -b feature/issue-7 "$mp/worktrees/issue-my-proj.x-7" 2>/dev/null
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" "$sb/.agent/scripts/worktree_list.sh" --json 2>/dev/null)" || true
+    assert_eq "the skill worktree: repo my-proj.x, skill onboard-project" "my-proj.x onboard-project" \
+        "$(jq -r '.worktrees[] | select(.type == "project" and .skill != null and (.path | contains("my-proj.x"))) | "\(.repo) \(.skill)"' <<< "$out")"
+    assert_eq "the issue worktree: repo my-proj.x, issue 7" "my-proj.x 7" \
+        "$(jq -r '.worktrees[] | select(.type == "project" and .issue != null and (.path | contains("my-proj.x"))) | "\(.repo) \(.issue)"' <<< "$out")"
+}
+
 test_worktree_create_registry_repo() {
     echo "TEST: worktree_create --project <name> creates the worktree from the registry checkout"
     local sb out rc=0
@@ -1093,6 +1162,9 @@ test_validate_python_parser_matches_shell() {
     echo "r2 single_project $sb/alias2" >> "$sb/.agent/projects.local"
     echo "h single_project $sb/h distro=my-distro" >> "$sb/.agent/projects.local"
     echo "w single_project $sb/w worktrees=$sb/w/../w/x" >> "$sb/.agent/projects.local"
+    echo "tools.sh single_project $sb/tools" >> "$sb/.agent/projects.local"
+    echo "kit.SH single_project $sb/kit" >> "$sb/.agent/projects.local"
+    echo "box.sH single_project $sb/box" >> "$sb/.agent/projects.local"
     # Shell: entries as name|type|path|fields, then errors without the file prefix.
     shell_out="$( { reg "$sb" registry_entries_full "$sb" 2>/dev/null | tr '\t' '|' || true; echo "--errors--"; reg "$sb" registry_entries_full "$sb" 2>&1 >/dev/null | sed -E 's/^ERROR: [^:]+:([0-9]+): /\1: /' || true; } )"
     # Python: the same shape from read_projects_registry.
@@ -1114,6 +1186,11 @@ for err in errors:
     assert_contains "the comparison covered the '..' escape" "for 'climb' must lie under" "$shell_out"
     assert_contains "the comparison covered the alias collision" "'r2' resolves to $sb/real2" "$shell_out"
     assert_contains "the comparison kept the in-root '..' override" "w|single_project|$sb/w|worktrees=$sb/w/x" "$shell_out"
+    assert_contains "the comparison covered a name ending in .sh" "invalid project name 'tools.sh': a name may not end in '.sh'" "$shell_out"
+    assert_not_contains "neither parser keeps the .sh name" "tools.sh|" "$py_out"
+    assert_contains "the comparison covered an upper-case .SH" "invalid project name 'kit.SH': a name may not end in '.sh', in any letter case" "$shell_out"
+    assert_contains "the comparison covered a mixed-case .sH, naming project 'box'" "legacy .agent/projects.d/<name>.sh of project 'box')" "$shell_out"
+    assert_not_contains "neither parser keeps a mixed-case name" "kit.SH|" "$py_out"
 }
 
 test_worktree_create_parent_default_instance() {
@@ -1483,6 +1560,7 @@ test_single_project_scoped_validate_nested_dir_fails
 test_single_project_legacy_validate
 test_worktree_create_unknown_repo
 test_worktree_create_registry_repo
+test_worktree_create_skill_project
 test_worktree_create_single_registry_autoselect
 test_worktree_create_dashed_name_roundtrip
 test_worktree_create_repo_alias

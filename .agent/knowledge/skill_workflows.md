@@ -30,12 +30,13 @@ Each step is optional — simple issues can skip straight to `plan-task` or impl
 | `gather-project-knowledge` | After repo changes | Scan repos and generate project knowledge summaries |
 | `audit-workspace` | Periodically | Check workspace governance health: enforcement, drift, staleness |
 | `audit-project` | Before or after repo work | Check a project repo against workspace and project conventions |
-| `onboard-project` | When onboarding a repo | Interactive audit + fix: add CI, pre-commit, agent guide, GitHub settings |
+| `onboard-project` | After `register_project.sh`, in a session at the project's root; again whenever the project moves or changes | The project side of onboarding: footprint questions, the integration audit (`project_integration_audit.sh`), offers only when `instructions=tracked`; each finding answered fix now, open issue, queue in the roadmap, or skip; every write waits for a yes |
 | `skill-importer` | When importing external skills | Evaluate, adapt, and import skills from external sources |
 | `document-project` | After audit-project flags doc gaps | Generate or update project README and API docs from source |
 | `issue-triage` | Periodically | Cross-repo issue scanning, categorization, and stale issue detection |
 | `test-engineering` | After audit-project flags test gaps | Test scaffolding, debugging, and coverage analysis |
 | `inspiration-tracker` | Periodically | Track external projects for portable enhancements and patterns |
+| `orchestrator` | When the owner asks to run, drive or orchestrate issues | Interim: runs issues through `/run-issue` with the owner at goal level, answers a checkpoint itself only where its table allows, under [`host_standing_rules.md`](host_standing_rules.md), and lists each decision for his veto |
 
 ### Makefile skills
 

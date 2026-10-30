@@ -877,6 +877,45 @@ test_setup_bootstrap_env_url_wins() {
     assert_eq "manifest present" "true" "$([ -f "$proj/configs/manifest/layers.txt" ] && echo true || echo false)"
 }
 
+test_setup_bootstrap_shared_url_is_reported() {
+    echo "TEST: a bootstrap URL from the shared project_config.sh is reported on stderr; one from the settings file or the legacy .sh is not (#332)"
+    local sb out rc url note
+    note="NOTE: project 'p11' has no bootstrap URL of its own; using MANIFEST_BOOTSTRAP_URL from the shared .agent/project_config.sh"
+
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_fresh_project "$sb" >/dev/null
+    url="$(make_manifest_remote "$sb" l1)"
+    rm -f "$sb/.agent/projects.d/p11.sh"
+    printf 'ROS_ROOT_DIR="%s"\nMANIFEST_BOOTSTRAP_URL="%s"\n' "$sb/rosroot" "$url" > "$sb/.agent/project_config.sh"
+    rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "shared URL: exit 0" "0" "$rc"
+    assert_contains "shared URL: fetched" "Fetching bootstrap config from $url" "$out"
+    assert_contains "shared URL: the fall-through is reported" "$note" "$out"
+    assert_contains "shared URL: the note names the setting" "project_setting.sh set p11 bootstrap_url=<url>" "$out"
+
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_fresh_project "$sb" >/dev/null
+    url="$(make_manifest_remote "$sb" l1)"
+    rm -f "$sb/.agent/projects.d/p11.sh"
+    printf 'ROS_ROOT_DIR="%s"\nMANIFEST_BOOTSTRAP_URL="file:///nonexistent/shared.yaml"\n' "$sb/rosroot" > "$sb/.agent/project_config.sh"
+    printf 'bootstrap_url=%s\n' "$url" > "$sb/.agent/projects.d/p11"
+    rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "settings-file URL: exit 0" "0" "$rc"
+    assert_contains "settings-file URL: fetched" "Fetching bootstrap config from $url" "$out"
+    assert_not_contains "settings-file URL: no note" "NOTE:" "$out"
+
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_fresh_project "$sb" >/dev/null
+    url="$(make_manifest_remote "$sb" l1)"
+    echo "MANIFEST_BOOTSTRAP_URL=\"$url\"" >> "$sb/.agent/projects.d/p11.sh"
+    rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "legacy URL: exit 0" "0" "$rc"
+    assert_not_contains "legacy URL: no note" "NOTE:" "$out"
+}
+
 test_setup_fresh_dir_without_url_fails() {
     echo "TEST: fresh hosting dir with no bootstrap URL fails with guidance"
     local sb out rc=0
@@ -1415,6 +1454,7 @@ test_setup_requires_vcs
 test_setup_bootstraps_manifest_pattern_b
 test_setup_bootstraps_pattern_a_from_url_file
 test_setup_bootstrap_env_url_wins
+test_setup_bootstrap_shared_url_is_reported
 test_setup_fresh_dir_without_url_fails
 test_setup_bootstrap_rejects_unsafe_fields
 test_setup_bootstrap_missing_fields_fails

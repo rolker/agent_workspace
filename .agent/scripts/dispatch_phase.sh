@@ -21,11 +21,17 @@
 #     conventions also carries the once-per-pass hook rule (owner-decided
 #     2026-10-20, issue #399): SKIP=validate-script-tests on intermediate
 #     commits only, one `pre-commit run --files` over the branch's changed
-#     files before the entry, CI as the backstop; other phases and project
-#     handoffs carry none.
+#     files before the entry (it runs the script suites those files reach,
+#     issue #410), CI as the backstop; other phases and project handoffs
+#     carry none.
 #     --skill-prefix (default empty) namespaces every slash command in the
 #     task line, e.g. `agent-workspace:` gives `/agent-workspace:review-code`
 #     -- for a host whose workspace skills came from the plugin (ADR-0018).
+#     A pre-push review-code task line at round 3 or later (as
+#     `review_progress.sh round` counts it: complete reviews on the branch
+#     after the newest restart checkpoint, the same rule as `next`) ends
+#     with its scope and the words "no cross-model reviewers" (issue 321,
+#     the round-3 exception).
 #
 #   dispatch_phase.sh --check-exit --issue <N> --skill <phase>
 #                      [--type workspace|project] [--project <name>]
@@ -348,6 +354,28 @@ cmd_handoff() {
         exit 2
     }
 
+    # A pre-push review at round 3 or later is a narrow convergence check
+    # with no cross-model reviewers: the owner's standing exception to the
+    # fix-round rule (issue 321; review_depth_classification.md, "Round-3
+    # convergence check"). The scope goes on the task line, which every host
+    # pastes into the dispatch, and review-code step 2 looks for it there.
+    # No progress file is round 1. A round that cannot be counted leaves the
+    # task line as it is (a full fix-round review) and says so on stderr.
+    if [[ "$skill" == "review-code" && -z "$pr" ]]; then
+        local progress="$wt/.agent/work-plans/issue-$issue/progress.md" branch="" round_out="" round=""
+        if [[ -f "$progress" ]]; then
+            if branch=$(git -C "$wt" symbolic-ref --short -q HEAD) \
+                && round_out=$("$SCRIPT_DIR/review_progress.sh" round --progress "$progress" --branch "$branch"); then
+                round=$(sed -n 's/^round=//p' <<< "$round_out")
+            else
+                echo "warning: dispatch: could not count the review rounds for issue #$issue (no branch, or an unreadable timeline); the review-code handoff stays a full fix-round review" >&2
+            fi
+        fi
+        if [[ "$round" =~ ^[0-9]+$ && "$round" -ge 3 ]]; then
+            task="$task (round $round: a narrow convergence check on the round $((round - 1)) review's findings and the fix diff since it; no cross-model reviewers)"
+        fi
+    fi
+
     if [[ -z "${AGENT_NAME:-}" || -z "${AGENT_EMAIL:-}" ]]; then
         echo "error: dispatch: AGENT_NAME/AGENT_EMAIL are not set — source set_git_identity_env.sh first (no fallback to the human's git config)" >&2
         exit 2
@@ -381,7 +409,7 @@ cmd_handoff() {
     root_q=$(printf '%q' "$ROOT_DIR")
     case "$skill" in
         implement|address-findings)
-            [[ "$type" == workspace ]] && pass_rule=" Hook rule for this dispatched pass (owner-decided 2026-10-20): set \`SKIP=validate-script-tests\` only on your intermediate atomic commits, never \`--no-verify\`; before writing the entry, run \`$root_q/.venv/bin/pre-commit run --files \$(git diff --name-only main...HEAD)\` once with no SKIP (the main checkout's venv pre-commit: a worktree has no \`.venv\`; the file list is left unquoted because no repo path has a space; in a sub-issue worktree it also covers the parent's files). It runs the script test suite when a changed file that still exists matches that hook (pre-commit drops deleted paths; CI's all-files run covers the rest), so run no separate suite; it takes several minutes: give the call a long timeout (up to 600000 ms) and wait for its exit, because a run that was backgrounded or cut off has not passed. If it fails, fix it and run the same command again on the final tree. CI (\`make lint\`, every hook on all files) is the backstop."
+            [[ "$type" == workspace ]] && pass_rule=" Hook rule for this dispatched pass (owner-decided 2026-10-20): set \`SKIP=validate-script-tests\` only on your intermediate atomic commits, never \`--no-verify\`; before writing the entry, run \`$root_q/.venv/bin/pre-commit run --files \$(git diff --name-only main...HEAD)\` once with no SKIP (the main checkout's venv pre-commit: a worktree has no \`.venv\`; the file list is left unquoted because no repo path has a space; in a sub-issue worktree it also covers the parent's files). It runs the script test suites those files reach when a changed file that still exists matches that hook (every suite when the branch deletes an in-scope file or touches a shared helper; a branch whose only in-scope changes are deletions runs none, and CI's all-files run covers that), so run no separate suite; it takes about 2 minutes for a typical fix, about 7 when every suite runs: give the call a long timeout (up to 600000 ms) and wait for its exit, because a run that was backgrounded or cut off has not passed. If it fails, fix it and run the same command again on the final tree. CI (\`make lint\`, every hook on all files) is the backstop."
             ;;
     esac
     echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create.${pass_rule}"
@@ -579,6 +607,19 @@ TYPE_TO_SKILL = {
 }
 
 
+def restart_start():
+    # Index of the first entry after the newest **Decision**: restart
+    # checkpoint (0 when there is none). The owner restated the goal
+    # (/orchestrator recipe (a)), so the new work starts here: round_count()
+    # counts reviews from it and skill_for() names phases from it.
+    start = 0
+    for i, e in enumerate(entries):
+        if e.get("base_type") == "Checkpoint" \
+                and ((e.get("fields") or {}).get("Decision") or "").strip().lower() == "restart":
+            start = i + 1
+    return start
+
+
 def skill_for(entry):
     b = entry.get("base_type")
     if b == "Implementation":
@@ -599,8 +640,12 @@ def skill_for(entry):
         # "## Implementation" on the timeline this is still the implement
         # pass. Ordinal position alone ("is this the first one?") would
         # misroute a second consecutive failed implement: retry -> failed
-        # again must still name **Phase**: implement (issue #314).
-        for e in entries:
+        # again must still name **Phase**: implement (issue #314). Only
+        # entries after the newest restart checkpoint count, the same start
+        # round_count() uses: a restart begins the new work at its first
+        # implement, so a complete Implementation from before it does not
+        # make the next failed pass an address-findings pass (issue 321).
+        for e in entries[restart_start():]:
             if e is entry:
                 break
             if e.get("base_type") == "Implementation" \
@@ -623,10 +668,13 @@ def round_count():
     # newest such entrys branch correlation (hermetic under --progress). Only
     # status == "complete" counts as a round: a partial/failed review that
     # was retried (row 3 already routed it to checkpoint:phase-failed) must
-    # not inflate the round count toward MAX_ROUNDS.
+    # not inflate the round count toward MAX_ROUNDS. Only reviews after the
+    # newest **Decision**: restart checkpoint count (the owner restated the
+    # goal, /orchestrator recipe (a)): the new work starts at round 1. The
+    # same rule as review_progress.sh round, which the round-3 handoff uses.
     branch = (E.get("correlation") or {}).get("branch")
     n = 0
-    for e in entries:
+    for e in entries[restart_start():]:
         if e.get("base_type") == "Local Review (Pre-Push)":
             c = e.get("correlation") or {}
             if c.get("kind") == "branch" and c.get("branch") == branch \
@@ -711,7 +759,7 @@ if base == "Plan Authored":
     emit("review-plan", "plan committed -- independent review next")
 
 if base == "Plan Review":
-    emit("checkpoint:plan", "plan review complete -- owner decides proceed, revise, or stop")
+    emit("checkpoint:plan", "plan review complete -- proceed, revise, or stop")
 
 if base == "Implementation":
     mode_note = "pre-push (--branch)" if PR == "none" else "PR mode"
