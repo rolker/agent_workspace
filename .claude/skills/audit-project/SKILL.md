@@ -292,13 +292,16 @@ gh api --hostname github.com repos/<owner>/<repo>/branches/<default-branch>/prot
 | `true` | `false` (protected, no pull request required) | **missing** |
 | `true` | 404 with the message `Branch not protected` (gh prints `Branch not protected (HTTP 404)`) | **missing** |
 | `true` | any other failure | `not checked: <the call's error>` |
-| `false` | not made | `not checked: classic branch protection needs admin access` |
+| anything but `true` (`false`, or `null` from a token whose answer has no permissions object) | not made | `not checked: classic branch protection needs admin access` |
 | the access call fails | not made | `not checked: <the call's error>` |
 
 A 404 is never read as missing without admin access: without it the same
-404 hides a protected branch. When the rules call itself fails (offline),
-the item is `not checked: <reason>` unless the protection call shows
-required pull request reviews. Copilot auto-review lives only in the
+404 hides a protected branch. Only `true` counts as admin access: an
+access call that succeeds and prints `false`, `null` or anything else
+leaves the item `not checked: classic branch protection needs admin
+access`. When the rules call itself fails (offline), the item is
+`not checked: <reason>` unless the protection call shows required pull
+request reviews. Copilot auto-review lives only in the
 rules, so a failed rules call leaves it `not checked: <reason>`; a
 permission problem never fails the run.
 

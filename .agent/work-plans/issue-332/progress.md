@@ -1755,7 +1755,7 @@ Reviewers:
   - Add fixtures with `#`, `?` and `@` inside the password.
   - `.agent/scripts/project_integration_audit.sh:307`
 - [x] (suggestion) The file:// branch strips only `[^/]*@`, so a password holding "/" passes `redact_url` whole (`file://u:t/k@h/p`). Today only the `fact()` scrub keeps it out of the evidence (reproduced). Make the primary layer hold on its own, as the https branch does, and add a fixture — `.agent/scripts/project_integration_audit.sh:309`
-- [ ] (suggestion) The branch-protection table has no row for `.permissions.admin` printing `null`, which a token without a permissions object can do. Say that any answer other than `true` is `not checked: classic branch protection needs admin access` — `.claude/skills/audit-project/SKILL.md:295`
+- [x] (suggestion) The branch-protection table has no row for `.permissions.admin` printing `null`, which a token without a permissions object can do. Say that any answer other than `true` is `not checked: classic branch protection needs admin access` — `.claude/skills/audit-project/SKILL.md:295`
 
 ## Checkpoint
 **Status**: complete

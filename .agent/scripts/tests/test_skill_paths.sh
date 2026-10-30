@@ -525,11 +525,14 @@ if [[ -f "$AUD" ]]; then
         '`gh api --hostname github.com`' 'gh label list -R github.com/<owner>/<repo>' \
         'Fixes from the project audit:' 'Found by the `audit-project` skill.'
     # Classic protection's 404 means "not protected" only with admin
-    # access; without it the same 404 hides a protected branch.
+    # access; without it the same 404 hides a protected branch. Any
+    # answer to the access call but `true` (`false`, or `null`) is no
+    # admin access.
     has "$AUD" "audit-project: branch protection asks for admin access before reading classic protection's 404" \
         "gh api --hostname github.com repos/<owner>/<repo> --jq '.permissions.admin'" \
         '| `true` | 404 with the message `Branch not protected`' \
-        '| `false` | not made | `not checked: classic branch protection needs admin access` |' \
+        '| anything but `true` (`false`, or `null` from a token whose answer has no permissions object) | not made | `not checked: classic branch protection needs admin access` |' \
+        'Only `true` counts as admin access' \
         'A 404 is never read as missing without admin access' \
         'puts branch protection **in place**, whatever'
     has "$AUD" "audit-project: the integration script replaces the stale workspace check, report-only" \
