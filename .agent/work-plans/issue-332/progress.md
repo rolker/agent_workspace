@@ -1749,12 +1749,12 @@ Reviewers:
 - Cross-model: skipped (round-18 convergence check, per handoff).
 
 ### Findings
-- [ ] (must-fix) `redact_url` cuts at the first `?` or `#` before it strips the user part.
+- [x] (must-fix) `redact_url` cuts at the first `?` or `#` before it strips the user part.
   - A password holding either character leaks its prefix, and the GitHub remote is misread as not GitHub: `https://user:pa#ss@github.com/o/r` and `https://user:pa?ss@github.com/o/r.git` both give the evidence `remote 'origin' is https/user:pa`, and the scp form `u:t#k@github.com:o/r` gives `u/t`. `scrub_secrets` does not catch it, because no "@" is left (reproduced).
   - Fix: strip the user part first, then the query and fragment, in the `://` and scp branches.
   - Add fixtures with `#`, `?` and `@` inside the password.
   - `.agent/scripts/project_integration_audit.sh:307`
-- [ ] (suggestion) The file:// branch strips only `[^/]*@`, so a password holding "/" passes `redact_url` whole (`file://u:t/k@h/p`). Today only the `fact()` scrub keeps it out of the evidence (reproduced). Make the primary layer hold on its own, as the https branch does, and add a fixture — `.agent/scripts/project_integration_audit.sh:309`
+- [x] (suggestion) The file:// branch strips only `[^/]*@`, so a password holding "/" passes `redact_url` whole (`file://u:t/k@h/p`). Today only the `fact()` scrub keeps it out of the evidence (reproduced). Make the primary layer hold on its own, as the https branch does, and add a fixture — `.agent/scripts/project_integration_audit.sh:309`
 - [ ] (suggestion) The branch-protection table has no row for `.permissions.admin` printing `null`, which a token without a permissions object can do. Say that any answer other than `true` is `not checked: classic branch protection needs admin access` — `.claude/skills/audit-project/SKILL.md:295`
 
 ## Checkpoint

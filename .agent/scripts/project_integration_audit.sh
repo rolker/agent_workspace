@@ -293,32 +293,37 @@ if [ "$FACTS" -eq 1 ]; then
     fact() { FACT_LINES+="$1"$'\t'"$2"$'\t'"$(scrub_secrets "$(clean "$3")")"$'\n'; }
 
     # redact_url <url>: the remote URL with every part that can hold a
-    # secret removed, in each form git accepts:
-    #   - the query and fragment ("?token=...", "#..."), in any form;
-    #   - scheme://user:secret@host/...: everything from "://" to the
-    #     last "@" in the URL, so a secret holding a "/" goes too (no
-    #     GitHub owner or repository name holds an "@");
-    #   - file://user:secret@host/...: to the last "@" before the next
-    #     "/", since a local path may hold an "@";
-    #   - scp form [user[:secret]@]host:path (a ":" before the first "/"):
-    #     everything to the last "@" before the last ":".
-    # A local path (no "://", no ":" before its first "/") keeps its "@".
+    # secret removed, in each form git accepts. The user part goes first,
+    # then the query and fragment ("?token=...", "#..."): a password may
+    # hold "?", "#", "@", "/" or ":", so cutting at "?" or "#" first would
+    # keep the start of it and lose the host.
+    #   - scheme://user:secret@host/... (https, ssh, git, file:// with a
+    #     host): everything from "://" to the last "@" in the URL. No
+    #     GitHub owner or repository name holds an "@"; a "@" in a query,
+    #     a fragment or a file:// path costs that part of the evidence,
+    #     never a secret.
+    #   - file:///path (no host): no user part; the path keeps its "@".
+    #   - scp form [user[:secret]@]host:path (no scheme, a ":" before the
+    #     first "/"): everything to the last "@" before the last ":".
+    # A local path (no scheme, no ":" before its first "/") keeps its "@".
     redact_url() {
-        local u="${1%%[?#]*}" head lead
-        case "$u" in
-            [Ff][Ii][Ll][Ee]://*)
-                printf '%s' "$u" | sed -E 's|^([A-Za-z]+://)[^/]*@|\1|'
-                return 0 ;;
-            *://*)
-                printf '%s' "$u" | sed -E 's|^([A-Za-z][A-Za-z0-9+.-]*://).*@|\1|'
-                return 0 ;;
-        esac
-        head="${u%%/*}"
-        if [[ "$head" == *:* ]]; then
-            lead="${u%:*}"
-            [[ "$lead" == *@* ]] && u="${u#"${lead%@*}"@}"
+        local u="$1" scheme rest head lead
+        if [[ "$u" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// ]]; then
+            scheme="${BASH_REMATCH[0]}"
+            rest="${u#"$scheme"}"
+            case "$scheme" in
+                [Ff][Ii][Ll][Ee]://) [[ "$rest" == /* ]] || rest="${rest##*@}" ;;
+                *) rest="${rest##*@}" ;;
+            esac
+            u="$scheme$rest"
+        else
+            head="${u%%/*}"
+            if [[ "$head" == *:* ]]; then
+                lead="${u%:*}"
+                [[ "$lead" == *@* ]] && u="${u#"${lead%@*}"@}"
+            fi
         fi
-        printf '%s' "$u"
+        printf '%s' "${u%%[?#]*}"
     }
 
     # scrub_secrets <text>: the same removals applied to any URL-shaped

@@ -21,8 +21,10 @@
 # edge cases: gh or jq missing, the list calls failing after repo view
 # answered, a JSON answer that is not a list, a credential in a remote URL
 # or a secret anywhere in it, in any form: user part, query, fragment,
-# https, ssh, scp, file://, on origin or another remote, or in gh's error
-# text (never printed, never passed to gh), a github.com path that is not
+# https, ssh, scp, file://, a password holding "?", "#", "@" or "/" in
+# each of those forms (GitHub still read as GitHub), on origin or another
+# remote, or in gh's error text (never printed, never passed to gh), a
+# github.com path that is not
 # owner/repo (unknown), GH_HOST naming another server, an ssh host alias or
 # GitHub on a remote other than the one checked (unknown), no commits, a
 # remote not named origin, and a root nested inside another repository.
@@ -766,6 +768,29 @@ facts "$CLEAN"
 check "a file:// remote with a user part and a query: a local path, printed without either (got: $(fev github))" \
     [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: file://localhost$SANDBOX/projects/factgh" ]
 no_secret "a file:// remote"
+# The class behind those: a password holding "?", "#", "@" or "/", in
+# each form. redact_url strips the user part before the query and
+# fragment, so no part of the password is kept and the host is still
+# read. The secret marker sits on both sides of the character, so a kept
+# prefix or a kept suffix both show.
+for _c in '?' '#' '@' '/'; do
+    _pw="s3cr3tTOKEN${_c}s3cr3tTOKEN"
+    for _cred_url in "https://someone:${_pw}@github.com/someone/clean.git" \
+            "ssh://git:${_pw}@ssh.github.com:443/someone/clean.git" \
+            "someone:${_pw}@github.com:someone/clean.git"; do
+        gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+        facts "$CLEAN"
+        check "a password holding '$_c' in a GitHub remote ($_cred_url): github yes, github.com/someone/clean, gh asked about that alone (got: $(fval github)/$(fev github) | $(head -n1 "$GH_LOG"))" \
+            bash -c '[ "$1" = "yes/remote '"'"'origin'"'"' is github.com/someone/clean" ] && [ "$2" = "repo view github.com/someone/clean --json hasIssuesEnabled,issues,pullRequests" ]' \
+            _ "$(fval github)/$(fev github)" "$(head -n1 "$GH_LOG")"
+        no_secret "a password holding '$_c' in GitHub remote $_cred_url"
+    done
+    gitq -C "$CLEAN" remote set-url origin "file://someone:${_pw}@localhost$SANDBOX/projects/factgh"
+    facts "$CLEAN"
+    check "a password holding '$_c' in a file:// remote: a local path, printed without it (got: $(fev github))" \
+        [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: file://localhost$SANDBOX/projects/factgh" ]
+    no_secret "a password holding '$_c' in a file:// remote"
+done
 gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
 gitq -C "$CLEAN" remote add upstream "https://someone:s3cr3tTOKEN@github.com/someone/clean?token=s3cr3tTOKEN"
 facts "$CLEAN"
