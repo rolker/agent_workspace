@@ -1685,3 +1685,13 @@ Reviewers:
 - [ ] (suggestion) A github.com remote whose path is not owner/repo (e.g. `https://github.com/owner`) falls into the "host looks like GitHub but is not github.com" reason. The value unknown is safe, but the reason is wrong (Gemini) — `.agent/scripts/project_integration_audit.sh:369`
 - [ ] (suggestion) Step 10 says what to do with `github=no` but not with `github=unknown` (alias host, GitHub on another remote). Say to ask which repository and which remote before any issue, push or pull request (Gemini) — `.claude/skills/audit-project/SKILL.md:445`
 - [ ] (suggestion) onboard-project steps 7 and 8, which audit-project step 10 follows, still push to `origin` unconditionally and pass a bare `-R <owner>/<repo>` to `gh pr create` and `gh issue create`. A repository whose GitHub remote is `upstream` gets an issue and commits, and the push then fails. Its own create calls go to `$GH_HOST`. Carry the remote and host from the facts (Codex, plus lead) — `.claude/skills/onboard-project/SKILL.md:406,438`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 10:14 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (the rounds checkpoint fires on the false count from the merged parts' entries (issue 384): round 17 counts the pre-push reviews of PRs 1 to 3 of 4, all merged; this branch is PR 4 of 4 and the review at 485e4628 is its round 2; two must-fix (credential redaction still incomplete; the classic branch-protection endpoint's 404 read as "not protected") and three suggestions open, all mechanism; first host address in a row at rounds since the owner's answer of 2026-10-29 14:20, so one more host answer is allowed before the next rounds answer is the owner's)
+**After**: rounds
+**Decision**: address
+
+Host-answered within the orchestrator's checkpoint table: all five open boxes are mechanism findings (credential redaction, an HTTP 404 misread, a remote-path edge case, the github=unknown branch of step 10, and a stale push in the onboarding steps), none touches a goal. The owner invoked /run-issue 332 at the start of this drive (2026-10-30) after the three merged parts; this answer is listed in the hand-back for his veto.
