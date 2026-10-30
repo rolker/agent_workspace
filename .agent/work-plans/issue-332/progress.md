@@ -2197,3 +2197,13 @@ Verified: the round-2 suggestion is addressed. In onboard-project step 7, before
 None open at `76449e5`.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 15:02 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer: "Merge (Recommended)". Final review at 6e9e442e approved with nothing open; Integrated Review at d8dc289b with no open findings; CI green on head 76449e5a including Lint (all files); decision summary on the PR describes the redesign.
