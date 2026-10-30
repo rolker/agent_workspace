@@ -20,7 +20,10 @@
 # instance's repository; gh is never called without a GitHub remote. Its
 # edge cases: gh or jq missing, the list calls failing after repo view
 # answered, a JSON answer that is not a list, a credential in a remote URL
-# (never printed), GH_HOST naming another server, an ssh host alias or
+# or a secret anywhere in it, in any form: user part, query, fragment,
+# https, ssh, scp, file://, on origin or another remote, or in gh's error
+# text (never printed, never passed to gh), a github.com path that is not
+# owner/repo (unknown), GH_HOST naming another server, an ssh host alias or
 # GitHub on a remote other than the one checked (unknown), no commits, a
 # remote not named origin, and a root nested inside another repository.
 #
@@ -582,7 +585,7 @@ GH_LOG="$SANDBOX/gh.log"
 cat > "$FACT_BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_GH_LOG"
-if [ "${STUB_GH_RC:-0}" -ne 0 ]; then echo "gh: not logged in" >&2; exit "$STUB_GH_RC"; fi
+if [ "${STUB_GH_RC:-0}" -ne 0 ]; then echo "${STUB_GH_ERR:-gh: not logged in}" >&2; exit "$STUB_GH_RC"; fi
 # Like the real gh: a repository named without its host goes to $GH_HOST.
 if [ -n "${GH_HOST:-}" ] && ! grep -qE '(^| )github\.com/[^ ]+/[^ ]+( |$)' <<< "$*"; then
     echo "HTTP 404: Not Found (https://$GH_HOST/api/v3/...)" >&2; exit 1
@@ -723,6 +726,68 @@ gitq -C "$CLEAN" remote set-url origin "https://someone:s3cr3tTOKEN@gitlab.examp
 facts "$CLEAN"
 check "the evidence names host and path only (got: $(fev github))" \
     [ "$(fval github)/$(fev github)" = "no/remote 'origin' is gitlab.example.invalid/someone/clean, not on github.com" ]
+# Every URL form that can carry a secret, on origin and on a second
+# remote, GitHub or not: the secret never reaches the output (tsv or text)
+# or a gh call.
+no_secret() { # <label>: run --facts in tsv and text; the secret is in neither, nor in gh's arguments
+    facts "$CLEAN"
+    local all
+    all="$AUDIT_OUT$AUDIT_ERR$(cat "$GH_LOG")"
+    facts "$CLEAN" --format text
+    all+="$AUDIT_OUT$AUDIT_ERR$(cat "$GH_LOG")"
+    check "$1: the secret never reaches the output or a gh call" bash -c '! grep -qiF s3cr3tTOKEN <<< "$1"' _ "$all"
+}
+export STUB_GH_VIEW='{"hasIssuesEnabled":true,"issues":{"totalCount":1},"pullRequests":{"totalCount":1}}'
+for _cred_url in "https://github.com/someone/clean?token=s3cr3tTOKEN" \
+        "https://github.com/someone/clean.git#s3cr3tTOKEN" \
+        "https://someone:s3cr3tTOKEN@github.com/someone/clean.git" \
+        "https://someone:s3cr/3tTOKEN@github.com/someone/clean.git" \
+        "ssh://git:s3cr3tTOKEN@ssh.github.com:443/someone/clean.git" \
+        "someone:s3cr3tTOKEN@github.com:someone/clean.git"; do
+    gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+    facts "$CLEAN"
+    check "a secret in a GitHub remote ($_cred_url): github yes, github.com/someone/clean, gh asked about that alone (got: $(fval github)/$(fev github) | $(head -n1 "$GH_LOG"))" \
+        bash -c '[ "$1" = "yes/remote '"'"'origin'"'"' is github.com/someone/clean" ] && [ "$2" = "repo view github.com/someone/clean --json hasIssuesEnabled,issues,pullRequests" ]' \
+        _ "$(fval github)/$(fev github)" "$(head -n1 "$GH_LOG")"
+    no_secret "GitHub remote $_cred_url"
+done
+for _cred_url in "https://gitlab.example.invalid/someone/clean?private_token=s3cr3tTOKEN" \
+        "ssh://someone:s3cr3tTOKEN@gitlab.example.invalid:2222/someone/clean.git" \
+        "someone:s3cr3tTOKEN@gitlab.example.invalid:someone/clean.git" \
+        "someone:s3cr/3tTOKEN@gitlab.example.invalid:someone/clean.git"; do
+    gitq -C "$CLEAN" remote set-url origin "$_cred_url"
+    facts "$CLEAN"
+    check "a secret in another host's remote ($_cred_url): github no, host and path only (got: $(fev github))" \
+        [ "$(fval github)/$(fev github)" = "no/remote 'origin' is gitlab.example.invalid/someone/clean, not on github.com" ]
+    no_secret "remote $_cred_url"
+done
+gitq -C "$CLEAN" remote set-url origin "file://someone:s3cr3tTOKEN@localhost$SANDBOX/projects/factgh?s3cr3tTOKEN"
+facts "$CLEAN"
+check "a file:// remote with a user part and a query: a local path, printed without either (got: $(fev github))" \
+    [ "$(fval github)/$(fev github)" = "no/remote 'origin' is a local path: file://localhost$SANDBOX/projects/factgh" ]
+no_secret "a file:// remote"
+gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
+gitq -C "$CLEAN" remote add upstream "https://someone:s3cr3tTOKEN@github.com/someone/clean?token=s3cr3tTOKEN"
+facts "$CLEAN"
+check "a secret in the second remote: named by host and path only (got: $(fev github))" \
+    grep -qF "but remote 'upstream' is github.com/someone/clean: which one" <<< "$(fev github)"
+no_secret "the second remote"
+gitq -C "$CLEAN" remote remove upstream
+# The backstop: free text from gh (its error line) is scrubbed too.
+gitq -C "$CLEAN" remote set-url origin "https://github.com/someone/clean.git"
+STUB_GH_RC=1 STUB_GH_ERR="error connecting to https://someone:s3cr3tTOKEN@github.com/someone/clean?access_token=s3cr3tTOKEN and someone:s3cr3tTOKEN@github.com:someone/clean" \
+    no_secret "gh's error text naming a URL with a secret"
+STUB_GH_RC=1 STUB_GH_ERR="error connecting to https://someone:s3cr3tTOKEN@github.com/someone/clean?access_token=s3cr3tTOKEN" facts "$CLEAN"
+check "and the scrubbed error line still says what failed (got: $(fev issues))" \
+    [ "$(fev issues)" = "gh repo view github.com/someone/clean failed (exit 1): error connecting to https://github.com/someone/clean" ]
+# On github.com, but the path is not <owner>/<repo>: unknown, for that reason.
+for _bad in "https://github.com/someone" "https://github.com/someone/clean/extra" "git@github.com:some one/clean.git"; do
+    gitq -C "$CLEAN" remote set-url origin "$_bad"
+    facts "$CLEAN"
+    check "github.com with a path that is not <owner>/<repo> ($_bad): unknown, saying so, gh not called (got: $(fev github))" \
+        bash -c '[ "$1" = unknown ] && grep -qF "on github.com, but the path is not <owner>/<repo>" <<< "$2" && ! grep -qF "looks like GitHub" <<< "$2" && [ ! -s "$3" ]' \
+        _ "$(fval github)" "$(fev github)" "$GH_LOG"
+done
 gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
 # A host that only looks like GitHub, and GitHub on a remote other than origin.
 gitq -C "$CLEAN" remote set-url origin "git@github.com-work:Someone/Clean.git"

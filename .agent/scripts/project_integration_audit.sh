@@ -32,14 +32,18 @@
 #                                     (origin, else its first) is on
 #                                     github.com; the evidence names
 #                                     github.com/<owner>/<repo>, and for
-#                                     any remote only host and path,
-#                                     never the URL (its user part can
-#                                     hold a credential). unknown when
-#                                     that remote's host only looks like
+#                                     any remote only host and path (a
+#                                     local one: its path), with no user
+#                                     part, query or fragment, in any
+#                                     URL form (each can hold a
+#                                     credential). unknown when that
+#                                     remote's host only looks like
 #                                     GitHub (an ssh host alias such as
 #                                     github.com-work, GitHub
-#                                     Enterprise), or when it is not on
-#                                     GitHub but another remote is
+#                                     Enterprise), when it is on
+#                                     github.com but its path is not
+#                                     <owner>/<repo>, or when it is not
+#                                     on GitHub but another remote is
 #                    issues           it uses GitHub issues: enabled, and
 #                                     at least one ever opened (gh repo
 #                                     view, then gh issue list --state all
@@ -284,14 +288,48 @@ g() { git -C "$PROOT_ABS" "$@"; }
 # items a fact makes moot and says why. Printed instead of the findings.
 if [ "$FACTS" -eq 1 ]; then
     FACT_LINES=""
-    fact() { FACT_LINES+="$1"$'\t'"$2"$'\t'"$(clean "$3")"$'\n'; }
+    # Every evidence line passes scrub_secrets, whatever produced it (a
+    # remote, gh's error text): the backstop behind redact_url below.
+    fact() { FACT_LINES+="$1"$'\t'"$2"$'\t'"$(scrub_secrets "$(clean "$3")")"$'\n'; }
 
-    # url_without_userinfo <url>: the URL with its user part (everything
-    # from the scheme's "://" to the last "@" before the first "/")
-    # removed. scp-like and local forms are left as they are: their user
-    # part is an ssh login, never a password.
-    url_without_userinfo() {
-        printf '%s' "$1" | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/]*@#\1#'
+    # redact_url <url>: the remote URL with every part that can hold a
+    # secret removed, in each form git accepts:
+    #   - the query and fragment ("?token=...", "#..."), in any form;
+    #   - scheme://user:secret@host/...: everything from "://" to the
+    #     last "@" in the URL, so a secret holding a "/" goes too (no
+    #     GitHub owner or repository name holds an "@");
+    #   - file://user:secret@host/...: to the last "@" before the next
+    #     "/", since a local path may hold an "@";
+    #   - scp form [user[:secret]@]host:path (a ":" before the first "/"):
+    #     everything to the last "@" before the last ":".
+    # A local path (no "://", no ":" before its first "/") keeps its "@".
+    redact_url() {
+        local u="${1%%[?#]*}" head lead
+        case "$u" in
+            [Ff][Ii][Ll][Ee]://*)
+                printf '%s' "$u" | sed -E 's|^([A-Za-z]+://)[^/]*@|\1|'
+                return 0 ;;
+            *://*)
+                printf '%s' "$u" | sed -E 's|^([A-Za-z][A-Za-z0-9+.-]*://).*@|\1|'
+                return 0 ;;
+        esac
+        head="${u%%/*}"
+        if [[ "$head" == *:* ]]; then
+            lead="${u%:*}"
+            [[ "$lead" == *@* ]] && u="${u#"${lead%@*}"@}"
+        fi
+        printf '%s' "$u"
+    }
+
+    # scrub_secrets <text>: the same removals applied to any URL-shaped
+    # word in free text: a user part after "://", a query or fragment
+    # after a URL, and a "user:secret@" before an scp host. A second line
+    # of defence: the evidence is built from redact_url's output already.
+    scrub_secrets() {
+        printf '%s' "$1" | sed -E \
+            -e 's|([A-Za-z][A-Za-z0-9+.-]*://)[^[:space:]]*@|\1|g' \
+            -e 's|(://[^[:space:]?#]*)[?#][^[:space:]]*|\1|g' \
+            -e 's|[^[:space:]/@'"'"']+:[^[:space:]@'"'"']*@([^[:space:]/:@'"'"']+:)|\1|g'
     }
 
     # Why the repository cannot be read, if it cannot.
@@ -313,19 +351,21 @@ if [ "$FACTS" -eq 1 ]; then
     # like GitHub (an ssh host alias such as github.com-work, GitHub
     # Enterprise), or when it is not on GitHub but another remote is:
     # which server holds the issues and pull requests is then not read.
-    # remote_where <remote>: "host/path" (no user part), "local" for a
-    # local path, or nothing when the remote has no URL. Only host/path
-    # ever reaches the evidence: a URL's user part
-    # (https://user:TOKEN@host/...) can hold a secret, so it is dropped
-    # before the URL is normalised, and the URL itself is never printed.
+    # remote_where <remote>: "host/path" for a network remote, "local
+    # <path>" for a local one, or nothing when the remote has no URL. The
+    # only reader of a remote's URL: what it prints is redact_url's output
+    # (normalised, for a network remote), so no user part, query or
+    # fragment of the URL (https://user:TOKEN@host/..., ?token=...) can
+    # reach the evidence or a gh call.
     remote_where() {
-        local url
+        local url safe
         url="$(g remote get-url "$1" 2>/dev/null)" || return 0
         [ -n "$url" ] || return 0
+        safe="$(redact_url "$url")"
         if _records_local_remote_path "$PROOT_ABS" "$url" >/dev/null; then
-            echo local
+            echo "local $safe"
         else
-            _records_norm_url "$(url_without_userinfo "$url")"
+            _records_norm_url "$safe"
         fi
     }
     is_github_host() { [ "$1" = "github.com" ] || [ "$1" = "ssh.github.com" ]; }
@@ -349,6 +389,7 @@ if [ "$FACTS" -eq 1 ]; then
         while IFS= read -r _r; do
             [ -n "$_r" ] && [ "$_r" != "$REMOTE" ] || continue
             _o="$(remote_where "$_r")"
+            case "$_o" in "local "*) continue ;; esac
             case "${_o%%/*}" in
                 *github*) _OTHER="remote '$_r' is $_o"; break ;;
             esac
@@ -356,17 +397,21 @@ if [ "$FACTS" -eq 1 ]; then
         GH_STATE="no"
         if [ -z "$_N" ]; then
             fact github no "the repository has no remote"
-        elif is_github_host "$_HOST" && [[ "$_PATH" =~ ^[^/]+/[^/]+$ ]]; then
+        elif is_github_host "$_HOST" && [[ "$_PATH" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
             GH_REPO="$_PATH"
             GH_STATE="yes"
             fact github yes "remote '$REMOTE' is github.com/$GH_REPO"
         else
-            if [ "$_N" = "local" ]; then
-                _WHERE="remote '$REMOTE' is a local path: $(g remote get-url "$REMOTE" 2>/dev/null)"
+            if [ "${_N%% *}" = "local" ]; then
+                _WHERE="remote '$REMOTE' is a local path: ${_N#local }"
             else
                 _WHERE="remote '$REMOTE' is $_N"
             fi
-            if [[ "$_HOST" == *github* ]]; then
+            if [ "${_N%% *}" != "local" ] && is_github_host "$_HOST"; then
+                GH_STATE="unknown"
+                GH_WHY="$_WHERE: on github.com, but the path is not <owner>/<repo>, so which repository it is was not read"
+                fact github unknown "$GH_WHY"
+            elif [ "${_N%% *}" != "local" ] && [[ "$_HOST" == *github* ]]; then
                 GH_STATE="unknown"
                 GH_WHY="$_WHERE: the host looks like GitHub (an ssh host alias, GitHub Enterprise) but is not github.com, so which server it is was not read"
                 fact github unknown "$GH_WHY"
@@ -374,7 +419,7 @@ if [ "$FACTS" -eq 1 ]; then
                 GH_STATE="unknown"
                 GH_WHY="$_WHERE, not on github.com, but $_OTHER: which one holds the issues and pull requests was not read"
                 fact github unknown "$GH_WHY"
-            elif [ "$_N" = "local" ]; then
+            elif [ "${_N%% *}" = "local" ]; then
                 fact github no "$_WHERE"
             else
                 fact github no "$_WHERE, not on github.com"
