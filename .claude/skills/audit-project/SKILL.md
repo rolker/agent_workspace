@@ -143,7 +143,7 @@ the value `yes`, `no` or `unknown`:
 
 | Fact | Means |
 |------|-------|
-| `github` | The repository's remote (origin, else its first) is on github.com, read by the host's name: `no` means no remote is github.com by name, so a GitHub Enterprise server, or an ssh host alias with no "github" in its name, reads as `no` (its evidence ends `not github.com by name`); the evidence names the remote and `github.com/<owner>/<repo>` (`remote '<remote>' is github.com/<owner>/<repo>`), and for a network remote only host and path, never a user part, query or fragment (a local remote's path is printed whole, on purpose: it names no server). When `git push` sends that remote somewhere else (a `pushurl`, `insteadOf` or `pushInsteadOf`), the evidence ends `; its push URL differs: <where>`, and the push step asks before pushing. The gh calls below name that host: `-R github.com/<owner>/<repo>`, `gh repo view github.com/<owner>/<repo>` and `gh api --hostname github.com`, since a bare `<owner>/<repo>` goes to `$GH_HOST` when that is set |
+| `github` | The repository is on github.com, as gh decides: `gh repo view --json nameWithOwner`, run in the repository with `GH_HOST=github.com`, resolves it from the git remotes by gh's own reading (every URL form, `insteadOf`, ssh host aliases). `yes` when gh answers a plain `<owner>/<repo>`; `no` when gh says no remote matches github.com, or there is no remote. No remote URL is parsed or printed: the evidence reads `gh repo view resolves the repository to github.com/<owner>/<repo>; remote '<remote>'`, naming the remote the push step uses (origin, else the first) by its name, and a local one also by its path (`, a local path: <path>`, or `unprintable` when the path holds a character outside `[A-Za-z0-9._/@+~-]`). When `git push` sends that remote somewhere else (a `pushurl`, `insteadOf` or `pushInsteadOf` makes its push URL another string), the evidence goes on `; its push URL differs from its fetch URL`, and the push step asks before pushing. Other remotes follow by name (`; other remotes: <names> (one of these may be what gh resolved)`), and the push step then asks which remote to push to. The gh calls below name that host: `-R github.com/<owner>/<repo>`, `gh repo view github.com/<owner>/<repo>` and `gh api --hostname github.com`, since a bare `<owner>/<repo>` goes to `$GH_HOST` when that is set |
 | `issues` | It uses GitHub issues: enabled, and at least one ever opened |
 | `prs` | It uses pull requests: at least one ever opened |
 | `windows` | This machine runs Windows (`uname -s`) |
@@ -155,24 +155,18 @@ fact could not be read. Which facts go `unknown`, and for what:
 - `github` and `multi_component`: the repository cannot be read — at a
   parent root with no instance chosen (several, none the default: pass
   `--instance`) or none registered, or the root not on disk. `github` is
-  also `unknown` when its remote's host only looks like GitHub (an ssh
-  host alias such as `github.com-work`, GitHub Enterprise), when it is on
-  github.com but its path is not `<owner>/<repo>` or it has none
-  (`https://github.com`), when its URL could not be cut to host and path
-  safely (a remote-helper `<transport>::<address>`, an scp-form host that
-  is not a plain name — `x:y@github.com:o/r`, where git contacts host
-  `x` — a user part holding `/`, `?` or `#`, an `@` in a path, in an
-  scp-form remote's query, or in a query with no path before it,
-  or a host or path not in plain characters, such as one holding a space
-  or a quote: the URL is not printed and the server it names is not
-  read), or when that remote is not on GitHub but another one is or may
-  be. `multi_component` is also `unknown` when the manifest scan fails
+  also `unknown` when gh is not installed, is not logged in (`gh is not
+  logged in (gh repo view exit 4)`), fails any other way (`gh could not
+  resolve the repository, exit <N>`), or answers anything but a plain
+  `<owner>/<repo>`: a fixed phrase each time, never gh's own text.
+  `multi_component` is also `unknown` when the manifest scan fails
   (`git ls-files` or `find` exits non-zero, or a `CMakeLists.txt` cannot
   be read) before it has found two directories.
-- `issues` and `prs`: whenever `github` is `unknown`, and on any gh
-  problem — gh or jq missing, gh not signed in or offline, an answer
-  without the counts or the list asked for. A gh problem leaves `github`,
-  `windows` and `multi_component` as they were read. A failed gh call's
+- `issues` and `prs`: whenever `github` is `unknown` (gh missing or not
+  logged in makes it so), and on any problem with the reads after it —
+  jq missing, gh offline, an answer without the counts or the list asked
+  for. A problem with those reads leaves `github`, `windows` and
+  `multi_component` as they were read. A failed gh call's
   evidence is `gh failed, exit <N>: <the call>`, and an answer that does
   not parse is named with a fixed phrase: none of gh's own text is
   printed, since it can quote a URL holding a credential, only at most
@@ -257,7 +251,7 @@ as a GitHub call without access). An item is never dropped from the report.
 
 | Fact | Items skipped | Reason line |
 |------|---------------|-------------|
-| `github=no` | Branch protection, Copilot auto-review, Component labels, git-bug bridge | `skipped: no remote is github.com by name (github=no)` |
+| `github=no` | Branch protection, Copilot auto-review, Component labels, git-bug bridge | `skipped: no remote on github.com (github=no)` |
 | `issues=no` | git-bug bridge (it carries issues) | `skipped: the project uses no GitHub issues (issues=no)` |
 | `prs=no` | Copilot auto-review (it reviews pull requests) | `skipped: the project uses no pull requests (prs=no)` |
 | `issues=no` and `prs=no` | Component labels (they label issues and pull requests) | `skipped: the project uses no issues or pull requests (issues=no, prs=no)` |
@@ -489,7 +483,9 @@ pull request bodies from quoted heredocs. With these changes:
   ends "Found by the `onboard-project` skill.";
 - `gh pr create` and `gh issue create` take `-R github.com/<owner>/<repo>`,
   and the branch is pushed to `<remote>`, both as the `github` fact names
-  them (`remote '<remote>' is github.com/<owner>/<repo>`);
+  them (`gh repo view resolves the repository to github.com/<owner>/<repo>;
+  remote '<remote>'`); when its evidence names other remotes too, ask
+  which one to push to;
 - the worktree: on the issue's `feature/issue-<N>` when the project uses
   issues; for a project that uses none, the `onboard-project` skill
   worktree (`--skill onboard-project`), because this hygiene work is
@@ -497,9 +493,8 @@ pull request bodies from quoted heredocs. With these changes:
   `worktree_create.sh`'s allowlist;
 - `github=no`: leave the edits on the branch, push nothing, and say where
   the branch is;
-- `github=unknown` (a host that only looks like GitHub, a github.com path
-  that is not `<owner>/<repo>`, a URL that could not be printed safely, or
-  GitHub on another remote): ask which repository on github.com and which
+- `github=unknown` (gh not installed or not logged in, gh failing, or an
+  answer that is not `<owner>/<repo>`): ask which repository on github.com and which
   remote it is before any issue, push or pull request, and use the
   answer; without one, open nothing, push nothing, and say where the
   branch is.

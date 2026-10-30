@@ -382,19 +382,22 @@ once more before creating anything. Then:
      && git commit -m "<what changed>"
    ```
 3. Push and open the pull request only on a yes, from the worktree. For a
-   project whose remote is not github.com by name (`github=no`), leave the
+   project with no remote on github.com (`github=no`), leave the
    edits on the branch, push nothing, and say where the branch is. With
    `github=unknown`, ask which repository on github.com and which remote
    it is before any issue, push or pull request (the fact's evidence
    says why it is unknown); without an answer, open nothing, push
    nothing, and say where the branch is. When the `github` fact's
-   evidence ends `; its push URL differs: <where>` (a `pushurl`,
-   `insteadOf` or `pushInsteadOf` on that remote), `git push` would send
-   the branch there, not to the repository the fact names: say so, show
-   that evidence, and push only on a yes to that; without one, push
-   nothing and say where the branch is. The branch is pushed first:
-   `gh pr create` run without a terminal does not offer to push it, and
-   stops.
+   evidence says `; its push URL differs from its fetch URL` (a
+   `pushurl`, `insteadOf` or `pushInsteadOf` on that remote), `git push`
+   would send the branch somewhere other than the repository the fact
+   names: say so, show that evidence, have the user check
+   `git remote get-url --push <remote>` themselves (the audit never
+   prints a URL), and push only on a yes to that; without one, push
+   nothing and say where the branch is. When the evidence names other
+   remotes (`; other remotes: <names>`), ask which remote to push to.
+   The branch is pushed first: `gh pr create` run without a terminal
+   does not offer to push it, and stops.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -418,7 +421,8 @@ rm -f "$PR_BODY_FILE"
 ```
 
 `<remote>` and `<owner>/<repo>` are the ones step 2's `github` fact
-names (`remote '<remote>' is github.com/<owner>/<repo>`), or the user's
+names (`gh repo view resolves the repository to github.com/<owner>/<repo>;
+remote '<remote>'`), or the user's
 answer when it was `unknown`: a GitHub remote not named `origin` is pushed
 by its own name, and the repository is named with its host because a bare
 `<owner>/<repo>` goes to `$GH_HOST` when that is set. Step 8's issues go

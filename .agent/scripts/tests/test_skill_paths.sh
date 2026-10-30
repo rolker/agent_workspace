@@ -443,7 +443,7 @@ if [[ -f "$ONB" ]]; then
     has "$ONB" "onboard-project: the branch is pushed before gh pr create, to the remote the github fact names" \
         'git push -u <remote> "$(git branch --show-current)" || exit 1' \
         'gh pr create -R github.com/<owner>/<repo>' 'gh issue create -R github.com/<owner>/<repo>' \
-        "are the ones step 2's \`github\` fact names (\`remote '<remote>' is github.com/<owner>/<repo>\`)"
+        "are the ones step 2's \`github\` fact" "names (\`gh repo view resolves the repository to github.com/<owner>/<repo>;"
     has "$ONB" "onboard-project: github=unknown asks for the repository and remote before any issue, push or pull request" \
         'With `github=unknown`, ask which repository on github.com and which remote it is before any issue, push or pull request'
     has "$ONB" "onboard-project: the signature comes from the identity sourced in the same shell" \
@@ -467,10 +467,11 @@ if [[ -f "$ONB" ]]; then
     else
         pass "onboard-project no longer carries the hygiene checklist"
     fi
-    has "$ONB" "onboard-project: a push URL that differs is shown and asked about before pushing" \
-        'evidence ends `; its push URL differs: <where>`' \
-        '`git push` would send the branch there, not to the repository the fact names' \
-        'push only on a yes to that'
+    has "$ONB" "onboard-project: a push URL that differs is shown and asked about before pushing, other remotes asked about" \
+        'evidence says `; its push URL differs from its fetch URL`' \
+        'would send the branch somewhere other than the repository the fact' \
+        '(the audit never' 'push only on a yes to that' \
+        'remotes (`; other remotes: <names>`), ask which remote to push to.'
     has "$ONB" "onboard-project: ends by offering audit-project, which holds the checklist (D4)" \
         '### 10. Offer audit-project' \
         'End by offering `/agent-workspace:audit-project` (#332 D4), whatever `instructions` says'
@@ -478,7 +479,7 @@ if [[ -f "$ONB" ]]; then
         '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format text [--instance <settings-name>]' \
         'When the project uses issues (`issues=yes` in step 2'"'"'s facts), each row gets its issue' \
         'when the fact is `unknown`, ask' \
-        'For a project whose remote is not github.com by name (`github=no`)'
+        'project with no remote on github.com (`github=no`)'
     has "$ONB" "onboard-project: a project with no GitHub keeps its edits on a branch" \
         'leave the edits on the branch, push nothing'
     bash_blocks_parse "$ONB" onboard-project
@@ -516,17 +517,19 @@ if [[ -f "$AUD" ]]; then
         'gh label create "component:<name>"' 'git bug bridge new' \
         'with no dependency on workspace scripts or paths'
     has "$AUD" "audit-project: the facts table names what each fact makes moot, reported as skipped" \
-        'skipped: no remote is github.com by name (github=no)' \
-        'an ssh host alias with no "github" in its name, reads as `no`' \
-        'for a network remote only host and path' 'a local remote'"'"'s path is printed whole' \
-        'the evidence ends `; its push URL differs: <where>`, and the push step asks before pushing' \
+        'skipped: no remote on github.com (github=no)' \
+        'as gh decides: `gh repo view --json nameWithOwner`, run in the repository with `GH_HOST=github.com`' \
+        'No remote URL is parsed or printed' 'or `unprintable` when the path holds a character outside `[A-Za-z0-9._/@+~-]`' \
+        'the evidence goes on `; its push URL differs from its fetch URL`, and the push step asks before pushing' \
+        'and the push step then asks which remote to push to' \
         'skipped: the project uses no GitHub issues (issues=no)' \
         'skipped: the project uses no pull requests (prs=no)' \
         'skipped: one component (multi_component=no)' \
         'skipped: Windows (windows=yes)' \
         'An item is never dropped from the report' \
         '`unknown` makes nothing moot' 'Which facts go `unknown`, and for what' \
-        'A gh problem leaves `github`' \
+        'A problem with those reads leaves `github`' \
+        '`gh could not' 'resolve the repository, exit <N>`' \
         '`multi_component` is also `unknown` when the manifest scan fails' \
         'evidence is `gh failed, exit <N>: <the call>`' 'none of gh'"'"'s own text is' \
         'its line ends `(windows=yes: language-native hooks only)`'
@@ -563,12 +566,8 @@ if [[ -f "$AUD" ]]; then
     has "$ONB" "onboard-project: the step headings audit-project cites exist" \
         '### 7. Make the fix-now batch — one pull request' '### 8. Open the issues'
     has "$AUD" "audit-project: github=unknown asks before any GitHub write and leaves the GitHub checks not checked" \
-        '`github=unknown` (a host that only looks like GitHub' \
+        '`github=unknown` (gh not installed or not logged in, gh failing, or an' \
         'ask which repository on github.com and which remote it is before any issue, push or pull request' \
-        'a URL that could not be printed safely' \
-        'when its URL could not be cut to host and path safely' \
-        'a remote-helper `<transport>::<address>`' \
-        'its path is not `<owner>/<repo>` or it has none' \
         '`not checked: github=unknown (<the fact'"'"'s evidence>)`' \
         'and the branch is pushed to `<remote>`, both as the `github` fact names them'
     no_unquoted_heredoc "$AUD" audit-project
