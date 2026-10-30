@@ -161,8 +161,8 @@ fact could not be read. Which facts go `unknown`, and for what:
   (`https://github.com`), when its URL could not be cut to host and path
   safely (a remote-helper `<transport>::<address>`, an scp-form host that
   is not a plain name — `x:y@github.com:o/r`, where git contacts host
-  `x` — a user part holding
-  `/`, `?` or `#`, an `@` in a path or in a query with no path before it,
+  `x` — a user part holding `/`, `?` or `#`, an `@` in a path, in an
+  scp-form remote's query, or in a query with no path before it,
   or a host or path not in plain characters, such as one holding a space
   or a quote: the URL is not printed and the server it names is not
   read), or when that remote is not on GitHub but another one is or may

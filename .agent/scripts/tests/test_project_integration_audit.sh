@@ -817,7 +817,13 @@ for _c in '?' '#' '@' '/' ':' '://'; do
         for _cred in "$_base?token=${_pw}" "$_base#${_pw}"; do
             gitq -C "$CLEAN" remote set-url origin "$_cred"
             facts "$CLEAN"
-            gh_read "a query or fragment holding '$_c' ($_cred)"
+            # An "@" after an scp remote's ":" is never cut (a password
+            # cannot be told from a query holding one).
+            if [ "$_form" = scp ] && [ "$_c" = '@' ]; then
+                gh_unread "a query or fragment holding '$_c' ($_cred)"
+            else
+                gh_read "a query or fragment holding '$_c' ($_cred)"
+            fi
             no_secret "a query or fragment holding '$_c' ($_cred)"
         done
     done
@@ -843,11 +849,12 @@ done
 # read as one. In a query or fragment with a path before it the remote is
 # read; with none, or when the text before the "@" holds a "/" (an "@" in
 # a path would otherwise print another host: gitlab.com/x@github.com/...
-# as GitHub), the URL is not read and gh is not called.
+# as GitHub), the URL is not read and gh is not called. In the scp form
+# an "@" anywhere after the host's ":" is not read either: git takes it
+# as part of the path, and someone:pw?pw@github.com:o/r holds a password.
 for _cred_url in "https://github.com/someone/clean?user=me@x.com&token=s3cr3tTOKEN" \
         "https://github.com/someone/clean#frag@s3cr3tTOKEN" \
-        "git@github.com:someone/clean.git?user=me@x.com&token=s3cr3tTOKEN" \
-        "git@github.com:someone/clean?x=a@b:c&token=s3cr3tTOKEN"; do
+        "https://github.com/someone/clean.git#user=me@x.com"; do
     gitq -C "$CLEAN" remote set-url origin "$_cred_url"
     facts "$CLEAN"
     gh_read "an '@' in the query or fragment of a remote with no user part ($_cred_url)"
@@ -856,6 +863,8 @@ done
 for _cred_url in "https://github.com?user=me@x.com&token=s3cr3tTOKEN" \
         "https://s3cr3tTOKEN?s3cr3tTOKEN@github.com" \
         "https://github.com/someone/clean?next=a@b/c&token=s3cr3tTOKEN" \
+        "git@github.com:someone/clean.git?user=me@x.com&token=s3cr3tTOKEN" \
+        "git@github.com:someone/clean?x=a@b:c&token=s3cr3tTOKEN" \
         "https://github.com/someone/clean/x@y/z" \
         "https://example.invalid/repos/foo@v2/bar.git" \
         "https://gitlab.com/x@github.com/someone/clean" \
@@ -911,7 +920,7 @@ for _loc in en_US.UTF-8 C.UTF-8; do
     LC_ALL="$_loc" LANG="$_loc" facts "$CLEAN"
     _loc_out+=("$AUDIT_OUT")
     gh_unread "a host outside ASCII under $_loc"
-    check "and the host is not printed under $_loc (got: $(fev github))" bash -c '! grep -qF "thub.com" <<< "$1"' _ "$(fev github)"
+    check "and the host is not printed under $_loc (got: $(fev github))" bash -c '! grep -qF "$2" <<< "$1"' _ "$(fev github)" "$(printf 'g\xc3\xaethub')"
 done
 if [ "${#_loc_out[@]}" -eq 2 ]; then
     check "a host outside ASCII: the same output under en_US.UTF-8 and C.UTF-8" [ "${_loc_out[0]}" = "${_loc_out[1]}" ]
