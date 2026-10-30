@@ -2076,3 +2076,19 @@ Redesign of the `--facts` github fact, on the owner's decision 2026-10-30: "rede
 - Suite: parsing fixtures (password tables, "@", "::", locale) replaced by gh-answer, gh-exit, not-logged-in, gh-missing, local-path allowlist, remote-name, push-URL fixtures and one sweeping check that no network-remote run (both formats, stderr, gh args) holds "://" or the secret. 266 added, 401 removed; 278 passed, 0 failed.
 - audit-project and onboard-project wording, test_skill_paths pins, and the plan's PR 4 design-change paragraph follow. docs/design.md describes no redaction, so it is unchanged.
 - Pre-commit over `git diff --name-only main...HEAD` with no SKIP: passed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 14:24 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #414 at `8b6c4d49`
+**Depth**: Deep (reason: 2165 changed lines in 12 files, governance files AGENTS.md and two skills; PR-mode round 4, whole diff, no convergence-check words in the handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+
+Verified: test_project_integration_audit 278/0, test_skill_paths 127/0, test_user_tier_guard 64/0; shellcheck and pre-commit clean on the changed files. Real gh 2.103.3 gives the lowercase "none of the git remotes configured for this repository ..." text in both wordings. A real `--facts` run on gz4d gives github yes (rolker/geozui4d) with correct issues, prs and multi_component; on p11-jazzy it gives multi_component no although 273 package.xml exist. No evidence line carries a URL or gh text; github prints only gh's regex-checked answer. Skills match the printed strings. Cross-model: Gemini ran (no findings), Codex ran (2 findings, both kept). Claude adversarial ran (1 must-fix, the same as Codex's; 1 suggestion dropped as a false positive, because audit-project step 10 follows onboard-project step 7, which asks about the push URL). Copilot: out of quota, not a source. Not verified: gh's exit 4 when not logged in (an empty GH_CONFIG_DIR still resolved the repository, probably from a keyring token).
+
+### Findings
+- [ ] (must-fix) multi_component on a non-git root scans with `find -maxdepth 4`: a ROS colcon root (package.xml 6 deep) prints the false "no component manifest found" and a cut can never be unknown; drop the cap (prune build/install/log) or report unknown when it cut, and add a colcon fixture — `.agent/scripts/project_integration_audit.sh:598`
+- [ ] (suggestion) the --facts text heading prints `$PROOT` without clean() (the same pattern as the PR 3 headings at 1012/1023) — `.agent/scripts/project_integration_audit.sh:640`
