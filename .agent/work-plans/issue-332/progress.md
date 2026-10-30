@@ -1988,3 +1988,20 @@ Checks: test_project_integration_audit 386 passed, 0 failed; test_skill_paths 12
 Boxes ticked by editing the Local Review entry directly: `review_progress.sh findings` does not select a PR-mode Local Review (known defect, inbox 2026-10-29).
 
 Checks: test_project_integration_audit 411 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP) passed every hook; validate-script-tests ran every suite.
+
+## Local Review
+**Status**: complete
+**When**: 2026-10-30 12:38 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a11b6bf8cb11fb48d, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #414 at `8398df0`
+**Depth**: Deep (reason: 2240 changed lines in 11 files, governance files AGENTS.md and two skills; PR-mode round 2, classified on the whole diff)
+**Must-fix**: 3 | **Suggestions**: 1
+
+### Findings
+- [ ] (must-fix) scrub_secrets' ":" fallback join swallows ordinary evidence: an "@" word is joined back to any earlier word holding ":" (a prose label), so `component manifests in 2 directories: packages/@scope/pkg` (an npm scoped package, common) prints `component manifests in 2 <redacted>`, a local remote `/srv/repo@2` prints `is a local <redacted>`, and `failed (exit 1): user foo@example.com ...` prints `failed (exit <redacted>`; an existing stand-in is joined too (`https://<redacted> then foo@bar.com` gives `https://bar.com`) (Gemini, Claude adversarial) — `.agent/scripts/project_integration_audit.sh:431`
+- [ ] (must-fix) scrub_secrets still leaks a password split by whitespace: the join is skipped when the last word's part before "@" holds ":" or a "/" follows the "@", so `Get "https://user:abc SECRET tail:xxx@github.com/o/r"` prints `SECRET` and `cannot reach user:s3cr3t1 part:s3cr3t2@github.com:o/r` prints `user:s3cr3t1`; a query split by a space leaks its tail (`https://github.com/o/r?tok=abc def` keeps `def`). A word join cannot bound a URL holding spaces; redact from an ambiguous URL word to the end of the text, or print no gh text (Gemini, Codex, Claude adversarial) — `.agent/scripts/project_integration_audit.sh:431`
+- [ ] (must-fix) The plain-character backstop depends on the locale: host_re/path_re bracket ranges collate under en_US.UTF-8 (this machine's LANG and LC_ALL), so `https://gîthub.com/o/r` is printed whole there and redacted under C.UTF-8; the header's "plain characters" claim is false in the owner's locale. Fix: LC_ALL=C for the script (or explicit sets) and a fixture run under en_US.UTF-8 (Claude adversarial) — `.agent/scripts/project_integration_audit.sh:348`
+- [ ] (suggestion) gh output is cut with `head -c 200` before fact() scrubs it, so a cut inside a user part leaves `https://TOKENPREFIX` that reads as a host and is printed; scrub, then cut (needs gh to exit 0 with non-JSON output, so unlikely) (Codex) — `.agent/scripts/project_integration_audit.sh:637`
