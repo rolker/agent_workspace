@@ -2140,3 +2140,13 @@ Verified: both prior findings fixed. The find depth cap is gone, and build/, ins
 - [ ] (suggestion, Local Review @ 505805d) Valid, checked against the head: `push_note` runs only on the remote the github fact's evidence names (`project_integration_audit.sh:440`), and step 3 of onboard-project's pull-request offer asks "which remote" when the evidence lists other remotes, but gives no push-URL check for a remote the user picks there. A pick whose `pushurl`/`insteadOf`/`pushInsteadOf` sends the push elsewhere goes unflagged, which is the case the design's push-URL comparison exists for. Not a must-fix: the merge gate does not hold on it. Fix, skill text only: for a remote chosen at that question, compare `git remote get-url <remote>` with every line of `git remote get-url --push --all <remote>`, printing neither, and on a difference treat it as the named remote's push note (say so, have the user check, push only on a yes). Recommendation: fix in this PR if a short re-review fits the 15:00 target; otherwise merging without it is the owner's call, with a follow-up issue — `.claude/skills/onboard-project/SKILL.md:398`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 14:34 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+Owner's answer: "Fix first". One open suggestion in the Integrated Review at 2878b663: a remote the user picks at onboard-project's "which remote" question gets no push-URL check before the push (onboard-project/SKILL.md:398); skill text only. CI lint pending at the time of the answer.
