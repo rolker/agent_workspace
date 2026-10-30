@@ -514,6 +514,7 @@ if [[ -f "$AUD" ]]; then
     has "$AUD" "audit-project: the facts table names what each fact makes moot, reported as skipped" \
         'skipped: no remote is github.com by name (github=no)' \
         'an ssh host alias with no "github" in its name, reads as `no`' \
+        'for a network remote only host and path' 'a local remote'"'"'s path is printed whole' \
         'skipped: the project uses no GitHub issues (issues=no)' \
         'skipped: the project uses no pull requests (prs=no)' \
         'skipped: one component (multi_component=no)' \

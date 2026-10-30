@@ -143,7 +143,7 @@ the value `yes`, `no` or `unknown`:
 
 | Fact | Means |
 |------|-------|
-| `github` | The repository's remote (origin, else its first) is on github.com, read by the host's name: `no` means no remote is github.com by name, so a GitHub Enterprise server, or an ssh host alias with no "github" in its name, reads as `no` (its evidence ends `not github.com by name`); the evidence names the remote and `github.com/<owner>/<repo>` (`remote '<remote>' is github.com/<owner>/<repo>`), and for any remote only host and path, never a user part, query or fragment. The gh calls below name that host: `-R github.com/<owner>/<repo>`, `gh repo view github.com/<owner>/<repo>` and `gh api --hostname github.com`, since a bare `<owner>/<repo>` goes to `$GH_HOST` when that is set |
+| `github` | The repository's remote (origin, else its first) is on github.com, read by the host's name: `no` means no remote is github.com by name, so a GitHub Enterprise server, or an ssh host alias with no "github" in its name, reads as `no` (its evidence ends `not github.com by name`); the evidence names the remote and `github.com/<owner>/<repo>` (`remote '<remote>' is github.com/<owner>/<repo>`), and for a network remote only host and path, never a user part, query or fragment (a local remote's path is printed whole, on purpose: it names no server). The gh calls below name that host: `-R github.com/<owner>/<repo>`, `gh repo view github.com/<owner>/<repo>` and `gh api --hostname github.com`, since a bare `<owner>/<repo>` goes to `$GH_HOST` when that is set |
 | `issues` | It uses GitHub issues: enabled, and at least one ever opened |
 | `prs` | It uses pull requests: at least one ever opened |
 | `windows` | This machine runs Windows (`uname -s`) |
