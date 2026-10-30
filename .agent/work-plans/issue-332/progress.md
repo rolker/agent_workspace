@@ -2063,3 +2063,16 @@ Checks: test_project_integration_audit 438 passed, 0 failed; test_skill_paths 12
 Boxes ticked by editing the Local Review entry directly: `review_progress.sh findings` does not select a PR-mode Local Review (known defect).
 
 Checks: test_project_integration_audit 468 passed, 0 failed, run on the tree before finding 5 was split out into its own commit; validate-script-tests then ran it again on the final tree and passed. test_skill_paths 127 passed, 0 failed. Branch-wide pre-commit (no SKIP, main checkout's venv) passed every hook.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 13:59 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**PR**: #414 at `6f0c9e1b`
+
+Redesign of the `--facts` github fact, on the owner's decision 2026-10-30: "redesign", answering the host's proposal "Do not parse URLs at all. Never print a remote URL. ... Let gh decide the GitHub fact".
+
+- `project_integration_audit.sh`: `redact_url`, `url_where`, `remote_where`, `is_github_host` and the scheme/scp/file/host-token rules removed. `gh repo view --json nameWithOwner --jq .nameWithOwner`, run in the repository root with `GH_HOST=github.com` (pins the host the later `github.com/<owner>/<repo>` reads use), decides: a plain `<owner>/<repo>` is yes and printed; gh's "none of the git remotes configured for this repository ..." failure is no; exit 4 is unknown "gh is not logged in"; any other exit is unknown "gh could not resolve the repository, exit N"; gh missing or a malformed answer is unknown with a fixed phrase. No remote is still no without calling gh. Evidence names the push remote (origin, else first) by name, a local one also by its path through `[A-Za-z0-9._/@+~-]` (else `unprintable`), then "; its push URL differs from its fetch URL" when any `get-url --push --all` string differs from `get-url`, then the other remotes by name. 144 lines added, 286 removed.
+- Suite: parsing fixtures (password tables, "@", "::", locale) replaced by gh-answer, gh-exit, not-logged-in, gh-missing, local-path allowlist, remote-name, push-URL fixtures and one sweeping check that no network-remote run (both formats, stderr, gh args) holds "://" or the secret. 266 added, 401 removed; 278 passed, 0 failed.
+- audit-project and onboard-project wording, test_skill_paths pins, and the plan's PR 4 design-change paragraph follow. docs/design.md describes no redaction, so it is unchanged.
+- Pre-commit over `git diff --name-only main...HEAD` with no SKIP: passed.
