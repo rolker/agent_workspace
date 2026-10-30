@@ -1766,3 +1766,19 @@ Reviewers:
 **Decision**: address
 
 Owner's answer: "Address (Recommended)". Round 18 is the cross-part count (issue 384); this is round 3 of part 4. One must-fix (redact_url strips the query and fragment before the user part, so a password holding ? or # leaks its first part) and two suggestions (file:// password holding /; the branch-protection table's null admin row) open. Second finding in the redaction mechanism: the fix pass closes the class (user part first, then query and fragment, fixtures for ?, #, @ and / inside passwords) rather than the one case.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 10:58 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**Branch**: feature/issue-332 at `ab216d9d`
+**Addressed**: Local Review (Pre-Push) at `26d9f0ad` (2026-10-30 10:44 -04:00)
+**Commits**: 62bfdbbe, ab216d9d
+
+### Actions
+- [x] (must-fix) `redact_url` now strips the user part before the query and fragment, in every form: scheme URLs to the last "@" (file:// too, unless it has no host), scp to the last "@" before the last ":"; then "?" and "#". Owner's direction followed: the class, not the one case. 32 new checks: a password holding "?", "#", "@" and "/" in the https, ssh and scp GitHub forms (github yes, gh asked about github.com/someone/clean alone) and in file:// (local path, printed without it); the secret in neither output format nor gh's arguments — `.agent/scripts/project_integration_audit.sh:295`, `.agent/scripts/tests/test_project_integration_audit.sh`
+- [x] (suggestion) file:// password holding "/": covered by the same fix (`file://u:t/k@h/p` gives `file://h/p`), pinned by the file:// fixture with "/" — `.agent/scripts/project_integration_audit.sh:315`
+- [x] (suggestion) The branch-protection row now reads "anything but `true` (`false`, or `null` ...)" and the paragraph under the table says only `true` counts as admin access; both pinned in test_skill_paths — `.claude/skills/audit-project/SKILL.md:295`, `.agent/scripts/tests/test_skill_paths.sh`
+
+Checks: test_project_integration_audit 252/0, test_skill_paths 126/0; branch-wide pre-commit with no SKIP passed, every hook, validate-script-tests running every suite (an in-scope file, .agent/knowledge/skill_workflows.md, maps to no suite).
