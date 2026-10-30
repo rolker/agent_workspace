@@ -1855,3 +1855,48 @@ Direction to the fix pass: redact by construction. For a scheme URL, the user pa
 - [x] (suggestion) The "?" and "#" cut now applies only to forms with an authority. file:/// and local paths keep their "?" and "#" (fixture for both) — `.agent/scripts/project_integration_audit.sh:326`
 
 Checks: test_project_integration_audit 382 passed, 0 failed; test_skill_paths 126 passed, 0 failed. Branch-wide pre-commit (no SKIP) passed every hook. validate-script-tests ran every suite, because .agent/knowledge/skill_workflows.md maps to no suite.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-30 11:35 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad6c1375fde86ab8d, resume 2 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-332 at `9638dc8d`
+**Base**: main
+**Depth**: Deep (reason: round 20 convergence check per handoff; round 5 of part 4 of 4, the counter spans the merged parts 1 to 3 (#384); scope: the two findings of the review at ae8218d8 and the fix diff acd0124e..9a854ec1; cross-model skipped (round-20 convergence check, per handoff))
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 20 | **Ship**: recommended — no must-fix findings; the one suggestion can be applied or tracked
+
+Round-19 findings checked against the fix diff. Both are closed (probed):
+- `https://github.com/o/r?user=me@x.com&token=SECRET` and `...#frag@SECRET` give `https://github.com/o/r`.
+- Local and `file:///` paths keep "?", "#" and "@".
+
+The redaction rule matches the host's direction, and the backstop holds:
+- A printed result never holds an "@", so no user part can survive.
+- Any ambiguous input becomes `<scheme>://<redacted>` and github=unknown, with gh never called.
+
+These are probed:
+- password forms, numeric ports, IPv6 (redacted);
+- `scrub_secrets` on quoted, bracketed and `key=` words;
+- legitimate GitHub remotes in scp, https, ssh:443 and x-access-token forms, all read as GitHub.
+
+Run here:
+- test_project_integration_audit 382/0
+- test_skill_paths 126/0
+- test_user_tier_guard 64/0
+- pre-commit on the four fix files: exit 0, shellcheck included
+
+The branch is 0 behind main.
+
+Reviewers:
+- Plan drift: none.
+- Claude adversarial ran (fresh): no must-fix; it also ran the suite, 382/0. Of its four suggestions, one is kept. Three are dropped:
+  - a password holding a raw space, or a URL glued after a "/" in gh's error text: neither is a form git or gh produces;
+  - `scrub_secrets` slowing down on inputs over 1,000 words: gh's error lines are short;
+  - IPv6 going to unknown: it costs only a read.
+- Cross-model: skipped (round-20 convergence check, per handoff).
+
+### Findings
+- [ ] (suggestion) An "@" inside a path that a "/" follows is taken as the user separator, because the user part may hold "/". A wrong host is then printed: `https://github.com/o/r/x@y/z` gives `https://y/z`, and `https://u:S@host/p@x/y` gives `https://x/y`. No secret is printed, but the implementation entry's "never a wrong host" does not hold outside the table. Either document it and pin it with a fixture, or redact when the chosen user part holds a "/" and the remainder's host has no "." — `.agent/scripts/project_integration_audit.sh:339`
