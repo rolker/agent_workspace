@@ -1925,3 +1925,13 @@ Owner's answer: "Publish (Recommended)". Round 5 of part 4 approved (0 must-fix,
 - [ ] (should-fix, Local Review (Pre-Push) @ 9638dc8, covers da86308 via bookkeeping) Valid, reproduced at the head: `redact_url` takes an "@" inside a path that a "/" follows as the user separator, so a wrong host is printed. `https://github.com/o/r/x@y/z` gives `https://y/z`; `https://host/repos/foo@v2/bar.git` gives `https://v2/bar.git`. It is worse than the round-5 wording: `https://gitlab.com/x@github.com/someone/repo` gives `https://github.com/someone/repo`, so the github fact says yes and `gh repo view` is asked about a repository the remote does not name (read-only, no secret printed). Needs an "@" in a remote's path, which GitHub and GitLab names do not allow, so rare, but the cost is a wrong fact, not only wrong evidence. Fix: redact (github unknown) when the chosen user part holds "/", since that shape is ambiguous (a literal "/" in a password is not a valid URL authority either, so git does not send it as one); move the table's "/" and "://" password rows from read to unread, add the three URLs above as fixtures, and keep the header's backstop list in step. Not a must-fix: the merge gate does not hold on it — `.agent/scripts/project_integration_audit.sh:339`, `.agent/scripts/tests/test_project_integration_audit.sh`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 11:44 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: host (one open should-fix in the Integrated Review at d9ac2f6a, a mechanism finding: a remote whose path holds an "@" can make the github fact wrong, not only the evidence (https://gitlab.com/x@github.com/someone/repo reads as github.com/someone/repo and gh is asked about the wrong repository); no secret printed; the fix is small (redact when the chosen user part holds a "/", github unknown) and the quality standard says a complete fix within reach is not left for later; the owner answered "address" at every findings checkpoint of this issue; listed for his veto)
+**After**: findings
+**Decision**: address
+
+Fix plan from the triage: in redact_url, when the user part it picks holds a "/", redact the URL (github fact unknown with a reason); move the test table's "/" and "://" password rows from "read" to "unread"; add the three reproducing URLs as fixtures; keep the script header's case list matching.
