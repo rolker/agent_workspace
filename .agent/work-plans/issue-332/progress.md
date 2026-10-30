@@ -1900,3 +1900,13 @@ Reviewers:
 
 ### Findings
 - [ ] (suggestion) An "@" inside a path that a "/" follows is taken as the user separator, because the user part may hold "/". A wrong host is then printed: `https://github.com/o/r/x@y/z` gives `https://y/z`, and `https://u:S@host/p@x/y` gives `https://x/y`. No secret is printed, but the implementation entry's "never a wrong host" does not hold outside the table. Either document it and pin it with a fixture, or redact when the chosen user part holds a "/" and the remainder's host has no "." — `.agent/scripts/project_integration_audit.sh:339`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-10-30 11:40 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+Owner's answer: "Publish (Recommended)". Round 5 of part 4 approved (0 must-fix, 1 suggestion: an "@" inside a URL path can print a wrong host in the evidence, no secret printed; handled in the post-push round if repeated).
