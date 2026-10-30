@@ -1695,3 +1695,23 @@ Reviewers:
 **Decision**: address
 
 Host-answered within the orchestrator's checkpoint table: all five open boxes are mechanism findings (credential redaction, an HTTP 404 misread, a remote-path edge case, the github=unknown branch of step 10, and a stale push in the onboarding steps), none touches a goal. The owner invoked /run-issue 332 at the start of this drive (2026-10-30) after the three merged parts; this answer is listed in the hand-back for his veto.
+
+## Implementation
+**Status**: complete
+**When**: 2026-10-30 10:35 -04:00
+**By**: Claude Code Agent (claude-fable-5-1)
+
+**Branch**: feature/issue-332 at `79fd53c2`
+**Addressed**: Local Review (Pre-Push) at `485e4628` (2026-10-29 15:07 -04:00)
+**Commits**: a7895b3d, ba58149e, dcbbefaf, 79fd53c2
+
+### Actions
+- [x] (must-fix) Credential redaction, class-closed: `redact_url` drops the query and fragment and the user part in the scheme (to the last "@", so a secret holding "/" goes too), file:// and scp forms; `remote_where` is the one reader of a remote URL, so a local remote is printed redacted as well; owner/repo must match `[A-Za-z0-9._-]+/[A-Za-z0-9._-]+`; structural backstop: `fact()` runs every evidence line through `scrub_secrets`, gh's error text included. 15 new fixture cases (query, fragment, https, ssh, scp with and without "/" in the secret, file://, second remote, gh error line), each asserting the secret is in neither format nor in gh's arguments (a7895b3d) — `.agent/scripts/project_integration_audit.sh:290-340`
+- [x] (must-fix) Classic protection: a `pull_request` ruleset rule puts the item in place; otherwise `.permissions.admin` is read first; with admin, 404 "Branch not protected" or protection without required reviews is missing, any other failure not checked; without admin, not checked, never missing. Decision table in the skill, pinned by test_skill_paths (dcbbefaf) — `.claude/skills/audit-project/SKILL.md:272-300`
+- [x] (suggestion) A github.com remote whose path is not owner/repo is unknown with the reason "on github.com, but the path is not <owner>/<repo>"; three fixtures; the skill's unknown list and the script header say so (a7895b3d, ba58149e) — `.agent/scripts/project_integration_audit.sh:398`
+- [x] (suggestion) audit-project step 10 with `github=unknown`: ask which repository on github.com and which remote before any issue, push or pull request; without an answer nothing is opened or pushed. Step 8 also reports the GitHub checks `not checked: github=unknown (<evidence>)` when no repository is named (79fd53c2) — `.claude/skills/audit-project/SKILL.md`
+- [x] (suggestion) onboard-project steps 7 and 8 push to `<remote>` and pass `-R github.com/<owner>/<repo>`, both as the `github` fact names them, and ask when it is unknown; structural backstop: test_skill_paths refuses, in both skills, a gh call without github.com and a push naming origin (checked that it flags the old text) (79fd53c2) — `.claude/skills/onboard-project/SKILL.md:385-445`
+
+### Checks
+- Suites run directly under a private TMPDIR: test_project_integration_audit 220/0 (191 before), test_skill_paths 126/0. shellcheck at the hook's warning severity clean.
+- Full pass `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on the final tree: every hook passed, exit 0. The script-test hook ran all 40 suites (suites_for_files.sh: `.agent/knowledge/skill_workflows.md` maps to no suite, so ALL).
