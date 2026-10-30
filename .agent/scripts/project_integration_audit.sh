@@ -77,7 +77,11 @@
 #                                     CMakeLists.txt with project()) in two
 #                                     or more directories, tracked files
 #                                     only, node_modules/, vendor/ and
-#                                     third_party/ left out
+#                                     third_party/ left out; unknown
+#                                     when the scan fails (git ls-files
+#                                     or find exits non-zero, or a
+#                                     CMakeLists.txt cannot be read) and
+#                                     it found fewer than two
 #                  issues and prs are no when github is no, unknown when
 #                  github is, and unknown when gh or jq is missing or gh
 #                  fails (not signed in, offline); the evidence says
@@ -712,29 +716,46 @@ if [ "$FACTS" -eq 1 ]; then
     esac
 
     # multi_component: the directories holding a component manifest.
+    # unknown when the scan fails (git ls-files or find exits non-zero,
+    # read through wait on the process substitution, or a CMakeLists.txt
+    # cannot be read): a scan that saw only part of the tree cannot say no.
+    _SCAN_WHY=""
     if [ -n "$REPO_WHY" ]; then
         fact multi_component unknown "$REPO_WHY"
     else
         MANIFESTS=(package.xml Cargo.toml package.json pyproject.toml setup.py go.mod CMakeLists.txt)
         _FILES=()
+        _RC=0
         if [ "$IS_GIT" -eq 1 ]; then
             _SPECS=()
             for m in "${MANIFESTS[@]}"; do _SPECS+=(":(glob)**/$m"); done
             while IFS= read -r -d '' p; do _FILES+=("$p"); done \
                 < <(g ls-files -z -- "${_SPECS[@]}" 2>/dev/null)
+            wait "$!" || _RC=$?
+            [ "$_RC" -eq 0 ] || _SCAN_WHY="git ls-files failed (exit $_RC), so the tracked manifests were not read"
         else
             _NAMES=()
             for m in "${MANIFESTS[@]}"; do _NAMES+=(-o -name "$m"); done
             while IFS= read -r -d '' p; do _FILES+=("${p#"$PROOT_ABS"/}"); done \
                 < <(find "$PROOT_ABS" -maxdepth 4 \( -name .git -o -name node_modules -o -name vendor -o -name third_party \) -prune \
                         -o -type f \( -false "${_NAMES[@]}" \) -print0 2>/dev/null)
+            wait "$!" || _RC=$?
+            [ "$_RC" -eq 0 ] || _SCAN_WHY="find failed (exit $_RC; a directory it could not read, perhaps), so not every manifest was seen"
         fi
         declare -A _SEEN=()
         _DIRS=()
         for p in "${_FILES[@]+"${_FILES[@]}"}"; do
             case "/$p" in */node_modules/*|*/vendor/*|*/third_party/*) continue ;; esac
             if [ "$(basename "$p")" = "CMakeLists.txt" ]; then
-                grep -qiE '^[[:space:]]*project[[:space:]]*\(' "$PROOT_ABS/$p" 2>/dev/null || continue
+                [ -e "$PROOT_ABS/$p" ] || continue
+                _RC=0
+                grep -qiE '^[[:space:]]*project[[:space:]]*\(' "$PROOT_ABS/$p" 2>/dev/null || _RC=$?
+                if [ "$_RC" -eq 1 ]; then
+                    continue
+                elif [ "$_RC" -ne 0 ]; then
+                    _SCAN_WHY="${_SCAN_WHY:-$p could not be read, so whether it declares a project() was not read}"
+                    continue
+                fi
             fi
             d="$(dirname "$p")"
             [ -n "${_SEEN[$d]+set}" ] && continue
@@ -746,6 +767,8 @@ if [ "$FACTS" -eq 1 ]; then
         [ "$_ND" -gt 5 ] && _LIST="$_LIST and $((_ND - 5)) more"
         if [ "$_ND" -ge 2 ]; then
             fact multi_component yes "component manifests in $_ND directories: $_LIST"
+        elif [ -n "$_SCAN_WHY" ]; then
+            fact multi_component unknown "$_SCAN_WHY"
         elif [ "$_ND" -eq 1 ]; then
             fact multi_component no "component manifests in one directory: $_LIST"
         else

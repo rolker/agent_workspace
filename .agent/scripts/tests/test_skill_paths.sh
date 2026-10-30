@@ -527,6 +527,7 @@ if [[ -f "$AUD" ]]; then
         'An item is never dropped from the report' \
         '`unknown` makes nothing moot' 'Which facts go `unknown`, and for what' \
         'A gh problem leaves `github`' \
+        '`multi_component` is also `unknown` when the manifest scan fails' \
         'evidence is `gh failed, exit <N>: <the call>`' 'none of gh'"'"'s own text is' \
         'its line ends `(windows=yes: language-native hooks only)`'
     has "$AUD" "audit-project: the gh calls name github.com, and step 10 gives the audit's own pull request body" \

@@ -166,7 +166,9 @@ fact could not be read. Which facts go `unknown`, and for what:
   or a host or path not in plain characters, such as one holding a space
   or a quote: the URL is not printed and the server it names is not
   read), or when that remote is not on GitHub but another one is or may
-  be.
+  be. `multi_component` is also `unknown` when the manifest scan fails
+  (`git ls-files` or `find` exits non-zero, or a `CMakeLists.txt` cannot
+  be read) before it has found two directories.
 - `issues` and `prs`: whenever `github` is `unknown`, and on any gh
   problem — gh or jq missing, gh not signed in or offline, an answer
   without the counts or the list asked for. A gh problem leaves `github`,

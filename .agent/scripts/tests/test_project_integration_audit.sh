@@ -1117,6 +1117,39 @@ gitq -C "$FL" reset --quiet --hard HEAD~1
 gitq -C "$FL" remote set-url origin "$SANDBOX/projects/factgh"
 facts "$NG"
 check "a root that is not a git repository: github no (got: $(fev github))" [ "$(fval github)" = "no" ]
+# A manifest scan that fails cannot say no: multi_component unknown,
+# saying why. find meeting a directory it cannot read (skipped when
+# running as root, which reads it anyway):
+mkdir -p "$NG/locked"
+chmod 000 "$NG/locked"
+if [ -r "$NG/locked" ]; then
+    echo "  SKIP: running as root, so an unreadable directory cannot be made"
+else
+    facts "$NG"
+    check "find failing: multi_component unknown, saying so (got: $(fval multi_component)/$(fev multi_component))" \
+        bash -c '[ "$1" = unknown ] && grep -qF "find failed (exit" <<< "$2"' _ "$(fval multi_component)" "$(fev multi_component)"
+fi
+chmod 755 "$NG/locked"
+rmdir "$NG/locked"
+# git ls-files failing (a git that fails only that call):
+_REAL_GIT="$(command -v git)"
+mkdir -p "$SANDBOX/gitfail"
+printf '#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" = ls-files ] && exit 128; done\nexec "%s" "$@"\n' "$_REAL_GIT" > "$SANDBOX/gitfail/git"
+chmod +x "$SANDBOX/gitfail/git"
+FACT_PATH="$SANDBOX/gitfail:$FACT_BIN:$STUB_BIN:$PATH" facts "$FL"
+check "git ls-files failing: multi_component unknown, saying so (got: $(fval multi_component)/$(fev multi_component))" \
+    [ "$(fval multi_component)/$(fev multi_component)" = "unknown/git ls-files failed (exit 128), so the tracked manifests were not read" ]
+check "and the other facts are read as before (got: $(fval github))" [ "$(fval github)" = "no" ]
+# A CMakeLists.txt that cannot be read:
+chmod 000 "$FL/CMakeLists.txt"
+if [ -r "$FL/CMakeLists.txt" ]; then
+    echo "  SKIP: running as root, so an unreadable file cannot be made"
+else
+    facts "$FL"
+    check "an unreadable CMakeLists.txt: multi_component unknown, naming it (got: $(fval multi_component)/$(fev multi_component))" \
+        [ "$(fval multi_component)/$(fev multi_component)" = "unknown/CMakeLists.txt could not be read, so whether it declares a project() was not read" ]
+fi
+chmod 644 "$FL/CMakeLists.txt"
 
 echo "TEST: --facts edge cases: gh or jq missing, a list call failing, no commits, no origin, a nested root"
 # PATHs without gh, and without jq: every other command on PATH linked
