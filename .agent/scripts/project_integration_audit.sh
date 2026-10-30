@@ -143,6 +143,12 @@
 # exits 2 saying so, which is its job.
 
 set -uo pipefail
+# Byte-based character classes and bracket ranges everywhere, whatever
+# the caller's locale: under en_US.UTF-8 a range such as [A-Za-z] can
+# match a letter outside ASCII (i with a circumflex), so redact_url's
+# plain-character rule would print a host it means to redact. Set once,
+# exported, so every child reads the same bytes.
+export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=_project_registry.sh
@@ -332,7 +338,8 @@ if [ "$FACTS" -eq 1 ]; then
     #   - an "@" is left after a "?" or "#" with no path before it
     #     (https://tok?en@host, https://host?q=a@b);
     #   - the result is not host[:port][/path] (scheme form) or host:path
-    #     (scp form) in plain characters: a host of letters, digits, ".",
+    #     (scp form) in plain characters (ASCII bytes: the script runs
+    #     under LC_ALL=C): a host of letters, digits, ".",
     #     "_", "~" and "-", a numeric port, a path of those and "/", "%",
     #     "+", "=" and ",". So no "@", no whitespace, no quote, and after
     #     "://" no ":" but a port's.

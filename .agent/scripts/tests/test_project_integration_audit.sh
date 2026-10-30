@@ -876,6 +876,25 @@ for _cred_url in 'ext::sh -c "curl -H X-Token:s3cr3tTOKEN https://github.com/som
     gh_unread "not a plain cut URL ($_cred_url)"
     no_secret "not a plain cut URL ($_cred_url)"
 done
+# The plain-character rule is byte-based whatever the caller's locale:
+# under en_US.UTF-8 a bracket range such as [A-Za-z] can match a letter
+# outside ASCII, which printed this host there and redacted it under
+# C.UTF-8. The script sets LC_ALL=C, so both give the same output.
+gitq -C "$CLEAN" remote set-url origin "$(printf 'https://g\xc3\xaethub.com/someone/clean')"
+_loc_out=()
+for _loc in en_US.UTF-8 C.UTF-8; do
+    if [ "$(LC_ALL="$_loc" locale charmap 2>/dev/null)" != "UTF-8" ]; then
+        echo "  SKIP: locale $_loc is not installed here, so the en_US.UTF-8 / C.UTF-8 comparison is not run"
+        continue
+    fi
+    LC_ALL="$_loc" LANG="$_loc" facts "$CLEAN"
+    _loc_out+=("$AUDIT_OUT")
+    gh_unread "a host outside ASCII under $_loc"
+    check "and the host is not printed under $_loc (got: $(fev github))" bash -c '! grep -qF "thub.com" <<< "$1"' _ "$(fev github)"
+done
+if [ "${#_loc_out[@]}" -eq 2 ]; then
+    check "a host outside ASCII: the same output under en_US.UTF-8 and C.UTF-8" [ "${_loc_out[0]}" = "${_loc_out[1]}" ]
+fi
 # A second remote that could not be read may be on GitHub: unknown.
 gitq -C "$CLEAN" remote set-url origin "git@example.invalid:someone/clean.git"
 gitq -C "$CLEAN" remote add upstream "https://someone:s3cr3tTOKEN?s3cr3tTOKEN@github.com/someone/clean.git"
