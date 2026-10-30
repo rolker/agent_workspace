@@ -1782,3 +1782,50 @@ Owner's answer: "Address (Recommended)". Round 18 is the cross-part count (issue
 - [x] (suggestion) The branch-protection row now reads "anything but `true` (`false`, or `null` ...)" and the paragraph under the table says only `true` counts as admin access; both pinned in test_skill_paths — `.claude/skills/audit-project/SKILL.md:295`, `.agent/scripts/tests/test_skill_paths.sh`
 
 Checks: test_project_integration_audit 252/0, test_skill_paths 126/0; branch-wide pre-commit with no SKIP passed, every hook, validate-script-tests running every suite (an in-scope file, .agent/knowledge/skill_workflows.md, maps to no suite).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-30 11:03 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ad6c1375fde86ab8d, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `ae8218d8`
+**Base**: main
+**Depth**: Deep (reason: round 19 convergence check per handoff; round 4 of part 4 of 4, the counter spans the merged parts 1 to 3 (#384); scope: the three findings of the review at 26d9f0ad and the fix diff 199ce189..ab216d9d; cross-model skipped (round-19 convergence check, per handoff))
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 19 | **Ship**: recommended — round 19: 1 mechanical must-fix (prev 1), not rising; fix and ship rather than another full round
+
+Round-18 findings checked against the fix diff. All three are closed:
+- A password holding `?`, `#`, `@`, `/`, `:` or `://` no longer leaks, in the https, ssh, scp and file:// forms, and the GitHub remote stays GitHub (probed).
+- `file://u:t/k@h/p` redacts on its own, without the backstop.
+- The table's `null` row is there and pinned.
+
+The fix introduced a regression: an "@" in the query or fragment of a URL with no user part (below).
+
+Run here:
+- test_project_integration_audit 252/0
+- test_skill_paths 126/0
+- test_user_tier_guard 64/0
+- pre-commit on the four fix files: exit 0, shellcheck included
+
+The branch is 0 behind main.
+
+Reviewers:
+- Plan drift: none.
+- Claude adversarial ran: 1 must-fix (kept), and 3 suggestions:
+  - one kept;
+  - the `ext::` transport is dropped, since it is off by default and not GitHub;
+  - the test-list notes are folded into the must-fix.
+- Cross-model: skipped (round-19 convergence check, per handoff).
+
+### Findings
+- [ ] (must-fix) `redact_url` now strips to the last "@" in the whole URL, so an "@" in the query or fragment of a URL with no user part is read as the user separator. What follows it reaches the evidence, and `scrub_secrets` does not catch it (reproduced):
+  - `https://github.com/o/r?user=me@x.com&token=SECRET` gives `remote 'origin' is https/x.com&token=secret`;
+  - `https://github.com/o/r#frag@SECRET` gives `https/secret`;
+  - the GitHub remote is also lost.
+  - The header comment's "never a secret" is false.
+  - Fix: the user part ends at the last "@" whose remainder has a "/" before any "?" or "#". With no such "@", there is no user part. Then cut the query and fragment.
+  - Add fixtures: a secret after an "@" in a query and in a fragment, with no user part.
+  - `.agent/scripts/project_integration_audit.sh:301-316`
+- [ ] (suggestion) The final `${u%%[?#]*}` also cuts local and `file:///` paths, so `/home/me/repo#1` is printed as `/home/me/repo`. The "local path" evidence then names the wrong directory; classification is unaffected. Apply the cut to network URLs only — `.agent/scripts/project_integration_audit.sh:326`
