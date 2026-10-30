@@ -1715,3 +1715,44 @@ Host-answered within the orchestrator's checkpoint table: all five open boxes ar
 ### Checks
 - Suites run directly under a private TMPDIR: test_project_integration_audit 220/0 (191 before), test_skill_paths 126/0. shellcheck at the hook's warning severity clean.
 - Full pass `/home/roland/agent_workspace/.venv/bin/pre-commit run --files $(git diff --name-only main...HEAD)`, no SKIP, on the final tree: every hook passed, exit 0. The script-test hook ran all 40 suites (suites_for_files.sh: `.agent/knowledge/skill_workflows.md` maps to no suite, so ALL).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-10-30 10:44 -04:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-332 at `26d9f0ad`
+**Base**: main
+**Depth**: Deep (reason: round 18 convergence check per handoff; round 3 of part 4 of 4, the counter spans the merged parts 1 to 3 (#384); scope: the five findings of the review at 485e4628, the fix diff 485e4628..79fd53c2, and the merge resolution in 26d9f0ad; cross-model skipped (round-18 convergence check, per handoff))
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 18 | **Ship**: recommended — round 18: 1 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+Round-17 findings checked against the fix diff:
+- Four of the five are closed. These are the classic-protection 404 decision table, the reason for a github.com path that is not owner/repo, step 10 with github=unknown, and onboard-project steps 7 and 8 pushing to `<remote>` with `-R github.com/<owner>/<repo>`.
+- The credential-redaction must-fix is closed for every form its round-17 text named, but a residual leak remains (below).
+
+Merge 26d9f0ad is right:
+- The only design.md change on top of main is this part's bullet and its change-log row.
+- The row comes after main's 2026-10-30 row, so the log stays in date order.
+- Lines 854 equals `wc -l docs/design.md`.
+
+Run here:
+- test_project_integration_audit 220/0
+- test_skill_paths 126/0
+- test_user_tier_guard 64/0
+- pre-commit on the six fix-diff files: every hook passed, shellcheck included
+
+Reviewers:
+- Plan drift: none. The fix diff touches only files in the plan.
+- Claude adversarial ran: 2 must-fix. One is kept as must-fix. The other is reclassified as a suggestion, because the `fact()` backstop removes it from the evidence (reproduced).
+- Cross-model: skipped (round-18 convergence check, per handoff).
+
+### Findings
+- [ ] (must-fix) `redact_url` cuts at the first `?` or `#` before it strips the user part.
+  - A password holding either character leaks its prefix, and the GitHub remote is misread as not GitHub: `https://user:pa#ss@github.com/o/r` and `https://user:pa?ss@github.com/o/r.git` both give the evidence `remote 'origin' is https/user:pa`, and the scp form `u:t#k@github.com:o/r` gives `u/t`. `scrub_secrets` does not catch it, because no "@" is left (reproduced).
+  - Fix: strip the user part first, then the query and fragment, in the `://` and scp branches.
+  - Add fixtures with `#`, `?` and `@` inside the password.
+  - `.agent/scripts/project_integration_audit.sh:307`
+- [ ] (suggestion) The file:// branch strips only `[^/]*@`, so a password holding "/" passes `redact_url` whole (`file://u:t/k@h/p`). Today only the `fact()` scrub keeps it out of the evidence (reproduced). Make the primary layer hold on its own, as the https branch does, and add a fixture — `.agent/scripts/project_integration_audit.sh:309`
+- [ ] (suggestion) The branch-protection table has no row for `.permissions.admin` printing `null`, which a token without a permissions object can do. Say that any answer other than `true` is `not checked: classic branch protection needs admin access` — `.claude/skills/audit-project/SKILL.md:295`
