@@ -317,6 +317,16 @@ is edited). It never writes into the project, never relies on the `projects/<nam
   optional final step and gains **queue in the roadmap** (D6): the same `## Onboarding` roadmap section
   and issue-per-row rule as PR 3, each queued row a yes. Onboarding ends by offering this skill (D4).
 - Design doc and `skill_workflows.md`: audit-project's job; change-log row.
+- **Design change 2026-10-30 (owner: "redesign")**: the `github` fact no longer parses or prints remote
+  URLs. Six review rounds kept finding parser edge cases (credentials in user parts, queries and
+  fragments, scp hosts, remote helpers, locales), each a new redaction rule. Instead gh decides:
+  `gh repo view --json nameWithOwner`, run in the repository with `GH_HOST=github.com`, resolves it from
+  the remotes by gh's own reading (every URL form, `insteadOf`, ssh aliases); its answer is printed only
+  when it is a plain `<owner>/<repo>`. gh's exit picks a fixed phrase (no remote on github.com: `no`; not
+  logged in, any other failure, gh missing, a malformed answer: `unknown`), never gh's text. A remote is
+  named by its git remote name, a local one also by its path through the allowlist `[A-Za-z0-9._/@+~-]`
+  (else `unprintable`); the push URL question is a string comparison of `git remote get-url` and
+  `get-url --push`, reported as "; its push URL differs from its fetch URL" with neither URL printed.
 
 ### Follow-up issues to open (not in this issue)
 
